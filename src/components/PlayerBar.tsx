@@ -27,8 +27,19 @@ function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   return <Volume2 size={17} />;
 }
 
-export function PlayerBar() {
+interface PlayerBarProps {
+  onEnterLyricsFullscreen?: () => void;
+  onCloseLyrics?: () => void;
+  lyricsFullscreenPending?: boolean;
+}
+
+export function PlayerBar({
+  onEnterLyricsFullscreen,
+  onCloseLyrics,
+  lyricsFullscreenPending = false,
+}: PlayerBarProps) {
   const { t } = useTranslation('player');
+  const { t: lyrics } = useTranslation('lyrics');
   const { t: common } = useTranslation('common');
   const current = useCurrentSong();
   const {
@@ -144,7 +155,12 @@ export function PlayerBar() {
       </div>
 
       <div className="player-bar__tools">
-        <IconButton label={t('showLyrics')} size="small" active={lyricsOpen} onClick={toggleLyrics}>
+        <IconButton
+          label={t('showLyrics')}
+          size="small"
+          active={lyricsOpen}
+          onClick={lyricsOpen && onCloseLyrics ? onCloseLyrics : toggleLyrics}
+        >
           <Mic2 size={16} />
         </IconButton>
         <IconButton label={t('showQueue')} size="small" active={queueOpen} onClick={toggleQueue}>
@@ -165,7 +181,12 @@ export function PlayerBar() {
             style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
           />
         </div>
-        <IconButton label={t('fullscreen')} size="small" disabled>
+        <IconButton
+          label={lyrics('enterFullscreen')}
+          size="small"
+          onClick={onEnterLyricsFullscreen}
+          disabled={!onEnterLyricsFullscreen || lyricsFullscreenPending}
+        >
           <Maximize2 size={15} />
         </IconButton>
       </div>

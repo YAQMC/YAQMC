@@ -28,6 +28,10 @@ import {
   startLyricsPresentationRuntime,
   useLyricsPresentationStore,
 } from './application/lyrics-presentation';
+import {
+  closeLyricsPresentation,
+  enterLyricsFullscreen,
+} from './application/lyrics-presentation-actions';
 import { listen } from '@tauri-apps/api/event';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
 import './styles/index.css';
@@ -70,7 +74,7 @@ export default function App() {
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
   const fullscreen = useLyricsPresentationStore((state) => state.fullscreen);
   const fullscreenPending = useLyricsPresentationStore((state) => state.pending);
-  const requestFullscreen = useLyricsPresentationStore((state) => state.request);
+  const fullscreenError = useLyricsPresentationStore((state) => state.error);
   const syncFullscreen = useLyricsPresentationStore((state) => state.sync);
   const previousLyricsOpen = useRef(lyricsOpen);
   const [history, setHistory] = useState<NavigationHistory>({ entries: [initialRoute], index: 0 });
@@ -86,6 +90,27 @@ export default function App() {
         index: current.index + 1,
       };
     });
+  }, []);
+
+  const toggleLyricsFocus = useCallback(() => {
+    const preferences = usePreferencesStore.getState();
+    preferences.updateLyrics({
+      focusSidebarCollapsed: !preferences.lyrics.focusSidebarCollapsed,
+    });
+  }, []);
+
+  const toggleLyricsFullscreen = useCallback(() => {
+    const presentation = useLyricsPresentationStore.getState();
+    if (presentation.pending) return;
+    void presentation.request(!presentation.fullscreen);
+  }, []);
+
+  const closeLyrics = useCallback(() => {
+    void closeLyricsPresentation();
+  }, []);
+
+  const enterFullscreenLyrics = useCallback(() => {
+    void enterLyricsFullscreen();
   }, []);
 
   useEffect(() => {
@@ -168,14 +193,15 @@ export default function App() {
           fullscreen,
           focus: focusSidebarCollapsed,
         });
-        if (action === 'exit-fullscreen') void requestFullscreen(false);
+        if (action === 'exit-fullscreen') toggleLyricsFullscreen();
         else if (action === 'exit-focus') updateLyrics({ focusSidebarCollapsed: false });
+        else if (action === 'close-lyrics') closeLyrics();
         else usePlayerStore.getState().closePanels();
         return;
       }
       if (event.key === 'F11' && lyricsOpen) {
         event.preventDefault();
-        if (!fullscreenPending && !event.repeat) void requestFullscreen(!fullscreen);
+        if (!event.repeat) toggleLyricsFullscreen();
         return;
       }
       if (!editing && event.code === 'Space') {
@@ -192,7 +218,8 @@ export default function App() {
     fullscreenPending,
     lyricsOpen,
     navigate,
-    requestFullscreen,
+    closeLyrics,
+    toggleLyricsFullscreen,
     updateLyrics,
   ]);
 
@@ -280,9 +307,21 @@ export default function App() {
             {pageContent}
           </main>
         </div>
-        <PlayerBar />
+        <PlayerBar
+          onEnterLyricsFullscreen={enterFullscreenLyrics}
+          onCloseLyrics={closeLyrics}
+          lyricsFullscreenPending={fullscreenPending}
+        />
         <QueuePanel />
-        <LyricsPanel />
+        <LyricsPanel
+          focus={focusSidebarCollapsed}
+          fullscreen={fullscreen}
+          fullscreenPending={fullscreenPending}
+          fullscreenError={fullscreenError}
+          onToggleFocus={toggleLyricsFocus}
+          onToggleFullscreen={toggleLyricsFullscreen}
+          onClose={closeLyrics}
+        />
       </div>
     </div>
   );

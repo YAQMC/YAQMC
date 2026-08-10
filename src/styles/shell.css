@@ -445,11 +445,11 @@
     padding-inline: 12px;
   }
 
-  .player-bar__tools > .icon-button:last-child {
-    display: none;
+  .volume-control {
+    width: 30px;
   }
 
-  .volume-control {
-    width: 92px;
+  .volume-control input {
+    display: none;
   }
 }

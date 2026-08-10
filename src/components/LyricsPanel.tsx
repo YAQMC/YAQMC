@@ -6,7 +6,16 @@ import {
   type CSSProperties,
   type MutableRefObject,
 } from 'react';
-import { AlignLeft, LocateFixed, Music2, X } from 'lucide-react';
+import {
+  AlignLeft,
+  LocateFixed,
+  Maximize2,
+  Minimize2,
+  Music2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+} from 'lucide-react';
 import { useLyricsStore } from '../application/lyrics-store';
 import {
   emptyLyricCursor,
@@ -261,13 +270,30 @@ function LyricsMessage({
   );
 }
 
-export function LyricsPanel() {
+interface LyricsPanelProps {
+  focus: boolean;
+  fullscreen: boolean;
+  fullscreenPending: boolean;
+  fullscreenError: string | null;
+  onToggleFocus: () => void;
+  onToggleFullscreen: () => void;
+  onClose: () => void;
+}
+
+export function LyricsPanel({
+  focus,
+  fullscreen,
+  fullscreenPending,
+  fullscreenError,
+  onToggleFocus,
+  onToggleFullscreen,
+  onClose,
+}: LyricsPanelProps) {
   const { t } = useTranslation('lyrics');
   const current = useCurrentSong();
   const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const seek = usePlayerStore((state) => state.seek);
-  const closePanels = usePlayerStore((state) => state.closePanels);
   const { document, status } = useLyricsStore();
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
@@ -287,7 +313,7 @@ export function LyricsPanel() {
       cursor.lineIndex,
       lyricScrollBehavior(reducedMotion.current),
     );
-  }, [cursor.lineIndex, following, lyricsOpen, reducedMotion]);
+  }, [cursor.lineIndex, focus, following, fullscreen, lyricsOpen, reducedMotion]);
 
   if (!lyricsOpen) return null;
 
@@ -305,7 +331,14 @@ export function LyricsPanel() {
   };
 
   return (
-    <section ref={stage} className="lyrics-stage" style={style} aria-label={t('region')}>
+    <section
+      ref={stage}
+      className="lyrics-stage"
+      style={style}
+      aria-label={t('region')}
+      data-focus={focus || undefined}
+      data-fullscreen={fullscreen || undefined}
+    >
       {current && (
         <div
           className="lyrics-stage__backdrop"
@@ -316,14 +349,35 @@ export function LyricsPanel() {
       <div className="lyrics-stage__wash" aria-hidden="true" />
 
       <header className="lyrics-stage__header">
-        <div>
+        <div className="lyrics-stage__presentation-controls">
+          <IconButton
+            label={focus ? t('showNavigation') : t('hideNavigation')}
+            onClick={onToggleFocus}
+          >
+            {focus ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </IconButton>
+          <IconButton
+            label={fullscreen ? t('exitFullscreen') : t('enterFullscreen')}
+            onClick={onToggleFullscreen}
+            disabled={fullscreenPending}
+          >
+            {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </IconButton>
+        </div>
+        <div className="lyrics-stage__heading">
           <strong>{t('title')}</strong>
           <span>{document?.metadata.sourceLabel ?? t('offlineSurface')}</span>
         </div>
-        <IconButton label={t('close')} onClick={closePanels}>
+        <IconButton label={t('close')} onClick={onClose}>
           <X size={18} />
         </IconButton>
       </header>
+
+      {fullscreenError !== null && (
+        <span className="lyrics-stage__fullscreen-status" role="status">
+          {t('fullscreenFailed')}
+        </span>
+      )}
 
       {!current ? (
         <LyricsMessage title={t('nothingPlaying')} detail={t('nothingPlayingDetail')} />
