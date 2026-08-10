@@ -76,6 +76,7 @@ async function synchronizeFullscreen(
   commitAllowed: () => boolean = () => true,
   syncPort: FullscreenPort = fullscreenPort,
 ): Promise<void> {
+  if (useLyricsPresentationStore.getState().pending) return;
   const syncGeneration = generation;
   const syncSequence = ++nextSynchronizationSequence;
   try {
@@ -83,7 +84,8 @@ async function synchronizeFullscreen(
     if (
       syncGeneration === generation &&
       syncSequence > lastCommittedSynchronizationSequence &&
-      commitAllowed()
+      commitAllowed() &&
+      !useLyricsPresentationStore.getState().pending
     ) {
       lastCommittedSynchronizationSequence = syncSequence;
       useLyricsPresentationStore.setState({ fullscreen, error: null });
@@ -92,7 +94,8 @@ async function synchronizeFullscreen(
     if (
       syncGeneration === generation &&
       syncSequence > lastCommittedSynchronizationSequence &&
-      commitAllowed()
+      commitAllowed() &&
+      !useLyricsPresentationStore.getState().pending
     ) {
       lastCommittedSynchronizationSequence = syncSequence;
       useLyricsPresentationStore.setState({ error: errorMessage(error) });
@@ -124,8 +127,9 @@ export const useLyricsPresentationStore = create<LyricsPresentationState>((set, 
         return confirmed;
       } catch {
         if (requestGeneration !== generation) return get().fullscreen;
+        const confirmed = get().fullscreen;
         set({ pending: false, error: message });
-        return false;
+        return confirmed;
       }
     }
   },

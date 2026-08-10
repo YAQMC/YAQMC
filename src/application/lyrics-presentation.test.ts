@@ -195,6 +195,23 @@ describe('lyrics presentation state', () => {
     );
   });
 
+  it('returns the prior confirmed state when write and reconciliation read both fail', async () => {
+    await useLyricsPresentationStore.getState().request(true);
+    port.write = async () => {
+      throw new Error('denied');
+    };
+    port.read = async () => {
+      throw new Error('unavailable');
+    };
+
+    const result = await useLyricsPresentationStore.getState().request(false);
+
+    expect(result).toBe(true);
+    expect(useLyricsPresentationStore.getState()).toEqual(
+      expect.objectContaining({ fullscreen: true, pending: false, error: 'denied' }),
+    );
+  });
+
   it('keeps a port write queue intact across an override and restore', async () => {
     const firstWrite = deferred<void>();
     let writeCount = 0;
@@ -247,6 +264,37 @@ describe('lyrics presentation state', () => {
     await staleSync;
 
     expect(useLyricsPresentationStore.getState().fullscreen).toBe(true);
+  });
+
+  it('does not let passive synchronization overwrite a pending request confirmation', async () => {
+    const writeGate = deferred<void>();
+    const staleRead = deferred<boolean>();
+    port.write = async (value) => {
+      await writeGate.promise;
+      port.fullscreen = value;
+    };
+    port.read = () => (port.fullscreen ? Promise.resolve(true) : staleRead.promise);
+
+    const request = useLyricsPresentationStore.getState().request(true);
+    await Promise.resolve();
+    const sync = useLyricsPresentationStore.getState().sync();
+    writeGate.resolve();
+    await expect(request).resolves.toBe(true);
+    staleRead.resolve(false);
+    await sync;
+
+    expect(useLyricsPresentationStore.getState()).toEqual(
+      expect.objectContaining({ fullscreen: true, pending: false, error: null }),
+    );
+  });
+
+  it('synchronizes normally after a presentation request settles', async () => {
+    await useLyricsPresentationStore.getState().request(true);
+    port.fullscreen = false;
+
+    await useLyricsPresentationStore.getState().sync();
+
+    expect(useLyricsPresentationStore.getState().fullscreen).toBe(false);
   });
 
   it('discards an older synchronization result after a newer read succeeds', async () => {
