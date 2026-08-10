@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   lyricsEscapeAction,
   setFullscreenPortForTests,
@@ -40,10 +40,25 @@ function deferred<T>() {
 
 describe('lyrics presentation state', () => {
   let port: FakeFullscreenPort;
+  let restorePort: () => void;
 
   beforeEach(() => {
     port = new FakeFullscreenPort();
-    setFullscreenPortForTests(port);
+    restorePort = setFullscreenPortForTests(port);
+  });
+
+  afterEach(() => restorePort());
+
+  it('restores the previous port after an isolated test override', async () => {
+    const replacement = new FakeFullscreenPort();
+    const restoreReplacement = setFullscreenPortForTests(replacement);
+    await useLyricsPresentationStore.getState().request(true);
+
+    restoreReplacement();
+    await useLyricsPresentationStore.getState().request(false);
+
+    expect(replacement.fullscreen).toBe(true);
+    expect(port.fullscreen).toBe(false);
   });
 
   it('confirms successful fullscreen entry through a fresh read', async () => {
@@ -131,6 +146,27 @@ describe('lyrics presentation state', () => {
     );
   });
 
+  it('serializes mutating writes so the latest request wins adapter and store state', async () => {
+    const firstWrite = deferred<void>();
+    let writeCount = 0;
+    port.write = async (value) => {
+      writeCount += 1;
+      if (writeCount === 1) await firstWrite.promise;
+      port.fullscreen = value;
+    };
+
+    const staleRequest = useLyricsPresentationStore.getState().request(true);
+    await Promise.resolve();
+    const latestRequest = useLyricsPresentationStore.getState().request(false);
+    firstWrite.resolve();
+    await Promise.all([staleRequest, latestRequest]);
+
+    expect(port.fullscreen).toBe(false);
+    expect(useLyricsPresentationStore.getState()).toEqual(
+      expect.objectContaining({ fullscreen: false, pending: false, error: null }),
+    );
+  });
+
   it('discards a stale synchronization read when a request starts meanwhile', async () => {
     const syncRead = deferred<boolean>();
     let readCount = 0;
@@ -146,6 +182,31 @@ describe('lyrics presentation state', () => {
     await staleSync;
 
     expect(useLyricsPresentationStore.getState().fullscreen).toBe(true);
+  });
+
+  it('discards an in-flight resize synchronization after runtime cleanup', async () => {
+    const resizeRead = deferred<boolean>();
+    port.read = () => resizeRead.promise;
+    const cleanup = await startLyricsPresentationRuntime();
+
+    port.listener?.();
+    await Promise.resolve();
+    await cleanup();
+    resizeRead.resolve(true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useLyricsPresentationStore.getState().fullscreen).toBe(false);
+  });
+
+  it('clears a transient error after a successful synchronization', async () => {
+    port.fail = true;
+    await useLyricsPresentationStore.getState().request(true);
+    port.fail = false;
+
+    await useLyricsPresentationStore.getState().sync();
+
+    expect(useLyricsPresentationStore.getState().error).toBeNull();
   });
 
   it('prioritizes escape actions by fullscreen, focus, and lyric visibility', () => {

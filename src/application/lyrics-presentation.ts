@@ -59,6 +59,8 @@ const nativePort: FullscreenPort = {
 
 let fullscreenPort: FullscreenPort = isTauri() ? nativePort : browserPort;
 let generation = 0;
+let synchronizationEpoch = 0;
+let writeQueue = Promise.resolve();
 
 export const useLyricsPresentationStore = create<LyricsPresentationState>((set, get) => ({
   fullscreen: false,
@@ -66,10 +68,13 @@ export const useLyricsPresentationStore = create<LyricsPresentationState>((set, 
   error: null,
   request: async (value) => {
     const requestGeneration = ++generation;
+    const requestPort = fullscreenPort;
     set({ pending: true, error: null });
     try {
-      await fullscreenPort.write(value);
-      const confirmed = await fullscreenPort.read();
+      const write = writeQueue.then(() => requestPort.write(value));
+      writeQueue = write.catch(() => undefined);
+      await write;
+      const confirmed = await requestPort.read();
       if (requestGeneration !== generation) return get().fullscreen;
       set({ fullscreen: confirmed, pending: false, error: null });
       return confirmed;
@@ -81,20 +86,36 @@ export const useLyricsPresentationStore = create<LyricsPresentationState>((set, 
   },
   sync: async () => {
     const syncGeneration = generation;
+    const syncEpoch = synchronizationEpoch;
+    const syncPort = fullscreenPort;
     try {
-      const fullscreen = await fullscreenPort.read();
-      if (syncGeneration === generation) set({ fullscreen });
+      const fullscreen = await syncPort.read();
+      if (syncGeneration === generation && syncEpoch === synchronizationEpoch) {
+        set({ fullscreen, error: null });
+      }
     } catch (error) {
-      if (syncGeneration === generation) set({ error: errorMessage(error) });
+      if (syncGeneration === generation && syncEpoch === synchronizationEpoch) {
+        set({ error: errorMessage(error) });
+      }
     }
   },
   clearError: () => set({ error: null }),
 }));
 
-export function setFullscreenPortForTests(port: FullscreenPort): void {
+export function setFullscreenPortForTests(port: FullscreenPort): () => void {
+  const previousPort = fullscreenPort;
   fullscreenPort = port;
   generation += 1;
+  synchronizationEpoch += 1;
+  writeQueue = Promise.resolve();
   useLyricsPresentationStore.setState({ fullscreen: false, pending: false, error: null });
+  return () => {
+    fullscreenPort = previousPort;
+    generation += 1;
+    synchronizationEpoch += 1;
+    writeQueue = Promise.resolve();
+    useLyricsPresentationStore.setState({ fullscreen: false, pending: false, error: null });
+  };
 }
 
 export async function startLyricsPresentationRuntime(): Promise<() => Promise<void>> {
@@ -110,6 +131,7 @@ export async function startLyricsPresentationRuntime(): Promise<() => Promise<vo
   });
   return async () => {
     active = false;
+    synchronizationEpoch += 1;
     unsubscribe();
   };
 }
