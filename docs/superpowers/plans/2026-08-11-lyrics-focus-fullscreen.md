@@ -270,8 +270,10 @@ git commit -m "feat: add native lyrics fullscreen state"
 
 - Consumes: `focusSidebarCollapsed`, `useLyricsPresentationStore`, `startLyricsPresentationRuntime`, and
   `lyricsEscapeAction`.
-- Produces: `openLyrics`, shell `data-lyrics-focus`/`data-lyrics-fullscreen`, and presentation callbacks for
-  `LyricsPanel`/`PlayerBar`.
+- Produces: `openLyrics`, the App-level runtime/keyboard policy, and shell
+  `data-lyrics-focus`/`data-lyrics-fullscreen`.
+- Defers: `LyricsPanel`/`PlayerBar` presentation props and callbacks until Task 4, where those component
+  interfaces are introduced.
 
 - [ ] **Step 1: Write a failing `openLyrics` store test**
 
@@ -291,10 +293,20 @@ Expected: FAIL because `openLyrics` is absent.
 
 Add `openLyrics: () => set({ lyricsOpen: true, queueOpen: false })` to `PlayerActions` and the store.
 
-- [ ] **Step 4: Wire App state and cleanup**
+- [ ] **Step 4: Wire App state, one-shot close recovery, and StrictMode-safe cleanup**
 
-In `App`, select `lyricsOpen`, `focusSidebarCollapsed`, `updateLyrics`, and presentation `fullscreen/request/error`.
-Start the presentation runtime once; if Lyrics closes while fullscreen, request `false` before leaving the mode.
+In `App`, select `lyricsOpen`, `focusSidebarCollapsed`, `updateLyrics`, and presentation
+`fullscreen/pending/request/sync`. Do not select unused presentation errors or pass props to `LyricsPanel` or
+`PlayerBar` yet.
+
+Start the presentation runtime once. Its subscription is asynchronous, so the effect must use a disposed flag,
+immediately invoke a late cleanup that resolves after disposal, consume startup rejection, and consume the async
+cleanup promise. Do not return an async cleanup directly from `useEffect`. Perform one initial `sync()`.
+
+When `lyricsOpen` transitions to `false`, imperatively inspect the presentation store. If fullscreen entry is
+confirmed or still pending, enqueue one `request(false)`. Key this recovery to the Lyrics close transition instead of
+the request result, so a persistent native failure does not create an automatic retry loop. Task 4 will route every
+direct UI close through a recoverable callback and keep Lyrics visible on a failed exit.
 
 Use this keyboard action block before Space handling:
 
@@ -304,17 +316,19 @@ if (event.key === 'Escape') {
   if (action === 'exit-fullscreen') void requestFullscreen(false);
   else if (action === 'exit-focus') updateLyrics({ focusSidebarCollapsed: false });
   else if (action === 'close-lyrics') usePlayerStore.getState().closePanels();
+  else usePlayerStore.getState().closePanels(); // Preserve Escape closing an open Queue.
   return;
 }
-if (event.key === 'F11' && lyricsOpen) {
+if (event.key === 'F11' && lyricsOpen && !fullscreenPending && !event.repeat) {
   event.preventDefault();
   void requestFullscreen(!fullscreen);
   return;
 }
 ```
 
-Close Lyrics through one callback that exits fullscreen first and then calls `closePanels`. Entering from PlayerBar
-calls `openLyrics()` and then `requestFullscreen(true)`.
+Include every captured state/action in the keyboard effect dependencies so Escape/F11 never use stale presentation
+state. The recoverable close callback and PlayerBar fullscreen-entry callback are added in Task 4 after their prop
+interfaces exist.
 
 Add shell attributes only while Lyrics is open:
 
@@ -359,6 +373,7 @@ Run:
 ```powershell
 npx vitest run src/application/player-store.test.ts src/application/lyrics-presentation.test.ts
 npm run typecheck
+npx eslint src/App.tsx src/application/player-store.ts src/application/player-store.test.ts
 ```
 
 Expected: all pass.
