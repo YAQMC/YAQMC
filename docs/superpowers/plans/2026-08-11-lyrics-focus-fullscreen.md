@@ -664,6 +664,8 @@ git commit -m "feat: add fullscreen lyrics transport"
 - Modify: `src/application/lyrics-timing.test.ts`
 - Modify: `src/application/player-store.ts`
 - Modify: `src/application/player-store.test.ts`
+- Modify: `src/application/native-player-runtime.ts`
+- Create: `src/application/native-player-runtime.test.ts`
 - Modify: `src/styles/components.css`
 - Modify: `src/styles/platform.css`
 
@@ -672,58 +674,98 @@ git commit -m "feat: add fullscreen lyrics transport"
 - Preserves: `selectLyricCursor`, `wordProgress`, click-to-seek, manual follow state, and normalized lyrics.
 - Produces: next-boundary cursor scheduling, immediate discontinuity wake-up, and adaptive active-word updates.
 
-- [ ] **Step 1: Write failing timer/reduced-motion tests**
+- [ ] **Step 1: Write failing timing, store, runtime, and rendering tests**
 
-Test `nextLyricBoundaryMs` with line starts/ends, word gaps, document offset, and no future boundary. In PlayerStore,
-apply a normal near-predicted snapshot and assert `timelineRevision` is unchanged; apply a seek-sized discontinuity,
-track change, and pause/resume and assert it increments. With fake timers, render an open panel and assert cursor
-selection schedules a timeout to the next boundary rather than a cursor `requestAnimationFrame`; increment the
-timeline revision and verify a seek updates immediately. Under `prefers-reduced-motion: reduce`, assert the current
-word receives the discrete class/data state and no animation frame is scheduled. After `document.hidden=true`, assert
-no new active-word style write occurs.
+Use one documented coordinate model throughout:
+
+```text
+lyricTime = playerPosition + presentationOffset - documentOffset
+rawBoundary = lyricBoundary + documentOffset
+delay = rawBoundary - (playerPosition + presentationOffset) + 8
+clickSeek = lineStart + documentOffset - presentationOffset
+```
+
+Test `nextLyricBoundaryMs` with finite line starts/effective ends and word starts/ends, exact-boundary strictness,
+word/line gaps, untimed intervening lines, inferred null ends, final Infinity exclusion, positive/negative document
+offset, presentation and document offsets together, and null/unsynchronized/no-future cases.
+
+In PlayerStore, cover ordinary near-predicted external snapshots, forward/backward discontinuities, exactly 250 ms
+versus 251 ms, pause/resume, index change, and same-index/different-track ID. Cover local seek, play/pause, playTracks,
+playFromQueue, next/previous, repeat reset, and automatic track advance; ordinary local tick must not increment.
+
+With controlled `document.hidden=false` and focused fake timers, render Lyrics and prove boundary timeouts replace
+cursor rAF polling; paused and hidden states retain no timeout, visibility restore corrects immediately, and a revision
+wakes seek immediately. Test paused seek inside the same long word updates progress despite unchanged cursor indexes.
+Under dynamic reduced motion, the current word becomes discrete 100% with no active-word frame. Hidden documents make
+no word style write. A Profiler test applies content-equivalent position snapshots and expects no LyricsPanel commit.
+
+Add a native-runtime gate test where a snapshot event arrives before the initial `player_snapshot` invoke resolves;
+the older initial response must be discarded. Gate rendered lyrics by matching `document.songId` to the current track.
+Every test overriding `document.hidden`/`visibilityState`, timers, RAF, or prototypes must restore them in teardown.
 
 - [ ] **Step 2: Run and confirm failure**
 
-Run: `npx vitest run src/components/LyricsPanel.test.tsx`
+Run:
+
+```powershell
+npx vitest run src/components/LyricsPanel.test.tsx src/application/lyrics-timing.test.ts src/application/player-store.test.ts src/application/native-player-runtime.test.ts
+```
 
 Expected: FAIL because next-boundary scheduling/timeline revisions do not exist, cursor polling uses continuous
 animation frames, and reduced motion does not reach `SyncedWord`.
 
-- [ ] **Step 3: Add next-boundary selection and timeline revisions**
+- [ ] **Step 3: Add exact next-boundary selection and complete timeline revisions**
 
-Export `nextLyricBoundaryMs(document, rawPositionMs): number | null`. Convert raw position by metadata offset, inspect
-future line starts/effective ends and word starts/ends, and return the earliest future boundary converted back to raw
-time. Add `timelineRevision: number` to PlayerState with initial value 0. In `applyExternalSnapshot`, compare the new
-track/index, play state, and position to the prior state's estimated position; increment only for track changes,
-pause/resume, or a position discontinuity greater than 250 ms. Ordinary native poll snapshots must not increment.
+Export `nextLyricBoundaryMs(document, rawPositionMs): number | null`, where callers pass
+`playerPosition + presentationOffset`. Convert to lyric time by subtracting the document offset. Inspect finite line
+starts, finite effective ends, and word starts/ends; return the smallest boundary strictly greater than current lyric
+time, converted back by adding the document offset. Never return Infinity.
 
-- [ ] **Step 4: Replace cursor rAF with boundary scheduling**
+Add `timelineRevision: number` to PlayerState with initial value 0. Increment on every local discontinuity listed in
+Step 1, but not ordinary tick. In `applyExternalSnapshot`, use a functional setter and one `now = performance.now()`
+for both prediction and `observedAtMs`. Clamp the prior predicted position, compare both index and track ID, play state,
+and absolute position delta strictly greater than 250 ms. Ordinary native polls must not increment.
+
+- [ ] **Step 4: Replace cursor rAF with a visibility-safe boundary scheduler**
 
 Pass `timelineRevision` and `isPlaying` to `useLyricCursor`. Update immediately on effect start. While playing,
-schedule one timeout for `nextBoundary - estimatedPosition + 8 ms`, clamped to 16–500 ms as a drift guard; when it
-fires, select the cursor and schedule the next boundary. When paused, schedule no timer—the revision wakes paused
-seeks. Use an effect generation and clear the timer on document/offset/revision/play-state/unmount change. Add a
-`visibilitychange` wake-up so a throttled background tab corrects immediately when shown.
+compute cursor and boundary from the same `playerPosition + presentationOffset`, then schedule one timeout for the
+formula in Step 1, clamped to 16–500 ms as a drift guard. Recompute from current `performance.now()` after every wake;
+never accumulate from an old deadline. Paused, hidden, null-document, and no-future-boundary states retain no timer.
+Use both a generation/cancelled guard and `clearTimeout`. `visibilitychange` to hidden clears immediately; becoming
+visible selects immediately and establishes at most one fresh timer.
 
-- [ ] **Step 5: Make active-word progress adaptive**
+- [ ] **Step 5: Make active-word progress adaptive and prevent snapshot-only rerenders**
 
-Pass a boolean reduced-motion value to `SyncedWord`. In reduced motion, set the current word to a static 100% fill
-and do not schedule a frame. Otherwise update only the active word; skip while `document.hidden`, and throttle style
-writes to approximately 30 fps on Linux (`document.documentElement.dataset.platform === 'linux'`) and 60 fps on
-Windows. Cancel the frame on state/word/unmount changes.
+Change the reduced-motion hook from a ref to boolean state so live media-query changes render. Pass reduced motion and
+`timelineRevision` through the active line to `SyncedWord`; include the revision in memo semantics so a paused seek
+inside the same word recomputes. Reduced motion renders the current word at static 100% without a frame. Otherwise only
+the current word owns an rAF; paused writes once; hidden writes nothing; visibility restoration corrects. Throttle from
+the rAF callback timestamp to about 30 Hz on Linux and 60 Hz elsewhere, and cancel on state/word/revision/unmount.
 
-- [ ] **Step 6: Add containment after functional tests pass**
+Stop subscribing LyricsPanel to the whole current Song object, because native snapshots deserialize a new queue every
+~250 ms. Select only stable primitive presentation fields (track ID, title, artist label, artwork fields) and gate the
+lyric document on matching song ID. Content-equivalent position snapshots must not re-render LyricsPanel.
 
-Apply `contain: layout paint style` to lyric lines and `content-visibility: auto` with a conservative intrinsic block
-size. Verify `centerLyricLine` still obtains correct geometry for the active line. In software graphics mode, disable
-transform scaling as the existing platform policy already disables long animations.
+- [ ] **Step 6: Fix initial native snapshot ordering and add safe containment**
+
+In the native runtime, mark when the first `player://snapshot` event is applied and discard an older in-flight initial
+`player_snapshot` response that resolves afterward. Preserve cleanup/StrictMode behavior and consume async setup
+failures without allowing late writes.
+
+After functional tests pass, apply `contain: layout paint style`, `content-visibility:auto`, and conservative
+`contain-intrinsic-block-size:auto ...` to lyric lines; force the active line to `content-visibility:visible` before
+measuring it. Verify center geometry with mocked rects, far seeks, multiline secondary text, and manual-follow
+preservation. If geometry needs a correction frame, scope tests to cursor/active-word loops rather than asserting that
+the entire component never uses rAF. In Linux software/safe mode remove only active-line scaling while preserving its
+translate offset.
 
 - [ ] **Step 7: Run focused and full frontend checks**
 
 Run:
 
 ```powershell
-npx vitest run src/components/LyricsPanel.test.tsx src/application/lyrics-timing.test.ts src/application/player-store.test.ts
+npx vitest run src/components/LyricsPanel.test.tsx src/application/lyrics-timing.test.ts src/application/player-store.test.ts src/application/native-player-runtime.test.ts
 npm run check
 npm run format:check
 ```
@@ -733,7 +775,7 @@ Expected: all pass.
 - [ ] **Step 8: Commit**
 
 ```powershell
-git add -- src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/application/lyrics-timing.ts src/application/lyrics-timing.test.ts src/application/player-store.ts src/application/player-store.test.ts src/styles/components.css src/styles/platform.css
+git add -- src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/application/lyrics-timing.ts src/application/lyrics-timing.test.ts src/application/player-store.ts src/application/player-store.test.ts src/application/native-player-runtime.ts src/application/native-player-runtime.test.ts src/styles/components.css src/styles/platform.css
 git commit -m "perf: bound immersive lyrics rendering work"
 ```
 
