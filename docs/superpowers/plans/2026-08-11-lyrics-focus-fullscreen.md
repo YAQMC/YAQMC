@@ -552,18 +552,27 @@ git commit -m "feat: add recoverable lyrics presentation controls"
 - Create: `src/components/LyricsFullscreenTransport.tsx`
 - Create: `src/components/LyricsFullscreenTransport.test.tsx`
 - Modify: `src/components/LyricsPanel.tsx`
+- Modify: `src/components/LyricsPanel.test.tsx`
 - Modify: `src/styles/components.css`
+- Modify: `src/styles/platform.css`
 
 **Interfaces:**
 
-- Consumes: `useCurrentSong` and PlayerStore previous/toggle/next/position/duration state.
-- Produces: `<LyricsFullscreenTransport active={fullscreen} />`.
+- Consumes: `useCurrentSong` and PlayerStore previous/toggle/next/position/playbackDuration state.
+- Produces: a fullscreen-only `<LyricsFullscreenTransport ref={transportRef} />` and an imperative `reveal()` handle
+  used by pointer movement anywhere on `.lyrics-stage`.
 
 - [ ] **Step 1: Write failing transport tests with fake timers**
 
-Assert that previous, play/pause, and next buttons call the shared store actions. With `isPlaying=true`, advance fake
-timers by 2600 ms and expect `data-visible` to be absent; pointer movement restores it. Focus a child control, advance
-timers, and expect it to remain visible. Paused controls remain visible.
+Assert that previous, play/pause, and next buttons dispatch through the shared player command adapter and use the
+existing localized accessible names. With `isPlaying=true`, initial mount is visible, advancing 2400 ms hides it, and
+`reveal()` restores it with exactly one new timeout. Focus a child control, move focus between internal controls, and
+advance timers: it remains visible and pinned. Blur outside starts a fresh full timeout. Paused controls remain visible;
+paused-to-playing gets a new visible grace period. No current song renders nothing.
+
+Cover progress duration fallback/null/zero and clamp to `[0, 100]`, native snapshot position updates, repeated reveal
+keeping `vi.getTimerCount() === 1`, and unmount/StrictMode cleanup returning the timer count to zero. Every fake-timer
+test must clear timers and restore real timers in teardown.
 
 - [ ] **Step 2: Run and confirm failure**
 
@@ -571,36 +580,50 @@ Run: `npx vitest run src/components/LyricsFullscreenTransport.test.tsx`
 
 Expected: FAIL because the component does not exist.
 
-- [ ] **Step 3: Implement the transport**
+- [ ] **Step 3: Implement the transport state machine and reveal handle**
 
-Use one 2400 ms timeout, cleared on unmount. Root semantics:
+Export `LyricsFullscreenTransportHandle { reveal(): void }`. With React 19, accept a typed `ref` prop and expose
+`reveal()` via `useImperativeHandle`. Use one 2400 ms timeout, always cleared before replacement and on unmount. Root
+semantics:
 
 ```tsx
 <div
   className="lyrics-fullscreen-transport"
   data-visible={visible || !isPlaying || focused || undefined}
-  onPointerMove={reveal}
-  onFocusCapture={() => setFocused(true)}
+  role="group"
+  aria-label={player('region')}
+  onFocusCapture={pinVisible}
   onBlurCapture={(event) => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+    const next = event.relatedTarget;
+    if (!(next instanceof Node) || !event.currentTarget.contains(next)) releaseFocus();
   }}
 >
 ```
 
-Render artwork/title/artists, semantic previous/play-pause/next buttons, and an `aria-hidden` progress track whose
-width is `Math.min(100, (positionMs / durationMs) * 100)%`. Do not add a second timer for playback position; consume
-the existing native snapshots.
+Focus entry clears the timer and pins visible. Internal focus moves do not release it. Focus leaving makes it visible
+and starts a complete new timeout when playing. Playing mount and paused-to-playing also show first and schedule the
+full delay; paused or missing-song state clears the timer.
+
+Render decorative cached artwork, title/artists, and semantic previous/play-pause/next buttons. Use
+`playbackDurationMs ?? current.durationMs ?? 0`; compute finite progress as
+`durationMs > 0 ? Math.min(100, Math.max(0, positionMs / durationMs * 100)) : 0`. Keep the progress track
+`aria-hidden="true"`. Do not call `getEstimatedPositionMs` or add rAF/interval position work; consume existing native
+Zustand snapshots.
 
 - [ ] **Step 4: Mount only for active fullscreen**
 
 Render it inside the existing `LyricsPanel` tree when `fullscreen` is true. Pointer movement anywhere on the stage
-calls a forwarded `reveal` callback so controls are discoverable without covering the bottom permanently.
+calls `transportRef.current?.reveal()`. Do not rely on pointer events on the hidden transport itself because its CSS
+sets `pointer-events:none`. Add LyricsPanel tests proving normal mode has no transport and that stage pointer movement
+reveals a hidden fullscreen transport without breaking header controls or click-to-seek.
 
 - [ ] **Step 5: Add restrained CSS**
 
 Position a compact surface at bottom center, transition only opacity/translate, set `pointer-events:none` while
 hidden, restore pointer events while focused/visible, and disable the transition under reduced motion. Linux uses an
-opaque/tinted background without `backdrop-filter`.
+opaque/tinted background without `backdrop-filter`; keep that platform rule in `platform.css`, which is imported after
+component styles. Use an explicit z-index and bounded viewport width so it does not cover the lower-right Follow
+control. Do not set `aria-hidden` while visually hidden: keyboard focus remains a supported reveal path.
 
 - [ ] **Step 6: Run component tests**
 
@@ -608,6 +631,10 @@ Run:
 
 ```powershell
 npx vitest run src/components/LyricsFullscreenTransport.test.tsx src/components/LyricsPanel.test.tsx
+npm test
+npm run typecheck
+npm run lint
+npx prettier --check src/components/LyricsFullscreenTransport.tsx src/components/LyricsFullscreenTransport.test.tsx src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/styles/components.css src/styles/platform.css
 ```
 
 Expected: all pass.
@@ -615,7 +642,7 @@ Expected: all pass.
 - [ ] **Step 7: Commit**
 
 ```powershell
-git add -- src/components/LyricsFullscreenTransport.tsx src/components/LyricsFullscreenTransport.test.tsx src/components/LyricsPanel.tsx src/styles/components.css
+git add -- src/components/LyricsFullscreenTransport.tsx src/components/LyricsFullscreenTransport.test.tsx src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/styles/components.css src/styles/platform.css
 git commit -m "feat: add fullscreen lyrics transport"
 ```
 
