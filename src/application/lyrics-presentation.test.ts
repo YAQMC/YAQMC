@@ -32,10 +32,12 @@ class FakeFullscreenPort implements FullscreenPort {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe('lyrics presentation state', () => {
@@ -167,6 +169,69 @@ describe('lyrics presentation state', () => {
     );
   });
 
+  it('reconciles adapter state when the latest serialized write fails', async () => {
+    const firstWrite = deferred<void>();
+    let writeCount = 0;
+    port.write = async (value) => {
+      writeCount += 1;
+      if (writeCount === 1) {
+        await firstWrite.promise;
+        port.fullscreen = value;
+        return;
+      }
+      throw new Error('denied');
+    };
+
+    const staleRequest = useLyricsPresentationStore.getState().request(true);
+    await Promise.resolve();
+    const latestRequest = useLyricsPresentationStore.getState().request(false);
+    firstWrite.resolve();
+    const [, latestResult] = await Promise.all([staleRequest, latestRequest]);
+
+    expect(latestResult).toBe(true);
+    expect(port.fullscreen).toBe(true);
+    expect(useLyricsPresentationStore.getState()).toEqual(
+      expect.objectContaining({ fullscreen: true, pending: false, error: 'denied' }),
+    );
+  });
+
+  it('keeps a port write queue intact across an override and restore', async () => {
+    const firstWrite = deferred<void>();
+    let writeCount = 0;
+    port.write = async (value) => {
+      writeCount += 1;
+      if (writeCount === 1) await firstWrite.promise;
+      port.fullscreen = value;
+    };
+
+    const staleRequest = useLyricsPresentationStore.getState().request(true);
+    await Promise.resolve();
+    const replacement = new FakeFullscreenPort();
+    const restoreReplacement = setFullscreenPortForTests(replacement);
+    await useLyricsPresentationStore.getState().request(true);
+    restoreReplacement();
+    const latestRequest = useLyricsPresentationStore.getState().request(false);
+    await Promise.resolve();
+    firstWrite.resolve();
+    await Promise.all([staleRequest, latestRequest]);
+
+    expect(replacement.fullscreen).toBe(true);
+    expect(port.fullscreen).toBe(false);
+    expect(useLyricsPresentationStore.getState()).toEqual(
+      expect.objectContaining({ fullscreen: false, pending: false, error: null }),
+    );
+  });
+
+  it('continues a serialized write queue after a rejection', async () => {
+    port.fail = true;
+    await useLyricsPresentationStore.getState().request(true);
+    port.fail = false;
+
+    await expect(useLyricsPresentationStore.getState().request(true)).resolves.toBe(true);
+
+    expect(port.fullscreen).toBe(true);
+  });
+
   it('discards a stale synchronization read when a request starts meanwhile', async () => {
     const syncRead = deferred<boolean>();
     let readCount = 0;
@@ -184,6 +249,42 @@ describe('lyrics presentation state', () => {
     expect(useLyricsPresentationStore.getState().fullscreen).toBe(true);
   });
 
+  it('discards an older synchronization result after a newer read succeeds', async () => {
+    const olderRead = deferred<boolean>();
+    let readCount = 0;
+    port.read = () => {
+      readCount += 1;
+      return readCount === 1 ? olderRead.promise : Promise.resolve(true);
+    };
+
+    const olderSync = useLyricsPresentationStore.getState().sync();
+    await useLyricsPresentationStore.getState().sync();
+    olderRead.resolve(false);
+    await olderSync;
+
+    expect(useLyricsPresentationStore.getState()).toEqual(
+      expect.objectContaining({ fullscreen: true, error: null }),
+    );
+  });
+
+  it('discards an older synchronization error after a newer read succeeds', async () => {
+    const olderRead = deferred<boolean>();
+    let readCount = 0;
+    port.read = () => {
+      readCount += 1;
+      return readCount === 1 ? olderRead.promise : Promise.resolve(true);
+    };
+
+    const olderSync = useLyricsPresentationStore.getState().sync();
+    await useLyricsPresentationStore.getState().sync();
+    olderRead.reject(new Error('stale'));
+    await olderSync;
+
+    expect(useLyricsPresentationStore.getState()).toEqual(
+      expect.objectContaining({ fullscreen: true, error: null }),
+    );
+  });
+
   it('discards an in-flight resize synchronization after runtime cleanup', async () => {
     const resizeRead = deferred<boolean>();
     port.read = () => resizeRead.promise;
@@ -197,6 +298,42 @@ describe('lyrics presentation state', () => {
     await Promise.resolve();
 
     expect(useLyricsPresentationStore.getState().fullscreen).toBe(false);
+  });
+
+  it('isolates cleanup and in-flight reads between runtime instances', async () => {
+    const listeners: Array<() => void> = [];
+    const firstRead = deferred<boolean>();
+    const secondRead = deferred<boolean>();
+    let readCount = 0;
+    port.read = () => {
+      readCount += 1;
+      return readCount === 1 ? firstRead.promise : secondRead.promise;
+    };
+    port.subscribe = async (listener) => {
+      listeners.push(listener);
+      return () => {
+        const index = listeners.indexOf(listener);
+        if (index >= 0) listeners.splice(index, 1);
+      };
+    };
+    const cleanupA = await startLyricsPresentationRuntime();
+    const cleanupB = await startLyricsPresentationRuntime();
+
+    listeners[1]?.();
+    await Promise.resolve();
+    listeners[0]?.();
+    await Promise.resolve();
+    await cleanupA();
+    firstRead.resolve(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useLyricsPresentationStore.getState().fullscreen).toBe(true);
+
+    secondRead.resolve(false);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useLyricsPresentationStore.getState().fullscreen).toBe(true);
+    await cleanupB();
   });
 
   it('clears a transient error after a successful synchronization', async () => {
