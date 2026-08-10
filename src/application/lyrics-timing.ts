@@ -25,6 +25,37 @@ function effectiveLineEnd(document: LyricDocument, lineIndex: number): number {
   return nextTimedLine?.startMs ?? Number.POSITIVE_INFINITY;
 }
 
+export function nextLyricBoundaryMs(
+  document: LyricDocument | null,
+  rawPositionMs: number,
+): number | null {
+  if (!document || document.syncMode === 'unsynchronized' || !Number.isFinite(rawPositionMs)) {
+    return null;
+  }
+
+  const offsetMs = document.metadata.offsetMs;
+  const lyricTimeMs = rawPositionMs - offsetMs;
+  let nextBoundary = Number.POSITIVE_INFINITY;
+  const consider = (boundary: number) => {
+    if (Number.isFinite(boundary) && boundary > lyricTimeMs && boundary < nextBoundary) {
+      nextBoundary = boundary;
+    }
+  };
+
+  document.lines.forEach((line, lineIndex) => {
+    if (line.startMs !== null) consider(line.startMs);
+    consider(effectiveLineEnd(document, lineIndex));
+    line.words.forEach((word) => {
+      consider(word.startMs);
+      consider(word.endMs);
+    });
+  });
+
+  if (!Number.isFinite(nextBoundary)) return null;
+  const rawBoundary = nextBoundary + offsetMs;
+  return Number.isFinite(rawBoundary) ? rawBoundary : null;
+}
+
 export function selectLyricCursor(
   document: LyricDocument | null,
   rawPositionMs: number,

@@ -955,6 +955,9 @@ input[type='range']:disabled {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
+  contain: layout paint style;
+  contain-intrinsic-block-size: auto 5rem;
+  content-visibility: auto;
   padding: 0;
   background: transparent;
   color: rgba(245, 247, 239, 0.27);
@@ -978,6 +981,7 @@ input[type='range']:disabled {
 
 .lyrics-line[data-active] {
   color: rgba(245, 247, 239, 0.54);
+  content-visibility: visible;
   transform: translateX(7px) scale(1.015);
   transform-origin: left center;
 }

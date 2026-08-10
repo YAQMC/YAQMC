@@ -53,3 +53,8 @@
   animation-iteration-count: 1 !important;
   transition-duration: 1ms !important;
 }
+
+:root[data-platform='linux'][data-graphics-mode='software'] .lyrics-line[data-active],
+:root[data-platform='linux'][data-graphics-mode='safe'] .lyrics-line[data-active] {
+  transform: translateX(7px);
+}

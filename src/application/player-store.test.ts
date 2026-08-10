@@ -1,6 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Song } from '../domain/music';
-import { initialPlayerState, usePlayerStore } from './player-store';
+import { setPlayerCommandAdapter } from './player-command-adapter';
+import {
+  initialPlayerState,
+  usePlayerStore,
+  type AuthoritativePlayerSnapshot,
+} from './player-store';
 
 const track = (id: string, durationMs = 10_000): Song => ({
   id,
@@ -15,9 +20,34 @@ const track = (id: string, durationMs = 10_000): Song => ({
   availability: { status: 'available' },
 });
 
+function snapshot(
+  overrides: Partial<AuthoritativePlayerSnapshot> = {},
+): AuthoritativePlayerSnapshot {
+  return {
+    queue: [track('one'), track('two')],
+    currentIndex: 0,
+    positionMs: 1_000,
+    isPlaying: true,
+    volume: 0.72,
+    isMuted: false,
+    repeat: 'off',
+    shuffle: false,
+    playbackState: 'playing',
+    playbackDurationMs: 10_000,
+    playbackError: null,
+    ...overrides,
+  };
+}
+
 describe('player store', () => {
   beforeEach(() => {
+    setPlayerCommandAdapter(null);
     usePlayerStore.setState(initialPlayerState);
+  });
+
+  afterEach(() => {
+    setPlayerCommandAdapter(null);
+    vi.restoreAllMocks();
   });
 
   it('starts a requested track in a new queue', () => {
@@ -85,6 +115,7 @@ describe('player store', () => {
       playbackDurationMs: after.playbackDurationMs,
       playbackError: after.playbackError,
       observedAtMs: after.observedAtMs,
+      timelineRevision: after.timelineRevision,
     }).toEqual({
       queue: before.queue,
       currentIndex: before.currentIndex,
@@ -98,6 +129,181 @@ describe('player store', () => {
       playbackDurationMs: before.playbackDurationMs,
       playbackError: before.playbackError,
       observedAtMs: before.observedAtMs,
+      timelineRevision: before.timelineRevision,
     });
+  });
+
+  it.each([
+    { label: 'near predicted', positionMs: 1_300, expectedDelta: 0 },
+    { label: 'exactly 250 ms ahead', positionMs: 1_350, expectedDelta: 0 },
+    { label: '251 ms ahead', positionMs: 1_351, expectedDelta: 1 },
+    { label: '251 ms behind', positionMs: 849, expectedDelta: 1 },
+  ])(
+    'classifies an external $label snapshot against the prior predicted position',
+    ({ positionMs, expectedDelta }) => {
+      vi.spyOn(performance, 'now').mockReturnValue(1_100);
+      usePlayerStore.setState({
+        ...initialPlayerState,
+        queue: [track('one'), track('two')],
+        currentIndex: 0,
+        positionMs: 1_000,
+        isPlaying: true,
+        playbackState: 'playing',
+        playbackDurationMs: 10_000,
+        observedAtMs: 1_000,
+        timelineRevision: 7,
+      });
+
+      usePlayerStore.getState().applyExternalSnapshot(snapshot({ positionMs }));
+
+      expect(usePlayerStore.getState()).toMatchObject({
+        timelineRevision: 7 + expectedDelta,
+        observedAtMs: 1_100,
+      });
+      expect(performance.now).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('clamps the prior predicted position before classifying an external snapshot', () => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: [track('one')],
+      currentIndex: 0,
+      positionMs: -1_000,
+      isPlaying: false,
+      playbackState: 'paused',
+      playbackDurationMs: 10_000,
+      observedAtMs: 1_000,
+      timelineRevision: 3,
+    });
+
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({
+        queue: [track('one')],
+        positionMs: 0,
+        isPlaying: false,
+        playbackState: 'paused',
+      }),
+    );
+
+    expect(usePlayerStore.getState().timelineRevision).toBe(3);
+  });
+
+  it.each([
+    {
+      label: 'pause',
+      overrides: { isPlaying: false, playbackState: 'paused' } as const,
+    },
+    {
+      label: 'resume',
+      prior: { isPlaying: false, playbackState: 'paused' } as const,
+      overrides: { isPlaying: true, playbackState: 'playing' } as const,
+    },
+    { label: 'index change', overrides: { currentIndex: 1 } as const },
+    {
+      label: 'track ID change at the same index',
+      overrides: { queue: [track('replacement'), track('two')] },
+    },
+  ])('increments timeline revision for an external $label', ({ prior, overrides }) => {
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: [track('one'), track('two')],
+      currentIndex: 0,
+      positionMs: 1_000,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+      observedAtMs: 1_000,
+      timelineRevision: 11,
+      ...prior,
+    });
+
+    usePlayerStore.getState().applyExternalSnapshot(snapshot(overrides));
+
+    expect(usePlayerStore.getState().timelineRevision).toBe(12);
+  });
+
+  it.each([
+    {
+      label: 'seek',
+      arrange: () => undefined,
+      act: () => usePlayerStore.getState().seek(2_000),
+    },
+    {
+      label: 'pause or resume',
+      arrange: () => undefined,
+      act: () => usePlayerStore.getState().togglePlayback(),
+    },
+    {
+      label: 'playTracks',
+      arrange: () => undefined,
+      act: () => usePlayerStore.getState().playTracks([track('three')]),
+    },
+    {
+      label: 'playFromQueue',
+      arrange: () => undefined,
+      act: () => usePlayerStore.getState().playFromQueue(1),
+    },
+    {
+      label: 'next',
+      arrange: () => undefined,
+      act: () => usePlayerStore.getState().next(),
+    },
+    {
+      label: 'previous position reset',
+      arrange: () => usePlayerStore.setState({ positionMs: 5_000 }),
+      act: () => usePlayerStore.getState().previous(),
+    },
+    {
+      label: 'previous track',
+      arrange: () => usePlayerStore.setState({ currentIndex: 1, positionMs: 0 }),
+      act: () => usePlayerStore.getState().previous(),
+    },
+    {
+      label: 'repeat-one reset',
+      arrange: () => usePlayerStore.setState({ repeat: 'one', positionMs: 9_000 }),
+      act: () => usePlayerStore.getState().tick(1_000),
+    },
+    {
+      label: 'automatic track advance',
+      arrange: () => usePlayerStore.setState({ positionMs: 9_000 }),
+      act: () => usePlayerStore.getState().tick(1_000),
+    },
+  ])('increments timeline revision for local $label discontinuity', ({ arrange, act }) => {
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: [track('one'), track('two')],
+      currentIndex: 0,
+      positionMs: 1_000,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+      observedAtMs: 0,
+      timelineRevision: 20,
+    });
+    arrange();
+
+    act();
+
+    expect(usePlayerStore.getState().timelineRevision).toBe(21);
+  });
+
+  it('does not increment timeline revision for an ordinary local tick', () => {
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: [track('one')],
+      currentIndex: 0,
+      positionMs: 1_000,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+      timelineRevision: 4,
+    });
+
+    usePlayerStore.getState().tick(100);
+
+    expect(usePlayerStore.getState()).toMatchObject({ positionMs: 1_100, timelineRevision: 4 });
   });
 });

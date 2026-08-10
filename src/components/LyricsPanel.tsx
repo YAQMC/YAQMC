@@ -1,11 +1,4 @@
-import {
-  memo,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type MutableRefObject,
-} from 'react';
+import { memo, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   AlignLeft,
   LocateFixed,
@@ -20,16 +13,12 @@ import { useLyricsStore } from '../application/lyrics-store';
 import {
   emptyLyricCursor,
   lyricScrollBehavior,
-  lyricCursorKey,
+  nextLyricBoundaryMs,
   selectLyricCursor,
   wordProgress,
   type LyricCursor,
 } from '../application/lyrics-timing';
-import {
-  getEstimatedPositionMs,
-  useCurrentSong,
-  usePlayerStore,
-} from '../application/player-store';
+import { getEstimatedPositionMs, usePlayerStore } from '../application/player-store';
 import type { LyricDocument, LyricLine, LyricWord } from '../domain/music';
 import { joinArtistNames } from '../utils/format';
 import { IconButton } from './ui/IconButton';
@@ -45,15 +34,17 @@ type LyricsStyle = CSSProperties & {
   '--lyrics-color': string;
 };
 
-function useReducedMotion(): MutableRefObject<boolean> {
-  const reducedMotion = useRef(false);
+function useReducedMotion(): boolean {
+  const [reducedMotion, setReducedMotion] = useState(
+    () =>
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => {
-      reducedMotion.current = media.matches;
-    };
+    const update = () => setReducedMotion(media.matches);
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
@@ -62,27 +53,70 @@ function useReducedMotion(): MutableRefObject<boolean> {
   return reducedMotion;
 }
 
-function useLyricCursor(document: LyricDocument | null, presentationOffsetMs: number): LyricCursor {
+function useLyricCursor(
+  lyricDocument: LyricDocument | null,
+  presentationOffsetMs: number,
+  timelineRevision: number,
+  isPlaying: boolean,
+): LyricCursor {
   const [cursor, setCursor] = useState<LyricCursor>(emptyLyricCursor);
 
   useEffect(() => {
-    if (!document) return;
-    let frame = 0;
-    let previousKey = '';
+    let cancelled = false;
+    let generation = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimer = () => {
+      generation += 1;
+      if (timer === null) return;
+      clearTimeout(timer);
+      timer = null;
+    };
 
     const update = () => {
-      const positionMs = getEstimatedPositionMs() + presentationOffsetMs;
-      const nextKey = lyricCursorKey(document, positionMs);
-      if (nextKey !== previousKey) {
-        previousKey = nextKey;
-        setCursor(selectLyricCursor(document, positionMs));
+      clearTimer();
+      if (cancelled) return;
+      if (!lyricDocument) {
+        setCursor(emptyLyricCursor);
+        return;
       }
-      frame = window.requestAnimationFrame(update);
+
+      const rawPositionMs = getEstimatedPositionMs() + presentationOffsetMs;
+      const nextCursor = selectLyricCursor(lyricDocument, rawPositionMs);
+      setCursor((previous) =>
+        previous.lineIndex === nextCursor.lineIndex &&
+        previous.wordIndex === nextCursor.wordIndex &&
+        previous.line === nextCursor.line &&
+        previous.word === nextCursor.word
+          ? previous
+          : nextCursor,
+      );
+
+      if (!isPlaying || globalThis.document.hidden) return;
+      const rawBoundary = nextLyricBoundaryMs(lyricDocument, rawPositionMs);
+      if (rawBoundary === null) return;
+      const delayMs = Math.min(500, Math.max(16, rawBoundary - rawPositionMs + 8));
+      const scheduledGeneration = ++generation;
+      timer = setTimeout(() => {
+        if (cancelled || scheduledGeneration !== generation) return;
+        timer = null;
+        update();
+      }, delayMs);
+    };
+
+    const handleVisibilityChange = () => {
+      clearTimer();
+      if (!globalThis.document.hidden) update();
     };
 
     update();
-    return () => window.cancelAnimationFrame(frame);
-  }, [document, presentationOffsetMs]);
+    globalThis.document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      clearTimer();
+      globalThis.document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isPlaying, lyricDocument, presentationOffsetMs, timelineRevision]);
 
   return cursor;
 }
@@ -96,7 +130,14 @@ function centerLyricLine(
   const line = scrollArea.querySelector<HTMLElement>(`[data-line-index="${lineIndex}"]`);
   if (!line) return;
   const areaRect = scrollArea.getBoundingClientRect();
+  const previousContentVisibility = line.style.getPropertyValue('content-visibility');
+  line.style.setProperty('content-visibility', 'visible');
   const lineRect = line.getBoundingClientRect();
+  if (previousContentVisibility) {
+    line.style.setProperty('content-visibility', previousContentVisibility);
+  } else {
+    line.style.removeProperty('content-visibility');
+  }
   const top =
     scrollArea.scrollTop +
     lineRect.top -
@@ -111,39 +152,77 @@ function SyncedWord({
   state,
   offsetMs,
   isPlaying,
+  reducedMotion,
+  timelineRevision,
 }: {
   word: LyricWord;
   state: 'future' | 'current' | 'complete';
   offsetMs: number;
   isPlaying: boolean;
+  reducedMotion: boolean;
+  timelineRevision: number;
 }) {
   const element = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (state !== 'current') return;
+    if (reducedMotion) return;
+    let frame: number | null = null;
+    let lastWriteTimestamp = Number.NEGATIVE_INFINITY;
+    const frameIntervalMs =
+      document.documentElement.dataset.platform === 'linux' ? 1_000 / 30 : 1_000 / 60;
+
     const updateProgress = () => {
       const progress = wordProgress(word, getEstimatedPositionMs() - offsetMs);
       element.current?.style.setProperty('--word-progress', `${progress * 100}%`);
     };
-    if (!isPlaying) {
-      updateProgress();
-      return;
-    }
-    let frame = 0;
-    const update = () => {
-      updateProgress();
-      frame = window.requestAnimationFrame(update);
+
+    const cancelFrame = () => {
+      if (frame === null) return;
+      window.cancelAnimationFrame(frame);
+      frame = null;
     };
-    update();
-    return () => window.cancelAnimationFrame(frame);
-  }, [isPlaying, offsetMs, state, word]);
+
+    const updateFrame = (timestamp: number) => {
+      frame = null;
+      if (document.hidden) return;
+      if (timestamp - lastWriteTimestamp >= frameIntervalMs) {
+        lastWriteTimestamp = timestamp;
+        updateProgress();
+      }
+      frame = window.requestAnimationFrame(updateFrame);
+    };
+
+    const start = () => {
+      if (document.hidden) return;
+      updateProgress();
+      if (isPlaying && frame === null) frame = window.requestAnimationFrame(updateFrame);
+    };
+
+    const handleVisibilityChange = () => {
+      cancelFrame();
+      if (!document.hidden) start();
+    };
+
+    start();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      cancelFrame();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isPlaying, offsetMs, reducedMotion, state, timelineRevision, word]);
 
   return (
     <span
       ref={element}
       className="lyrics-word"
       data-state={state}
-      style={{ '--word-progress': state === 'complete' ? '100%' : '0%' } as CSSProperties}
+      style={
+        {
+          '--word-progress':
+            state === 'complete' || (state === 'current' && reducedMotion) ? '100%' : '0%',
+        } as CSSProperties
+      }
     >
       <span className="lyrics-word__base">{word.text}</span>
       <span className="lyrics-word__fill" aria-hidden="true">
@@ -163,6 +242,8 @@ interface LyricLineViewProps {
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
   isPlaying: boolean;
+  reducedMotion: boolean;
+  timelineRevision: number;
 }
 
 const LyricLineView = memo(
@@ -176,6 +257,8 @@ const LyricLineView = memo(
     translation,
     romanization,
     isPlaying,
+    reducedMotion,
+    timelineRevision,
   }: LyricLineViewProps) {
     const active = cursor.lineIndex === lineIndex;
     const complete = cursor.lineIndex > lineIndex;
@@ -214,6 +297,8 @@ const LyricLineView = memo(
                     state={state}
                     offsetMs={document.metadata.offsetMs - presentationOffsetMs}
                     isPlaying={isPlaying}
+                    reducedMotion={reducedMotion}
+                    timelineRevision={timelineRevision}
                   />
                 );
               })
@@ -236,8 +321,7 @@ const LyricLineView = memo(
       previous.onSeek !== next.onSeek ||
       previous.presentationOffsetMs !== next.presentationOffsetMs ||
       previous.translation !== next.translation ||
-      previous.romanization !== next.romanization ||
-      previous.isPlaying !== next.isPlaying
+      previous.romanization !== next.romanization
     ) {
       return false;
     }
@@ -249,9 +333,13 @@ const LyricLineView = memo(
     };
     const previousState = stateFor(previous.cursor);
     const nextState = stateFor(next.cursor);
+    if (previousState !== nextState) return false;
+    if (nextState !== 'active') return true;
     return (
-      previousState === nextState &&
-      (nextState !== 'active' || previous.cursor.wordIndex === next.cursor.wordIndex)
+      previous.cursor.wordIndex === next.cursor.wordIndex &&
+      previous.isPlaying === next.isPlaying &&
+      previous.reducedMotion === next.reducedMotion &&
+      previous.timelineRevision === next.timelineRevision
     );
   },
 );
@@ -294,45 +382,58 @@ export function LyricsPanel({
   onClose,
 }: LyricsPanelProps) {
   const { t } = useTranslation('lyrics');
-  const current = useCurrentSong();
+  const currentTrackId = usePlayerStore((state) => state.queue[state.currentIndex]?.id ?? null);
+  const currentTitle = usePlayerStore((state) => state.queue[state.currentIndex]?.title ?? '');
+  const currentArtistLabel = usePlayerStore((state) =>
+    joinArtistNames(state.queue[state.currentIndex]?.artists ?? []),
+  );
+  const currentArtworkSrc = usePlayerStore(
+    (state) => state.queue[state.currentIndex]?.artwork.src ?? '',
+  );
+  const currentArtworkAlt = usePlayerStore(
+    (state) => state.queue[state.currentIndex]?.artwork.alt ?? '',
+  );
+  const currentArtworkColor = usePlayerStore(
+    (state) => state.queue[state.currentIndex]?.artwork.dominantColor ?? '#3f463a',
+  );
   const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const timelineRevision = usePlayerStore((state) => state.timelineRevision);
   const seek = usePlayerStore((state) => state.seek);
-  const { document, status } = useLyricsStore();
+  const document = useLyricsStore((state) => state.document);
+  const status = useLyricsStore((state) => state.status);
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
-  const cursor = useLyricCursor(lyricsOpen ? document : null, presentationOffsetMs);
+  const activeDocument = document?.songId === currentTrackId ? document : null;
+  const cursor = useLyricCursor(
+    lyricsOpen ? activeDocument : null,
+    presentationOffsetMs,
+    timelineRevision,
+    isPlaying,
+  );
   const reducedMotion = useReducedMotion();
   const stage = useRef<HTMLElement>(null);
   const transportRef = useRef<LyricsFullscreenTransportHandle>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
   const [unfollowedSongId, setUnfollowedSongId] = useState<string | null>(null);
-  const following = unfollowedSongId !== document?.songId;
+  const following = unfollowedSongId !== activeDocument?.songId;
 
   useEffect(() => {
     if (!lyricsOpen || !following || cursor.lineIndex < 0) return;
     if (stage.current) stage.current.scrollTop = 0;
-    centerLyricLine(
-      scrollArea.current,
-      cursor.lineIndex,
-      lyricScrollBehavior(reducedMotion.current),
-    );
+    centerLyricLine(scrollArea.current, cursor.lineIndex, lyricScrollBehavior(reducedMotion));
   }, [cursor.lineIndex, focus, following, fullscreen, lyricsOpen, reducedMotion]);
 
   if (!lyricsOpen) return null;
 
   const style = {
-    '--lyrics-color': current?.artwork.dominantColor ?? '#3f463a',
+    '--lyrics-color': currentArtworkColor,
   } as LyricsStyle;
 
   const resumeFollowing = () => {
     setUnfollowedSongId(null);
-    centerLyricLine(
-      scrollArea.current,
-      cursor.lineIndex,
-      lyricScrollBehavior(reducedMotion.current),
-    );
+    centerLyricLine(scrollArea.current, cursor.lineIndex, lyricScrollBehavior(reducedMotion));
   };
 
   return (
@@ -345,10 +446,10 @@ export function LyricsPanel({
       data-fullscreen={fullscreen || undefined}
       onPointerMove={() => transportRef.current?.reveal()}
     >
-      {current && (
+      {currentTrackId && (
         <div
           className="lyrics-stage__backdrop"
-          style={{ backgroundImage: `url("${current.artwork.src}")` }}
+          style={{ backgroundImage: `url("${currentArtworkSrc}")` }}
           aria-hidden="true"
         />
       )}
@@ -373,7 +474,7 @@ export function LyricsPanel({
         </div>
         <div className="lyrics-stage__heading">
           <strong>{t('title')}</strong>
-          <span>{document?.metadata.sourceLabel ?? t('offlineSurface')}</span>
+          <span>{activeDocument?.metadata.sourceLabel ?? t('offlineSurface')}</span>
         </div>
         <IconButton label={t('close')} onClick={onClose}>
           <X size={18} />
@@ -386,21 +487,21 @@ export function LyricsPanel({
         </span>
       )}
 
-      {!current ? (
+      {!currentTrackId ? (
         <LyricsMessage title={t('nothingPlaying')} detail={t('nothingPlayingDetail')} />
       ) : (
         <>
           <aside className="lyrics-stage__track">
-            <img src={current.artwork.src} alt={current.artwork.alt} draggable={false} />
+            <img src={currentArtworkSrc} alt={currentArtworkAlt} draggable={false} />
             <div>
-              <strong>{current.title}</strong>
-              <span>{joinArtistNames(current.artists)}</span>
+              <strong>{currentTitle}</strong>
+              <span>{currentArtistLabel}</span>
             </div>
-            {document && (
+            {activeDocument && (
               <div className="lyrics-stage__sync-badge">
-                {document.syncMode === 'word'
+                {activeDocument.syncMode === 'word'
                   ? t('wordSynced')
-                  : document.syncMode === 'line'
+                  : activeDocument.syncMode === 'line'
                     ? t('lineSynced')
                     : t('plain')}
               </div>
@@ -411,29 +512,31 @@ export function LyricsPanel({
             <LyricsMessage title={t('loading')} detail={t('loadingDetail')} />
           ) : status === 'error' ? (
             <LyricsMessage title={t('unavailable')} detail={t('providerFailed')} />
-          ) : !document || status === 'missing' ? (
+          ) : !activeDocument || status === 'missing' ? (
             <LyricsMessage title={t('missing')} detail={t('missingDetail')} />
           ) : (
             <div className="lyrics-stage__viewport">
               <div
                 ref={scrollArea}
                 className="lyrics-stage__scroll"
-                onWheel={() => setUnfollowedSongId(document.songId)}
-                onPointerDown={() => setUnfollowedSongId(document.songId)}
+                onWheel={() => setUnfollowedSongId(activeDocument.songId)}
+                onPointerDown={() => setUnfollowedSongId(activeDocument.songId)}
               >
                 <div className="lyrics-stage__spacer" />
-                {document.lines.map((line, lineIndex) => (
+                {activeDocument.lines.map((line, lineIndex) => (
                   <LyricLineView
                     key={line.id}
                     line={line}
                     lineIndex={lineIndex}
                     cursor={cursor}
-                    document={document}
+                    document={activeDocument}
                     onSeek={seek}
                     presentationOffsetMs={presentationOffsetMs}
                     translation={translation}
                     romanization={romanization}
                     isPlaying={isPlaying}
+                    reducedMotion={reducedMotion}
+                    timelineRevision={timelineRevision}
                   />
                 ))}
                 <div className="lyrics-stage__spacer" />
@@ -445,11 +548,13 @@ export function LyricsPanel({
                   {t('follow')}
                 </button>
               )}
-              {following && document.syncMode !== 'unsynchronized' && cursor.lineIndex < 0 && (
-                <span className="lyrics-stage__instrumental">
-                  <Music2 size={13} /> {t('instrumental')}
-                </span>
-              )}
+              {following &&
+                activeDocument.syncMode !== 'unsynchronized' &&
+                cursor.lineIndex < 0 && (
+                  <span className="lyrics-stage__instrumental">
+                    <Music2 size={13} /> {t('instrumental')}
+                  </span>
+                )}
             </div>
           )}
         </>

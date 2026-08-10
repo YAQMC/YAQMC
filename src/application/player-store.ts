@@ -33,6 +33,7 @@ export interface PlayerState {
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
   observedAtMs: number;
+  timelineRevision: number;
   queueOpen: boolean;
   lyricsOpen: boolean;
 }
@@ -88,6 +89,7 @@ export const initialPlayerState: PlayerState = {
   playbackDurationMs: null,
   playbackError: null,
   observedAtMs: 0,
+  timelineRevision: 0,
   queueOpen: false,
   lyricsOpen: false,
 };
@@ -119,7 +121,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (playable.length === 0) return;
     if (dispatchPlayerCommand({ type: 'playTracks', tracks: playable, startAtId })) return;
     const requestedIndex = startAtId ? playable.findIndex((track) => track.id === startAtId) : 0;
-    set({
+    set((state) => ({
       queue: playable,
       currentIndex: requestedIndex >= 0 ? requestedIndex : 0,
       positionMs: 0,
@@ -128,14 +130,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       playbackDurationMs: playable[requestedIndex >= 0 ? requestedIndex : 0]?.durationMs ?? null,
       playbackError: null,
       observedAtMs: performance.now(),
-    });
+      timelineRevision: state.timelineRevision + 1,
+    }));
   },
 
   playFromQueue: (index) => {
     const { queue } = get();
     if (index < 0 || index >= queue.length) return;
     if (dispatchPlayerCommand({ type: 'playFromQueue', index })) return;
-    set({
+    set((state) => ({
       currentIndex: index,
       positionMs: 0,
       isPlaying: true,
@@ -143,7 +146,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       playbackDurationMs: queue[index]?.durationMs ?? null,
       playbackError: null,
       observedAtMs: performance.now(),
-    });
+      timelineRevision: state.timelineRevision + 1,
+    }));
   },
 
   togglePlayback: () => {
@@ -155,6 +159,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         isPlaying,
         playbackState: isPlaying ? 'playing' : 'paused',
         observedAtMs: performance.now(),
+        timelineRevision: state.timelineRevision + 1,
       };
     });
   },
@@ -172,6 +177,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         playbackState: reachedEnd ? 'ended' : state.isPlaying ? 'playing' : state.playbackState,
         playbackDurationMs: state.queue[nextIndex]?.durationMs ?? null,
         observedAtMs: performance.now(),
+        timelineRevision: state.timelineRevision + 1,
       };
     });
   },
@@ -180,13 +186,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (dispatchPlayerCommand({ type: 'previous' })) return;
     set((state) => {
       if (state.queue.length === 0) return state;
-      if (state.positionMs > 4_000) return { positionMs: 0, observedAtMs: performance.now() };
+      if (state.positionMs > 4_000)
+        return {
+          positionMs: 0,
+          observedAtMs: performance.now(),
+          timelineRevision: state.timelineRevision + 1,
+        };
       const currentIndex = state.currentIndex > 0 ? state.currentIndex - 1 : 0;
       return {
         currentIndex,
         positionMs: 0,
         playbackDurationMs: state.queue[currentIndex]?.durationMs ?? null,
         observedAtMs: performance.now(),
+        timelineRevision: state.timelineRevision + 1,
       };
     });
   },
@@ -196,7 +208,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const duration = state.playbackDurationMs ?? state.queue[state.currentIndex]?.durationMs ?? 0;
     const boundedPosition = Math.max(0, Math.min(positionMs, duration));
     if (dispatchPlayerCommand({ type: 'seek', positionMs: boundedPosition })) return;
-    set({ positionMs: boundedPosition, observedAtMs: performance.now() });
+    set((current) => ({
+      positionMs: boundedPosition,
+      observedAtMs: performance.now(),
+      timelineRevision: current.timelineRevision + 1,
+    }));
   },
 
   tick: (elapsedMs) =>
@@ -208,7 +224,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       if (nextPosition < current.durationMs) {
         return { positionMs: nextPosition, observedAtMs: performance.now() };
       }
-      if (state.repeat === 'one') return { positionMs: 0, observedAtMs: performance.now() };
+      if (state.repeat === 'one')
+        return {
+          positionMs: 0,
+          observedAtMs: performance.now(),
+          timelineRevision: state.timelineRevision + 1,
+        };
 
       const nextIndex = getNextIndex(state);
       const reachedEnd = nextIndex === state.currentIndex && state.repeat === 'off';
@@ -219,6 +240,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         playbackState: reachedEnd ? 'ended' : 'playing',
         playbackDurationMs: state.queue[nextIndex]?.durationMs ?? null,
         observedAtMs: performance.now(),
+        timelineRevision: state.timelineRevision + 1,
       };
     }),
 
@@ -279,9 +301,27 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   applyExternalSnapshot: (snapshot) =>
-    set({
-      ...snapshot,
-      observedAtMs: performance.now(),
+    set((state) => {
+      const now = performance.now();
+      const current = state.queue[state.currentIndex];
+      const durationMs = state.playbackDurationMs ?? current?.durationMs ?? 0;
+      const elapsedMs = state.isPlaying ? Math.max(0, now - state.observedAtMs) : 0;
+      const predictedPositionMs = current
+        ? Math.max(0, Math.min(durationMs, state.positionMs + elapsedMs))
+        : 0;
+      const previousTrackId = current?.id ?? null;
+      const nextTrackId = snapshot.queue[snapshot.currentIndex]?.id ?? null;
+      const discontinuity =
+        state.currentIndex !== snapshot.currentIndex ||
+        previousTrackId !== nextTrackId ||
+        state.isPlaying !== snapshot.isPlaying ||
+        Math.abs(snapshot.positionMs - predictedPositionMs) > 250;
+
+      return {
+        ...snapshot,
+        observedAtMs: now,
+        timelineRevision: state.timelineRevision + (discontinuity ? 1 : 0),
+      };
     }),
 }));
 

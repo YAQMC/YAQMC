@@ -80,23 +80,29 @@ export function useNativePlayerRuntime(): void {
   useEffect(() => {
     if (!isNativeRuntime) return;
     let active = true;
+    let receivedSnapshotEvent = false;
     let unlisten: UnlistenFn | null = null;
 
     setPlayerCommandAdapter(invokePlayerCommand);
 
     void listen<NativePlayerSnapshot>('player://snapshot', (event) => {
       if (active) {
+        receivedSnapshotEvent = true;
         usePlayerStore.getState().applyExternalSnapshot(toAuthoritativeSnapshot(event.payload));
       }
-    }).then((stopListening) => {
-      if (active) unlisten = stopListening;
-      else stopListening();
-    });
+    })
+      .then((stopListening) => {
+        if (active) unlisten = stopListening;
+        else stopListening();
+      })
+      .catch(() => undefined);
 
-    void invoke<NativePlayerSnapshot>('player_snapshot').then((snapshot) => {
-      if (active)
-        usePlayerStore.getState().applyExternalSnapshot(toAuthoritativeSnapshot(snapshot));
-    });
+    void invoke<NativePlayerSnapshot>('player_snapshot')
+      .then((snapshot) => {
+        if (active && !receivedSnapshotEvent)
+          usePlayerStore.getState().applyExternalSnapshot(toAuthoritativeSnapshot(snapshot));
+      })
+      .catch(() => undefined);
 
     return () => {
       active = false;
