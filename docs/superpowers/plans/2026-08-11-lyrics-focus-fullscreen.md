@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a persistent Lyrics-only Focus preference, native main-window fullscreen, compact fullscreen transport, and lower-cost synchronized lyric rendering without remounting the player or lyric surface.
+**Goal:** Add a persistent Lyrics-only Focus preference, native main-window fullscreen, compact fullscreen transport, truthful appearance integration, and auditable native acceptance without remounting the player or lyric surface.
 
-**Architecture:** Keep the existing `LyricsPanel` mounted for Normal, Focus, and Fullscreen states. A small Zustand presentation store wraps an injectable main-window fullscreen port; App keyboard handling and shell data attributes drive layout while the Rust `PlayerService` remains untouched. Split Tauri capabilities so only the main window can change fullscreen state.
+**Architecture:** Keep the existing `LyricsPanel` mounted for Normal, Focus, and Fullscreen states. A small Zustand presentation store wraps an injectable main-window fullscreen port; App keyboard handling and shell data attributes drive layout while the Rust `PlayerService` remains untouched. Split Tauri capabilities so only the main window can change fullscreen state. Resolve native artwork through the existing cache boundary before rendering it, derive the immersive stage from the persisted appearance contract, and verify native behavior with machine-readable evidence plus a tracked verifier.
 
 **Tech Stack:** React 19, TypeScript 6, Zustand 5, Vitest/Testing Library, Tauri 2 window API, CSS, i18next.
 
@@ -17,6 +17,8 @@
 - `Esc` priority is native fullscreen, Lyrics Focus, then closing Lyrics. `F11` toggles fullscreen only while Lyrics is open.
 - Preserve translation, romanization, word timing, manual scroll, click-to-seek, reduced motion, and the Linux graphics downgrade policy.
 - Every user-visible string must exist in both `en-US` and `zh-CN` resources.
+- Evidence under `output/` is ignored and must never be staged; tracked docs summarize verified identities and outcomes only after the corresponding gate passes.
+- Windows software/safe graphics modes are not substitutes for Linux native-Wayland/X11 acceptance.
 
 ---
 
@@ -34,6 +36,12 @@
 - Modify `src/locales/en-US.ts` and `zh-CN.ts`: labels and nonfatal fullscreen error copy.
 - Split `src-tauri/capabilities/default.json` and create `src-tauri/capabilities/main-window.json`: least-privilege fullscreen permission.
 - Modify `docs/lyrics.md`, `docs/design-system.md`, and `docs/linux-acceptance.md`: behavior, shortcuts, performance, and physical acceptance.
+- Create `src/application/artwork-source.ts` and tests: a minimal safe-source boundary used only by immersive Lyrics.
+- Create `src/application/lyrics-appearance.ts` and tests: a pure projection from persisted appearance to immersive Lyrics presentation.
+- Create `scripts/capture-windows-lyrics-acceptance.ps1`: semantic WebView2 automation plus native-window image capture.
+- Create `scripts/verify-lyrics-acceptance.mjs` and `scripts/verify-lyrics-acceptance.test.ts`: schema, transition, geometry, and hash verification.
+- Create `docs/windows-acceptance.md`; modify `docs/appearance.md`, `docs/linux.md`, and `docs/linux-graphics.md`: native acceptance and appearance contracts.
+- Deferred authenticated-beta delivery work: modify `scripts/collect-linux-diagnostics.sh`, `src-tauri/src/platform.rs`, and `.github/workflows/build.yml`; create `scripts/collect-linux-diagnostics.test.sh` for phase-marked final-AppImage diagnostics and synchronized embedded tester instructions.
 
 ### Task 1: Persist the Lyrics-only Focus preference
 
@@ -779,69 +787,452 @@ git add -- src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx sr
 git commit -m "perf: bound immersive lyrics rendering work"
 ```
 
-### Task 7: Native visual acceptance and documentation
+### Task 7: Resolve immersive artwork without exposing its remote source
 
 **Files:**
 
-- Modify: `docs/lyrics.md`
-- Modify: `docs/design-system.md`
-- Modify: `docs/linux-acceptance.md`
-- Create ignored evidence under: `output/visual-acceptance/lyrics-focus-fullscreen/`
+- Create: `src/application/artwork-source.ts`
+- Create: `src/application/artwork-source.test.tsx`
+- Modify: `src/application/artwork-cache.ts`
 
 **Interfaces:**
 
-- Consumes: completed Tasks 1–6.
-- Produces: locally verified Windows evidence and an exact Arch retest sequence.
+- Produces `isCacheableArtworkSource(url)` and `useSafeArtworkSource(url)` only for the immersive Lyrics stage and
+  its transport in Task 8.
+- Native cache eligibility exactly matches Rust `is_allowed_artwork_url`: HTTPS `y.gtimg.cn` and
+  `qpic.y.qq.com`. Browser mode and local/data/asset sources remain direct.
+- In native mode, an eligible URL resolves to `null` until `qqmusic_cache_artwork` returns a data URI. On failure,
+  the raw remote URL must not enter immersive Lyrics DOM, CSS, logs, or evidence. This is required because the
+  current immersive stage unconditionally injects `currentArtworkSrc`; it is not QQ credential/auth work. Existing
+  non-Lyrics public-artwork consumers remain unchanged and are deferred to the authenticated-beta privacy audit.
 
-- [ ] **Step 1: Run all frontend/Rust regression checks**
+- [ ] **Step 1: Write failing source-policy and hook tests**
 
-Run:
+Cover browser-direct; both native allowed hosts; the currently mismatched `*.music.tc.qq.com`; pending, rejected,
+and stale async resolutions; unmount cleanup; and local/data sources. Assert that the hook never returns a raw
+cache-eligible URL in native mode.
+
+- [ ] **Step 2: Run the focused tests and confirm RED**
+
+```powershell
+npx vitest run src/application/artwork-source.test.tsx
+```
+
+Expected: fail because the shared boundary does not exist and `qpic.y.qq.com` currently bypasses the TypeScript
+cache allowlist.
+
+- [ ] **Step 3: Implement the shared source boundary**
+
+Export the predicate from `artwork-cache.ts`, align it to Rust, and implement the hook with a generation token and
+effect cleanup so a prior song cannot win. Reuse the existing cache/invoke path; add no network path. Task 8 adopts
+the hook only inside immersive Lyrics.
+
+- [ ] **Step 4: Run focused and regression checks**
+
+```powershell
+npx vitest run src/application/artwork-source.test.tsx src/components/LyricsPanel.test.tsx src/components/LyricsFullscreenTransport.test.tsx
+npm run check
+npm run format:check
+```
+
+Expected: all pass, and tests restore mocked Tauri globals, promises, and DOM.
+
+- [ ] **Step 5: Commit the isolated boundary**
+
+```powershell
+git add -- src/application/artwork-cache.ts src/application/artwork-source.ts src/application/artwork-source.test.tsx
+git commit -m "fix: keep native artwork behind the cache"
+```
+
+### Task 8: Make immersive Lyrics honor persisted appearance
+
+**Files:**
+
+- Create: `src/application/lyrics-appearance.ts`
+- Create: `src/application/lyrics-appearance.test.ts`
+- Modify: `src/components/LyricsPanel.tsx`
+- Modify: `src/components/LyricsPanel.test.tsx`
+- Modify: `src/components/LyricsFullscreenTransport.tsx`
+- Modify: `src/components/LyricsFullscreenTransport.test.tsx`
+- Modify: `src/styles/components.css`
+- Modify: `src/styles/personalization.css`
+- Modify: `src/styles/platform.css`
+
+**Interfaces:**
+
+- `resolveLyricsAppearance(background, safeArtworkSource)` returns only `mode`, `imageSource`, `imageFit`, and
+  `baseColor` primitives.
+- It maps `default` to no image, `color` to the normalized custom color, `image` to the managed data URI and fit,
+  and `artwork` to Task 7's safe source. Light/dark foregrounds, washes, controls, and transport use theme tokens;
+  the opaque `#121411` stage and unconditional white text are removed.
+
+- [ ] **Step 1: Write the failing pure matrix and integration tests**
+
+Table-test light/dark x default/color/image/artwork, invalid colors, missing sources, both image fits, and absence of
+raw track URLs. Extend component tests for live appearance mutation without remount, cache-pending/failure,
+reduced motion, paused same-word revision, manual follow, click seek, active-word timing, and one active-word rAF.
+
+- [ ] **Step 2: Run focused tests and confirm RED**
+
+```powershell
+npx vitest run src/application/lyrics-appearance.test.ts src/components/LyricsPanel.test.tsx src/components/LyricsFullscreenTransport.test.tsx
+```
+
+Expected: fail because the stage is hard-coded dark and always consumes current artwork regardless of appearance.
+
+- [ ] **Step 3: Implement the projection and tokenized stage**
+
+Subscribe to primitive appearance fields, resolve artwork through `useSafeArtworkSource`, and expose stable
+`data-background-mode`/`data-image-fit`. Render an image only for managed custom image or resolved artwork. Convert
+stage, lyric, wash, scrollbar, header, focus control, and transport colors to theme tokens. Preserve the Linux
+software/safe transform used for alignment while disabling only blur and expensive effects.
+
+- [ ] **Step 4: Run focused and full checks**
+
+```powershell
+npx vitest run src/application/lyrics-appearance.test.ts src/application/artwork-source.test.tsx src/components/LyricsPanel.test.tsx src/components/LyricsFullscreenTransport.test.tsx
+npm run check
+npm run lint
+npm run format:check
+```
+
+Expected: all pass; Profiler/mutation assertions show appearance updates without player or lyric-document remount.
+
+- [ ] **Step 5: Commit the appearance repair**
+
+```powershell
+git add -- src/application/lyrics-appearance.ts src/application/lyrics-appearance.test.ts src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/components/LyricsFullscreenTransport.tsx src/components/LyricsFullscreenTransport.test.tsx src/styles/components.css src/styles/personalization.css src/styles/platform.css
+git commit -m "fix: honor appearance in immersive lyrics"
+```
+
+### Task 9: Make native evidence machine-verifiable
+
+**Files:**
+
+- Create: `scripts/capture-windows-lyrics-acceptance.ps1`
+- Create: `scripts/verify-lyrics-acceptance.mjs`
+- Create: `scripts/verify-lyrics-acceptance.test.ts`
+- Create ignored: `output/visual-acceptance/lyrics-focus-fullscreen/`
+
+**Interfaces and exact evidence contract:**
+
+- Each platform root contains `checklist.md`, `manifest.json`, `commands.log`, `state.jsonl`, `sha256.txt`, and
+  `screenshots/*.png`, all ignored by Git.
+- CLI in this task: `node scripts/verify-lyrics-acceptance.mjs --platform windows --root <absolute-root>`.
+  Deferred delivery checkpoints extend it for final NSIS and Linux schemas.
+- Windows attaches to a loopback-only WebView2 CDP port, locates visible controls by role/name or stable `data-*`
+  state, and sends real pointer/keyboard input. It must not mutate Zustand or invoke player commands through CDP.
+  Required images are real desktop crops of the native HWND client bounds; CDP screenshots are diagnostic only.
+- Manifest identity fields are `schemaVersion`, `capturedAtUtc`, `gitCommit`, `gitTree`, `platform`, `osVersion`,
+  `appVersion`, `webview2Version`, `monitorId`, `visualBinaryPath`, `visualBinarySha256`, `visualBuildKind`, and
+  `releaseArtifact` (`path`, `sha256`, `buildKind`, or `null` before its gate).
+- `gitCommit` is `git rev-parse HEAD`; `gitTree` is `git rev-parse HEAD^{tree}`; binary paths are absolute; hashes
+  are lowercase 64-character SHA-256 hex; UTC fields are ISO 8601 with `Z`.
+- The local visual gate requires exactly `screenshots/W01.png` through `screenshots/W09.png` and the minimum-size
+  smoke `screenshots/S01.png`.
+- Every case contains `id`, `theme`, `locale`, `backgroundMode`, `presentation`, `entryPath`, `exitPath`,
+  `reducedMotion`, `devicePixelRatio`, `sourceLogicalBounds`, `sourcePhysicalBounds`, `captureLogicalBounds`,
+  `capturePhysicalBounds`, `restoredLogicalBounds`, `restoredPhysicalBounds`, `screenshot`, `screenshotSha256`,
+  `stateSeqStart`, and `stateSeqEnd`.
+- A logical bounds object is exactly `{ x, y, width, height, unit: "logical-px" }`; a physical bounds object has the
+  same finite numeric fields and `unit: "physical-px"`. DPR is positive and finite. Exact restoration compares all
+  four coordinates in each unit; logical-to-physical conversion permits only the documented one-pixel rounding
+  tolerance per edge.
+- Every JSONL row contains `seq`, `timestampUtc`, `caseId`, `action`, `source`, `logicalBounds`, `physicalBounds`,
+  `devicePixelRatio`, `nativeFullscreen`, `lyricsOpen`, `focus`, `reducedMotion`, `songId`, `playerState`,
+  `captureMethod`, and semantic `assertions`; `seq` is strictly increasing.
+- `sha256.txt` covers checklist, manifest, commands, state, every screenshot, and the visual binary. It omits itself;
+  the manifest self-hash is omitted to avoid recursion. `releaseArtifact` must remain null at this checkpoint.
+
+- [ ] **Step 1: Write failing verifier fixture tests**
+
+Build a valid Windows local-visual fixture in a test-owned temporary directory, then mutate missing/extra/duplicate cases,
+commit/tree, transitions, sequence, hashes, filename traversal, private URL leakage, DPR geometry, exact restore,
+native-crop provenance, a non-null release artifact, and a release-pass claim. Restore globals/timers/directories.
+
+- [ ] **Step 2: Run tests and confirm RED**
+
+Run: `npx vitest run scripts/verify-lyrics-acceptance.test.ts`
+
+Expected: fail because the verifier does not exist.
+
+- [ ] **Step 3: Implement the Node-stdlib verifier**
+
+Use only Node JSON/path/PNG-header/crypto APIs. Require W01-W09 plus local S01, `releaseArtifact: null`, exact logical
+restore, physical conversion within one rounded pixel per edge, both hash sources, required transitions, and
+native-crop provenance. Collect and print all errors before exiting nonzero.
+
+- [ ] **Step 4: Implement the Windows collector**
+
+Accept explicit `-Binary`, `-Output`, and `-BuildKind`; refuse a dirty tracked tree; log commands before execution;
+temporarily set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>`; resolve exactly one process
+and HWND; and clean environment/processes in `finally`. Fail on ambiguous HWND, identity mismatch, missing control,
+stale semantic state, or crop-bounds mismatch.
+
+- [ ] **Step 5: Run tooling checks**
+
+```powershell
+npx vitest run scripts/verify-lyrics-acceptance.test.ts
+npx prettier --check scripts/verify-lyrics-acceptance.mjs scripts/verify-lyrics-acceptance.test.ts
+powershell -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw scripts/capture-windows-lyrics-acceptance.ps1))"
+npm run check
+```
+
+Expected: all pass without launching the native app.
+
+- [ ] **Step 6: Commit tooling only**
+
+```powershell
+git add -- scripts/capture-windows-lyrics-acceptance.ps1 scripts/verify-lyrics-acceptance.mjs scripts/verify-lyrics-acceptance.test.ts
+git commit -m "test: make lyrics evidence verifiable"
+```
+
+### Task 10: Pass the Windows local visual checkpoint and document it
+
+**Files:**
+
+- Create: `docs/windows-acceptance.md`
+- Modify: `docs/lyrics.md`
+- Modify: `docs/design-system.md`
+- Modify: `docs/appearance.md`
+- Update ignored: `output/visual-acceptance/lyrics-focus-fullscreen/windows/`
+- Update ignored: `output/goal-progress.md`
+
+**Required matrix:**
+
+| ID  | Source geometry | Presentation      | Theme | Locale | Background |
+| --- | --------------- | ----------------- | ----- | ------ | ---------- |
+| W01 | 1280x800        | Normal            | light | en-US  | default    |
+| W02 | 1280x800        | Focus             | dark  | zh-CN  | artwork    |
+| W03 | 1280x800        | native fullscreen | dark  | en-US  | image      |
+| W04 | 1000x700        | Normal            | light | zh-CN  | color      |
+| W05 | 1000x700        | Focus             | dark  | en-US  | image      |
+| W06 | 1000x700        | native fullscreen | dark  | zh-CN  | artwork    |
+| W07 | 1000x1000       | Normal            | dark  | en-US  | artwork    |
+| W08 | 1000x1000       | Focus             | light | zh-CN  | default    |
+| W09 | 1000x1000       | native fullscreen | light | en-US  | color      |
+
+S01 is a separate non-release smoke of the same `--no-bundle` binary at the minimum `1000x680`; it cannot replace
+W01-W09. Every fullscreen case starts at its table geometry and restores exactly to that source logical and physical
+rectangle after exits.
+
+- [ ] **Step 1: Run the pre-acceptance regression gate**
 
 ```powershell
 npm run format:check
 npm run check
+npm run lint
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 ```
 
-Expected: every command exits 0.
+Expected: all exit 0 on a clean tracked tree.
 
-- [ ] **Step 2: Build and run the Windows native application**
-
-Run: `npm run tauri -- build --no-bundle`
-
-Expected: `src-tauri/target/release/yaqmc.exe` exists and launches without a capability error.
-
-- [ ] **Step 3: Capture the required layouts**
-
-Using the native fake provider, capture Normal, Focus, and Fullscreen Lyrics at 1000x680 and 1280x800, plus OS
-fullscreen. Cover English/Chinese, light/dark, default/custom-color/custom-image/artwork backgrounds. Verify sidebar
-recovery, artwork/lyric reflow, translation/romanization, manual scroll, click-to-seek while the sidebar is hidden,
-track change while fullscreen, PlayerBar sizing in Focus, compact transport hide/reveal/focus pin, UI exit, F11 exit,
-Esc priority, compositor exit synchronization, and resize after exit. Store screenshots and a text checklist only
-under the ignored output path.
-
-- [ ] **Step 4: Document the implemented contract**
-
-Update Lyrics/design docs with the three presentation states, Focus persistence scope, F11/Esc behavior, reduced
-motion, transient transport, and the AMLL no-code-reuse boundary. Extend Linux acceptance with phase markers for
-Focus/fullscreen resource sampling and the native-Wayland exit/restore checks.
-
-- [ ] **Step 5: Run doc formatting and diff checks**
-
-Run:
+- [ ] **Step 2: Build the non-distributable visual gate**
 
 ```powershell
-npx prettier --check docs/lyrics.md docs/design-system.md docs/linux-acceptance.md
+npm run tauri -- build --no-bundle
+Get-FileHash src-tauri/target/release/yaqmc.exe -Algorithm SHA256
+```
+
+Record this as `visualBuildKind: "tauri-no-bundle"`. It closes local checkpoint C only, not release checkpoint K.
+
+- [ ] **Step 3: Capture W01-W09 and S01 with the full sequence**
+
+Use the collector and real controls. Across cases: enter/exit using the visible header and PlayerBar controls; enter
+and exit with physical F11; exercise Esc priority fullscreen -> Focus -> close Lyrics; emulate reduced motion with
+CDP media emulation and verify zero computed transition/animation durations; exercise translation, romanization,
+manual scroll/follow, click seek, pause/resume, fullscreen track change, Focus PlayerBar sizing, and transport
+hide/reveal/focus pinning.
+
+For the external-exit probe only, invoke raw Tauri main-window `setFullscreen(false)` through CDP without writing
+presentation state; label it `external-native-api` and verify resize-listener reconciliation. It cannot satisfy any
+normal UI path. Capture every W case from the native client crop with semantic state, DPR, logical/physical bounds,
+exact restore, and hashes. Run S01 at `1000x680` against the same binary: open Lyrics, toggle Focus, enter/exit
+fullscreen through the visible UI, seek a lyric line, and exercise Esc priority.
+
+- [ ] **Step 4: Verify the visual evidence**
+
+```powershell
+node scripts/verify-lyrics-acceptance.mjs --platform windows --root "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/windows"
+```
+
+Expected: W01-W09 and S01 pass with `releaseArtifact: null`; no release pass is claimed.
+
+- [ ] **Step 5: Document verified contracts and evidence identities**
+
+Record presentation behavior, appearance mapping, safe artwork boundary, UI/F11/Esc/external exit, reduced motion,
+transport, matrix, manifest hash, Git identity, and raw-exe hash. State explicitly that NSIS/release checkpoint K is
+open. Update ignored `goal-progress.md` with checkpoint C and the evidence path; never stage it.
+
+- [ ] **Step 6: Check and commit tracked docs only**
+
+```powershell
+npx prettier --check docs/windows-acceptance.md docs/lyrics.md docs/design-system.md docs/appearance.md
+git diff --check
+git status --short --ignored
+git add -- docs/windows-acceptance.md docs/lyrics.md docs/design-system.md docs/appearance.md
+git commit -m "docs: record windows lyrics acceptance"
+```
+
+## Deferred authenticated-beta delivery gates
+
+The checkpoint K reference and Tasks 11-12 belong to the authenticated-beta delivery plan, not Lyrics Task 7.
+Stop the Lyrics execution after Task 10. Do not modify the Linux workflow, claim a physical Linux pass, or close the
+final AppImage hash here.
+
+### Checkpoint K reference: final Windows NSIS (deferred)
+
+After QQ/authenticated-beta code stabilizes, rerun W01-W09 on that exact clean commit, build the final NSIS, install
+it, and rerun S01 from the installed binary. Extend the verifier/release manifest at that time, record installer and
+installed-binary hashes, and update Windows acceptance only after both the repeated matrix and installed smoke pass.
+No current `--no-bundle` artifact may be promoted to checkpoint K.
+
+### Task 11: Phase Linux diagnostics and embed tester instructions (deferred)
+
+**Files:**
+
+- Modify: `scripts/collect-linux-diagnostics.sh`
+- Create: `scripts/collect-linux-diagnostics.test.sh`
+- Modify: `scripts/verify-lyrics-acceptance.mjs`
+- Modify: `scripts/verify-lyrics-acceptance.test.ts`
+- Modify: `src-tauri/src/platform.rs`
+- Modify: `.github/workflows/build.yml`
+- Modify: `docs/linux-acceptance.md`
+- Modify: `docs/linux.md`
+- Modify: `docs/linux-graphics.md`
+
+**Interfaces:**
+
+- Canonical modes are `auto`, `native-wayland`, `x11`, and conditional `software`. `baseline` may remain only as a
+  compatibility alias for `auto`; it is not XWayland.
+- Required phases are `startup-idle`, `playback`, `seek-pause-resume`, `main-scroll-resize`, `lyrics-normal`,
+  `lyrics-focus`, `lyrics-fullscreen`, `desktop-lyrics`, `island-lyrics`, `both-surfaces`, and `shutdown`.
+- Each sample records phase, UTC timestamp, process tree, RSS/PSS where available, CPU, threads, window state,
+  reported Wayland/X11 backend, and graphics environment. Common evidence files follow Task 9 and do not claim a
+  pass before verification.
+
+- [ ] **Step 1: Write a failing hermetic collector test**
+
+With a temporary fake AppImage/process tree and injected command shims, test all mode environments, `baseline`
+alias, ordered phases, interrupt cleanup, manifest identity, and refusal to label `software` native. No display
+server or real AppImage is needed.
+
+- [ ] **Step 2: Run syntax/behavior tests and confirm RED**
+
+```bash
+bash -n scripts/collect-linux-diagnostics.sh scripts/collect-linux-diagnostics.test.sh
+bash scripts/collect-linux-diagnostics.test.sh
+```
+
+Expected: behavior fails because canonical modes and phase markers do not exist.
+
+- [ ] **Step 3: Implement phase-marked collection**
+
+Add strict arguments, a phase marker consumed by the sampler, ordered prompts, signal-safe cleanup, runtime backend
+detection, AppImage/Git identity, and explicit incomplete/pass state. `auto` leaves overrides unset;
+`native-wayland` clears X11 overrides; `x11` sets the documented override; `software` adds the renderer downgrade
+only after a native failure. Preserve the translated surface; software/safe disables costly effects, not transform.
+
+- [ ] **Step 4: Embed exact platform-tester instructions**
+
+Make the workflow artifact contain `TESTING.md`, `ACCEPTANCE.md`, `collect-linux-diagnostics.sh`,
+`verify-lyrics-acceptance.mjs`, and `SHA256SUMS`. Instructions name the exact AppImage, commands, ordered UI
+actions, output tree, archive command, and return channel, and state that only the final workflow AppImage is valid.
+Extend the verifier with the Linux manifest/mode/phase schema and tests that reject a missing native mode, reordered
+phase, backend mismatch, and software-only pass.
+
+Factor the `README.txt` body in `src-tauri/src/platform.rs` into a testable constant and synchronize it with the
+packaged `TESTING.md`: `auto` first, required `native-wayland` and `x11`, conditional `software`, ordered phases,
+verifier/archive commands, and final-AppImage-only identity rule. Add a Rust string-content test that asserts those
+tokens exist, `baseline` is described only as the `auto` compatibility alias, and no current baseline is called
+XWayland.
+
+- [ ] **Step 5: Correct and expand Linux docs**
+
+State that the 2026-08-10 current baseline was native Wayland. Keep XWayland only as historical pre-fix evidence;
+remove wording that calls the current baseline XWayland. Document `auto` first, then required native Wayland/X11,
+with `software` conditional on a reproduced native graphics failure. Add Focus/fullscreen phases, exact exit/restore,
+verifier commands, and the rule that Windows software/safe cannot satisfy Linux. Do not insert a final AppImage hash.
+
+- [ ] **Step 6: Run tooling, doc, and workflow checks**
+
+```bash
+bash -n scripts/collect-linux-diagnostics.sh scripts/collect-linux-diagnostics.test.sh
+bash scripts/collect-linux-diagnostics.test.sh
+npx vitest run scripts/verify-lyrics-acceptance.test.ts
+npx prettier --check .github/workflows/build.yml docs/linux-acceptance.md docs/linux.md docs/linux-graphics.md
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo test --manifest-path src-tauri/Cargo.toml platform::tests
 git diff --check
 ```
 
-Expected: all pass.
+Expected: all pass without a physical Linux session.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit tooling and instructions**
 
-```powershell
-git add -- docs/lyrics.md docs/design-system.md docs/linux-acceptance.md
-git commit -m "docs: record immersive lyrics acceptance"
+```bash
+git add -- scripts/collect-linux-diagnostics.sh scripts/collect-linux-diagnostics.test.sh scripts/verify-lyrics-acceptance.mjs scripts/verify-lyrics-acceptance.test.ts src-tauri/src/platform.rs .github/workflows/build.yml docs/linux-acceptance.md docs/linux.md docs/linux-graphics.md
+git commit -m "test: phase linux lyrics acceptance"
+```
+
+### Task 12: Release checkpoint for the final AppImage (deferred)
+
+**Files:**
+
+- Modify after verified evidence: `docs/linux-acceptance.md`
+- Modify after verified evidence: `docs/linux.md`
+- Modify after verified evidence: `docs/linux-graphics.md`
+- Update ignored: `output/visual-acceptance/lyrics-focus-fullscreen/linux/`
+- Update ignored: `output/goal-progress.md`
+
+**Prerequisite:** Tasks 7-11 are committed and the final GitHub workflow for that exact clean commit has completed.
+Download its final AppImage and `SHA256SUMS`. A local/provisional AppImage is invalid. The final AppImage hash is
+intentionally absent until this checkpoint verifies it.
+
+- [ ] **Step 1: Verify final artifact identity before launch**
+
+On the physical Arch machine:
+
+```bash
+sha256sum -c SHA256SUMS
+git rev-parse HEAD
+```
+
+Record workflow URL, Git commit/tree, AppImage filename/version/hash, OS/kernel/compositor, monitor, scale, and DPR
+in the ignored manifest. Stop on any identity mismatch.
+
+- [ ] **Step 2: Run required physical modes on that AppImage**
+
+Run `auto`, `native-wayland`, and `x11` through the embedded collector and every ordered phase. In Lyrics
+Normal/Focus/fullscreen, repeat UI/F11/Esc/external-exit/reduced-motion, translation/romanization, manual follow,
+click seek, pause/resume, track change, desktop Lyrics, Lyrics Island, and exact source-geometry restore. Capture real
+native crops, semantic state, logical/physical bounds, DPR, process/resource samples, and hashes.
+
+Run `software` only after a reproducible native graphics failure. It is diagnostic and replaces no native mode.
+
+- [ ] **Step 3: Verify and return ignored evidence**
+
+```bash
+node scripts/verify-lyrics-acceptance.mjs --platform linux --root "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/linux"
+tar -C output/visual-acceptance/lyrics-focus-fullscreen -czf lyrics-linux-acceptance.tar.gz linux
+sha256sum lyrics-linux-acceptance.tar.gz
+```
+
+Expected: exit 0 with every required mode/phase, then return archive, hash, and workflow URL via `TESTING.md`.
+
+- [ ] **Step 4: Record a pass only after independent verification**
+
+Only then may tracked docs record the final AppImage hash and pass. On missing/failing evidence, put the concrete
+failure in ignored `goal-progress.md`, leave tracked acceptance unchanged, and keep this task unchecked.
+
+- [ ] **Step 5: Check and commit verified Linux results**
+
+```bash
+npx prettier --check docs/linux-acceptance.md docs/linux.md docs/linux-graphics.md
+git diff --check
+git status --short --ignored
+git add -- docs/linux-acceptance.md docs/linux.md docs/linux-graphics.md
+git commit -m "docs: record final Arch lyrics acceptance"
 ```
