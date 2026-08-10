@@ -315,13 +315,12 @@ if (event.key === 'Escape') {
   const action = lyricsEscapeAction({ lyricsOpen, fullscreen, focus: focusSidebarCollapsed });
   if (action === 'exit-fullscreen') void requestFullscreen(false);
   else if (action === 'exit-focus') updateLyrics({ focusSidebarCollapsed: false });
-  else if (action === 'close-lyrics') usePlayerStore.getState().closePanels();
-  else usePlayerStore.getState().closePanels(); // Preserve Escape closing an open Queue.
+  else usePlayerStore.getState().closePanels(); // Also preserve Escape closing an open Queue.
   return;
 }
-if (event.key === 'F11' && lyricsOpen && !fullscreenPending && !event.repeat) {
+if (event.key === 'F11' && lyricsOpen) {
   event.preventDefault();
-  void requestFullscreen(!fullscreen);
+  if (!fullscreenPending && !event.repeat) void requestFullscreen(!fullscreen);
   return;
 }
 ```
