@@ -1,0 +1,709 @@
+# Lyrics Focus and Fullscreen Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a persistent Lyrics-only Focus preference, native main-window fullscreen, compact fullscreen transport, and lower-cost synchronized lyric rendering without remounting the player or lyric surface.
+
+**Architecture:** Keep the existing `LyricsPanel` mounted for Normal, Focus, and Fullscreen states. A small Zustand presentation store wraps an injectable main-window fullscreen port; App keyboard handling and shell data attributes drive layout while the Rust `PlayerService` remains untouched. Split Tauri capabilities so only the main window can change fullscreen state.
+
+**Tech Stack:** React 19, TypeScript 6, Zustand 5, Vitest/Testing Library, Tauri 2 window API, CSS, i18next.
+
+## Global Constraints
+
+- Do not add `applemusic-like-lyrics` or copy AMLL source, CSS, shaders, assets, DOM structure, or animation constants; its inspected revision is AGPL-3.0-only.
+- Keep one authoritative native `PlayerService`; presentation transitions must not issue queue/playback reconstruction commands.
+- Focus is a Lyrics-only preference. Home, Search, Explore, Library, and Settings keep the normal sidebar.
+- Only the `main` WebView may receive `core:window:allow-set-fullscreen`.
+- `Esc` priority is native fullscreen, Lyrics Focus, then closing Lyrics. `F11` toggles fullscreen only while Lyrics is open.
+- Preserve translation, romanization, word timing, manual scroll, click-to-seek, reduced motion, and the Linux graphics downgrade policy.
+- Every user-visible string must exist in both `en-US` and `zh-CN` resources.
+
+---
+
+## File structure
+
+- Create `src/application/lyrics-presentation.ts`: pure escape-action policy, injectable fullscreen port, transient fullscreen state, and runtime subscription.
+- Create `src/application/lyrics-presentation.test.ts`: port, failure, external-exit, and escape-priority tests.
+- Create `src/components/LyricsFullscreenTransport.tsx`: compact transport with idle visibility policy.
+- Create `src/components/LyricsFullscreenTransport.test.tsx`: player-command and visibility tests.
+- Modify `src/application/preferences.ts` and `preferences.test.ts`: persisted Lyrics-only `focusSidebarCollapsed` setting.
+- Modify `src/App.tsx`: runtime hookup, keyboard policy, shell attributes, and presentation callbacks.
+- Modify `src/components/LyricsPanel.tsx` and its test: controls, responsive state, transport, and retained seek/follow behavior.
+- Modify `src/components/PlayerBar.tsx`: make the existing fullscreen control open Fullscreen Lyrics instead of remaining disabled.
+- Modify `src/styles/shell.css`, `components.css`, and `platform.css`: one-column Focus layout, fullscreen layout, transport, containment, and Linux cost limits.
+- Modify `src/locales/en-US.ts` and `zh-CN.ts`: labels and nonfatal fullscreen error copy.
+- Split `src-tauri/capabilities/default.json` and create `src-tauri/capabilities/main-window.json`: least-privilege fullscreen permission.
+- Modify `docs/lyrics.md`, `docs/design-system.md`, and `docs/linux-acceptance.md`: behavior, shortcuts, performance, and physical acceptance.
+
+### Task 1: Persist the Lyrics-only Focus preference
+
+**Files:**
+
+- Modify: `src/application/preferences.ts`
+- Modify: `src/application/preferences.test.ts`
+
+**Interfaces:**
+
+- Produces: `LyricDisplaySettings.focusSidebarCollapsed: boolean`
+- Consumed by: App shell state and `LyricsPanel` controls in Tasks 3–4.
+
+- [ ] **Step 1: Write failing normalization and store tests**
+
+Add assertions that missing/invalid values normalize to `false`, a valid `true` value survives normalization, and
+`updateLyrics({ focusSidebarCollapsed: true })` changes only the Lyrics slice:
+
+```ts
+expect(normalizePreferences({ version: 2 }).lyrics.focusSidebarCollapsed).toBe(false);
+expect(
+  normalizePreferences({ version: 2, lyrics: { focusSidebarCollapsed: true } }).lyrics
+    .focusSidebarCollapsed,
+).toBe(true);
+
+usePreferencesStore.getState().updateLyrics({ focusSidebarCollapsed: true });
+expect(usePreferencesStore.getState().lyrics.focusSidebarCollapsed).toBe(true);
+expect(usePreferencesStore.getState().appearance).toEqual(defaultPreferences.appearance);
+```
+
+- [ ] **Step 2: Run the focused test and confirm failure**
+
+Run: `npx vitest run src/application/preferences.test.ts`
+
+Expected: TypeScript/test failure because `focusSidebarCollapsed` is absent.
+
+- [ ] **Step 3: Add the setting with an additive default**
+
+Extend the interface/default and normalize only real booleans:
+
+```ts
+export interface LyricDisplaySettings {
+  translation: SecondaryLyricVisibility;
+  romanization: SecondaryLyricVisibility;
+  timingOffsetMs: number;
+  focusSidebarCollapsed: boolean;
+}
+
+lyrics: {
+  translation: 'auto',
+  romanization: 'auto',
+  timingOffsetMs: 0,
+  focusSidebarCollapsed: false,
+},
+
+focusSidebarCollapsed:
+  typeof lyrics.focusSidebarCollapsed === 'boolean' ? lyrics.focusSidebarCollapsed : false,
+```
+
+Do not bump preference version: this is an additive field and existing version-2 documents normalize safely.
+
+- [ ] **Step 4: Run focused and related tests**
+
+Run: `npx vitest run src/application/preferences.test.ts`
+
+Expected: preference tests pass.
+
+- [ ] **Step 5: Commit**
+
+```powershell
+git add -- src/application/preferences.ts src/application/preferences.test.ts
+git commit -m "feat: persist lyrics focus preference"
+```
+
+### Task 2: Add the fullscreen state/port and least-privilege Tauri capability
+
+**Files:**
+
+- Create: `src/application/lyrics-presentation.ts`
+- Create: `src/application/lyrics-presentation.test.ts`
+- Modify: `src-tauri/capabilities/default.json`
+- Create: `src-tauri/capabilities/main-window.json`
+
+**Interfaces:**
+
+- Produces: `FullscreenPort`, `setFullscreenPortForTests`, `useLyricsPresentationStore`,
+  `startLyricsPresentationRuntime`, and `lyricsEscapeAction`.
+- Consumed by: `App.tsx` in Task 3.
+
+- [ ] **Step 1: Write failing state-machine tests with a fake port**
+
+Use this test port and assert successful entry, rejected entry, external exit synchronization, and escape priority:
+
+```ts
+class FakeFullscreenPort implements FullscreenPort {
+  fullscreen = false;
+  listener: (() => void) | null = null;
+  fail = false;
+  async read() {
+    return this.fullscreen;
+  }
+  async write(value: boolean) {
+    if (this.fail) throw new Error('denied');
+    this.fullscreen = value;
+  }
+  async subscribe(listener: () => void) {
+    this.listener = listener;
+    return () => {
+      this.listener = null;
+    };
+  }
+}
+
+expect(lyricsEscapeAction({ lyricsOpen: true, fullscreen: true, focus: true })).toBe(
+  'exit-fullscreen',
+);
+expect(lyricsEscapeAction({ lyricsOpen: true, fullscreen: false, focus: true })).toBe('exit-focus');
+expect(lyricsEscapeAction({ lyricsOpen: true, fullscreen: false, focus: false })).toBe(
+  'close-lyrics',
+);
+```
+
+After `request(true)`, expect `fullscreen=true`, `pending=false`, and no error. When `write` throws, expect the old
+fullscreen value to remain and `error` to equal `denied`. Set `port.fullscreen=false`, call `port.listener`, and expect
+the store to synchronize to false.
+
+- [ ] **Step 2: Run and confirm the new tests fail**
+
+Run: `npx vitest run src/application/lyrics-presentation.test.ts`
+
+Expected: FAIL because the module does not exist.
+
+- [ ] **Step 3: Implement the presentation module**
+
+Define the exact contracts and Zustand state:
+
+```ts
+export interface FullscreenPort {
+  read(): Promise<boolean>;
+  write(value: boolean): Promise<void>;
+  subscribe(listener: () => void): Promise<() => void>;
+}
+
+export type LyricsEscapeAction = 'exit-fullscreen' | 'exit-focus' | 'close-lyrics' | 'none';
+
+export function lyricsEscapeAction(input: {
+  lyricsOpen: boolean;
+  fullscreen: boolean;
+  focus: boolean;
+}): LyricsEscapeAction {
+  if (input.fullscreen) return 'exit-fullscreen';
+  if (!input.lyricsOpen) return 'none';
+  if (input.focus) return 'exit-focus';
+  return 'close-lyrics';
+}
+```
+
+The Zustand state shape is:
+
+```ts
+interface LyricsPresentationState {
+  fullscreen: boolean;
+  pending: boolean;
+  error: string | null;
+  request: (value: boolean) => Promise<boolean>;
+  sync: () => Promise<void>;
+  clearError: () => void;
+}
+```
+
+`request` increments a module-private generation, sets `pending`, calls `port.write`, confirms with `port.read`, and
+changes `fullscreen` only when the confirmation belongs to the latest generation. `sync` captures the current
+generation, reads without writing, and discards the result if a request started meanwhile. `startLyricsPresentationRuntime`
+subscribes to the current main window's `onResized` event, coalesces resize wake-ups into one microtask, and calls
+`sync`; the resize event itself is never treated as fullscreen evidence. It returns an async cleanup function. The
+browser port stores an in-memory boolean for deterministic browser development. The native port uses
+`getCurrentWindow().isFullscreen()`, `setFullscreen(value)`, and `onResized`.
+
+- [ ] **Step 4: Split capabilities by window**
+
+Change `default.json` to target only auxiliary surfaces:
+
+```json
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "lyrics-surfaces",
+  "description": "Minimal permissions for dedicated lyric surfaces",
+  "windows": ["lyrics-desktop", "lyrics-island"],
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
+}
+```
+
+Create `main-window.json`:
+
+```json
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "Main application permissions including user-controlled fullscreen",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-set-fullscreen"]
+}
+```
+
+- [ ] **Step 5: Run focused tests and validate capability JSON**
+
+Run:
+
+```powershell
+npx vitest run src/application/lyrics-presentation.test.ts
+Get-Content src-tauri/capabilities/default.json -Raw | ConvertFrom-Json | Out-Null
+Get-Content src-tauri/capabilities/main-window.json -Raw | ConvertFrom-Json | Out-Null
+```
+
+Expected: tests pass; both JSON commands exit 0.
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add -- src/application/lyrics-presentation.ts src/application/lyrics-presentation.test.ts src-tauri/capabilities/default.json src-tauri/capabilities/main-window.json
+git commit -m "feat: add native lyrics fullscreen state"
+```
+
+### Task 3: Wire App keyboard policy and shell presentation state
+
+**Files:**
+
+- Modify: `src/App.tsx`
+- Modify: `src/application/player-store.ts`
+- Modify: `src/application/player-store.test.ts`
+- Modify: `src/styles/shell.css`
+
+**Interfaces:**
+
+- Consumes: `focusSidebarCollapsed`, `useLyricsPresentationStore`, `startLyricsPresentationRuntime`, and
+  `lyricsEscapeAction`.
+- Produces: `openLyrics`, shell `data-lyrics-focus`/`data-lyrics-fullscreen`, and presentation callbacks for
+  `LyricsPanel`/`PlayerBar`.
+
+- [ ] **Step 1: Write a failing `openLyrics` store test**
+
+```ts
+usePlayerStore.setState({ ...initialPlayerState, queueOpen: true, lyricsOpen: false });
+usePlayerStore.getState().openLyrics();
+expect(usePlayerStore.getState()).toMatchObject({ queueOpen: false, lyricsOpen: true });
+```
+
+- [ ] **Step 2: Run the store test and confirm failure**
+
+Run: `npx vitest run src/application/player-store.test.ts`
+
+Expected: FAIL because `openLyrics` is absent.
+
+- [ ] **Step 3: Add `openLyrics` without touching playback state**
+
+Add `openLyrics: () => set({ lyricsOpen: true, queueOpen: false })` to `PlayerActions` and the store.
+
+- [ ] **Step 4: Wire App state and cleanup**
+
+In `App`, select `lyricsOpen`, `focusSidebarCollapsed`, `updateLyrics`, and presentation `fullscreen/request/error`.
+Start the presentation runtime once; if Lyrics closes while fullscreen, request `false` before leaving the mode.
+
+Use this keyboard action block before Space handling:
+
+```ts
+if (event.key === 'Escape') {
+  const action = lyricsEscapeAction({ lyricsOpen, fullscreen, focus: focusSidebarCollapsed });
+  if (action === 'exit-fullscreen') void requestFullscreen(false);
+  else if (action === 'exit-focus') updateLyrics({ focusSidebarCollapsed: false });
+  else if (action === 'close-lyrics') usePlayerStore.getState().closePanels();
+  return;
+}
+if (event.key === 'F11' && lyricsOpen) {
+  event.preventDefault();
+  void requestFullscreen(!fullscreen);
+  return;
+}
+```
+
+Close Lyrics through one callback that exits fullscreen first and then calls `closePanels`. Entering from PlayerBar
+calls `openLyrics()` and then `requestFullscreen(true)`.
+
+Add shell attributes only while Lyrics is open:
+
+```tsx
+<div
+  className="app-shell"
+  data-lyrics-focus={(lyricsOpen && focusSidebarCollapsed) || undefined}
+  data-lyrics-fullscreen={(lyricsOpen && fullscreen) || undefined}
+>
+```
+
+- [ ] **Step 5: Add shell reflow CSS**
+
+Add rules that use a one-column grid and remove the Sidebar rather than reserving an empty margin:
+
+```css
+.app-shell[data-lyrics-focus],
+.app-shell[data-lyrics-fullscreen] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell[data-lyrics-focus] > .sidebar,
+.app-shell[data-lyrics-fullscreen] > .sidebar {
+  display: none;
+}
+
+.app-shell[data-lyrics-focus] > .content-shell,
+.app-shell[data-lyrics-focus] > .player-bar {
+  grid-column: 1;
+}
+
+.app-shell[data-lyrics-fullscreen] > .content-shell,
+.app-shell[data-lyrics-fullscreen] > .player-bar {
+  visibility: hidden;
+}
+```
+
+- [ ] **Step 6: Run focused tests and build**
+
+Run:
+
+```powershell
+npx vitest run src/application/player-store.test.ts src/application/lyrics-presentation.test.ts
+npm run typecheck
+```
+
+Expected: all pass.
+
+- [ ] **Step 7: Commit**
+
+```powershell
+git add -- src/App.tsx src/application/player-store.ts src/application/player-store.test.ts src/styles/shell.css
+git commit -m "feat: wire lyrics focus and fullscreen shell"
+```
+
+### Task 4: Add recoverable Lyrics controls, layout, and localization
+
+**Files:**
+
+- Modify: `src/components/LyricsPanel.tsx`
+- Modify: `src/components/LyricsPanel.test.tsx`
+- Modify: `src/components/PlayerBar.tsx`
+- Modify: `src/styles/components.css`
+- Modify: `src/locales/en-US.ts`
+- Modify: `src/locales/zh-CN.ts`
+
+**Interfaces:**
+
+- Consumes: App callbacks `onToggleFocus`, `onToggleFullscreen`, and `onClose`; presentation flags/pending/error.
+- Produces: visible Focus/fullscreen controls and enabled PlayerBar fullscreen entry.
+
+- [ ] **Step 1: Write failing component tests**
+
+Render `LyricsPanel` with explicit presentation props and assert:
+
+```ts
+fireEvent.click(screen.getByRole('button', { name: 'Hide navigation' }));
+expect(onToggleFocus).toHaveBeenCalledOnce();
+
+fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen lyrics' }));
+expect(onToggleFullscreen).toHaveBeenCalledOnce();
+
+rerender(<LyricsPanel {...props} focus fullscreen />);
+expect(screen.getByRole('button', { name: 'Show navigation' })).toBeVisible();
+expect(screen.getByRole('button', { name: 'Exit fullscreen lyrics' })).toBeVisible();
+```
+
+Retain the existing line-click test in both normal and focus props, proving it still seeks through the shared player
+contract. Add an assertion that a fullscreen error is rendered with `role="status"` and the raw native error is not
+placed in an accessible label.
+
+- [ ] **Step 2: Run and confirm failure**
+
+Run: `npx vitest run src/components/LyricsPanel.test.tsx`
+
+Expected: FAIL because presentation props and controls do not exist.
+
+- [ ] **Step 3: Add the control cluster and semantic state**
+
+Use `PanelLeftClose`/`PanelLeftOpen`, `Maximize2`/`Minimize2`, and `X` icons. The header starts with:
+
+```tsx
+<div className="lyrics-stage__presentation-controls">
+  <IconButton label={focus ? t('showNavigation') : t('hideNavigation')} onClick={onToggleFocus}>
+    {focus ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+  </IconButton>
+  <IconButton
+    label={fullscreen ? t('exitFullscreen') : t('enterFullscreen')}
+    onClick={onToggleFullscreen}
+    disabled={fullscreenPending}
+  >
+    {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+  </IconButton>
+</div>
+```
+
+Set `data-focus` and `data-fullscreen` on `.lyrics-stage`. Keep the same scroll container and `unfollowedSongId`
+state. On a focus/fullscreen change, call `centerLyricLine` only when `following` is true.
+
+- [ ] **Step 4: Implement responsive layout CSS**
+
+Normal remains `left: 212px; bottom: 92px`. Focus becomes `left: 0`; fullscreen becomes `inset: 0`. Add a header grid
+with the control cluster at left and close at right. At narrow/tall aspect ratios, reduce artwork size and use one
+column without hiding track identity. Preserve the existing Linux selectors and do not add fullscreen blur/WebGL.
+
+- [ ] **Step 5: Localize labels**
+
+Add these exact keys in the `lyrics` namespace:
+
+```ts
+hideNavigation: 'Hide navigation',
+showNavigation: 'Show navigation',
+enterFullscreen: 'Enter fullscreen lyrics',
+exitFullscreen: 'Exit fullscreen lyrics',
+fullscreenFailed: 'Fullscreen could not be changed.',
+```
+
+```ts
+hideNavigation: '隐藏导航栏',
+showNavigation: '显示导航栏',
+enterFullscreen: '进入全屏歌词',
+exitFullscreen: '退出全屏歌词',
+fullscreenFailed: '无法切换全屏状态。',
+```
+
+- [ ] **Step 6: Enable the PlayerBar entry**
+
+Replace its disabled fullscreen button with `onEnterLyricsFullscreen?: () => void`; invoke the callback and use the
+same localized player label. App passes the callback from Task 3.
+
+- [ ] **Step 7: Run tests, typecheck, and lint**
+
+Run:
+
+```powershell
+npx vitest run src/components/LyricsPanel.test.tsx src/application/preferences.test.ts src/application/lyrics-presentation.test.ts
+npm run typecheck
+npm run lint
+```
+
+Expected: all pass.
+
+- [ ] **Step 8: Commit**
+
+```powershell
+git add -- src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/components/PlayerBar.tsx src/styles/components.css src/locales/en-US.ts src/locales/zh-CN.ts
+git commit -m "feat: add recoverable lyrics presentation controls"
+```
+
+### Task 5: Add compact auto-hiding fullscreen transport
+
+**Files:**
+
+- Create: `src/components/LyricsFullscreenTransport.tsx`
+- Create: `src/components/LyricsFullscreenTransport.test.tsx`
+- Modify: `src/components/LyricsPanel.tsx`
+- Modify: `src/styles/components.css`
+
+**Interfaces:**
+
+- Consumes: `useCurrentSong` and PlayerStore previous/toggle/next/position/duration state.
+- Produces: `<LyricsFullscreenTransport active={fullscreen} />`.
+
+- [ ] **Step 1: Write failing transport tests with fake timers**
+
+Assert that previous, play/pause, and next buttons call the shared store actions. With `isPlaying=true`, advance fake
+timers by 2600 ms and expect `data-visible` to be absent; pointer movement restores it. Focus a child control, advance
+timers, and expect it to remain visible. Paused controls remain visible.
+
+- [ ] **Step 2: Run and confirm failure**
+
+Run: `npx vitest run src/components/LyricsFullscreenTransport.test.tsx`
+
+Expected: FAIL because the component does not exist.
+
+- [ ] **Step 3: Implement the transport**
+
+Use one 2400 ms timeout, cleared on unmount. Root semantics:
+
+```tsx
+<div
+  className="lyrics-fullscreen-transport"
+  data-visible={visible || !isPlaying || focused || undefined}
+  onPointerMove={reveal}
+  onFocusCapture={() => setFocused(true)}
+  onBlurCapture={(event) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+  }}
+>
+```
+
+Render artwork/title/artists, semantic previous/play-pause/next buttons, and an `aria-hidden` progress track whose
+width is `Math.min(100, (positionMs / durationMs) * 100)%`. Do not add a second timer for playback position; consume
+the existing native snapshots.
+
+- [ ] **Step 4: Mount only for active fullscreen**
+
+Render it inside the existing `LyricsPanel` tree when `fullscreen` is true. Pointer movement anywhere on the stage
+calls a forwarded `reveal` callback so controls are discoverable without covering the bottom permanently.
+
+- [ ] **Step 5: Add restrained CSS**
+
+Position a compact surface at bottom center, transition only opacity/translate, set `pointer-events:none` while
+hidden, restore pointer events while focused/visible, and disable the transition under reduced motion. Linux uses an
+opaque/tinted background without `backdrop-filter`.
+
+- [ ] **Step 6: Run component tests**
+
+Run:
+
+```powershell
+npx vitest run src/components/LyricsFullscreenTransport.test.tsx src/components/LyricsPanel.test.tsx
+```
+
+Expected: all pass.
+
+- [ ] **Step 7: Commit**
+
+```powershell
+git add -- src/components/LyricsFullscreenTransport.tsx src/components/LyricsFullscreenTransport.test.tsx src/components/LyricsPanel.tsx src/styles/components.css
+git commit -m "feat: add fullscreen lyrics transport"
+```
+
+### Task 6: Reduce lyric timing and paint work
+
+**Files:**
+
+- Modify: `src/components/LyricsPanel.tsx`
+- Modify: `src/components/LyricsPanel.test.tsx`
+- Modify: `src/application/lyrics-timing.ts`
+- Modify: `src/application/lyrics-timing.test.ts`
+- Modify: `src/application/player-store.ts`
+- Modify: `src/application/player-store.test.ts`
+- Modify: `src/styles/components.css`
+- Modify: `src/styles/platform.css`
+
+**Interfaces:**
+
+- Preserves: `selectLyricCursor`, `wordProgress`, click-to-seek, manual follow state, and normalized lyrics.
+- Produces: next-boundary cursor scheduling, immediate discontinuity wake-up, and adaptive active-word updates.
+
+- [ ] **Step 1: Write failing timer/reduced-motion tests**
+
+Test `nextLyricBoundaryMs` with line starts/ends, word gaps, document offset, and no future boundary. In PlayerStore,
+apply a normal near-predicted snapshot and assert `timelineRevision` is unchanged; apply a seek-sized discontinuity,
+track change, and pause/resume and assert it increments. With fake timers, render an open panel and assert cursor
+selection schedules a timeout to the next boundary rather than a cursor `requestAnimationFrame`; increment the
+timeline revision and verify a seek updates immediately. Under `prefers-reduced-motion: reduce`, assert the current
+word receives the discrete class/data state and no animation frame is scheduled. After `document.hidden=true`, assert
+no new active-word style write occurs.
+
+- [ ] **Step 2: Run and confirm failure**
+
+Run: `npx vitest run src/components/LyricsPanel.test.tsx`
+
+Expected: FAIL because next-boundary scheduling/timeline revisions do not exist, cursor polling uses continuous
+animation frames, and reduced motion does not reach `SyncedWord`.
+
+- [ ] **Step 3: Add next-boundary selection and timeline revisions**
+
+Export `nextLyricBoundaryMs(document, rawPositionMs): number | null`. Convert raw position by metadata offset, inspect
+future line starts/effective ends and word starts/ends, and return the earliest future boundary converted back to raw
+time. Add `timelineRevision: number` to PlayerState with initial value 0. In `applyExternalSnapshot`, compare the new
+track/index, play state, and position to the prior state's estimated position; increment only for track changes,
+pause/resume, or a position discontinuity greater than 250 ms. Ordinary native poll snapshots must not increment.
+
+- [ ] **Step 4: Replace cursor rAF with boundary scheduling**
+
+Pass `timelineRevision` and `isPlaying` to `useLyricCursor`. Update immediately on effect start. While playing,
+schedule one timeout for `nextBoundary - estimatedPosition + 8 ms`, clamped to 16–500 ms as a drift guard; when it
+fires, select the cursor and schedule the next boundary. When paused, schedule no timer—the revision wakes paused
+seeks. Use an effect generation and clear the timer on document/offset/revision/play-state/unmount change. Add a
+`visibilitychange` wake-up so a throttled background tab corrects immediately when shown.
+
+- [ ] **Step 5: Make active-word progress adaptive**
+
+Pass a boolean reduced-motion value to `SyncedWord`. In reduced motion, set the current word to a static 100% fill
+and do not schedule a frame. Otherwise update only the active word; skip while `document.hidden`, and throttle style
+writes to approximately 30 fps on Linux (`document.documentElement.dataset.platform === 'linux'`) and 60 fps on
+Windows. Cancel the frame on state/word/unmount changes.
+
+- [ ] **Step 6: Add containment after functional tests pass**
+
+Apply `contain: layout paint style` to lyric lines and `content-visibility: auto` with a conservative intrinsic block
+size. Verify `centerLyricLine` still obtains correct geometry for the active line. In software graphics mode, disable
+transform scaling as the existing platform policy already disables long animations.
+
+- [ ] **Step 7: Run focused and full frontend checks**
+
+Run:
+
+```powershell
+npx vitest run src/components/LyricsPanel.test.tsx src/application/lyrics-timing.test.ts src/application/player-store.test.ts
+npm run check
+npm run format:check
+```
+
+Expected: all pass.
+
+- [ ] **Step 8: Commit**
+
+```powershell
+git add -- src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/application/lyrics-timing.ts src/application/lyrics-timing.test.ts src/application/player-store.ts src/application/player-store.test.ts src/styles/components.css src/styles/platform.css
+git commit -m "perf: bound immersive lyrics rendering work"
+```
+
+### Task 7: Native visual acceptance and documentation
+
+**Files:**
+
+- Modify: `docs/lyrics.md`
+- Modify: `docs/design-system.md`
+- Modify: `docs/linux-acceptance.md`
+- Create ignored evidence under: `output/visual-acceptance/lyrics-focus-fullscreen/`
+
+**Interfaces:**
+
+- Consumes: completed Tasks 1–6.
+- Produces: locally verified Windows evidence and an exact Arch retest sequence.
+
+- [ ] **Step 1: Run all frontend/Rust regression checks**
+
+Run:
+
+```powershell
+npm run format:check
+npm run check
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+```
+
+Expected: every command exits 0.
+
+- [ ] **Step 2: Build and run the Windows native application**
+
+Run: `npm run tauri -- build --no-bundle`
+
+Expected: `src-tauri/target/release/yaqmc.exe` exists and launches without a capability error.
+
+- [ ] **Step 3: Capture the required layouts**
+
+Using the native fake provider, capture Normal, Focus, and Fullscreen Lyrics at 1000x680 and 1280x800, plus OS
+fullscreen. Cover English/Chinese, light/dark, default/custom-color/custom-image/artwork backgrounds. Verify sidebar
+recovery, artwork/lyric reflow, translation/romanization, manual scroll, click-to-seek while the sidebar is hidden,
+track change while fullscreen, PlayerBar sizing in Focus, compact transport hide/reveal/focus pin, UI exit, F11 exit,
+Esc priority, compositor exit synchronization, and resize after exit. Store screenshots and a text checklist only
+under the ignored output path.
+
+- [ ] **Step 4: Document the implemented contract**
+
+Update Lyrics/design docs with the three presentation states, Focus persistence scope, F11/Esc behavior, reduced
+motion, transient transport, and the AMLL no-code-reuse boundary. Extend Linux acceptance with phase markers for
+Focus/fullscreen resource sampling and the native-Wayland exit/restore checks.
+
+- [ ] **Step 5: Run doc formatting and diff checks**
+
+Run:
+
+```powershell
+npx prettier --check docs/lyrics.md docs/design-system.md docs/linux-acceptance.md
+git diff --check
+```
+
+Expected: all pass.
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add -- docs/lyrics.md docs/design-system.md docs/linux-acceptance.md
+git commit -m "docs: record immersive lyrics acceptance"
+```
