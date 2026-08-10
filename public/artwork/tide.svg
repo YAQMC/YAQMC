@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Deep blue water lines at dusk">
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#152a39"/>
+      <stop offset=".54" stop-color="#3d7182"/>
+      <stop offset="1" stop-color="#9fc0b9"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="640" fill="url(#sea)"/>
+  <circle cx="178" cy="178" r="58" fill="#d9cbb2" opacity=".88"/>
+  <g fill="none" stroke="#d2e0d8" stroke-linecap="round" opacity=".46">
+    <path d="M38 366c103-48 184 49 290 0s191 45 274 3" stroke-width="12"/>
+    <path d="M-22 432c106-49 195 43 301 0s217 54 382-8" stroke-width="8"/>
+    <path d="M44 502c113-37 179 38 284 1s190 32 274 4" stroke-width="6"/>
+    <path d="M120 565c76-20 128 21 206 2s128 14 186 0" stroke-width="4"/>
+  </g>
+</svg>

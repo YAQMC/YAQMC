@@ -1,0 +1,27 @@
+{
+  "code": 0,
+  "data": {
+    "name": "Partial Fixture Album",
+    "singername": "Fixture Artist",
+    "singermid": "SANITIZED_ARTIST_MID",
+    "aDate": "2025-04-03",
+    "genre": "Pop",
+    "desc": "A sanitized response with missing optional song fields.",
+    "list": [
+      {
+        "songid": 102,
+        "songmid": "PARTIAL_TRACK_MID",
+        "songname": "Partial Track",
+        "albumid": 55,
+        "albummid": "PARTIAL_ALBUM_MID",
+        "albumname": "Partial Fixture Album",
+        "singer": [{ "mid": "SANITIZED_ARTIST_MID", "name": "Fixture Artist" }],
+        "interval": 180,
+        "strMediaMid": "PARTIAL_MEDIA_MID",
+        "size128": 2800000,
+        "pay": { "payplay": 1, "paytrackmouth": 1 },
+        "preview": { "trybegin": 30000, "tryend": 90000, "trysize": 800000 }
+      }
+    ]
+  }
+}

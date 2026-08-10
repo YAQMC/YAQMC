@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Minimal pale stones on muted sand">
+  <rect width="640" height="640" fill="#b8ad98"/>
+  <path d="M0 420c156-51 266-32 388 3s185 16 252-12v229H0Z" fill="#8b8578" opacity=".36"/>
+  <ellipse cx="277" cy="415" rx="154" ry="38" fill="#6e685e" opacity=".22"/>
+  <path d="M167 398c5-95 69-157 147-148s121 79 112 148Z" fill="#d8d4c8"/>
+  <path d="M225 300c37-51 91-60 138-27-43 9-86 24-138 27Z" fill="#eee9dc" opacity=".67"/>
+  <circle cx="491" cy="166" r="64" fill="#dad1b8" opacity=".85"/>
+</svg>

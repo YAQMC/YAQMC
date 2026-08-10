@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Warm yellow room with long window shadows">
+  <rect width="640" height="640" fill="#d8a954"/>
+  <rect x="92" y="72" width="238" height="318" rx="3" fill="#f2dfb4"/>
+  <path d="M211 72v318M92 235h238" stroke="#b67942" stroke-width="9" opacity=".72"/>
+  <path d="m330 390 220 250H192L92 390Z" fill="#775445" opacity=".56"/>
+  <path d="M211 390 351 640h105L330 390ZM92 235 0 303v94l92-162Z" fill="#f6d981" opacity=".48"/>
+  <circle cx="491" cy="154" r="42" fill="#bb6641"/>
+</svg>

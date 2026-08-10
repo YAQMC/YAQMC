@@ -1,0 +1,50 @@
+/* WebKitGTK/compositor path: preserve design hierarchy while avoiding the largest live blur
+   surfaces. Windows keeps the richer acrylic-like path. */
+:root[data-platform='linux'] .topbar {
+  background: color-mix(in srgb, var(--bg-opaque) 96%, var(--surface));
+  backdrop-filter: none;
+}
+
+:root[data-platform='linux'] .app-background[data-mode='artwork'] .app-background__image {
+  filter: saturate(0.72) brightness(0.68);
+  opacity: calc(var(--artwork-influence) * 0.72);
+  transform: scale(1.02);
+}
+
+:root[data-platform='linux'] .lyrics-stage__backdrop {
+  filter: saturate(0.62) brightness(0.54);
+  opacity: 0.3;
+  transform: scale(1.02);
+}
+
+:root[data-platform='linux'] .lyrics-stage__follow,
+:root[data-platform='linux'] .lyrics-stage__instrumental,
+:root[data-platform='linux'] .lyrics-surface--desktop::before,
+:root[data-platform='linux'] .lyrics-surface--desktop::after,
+:root[data-platform='linux'] .island-card {
+  backdrop-filter: none;
+}
+
+:root[data-platform='linux'] .island-card {
+  background: color-mix(in srgb, #10110f 92%, transparent);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
+}
+
+:root[data-platform='linux'] .lyrics-line,
+:root[data-platform='linux'] .lyrics-surface__line {
+  contain: layout paint style;
+}
+
+:root[data-platform='linux'][data-display-backend='wayland-native']
+  .lyrics-surface--desktop::before,
+:root[data-platform='linux'][data-display-backend='wayland-native'] .island-card {
+  background-color: color-mix(in srgb, var(--bg-opaque) 94%, transparent);
+}
+
+:root[data-platform='linux'][data-graphics-mode='software'] *,
+:root[data-platform='linux'][data-graphics-mode='safe'] * {
+  scroll-behavior: auto !important;
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+}

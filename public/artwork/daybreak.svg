@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Coral dawn behind a distant ridge">
+  <defs>
+    <linearGradient id="dawn" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#53475c"/>
+      <stop offset=".62" stop-color="#d87363"/>
+      <stop offset="1" stop-color="#eab980"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="640" fill="url(#dawn)"/>
+  <circle cx="422" cy="328" r="89" fill="#f3cf91"/>
+  <path d="M0 436c103-38 169-72 269-45s179 8 371-66v315H0Z" fill="#4b4953"/>
+  <path d="M0 493c154-42 265 29 402-15s182-7 238 11v151H0Z" fill="#2c3139"/>
+  <path d="M78 151h154M114 181h76" stroke="#e5b2a0" stroke-width="7" stroke-linecap="round" opacity=".58"/>
+</svg>

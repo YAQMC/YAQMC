@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Small moon crossing a cobalt field">
+  <rect width="640" height="640" fill="#303861"/>
+  <circle cx="320" cy="320" r="198" fill="none" stroke="#9ba6d3" stroke-width="2" opacity=".44"/>
+  <circle cx="320" cy="320" r="122" fill="#6875b0" opacity=".34"/>
+  <circle cx="467" cy="188" r="54" fill="#e2d8bd"/>
+  <circle cx="451" cy="171" r="8" fill="#c0b69d" opacity=".7"/>
+  <circle cx="489" cy="203" r="13" fill="#c0b69d" opacity=".6"/>
+  <path d="M72 466c152-81 348-84 496 0" fill="none" stroke="#d2a56e" stroke-width="13" opacity=".8"/>
+  <g fill="#c6cbe5" opacity=".65">
+    <circle cx="92" cy="118" r="3"/><circle cx="208" cy="86" r="2"/><circle cx="553" cy="99" r="3"/><circle cx="528" cy="352" r="2"/><circle cx="129" cy="307" r="2"/>
+  </g>
+</svg>

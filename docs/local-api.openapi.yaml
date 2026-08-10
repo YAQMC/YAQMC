@@ -1,0 +1,481 @@
+openapi: 3.1.0
+info:
+  title: 'YAQMC Local API'
+  version: 1.0.0
+  description: Loopback-only playback and synchronized-lyrics API.
+servers:
+  - url: http://127.0.0.1:19532
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Non-sensitive service health
+      security: []
+      responses:
+        '200':
+          description: Service is reachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { const: ok }
+                  version: { const: 1 }
+  /v1/player:
+    get:
+      summary: Complete playback snapshot
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/player/track:
+    get:
+      summary: Current track
+      responses:
+        '200':
+          description: Current track, or null when no track is selected.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Song'
+                  - type: 'null'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/player/queue:
+    get:
+      summary: Queue and active index
+      responses:
+        '200':
+          description: Queue snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/player/play:
+    post:
+      summary: Resume playback
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/player/pause:
+    post:
+      summary: Pause playback
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/player/toggle:
+    post:
+      summary: Toggle play and pause
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/player/next:
+    post:
+      summary: Select the next track
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/player/previous:
+    post:
+      summary: Restart or select the previous track
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/player/seek:
+    put:
+      summary: Seek within the current track
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [positionMs]
+              properties:
+                positionMs: { type: integer, minimum: 0 }
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/player/volume:
+    put:
+      summary: Set normalized volume
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [volume]
+              properties:
+                volume: { type: number, minimum: 0, maximum: 1 }
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/player/shuffle:
+    put:
+      summary: Set shuffle mode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/player/repeat:
+    put:
+      summary: Set repeat mode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mode]
+              properties:
+                mode: { $ref: '#/components/schemas/RepeatMode' }
+      responses:
+        '200': { $ref: '#/components/responses/PlayerSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/lyrics:
+    get:
+      summary: Complete normalized lyrics
+      responses:
+        '200':
+          description: Lyric document, or null when unavailable.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LyricDocument'
+                  - type: 'null'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/lyrics/current:
+    get:
+      summary: Current line and word state
+      responses:
+        '200':
+          description: Current normalized lyric cursor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentLyricState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/events:
+    get:
+      summary: Versioned Server-Sent Events stream
+      responses:
+        '200':
+          description: Initial player snapshot followed by player and lyric transitions.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    PlayerSnapshot:
+      description: Resulting playback state.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PlayerSnapshot' }
+    Error:
+      description: Predictable API error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    RepeatMode:
+      type: string
+      enum: [off, all, one]
+    Artwork:
+      type: object
+      additionalProperties: false
+      required: [src, alt, dominantColor]
+      properties:
+        src: { type: string }
+        alt: { type: string }
+        dominantColor: { type: string }
+    Artist:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    AlbumSummary:
+      type: object
+      additionalProperties: false
+      required: [id, title]
+      properties:
+        id: { type: string }
+        title: { type: string }
+    Availability:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { const: available }
+        - type: object
+          additionalProperties: false
+          required: [status, reason]
+          properties:
+            status: { const: unavailable }
+            reason: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [status, requiredTier]
+          properties:
+            status: { const: entitlement-required }
+            requiredTier: { type: string }
+    AudioFormatInfo:
+      type: object
+      additionalProperties: false
+      required: [quality, codec, lossless]
+      properties:
+        quality: { type: string, enum: [standard, high, lossless] }
+        codec: { type: string, enum: [mp3, aac, flac, alac, unknown] }
+        bitrateKbps: { type: integer, minimum: 0 }
+        sampleRateHz: { type: integer, minimum: 0 }
+        bitDepth: { type: integer, minimum: 0 }
+        lossless: { type: boolean }
+    PlaybackCapability:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { const: full }
+        - type: object
+          additionalProperties: false
+          required: [status, startMs, endMs]
+          properties:
+            status: { const: preview }
+            startMs: { type: integer, minimum: 0 }
+            endMs: { type: integer, minimum: 0 }
+        - type: object
+          additionalProperties: false
+          required: [status, reason]
+          properties:
+            status: { const: unavailable }
+            reason: { type: string }
+    ProviderTrackReference:
+      type: object
+      additionalProperties: false
+      required: [providerId, trackId]
+      properties:
+        providerId: { type: string }
+        trackId: { type: string }
+        numericId: { type: integer, minimum: 0 }
+        albumId: { type: string }
+        mediaId: { type: string }
+    Song:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          title,
+          artists,
+          album,
+          artwork,
+          durationMs,
+          trackNumber,
+          isFavorite,
+          quality,
+          availability,
+        ]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artists:
+          type: array
+          items: { $ref: '#/components/schemas/Artist' }
+        album: { $ref: '#/components/schemas/AlbumSummary' }
+        artwork: { $ref: '#/components/schemas/Artwork' }
+        durationMs: { type: integer, minimum: 0 }
+        trackNumber: { type: integer, minimum: 0 }
+        isFavorite: { type: boolean }
+        quality: { type: string, enum: [standard, high, lossless] }
+        availability: { $ref: '#/components/schemas/Availability' }
+        audioFormats:
+          type: array
+          items: { $ref: '#/components/schemas/AudioFormatInfo' }
+        playbackCapability: { $ref: '#/components/schemas/PlaybackCapability' }
+        provider: { $ref: '#/components/schemas/ProviderTrackReference' }
+    PlaybackFailure:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        retryable: { type: boolean }
+    PlayerSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          queue,
+          currentIndex,
+          positionMs,
+          isPlaying,
+          volume,
+          isMuted,
+          repeat,
+          shuffle,
+          playbackState,
+          playbackDurationMs,
+        ]
+      properties:
+        queue:
+          type: array
+          items: { $ref: '#/components/schemas/Song' }
+        currentIndex:
+          oneOf:
+            - type: integer
+              minimum: 0
+            - type: 'null'
+        positionMs: { type: integer, minimum: 0 }
+        isPlaying: { type: boolean }
+        volume: { type: number, minimum: 0, maximum: 1 }
+        isMuted: { type: boolean }
+        repeat: { $ref: '#/components/schemas/RepeatMode' }
+        shuffle: { type: boolean }
+        playbackState:
+          type: string
+          enum:
+            [
+              idle,
+              loading,
+              buffering,
+              playing,
+              paused,
+              stopped,
+              ended,
+              recoverable-error,
+              fatal-error,
+            ]
+        playbackDurationMs:
+          oneOf: [{ type: integer, minimum: 0 }, { type: 'null' }]
+        playbackError: { $ref: '#/components/schemas/PlaybackFailure' }
+    QueueSnapshot:
+      type: object
+      additionalProperties: false
+      required: [currentIndex, tracks]
+      properties:
+        currentIndex:
+          oneOf:
+            - type: integer
+              minimum: 0
+            - type: 'null'
+        tracks:
+          type: array
+          items: { $ref: '#/components/schemas/Song' }
+    LyricWord:
+      type: object
+      additionalProperties: false
+      required: [startMs, endMs, text]
+      properties:
+        startMs: { type: integer, minimum: 0 }
+        endMs: { type: integer, minimum: 0 }
+        text: { type: string }
+    LyricLine:
+      type: object
+      additionalProperties: false
+      required: [id, startMs, endMs, text, words]
+      properties:
+        id: { type: string }
+        startMs:
+          oneOf: [{ type: integer, minimum: 0 }, { type: 'null' }]
+        endMs:
+          oneOf: [{ type: integer, minimum: 0 }, { type: 'null' }]
+        text: { type: string }
+        translation: { type: string }
+        romanization: { type: string }
+        vocalistId: { type: string }
+        words:
+          type: array
+          items: { $ref: '#/components/schemas/LyricWord' }
+    LyricDocument:
+      type: object
+      additionalProperties: false
+      required: [songId, syncMode, metadata, vocalists, lines]
+      properties:
+        songId: { type: string }
+        syncMode: { type: string, enum: [unsynchronized, line, word] }
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [sourceLabel, offsetMs]
+          properties:
+            sourceLabel: { type: string }
+            language: { type: string }
+            translatedLanguage: { type: string }
+            offsetMs: { type: integer }
+        vocalists:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, displayName]
+            properties:
+              id: { type: string }
+              displayName: { type: string }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/LyricLine' }
+    CurrentLyricState:
+      type: object
+      additionalProperties: false
+      required: [songId, positionMs, lineIndex, wordIndex, line, word]
+      properties:
+        songId:
+          oneOf: [{ type: string }, { type: 'null' }]
+        positionMs: { type: integer, minimum: 0 }
+        lineIndex:
+          oneOf: [{ type: integer, minimum: 0 }, { type: 'null' }]
+        wordIndex:
+          oneOf: [{ type: integer, minimum: 0 }, { type: 'null' }]
+        line:
+          oneOf: [{ $ref: '#/components/schemas/LyricLine' }, { type: 'null' }]
+        word:
+          oneOf: [{ $ref: '#/components/schemas/LyricWord' }, { type: 'null' }]
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }

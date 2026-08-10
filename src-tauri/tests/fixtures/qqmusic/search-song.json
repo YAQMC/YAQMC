@@ -1,0 +1,26 @@
+{
+  "code": 0,
+  "data": {
+    "song": {
+      "totalnum": 1,
+      "list": [
+        {
+          "id": 101,
+          "mid": "SANITIZED_TRACK_MID",
+          "title": "Fixture &amp; Song",
+          "singer": [{ "mid": "SANITIZED_ARTIST_MID", "name": "Fixture Artist" }],
+          "album": { "mid": "SANITIZED_ALBUM_MID", "name": "Fixture Album" },
+          "interval": 213,
+          "index_album": 3,
+          "file": {
+            "media_mid": "SANITIZED_MEDIA_MID",
+            "size_128mp3": 3200000,
+            "size_320mp3": 7800000,
+            "size_flac": 25000000
+          },
+          "pay": { "pay_play": 0, "pay_month": 0 }
+        }
+      ]
+    }
+  }
+}

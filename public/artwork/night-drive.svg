@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Night road lights seen through rain">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#171b2e"/>
+      <stop offset="1" stop-color="#594b67"/>
+    </linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="12"/></filter>
+  </defs>
+  <rect width="640" height="640" fill="url(#night)"/>
+  <g filter="url(#blur)" opacity=".92">
+    <circle cx="126" cy="212" r="33" fill="#ecad63"/>
+    <circle cx="496" cy="284" r="41" fill="#cf6475"/>
+    <circle cx="382" cy="169" r="23" fill="#7fa5c4"/>
+  </g>
+  <path d="m254 640 50-367h36l58 367Z" fill="#121624"/>
+  <path d="m322 305 2 48m5 39 4 58m7 54 8 91" stroke="#f0d59b" stroke-width="8" stroke-linecap="round"/>
+  <g stroke="#c4cee3" stroke-width="3" opacity=".35">
+    <path d="m88 0-37 640M196 0l-42 640M442 0l-36 640M567 0l-40 640"/>
+  </g>
+</svg>

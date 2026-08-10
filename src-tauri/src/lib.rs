@@ -1,0 +1,288 @@
+mod app_preferences;
+mod audio;
+mod commands;
+mod credentials;
+mod desktop_integration;
+mod local_api;
+mod lyrics_surface;
+mod media;
+mod platform;
+mod player;
+mod qqmusic;
+mod storage;
+mod streaming;
+mod system_media;
+
+use audio::{AudioEngine, RodioAudioEngine, UnavailableAudioEngine};
+use credentials::{CredentialStore, PlatformCredentialStore};
+use desktop_integration::DesktopIntegration;
+use local_api::LocalApiService;
+use lyrics_surface::LyricsSurfaceManager;
+use media::{CachedMediaPreparer, MediaPreparer, PlaybackSourceResolver};
+use player::{PlayerService, PlayerSnapshot};
+use qqmusic::QQMusicService;
+use std::sync::Arc;
+use storage::StorageService;
+use system_media::SystemMediaIntegration;
+use tauri::{Emitter, Manager};
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let process_started = std::time::Instant::now();
+    platform::apply_startup_graphics_policy();
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "linux")]
+    let builder = if std::env::var_os("DISPLAY").is_some() {
+        builder.plugin(desktop_integration::global_shortcut_plugin())
+    } else {
+        builder
+    };
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.plugin(desktop_integration::global_shortcut_plugin());
+    let app = builder
+        .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                let should_hide = app
+                    .try_state::<Arc<StorageService>>()
+                    .is_none_or(|storage| app_preferences::close_hides_to_tray(&storage));
+                if should_hide {
+                    api.prevent_close();
+                    if let Err(error) = window.hide() {
+                        tracing::warn!(target: "tray", error = %error, "main window could not hide to tray");
+                    }
+                }
+            }
+        })
+        .setup(move |app| {
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| "yaqmc=info,audio=info,qqmusic=info".into()),
+                )
+                .try_init();
+
+            let data_root = app.path().app_data_dir()?;
+            let cache_root = app.path().app_cache_dir()?;
+            let storage = Arc::new(StorageService::open(data_root.clone(), cache_root.clone())?);
+            let credentials: Arc<dyn CredentialStore> = Arc::new(PlatformCredentialStore::new());
+            let qq_music = Arc::new(QQMusicService::new(
+                Arc::clone(&storage),
+                Arc::clone(&credentials),
+                cache_root.join("fixture-media"),
+            )?);
+            let audio: Arc<dyn AudioEngine> = match RodioAudioEngine::open_default() {
+                Ok(engine) => Arc::new(engine),
+                Err(error) => {
+                    tracing::warn!(target: "audio", error = %error, "starting without an audio output device");
+                    Arc::new(UnavailableAudioEngine)
+                }
+            };
+            if let Ok(Some(device_id)) = storage.get_setting(commands::AUDIO_OUTPUT_SETTING) {
+                if let Err(error) = audio.set_output_device(&device_id) {
+                    tracing::warn!(target: "audio", error = %error, "saved output device is unavailable; using the system default");
+                }
+            }
+            let resolver: Arc<dyn PlaybackSourceResolver> = qq_music.clone();
+            let preparer: Arc<dyn MediaPreparer> = Arc::new(CachedMediaPreparer::new(
+                qq_music.http_client(),
+                Arc::clone(&storage),
+            ));
+            let player = Arc::new(PlayerService::with_runtime(audio, resolver, preparer));
+            if let Ok(Some(snapshot)) = storage.load_queue::<PlayerSnapshot>() {
+                tauri::async_runtime::block_on(player.restore(snapshot));
+            }
+            let config_path = app.path().app_config_dir()?.join("local-api.json");
+            let local_api =
+                LocalApiService::new(config_path, Arc::clone(&player), credentials)?;
+            let lyrics_surfaces = Arc::new(LyricsSurfaceManager::new());
+            let system_media = SystemMediaIntegration::start(app.handle(), Arc::clone(&player));
+            let desktop_integration =
+                DesktopIntegration::start(app.handle(), Arc::clone(&player));
+            if app_preferences::global_shortcuts_enabled(&storage) {
+                if let Err(error) = desktop_integration.set_shortcuts_enabled(app.handle(), true) {
+                    tracing::warn!(target: "shortcut", error = %error, "saved global shortcuts could not be enabled");
+                }
+            }
+
+            let initial_snapshot = tauri::async_runtime::block_on(player.snapshot());
+            system_media.update(&initial_snapshot, false);
+            let diagnostics = platform::collect(
+                app.handle(),
+                &player,
+                system_media.status(),
+                desktop_integration.status(),
+            );
+            platform::log_startup(&diagnostics);
+            tracing::info!(
+                target: "app.startup",
+                setup_elapsed_ms = process_started.elapsed().as_millis() as u64,
+                "desktop setup complete"
+            );
+
+            player.start_clock();
+
+            let app_handle = app.handle().clone();
+            let mut event_receiver = player.subscribe();
+            let persistence = Arc::clone(&storage);
+            let snapshot_source = Arc::clone(&player);
+            let media_projection = Arc::clone(&system_media);
+            tauri::async_runtime::spawn(async move {
+                while let Ok(event) = event_receiver.recv().await {
+                    let _ = app_handle.emit("api://event", &event);
+                    if matches!(
+                        event.event_type.as_str(),
+                        "queue.changed"
+                            | "player.track"
+                            | "player.playback"
+                            | "player.position"
+                            | "player.seeked"
+                            | "player.volume"
+                            | "player.mode"
+                            | "player.error"
+                    ) {
+                        let _ = app_handle.emit("player://snapshot", &event.data);
+                    }
+                    if matches!(
+                        event.event_type.as_str(),
+                        "player.position"
+                            | "player.seeked"
+                            | "player.track"
+                            | "player.playback"
+                            | "player.error"
+                            | "lyrics.changed"
+                            | "lyrics.line"
+                            | "lyrics.word"
+                    ) {
+                        let projection = snapshot_source.lyric_surface_projection().await;
+                        let _ = app_handle.emit("lyrics://projection", &projection);
+                    }
+                    if event.event_type == "lyrics.changed" {
+                        let document = snapshot_source.lyrics().await;
+                        let _ = app_handle.emit("lyrics://document", &document);
+                    }
+                    if matches!(
+                        event.event_type.as_str(),
+                        "queue.changed"
+                            | "player.track"
+                            | "player.playback"
+                            | "player.position"
+                            | "player.seeked"
+                            | "player.volume"
+                            | "player.mode"
+                            | "player.error"
+                    ) {
+                        let snapshot = snapshot_source.snapshot().await;
+                        media_projection.update(&snapshot, event.event_type == "player.seeked");
+                    }
+                    if matches!(
+                        event.event_type.as_str(),
+                        "queue.changed"
+                            | "player.track"
+                            | "player.playback"
+                            | "player.volume"
+                            | "player.mode"
+                            | "player.error"
+                    ) {
+                        let snapshot = snapshot_source.snapshot().await;
+                        if let Err(error) = persistence.save_queue(&snapshot) {
+                            tracing::warn!(target: "storage", error = %error, "queue persistence failed");
+                        }
+                    }
+                }
+            });
+
+            let api_to_start = Arc::clone(&local_api);
+            tauri::async_runtime::spawn(async move {
+                let _ = api_to_start.start_if_enabled().await;
+            });
+
+            app.manage(player);
+            app.manage(local_api);
+            app.manage(lyrics_surfaces);
+            app.manage(system_media);
+            app.manage(desktop_integration);
+            app.manage(storage);
+            app.manage(qq_music);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::platform_diagnostics,
+            commands::platform_export_diagnostics,
+            commands::system_integration_status,
+            commands::system_shortcuts_set_enabled,
+            commands::audio_output_devices,
+            commands::audio_set_output_device,
+            commands::qqmusic_status,
+            commands::qqmusic_home,
+            commands::qqmusic_library,
+            commands::qqmusic_search,
+            commands::qqmusic_album,
+            commands::qqmusic_playlist,
+            commands::qqmusic_lyrics,
+            commands::qqmusic_cache_artwork,
+            commands::qqmusic_set_preferred_quality,
+            commands::qqmusic_sign_out,
+            commands::qqmusic_cache_stats,
+            commands::qqmusic_clear_cache,
+            commands::player_snapshot,
+            commands::player_hydrate_queue,
+            commands::player_play_tracks,
+            commands::player_play_from_queue,
+            commands::player_play,
+            commands::player_pause,
+            commands::player_toggle,
+            commands::player_next,
+            commands::player_previous,
+            commands::player_seek,
+            commands::player_set_volume,
+            commands::player_toggle_muted,
+            commands::player_toggle_shuffle,
+            commands::player_cycle_repeat,
+            commands::player_add_to_queue,
+            commands::player_remove_from_queue,
+            commands::player_set_lyrics,
+            commands::player_lyrics,
+            commands::lyrics_surface_projection,
+            commands::app_preferences_get,
+            commands::app_preferences_set,
+            commands::appearance_pick_background,
+            commands::appearance_background_load,
+            commands::lyrics_surfaces_reconcile,
+            commands::lyrics_surface_capabilities,
+            commands::lyrics_surface_status,
+            commands::lyrics_surfaces_unlock_all,
+            commands::lyrics_surface_close,
+            commands::lyrics_surface_set_interaction,
+            commands::lyrics_surface_reset_position,
+            commands::lyrics_surface_show_settings,
+            commands::local_api_status,
+            commands::local_api_set_enabled,
+            commands::local_api_set_port,
+            commands::local_api_reveal_token,
+            commands::local_api_regenerate_token,
+        ])
+        .build(tauri::generate_context!())
+        .expect("failed to build desktop application");
+
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            let surfaces = Arc::clone(app_handle.state::<Arc<LyricsSurfaceManager>>().inner());
+            let storage = Arc::clone(app_handle.state::<Arc<StorageService>>().inner());
+            surfaces.close_all(app_handle, &storage);
+            let player = Arc::clone(app_handle.state::<Arc<PlayerService>>().inner());
+            let snapshot = tauri::async_runtime::block_on(player.snapshot());
+            let storage = app_handle.state::<Arc<StorageService>>();
+            let _ = storage.save_queue(&snapshot);
+            player.stop_clock();
+            let api = Arc::clone(app_handle.state::<Arc<LocalApiService>>().inner());
+            tauri::async_runtime::block_on(async move {
+                let _ = api.stop().await;
+            });
+        }
+    });
+}

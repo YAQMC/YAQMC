@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Geometric glass forms in soft green">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#d6dfcc"/>
+      <stop offset="1" stop-color="#486b64"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="640" fill="url(#g)"/>
+  <path d="M90 520 218 106l180 78 150 336Z" fill="#e8eee4" opacity=".44"/>
+  <path d="m218 106 12 414h318L398 184Z" fill="#244f4b" opacity=".28"/>
+  <path d="m218 106 180 78-168 336Z" fill="#f4f1dc" opacity=".4"/>
+  <path d="M90 520h458M218 106l12 414M398 184l-168 336" fill="none" stroke="#173b39" stroke-width="8" opacity=".42"/>
+  <circle cx="478" cy="116" r="34" fill="#f2cf75" opacity=".9"/>
+</svg>

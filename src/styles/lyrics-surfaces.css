@@ -1,0 +1,376 @@
+:root[data-surface],
+:root[data-surface] body,
+:root[data-surface] #root {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.lyrics-surface-root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--surface-lyric-primary);
+  font-family: var(--surface-font-family);
+  text-align: var(--surface-text-align);
+}
+
+.lyrics-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.lyrics-surface__drag-region {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+}
+
+.lyrics-surface__line {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--surface-lyric-secondary);
+  font-size: calc(var(--surface-font-size) * 0.68);
+  font-weight: 560;
+  line-height: 1.25;
+  text-align: inherit;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 10px rgba(0, 0, 0, 0.42);
+}
+
+.lyrics-surface__line[data-active] {
+  color: var(--surface-lyric-primary);
+  font-size: var(--surface-font-size);
+  font-weight: 720;
+  letter-spacing: -0.022em;
+}
+
+.lyrics-surface__primary {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics-surface__line small {
+  display: block;
+  overflow: hidden;
+  margin-top: 1px;
+  color: inherit;
+  font-size: 0.52em;
+  font-weight: 520;
+  opacity: 0.78;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surface-word {
+  position: relative;
+  display: inline-block;
+  white-space: pre-wrap;
+}
+
+.surface-word > span:first-child {
+  color: color-mix(in srgb, var(--surface-lyric-primary) 42%, transparent);
+}
+
+.surface-word > span:last-child {
+  position: absolute;
+  inset: 0;
+  width: var(--word-progress);
+  overflow: hidden;
+  color: var(--surface-lyric-primary);
+  white-space: pre;
+}
+
+.surface-word[data-state='complete'] > span:first-child {
+  color: var(--surface-lyric-primary);
+}
+
+.lyrics-surface__empty {
+  color: var(--surface-lyric-secondary);
+  font-size: calc(var(--surface-font-size) * 0.55);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.lyrics-surface__controls {
+  position: absolute;
+  z-index: 10;
+  top: 8px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 34px;
+  padding: 2px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-round);
+  background: rgba(12, 13, 11, 0.76);
+  color: #eef0e9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    opacity var(--motion-base),
+    transform var(--motion-base) var(--ease-out);
+}
+
+.lyrics-surface[data-interaction-state='visible-interactive-hover'] .lyrics-surface__controls,
+.lyrics-surface__controls:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lyrics-surface__controls .icon-button {
+  color: #c9ccc4;
+}
+
+.lyrics-surface__controls .icon-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.lyrics-surface__drag {
+  display: grid;
+  width: 25px;
+  height: 26px;
+  margin: 0 !important;
+  place-items: center;
+  color: #888d84 !important;
+  cursor: move;
+}
+
+.lyrics-surface--desktop {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+}
+
+.lyrics-surface--desktop::before {
+  position: absolute;
+  inset: 12px;
+  border-radius: 22px;
+  background: transparent;
+  opacity: 0;
+  content: '';
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.lyrics-surface--desktop[data-presentation-background]::before {
+  background: color-mix(
+    in srgb,
+    var(--bg-opaque) calc(var(--surface-window-opacity) * 100%),
+    transparent
+  );
+  opacity: 1;
+  backdrop-filter: blur(10px);
+}
+
+.lyrics-surface--desktop::after {
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  background: rgba(12, 13, 11, 0.14);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  content: '';
+  backdrop-filter: blur(6px);
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.lyrics-surface--desktop[data-interaction-state='visible-interactive-hover']::after {
+  opacity: 1;
+}
+
+.desktop-lyrics__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 9px;
+  padding: 34px 48px 24px;
+  text-align: inherit;
+  cursor: default;
+}
+
+.lyrics-surface--desktop:is(
+    [data-interaction-state='visible-interactive-idle'],
+    [data-interaction-state='visible-interactive-hover']
+  )
+  .desktop-lyrics__content {
+  cursor: move;
+}
+
+.lyrics-surface[data-interaction-state='visible-passive-locked'] {
+  pointer-events: none;
+}
+
+.lyrics-surface--island {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px 10px;
+}
+
+.island-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 64px;
+  overflow: hidden;
+  padding: 9px 14px 9px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  background: color-mix(in srgb, #10110f calc(var(--surface-window-opacity) * 100%), transparent);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(16px);
+  cursor: default;
+  transition:
+    height 220ms var(--ease-out),
+    border-radius 220ms var(--ease-out);
+}
+
+.lyrics-surface--island:is(
+    [data-interaction-state='visible-interactive-idle'],
+    [data-interaction-state='visible-interactive-hover']
+  )
+  .island-card {
+  cursor: move;
+}
+
+.lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card {
+  height: 140px;
+  border-radius: 25px;
+}
+
+.island-card > img {
+  align-self: start;
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  object-fit: cover;
+  transition:
+    width 220ms var(--ease-out),
+    height 220ms var(--ease-out),
+    border-radius 220ms var(--ease-out);
+}
+
+.lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card > img {
+  width: 56px;
+  height: 56px;
+  border-radius: 17px;
+}
+
+.island-card__state {
+  position: absolute;
+  top: 47px;
+  left: 47px;
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  border: 2px solid #11120f;
+  border-radius: 50%;
+  background: #73776f;
+}
+
+.island-card__state[data-playing] {
+  background: var(--accent-primary);
+}
+
+.island-card__copy {
+  align-self: start;
+  min-width: 0;
+  padding-top: 5px;
+}
+
+.island-card .lyrics-surface__line[data-active] {
+  font-size: var(--surface-font-size);
+}
+
+.island-card__expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 18px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 150ms 45ms,
+    transform 180ms 45ms var(--ease-out);
+}
+
+.lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card__expanded {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.island-card__expanded p {
+  display: flex;
+  min-width: 0;
+  gap: 7px;
+  color: #f3f4ef;
+  font-size: 11px;
+}
+
+.island-card__expanded p strong,
+.island-card__expanded p span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.island-card__expanded p span {
+  color: #8f948b;
+}
+
+.island-card .lyrics-surface__controls {
+  top: 87px;
+  right: 12px;
+  opacity: 0;
+}
+
+.lyrics-surface--island[data-interaction-state='visible-interactive-hover']
+  .lyrics-surface__controls {
+  opacity: 1;
+}
+
+.island-card__progress {
+  position: absolute;
+  right: 20px;
+  bottom: 7px;
+  left: 20px;
+  height: 2px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-round);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.island-card__progress::after {
+  display: block;
+  width: var(--island-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-primary);
+  content: '';
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island-card,
+  .island-card > img,
+  .island-card__expanded,
+  .lyrics-surface__controls {
+    transition: none;
+  }
+}

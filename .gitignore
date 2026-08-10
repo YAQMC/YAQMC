@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+output/
+.playwright-cli/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+artifacts/branding/yaqmc-logo-chroma.png
+
+# Rust / Tauri
+src-tauri/target/
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json

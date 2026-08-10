@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Abstract amber light over a dark horizon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#241f24"/>
+      <stop offset="0.55" stop-color="#7e4438"/>
+      <stop offset="1" stop-color="#d38b4e"/>
+    </linearGradient>
+    <radialGradient id="sun">
+      <stop offset="0" stop-color="#ffe1a2"/>
+      <stop offset="0.45" stop-color="#f1a85e"/>
+      <stop offset="1" stop-color="#cf6247" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="640" fill="url(#bg)"/>
+  <circle cx="420" cy="252" r="240" fill="url(#sun)"/>
+  <path d="M0 420C118 382 206 430 320 409s206-66 320-12v243H0Z" fill="#252226"/>
+  <path d="M0 465c128-23 221 28 342 2s201-31 298-1v174H0Z" fill="#16171a" opacity=".78"/>
+  <path d="M360 0h2v640h-2z" fill="#fff" opacity=".08"/>
+</svg>

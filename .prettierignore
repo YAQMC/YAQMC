@@ -1,0 +1,6 @@
+dist
+node_modules
+src-tauri/target
+src-tauri/gen/schemas
+package-lock.json
+GPT-Read-me.md
