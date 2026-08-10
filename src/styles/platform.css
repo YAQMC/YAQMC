@@ -19,10 +19,15 @@
 
 :root[data-platform='linux'] .lyrics-stage__follow,
 :root[data-platform='linux'] .lyrics-stage__instrumental,
+:root[data-platform='linux'] .lyrics-fullscreen-transport,
 :root[data-platform='linux'] .lyrics-surface--desktop::before,
 :root[data-platform='linux'] .lyrics-surface--desktop::after,
 :root[data-platform='linux'] .island-card {
   backdrop-filter: none;
+}
+
+:root[data-platform='linux'] .lyrics-fullscreen-transport {
+  background: color-mix(in srgb, var(--bg-opaque) 94%, #25291f);
 }
 
 :root[data-platform='linux'] .island-card {

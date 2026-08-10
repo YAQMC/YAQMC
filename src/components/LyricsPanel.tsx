@@ -36,6 +36,10 @@ import { IconButton } from './ui/IconButton';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore, type SecondaryLyricVisibility } from '../application/preferences';
 import { shouldShowLyricSecondary } from '../application/lyrics-presentation';
+import {
+  LyricsFullscreenTransport,
+  type LyricsFullscreenTransportHandle,
+} from './LyricsFullscreenTransport';
 
 type LyricsStyle = CSSProperties & {
   '--lyrics-color': string;
@@ -301,6 +305,7 @@ export function LyricsPanel({
   const cursor = useLyricCursor(lyricsOpen ? document : null, presentationOffsetMs);
   const reducedMotion = useReducedMotion();
   const stage = useRef<HTMLElement>(null);
+  const transportRef = useRef<LyricsFullscreenTransportHandle>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
   const [unfollowedSongId, setUnfollowedSongId] = useState<string | null>(null);
   const following = unfollowedSongId !== document?.songId;
@@ -338,6 +343,7 @@ export function LyricsPanel({
       aria-label={t('region')}
       data-focus={focus || undefined}
       data-fullscreen={fullscreen || undefined}
+      onPointerMove={() => transportRef.current?.reveal()}
     >
       {current && (
         <div
@@ -347,6 +353,7 @@ export function LyricsPanel({
         />
       )}
       <div className="lyrics-stage__wash" aria-hidden="true" />
+      {fullscreen && <LyricsFullscreenTransport ref={transportRef} />}
 
       <header className="lyrics-stage__header">
         <div className="lyrics-stage__presentation-controls">

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
@@ -24,6 +24,8 @@ describe('LyricsPanel', () => {
 
   afterEach(() => {
     cleanup();
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     if (scrollToDescriptor) {
       Object.defineProperty(HTMLElement.prototype, 'scrollTo', scrollToDescriptor);
@@ -124,6 +126,40 @@ describe('LyricsPanel', () => {
     expect(stage).toHaveAttribute('data-focus');
     expect(stage).toHaveAttribute('data-fullscreen');
     expect(screen.getByRole('button', { name: 'Exit fullscreen lyrics' })).toBeDisabled();
+  });
+
+  it('does not mount the compact transport outside fullscreen', () => {
+    render(<LyricsPanel {...presentationProps()} />);
+
+    expect(screen.queryByRole('group', { name: 'Music player' })).not.toBeInTheDocument();
+  });
+
+  it('reveals hidden fullscreen transport from stage movement without breaking controls or seek', () => {
+    vi.useFakeTimers();
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    usePlayerStore.setState({ isPlaying: true, playbackState: 'playing' });
+    const props = presentationProps({ fullscreen: true });
+    render(<LyricsPanel {...props} />);
+
+    const stage = screen.getByRole('region', { name: 'Synchronized lyrics' });
+    const transport = screen.getByRole('group', { name: 'Music player' });
+    act(() => vi.advanceTimersByTime(2_400));
+    expect(transport).not.toHaveAttribute('data-visible');
+
+    fireEvent.pointerMove(stage);
+    expect(transport).toHaveAttribute('data-visible', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide navigation' }));
+    expect(props.onToggleFocus).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: /A quiet light across the floor/i }));
+    expect(usePlayerStore.getState().positionMs).toBe(18_000);
+
+    act(() => vi.advanceTimersByTime(2_400));
+    expect(transport).not.toHaveAttribute('data-visible');
   });
 
   it('renders only a localized fullscreen failure status without exposing the native error', () => {
