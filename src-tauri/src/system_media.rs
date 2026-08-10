@@ -311,7 +311,8 @@ fn run_mpris_worker(
     local.block_on(&runtime, async move {
         use mpris_server::{LoopStatus, Metadata, PlaybackStatus, Player, Time};
 
-        let player = match Player::builder(format!("yaqmc.instance{}", std::process::id()))
+        let instance_name = format!("yaqmc.instance{}", std::process::id());
+        let player = match Player::builder(&instance_name)
             .identity("YAQMC")
             .desktop_entry("org.yaqmc.desktop")
             .can_quit(true)
