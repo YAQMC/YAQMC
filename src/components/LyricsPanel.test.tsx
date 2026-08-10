@@ -20,12 +20,20 @@ function presentationProps(overrides: Partial<React.ComponentProps<typeof Lyrics
 }
 
 describe('LyricsPanel', () => {
+  let scrollToDescriptor: PropertyDescriptor | undefined;
+
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    if (scrollToDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, 'scrollTo', scrollToDescriptor);
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
+    }
   });
 
   beforeEach(() => {
+    scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
     setPlayerCommandAdapter(null);
     vi.stubGlobal(
       'requestAnimationFrame',

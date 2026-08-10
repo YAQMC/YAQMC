@@ -34,4 +34,14 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(onCloseLyrics).toHaveBeenCalledOnce();
     expect(usePlayerStore.getState().lyricsOpen).toBe(true);
   });
+
+  it('delegates Queue entry without changing panel state directly', () => {
+    const onToggleQueue = vi.fn();
+    render(<PlayerBar onToggleQueue={onToggleQueue} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show queue' }));
+
+    expect(onToggleQueue).toHaveBeenCalledOnce();
+    expect(usePlayerStore.getState()).toMatchObject({ queueOpen: false, lyricsOpen: false });
+  });
 });

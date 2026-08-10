@@ -30,12 +30,14 @@ function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
 interface PlayerBarProps {
   onEnterLyricsFullscreen?: () => void;
   onCloseLyrics?: () => void;
+  onToggleQueue?: () => void;
   lyricsFullscreenPending?: boolean;
 }
 
 export function PlayerBar({
   onEnterLyricsFullscreen,
   onCloseLyrics,
+  onToggleQueue,
   lyricsFullscreenPending = false,
 }: PlayerBarProps) {
   const { t } = useTranslation('player');
@@ -163,7 +165,12 @@ export function PlayerBar({
         >
           <Mic2 size={16} />
         </IconButton>
-        <IconButton label={t('showQueue')} size="small" active={queueOpen} onClick={toggleQueue}>
+        <IconButton
+          label={t('showQueue')}
+          size="small"
+          active={queueOpen}
+          onClick={onToggleQueue ?? toggleQueue}
+        >
           <ListMusic size={16} />
         </IconButton>
         <div className="volume-control">

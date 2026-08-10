@@ -1,11 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialPlayerState, usePlayerStore } from './player-store';
 import {
   setFullscreenPortForTests,
   useLyricsPresentationStore,
   type FullscreenPort,
 } from './lyrics-presentation';
-import { closeLyricsPresentation, enterLyricsFullscreen } from './lyrics-presentation-actions';
+import {
+  closeLyricsPresentation,
+  enterLyricsFullscreen,
+  exitLyricsFullscreen,
+  runAfterLyricsClose,
+  toggleQueueAfterLyricsClose,
+} from './lyrics-presentation-actions';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -139,5 +145,73 @@ describe('lyrics presentation actions', () => {
       expect.objectContaining({ fullscreen: false, pending: false, error: null }),
     );
     expect(usePlayerStore.getState().lyricsOpen).toBe(false);
+  });
+
+  it('coalesces concurrent closes into one exit request and one shared promise', async () => {
+    const exitGate = deferred<void>();
+    port.fullscreen = true;
+    port.write = async (value) => {
+      port.writes.push(value);
+      await exitGate.promise;
+      port.fullscreen = value;
+    };
+    usePlayerStore.setState({ lyricsOpen: true });
+    useLyricsPresentationStore.setState({ fullscreen: true });
+
+    const firstClose = closeLyricsPresentation();
+    const secondClose = closeLyricsPresentation();
+
+    expect(secondClose).toBe(firstClose);
+    await Promise.resolve();
+    expect(port.writes).toEqual([false]);
+    expect(usePlayerStore.getState().lyricsOpen).toBe(true);
+
+    exitGate.resolve();
+    await expect(Promise.all([firstClose, secondClose])).resolves.toEqual([true, true]);
+    expect(port.writes).toEqual([false]);
+  });
+
+  it('does not run a gated action when fullscreen exit is rejected', async () => {
+    const action = vi.fn();
+    port.failWrite = true;
+    port.fullscreen = true;
+    usePlayerStore.setState({ lyricsOpen: true });
+    useLyricsPresentationStore.setState({ fullscreen: true });
+
+    await expect(runAfterLyricsClose(action)).resolves.toBe(false);
+
+    expect(action).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState()).toMatchObject({ lyricsOpen: true, queueOpen: false });
+    expect(useLyricsPresentationStore.getState().error).toBe('native fullscreen denial');
+  });
+
+  it('opens Queue only after a confirmed Lyrics close', async () => {
+    port.failWrite = true;
+    port.fullscreen = true;
+    usePlayerStore.setState({ lyricsOpen: true });
+    useLyricsPresentationStore.setState({ fullscreen: true });
+
+    await expect(toggleQueueAfterLyricsClose()).resolves.toBe(false);
+
+    expect(usePlayerStore.getState()).toMatchObject({ lyricsOpen: true, queueOpen: false });
+    expect(useLyricsPresentationStore.getState().error).toBe('native fullscreen denial');
+  });
+
+  it('preserves direct Queue toggle-close when Queue is already open', async () => {
+    usePlayerStore.setState({ queueOpen: true, lyricsOpen: false });
+
+    await expect(toggleQueueAfterLyricsClose()).resolves.toBe(true);
+
+    expect(port.writes).toEqual([]);
+    expect(usePlayerStore.getState()).toMatchObject({ queueOpen: false, lyricsOpen: false });
+  });
+
+  it('requests an explicit exit instead of toggling from a fresh fullscreen snapshot', async () => {
+    useLyricsPresentationStore.setState({ fullscreen: false });
+
+    await expect(exitLyricsFullscreen()).resolves.toBe(false);
+
+    expect(port.writes).toEqual([false]);
+    expect(useLyricsPresentationStore.getState().fullscreen).toBe(false);
   });
 });

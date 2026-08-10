@@ -31,6 +31,9 @@ import {
 import {
   closeLyricsPresentation,
   enterLyricsFullscreen,
+  exitLyricsFullscreen,
+  runAfterLyricsClose,
+  toggleQueueAfterLyricsClose,
 } from './application/lyrics-presentation-actions';
 import { listen } from '@tauri-apps/api/event';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
@@ -81,14 +84,15 @@ export default function App() {
   const route = history.entries[history.index] ?? initialRoute;
 
   const navigate = useCallback((nextRoute: AppRoute) => {
-    usePlayerStore.getState().closePanels();
-    setHistory((current) => {
-      const active = current.entries[current.index] ?? initialRoute;
-      if (routesEqual(active, nextRoute)) return current;
-      return {
-        entries: [...current.entries.slice(0, current.index + 1), nextRoute],
-        index: current.index + 1,
-      };
+    void runAfterLyricsClose(() => {
+      setHistory((current) => {
+        const active = current.entries[current.index] ?? initialRoute;
+        if (routesEqual(active, nextRoute)) return current;
+        return {
+          entries: [...current.entries.slice(0, current.index + 1), nextRoute],
+          index: current.index + 1,
+        };
+      });
     });
   }, []);
 
@@ -111,6 +115,10 @@ export default function App() {
 
   const enterFullscreenLyrics = useCallback(() => {
     void enterLyricsFullscreen();
+  }, []);
+
+  const toggleQueue = useCallback(() => {
+    void toggleQueueAfterLyricsClose();
   }, []);
 
   useEffect(() => {
@@ -193,7 +201,7 @@ export default function App() {
           fullscreen,
           focus: focusSidebarCollapsed,
         });
-        if (action === 'exit-fullscreen') toggleLyricsFullscreen();
+        if (action === 'exit-fullscreen') void exitLyricsFullscreen();
         else if (action === 'exit-focus') updateLyrics({ focusSidebarCollapsed: false });
         else if (action === 'close-lyrics') closeLyrics();
         else usePlayerStore.getState().closePanels();
@@ -310,6 +318,7 @@ export default function App() {
         <PlayerBar
           onEnterLyricsFullscreen={enterFullscreenLyrics}
           onCloseLyrics={closeLyrics}
+          onToggleQueue={toggleQueue}
           lyricsFullscreenPending={fullscreenPending}
         />
         <QueuePanel />

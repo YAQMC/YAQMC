@@ -9,7 +9,13 @@ export async function enterLyricsFullscreen(): Promise<boolean> {
   return useLyricsPresentationStore.getState().request(true);
 }
 
-export async function closeLyricsPresentation(): Promise<boolean> {
+export function exitLyricsFullscreen(): Promise<boolean> {
+  return useLyricsPresentationStore.getState().request(false);
+}
+
+let closeInFlight: Promise<boolean> | null = null;
+
+async function closeLyricsPresentationOnce(): Promise<boolean> {
   const presentation = useLyricsPresentationStore.getState();
   if (!presentation.fullscreen && !presentation.pending) {
     presentation.clearError();
@@ -23,4 +29,31 @@ export async function closeLyricsPresentation(): Promise<boolean> {
 
   usePlayerStore.getState().closePanels();
   return true;
+}
+
+export function closeLyricsPresentation(): Promise<boolean> {
+  if (closeInFlight) return closeInFlight;
+
+  const operation = closeLyricsPresentationOnce();
+  const shared = operation.finally(() => {
+    if (closeInFlight === shared) closeInFlight = null;
+  });
+  closeInFlight = shared;
+  return shared;
+}
+
+export async function runAfterLyricsClose(action: () => void): Promise<boolean> {
+  if (!(await closeLyricsPresentation())) return false;
+  action();
+  return true;
+}
+
+export function toggleQueueAfterLyricsClose(): Promise<boolean> {
+  const player = usePlayerStore.getState();
+  if (player.queueOpen) {
+    player.toggleQueue();
+    return Promise.resolve(true);
+  }
+
+  return runAfterLyricsClose(() => usePlayerStore.getState().toggleQueue());
 }
