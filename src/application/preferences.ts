@@ -51,6 +51,7 @@ export interface LyricDisplaySettings {
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
   timingOffsetMs: number;
+  focusSidebarCollapsed: boolean;
 }
 
 export interface LyricSurfaceSettings {
@@ -118,6 +119,7 @@ export const defaultPreferences: AppPreferences = {
     translation: 'auto',
     romanization: 'auto',
     timingOffsetMs: 0,
+    focusSidebarCollapsed: false,
   },
   surfaces: {
     desktop: defaultSurface('desktop'),
@@ -244,6 +246,8 @@ export function normalizePreferences(value: unknown): AppPreferences {
       translation: valueIn(lyrics.translation, ['auto', 'show', 'hide'], 'auto'),
       romanization: valueIn(lyrics.romanization, ['auto', 'show', 'hide'], 'auto'),
       timingOffsetMs: numberInRange(lyrics.timingOffsetMs, 0, -2_000, 2_000),
+      focusSidebarCollapsed:
+        typeof lyrics.focusSidebarCollapsed === 'boolean' ? lyrics.focusSidebarCollapsed : false,
     },
     surfaces: {
       desktop: normalizeSurface(surfaces.desktop, 'desktop', legacyPreferences),

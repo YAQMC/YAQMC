@@ -38,7 +38,27 @@ describe('preference persistence model', () => {
       translation: 'hide',
       romanization: 'show',
       timingOffsetMs: -320,
+      focusSidebarCollapsed: false,
     });
+  });
+
+  it('normalizes the lyrics focus-sidebar preference as a boolean', () => {
+    expect(normalizePreferences({ version: 2 }).lyrics.focusSidebarCollapsed).toBe(false);
+    expect(
+      normalizePreferences({ version: 2, lyrics: { focusSidebarCollapsed: 'yes' } }).lyrics
+        .focusSidebarCollapsed,
+    ).toBe(false);
+    expect(
+      normalizePreferences({ version: 2, lyrics: { focusSidebarCollapsed: true } }).lyrics
+        .focusSidebarCollapsed,
+    ).toBe(true);
+  });
+
+  it('updates the lyrics focus-sidebar preference without changing appearance', () => {
+    usePreferencesStore.setState(defaultPreferences);
+    usePreferencesStore.getState().updateLyrics({ focusSidebarCollapsed: true });
+    expect(usePreferencesStore.getState().lyrics.focusSidebarCollapsed).toBe(true);
+    expect(usePreferencesStore.getState().appearance).toEqual(defaultPreferences.appearance);
   });
 
   it('preserves the explicit lyric-surface interaction state', () => {
