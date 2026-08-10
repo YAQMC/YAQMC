@@ -8,6 +8,26 @@
   background: var(--bg);
 }
 
+.app-shell[data-lyrics-focus],
+.app-shell[data-lyrics-fullscreen] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell[data-lyrics-focus] > .sidebar,
+.app-shell[data-lyrics-fullscreen] > .sidebar {
+  display: none;
+}
+
+.app-shell[data-lyrics-focus] > .content-shell,
+.app-shell[data-lyrics-focus] > .player-bar {
+  grid-column: 1;
+}
+
+.app-shell[data-lyrics-fullscreen] > .content-shell,
+.app-shell[data-lyrics-fullscreen] > .player-bar {
+  visibility: hidden;
+}
+
 .sidebar {
   position: relative;
   z-index: 10;

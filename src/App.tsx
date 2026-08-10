@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Album, MediaCollection, Playlist } from './domain/music';
 import { useCatalog } from './application/use-catalog';
@@ -22,7 +22,12 @@ import { LibraryPage } from './pages/LibraryPage';
 import { SearchPage } from './pages/SearchPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AppBackground } from './components/AppBackground';
-import { usePreferencesRuntime } from './application/preferences';
+import { usePreferencesRuntime, usePreferencesStore } from './application/preferences';
+import {
+  lyricsEscapeAction,
+  startLyricsPresentationRuntime,
+  useLyricsPresentationStore,
+} from './application/lyrics-presentation';
 import { listen } from '@tauri-apps/api/event';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
 import './styles/index.css';
@@ -60,6 +65,14 @@ export default function App() {
   const catalog = useCatalog();
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);
+  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
+  const focusSidebarCollapsed = usePreferencesStore((state) => state.lyrics.focusSidebarCollapsed);
+  const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
+  const fullscreen = useLyricsPresentationStore((state) => state.fullscreen);
+  const fullscreenPending = useLyricsPresentationStore((state) => state.pending);
+  const requestFullscreen = useLyricsPresentationStore((state) => state.request);
+  const syncFullscreen = useLyricsPresentationStore((state) => state.sync);
+  const previousLyricsOpen = useRef(lyricsOpen);
   const [history, setHistory] = useState<NavigationHistory>({ entries: [initialRoute], index: 0 });
   const route = history.entries[history.index] ?? initialRoute;
 
@@ -108,6 +121,38 @@ export default function App() {
   }, [catalog, hydrateQueue]);
 
   useEffect(() => {
+    let disposed = false;
+    let cleanup: (() => Promise<void>) | null = null;
+
+    void startLyricsPresentationRuntime()
+      .then((stop) => {
+        if (disposed) {
+          void stop().catch(() => undefined);
+          return;
+        }
+        cleanup = stop;
+        void syncFullscreen().catch(() => undefined);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      if (cleanup) void cleanup().catch(() => undefined);
+    };
+  }, [syncFullscreen]);
+
+  useEffect(() => {
+    const wasOpen = previousLyricsOpen.current;
+    previousLyricsOpen.current = lyricsOpen;
+    if (!wasOpen || lyricsOpen) return;
+
+    const presentation = useLyricsPresentationStore.getState();
+    if (presentation.fullscreen || presentation.pending) {
+      void presentation.request(false).catch(() => undefined);
+    }
+  }, [lyricsOpen]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const editing = target?.matches('input, textarea, select, [contenteditable="true"]') ?? false;
@@ -118,7 +163,19 @@ export default function App() {
         return;
       }
       if (event.key === 'Escape') {
-        usePlayerStore.getState().closePanels();
+        const action = lyricsEscapeAction({
+          lyricsOpen,
+          fullscreen,
+          focus: focusSidebarCollapsed,
+        });
+        if (action === 'exit-fullscreen') void requestFullscreen(false);
+        else if (action === 'exit-focus') updateLyrics({ focusSidebarCollapsed: false });
+        else usePlayerStore.getState().closePanels();
+        return;
+      }
+      if (event.key === 'F11' && lyricsOpen) {
+        event.preventDefault();
+        if (!fullscreenPending && !event.repeat) void requestFullscreen(!fullscreen);
         return;
       }
       if (!editing && event.code === 'Space') {
@@ -129,7 +186,15 @@ export default function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [navigate]);
+  }, [
+    focusSidebarCollapsed,
+    fullscreen,
+    fullscreenPending,
+    lyricsOpen,
+    navigate,
+    requestFullscreen,
+    updateLyrics,
+  ]);
 
   const entities = useMemo(() => {
     if (catalog.status !== 'ready') return { albums: [] as Album[], playlists: [] as Playlist[] };
@@ -195,7 +260,11 @@ export default function App() {
   return (
     <div className="application-frame">
       <AppBackground />
-      <div className="app-shell">
+      <div
+        className="app-shell"
+        data-lyrics-focus={(lyricsOpen && focusSidebarCollapsed) || undefined}
+        data-lyrics-fullscreen={(lyricsOpen && fullscreen) || undefined}
+      >
         <Sidebar route={route} onNavigate={navigate} />
         <div className="content-shell">
           <TopBar

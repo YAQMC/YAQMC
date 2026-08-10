@@ -52,6 +52,7 @@ interface PlayerActions {
   cycleRepeat: () => void;
   toggleQueue: () => void;
   toggleLyrics: () => void;
+  openLyrics: () => void;
   closePanels: () => void;
   addToQueue: (song: Song) => void;
   removeFromQueue: (index: number) => void;
@@ -242,6 +243,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
   toggleQueue: () => set((state) => ({ queueOpen: !state.queueOpen, lyricsOpen: false })),
   toggleLyrics: () => set((state) => ({ lyricsOpen: !state.lyricsOpen, queueOpen: false })),
+  openLyrics: () => set({ lyricsOpen: true, queueOpen: false }),
   closePanels: () => set({ queueOpen: false, lyricsOpen: false }),
 
   addToQueue: (song) => {
