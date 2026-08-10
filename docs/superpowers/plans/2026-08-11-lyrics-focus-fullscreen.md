@@ -388,19 +388,33 @@ git commit -m "feat: wire lyrics focus and fullscreen shell"
 
 **Files:**
 
+- Modify: `src/App.tsx`
+- Create: `src/application/lyrics-presentation-actions.ts`
+- Create: `src/application/lyrics-presentation-actions.test.ts`
 - Modify: `src/components/LyricsPanel.tsx`
 - Modify: `src/components/LyricsPanel.test.tsx`
 - Modify: `src/components/PlayerBar.tsx`
+- Create: `src/components/PlayerBar.test.tsx`
 - Modify: `src/styles/components.css`
+- Modify: `src/styles/shell.css`
 - Modify: `src/locales/en-US.ts`
 - Modify: `src/locales/zh-CN.ts`
 
 **Interfaces:**
 
-- Consumes: App callbacks `onToggleFocus`, `onToggleFullscreen`, and `onClose`; presentation flags/pending/error.
-- Produces: visible Focus/fullscreen controls and enabled PlayerBar fullscreen entry.
+- Consumes: Task 3 presentation state and `openLyrics`.
+- Produces: tested recoverable close/entry orchestration; App callbacks `onToggleFocus`, `onToggleFullscreen`, and
+  `onClose`; presentation flags/pending/error; visible Focus/fullscreen controls; and an enabled PlayerBar entry.
 
-- [ ] **Step 1: Write failing component tests**
+- [ ] **Step 1: Write failing orchestration and component tests**
+
+Create application-layer tests for these order and failure contracts:
+
+- `enterLyricsFullscreen()` opens Lyrics and closes Queue before the fullscreen adapter write begins; a rejected entry
+  leaves Lyrics visible with the presentation error.
+- `closeLyricsPresentation()` closes immediately in normal mode, requests `false` and closes only after a confirmed
+  clean exit, remains open after rejected exit, and serializes a pending entry followed by exit before closing.
+- A successful normal close clears a stale presentation error so reopening does not surface an obsolete failure.
 
 Render `LyricsPanel` with explicit presentation props and assert:
 
@@ -417,16 +431,34 @@ expect(screen.getByRole('button', { name: 'Exit fullscreen lyrics' })).toBeVisib
 ```
 
 Retain the existing line-click test in both normal and focus props, proving it still seeks through the shared player
-contract. Add an assertion that a fullscreen error is rendered with `role="status"` and the raw native error is not
-placed in an accessible label.
+contract. Assert that the X button calls only `onClose` and leaves `lyricsOpen` true until the App callback decides.
+Assert pending disables the fullscreen action, both data attributes reflect props, and a fullscreen error renders
+only the localized message with `role="status"`; the raw native error must not appear as visible text, label, or title.
+
+Create a minimal `PlayerBar` test proving the Lyrics-specific fullscreen label is enabled with a callback, invokes it,
+and remains disabled when the optional callback is absent.
 
 - [ ] **Step 2: Run and confirm failure**
 
-Run: `npx vitest run src/components/LyricsPanel.test.tsx`
+Run:
 
-Expected: FAIL because presentation props and controls do not exist.
+```powershell
+npx vitest run src/application/lyrics-presentation-actions.test.ts src/components/LyricsPanel.test.tsx src/components/PlayerBar.test.tsx
+```
 
-- [ ] **Step 3: Add the control cluster and semantic state**
+Expected: FAIL because orchestration, presentation props/controls, and PlayerBar entry do not exist.
+
+- [ ] **Step 3: Add recoverable entry and close orchestration**
+
+Implement `enterLyricsFullscreen(): Promise<boolean>` with imperative store snapshots. If no request is pending,
+call `openLyrics()` before `request(true)` so an entry failure remains visible in Lyrics.
+
+Implement `closeLyricsPresentation(): Promise<boolean>`. If already confirmed non-fullscreen and non-pending, clear
+any stale presentation error and close. Otherwise await `request(false)`, take a fresh presentation snapshot, and
+close only when `fullscreen === false`, `pending === false`, and `error === null`. Return whether Lyrics was closed;
+never infer success from `request(false)` returning `false`, because that boolean is the confirmed fullscreen value.
+
+- [ ] **Step 4: Add the control cluster and semantic state**
 
 Use `PanelLeftClose`/`PanelLeftOpen`, `Maximize2`/`Minimize2`, and `X` icons. The header starts with:
 
@@ -446,15 +478,34 @@ Use `PanelLeftClose`/`PanelLeftOpen`, `Maximize2`/`Minimize2`, and `X` icons. Th
 ```
 
 Set `data-focus` and `data-fullscreen` on `.lyrics-stage`. Keep the same scroll container and `unfollowedSongId`
-state. On a focus/fullscreen change, call `centerLyricLine` only when `following` is true.
+state. On a focus/fullscreen change, call `centerLyricLine` only when `following` is true. The X button delegates only
+to `onClose`; it must not call `closePanels` directly. Render a localized `role="status"` when `fullscreenError` is
+non-null without exposing the raw value.
 
-- [ ] **Step 4: Implement responsive layout CSS**
+- [ ] **Step 5: Wire App and the PlayerBar entry**
+
+In App, select the presentation error and pass every presentation prop/callback added here. Focus toggles the
+persistent preference. Fullscreen toggling uses a fresh presentation-store snapshot and no-ops while pending. Close
+delegates to `closeLyricsPresentation()`. PlayerBar delegates entry to `enterLyricsFullscreen()`.
+
+Replace PlayerBar's disabled button with `onEnterLyricsFullscreen?: () => void`; keep it disabled without a callback.
+Use `useTranslation('lyrics')` and the Lyrics-specific `enterFullscreen` label, not `player:fullscreen`. When Lyrics is
+already open, route its PlayerBar Lyrics button through the same recoverable close callback rather than directly
+closing during a pending/fullscreen transition.
+
+- [ ] **Step 6: Implement responsive layout CSS**
 
 Normal remains `left: 212px; bottom: 92px`. Focus becomes `left: 0`; fullscreen becomes `inset: 0`. Add a header grid
 with the control cluster at left and close at right. At narrow/tall aspect ratios, reduce artwork size and use one
 column without hiding track identity. Preserve the existing Linux selectors and do not add fullscreen blur/WebGL.
 
-- [ ] **Step 5: Localize labels**
+Use `.lyrics-stage[data-focus]` and `.lyrics-stage[data-fullscreen]` so the state rules outrank the later
+`@media (max-width: 1120px) .lyrics-stage` left offset; place fullscreen after focus because both attributes can be
+present. Rename the heading container so the existing `.lyrics-stage__header > div` rule cannot turn the control
+cluster vertical. Remove/replace the shell media rule that hides the last PlayerBar icon so the fullscreen entry stays
+visible at the 1000 px acceptance width; compact a lower-priority control instead if space is required.
+
+- [ ] **Step 7: Localize labels**
 
 Add these exact keys in the `lyrics` namespace:
 
@@ -474,27 +525,23 @@ exitFullscreen: '退出全屏歌词',
 fullscreenFailed: '无法切换全屏状态。',
 ```
 
-- [ ] **Step 6: Enable the PlayerBar entry**
-
-Replace its disabled fullscreen button with `onEnterLyricsFullscreen?: () => void`; invoke the callback and use the
-same localized player label. App passes the callback from Task 3.
-
-- [ ] **Step 7: Run tests, typecheck, and lint**
+- [ ] **Step 8: Run tests, typecheck, and lint**
 
 Run:
 
 ```powershell
-npx vitest run src/components/LyricsPanel.test.tsx src/application/preferences.test.ts src/application/lyrics-presentation.test.ts
+npx vitest run src/application/lyrics-presentation-actions.test.ts src/components/LyricsPanel.test.tsx src/components/PlayerBar.test.tsx src/application/preferences.test.ts src/application/lyrics-presentation.test.ts src/application/player-store.test.ts src/i18n.test.ts
 npm run typecheck
 npm run lint
+npx prettier --check src/App.tsx src/application/lyrics-presentation-actions.ts src/application/lyrics-presentation-actions.test.ts src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/components/PlayerBar.tsx src/components/PlayerBar.test.tsx src/styles/components.css src/styles/shell.css src/locales/en-US.ts src/locales/zh-CN.ts
 ```
 
 Expected: all pass.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```powershell
-git add -- src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/components/PlayerBar.tsx src/styles/components.css src/locales/en-US.ts src/locales/zh-CN.ts
+git add -- src/App.tsx src/application/lyrics-presentation-actions.ts src/application/lyrics-presentation-actions.test.ts src/components/LyricsPanel.tsx src/components/LyricsPanel.test.tsx src/components/PlayerBar.tsx src/components/PlayerBar.test.tsx src/styles/components.css src/styles/shell.css src/locales/en-US.ts src/locales/zh-CN.ts
 git commit -m "feat: add recoverable lyrics presentation controls"
 ```
 
