@@ -414,6 +414,8 @@ Create application-layer tests for these order and failure contracts:
   leaves Lyrics visible with the presentation error.
 - `closeLyricsPresentation()` closes immediately in normal mode, requests `false` and closes only after a confirmed
   clean exit, remains open after rejected exit, and serializes a pending entry followed by exit before closing.
+- Concurrent close callers share one in-flight Promise and issue exactly one native exit. Navigation and Queue entry
+  proceed only after that Promise confirms closure; rejection retains Lyrics and the visible error.
 - A successful normal close clears a stale presentation error so reopening does not surface an obsolete failure.
 
 Render `LyricsPanel` with explicit presentation props and assert:
@@ -457,6 +459,9 @@ Implement `closeLyricsPresentation(): Promise<boolean>`. If already confirmed no
 any stale presentation error and close. Otherwise await `request(false)`, take a fresh presentation snapshot, and
 close only when `fullscreen === false`, `pending === false`, and `error === null`. Return whether Lyrics was closed;
 never infer success from `request(false)` returning `false`, because that boolean is the confirmed fullscreen value.
+Coalesce overlapping close calls behind one module-level in-flight Promise and clear the reference in `finally`; do
+not enqueue duplicate native exits. Add a tested helper for Queue entry that waits for recoverable Lyrics close before
+opening Queue while preserving ordinary Queue toggle-close behavior.
 
 - [ ] **Step 4: Add the control cluster and semantic state**
 
@@ -486,12 +491,15 @@ non-null without exposing the raw value.
 
 In App, select the presentation error and pass every presentation prop/callback added here. Focus toggles the
 persistent preference. Fullscreen toggling uses a fresh presentation-store snapshot and no-ops while pending. Close
-delegates to `closeLyricsPresentation()`. PlayerBar delegates entry to `enterLyricsFullscreen()`.
+delegates to `closeLyricsPresentation()`. Escape's `exit-fullscreen` branch explicitly requests `false` instead of
+calling the toggle callback. Navigation waits for a successful recoverable close before changing route. PlayerBar
+delegates fullscreen entry to `enterLyricsFullscreen()` and Queue entry to the safe Queue helper.
 
 Replace PlayerBar's disabled button with `onEnterLyricsFullscreen?: () => void`; keep it disabled without a callback.
 Use `useTranslation('lyrics')` and the Lyrics-specific `enterFullscreen` label, not `player:fullscreen`. When Lyrics is
 already open, route its PlayerBar Lyrics button through the same recoverable close callback rather than directly
-closing during a pending/fullscreen transition.
+closing during a pending/fullscreen transition. Route Queue opening through an App callback as well; do not invoke the
+store's direct `toggleQueue()` path while Lyrics is fullscreen or pending.
 
 - [ ] **Step 6: Implement responsive layout CSS**
 
