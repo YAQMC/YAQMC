@@ -11,7 +11,7 @@ if [[ -z "$MODE" ]]; then
   fi
 fi
 case "$MODE" in
-  environment-only|baseline|native-wayland|nv-explicit-sync|disable-dmabuf|software|disable-compositing) ;;
+  environment-only|baseline|native-wayland|x11|nv-explicit-sync|disable-dmabuf|software|disable-compositing) ;;
   *) printf 'Unknown mode: %s\n' "$MODE" >&2; exit 2 ;;
 esac
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -92,6 +92,7 @@ if [[ -n "$APPIMAGE" ]]; then
   case "$MODE" in
     baseline) ;;
     native-wayland) export GDK_BACKEND=wayland ;;
+    x11) export GDK_BACKEND=x11 ;;
     nv-explicit-sync) export __NV_DISABLE_EXPLICIT_SYNC=1 ;;
     disable-dmabuf) export YAQMC_LINUX_RENDERER=disable-dmabuf ;;
     software) export YAQMC_LINUX_RENDERER=software ;;

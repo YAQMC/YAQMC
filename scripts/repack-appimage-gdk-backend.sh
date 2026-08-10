@@ -23,16 +23,33 @@ if [[ ! -f "$HOOK" ]]; then
   exit 3
 fi
 
-if grep -Fq 'export GDK_BACKEND="${GDK_BACKEND:-x11}"' "$HOOK"; then
-  printf 'GTK backend hook already respects an explicit GDK_BACKEND.\n'
-elif grep -Eq '^export GDK_BACKEND=x11([[:space:]]|$)' "$HOOK"; then
-  sed -i 's/^export GDK_BACKEND=x11\([[:space:]].*\)\?$/export GDK_BACKEND="${GDK_BACKEND:-x11}"\1/' "$HOOK"
+POLICY_MARKER='# YAQMC session-aware GTK backend policy'
+if grep -Fq "$POLICY_MARKER" "$HOOK"; then
+  printf 'GTK backend hook already has the YAQMC session policy.\n'
+elif grep -Eq '^export GDK_BACKEND=(x11|"\$\{GDK_BACKEND:-x11\}")([[:space:]]|$)' "$HOOK"; then
+  awk '
+    /^export GDK_BACKEND=x11([[:space:]]|$)/ || /^export GDK_BACKEND="\$\{GDK_BACKEND:-x11\}"([[:space:]]|$)/ {
+      print "# YAQMC session-aware GTK backend policy"
+      print "if [[ -z \"${GDK_BACKEND:-}\" ]]; then"
+      print "  if [[ \"${XDG_SESSION_TYPE:-}\" == \"wayland\" && -n \"${WAYLAND_DISPLAY:-}\" ]]; then"
+      print "    export GDK_BACKEND=wayland"
+      print "  else"
+      print "    export GDK_BACKEND=x11"
+      print "  fi"
+      print "fi"
+      next
+    }
+    { print }
+  ' "$HOOK" >"$HOOK.yaqmc"
+  mv "$HOOK.yaqmc" "$HOOK"
 else
   printf 'Refusing to modify an unknown GTK backend hook.\n' >&2
   exit 4
 fi
 
-grep -Fq 'export GDK_BACKEND="${GDK_BACKEND:-x11}"' "$HOOK"
+grep -Fq "$POLICY_MARKER" "$HOOK"
+grep -Fq 'export GDK_BACKEND=wayland' "$HOOK"
+grep -Fq 'export GDK_BACKEND=x11' "$HOOK"
 
 (
   cd "$WORK_DIR"

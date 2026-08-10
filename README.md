@@ -92,9 +92,9 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
   HTTP tests. A complete sparse source is atomically promoted into the normal provider-aware cache.
 - Locking a lyric overlay intentionally makes it click-through. Unlocking does not depend on clicking that window:
   Settings and the tray menu both invoke a direct native unlock path.
-- Linux startup diagnostics distinguish native Wayland from XWayland using the actual window handle. YAQMC does not
-  globally disable acceleration; Tauri's AppImage launcher defaults to X11, with controlled native-Wayland and
-  graphics compatibility comparisons documented separately.
+- Linux startup diagnostics distinguish native Wayland from XWayland using the actual window handle. The AppImage
+  follows the active Wayland/X11 session unless explicitly overridden; acceleration and backend compatibility modes
+  remain controlled diagnostics rather than global guesses.
 - Secrets use the operating-system credential store. The loopback API is disabled by default, binds only to
   `127.0.0.1`, and requires a random bearer token for every `/v1` endpoint.
 - Account login and library mutation are intentionally out of scope until an approved authorization route exists.

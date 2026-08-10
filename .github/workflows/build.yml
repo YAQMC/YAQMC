@@ -60,7 +60,9 @@ jobs:
           (
             cd "$verify_dir"
             "$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/$(basename "$source_appimage")" --appimage-extract >/dev/null
-            grep -F 'export GDK_BACKEND="${GDK_BACKEND:-x11}"' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
+            grep -F '# YAQMC session-aware GTK backend policy' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
+            grep -F 'export GDK_BACKEND=wayland' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
+            grep -F 'export GDK_BACKEND=x11' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
           )
           cp scripts/collect-linux-diagnostics.sh release/YAQMC-linux-x86_64/
           cp docs/linux.md release/YAQMC-linux-x86_64/TESTING.md

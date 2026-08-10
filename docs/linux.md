@@ -39,12 +39,12 @@ overlay lock/unlock interaction, native Wayland, or X11. Those remain unaccepted
 | Wayland | Xlib/Xcb          | `xwayland`       |
 | X11     | Xlib/Xcb          | `x11`            |
 
-The application source does not set `GDK_BACKEND`, `WINIT_UNIX_BACKEND`, `DISPLAY` or `WAYLAND_DISPLAY`. Tauri CLI
-2.11.4 generated an AppImage hook with an unconditional `GDK_BACKEND=x11`, which explains the observed XWayland
-baseline and also prevented an external override. The YAQMC build now rewrites only that hook assignment to
-`GDK_BACKEND="${GDK_BACKEND:-x11}"`, matching Tauri's upstream correction. The safe X11 default remains because Tauri
-documents a historical AppImage crash on the Wayland backend, but the tester can now supply `GDK_BACKEND=wayland` in
-the controlled `native-wayland` mode. XWayland is not treated as native-Wayland acceptance.
+The application source does not set `WINIT_UNIX_BACKEND`, `DISPLAY` or `WAYLAND_DISPLAY`. Tauri CLI 2.11.4 generated
+an AppImage hook with an unconditional `GDK_BACKEND=x11`, which explains the observed XWayland baseline and also
+prevented an external override. The YAQMC build replaces that assignment with a session-aware policy: an explicit
+`GDK_BACKEND` wins; otherwise a Wayland session with `WAYLAND_DISPLAY` uses `wayland`, and every other environment
+uses `x11`. This follows the host by default without pretending that XWayland is native-Wayland acceptance. Explicit
+`native-wayland` and `x11` tester modes remain available for controlled comparison.
 
 References: [Tauri AppImage GTK launcher](https://github.com/tauri-apps/tauri/blob/e2e585ad1196c9572f86ef39aae01ef4c3b1a762/crates/tauri-bundler/src/bundle/linux/appimage/linuxdeploy-plugin-gtk.sh),
 [change note](https://github.com/tauri-apps/tauri/blob/e2e585ad1196c9572f86ef39aae01ef4c3b1a762/.changes/appimage-respect-gdk-backend.md), and
@@ -56,7 +56,7 @@ script embedded in the AppImage.
 
 ## Arch tester procedure
 
-Baseline:
+Baseline (automatic session detection):
 
 ```bash
 chmod +x YAQMC_0.1.0_amd64.AppImage collect-linux-diagnostics.sh
@@ -67,6 +67,12 @@ Controlled native-Wayland comparison:
 
 ```bash
 ./collect-linux-diagnostics.sh ./YAQMC_0.1.0_amd64.AppImage native-wayland
+```
+
+Controlled X11/XWayland fallback:
+
+```bash
+./collect-linux-diagnostics.sh ./YAQMC_0.1.0_amd64.AppImage x11
 ```
 
 The native comparison counts only if `yaqmc.log` reports `display_backend="wayland-native"`. If the AppImage runtime

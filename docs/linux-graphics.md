@@ -7,10 +7,10 @@ failure domains and are logged separately.
 
 `YAQMC_LINUX_RENDERER=auto` is implicit and sets no acceleration variables in YAQMC. The application source does not
 force a GTK backend. The packaged AppImage is a separate layer: Tauri CLI 2.11.4 emitted an unconditional
-`GDK_BACKEND=x11`, which produced XWayland on the recorded Hyprland session. The YAQMC packaging step changes that
-single assignment to an X11 default that respects an explicit value. `GDK_BACKEND=wayland` is therefore available
-through the tester's `native-wayland` mode; it is not shipped as the global default without controlled runtime
-evidence.
+`GDK_BACKEND=x11`, which produced XWayland on the recorded Hyprland session. The YAQMC packaging step replaces it
+with session-aware selection: explicit `GDK_BACKEND` first, then native Wayland when both the session type and
+Wayland display indicate Wayland, otherwise X11. This makes `baseline` follow the host while keeping explicit
+`native-wayland` and `x11` comparisons.
 
 The main Linux window is opaque because a full-window transparent WebKit surface is not required by the product
 shell. Linux CSS preserves the hierarchy and palette while removing the largest live backdrop blurs, replacing the
@@ -23,8 +23,9 @@ These are opt-in diagnostics rather than automatic GPU guesses:
 
 | Mode                  | Applied variables                           | Intended use                  |
 | --------------------- | ------------------------------------------- | ----------------------------- |
-| `baseline`            | no YAQMC graphics override                  | packaged default              |
+| `baseline`            | no explicit override                        | follow active desktop session |
 | `native-wayland`      | `GDK_BACKEND=wayland`                       | controlled backend comparison |
+| `x11`                 | `GDK_BACKEND=x11`                           | controlled X11/XWayland path  |
 | `nv-explicit-sync`    | `__NV_DISABLE_EXPLICIT_SYNC=1`              | NVIDIA-specific comparison    |
 | `disable-dmabuf`      | `WEBKIT_DISABLE_DMABUF_RENDERER=1`          | confirmed DMABUF failure      |
 | `software`            | DMABUF disabled + `LIBGL_ALWAYS_SOFTWARE=1` | last-resort safe mode         |
