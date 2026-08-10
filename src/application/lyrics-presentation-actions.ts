@@ -42,9 +42,9 @@ export function closeLyricsPresentation(): Promise<boolean> {
   return shared;
 }
 
-export async function runAfterLyricsClose(action: () => void): Promise<boolean> {
+export async function runAfterLyricsClose(action: () => void | Promise<void>): Promise<boolean> {
   if (!(await closeLyricsPresentation())) return false;
-  action();
+  await action();
   return true;
 }
 

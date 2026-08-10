@@ -185,6 +185,60 @@ describe('lyrics presentation actions', () => {
     expect(useLyricsPresentationStore.getState().error).toBe('native fullscreen denial');
   });
 
+  it('keeps a history transition gated while fullscreen exit is pending', async () => {
+    const exitGate = deferred<void>();
+    let historyIndex = 1;
+    port.fullscreen = true;
+    port.write = async (value) => {
+      port.writes.push(value);
+      await exitGate.promise;
+      port.fullscreen = value;
+    };
+    usePlayerStore.setState({ lyricsOpen: true });
+    useLyricsPresentationStore.setState({ fullscreen: true });
+
+    const transition = runAfterLyricsClose(() => {
+      historyIndex = 0;
+    });
+    await Promise.resolve();
+
+    expect(historyIndex).toBe(1);
+    exitGate.resolve();
+    await expect(transition).resolves.toBe(true);
+    expect(historyIndex).toBe(0);
+  });
+
+  it('waits for an asynchronous gated action before reporting success', async () => {
+    const actionGate = deferred<void>();
+    let historyIndex = 1;
+
+    const transition = runAfterLyricsClose(async () => {
+      await actionGate.promise;
+      historyIndex = 0;
+    });
+    let settled = false;
+    void transition.then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(settled).toBe(false);
+    expect(historyIndex).toBe(1);
+    actionGate.resolve();
+    await expect(transition).resolves.toBe(true);
+    expect(historyIndex).toBe(0);
+  });
+
+  it('propagates an asynchronous gated action rejection', async () => {
+    const failure = new Error('history transition failed');
+
+    await expect(
+      runAfterLyricsClose(async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+  });
+
   it('opens Queue only after a confirmed Lyrics close', async () => {
     port.failWrite = true;
     port.fullscreen = true;

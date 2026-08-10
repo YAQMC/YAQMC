@@ -135,13 +135,20 @@ export default function App() {
     };
   }, [navigate]);
 
-  const goBack = () =>
-    setHistory((current) => ({ ...current, index: Math.max(0, current.index - 1) }));
-  const goForward = () =>
-    setHistory((current) => ({
-      ...current,
-      index: Math.min(current.entries.length - 1, current.index + 1),
-    }));
+  const goBack = useCallback(() => {
+    void runAfterLyricsClose(() => {
+      setHistory((current) => ({ ...current, index: Math.max(0, current.index - 1) }));
+    });
+  }, []);
+
+  const goForward = useCallback(() => {
+    void runAfterLyricsClose(() => {
+      setHistory((current) => ({
+        ...current,
+        index: Math.min(current.entries.length - 1, current.index + 1),
+      }));
+    });
+  }, []);
 
   useEffect(() => {
     if (isNativeRuntime) return;
