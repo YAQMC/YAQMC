@@ -45,6 +45,8 @@ A local TCP HTTP fixture covers exact 206 data, initial 200 fallback, 416 valida
 seek, cancellation, sparse-part cleanup, complete-cache promotion and later 403 expiry classification. Player tests
 cover bounded source re-resolution and stale-load generation rejection. Tests never call QQ Music.
 
-Real time-to-first-audio and remote-seek latency require the Arch/normal-network run. The structured
-`stream.range`/`stream.buffer` logs record initial response and first-buffer time so that result can be compared to
-the prior full-download build without guessing.
+The 2026-08-10 Arch baseline recorded a 206 response for bytes 0-524287 in 195 ms and a 512 KiB initialized buffer in
+334 ms for a 960,887-byte source. This proves progressive initialization before the full source is required. It is
+not audible time-to-first-audio: the report did not timestamp source resolution, decoder readiness or the first
+device callback, and it contains no prior-build measurement. Remote-seek latency and a before/after audible result
+therefore remain pending.

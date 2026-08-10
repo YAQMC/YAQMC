@@ -14,18 +14,18 @@ YAQMC is not affiliated with Tencent or QQ Music. It does not bypass DRM, subscr
 
 ## Platform status
 
-| Area                          | Windows                       | Linux                                                              |
-| ----------------------------- | ----------------------------- | ------------------------------------------------------------------ |
-| Main desktop client           | implemented and locally built | implemented; AppImage built in CI                                  |
-| Native audio                  | Rodio/CPAL                    | Rodio/CPAL through the host ALSA route                             |
-| System media session          | SMTC                          | MPRIS 2.2                                                          |
-| Tray and close-to-tray        | implemented                   | implemented; desktop-dependent presentation                        |
-| Lyric overlays                | full window semantics         | X11/XWayland test pending; native Wayland limitations are reported |
-| Configurable global shortcuts | implemented                   | X11 backend only; disabled on native Wayland                       |
+| Area                          | Windows                       | Linux                                                            |
+| ----------------------------- | ----------------------------- | ---------------------------------------------------------------- |
+| Main desktop client           | implemented and locally built | AppImage starts on Arch/Hyprland through XWayland                |
+| Native audio                  | Rodio/CPAL                    | Rodio/CPAL through the host ALSA route                           |
+| System media session          | SMTC                          | MPRIS 2.2                                                        |
+| Tray and close-to-tray        | implemented                   | implemented; desktop-dependent presentation                      |
+| Lyric overlays                | full window semantics         | runtime interaction pending; native Wayland limitations reported |
+| Configurable global shortcuts | implemented                   | X11 backend only; disabled on native Wayland                     |
 
-The Linux development work was performed from Windows. A successful CI/AppImage build is not claimed as native
-Wayland, X11, compositor, audio or performance acceptance. The exact Arch Linux tester procedure and honest
-capability matrix are in [docs/linux.md](docs/linux.md).
+The Linux development work was performed from Windows. One Arch/Hyprland baseline proves XWayland startup, MPRIS/tray
+initialization and progressive buffering; it is not native-Wayland, X11, overlay-interaction, controller, audible
+audio or performance acceptance. The evidence and capability matrix are in [docs/linux.md](docs/linux.md).
 
 ## Run locally
 
@@ -92,8 +92,9 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
   HTTP tests. A complete sparse source is atomically promoted into the normal provider-aware cache.
 - Locking a lyric overlay intentionally makes it click-through. Unlocking does not depend on clicking that window:
   Settings and the tray menu both invoke a direct native unlock path.
-- Linux startup diagnostics distinguish native Wayland from XWayland using the actual window handle. The default
-  graphics mode does not force X11 or globally disable acceleration; explicit compatibility modes are documented.
+- Linux startup diagnostics distinguish native Wayland from XWayland using the actual window handle. YAQMC does not
+  globally disable acceleration; Tauri's AppImage launcher defaults to X11, with controlled native-Wayland and
+  graphics compatibility comparisons documented separately.
 - Secrets use the operating-system credential store. The loopback API is disabled by default, binds only to
   `127.0.0.1`, and requires a random bearer token for every `/v1` endpoint.
 - Account login and library mutation are intentionally out of scope until an approved authorization route exists.

@@ -12,7 +12,8 @@ playback URLs are never exported. CanGoNext/Previous/Play/Pause/Seek are project
 changes are emitted by the server implementation, and an explicit player seek emits `Seeked` in microseconds.
 
 MPRIS `Raise` shows/focuses the main window and `Quit` exits. Media keys handled by the desktop environment reach
-the same service. A real `playerctl`/GNOME/KDE test is pending Linux runtime acceptance.
+the same service. The 2026-08-10 Arch/XWayland baseline proves that the MPRIS 2.2 service starts; no `playerctl` or
+desktop-shell command result was captured, so real controller acceptance remains pending.
 
 ## Windows SMTC
 

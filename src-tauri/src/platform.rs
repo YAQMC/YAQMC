@@ -197,7 +197,7 @@ pub fn export_bundle(
     .map_err(|error| error.to_string())?;
     fs::write(
         directory.join("README.txt"),
-        "YAQMC Linux diagnostic bundle\n\nRun:\n  chmod +x collect-linux-diagnostics.sh\n  ./collect-linux-diagnostics.sh /path/to/YAQMC.AppImage baseline\n\nClose YAQMC after testing; send the generated report directory back to the maintainer.\nThe script collects only operating-system, graphics, audio and YAQMC log information.\n",
+        "YAQMC Linux diagnostic bundle\n\nRun:\n  chmod +x collect-linux-diagnostics.sh\n  ./collect-linux-diagnostics.sh /path/to/YAQMC.AppImage baseline\n\nFor a controlled native-Wayland comparison:\n  ./collect-linux-diagnostics.sh /path/to/YAQMC.AppImage native-wayland\n\nClose YAQMC after testing; send the generated report directory back to the maintainer.\nThe script collects only operating-system, graphics, audio, YAQMC logs and process-tree resource samples. ps %CPU is a lifetime average, not an instantaneous sample; summed RSS can double-count shared pages.\n",
     )
     .map_err(|error| error.to_string())?;
     Ok(directory)

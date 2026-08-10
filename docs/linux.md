@@ -1,15 +1,37 @@
 # Linux runtime and acceptance
 
-## Current evidence boundary
+## Evidence boundary
 
-The Linux x86_64 AppImage is built in an Ubuntu GitHub Actions runner. That proves compilation and packaging only.
-The current development host is Windows, so native Linux GUI, compositor, MPRIS controller and audio acceptance are
-explicitly **pending an Arch Linux tester**. Do not interpret this document or a successful AppImage build as a
-native-Wayland performance result.
+The x86_64 AppImage is built on Ubuntu in GitHub Actions. In addition, one real Arch Linux baseline report was
+captured on 2026-08-10:
 
-## Runtime detection
+| Item                        | Observed value                                                                |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| Distribution / kernel       | Arch Linux rolling / `7.1.6-zen1-1-zen`                                       |
+| Desktop / session           | Hyprland / Wayland session                                                    |
+| Actual YAQMC window backend | `xwayland` from the raw window handle                                         |
+| GPU / driver                | Intel Raptor Lake-S UHD (`i915`) + NVIDIA RTX 4060 Max-Q (`nvidia` 610.57.04) |
+| Host graphics packages      | GTK 3.24.52, Mesa 26.1.6, WebKitGTK 2.52.5                                    |
+| YAQMC-reported WebKitGTK    | 2.50.4                                                                        |
+| Process lifetime            | 105.147 s, closed normally by the tester                                      |
 
-`platform_diagnostics` records the active window handle, not only `XDG_SESSION_TYPE`:
+The report proves that the packaged application starts in this XWayland configuration. MPRIS 2.2 and the tray
+adapter both reported ready. One media request returned an exact 206 response in 195 ms; the 512 KiB initial
+progressive buffer was ready in 334 ms. The only warning in the application log was an ATK bridge signature warning;
+there was no crash or graphics-protocol error.
+
+The old sampler measured only the main PID. Its first usable RSS sample was 207 MiB and the final 20 samples averaged
+363 MiB. `ps %CPU` was a lifetime average that decayed from 27.4% after startup to 8.3%, not instantaneous idle CPU.
+These values omit WebKit child processes and cannot establish an idle/per-surface performance regression. The revised
+script records the complete descendant process tree and labels lifetime CPU and summed RSS accurately; summed RSS can
+still double-count shared pages.
+
+This report did not record frame pacing, action-specific CPU, audible time-to-first-audio, `playerctl` commands,
+overlay lock/unlock interaction, native Wayland, or X11. Those remain unaccepted.
+
+## Runtime detection and AppImage backend policy
+
+`platform_diagnostics` records the active raw window handle, not only `XDG_SESSION_TYPE`:
 
 | Session | Raw window handle | Reported backend |
 | ------- | ----------------- | ---------------- |
@@ -17,32 +39,40 @@ native-Wayland performance result.
 | Wayland | Xlib/Xcb          | `xwayland`       |
 | X11     | Xlib/Xcb          | `x11`            |
 
-The same diagnostic includes the safe display variables, desktop hint, WebKitGTK runtime version, graphics override,
-DRM card vendor/device/driver IDs, selected audio output, MPRIS status, tray status and shortcut status. The Settings
-page can export a directory containing this JSON and `collect-linux-diagnostics.sh`.
+The application source does not set `GDK_BACKEND`, `WINIT_UNIX_BACKEND`, `DISPLAY` or `WAYLAND_DISPLAY`. Tauri CLI
+2.11.4 generated an AppImage hook with an unconditional `GDK_BACKEND=x11`, which explains the observed XWayland
+baseline and also prevented an external override. The YAQMC build now rewrites only that hook assignment to
+`GDK_BACKEND="${GDK_BACKEND:-x11}"`, matching Tauri's upstream correction. The safe X11 default remains because Tauri
+documents a historical AppImage crash on the Wayland backend, but the tester can now supply `GDK_BACKEND=wayland` in
+the controlled `native-wayland` mode. XWayland is not treated as native-Wayland acceptance.
 
-No source, build script or AppImage launcher sets `GDK_BACKEND`, `WINIT_UNIX_BACKEND`, `DISPLAY` or
-`WAYLAND_DISPLAY`. GTK/WebKitGTK therefore selects its normal backend. Configurable global shortcuts are disabled on
-an actual native-Wayland window backend; media keys remain routed through MPRIS.
+References: [Tauri AppImage GTK launcher](https://github.com/tauri-apps/tauri/blob/e2e585ad1196c9572f86ef39aae01ef4c3b1a762/crates/tauri-bundler/src/bundle/linux/appimage/linuxdeploy-plugin-gtk.sh),
+[change note](https://github.com/tauri-apps/tauri/blob/e2e585ad1196c9572f86ef39aae01ef4c3b1a762/.changes/appimage-respect-gdk-backend.md), and
+[Linux graphics guidance](https://v2.tauri.app/develop/debug/linux-graphics/).
+
+The Settings diagnostics include safe display variables, desktop hint, runtime WebKitGTK version, graphics override,
+DRM vendor/device/driver IDs, selected audio output, MPRIS, tray and shortcut status. They can export the same tester
+script embedded in the AppImage.
 
 ## Arch tester procedure
 
-```bash
-chmod +x YAQMC_0.1.0_amd64.AppImage
-./YAQMC_0.1.0_amd64.AppImage
-```
-
-If the AppImage runtime reports missing FUSE, Arch users can install `fuse2`, or use the AppImage runtime's
-`--appimage-extract-and-run` fallback.
-
-For a controlled report:
+Baseline:
 
 ```bash
-chmod +x collect-linux-diagnostics.sh
+chmod +x YAQMC_0.1.0_amd64.AppImage collect-linux-diagnostics.sh
 ./collect-linux-diagnostics.sh ./YAQMC_0.1.0_amd64.AppImage baseline
 ```
 
-Repeat only when the baseline shows a relevant NVIDIA/WebKitGTK failure:
+Controlled native-Wayland comparison:
+
+```bash
+./collect-linux-diagnostics.sh ./YAQMC_0.1.0_amd64.AppImage native-wayland
+```
+
+The native comparison counts only if `yaqmc.log` reports `display_backend="wayland-native"`. If the AppImage runtime
+reports missing FUSE, install `fuse2` on Arch or use the AppImage runtime's `--appimage-extract-and-run` fallback.
+
+Repeat a graphics workaround only when the baseline/native run shows a relevant failure:
 
 ```bash
 ./collect-linux-diagnostics.sh ./YAQMC_0.1.0_amd64.AppImage nv-explicit-sync
@@ -51,22 +81,21 @@ Repeat only when the baseline shows a relevant NVIDIA/WebKitGTK failure:
 ./collect-linux-diagnostics.sh ./YAQMC_0.1.0_amd64.AppImage disable-compositing
 ```
 
-For each run, exercise startup, main-page scrolling, resize, playback/seek, Desktop Lyrics, Lyrics Island, lock and
-tray unlock, and close-to-tray. Close YAQMC normally. The script records safe environment/package/GPU/audio facts,
-YAQMC structured logs, process CPU, RSS and elapsed samples.
+For each run, exercise startup, scrolling, resize, playback/seek, Desktop Lyrics, Lyrics Island, lock, tray unlock and
+close-to-tray. Close YAQMC normally and attach the generated report directory plus concise subjective observations.
 
 ## Capability matrix
 
-| Capability                     | Windows                     | Linux X11                    | Linux XWayland               | Native Wayland                  |
-| ------------------------------ | --------------------------- | ---------------------------- | ---------------------------- | ------------------------------- |
-| Main window                    | implemented, Windows-tested | implemented; runtime pending | implemented; runtime pending | implemented; runtime pending    |
-| Absolute lyric placement       | implemented                 | expected/requires test       | expected/requires test       | not promised                    |
-| Reliable always-on-top overlay | implemented                 | expected/requires test       | compositor-dependent         | not promised                    |
-| Click-through lyric lock       | implemented                 | expected/requires test       | compositor-dependent         | exposed as unreliable           |
-| Unlock recovery                | Settings + tray             | Settings + tray              | Settings + tray              | Settings + tray                 |
-| Global shortcuts               | implemented                 | X11 backend                  | X11 backend                  | disabled; MPRIS media keys only |
-| System media controls          | SMTC                        | MPRIS 2.2                    | MPRIS 2.2                    | MPRIS 2.2                       |
-| Tray context menu              | implemented                 | implemented; runtime pending | implemented; runtime pending | implemented; runtime pending    |
+| Capability                     | Windows                             | Linux X11                       | Linux XWayland                       | Native Wayland                  |
+| ------------------------------ | ----------------------------------- | ------------------------------- | ------------------------------------ | ------------------------------- |
+| Main window                    | implemented; GUI acceptance pending | implemented; runtime pending    | starts on tested Arch/Hyprland host  | implemented; runtime pending    |
+| Absolute lyric placement       | implemented                         | expected; test pending          | expected; test pending               | not promised                    |
+| Reliable always-on-top overlay | implemented                         | expected; test pending          | compositor-dependent                 | not promised                    |
+| Click-through lyric lock       | implemented                         | expected; test pending          | compositor-dependent; test pending   | exposed as unreliable           |
+| Unlock recovery                | Settings + tray direct native path  | same; test pending              | same; test pending                   | same; test pending              |
+| Global shortcuts               | implemented                         | X11 backend; test pending       | X11 backend; test pending            | disabled; MPRIS media keys only |
+| System media controls          | SMTC; real test pending             | MPRIS 2.2; real control pending | service starts; real control pending | MPRIS 2.2; real control pending |
+| Tray context menu              | implemented; GUI test pending       | implemented; test pending       | initializes; interaction pending     | implemented; test pending       |
 
-Auxiliary lyric WebViews are created only while their feature is enabled and are closed when disabled. This avoids
-paying the steady-state WebKitGTK cost for unused lyric surfaces.
+Auxiliary lyric WebViews exist only while their feature is enabled and are closed when disabled, avoiding steady-state
+WebKitGTK cost for unused lyric surfaces.

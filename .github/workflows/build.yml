@@ -45,7 +45,23 @@ jobs:
       - name: Stage tester bundle
         run: |
           mkdir -p release/YAQMC-linux-x86_64
-          cp src-tauri/target/release/bundle/appimage/*.AppImage release/YAQMC-linux-x86_64/
+          curl --fail --location --retry 3 \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            --output /tmp/appimagetool-x86_64.AppImage
+          echo 'a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0  /tmp/appimagetool-x86_64.AppImage' | sha256sum --check
+          chmod +x /tmp/appimagetool-x86_64.AppImage scripts/repack-appimage-gdk-backend.sh
+          source_appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$source_appimage"
+          scripts/repack-appimage-gdk-backend.sh \
+            "$source_appimage" \
+            /tmp/appimagetool-x86_64.AppImage \
+            "release/YAQMC-linux-x86_64/$(basename "$source_appimage")"
+          verify_dir="$(mktemp -d)"
+          (
+            cd "$verify_dir"
+            "$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/$(basename "$source_appimage")" --appimage-extract >/dev/null
+            grep -F 'export GDK_BACKEND="${GDK_BACKEND:-x11}"' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
+          )
           cp scripts/collect-linux-diagnostics.sh release/YAQMC-linux-x86_64/
           cp docs/linux.md release/YAQMC-linux-x86_64/TESTING.md
       - uses: actions/upload-artifact@v4
