@@ -16,16 +16,17 @@ YAQMC is not affiliated with Tencent or QQ Music. It does not bypass DRM, subscr
 
 | Area                          | Windows                       | Linux                                                            |
 | ----------------------------- | ----------------------------- | ---------------------------------------------------------------- |
-| Main desktop client           | implemented and locally built | AppImage starts on Arch/Hyprland through XWayland                |
+| Main desktop client           | implemented and locally built | AppImage starts natively on Arch/Hyprland Wayland                |
 | Native audio                  | Rodio/CPAL                    | Rodio/CPAL through the host ALSA route                           |
 | System media session          | SMTC                          | MPRIS 2.2                                                        |
 | Tray and close-to-tray        | implemented                   | implemented; desktop-dependent presentation                      |
 | Lyric overlays                | full window semantics         | runtime interaction pending; native Wayland limitations reported |
 | Configurable global shortcuts | implemented                   | X11 backend only; disabled on native Wayland                     |
 
-The Linux development work was performed from Windows. One Arch/Hyprland baseline proves XWayland startup, MPRIS/tray
-initialization and progressive buffering; it is not native-Wayland, X11, overlay-interaction, controller, audible
-audio or performance acceptance. The evidence and capability matrix are in [docs/linux.md](docs/linux.md).
+The Linux development work was performed from Windows. The latest Arch/Hyprland baseline proves native-Wayland
+window creation and MPRIS/tray initialization. It does not prove audible playback, media-controller behavior,
+overlay interaction, or action-specific performance. The evidence boundary and capability matrix are in
+[docs/linux.md](docs/linux.md).
 
 ## Run locally
 
