@@ -1,6 +1,7 @@
 import { Profiler } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearArtworkMemoryCache } from '../application/artwork-cache';
 import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
@@ -10,6 +11,27 @@ import { allSongs, lyricsBySong } from '../providers/fake/fixtures';
 import '../styles/components.css';
 import '../styles/platform.css';
 import { LyricsPanel } from './LyricsPanel';
+
+const nativeArtworkMocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: nativeArtworkMocks.invoke,
+  isTauri: () => true,
+}));
+
+const safeArtwork = 'data:image/png;base64,AA==';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 function presentationProps(overrides: Partial<React.ComponentProps<typeof LyricsPanel>> = {}) {
   return {
@@ -73,6 +95,7 @@ describe('LyricsPanel', () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    clearArtworkMemoryCache();
     if (scrollToDescriptor) {
       Object.defineProperty(HTMLElement.prototype, 'scrollTo', scrollToDescriptor);
     } else {
@@ -107,6 +130,9 @@ describe('LyricsPanel', () => {
   });
 
   beforeEach(() => {
+    nativeArtworkMocks.invoke.mockReset();
+    nativeArtworkMocks.invoke.mockResolvedValue(safeArtwork);
+    clearArtworkMemoryCache();
     scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
@@ -178,7 +204,10 @@ describe('LyricsPanel', () => {
       error: null,
     });
     usePreferencesStore.setState({
+      appearance: { ...defaultPreferences.appearance },
       lyrics: { ...defaultPreferences.lyrics },
+      backgroundImageData: null,
+      backgroundImageMissing: false,
     });
   });
 
@@ -631,4 +660,109 @@ describe('LyricsPanel', () => {
       expect(getComputedStyle(inactive).contain).toBe('layout paint style');
     },
   );
+
+  it('projects persisted image and color backgrounds without remounting the lyrics stage', () => {
+    const managedImage = 'data:image/webp;base64,AQ==';
+    usePreferencesStore.setState({
+      appearance: {
+        ...defaultPreferences.appearance,
+        backgroundMode: 'image',
+        backgroundFit: 'contain',
+      },
+      backgroundImageData: managedImage,
+    });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = screen.getByRole('region', { name: 'Synchronized lyrics' });
+
+    expect(stage).toHaveAttribute('data-background-mode', 'image');
+    expect(stage).toHaveAttribute('data-image-fit', 'contain');
+    expect(stage).toHaveAttribute('data-song-id', 'quiet-light');
+    expect(container.querySelector('.lyrics-stage__backdrop')).toHaveStyle({
+      backgroundImage: `url("${managedImage}")`,
+    });
+
+    act(() =>
+      usePreferencesStore.setState((state) => ({
+        appearance: {
+          ...state.appearance,
+          backgroundMode: 'color',
+          backgroundColor: '#abc',
+        },
+      })),
+    );
+
+    expect(screen.getByRole('region', { name: 'Synchronized lyrics' })).toBe(stage);
+    expect(stage).toHaveAttribute('data-background-mode', 'color');
+    expect(stage.style.backgroundColor).toBe('rgb(170, 187, 204)');
+    expect(stage.style.getPropertyValue('--lyrics-stage-base')).toBe('#AABBCC');
+    expect(container.querySelector('.lyrics-stage__backdrop')).not.toBeInTheDocument();
+  });
+
+  it('keeps native remote artwork out of every Lyrics DOM surface while caching is pending', async () => {
+    const pending = deferred<unknown>();
+    const remote = 'https://qpic.y.qq.com/private-pending.jpg';
+    nativeArtworkMocks.invoke.mockReturnValue(pending.promise);
+    const current = usePlayerStore.getState().queue[0];
+    if (!current) throw new Error('current fixture is missing');
+    usePlayerStore.setState({
+      queue: [{ ...current, artwork: { ...current.artwork, src: remote } }],
+    });
+    usePreferencesStore.setState((state) => ({
+      appearance: { ...state.appearance, backgroundMode: 'artwork' },
+    }));
+    const { container } = render(<LyricsPanel {...presentationProps({ fullscreen: true })} />);
+
+    await waitFor(() =>
+      expect(nativeArtworkMocks.invoke).toHaveBeenCalledWith('qqmusic_cache_artwork', {
+        url: remote,
+      }),
+    );
+    expect(container.innerHTML).not.toContain(remote);
+    expect(container.querySelector('.lyrics-stage__backdrop')).not.toBeInTheDocument();
+    expect(container.querySelector('.lyrics-stage__track img')).not.toBeInTheDocument();
+    expect(container.querySelector('.lyrics-fullscreen-transport img')).not.toBeInTheDocument();
+
+    await act(async () => pending.resolve(safeArtwork));
+    await waitFor(() =>
+      expect(container.querySelector('.lyrics-stage__backdrop')).toHaveStyle({
+        backgroundImage: `url("${safeArtwork}")`,
+      }),
+    );
+    for (const image of container.querySelectorAll('img')) {
+      expect(image).toHaveAttribute('src', safeArtwork);
+    }
+    expect(container.innerHTML).not.toContain(remote);
+  });
+
+  it('keeps failed native remote artwork out of Lyrics DOM without a raw fallback', async () => {
+    const remote = 'https://y.gtimg.cn/private-failed.jpg';
+    nativeArtworkMocks.invoke.mockRejectedValue(new Error('cache failed'));
+    const current = usePlayerStore.getState().queue[0];
+    if (!current) throw new Error('current fixture is missing');
+    usePlayerStore.setState({
+      queue: [{ ...current, artwork: { ...current.artwork, src: remote } }],
+    });
+    usePreferencesStore.setState((state) => ({
+      appearance: { ...state.appearance, backgroundMode: 'artwork' },
+    }));
+    const { container } = render(<LyricsPanel {...presentationProps({ fullscreen: true })} />);
+
+    await waitFor(() => expect(nativeArtworkMocks.invoke).toHaveBeenCalledTimes(1));
+    await act(async () => Promise.resolve());
+    expect(container.innerHTML).not.toContain(remote);
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+    expect(container.querySelector('.lyrics-stage__backdrop')).not.toBeInTheDocument();
+  });
+
+  it('tracks the primitive current song ID without retaining a stale fixture identity', () => {
+    const next = allSongs.find((candidate) => candidate.id === 'paper-sun');
+    if (!next) throw new Error('paper-sun fixture is missing');
+    render(<LyricsPanel {...presentationProps()} />);
+    const stage = screen.getByRole('region', { name: 'Synchronized lyrics' });
+    expect(stage).toHaveAttribute('data-song-id', 'quiet-light');
+
+    act(() => usePlayerStore.setState({ queue: [next], currentIndex: 0 }));
+
+    expect(stage).toHaveAttribute('data-song-id', 'paper-sun');
+  });
 });

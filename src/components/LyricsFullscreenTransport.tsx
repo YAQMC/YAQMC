@@ -10,10 +10,8 @@ import {
   type Ref,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCurrentSong, usePlayerStore } from '../application/player-store';
-import type { Song } from '../domain/music';
+import { usePlayerStore } from '../application/player-store';
 import { joinArtistNames } from '../utils/format';
-import { Artwork } from './ui/Artwork';
 import { IconButton } from './ui/IconButton';
 
 const HIDE_DELAY_MS = 2_400;
@@ -24,10 +22,18 @@ export interface LyricsFullscreenTransportHandle {
 
 interface LyricsFullscreenTransportProps {
   ref?: Ref<LyricsFullscreenTransportHandle>;
+  artworkSource: string | null;
 }
 
-export function LyricsFullscreenTransport({ ref }: LyricsFullscreenTransportProps) {
-  const current = useCurrentSong();
+export function LyricsFullscreenTransport({ ref, artworkSource }: LyricsFullscreenTransportProps) {
+  const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id ?? null);
+  const currentTitle = usePlayerStore((state) => state.queue[state.currentIndex]?.title ?? '');
+  const currentArtistLabel = usePlayerStore((state) =>
+    joinArtistNames(state.queue[state.currentIndex]?.artists ?? []),
+  );
+  const currentDurationMs = usePlayerStore(
+    (state) => state.queue[state.currentIndex]?.durationMs ?? null,
+  );
   const positionMs = usePlayerStore((state) => state.positionMs);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
@@ -35,12 +41,16 @@ export function LyricsFullscreenTransport({ ref }: LyricsFullscreenTransportProp
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const next = usePlayerStore((state) => state.next);
 
-  if (!current) return null;
+  if (currentId === null) return null;
 
   return (
     <LyricsFullscreenTransportSurface
       ref={ref}
-      current={current}
+      currentId={currentId}
+      currentTitle={currentTitle}
+      currentArtistLabel={currentArtistLabel}
+      currentDurationMs={currentDurationMs}
+      artworkSource={artworkSource}
       positionMs={positionMs}
       isPlaying={isPlaying}
       playbackDurationMs={playbackDurationMs}
@@ -53,7 +63,11 @@ export function LyricsFullscreenTransport({ ref }: LyricsFullscreenTransportProp
 
 interface LyricsFullscreenTransportSurfaceProps {
   ref?: Ref<LyricsFullscreenTransportHandle>;
-  current: Song;
+  currentId: string;
+  currentTitle: string;
+  currentArtistLabel: string;
+  currentDurationMs: number | null;
+  artworkSource: string | null;
   positionMs: number;
   isPlaying: boolean;
   playbackDurationMs: number | null;
@@ -64,7 +78,11 @@ interface LyricsFullscreenTransportSurfaceProps {
 
 function LyricsFullscreenTransportSurface({
   ref,
-  current,
+  currentId,
+  currentTitle,
+  currentArtistLabel,
+  currentDurationMs,
+  artworkSource,
   positionMs,
   isPlaying,
   playbackDurationMs,
@@ -114,7 +132,7 @@ function LyricsFullscreenTransportSurface({
       setVisible(false);
     }, HIDE_DELAY_MS);
     return clearTimer;
-  }, [clearTimer, current.id, focused, isPlaying]);
+  }, [clearTimer, currentId, focused, isPlaying]);
 
   const pinVisible = () => {
     clearTimer();
@@ -134,7 +152,7 @@ function LyricsFullscreenTransportSurface({
     }
   };
 
-  const durationMs = playbackDurationMs ?? current.durationMs ?? 0;
+  const durationMs = playbackDurationMs ?? currentDurationMs ?? 0;
   const progress =
     durationMs > 0 && Number.isFinite(positionMs)
       ? Math.min(100, Math.max(0, (positionMs / durationMs) * 100))
@@ -149,14 +167,12 @@ function LyricsFullscreenTransportSurface({
       onFocusCapture={pinVisible}
       onBlurCapture={handleBlurCapture}
     >
-      <Artwork
-        artwork={{ ...current.artwork, alt: '' }}
-        className="lyrics-fullscreen-transport__artwork"
-        loading="eager"
-      />
+      <span className="artwork lyrics-fullscreen-transport__artwork" aria-hidden="true">
+        {artworkSource && <img src={artworkSource} alt="" loading="eager" draggable={false} />}
+      </span>
       <div className="lyrics-fullscreen-transport__track">
-        <strong>{current.title}</strong>
-        <span>{joinArtistNames(current.artists)}</span>
+        <strong>{currentTitle}</strong>
+        <span>{currentArtistLabel}</span>
       </div>
       <div className="lyrics-fullscreen-transport__controls">
         <IconButton label={player('previous')} size="small" onClick={previous}>

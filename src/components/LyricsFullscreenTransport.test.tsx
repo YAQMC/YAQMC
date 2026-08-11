@@ -16,6 +16,7 @@ function requiredSong() {
 }
 
 const song = requiredSong();
+const safeArtwork = 'data:image/png;base64,AA==';
 
 function setPlaybackState(overrides: Partial<typeof initialPlayerState> = {}) {
   usePlayerStore.setState({
@@ -51,7 +52,7 @@ describe('LyricsFullscreenTransport', () => {
   it('dispatches localized previous, play-pause, and next controls through the player adapter', () => {
     const adapter = vi.fn<(command: PlayerCommand) => Promise<void>>().mockResolvedValue(undefined);
     setPlayerCommandAdapter(adapter);
-    const { rerender } = render(<LyricsFullscreenTransport />);
+    const { rerender } = render(<LyricsFullscreenTransport artworkSource={safeArtwork} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous track' }));
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
@@ -64,13 +65,13 @@ describe('LyricsFullscreenTransport', () => {
     ]);
 
     act(() => usePlayerStore.setState({ isPlaying: false, playbackState: 'paused' }));
-    rerender(<LyricsFullscreenTransport />);
+    rerender(<LyricsFullscreenTransport artworkSource={safeArtwork} />);
     expect(screen.getByRole('button', { name: 'Play' })).toBeVisible();
   });
 
   it('hides after one full delay and reveal replaces it with exactly one full delay', () => {
     const ref = createRef<LyricsFullscreenTransportHandle>();
-    render(<LyricsFullscreenTransport ref={ref} />);
+    render(<LyricsFullscreenTransport ref={ref} artworkSource={safeArtwork} />);
 
     expect(transport()).toHaveAttribute('data-visible', 'true');
     expect(vi.getTimerCount()).toBe(1);
@@ -91,7 +92,7 @@ describe('LyricsFullscreenTransport', () => {
   });
 
   it('pins visibility across internal focus moves and starts a fresh delay after focus leaves', () => {
-    render(<LyricsFullscreenTransport />);
+    render(<LyricsFullscreenTransport artworkSource={safeArtwork} />);
     const previous = screen.getByRole('button', { name: 'Previous track' });
     const next = screen.getByRole('button', { name: 'Next track' });
     const outside = document.createElement('button');
@@ -102,6 +103,7 @@ describe('LyricsFullscreenTransport', () => {
     expect(vi.getTimerCount()).toBe(0);
 
     fireEvent.blur(previous, { relatedTarget: next });
+    expect(vi.getTimerCount()).toBe(0);
     fireEvent.focus(next, { relatedTarget: previous });
     act(() => vi.advanceTimersByTime(4_800));
     expect(transport()).toHaveAttribute('data-visible', 'true');
@@ -114,11 +116,12 @@ describe('LyricsFullscreenTransport', () => {
     expect(transport()).toHaveAttribute('data-visible', 'true');
     act(() => vi.advanceTimersByTime(1));
     expect(transport()).not.toHaveAttribute('data-visible');
+    outside.remove();
   });
 
   it('keeps paused playback visible and gives paused-to-playing a full grace period', () => {
     setPlaybackState({ isPlaying: false, playbackState: 'paused' });
-    render(<LyricsFullscreenTransport />);
+    render(<LyricsFullscreenTransport artworkSource={safeArtwork} />);
 
     expect(transport()).toHaveAttribute('data-visible', 'true');
     expect(vi.getTimerCount()).toBe(0);
@@ -136,14 +139,14 @@ describe('LyricsFullscreenTransport', () => {
 
   it('renders nothing and leaves no timer when there is no current song', () => {
     setPlaybackState({ queue: [], currentIndex: -1 });
-    const { container } = render(<LyricsFullscreenTransport />);
+    const { container } = render(<LyricsFullscreenTransport artworkSource={safeArtwork} />);
 
     expect(container).toBeEmptyDOMElement();
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('uses duration fallback, native position snapshots, and clamps progress to zero through one hundred', () => {
-    const { container } = render(<LyricsFullscreenTransport />);
+    const { container } = render(<LyricsFullscreenTransport artworkSource={safeArtwork} />);
     const progress = () =>
       container.querySelector<HTMLElement>('.lyrics-fullscreen-transport__progress-fill');
 
@@ -163,11 +166,16 @@ describe('LyricsFullscreenTransport', () => {
 
     act(() => usePlayerStore.setState({ playbackDurationMs: null, positionMs: 126_000 }));
     expect(progress()).toHaveStyle({ width: '50%' });
+
+    for (const positionMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      act(() => usePlayerStore.setState({ positionMs }));
+      expect(progress()).toHaveStyle({ width: '0%' });
+    }
   });
 
   it('keeps one timer across repeated reveal calls and clears it on unmount', () => {
     const ref = createRef<LyricsFullscreenTransportHandle>();
-    const { unmount } = render(<LyricsFullscreenTransport ref={ref} />);
+    const { unmount } = render(<LyricsFullscreenTransport ref={ref} artworkSource={safeArtwork} />);
 
     act(() => {
       ref.current?.reveal();
@@ -183,12 +191,24 @@ describe('LyricsFullscreenTransport', () => {
   it('retains exactly one timer in StrictMode and clears it on teardown', () => {
     const { unmount } = render(
       <StrictMode>
-        <LyricsFullscreenTransport />
+        <LyricsFullscreenTransport artworkSource={safeArtwork} />
       </StrictMode>,
     );
 
     expect(vi.getTimerCount()).toBe(1);
     unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('renders only the caller-provided safe artwork source and supports an empty placeholder', () => {
+    const { container, rerender } = render(
+      <LyricsFullscreenTransport artworkSource={safeArtwork} />,
+    );
+    expect(container.querySelector('img')).toHaveAttribute('src', safeArtwork);
+    expect(container.innerHTML).not.toContain(song.artwork.src);
+
+    rerender(<LyricsFullscreenTransport artworkSource={null} />);
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+    expect(container.innerHTML).not.toContain(song.artwork.src);
   });
 });

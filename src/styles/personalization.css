@@ -53,6 +53,22 @@
   object-fit: contain;
 }
 
+.lyrics-stage[data-background-mode='image'] .lyrics-stage__backdrop {
+  inset: 0;
+  background-repeat: no-repeat;
+  filter: none;
+  opacity: var(--artwork-influence);
+  transform: none;
+}
+
+.lyrics-stage[data-background-mode='image'][data-image-fit='contain'] .lyrics-stage__backdrop {
+  background-size: contain;
+}
+
+.lyrics-stage[data-background-mode='image'][data-image-fit='cover'] .lyrics-stage__backdrop {
+  background-size: cover;
+}
+
 .app-background__image--previous {
   animation: background-fade-out 500ms var(--ease-out) both;
 }

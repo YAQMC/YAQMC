@@ -25,6 +25,8 @@ import { IconButton } from './ui/IconButton';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore, type SecondaryLyricVisibility } from '../application/preferences';
 import { shouldShowLyricSecondary } from '../application/lyrics-presentation';
+import { resolveLyricsAppearance } from '../application/lyrics-appearance';
+import { useSafeArtworkSource } from '../application/artwork-source';
 import {
   LyricsFullscreenTransport,
   type LyricsFullscreenTransportHandle,
@@ -32,6 +34,7 @@ import {
 
 type LyricsStyle = CSSProperties & {
   '--lyrics-color': string;
+  '--lyrics-stage-base': string;
 };
 
 function useReducedMotion(): boolean {
@@ -405,6 +408,20 @@ export function LyricsPanel({
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
+  const backgroundMode = usePreferencesStore((state) => state.appearance.backgroundMode);
+  const backgroundColor = usePreferencesStore((state) => state.appearance.backgroundColor);
+  const backgroundFit = usePreferencesStore((state) => state.appearance.backgroundFit);
+  const backgroundImageSource = usePreferencesStore((state) => state.backgroundImageData);
+  const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null);
+  const appearance = resolveLyricsAppearance(
+    {
+      mode: backgroundMode,
+      imageSource: backgroundImageSource,
+      imageFit: backgroundFit,
+      color: backgroundColor,
+    },
+    safeArtworkSource,
+  );
   const activeDocument = document?.songId === currentTrackId ? document : null;
   const cursor = useLyricCursor(
     lyricsOpen ? activeDocument : null,
@@ -429,6 +446,8 @@ export function LyricsPanel({
 
   const style = {
     '--lyrics-color': currentArtworkColor,
+    '--lyrics-stage-base': appearance.baseColor ?? 'var(--bg-opaque)',
+    backgroundColor: appearance.baseColor ?? undefined,
   } as LyricsStyle;
 
   const resumeFollowing = () => {
@@ -444,17 +463,22 @@ export function LyricsPanel({
       aria-label={t('region')}
       data-focus={focus || undefined}
       data-fullscreen={fullscreen || undefined}
+      data-background-mode={appearance.mode}
+      data-image-fit={appearance.imageFit}
+      data-song-id={currentTrackId ?? undefined}
       onPointerMove={() => transportRef.current?.reveal()}
     >
-      {currentTrackId && (
+      {appearance.imageSource && (
         <div
           className="lyrics-stage__backdrop"
-          style={{ backgroundImage: `url("${currentArtworkSrc}")` }}
+          style={{ backgroundImage: `url("${appearance.imageSource}")` }}
           aria-hidden="true"
         />
       )}
       <div className="lyrics-stage__wash" aria-hidden="true" />
-      {fullscreen && <LyricsFullscreenTransport ref={transportRef} />}
+      {fullscreen && (
+        <LyricsFullscreenTransport ref={transportRef} artworkSource={safeArtworkSource} />
+      )}
 
       <header className="lyrics-stage__header">
         <div className="lyrics-stage__presentation-controls">
@@ -492,7 +516,11 @@ export function LyricsPanel({
       ) : (
         <>
           <aside className="lyrics-stage__track">
-            <img src={currentArtworkSrc} alt={currentArtworkAlt} draggable={false} />
+            {safeArtworkSource ? (
+              <img src={safeArtworkSource} alt={currentArtworkAlt} draggable={false} />
+            ) : (
+              <span className="lyrics-stage__artwork-placeholder" aria-hidden="true" />
+            )}
             <div>
               <strong>{currentTitle}</strong>
               <span>{currentArtistLabel}</span>
