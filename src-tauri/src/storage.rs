@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 #[cfg(test)]
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -61,6 +61,27 @@ pub struct CacheStats {
     pub artwork_limit_bytes: u64,
 }
 
+#[derive(Clone)]
+pub(crate) enum ProviderCacheMutation {
+    Put {
+        key: String,
+        kind: String,
+        value_json: String,
+        expires_at_ms: u64,
+    },
+    #[allow(
+        dead_code,
+        reason = "single-row account cache invalidation is consumed by the mutation tasks"
+    )]
+    Delete {
+        key: String,
+    },
+    DeleteKindPrefix {
+        kind: String,
+        prefix: String,
+    },
+}
+
 #[derive(Debug, Deserialize)]
 struct CacheRow {
     relative_path: String,
@@ -76,6 +97,8 @@ pub struct StorageService {
     _temporary_root: Option<tempfile::TempDir>,
     #[cfg(test)]
     fail_provider_cache_delete: AtomicBool,
+    #[cfg(test)]
+    fail_provider_cache_batch_after: AtomicUsize,
 }
 
 impl StorageService {
@@ -100,6 +123,8 @@ impl StorageService {
             _temporary_root: None,
             #[cfg(test)]
             fail_provider_cache_delete: AtomicBool::new(false),
+            #[cfg(test)]
+            fail_provider_cache_batch_after: AtomicUsize::new(usize::MAX),
         })
     }
 
@@ -196,10 +221,99 @@ impl StorageService {
         Ok(deleted as u64)
     }
 
+    pub(crate) fn apply_provider_cache_batch(
+        &self,
+        operations: &[ProviderCacheMutation],
+    ) -> Result<(), StorageError> {
+        let now = unix_timestamp_ms();
+        let mut connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let transaction = connection
+            .transaction()
+            .map_err(|_| StorageError::Database)?;
+        #[cfg(test)]
+        let mut applied_operations = 0_usize;
+        for operation in operations {
+            match operation {
+                ProviderCacheMutation::Put {
+                    key,
+                    kind,
+                    value_json,
+                    expires_at_ms,
+                } => {
+                    transaction
+                        .execute(
+                            "INSERT INTO provider_cache(cache_key, kind, value_json, expires_at_ms, updated_at_ms)
+                             VALUES (?1, ?2, ?3, ?4, ?5)
+                             ON CONFLICT(cache_key) DO UPDATE SET
+                               kind = excluded.kind,
+                               value_json = excluded.value_json,
+                               expires_at_ms = excluded.expires_at_ms,
+                               updated_at_ms = excluded.updated_at_ms",
+                            params![
+                                key,
+                                kind,
+                                value_json,
+                                sqlite_i64(*expires_at_ms),
+                                sqlite_i64(now)
+                            ],
+                        )
+                        .map_err(|_| StorageError::Database)?;
+                }
+                ProviderCacheMutation::Delete { key } => {
+                    transaction
+                        .execute(
+                            "DELETE FROM provider_cache WHERE cache_key = ?1",
+                            params![key],
+                        )
+                        .map_err(|_| StorageError::Database)?;
+                }
+                ProviderCacheMutation::DeleteKindPrefix { kind, prefix } => {
+                    transaction
+                        .execute(
+                            "DELETE FROM provider_cache
+                             WHERE kind = ?1 AND substr(cache_key, 1, length(?2)) = ?2",
+                            params![kind, prefix],
+                        )
+                        .map_err(|_| StorageError::Database)?;
+                }
+            }
+            #[cfg(test)]
+            {
+                applied_operations += 1;
+                if self
+                    .fail_provider_cache_batch_after
+                    .load(AtomicOrdering::Acquire)
+                    == applied_operations
+                {
+                    return Err(StorageError::Database);
+                }
+            }
+        }
+        transaction
+            .execute(
+                "DELETE FROM provider_cache WHERE cache_key IN (
+                   SELECT cache_key FROM provider_cache
+                   ORDER BY updated_at_ms DESC LIMIT -1 OFFSET 5000
+                 )",
+                [],
+            )
+            .map_err(|_| StorageError::Database)?;
+        transaction.commit().map_err(|_| StorageError::Database)
+    }
+
     #[cfg(test)]
     pub(crate) fn fail_provider_cache_delete_for_test(&self) {
         self.fail_provider_cache_delete
             .store(true, AtomicOrdering::Release);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_provider_cache_batch_after_for_test(&self, operation_count: usize) {
+        self.fail_provider_cache_batch_after
+            .store(operation_count, AtomicOrdering::Release);
     }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, StorageError> {
@@ -1070,6 +1184,75 @@ mod tests {
             })
             .expect("history count");
         assert_eq!(history_entries, 1);
+    }
+
+    #[test]
+    fn provider_cache_batch_rolls_back_every_operation_on_injected_fault() {
+        let (_root, storage) = storage();
+        storage
+            .put_json(
+                "qqmusic:account:before",
+                "qqmusic-account",
+                &vec!["before"],
+                60_000,
+            )
+            .expect("baseline row");
+        storage.fail_provider_cache_batch_after_for_test(1);
+        let result = storage.apply_provider_cache_batch(&[
+            ProviderCacheMutation::Delete {
+                key: "qqmusic:account:before".to_owned(),
+            },
+            ProviderCacheMutation::Put {
+                key: "qqmusic:account:after".to_owned(),
+                kind: "qqmusic-account".to_owned(),
+                value_json: "[\"after\"]".to_owned(),
+                expires_at_ms: unix_timestamp_ms().saturating_add(60_000),
+            },
+        ]);
+
+        assert!(matches!(result, Err(StorageError::Database)));
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:before", false)
+            .expect("baseline read")
+            .is_some());
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:after", false)
+            .expect("new row read")
+            .is_none());
+    }
+
+    #[test]
+    fn provider_cache_batch_delete_prefix_is_literal_and_kind_scoped() {
+        let (_root, storage) = storage();
+        for (key, kind) in [
+            ("qqmusic:account:a_%:one", "qqmusic-account"),
+            ("qqmusic:account:a_other", "qqmusic-account"),
+            ("qqmusic:account:a_%:guest", "metadata"),
+        ] {
+            storage
+                .put_json(key, kind, &vec![key], 60_000)
+                .expect("fixture row");
+        }
+
+        storage
+            .apply_provider_cache_batch(&[ProviderCacheMutation::DeleteKindPrefix {
+                kind: "qqmusic-account".to_owned(),
+                prefix: "qqmusic:account:a_%:".to_owned(),
+            }])
+            .expect("literal prefix delete");
+
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:a_%:one", true)
+            .expect("deleted row")
+            .is_none());
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:a_other", true)
+            .expect("similar row")
+            .is_some());
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:a_%:guest", true)
+            .expect("other kind")
+            .is_some());
     }
 
     #[test]

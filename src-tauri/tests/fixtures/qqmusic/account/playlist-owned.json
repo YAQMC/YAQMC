@@ -1,0 +1,56 @@
+{
+  "code": 0,
+  "req": {
+    "code": 0,
+    "data": {
+      "dirinfo": {
+        "tid": "SANITIZED_PLAYLIST_OWNED",
+        "dirId": 3001,
+        "dirName": "Synthetic Owned Playlist",
+        "desc": "",
+        "picUrl": "https://qpic.y.qq.com/synthetic-owned.png",
+        "tagNameList": [],
+        "trackCount": 2,
+        "updateTime": 1800000000000,
+        "ownership": "owned",
+        "creator": { "uin": "SANITIZED_ACCOUNT", "nick": "Synthetic Listener" },
+        "capabilities": {
+          "canAdd": true,
+          "canRemove": true,
+          "canRename": true,
+          "canDelete": true
+        }
+      },
+      "song_begin": 0,
+      "total_song_num": 2,
+      "songlist": [
+        {
+          "songid": 1001,
+          "songmid": "SANITIZED_TRACK_A",
+          "songname": "Synthetic Favorite A",
+          "albumid": 2001,
+          "albummid": "SANITIZED_ALBUM_A",
+          "albumname": "Synthetic Album A",
+          "singer": [{ "mid": "SANITIZED_ARTIST_A", "name": "Synthetic Artist" }],
+          "interval": 181,
+          "cdIdx": 1,
+          "strMediaMid": "SANITIZED_MEDIA_A",
+          "size128": 4096
+        },
+        {
+          "songid": 1002,
+          "songmid": "SANITIZED_TRACK_B",
+          "songname": "Synthetic Favorite B",
+          "albumid": 2002,
+          "albummid": "SANITIZED_ALBUM_B",
+          "albumname": "Synthetic Album B",
+          "singer": [{ "mid": "SANITIZED_ARTIST_B", "name": "Synthetic Artist" }],
+          "interval": 202,
+          "cdIdx": 2,
+          "strMediaMid": "SANITIZED_MEDIA_B",
+          "size128": 4096
+        }
+      ]
+    }
+  }
+}

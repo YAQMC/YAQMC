@@ -31,11 +31,15 @@ use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 pub(crate) mod account;
 mod auth;
+mod cache;
 mod clock;
 mod redaction;
 mod transport;
 
-use account::{AccountSnapshot, ProviderErrorCode};
+use account::{
+    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Page, ProviderErrorCode,
+    QQMusicAccountService, RemotePlayHistoryItem,
+};
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
 use transport::{QqTransport, ReqwestQqTransport};
@@ -204,6 +208,8 @@ pub enum QQMusicError {
     MalformedResponse,
     #[error("the requested QQ Music item is unavailable")]
     NotFound,
+    #[error("the QQ Music request was invalid")]
+    InvalidRequest,
     #[error("the QQ Music session expired")]
     AuthenticationExpired,
     #[error("QQ Music rejected this authorization request")]
@@ -229,6 +235,7 @@ impl QQMusicError {
             Self::SchemaChanged => ProviderErrorCode::SchemaChanged,
             Self::MalformedResponse | Self::Protocol => ProviderErrorCode::MalformedResponse,
             Self::NotFound => ProviderErrorCode::SongUnavailable,
+            Self::InvalidRequest => ProviderErrorCode::InvalidRequest,
             Self::AuthenticationExpired => ProviderErrorCode::AuthenticationExpired,
             Self::AuthorizationRejected => ProviderErrorCode::AuthorizationRejected,
             Self::OutcomeUnknown => ProviderErrorCode::ProviderFailure,
@@ -286,6 +293,7 @@ pub struct QQMusicService {
     )]
     clock: Arc<dyn Clock>,
     auth: Arc<QQMusicAuthService>,
+    account: Arc<QQMusicAccountService>,
     storage: Arc<StorageService>,
     preferred_quality: RwLock<PreferredQuality>,
     fixture_root: PathBuf,
@@ -327,11 +335,18 @@ impl QQMusicService {
             Arc::clone(&clock),
             Arc::clone(&storage),
         ));
+        let account = Arc::new(QQMusicAccountService::new(
+            Arc::clone(&account_transport),
+            Arc::clone(&clock),
+            Arc::clone(&storage),
+            Arc::clone(&auth),
+        ));
         Ok(Self {
             client: QQMusicClient::new()?,
             account_transport,
             clock,
             auth,
+            account,
             storage,
             preferred_quality: RwLock::new(preferred_quality),
             fixture_root,
@@ -402,6 +417,41 @@ impl QQMusicService {
         self.auth.snapshot().await
     }
 
+    pub async fn favorite_songs(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> Result<Page<Song>, QQMusicError> {
+        self.account.favorite_songs(cursor, limit).await
+    }
+
+    pub async fn account_playlists(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> Result<Page<AccountPlaylistSummary>, QQMusicError> {
+        self.account.playlists(cursor, limit).await
+    }
+
+    pub async fn account_playlist_tracks(
+        &self,
+        playlist_id: String,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> Result<AccountPlaylistDetail, QQMusicError> {
+        self.account
+            .playlist_tracks(playlist_id, cursor, limit)
+            .await
+    }
+
+    pub async fn account_recently_played(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> Result<Page<RemotePlayHistoryItem>, QQMusicError> {
+        self.account.recently_played(cursor, limit).await
+    }
+
     pub async fn start_qr_login(&self) -> Result<AccountSnapshot, QQMusicError> {
         self.auth.start().await
     }
@@ -438,6 +488,7 @@ impl QQMusicService {
 
     pub async fn sign_out(&self) -> Result<AccountSnapshot, QQMusicError> {
         let result = self.auth.logout().await;
+        self.account.clear_runtime_state().await;
         self.session_invalid.store(false, Ordering::Release);
         result
     }
@@ -771,6 +822,7 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
         QQMusicError::NotFound => PlaybackSourceError::TrackUnavailable,
         QQMusicError::SchemaChanged
         | QQMusicError::MalformedResponse
+        | QQMusicError::InvalidRequest
         | QQMusicError::Protocol
         | QQMusicError::OutcomeUnknown
         | QQMusicError::Cancelled

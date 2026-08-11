@@ -1,0 +1,26 @@
+{
+  "code": 0,
+  "req": {
+    "code": 0,
+    "data": {
+      "song_begin": 2,
+      "song_num": 2,
+      "total_song_num": 3,
+      "songlist": [
+        {
+          "songid": 1003,
+          "songmid": "SANITIZED_TRACK_C",
+          "songname": "Synthetic Favorite C",
+          "albumid": 2003,
+          "albummid": "SANITIZED_ALBUM_C",
+          "albumname": "Synthetic Album C",
+          "singer": [{ "mid": "SANITIZED_ARTIST_C", "name": "Synthetic Artist" }],
+          "interval": 223,
+          "cdIdx": 3,
+          "strMediaMid": "SANITIZED_MEDIA_C",
+          "size128": 4096
+        }
+      ]
+    }
+  }
+}

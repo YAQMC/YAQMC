@@ -1,0 +1,44 @@
+{
+  "code": 0,
+  "req": {
+    "code": 0,
+    "data": {
+      "begin": 0,
+      "total": 2,
+      "songlist": [
+        {
+          "playedAtMs": 1800000000000,
+          "song": {
+            "songid": 1002,
+            "songmid": "SANITIZED_TRACK_B",
+            "songname": "Synthetic Favorite B",
+            "albumid": 2002,
+            "albummid": "SANITIZED_ALBUM_B",
+            "albumname": "Synthetic Album B",
+            "singer": [{ "mid": "SANITIZED_ARTIST_B", "name": "Synthetic Artist" }],
+            "interval": 202,
+            "cdIdx": 2,
+            "strMediaMid": "SANITIZED_MEDIA_B",
+            "size128": 4096
+          }
+        },
+        {
+          "playedAtMs": 1799999999000,
+          "song": {
+            "songid": 1001,
+            "songmid": "SANITIZED_TRACK_A",
+            "songname": "Synthetic Favorite A",
+            "albumid": 2001,
+            "albummid": "SANITIZED_ALBUM_A",
+            "albumname": "Synthetic Album A",
+            "singer": [{ "mid": "SANITIZED_ARTIST_A", "name": "Synthetic Artist" }],
+            "interval": 181,
+            "cdIdx": 1,
+            "strMediaMid": "SANITIZED_MEDIA_A",
+            "size128": 4096
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "code": 0,
+  "req": {
+    "code": 0,
+    "data": {
+      "dirinfo": {
+        "tid": "SANITIZED_PLAYLIST_COLLECTED",
+        "dirName": "Synthetic Collected Playlist",
+        "desc": "Read-only synthetic collection",
+        "picUrl": "https://qpic.y.qq.com/synthetic-collected.png",
+        "trackCount": 1,
+        "updateTime": 1790000000000,
+        "ownership": "collected",
+        "creator": { "uin": "SANITIZED_ACCOUNT", "nick": "Synthetic Curator" },
+        "capabilities": {
+          "canAdd": false,
+          "canRemove": false,
+          "canRename": false,
+          "canDelete": false
+        }
+      },
+      "song_begin": 0,
+      "total_song_num": 1,
+      "songlist": [
+        {
+          "songid": 1003,
+          "songmid": "SANITIZED_TRACK_C",
+          "songname": "Synthetic Favorite C",
+          "albumid": 2003,
+          "albummid": "SANITIZED_ALBUM_C",
+          "albumname": "Synthetic Album C",
+          "singer": [{ "mid": "SANITIZED_ARTIST_C", "name": "Synthetic Artist" }],
+          "interval": 223,
+          "cdIdx": 1,
+          "strMediaMid": "SANITIZED_MEDIA_C",
+          "size128": 4096
+        }
+      ]
+    }
+  }
+}

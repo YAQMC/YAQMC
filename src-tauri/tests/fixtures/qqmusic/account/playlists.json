@@ -1,0 +1,46 @@
+{
+  "code": 0,
+  "req": {
+    "code": 0,
+    "data": {
+      "sin": 0,
+      "total": 2,
+      "v_playlist": [
+        {
+          "tid": "SANITIZED_PLAYLIST_OWNED",
+          "dirId": 3001,
+          "dirName": "Synthetic Owned Playlist",
+          "desc": "",
+          "picUrl": "https://qpic.y.qq.com/synthetic-owned.png",
+          "tagNameList": [],
+          "trackCount": 2,
+          "updateTime": 1800000000000,
+          "ownership": "owned",
+          "creator": { "uin": "SANITIZED_ACCOUNT", "nick": "Synthetic Listener" },
+          "capabilities": {
+            "canAdd": true,
+            "canRemove": true,
+            "canRename": true,
+            "canDelete": true
+          }
+        },
+        {
+          "tid": "SANITIZED_PLAYLIST_COLLECTED",
+          "dirName": "Synthetic Collected Playlist",
+          "desc": "Read-only synthetic collection",
+          "picUrl": "https://qpic.y.qq.com/synthetic-collected.png",
+          "trackCount": 1,
+          "updateTime": 1790000000000,
+          "ownership": "collected",
+          "creator": { "uin": "SANITIZED_ACCOUNT", "nick": "Synthetic Curator" },
+          "capabilities": {
+            "canAdd": false,
+            "canRemove": false,
+            "canRename": false,
+            "canDelete": false
+          }
+        }
+      ]
+    }
+  }
+}

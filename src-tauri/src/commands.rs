@@ -14,8 +14,12 @@ use crate::{
         Song,
     },
     qqmusic::{
-        account::AccountSnapshot, Album, HomeFeed, LibrarySnapshot, Playlist, PreferredQuality,
-        ProviderResult, ProviderStatus, QQMusicService, SearchResult,
+        account::{
+            AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Page,
+            RemotePlayHistoryItem,
+        },
+        Album, HomeFeed, LibrarySnapshot, Playlist, PreferredQuality, ProviderResult,
+        ProviderStatus, QQMusicService, SearchResult,
     },
     storage::{CacheStats, StorageService},
     system_media::SystemMediaIntegration,
@@ -171,6 +175,63 @@ pub async fn qqmusic_account_snapshot(
 }
 
 #[tauri::command]
+pub async fn qqmusic_favorite_songs(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    cursor: Option<String>,
+    limit: u32,
+) -> ProviderResult<Page<Song>> {
+    require_main_window(&window)?;
+    provider
+        .favorite_songs(cursor, limit)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_account_playlists(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    cursor: Option<String>,
+    limit: u32,
+) -> ProviderResult<Page<AccountPlaylistSummary>> {
+    require_main_window(&window)?;
+    provider
+        .account_playlists(cursor, limit)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_account_playlist_tracks(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    id: String,
+    cursor: Option<String>,
+    limit: u32,
+) -> ProviderResult<AccountPlaylistDetail> {
+    require_main_window(&window)?;
+    provider
+        .account_playlist_tracks(id, cursor, limit)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_account_recently_played(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    cursor: Option<String>,
+    limit: u32,
+) -> ProviderResult<Page<RemotePlayHistoryItem>> {
+    require_main_window(&window)?;
+    provider
+        .account_recently_played(cursor, limit)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn qqmusic_auth_start(
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
@@ -232,8 +293,12 @@ pub async fn qqmusic_sign_out(
 mod account_command_tests {
     use crate::command_guard::require_main_window_label;
 
-    const GUARDED_ACCOUNT_COMMANDS: [&str; 6] = [
+    const GUARDED_ACCOUNT_COMMANDS: [&str; 10] = [
         "qqmusic_account_snapshot",
+        "qqmusic_favorite_songs",
+        "qqmusic_account_playlists",
+        "qqmusic_account_playlist_tracks",
+        "qqmusic_account_recently_played",
         "qqmusic_auth_start",
         "qqmusic_auth_heartbeat",
         "qqmusic_auth_cancel",
