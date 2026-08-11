@@ -1,6 +1,6 @@
 use crate::{
     audio::{write_fixture_wav, AudioFormat},
-    credentials::CredentialStore,
+    credentials::{CredentialStore, SpawnBlockingCredentialStore},
     media::{
         PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver, ResolvedPlaybackSource,
     },
@@ -30,11 +30,13 @@ use thiserror::Error;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 pub(crate) mod account;
+mod auth;
 mod clock;
 mod redaction;
 mod transport;
 
 use account::ProviderErrorCode;
+use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
 use transport::{QqTransport, ReqwestQqTransport};
 
@@ -47,7 +49,6 @@ const DEFAULT_TOPLIST_ID: u64 = 62;
 const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
 const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
-const SESSION_ACCOUNT: &str = "qqmusic-session";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -175,12 +176,18 @@ pub struct ProviderStatus {
     pub capabilities: CatalogProviderCapabilities,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct QQSession {
     uin: String,
     cookie_header: String,
-    expires_at_ms: Option<u64>,
+}
+
+impl From<SessionRecord> for QQSession {
+    fn from(session: SessionRecord) -> Self {
+        Self {
+            uin: session.uin,
+            cookie_header: session.cookie_header,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -278,8 +285,8 @@ pub struct QQMusicService {
         )
     )]
     clock: Arc<dyn Clock>,
+    auth: Arc<QQMusicAuthService>,
     storage: Arc<StorageService>,
-    credentials: Arc<dyn CredentialStore>,
     preferred_quality: RwLock<PreferredQuality>,
     fixture_root: PathBuf,
     fixture_guard: AsyncMutex<()>,
@@ -310,12 +317,21 @@ impl QQMusicService {
                 .get_setting("preferred-quality")
                 .map_err(|_| QQMusicError::Storage)?,
         );
+        let auth_protocol = Arc::new(TransportQQMusicAuthProtocol::new(
+            Arc::clone(&account_transport),
+            Arc::clone(&clock),
+        ));
+        let auth = Arc::new(QQMusicAuthService::new(
+            auth_protocol,
+            SpawnBlockingCredentialStore::new(Arc::clone(&credentials)),
+            Arc::clone(&clock),
+        ));
         Ok(Self {
             client: QQMusicClient::new()?,
             account_transport,
             clock,
+            auth,
             storage,
-            credentials,
             preferred_quality: RwLock::new(preferred_quality),
             fixture_root,
             fixture_guard: AsyncMutex::new(()),
@@ -382,9 +398,7 @@ impl QQMusicService {
     }
 
     pub async fn sign_out(&self) -> Result<ProviderStatus, QQMusicError> {
-        self.credentials
-            .delete(SESSION_ACCOUNT)
-            .map_err(|_| QQMusicError::Storage)?;
+        self.auth.logout().await?;
         self.session_invalid.store(false, Ordering::Release);
         Ok(self.status().await)
     }
@@ -625,24 +639,15 @@ impl QQMusicService {
         self.storage.clear().map_err(|_| QQMusicError::Storage)
     }
 
-    fn active_session(&self) -> Result<Option<QQSession>, QQMusicError> {
-        let Some(raw) = self
-            .credentials
-            .load(SESSION_ACCOUNT)
-            .map_err(|_| QQMusicError::AuthenticationExpired)?
-        else {
+    async fn active_session(&self) -> Result<Option<QQSession>, QQMusicError> {
+        let Some(session) = self.auth.current_session().await else {
             return Ok(None);
         };
-        let session: QQSession =
-            serde_json::from_str(&raw).map_err(|_| QQMusicError::AuthenticationExpired)?;
-        if session
-            .expires_at_ms
-            .is_some_and(|expires| expires <= unix_timestamp_ms())
-        {
+        if session.expires_at_ms <= unix_timestamp_ms() {
             self.session_invalid.store(true, Ordering::Release);
             return Err(QQMusicError::AuthenticationExpired);
         }
-        Ok(Some(session))
+        Ok(Some(QQSession::from(session)))
     }
 }
 
@@ -656,7 +661,10 @@ impl PlaybackSourceResolver for QQMusicService {
             == Some("qqmusic")
         {
             let quality = *self.preferred_quality.read().await;
-            let session = self.active_session().map_err(map_provider_source_error)?;
+            let session = self
+                .active_session()
+                .await
+                .map_err(map_provider_source_error)?;
             let source = self
                 .client
                 .resolve_source(song, quality, session.as_ref())

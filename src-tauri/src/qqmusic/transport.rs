@@ -56,6 +56,12 @@ pub(crate) enum RetryClass {
     Write,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RedirectMode {
+    FollowValidated,
+    ReturnResponse,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct TransportTimeouts {
     connect: Duration,
@@ -80,6 +86,7 @@ pub(crate) struct TransportRequest {
     pub(crate) headers: HeaderMap,
     pub(crate) body: Option<Vec<u8>>,
     pub(crate) retry: RetryClass,
+    pub(crate) redirects: RedirectMode,
     pub(crate) response_shape: &'static str,
     pub(crate) cancellation: CancellationToken,
 }
@@ -96,6 +103,7 @@ impl fmt::Debug for TransportRequest {
             .field("header_names", &header_names)
             .field("body_len", &self.body.as_ref().map(Vec::len))
             .field("retry", &self.retry)
+            .field("redirects", &self.redirects)
             .field("response_shape", &self.response_shape)
             .finish()
     }
@@ -219,7 +227,7 @@ impl ReqwestQqTransport {
                 .await?;
             let status = response.status();
 
-            if is_redirect_status(status) {
+            if request.redirects == RedirectMode::FollowValidated && is_redirect_status(status) {
                 if let Some(location) = response.headers().get(header::LOCATION) {
                     if hops == MAX_REDIRECT_HOPS {
                         return Err(QQMusicError::Protocol);
@@ -493,7 +501,7 @@ mod tests {
         extract::Request,
         http::{header, HeaderValue},
         response::{IntoResponse, Response},
-        routing::any,
+        routing::{any, get},
         Router,
     };
     use reqwest::{header::HeaderMap, Method, StatusCode, Url};
@@ -601,6 +609,7 @@ mod tests {
             headers: HeaderMap::new(),
             body: None,
             retry,
+            redirects: RedirectMode::FollowValidated,
             response_shape: "fixture-response",
             cancellation: CancellationToken::new(),
         }
@@ -681,6 +690,49 @@ mod tests {
         assert!(!hops[1].cookie_present);
         assert!(!hops[1].authorization_present);
         assert!(!hops[1].proxy_authorization_present);
+    }
+
+    #[tokio::test]
+    async fn manual_redirect_mode_returns_cookie_and_location_without_following() {
+        let target_calls = Arc::new(AtomicUsize::new(0));
+        let observed_target_calls = Arc::clone(&target_calls);
+        let target = spawn_server(Router::new().route(
+            "/target",
+            get(move || {
+                let observed_target_calls = Arc::clone(&observed_target_calls);
+                async move {
+                    observed_target_calls.fetch_add(1, Ordering::AcqRel);
+                    StatusCode::OK
+                }
+            }),
+        ))
+        .await;
+        let location = target.url("/target").to_string();
+        let source = spawn_server(Router::new().route(
+            "/manual",
+            get(move || {
+                let location = location.clone();
+                async move {
+                    let mut response = response_with_location(StatusCode::FOUND, &location);
+                    response.headers_mut().append(
+                        header::SET_COOKIE,
+                        HeaderValue::from_static("synthetic_session=opaque; Secure; HttpOnly"),
+                    );
+                    response
+                }
+            }),
+        ))
+        .await;
+        let transport = fixture_transport([source.address, target.address], short_timeouts());
+        let mut request = request(source.url("/manual"), RetryClass::AuthPoll);
+        request.redirects = RedirectMode::ReturnResponse;
+
+        let response = transport.execute(request).await.expect("manual response");
+
+        assert_eq!(response.status, StatusCode::FOUND);
+        assert!(response.headers.contains_key(header::SET_COOKIE));
+        assert!(response.headers.contains_key(header::LOCATION));
+        assert_eq!(target_calls.load(Ordering::Acquire), 0);
     }
 
     #[tokio::test]

@@ -33,6 +33,14 @@ const SECRET_KEYS: &[&str] = &[
     "musicid",
     "strmusicid",
     "callbackurl",
+    "cookieheader",
+    "pollsecret",
+    "ptsigx",
+    "pskey",
+    "ptloginsig",
+    "gtk",
+    "code",
+    "accountcachescope",
 ];
 
 pub(crate) const AUTH_SECRET_HEADERS: &[header::HeaderName] = &[
@@ -130,12 +138,18 @@ mod tests {
             "uin": "10001",
             "nickname": "Synthetic Listener",
             "nested": { "authorization": "Bearer SECRET", "count": 2 }
+            ,"cookieHeader": "synthetic-session"
+            ,"ptsigx": "synthetic-signature"
+            ,"code": "synthetic-code"
         });
         let redacted = redact_json(&value);
         assert_eq!(redacted["cookie"], "[REDACTED]");
         assert_eq!(redacted["qm_keyst"], "[REDACTED]");
         assert_eq!(redacted["uin"], "[REDACTED]");
         assert_eq!(redacted["nested"]["authorization"], "[REDACTED]");
+        assert_eq!(redacted["cookieHeader"], "[REDACTED]");
+        assert_eq!(redacted["ptsigx"], "[REDACTED]");
+        assert_eq!(redacted["code"], "[REDACTED]");
         assert_eq!(redacted["nickname"], "Synthetic Listener");
 
         let authority_url =

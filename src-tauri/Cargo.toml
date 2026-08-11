@@ -51,6 +51,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphic
 [dev-dependencies]
 http-body-util = "0.1"
 tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
 tower = { version = "0.5", features = ["util"] }
 
 [profile.release]

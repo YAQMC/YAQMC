@@ -1,0 +1,16 @@
+{
+  "state": "authenticated",
+  "profile": {
+    "avatarUrl": "https://qpic.y.qq.com/synthetic-avatar.png",
+    "nickname": "Synthetic Listener",
+    "maskedIdentity": "SA*************NT"
+  },
+  "entitlement": {
+    "tier": "unknown",
+    "membership": "unknown",
+    "expiresAtMs": null,
+    "permittedQualities": ["standard"],
+    "observedMaximumQuality": null,
+    "restrictions": []
+  }
+}

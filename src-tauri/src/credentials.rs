@@ -12,13 +12,6 @@ pub enum CredentialError {
     Unavailable,
     #[error("the secure credential operation failed")]
     OperationFailed,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "used when the QQ account authentication service is introduced"
-        )
-    )]
     #[error("the secure credential worker failed")]
     JoinFailed,
 }
@@ -30,24 +23,10 @@ pub trait CredentialStore: Send + Sync {
 }
 
 #[derive(Clone)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "used when the QQ account authentication service is introduced"
-    )
-)]
 pub struct SpawnBlockingCredentialStore {
     inner: Arc<dyn CredentialStore>,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "used when the QQ account authentication service is introduced"
-    )
-)]
 impl SpawnBlockingCredentialStore {
     pub fn new(inner: Arc<dyn CredentialStore>) -> Self {
         Self { inner }

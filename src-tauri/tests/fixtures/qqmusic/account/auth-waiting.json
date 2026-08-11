@@ -1,0 +1,9 @@
+{
+  "state": "waiting-for-scan",
+  "attemptId": "SANITIZED_POLL_STATE",
+  "ownerLeaseId": "SANITIZED_OWNER_LEASE",
+  "expiresAtMs": 1800000000000,
+  "pollAfterMs": 1500,
+  "profile": null,
+  "entitlement": null
+}

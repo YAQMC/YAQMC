@@ -249,6 +249,59 @@ pub struct AccountSnapshot {
     pub capabilities: AccountCapabilities,
 }
 
+impl AccountSnapshot {
+    pub(crate) fn state_name(&self) -> &'static str {
+        match &self.account {
+            AccountState::Guest { .. } => "guest",
+            AccountState::RestoringSession { .. } => "restoring-session",
+            AccountState::StartingLogin { .. } => "starting-login",
+            AccountState::WaitingForScan { .. } => "waiting-for-scan",
+            AccountState::WaitingForConfirmation { .. } => "waiting-for-confirmation",
+            AccountState::Authenticated { .. } => "authenticated",
+            AccountState::SessionExpired { .. } => "session-expired",
+            AccountState::ReauthenticationRequired { .. } => "reauthentication-required",
+            AccountState::SecureStoreUnavailable { .. } => "secure-store-unavailable",
+            AccountState::Cancelled { .. } => "cancelled",
+            AccountState::Expired { .. } => "expired",
+            AccountState::Rejected { .. } => "rejected",
+            AccountState::NetworkError { .. } => "network-error",
+            AccountState::ProtocolError { .. } => "protocol-error",
+        }
+    }
+
+    pub(crate) fn attempt_id(&self) -> Option<&str> {
+        match &self.account {
+            AccountState::StartingLogin { attempt_id, .. }
+            | AccountState::WaitingForScan { attempt_id, .. }
+            | AccountState::WaitingForConfirmation { attempt_id, .. } => Some(attempt_id),
+            AccountState::Cancelled { attempt_id, .. }
+            | AccountState::Expired { attempt_id, .. }
+            | AccountState::Rejected { attempt_id, .. }
+            | AccountState::NetworkError { attempt_id, .. }
+            | AccountState::ProtocolError { attempt_id, .. } => attempt_id.as_deref(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn owner_lease_id(&self) -> Option<&str> {
+        match &self.account {
+            AccountState::StartingLogin { owner_lease_id, .. }
+            | AccountState::WaitingForScan { owner_lease_id, .. }
+            | AccountState::WaitingForConfirmation { owner_lease_id, .. } => Some(owner_lease_id),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn qr_image_data_uri(&self) -> Option<&str> {
+        match &self.account {
+            AccountState::WaitingForScan {
+                qr_image_data_uri, ..
+            } => Some(qr_image_data_uri),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderErrorCode {
