@@ -100,6 +100,7 @@
 ### Fixtures, scans, documentation, and gates
 
 - Create sanitized fixtures under `src-tauri/tests/fixtures/qqmusic/account/`: profile, entitlement combinations, favorite pages, owned/collected playlists, recent history, mutation success/rejection/unknown reconciliation, and auth status shapes. Values use `SANITIZED_*` identifiers and non-live URLs only.
+- Create `scripts/check-qqmusic-reference-evidence.ps1`: pinned-source, symbol-only protocol evidence validator with an in-memory mutation suite.
 - Create `scripts/check-secrets.ps1`: tracked-file scanner with field-name documentation allowlist and assigned-token/value detection.
 - Create `scripts/check-secrets.sh`: equivalent Linux/CI scanner.
 - Create `scripts/invoke-qqmusic-auth-preflight-command.ps1` and `scripts/run-qqmusic-auth-preflight.ps1`: Windows PowerShell 5.1-safe fixed-ID command harness plus deterministic pre-QR runner.
@@ -112,6 +113,7 @@
 
 **Files:**
 
+- Create: `scripts/check-qqmusic-reference-evidence.ps1`
 - Modify: `docs/qqmusic-provider.md`
 - Modify: `README.md`
 
@@ -164,84 +166,58 @@ Expected: each commit API response returns the exact requested 40-character SHA 
 Run:
 
 ```powershell
-$headers = @{ 'User-Agent' = 'YAQMC-interoperability-audit' }
-$targets = @(
-  @{ Repo='L-1124/QQMusicApi'; Sha='108617ffe80abefec6358717b9f4d3677550db10'; Paths=@('qqmusic_api/modules/login.py','qqmusic_api/modules/login_utils.py','qqmusic_api/modules/user.py','qqmusic_api/modules/songlist.py','qqmusic_api/modules/song.py','qqmusic_api/models/request.py') },
-  @{ Repo='wxuyu/QQMusicApi'; Sha='44c3b26c8741521266c63002844564392a1fa38c'; Paths=@('src/services/apis/user/getQQLoginQr.ts','src/services/apis/user/checkQQLoginQr.ts','src/services/apis/user/getUserLikedSongs.ts','src/services/apis/user/getUserPlaylists.ts','src/services/apis/user/getUserCollections.ts','src/services/apis/user/getUserDetail.ts','src/services/apis/songLists/songListDetail.ts','src/config/user-info.ts') },
-  @{ Repo='RethinkQAQ/allmusic-qqmusicapi'; Sha='a828f1f2d2dc8416bd1a549ee4c14efbb8ba4974'; Paths=@('src/main/java/qqmusicapi/QQMusicLoginHelper.java') }
-)
-$operationsByPath = @{
-  'qqmusic_api/modules/login.py' = @('QR create','QR status','post-confirmation exchange','session validation/profile')
-  'qqmusic_api/modules/login_utils.py' = @('QR status','post-confirmation exchange')
-  'qqmusic_api/modules/user.py' = @('session validation/profile','Favorites read','Favorites write','recent history','entitlement')
-  'qqmusic_api/modules/songlist.py' = @('playlist summaries','playlist detail','playlist create','playlist rename','playlist add','playlist remove','playlist delete')
-  'qqmusic_api/modules/song.py' = @('playback vkey','entitlement')
-  'qqmusic_api/models/request.py' = @('session validation/profile','Favorites read','Favorites write','playlist summaries','playlist detail','playlist create','playlist rename','playlist add','playlist remove','playlist delete','recent history','entitlement','playback vkey')
-  'src/services/apis/user/getQQLoginQr.ts' = @('QR create')
-  'src/services/apis/user/checkQQLoginQr.ts' = @('QR status','post-confirmation exchange')
-  'src/services/apis/user/getUserLikedSongs.ts' = @('Favorites read','Favorites write')
-  'src/services/apis/user/getUserPlaylists.ts' = @('playlist summaries')
-  'src/services/apis/user/getUserCollections.ts' = @('playlist summaries')
-  'src/services/apis/user/getUserDetail.ts' = @('session validation/profile','entitlement')
-  'src/services/apis/songLists/songListDetail.ts' = @('playlist detail')
-  'src/config/user-info.ts' = @('session validation/profile')
-  'src/main/java/qqmusicapi/QQMusicLoginHelper.java' = @('QR create','QR status','post-confirmation exchange')
+./scripts/check-qqmusic-reference-evidence.ps1 -SelfTest
+foreach ($mutation in @(
+  'fabricated-operation-tag',
+  'empty-evidence-class',
+  'response-set-cookie',
+  'noisy-result-token'
+)) {
+  ./scripts/check-qqmusic-reference-evidence.ps1 -SelfTestMutation $mutation
 }
-$index = foreach ($target in $targets) {
-  foreach ($path in $target.Paths) {
-    $uri = "https://raw.githubusercontent.com/$($target.Repo)/$($target.Sha)/$path"
-    $body = (Invoke-WebRequest -UseBasicParsing -Headers $headers -Uri $uri).Content
-    $bytes = [Text.Encoding]::UTF8.GetBytes($body)
-    $hash = (Get-FileHash -InputStream ([IO.MemoryStream]::new($bytes)) -Algorithm SHA256).Hash.ToLowerInvariant()
-    $endpoints = [regex]::Matches($body, 'https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]*') |
-      ForEach-Object Value | Sort-Object -Unique
-    $moduleMethods = [regex]::Matches(
-      $body,
-      '(?i)(?:module|method)\s*[:=]\s*["'']([A-Za-z0-9_.-]+)["'']'
-    ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-    $headerNames = [regex]::Matches(
-      $body,
-      '(?i)(?:headers?\s*[.\[]|headers?\s*[:=][^{]*\{)[^\r\n]{0,160}?["'']([A-Za-z][A-Za-z0-9-]{1,63})["'']'
-    ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-    $requestKeys = [regex]::Matches(
-      $body,
-      '["'']([A-Za-z_][A-Za-z0-9_]{1,63})["'']\s*:'
-    ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-    $paginationKeys = @($requestKeys | Where-Object {
-      $_ -match '^(begin|cursor|ein|limit|num|offset|page|pageNo|pageSize|sin|size)$'
-    })
-    $resultCodes = [regex]::Matches(
-      $body,
-      '(?i)(?:code|ret|status)\s*(?:==|===|:|=)\s*["'']?(-?[0-9]{1,8}|[A-Za-z][A-Za-z0-9_-]{1,31})'
-    ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-    [pscustomobject]@{
-      repository = $target.Repo
-      commit = $target.Sha
-      path = $path
-      sha256 = $hash
-      operations = @($operationsByPath[$path])
-      endpointConstants = @($endpoints)
-      moduleMethods = @($moduleMethods)
-      headerNames = @($headerNames)
-      requestKeys = @($requestKeys)
-      paginationKeys = @($paginationKeys)
-      resultCodeLiterals = @($resultCodes)
-      corroboration = "$($target.Repo)@$($target.Sha):$path"
-    }
-  }
-}
-if ($index.Where({ $_.commit.Length -ne 40 -or $_.sha256.Length -ne 64 })) {
-  throw 'A provenance hash was truncated'
-}
-foreach ($operation in $operationsByPath.Values | ForEach-Object { $_ } | Sort-Object -Unique) {
-  if (-not $index.Where({ $_.operations -contains $operation })) {
-    throw "No sanitized inspection evidence for operation: $operation"
-  }
-}
-$index | ConvertTo-Json -Depth 6
+./scripts/check-qqmusic-reference-evidence.ps1 -EmitSanitizedJson
 ```
 
-Expected: nontruncating JSON contains each full 40-character commit and 64-character content SHA-256 plus operation tags, path-only endpoint constants, module/method literals, header names, request-key names, pagination-key names, result-code literals, and exact source corroboration. It contains no header/request values, source excerpt, reference source body, response body, cookie, or QR artifact and writes nothing to the repository or `output/`.
+Create `scripts/check-qqmusic-reference-evidence.ps1` before running those commands. The script owns three PowerShell classes: `ReferenceTarget` (`Repository`, `Commit`, `Path`), `SymbolSelector` (`Language`, `Path`, `AnchorKind`, `Anchor`, `EvidenceClass`, `ExpectedSymbols`), and `OperationEvidenceSpec` (`Operation`, `Selectors`, `SecretHeaderPolicy`, `PaginationPolicy`, `MinimumCorroboratingSources`). Its immutable `ReferenceTarget[]` contains the three exact repositories, full 40-character commits, and full paths listed below; callers cannot inject or replace targets. It downloads each pinned body into memory, hashes the bytes, passes the text directly to a language-aware token extractor, then releases the body. It must never add an `operations` field to a source record and must never accept an operation name found in source text as evidence.
+
+Implement the extractors as deterministic lexical scanners, not line-oriented catch-all regexes:
+
+- The Python scanner tokenizes strings, identifiers, punctuation, calls, keyword arguments, dictionaries, comparisons, and enum member expressions. It associates literals with the enclosing `def` and request-constructor call and follows only statically resolved calls/imports within the immutable pinned path set.
+- The TypeScript scanner skips comments/template contents, balances braces/parentheses across lines, and reads both quoted keys and unquoted identifier keys from multiline object literals. It associates `fetch`/client request configuration and `headers` objects with the enclosing exported declaration.
+- The Java scanner skips comments/string contents after recording literal tokens, balances calls/builders, and associates URL/query/header literals with the enclosing method.
+- Each scanner emits only symbol names: HTTPS origin/path literals (query values removed), paired `module/method` literals from one request object, request-key names, pagination-key names, request-header names, response-header names, validated result literals, declaration name, content SHA-256, and provenance. It never emits a literal value belonging to a request key/header, an excerpt, a body, a cookie, or QR bytes.
+- Request and response headers are separate token classes. Only a request `headers` object, `setRequestHeader`, or request-builder header call may emit `RequestHeaderName`; `response.headers`, `headers.get`, and `Set-Cookie` response access emit `ResponseHeaderName` and can never satisfy a request-secret-header selector.
+
+Encode the following literal manifest in the script. `py:def`, `ts:export`, and `java:method` are exact declaration anchors; `url:` matches a normalized HTTPS origin/path literal; `mm:` matches a module and method found in the same request object/call; `keys:` and `headers:` are exact symbol-name sets, not value regexes. Each `results:` selector must match at least one literal in its anchored declaration or common response decoder. `none` is permitted only when the validator proves the anchored request has no pagination or secret request-header tokens.
+
+| Operation                  | Exact pinned source/declaration selectors                                                                                                                                                                              | Endpoint or module/method selector                                                                                             | Required request-key selectors                   | Secret request-header selector | Pagination selector        | Valid result selector                                                                                                  | Minimum sources |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------- |
+| QR create                  | `qqmusic_api/modules/login.py#py:def:_get_qq_qr`; `src/services/apis/user/getQQLoginQr.ts#ts:export:getQQLoginQr`; `src/main/java/qqmusicapi/QQMusicLoginHelper.java#java:method:startQQLogin`                         | `url:https://ssl.ptlogin2.qq.com/ptqrshow`                                                                                     | `keys:appid,daid,pt_3rd_aid,u1`                  | `none`                         | `none`                     | `results:200`                                                                                                          | 2               |
+| QR status                  | `qqmusic_api/modules/login.py#py:def:_check_qq_qr`; `src/services/apis/user/checkQQLoginQr.ts#ts:export:checkQQLoginQr`; `src/main/java/qqmusicapi/QQMusicLoginHelper.java#java:method:startQQLogin`                   | `url:https://ssl.ptlogin2.qq.com/ptqrlogin`                                                                                    | `keys:ptqrtoken,qrsig,action,u1`                 | `headers:Cookie`               | `none`                     | `results:65,66,67,68,QRCodeLoginEvents.SCAN,QRCodeLoginEvents.CONF,QRCodeLoginEvents.TIMEOUT,QRCodeLoginEvents.REFUSE` | 2               |
+| post-confirmation exchange | `qqmusic_api/modules/login.py#py:def:_authorize_qq_qr`; `src/services/apis/user/checkQQLoginQr.ts#ts:export:checkQQLoginQr`                                                                                            | `url:https://ssl.ptlogin2.graph.qq.com/check_sig` or `mm:QQConnectLogin.LoginServer/QQLogin`                                   | `keys:client_id,redirect_uri,response_type,code` | `headers:Cookie`               | `none`                     | `results:0,QRCodeLoginEvents.DONE`                                                                                     | 2               |
+| session validation/profile | `qqmusic_api/modules/login.py#py:def:check_expired`; `src/services/apis/user/getUserDetail.ts#ts:export:getUserDetail`                                                                                                 | `mm:music.UserInfo.userInfoServer/GetLoginUserInfo` or `url:https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg`     | `keys:uin,g_tk`                                  | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 2               |
+| Favorites read             | `qqmusic_api/modules/user.py#py:def:get_fav_song`; `src/services/apis/user/getUserLikedSongs.ts#ts:export:getUserLikedSongs`                                                                                           | `mm:music.srfDissInfo.DissInfo/CgiGetDiss`                                                                                     | `keys:dirid,song_begin,song_num`                 | `headers:Cookie`               | `keys:song_begin,song_num` | `results:0`                                                                                                            | 2               |
+| Favorites write            | `qqmusic_api/modules/songlist.py#py:def:like_song`; `qqmusic_api/modules/songlist.py#py:def:unlike_song`                                                                                                               | `mm:music.musicasset.PlaylistDetailWrite/AddSonglist` or `mm:music.musicasset.PlaylistDetailWrite/DelSonglist`                 | `keys:dirId,songId,songType`                     | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 1               |
+| playlist summaries         | `qqmusic_api/modules/user.py#py:def:get_created_songlist`; `src/services/apis/user/getUserPlaylists.ts#ts:export:getUserPlaylists`; `src/services/apis/user/getUserCollections.ts#ts:export:getUserCollectedSongLists` | `mm:music.musicasset.PlaylistBaseRead/GetPlaylistByUin` or `url:https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg` | `keys:uin`                                       | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 2               |
+| playlist detail            | `qqmusic_api/modules/songlist.py#py:def:get_detail`; `src/services/apis/songLists/songListDetail.ts#ts:default-export`                                                                                                 | `mm:music.srfDissInfo.DissInfo/CgiGetDiss`                                                                                     | `keys:disstid,song_begin,song_num`               | `headers:Cookie`               | `keys:song_begin,song_num` | `results:0`                                                                                                            | 2               |
+| playlist create            | `qqmusic_api/modules/songlist.py#py:def:create`                                                                                                                                                                        | `mm:music.musicasset.PlaylistBaseWrite/AddPlaylist`                                                                            | `keys:dirName`                                   | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 1               |
+| playlist rename            | `qqmusic_api/modules/songlist.py#py:def:rename`                                                                                                                                                                        | `mm:music.musicasset.PlaylistBaseWrite/ModifyPlaylist`                                                                         | `keys:dirId,dirName`                             | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 1               |
+| playlist add               | `qqmusic_api/modules/songlist.py#py:def:add_songs`                                                                                                                                                                     | `mm:music.musicasset.PlaylistDetailWrite/AddSonglist`                                                                          | `keys:dirId,songId,songType`                     | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 1               |
+| playlist remove            | `qqmusic_api/modules/songlist.py#py:def:del_songs`                                                                                                                                                                     | `mm:music.musicasset.PlaylistDetailWrite/DelSonglist`                                                                          | `keys:dirId,songId,songType`                     | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 1               |
+| playlist delete            | `qqmusic_api/modules/songlist.py#py:def:delete`                                                                                                                                                                        | `mm:music.musicasset.PlaylistBaseWrite/DelPlaylist`                                                                            | `keys:dirId`                                     | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 1               |
+| recent history             | `qqmusic_api/modules/user.py#py:def:get_recent_song`; `src/services/apis/user/getUserDetail.ts#ts:export:getUserDetail`                                                                                                | `mm:music.UserInfo.userInfoServer/GetRecentSongList`                                                                           | `keys:uin,start,num`                             | `headers:Cookie`               | `keys:start,num`           | `results:0`                                                                                                            | 1               |
+| entitlement                | `qqmusic_api/modules/user.py#py:def:get_vip_info`; `src/services/apis/user/getUserDetail.ts#ts:export:getUserDetail`                                                                                                   | `mm:VipLogin.VipLoginInter/vip_login_base`                                                                                     | `keys:uin`                                       | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 2               |
+| playback vkey              | `qqmusic_api/modules/song.py#py:def:get_song_urls`                                                                                                                                                                     | `mm:vkey.GetVkeyServer/CgiGetVkey`                                                                                             | `keys:filename,guid,songmid,uin`                 | `headers:Cookie`               | `none`                     | `results:0`                                                                                                            | 1               |
+
+The validator resolves every selector against extracted tokens, unions only the resolved records for that operation, and then requires: at least one normalized endpoint or one paired module/method; every required request key; every required secret-bearing **request** header name (or proven `none`); pagination keys or proven `none`; at least one valid result literal; and the minimum number of distinct `repository@commit:path` corroborators. A selector whose anchor or expected symbol is absent is a hard failure; malformed selectors, duplicate operation names, unknown evidence classes, empty expected-symbol arrays, and source-count shortfalls are hard failures. No path-to-operation tag or caller-supplied `operations` property participates in resolution.
+
+Accept result evidence only when the token kind is one of: decimal integer literal matching `^-?(0|[1-9][0-9]{0,7})$`; quoted string literal whose decoded value matches `^[A-Za-z0-9_-]{1,32}$`; or a member expression matching `^(QRCodeLoginEvents|PhoneLoginEvents|LoginStatus|AuthStatus)\.[A-Z][A-Z0-9_]*$`. Reject all bare identifiers and, case-insensitively, `case`, `exc`, `int`, `match`, `raise`, `resp`, `str`, `await`, `self`, `null`, and `authorizeRes`, even if a malformed fixture presents one as a quoted value.
+
+`-SelfTest` uses only synthetic strings and deep-cloned manifests. It proves a multiline TypeScript request with unquoted `module`, `method`, `params`, `page`, and `pageSize` keys is extracted; a response-side `Set-Cookie` never satisfies `headers:Cookie`; a fabricated `operations = @('playlist rename')` tag never creates evidence; deleting each evidence class in turn fails; reducing corroboration below the declared minimum fails; and every noisy token in the deny-list plus an arbitrary bare identifier fails result validation. It also mutates a selector to an unknown path/anchor and proves that the fabricated operation cannot pass. Each `-SelfTestMutation` invocation must print `EXPECTED_REJECTION:<name>` and exit zero only after its malformed candidate is rejected; accidental acceptance exits nonzero.
+
+Expected: both commands PASS. Nontruncating JSON contains each full 40-character commit and 64-character content SHA-256 plus only resolved endpoint paths, paired module/method literals, request-header names, response-header names, request-key names, pagination-key names, validated result literals, and exact source corroboration. It contains no operation tags, header/request values, source excerpt, reference source body, response body, cookie value, or QR artifact and writes nothing to the repository or `output/`.
+
+`-VerifyLedger <path>` re-runs the immutable extraction and accepts a ledger row only when every protocol cell equals the corresponding resolved symbol set (or the validator-issued `none` sentinel) and the corroboration count meets the manifest. It rejects a manually invented endpoint, module/method, key, request header, result, source path, or operation row.
 
 - [ ] **Step 3: Corroborate protocol declarations without creating or polling a live QR**
 
@@ -289,6 +265,7 @@ QQ Music interoperability research consulted `L-1124/QQMusicApi`, `wxuyu/QQMusic
 Run:
 
 ```powershell
+$null = ./scripts/check-qqmusic-reference-evidence.ps1 -VerifyLedger docs/qqmusic-provider.md
 $required = @(
   'QR create', 'QR status', 'post-confirmation exchange', 'session validation/profile',
   'Favorites read', 'Favorites write', 'playlist summaries', 'playlist detail',
@@ -311,19 +288,17 @@ foreach ($operation in $required) {
 }
 $ignored = cargo test --manifest-path src-tauri/Cargo.toml qqmusic::tests::live_ -- --ignored --list
 if (@($ignored | Select-String 'live_').Count -ne 3) { throw 'Live tests are not all explicitly ignored' }
-$outputState = @(git status --short --ignored --untracked-files=all -- output/)
-if ($outputState -match 'qqmusic-auth-account|qr|cookie|protocol-source') {
-  throw "Premature ignored account evidence exists: $($outputState -join ', ')"
-}
+$outputState = @(git status --short --ignored --untracked-files=all -- output/qqmusic-auth-account/)
+if ($outputState) { throw "Premature task-owned evidence exists: $($outputState -join ', ')" }
 git diff --check
 ```
 
-Expected: no missing/incomplete operation, every row has exact corroboration and live status, the diff contains no whitespace errors, and the recursive ignored/untracked `output/` status contains no protocol source body, QR artifact, or premature QQ account evidence.
+Expected: no missing/incomplete operation, every row has exact corroboration and live status, the diff contains no whitespace errors, and the recursive ignored/untracked status for exactly `output/qqmusic-auth-account/` is empty. Unrelated ignored `output/` content is outside this task and is neither scanned nor rejected here.
 
 - [ ] **Step 6: Commit the independently reviewable research gate**
 
 ```powershell
-git add docs/qqmusic-provider.md README.md
+git add scripts/check-qqmusic-reference-evidence.ps1 docs/qqmusic-provider.md README.md
 git commit -m "docs: freeze qq music account protocol provenance"
 ```
 
