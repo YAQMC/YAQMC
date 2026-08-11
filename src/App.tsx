@@ -65,6 +65,7 @@ function collectEntities(collections: MediaCollection[]) {
 
 export default function App() {
   const { t } = useTranslation('pages');
+  const provider = useMusicProvider();
   useNativePlayerRuntime();
   useLyricsCoordinator();
   usePreferencesRuntime(true);
@@ -304,6 +305,7 @@ export default function App() {
       <AppBackground />
       <div
         className="app-shell"
+        data-provider-id={provider.id}
         data-lyrics-focus={(lyricsOpen && focusSidebarCollapsed) || undefined}
         data-lyrics-fullscreen={(lyricsOpen && fullscreen) || undefined}
       >

@@ -4,11 +4,14 @@ import type * as PreferencesModule from './application/preferences';
 import i18n from './i18n';
 import { defaultPreferences, usePreferencesStore } from './application/preferences';
 import { initialPlayerState, usePlayerStore } from './application/player-store';
+import { ProviderContext } from './application/provider-context';
 import {
   setFullscreenPortForTests,
   useLyricsPresentationStore,
   type FullscreenPort,
 } from './application/lyrics-presentation';
+import type { MusicProvider } from './providers/music-provider';
+import { fakeMusicProvider } from './providers/fake/fake-music-provider';
 import App from './App';
 
 vi.mock('./application/native-player-runtime', () => ({
@@ -60,6 +63,14 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function renderApp(provider: MusicProvider = fakeMusicProvider) {
+  return render(
+    <ProviderContext.Provider value={provider}>
+      <App />
+    </ProviderContext.Provider>,
+  );
+}
+
 class ControlledFullscreenPort implements FullscreenPort {
   fullscreen = false;
   failWrite = false;
@@ -100,7 +111,7 @@ describe('App TopBar history navigation', () => {
   });
 
   it('gates TopBar Back and Forward on confirmed fullscreen exit', async () => {
-    render(<App />);
+    renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'Navigate to search' }));
     await waitFor(() => expect(screen.getByTestId('active-route')).toHaveTextContent('search'));
 
@@ -139,5 +150,23 @@ describe('App TopBar history navigation', () => {
     port.failWrite = false;
     fireEvent.click(screen.getByTitle('Go forward'));
     await waitFor(() => expect(screen.getByTestId('active-route')).toHaveTextContent('search'));
+  });
+
+  it('projects the active provider identity without hard-coding the acceptance marker', () => {
+    const view = renderApp(fakeMusicProvider);
+    expect(view.container.querySelector('.app-shell')).toHaveAttribute('data-provider-id', 'fake');
+
+    const qqmusic = Object.assign(Object.create(fakeMusicProvider) as MusicProvider, {
+      id: 'qqmusic',
+    });
+    view.rerender(
+      <ProviderContext.Provider value={qqmusic}>
+        <App />
+      </ProviderContext.Provider>,
+    );
+    expect(view.container.querySelector('.app-shell')).toHaveAttribute(
+      'data-provider-id',
+      'qqmusic',
+    );
   });
 });
