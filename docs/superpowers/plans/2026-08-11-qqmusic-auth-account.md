@@ -913,6 +913,8 @@ git commit -m "security: harden qq music authenticated transport"
 - Modify: `src/providers/fake/fake-music-provider.test.ts`
 - Modify: `src/application/use-catalog.ts`
 - Create: `src/application/use-catalog.test.tsx`
+- Modify: `src/application/provider-settings.ts`
+- Modify: `src/pages/SettingsPage.tsx`
 
 **Interfaces:**
 
@@ -1230,6 +1232,8 @@ Task 5 declares the final mutation request/result shapes even though Tasks 11–
 
 Remove `account` and all favorite/playlist/auth booleans from Rust/TypeScript `ProviderStatus`. Rename its capability shape to `CatalogProviderCapabilities`. Keep `qqmusic_status` public and catalog-only. Put all account flags only in sanitized `AccountSnapshot.capabilities`. Make `QQMusicProvider` implement `MusicProvider, AccountMusicProvider` and add all 16 account methods now as typed `nativeRequest` adapters using the exact ACL command names from Task 2; for example, `getAccountSnapshot()` calls `nativeRequest('qqmusic_account_snapshot', undefined, signal)`. The corresponding Rust command implementations land in Tasks 7, 9, 11, and 12, and no frontend runtime invokes a command before its owning task exists.
 
+`ProviderStatus` currently lives in `src/application/provider-settings.ts`, and the existing Settings account card reads its legacy `account` field and invokes the legacy `qqmusic_sign_out` result shape. Remove those account fields and the `signOut` hook action in this task. Until Task 8 wires `AccountSnapshot`, keep that card as a catalog-only static placeholder that invokes no account command; Task 8 replaces the placeholder with the sanitized account runtime.
+
 Add a Rust serialization test:
 
 ```rust
@@ -1259,7 +1263,7 @@ Expected: fake/catalog tests PASS, `useCatalog` never touches account APIs, and 
 - [ ] **Step 7: Commit the independently reviewable contract split**
 
 ```powershell
-git add src-tauri/src/qqmusic.rs src-tauri/src/qqmusic/account.rs src-tauri/src/commands.rs src/domain/music.ts src/providers/music-provider.ts src/providers/qqmusic/qq-music-provider.ts src/providers/fake/fake-music-provider.ts src/providers/fake/fake-music-provider.test.ts src/application/use-catalog.ts src/application/use-catalog.test.tsx
+git add src-tauri/src/qqmusic.rs src-tauri/src/qqmusic/account.rs src-tauri/src/commands.rs src/domain/music.ts src/providers/music-provider.ts src/providers/qqmusic/qq-music-provider.ts src/providers/fake/fake-music-provider.ts src/providers/fake/fake-music-provider.test.ts src/application/use-catalog.ts src/application/use-catalog.test.tsx src/application/provider-settings.ts src/pages/SettingsPage.tsx
 git commit -m "refactor: split qq catalog and account contracts"
 ```
 
