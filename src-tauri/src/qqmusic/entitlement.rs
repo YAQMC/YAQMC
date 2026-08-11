@@ -315,7 +315,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
     let super_vip = numeric("/svip").unwrap_or_default() > 0
         || numeric("/identity/HugeVip").unwrap_or_default() > 0;
     let expires_at_ms = numeric("/userinfo/expire")
-        .filter(|value| *value > 0)
+        .filter(|value| *value >= 946_684_800)
         .map(|value| {
             if value < 10_000_000_000 {
                 value.saturating_mul(1_000)
@@ -615,5 +615,24 @@ mod tests {
             vec![AudioQuality::Standard]
         );
         assert_eq!(entitlement.observed_maximum_quality, None);
+    }
+
+    #[test]
+    fn implausibly_small_expiry_is_not_presented_as_an_expired_membership() {
+        let payload = serde_json::json!({
+            "req": {
+                "data": {
+                    "svip": 0,
+                    "identity": { "vip": 0, "HugeVip": 0 },
+                    "userinfo": { "expire": 3 }
+                }
+            }
+        });
+
+        let entitlement = normalize_account_entitlement(&payload);
+
+        assert_eq!(entitlement.tier, EntitlementTier::Free);
+        assert_eq!(entitlement.membership, MembershipState::Inactive);
+        assert_eq!(entitlement.expires_at_ms, None);
     }
 }

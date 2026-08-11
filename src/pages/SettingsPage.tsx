@@ -236,7 +236,9 @@ function safeAccountAvatarUrl(value: string | null | undefined): string | null {
   try {
     const url = new URL(value);
     return url.protocol === 'https:' &&
-      url.hostname === 'qpic.y.qq.com' &&
+      ['qpic.y.qq.com', 'q.qlogo.cn', 'thirdwx.qlogo.cn', 'thirdqq.qlogo.cn'].includes(
+        url.hostname,
+      ) &&
       url.port === '' &&
       url.username === '' &&
       url.password === ''

@@ -92,6 +92,31 @@ describe('lyrics surface projection', () => {
     expect(document.metadata.offsetMs).toBe(0);
   });
 
+  it('keeps the most recently completed line visible through gaps and track end', () => {
+    const gapped: LyricDocument = {
+      ...document,
+      lines: [
+        { ...document.lines[0]!, endMs: 2_000 },
+        { ...document.lines[1]!, startMs: 3_000, endMs: 3_500 },
+      ],
+    };
+
+    expect(projectSurfaceLyrics(gapped, 2_500, 0)).toMatchObject({
+      current: { id: 'line-one' },
+      next: { id: 'line-two' },
+      wordIndex: 2,
+    });
+    expect(projectSurfaceLyrics(gapped, 4_000, 0)).toMatchObject({
+      current: { id: 'line-two' },
+      next: null,
+      wordIndex: 0,
+    });
+    expect(projectSurfaceLyrics(gapped, 500, 0).current).toBeNull();
+    expect(
+      projectSurfaceLyrics({ ...gapped, syncMode: 'unsynchronized' }, 4_000, 0).current,
+    ).toBeNull();
+  });
+
   it('unlocks through one authoritative native-and-persistence command', async () => {
     usePreferencesStore.getState().setSurfaceInteractionLocal('desktop', 'passive-locked');
     invokeMock.mockImplementation(async (command: string, args: { value: string }) => {

@@ -87,7 +87,6 @@ export function AccountDialog() {
   const closeDialog = useAccountStore((state) => state.closeDialog);
   const startLogin = useAccountStore((state) => state.startLogin);
   const cancelLogin = useAccountStore((state) => state.cancelLogin);
-  const refreshQr = useAccountStore((state) => state.refreshQr);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const accountProvider = isAccountMusicProvider(provider) ? provider : null;
@@ -124,6 +123,7 @@ export function AccountDialog() {
     snapshot.state === 'rejected' ||
     snapshot.state === 'network-error' ||
     snapshot.state === 'protocol-error' ||
+    snapshot.state === 'expired' ||
     snapshot.state === 'session-expired' ||
     snapshot.state === 'reauthentication-required';
 
@@ -184,6 +184,7 @@ export function AccountDialog() {
             </div>
           )}
           <p role="status">{stateMessage(snapshot, effectiveError, t)}</p>
+          {canStart && <small className="account-dialog__notice">{t('oauthNotice')}</small>}
           {busy && <small>{t('busy')}</small>}
         </div>
 
@@ -193,19 +194,19 @@ export function AccountDialog() {
               type="button"
               className="button button--primary"
               disabled={busy}
-              onClick={() => void startLogin(accountProvider)}
+              onClick={() => void startLogin(accountProvider, 'qq')}
             >
-              {t('signIn')}
+              {t('signInQq')}
             </button>
           )}
-          {snapshot.state === 'expired' && (
+          {canStart && (
             <button
               type="button"
-              className="button button--primary"
+              className="button button--secondary"
               disabled={busy}
-              onClick={() => void refreshQr(accountProvider)}
+              onClick={() => void startLogin(accountProvider, 'wechat')}
             >
-              {t('refresh')}
+              {t('signInWechat')}
             </button>
           )}
           {waiting && (

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-search"
+description = "Enables the qqmusic_search command without any pre-configured scope."
+commands.allow = ["qqmusic_search"]
+
+[[permission]]
+identifier = "deny-qqmusic-search"
+description = "Denies the qqmusic_search command without any pre-configured scope."
+commands.deny = ["qqmusic_search"]

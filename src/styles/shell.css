@@ -67,10 +67,13 @@
   color: var(--accent);
 }
 
-.sidebar__brand-mark img {
+.sidebar__brand-mark::before {
   width: 24px;
   height: 24px;
-  object-fit: contain;
+  background: linear-gradient(145deg, var(--accent-primary), var(--accent-secondary));
+  content: '';
+  mask: url('/yaqmc-logo.png') center / contain no-repeat;
+  -webkit-mask: url('/yaqmc-logo.png') center / contain no-repeat;
 }
 
 .sidebar__nav {
@@ -165,6 +168,7 @@
   color: #fff;
   font-size: var(--text-sm);
   font-weight: 700;
+  object-fit: cover;
 }
 
 .sidebar__profile-copy {

@@ -982,8 +982,10 @@
 
 .toggle-switch {
   position: relative;
+  box-sizing: border-box;
   width: 42px;
   height: 24px;
+  padding: 0;
   flex: 0 0 42px;
   border-radius: var(--radius-round);
   background: var(--surface-pressed);
@@ -992,13 +994,14 @@
 
 .toggle-switch span {
   position: absolute;
-  top: 3px;
+  top: 50%;
   left: 3px;
   width: 18px;
   height: 18px;
   margin: 0;
   border-radius: 50%;
   background: var(--text-secondary);
+  transform: translateY(-50%);
   transition:
     transform var(--motion-base) var(--ease-out),
     background var(--motion-base);
@@ -1010,7 +1013,7 @@
 
 .toggle-switch[data-active] span {
   background: var(--accent-ink);
-  transform: translateX(18px);
+  transform: translate(18px, -50%);
 }
 
 .port-form {

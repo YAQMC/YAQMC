@@ -2,15 +2,17 @@
 
 ## Current product state
 
-Guest mode remains the startup fallback. QQ QR login and the authenticated account runtime are implemented from the
-compatibility behavior recorded in [the provider ledger](qqmusic-provider.md); live account acceptance is pending.
-This is not an official third-party OAuth SDK contract. The application never displays a QQ password form, imports
-browser cookies, or asks the user to paste session data.
+Guest mode remains the startup fallback. QQ and WeChat authorization now open Tencent-hosted OAuth pages in a
+restricted, incognito application WebView; live account acceptance is pending. The registered QQ Music callback URL
+is intercepted before navigation, its single-use code and CSRF state are validated in Rust, and the code is exchanged
+for the normalized QQ Music session. This is still a compatibility integration rather than a supported third-party
+QQ Music SDK contract. YAQMC never renders its own password form, reads credentials entered into the hosted page,
+copies WebView cookies, or asks the user to paste session data.
 
-The normalized state machine includes guest, restoring, QR creation/waiting/confirmation, authenticated,
+The normalized state machine includes guest, restoring, authorization waiting, authenticated,
 cancelled/expired/rejected, network/protocol failure, reauthentication-required, and secure-store-unavailable. React
-receives only a data-URI QR image, opaque attempt/lease IDs, cadence/expiry, masked profile data, normalized
-entitlement, capabilities, and a revision number.
+receives only opaque attempt/lease IDs, cadence/expiry, masked profile data, normalized entitlement, capabilities,
+and a revision number. The legacy QR projection remains internal compatibility code and is not the selected UI path.
 
 ## Secure storage boundary
 
@@ -29,12 +31,14 @@ The local API configuration file contains only `enabled` and `port`. Builds pred
 `token` property; startup attempts a one-time move to the OS store and always removes the plaintext field. If the OS
 store is unavailable, listener startup fails closed and the secret is not written back to disk.
 
-## QR ownership and session promotion
+## OAuth ownership and session promotion
 
 Only the `main` WebView has the `qqmusic-account` capability, and every Rust command independently checks the caller
-label. Desktop Lyrics and Lyrics Island cannot call account commands. The visible account dialog renews an opaque
-native owner lease; closing, navigating/reloading, hiding the owner, or missing the lease deadline cancels the
-challenge and poll loop. Polling is bounded by provider cadence and a five-minute attempt lifetime.
+label. Desktop Lyrics, Lyrics Island, and the remote OAuth WebView cannot call account commands. The WebView permits
+only the exact HTTPS hosts required by the selected QQ or WeChat flow, denies popups, disables autofill/devtools,
+uses an incognito profile, and validates the callback origin, path, login type, return URL, unique state, and bounded
+code. The visible account dialog renews an opaque native owner lease; closing/reloading the owner, closing or losing
+the OAuth WebView, or missing the lease deadline cancels the attempt. Each attempt is bounded to five minutes.
 
 After confirmation, the native service follows a transactional sequence:
 
@@ -70,4 +74,4 @@ constant time, and exposes no generic command/filesystem endpoint. This is defen
 fully compromised user session.
 
 Tracked documentation/fixtures are scanned on Windows and Linux before packaging. Deterministic tests are complete;
-no live QR, account profile, cookie, token, playlist name, or response body is committed as evidence.
+no live OAuth code, account profile, cookie, token, playlist name, or response body is committed as evidence.

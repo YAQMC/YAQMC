@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-toggle"
+description = "Enables the player_toggle command without any pre-configured scope."
+commands.allow = ["player_toggle"]
+
+[[permission]]
+identifier = "deny-player-toggle"
+description = "Denies the player_toggle command without any pre-configured scope."
+commands.deny = ["player_toggle"]

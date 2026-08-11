@@ -177,10 +177,274 @@
       "description": "Permission identifier",
       "oneOf": [
         {
-          "description": "Allows the main application WebView to use sanitized QQ Music account operations.\n#### This permission set includes:\n\n- `allow-qqmusic-account-snapshot`\n- `allow-qqmusic-auth-start`\n- `allow-qqmusic-auth-heartbeat`\n- `allow-qqmusic-auth-cancel`\n- `allow-qqmusic-auth-refresh`\n- `allow-qqmusic-sign-out`\n- `allow-qqmusic-favorite-songs`\n- `allow-qqmusic-account-playlists`\n- `allow-qqmusic-account-playlist-tracks`\n- `allow-qqmusic-account-recently-played`\n- `allow-qqmusic-set-favorite`\n- `allow-qqmusic-create-playlist`\n- `allow-qqmusic-rename-playlist`\n- `allow-qqmusic-add-playlist-track`\n- `allow-qqmusic-remove-playlist-track`\n- `allow-qqmusic-delete-playlist`",
+          "description": "Allows dedicated lyric surfaces to read their projection and use their visible controls.\n#### This permission set includes:\n\n- `allow-app-preferences-get`\n- `allow-app-preferences-set`\n- `allow-appearance-background-load`\n- `allow-lyrics-surface-projection`\n- `allow-lyrics-surface-close`\n- `allow-lyrics-surface-set-interaction`\n- `allow-lyrics-surface-show-settings`\n- `allow-player-lyrics`\n- `allow-player-previous`\n- `allow-player-toggle`\n- `allow-player-next`",
+          "type": "string",
+          "const": "lyrics-surface-application",
+          "markdownDescription": "Allows dedicated lyric surfaces to read their projection and use their visible controls.\n#### This permission set includes:\n\n- `allow-app-preferences-get`\n- `allow-app-preferences-set`\n- `allow-appearance-background-load`\n- `allow-lyrics-surface-projection`\n- `allow-lyrics-surface-close`\n- `allow-lyrics-surface-set-interaction`\n- `allow-lyrics-surface-show-settings`\n- `allow-player-lyrics`\n- `allow-player-previous`\n- `allow-player-toggle`\n- `allow-player-next`"
+        },
+        {
+          "description": "Allows a dedicated lyric unlock control to unlock only its matching surface.\n#### This permission set includes:\n\n- `allow-lyrics-surface-unlock`",
+          "type": "string",
+          "const": "lyrics-surface-unlock-control",
+          "markdownDescription": "Allows a dedicated lyric unlock control to unlock only its matching surface.\n#### This permission set includes:\n\n- `allow-lyrics-surface-unlock`"
+        },
+        {
+          "description": "Allows the trusted main application WebView to use non-account application commands.\n#### This permission set includes:\n\n- `allow-platform-diagnostics`\n- `allow-platform-export-diagnostics`\n- `allow-system-integration-status`\n- `allow-system-shortcuts-set-enabled`\n- `allow-audio-output-devices`\n- `allow-audio-set-output-device`\n- `allow-qqmusic-status`\n- `allow-qqmusic-home`\n- `allow-qqmusic-library`\n- `allow-qqmusic-search`\n- `allow-qqmusic-album`\n- `allow-qqmusic-playlist`\n- `allow-qqmusic-lyrics`\n- `allow-qqmusic-cache-artwork`\n- `allow-qqmusic-set-preferred-quality`\n- `allow-qqmusic-cache-stats`\n- `allow-qqmusic-clear-cache`\n- `allow-player-snapshot`\n- `allow-player-hydrate-queue`\n- `allow-player-play-tracks`\n- `allow-player-play-from-queue`\n- `allow-player-play`\n- `allow-player-pause`\n- `allow-player-toggle`\n- `allow-player-next`\n- `allow-player-previous`\n- `allow-player-seek`\n- `allow-player-set-volume`\n- `allow-player-toggle-muted`\n- `allow-player-toggle-shuffle`\n- `allow-player-cycle-repeat`\n- `allow-player-add-to-queue`\n- `allow-player-remove-from-queue`\n- `allow-player-set-lyrics`\n- `allow-player-lyrics`\n- `allow-lyrics-surface-projection`\n- `allow-app-preferences-get`\n- `allow-app-preferences-set`\n- `allow-appearance-pick-background`\n- `allow-appearance-background-load`\n- `allow-lyrics-surfaces-reconcile`\n- `allow-lyrics-surface-capabilities`\n- `allow-lyrics-surface-status`\n- `allow-lyrics-surfaces-unlock-all`\n- `allow-lyrics-surface-close`\n- `allow-lyrics-surface-set-interaction`\n- `allow-lyrics-surface-reset-position`\n- `allow-lyrics-surface-show-settings`\n- `allow-local-api-status`\n- `allow-local-api-set-enabled`\n- `allow-local-api-set-port`\n- `allow-local-api-reveal-token`\n- `allow-local-api-regenerate-token`",
+          "type": "string",
+          "const": "main-application",
+          "markdownDescription": "Allows the trusted main application WebView to use non-account application commands.\n#### This permission set includes:\n\n- `allow-platform-diagnostics`\n- `allow-platform-export-diagnostics`\n- `allow-system-integration-status`\n- `allow-system-shortcuts-set-enabled`\n- `allow-audio-output-devices`\n- `allow-audio-set-output-device`\n- `allow-qqmusic-status`\n- `allow-qqmusic-home`\n- `allow-qqmusic-library`\n- `allow-qqmusic-search`\n- `allow-qqmusic-album`\n- `allow-qqmusic-playlist`\n- `allow-qqmusic-lyrics`\n- `allow-qqmusic-cache-artwork`\n- `allow-qqmusic-set-preferred-quality`\n- `allow-qqmusic-cache-stats`\n- `allow-qqmusic-clear-cache`\n- `allow-player-snapshot`\n- `allow-player-hydrate-queue`\n- `allow-player-play-tracks`\n- `allow-player-play-from-queue`\n- `allow-player-play`\n- `allow-player-pause`\n- `allow-player-toggle`\n- `allow-player-next`\n- `allow-player-previous`\n- `allow-player-seek`\n- `allow-player-set-volume`\n- `allow-player-toggle-muted`\n- `allow-player-toggle-shuffle`\n- `allow-player-cycle-repeat`\n- `allow-player-add-to-queue`\n- `allow-player-remove-from-queue`\n- `allow-player-set-lyrics`\n- `allow-player-lyrics`\n- `allow-lyrics-surface-projection`\n- `allow-app-preferences-get`\n- `allow-app-preferences-set`\n- `allow-appearance-pick-background`\n- `allow-appearance-background-load`\n- `allow-lyrics-surfaces-reconcile`\n- `allow-lyrics-surface-capabilities`\n- `allow-lyrics-surface-status`\n- `allow-lyrics-surfaces-unlock-all`\n- `allow-lyrics-surface-close`\n- `allow-lyrics-surface-set-interaction`\n- `allow-lyrics-surface-reset-position`\n- `allow-lyrics-surface-show-settings`\n- `allow-local-api-status`\n- `allow-local-api-set-enabled`\n- `allow-local-api-set-port`\n- `allow-local-api-reveal-token`\n- `allow-local-api-regenerate-token`"
+        },
+        {
+          "description": "Allows the main application WebView to use sanitized QQ Music account operations.\n#### This permission set includes:\n\n- `allow-qqmusic-account-snapshot`\n- `allow-qqmusic-auth-start`\n- `allow-qqmusic-auth-oauth-start`\n- `allow-qqmusic-auth-heartbeat`\n- `allow-qqmusic-auth-cancel`\n- `allow-qqmusic-auth-refresh`\n- `allow-qqmusic-sign-out`\n- `allow-qqmusic-favorite-songs`\n- `allow-qqmusic-account-playlists`\n- `allow-qqmusic-account-playlist-tracks`\n- `allow-qqmusic-account-recently-played`\n- `allow-qqmusic-set-favorite`\n- `allow-qqmusic-create-playlist`\n- `allow-qqmusic-rename-playlist`\n- `allow-qqmusic-add-playlist-track`\n- `allow-qqmusic-remove-playlist-track`\n- `allow-qqmusic-delete-playlist`",
           "type": "string",
           "const": "qqmusic-account",
-          "markdownDescription": "Allows the main application WebView to use sanitized QQ Music account operations.\n#### This permission set includes:\n\n- `allow-qqmusic-account-snapshot`\n- `allow-qqmusic-auth-start`\n- `allow-qqmusic-auth-heartbeat`\n- `allow-qqmusic-auth-cancel`\n- `allow-qqmusic-auth-refresh`\n- `allow-qqmusic-sign-out`\n- `allow-qqmusic-favorite-songs`\n- `allow-qqmusic-account-playlists`\n- `allow-qqmusic-account-playlist-tracks`\n- `allow-qqmusic-account-recently-played`\n- `allow-qqmusic-set-favorite`\n- `allow-qqmusic-create-playlist`\n- `allow-qqmusic-rename-playlist`\n- `allow-qqmusic-add-playlist-track`\n- `allow-qqmusic-remove-playlist-track`\n- `allow-qqmusic-delete-playlist`"
+          "markdownDescription": "Allows the main application WebView to use sanitized QQ Music account operations.\n#### This permission set includes:\n\n- `allow-qqmusic-account-snapshot`\n- `allow-qqmusic-auth-start`\n- `allow-qqmusic-auth-oauth-start`\n- `allow-qqmusic-auth-heartbeat`\n- `allow-qqmusic-auth-cancel`\n- `allow-qqmusic-auth-refresh`\n- `allow-qqmusic-sign-out`\n- `allow-qqmusic-favorite-songs`\n- `allow-qqmusic-account-playlists`\n- `allow-qqmusic-account-playlist-tracks`\n- `allow-qqmusic-account-recently-played`\n- `allow-qqmusic-set-favorite`\n- `allow-qqmusic-create-playlist`\n- `allow-qqmusic-rename-playlist`\n- `allow-qqmusic-add-playlist-track`\n- `allow-qqmusic-remove-playlist-track`\n- `allow-qqmusic-delete-playlist`"
+        },
+        {
+          "description": "Enables the app_preferences_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-app-preferences-get",
+          "markdownDescription": "Enables the app_preferences_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the app_preferences_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-app-preferences-set",
+          "markdownDescription": "Enables the app_preferences_set command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the appearance_background_load command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-appearance-background-load",
+          "markdownDescription": "Enables the appearance_background_load command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the appearance_pick_background command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-appearance-pick-background",
+          "markdownDescription": "Enables the appearance_pick_background command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the audio_output_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-audio-output-devices",
+          "markdownDescription": "Enables the audio_output_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the audio_set_output_device command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-audio-set-output-device",
+          "markdownDescription": "Enables the audio_set_output_device command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the local_api_regenerate_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-local-api-regenerate-token",
+          "markdownDescription": "Enables the local_api_regenerate_token command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the local_api_reveal_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-local-api-reveal-token",
+          "markdownDescription": "Enables the local_api_reveal_token command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the local_api_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-local-api-set-enabled",
+          "markdownDescription": "Enables the local_api_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the local_api_set_port command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-local-api-set-port",
+          "markdownDescription": "Enables the local_api_set_port command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the local_api_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-local-api-status",
+          "markdownDescription": "Enables the local_api_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_capabilities command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-capabilities",
+          "markdownDescription": "Enables the lyrics_surface_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-close",
+          "markdownDescription": "Enables the lyrics_surface_close command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_projection command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-projection",
+          "markdownDescription": "Enables the lyrics_surface_projection command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_reset_position command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-reset-position",
+          "markdownDescription": "Enables the lyrics_surface_reset_position command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_set_interaction command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-set-interaction",
+          "markdownDescription": "Enables the lyrics_surface_set_interaction command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_show_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-show-settings",
+          "markdownDescription": "Enables the lyrics_surface_show_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-status",
+          "markdownDescription": "Enables the lyrics_surface_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surface_unlock command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surface-unlock",
+          "markdownDescription": "Enables the lyrics_surface_unlock command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surfaces_reconcile command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surfaces-reconcile",
+          "markdownDescription": "Enables the lyrics_surfaces_reconcile command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lyrics_surfaces_unlock_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lyrics-surfaces-unlock-all",
+          "markdownDescription": "Enables the lyrics_surfaces_unlock_all command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the platform_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-platform-diagnostics",
+          "markdownDescription": "Enables the platform_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the platform_export_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-platform-export-diagnostics",
+          "markdownDescription": "Enables the platform_export_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_add_to_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-add-to-queue",
+          "markdownDescription": "Enables the player_add_to_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_cycle_repeat command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-cycle-repeat",
+          "markdownDescription": "Enables the player_cycle_repeat command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_hydrate_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-hydrate-queue",
+          "markdownDescription": "Enables the player_hydrate_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_lyrics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-lyrics",
+          "markdownDescription": "Enables the player_lyrics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_next command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-next",
+          "markdownDescription": "Enables the player_next command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_pause command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-pause",
+          "markdownDescription": "Enables the player_pause command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_play command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-play",
+          "markdownDescription": "Enables the player_play command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_play_from_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-play-from-queue",
+          "markdownDescription": "Enables the player_play_from_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_play_tracks command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-play-tracks",
+          "markdownDescription": "Enables the player_play_tracks command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_previous command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-previous",
+          "markdownDescription": "Enables the player_previous command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_remove_from_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-remove-from-queue",
+          "markdownDescription": "Enables the player_remove_from_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-seek",
+          "markdownDescription": "Enables the player_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_lyrics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-lyrics",
+          "markdownDescription": "Enables the player_set_lyrics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-set-volume",
+          "markdownDescription": "Enables the player_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-snapshot",
+          "markdownDescription": "Enables the player_snapshot command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_toggle command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-toggle",
+          "markdownDescription": "Enables the player_toggle command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_toggle_muted command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-toggle-muted",
+          "markdownDescription": "Enables the player_toggle_muted command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the player_toggle_shuffle command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-player-toggle-shuffle",
+          "markdownDescription": "Enables the player_toggle_shuffle command without any pre-configured scope."
         },
         {
           "description": "Enables the qqmusic_account_playlist_tracks command without any pre-configured scope.",
@@ -213,6 +477,12 @@
           "markdownDescription": "Enables the qqmusic_add_playlist_track command without any pre-configured scope."
         },
         {
+          "description": "Enables the qqmusic_album command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-album",
+          "markdownDescription": "Enables the qqmusic_album command without any pre-configured scope."
+        },
+        {
           "description": "Enables the qqmusic_auth_cancel command without any pre-configured scope.",
           "type": "string",
           "const": "allow-qqmusic-auth-cancel",
@@ -225,6 +495,12 @@
           "markdownDescription": "Enables the qqmusic_auth_heartbeat command without any pre-configured scope."
         },
         {
+          "description": "Enables the qqmusic_auth_oauth_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-auth-oauth-start",
+          "markdownDescription": "Enables the qqmusic_auth_oauth_start command without any pre-configured scope."
+        },
+        {
           "description": "Enables the qqmusic_auth_refresh command without any pre-configured scope.",
           "type": "string",
           "const": "allow-qqmusic-auth-refresh",
@@ -235,6 +511,24 @@
           "type": "string",
           "const": "allow-qqmusic-auth-start",
           "markdownDescription": "Enables the qqmusic_auth_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_cache_artwork command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-cache-artwork",
+          "markdownDescription": "Enables the qqmusic_cache_artwork command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_cache_stats command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-cache-stats",
+          "markdownDescription": "Enables the qqmusic_cache_stats command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_clear_cache command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-clear-cache",
+          "markdownDescription": "Enables the qqmusic_clear_cache command without any pre-configured scope."
         },
         {
           "description": "Enables the qqmusic_create_playlist command without any pre-configured scope.",
@@ -255,6 +549,30 @@
           "markdownDescription": "Enables the qqmusic_favorite_songs command without any pre-configured scope."
         },
         {
+          "description": "Enables the qqmusic_home command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-home",
+          "markdownDescription": "Enables the qqmusic_home command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_library command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-library",
+          "markdownDescription": "Enables the qqmusic_library command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_lyrics command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-lyrics",
+          "markdownDescription": "Enables the qqmusic_lyrics command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-playlist",
+          "markdownDescription": "Enables the qqmusic_playlist command without any pre-configured scope."
+        },
+        {
           "description": "Enables the qqmusic_remove_playlist_track command without any pre-configured scope.",
           "type": "string",
           "const": "allow-qqmusic-remove-playlist-track",
@@ -267,16 +585,292 @@
           "markdownDescription": "Enables the qqmusic_rename_playlist command without any pre-configured scope."
         },
         {
+          "description": "Enables the qqmusic_search command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-search",
+          "markdownDescription": "Enables the qqmusic_search command without any pre-configured scope."
+        },
+        {
           "description": "Enables the qqmusic_set_favorite command without any pre-configured scope.",
           "type": "string",
           "const": "allow-qqmusic-set-favorite",
           "markdownDescription": "Enables the qqmusic_set_favorite command without any pre-configured scope."
         },
         {
+          "description": "Enables the qqmusic_set_preferred_quality command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-set-preferred-quality",
+          "markdownDescription": "Enables the qqmusic_set_preferred_quality command without any pre-configured scope."
+        },
+        {
           "description": "Enables the qqmusic_sign_out command without any pre-configured scope.",
           "type": "string",
           "const": "allow-qqmusic-sign-out",
           "markdownDescription": "Enables the qqmusic_sign_out command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-status",
+          "markdownDescription": "Enables the qqmusic_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the system_integration_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-system-integration-status",
+          "markdownDescription": "Enables the system_integration_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the system_shortcuts_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-system-shortcuts-set-enabled",
+          "markdownDescription": "Enables the system_shortcuts_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the app_preferences_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-app-preferences-get",
+          "markdownDescription": "Denies the app_preferences_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the app_preferences_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-app-preferences-set",
+          "markdownDescription": "Denies the app_preferences_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the appearance_background_load command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-appearance-background-load",
+          "markdownDescription": "Denies the appearance_background_load command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the appearance_pick_background command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-appearance-pick-background",
+          "markdownDescription": "Denies the appearance_pick_background command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the audio_output_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-audio-output-devices",
+          "markdownDescription": "Denies the audio_output_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the audio_set_output_device command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-audio-set-output-device",
+          "markdownDescription": "Denies the audio_set_output_device command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the local_api_regenerate_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-local-api-regenerate-token",
+          "markdownDescription": "Denies the local_api_regenerate_token command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the local_api_reveal_token command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-local-api-reveal-token",
+          "markdownDescription": "Denies the local_api_reveal_token command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the local_api_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-local-api-set-enabled",
+          "markdownDescription": "Denies the local_api_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the local_api_set_port command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-local-api-set-port",
+          "markdownDescription": "Denies the local_api_set_port command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the local_api_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-local-api-status",
+          "markdownDescription": "Denies the local_api_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_capabilities command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-capabilities",
+          "markdownDescription": "Denies the lyrics_surface_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_close command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-close",
+          "markdownDescription": "Denies the lyrics_surface_close command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_projection command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-projection",
+          "markdownDescription": "Denies the lyrics_surface_projection command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_reset_position command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-reset-position",
+          "markdownDescription": "Denies the lyrics_surface_reset_position command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_set_interaction command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-set-interaction",
+          "markdownDescription": "Denies the lyrics_surface_set_interaction command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_show_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-show-settings",
+          "markdownDescription": "Denies the lyrics_surface_show_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-status",
+          "markdownDescription": "Denies the lyrics_surface_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surface_unlock command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surface-unlock",
+          "markdownDescription": "Denies the lyrics_surface_unlock command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surfaces_reconcile command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surfaces-reconcile",
+          "markdownDescription": "Denies the lyrics_surfaces_reconcile command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lyrics_surfaces_unlock_all command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lyrics-surfaces-unlock-all",
+          "markdownDescription": "Denies the lyrics_surfaces_unlock_all command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the platform_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-platform-diagnostics",
+          "markdownDescription": "Denies the platform_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the platform_export_diagnostics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-platform-export-diagnostics",
+          "markdownDescription": "Denies the platform_export_diagnostics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_add_to_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-add-to-queue",
+          "markdownDescription": "Denies the player_add_to_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_cycle_repeat command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-cycle-repeat",
+          "markdownDescription": "Denies the player_cycle_repeat command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_hydrate_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-hydrate-queue",
+          "markdownDescription": "Denies the player_hydrate_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_lyrics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-lyrics",
+          "markdownDescription": "Denies the player_lyrics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_next command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-next",
+          "markdownDescription": "Denies the player_next command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_pause command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-pause",
+          "markdownDescription": "Denies the player_pause command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_play command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-play",
+          "markdownDescription": "Denies the player_play command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_play_from_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-play-from-queue",
+          "markdownDescription": "Denies the player_play_from_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_play_tracks command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-play-tracks",
+          "markdownDescription": "Denies the player_play_tracks command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_previous command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-previous",
+          "markdownDescription": "Denies the player_previous command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_remove_from_queue command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-remove-from-queue",
+          "markdownDescription": "Denies the player_remove_from_queue command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-seek",
+          "markdownDescription": "Denies the player_seek command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_lyrics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-lyrics",
+          "markdownDescription": "Denies the player_set_lyrics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_set_volume command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-set-volume",
+          "markdownDescription": "Denies the player_set_volume command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-snapshot",
+          "markdownDescription": "Denies the player_snapshot command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_toggle command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-toggle",
+          "markdownDescription": "Denies the player_toggle command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_toggle_muted command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-toggle-muted",
+          "markdownDescription": "Denies the player_toggle_muted command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the player_toggle_shuffle command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-player-toggle-shuffle",
+          "markdownDescription": "Denies the player_toggle_shuffle command without any pre-configured scope."
         },
         {
           "description": "Denies the qqmusic_account_playlist_tracks command without any pre-configured scope.",
@@ -309,6 +903,12 @@
           "markdownDescription": "Denies the qqmusic_add_playlist_track command without any pre-configured scope."
         },
         {
+          "description": "Denies the qqmusic_album command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-album",
+          "markdownDescription": "Denies the qqmusic_album command without any pre-configured scope."
+        },
+        {
           "description": "Denies the qqmusic_auth_cancel command without any pre-configured scope.",
           "type": "string",
           "const": "deny-qqmusic-auth-cancel",
@@ -321,6 +921,12 @@
           "markdownDescription": "Denies the qqmusic_auth_heartbeat command without any pre-configured scope."
         },
         {
+          "description": "Denies the qqmusic_auth_oauth_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-auth-oauth-start",
+          "markdownDescription": "Denies the qqmusic_auth_oauth_start command without any pre-configured scope."
+        },
+        {
           "description": "Denies the qqmusic_auth_refresh command without any pre-configured scope.",
           "type": "string",
           "const": "deny-qqmusic-auth-refresh",
@@ -331,6 +937,24 @@
           "type": "string",
           "const": "deny-qqmusic-auth-start",
           "markdownDescription": "Denies the qqmusic_auth_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_cache_artwork command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-cache-artwork",
+          "markdownDescription": "Denies the qqmusic_cache_artwork command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_cache_stats command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-cache-stats",
+          "markdownDescription": "Denies the qqmusic_cache_stats command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_clear_cache command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-clear-cache",
+          "markdownDescription": "Denies the qqmusic_clear_cache command without any pre-configured scope."
         },
         {
           "description": "Denies the qqmusic_create_playlist command without any pre-configured scope.",
@@ -351,6 +975,30 @@
           "markdownDescription": "Denies the qqmusic_favorite_songs command without any pre-configured scope."
         },
         {
+          "description": "Denies the qqmusic_home command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-home",
+          "markdownDescription": "Denies the qqmusic_home command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_library command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-library",
+          "markdownDescription": "Denies the qqmusic_library command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_lyrics command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-lyrics",
+          "markdownDescription": "Denies the qqmusic_lyrics command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-playlist",
+          "markdownDescription": "Denies the qqmusic_playlist command without any pre-configured scope."
+        },
+        {
           "description": "Denies the qqmusic_remove_playlist_track command without any pre-configured scope.",
           "type": "string",
           "const": "deny-qqmusic-remove-playlist-track",
@@ -363,16 +1011,46 @@
           "markdownDescription": "Denies the qqmusic_rename_playlist command without any pre-configured scope."
         },
         {
+          "description": "Denies the qqmusic_search command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-search",
+          "markdownDescription": "Denies the qqmusic_search command without any pre-configured scope."
+        },
+        {
           "description": "Denies the qqmusic_set_favorite command without any pre-configured scope.",
           "type": "string",
           "const": "deny-qqmusic-set-favorite",
           "markdownDescription": "Denies the qqmusic_set_favorite command without any pre-configured scope."
         },
         {
+          "description": "Denies the qqmusic_set_preferred_quality command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-set-preferred-quality",
+          "markdownDescription": "Denies the qqmusic_set_preferred_quality command without any pre-configured scope."
+        },
+        {
           "description": "Denies the qqmusic_sign_out command without any pre-configured scope.",
           "type": "string",
           "const": "deny-qqmusic-sign-out",
           "markdownDescription": "Denies the qqmusic_sign_out command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-status",
+          "markdownDescription": "Denies the qqmusic_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the system_integration_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-system-integration-status",
+          "markdownDescription": "Denies the system_integration_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the system_shortcuts_set_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-system-shortcuts-set-enabled",
+          "markdownDescription": "Denies the system_shortcuts_set_enabled command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

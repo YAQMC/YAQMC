@@ -79,8 +79,9 @@ Every required run records these ordered phases:
 11. `shutdown`
 
 During `lyrics-fullscreen`, exit with `Esc` and confirm the previous normal/Focus state and window geometry restore.
-For both auxiliary lyric surfaces, lock them, recover unlock interaction from tray/Settings, then close them. Windows
-software/safe-mode evidence cannot substitute for any Linux mode.
+For both auxiliary lyric surfaces, lock them, use the directly overlaid unlock icon, lock them again, recover through
+tray/Settings, then close them. This proves both the convenient path and the fallback path. Windows software/safe-mode
+evidence cannot substitute for any Linux mode.
 
 After `auto`, `native-wayland`, and `x11` directories exist:
 

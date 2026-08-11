@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-preferences-get"
+description = "Enables the app_preferences_get command without any pre-configured scope."
+commands.allow = ["app_preferences_get"]
+
+[[permission]]
+identifier = "deny-app-preferences-get"
+description = "Denies the app_preferences_get command without any pre-configured scope."
+commands.deny = ["app_preferences_get"]

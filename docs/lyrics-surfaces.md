@@ -50,9 +50,11 @@ set_resizable(false)
 ```
 
 Unlocking restores cursor events and focusability (plus Desktop Lyrics resizing) without calling `set_focus`.
-Because a passive surface cannot receive the pointer event needed to unlock itself, recovery is deliberately
-outside the auxiliary WebView: the main Settings page exposes a prominent per-surface **Unlock** action and an
-**Unlock all** action whenever locked surfaces exist.
+Because the passive surface itself cannot receive a pointer event, the native manager overlays a separate 42×42
+single-purpose unlock WebView at its upper-right corner. The lyric window remains fully click-through; only this
+small control accepts input. Its Tauri capability exposes only `lyrics_surface_unlock` and cannot read player,
+account, or preference-document state. Settings still provides per-surface **Unlock** and **Unlock all** actions,
+and the tray keeps the global recovery action.
 
 Interaction changes use one serialized command that updates the native window policy and the canonical persisted
 preference together. The UI rolls back if that command fails, and ordinary preference writes preserve the
@@ -63,7 +65,9 @@ recreate a surface.
 Windows currently satisfies the no-activate contract through Tauri/Wry's focusability and cursor-event APIs; no
 custom window procedure, system hook, Explorer injection, or shell modification is installed. The auxiliary
 windows remain undecorated, shadowless, skipped in the taskbar, initially unfocused, and initially hidden. A
-restored locked window is constructed non-focusable, configured for click-through, and only then shown.
+restored locked window is constructed non-focusable, configured for click-through, and only then shown. The unlock
+control is independently skipped in the taskbar and hidden whenever its surface is interactive, disabled, closed,
+or hidden for fullscreen.
 
 ## Desktop Lyrics presentation
 
@@ -71,7 +75,7 @@ The default presentation background is transparent. In unlocked idle state only 
 text shadow are visible. Pointer entry reveals a low-alpha editing backdrop, subtle container outline, drag
 affordance, lock action, playback controls, Settings, and close. Pointer leave hides that chrome after a short
 hysteresis delay. Locked mode never renders controls or drag attributes and native input passes through the full
-window bounds.
+window bounds; the separately overlaid unlock control remains visible at the upper-right.
 
 The text shadow/outline is always a lyric-readability treatment. The editing container outline is separate and is
 visible only during interactive hover. If the user explicitly raises Desktop Lyrics background opacity, that
@@ -82,7 +86,7 @@ presentation background may remain visible while idle or locked.
 The island body is intentional presentation and remains visible when locked. Interactive hover may expand the
 island to show track details, a next line, playback controls, and progress. A locked island stays collapsed,
 does not react to hover, exposes no controls or drag region, and remains click-through while lyric content keeps
-updating.
+updating. Its separate unlock control remains directly reachable.
 
 ## Fullscreen, geometry, and displays
 

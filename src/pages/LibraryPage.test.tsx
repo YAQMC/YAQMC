@@ -206,4 +206,17 @@ describe('LibraryPage account resources', () => {
 
     expect(container.innerHTML).not.toContain('untrusted.example');
   });
+
+  it('renders an exact Tencent profile avatar origin', () => {
+    const { container } = renderLibrary({
+      view: 'summary',
+      snapshot: authenticatedSnapshot('https://thirdwx.qlogo.cn/synthetic-avatar.png'),
+      playlists: { status: 'empty' },
+    });
+
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://thirdwx.qlogo.cn/synthetic-avatar.png',
+    );
+  });
 });

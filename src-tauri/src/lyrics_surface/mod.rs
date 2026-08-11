@@ -49,6 +49,13 @@ impl SurfaceKind {
             Self::Island => "lyrics-island",
         }
     }
+
+    pub(crate) fn unlock_label(self) -> &'static str {
+        match self {
+            Self::Desktop => "lyrics-desktop-unlock",
+            Self::Island => "lyrics-island-unlock",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -287,12 +294,15 @@ impl LyricsSurfaceManager {
                         continue;
                     }
                     if let Some(window) = app.get_webview_window(kind.label()) {
-                        let _ = if fullscreen {
+                        let result = if fullscreen {
                             window.hide().map_err(|error| error.to_string())
                         } else {
                             apply_window_interaction(&window, kind, interaction_state(config))
                                 .and_then(|()| window.show().map_err(|error| error.to_string()))
                         };
+                        let _ = result.and_then(|()| {
+                            sync_unlock_window(&app, kind, config, &window, !fullscreen)
+                        });
                     }
                 }
             }
@@ -305,6 +315,7 @@ impl LyricsSurfaceManager {
                 save_geometry(&window, storage, kind);
                 let _ = window.close();
             }
+            close_unlock_window(app, kind);
         }
     }
 
@@ -319,9 +330,19 @@ impl LyricsSurfaceManager {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let config = configs.get_mut(kind);
+        let previous = config.interaction;
         config.interaction = interaction;
         if let Some(window) = app.get_webview_window(kind.label()) {
-            apply_window_interaction(&window, kind, interaction_state(config))?;
+            let visible =
+                !(self.fullscreen_active.load(Ordering::Acquire) && config.hide_in_fullscreen);
+            let result = apply_window_interaction(&window, kind, interaction_state(config))
+                .and_then(|()| sync_unlock_window(app, kind, config, &window, visible));
+            if let Err(error) = result {
+                config.interaction = previous;
+                let _ = apply_window_interaction(&window, kind, interaction_state(config));
+                let _ = sync_unlock_window(app, kind, config, &window, visible);
+                return Err(error);
+            }
         }
         Ok(())
     }
@@ -427,12 +448,16 @@ fn reconcile_window(
 ) -> Result<(), String> {
     let existing = app.get_webview_window(kind.label());
     match surface_lifecycle(existing.is_some(), next.enabled) {
-        SurfaceLifecycle::Absent => return Ok(()),
+        SurfaceLifecycle::Absent => {
+            close_unlock_window(app, kind);
+            return Ok(());
+        }
         SurfaceLifecycle::Close => {
             if let Some(window) = existing {
                 save_geometry(&window, storage, kind);
                 window.close().map_err(|error| error.to_string())?;
             }
+            close_unlock_window(app, kind);
             return Ok(());
         }
         SurfaceLifecycle::Create | SurfaceLifecycle::Update => {}
@@ -460,7 +485,95 @@ fn reconcile_window(
     } else if created || !window.is_visible().unwrap_or(false) {
         window.show().map_err(|error| error.to_string())?;
     }
+    sync_unlock_window(
+        app,
+        kind,
+        next,
+        &window,
+        !(fullscreen_active && next.hide_in_fullscreen),
+    )?;
     Ok(())
+}
+
+fn sync_unlock_window(
+    app: &AppHandle,
+    kind: SurfaceKind,
+    config: &SurfaceRuntimeConfig,
+    surface: &WebviewWindow,
+    surface_visible: bool,
+) -> Result<(), String> {
+    let should_show = surface_visible
+        && config.enabled
+        && config.interaction == SurfaceInteraction::PassiveLocked;
+    let existing = app.get_webview_window(kind.unlock_label());
+    if !should_show && existing.is_none() {
+        return Ok(());
+    }
+
+    let unlock = if let Some(window) = existing {
+        window
+    } else {
+        build_unlock_window(app, kind, config.always_on_top)?
+    };
+    unlock
+        .set_always_on_top(config.always_on_top)
+        .map_err(|error| error.to_string())?;
+    position_unlock_window(surface, &unlock)?;
+    if should_show {
+        unlock.show().map_err(|error| error.to_string())?;
+    } else {
+        unlock.hide().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn build_unlock_window(
+    app: &AppHandle,
+    kind: SurfaceKind,
+    always_on_top: bool,
+) -> Result<WebviewWindow, String> {
+    let url = WebviewUrl::App(format!("index.html?unlockSurface={}", kind.value()).into());
+    WebviewWindowBuilder::new(app, kind.unlock_label(), url)
+        .title("Unlock YAQMC Lyrics")
+        .inner_size(42.0, 42.0)
+        .min_inner_size(42.0, 42.0)
+        .max_inner_size(42.0, 42.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(always_on_top)
+        .skip_taskbar(true)
+        .shadow(false)
+        .focused(false)
+        .focusable(false)
+        .visible(false)
+        .build()
+        .map_err(|error| error.to_string())
+}
+
+fn position_unlock_window(surface: &WebviewWindow, unlock: &WebviewWindow) -> Result<(), String> {
+    let surface_position = surface
+        .outer_position()
+        .map_err(|error| error.to_string())?;
+    let surface_size = surface.outer_size().map_err(|error| error.to_string())?;
+    let scale = surface.scale_factor().map_err(|error| error.to_string())?;
+    let control_size = (42.0 * scale).round() as i32;
+    let inset = (14.0 * scale).round() as i32;
+    let x = surface_position
+        .x
+        .saturating_add(surface_size.width as i32)
+        .saturating_sub(control_size)
+        .saturating_sub(inset);
+    let y = surface_position.y.saturating_add(inset);
+    unlock
+        .set_position(PhysicalPosition::new(x, y))
+        .map_err(|error| error.to_string())
+}
+
+fn close_unlock_window(app: &AppHandle, kind: SurfaceKind) {
+    if let Some(window) = app.get_webview_window(kind.unlock_label()) {
+        let _ = window.close();
+    }
 }
 
 fn build_window(
@@ -633,6 +746,9 @@ fn attach_geometry_persistence(
     let tracked_window = window.clone();
     window.on_window_event(move |event| match event {
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+            if let Some(unlock) = app.get_webview_window(kind.unlock_label()) {
+                let _ = position_unlock_window(&tracked_window, &unlock);
+            }
             let current = generation.fetch_add(1, Ordering::AcqRel) + 1;
             let generation = Arc::clone(&generation);
             let storage = Arc::clone(&storage);
@@ -646,6 +762,7 @@ fn attach_geometry_persistence(
         }
         WindowEvent::CloseRequested { .. } => {
             save_geometry(&tracked_window, &storage, kind);
+            close_unlock_window(&app, kind);
             let _ = app.emit("lyrics://surface-closed", kind.value());
         }
         _ => {}
@@ -683,6 +800,7 @@ pub fn close_surface(
         save_geometry(&window, storage, kind);
         window.close().map_err(|error| error.to_string())?;
     }
+    close_unlock_window(app, kind);
     Ok(())
 }
 
@@ -696,6 +814,8 @@ mod tests {
         assert_eq!(SurfaceKind::parse("island"), Ok(SurfaceKind::Island));
         assert!(SurfaceKind::parse("taskbar").is_err());
         assert!(SurfaceKind::parse("main").is_err());
+        assert_eq!(SurfaceKind::Desktop.unlock_label(), "lyrics-desktop-unlock");
+        assert_eq!(SurfaceKind::Island.unlock_label(), "lyrics-island-unlock");
     }
 
     #[test]

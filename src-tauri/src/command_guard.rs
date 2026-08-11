@@ -30,7 +30,13 @@ mod tests {
 
     #[test]
     fn lyric_webviews_are_denied_account_commands() {
-        for label in ["lyrics-desktop", "lyrics-island", "untrusted"] {
+        for label in [
+            "lyrics-desktop",
+            "lyrics-island",
+            "lyrics-desktop-unlock",
+            "lyrics-island-unlock",
+            "untrusted",
+        ] {
             let error = require_main_window_label(label).expect_err("caller must be denied");
             assert_eq!(error.code, "caller-not-authorized");
             assert!(!error.retryable);

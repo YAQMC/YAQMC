@@ -51,6 +51,7 @@ fn cancel_login_owner(app: &tauri::AppHandle, event: MainOwnerLifecycleEvent) {
     if let Some(provider) = app.try_state::<Arc<QQMusicService>>() {
         provider.cancel_login_owner(reason);
     }
+    qqmusic::oauth::close_all_windows(app);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -293,6 +294,7 @@ pub fn run() {
             commands::qqmusic_remove_playlist_track,
             commands::qqmusic_delete_playlist,
             commands::qqmusic_auth_start,
+            commands::qqmusic_auth_oauth_start,
             commands::qqmusic_auth_heartbeat,
             commands::qqmusic_auth_cancel,
             commands::qqmusic_auth_refresh,
@@ -326,6 +328,7 @@ pub fn run() {
             commands::lyrics_surface_capabilities,
             commands::lyrics_surface_status,
             commands::lyrics_surfaces_unlock_all,
+            commands::lyrics_surface_unlock,
             commands::lyrics_surface_close,
             commands::lyrics_surface_set_interaction,
             commands::lyrics_surface_reset_position,
@@ -393,5 +396,63 @@ mod handler_registration_tests {
         ] {
             assert_eq!(handler.matches(command).count(), 1, "{command}");
         }
+    }
+
+    #[test]
+    fn every_registered_app_command_is_declared_for_fine_grained_permissions() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split_once(".invoke_handler(tauri::generate_handler![")
+            .and_then(|(_, remainder)| remainder.split_once("])").map(|(block, _)| block))
+            .expect("generate_handler block");
+        let build = include_str!("../build.rs");
+        let commands = handler.lines().filter_map(|line| {
+            line.trim()
+                .strip_prefix("commands::")
+                .map(|command| command.trim_end_matches(','))
+        });
+
+        for command in commands {
+            assert!(
+                build.contains(&format!("\"{command}\"")),
+                "{command} is registered but absent from the fine-grained Tauri command manifest"
+            );
+        }
+
+        let main_capability = include_str!("../capabilities/main-window.json");
+        assert!(main_capability.contains("\"main-application\""));
+        assert!(main_capability.contains("\"qqmusic-account\""));
+        assert!(!main_capability.contains("qqmusic-oauth-"));
+
+        let lyrics_capability = include_str!("../capabilities/default.json");
+        assert!(lyrics_capability.contains("\"lyrics-surface-application\""));
+        let lyrics_permissions = include_str!("../permissions/lyrics-surface-application.toml");
+        for permission in [
+            "allow-app-preferences-get",
+            "allow-app-preferences-set",
+            "allow-appearance-background-load",
+            "allow-lyrics-surface-projection",
+            "allow-lyrics-surface-close",
+            "allow-lyrics-surface-set-interaction",
+            "allow-lyrics-surface-show-settings",
+            "allow-player-lyrics",
+            "allow-player-previous",
+            "allow-player-toggle",
+            "allow-player-next",
+        ] {
+            assert!(lyrics_permissions.contains(permission), "{permission}");
+        }
+        assert!(!lyrics_permissions.contains("qqmusic-account"));
+        assert!(!lyrics_permissions.contains("qqmusic-auth"));
+
+        let unlock_capability = include_str!("../capabilities/lyrics-unlock.json");
+        assert!(unlock_capability.contains("\"lyrics-desktop-unlock\""));
+        assert!(unlock_capability.contains("\"lyrics-island-unlock\""));
+        assert!(unlock_capability.contains("\"lyrics-surface-unlock-control\""));
+        let unlock_permissions = include_str!("../permissions/lyrics-surface-unlock-control.toml");
+        assert!(unlock_permissions.contains("allow-lyrics-surface-unlock"));
+        assert!(!unlock_permissions.contains("app-preferences"));
+        assert!(!unlock_permissions.contains("player-"));
+        assert!(!unlock_permissions.contains("qqmusic-"));
     }
 }

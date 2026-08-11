@@ -145,6 +145,7 @@ function accountProvider() {
       id: 'qqmusic',
       getPlaylist,
       getAccountSnapshot: unused,
+      startWebLogin: unused,
       startQrLogin: unused,
       heartbeatQrLogin: unused,
       cancelQrLogin: unused,

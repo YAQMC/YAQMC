@@ -22,6 +22,7 @@ use super::{
     cache::{AccountEpoch, OpaqueAccountScope, ACCOUNT_CACHE_KIND},
     clock::Clock,
     entitlement::normalize_account_entitlement,
+    oauth::{parse_callback, OAuthCallback, OAuthLaunch, OAuthLoginProvider},
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     QQMusicError, QQ_MUSICU_URL,
 };
@@ -128,6 +129,13 @@ pub(crate) trait QQMusicAuthProtocol: Send + Sync {
         cancellation: CancellationToken,
     ) -> Result<AuthPollResult, QQMusicError>;
 
+    async fn exchange_oauth_code(
+        &self,
+        provider: OAuthLoginProvider,
+        code: &str,
+        cancellation: CancellationToken,
+    ) -> Result<SessionRecord, QQMusicError>;
+
     async fn validate_session(
         &self,
         session: &SessionRecord,
@@ -205,6 +213,140 @@ impl TransportQQMusicAuthProtocol {
             return Err(QQMusicError::SchemaChanged);
         }
         Ok(normalize_account_entitlement(&payload))
+    }
+
+    async fn exchange_code(
+        &self,
+        provider: OAuthLoginProvider,
+        code: &str,
+        gtk: Option<u32>,
+        mut cookies: SecretCookieJar,
+        cancellation: CancellationToken,
+    ) -> Result<SessionRecord, QQMusicError> {
+        if code.is_empty() || code.len() > 2_048 || code.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return Err(QQMusicError::Protocol);
+        }
+        let (operation, module, method, param, login_type) = match provider {
+            OAuthLoginProvider::Qq => (
+                "auth.qq.exchange",
+                "QQConnectLogin.LoginServer",
+                "QQLogin",
+                json!({ "code": code }),
+                2,
+            ),
+            OAuthLoginProvider::Wechat => (
+                "auth.wechat.exchange",
+                "music.login.LoginServer",
+                "Login",
+                json!({ "code": code, "strAppid": "wx48db31d50e334801" }),
+                1,
+            ),
+        };
+        let mut comm = json!({
+            "platform": "yqq",
+            "ct": 24,
+            "cv": 0,
+            "tmeLoginType": login_type,
+        });
+        if let Some(gtk) = gtk {
+            comm["g_tk"] = json!(gtk);
+        }
+        let login_payload = json!({
+            "comm": comm,
+            "req": {
+                "module": module,
+                "method": method,
+                "param": param,
+            }
+        });
+        let mut login_headers = if cookies.values.is_empty() {
+            referer_headers("https://y.qq.com/")?
+        } else {
+            authenticated_headers(&cookies, Some("https://y.qq.com/"))?
+        };
+        login_headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        login_headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
+        let login = self
+            .transport
+            .execute(TransportRequest {
+                operation,
+                method: Method::POST,
+                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
+                headers: login_headers,
+                body: Some(serde_json::to_vec(&login_payload).map_err(|_| QQMusicError::Protocol)?),
+                retry: RetryClass::AuthPoll,
+                redirects: RedirectMode::FollowValidated,
+                response_shape: "oauth-login-session",
+                cancellation,
+            })
+            .await?;
+        require_success(&login)?;
+        cookies.absorb_set_cookie(&login.headers)?;
+        let payload: Value =
+            serde_json::from_slice(&login.body).map_err(|_| QQMusicError::MalformedResponse)?;
+        self.session_from_login_payload(&payload, cookies)
+    }
+
+    fn session_from_login_payload(
+        &self,
+        payload: &Value,
+        mut cookies: SecretCookieJar,
+    ) -> Result<SessionRecord, QQMusicError> {
+        if json_code(payload).unwrap_or(-1) != 0
+            || payload
+                .pointer("/req/code")
+                .or_else(|| payload.pointer("/req_0/code"))
+                .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
+                .unwrap_or(-1)
+                != 0
+        {
+            return Err(QQMusicError::AuthorizationRejected);
+        }
+        let data = payload
+            .pointer("/req/data")
+            .or_else(|| payload.pointer("/req_0/data"))
+            .or_else(|| payload.pointer("/req"))
+            .ok_or(QQMusicError::MalformedResponse)?;
+        let uin = first_string(data, &["/str_musicid", "/musicid", "/uin"])
+            .filter(|value| {
+                !value.is_empty() && value.chars().all(|character| character.is_ascii_digit())
+            })
+            .ok_or(QQMusicError::MalformedResponse)?;
+        let music_key = first_string(data, &["/musickey", "/musicKey"])
+            .filter(|value| !value.is_empty())
+            .ok_or(QQMusicError::MalformedResponse)?;
+        cookies.insert("uin", &format!("o{uin}"))?;
+        cookies.insert("qqmusic_uin", &uin)?;
+        cookies.insert("qm_keyst", &music_key)?;
+        cookies.insert("qqmusic_key", &music_key)?;
+        cookies.remove("qrsig");
+        cookies.remove("pt_login_sig");
+
+        let created = numeric_u64(data, &["/musickeyCreateTime", "/musickey_create_time"]);
+        let lifetime = numeric_u64(data, &["/keyExpiresIn", "/key_expires_in"]);
+        let expires_at_ms = match (created, lifetime) {
+            (Some(created), Some(lifetime)) if lifetime > 0 => {
+                let created_ms = if created >= 1_000_000_000_000 {
+                    created
+                } else {
+                    created.saturating_mul(1_000)
+                };
+                created_ms.saturating_add(lifetime.saturating_mul(1_000))
+            }
+            _ => self.clock.now_ms().saturating_add(24 * 60 * 60 * 1_000),
+        };
+
+        Ok(SessionRecord {
+            version: SESSION_VERSION,
+            uin,
+            cookie_header: cookies.header_value(),
+            expires_at_ms,
+            account_cache_scope: OpaqueAccountScope::generate(),
+        })
     }
 
     async fn complete_qq_exchange(
@@ -297,87 +439,14 @@ impl TransportQQMusicAuthProtocol {
             .filter(|value| !value.is_empty())
             .ok_or(QQMusicError::Protocol)?;
 
-        let login_payload = json!({
-            "comm": { "g_tk": gtk, "platform": "yqq", "ct": 24, "cv": 0, "tmeLoginType": 2 },
-            "req": {
-                "module": "QQConnectLogin.LoginServer",
-                "method": "QQLogin",
-                "param": { "code": code }
-            }
-        });
-        let mut login_headers = authenticated_headers(&cookies, Some("https://y.qq.com/"))?;
-        login_headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
-        let login = self
-            .transport
-            .execute(TransportRequest {
-                operation: "auth.qq.exchange",
-                method: Method::POST,
-                url: Url::parse("https://u.y.qq.com/cgi-bin/musicu.fcg")
-                    .map_err(|_| QQMusicError::Protocol)?,
-                headers: login_headers,
-                body: Some(serde_json::to_vec(&login_payload).map_err(|_| QQMusicError::Protocol)?),
-                retry: RetryClass::AuthPoll,
-                redirects: RedirectMode::FollowValidated,
-                response_shape: "qq-login-session",
-                cancellation,
-            })
-            .await?;
-        require_success(&login)?;
-        cookies.absorb_set_cookie(&login.headers)?;
-        let payload: Value =
-            serde_json::from_slice(&login.body).map_err(|_| QQMusicError::MalformedResponse)?;
-        if json_code(&payload).unwrap_or(-1) != 0
-            || payload
-                .pointer("/req/code")
-                .and_then(Value::as_i64)
-                .unwrap_or(-1)
-                != 0
-        {
-            return Err(QQMusicError::AuthorizationRejected);
-        }
-        let data = payload
-            .pointer("/req/data")
-            .or_else(|| payload.pointer("/req"))
-            .ok_or(QQMusicError::MalformedResponse)?;
-        let uin = first_string(data, &["/str_musicid", "/musicid"])
-            .filter(|value| {
-                !value.is_empty() && value.chars().all(|character| character.is_ascii_digit())
-            })
-            .ok_or(QQMusicError::MalformedResponse)?;
-        let music_key = first_string(data, &["/musickey", "/musicKey"])
-            .filter(|value| !value.is_empty())
-            .ok_or(QQMusicError::MalformedResponse)?;
-        cookies.insert("uin", &format!("o{uin}"))?;
-        cookies.insert("qqmusic_uin", &uin)?;
-        cookies.insert("qm_keyst", &music_key)?;
-        cookies.insert("qqmusic_key", &music_key)?;
-        cookies.remove("qrsig");
-        cookies.remove("pt_login_sig");
-
-        let created = numeric_u64(data, &["/musickeyCreateTime", "/musickey_create_time"]);
-        let lifetime = numeric_u64(data, &["/keyExpiresIn", "/key_expires_in"]);
-        let expires_at_ms = match (created, lifetime) {
-            (Some(created), Some(lifetime)) if lifetime > 0 => {
-                let created_ms = if created >= 1_000_000_000_000 {
-                    created
-                } else {
-                    created.saturating_mul(1_000)
-                };
-                created_ms.saturating_add(lifetime.saturating_mul(1_000))
-            }
-            _ => self.clock.now_ms().saturating_add(24 * 60 * 60 * 1_000),
-        };
-
-        Ok(SessionRecord {
-            version: SESSION_VERSION,
-            uin,
-            cookie_header: cookies.header_value(),
-            expires_at_ms,
-            account_cache_scope: OpaqueAccountScope::generate(),
-        })
+        self.exchange_code(
+            OAuthLoginProvider::Qq,
+            &code,
+            Some(gtk),
+            cookies,
+            cancellation,
+        )
+        .await
     }
 }
 
@@ -508,6 +577,22 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         }
     }
 
+    async fn exchange_oauth_code(
+        &self,
+        provider: OAuthLoginProvider,
+        code: &str,
+        cancellation: CancellationToken,
+    ) -> Result<SessionRecord, QQMusicError> {
+        self.exchange_code(
+            provider,
+            code,
+            None,
+            SecretCookieJar::default(),
+            cancellation,
+        )
+        .await
+    }
+
     async fn validate_session(
         &self,
         session: &SessionRecord,
@@ -520,26 +605,26 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         {
             return Err(QQMusicError::AuthenticationExpired);
         }
-        let mut url = Url::parse("https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg")
-            .map_err(|_| QQMusicError::Protocol)?;
-        url.query_pairs_mut()
-            .append_pair("format", "json")
-            .append_pair("inCharset", "utf-8")
-            .append_pair("outCharset", "utf-8")
-            .append_pair("notice", "0")
-            .append_pair("platform", "yqq.json")
-            .append_pair("needNewCode", "0")
-            .append_pair("g_tk", "0")
-            .append_pair("g_tk_new_20200303", "0")
-            .append_pair("cid", "205360838")
-            .append_pair("loginUin", &session.uin)
-            .append_pair("hostUin", "0")
-            .append_pair("userid", &session.uin)
-            .append_pair("reqfrom", "1");
-        let mut headers = referer_headers(&format!(
-            "https://y.qq.com/portal/profile.html?uin={}",
-            session.uin
-        ))?;
+        let profile_payload = json!({
+            "comm": {
+                "ct": 24,
+                "cv": 0,
+                "format": "json",
+                "platform": "yqq.json",
+                "uin": session.uin,
+            },
+            "req": {
+                "module": "music.UserInfo.userInfoServer",
+                "method": "GetLoginUserInfo",
+                "param": {},
+            },
+        });
+        let mut headers = referer_headers("https://y.qq.com/")?;
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json; charset=utf-8"),
+        );
+        headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
         headers.insert(
             header::COOKIE,
             HeaderValue::from_str(&session.cookie_header).map_err(|_| QQMusicError::Protocol)?,
@@ -548,10 +633,12 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
             .transport
             .execute(TransportRequest {
                 operation: "auth.session.validate",
-                method: Method::GET,
-                url,
+                method: Method::POST,
+                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
                 headers,
-                body: None,
+                body: Some(
+                    serde_json::to_vec(&profile_payload).map_err(|_| QQMusicError::Protocol)?,
+                ),
                 retry: RetryClass::SafeRead,
                 redirects: RedirectMode::FollowValidated,
                 response_shape: "account-profile",
@@ -561,29 +648,37 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         require_success(&response)?;
         let payload: Value =
             serde_json::from_slice(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
-        if json_code(&payload).unwrap_or(-1) != 0 {
+        let request = payload
+            .get("req")
+            .or_else(|| payload.get("req_0"))
+            .ok_or(QQMusicError::SchemaChanged)?;
+        if json_code(&payload).unwrap_or(-1) != 0 || json_code(request).unwrap_or(-1) != 0 {
             return Err(QQMusicError::AuthenticationExpired);
         }
+        let data = request.get("data").ok_or(QQMusicError::SchemaChanged)?;
+        let profile = data
+            .get("userInfo")
+            .or_else(|| data.get("info"))
+            .unwrap_or(data);
         let nickname = first_string(
-            &payload,
-            &[
-                "/data/creator/nick",
-                "/data/creator/nickname",
-                "/data/nick",
-                "/data/nickname",
-            ],
+            profile,
+            &["/nick", "/nickname", "/name", "/Name", "/NickName"],
         )
         .filter(|value| !value.trim().is_empty())
         .ok_or(QQMusicError::SchemaChanged)?;
-        let avatar_url = first_string(
-            &payload,
+        let raw_avatar_url = first_string(
+            profile,
             &[
-                "/data/creator/headpic",
-                "/data/creator/avatarUrl",
-                "/data/avatarUrl",
+                "/headurl",
+                "/headUrl",
+                "/avatar",
+                "/avatarUrl",
+                "/Avatar",
+                "/logo",
+                "/ifpicurl",
             ],
-        )
-        .filter(|url| is_sanitized_avatar_url(url));
+        );
+        let avatar_url = raw_avatar_url.filter(|url| is_sanitized_avatar_url(url));
 
         let entitlement = match self.fetch_entitlement(session, cancellation).await {
             Ok(entitlement) => entitlement,
@@ -610,7 +705,15 @@ struct ActiveAttempt {
     expires_at_ms: u64,
     poll_after_ms: u64,
     challenge: Option<AuthChallenge>,
+    oauth: Option<OAuthAttempt>,
     cancellation: CancellationToken,
+}
+
+struct OAuthAttempt {
+    provider: OAuthLoginProvider,
+    state: String,
+    deadline: Instant,
+    completing: bool,
 }
 
 struct OwnerSignal {
@@ -834,6 +937,7 @@ impl QQMusicAuthService {
                 expires_at_ms: self.clock.now_ms().saturating_add(MAX_ATTEMPT_MS),
                 poll_after_ms,
                 challenge: None,
+                oauth: None,
                 cancellation: cancellation.clone(),
             });
         }
@@ -929,6 +1033,165 @@ impl QQMusicAuthService {
         Ok(self.snapshot().await)
     }
 
+    pub(crate) async fn start_oauth(
+        self: &Arc<Self>,
+        provider: OAuthLoginProvider,
+    ) -> Result<OAuthLaunch, QQMusicError> {
+        let state = random_opaque_id();
+        let authorization_url = provider.authorization_url(&state)?;
+        let (generation, cancellation) = self.begin_generation().await;
+        let attempt_id = random_opaque_id();
+        let owner_lease_id = random_opaque_id();
+        let poll_after_ms = MIN_POLL_INTERVAL_MS;
+        let expires_at_ms = self.clock.now_ms().saturating_add(MAX_ATTEMPT_MS);
+        self.install_owner_signal(OwnerSignal {
+            attempt_id: attempt_id.clone(),
+            generation,
+            cancellation: cancellation.clone(),
+        });
+        {
+            let mut active = self.active_attempt.lock().await;
+            if !self.is_current(generation) || cancellation.is_cancelled() {
+                self.clear_owner_signal(&attempt_id);
+                return Err(QQMusicError::Cancelled);
+            }
+            if let Some(previous) = active.take() {
+                previous.cancellation.cancel();
+            }
+            *active = Some(ActiveAttempt {
+                attempt_id: attempt_id.clone(),
+                owner_lease_id: owner_lease_id.clone(),
+                generation,
+                owner_deadline: Instant::now() + Duration::from_millis(OWNER_LEASE_MS),
+                expires_at_ms,
+                poll_after_ms,
+                challenge: None,
+                oauth: Some(OAuthAttempt {
+                    provider,
+                    state,
+                    deadline: Instant::now() + Duration::from_millis(MAX_ATTEMPT_MS),
+                    completing: false,
+                }),
+                cancellation: cancellation.clone(),
+            });
+        }
+        if !self
+            .publish_if_current(
+                generation,
+                AccountState::WaitingForConfirmation {
+                    attempt_id: attempt_id.clone(),
+                    owner_lease_id,
+                    expires_at_ms,
+                    poll_after_ms,
+                    profile: (),
+                    entitlement: (),
+                },
+            )
+            .await
+        {
+            self.take_attempt(generation, &attempt_id, true).await;
+            return Err(QQMusicError::Cancelled);
+        }
+        let weak = Arc::downgrade(self);
+        let watched_attempt = attempt_id.clone();
+        tokio::spawn(async move {
+            if let Some(service) = weak.upgrade() {
+                service.oauth_owner_loop(generation, watched_attempt).await;
+            }
+        });
+        Ok(OAuthLaunch {
+            attempt_id,
+            authorization_url,
+            snapshot: self.snapshot().await,
+        })
+    }
+
+    pub(crate) async fn complete_oauth_callback(
+        &self,
+        attempt_id: &str,
+        provider: OAuthLoginProvider,
+        callback_url: Url,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        let (generation, cancellation, expected_state) = {
+            let mut active = self.active_attempt.lock().await;
+            let current = active
+                .as_mut()
+                .filter(|current| {
+                    current.attempt_id == attempt_id
+                        && self.is_current(current.generation)
+                        && !current.cancellation.is_cancelled()
+                })
+                .ok_or(QQMusicError::Cancelled)?;
+            let oauth = current
+                .oauth
+                .as_mut()
+                .filter(|oauth| oauth.provider == provider)
+                .ok_or(QQMusicError::AuthorizationRejected)?;
+            if oauth.completing {
+                return Err(QQMusicError::MutationInProgress);
+            }
+            oauth.completing = true;
+            (
+                current.generation,
+                current.cancellation.clone(),
+                oauth.state.clone(),
+            )
+        };
+
+        let outcome = match parse_callback(provider, &callback_url, &expected_state) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                self.finish_attempt_with_error(generation, attempt_id, &error)
+                    .await;
+                return Err(error);
+            }
+        };
+        let OAuthCallback::Code(code) = outcome else {
+            self.finish_attempt(
+                generation,
+                attempt_id,
+                AccountState::Rejected {
+                    attempt_id: Some(attempt_id.to_owned()),
+                    profile: (),
+                    entitlement: (),
+                },
+            )
+            .await;
+            return Err(QQMusicError::AuthorizationRejected);
+        };
+        let candidate = match self
+            .protocol
+            .exchange_oauth_code(provider, &code, cancellation.clone())
+            .await
+        {
+            Ok(candidate) => candidate,
+            Err(error) => {
+                self.finish_attempt_with_error(generation, attempt_id, &error)
+                    .await;
+                return Err(error);
+            }
+        };
+        match self
+            .promote_session(generation, cancellation, candidate)
+            .await
+        {
+            Ok(snapshot) => {
+                self.take_attempt(generation, attempt_id, false).await;
+                self.clear_owner_signal(attempt_id);
+                Ok(snapshot)
+            }
+            Err(error) => {
+                if self.is_current(generation)
+                    && self.snapshot().await.state_name() != "secure-store-unavailable"
+                {
+                    self.finish_attempt_with_error(generation, attempt_id, &error)
+                        .await;
+                }
+                Err(error)
+            }
+        }
+    }
+
     pub(crate) async fn heartbeat(
         &self,
         attempt_id: &str,
@@ -946,6 +1209,19 @@ impl QQMusicAuthService {
         current.owner_deadline = Instant::now() + Duration::from_millis(OWNER_LEASE_MS);
         drop(active);
         Ok(self.snapshot().await)
+    }
+
+    pub(crate) async fn is_oauth_attempt(&self, attempt_id: &str) -> bool {
+        self.active_attempt
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|attempt| {
+                attempt.attempt_id == attempt_id
+                    && attempt.oauth.is_some()
+                    && self.is_current(attempt.generation)
+                    && !attempt.cancellation.is_cancelled()
+            })
     }
 
     pub(crate) async fn cancel(&self, attempt_id: &str) -> Result<AccountSnapshot, QQMusicError> {
@@ -1008,7 +1284,7 @@ impl QQMusicAuthService {
             (owner, generation)
         };
 
-        tracing::info!(target: "qqmusic.auth", reason, "QR login owner was released");
+        tracing::info!(target: "qqmusic.auth", reason, "login owner was released");
         let service = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             service
@@ -1119,6 +1395,10 @@ impl QQMusicAuthService {
         let validated = match self.protocol.validate_session(&session, cancellation).await {
             Ok(validated) => validated,
             Err(error) => {
+                tracing::warn!(
+                    error_code = error.code(),
+                    "QQ Music secure session restore validation failed"
+                );
                 self.ensure_generation_current(generation)?;
                 *self.active_session.write().await = None;
                 self.playback_epoch.replace(None);
@@ -1298,6 +1578,37 @@ impl QQMusicAuthService {
                     }
                 }
                 _ = tokio::time::sleep(Duration::from_millis(poll_after_ms)) => {}
+            }
+        }
+    }
+
+    async fn oauth_owner_loop(self: Arc<Self>, generation: u64, attempt_id: String) {
+        loop {
+            let Some((cancellation, owner_deadline, attempt_deadline)) =
+                self.oauth_context(generation, &attempt_id).await
+            else {
+                return;
+            };
+            let deadline = owner_deadline.min(attempt_deadline);
+            tokio::select! {
+                _ = cancellation.cancelled() => return,
+                _ = tokio::time::sleep_until(deadline) => {}
+            }
+            if Instant::now() >= attempt_deadline {
+                self.finish_attempt(
+                    generation,
+                    &attempt_id,
+                    AccountState::Expired {
+                        attempt_id: Some(attempt_id.clone()),
+                        profile: (),
+                        entitlement: (),
+                    },
+                )
+                .await;
+                return;
+            }
+            if self.expire_owner_if_due(generation, &attempt_id).await {
+                return;
             }
         }
     }
@@ -1532,6 +1843,25 @@ impl QQMusicAuthService {
             current.owner_deadline,
             current.expires_at_ms,
             current.poll_after_ms,
+        ))
+    }
+
+    async fn oauth_context(
+        &self,
+        generation: u64,
+        attempt_id: &str,
+    ) -> Option<(CancellationToken, Instant, Instant)> {
+        let active = self.active_attempt.lock().await;
+        let current = active.as_ref().filter(|current| {
+            current.generation == generation
+                && current.attempt_id == attempt_id
+                && self.is_current(generation)
+        })?;
+        let oauth = current.oauth.as_ref()?;
+        Some((
+            current.cancellation.clone(),
+            current.owner_deadline,
+            oauth.deadline,
         ))
     }
 
@@ -1936,6 +2266,13 @@ fn error_state(attempt_id: &str, error: &QQMusicError) -> AccountState {
                 entitlement: (),
             }
         }
+        QQMusicError::AuthorizationRejected | QQMusicError::AuthenticationExpired => {
+            AccountState::Rejected {
+                attempt_id,
+                profile: (),
+                entitlement: (),
+            }
+        }
         _ => AccountState::ProtocolError {
             attempt_id,
             profile: (),
@@ -1967,7 +2304,7 @@ fn restore_error_state(error: &QQMusicError) -> AccountState {
     }
 }
 
-fn constant_time_equivalent(left: &str, right: &str) -> bool {
+pub(super) fn constant_time_equivalent(left: &str, right: &str) -> bool {
     left.len() == right.len() && bool::from(left.as_bytes().ct_eq(right.as_bytes()))
 }
 
@@ -2008,7 +2345,10 @@ fn is_sanitized_avatar_url(value: &str) -> bool {
     Url::parse(value).is_ok_and(|url| {
         url.scheme() == "https"
             && url.port_or_known_default() == Some(443)
-            && url.host_str() == Some("qpic.y.qq.com")
+            && matches!(
+                url.host_str(),
+                Some("qpic.y.qq.com" | "q.qlogo.cn" | "thirdwx.qlogo.cn" | "thirdqq.qlogo.cn")
+            )
             && url.username().is_empty()
             && url.password().is_none()
     })
@@ -2255,6 +2595,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn avatar_url_sanitizer_allows_only_exact_tencent_https_hosts() {
+        for trusted in [
+            "https://qpic.y.qq.com/synthetic-avatar.png",
+            "https://q.qlogo.cn/synthetic-avatar.png",
+            "https://thirdwx.qlogo.cn/synthetic-avatar.png",
+            "https://thirdqq.qlogo.cn/synthetic-avatar.png",
+        ] {
+            assert!(
+                is_sanitized_avatar_url(trusted),
+                "expected trusted: {trusted}"
+            );
+        }
+
+        for untrusted in [
+            "http://thirdwx.qlogo.cn/synthetic-avatar.png",
+            "https://thirdwx.qlogo.cn:444/synthetic-avatar.png",
+            "https://user:pass@thirdwx.qlogo.cn/synthetic-avatar.png",
+            "https://thirdwx.qlogo.cn.evil.example/synthetic-avatar.png",
+            "https://qlogo.cn/synthetic-avatar.png",
+        ] {
+            assert!(
+                !is_sanitized_avatar_url(untrusted),
+                "expected untrusted: {untrusted}"
+            );
+        }
+    }
+
     struct FakeProtocol {
         results: Mutex<VecDeque<AuthPollResult>>,
         validation_count: AtomicUsize,
@@ -2266,6 +2634,7 @@ mod tests {
         validation_release: Notify,
         invalid_challenge: AtomicBool,
         validation_error: StdMutex<Option<QQMusicError>>,
+        oauth_exchange: StdMutex<Option<(OAuthLoginProvider, String)>>,
     }
 
     impl FakeProtocol {
@@ -2281,6 +2650,7 @@ mod tests {
                 validation_release: Notify::new(),
                 invalid_challenge: AtomicBool::new(false),
                 validation_error: StdMutex::new(None),
+                oauth_exchange: StdMutex::new(None),
             }
         }
 
@@ -2332,6 +2702,17 @@ mod tests {
                 Some(result) => Ok(result),
                 None => std::future::pending().await,
             }
+        }
+
+        async fn exchange_oauth_code(
+            &self,
+            provider: OAuthLoginProvider,
+            code: &str,
+            _cancellation: CancellationToken,
+        ) -> Result<SessionRecord, QQMusicError> {
+            *self.oauth_exchange.lock().expect("OAuth exchange lock") =
+                Some((provider, code.to_owned()));
+            Ok(session("oauth"))
         }
 
         async fn validate_session(
@@ -2609,6 +2990,86 @@ mod tests {
         wait_for_state(&service, "cancelled").await;
         assert!(service.challenge_bytes_for_test().await.is_none());
         assert!(service.poll_task_is_cancelled().await);
+    }
+
+    #[tokio::test]
+    async fn official_oauth_callback_exchanges_only_the_code_and_promotes_the_session() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let service = auth_service(
+            Arc::clone(&protocol),
+            Arc::new(RecordingCredentialStore::default()),
+        );
+        let launch = service
+            .start_oauth(OAuthLoginProvider::Qq)
+            .await
+            .expect("OAuth start");
+        assert_eq!(launch.snapshot.state_name(), "waiting-for-confirmation");
+        assert!(launch.snapshot.qr_image_data_uri().is_none());
+        let state = launch
+            .authorization_url
+            .query_pairs()
+            .find_map(|(key, value)| (key == "state").then(|| value.into_owned()))
+            .expect("state");
+        let callback = Url::parse(&format!(
+            "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https%3A%2F%2Fy.qq.com%2F&code=SYNTHETIC_CODE&state={state}"
+        ))
+        .expect("callback URL");
+
+        let authenticated = service
+            .complete_oauth_callback(&launch.attempt_id, OAuthLoginProvider::Qq, callback)
+            .await
+            .expect("OAuth completion");
+
+        assert_eq!(authenticated.state_name(), "authenticated");
+        assert!(!service.has_active_owner());
+        assert!(service.active_attempt.lock().await.is_none());
+        assert_eq!(
+            *protocol.oauth_exchange.lock().expect("OAuth exchange lock"),
+            Some((OAuthLoginProvider::Qq, "SYNTHETIC_CODE".to_owned()))
+        );
+    }
+
+    #[tokio::test]
+    async fn oauth_state_mismatch_fails_closed_without_exchanging_or_persisting() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        let service = auth_service(Arc::clone(&protocol), Arc::clone(&credentials));
+        let launch = service
+            .start_oauth(OAuthLoginProvider::Wechat)
+            .await
+            .expect("OAuth start");
+        let callback = Url::parse(
+            "https://y.qq.com/portal/wx_redirect.html?login_type=2&surl=https%3A%2F%2Fy.qq.com%2F&code=SYNTHETIC_CODE&state=attacker",
+        )
+        .expect("callback URL");
+
+        assert!(service
+            .complete_oauth_callback(&launch.attempt_id, OAuthLoginProvider::Wechat, callback,)
+            .await
+            .is_err());
+        assert_eq!(service.snapshot().await.state_name(), "protocol-error");
+        assert!(protocol
+            .oauth_exchange
+            .lock()
+            .expect("OAuth exchange lock")
+            .is_none());
+        assert!(credentials.value(ACTIVE_SESSION).is_none());
+        assert!(credentials.value(STAGING_SESSION).is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn oauth_owner_lease_expiry_cancels_a_window_without_a_live_dialog() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let service = auth_service(protocol, Arc::new(RecordingCredentialStore::default()));
+        service
+            .start_oauth(OAuthLoginProvider::Qq)
+            .await
+            .expect("OAuth start");
+
+        tokio::time::advance(Duration::from_secs(8)).await;
+        wait_for_state(&service, "cancelled").await;
+        assert!(!service.has_active_owner());
+        assert!(service.active_attempt.lock().await.is_none());
     }
 
     #[tokio::test]
@@ -3587,6 +4048,10 @@ mod tests {
             .await
             .expect("validate");
         assert_eq!(validated.profile.nickname, "Synthetic Listener");
+        assert_eq!(
+            validated.profile.avatar_url.as_deref(),
+            Some("https://thirdwx.qlogo.cn/synthetic-avatar.png")
+        );
         assert_eq!(validated.profile.masked_identity, "10******01");
         assert_eq!(validated.entitlement.tier, EntitlementTier::MusicVip);
         assert_eq!(validated.entitlement.membership, MembershipState::Active);
@@ -3604,7 +4069,28 @@ mod tests {
         assert_eq!(requests[1].path, "/check_sig");
         assert_eq!(requests[2].redirects, RedirectMode::ReturnResponse);
         assert_eq!(requests[3].host, "u.y.qq.com");
-        assert_eq!(requests[4].host, "c6.y.qq.com");
+        assert_eq!(requests[4].operation, "auth.session.validate");
+        assert_eq!(requests[4].host, "u.y.qq.com");
+        assert_eq!(requests[4].path, "/cgi-bin/musicu.fcg");
+        assert!(requests[4].has_cookie);
+        assert!(requests[4].has_json_content_type);
+        assert!(requests[4].has_qq_origin);
+        assert_eq!(
+            requests[4]
+                .body
+                .as_ref()
+                .and_then(|body| body.pointer("/req/module"))
+                .and_then(Value::as_str),
+            Some("music.UserInfo.userInfoServer")
+        );
+        assert_eq!(
+            requests[4]
+                .body
+                .as_ref()
+                .and_then(|body| body.pointer("/req/method"))
+                .and_then(Value::as_str),
+            Some("GetLoginUserInfo")
+        );
         assert_eq!(requests[5].operation, "auth.entitlement.validate");
         assert_eq!(requests[5].host, "u.y.qq.com");
         assert_eq!(requests[5].path, "/cgi-bin/musicu.fcg");
@@ -3630,11 +4116,98 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn official_qq_and_wechat_codes_exchange_without_browser_cookies() {
+        let login_response = || {
+            response(
+                StatusCode::OK,
+                "https://u.y.qq.com/cgi-bin/musicu.fcg",
+                HeaderMap::new(),
+                serde_json::to_vec(&json!({
+                    "code": 0,
+                    "req": {
+                        "code": 0,
+                        "data": {
+                            "str_musicid": "1000000001",
+                            "musickey": "SYNTHETIC_MUSIC_KEY",
+                            "musickeyCreateTime": 1_700_000_000_u64,
+                            "keyExpiresIn": 86_400_u64
+                        }
+                    }
+                }))
+                .expect("login response"),
+            )
+        };
+        let transport = Arc::new(ScriptedTransport {
+            responses: Mutex::new(vec![login_response(), login_response()].into()),
+            requests: Mutex::new(Vec::new()),
+        });
+        let clock: Arc<dyn Clock> = Arc::new(ManualClock::new(1_700_000_000_000));
+        let protocol = TransportQQMusicAuthProtocol::new(transport.clone(), clock);
+
+        for provider in [OAuthLoginProvider::Qq, OAuthLoginProvider::Wechat] {
+            let session = protocol
+                .exchange_oauth_code(provider, "SYNTHETIC_CODE", CancellationToken::new())
+                .await
+                .expect("OAuth code exchange");
+            assert_eq!(session.uin, "1000000001");
+            assert!(session
+                .cookie_header
+                .contains("qm_keyst=SYNTHETIC_MUSIC_KEY"));
+        }
+
+        let requests = transport.requests.lock().await;
+        assert_eq!(requests.len(), 2);
+        assert!(requests.iter().all(|request| {
+            request.host == "u.y.qq.com"
+                && request.path == "/cgi-bin/musicu.fcg"
+                && request.retry == RetryClass::AuthPoll
+                && request.redirects == RedirectMode::FollowValidated
+                && !request.has_cookie
+                && request.has_json_content_type
+                && request.has_qq_origin
+        }));
+        assert_eq!(requests[0].operation, "auth.qq.exchange");
+        assert_eq!(
+            requests[0]
+                .body
+                .as_ref()
+                .and_then(|body| body.pointer("/req/module"))
+                .and_then(Value::as_str),
+            Some("QQConnectLogin.LoginServer")
+        );
+        assert_eq!(
+            requests[0]
+                .body
+                .as_ref()
+                .and_then(|body| body.pointer("/comm/tmeLoginType"))
+                .and_then(Value::as_i64),
+            Some(2)
+        );
+        assert_eq!(requests[1].operation, "auth.wechat.exchange");
+        assert_eq!(
+            requests[1]
+                .body
+                .as_ref()
+                .and_then(|body| body.pointer("/req/param/strAppid"))
+                .and_then(Value::as_str),
+            Some("wx48db31d50e334801")
+        );
+        assert_eq!(
+            requests[1]
+                .body
+                .as_ref()
+                .and_then(|body| body.pointer("/comm/tmeLoginType"))
+                .and_then(Value::as_i64),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
     async fn entitlement_failure_is_conservative_but_cancellation_is_not_swallowed() {
         fn profile_response() -> Result<TransportResponse, QQMusicError> {
             response(
                 StatusCode::OK,
-                "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
+                "https://u.y.qq.com/cgi-bin/musicu.fcg",
                 HeaderMap::new(),
                 include_str!("../../tests/fixtures/qqmusic/account/profile.json"),
             )

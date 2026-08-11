@@ -42,6 +42,16 @@ function guestSnapshot(revision = 1): AccountSnapshot {
   };
 }
 
+function restoringSnapshot(revision = 1): AccountSnapshot {
+  return {
+    state: 'restoring-session',
+    profile: null,
+    entitlement: null,
+    revision,
+    capabilities,
+  };
+}
+
 function waitingSnapshot(revision = 2): AccountSnapshot {
   return {
     state: 'waiting-for-scan',
@@ -218,6 +228,7 @@ function accountProvider(
     getLyrics: unsupported,
     search: unsupported,
     getAccountSnapshot: vi.fn().mockResolvedValue(guestSnapshot()),
+    startWebLogin: vi.fn().mockResolvedValue(waitingSnapshot()),
     startQrLogin: vi.fn().mockResolvedValue(waitingSnapshot()),
     heartbeatQrLogin: vi.fn().mockResolvedValue(waitingSnapshot(3)),
     cancelQrLogin: vi.fn().mockResolvedValue(cancelledSnapshot()),
@@ -267,6 +278,35 @@ describe('account runtime', () => {
     expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
   });
 
+  it('keeps polling a native restore until the authenticated snapshot is published', async () => {
+    vi.useFakeTimers();
+    const getAccountSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce(restoringSnapshot())
+      .mockResolvedValue(authenticatedSnapshot());
+    const provider = accountProvider({ getAccountSnapshot });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(useAccountStore.getState().snapshot.state).toBe('restoring-session');
+    expect(getAccountSnapshot).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
+    expect(getAccountSnapshot).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(getAccountSnapshot).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
   it('clears the QR projection before cancelling on dialog close and cancels once', async () => {
     const cancellation = deferred<AccountSnapshot>();
     const cancelQrLogin = vi.fn(() => cancellation.promise);
@@ -293,16 +333,18 @@ describe('account runtime', () => {
     expect(useAccountStore.getState().snapshot.state).toBe('cancelled');
   });
 
-  it('cancels ownership returned after the dialog closed during QR startup', async () => {
+  it('cancels ownership returned after the dialog closed during OAuth startup', async () => {
     const startup = deferred<AccountSnapshot>();
     const cancelQrLogin = vi.fn().mockResolvedValue(cancelledSnapshot());
+    const startWebLogin = vi.fn(() => startup.promise);
     const provider = accountProvider({
-      startQrLogin: vi.fn(() => startup.promise),
+      startWebLogin,
       cancelQrLogin,
     });
     useAccountStore.setState({ snapshot: guestSnapshot(), dialogOpen: true });
 
-    const start = useAccountStore.getState().startLogin(provider);
+    const start = useAccountStore.getState().startLogin(provider, 'qq');
+    expect(startWebLogin).toHaveBeenCalledWith('qq', undefined);
     await useAccountStore.getState().closeDialog(provider);
     expect(cancelQrLogin).not.toHaveBeenCalled();
 

@@ -28,9 +28,10 @@ The tray context menu provides Show, Play/Pause, Previous, Next, **Unlock lyric 
 on the context menu because Tauri does not provide Linux tray click events. Windows double-click shows the window.
 
 Closing the main window defaults to hide-to-tray; Settings can switch to full quit. Auxiliary lyric windows keep
-their own close lifecycle. Locking an overlay makes it intentionally click-through, so unlock does not depend on
-clicking that surface: Settings has per-surface/all-surface recovery and the tray exposes an out-of-window escape
-hatch. The Rust interaction transition reverses cursor ignoring before focusability/resizing and never steals focus.
+their own close lifecycle. Locking an overlay makes its content window intentionally click-through while a tiny,
+separately permissioned unlock control remains overlaid at the upper-right. Settings has per-surface/all-surface
+recovery and the tray retains an out-of-window escape hatch. The Rust interaction transition reverses cursor
+ignoring before focusability/resizing and never steals focus.
 
 ## Global shortcuts and output devices
 

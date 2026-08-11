@@ -1,10 +1,55 @@
 :root[data-surface],
+:root[data-surface-unlock],
 :root[data-surface] body,
+:root[data-surface-unlock] body,
 :root[data-surface] #root {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: transparent !important;
+}
+
+:root[data-surface-unlock] #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.lyrics-unlock-root {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.lyrics-unlock-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(12, 13, 11, 0.9);
+  color: #f1f3ec;
+  box-shadow: 0 7px 22px rgba(0, 0, 0, 0.34);
+  transition:
+    color var(--motion-fast),
+    background var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.lyrics-unlock-button:hover,
+.lyrics-unlock-button:focus-visible {
+  background: color-mix(in srgb, var(--accent-primary) 26%, rgba(12, 13, 11, 0.94));
+  color: #fff;
+  transform: scale(1.05);
+}
+
+.lyrics-unlock-button[data-failed] {
+  border-color: color-mix(in srgb, var(--danger) 72%, transparent);
+  color: var(--danger);
 }
 
 .lyrics-surface-root {

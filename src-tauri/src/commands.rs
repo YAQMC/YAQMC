@@ -20,14 +20,14 @@ use crate::{
             PlaylistMutationResult, PlaylistTrackMutationRequest, RemotePlayHistoryItem,
             RenamePlaylistRequest,
         },
-        Album, AudioQualityPreference, HomeFeed, LibrarySnapshot, Playlist, ProviderResult,
-        ProviderStatus, QQMusicService, SearchResult,
+        oauth, Album, AudioQualityPreference, HomeFeed, LibrarySnapshot, OAuthLoginProvider,
+        Playlist, ProviderResult, ProviderStatus, QQMusicService, SearchResult,
     },
     storage::{CacheStats, StorageService},
     system_media::SystemMediaIntegration,
 };
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 type CommandResult<T> = Result<T, String>;
 pub const AUDIO_OUTPUT_SETTING: &str = "audio-output-device";
@@ -309,13 +309,33 @@ pub async fn qqmusic_auth_start(
 }
 
 #[tauri::command]
+pub async fn qqmusic_auth_oauth_start(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    login_provider: OAuthLoginProvider,
+) -> ProviderResult<AccountSnapshot> {
+    require_main_window(&window)?;
+    oauth::open_window(&app, &window, Arc::clone(provider.inner()), login_provider)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn qqmusic_auth_heartbeat(
+    app: AppHandle,
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
     attempt_id: String,
     owner_lease_id: String,
 ) -> ProviderResult<AccountSnapshot> {
     require_main_window(&window)?;
+    if provider.is_oauth_login(&attempt_id).await && !oauth::window_is_live(&app, &attempt_id) {
+        return provider
+            .cancel_qr_login(attempt_id)
+            .await
+            .map_err(Into::into);
+    }
     provider
         .heartbeat_qr_login(attempt_id, owner_lease_id)
         .await
@@ -324,15 +344,19 @@ pub async fn qqmusic_auth_heartbeat(
 
 #[tauri::command]
 pub async fn qqmusic_auth_cancel(
+    app: AppHandle,
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
     attempt_id: String,
 ) -> ProviderResult<AccountSnapshot> {
     require_main_window(&window)?;
-    provider
-        .cancel_qr_login(attempt_id)
-        .await
-        .map_err(Into::into)
+    let result = provider.cancel_qr_login(attempt_id.clone()).await;
+    oauth::close_window_for_attempt(&app, &attempt_id);
+    let snapshot = match result {
+        Ok(snapshot) => snapshot,
+        Err(error) => return Err(error.into()),
+    };
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -361,7 +385,7 @@ pub async fn qqmusic_sign_out(
 mod account_command_tests {
     use crate::command_guard::require_main_window_label;
 
-    const GUARDED_ACCOUNT_COMMANDS: [&str; 16] = [
+    const GUARDED_ACCOUNT_COMMANDS: [&str; 17] = [
         "qqmusic_account_snapshot",
         "qqmusic_favorite_songs",
         "qqmusic_account_playlists",
@@ -374,6 +398,7 @@ mod account_command_tests {
         "qqmusic_remove_playlist_track",
         "qqmusic_delete_playlist",
         "qqmusic_auth_start",
+        "qqmusic_auth_oauth_start",
         "qqmusic_auth_heartbeat",
         "qqmusic_auth_cancel",
         "qqmusic_auth_refresh",
@@ -637,6 +662,21 @@ pub fn lyrics_surfaces_unlock_all(
     manager: State<'_, Arc<LyricsSurfaceManager>>,
 ) -> CommandResult<usize> {
     app_preferences::unlock_all_lyrics_surfaces(&app, &storage, &manager)
+}
+
+#[tauri::command]
+pub fn lyrics_surface_unlock(
+    app: AppHandle,
+    window: WebviewWindow,
+    storage: State<'_, Arc<StorageService>>,
+    manager: State<'_, Arc<LyricsSurfaceManager>>,
+    kind: String,
+) -> CommandResult<()> {
+    let kind = SurfaceKind::parse(&kind)?;
+    if window.label() != kind.unlock_label() {
+        return Err("lyrics unlock caller does not match the requested surface".to_owned());
+    }
+    app_preferences::unlock_lyrics_surface(&app, &storage, &manager, kind)
 }
 
 #[tauri::command]

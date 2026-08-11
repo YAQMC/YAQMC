@@ -35,6 +35,7 @@ mod auth;
 mod cache;
 mod clock;
 mod entitlement;
+pub(crate) mod oauth;
 mod redaction;
 mod transport;
 
@@ -54,6 +55,8 @@ use entitlement::{
     candidates_for_request, choose_source, PreviewRange, SourceCandidate, VkeyAvailability,
 };
 use transport::{QqTransport, ReqwestQqTransport};
+
+pub(crate) use oauth::OAuthLoginProvider;
 
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_SEARCH_URL: &str = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp";
@@ -495,12 +498,41 @@ impl QQMusicService {
         self.auth.start().await
     }
 
+    pub(crate) async fn start_oauth_login(
+        self: &Arc<Self>,
+        provider: OAuthLoginProvider,
+    ) -> Result<oauth::OAuthLaunch, QQMusicError> {
+        self.auth.start_oauth(provider).await
+    }
+
+    pub(crate) async fn complete_oauth_login(
+        &self,
+        attempt_id: &str,
+        provider: OAuthLoginProvider,
+        callback_url: reqwest::Url,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        self.auth
+            .complete_oauth_callback(attempt_id, provider, callback_url)
+            .await
+    }
+
+    pub(crate) async fn cancel_oauth_login(
+        &self,
+        attempt_id: &str,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        self.auth.cancel(attempt_id).await
+    }
+
     pub async fn heartbeat_qr_login(
         &self,
         attempt_id: String,
         owner_lease_id: String,
     ) -> Result<AccountSnapshot, QQMusicError> {
         self.auth.heartbeat(&attempt_id, &owner_lease_id).await
+    }
+
+    pub(crate) async fn is_oauth_login(&self, attempt_id: &str) -> bool {
+        self.auth.is_oauth_attempt(attempt_id).await
     }
 
     pub async fn cancel_qr_login(

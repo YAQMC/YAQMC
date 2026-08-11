@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppRoute } from '../application/navigation';
+import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { ProviderContext } from '../application/provider-context';
 import i18n from '../i18n';
 import { fakeMusicProvider } from '../providers/fake/fake-music-provider';
@@ -18,6 +19,7 @@ function renderSidebar(route: AppRoute = { page: 'home' }) {
 
 describe('Sidebar navigation', () => {
   beforeEach(async () => {
+    resetAccountRuntimeForTest();
     await i18n.changeLanguage('en-US');
   });
 
@@ -46,6 +48,45 @@ describe('Sidebar navigation', () => {
     expect(screen.getByRole('button', { name: 'Playlists' })).toHaveAttribute(
       'data-active',
       'true',
+    );
+  });
+
+  it('renders the authenticated account identity, avatar, and entitlement summary', () => {
+    useAccountStore.setState({
+      snapshot: {
+        state: 'authenticated',
+        profile: {
+          avatarUrl: 'https://q.qlogo.cn/synthetic-avatar.png',
+          nickname: 'Synthetic Listener',
+          maskedIdentity: '10******01',
+        },
+        entitlement: {
+          tier: 'music-vip',
+          membership: 'active',
+          expiresAtMs: 1_800_000_000_000,
+          permittedQualities: ['standard', 'high', 'lossless'],
+          observedMaximumQuality: 'lossless',
+          restrictions: [],
+        },
+        revision: 3,
+        capabilities: {
+          qrLogin: true,
+          favoriteRead: true,
+          favoriteWrite: true,
+          playlistRead: true,
+          playlistWrite: true,
+          recentHistoryRead: true,
+        },
+      },
+    });
+
+    renderSidebar();
+
+    expect(screen.getByText('Synthetic Listener')).toBeInTheDocument();
+    expect(screen.getByText('Music VIP · Active')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Synthetic Listener account avatar' })).toHaveAttribute(
+      'src',
+      'https://q.qlogo.cn/synthetic-avatar.png',
     );
   });
 });

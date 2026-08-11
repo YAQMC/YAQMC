@@ -7,13 +7,15 @@ claim that the endpoints below are a supported public SDK contract.
 
 Tencent's public [Open Platform](https://open.tencent.com/) did not expose a general QQ Music catalog/playback API
 for this desktop use case. Tencent Cloud's published music material is a separate commercial product rather than a
-drop-in authorization and playback contract for a third-party QQ Music client. YAQMC therefore treats QR login as
-an undocumented compatibility surface, not an approved third-party OAuth SDK contract.
+drop-in authorization and playback contract for a third-party QQ Music client. YAQMC therefore treats the
+Tencent-hosted QQ/WeChat OAuth pages and QQ Music code exchange as a compatibility surface, not an approved
+third-party QQ Music SDK contract.
 
 The implemented guest provider therefore uses the same public web compatibility surfaces currently reachable by
 QQ Music pages. They are undocumented/unstable from this application's perspective and may change without notice.
-Account password entry, imported/browser cookie scraping, DRM bypass, entitlement bypass, and private first-party
-client secrets are out of scope. QR/account code is implemented, but live account acceptance remains pending.
+YAQMC does not render password fields, inspect credentials typed into the hosted page, import/scrape browser cookies,
+bypass DRM or entitlements, or embed private first-party client secrets. OAuth/account code is implemented, but live
+account acceptance remains pending.
 
 ## Current endpoint map
 
@@ -61,10 +63,13 @@ implementation is original, and no source was copied or vendored.
 | entitlement                | VipLogin.VipLoginInter/vip_login_base                                                                                                                                                  | account-read  | uin; pagination: none                                                                   | session credential, UIN         | none                | 0                                                                                                                   | L-1124/QQMusicApi@108617ffe80abefec6358717b9f4d3677550db10:qqmusic_api/modules/user.py                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | reference-correlated; live acceptance pending | medium     |
 | playback vkey              | music.vkey.GetVkey/UrlGetVkey or music.vkey.GetEVkey/CgiGetEVkey                                                                                                                       | account-read  | filename, guid, songmid, uin; pagination: none                                          | session credential, UIN         | none                | 0                                                                                                                   | L-1124/QQMusicApi@108617ffe80abefec6358717b9f4d3677550db10:qqmusic_api/modules/song.py                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | reference-correlated; live acceptance pending | medium     |
 
-The selected initial authorization path is QQ QR login only: `ptqrshow` creates the challenge, `ptqrlogin` reports
-scan/confirmation state, and the confirmed flow completes through the pinned `check_sig`/QQ login exchange. WeChat
-QR, password, SMS/phone login, imported browser cookies, and cookie scraping remain unsupported. No live QR was
-created or polled while preparing this ledger.
+The selected authorization path opens Tencent's QQ (`graph.qq.com`) or WeChat (`open.weixin.qq.com`) authorization
+page in a restricted incognito WebView. Only the registered `y.qq.com/portal/wx_redirect.html` callback is accepted;
+the callback's provider type, return URL, unique CSRF state, and bounded code are checked before Rust exchanges the
+code through `QQConnectLogin.LoginServer/QQLogin` (QQ) or `music.login.LoginServer/Login` (WeChat). The WebView has no
+account-command capability, popups are denied, and neither its cookies nor password fields are read. SMS/phone login
+and imported browser sessions remain unsupported. The older QQ QR implementation remains internal fallback code but
+is not exposed as the primary login path.
 
 The dedicated authenticated transport is limited to these exact HTTPS hosts: `u.y.qq.com`, `c.y.qq.com`,
 `c6.y.qq.com`, `ssl.ptlogin2.qq.com`, `ssl.ptlogin2.graph.qq.com`, `xui.ptlogin2.qq.com`, `graph.qq.com`, and

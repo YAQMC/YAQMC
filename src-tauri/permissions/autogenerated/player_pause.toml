@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-pause"
+description = "Enables the player_pause command without any pre-configured scope."
+commands.allow = ["player_pause"]
+
+[[permission]]
+identifier = "deny-player-pause"
+description = "Denies the player_pause command without any pre-configured scope."
+commands.deny = ["player_pause"]

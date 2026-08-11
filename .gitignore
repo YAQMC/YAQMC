@@ -9,6 +9,8 @@ output/
 .env.*
 !.env.example
 artifacts/branding/yaqmc-logo-chroma.png
+GPT-Readme.md
+GPT-Read-me.md
 
 # Rust / Tauri
 src-tauri/target/

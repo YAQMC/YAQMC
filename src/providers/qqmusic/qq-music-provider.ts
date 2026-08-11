@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   PROVIDER_ERROR_CODES,
   ProviderError,
+  type AccountLoginMethod,
   type AccountPlaylistDetail,
   type AccountPlaylistSummary,
   type AccountSnapshot,
@@ -104,6 +105,10 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
 
   getAccountSnapshot(signal?: AbortSignal): Promise<AccountSnapshot> {
     return nativeRequest('qqmusic_account_snapshot', undefined, signal);
+  }
+
+  startWebLogin(method: AccountLoginMethod, signal?: AbortSignal): Promise<AccountSnapshot> {
+    return nativeRequest('qqmusic_auth_oauth_start', { loginProvider: method }, signal);
   }
 
   startQrLogin(signal?: AbortSignal): Promise<AccountSnapshot> {

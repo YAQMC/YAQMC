@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-lyrics-surface-unlock"
+description = "Enables the lyrics_surface_unlock command without any pre-configured scope."
+commands.allow = ["lyrics_surface_unlock"]
+
+[[permission]]
+identifier = "deny-lyrics-surface-unlock"
+description = "Denies the lyrics_surface_unlock command without any pre-configured scope."
+commands.deny = ["lyrics_surface_unlock"]

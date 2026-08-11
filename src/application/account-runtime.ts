@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import type {
+  AccountLoginMethod,
   AccountPlaylistDetail,
   AccountPlaylistSummary,
   AccountSnapshot,
@@ -93,7 +94,7 @@ interface AccountStoreState {
   openDialog: () => void;
   closeDialog: (provider: AccountMusicProvider) => Promise<void>;
   refreshSnapshot: (provider: AccountMusicProvider) => Promise<void>;
-  startLogin: (provider: AccountMusicProvider) => Promise<void>;
+  startLogin: (provider: AccountMusicProvider, method: AccountLoginMethod) => Promise<void>;
   heartbeatLogin: (provider: AccountMusicProvider) => Promise<void>;
   refreshQr: (provider: AccountMusicProvider) => Promise<void>;
   cancelLogin: (provider: AccountMusicProvider) => Promise<void>;
@@ -154,6 +155,7 @@ let snapshotTimer: number | null = null;
 let heartbeatTimer: number | null = null;
 let timerOwnerKey: string | null = null;
 let timerPollAfterMs: number | null = null;
+const RESTORE_POLL_AFTER_MS = 500;
 let runtimeProvider: AccountMusicProvider | null = null;
 let runtimeAbortController: AbortController | null = null;
 const blockedAttempts = new Set<string>();
@@ -336,6 +338,23 @@ async function releaseUncommittedOwnership(
 
 function reconcileOwnershipTimers(provider: AccountMusicProvider): void {
   const { dialogOpen, snapshot } = useAccountStore.getState();
+  if (snapshot.state === 'restoring-session') {
+    if (
+      snapshotTimer !== null &&
+      heartbeatTimer === null &&
+      timerOwnerKey === 'restoring-session' &&
+      timerPollAfterMs === RESTORE_POLL_AFTER_MS
+    ) {
+      return;
+    }
+    clearOwnershipTimers();
+    timerOwnerKey = 'restoring-session';
+    timerPollAfterMs = RESTORE_POLL_AFTER_MS;
+    snapshotTimer = window.setInterval(() => {
+      void useAccountStore.getState().refreshSnapshot(provider);
+    }, RESTORE_POLL_AFTER_MS);
+    return;
+  }
   const owner = ownedSnapshot(snapshot);
   if (!dialogOpen || !owner || blockedAttempts.has(owner.attemptId)) {
     clearOwnershipTimers();
@@ -788,11 +807,11 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   closeDialog: (provider) => cancelOwnedAttempt(provider, true),
   refreshSnapshot: (provider) =>
     runSnapshotRequest(provider, (signal) => provider.getAccountSnapshot(signal), false),
-  startLogin: async (provider) => {
+  startLogin: async (provider, method) => {
     set({ dialogOpen: true, displayedQrImageDataUri: null });
     await runSnapshotRequest(
       provider,
-      (signal) => provider.startQrLogin(signal),
+      (signal) => provider.startWebLogin(method, signal),
       true,
       (snapshot) => releaseUncommittedOwnership(provider, snapshot),
     );

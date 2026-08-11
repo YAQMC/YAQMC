@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-platform-diagnostics"
+description = "Enables the platform_diagnostics command without any pre-configured scope."
+commands.allow = ["platform_diagnostics"]
+
+[[permission]]
+identifier = "deny-platform-diagnostics"
+description = "Denies the platform_diagnostics command without any pre-configured scope."
+commands.deny = ["platform_diagnostics"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-cycle-repeat"
+description = "Enables the player_cycle_repeat command without any pre-configured scope."
+commands.allow = ["player_cycle_repeat"]
+
+[[permission]]
+identifier = "deny-player-cycle-repeat"
+description = "Denies the player_cycle_repeat command without any pre-configured scope."
+commands.deny = ["player_cycle_repeat"]

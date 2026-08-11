@@ -1,10 +1,13 @@
 {
   "code": 0,
-  "data": {
-    "creator": {
-      "uin": "SANITIZED_ACCOUNT",
-      "nick": "Synthetic Listener",
-      "headpic": "https://qpic.y.qq.com/synthetic-avatar.png"
+  "req": {
+    "code": 0,
+    "data": {
+      "info": {
+        "uin": "SANITIZED_ACCOUNT",
+        "nick": "Synthetic Listener",
+        "logo": "https://thirdwx.qlogo.cn/synthetic-avatar.png"
+      }
     }
   }
 }

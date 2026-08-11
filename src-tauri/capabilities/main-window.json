@@ -3,5 +3,10 @@
   "identifier": "main-window",
   "description": "Main application permissions including user-controlled fullscreen",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-set-fullscreen", "qqmusic-account"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-fullscreen",
+    "main-application",
+    "qqmusic-account"
+  ]
 }

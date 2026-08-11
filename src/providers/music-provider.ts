@@ -1,4 +1,5 @@
 import type {
+  AccountLoginMethod,
   AccountPlaylistDetail,
   AccountPlaylistSummary,
   AccountSnapshot,
@@ -35,6 +36,7 @@ export interface MusicProvider {
 
 export interface AccountMusicProvider {
   getAccountSnapshot(signal?: AbortSignal): Promise<AccountSnapshot>;
+  startWebLogin(method: AccountLoginMethod, signal?: AbortSignal): Promise<AccountSnapshot>;
   startQrLogin(signal?: AbortSignal): Promise<AccountSnapshot>;
   heartbeatQrLogin(
     attemptId: string,
@@ -93,6 +95,7 @@ export function isAccountMusicProvider(
   const candidate = provider as Partial<AccountMusicProvider>;
   return [
     'getAccountSnapshot',
+    'startWebLogin',
     'startQrLogin',
     'heartbeatQrLogin',
     'cancelQrLogin',

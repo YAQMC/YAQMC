@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-home"
+description = "Enables the qqmusic_home command without any pre-configured scope."
+commands.allow = ["qqmusic_home"]
+
+[[permission]]
+identifier = "deny-qqmusic-home"
+description = "Denies the qqmusic_home command without any pre-configured scope."
+commands.deny = ["qqmusic_home"]

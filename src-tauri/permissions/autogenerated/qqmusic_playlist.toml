@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-playlist"
+description = "Enables the qqmusic_playlist command without any pre-configured scope."
+commands.allow = ["qqmusic_playlist"]
+
+[[permission]]
+identifier = "deny-qqmusic-playlist"
+description = "Denies the qqmusic_playlist command without any pre-configured scope."
+commands.deny = ["qqmusic_playlist"]

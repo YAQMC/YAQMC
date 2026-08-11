@@ -76,6 +76,34 @@ pub fn unlock_all_lyrics_surfaces(
     Ok(unlocked)
 }
 
+pub fn unlock_lyrics_surface(
+    app: &AppHandle,
+    storage: &StorageService,
+    manager: &LyricsSurfaceManager,
+    kind: SurfaceKind,
+) -> Result<(), String> {
+    let document = get_preferences(storage)?.unwrap_or_else(|| r#"{"version":2}"#.to_owned());
+    let previous = manager.interaction(kind);
+    if previous != SurfaceInteraction::Interactive {
+        manager.set_interaction(app, kind, SurfaceInteraction::Interactive)?;
+    }
+    match set_surface_interaction(
+        app,
+        storage,
+        kind.value(),
+        SurfaceInteraction::Interactive.value(),
+        document,
+    ) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            if previous != SurfaceInteraction::Interactive {
+                let _ = manager.set_interaction(app, kind, previous);
+            }
+            Err(error)
+        }
+    }
+}
+
 fn preference_system_value(storage: &StorageService, key: &str) -> Option<serde_json::Value> {
     let value = storage.get_setting(PREFERENCES_KEY).ok()??;
     serde_json::from_str::<serde_json::Value>(&value)

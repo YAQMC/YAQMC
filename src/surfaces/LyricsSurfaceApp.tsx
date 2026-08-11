@@ -7,6 +7,7 @@ import {
   Settings2,
   SkipBack,
   SkipForward,
+  Unlock,
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -41,6 +42,41 @@ export interface SurfaceProps {
   current: LyricLine | null;
   next: LyricLine | null;
   wordIndex: number;
+}
+
+export function LyricsUnlockControl({ kind }: { kind: SurfaceKind }) {
+  const { t } = useTranslation('settings', { keyPrefix: 'surfaces' });
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const unlock = async () => {
+    if (pending) return;
+    setPending(true);
+    setFailed(false);
+    try {
+      await invoke('lyrics_surface_unlock', { kind });
+    } catch {
+      setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <main className="lyrics-unlock-root">
+      <button
+        type="button"
+        className="lyrics-unlock-button"
+        aria-label={t('unlockSurface', { name: t(kind) })}
+        title={t('unlockSurface', { name: t(kind) })}
+        data-failed={failed || undefined}
+        disabled={pending}
+        onClick={() => void unlock()}
+      >
+        <Unlock size={18} />
+      </button>
+    </main>
+  );
 }
 
 type SurfaceStyle = CSSProperties & {

@@ -53,6 +53,24 @@ export function projectSurfaceLyrics(
 ): { current: LyricLine | null; next: LyricLine | null; wordIndex: number } {
   if (!document) return { current: null, next: null, wordIndex: -1 };
   const cursor = selectLyricCursor(document, positionMs + timingOffsetMs);
+  if (!cursor.line && document.syncMode !== 'unsynchronized') {
+    const lyricPositionMs = positionMs + timingOffsetMs - document.metadata.offsetMs;
+    let previousLineIndex = -1;
+    for (let index = 0; index < document.lines.length; index += 1) {
+      const startMs = document.lines[index]?.startMs;
+      if (startMs !== null && startMs !== undefined && startMs <= lyricPositionMs) {
+        previousLineIndex = index;
+      }
+    }
+    if (previousLineIndex >= 0) {
+      const previous = document.lines[previousLineIndex] ?? null;
+      return {
+        current: previous,
+        next: document.lines[previousLineIndex + 1] ?? null,
+        wordIndex: previous?.words.length ?? -1,
+      };
+    }
+  }
   return {
     current: cursor.line,
     next: cursor.lineIndex >= 0 ? (document.lines[cursor.lineIndex + 1] ?? null) : null,

@@ -27,7 +27,7 @@ function guestSnapshot(revision = 1): AccountSnapshot {
 }
 
 function authenticatedSnapshot(
-  avatarUrl: string | null = 'https://qpic.y.qq.com/synthetic-avatar.png',
+  avatarUrl: string | null = 'https://thirdwx.qlogo.cn/synthetic-avatar.png',
 ): AccountSnapshot {
   return {
     state: 'authenticated',
@@ -61,6 +61,7 @@ function accountProvider(overrides: Partial<AccountMusicProvider> = {}) {
       'getLyrics',
       'search',
       'getAccountSnapshot',
+      'startWebLogin',
       'startQrLogin',
       'heartbeatQrLogin',
       'cancelQrLogin',
@@ -126,7 +127,7 @@ describe('SettingsPage account section', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Synthetic Listener account avatar' })).toHaveAttribute(
       'src',
-      'https://qpic.y.qq.com/synthetic-avatar.png',
+      'https://thirdwx.qlogo.cn/synthetic-avatar.png',
     );
     expect(container.innerHTML).not.toMatch(/qrsig|ptqrtoken|qm_keyst|cookie|attempt-id|lease-id/i);
 

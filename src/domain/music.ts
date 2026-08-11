@@ -282,6 +282,8 @@ export interface AccountCapabilities {
   recentHistoryRead: boolean;
 }
 
+export type AccountLoginMethod = 'qq' | 'wechat';
+
 export type AccountState =
   | { state: 'guest'; profile: null; entitlement: null }
   | { state: 'restoring-session'; profile: null; entitlement: null }

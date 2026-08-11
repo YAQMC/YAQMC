@@ -1,0 +1,4 @@
+[[set]]
+identifier = "lyrics-surface-unlock-control"
+description = "Allows a dedicated lyric unlock control to unlock only its matching surface."
+permissions = ["allow-lyrics-surface-unlock"]

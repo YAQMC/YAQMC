@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Desktop bundle to build
+        description: Desktop bundles to build
         required: true
         default: all
         type: choice
@@ -25,10 +25,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest]
+        os: [ubuntu-22.04, windows-2025]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Scan tracked account artifacts (Linux)
         if: runner.os == 'Linux'
         run: bash scripts/check-secrets.sh --self-test && bash scripts/check-secrets.sh
@@ -40,44 +40,71 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qqmusic-auth-preflight.ps1 -SelfTest
 
-  linux-appimage:
-    name: Linux x86_64 AppImage
+  linux-bundles:
+    name: Linux ${{ matrix.arch }} packages
     needs: account-secret-scan
     if: ${{ inputs.target == '' || inputs.target == 'all' || inputs.target == 'linux' }}
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.88'
-      - name: Install Tauri and audio dependencies
+          targets: ${{ matrix.target }}
+      - name: Install Tauri, audio, and package dependencies
         run: >-
           sudo apt-get update && sudo apt-get install -y
           libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-          libasound2-dev
+          libasound2-dev rpm
       - run: npm ci
-      - name: Build AppImage
-        run: npm run tauri -- build --bundles appimage
-      - name: Stage tester bundle
+      - name: Build AppImage, DEB, and RPM
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles appimage,deb,rpm
+      - name: Stage packages and portable binary
+        shell: bash
         run: |
-          mkdir -p release/YAQMC-linux-x86_64
+          set -euo pipefail
+          release_dir="release/YAQMC-linux-${{ matrix.arch }}"
+          bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
+          mkdir -p "$release_dir"
+          find "$bundle_root/deb" -maxdepth 1 -type f -name '*.deb' -exec cp {} "$release_dir/" \;
+          find "$bundle_root/rpm" -maxdepth 1 -type f -name '*.rpm' -exec cp {} "$release_dir/" \;
+          test -f "src-tauri/target/${{ matrix.target }}/release/yaqmc"
+          cp "src-tauri/target/${{ matrix.target }}/release/yaqmc" "$release_dir/yaqmc"
+          tar -C "$release_dir" -czf "$release_dir/YAQMC-linux-${{ matrix.arch }}-portable.tar.gz" yaqmc
+          rm "$release_dir/yaqmc"
+      - name: Repack x86_64 AppImage with session-aware GTK policy
+        if: matrix.arch == 'x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="release/YAQMC-linux-x86_64"
           curl --fail --location --retry 3 \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
             --output /tmp/appimagetool-x86_64.AppImage
           echo 'a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0  /tmp/appimagetool-x86_64.AppImage' | sha256sum --check
           chmod +x /tmp/appimagetool-x86_64.AppImage scripts/repack-appimage-gdk-backend.sh
-          source_appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$source_appimage"
           scripts/repack-appimage-gdk-backend.sh \
             "$source_appimage" \
             /tmp/appimagetool-x86_64.AppImage \
-            "release/YAQMC-linux-x86_64/$(basename "$source_appimage")"
-          final_appimage="$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/$(basename "$source_appimage")"
+            "$release_dir/$(basename "$source_appimage")"
+          final_appimage="$GITHUB_WORKSPACE/$release_dir/$(basename "$source_appimage")"
           verify_dir="$(mktemp -d)"
           (
             cd "$verify_dir"
@@ -86,10 +113,10 @@ jobs:
             grep -F 'export GDK_BACKEND=wayland' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
             grep -F 'export GDK_BACKEND=x11' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
           )
-          cp scripts/collect-linux-diagnostics.sh release/YAQMC-linux-x86_64/
-          cp scripts/verify-lyrics-acceptance.mjs release/YAQMC-linux-x86_64/
-          cp docs/linux.md release/YAQMC-linux-x86_64/TESTING.md
-          cp docs/linux-acceptance.md release/YAQMC-linux-x86_64/ACCEPTANCE.md
+          cp scripts/collect-linux-diagnostics.sh "$release_dir/"
+          cp scripts/verify-lyrics-acceptance.mjs "$release_dir/"
+          cp docs/linux.md "$release_dir/TESTING.md"
+          cp docs/linux-acceptance.md "$release_dir/ACCEPTANCE.md"
 
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           export BUILD_GIT_TREE="$(git rev-parse 'HEAD^{tree}')"
@@ -124,43 +151,127 @@ jobs:
             `${JSON.stringify(identity, null, 2)}\n`,
           );
           NODE
+      - name: Stage native ARM64 AppImage
+        if: matrix.arch == 'aarch64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$source_appimage"
+          cp "$source_appimage" "release/YAQMC-linux-${{ matrix.arch }}/"
+      - name: Write and verify SHA-256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="release/YAQMC-linux-${{ matrix.arch }}"
           (
-            cd release/YAQMC-linux-x86_64
-            find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\0' | sort -z | xargs -0 sha256sum >SHA256SUMS
-            sha256sum -c SHA256SUMS
+            cd "$release_dir"
+            find . -maxdepth 1 -type f ! -name 'SHA256SUMS-*' -printf '%P\0' \
+              | sort -z \
+              | xargs -0 sha256sum >"SHA256SUMS-linux-${{ matrix.arch }}.txt"
+            sha256sum -c "SHA256SUMS-linux-${{ matrix.arch }}.txt"
           )
-          node scripts/verify-lyrics-acceptance.mjs \
-            --platform linux \
-            --identity-only \
-            --build-identity "$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/BUILD-IDENTITY.json"
-      - uses: actions/upload-artifact@v4
+      - name: Verify x86_64 tester identity
+        if: matrix.arch == 'x86_64'
+        run: >-
+          node scripts/verify-lyrics-acceptance.mjs
+          --platform linux
+          --identity-only
+          --build-identity "$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/BUILD-IDENTITY.json"
+      - uses: actions/upload-artifact@v7
         with:
-          name: YAQMC-linux-x86_64
-          path: release/YAQMC-linux-x86_64
+          name: YAQMC-linux-${{ matrix.arch }}
+          path: release/YAQMC-linux-${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
 
-  windows-nsis:
-    name: Windows x86_64 NSIS
+  windows-bundles:
+    name: Windows ${{ matrix.arch }} packages
     needs: account-secret-scan
     if: ${{ inputs.target == '' || inputs.target == 'all' || inputs.target == 'windows' }}
-    runs-on: windows-latest
-    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - arch: i686
+            runner: windows-2025
+            target: i686-pc-windows-msvc
+          - arch: aarch64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.88'
+          targets: ${{ matrix.target }}
       - run: npm ci
-      - name: Build NSIS installer
-        run: npm run tauri -- build --bundles nsis
-      - uses: actions/upload-artifact@v4
+      - name: Build NSIS and MSI installers
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles nsis,msi
+      - name: Stage installers, portable binary, and checksums
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = 'release/YAQMC-windows-${{ matrix.arch }}'
+          $targetRoot = 'src-tauri/target/${{ matrix.target }}/release'
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+          Get-ChildItem -LiteralPath "$targetRoot/bundle" -Recurse -File |
+            Where-Object { $_.Extension -in @('.exe', '.msi') } |
+            ForEach-Object {
+              $destination = Join-Path $releaseDir "YAQMC-windows-${{ matrix.arch }}-$($_.Name)"
+              Copy-Item -LiteralPath $_.FullName -Destination $destination
+            }
+          $portableBinary = "$targetRoot/yaqmc.exe"
+          if (-not (Test-Path -LiteralPath $portableBinary -PathType Leaf)) {
+            throw "Portable binary is missing: $portableBinary"
+          }
+          Compress-Archive -LiteralPath $portableBinary -DestinationPath "$releaseDir/YAQMC-windows-${{ matrix.arch }}-portable.zip"
+          $packages = Get-ChildItem -LiteralPath $releaseDir -File | Sort-Object Name
+          if (($packages | Measure-Object).Count -lt 3) {
+            throw 'Expected NSIS, MSI, and portable packages'
+          }
+          $checksumLines = $packages | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant(), $_.Name
+          }
+          Set-Content -LiteralPath "$releaseDir/SHA256SUMS-windows-${{ matrix.arch }}.txt" -Value $checksumLines -Encoding ascii
+      - uses: actions/upload-artifact@v7
         with:
-          name: YAQMC-windows-x86_64
-          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          name: YAQMC-windows-${{ matrix.arch }}
+          path: release/YAQMC-windows-${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
+
+  github-release:
+    name: Publish tagged release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: [linux-bundles, windows-bundles]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: YAQMC-*
+          path: release
+          merge-multiple: true
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+          fi

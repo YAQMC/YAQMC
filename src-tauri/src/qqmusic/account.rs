@@ -3326,6 +3326,15 @@ mod tests {
             Err(QQMusicError::Protocol)
         }
 
+        async fn exchange_oauth_code(
+            &self,
+            _provider: super::super::oauth::OAuthLoginProvider,
+            _code: &str,
+            _cancellation: CancellationToken,
+        ) -> Result<SessionRecord, QQMusicError> {
+            Err(QQMusicError::UnsupportedOperation)
+        }
+
         async fn validate_session(
             &self,
             _session: &SessionRecord,

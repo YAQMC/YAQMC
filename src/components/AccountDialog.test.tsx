@@ -87,6 +87,7 @@ function stateSnapshot(state: AccountSnapshot['state']): AccountSnapshot {
 
 function provider() {
   const cancelQrLogin = vi.fn().mockResolvedValue(stateSnapshot('cancelled'));
+  const startWebLogin = vi.fn().mockResolvedValue(stateSnapshot('waiting-for-confirmation'));
   const startQrLogin = vi.fn().mockResolvedValue(stateSnapshot('waiting-for-scan'));
   const refreshQrLogin = vi.fn().mockResolvedValue(stateSnapshot('waiting-for-scan'));
   const fallback = vi.fn().mockRejectedValue(new Error('unused test provider method'));
@@ -119,10 +120,12 @@ function provider() {
       displayName: 'Account Test',
       ...account,
       cancelQrLogin,
+      startWebLogin,
       startQrLogin,
       refreshQrLogin,
     } as unknown as MusicProvider & AccountMusicProvider,
     cancelQrLogin,
+    startWebLogin,
     startQrLogin,
     refreshQrLogin,
   };
@@ -143,11 +146,11 @@ describe('AccountDialog', () => {
   beforeEach(() => resetAccountRuntimeForTest());
 
   it.each([
-    ['guest', 'Sign in to QQ Music'],
+    ['guest', 'Choose QQ or WeChat to authorize QQ Music'],
     ['restoring-session', 'Restoring your account session'],
-    ['starting-login', 'Creating a secure QR code'],
-    ['waiting-for-confirmation', 'Confirm the sign-in on your device'],
-    ['expired', 'This QR code expired'],
+    ['starting-login', 'Opening the official authorization window'],
+    ['waiting-for-confirmation', 'Complete sign-in in the official authorization window'],
+    ['expired', 'This authorization attempt expired'],
     ['rejected', 'QQ Music rejected this sign-in'],
     ['cancelled', 'Sign-in was cancelled'],
     ['network-error', 'QQ Music could not be reached'],
@@ -187,17 +190,19 @@ describe('AccountDialog', () => {
     expect(screen.getByText('QQ Music returned an unexpected response.')).toBeInTheDocument();
   });
 
-  it('routes sign-in, refresh, cancel, and close through the account store', async () => {
+  it('routes QQ and WeChat OAuth, cancel, and close through the account store', async () => {
     const guest = renderDialog(stateSnapshot('guest'));
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in with QQ' }));
-    expect(guest.startQrLogin).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with QQ' }));
+    expect(guest.startWebLogin).toHaveBeenCalledWith('qq', undefined);
+    expect(guest.startQrLogin).not.toHaveBeenCalled();
     guest.unmount();
 
     resetAccountRuntimeForTest();
-    const expired = renderDialog(stateSnapshot('expired'));
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh QR code' }));
-    expect(expired.refreshQrLogin).toHaveBeenCalledWith('attempt-a', undefined);
-    expired.unmount();
+    const wechat = renderDialog(stateSnapshot('expired'));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with WeChat' }));
+    expect(wechat.startWebLogin).toHaveBeenCalledWith('wechat', undefined);
+    expect(wechat.refreshQrLogin).not.toHaveBeenCalled();
+    wechat.unmount();
 
     resetAccountRuntimeForTest();
     const waiting = renderDialog(stateSnapshot('waiting-for-scan'), 'data:image/png;base64,AA==');
@@ -211,13 +216,15 @@ describe('AccountDialog', () => {
   it('contains keyboard focus and closes on Escape', () => {
     const { cancelQrLogin } = renderDialog(stateSnapshot('guest'));
     const close = screen.getByRole('button', { name: 'Close' });
-    const signIn = screen.getByRole('button', { name: 'Sign in with QQ' });
+    const qq = screen.getByRole('button', { name: 'Continue with QQ' });
+    const wechat = screen.getByRole('button', { name: 'Continue with WeChat' });
     expect(close).toHaveFocus();
 
     fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
-    expect(signIn).toHaveFocus();
-    fireEvent.keyDown(signIn, { key: 'Tab' });
+    expect(wechat).toHaveFocus();
+    fireEvent.keyDown(wechat, { key: 'Tab' });
     expect(close).toHaveFocus();
+    expect(qq).toBeVisible();
     fireEvent.keyDown(close, { key: 'Escape' });
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

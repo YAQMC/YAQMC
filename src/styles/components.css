@@ -1205,6 +1205,11 @@ input[type='range']:disabled {
   color: var(--text-tertiary);
 }
 
+.account-dialog__notice {
+  max-width: 340px;
+  line-height: 1.55;
+}
+
 .account-dialog__qr {
   display: grid;
   width: 232px;
@@ -1226,6 +1231,7 @@ input[type='range']:disabled {
 
 .account-dialog__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
   min-height: 62px;

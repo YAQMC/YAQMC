@@ -3,5 +3,5 @@
   "identifier": "lyrics-surfaces",
   "description": "Minimal permissions for dedicated lyric surfaces",
   "windows": ["lyrics-desktop", "lyrics-island"],
-  "permissions": ["core:default", "core:window:allow-start-dragging"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "lyrics-surface-application"]
 }
