@@ -43,6 +43,25 @@ Background images are rendered once behind the application and fade on source ch
 tokenized panels prevent raw images from becoming the text surface. No synchronous color extraction or expensive
 per-render filtering is performed.
 
+## Immersive lyric appearance
+
+The lyric stage projects the same four background choices without bypassing their safety model:
+
+- Default uses the resolved opaque theme base.
+- Album Artwork uses only the asynchronously resolved safe artwork data URI plus a readability wash.
+- Custom Color uses the validated preference color.
+- Custom Image uses the managed local image data URI and its Cover/Contain fit.
+
+The stage publishes stable background-mode and image-fit attributes for acceptance tooling. It never inserts a raw
+remote track URL. While an allowed artwork request is pending, fails validation, or belongs to an older track
+generation, the renderer uses the safe base color instead. The fullscreen transport consumes that same resolved
+source, so it cannot reopen the remote-image boundary.
+
+Windows checkpoint C exercised every background mode across light/dark, English/Chinese, Normal/Focus/native
+fullscreen, three window shapes, and reduced motion. Exact case identities and hashes are in
+[Windows acceptance](windows-acceptance.md); the result applies to the recorded raw no-bundle binary, not a final
+installer.
+
 ## Transparency and platform behavior
 
 `Opaque` uses the configured surface alpha directly. `Translucent` lowers only surface alpha within the safe

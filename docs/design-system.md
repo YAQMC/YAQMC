@@ -30,5 +30,20 @@ The desktop target has a 1000×680 minimum Tauri window. Layouts also tighten at
 windows. Windows and Linux should share information hierarchy and interaction behavior even when later
 native integrations differ.
 
+## Immersive lyrics
+
+The immersive stage is a contained application surface, not a second design system. Normal mode respects the
+sidebar column, Focus consumes the full content width while retaining PlayerBar, and native fullscreen consumes
+the window while replacing PlayerBar with a centered transport. The transport is capped at 560 px, remains
+keyboard reachable while visually hidden, and disables its transition under reduced motion.
+
+Header controls retain stable positions and accessible names across English and Chinese. Escape removes only the
+top presentation layer, so failure recovery never hides the only control surface. At the 1000×680 minimum, lyric
+content remains scrollable, the Follow affordance remains reachable, and PlayerBar does not cover the stage.
+
+The verified Windows matrix and raw evidence identity are listed in
+[Windows acceptance](windows-acceptance.md). Final installer acceptance remains separate from this local visual
+checkpoint.
+
 See [appearance](appearance.md), [internationalization](i18n.md), and
 [lyrics surfaces](lyrics-surfaces.md) for the corresponding component contracts.

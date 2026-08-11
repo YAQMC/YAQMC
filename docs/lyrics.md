@@ -36,6 +36,33 @@ design token fallback.
 The fake provider permanently includes examples for plain text, line timing, word timing, translation and
 romanization, long lines, rapid alternating vocals, instrumental gaps, and missing lyrics.
 
+## Presentation and fullscreen behavior
+
+Lyrics has three presentation layers over one renderer:
+
+- Normal keeps application navigation and PlayerBar visible.
+- Focus collapses navigation and expands both Lyrics and PlayerBar across the viewport.
+- Native fullscreen asks the main Tauri window to enter OS fullscreen and mounts the centered transport.
+
+The request path is asynchronous and recoverable. Lyrics remains visible while a native transition is pending or
+when it fails, so the user can retry or exit. UI buttons and F11 use the same serialized native request boundary.
+Escape unwinds one layer at a time: native fullscreen, then Focus, then Lyrics. Native fullscreen changes made
+outside React are reconciled from the window event stream without treating an old snapshot as newer state.
+
+The fullscreen transport reads the shared player store, not a duplicate timeline. It hides after 2400 ms of
+playing inactivity, reveals on pointer movement or track change, remains pinned while it owns focus, and exposes
+Previous, Play/Pause, and Next through the same player commands as PlayerBar.
+
+Artwork entering an immersive lyric surface passes through the shared safe-artwork resolver. Local/same-origin
+sources and validated image data URIs may render directly. Only exact HTTPS hosts `y.gtimg.cn` and
+`qpic.y.qq.com` may cross the native cache boundary; redirects, credentials, non-443 ports, `music.tc.qq.com`
+variants, other origins, non-image MIME types, and malformed/non-base64 IPC results resolve to no image.
+
+The Windows local visual and interaction checkpoint is recorded in
+[Windows acceptance](windows-acceptance.md). It covers the Normal/Focus/native-fullscreen matrix, exact geometry
+restoration, reduced motion, Follow and seek behavior, secondary lyrics, transport behavior, and external native
+fullscreen reconciliation. It does not close the final NSIS release checkpoint.
+
 ## AMLL decision
 
 The upstream [Apple Music-like Lyrics repository](https://github.com/amll-dev/applemusic-like-lyrics) and its
