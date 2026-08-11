@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-account-recently-played"
+description = "Enables the qqmusic_account_recently_played command without any pre-configured scope."
+commands.allow = ["qqmusic_account_recently_played"]
+
+[[permission]]
+identifier = "deny-qqmusic-account-recently-played"
+description = "Denies the qqmusic_account_recently_played command without any pre-configured scope."
+commands.deny = ["qqmusic_account_recently_played"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-auth-cancel"
+description = "Enables the qqmusic_auth_cancel command without any pre-configured scope."
+commands.allow = ["qqmusic_auth_cancel"]
+
+[[permission]]
+identifier = "deny-qqmusic-auth-cancel"
+description = "Denies the qqmusic_auth_cancel command without any pre-configured scope."
+commands.deny = ["qqmusic_auth_cancel"]

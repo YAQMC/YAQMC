@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-sign-out"
+description = "Enables the qqmusic_sign_out command without any pre-configured scope."
+commands.allow = ["qqmusic_sign_out"]
+
+[[permission]]
+identifier = "deny-qqmusic-sign-out"
+description = "Denies the qqmusic_sign_out command without any pre-configured scope."
+commands.deny = ["qqmusic_sign_out"]

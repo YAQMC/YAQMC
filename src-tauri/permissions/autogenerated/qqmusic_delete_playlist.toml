@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-delete-playlist"
+description = "Enables the qqmusic_delete_playlist command without any pre-configured scope."
+commands.allow = ["qqmusic_delete_playlist"]
+
+[[permission]]
+identifier = "deny-qqmusic-delete-playlist"
+description = "Denies the qqmusic_delete_playlist command without any pre-configured scope."
+commands.deny = ["qqmusic_delete_playlist"]

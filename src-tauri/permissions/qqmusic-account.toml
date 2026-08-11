@@ -1,0 +1,21 @@
+[[set]]
+identifier = "qqmusic-account"
+description = "Allows the main application WebView to use sanitized QQ Music account operations."
+permissions = [
+  "allow-qqmusic-account-snapshot",
+  "allow-qqmusic-auth-start",
+  "allow-qqmusic-auth-heartbeat",
+  "allow-qqmusic-auth-cancel",
+  "allow-qqmusic-auth-refresh",
+  "allow-qqmusic-sign-out",
+  "allow-qqmusic-favorite-songs",
+  "allow-qqmusic-account-playlists",
+  "allow-qqmusic-account-playlist-tracks",
+  "allow-qqmusic-account-recently-played",
+  "allow-qqmusic-set-favorite",
+  "allow-qqmusic-create-playlist",
+  "allow-qqmusic-rename-playlist",
+  "allow-qqmusic-add-playlist-track",
+  "allow-qqmusic-remove-playlist-track",
+  "allow-qqmusic-delete-playlist",
+]

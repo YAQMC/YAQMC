@@ -177,6 +177,204 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the main application WebView to use sanitized QQ Music account operations.\n#### This permission set includes:\n\n- `allow-qqmusic-account-snapshot`\n- `allow-qqmusic-auth-start`\n- `allow-qqmusic-auth-heartbeat`\n- `allow-qqmusic-auth-cancel`\n- `allow-qqmusic-auth-refresh`\n- `allow-qqmusic-sign-out`\n- `allow-qqmusic-favorite-songs`\n- `allow-qqmusic-account-playlists`\n- `allow-qqmusic-account-playlist-tracks`\n- `allow-qqmusic-account-recently-played`\n- `allow-qqmusic-set-favorite`\n- `allow-qqmusic-create-playlist`\n- `allow-qqmusic-rename-playlist`\n- `allow-qqmusic-add-playlist-track`\n- `allow-qqmusic-remove-playlist-track`\n- `allow-qqmusic-delete-playlist`",
+          "type": "string",
+          "const": "qqmusic-account",
+          "markdownDescription": "Allows the main application WebView to use sanitized QQ Music account operations.\n#### This permission set includes:\n\n- `allow-qqmusic-account-snapshot`\n- `allow-qqmusic-auth-start`\n- `allow-qqmusic-auth-heartbeat`\n- `allow-qqmusic-auth-cancel`\n- `allow-qqmusic-auth-refresh`\n- `allow-qqmusic-sign-out`\n- `allow-qqmusic-favorite-songs`\n- `allow-qqmusic-account-playlists`\n- `allow-qqmusic-account-playlist-tracks`\n- `allow-qqmusic-account-recently-played`\n- `allow-qqmusic-set-favorite`\n- `allow-qqmusic-create-playlist`\n- `allow-qqmusic-rename-playlist`\n- `allow-qqmusic-add-playlist-track`\n- `allow-qqmusic-remove-playlist-track`\n- `allow-qqmusic-delete-playlist`"
+        },
+        {
+          "description": "Enables the qqmusic_account_playlist_tracks command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-account-playlist-tracks",
+          "markdownDescription": "Enables the qqmusic_account_playlist_tracks command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_account_playlists command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-account-playlists",
+          "markdownDescription": "Enables the qqmusic_account_playlists command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_account_recently_played command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-account-recently-played",
+          "markdownDescription": "Enables the qqmusic_account_recently_played command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_account_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-account-snapshot",
+          "markdownDescription": "Enables the qqmusic_account_snapshot command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_add_playlist_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-add-playlist-track",
+          "markdownDescription": "Enables the qqmusic_add_playlist_track command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_auth_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-auth-cancel",
+          "markdownDescription": "Enables the qqmusic_auth_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_auth_heartbeat command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-auth-heartbeat",
+          "markdownDescription": "Enables the qqmusic_auth_heartbeat command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_auth_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-auth-refresh",
+          "markdownDescription": "Enables the qqmusic_auth_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_auth_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-auth-start",
+          "markdownDescription": "Enables the qqmusic_auth_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_create_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-create-playlist",
+          "markdownDescription": "Enables the qqmusic_create_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_delete_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-delete-playlist",
+          "markdownDescription": "Enables the qqmusic_delete_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_favorite_songs command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-favorite-songs",
+          "markdownDescription": "Enables the qqmusic_favorite_songs command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_remove_playlist_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-remove-playlist-track",
+          "markdownDescription": "Enables the qqmusic_remove_playlist_track command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_rename_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-rename-playlist",
+          "markdownDescription": "Enables the qqmusic_rename_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_set_favorite command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-set-favorite",
+          "markdownDescription": "Enables the qqmusic_set_favorite command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the qqmusic_sign_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-qqmusic-sign-out",
+          "markdownDescription": "Enables the qqmusic_sign_out command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_account_playlist_tracks command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-account-playlist-tracks",
+          "markdownDescription": "Denies the qqmusic_account_playlist_tracks command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_account_playlists command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-account-playlists",
+          "markdownDescription": "Denies the qqmusic_account_playlists command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_account_recently_played command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-account-recently-played",
+          "markdownDescription": "Denies the qqmusic_account_recently_played command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_account_snapshot command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-account-snapshot",
+          "markdownDescription": "Denies the qqmusic_account_snapshot command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_add_playlist_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-add-playlist-track",
+          "markdownDescription": "Denies the qqmusic_add_playlist_track command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_auth_cancel command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-auth-cancel",
+          "markdownDescription": "Denies the qqmusic_auth_cancel command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_auth_heartbeat command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-auth-heartbeat",
+          "markdownDescription": "Denies the qqmusic_auth_heartbeat command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_auth_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-auth-refresh",
+          "markdownDescription": "Denies the qqmusic_auth_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_auth_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-auth-start",
+          "markdownDescription": "Denies the qqmusic_auth_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_create_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-create-playlist",
+          "markdownDescription": "Denies the qqmusic_create_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_delete_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-delete-playlist",
+          "markdownDescription": "Denies the qqmusic_delete_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_favorite_songs command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-favorite-songs",
+          "markdownDescription": "Denies the qqmusic_favorite_songs command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_remove_playlist_track command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-remove-playlist-track",
+          "markdownDescription": "Denies the qqmusic_remove_playlist_track command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_rename_playlist command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-rename-playlist",
+          "markdownDescription": "Denies the qqmusic_rename_playlist command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_set_favorite command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-set-favorite",
+          "markdownDescription": "Denies the qqmusic_set_favorite command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the qqmusic_sign_out command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-qqmusic-sign-out",
+          "markdownDescription": "Denies the qqmusic_sign_out command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

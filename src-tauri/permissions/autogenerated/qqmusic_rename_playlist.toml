@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-rename-playlist"
+description = "Enables the qqmusic_rename_playlist command without any pre-configured scope."
+commands.allow = ["qqmusic_rename_playlist"]
+
+[[permission]]
+identifier = "deny-qqmusic-rename-playlist"
+description = "Denies the qqmusic_rename_playlist command without any pre-configured scope."
+commands.deny = ["qqmusic_rename_playlist"]

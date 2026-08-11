@@ -1,5 +1,6 @@
 mod app_preferences;
 mod audio;
+mod command_guard;
 mod commands;
 mod credentials;
 mod desktop_integration;

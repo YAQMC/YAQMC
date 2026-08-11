@@ -1,6 +1,7 @@
 use crate::{
     app_preferences::{self, ManagedBackgroundImage},
     audio::AudioOutputDevice,
+    command_guard::require_main_window,
     desktop_integration::{DesktopIntegration, DesktopIntegrationStatus},
     local_api::{LocalApiService, LocalApiStatus},
     lyrics_surface::{
@@ -162,8 +163,10 @@ pub async fn qqmusic_set_preferred_quality(
 
 #[tauri::command]
 pub async fn qqmusic_sign_out(
+    window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
 ) -> ProviderResult<ProviderStatus> {
+    require_main_window(&window)?;
     provider.sign_out().await.map_err(Into::into)
 }
 
