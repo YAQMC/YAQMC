@@ -1,5 +1,6 @@
+use std::sync::Arc;
 #[cfg(test)]
-use std::sync::Mutex;
+use std::{collections::HashMap, sync::Mutex};
 use thiserror::Error;
 
 const SERVICE_NAME: &str = "org.yaqmc.desktop";
@@ -11,12 +12,71 @@ pub enum CredentialError {
     Unavailable,
     #[error("the secure credential operation failed")]
     OperationFailed,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "used when the QQ account authentication service is introduced"
+        )
+    )]
+    #[error("the secure credential worker failed")]
+    JoinFailed,
 }
 
 pub trait CredentialStore: Send + Sync {
     fn load(&self, account: &str) -> Result<Option<String>, CredentialError>;
     fn save(&self, account: &str, secret: &str) -> Result<(), CredentialError>;
     fn delete(&self, account: &str) -> Result<(), CredentialError>;
+}
+
+#[derive(Clone)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "used when the QQ account authentication service is introduced"
+    )
+)]
+pub struct SpawnBlockingCredentialStore {
+    inner: Arc<dyn CredentialStore>,
+}
+
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "used when the QQ account authentication service is introduced"
+    )
+)]
+impl SpawnBlockingCredentialStore {
+    pub fn new(inner: Arc<dyn CredentialStore>) -> Self {
+        Self { inner }
+    }
+
+    pub async fn load(&self, account: &str) -> Result<Option<String>, CredentialError> {
+        let inner = Arc::clone(&self.inner);
+        let account = account.to_owned();
+        tokio::task::spawn_blocking(move || inner.load(&account))
+            .await
+            .map_err(|_| CredentialError::JoinFailed)?
+    }
+
+    pub async fn save(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        let inner = Arc::clone(&self.inner);
+        let account = account.to_owned();
+        let secret = secret.to_owned();
+        tokio::task::spawn_blocking(move || inner.save(&account, &secret))
+            .await
+            .map_err(|_| CredentialError::JoinFailed)?
+    }
+
+    pub async fn delete(&self, account: &str) -> Result<(), CredentialError> {
+        let inner = Arc::clone(&self.inner);
+        let account = account.to_owned();
+        tokio::task::spawn_blocking(move || inner.delete(&account))
+            .await
+            .map_err(|_| CredentialError::JoinFailed)?
+    }
 }
 
 pub struct PlatformCredentialStore;
@@ -73,22 +133,33 @@ impl CredentialStore for PlatformCredentialStore {
 #[cfg(test)]
 #[derive(Default)]
 pub struct MemoryCredentialStore {
-    secret: Mutex<Option<String>>,
+    secrets: Mutex<HashMap<String, String>>,
 }
 
 #[cfg(test)]
 impl CredentialStore for MemoryCredentialStore {
-    fn load(&self, _account: &str) -> Result<Option<String>, CredentialError> {
-        Ok(self.secret.lock().expect("credential lock").clone())
+    fn load(&self, account: &str) -> Result<Option<String>, CredentialError> {
+        Ok(self
+            .secrets
+            .lock()
+            .expect("credential lock")
+            .get(account)
+            .cloned())
     }
 
-    fn save(&self, _account: &str, secret: &str) -> Result<(), CredentialError> {
-        *self.secret.lock().expect("credential lock") = Some(secret.to_owned());
+    fn save(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        self.secrets
+            .lock()
+            .expect("credential lock")
+            .insert(account.to_owned(), secret.to_owned());
         Ok(())
     }
 
-    fn delete(&self, _account: &str) -> Result<(), CredentialError> {
-        *self.secret.lock().expect("credential lock") = None;
+    fn delete(&self, account: &str) -> Result<(), CredentialError> {
+        self.secrets
+            .lock()
+            .expect("credential lock")
+            .remove(account);
         Ok(())
     }
 }
@@ -96,6 +167,44 @@ impl CredentialStore for MemoryCredentialStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Barrier};
+
+    struct BlockingTestStore {
+        entered: Arc<Barrier>,
+        release: Arc<Barrier>,
+    }
+
+    struct PanickingTestStore;
+
+    impl CredentialStore for BlockingTestStore {
+        fn load(&self, _account: &str) -> Result<Option<String>, CredentialError> {
+            self.entered.wait();
+            self.release.wait();
+            Ok(None)
+        }
+
+        fn save(&self, _account: &str, _secret: &str) -> Result<(), CredentialError> {
+            Ok(())
+        }
+
+        fn delete(&self, _account: &str) -> Result<(), CredentialError> {
+            Ok(())
+        }
+    }
+
+    impl CredentialStore for PanickingTestStore {
+        fn load(&self, _account: &str) -> Result<Option<String>, CredentialError> {
+            panic!("credential worker panic")
+        }
+
+        fn save(&self, _account: &str, _secret: &str) -> Result<(), CredentialError> {
+            Ok(())
+        }
+
+        fn delete(&self, _account: &str) -> Result<(), CredentialError> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn credential_contract_round_trips_without_plaintext_files() {
@@ -108,5 +217,67 @@ mod tests {
         );
         store.delete("qqmusic").expect("delete");
         assert_eq!(store.load("qqmusic").expect("load"), None);
+    }
+
+    #[tokio::test]
+    async fn async_store_round_trips_through_the_blocking_adapter() {
+        let backend: Arc<dyn CredentialStore> = Arc::new(MemoryCredentialStore::default());
+        let store = SpawnBlockingCredentialStore::new(backend);
+
+        assert_eq!(store.load("qqmusic-staging").await.expect("load"), None);
+        store
+            .save("qqmusic-staging", "session")
+            .await
+            .expect("save");
+        assert_eq!(
+            store.load("qqmusic-staging").await.expect("load"),
+            Some("session".to_owned())
+        );
+        assert_eq!(
+            store.load("qqmusic-session").await.expect("active load"),
+            None
+        );
+        store.delete("qqmusic-staging").await.expect("delete");
+        assert_eq!(store.load("qqmusic-staging").await.expect("load"), None);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn blocking_backend_does_not_stall_the_async_executor() {
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let backend: Arc<dyn CredentialStore> = Arc::new(BlockingTestStore {
+            entered: Arc::clone(&entered),
+            release: Arc::clone(&release),
+        });
+        let store = SpawnBlockingCredentialStore::new(backend);
+        let load = tokio::spawn(async move { store.load("qqmusic-session").await });
+
+        tokio::task::spawn_blocking(move || entered.wait())
+            .await
+            .expect("barrier joins");
+        tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            tokio::task::yield_now(),
+        )
+        .await
+        .expect("executor remains responsive");
+        tokio::task::spawn_blocking(move || release.wait())
+            .await
+            .expect("release joins");
+
+        assert_eq!(load.await.expect("load joins").expect("load"), None);
+    }
+
+    #[tokio::test]
+    async fn blocking_worker_failure_is_sanitized() {
+        let backend: Arc<dyn CredentialStore> = Arc::new(PanickingTestStore);
+        let store = SpawnBlockingCredentialStore::new(backend);
+
+        let error = store
+            .load("qqmusic-session")
+            .await
+            .expect_err("worker panic must fail");
+        assert!(matches!(error, CredentialError::JoinFailed));
+        assert_eq!(error.to_string(), "the secure credential worker failed");
     }
 }
