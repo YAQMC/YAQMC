@@ -124,6 +124,21 @@ function Send-CdpRaw {
   }
 }
 
+function Get-CdpRuntimeResultValue {
+  param($EvaluationResult)
+  if (-not ($EvaluationResult.PSObject.Properties.Name -contains 'result')) {
+    throw 'Runtime.evaluate returned no remote object.'
+  }
+  $remoteObject = $EvaluationResult.result
+  if ($remoteObject.PSObject.Properties.Name -contains 'value') {
+    return $remoteObject.value
+  }
+  if ([string]$remoteObject.type -eq 'undefined') {
+    return $null
+  }
+  throw 'Runtime.evaluate returned no by-value result.'
+}
+
 function Get-CdpRuntimeValue {
   param($Connection, [string]$Expression)
   $result = Send-CdpRaw $Connection 'Runtime.evaluate' ([ordered]@{
@@ -134,7 +149,7 @@ function Get-CdpRuntimeValue {
   if ($result.PSObject.Properties.Name -contains 'exceptionDetails') {
     throw "Runtime.evaluate failed: $($result.exceptionDetails.text)"
   }
-  return $result.result.value
+  return Get-CdpRuntimeResultValue $result
 }
 
 function Send-ProductionPointer {
@@ -333,7 +348,7 @@ function New-ProductionCdpAdapter {
         if ($result.PSObject.Properties.Name -contains 'exceptionDetails') {
           throw "Runtime.evaluate failed: $($result.exceptionDetails.text)"
         }
-        return $result.result.value
+        return Get-CdpRuntimeResultValue $result
       }
       return $result
     }

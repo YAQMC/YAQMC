@@ -40,6 +40,11 @@ $collectorSource = Get-Content -LiteralPath $collectorPath -Raw
 Assert-True $collectorSource.Contains('[void]$socket.ConnectAsync') 'CDP connect must not leak VoidTaskResult into the adapter connection'
 Assert-True $collectorSource.Contains('[void]$Connection.Socket.SendAsync') 'CDP send must not leak VoidTaskResult into command results'
 
+$undefinedEvaluation = [pscustomobject]@{
+  result = [pscustomobject]@{ type = 'undefined' }
+}
+Assert-Equal (Get-CdpRuntimeResultValue $undefinedEvaluation) $null 'undefined Runtime.evaluate results map to null'
+
 $testHadWebViewArguments = Test-Path Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 $testPreviousWebViewArguments = if ($testHadWebViewArguments) {
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
