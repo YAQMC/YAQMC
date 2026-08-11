@@ -1,111 +1,183 @@
 <p align="center">
-  <img src="assets/yaqmc-logo.png" width="168" alt="YAQMC logo">
+  <img src="assets/yaqmc-logo.png" width="168" alt="YAQMC 标志">
 </p>
 
 <h1 align="center">YAQMC</h1>
 
 <p align="center">
   <strong>Yet Another Q Music Client</strong><br>
-  A native, unofficial QQ Music desktop client for Windows and Linux.
+  一个适用于 Windows 和 Linux 的非官方 QQ 音乐桌面客户端。
 </p>
 
 <p align="center">
-  <a href="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml/badge.svg" alt="Desktop build status"></a>
+  <strong>简体中文</strong> · <a href="README-EN.md">English</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml/badge.svg" alt="构建状态"></a>
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111" alt="React 19">
-  <img src="https://img.shields.io/badge/Rust-1.88%2B-000?logo=rust&logoColor=white" alt="Rust 1.88 or newer">
 </p>
 
 > [!IMPORTANT]
-> YAQMC is not affiliated with Tencent or QQ Music. It does not bypass DRM, subscriptions, regional restrictions,
-> or entitlement checks. Playback uses legitimate public streams, account-entitled sources, or official previews.
+> YAQMC 与腾讯或 QQ 音乐没有从属或合作关系。项目不会绕过会员、DRM、地区限制或歌曲权限。
 
-## Highlights
+## 先看这里
 
-- Native playback owned by one Rust `PlayerService`; React, MPRIS/SMTC, tray controls, shortcuts, and the local API
-  are projections over the same state machine.
-- QQ Music discovery, search, albums, playlists/toplists, normalized QRC/LRC lyrics, and account-aware playback
-  quality.
-- Restricted, embedded Tencent OAuth for QQ and WeChat. Passwords and WebView cookies are never copied into the
-  application; durable credentials stay in the operating-system secure store.
-- Desktop Lyrics and Lyrics Island with word timing, translation/romanization, click-through lock mode, and a
-  dedicated on-surface unlock control.
-- English and Simplified Chinese UI, light/dark themes, configurable primary and secondary colors, custom
-  backgrounds, and native output-device selection.
-- Seekable HTTP Range streaming, bounded cache, queue persistence, one-time signed-URL recovery, and an optional
-  authenticated loopback API bound to `127.0.0.1`.
+如果你只是想安装软件，不需要阅读整份文档。
 
-## Downloads
+1. 打开 [Releases](https://github.com/YAQMC/YAQMC/releases)。
+2. 按照自己的系统和处理器下载对应安装包。
+3. 安装后直接使用访客模式，或者在左下角登录 QQ 音乐账号。
 
-Tagged releases publish the package formats that each supported runner can build natively:
+当前版本仍是测试版。Windows 已完成本地原生验证；Linux 安装包由 GitHub Actions 构建，仍需在真实
+Linux 桌面环境中继续验收。
 
-| Platform | Architectures                     | Packages                                                |
-| -------- | --------------------------------- | ------------------------------------------------------- |
-| Windows  | x86_64 / AMD64, x86 / i686, ARM64 | NSIS `.exe`, WiX `.msi`, portable `.zip`                |
-| Linux    | x86_64 / AMD64, ARM64             | AppImage, Debian `.deb`, RPM `.rpm`, portable `.tar.gz` |
+### 我应该下载哪个文件？
 
-AMD64 and x86_64 are two names for the same architecture; Windows “x32” is published as the i686/x86 build.
-Release artifacts include SHA-256 checksums. Linux runtime acceptance remains host-specific—especially on native
-Wayland—so the x86_64 AppImage also ships with the diagnostics and acceptance bundle described in
-[the Linux guide](docs/linux.md).
+Windows 用户：
 
-## Current status
+- 大多数 Intel/AMD 电脑：选择名字中带 `windows-x86_64` 的 `.exe`。
+- 32 位旧电脑：选择 `windows-i686`。
+- Windows ARM 电脑：选择 `windows-aarch64`。
+- 不想安装：选择对应架构的 `portable.zip`。
 
-The guest catalog, native playback, lyric surfaces, account session restore, profile projection, and authenticated
-home catalog have deterministic coverage and local native validation. Account reads and mutations are implemented,
-but release notes must keep live favorite/playlist acceptance explicitly pending until the owner-controlled gate has
-been run against an appropriate account.
+Linux 用户：
 
-| Area                            | Windows                                    | Linux                                                      |
-| ------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
-| Desktop client and native audio | Implemented (WebView2, CPAL)               | Implemented (WebKitGTK, host ALSA route)                   |
-| Media session                   | SMTC                                       | MPRIS 2.2                                                  |
-| Tray and close-to-tray          | Implemented                                | Implemented; presentation depends on desktop environment   |
-| Lyric overlays                  | Full positioning and interaction semantics | X11/XWayland supported; native Wayland reports limitations |
-| Global shortcuts                | Implemented                                | X11 only; disabled on native Wayland                       |
+- 大多数 Intel/AMD 电脑：选择 `linux-x86_64` 的 AppImage。
+- ARM64 电脑：选择 `linux-aarch64`。
+- Debian、Ubuntu 可以使用 `.deb`；Fedora、openSUSE 等系统可以使用 `.rpm`。
+- AppImage 不需要安装，添加可执行权限后即可运行。
 
-## Install prerequisites
+`AMD64` 和 `x86_64` 是同一种架构。Windows 中常说的“x32”对应这里的 `x86` / `i686`。
 
-- Node.js 24 and npm
-- Rust 1.88 or newer
-- [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/)
-- Windows: MSVC build tools and WebView2 Runtime
-- Debian/Ubuntu: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev`
+## 它能做什么？
 
-## Development
+### 听歌
+
+- 浏览 QQ 音乐首页、搜索结果、专辑和歌单。
+- 使用原生音频引擎播放、暂停、拖动进度和管理队列。
+- 根据访客或账号实际拥有的权限选择音质，不伪造会员能力。
+- 支持媒体快捷键、系统媒体面板、托盘和可选的本地控制 API。
+
+### 登录与账号
+
+- 支持内嵌的 QQ 和微信官方 OAuth 登录页面。
+- 显示 QQ 音乐昵称、头像和已确认的会员信息。
+- 支持收藏、账号歌单和最近播放等账号页面。
+- 登录凭据保存在操作系统安全存储中，不写入项目文件或普通配置文件。
+
+### 歌词
+
+- 支持逐行歌词、逐字歌词、翻译和罗马音。
+- 支持全屏歌词、桌面歌词和顶部的 Lyrics Island。
+- 桌面歌词与 Lyrics Island 锁定后，会在悬浮窗上保留一个独立的解锁按钮。
+- 两句歌词之间或歌曲末尾没有新歌词时，会继续显示刚刚唱完的那一句。
+
+### 外观
+
+- 支持浅色、深色和跟随系统主题。
+- 可以分别设置主色与副色，应用内标志会自动跟随这两种颜色。
+- 托盘、任务栏和安装包使用固定的 YAQMC 原生标志。
+- 支持自定义背景、字体和歌词样式。
+
+## 第一次使用
+
+启动后会先以访客模式加载公开音乐目录。
+
+需要账号内容时，点击左下角的用户区域，再选择 QQ 或微信登录。登录过程发生在受限制的腾讯页面
+窗口中；YAQMC 不会读取你输入的密码。
+
+登录成功后，左下角会显示 QQ 音乐昵称、头像和会员状态。如果网络暂时失败，应用不会擅自删除已经
+保存在系统安全存储中的会话。
+
+## 歌词锁定与解锁
+
+锁定桌面歌词或 Lyrics Island 后，主歌词窗口会忽略鼠标点击，避免挡住桌面操作。
+
+此时可以直接点击悬浮窗右上方的小解锁图标。设置页和系统托盘中的“解锁全部歌词窗口”仍然保留，
+作为额外的恢复入口。
+
+## 常见问题
+
+### 为什么显示“音乐暂时不可用”？
+
+先确认网络能够访问 QQ 音乐。访客目录和账号恢复是两条独立路径：即使没有登录，公开目录也应该
+能够加载。如果持续失败，请附上设置页导出的诊断信息提交 Issue，不要公开上传 Cookie 或账号凭据。
+
+### 为什么登录后没有头像或昵称？
+
+当前版本已经修复账号恢复状态不同步与 QQ 头像域名过滤问题。若旧进程仍显示“正在恢复”，请完全
+退出旧版本后再启动新版；不需要手动清除安全存储。
+
+### Linux Wayland 下为什么有些功能受限？
+
+Wayland 不允许普通应用随意控制其他窗口。全局快捷键、悬浮窗定位和点击穿透能力会受到桌面环境与
+合成器限制。X11 / XWayland 的兼容性通常更完整，具体说明见 [Linux 使用与测试指南](docs/linux.md)。
+
+### AppImage 打不开怎么办？
+
+```bash
+chmod +x YAQMC*.AppImage
+./YAQMC*.AppImage
+```
+
+如果仍然失败，请运行安装包附带的 `collect-linux-diagnostics.sh`，并将生成的压缩包交给开发者分析。
+
+## 安全与隐私
+
+- 账号命令只允许主窗口调用，歌词窗口没有账号权限。
+- OAuth 窗口只允许经过审核的腾讯域名和回调地址。
+- 跨域重定向会移除认证信息；写操作不会自动重试。
+- 日志和诊断工具会检查常见的 Cookie、token 与账号秘密形态。
+- 本地 API 默认关闭，并且只绑定 `127.0.0.1`。
+
+## 项目状态
+
+访客目录、原生播放、歌词窗口、账号恢复、用户资料和登录后的首页目录已经有自动化测试与 Windows
+本地验证。
+
+收藏与歌单写操作虽然已经实现，但在合适账号完成真实写入、回读和恢复测试之前，发布说明会继续把
+这部分标为“等待账号所有者验收”。Linux 原生 Wayland 验收也仍然是待完成项。
+
+<details>
+<summary><strong>开发者：本地运行、构建与验证</strong></summary>
+
+### 环境
+
+- Node.js 24 与 npm
+- Rust 1.88 或更高版本
+- [Tauri 2 平台依赖](https://v2.tauri.app/start/prerequisites/)
+- Windows：MSVC 构建工具与 WebView2 Runtime
+- Debian / Ubuntu：`libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev`
+
+### 运行
 
 ```powershell
 npm ci
 npm run tauri dev
 ```
 
-Browser development intentionally uses the deterministic fake provider because credentials, native audio, cache,
-and QQ Music transport live behind Tauri:
+浏览器开发模式使用确定性的假数据提供器；账号、安全存储、缓存和原生音频只存在于 Tauri 环境：
 
 ```powershell
 npm run dev
 ```
 
-In a native build, QQ Music guest mode is the default. Add `?provider=fake` to the application URL when recording
-deterministic UI evidence.
-
-## Build locally
+### 构建
 
 ```powershell
-# Executable only; no installer
+# 只构建当前平台的可执行文件，不生成安装包
 npm run tauri -- build --no-bundle
 
-# Windows host
+# Windows 安装包
 npm run tauri -- build --bundles nsis,msi
 
-# Linux host
+# Linux 安装包
 npm run tauri -- build --bundles appimage,deb,rpm
 ```
 
-Cross-architecture installer builds should use the corresponding Rust target or a native hosted runner; changing an
-artifact filename does not change its architecture.
-
-## Verification
+### 验证
 
 ```powershell
 npm run format:check
@@ -115,56 +187,31 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 ```
 
-Four ignored Rust tests deliberately contact a live provider or audible native output. Run them only on a suitable
-host:
+四个被忽略的 Rust 测试会连接真实服务或播放声音，只应在合适的测试环境中主动运行：
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 ```
 
-## Architecture
+### 进一步阅读
 
-```text
-React UI / lyric surfaces / local API / tray / media sessions
-                         │
-                         ▼
-               authoritative PlayerService
-                         │
-          ┌──────────────┴──────────────┐
-          ▼                             ▼
-  QQ Music provider              native audio engine
-  transport + cache              Rodio / CPAL
-```
+- [架构](docs/architecture.md)
+- [播放](docs/playback.md)
+- [流式传输](docs/streaming.md)
+- [平台集成](docs/platform-integration.md)
+- [Linux 运行环境](docs/linux.md)
+- [QQ 音乐提供器](docs/qqmusic-provider.md)
+- [登录与安全存储](docs/authentication.md)
+- [账号资料库](docs/account-library.md)
+- [歌词窗口](docs/lyrics-surfaces.md)
+- [本地 API](docs/local-api.md)
 
-Security-sensitive account commands are available only to the exact `main` WebView label and are checked again in
-Rust. OAuth windows have a Tencent-only navigation allowlist, reject popups, disable autofill/devtools, validate an
-unpredictable state value, and accept only the registered QQ Music callback. Lyric unlock controls use a separate,
-single-command capability and cannot access account or player state.
+</details>
 
-## Repository map
+## 研究致谢
 
-- `src/domain` — provider-independent music models
-- `src/providers` — provider contract, QQ Music adapter, and fake provider
-- `src/application` — native-state projections and application coordination
-- `src/components`, `src/pages`, `src/surfaces` — desktop UI and lyric windows
-- `src-tauri/src/player.rs` — authoritative queue/playback state machine
-- `src-tauri/src/audio.rs` — native decoding/output and device switching
-- `src-tauri/src/streaming.rs` — seekable HTTP Range source
-- `src-tauri/src/system_media.rs` — MPRIS/SMTC adapters
-- `src-tauri/src/desktop_integration.rs` — tray, close behavior, and shortcuts
-- `src-tauri/src/platform.rs` — backend/capability diagnostics and export
-- `scripts/collect-linux-diagnostics.sh` — privacy-bounded tester capture
+QQ 音乐互操作研究参考了 `L-1124/QQMusicApi`、`wxuyu/QQMusicApi`、
+`RethinkQAQ/allmusic-qqmusicapi`、`tlyanyu/multiPlatformMusicApi` 和 `wangwalk/qqm`。
 
-Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
-[streaming](docs/streaming.md), [platform integration](docs/platform-integration.md),
-[Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),
-[authentication](docs/authentication.md), [account library](docs/account-library.md),
-[entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md), and
-[local API](docs/local-api.md).
-
-## Research acknowledgements
-
-QQ Music interoperability research consulted `L-1124/QQMusicApi`, `wxuyu/QQMusicApi`,
-`RethinkQAQ/allmusic-qqmusicapi`, `tlyanyu/multiPlatformMusicApi`, and `wangwalk/qqm` at the pinned commits and
-license-detection results recorded in [the provider record](docs/qqmusic-provider.md). They were protocol-behavior
-references only; YAQMC does not vendor their implementations, and those projects do not endorse YAQMC.
+具体固定提交与许可证检测结果记录在 [QQ 音乐提供器文档](docs/qqmusic-provider.md)。YAQMC 没有复制或
+内置这些项目的实现，它们也不代表对 YAQMC 的认可。
