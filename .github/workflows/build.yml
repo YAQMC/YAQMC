@@ -77,16 +77,62 @@ jobs:
             "$source_appimage" \
             /tmp/appimagetool-x86_64.AppImage \
             "release/YAQMC-linux-x86_64/$(basename "$source_appimage")"
+          final_appimage="$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/$(basename "$source_appimage")"
           verify_dir="$(mktemp -d)"
           (
             cd "$verify_dir"
-            "$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/$(basename "$source_appimage")" --appimage-extract >/dev/null
+            "$final_appimage" --appimage-extract >/dev/null
             grep -F '# YAQMC session-aware GTK backend policy' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
             grep -F 'export GDK_BACKEND=wayland' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
             grep -F 'export GDK_BACKEND=x11' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
           )
           cp scripts/collect-linux-diagnostics.sh release/YAQMC-linux-x86_64/
+          cp scripts/verify-lyrics-acceptance.mjs release/YAQMC-linux-x86_64/
           cp docs/linux.md release/YAQMC-linux-x86_64/TESTING.md
+          cp docs/linux-acceptance.md release/YAQMC-linux-x86_64/ACCEPTANCE.md
+
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          export BUILD_GIT_TREE="$(git rev-parse 'HEAD^{tree}')"
+          export BUILD_APP_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version")"
+          export BUILD_APPIMAGE_FILE="$(basename "$final_appimage")"
+          export BUILD_APPIMAGE_SHA="$(sha256sum "$final_appimage" | cut -d' ' -f1)"
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+
+          const required = (name, pattern) => {
+            const value = process.env[name];
+            if (!value || !pattern.test(value)) throw new Error(`Invalid ${name}`);
+            return value;
+          };
+          const identity = {
+            schemaVersion: 1,
+            gitCommit: required('GITHUB_SHA', /^[a-f0-9]{40}$/),
+            gitTree: required('BUILD_GIT_TREE', /^[a-f0-9]{40}$/),
+            workflowRunId: required('GITHUB_RUN_ID', /^\d+$/),
+            workflowRunAttempt: required('GITHUB_RUN_ATTEMPT', /^\d+$/),
+            appVersion: required(
+              'BUILD_APP_VERSION',
+              /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/,
+            ),
+            appImage: {
+              fileName: required('BUILD_APPIMAGE_FILE', /^[^/\\]+\.AppImage$/),
+              sha256: required('BUILD_APPIMAGE_SHA', /^[a-f0-9]{64}$/),
+            },
+          };
+          writeFileSync(
+            'release/YAQMC-linux-x86_64/BUILD-IDENTITY.json',
+            `${JSON.stringify(identity, null, 2)}\n`,
+          );
+          NODE
+          (
+            cd release/YAQMC-linux-x86_64
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\0' | sort -z | xargs -0 sha256sum >SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+          node scripts/verify-lyrics-acceptance.mjs \
+            --platform linux \
+            --identity-only \
+            --build-identity "$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/BUILD-IDENTITY.json"
       - uses: actions/upload-artifact@v4
         with:
           name: YAQMC-linux-x86_64

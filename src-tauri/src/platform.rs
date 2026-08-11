@@ -17,6 +17,40 @@ use std::path::Path;
 #[cfg(target_os = "linux")]
 const GRAPHICS_MODE_ENV: &str = "YAQMC_LINUX_RENDERER";
 const DIAGNOSTIC_SCRIPT: &str = include_str!("../../scripts/collect-linux-diagnostics.sh");
+const LINUX_TESTER_README: &str = r#"YAQMC Linux final-AppImage acceptance
+
+Use only the extracted YAQMC-linux-x86_64 tester bundle produced by GitHub Actions for the exact build under test.
+The physical tester does not need a repository checkout. BUILD-IDENTITY.json, SHA256SUMS and the AppImage bind every
+report to the final repacked artifact.
+
+From the extracted bundle directory, verify identity before launch:
+  sha256sum -c SHA256SUMS
+  node verify-lyrics-acceptance.mjs --platform linux --identity-only --build-identity "$PWD/BUILD-IDENTITY.json"
+
+Make the AppImage and collector executable, then collect the required modes into one root:
+  appimage="$(node -p "require('./BUILD-IDENTITY.json').appImage.fileName")"
+  chmod +x "$appimage" collect-linux-diagnostics.sh
+  export YAQMC_ACCEPTANCE_ROOT="$PWD/YAQMC-linux-acceptance"
+  ./collect-linux-diagnostics.sh "$PWD/$appimage" auto
+  ./collect-linux-diagnostics.sh "$PWD/$appimage" native-wayland
+  ./collect-linux-diagnostics.sh "$PWD/$appimage" x11
+
+`baseline` is only a compatibility alias for `auto`; it does not mean XWayland. Run `software` only after a matching
+native graphics failure and preserve that failed native report:
+  YAQMC_ALLOW_SOFTWARE=confirmed-native-failure ./collect-linux-diagnostics.sh "$PWD/$appimage" software
+
+Complete these phases in order for every required mode:
+  startup-idle, playback, seek-pause-resume, main-scroll-resize, lyrics-normal, lyrics-focus, lyrics-fullscreen,
+  desktop-lyrics, island-lyrics, both-surfaces, shutdown.
+
+Verify and archive after auto, native-wayland and x11 are all present:
+  node verify-lyrics-acceptance.mjs --platform linux --root "$YAQMC_ACCEPTANCE_ROOT" --build-identity "$PWD/BUILD-IDENTITY.json"
+  tar -C "$(dirname "$YAQMC_ACCEPTANCE_ROOT")" -czf YAQMC-linux-acceptance.tar.gz "$(basename "$YAQMC_ACCEPTANCE_ROOT")"
+  sha256sum YAQMC-linux-acceptance.tar.gz
+
+Return the archive, its SHA-256, distribution/kernel/compositor/monitor/scale details, and concise visual/audio notes
+to the maintainer. Collection is evidence, not a pass claim; the maintainer records the final verdict.
+"#;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -195,11 +229,8 @@ pub fn export_bundle(
         DIAGNOSTIC_SCRIPT,
     )
     .map_err(|error| error.to_string())?;
-    fs::write(
-        directory.join("README.txt"),
-        "YAQMC Linux diagnostic bundle\n\nRun with session-aware backend selection:\n  chmod +x collect-linux-diagnostics.sh\n  ./collect-linux-diagnostics.sh /path/to/YAQMC.AppImage baseline\n\nControlled backend comparisons:\n  ./collect-linux-diagnostics.sh /path/to/YAQMC.AppImage native-wayland\n  ./collect-linux-diagnostics.sh /path/to/YAQMC.AppImage x11\n\nClose YAQMC after testing; send the generated report directory back to the maintainer.\nThe script collects only operating-system, graphics, audio, YAQMC logs and process-tree resource samples. ps %CPU is a lifetime average, not an instantaneous sample; summed RSS can double-count shared pages.\n",
-    )
-    .map_err(|error| error.to_string())?;
+    fs::write(directory.join("README.txt"), LINUX_TESTER_README)
+        .map_err(|error| error.to_string())?;
     Ok(directory)
 }
 
@@ -385,5 +416,41 @@ mod tests {
             .notes
             .iter()
             .any(|note| note.contains("XWayland")));
+    }
+
+    #[test]
+    fn tester_readme_requires_identity_modes_phases_and_verification() {
+        for required in [
+            "final-AppImage",
+            "does not need a repository checkout",
+            "BUILD-IDENTITY.json",
+            "--identity-only",
+            "auto",
+            "native-wayland",
+            "x11",
+            "software",
+            "startup-idle",
+            "playback",
+            "seek-pause-resume",
+            "main-scroll-resize",
+            "lyrics-normal",
+            "lyrics-focus",
+            "lyrics-fullscreen",
+            "desktop-lyrics",
+            "island-lyrics",
+            "both-surfaces",
+            "shutdown",
+            "verify-lyrics-acceptance.mjs",
+            "YAQMC-linux-acceptance.tar.gz",
+        ] {
+            assert!(
+                LINUX_TESTER_README.contains(required),
+                "tester README is missing {required}"
+            );
+        }
+        assert!(LINUX_TESTER_README.contains(
+            "`baseline` is only a compatibility alias for `auto`; it does not mean XWayland"
+        ));
+        assert!(!LINUX_TESTER_README.contains("baseline is XWayland"));
     }
 }

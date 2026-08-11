@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 // The production verifier is an executable ESM file; this cast keeps its test seam explicit without a second API file.
 // @ts-expect-error TypeScript does not infer declarations from the tracked .mjs CLI entry point.
@@ -9,7 +18,9 @@ import { verifyLyricsAcceptance as verifyLyricsAcceptanceModule } from './verify
 
 const verifyLyricsAcceptance = verifyLyricsAcceptanceModule as (options: {
   platform: string;
-  root: string;
+  root?: string;
+  buildIdentity?: string;
+  identityOnly?: boolean;
 }) => string[];
 
 type Presentation = 'normal' | 'focus' | 'native-fullscreen';
@@ -919,5 +930,369 @@ describe('Windows lyrics evidence verifier', () => {
         'external-native-api-missing:',
       );
     });
+  });
+});
+
+const linuxPhases = [
+  'startup-idle',
+  'playback',
+  'seek-pause-resume',
+  'main-scroll-resize',
+  'lyrics-normal',
+  'lyrics-focus',
+  'lyrics-fullscreen',
+  'desktop-lyrics',
+  'island-lyrics',
+  'both-surfaces',
+  'shutdown',
+] as const;
+
+interface LinuxBuildIdentity {
+  schemaVersion: number;
+  gitCommit: string;
+  gitTree: string;
+  workflowRunId: string;
+  workflowRunAttempt: string;
+  appVersion: string;
+  appImage: { fileName: string; sha256: string };
+}
+
+function rewritePackageSums(bundle: string): void {
+  const names = [
+    'ACCEPTANCE.md',
+    'BUILD-IDENTITY.json',
+    'TESTING.md',
+    'YAQMC_0.1.0_amd64.AppImage',
+    'collect-linux-diagnostics.sh',
+    'verify-lyrics-acceptance.mjs',
+  ];
+  writeFileSync(
+    join(bundle, 'SHA256SUMS'),
+    `${names
+      .sort()
+      .map((name) => `${sha256(readFileSync(join(bundle, name)))}  ${name}`)
+      .join('\n')}\n`,
+  );
+}
+
+function writeLinuxPackage(bundle: string): {
+  identity: LinuxBuildIdentity;
+  identityPath: string;
+} {
+  mkdirSync(bundle, { recursive: true });
+  const imageName = 'YAQMC_0.1.0_amd64.AppImage';
+  const image = Buffer.from('synthetic final appimage');
+  writeFileSync(join(bundle, imageName), image);
+  writeFileSync(join(bundle, 'TESTING.md'), '# Testing\n');
+  writeFileSync(join(bundle, 'ACCEPTANCE.md'), '# Acceptance\n');
+  writeFileSync(join(bundle, 'collect-linux-diagnostics.sh'), '#!/usr/bin/env bash\nexit 0\n');
+  writeFileSync(join(bundle, 'verify-lyrics-acceptance.mjs'), 'process.exit(0);\n');
+  const identity: LinuxBuildIdentity = {
+    schemaVersion: 1,
+    gitCommit: 'a'.repeat(40),
+    gitTree: 'b'.repeat(40),
+    workflowRunId: '123456789',
+    workflowRunAttempt: '2',
+    appVersion: '0.1.0',
+    appImage: { fileName: imageName, sha256: sha256(image) },
+  };
+  const identityPath = join(bundle, 'BUILD-IDENTITY.json');
+  writeFileSync(identityPath, `${JSON.stringify(identity, null, 2)}\n`);
+  rewritePackageSums(bundle);
+  return { identity, identityPath };
+}
+
+function rewriteLinuxReportSums(modeRoot: string): void {
+  const names = [
+    'checklist.md',
+    'commands.log',
+    'environment.txt',
+    'launch-environment.txt',
+    'manifest.json',
+    'process-samples.tsv',
+    'process-tree-samples.tsv',
+    'state.jsonl',
+    'yaqmc.log',
+  ];
+  writeFileSync(
+    join(modeRoot, 'sha256.txt'),
+    `${names
+      .sort()
+      .map((name) => `${sha256(readFileSync(join(modeRoot, name)))}  ${name}`)
+      .join('\n')}\n`,
+  );
+}
+
+function writeLinuxMode(
+  acceptanceRoot: string,
+  mode: 'auto' | 'native-wayland' | 'x11' | 'software',
+  backend: 'wayland-native' | 'xwayland' | 'x11',
+  identity: LinuxBuildIdentity,
+): string {
+  const modeRoot = join(acceptanceRoot, mode);
+  mkdirSync(modeRoot, { recursive: true });
+  const manifest = {
+    schemaVersion: 1,
+    platform: 'linux',
+    status: 'captured',
+    mode,
+    requestedMode: mode,
+    startedAtUtc: '2026-08-11T03:00:00.000Z',
+    endedAtUtc: '2026-08-11T03:01:00.000Z',
+    gitCommit: identity.gitCommit,
+    gitTree: identity.gitTree,
+    workflowRunId: identity.workflowRunId,
+    workflowRunAttempt: identity.workflowRunAttempt,
+    appVersion: identity.appVersion,
+    appImage: { ...identity.appImage },
+    reportedBackend: backend,
+    phases: [...linuxPhases],
+  };
+  writeFileSync(join(modeRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(
+    join(modeRoot, 'checklist.md'),
+    [
+      '# YAQMC Linux lyrics acceptance',
+      '- verification: pending',
+      '- physicalPass: false',
+      `- mode: ${mode}`,
+      `- reportedBackend: ${backend}`,
+      ...linuxPhases.map((phase) => `- [x] ${phase}`),
+      '',
+    ].join('\n'),
+  );
+  writeFileSync(
+    join(modeRoot, 'commands.log'),
+    `${linuxPhases.map((phase) => `phase ${phase}: captured`).join('\n')}\n`,
+  );
+  writeFileSync(join(modeRoot, 'environment.txt'), 'XDG_SESSION_TYPE=wayland\n');
+  writeFileSync(
+    join(modeRoot, 'launch-environment.txt'),
+    `mode=${mode}\nGDK_BACKEND=${mode === 'x11' ? 'x11' : mode === 'native-wayland' ? 'wayland' : ''}\nYAQMC_LINUX_RENDERER=${mode === 'software' ? 'software' : ''}\n`,
+  );
+  writeFileSync(join(modeRoot, 'yaqmc.log'), `display_backend="${backend}"\n`);
+  const states = linuxPhases.map((phase, index) => ({
+    schemaVersion: 1,
+    seq: index + 1,
+    phase,
+    timestampUtc: `2026-08-11T03:00:${String(index).padStart(2, '0')}.000Z`,
+    mode,
+    windowState: phase === 'shutdown' ? 'stopped' : 'running',
+    reportedBackend: backend,
+    graphicsMode: mode === 'software' ? 'software' : 'auto',
+  }));
+  writeFileSync(
+    join(modeRoot, 'state.jsonl'),
+    `${states.map((state) => JSON.stringify(state)).join('\n')}\n`,
+  );
+  const sampleHeader =
+    'phase\ttimestamp_utc\tprocess_count\ttotal_cpu_percent\ttotal_rss_kib\ttotal_pss_kib\ttotal_threads\twindow_state\treported_backend\txdg_session_type\tgdk_backend\tgraphics_mode\tdmabuf_disabled\tsoftware_gl';
+  const sampleRows = linuxPhases.map((phase, index) =>
+    [
+      phase,
+      `2026-08-11T03:00:${String(index).padStart(2, '0')}.000Z`,
+      phase === 'shutdown' ? 0 : 1,
+      phase === 'shutdown' ? 0 : 2.5,
+      phase === 'shutdown' ? 0 : 4096,
+      phase === 'shutdown' ? 0 : 3072,
+      phase === 'shutdown' ? 0 : 4,
+      phase === 'shutdown' ? 'stopped' : 'running',
+      backend,
+      'wayland',
+      mode === 'x11' ? 'x11' : mode === 'native-wayland' ? 'wayland' : '',
+      mode === 'software' ? 'software' : 'auto',
+      mode === 'software' ? '1' : '',
+      mode === 'software' ? '1' : '',
+    ].join('\t'),
+  );
+  writeFileSync(
+    join(modeRoot, 'process-samples.tsv'),
+    `${sampleHeader}\n${sampleRows.join('\n')}\n`,
+  );
+  const treeHeader =
+    'phase\ttimestamp_utc\tpid\tppid\tcpu_percent\trss_kib\tpss_kib\tthreads\telapsed\tcommand';
+  const treeRows = linuxPhases
+    .filter((phase) => phase !== 'shutdown')
+    .map((phase, index) =>
+      [
+        phase,
+        `2026-08-11T03:00:${String(index).padStart(2, '0')}.000Z`,
+        100 + index,
+        1,
+        2.5,
+        4096,
+        3072,
+        4,
+        '00:01',
+        'yaqmc',
+      ].join('\t'),
+    );
+  writeFileSync(
+    join(modeRoot, 'process-tree-samples.tsv'),
+    `${treeHeader}\n${treeRows.join('\n')}\n`,
+  );
+  rewriteLinuxReportSums(modeRoot);
+  return modeRoot;
+}
+
+describe('Linux packaged acceptance verification', () => {
+  let root: string;
+  let bundle: string;
+  let acceptance: string;
+  let identity: LinuxBuildIdentity;
+  let identityPath: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'yaqmc-linux-evidence-'));
+    bundle = join(root, 'bundle');
+    acceptance = join(root, 'acceptance');
+    ({ identity, identityPath } = writeLinuxPackage(bundle));
+    writeLinuxMode(acceptance, 'auto', 'wayland-native', identity);
+    writeLinuxMode(acceptance, 'native-wayland', 'wayland-native', identity);
+    writeLinuxMode(acceptance, 'x11', 'xwayland', identity);
+  });
+
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  function verifyLinux(): string[] {
+    return verifyLyricsAcceptance({
+      platform: 'linux',
+      root: acceptance,
+      buildIdentity: identityPath,
+    });
+  }
+
+  it('accepts exact build identity and the required auto/native-Wayland/X11 reports', () => {
+    expect(
+      verifyLyricsAcceptance({
+        platform: 'linux',
+        buildIdentity: identityPath,
+        identityOnly: true,
+      }),
+    ).toEqual([]);
+    expect(verifyLinux()).toEqual([]);
+  });
+
+  it('rejects missing native mode, phase reordering, backend mismatch, and software-only substitution', () => {
+    rmSync(join(acceptance, 'native-wayland'), { recursive: true });
+    expect(verifyLinux()).not.toEqual([]);
+
+    writeLinuxMode(acceptance, 'native-wayland', 'wayland-native', identity);
+    const manifestPath = join(acceptance, 'native-wayland', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      phases: string[];
+      reportedBackend: string;
+    };
+    [manifest.phases[0], manifest.phases[1]] = [manifest.phases[1]!, manifest.phases[0]!];
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    rewriteLinuxReportSums(join(acceptance, 'native-wayland'));
+    expect(verifyLinux()).not.toEqual([]);
+
+    writeLinuxMode(acceptance, 'native-wayland', 'xwayland', identity);
+    expect(verifyLinux()).not.toEqual([]);
+
+    rmSync(join(acceptance, 'native-wayland'), { recursive: true });
+    writeLinuxMode(acceptance, 'software', 'wayland-native', identity);
+    expect(verifyLinux()).not.toEqual([]);
+  });
+
+  it.each([
+    ['schemaVersion', (value: LinuxBuildIdentity) => (value.schemaVersion = 2)],
+    ['gitCommit', (value: LinuxBuildIdentity) => (value.gitCommit = 'A'.repeat(40))],
+    ['gitTree', (value: LinuxBuildIdentity) => (value.gitTree = 'short')],
+    ['workflowRunId', (value: LinuxBuildIdentity) => (value.workflowRunId = 'run-id')],
+    ['workflowRunAttempt', (value: LinuxBuildIdentity) => (value.workflowRunAttempt = '')],
+    ['appVersion', (value: LinuxBuildIdentity) => (value.appVersion = '')],
+    [
+      'appImage.fileName',
+      (value: LinuxBuildIdentity) => (value.appImage.fileName = '../other.AppImage'),
+    ],
+    ['appImage.sha256', (value: LinuxBuildIdentity) => (value.appImage.sha256 = 'c'.repeat(64))],
+  ])('rejects malformed packaged identity field %s', (_field, mutate) => {
+    const changed = structuredClone(identity);
+    mutate(changed);
+    writeFileSync(identityPath, `${JSON.stringify(changed, null, 2)}\n`);
+    rewritePackageSums(bundle);
+    expect(
+      verifyLyricsAcceptance({
+        platform: 'linux',
+        buildIdentity: identityPath,
+        identityOnly: true,
+      }),
+    ).not.toEqual([]);
+  });
+
+  it('rejects an independently mutated SHA256SUMS entry', () => {
+    const sumsPath = join(bundle, 'SHA256SUMS');
+    writeFileSync(
+      sumsPath,
+      readFileSync(sumsPath, 'utf8').replace(identity.appImage.sha256, 'd'.repeat(64)),
+    );
+    expect(
+      verifyLyricsAcceptance({
+        platform: 'linux',
+        buildIdentity: identityPath,
+        identityOnly: true,
+      }),
+    ).not.toEqual([]);
+  });
+
+  it('rejects missing or extra files in the flat tester bundle', () => {
+    unlinkSync(join(bundle, 'TESTING.md'));
+    expect(
+      verifyLyricsAcceptance({
+        platform: 'linux',
+        buildIdentity: identityPath,
+        identityOnly: true,
+      }),
+    ).not.toEqual([]);
+
+    writeFileSync(join(bundle, 'TESTING.md'), '# Testing\n');
+    rewritePackageSums(bundle);
+    mkdirSync(join(bundle, 'YAQMC-linux-acceptance'));
+    expect(
+      verifyLyricsAcceptance({
+        platform: 'linux',
+        buildIdentity: identityPath,
+        identityOnly: true,
+      }),
+    ).toEqual([]);
+
+    writeFileSync(join(bundle, 'unexpected.txt'), 'not part of the release contract\n');
+    expect(
+      verifyLyricsAcceptance({
+        platform: 'linux',
+        buildIdentity: identityPath,
+        identityOnly: true,
+      }),
+    ).not.toEqual([]);
+  });
+
+  it.each([
+    ['gitCommit', 'c'.repeat(40)],
+    ['gitTree', 'd'.repeat(40)],
+    ['workflowRunId', '987654321'],
+    ['workflowRunAttempt', '3'],
+    ['appVersion', '0.2.0'],
+  ])('rejects report manifest identity mismatch for %s', (field, value) => {
+    const manifestPath = join(acceptance, 'auto', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    manifest[field] = value;
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    rewriteLinuxReportSums(join(acceptance, 'auto'));
+    expect(verifyLinux()).not.toEqual([]);
+  });
+
+  it('runs identity-only without consulting a repository or git', () => {
+    const shim = join(root, process.platform === 'win32' ? 'git.cmd' : 'git');
+    writeFileSync(shim, process.platform === 'win32' ? '@exit /b 99\r\n' : '#!/bin/sh\nexit 99\n');
+    chmodSync(shim, 0o755);
+    const cli = join(process.cwd(), 'scripts', 'verify-lyrics-acceptance.mjs');
+    const result = spawnSync(
+      process.execPath,
+      [cli, '--platform', 'linux', '--identity-only', '--build-identity', identityPath],
+      { cwd: root, env: { ...process.env, PATH: root }, encoding: 'utf8' },
+    );
+    expect(result.status).toBe(0);
   });
 });

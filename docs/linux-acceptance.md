@@ -1,76 +1,99 @@
 # Linux acceptance evidence
 
-This document separates observations from the Arch Linux diagnostic bundle from behavior that still needs a
-scripted physical test. The original archive is intentionally not committed because it contains machine-specific
-diagnostics.
+This ledger separates historical observations from the final-AppImage acceptance that still requires an Arch Linux
+tester. A collection run produces evidence with `verification: pending`; it does not declare a pass.
 
-## Latest report
+## 2026-08-10 native-Wayland baseline
 
-| Field                              | Value                                                                           |
-| ---------------------------------- | ------------------------------------------------------------------------------- |
-| Archive                            | `YAQMC-linux-report-20260810T162727Z-baseline.zip`                              |
-| Captured                           | 2026-08-10 16:27:27 UTC                                                         |
-| SHA-256                            | `FD8D672EA8A2D62E608B5BB1EA0AFCEAB489586E31B9454332CA38D08971DE00`              |
-| Distribution / kernel              | Arch Linux rolling / `7.1.6-zen1-1-zen`                                         |
-| Desktop / session                  | Hyprland / Wayland (`WAYLAND_DISPLAY=wayland-1`)                                |
-| Actual YAQMC window backend        | `wayland-native` from the raw Wayland window handle                             |
-| Explicit backend/renderer override | none recorded                                                                   |
-| GPU / driver                       | Intel Raptor Lake-S UHD (`i915`) and NVIDIA RTX 4060 Max-Q (`nvidia` 610.57.04) |
-| Audio stack                        | Rodio/CPAL ALSA route to PipeWire Sound Server; host PipeWire 1.6.8             |
-| Runtime duration                   | 50.379 seconds                                                                  |
+| Field                       | Value                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| Archive                     | `YAQMC-linux-report-20260810T162727Z-baseline.zip`                              |
+| Captured                    | 2026-08-10 16:27:27 UTC                                                         |
+| SHA-256                     | `FD8D672EA8A2D62E608B5BB1EA0AFCEAB489586E31B9454332CA38D08971DE00`              |
+| Distribution / kernel       | Arch Linux rolling / `7.1.6-zen1-1-zen`                                         |
+| Desktop / session           | Hyprland / Wayland (`WAYLAND_DISPLAY=wayland-1`)                                |
+| Actual YAQMC window backend | `wayland-native`, derived from the raw window handle                            |
+| Explicit override           | none                                                                            |
+| GPU / driver                | Intel Raptor Lake-S UHD (`i915`) and NVIDIA RTX 4060 Max-Q (`nvidia` 610.57.04) |
+| Audio                       | Rodio/CPAL ALSA route to PipeWire Sound Server                                  |
+| Runtime duration            | 50.379 seconds                                                                  |
 
-The archive was checked before extraction: all 13 entries normalize below the destination directory and none use an
-absolute path, drive prefix, NUL byte, or `..` traversal segment. Hashing before and after extraction produced the
-same digest.
+This current baseline was native Wayland. An earlier, pre-launcher-fix report used XWayland; that historical result
+does not describe the current baseline and cannot satisfy native-Wayland acceptance.
 
-## What the report proves
+The archive was checked before extraction: all entries normalized below the destination directory and none used an
+absolute path, drive prefix, NUL byte, or `..` traversal segment. Its digest matched before and after extraction.
 
-- The tested process created a native Wayland main window. `yaqmc.log` records
-  `display_backend="wayland-native"`; this value is produced from the raw window handle rather than inferred from
-  `XDG_SESSION_TYPE`.
-- Baseline launch followed the Wayland session without an explicit `GDK_BACKEND` or YAQMC graphics override.
-- MPRIS 2.2 and the tray adapter initialized.
-- The application initialized Rodio 0.22/CPAL 0.17 and selected the PipeWire Sound Server output exposed through the
-  ALSA host route.
-- The captured log has no panic, application `ERROR`, Wayland protocol error, DMABUF failure, or crash signature.
+### What it proves
 
-## What the report does not prove
+- YAQMC created a native Wayland main window without `GDK_BACKEND` or a renderer override.
+- MPRIS 2.2, the tray adapter, and Rodio/CPAL initialization completed.
+- The log contained no panic, application `ERROR`, Wayland protocol error, DMABUF failure, or crash signature.
 
-- The bundle has no Git SHA, application build ID, or embedded AppImage digest. Its timestamp and behavior are
-  consistent with commit `0e299f1`, but exact binary identity is not cryptographically established.
-- No playback/seek markers, HTTP range events, `playerctl` transcript, or active audio-stream snapshot were captured.
-  Audible playback, media controls, seek continuity, and time-to-first-audio remain unaccepted.
-- No Desktop Lyrics or Lyrics Island action was recorded. Creation, placement, lock, click-through, tray unlock, and
-  close behavior remain unaccepted on this host.
-- No frame-time or action labels were collected. Smoothness during scroll, resize, lyrics animation, and fullscreen
-  cannot be inferred.
+### What it does not prove
 
-## Resource evidence
+- The old bundle lacks a Git commit/tree, workflow run identity, and embedded AppImage digest. Its binary identity is
+  therefore not cryptographically established.
+- Playback, seek continuity, media controls, frame pacing, Focus/fullscreen geometry restoration, and lyric-surface
+  lock/unlock were not phase-marked.
+- Summed lifetime `%CPU` and RSS are not instantaneous utilization or unique memory. The old report had no PSS and
+  cannot attribute its sustained WebKit work to a specific surface.
 
-The sampler reports the sum of descendant-process lifetime CPU percentages and RSS values. Lifetime `%CPU` is not an
-instantaneous utilization sample, and summed RSS can count shared pages more than once.
+## Required final-AppImage protocol
 
-Across 48 usable process-tree samples, the summed lifetime CPU ranged from 62.2% to 99.7% (mean 67.9%; final ten
-mean 65.6%). Summed RSS ranged from approximately 679.5 MiB to 818.6 MiB (mean 775.3 MiB; final ten mean 798.3 MiB).
-At the final sample, the main process was approximately 327.9 MiB RSS, the network process 69.6 MiB, and the WebKit
-web process 392.6 MiB. The web process still reported roughly 50% lifetime CPU after 48 seconds.
+Use the flat `YAQMC-linux-x86_64` workflow artifact. It contains the final repacked AppImage,
+`BUILD-IDENTITY.json`, `SHA256SUMS`, `TESTING.md`, `ACCEPTANCE.md`, the collector, and the verifier. A repository
+checkout is neither required nor accepted as binary identity evidence.
 
-This is actionable evidence of sustained work, but it is not a root-cause attribution because the report has no
-interaction markers, per-thread profile, PSS, frame timing, or CPU-core count. The next report must label the test
-phase so main-window idle, playback, scrolling, Focus mode, fullscreen, and auxiliary lyric surfaces can be compared.
+Before launch, from the extracted bundle directory:
 
-## Remaining Arch acceptance
+```bash
+sha256sum -c SHA256SUMS
+node verify-lyrics-acceptance.mjs \
+  --platform linux \
+  --identity-only \
+  --build-identity "$PWD/BUILD-IDENTITY.json"
+```
 
-The next AppImage should be exercised in this order:
+Collect into one root, in this order:
 
-1. Launch in `baseline` mode and confirm the log still reports `wayland-native`.
-2. Record idle resource samples with no auxiliary lyric surfaces.
-3. Start a real playable track, seek twice, pause/resume, and capture an active PipeWire stream plus `playerctl`
-   state/commands.
-4. Scroll/resize the main window, then enter Lyrics Focus and native fullscreen; leave fullscreen with `Esc` and
-   verify the previous window layout returns.
-5. Enable Desktop Lyrics and Lyrics Island separately, lock each surface, recover interaction from tray/Settings,
-   and close each surface.
-6. Close YAQMC normally and include the new report plus concise subjective observations.
+1. `auto` with no GTK or renderer override.
+2. `native-wayland`, which must log `display_backend="wayland-native"`.
+3. `x11`, which may report `x11` in an X11 session or `xwayland` in a Wayland session.
+4. `software` only when a preceding native run reproduces a graphics failure; retain both reports.
 
-Do not apply software-rendering or DMABUF workarounds unless the baseline records a matching graphics failure.
+`baseline` is only a compatibility alias for `auto`. It never means XWayland.
+
+Every required run records these ordered phases:
+
+1. `startup-idle`
+2. `playback`
+3. `seek-pause-resume`
+4. `main-scroll-resize`
+5. `lyrics-normal`
+6. `lyrics-focus`
+7. `lyrics-fullscreen`
+8. `desktop-lyrics`
+9. `island-lyrics`
+10. `both-surfaces`
+11. `shutdown`
+
+During `lyrics-fullscreen`, exit with `Esc` and confirm the previous normal/Focus state and window geometry restore.
+For both auxiliary lyric surfaces, lock them, recover unlock interaction from tray/Settings, then close them. Windows
+software/safe-mode evidence cannot substitute for any Linux mode.
+
+After `auto`, `native-wayland`, and `x11` directories exist:
+
+```bash
+node verify-lyrics-acceptance.mjs \
+  --platform linux \
+  --root "$YAQMC_ACCEPTANCE_ROOT" \
+  --build-identity "$PWD/BUILD-IDENTITY.json"
+tar -C "$(dirname "$YAQMC_ACCEPTANCE_ROOT")" \
+  -czf YAQMC-linux-acceptance.tar.gz \
+  "$(basename "$YAQMC_ACCEPTANCE_ROOT")"
+sha256sum YAQMC-linux-acceptance.tar.gz
+```
+
+Return the archive and digest with distribution/kernel, compositor, monitor, scale/DPR, audio observations, and any
+visible defect. Final acceptance remains pending until the maintainer verifies the archive and records a verdict.
