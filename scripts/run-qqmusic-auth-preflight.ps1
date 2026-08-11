@@ -15,6 +15,7 @@ function Get-UtcTimestamp {
 
 if ($SelfTest) {
   $probeLog = Join-Path $outputDirectory 'self-test-argv.log'
+  [IO.File]::WriteAllText($probeLog, [string]::Empty, [Text.UTF8Encoding]::new($false))
   $previousErrorAction = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fixedHarness -ArgvProbe -First alpha -Second 'two words' 2>&1 |
@@ -29,6 +30,7 @@ if ($SelfTest) {
   }
 
   $failureLog = Join-Path $outputDirectory 'self-test-failure.log'
+  [IO.File]::WriteAllText($failureLog, [string]::Empty, [Text.UTF8Encoding]::new($false))
   $ErrorActionPreference = 'Continue'
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fixedHarness -CommandId self-test-fail 2>&1 |
     Tee-Object -FilePath $failureLog
@@ -36,6 +38,19 @@ if ($SelfTest) {
   $ErrorActionPreference = $previousErrorAction
   if ($failureExit -ne 23) {
     throw "fixed failure probe returned $failureExit instead of 23"
+  }
+
+  $silentLog = Join-Path $outputDirectory 'self-test-silent.log'
+  [IO.File]::WriteAllText($silentLog, [string]::Empty, [Text.UTF8Encoding]::new($false))
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fixedHarness -CommandId self-test-silent 2>&1 |
+    Tee-Object -FilePath $silentLog
+  $silentExit = $LASTEXITCODE
+  if ($silentExit -ne 0 -or -not (Test-Path -LiteralPath $silentLog)) {
+    throw 'fixed silent-success probe did not preserve an empty log'
+  }
+  $silentHash = (Get-FileHash -LiteralPath $silentLog -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($silentHash -cne 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855') {
+    throw 'fixed silent-success probe did not retain a hashable empty log'
   }
   [Console]::WriteLine('preflight harness self-test passed')
   exit 0
@@ -91,6 +106,7 @@ for ($index = 0; $index -lt $commands.Count; $index += 1) {
   $command = $commands[$index]
   $commandStart = Get-UtcTimestamp
   $logPath = Join-Path $outputDirectory ('{0}-{1}-{2}.log' -f $runId, ($index + 1).ToString('D2'), $command.Id)
+  [IO.File]::WriteAllText($logPath, [string]::Empty, [Text.UTF8Encoding]::new($false))
   [Console]::WriteLine(('preflight [{0}/{1}] {2}' -f ($index + 1), $commands.Count, $command.Display))
   $previousErrorAction = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'

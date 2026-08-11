@@ -12,6 +12,7 @@ param(
     'clippy',
     'rust-tests',
     'local-release-binary',
+    'self-test-silent',
     'self-test-fail'
   )]
   [string]$CommandId,
@@ -94,6 +95,9 @@ switch ($CommandId) {
   'self-test-fail' {
     [Console]::WriteLine('fixed failure probe')
     exit 23
+  }
+  'self-test-silent' {
+    exit 0
   }
   default {
     [Console]::Error.WriteLine('unreachable preflight command ID')
