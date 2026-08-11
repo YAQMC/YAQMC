@@ -140,6 +140,24 @@ const smoke: MatrixRow = {
   reducedMotion: false,
 };
 
+const interactionActions = [
+  'manual-scroll-unfollow',
+  'follow-restored',
+  'click-seek',
+  'pause',
+  'resume',
+  'focus-playerbar-sizing',
+  'transport-hidden',
+  'transport-revealed',
+  'transport-focus-pinned',
+  'fullscreen-track-change',
+  'fullscreen-track-restored',
+  'escape-fullscreen',
+  'escape-focus',
+  'escape-close',
+  'secondary-lyrics',
+] as const;
+
 interface Bounds {
   x: number;
   y: number;
@@ -176,7 +194,7 @@ interface StateRow {
   lyricsOpen: boolean;
   focus: boolean;
   reducedMotion: boolean;
-  songId: string;
+  songId: string | null;
   playerState: string;
   captureMethod: string;
   assertions: Record<string, unknown>;
@@ -197,6 +215,12 @@ interface Manifest {
   visualBuildKind: string;
   provider: string;
   fixtureSongId: string;
+  interactionSequence: {
+    id: 'S01-interactions';
+    actions: string[];
+    stateSeqStart: number;
+    stateSeqEnd: number;
+  };
   releaseArtifact: null | Record<string, unknown>;
   cases: EvidenceCase[];
   releasePass?: boolean;
@@ -391,6 +415,191 @@ describe('Windows lyrics evidence verifier', () => {
       });
     }
 
+    const interactionStateSeqStart = seq;
+    const interactionRows: Array<
+      Pick<
+        StateRow,
+        'action' | 'nativeFullscreen' | 'lyricsOpen' | 'focus' | 'playerState' | 'songId'
+      > & { assertions: Record<string, unknown> }
+    > = [
+      {
+        action: 'manual-scroll-unfollow',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: false,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { followVisible: true },
+      },
+      {
+        action: 'follow-restored',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: false,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { followVisible: false },
+      },
+      {
+        action: 'click-seek',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: false,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { activeLineIndex: 4, positionMs: 74_200 },
+      },
+      {
+        action: 'pause',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: false,
+        playerState: 'paused',
+        songId: 'quiet-light',
+        assertions: { viaControl: 'playerbar-play' },
+      },
+      {
+        action: 'resume',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: false,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { viaControl: 'playerbar-play' },
+      },
+      {
+        action: 'focus-playerbar-sizing',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: true,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: {
+          horizontalCoverage: true,
+          playerBarWidth: 1000,
+          playerBarX: 0,
+          stageWidth: 1000,
+          stageX: 0,
+          viewportWidth: 1000,
+        },
+      },
+      {
+        action: 'transport-hidden',
+        nativeFullscreen: true,
+        lyricsOpen: true,
+        focus: true,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { transportDataVisible: false, transportPointerEvents: 'none' },
+      },
+      {
+        action: 'transport-revealed',
+        nativeFullscreen: true,
+        lyricsOpen: true,
+        focus: true,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { transportDataVisible: true, transportPointerEvents: 'auto' },
+      },
+      {
+        action: 'transport-focus-pinned',
+        nativeFullscreen: true,
+        lyricsOpen: true,
+        focus: true,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: {
+          remainedVisibleAfterMs: 2600,
+          transportDataVisible: true,
+          transportFocused: true,
+        },
+      },
+      {
+        action: 'fullscreen-track-change',
+        nativeFullscreen: true,
+        lyricsOpen: true,
+        focus: true,
+        playerState: 'playing',
+        songId: 'night-geometry',
+        assertions: { nextSongId: 'night-geometry', previousSongId: 'quiet-light' },
+      },
+      {
+        action: 'fullscreen-track-restored',
+        nativeFullscreen: true,
+        lyricsOpen: true,
+        focus: true,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { nextSongId: 'quiet-light', previousSongId: 'night-geometry' },
+      },
+      {
+        action: 'escape-fullscreen',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: true,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { retainedFocus: true, retainedLyrics: true },
+      },
+      {
+        action: 'escape-focus',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: false,
+        playerState: 'playing',
+        songId: 'quiet-light',
+        assertions: { retainedLyrics: true },
+      },
+      {
+        action: 'escape-close',
+        nativeFullscreen: false,
+        lyricsOpen: false,
+        focus: false,
+        playerState: 'playing',
+        songId: null,
+        assertions: { lyricsClosed: true },
+      },
+      {
+        action: 'secondary-lyrics',
+        nativeFullscreen: false,
+        lyricsOpen: true,
+        focus: false,
+        playerState: 'playing',
+        songId: 'paper-sun',
+        assertions: {
+          romanizationCount: 2,
+          romanizationVisibility: 'show',
+          translationCount: 2,
+          translationVisibility: 'show',
+        },
+      },
+    ];
+    for (const row of interactionRows) {
+      const interactionLogical = logicalBounds(
+        row.nativeFullscreen ? 1920 : smoke.width,
+        row.nativeFullscreen ? 1080 : smoke.height,
+      );
+      states.push({
+        seq: seq++,
+        timestampUtc: '2026-08-11T03:00:02.500Z',
+        caseId: 'S01-interactions',
+        action: row.action,
+        source: 'cdp-ui-input-and-viewport',
+        logicalBounds: interactionLogical,
+        physicalBounds: physicalBounds(interactionLogical, 1.25),
+        devicePixelRatio: 1.25,
+        nativeFullscreen: row.nativeFullscreen,
+        lyricsOpen: row.lyricsOpen,
+        focus: row.focus,
+        reducedMotion: false,
+        songId: row.songId,
+        playerState: row.playerState,
+        captureMethod: 'semantic-cdp',
+        assertions: row.assertions,
+      });
+    }
+    const interactionStateSeqEnd = seq - 1;
+
     const externalLogical = logicalBounds(1000, 680);
     const externalPhysical = physicalBounds(externalLogical, 1.25);
     states.push({
@@ -436,6 +645,12 @@ describe('Windows lyrics evidence verifier', () => {
       visualBuildKind: 'tauri-no-bundle',
       provider: 'fake',
       fixtureSongId: 'quiet-light',
+      interactionSequence: {
+        id: 'S01-interactions',
+        actions: [...interactionActions],
+        stateSeqStart: interactionStateSeqStart,
+        stateSeqEnd: interactionStateSeqEnd,
+      },
       releaseArtifact: null,
       cases,
     };
@@ -451,12 +666,14 @@ describe('Windows lyrics evidence verifier', () => {
         '- provider: fake',
         '- fixtureSongId: quiet-light',
         ...cases.map((evidenceCase) => `- [x] ${evidenceCase.id}`),
+        '- [x] S01-interactions',
         '',
       ].join('\n'),
       commands: [
         `git rev-parse HEAD => ${gitCommit}`,
         `git rev-parse HEAD^{tree} => ${gitTree}`,
         ...cases.map((evidenceCase) => `capture ${evidenceCase.id} via native-hwnd-client`),
+        ...interactionActions.map((action) => `interaction ${action}: passed`),
         'external-native-api: label main, true -> fulfilled set(false) -> false, reconciled',
         '',
       ].join('\n'),
@@ -488,6 +705,32 @@ describe('Windows lyrics evidence verifier', () => {
   it('accepts the complete immutable local visual fixture', () => {
     writeEvidence();
     expect(verifyLyricsAcceptance({ platform: 'windows', root })).toEqual([]);
+  });
+
+  it('rejects missing, reordered, or semantically false interaction evidence', () => {
+    expectInvalid((draft) => {
+      draft.states = draft.states.filter((row) => row.action !== 'manual-scroll-unfollow');
+    });
+    expectInvalid((draft) => {
+      const sequence = draft.manifest.interactionSequence.actions;
+      [sequence[0], sequence[1]] = [sequence[1]!, sequence[0]!];
+    });
+    expectInvalid((draft) => {
+      const row = draft.states.find((candidate) => candidate.action === 'transport-focus-pinned');
+      if (!row) throw new Error('missing interaction fixture');
+      row.assertions.transportFocused = false;
+    });
+    expectInvalid((draft) => {
+      const row = draft.states.find((candidate) => candidate.action === 'secondary-lyrics');
+      if (!row) throw new Error('missing interaction fixture');
+      row.assertions.translationCount = 0;
+    });
+    expectInvalid((draft) => {
+      draft.commands = draft.commands.replace(
+        'interaction click-seek: passed',
+        'interaction click-seek: missing',
+      );
+    });
   });
 
   it('ships exact zero-duration reduced-motion CSS for native numeric assertions', () => {

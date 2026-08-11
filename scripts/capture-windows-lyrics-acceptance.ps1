@@ -171,6 +171,7 @@ function Send-ProductionKey {
     Home = @{ code = 'Home'; value = 36 }
     ArrowDown = @{ code = 'ArrowDown'; value = 40 }
     Enter = @{ code = 'Enter'; value = 13 }
+    Escape = @{ code = 'Escape'; value = 27 }
   }
   $keyCode = $codes[$Key]
   if (-not $keyCode) { throw "Unsupported production configuration key: $Key" }
@@ -216,6 +217,278 @@ function Select-ProductionOption {
   }
   Send-ProductionKey $Connection 'Enter'
   Start-Sleep -Milliseconds 80
+}
+
+function Invoke-ProductionPointerAtSelector {
+  param($Connection, [string]$Marker, [string]$Selector, [int]$Index = 0)
+  $rect = Get-ProductionRect $Connection $Marker $Selector $Index
+  if ([int]$rect.count -ne 1) { throw "Expected one visible $Marker control." }
+  Send-ProductionPointer $Connection $rect
+}
+
+function Select-ProductionOptionBySelector {
+  param($Connection, [string]$Marker, [string]$Selector, [int]$OptionIndex)
+  Invoke-ProductionPointerAtSelector $Connection $Marker $Selector
+  Send-ProductionKey $Connection 'Home'
+  for ($index = 0; $index -lt $OptionIndex; $index += 1) {
+    Send-ProductionKey $Connection 'ArrowDown'
+  }
+  Send-ProductionKey $Connection 'Enter'
+  Start-Sleep -Milliseconds 80
+}
+
+function Get-ProductionInteractionState {
+  param($Connection)
+  return Get-CdpRuntimeValue $Connection @'
+/*YAQMC:interaction-state*/ (() => {
+  const stage = document.querySelector('.lyrics-stage');
+  const play = document.querySelector('.player-controls__play');
+  const transport = document.querySelector('.lyrics-fullscreen-transport');
+  const activeLine = document.querySelector('.lyrics-line[aria-current="true"]');
+  const position = document.querySelector('.player-progress input[type="range"]');
+  const playerBar = document.querySelector('.player-bar');
+  const visibleSecondaryCount = (selector) => [...document.querySelectorAll(selector)].filter((element) =>
+    element.getClientRects().length > 0 && (element.textContent || '').trim().length > 0
+  ).length;
+  const rect = (element) => {
+    if (!element) return null;
+    const value = element.getBoundingClientRect();
+    return { x: value.x, y: value.y, width: value.width, height: value.height };
+  };
+  const selectedVisibility = (label) => {
+    const trigger = document.querySelector(`[role="combobox"][aria-label="${label}"]`);
+    return /^show\b/i.test((trigger?.textContent || '').trim()) ? 'show' : 'other';
+  };
+  return {
+    timestampUtc: new Date().toISOString(),
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight,
+    devicePixelRatio,
+    semantic: {
+      lyricsOpen: Boolean(stage),
+      focus: Boolean(stage && stage.hasAttribute('data-focus')),
+      nativeFullscreen: Boolean(stage && stage.hasAttribute('data-fullscreen')),
+      reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+      songId: stage ? (stage.dataset.songId || null) : null,
+      playerState: (() => {
+        const label = play ? (play.getAttribute('aria-label') || '') : '';
+        if (/pause/i.test(label) || label.includes('\u6682\u505c')) return 'playing';
+        if (/play/i.test(label) || label.includes('\u64ad\u653e')) return 'paused';
+        return 'unknown';
+      })()
+    },
+    currentTitle: (document.querySelector('.player-bar__track-copy strong')?.textContent || '').trim(),
+    activeLineIndex: activeLine ? Number(activeLine.getAttribute('data-line-index')) : -1,
+    positionMs: position ? Number(position.value) : -1,
+    followVisible: Boolean(document.querySelector('.lyrics-stage__follow')),
+    playerBarRect: rect(playerBar),
+    stageRect: rect(stage),
+    transportDataVisible: Boolean(transport?.hasAttribute('data-visible')),
+    transportFocused: Boolean(transport && transport.contains(document.activeElement)),
+    transportPointerEvents: transport ? getComputedStyle(transport).pointerEvents : 'missing',
+    translationCount: visibleSecondaryCount('.lyrics-line__translation'),
+    romanizationCount: visibleSecondaryCount('.lyrics-line__romanization'),
+    translationVisibility: selectedVisibility('Translation visibility'),
+    romanizationVisibility: selectedVisibility('Romanization visibility')
+  };
+})()
+'@
+}
+
+function Wait-ProductionInteractionState {
+  param($Connection, [scriptblock]$Predicate, [string]$Failure, [int]$Attempts = 120)
+  for ($attempt = 0; $attempt -lt $Attempts; $attempt += 1) {
+    $state = Get-ProductionInteractionState $Connection
+    if (& $Predicate $state) { return $state }
+    Start-Sleep -Milliseconds 50
+  }
+  throw $Failure
+}
+
+function Add-ProductionInteractionAction {
+  param($Actions, [string]$Action, $State, $Assertions)
+  $Actions.Add([ordered]@{
+    timestampUtc = [string]$State.timestampUtc
+    action = $Action
+    viewport = [ordered]@{
+      width = [double]$State.viewportWidth
+      height = [double]$State.viewportHeight
+      devicePixelRatio = [double]$State.devicePixelRatio
+    }
+    semantic = $State.semantic
+    assertions = $Assertions
+  }) | Out-Null
+}
+
+function Invoke-ProductionInteractionSequence {
+  param($Connection)
+  $actions = New-Object 'Collections.Generic.List[object]'
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-open-lyrics' '.player-bar__tools > button:first-child'
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) $value.semantic.lyricsOpen -and $value.semantic.songId -eq 'quiet-light' -and $value.semantic.playerState -eq 'playing'
+  } 'The S01 interaction sequence could not open quiet-light lyrics.'
+
+  $scroll = Get-ProductionRect $Connection 'interaction-scroll' '.lyrics-stage__scroll'
+  $scrollX = [double]$scroll.x + ([double]$scroll.width / 2)
+  $scrollY = [double]$scroll.y + ([double]$scroll.height / 2)
+  Send-CdpRaw $Connection 'Input.dispatchMouseEvent' ([ordered]@{
+    type = 'mouseWheel'; x = $scrollX; y = $scrollY; deltaX = 0; deltaY = 360
+  }) | Out-Null
+  $state = Wait-ProductionInteractionState $Connection { param($value) $value.followVisible } 'Manual lyric scrolling did not expose Follow.'
+  Add-ProductionInteractionAction $actions 'manual-scroll-unfollow' $state ([ordered]@{ followVisible = $true })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-follow' '.lyrics-stage__follow'
+  $state = Wait-ProductionInteractionState $Connection { param($value) -not $value.followVisible } 'Follow did not restore automatic lyric tracking.'
+  Add-ProductionInteractionAction $actions 'follow-restored' $state ([ordered]@{ followVisible = $false })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-line-seek' '.lyrics-line[data-line-index="4"]'
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) $value.activeLineIndex -eq 4 -and $value.positionMs -ge 74000 -and $value.positionMs -lt 89000
+  } 'Clicking lyric line 4 did not seek into its timing interval.'
+  Add-ProductionInteractionAction $actions 'click-seek' $state ([ordered]@{
+    activeLineIndex = 4; positionMs = [double]$state.positionMs
+  })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-playerbar-play' '.player-controls__play'
+  $state = Wait-ProductionInteractionState $Connection { param($value) $value.semantic.playerState -eq 'paused' } 'PlayerBar pause did not converge.'
+  Add-ProductionInteractionAction $actions 'pause' $state ([ordered]@{ viaControl = 'playerbar-play' })
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-playerbar-play' '.player-controls__play'
+  $state = Wait-ProductionInteractionState $Connection { param($value) $value.semantic.playerState -eq 'playing' } 'PlayerBar resume did not converge.'
+  Add-ProductionInteractionAction $actions 'resume' $state ([ordered]@{ viaControl = 'playerbar-play' })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-focus' '.lyrics-stage__presentation-controls > button:first-child'
+  $state = Wait-ProductionInteractionState $Connection { param($value) $value.semantic.focus -and -not $value.semantic.nativeFullscreen } 'Focus presentation did not converge.'
+  $horizontalCoverage =
+    [Math]::Abs([double]$state.stageRect.x) -le 0.5 -and
+    [Math]::Abs([double]$state.playerBarRect.x) -le 0.5 -and
+    [Math]::Abs([double]$state.stageRect.width - [double]$state.viewportWidth) -le 0.5 -and
+    [Math]::Abs([double]$state.playerBarRect.width - [double]$state.viewportWidth) -le 0.5
+  if (-not $horizontalCoverage) { throw 'Focus mode did not expand both Lyrics and PlayerBar to the viewport width.' }
+  Add-ProductionInteractionAction $actions 'focus-playerbar-sizing' $state ([ordered]@{
+    horizontalCoverage = $true
+    playerBarWidth = [double]$state.playerBarRect.width
+    playerBarX = [double]$state.playerBarRect.x
+    stageWidth = [double]$state.stageRect.width
+    stageX = [double]$state.stageRect.x
+    viewportWidth = [double]$state.viewportWidth
+  })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-enter-fullscreen' '.lyrics-stage__presentation-controls > button:nth-child(2)'
+  $state = Wait-ProductionInteractionState $Connection { param($value) $value.semantic.nativeFullscreen -and $value.semantic.focus } 'Fullscreen did not preserve Focus state.'
+  Start-Sleep -Milliseconds 2700
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) -not $value.transportDataVisible -and $value.transportPointerEvents -eq 'none'
+  } 'Fullscreen transport did not hide after its grace period.'
+  Add-ProductionInteractionAction $actions 'transport-hidden' $state ([ordered]@{
+    transportDataVisible = $false; transportPointerEvents = 'none'
+  })
+
+  $stage = Get-ProductionRect $Connection 'interaction-stage-move' '.lyrics-stage'
+  Send-CdpRaw $Connection 'Input.dispatchMouseEvent' ([ordered]@{
+    type = 'mouseMoved'
+    x = [double]$stage.x + ([double]$stage.width / 2)
+    y = [double]$stage.y + ([double]$stage.height / 2)
+    button = 'none'
+  }) | Out-Null
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) $value.transportDataVisible -and $value.transportPointerEvents -eq 'auto'
+  } 'Pointer movement did not reveal the fullscreen transport.'
+  Add-ProductionInteractionAction $actions 'transport-revealed' $state ([ordered]@{
+    transportDataVisible = $true; transportPointerEvents = 'auto'
+  })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-transport-play' '.lyrics-fullscreen-transport__play'
+  Wait-ProductionInteractionState $Connection { param($value) $value.semantic.playerState -eq 'paused' -and $value.transportFocused } 'Transport pause/focus did not converge.' | Out-Null
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-transport-play' '.lyrics-fullscreen-transport__play'
+  Wait-ProductionInteractionState $Connection { param($value) $value.semantic.playerState -eq 'playing' -and $value.transportFocused } 'Transport resume/focus did not converge.' | Out-Null
+  Start-Sleep -Milliseconds 2600
+  $state = Get-ProductionInteractionState $Connection
+  if (-not $state.transportDataVisible -or -not $state.transportFocused) {
+    throw 'Focused fullscreen transport did not remain pinned past its hide delay.'
+  }
+  Add-ProductionInteractionAction $actions 'transport-focus-pinned' $state ([ordered]@{
+    remainedVisibleAfterMs = 2600; transportDataVisible = $true; transportFocused = $true
+  })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-next-track' '.lyrics-fullscreen-transport__controls > button:last-child'
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) $value.semantic.songId -eq 'night-geometry' -and $value.semantic.playerState -eq 'playing'
+  } 'Fullscreen Next did not converge to playing night-geometry.'
+  Add-ProductionInteractionAction $actions 'fullscreen-track-change' $state ([ordered]@{
+    previousSongId = 'quiet-light'; nextSongId = 'night-geometry'
+  })
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-previous-track' '.lyrics-fullscreen-transport__controls > button:first-child'
+  $state = Wait-ProductionInteractionState $Connection { param($value) $value.semantic.songId -eq 'quiet-light' } 'Fullscreen Previous did not restore quiet-light.'
+  Add-ProductionInteractionAction $actions 'fullscreen-track-restored' $state ([ordered]@{
+    previousSongId = 'night-geometry'; nextSongId = 'quiet-light'
+  })
+
+  Send-ProductionKey $Connection 'Escape'
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) $value.semantic.lyricsOpen -and $value.semantic.focus -and -not $value.semantic.nativeFullscreen
+  } 'First Escape did not exit only native fullscreen.'
+  Add-ProductionInteractionAction $actions 'escape-fullscreen' $state ([ordered]@{ retainedFocus = $true; retainedLyrics = $true })
+  Send-ProductionKey $Connection 'Escape'
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) $value.semantic.lyricsOpen -and -not $value.semantic.focus -and -not $value.semantic.nativeFullscreen
+  } 'Second Escape did not exit only Focus.'
+  Add-ProductionInteractionAction $actions 'escape-focus' $state ([ordered]@{ retainedLyrics = $true })
+  Send-ProductionKey $Connection 'Escape'
+  $state = Wait-ProductionInteractionState $Connection { param($value) -not $value.semantic.lyricsOpen } 'Third Escape did not close Lyrics.'
+  Add-ProductionInteractionAction $actions 'escape-close' $state ([ordered]@{ lyricsClosed = $true })
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-settings' '.sidebar__nav button:last-of-type'
+  for ($attempt = 0; $attempt -lt 80; $attempt += 1) {
+    if (Get-CdpRuntimeValue $Connection '/*YAQMC:interaction-settings-ready*/ Boolean(document.querySelector(".settings-page"))') { break }
+    Start-Sleep -Milliseconds 50
+  }
+  if ($attempt -ge 80) { throw 'Settings did not open for secondary lyric configuration.' }
+  Select-ProductionOptionBySelector $Connection 'interaction-translation-setting' '[role="combobox"][aria-label="Translation visibility"]' 1
+  Select-ProductionOptionBySelector $Connection 'interaction-romanization-setting' '[role="combobox"][aria-label="Romanization visibility"]' 1
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value) $value.translationVisibility -eq 'show' -and $value.romanizationVisibility -eq 'show'
+  } 'Translation and romanization preferences did not converge to Show.'
+
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-search-navigation' '.sidebar__nav button:nth-of-type(2)'
+  for ($attempt = 0; $attempt -lt 80; $attempt += 1) {
+    if (Get-CdpRuntimeValue $Connection '/*YAQMC:interaction-search-ready*/ Boolean(document.querySelector(".search-page__field input"))') { break }
+    Start-Sleep -Milliseconds 50
+  }
+  if ($attempt -ge 80) { throw 'Search did not open for the Paper Sun fixture.' }
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-search-input' '.search-page__field input'
+  Send-CdpRaw $Connection 'Input.insertText' @{ text = 'Paper Sun' } | Out-Null
+  for ($attempt = 0; $attempt -lt 120; $attempt += 1) {
+    if (Get-CdpRuntimeValue $Connection '/*YAQMC:interaction-search-result*/ Boolean(document.querySelector(".search-results .track-row"))') { break }
+    Start-Sleep -Milliseconds 50
+  }
+  if ($attempt -ge 120) { throw 'Paper Sun search result did not appear.' }
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-paper-sun' '.search-results .track-row'
+  Wait-ProductionInteractionState $Connection { param($value) $value.currentTitle -eq 'Paper Sun' -and $value.semantic.playerState -eq 'playing' } 'Paper Sun did not begin playback.' | Out-Null
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-paper-sun-lyrics' '.player-bar__tools > button:first-child'
+  $state = Wait-ProductionInteractionState $Connection {
+    param($value)
+    $value.semantic.lyricsOpen -and $value.semantic.songId -eq 'paper-sun' -and
+      $value.translationCount -gt 0 -and $value.romanizationCount -gt 0
+  } 'Paper Sun did not render both configured secondary lyric forms.'
+  Add-ProductionInteractionAction $actions 'secondary-lyrics' $state ([ordered]@{
+    romanizationCount = [int]$state.romanizationCount
+    romanizationVisibility = 'show'
+    translationCount = [int]$state.translationCount
+    translationVisibility = 'show'
+  })
+
+  Send-ProductionKey $Connection 'Escape'
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-home-navigation' '.sidebar__nav button:first-of-type'
+  for ($attempt = 0; $attempt -lt 80; $attempt += 1) {
+    if (Get-CdpRuntimeValue $Connection '/*YAQMC:interaction-home-ready*/ Boolean(document.querySelector(".home-page"))') { break }
+    Start-Sleep -Milliseconds 50
+  }
+  if ($attempt -ge 80) { throw 'Home did not reopen after the secondary lyric probe.' }
+  Invoke-ProductionPointerAtSelector $Connection 'interaction-home-play' '.featured-release__actions .button--primary'
+  Wait-ProductionInteractionState $Connection { param($value) $value.currentTitle -eq 'Quiet Light' -and $value.semantic.playerState -eq 'playing' } 'The interaction sequence did not restore Quiet Light.' | Out-Null
+
+  return [pscustomobject]@{ actions = @($actions | ForEach-Object { $_ }) }
 }
 
 function Select-ProductionManagedImage {
@@ -365,6 +638,9 @@ function New-ProductionCdpAdapter {
       }
       if ($Method -eq 'YAQMC.configureCase') {
         return Invoke-ProductionConfigureCase $Connection $Params
+      }
+      if ($Method -eq 'YAQMC.runInteractionSequence') {
+        return Invoke-ProductionInteractionSequence $Connection
       }
       $result = Send-CdpRaw $Connection $Method $Params
       if ($Method -eq 'Runtime.evaluate') {
@@ -827,6 +1103,45 @@ function New-StateRow {
   }
 }
 
+function New-InteractionStateRow {
+  param([int]$Seq, $Action)
+  $viewport = $Action.viewport
+  $semantic = $Action.semantic
+  $dpr = [double]$viewport.devicePixelRatio
+  $logical = [ordered]@{
+    x = 0.0
+    y = 0.0
+    width = [double]$viewport.width
+    height = [double]$viewport.height
+    unit = 'logical-px'
+  }
+  $physical = [ordered]@{
+    x = 0.0
+    y = 0.0
+    width = [double][Math]::Round([double]$viewport.width * $dpr)
+    height = [double][Math]::Round([double]$viewport.height * $dpr)
+    unit = 'physical-px'
+  }
+  return [ordered]@{
+    seq = $Seq
+    timestampUtc = [string]$Action.timestampUtc
+    caseId = 'S01-interactions'
+    action = [string]$Action.action
+    source = 'cdp-ui-input-and-viewport'
+    logicalBounds = $logical
+    physicalBounds = $physical
+    devicePixelRatio = $dpr
+    nativeFullscreen = [bool]$semantic.nativeFullscreen
+    lyricsOpen = [bool]$semantic.lyricsOpen
+    focus = [bool]$semantic.focus
+    reducedMotion = [bool]$semantic.reducedMotion
+    songId = $semantic.songId
+    playerState = [string]$semantic.playerState
+    captureMethod = 'semantic-cdp'
+    assertions = $Action.assertions
+  }
+}
+
 function Get-WindowsCaseMatrix {
   return @(
     [ordered]@{ id='W01'; width=1280; height=800; presentation='normal'; theme='light'; locale='en-US'; backgroundMode='default'; entryPath='playerbar-lyrics'; exitPath='lyrics-close'; reducedMotion=$false },
@@ -1072,6 +1387,40 @@ function Invoke-WindowsLyricsAcceptance {
       }
     }
 
+    $interaction = Invoke-Cdp $Cdp $connection 'YAQMC.runInteractionSequence' @{}
+    $interactionActions = @($interaction.actions)
+    $requiredInteractionActions = @(
+      'manual-scroll-unfollow',
+      'follow-restored',
+      'click-seek',
+      'pause',
+      'resume',
+      'focus-playerbar-sizing',
+      'transport-hidden',
+      'transport-revealed',
+      'transport-focus-pinned',
+      'fullscreen-track-change',
+      'fullscreen-track-restored',
+      'escape-fullscreen',
+      'escape-focus',
+      'escape-close',
+      'secondary-lyrics'
+    )
+    if ($interactionActions.Count -ne $requiredInteractionActions.Count) {
+      throw 'The S01 interaction sequence returned an incomplete action ledger.'
+    }
+    $interactionStateSeqStart = $sequence
+    for ($index = 0; $index -lt $requiredInteractionActions.Count; $index += 1) {
+      $action = $interactionActions[$index]
+      if ([string]$action.action -ne $requiredInteractionActions[$index]) {
+        throw "The S01 interaction sequence is out of order at $($requiredInteractionActions[$index])."
+      }
+      $stateRows.Add((New-InteractionStateRow $sequence $action)) | Out-Null
+      $commands.Add("interaction $($action.action): passed") | Out-Null
+      $sequence += 1
+    }
+    $interactionStateSeqEnd = $sequence - 1
+
     Invoke-CdpPointer $Cdp $connection (Get-ControlRect $Cdp $connection 'playerbar-lyrics')
     $externalSource = & $Hwnd.GetClientBounds $windowHandle $null $null
     Invoke-CdpPointer $Cdp $connection (Get-ControlRect $Cdp $connection 'header-fullscreen')
@@ -1120,6 +1469,12 @@ function Invoke-WindowsLyricsAcceptance {
       visualBuildKind = $BuildKind
       provider = 'fake'
       fixtureSongId = 'quiet-light'
+      interactionSequence = [ordered]@{
+        id = 'S01-interactions'
+        actions = $requiredInteractionActions
+        stateSeqStart = $interactionStateSeqStart
+        stateSeqEnd = $interactionStateSeqEnd
+      }
       releaseArtifact = $null
       cases = @($caseEvidence | ForEach-Object { $_ })
     }
@@ -1131,7 +1486,7 @@ function Invoke-WindowsLyricsAcceptance {
       "- gitTree: $gitTree",
       '- provider: fake',
       '- fixtureSongId: quiet-light'
-    ) + @($caseEvidence | ForEach-Object { "- [x] $($_.id)" }) + @('')
+    ) + @($caseEvidence | ForEach-Object { "- [x] $($_.id)" }) + @('- [x] S01-interactions', '')
     Write-Utf8NoBom (Join-Path $outputPath 'checklist.md') ($checklist -join "`n")
     Write-Utf8NoBom (Join-Path $outputPath 'commands.log') (($commands -join "`n") + "`n")
     Write-Utf8NoBom (Join-Path $outputPath 'state.jsonl') ((@($stateRows | ForEach-Object { $_ | ConvertTo-Json -Depth 20 -Compress }) -join "`n") + "`n")

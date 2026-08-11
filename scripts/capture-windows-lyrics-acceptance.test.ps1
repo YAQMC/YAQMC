@@ -47,6 +47,10 @@ Assert-True $collectorSource.Contains('SetThreadDpiAwarenessContext([IntPtr]::ne
 Assert-True $collectorSource.Contains('ForceForegroundWindow([IntPtr]$Window)') 'native screen crops must prove the YAQMC window owns the foreground'
 Assert-True $collectorSource.Contains('SelectFileInDialog([IntPtr]$dialog') 'managed image selection must address the native file-name edit and Open button'
 Assert-True (-not $collectorSource.Contains('[Windows.Forms.SendKeys]')) 'managed image selection must not depend on ambient keyboard focus'
+Assert-True $collectorSource.Contains("type = 'mouseWheel'") 'manual lyric follow acceptance must use a real CDP wheel input'
+Assert-True $collectorSource.Contains("'Input.insertText'") 'secondary lyric acceptance must enter a real search query through CDP input'
+Assert-True $collectorSource.Contains("Send-ProductionKey `$Connection 'Escape'") 'Esc priority must use real keyboard events'
+Assert-True $collectorSource.Contains("'.lyrics-fullscreen-transport__play'") 'transport focus pinning must exercise the real transport control'
 
 $undefinedEvaluation = [pscustomobject]@{
   result = [pscustomobject]@{ type = 'undefined' }
@@ -93,6 +97,60 @@ function Add-Call {
   $script:Calls.Add([pscustomobject]@{ Kind = $Kind; Name = $Name; Data = $Data }) | Out-Null
 }
 
+function New-MockInteractionAction {
+  param(
+    [string]$Action,
+    [bool]$Fullscreen,
+    [bool]$LyricsOpen,
+    [bool]$Focus,
+    [string]$PlayerState,
+    [AllowNull()]$SongId,
+    $Assertions
+  )
+  $width = if ($Fullscreen) { 1920 } else { 1000 }
+  $height = if ($Fullscreen) { 1080 } else { 680 }
+  return [ordered]@{
+    timestampUtc = [DateTime]::UtcNow.ToString('o')
+    action = $Action
+    viewport = [ordered]@{ width = $width; height = $height; devicePixelRatio = 1 }
+    semantic = [ordered]@{
+      nativeFullscreen = $Fullscreen
+      lyricsOpen = $LyricsOpen
+      focus = $Focus
+      reducedMotion = $false
+      songId = $SongId
+      playerState = $PlayerState
+    }
+    assertions = $Assertions
+  }
+}
+
+function New-MockInteractionSequence {
+  $actions = @(
+    (New-MockInteractionAction 'manual-scroll-unfollow' $false $true $false 'playing' 'quiet-light' ([ordered]@{ followVisible = $true })),
+    (New-MockInteractionAction 'follow-restored' $false $true $false 'playing' 'quiet-light' ([ordered]@{ followVisible = $false })),
+    (New-MockInteractionAction 'click-seek' $false $true $false 'playing' 'quiet-light' ([ordered]@{ activeLineIndex = 4; positionMs = 74200 })),
+    (New-MockInteractionAction 'pause' $false $true $false 'paused' 'quiet-light' ([ordered]@{ viaControl = 'playerbar-play' })),
+    (New-MockInteractionAction 'resume' $false $true $false 'playing' 'quiet-light' ([ordered]@{ viaControl = 'playerbar-play' })),
+    (New-MockInteractionAction 'focus-playerbar-sizing' $false $true $true 'playing' 'quiet-light' ([ordered]@{ horizontalCoverage = $true; playerBarWidth = 1000; playerBarX = 0; stageWidth = 1000; stageX = 0; viewportWidth = 1000 })),
+    (New-MockInteractionAction 'transport-hidden' $true $true $true 'playing' 'quiet-light' ([ordered]@{ transportDataVisible = $false; transportPointerEvents = 'none' })),
+    (New-MockInteractionAction 'transport-revealed' $true $true $true 'playing' 'quiet-light' ([ordered]@{ transportDataVisible = $true; transportPointerEvents = 'auto' })),
+    (New-MockInteractionAction 'transport-focus-pinned' $true $true $true 'playing' 'quiet-light' ([ordered]@{ remainedVisibleAfterMs = 2600; transportDataVisible = $true; transportFocused = $true })),
+    (New-MockInteractionAction 'fullscreen-track-change' $true $true $true 'playing' 'night-geometry' ([ordered]@{ previousSongId = 'quiet-light'; nextSongId = 'night-geometry' })),
+    (New-MockInteractionAction 'fullscreen-track-restored' $true $true $true 'playing' 'quiet-light' ([ordered]@{ previousSongId = 'night-geometry'; nextSongId = 'quiet-light' })),
+    (New-MockInteractionAction 'escape-fullscreen' $false $true $true 'playing' 'quiet-light' ([ordered]@{ retainedFocus = $true; retainedLyrics = $true })),
+    (New-MockInteractionAction 'escape-focus' $false $true $false 'playing' 'quiet-light' ([ordered]@{ retainedLyrics = $true })),
+    (New-MockInteractionAction 'escape-close' $false $false $false 'playing' $null ([ordered]@{ lyricsClosed = $true })),
+    (New-MockInteractionAction 'secondary-lyrics' $false $true $false 'playing' 'paper-sun' ([ordered]@{ romanizationCount = 2; romanizationVisibility = 'show'; translationCount = 2; translationVisibility = 'show' }))
+  )
+  $script:SongId = 'quiet-light'
+  $script:LyricsOpen = $false
+  $script:Focus = $false
+  $script:Fullscreen = $false
+  $script:PlayerState = 'playing'
+  return [pscustomobject]@{ actions = $actions }
+}
+
 function New-TestAdapters {
   $processAdapter = @{
     Start = {
@@ -115,6 +173,9 @@ function New-TestAdapters {
     Send = {
       param($Connection, [string]$Method, $Params)
       Add-Call 'Cdp' $Method $Params
+      if ($Method -eq 'YAQMC.runInteractionSequence') {
+        return New-MockInteractionSequence
+      }
       if ($Method -eq 'Runtime.evaluate') {
         $expression = [string]$Params.expression
         if ($expression.Contains('YAQMC:origin')) { return 'http://tauri.localhost' }
@@ -278,6 +339,10 @@ try {
   Assert-Equal $manifest.provider 'fake' 'manifest provider identity'
   Assert-Equal $manifest.fixtureSongId 'quiet-light' 'manifest fixture identity'
   Assert-Equal @($manifest.cases).Count 10 'manifest case count'
+  Assert-Equal $manifest.interactionSequence.id 'S01-interactions' 'manifest interaction identity'
+  Assert-Equal @($manifest.interactionSequence.actions).Count 15 'manifest interaction action count'
+  $interactionRows = @(Get-Content -LiteralPath (Join-Path $success.Output 'state.jsonl') | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.caseId -eq 'S01-interactions' })
+  Assert-Equal $interactionRows.Count 15 'state ledger interaction row count'
   Assert-Equal $script:CaptureCount 10 'only ten required native crops are saved'
   Assert-Equal $script:CdpDisconnectCount 1 'success disconnect count'
   Assert-Equal $script:ProcessStopCount 1 'success process stop count'

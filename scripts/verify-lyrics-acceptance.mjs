@@ -122,6 +122,133 @@ const SMOKE_CONTRACT = Object.freeze({
   reducedMotion: false,
 });
 
+const INTERACTION_CASE_ID = 'S01-interactions';
+const INTERACTION_ACTIONS = Object.freeze([
+  'manual-scroll-unfollow',
+  'follow-restored',
+  'click-seek',
+  'pause',
+  'resume',
+  'focus-playerbar-sizing',
+  'transport-hidden',
+  'transport-revealed',
+  'transport-focus-pinned',
+  'fullscreen-track-change',
+  'fullscreen-track-restored',
+  'escape-fullscreen',
+  'escape-focus',
+  'escape-close',
+  'secondary-lyrics',
+]);
+
+const INTERACTION_STATE = Object.freeze({
+  'manual-scroll-unfollow': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: false,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'follow-restored': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: false,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'click-seek': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: false,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  pause: Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: false,
+    playerState: 'paused',
+    songId: 'quiet-light',
+  }),
+  resume: Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: false,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'focus-playerbar-sizing': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: true,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'transport-hidden': Object.freeze({
+    nativeFullscreen: true,
+    lyricsOpen: true,
+    focus: true,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'transport-revealed': Object.freeze({
+    nativeFullscreen: true,
+    lyricsOpen: true,
+    focus: true,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'transport-focus-pinned': Object.freeze({
+    nativeFullscreen: true,
+    lyricsOpen: true,
+    focus: true,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'fullscreen-track-change': Object.freeze({
+    nativeFullscreen: true,
+    lyricsOpen: true,
+    focus: true,
+    playerState: 'playing',
+    songId: 'night-geometry',
+  }),
+  'fullscreen-track-restored': Object.freeze({
+    nativeFullscreen: true,
+    lyricsOpen: true,
+    focus: true,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'escape-fullscreen': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: true,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'escape-focus': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: false,
+    playerState: 'playing',
+    songId: 'quiet-light',
+  }),
+  'escape-close': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: false,
+    focus: false,
+    playerState: 'playing',
+    songId: null,
+  }),
+  'secondary-lyrics': Object.freeze({
+    nativeFullscreen: false,
+    lyricsOpen: true,
+    focus: false,
+    playerState: 'playing',
+    songId: 'paper-sun',
+  }),
+});
+
 const MANIFEST_KEYS = Object.freeze([
   'appVersion',
   'capturedAtUtc',
@@ -129,6 +256,7 @@ const MANIFEST_KEYS = Object.freeze([
   'fixtureSongId',
   'gitCommit',
   'gitTree',
+  'interactionSequence',
   'monitorId',
   'osVersion',
   'platform',
@@ -437,7 +565,11 @@ function validateStateRows(states, casesById, errors) {
     }
     previousSeq = state?.seq;
     if (!isUtc(state?.timestampUtc)) errors.push(`${label}.timestampUtc: expected UTC ISO 8601`);
-    if (!casesById.has(state?.caseId) && state?.caseId !== 'external-native-api') {
+    if (
+      !casesById.has(state?.caseId) &&
+      state?.caseId !== 'external-native-api' &&
+      state?.caseId !== INTERACTION_CASE_ID
+    ) {
       errors.push(`${label}.caseId: unknown case`);
     }
     validateBounds(state?.logicalBounds, 'logical-px', `${label}.logicalBounds`, errors);
@@ -457,12 +589,174 @@ function validateStateRows(states, casesById, errors) {
     for (const field of ['nativeFullscreen', 'lyricsOpen', 'focus', 'reducedMotion']) {
       if (typeof state?.[field] !== 'boolean') errors.push(`${label}.${field}: expected boolean`);
     }
-    if (state?.songId !== 'quiet-light') errors.push(`${label}.songId: expected quiet-light`);
+    if (state?.caseId !== INTERACTION_CASE_ID && state?.songId !== 'quiet-light') {
+      errors.push(`${label}.songId: expected quiet-light`);
+    }
     if (!isObject(state?.assertions)) errors.push(`${label}.assertions: expected object`);
   }
 }
 
-function validateExternalProbe(states, casesById, commands, errors) {
+function validateInteractionAssertions(row, errors) {
+  const assertions = row?.assertions;
+  const fail = () =>
+    errors.push(`${INTERACTION_CASE_ID}.${row?.action}: assertions are incomplete`);
+  switch (row?.action) {
+    case 'manual-scroll-unfollow':
+      if (assertions?.followVisible !== true) fail();
+      break;
+    case 'follow-restored':
+      if (assertions?.followVisible !== false) fail();
+      break;
+    case 'click-seek':
+      if (
+        assertions?.activeLineIndex !== 4 ||
+        !Number.isFinite(assertions?.positionMs) ||
+        assertions.positionMs < 74_000 ||
+        assertions.positionMs >= 89_000
+      ) {
+        fail();
+      }
+      break;
+    case 'pause':
+    case 'resume':
+      if (assertions?.viaControl !== 'playerbar-play') fail();
+      break;
+    case 'focus-playerbar-sizing':
+      if (
+        assertions?.horizontalCoverage !== true ||
+        !Number.isFinite(assertions?.viewportWidth) ||
+        assertions.viewportWidth <= 0 ||
+        assertions?.stageX !== 0 ||
+        assertions?.playerBarX !== 0 ||
+        assertions?.stageWidth !== assertions.viewportWidth ||
+        assertions?.playerBarWidth !== assertions.viewportWidth
+      ) {
+        fail();
+      }
+      break;
+    case 'transport-hidden':
+      if (
+        assertions?.transportDataVisible !== false ||
+        assertions?.transportPointerEvents !== 'none'
+      ) {
+        fail();
+      }
+      break;
+    case 'transport-revealed':
+      if (
+        assertions?.transportDataVisible !== true ||
+        assertions?.transportPointerEvents !== 'auto'
+      ) {
+        fail();
+      }
+      break;
+    case 'transport-focus-pinned':
+      if (
+        assertions?.transportDataVisible !== true ||
+        assertions?.transportFocused !== true ||
+        !Number.isFinite(assertions?.remainedVisibleAfterMs) ||
+        assertions.remainedVisibleAfterMs < 2_400
+      ) {
+        fail();
+      }
+      break;
+    case 'fullscreen-track-change':
+      if (
+        assertions?.previousSongId !== 'quiet-light' ||
+        assertions?.nextSongId !== 'night-geometry'
+      ) {
+        fail();
+      }
+      break;
+    case 'fullscreen-track-restored':
+      if (
+        assertions?.previousSongId !== 'night-geometry' ||
+        assertions?.nextSongId !== 'quiet-light'
+      ) {
+        fail();
+      }
+      break;
+    case 'escape-fullscreen':
+      if (assertions?.retainedFocus !== true || assertions?.retainedLyrics !== true) fail();
+      break;
+    case 'escape-focus':
+      if (assertions?.retainedLyrics !== true) fail();
+      break;
+    case 'escape-close':
+      if (assertions?.lyricsClosed !== true) fail();
+      break;
+    case 'secondary-lyrics':
+      if (
+        assertions?.translationVisibility !== 'show' ||
+        assertions?.romanizationVisibility !== 'show' ||
+        !Number.isInteger(assertions?.translationCount) ||
+        assertions.translationCount <= 0 ||
+        !Number.isInteger(assertions?.romanizationCount) ||
+        assertions.romanizationCount <= 0
+      ) {
+        fail();
+      }
+      break;
+    default:
+      fail();
+  }
+}
+
+function validateInteractionSequence(manifest, states, commands, checklist, errors) {
+  const sequence = manifest?.interactionSequence;
+  const sequenceKeys = ['actions', 'id', 'stateSeqEnd', 'stateSeqStart'];
+  if (!sameKeys(sequence, sequenceKeys)) {
+    errors.push('manifest.interactionSequence: fields do not match interaction schema');
+    return;
+  }
+  if (sequence.id !== INTERACTION_CASE_ID) {
+    errors.push(`manifest.interactionSequence.id: expected ${INTERACTION_CASE_ID}`);
+  }
+  if (JSON.stringify(sequence.actions) !== JSON.stringify(INTERACTION_ACTIONS)) {
+    errors.push(
+      'manifest.interactionSequence.actions: expected exact ordered interaction contract',
+    );
+  }
+  const rows = states.filter((row) => row.caseId === INTERACTION_CASE_ID);
+  if (rows.length !== INTERACTION_ACTIONS.length) {
+    errors.push(`state.jsonl: expected exactly ${INTERACTION_ACTIONS.length} interaction rows`);
+    return;
+  }
+  if (sequence.stateSeqStart !== rows[0]?.seq || sequence.stateSeqEnd !== rows.at(-1)?.seq) {
+    errors.push('manifest.interactionSequence: state sequence range is inaccurate');
+  }
+  for (const [index, action] of INTERACTION_ACTIONS.entries()) {
+    const row = rows[index];
+    const expected = INTERACTION_STATE[action];
+    if (row?.action !== action || row?.seq !== rows[0].seq + index) {
+      errors.push(`${INTERACTION_CASE_ID}: action order or sequence is invalid at ${action}`);
+      continue;
+    }
+    if (
+      row.source !== 'cdp-ui-input-and-viewport' ||
+      row.captureMethod !== 'semantic-cdp' ||
+      row.reducedMotion !== false
+    ) {
+      errors.push(`${INTERACTION_CASE_ID}.${action}: state provenance is invalid`);
+    }
+    compareFields(
+      row,
+      expected,
+      ['nativeFullscreen', 'lyricsOpen', 'focus', 'playerState', 'songId'],
+      `${INTERACTION_CASE_ID}.${action}`,
+      errors,
+    );
+    validateInteractionAssertions(row, errors);
+    if (!commands.includes(`interaction ${action}: passed`)) {
+      errors.push(`commands.log: missing interaction ${action}`);
+    }
+  }
+  if (!checklist.match(/^\s*-\s*\[x\]\s+S01-interactions\s*$/im)) {
+    errors.push('checklist.md: missing completed S01-interactions entry');
+  }
+}
+
+function validateExternalProbe(states, casesById, interactionSequence, commands, errors) {
   const probes = states.filter((row) => row.caseId === 'external-native-api');
   if (probes.length !== 1) {
     errors.push('state.jsonl: expected exactly one external-native-api probe');
@@ -471,6 +765,12 @@ function validateExternalProbe(states, casesById, commands, errors) {
   const probe = probes[0];
   const lastCaseSeq = Math.max(...[...casesById.values()].map((item) => item.stateSeqEnd));
   if (probe.seq <= lastCaseSeq) errors.push('external-native-api: probe must follow all W/S cases');
+  if (
+    Number.isInteger(interactionSequence?.stateSeqEnd) &&
+    probe.seq <= interactionSequence.stateSeqEnd
+  ) {
+    errors.push('external-native-api: probe must follow the interaction sequence');
+  }
   if (
     probe.action !== 'external-native-api' ||
     probe.source !== 'cdp-native-api' ||
@@ -837,7 +1137,8 @@ export function verifyLyricsAcceptance({ platform, root }) {
     }
     const smoke = casesById.get('S01');
     if (smoke) validateCase(smoke, SMOKE_CONTRACT, states, normalizedRoot, shaEntries, errors);
-    validateExternalProbe(states, casesById, commands, errors);
+    validateInteractionSequence(manifest, states, commands, checklist, errors);
+    validateExternalProbe(states, casesById, manifest.interactionSequence, commands, errors);
   } else {
     errors.push('manifest.cases: expected array');
   }
