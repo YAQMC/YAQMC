@@ -19,6 +19,9 @@
 - Every user-visible string must exist in both `en-US` and `zh-CN` resources.
 - Evidence under `output/` is ignored and must never be staged; tracked docs summarize verified identities and outcomes only after the corresponding gate passes.
 - Windows software/safe graphics modes are not substitutes for Linux native-Wayland/X11 acceptance.
+- Native visual acceptance always uses the deterministic `fake` provider selected by the exact query
+  `?provider=fake`; the app shell exposes the stable provider ID as `data-provider-id="fake"`, and evidence from any
+  other provider is invalid.
 
 ---
 
@@ -36,12 +39,17 @@
 - Modify `src/locales/en-US.ts` and `zh-CN.ts`: labels and nonfatal fullscreen error copy.
 - Split `src-tauri/capabilities/default.json` and create `src-tauri/capabilities/main-window.json`: least-privilege fullscreen permission.
 - Modify `docs/lyrics.md`, `docs/design-system.md`, and `docs/linux-acceptance.md`: behavior, shortcuts, performance, and physical acceptance.
-- Create `src/application/artwork-source.ts` and tests: a minimal safe-source boundary used only by immersive Lyrics.
+- Create `src/application/artwork-source.ts` and tests; modify `src/application/artwork-cache.ts`,
+  `src-tauri/src/qqmusic.rs`, and `src-tauri/src/storage.rs`: a closed native artwork boundary with exact origins,
+  no redirects, image-only MIME, and validated data-URI results used only by immersive Lyrics.
 - Create `src/application/lyrics-appearance.ts` and tests: a pure projection from persisted appearance to immersive Lyrics presentation.
 - Create `scripts/capture-windows-lyrics-acceptance.ps1`: semantic WebView2 automation plus native-window image capture.
+- Create `scripts/capture-windows-lyrics-acceptance.test.ps1`: hermetic process/CDP/HWND/capture adapter tests.
 - Create `scripts/verify-lyrics-acceptance.mjs` and `scripts/verify-lyrics-acceptance.test.ts`: schema, transition, geometry, and hash verification.
 - Create `docs/windows-acceptance.md`; modify `docs/appearance.md`, `docs/linux.md`, and `docs/linux-graphics.md`: native acceptance and appearance contracts.
-- Deferred authenticated-beta delivery work: modify `scripts/collect-linux-diagnostics.sh`, `src-tauri/src/platform.rs`, and `.github/workflows/build.yml`; create `scripts/collect-linux-diagnostics.test.sh` for phase-marked final-AppImage diagnostics and synchronized embedded tester instructions.
+- Deferred authenticated-beta delivery work: modify `scripts/collect-linux-diagnostics.sh`, `src-tauri/src/platform.rs`,
+  and `.github/workflows/build.yml`; create `scripts/collect-linux-diagnostics.test.sh` for phase-marked final-AppImage
+  diagnostics, synchronized embedded tester instructions, and workflow-generated `BUILD-IDENTITY.json`/hashes.
 
 ### Task 1: Persist the Lyrics-only Focus preference
 
@@ -794,53 +802,98 @@ git commit -m "perf: bound immersive lyrics rendering work"
 - Create: `src/application/artwork-source.ts`
 - Create: `src/application/artwork-source.test.tsx`
 - Modify: `src/application/artwork-cache.ts`
+- Modify: `src-tauri/src/qqmusic.rs`
+- Modify: `src-tauri/src/storage.rs`
 
 **Interfaces:**
 
-- Produces `isCacheableArtworkSource(url)` and `useSafeArtworkSource(url)` only for the immersive Lyrics stage and
-  its transport in Task 8.
-- Native cache eligibility exactly matches Rust `is_allowed_artwork_url`: HTTPS `y.gtimg.cn` and
-  `qpic.y.qq.com`. Browser mode and local/data/asset sources remain direct.
-- In native mode, an eligible URL resolves to `null` until `qqmusic_cache_artwork` returns a data URI. On failure,
-  the raw remote URL must not enter immersive Lyrics DOM, CSS, logs, or evidence. This is required because the
-  current immersive stage unconditionally injects `currentArtworkSrc`; it is not QQ credential/auth work. Existing
-  non-Lyrics public-artwork consumers remain unchanged and are deferred to the authenticated-beta privacy audit.
+- Produces `classifyArtworkSource(source, currentOrigin)`, `isCacheableArtworkSource(source)`,
+  `isCachedArtworkDataUri(value)`, and `useSafeArtworkSource(source)` only for the immersive Lyrics stage and its
+  transport in Task 8.
+- Native direct sources are exactly: non-protocol-relative relative URLs resolved against `currentOrigin`; absolute URLs
+  whose `origin` exactly equals `currentOrigin`; any `data:` URL; any `asset:` URL; and URLs whose origin is exactly
+  `http://asset.localhost`. Reject an input beginning with `//` before URL resolution, including
+  `//y.gtimg.cn/cover.jpg`, because protocol-relative input is remote, not relative-local.
+- Native cache eligibility exactly matches Rust `is_allowed_artwork_url`: HTTPS origin on the exact hosts
+  `y.gtimg.cn` or `qpic.y.qq.com`, default/explicit port 443 only, with no username or password. Subdomains,
+  `*.music.tc.qq.com`, other HTTP(S) origins, non-443 ports, and credential-bearing URLs resolve to `null`.
+- In native mode, an eligible remote URL resolves to `null` until `qqmusic_cache_artwork` returns a syntactically
+  valid, nonempty `data:image/*;base64,...` value. Validate MIME, the literal base64 flag, alphabet/padding, and a
+  successful base64 round trip; reject raw URLs, generic `data:`, empty payloads, malformed IPC values, and stale
+  results. Browser development may keep ordinary remote URLs direct, but the native branch must follow this closed
+  policy.
+- Rust uses a dedicated artwork `reqwest::Client` with `redirect::Policy::none()`; the shared QQ request client keeps
+  its existing redirect behavior. Thus every 3xx artwork response is rejected rather than following to an unchecked
+  host. `StorageService` requires a normalized `image/*` Content-Type both for a fresh response before writing bytes
+  and for a cache hit before returning a data URI; missing/non-image MIME is rejected and any invalid cached artwork
+  row/file is evicted.
+- The raw remote URL must not enter immersive Lyrics DOM, CSS, logs, or evidence. This closes the current live-DOM
+  gap only when Task 8 adopts the hook in both `LyricsPanel` and `LyricsFullscreenTransport`; existing non-Lyrics
+  public-artwork consumers remain unchanged and are deferred to the authenticated-beta privacy audit.
 
 - [ ] **Step 1: Write failing source-policy and hook tests**
 
-Cover browser-direct; both native allowed hosts; the currently mismatched `*.music.tc.qq.com`; pending, rejected,
-and stale async resolutions; unmount cleanup; and local/data sources. Assert that the hook never returns a raw
-cache-eligible URL in native mode.
+Table-test direct `/artwork/a.svg`, `./a.svg`, `../a.svg`, exact same-origin absolute, `data:image/png;base64,AA==`,
+`asset:/a.png`, and `http://asset.localhost/a.png`. Require rejection of `//y.gtimg.cn/a.jpg` and
+`//same-origin.example/a.jpg`. In native mode, table-test exact allowed HTTPS hosts and reject HTTP, subdomains,
+credentials, non-443 ports, `https://aqqmusic.tc.qq.com/a.jpg`, `https://music.tc.qq.com/a.jpg`, and
+`https://example.com/a.jpg`; in browser mode, prove the same arbitrary HTTPS URL remains direct.
+
+For the hook, cover pending, rejected, stale, and unmount paths. Resolve the IPC mock with a valid PNG data URI, then
+mutate it to the original raw URL, `data:text/plain;base64,QQ==`, `data:image/png,raw`, empty/malformed base64, an
+object, and `null`; every mutant must yield `null`. Assert the native hook never returns an allowed raw remote URL.
+
+Add Rust unit/integration tests that exact-host URL validation rejects the frontend's former `music.tc` wildcard and
+arbitrary remotes; a test-only loopback server returning 302 proves the dedicated artwork client does not follow the
+redirect; and storage servers returning `text/html`, missing Content-Type, and `image/png` prove only the image case
+is cached/encoded. Seed an invalid cached artwork row to prove cache hits are revalidated and evicted.
 
 - [ ] **Step 2: Run the focused tests and confirm RED**
 
 ```powershell
 npx vitest run src/application/artwork-source.test.tsx
+cargo test --manifest-path src-tauri/Cargo.toml qqmusic::tests::artwork
+cargo test --manifest-path src-tauri/Cargo.toml storage::tests::artwork
 ```
 
-Expected: fail because the shared boundary does not exist and `qpic.y.qq.com` currently bypasses the TypeScript
-cache allowlist.
+Expected: fail because the closed frontend boundary and scoped redirect/MIME defenses do not exist,
+`qpic.y.qq.com` currently bypasses the TypeScript cache allowlist, and `music.tc` is incorrectly accepted.
 
-- [ ] **Step 3: Implement the shared source boundary**
+- [ ] **Step 3: Implement the closed frontend source boundary**
 
-Export the predicate from `artwork-cache.ts`, align it to Rust, and implement the hook with a generation token and
-effect cleanup so a prior song cannot win. Reuse the existing cache/invoke path; add no network path. Task 8 adopts
-the hook only inside immersive Lyrics.
+Export the predicates from `artwork-cache.ts`, align exact origins with Rust, and implement the classifier before
+calling `new URL` so `//host` cannot be mistaken for same-origin. Implement the hook with a generation token and
+effect cleanup so a prior song cannot win. Reuse `qqmusic_cache_artwork`; add no frontend network path. Parse and
+validate the returned value before placing it in the memory cache so malformed IPC results cannot poison later
+callers. Task 8, not this isolated boundary task, adopts the hook inside immersive Lyrics.
 
-- [ ] **Step 4: Run focused and regression checks**
+- [ ] **Step 4: Refuse artwork redirects and non-image responses in Rust**
+
+Add `artwork_http: Client` to `QQMusicClient`, built with the same timeouts/user agent and
+`reqwest::redirect::Policy::none()`, and pass only that client to `StorageService::artwork_data_uri`; do not alter the
+general `http` client. Extend the cache fetch contract with `required_mime_prefix: Option<&str>`: media callers pass
+`None`, artwork passes `Some("image/")`. Normalize Content-Type before streaming; reject missing/nonmatching MIME
+before creating the target file, and on cache hit revalidate recorded MIME, evicting the invalid row/file before
+returning `StorageError::InvalidContentType`. A 3xx from the no-redirect client remains a non-success HTTP error.
+
+- [ ] **Step 5: Run focused and regression checks**
 
 ```powershell
 npx vitest run src/application/artwork-source.test.tsx src/components/LyricsPanel.test.tsx src/components/LyricsFullscreenTransport.test.tsx
 npm run check
 npm run format:check
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml qqmusic::tests::artwork
+cargo test --manifest-path src-tauri/Cargo.toml storage::tests::artwork
 ```
 
 Expected: all pass, and tests restore mocked Tauri globals, promises, and DOM.
 
-- [ ] **Step 5: Commit the isolated boundary**
+- [ ] **Step 6: Commit the isolated boundary**
 
 ```powershell
-git add -- src/application/artwork-cache.ts src/application/artwork-source.ts src/application/artwork-source.test.tsx
+git add -- src/application/artwork-cache.ts src/application/artwork-source.ts src/application/artwork-source.test.tsx src-tauri/src/qqmusic.rs src-tauri/src/storage.rs
 git commit -m "fix: keep native artwork behind the cache"
 ```
 
@@ -865,12 +918,17 @@ git commit -m "fix: keep native artwork behind the cache"
 - It maps `default` to no image, `color` to the normalized custom color, `image` to the managed data URI and fit,
   and `artwork` to Task 7's safe source. Light/dark foregrounds, washes, controls, and transport use theme tokens;
   the opaque `#121411` stage and unconditional white text are removed.
+- `LyricsPanel` exposes only its already-selected primitive track identity as `data-song-id={currentTrackId}` on
+  `.lyrics-stage`; this nonlocalized seam lets Task 9 prove which deterministic fixture is rendered without exposing
+  provider payloads.
 
 - [ ] **Step 1: Write the failing pure matrix and integration tests**
 
 Table-test light/dark x default/color/image/artwork, invalid colors, missing sources, both image fits, and absence of
 raw track URLs. Extend component tests for live appearance mutation without remount, cache-pending/failure,
 reduced motion, paused same-word revision, manual follow, click seek, active-word timing, and one active-word rAF.
+Require `.lyrics-stage[data-song-id="quiet-light"]` for the fake current track, then change the current track to
+`paper-sun` and require the attribute to change; a hard-coded `quiet-light` mutant must fail.
 
 - [ ] **Step 2: Run focused tests and confirm RED**
 
@@ -882,17 +940,19 @@ Expected: fail because the stage is hard-coded dark and always consumes current 
 
 - [ ] **Step 3: Implement the projection and tokenized stage**
 
-Subscribe to primitive appearance fields, resolve artwork through `useSafeArtworkSource`, and expose stable
-`data-background-mode`/`data-image-fit`. Render an image only for managed custom image or resolved artwork. Convert
-stage, lyric, wash, scrollbar, header, focus control, and transport colors to theme tokens. Preserve the Linux
-software/safe transform used for alignment while disabling only blur and expensive effects.
+Subscribe to primitive appearance fields, call the Task 7 `useSafeArtworkSource` once in `LyricsPanel`, and pass only
+that returned safe value to the stage and `LyricsFullscreenTransport`; neither component may retain or render the raw
+track artwork URL. Expose stable `data-background-mode`/`data-image-fit`. Render an image only for managed custom
+image or resolved artwork. Convert stage, lyric, wash, scrollbar, header, focus control, and transport colors to theme
+tokens. Preserve the Linux software/safe transform used for alignment while disabling only blur and expensive effects.
+Set `data-song-id={currentTrackId ?? undefined}` on `.lyrics-stage` from the existing primitive selector; do not use
+title text or a separately cached Song object.
 
 - [ ] **Step 4: Run focused and full checks**
 
 ```powershell
 npx vitest run src/application/lyrics-appearance.test.ts src/application/artwork-source.test.tsx src/components/LyricsPanel.test.tsx src/components/LyricsFullscreenTransport.test.tsx
 npm run check
-npm run lint
 npm run format:check
 ```
 
@@ -909,7 +969,10 @@ git commit -m "fix: honor appearance in immersive lyrics"
 
 **Files:**
 
+- Modify: `src/App.tsx`
+- Modify: `src/App.test.tsx`
 - Create: `scripts/capture-windows-lyrics-acceptance.ps1`
+- Create: `scripts/capture-windows-lyrics-acceptance.test.ps1`
 - Create: `scripts/verify-lyrics-acceptance.mjs`
 - Create: `scripts/verify-lyrics-acceptance.test.ts`
 - Create ignored: `output/visual-acceptance/lyrics-focus-fullscreen/`
@@ -923,9 +986,17 @@ git commit -m "fix: honor appearance in immersive lyrics"
 - Windows attaches to a loopback-only WebView2 CDP port, locates visible controls by role/name or stable `data-*`
   state, and sends real pointer/keyboard input. It must not mutate Zustand or invoke player commands through CDP.
   Required images are real desktop crops of the native HWND client bounds; CDP screenshots are diagnostic only.
+- `App` exposes the actual provider as `.app-shell[data-provider-id]`. After CDP attaches, the collector installs its
+  preload instrumentation, navigates the existing target to the same Tauri origin with the exact URL
+  `/?provider=fake`, waits for `Page.loadEventFired`, and requires both `location.search === '?provider=fake'` and
+  `.app-shell.dataset.providerId === 'fake'` before any action. It then sends a real pointer click to the single visible
+  featured-release primary Play control on Home, opens Lyrics through the real PlayerBar control, and requires
+  `.lyrics-stage.dataset.songId === 'quiet-light'`, the fake featured album's first track. Launch arguments or
+  localized provider/title text are not accepted as identity proof.
 - Manifest identity fields are `schemaVersion`, `capturedAtUtc`, `gitCommit`, `gitTree`, `platform`, `osVersion`,
-  `appVersion`, `webview2Version`, `monitorId`, `visualBinaryPath`, `visualBinarySha256`, `visualBuildKind`, and
-  `releaseArtifact` (`path`, `sha256`, `buildKind`, or `null` before its gate).
+  `appVersion`, `webview2Version`, `monitorId`, `visualBinaryPath`, `visualBinarySha256`, `visualBuildKind`,
+  `provider`, `fixtureSongId`, and `releaseArtifact` (`path`, `sha256`, `buildKind`, or `null` before its gate).
+  `provider` is exactly `"fake"` and `fixtureSongId` is exactly `"quiet-light"` for this gate.
 - `gitCommit` is `git rev-parse HEAD`; `gitTree` is `git rev-parse HEAD^{tree}`; binary paths are absolute; hashes
   are lowercase 64-character SHA-256 hex; UTC fields are ISO 8601 with `Z`.
 - The local visual gate requires exactly `screenshots/W01.png` through `screenshots/W09.png` and the minimum-size
@@ -941,49 +1012,133 @@ git commit -m "fix: honor appearance in immersive lyrics"
 - Every JSONL row contains `seq`, `timestampUtc`, `caseId`, `action`, `source`, `logicalBounds`, `physicalBounds`,
   `devicePixelRatio`, `nativeFullscreen`, `lyricsOpen`, `focus`, `reducedMotion`, `songId`, `playerState`,
   `captureMethod`, and semantic `assertions`; `seq` is strictly increasing.
+- The verifier contains this literal immutable W-case contract and compares every field by ID; it does not derive
+  expected values from `manifest.json` or `checklist.md`:
+
+| ID  | Source geometry | Presentation      | Theme | Locale | Background | Entry path             | Exit path           | Reduced motion |
+| --- | --------------- | ----------------- | ----- | ------ | ---------- | ---------------------- | ------------------- | -------------- |
+| W01 | 1280x800        | Normal            | light | en-US  | default    | `playerbar-lyrics`     | `lyrics-close`      | false          |
+| W02 | 1280x800        | Focus             | dark  | zh-CN  | artwork    | `focus-toggle`         | `focus-toggle`      | false          |
+| W03 | 1280x800        | native fullscreen | dark  | en-US  | image      | `header-fullscreen`    | `header-fullscreen` | false          |
+| W04 | 1000x700        | Normal            | light | zh-CN  | color      | `playerbar-lyrics`     | `escape`            | true           |
+| W05 | 1000x700        | Focus             | dark  | en-US  | image      | `focus-toggle`         | `escape`            | false          |
+| W06 | 1000x700        | native fullscreen | dark  | zh-CN  | artwork    | `playerbar-fullscreen` | `escape`            | true           |
+| W07 | 1000x1000       | Normal            | dark  | en-US  | artwork    | `playerbar-lyrics`     | `lyrics-close`      | false          |
+| W08 | 1000x1000       | Focus             | light | zh-CN  | default    | `focus-toggle`         | `focus-toggle`      | true           |
+| W09 | 1000x1000       | native fullscreen | light | en-US  | color      | `f11`                  | `f11`               | false          |
+
+JSON presentation values are exactly `normal`, `focus`, and `native-fullscreen`; geometry is checked against
+`sourceLogicalBounds.width/height`, and `screenshot` must be exactly `screenshots/<ID>.png`. W04, W06, and W08 are
+the only required reduced-motion W cases. Any tuple-field edit, case-ID swap, screenshot swap, or reduced-motion
+reassignment is invalid even if overall coverage counts remain unchanged.
+
+- Before the fake-provider reload, `Page.addScriptToEvaluateOnNewDocument` wraps `requestAnimationFrame` and
+  `CSSStyleDeclaration.prototype.setProperty`. It increments `activeWordRafProgressWrites` only when
+  `--word-progress` is written while inside an rAF callback; it does not modify application or player state. For each
+  of W04/W06/W08, use `Emulation.setEmulatedMedia` with `prefers-reduced-motion: reduce`, reset the counter, exercise
+  an actively playing word, and machine-assert across `.lyrics-stage` plus all descendants that the maximum parsed
+  computed `transitionDuration` is `0ms`, maximum `animationDuration` is `0ms`, and
+  `activeWordRafProgressWrites === 0`. Persist those exact numeric assertions in the case state rows. Task 6's unit
+  test remains the product-code proof; this is native corroboration.
 - `sha256.txt` covers checklist, manifest, commands, state, every screenshot, and the visual binary. It omits itself;
   the manifest self-hash is omitted to avoid recursion. `releaseArtifact` must remain null at this checkpoint.
 
 - [ ] **Step 1: Write failing verifier fixture tests**
 
-Build a valid Windows local-visual fixture in a test-owned temporary directory, then mutate missing/extra/duplicate cases,
-commit/tree, transitions, sequence, hashes, filename traversal, private URL leakage, DPR geometry, exact restore,
-native-crop provenance, a non-null release artifact, and a release-pass claim. Restore globals/timers/directories.
+Build a valid Windows local-visual fixture in a test-owned temporary directory, then mutate missing/extra/duplicate
+cases, `provider`, `fixtureSongId`, commit/tree, transitions, sequence, hashes, filename traversal, private URL
+leakage, DPR geometry, exact restore, native-crop provenance, a non-null release artifact, and a release-pass claim.
+For every W ID, mutate
+each tuple field once; swap complete W-case objects between IDs; swap only screenshot names/hashes; move
+`reducedMotion: true` from W04/W06/W08 to another case; and set each required zero-duration/rAF assertion nonzero.
+Every mutant must fail. Restore globals/timers/directories.
+
+In `App.test.tsx`, render App under `ProviderContext` with `fakeMusicProvider` and require
+`.app-shell[data-provider-id="fake"]`; rerender under a stub with ID `qqmusic` and require `qqmusic`, preventing a
+hard-coded acceptance marker.
 
 - [ ] **Step 2: Run tests and confirm RED**
 
-Run: `npx vitest run scripts/verify-lyrics-acceptance.test.ts`
+Run: `npx vitest run src/App.test.tsx scripts/verify-lyrics-acceptance.test.ts`
 
-Expected: fail because the verifier does not exist.
+Expected: fail because the provider marker and verifier do not exist.
 
 - [ ] **Step 3: Implement the Node-stdlib verifier**
 
-Use only Node JSON/path/PNG-header/crypto APIs. Require W01-W09 plus local S01, `releaseArtifact: null`, exact logical
-restore, physical conversion within one rounded pixel per edge, both hash sources, required transitions, and
-native-crop provenance. Collect and print all errors before exiting nonzero.
+Use only Node JSON/path/PNG-header/crypto APIs. Declare the W01-W09 table above as a literal frozen object in verifier
+source. Require `provider: "fake"`, `fixtureSongId: "quiet-light"`, W01-W09 plus local S01,
+`releaseArtifact: null`, exact tuple equality, exact logical restore, physical conversion within one rounded pixel per
+edge, both hash sources, required transitions, required reduced-motion numeric assertions, and native-crop
+provenance. Collect and print all errors before exiting nonzero.
 
-- [ ] **Step 4: Implement the Windows collector**
+- [ ] **Step 4: Add stable provider identity and hermetic collector tests**
+
+Read `useMusicProvider()` inside `App` and set `data-provider-id={provider.id}` on `.app-shell`; do not expose account
+data. Structure the collector around an exported/dot-sourceable `Invoke-WindowsLyricsAcceptance` function accepting
+four injected adapter groups with exact names: `Process` (`Start`, `Stop`), `Cdp` (`Connect`, `Send`, `Disconnect`),
+`Hwnd` (`ResolveExactlyOne`, `GetClientBounds`), and `Capture` (`SaveClientPng`). Production defaults call the real
+implementations; the test script supplies scriptblocks and never launches a GUI.
+
+In `capture-windows-lyrics-acceptance.test.ps1`, implement a no-dependency assertion harness with three suites:
+
+1. success records adapter call order, proves `Page.navigate` uses the attached target's same origin plus
+   `/?provider=fake`, proves the Home Play and PlayerBar Lyrics pointer actions precede the identity assertion, emits a
+   manifest with `provider = 'fake'` and `fixtureSongId = 'quiet-light'`, and writes only adapter-supplied native crops;
+2. failure cases independently inject provider/search mismatch, fixture song `paper-sun`, ambiguous HWND, stale CDP
+   state, and crop-bounds mismatch, and require a nonzero/throwing result before a pass manifest is written;
+3. finally cleanup makes `Capture.SaveClientPng` throw after process/CDP setup, then proves `Cdp.Disconnect` and
+   `Process.Stop` each ran once and `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` was restored byte-for-byte (including the
+   originally-absent case).
+
+- [ ] **Step 5: Implement the Windows collector**
 
 Accept explicit `-Binary`, `-Output`, and `-BuildKind`; refuse a dirty tracked tree; log commands before execution;
 temporarily set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>`; resolve exactly one process
 and HWND; and clean environment/processes in `finally`. Fail on ambiguous HWND, identity mismatch, missing control,
 stale semantic state, or crop-bounds mismatch.
 
-- [ ] **Step 5: Run tooling checks**
+After initial CDP connection, enable Page/Runtime, install the rAF/style preload observer, derive the current target's
+origin, reject non-Tauri or changed origins, call `Page.navigate` to the same origin with exactly
+`/?provider=fake`, and wait for the matching `Page.loadEventFired`. Reconnect/reselect the single target if WebView2
+changes its target ID during reload. Poll until `document.readyState === 'complete'`, exact `location.search`, and the
+stable provider marker all agree; otherwise abort. Use CDP only to locate the unique visible Home featured primary Play
+button and PlayerBar Lyrics button, calculate their screen/client centers, and send real pointer input through the input
+adapter. Poll `.lyrics-stage[data-song-id]` and abort unless it becomes exactly `quiet-light`; do not set player state,
+call a player command, or match the localized title through CDP. Record `provider: 'fake'` and
+`fixtureSongId: 'quiet-light'` in the manifest.
+
+For the external-exit probe, first enter fullscreen with real UI input. Then issue these exact CDP
+`Runtime.evaluate` expressions separately, each with `awaitPromise: true` and `returnByValue: true`, rejecting
+`exceptionDetails` or a nonmatching result:
+
+```text
+window.__TAURI_INTERNALS__.metadata.currentWindow.label
+window.__TAURI_INTERNALS__.invoke('plugin:window|is_fullscreen',{label:'main'})
+window.__TAURI_INTERNALS__.invoke('plugin:window|set_fullscreen',{label:'main',value:false})
+window.__TAURI_INTERNALS__.invoke('plugin:window|is_fullscreen',{label:'main'})
+```
+
+Require label `main`, native `is_fullscreen === true` before the set, a fulfilled set call, and native
+`is_fullscreen === false` afterward; then wait for the app's semantic fullscreen state to reconcile to false and for
+exact native bounds restoration. Do not read or assume a public `window.__TAURI__` object. Label this extra probe
+`external-native-api`; it cannot satisfy a W case's normal entry/exit tuple.
+
+- [ ] **Step 6: Run tooling checks**
 
 ```powershell
-npx vitest run scripts/verify-lyrics-acceptance.test.ts
+npx vitest run src/App.test.tsx scripts/verify-lyrics-acceptance.test.ts
+powershell -NoProfile -File scripts/capture-windows-lyrics-acceptance.test.ps1
 npx prettier --check scripts/verify-lyrics-acceptance.mjs scripts/verify-lyrics-acceptance.test.ts
-powershell -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw scripts/capture-windows-lyrics-acceptance.ps1))"
+powershell -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw scripts/capture-windows-lyrics-acceptance.ps1)); [void][scriptblock]::Create((Get-Content -Raw scripts/capture-windows-lyrics-acceptance.test.ps1))"
 npm run check
 ```
 
 Expected: all pass without launching the native app.
 
-- [ ] **Step 6: Commit tooling only**
+- [ ] **Step 7: Commit tooling only**
 
 ```powershell
-git add -- scripts/capture-windows-lyrics-acceptance.ps1 scripts/verify-lyrics-acceptance.mjs scripts/verify-lyrics-acceptance.test.ts
+git add -- src/App.tsx src/App.test.tsx scripts/capture-windows-lyrics-acceptance.ps1 scripts/capture-windows-lyrics-acceptance.test.ps1 scripts/verify-lyrics-acceptance.mjs scripts/verify-lyrics-acceptance.test.ts
 git commit -m "test: make lyrics evidence verifiable"
 ```
 
@@ -1000,17 +1155,17 @@ git commit -m "test: make lyrics evidence verifiable"
 
 **Required matrix:**
 
-| ID  | Source geometry | Presentation      | Theme | Locale | Background |
-| --- | --------------- | ----------------- | ----- | ------ | ---------- |
-| W01 | 1280x800        | Normal            | light | en-US  | default    |
-| W02 | 1280x800        | Focus             | dark  | zh-CN  | artwork    |
-| W03 | 1280x800        | native fullscreen | dark  | en-US  | image      |
-| W04 | 1000x700        | Normal            | light | zh-CN  | color      |
-| W05 | 1000x700        | Focus             | dark  | en-US  | image      |
-| W06 | 1000x700        | native fullscreen | dark  | zh-CN  | artwork    |
-| W07 | 1000x1000       | Normal            | dark  | en-US  | artwork    |
-| W08 | 1000x1000       | Focus             | light | zh-CN  | default    |
-| W09 | 1000x1000       | native fullscreen | light | en-US  | color      |
+| ID  | Source geometry | Presentation      | Theme | Locale | Background | Entry path             | Exit path           | Reduced motion |
+| --- | --------------- | ----------------- | ----- | ------ | ---------- | ---------------------- | ------------------- | -------------- |
+| W01 | 1280x800        | Normal            | light | en-US  | default    | `playerbar-lyrics`     | `lyrics-close`      | false          |
+| W02 | 1280x800        | Focus             | dark  | zh-CN  | artwork    | `focus-toggle`         | `focus-toggle`      | false          |
+| W03 | 1280x800        | native fullscreen | dark  | en-US  | image      | `header-fullscreen`    | `header-fullscreen` | false          |
+| W04 | 1000x700        | Normal            | light | zh-CN  | color      | `playerbar-lyrics`     | `escape`            | true           |
+| W05 | 1000x700        | Focus             | dark  | en-US  | image      | `focus-toggle`         | `escape`            | false          |
+| W06 | 1000x700        | native fullscreen | dark  | zh-CN  | artwork    | `playerbar-fullscreen` | `escape`            | true           |
+| W07 | 1000x1000       | Normal            | dark  | en-US  | artwork    | `playerbar-lyrics`     | `lyrics-close`      | false          |
+| W08 | 1000x1000       | Focus             | light | zh-CN  | default    | `focus-toggle`         | `focus-toggle`      | true           |
+| W09 | 1000x1000       | native fullscreen | light | en-US  | color      | `f11`                  | `f11`               | false          |
 
 S01 is a separate non-release smoke of the same `--no-bundle` binary at the minimum `1000x680`; it cannot replace
 W01-W09. Every fullscreen case starts at its table geometry and restores exactly to that source logical and physical
@@ -1021,7 +1176,6 @@ rectangle after exits.
 ```powershell
 npm run format:check
 npm run check
-npm run lint
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml --all-targets
@@ -1040,17 +1194,31 @@ Record this as `visualBuildKind: "tauri-no-bundle"`. It closes local checkpoint 
 
 - [ ] **Step 3: Capture W01-W09 and S01 with the full sequence**
 
-Use the collector and real controls. Across cases: enter/exit using the visible header and PlayerBar controls; enter
-and exit with physical F11; exercise Esc priority fullscreen -> Focus -> close Lyrics; emulate reduced motion with
-CDP media emulation and verify zero computed transition/animation durations; exercise translation, romanization,
-manual scroll/follow, click seek, pause/resume, fullscreen track change, Focus PlayerBar sizing, and transport
-hide/reveal/focus pinning.
+Run the collector against the exact raw binary; it must perform its own same-origin CDP reload to `?provider=fake`
+and refuse to start W01 until query/provider equal `fake`, a real Home Play -> PlayerBar Lyrics path produces
+`data-song-id="quiet-light"`, and the manifest records both `provider: "fake"` and
+`fixtureSongId: "quiet-light"`:
 
-For the external-exit probe only, invoke raw Tauri main-window `setFullscreen(false)` through CDP without writing
-presentation state; label it `external-native-api` and verify resize-listener reconciliation. It cannot satisfy any
-normal UI path. Capture every W case from the native client crop with semantic state, DPR, logical/physical bounds,
-exact restore, and hashes. Run S01 at `1000x680` against the same binary: open Lyrics, toggle Focus, enter/exit
-fullscreen through the visible UI, seek a lyric line, and exercise Esc priority.
+```powershell
+powershell -NoProfile -File scripts/capture-windows-lyrics-acceptance.ps1 `
+  -Binary "$PWD/src-tauri/target/release/yaqmc.exe" `
+  -Output "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/windows" `
+  -BuildKind tauri-no-bundle
+```
+
+Use the exact entry/exit path in each table row, with real controls/keys. The broader state sequence additionally
+exercises Esc priority fullscreen -> Focus -> close Lyrics, translation, romanization, manual scroll/follow, click
+seek, pause/resume, fullscreen track change, Focus PlayerBar sizing, and transport hide/reveal/focus pinning. Only
+W04, W06, and W08 set reduced motion; each must record numeric zero maximum computed transition/animation duration
+and zero rAF-contained `--word-progress` writes while an active word advances. Non-reduced W cases must record
+`reducedMotion: false`; do not satisfy the gate with an unbound extra probe.
+
+For the external-exit probe only, use Task 9's exact `window.__TAURI_INTERNALS__.invoke` sequence, including label and
+native before/after checks, without writing presentation state; label it `external-native-api` and verify
+resize-listener reconciliation. It cannot satisfy any normal UI path. Capture every W case from the native client crop
+with semantic state, DPR, logical/physical bounds, exact restore, and hashes. Run S01 at `1000x680` against the same
+binary: open Lyrics, toggle Focus, enter/exit fullscreen through the visible UI, seek a lyric line, and exercise Esc
+priority.
 
 - [ ] **Step 4: Verify the visual evidence**
 
@@ -1112,6 +1280,12 @@ No current `--no-bundle` artifact may be promoted to checkpoint K.
 - Each sample records phase, UTC timestamp, process tree, RSS/PSS where available, CPU, threads, window state,
   reported Wayland/X11 backend, and graphics environment. Common evidence files follow Task 9 and do not claim a
   pass before verification.
+- The final workflow tester bundle contains `BUILD-IDENTITY.json` with exact fields `schemaVersion`, `gitCommit`,
+  `gitTree`, `workflowRunId`, `workflowRunAttempt`, `appVersion`, and `appImage` (`fileName`, `sha256`). Commit is
+  `${GITHUB_SHA}`, tree is `git rev-parse HEAD^{tree}` in the workflow checkout, run values come from
+  `${GITHUB_RUN_ID}`/`${GITHUB_RUN_ATTEMPT}`, version is `src-tauri/tauri.conf.json.version`, and the AppImage name/hash
+  identify the final repacked artifact. `SHA256SUMS` covers this identity file and every other packaged file except
+  itself.
 
 - [ ] **Step 1: Write a failing hermetic collector test**
 
@@ -1137,17 +1311,62 @@ only after a native failure. Preserve the translated surface; software/safe disa
 
 - [ ] **Step 4: Embed exact platform-tester instructions**
 
-Make the workflow artifact contain `TESTING.md`, `ACCEPTANCE.md`, `collect-linux-diagnostics.sh`,
-`verify-lyrics-acceptance.mjs`, and `SHA256SUMS`. Instructions name the exact AppImage, commands, ordered UI
-actions, output tree, archive command, and return channel, and state that only the final workflow AppImage is valid.
+Make the workflow artifact contain the final repacked AppImage, `BUILD-IDENTITY.json`, `TESTING.md`, `ACCEPTANCE.md`,
+`collect-linux-diagnostics.sh`, `verify-lyrics-acceptance.mjs`, and `SHA256SUMS`. After repacking, compute the final
+AppImage hash, write this exact JSON shape from workflow environment values, then hash every packaged file except
+`SHA256SUMS` and immediately run `sha256sum -c SHA256SUMS` from the bundle root. Use this workflow shell/Node shape
+after `final_appimage` points to the repacked file; do not construct JSON with unescaped `echo`:
+
+```bash
+export BUILD_GIT_TREE="$(git rev-parse 'HEAD^{tree}')"
+export BUILD_APP_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version")"
+export BUILD_APPIMAGE_FILE="$(basename "$final_appimage")"
+export BUILD_APPIMAGE_SHA="$(sha256sum "$final_appimage" | cut -d' ' -f1)"
+node --input-type=module <<'NODE'
+import { writeFileSync } from 'node:fs';
+
+const identity = {
+  schemaVersion: 1,
+  gitCommit: process.env.GITHUB_SHA,
+  gitTree: process.env.BUILD_GIT_TREE,
+  workflowRunId: process.env.GITHUB_RUN_ID,
+  workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+  appVersion: process.env.BUILD_APP_VERSION,
+  appImage: {
+    fileName: process.env.BUILD_APPIMAGE_FILE,
+    sha256: process.env.BUILD_APPIMAGE_SHA,
+  },
+};
+writeFileSync(
+  'release/YAQMC-linux-x86_64/BUILD-IDENTITY.json',
+  `${JSON.stringify(identity, null, 2)}\n`,
+);
+NODE
+(
+  cd release/YAQMC-linux-x86_64
+  find . -type f ! -name SHA256SUMS -printf '%P\0' | sort -z | xargs -0 sha256sum > SHA256SUMS
+  sha256sum -c SHA256SUMS
+)
+```
+
+Validate commit/tree as 40 lowercase hex, the AppImage hash as 64 lowercase hex, nonempty decimal run fields, and the
+version against Tauri config before upload. Instructions name the identity file, exact AppImage, checksum command,
+ordered UI actions, output
+tree, archive command, and return channel, state that only the final workflow AppImage is valid, and explicitly say
+the physical tester does not need a repository checkout.
 Extend the verifier with the Linux manifest/mode/phase schema and tests that reject a missing native mode, reordered
-phase, backend mismatch, and software-only pass.
+phase, backend mismatch, software-only pass, missing/malformed `BUILD-IDENTITY.json`, checksum mismatch, or any
+manifest commit/tree/run ID/run attempt/version/AppImage name/hash that differs from the packaged identity. Mutate
+each identity field and its `SHA256SUMS` entry independently; also run `--identity-only` with a `git` shim that exits
+99 and require success, proving the verifier does not depend on a checkout. Add
+`--build-identity "$PWD/BUILD-IDENTITY.json"` and `--identity-only` to the Linux CLI; the first points to the packaged
+file and the second validates only identity plus its AppImage hash before a run. The verifier never shells out to Git.
 
 Factor the `README.txt` body in `src-tauri/src/platform.rs` into a testable constant and synchronize it with the
 packaged `TESTING.md`: `auto` first, required `native-wayland` and `x11`, conditional `software`, ordered phases,
 verifier/archive commands, and final-AppImage-only identity rule. Add a Rust string-content test that asserts those
-tokens exist, `baseline` is described only as the `auto` compatibility alias, and no current baseline is called
-XWayland.
+tokens exist, the no-checkout `BUILD-IDENTITY.json` verification command is present, `baseline` is described only as
+the `auto` compatibility alias, and no current baseline is called XWayland.
 
 - [ ] **Step 5: Correct and expand Linux docs**
 
@@ -1165,6 +1384,10 @@ npx vitest run scripts/verify-lyrics-acceptance.test.ts
 npx prettier --check .github/workflows/build.yml docs/linux-acceptance.md docs/linux.md docs/linux-graphics.md
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo test --manifest-path src-tauri/Cargo.toml platform::tests
+grep -F 'BUILD-IDENTITY.json' .github/workflows/build.yml
+grep -F 'GITHUB_RUN_ID' .github/workflows/build.yml
+grep -F 'GITHUB_RUN_ATTEMPT' .github/workflows/build.yml
+grep -F 'SHA256SUMS' .github/workflows/build.yml
 git diff --check
 ```
 
@@ -1188,20 +1411,25 @@ git commit -m "test: phase linux lyrics acceptance"
 - Update ignored: `output/goal-progress.md`
 
 **Prerequisite:** Tasks 7-11 are committed and the final GitHub workflow for that exact clean commit has completed.
-Download its final AppImage and `SHA256SUMS`. A local/provisional AppImage is invalid. The final AppImage hash is
-intentionally absent until this checkpoint verifies it.
+Download and extract the workflow tester bundle containing its final AppImage, `BUILD-IDENTITY.json`, and
+`SHA256SUMS`; no repository checkout is required or accepted as identity evidence. A local/provisional AppImage is
+invalid. The final AppImage hash is intentionally absent until this checkpoint verifies it.
 
 - [ ] **Step 1: Verify final artifact identity before launch**
 
-On the physical Arch machine:
+On the physical Arch machine, from the extracted workflow bundle root:
 
 ```bash
 sha256sum -c SHA256SUMS
-git rev-parse HEAD
+node verify-lyrics-acceptance.mjs --platform linux \
+  --build-identity "$PWD/BUILD-IDENTITY.json" \
+  --identity-only
 ```
 
-Record workflow URL, Git commit/tree, AppImage filename/version/hash, OS/kernel/compositor, monitor, scale, and DPR
-in the ignored manifest. Stop on any identity mismatch.
+Any build-identity/checksum error is fatal. Populate the ignored manifest from `BUILD-IDENTITY.json`, then record
+workflow URL, run ID/attempt, Git commit/tree, AppImage filename/version/hash, OS/kernel/compositor, monitor, scale,
+and DPR. The verifier must compare those manifest fields back to the packaged file without invoking Git. Stop on any
+identity mismatch.
 
 - [ ] **Step 2: Run required physical modes on that AppImage**
 
@@ -1215,7 +1443,9 @@ Run `software` only after a reproducible native graphics failure. It is diagnost
 - [ ] **Step 3: Verify and return ignored evidence**
 
 ```bash
-node scripts/verify-lyrics-acceptance.mjs --platform linux --root "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/linux"
+node verify-lyrics-acceptance.mjs --platform linux \
+  --root "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/linux" \
+  --build-identity "$PWD/BUILD-IDENTITY.json"
 tar -C output/visual-acceptance/lyrics-focus-fullscreen -czf lyrics-linux-acceptance.tar.gz linux
 sha256sum lyrics-linux-acceptance.tar.gz
 ```
