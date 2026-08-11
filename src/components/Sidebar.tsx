@@ -1,4 +1,4 @@
-import { Compass, Heart, Home, Library, ListMusic, Search, Settings } from 'lucide-react';
+import { Clock3, Compass, Heart, Home, Library, ListMusic, Search, Settings } from 'lucide-react';
 import { isPrimaryRoute, type AppRoute } from '../application/navigation';
 import { useMusicProvider } from '../application/provider-context';
 import { useTranslation } from 'react-i18next';
@@ -53,7 +53,8 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
         <button
           type="button"
           className="sidebar__item"
-          onClick={() => onNavigate({ page: 'library' })}
+          data-active={isPrimaryRoute(route, 'favorites') || undefined}
+          onClick={() => onNavigate({ page: 'favorites' })}
         >
           <Heart size={18} />
           <span>{t('favorites')}</span>
@@ -61,10 +62,24 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
         <button
           type="button"
           className="sidebar__item"
-          onClick={() => onNavigate({ page: 'library' })}
+          data-active={
+            isPrimaryRoute(route, 'account-playlists') ||
+            isPrimaryRoute(route, 'account-playlist') ||
+            undefined
+          }
+          onClick={() => onNavigate({ page: 'account-playlists' })}
         >
           <ListMusic size={18} />
           <span>{t('playlists')}</span>
+        </button>
+        <button
+          type="button"
+          className="sidebar__item"
+          data-active={isPrimaryRoute(route, 'account-recent') || undefined}
+          onClick={() => onNavigate({ page: 'account-recent' })}
+        >
+          <Clock3 size={18} />
+          <span>{t('recentlyPlayed')}</span>
         </button>
 
         <p className="sidebar__section-label">{t('application')}</p>

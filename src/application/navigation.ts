@@ -5,6 +5,10 @@ export type AppRoute =
   | { page: 'search'; query?: string }
   | { page: 'explore' }
   | { page: 'library' }
+  | { page: 'favorites' }
+  | { page: 'account-playlists' }
+  | { page: 'account-playlist'; id: EntityId }
+  | { page: 'account-recent' }
   | { page: 'settings' }
   | { page: 'album'; id: EntityId }
   | { page: 'playlist'; id: EntityId };

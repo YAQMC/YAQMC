@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Album, MediaCollection, Playlist } from './domain/music';
+import type { AccountPlaylistDetail, Album, MediaCollection, Playlist } from './domain/music';
 import { useCatalog } from './application/use-catalog';
 import { useTheme } from './application/use-theme';
 import type { AppRoute } from './application/navigation';
@@ -8,6 +8,13 @@ import { usePlayerStore } from './application/player-store';
 import { isNativeRuntime, useNativePlayerRuntime } from './application/native-player-runtime';
 import { useLyricsCoordinator } from './application/use-lyrics-coordinator';
 import { useMusicProvider } from './application/provider-context';
+import {
+  accountPlaylistDetailToPlaylist,
+  type AccountListResource,
+  type LibraryResource,
+  useAccountStore,
+} from './application/account-runtime';
+import { isAccountMusicProvider } from './providers/music-provider';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
@@ -66,6 +73,7 @@ function collectEntities(collections: MediaCollection[]) {
 export default function App() {
   const { t } = useTranslation('pages');
   const provider = useMusicProvider();
+  const accountProvider = isAccountMusicProvider(provider) ? provider : null;
   useNativePlayerRuntime();
   useLyricsCoordinator();
   usePreferencesRuntime(true);
@@ -80,6 +88,18 @@ export default function App() {
   const fullscreenPending = useLyricsPresentationStore((state) => state.pending);
   const fullscreenError = useLyricsPresentationStore((state) => state.error);
   const syncFullscreen = useLyricsPresentationStore((state) => state.sync);
+  const accountSnapshot = useAccountStore((state) => state.snapshot);
+  const favorites = useAccountStore((state) => state.favorites);
+  const accountPlaylists = useAccountStore((state) => state.playlists);
+  const accountRecent = useAccountStore((state) => state.recent);
+  const accountPlaylistDetails = useAccountStore((state) => state.accountPlaylistDetails);
+  const openAccountDialog = useAccountStore((state) => state.openDialog);
+  const loadFavorites = useAccountStore((state) => state.loadFavorites);
+  const loadPlaylists = useAccountStore((state) => state.loadPlaylists);
+  const loadRecent = useAccountStore((state) => state.loadRecent);
+  const loadNext = useAccountStore((state) => state.loadNext);
+  const loadAccountPlaylist = useAccountStore((state) => state.loadAccountPlaylist);
+  const loadNextAccountPlaylist = useAccountStore((state) => state.loadNextAccountPlaylist);
   const previousLyricsOpen = useRef(lyricsOpen);
   const [history, setHistory] = useState<NavigationHistory>({ entries: [initialRoute], index: 0 });
   const route = history.entries[history.index] ?? initialRoute;
@@ -160,6 +180,27 @@ export default function App() {
   useEffect(() => {
     if (catalog.status === 'ready') hydrateQueue(catalog.home.featured.album.tracks);
   }, [catalog, hydrateQueue]);
+
+  useEffect(() => {
+    if (!accountProvider) return;
+    if (route.page === 'library' || route.page === 'account-playlists') {
+      void loadPlaylists(accountProvider, true);
+    } else if (route.page === 'favorites') {
+      void loadFavorites(accountProvider, true);
+    } else if (route.page === 'account-recent') {
+      void loadRecent(accountProvider, true);
+    } else if (route.page === 'account-playlist') {
+      void loadAccountPlaylist(accountProvider, route.id, true);
+    }
+  }, [
+    accountProvider,
+    accountSnapshot.revision,
+    loadAccountPlaylist,
+    loadFavorites,
+    loadPlaylists,
+    loadRecent,
+    route,
+  ]);
 
   useEffect(() => {
     let disposed = false;
@@ -259,9 +300,66 @@ export default function App() {
     };
   }, [catalog]);
 
+  const retryAccountResource = useCallback(
+    (resource: AccountListResource) => {
+      if (!accountProvider) return;
+      if (resource === 'favorites') void loadFavorites(accountProvider, true);
+      else if (resource === 'playlists') void loadPlaylists(accountProvider, true);
+      else void loadRecent(accountProvider, true);
+    },
+    [accountProvider, loadFavorites, loadPlaylists, loadRecent],
+  );
+
+  const loadMoreAccountResource = useCallback(
+    (resource: AccountListResource) => {
+      if (accountProvider) void loadNext(accountProvider, resource);
+    },
+    [accountProvider, loadNext],
+  );
+
   let pageContent;
   if (route.page === 'settings') {
     pageContent = <SettingsPage />;
+  } else if (
+    route.page === 'library' ||
+    route.page === 'favorites' ||
+    route.page === 'account-playlists' ||
+    route.page === 'account-recent'
+  ) {
+    pageContent = (
+      <LibraryPage
+        view={
+          route.page === 'library'
+            ? 'summary'
+            : route.page === 'account-playlists'
+              ? 'playlists'
+              : route.page === 'account-recent'
+                ? 'recent'
+                : 'favorites'
+        }
+        snapshot={accountSnapshot}
+        favorites={favorites}
+        playlists={accountPlaylists}
+        recent={accountRecent}
+        onNavigate={navigate}
+        onSignIn={openAccountDialog}
+        onRetry={retryAccountResource}
+        onLoadMore={loadMoreAccountResource}
+      />
+    );
+  } else if (route.page === 'account-playlist') {
+    pageContent = (
+      <AccountPlaylistRoute
+        id={route.id}
+        resource={accountPlaylistDetails[route.id] ?? { status: 'idle' }}
+        onRetry={() => {
+          if (accountProvider) void loadAccountPlaylist(accountProvider, route.id, true);
+        }}
+        onLoadMore={() => {
+          if (accountProvider) void loadNextAccountPlaylist(accountProvider, route.id);
+        }}
+      />
+    );
   } else if (catalog.status === 'loading') {
     pageContent = <LoadingState />;
   } else if (catalog.status === 'error') {
@@ -283,9 +381,6 @@ export default function App() {
         break;
       case 'explore':
         pageContent = <ExplorePage feed={catalog.home} onNavigate={navigate} />;
-        break;
-      case 'library':
-        pageContent = <LibraryPage library={catalog.library} onNavigate={navigate} />;
         break;
       case 'album': {
         const album = entities.albums.find((candidate) => candidate.id === route.id);
@@ -351,6 +446,73 @@ function MissingEntity({ message }: { message: string }) {
     <div className="empty-state">
       <h1>{t('itemUnavailable')}</h1>
       <p>{message}</p>
+    </div>
+  );
+}
+
+function AccountPlaylistRoute({
+  id,
+  resource,
+  onRetry,
+  onLoadMore,
+}: {
+  id: string;
+  resource: LibraryResource<AccountPlaylistDetail>;
+  onRetry: () => void;
+  onLoadMore: () => void;
+}) {
+  const { t } = useTranslation('pages');
+  const { t: common } = useTranslation('common');
+  const detail =
+    resource.status === 'ready' || resource.status === 'stale'
+      ? resource.data
+      : resource.status === 'loading' || resource.status === 'error'
+        ? resource.data
+        : null;
+
+  if (detail) {
+    return (
+      <>
+        {(resource.status === 'stale' || resource.status === 'error') && (
+          <div className="account-library-notice" role="status">
+            <span>
+              {resource.status === 'stale'
+                ? t('library.stale')
+                : t(`library.errors.${resource.error}`)}
+            </span>
+            <button type="button" onClick={onRetry}>
+              {common('retry')}
+            </button>
+          </div>
+        )}
+        <PlaylistPage
+          key={id}
+          playlist={accountPlaylistDetailToPlaylist(detail)}
+          accountSummary={detail.summary}
+          hasMore={resource.status === 'ready' && resource.nextCursor !== null}
+          loadingMore={resource.status === 'loading'}
+          onLoadMore={onLoadMore}
+        />
+      </>
+    );
+  }
+  if (resource.status === 'idle' || resource.status === 'loading') {
+    return <LoadingState label={t('loadingPlaylist')} />;
+  }
+  if (resource.status === 'account-required' || resource.status === 'reauthentication-required') {
+    return <MissingEntity message={t('library.signInBody')} />;
+  }
+  return (
+    <div className="empty-state empty-state--error">
+      <h1>{t('itemUnavailable')}</h1>
+      <p>
+        {resource.status === 'error'
+          ? t(`library.errors.${resource.error}`)
+          : t('playlistLoadFailed')}
+      </p>
+      <button type="button" onClick={onRetry}>
+        {common('retry')}
+      </button>
     </div>
   );
 }

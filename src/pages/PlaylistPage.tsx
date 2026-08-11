@@ -1,7 +1,7 @@
 import { Check, MoreHorizontal, Play, Shuffle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { usePlayerStore } from '../application/player-store';
-import type { Playlist } from '../domain/music';
+import type { AccountPlaylistSummary, Playlist } from '../domain/music';
 import { formatTotalDuration } from '../utils/format';
 import { TrackList } from '../components/TrackList';
 import { Artwork } from '../components/ui/Artwork';
@@ -10,16 +10,31 @@ import { useTranslation } from 'react-i18next';
 
 interface PlaylistPageProps {
   playlist: Playlist;
+  accountSummary?: AccountPlaylistSummary;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
-export function PlaylistPage({ playlist }: PlaylistPageProps) {
+export function PlaylistPage({
+  playlist,
+  accountSummary,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+}: PlaylistPageProps) {
   const { t, i18n } = useTranslation('pages', { keyPrefix: 'playlist' });
   const { t: common } = useTranslation('common');
   const playTracks = usePlayerStore((state) => state.playTracks);
   const totalDuration = playlist.tracks.reduce((sum, track) => sum + track.durationMs, 0);
 
   return (
-    <div className="page detail-page">
+    <div
+      className="page detail-page"
+      data-account-ownership={accountSummary?.ownership}
+      data-can-rename={accountSummary?.capabilities.canRename || undefined}
+      data-can-delete={accountSummary?.capabilities.canDelete || undefined}
+    >
       <section
         className="detail-hero"
         style={{ '--detail-color': playlist.artwork.dominantColor } as CSSProperties}
@@ -39,6 +54,17 @@ export function PlaylistPage({ playlist }: PlaylistPageProps) {
             {common('songCount', { count: playlist.tracks.length })},{' '}
             {formatTotalDuration(totalDuration, i18n.resolvedLanguage ?? i18n.language)}
           </p>
+          {accountSummary && (
+            <p className="account-playlist-capability" role="status">
+              {accountSummary.ownership === 'owned' ? t('owned') : t('collected')} ·{' '}
+              {accountSummary.capabilities.canAddTracks ||
+              accountSummary.capabilities.canRemoveTracks ||
+              accountSummary.capabilities.canRename ||
+              accountSummary.capabilities.canDelete
+                ? t('editable')
+                : t('readOnly')}
+            </p>
+          )}
           <div className="detail-hero__actions">
             <button
               type="button"
@@ -65,6 +91,13 @@ export function PlaylistPage({ playlist }: PlaylistPageProps) {
 
       <section className="detail-track-section" aria-label={t('tracks', { title: playlist.title })}>
         <TrackList tracks={playlist.tracks} showAlbum />
+        {(hasMore || loadingMore) && (
+          <div className="account-library-pagination">
+            <button type="button" disabled={loadingMore} onClick={onLoadMore}>
+              {loadingMore ? t('loadingMore') : t('loadMore')}
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );

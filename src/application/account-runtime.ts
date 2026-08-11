@@ -1,6 +1,15 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { AccountSnapshot } from '../domain/music';
+import type {
+  AccountPlaylistDetail,
+  AccountPlaylistSummary,
+  AccountSnapshot,
+  EntityId,
+  Page,
+  Playlist,
+  RemotePlayHistoryItem,
+  Song,
+} from '../domain/music';
 import { ProviderError } from '../domain/music';
 import {
   isAccountMusicProvider,
@@ -10,6 +19,38 @@ import {
 
 export type AccountRuntimeError =
   'network' | 'authorization' | 'secure-store' | 'protocol' | 'unknown';
+
+export type LibraryResourceError = 'network' | 'protocol' | 'unsupported' | 'unknown';
+
+interface LoadedLibraryResource<T> {
+  data: T;
+  nextCursor: string | null;
+  total: number | null;
+  fetchedAtMs: number;
+  authRevision: number;
+}
+
+export type LibraryResource<T> =
+  | { status: 'idle' }
+  | {
+      status: 'loading';
+      data: T | null;
+      nextCursor: string | null;
+      requestedCursor: string | null;
+    }
+  | ({ status: 'ready' } & LoadedLibraryResource<T>)
+  | { status: 'empty' }
+  | ({ status: 'stale' } & Omit<LoadedLibraryResource<T>, 'nextCursor'>)
+  | { status: 'account-required' }
+  | { status: 'reauthentication-required' }
+  | {
+      status: 'error';
+      error: LibraryResourceError;
+      data: T | null;
+      nextCursor: string | null;
+    };
+
+export type AccountListResource = 'favorites' | 'playlists' | 'recent';
 
 type OwnedSnapshot = Extract<
   AccountSnapshot,
@@ -22,6 +63,10 @@ interface AccountStoreState {
   dialogOpen: boolean;
   busy: boolean;
   error: AccountRuntimeError | null;
+  favorites: LibraryResource<Song[]>;
+  playlists: LibraryResource<AccountPlaylistSummary[]>;
+  recent: LibraryResource<RemotePlayHistoryItem[]>;
+  accountPlaylistDetails: Record<EntityId, LibraryResource<AccountPlaylistDetail>>;
   openDialog: () => void;
   closeDialog: (provider: AccountMusicProvider) => Promise<void>;
   refreshSnapshot: (provider: AccountMusicProvider) => Promise<void>;
@@ -30,6 +75,16 @@ interface AccountStoreState {
   refreshQr: (provider: AccountMusicProvider) => Promise<void>;
   cancelLogin: (provider: AccountMusicProvider) => Promise<void>;
   signOut: (provider: AccountMusicProvider) => Promise<void>;
+  loadFavorites: (provider: AccountMusicProvider, reset?: boolean) => Promise<void>;
+  loadPlaylists: (provider: AccountMusicProvider, reset?: boolean) => Promise<void>;
+  loadRecent: (provider: AccountMusicProvider, reset?: boolean) => Promise<void>;
+  loadNext: (provider: AccountMusicProvider, resource: AccountListResource) => Promise<void>;
+  loadAccountPlaylist: (
+    provider: AccountMusicProvider,
+    id: EntityId,
+    reset?: boolean,
+  ) => Promise<void>;
+  loadNextAccountPlaylist: (provider: AccountMusicProvider, id: EntityId) => Promise<void>;
 }
 
 const initialSnapshot: AccountSnapshot = {
@@ -56,6 +111,60 @@ let runtimeProvider: AccountMusicProvider | null = null;
 let runtimeAbortController: AbortController | null = null;
 const blockedAttempts = new Set<string>();
 const cancellationRequests = new Map<string, Promise<AccountSnapshot>>();
+const libraryGenerations: Record<AccountListResource, number> = {
+  favorites: 0,
+  playlists: 0,
+  recent: 0,
+};
+const accountPlaylistGenerations = new Map<EntityId, number>();
+
+const idleResource = <T>(): LibraryResource<T> => ({ status: 'idle' });
+
+function invalidateLibraryRequests(): void {
+  libraryGenerations.favorites += 1;
+  libraryGenerations.playlists += 1;
+  libraryGenerations.recent += 1;
+  for (const [id, generation] of accountPlaylistGenerations) {
+    accountPlaylistGenerations.set(id, generation + 1);
+  }
+}
+
+function resourceForSnapshot<T>(snapshot: AccountSnapshot): LibraryResource<T> {
+  switch (snapshot.state) {
+    case 'authenticated':
+      return idleResource();
+    case 'restoring-session':
+    case 'starting-login':
+    case 'waiting-for-scan':
+    case 'waiting-for-confirmation':
+      return { status: 'loading', data: null, nextCursor: null, requestedCursor: null };
+    case 'session-expired':
+    case 'reauthentication-required':
+      return { status: 'reauthentication-required' };
+    case 'secure-store-unavailable':
+      return { status: 'error', error: 'unknown', data: null, nextCursor: null };
+    case 'network-error':
+      return { status: 'error', error: 'network', data: null, nextCursor: null };
+    case 'protocol-error':
+      return { status: 'error', error: 'protocol', data: null, nextCursor: null };
+    case 'guest':
+    case 'cancelled':
+    case 'expired':
+    case 'rejected':
+      return { status: 'account-required' };
+  }
+}
+
+function libraryResetForSnapshot(snapshot: AccountSnapshot) {
+  invalidateLibraryRequests();
+  accountPlaylistGenerations.clear();
+  return {
+    favorites: resourceForSnapshot<Song[]>(snapshot),
+    playlists: resourceForSnapshot<AccountPlaylistSummary[]>(snapshot),
+    recent: resourceForSnapshot<RemotePlayHistoryItem[]>(snapshot),
+    accountPlaylistDetails: {} as Record<EntityId, LibraryResource<AccountPlaylistDetail>>,
+  };
+}
 
 function ownedSnapshot(snapshot: AccountSnapshot): OwnedSnapshot | null {
   return snapshot.state === 'starting-login' ||
@@ -108,7 +217,8 @@ function commitSnapshot(snapshot: AccountSnapshot): void {
     blockedAttempts.delete(snapshot.attemptId);
     cancellationRequests.delete(snapshot.attemptId);
   }
-  const dialogOpen = useAccountStore.getState().dialogOpen;
+  const currentStore = useAccountStore.getState();
+  const dialogOpen = currentStore.dialogOpen;
   const displayedQrImageDataUri =
     dialogOpen && snapshot.state === 'waiting-for-scan'
       ? safeQrImage(snapshot.qrImageDataUri)
@@ -119,6 +229,10 @@ function commitSnapshot(snapshot: AccountSnapshot): void {
     busy: false,
     error:
       snapshot.state === 'waiting-for-scan' && displayedQrImageDataUri === null ? 'protocol' : null,
+    ...(currentStore.snapshot.revision !== snapshot.revision ||
+    currentStore.snapshot.state !== snapshot.state
+      ? libraryResetForSnapshot(snapshot)
+      : {}),
   });
 }
 
@@ -249,12 +363,313 @@ function disposeOwnership(provider: AccountMusicProvider): void {
   });
 }
 
+function listResource<T>(resource: AccountListResource): LibraryResource<T[]> {
+  return useAccountStore.getState()[resource] as LibraryResource<T[]>;
+}
+
+function publishListResource<T>(resource: AccountListResource, value: LibraryResource<T[]>): void {
+  if (resource === 'favorites') {
+    useAccountStore.setState({ favorites: value as LibraryResource<Song[]> });
+  } else if (resource === 'playlists') {
+    useAccountStore.setState({
+      playlists: value as LibraryResource<AccountPlaylistSummary[]>,
+    });
+  } else {
+    useAccountStore.setState({
+      recent: value as LibraryResource<RemotePlayHistoryItem[]>,
+    });
+  }
+}
+
+function loadedData<T>(resource: LibraryResource<T>): T | null {
+  if (resource.status === 'ready' || resource.status === 'stale') return resource.data;
+  if (resource.status === 'loading' || resource.status === 'error') return resource.data;
+  return null;
+}
+
+function nextCursor<T>(resource: LibraryResource<T>): string | null {
+  if (resource.status === 'ready') return resource.nextCursor;
+  if (resource.status === 'error' && resource.data !== null) return resource.nextCursor;
+  return null;
+}
+
+function mergeFirstSeen<T>(base: T[], incoming: T[], keyOf: (item: T) => EntityId): T[] {
+  const seen = new Set(base.map(keyOf));
+  const merged = [...base];
+  for (const item of incoming) {
+    const key = keyOf(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+  }
+  return merged;
+}
+
+function classifyLibraryFailure(
+  error: unknown,
+): LibraryResourceError | 'cancelled' | 'reauthentication-required' {
+  if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled';
+  const code =
+    error instanceof ProviderError
+      ? error.code
+      : error && typeof error === 'object' && 'code' in error
+        ? String((error as { code: unknown }).code)
+        : null;
+  if (code === 'cancelled') return 'cancelled';
+  if (code === 'authentication-expired' || code === 'authorization-rejected') {
+    return 'reauthentication-required';
+  }
+  if (code === 'offline' || code === 'timeout' || code === 'rate-limited') return 'network';
+  if (code === 'schema-changed' || code === 'malformed-response') return 'protocol';
+  if (code === 'unsupported-operation') return 'unsupported';
+  return 'unknown';
+}
+
+function canCommitListResult(
+  resource: AccountListResource,
+  generation: number,
+  revision: number,
+  requestedCursor: string | null,
+): boolean {
+  const snapshot = useAccountStore.getState().snapshot;
+  const current = listResource(resource);
+  return (
+    libraryGenerations[resource] === generation &&
+    snapshot.state === 'authenticated' &&
+    snapshot.revision === revision &&
+    current.status === 'loading' &&
+    current.requestedCursor === requestedCursor
+  );
+}
+
+async function loadPagedList<T>(options: {
+  provider: AccountMusicProvider;
+  resource: AccountListResource;
+  reset: boolean;
+  capability: 'favoriteRead' | 'playlistRead' | 'recentHistoryRead';
+  request: (cursor: string | undefined, signal?: AbortSignal) => Promise<Page<T>>;
+  keyOf: (item: T) => EntityId;
+}): Promise<void> {
+  const { provider, resource, reset, capability, request, keyOf } = options;
+  const snapshot = useAccountStore.getState().snapshot;
+  if (snapshot.state !== 'authenticated') {
+    publishListResource(resource, resourceForSnapshot<T[]>(snapshot));
+    return;
+  }
+  if (!snapshot.capabilities[capability]) {
+    publishListResource(resource, {
+      status: 'error',
+      error: 'unsupported',
+      data: null,
+      nextCursor: null,
+    });
+    return;
+  }
+
+  const previous = listResource<T>(resource);
+  if (previous.status === 'loading') return;
+  const previousData = reset ? [] : (loadedData(previous) ?? []);
+  const requestedCursor = reset ? null : nextCursor(previous);
+  if (!reset && requestedCursor === null) return;
+  const revision = snapshot.revision;
+  const generation = ++libraryGenerations[resource];
+  publishListResource(resource, {
+    status: 'loading',
+    data: previousData.length > 0 ? previousData : null,
+    nextCursor: requestedCursor,
+    requestedCursor,
+  });
+
+  try {
+    const page = await request(requestedCursor ?? undefined, runtimeSignal(provider));
+    if (
+      !canCommitListResult(resource, generation, revision, requestedCursor) ||
+      page.authRevision !== revision
+    ) {
+      return;
+    }
+    const data = mergeFirstSeen(previousData, page.items, keyOf);
+    if (data.length === 0) {
+      publishListResource(resource, { status: 'empty' });
+    } else if (page.stale) {
+      publishListResource(resource, {
+        status: 'stale',
+        data,
+        total: page.total,
+        fetchedAtMs: page.fetchedAtMs,
+        authRevision: page.authRevision,
+      });
+    } else {
+      publishListResource(resource, {
+        status: 'ready',
+        data,
+        nextCursor: page.nextCursor,
+        total: page.total,
+        fetchedAtMs: page.fetchedAtMs,
+        authRevision: page.authRevision,
+      });
+    }
+  } catch (error) {
+    if (!canCommitListResult(resource, generation, revision, requestedCursor)) return;
+    const failure = classifyLibraryFailure(error);
+    if (failure === 'cancelled') {
+      publishListResource(resource, previous);
+    } else if (failure === 'reauthentication-required') {
+      publishListResource(resource, { status: 'reauthentication-required' });
+    } else {
+      publishListResource(resource, {
+        status: 'error',
+        error: failure,
+        data: previousData.length > 0 ? previousData : null,
+        nextCursor: requestedCursor,
+      });
+    }
+  }
+}
+
+function setAccountPlaylistResource(
+  id: EntityId,
+  resource: LibraryResource<AccountPlaylistDetail>,
+): void {
+  useAccountStore.setState((state) => ({
+    accountPlaylistDetails: { ...state.accountPlaylistDetails, [id]: resource },
+  }));
+}
+
+function canCommitAccountPlaylist(
+  id: EntityId,
+  generation: number,
+  revision: number,
+  requestedCursor: string | null,
+): boolean {
+  const state = useAccountStore.getState();
+  const current = state.accountPlaylistDetails[id];
+  return (
+    accountPlaylistGenerations.get(id) === generation &&
+    state.snapshot.state === 'authenticated' &&
+    state.snapshot.revision === revision &&
+    current?.status === 'loading' &&
+    current.requestedCursor === requestedCursor
+  );
+}
+
+async function loadAccountPlaylistResource(
+  provider: AccountMusicProvider,
+  id: EntityId,
+  reset: boolean,
+): Promise<void> {
+  const snapshot = useAccountStore.getState().snapshot;
+  if (snapshot.state !== 'authenticated') {
+    setAccountPlaylistResource(id, resourceForSnapshot(snapshot));
+    return;
+  }
+  if (!snapshot.capabilities.playlistRead) {
+    setAccountPlaylistResource(id, {
+      status: 'error',
+      error: 'unsupported',
+      data: null,
+      nextCursor: null,
+    });
+    return;
+  }
+  const previous = useAccountStore.getState().accountPlaylistDetails[id] ?? idleResource();
+  if (previous.status === 'loading') return;
+  const previousDetail = reset ? null : loadedData(previous);
+  const requestedCursor = reset ? null : nextCursor(previous);
+  if (!reset && requestedCursor === null) return;
+  const revision = snapshot.revision;
+  const generation = (accountPlaylistGenerations.get(id) ?? 0) + 1;
+  accountPlaylistGenerations.set(id, generation);
+  setAccountPlaylistResource(id, {
+    status: 'loading',
+    data: previousDetail,
+    nextCursor: requestedCursor,
+    requestedCursor,
+  });
+
+  try {
+    const detail = await provider.getAccountPlaylistTracks(
+      id,
+      requestedCursor ?? undefined,
+      100,
+      runtimeSignal(provider),
+    );
+    if (
+      !canCommitAccountPlaylist(id, generation, revision, requestedCursor) ||
+      detail.tracks.authRevision !== revision
+    ) {
+      return;
+    }
+    const tracks = mergeFirstSeen(
+      previousDetail?.tracks.items ?? [],
+      detail.tracks.items,
+      (song) => song.id,
+    );
+    const merged: AccountPlaylistDetail = {
+      summary: detail.summary,
+      tracks: { ...detail.tracks, items: tracks },
+    };
+    const loaded: LoadedLibraryResource<AccountPlaylistDetail> = {
+      data: merged,
+      nextCursor: detail.tracks.nextCursor,
+      total: detail.tracks.total,
+      fetchedAtMs: detail.tracks.fetchedAtMs,
+      authRevision: detail.tracks.authRevision,
+    };
+    if (detail.tracks.stale) {
+      setAccountPlaylistResource(id, {
+        status: 'stale',
+        data: loaded.data,
+        total: loaded.total,
+        fetchedAtMs: loaded.fetchedAtMs,
+        authRevision: loaded.authRevision,
+      });
+    } else {
+      setAccountPlaylistResource(id, { status: 'ready', ...loaded });
+    }
+  } catch (error) {
+    if (!canCommitAccountPlaylist(id, generation, revision, requestedCursor)) return;
+    const failure = classifyLibraryFailure(error);
+    if (failure === 'cancelled') {
+      setAccountPlaylistResource(id, previous);
+    } else if (failure === 'reauthentication-required') {
+      setAccountPlaylistResource(id, { status: 'reauthentication-required' });
+    } else {
+      setAccountPlaylistResource(id, {
+        status: 'error',
+        error: failure,
+        data: previousDetail,
+        nextCursor: requestedCursor,
+      });
+    }
+  }
+}
+
+export function accountPlaylistDetailToPlaylist(detail: AccountPlaylistDetail): Playlist {
+  return {
+    id: detail.summary.id,
+    title: detail.summary.title,
+    description: detail.summary.description,
+    owner: detail.summary.owner,
+    artwork: detail.summary.artwork,
+    updatedLabel:
+      detail.summary.updatedAtMs === null
+        ? 'QQ Music'
+        : String(new Date(detail.summary.updatedAtMs).getUTCFullYear()),
+    tracks: detail.tracks.items,
+  };
+}
+
 export const useAccountStore = create<AccountStoreState>((set, get) => ({
   snapshot: initialSnapshot,
   displayedQrImageDataUri: null,
   dialogOpen: false,
   busy: false,
   error: null,
+  favorites: idleResource(),
+  playlists: idleResource(),
+  recent: idleResource(),
+  accountPlaylistDetails: {},
   openDialog: () => {
     const snapshot = get().snapshot;
     const owner = ownedSnapshot(snapshot);
@@ -340,6 +755,41 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     set({ dialogOpen: false, displayedQrImageDataUri: null });
     await runSnapshotRequest(provider, (signal) => provider.signOut(signal), true);
   },
+  loadFavorites: (provider, reset = true) =>
+    loadPagedList({
+      provider,
+      resource: 'favorites',
+      reset,
+      capability: 'favoriteRead',
+      request: (cursor, signal) => provider.getFavoriteSongs(cursor, 100, signal),
+      keyOf: (song) => song.id,
+    }),
+  loadPlaylists: (provider, reset = true) =>
+    loadPagedList({
+      provider,
+      resource: 'playlists',
+      reset,
+      capability: 'playlistRead',
+      request: (cursor, signal) => provider.getAccountPlaylists(cursor, 100, signal),
+      keyOf: (playlist) => playlist.id,
+    }),
+  loadRecent: (provider, reset = true) =>
+    loadPagedList({
+      provider,
+      resource: 'recent',
+      reset,
+      capability: 'recentHistoryRead',
+      request: (cursor, signal) => provider.getAccountRecentlyPlayed(cursor, 100, signal),
+      keyOf: (item) => item.song.id,
+    }),
+  loadNext: (provider, resource) => {
+    if (resource === 'favorites') return get().loadFavorites(provider, false);
+    if (resource === 'playlists') return get().loadPlaylists(provider, false);
+    return get().loadRecent(provider, false);
+  },
+  loadAccountPlaylist: (provider, id, reset = true) =>
+    loadAccountPlaylistResource(provider, id, reset),
+  loadNextAccountPlaylist: (provider, id) => loadAccountPlaylistResource(provider, id, false),
 }));
 
 export function useAccountRuntime(provider: MusicProvider): void {
@@ -373,6 +823,8 @@ export function releaseAccountDialogOwnership(provider: AccountMusicProvider): v
 
 export function resetAccountRuntimeForTest(): void {
   ++requestGeneration;
+  invalidateLibraryRequests();
+  accountPlaylistGenerations.clear();
   clearOwnershipTimers();
   runtimeAbortController?.abort();
   runtimeAbortController = null;
@@ -385,5 +837,9 @@ export function resetAccountRuntimeForTest(): void {
     dialogOpen: false,
     busy: false,
     error: null,
+    favorites: idleResource(),
+    playlists: idleResource(),
+    recent: idleResource(),
+    accountPlaylistDetails: {},
   });
 }
