@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { isAccountMusicProvider } from '../music-provider';
+import { QQMusicProvider } from '../qqmusic/qq-music-provider';
 import { FakeMusicProvider } from './fake-music-provider';
 
 describe('FakeMusicProvider', () => {
@@ -24,5 +26,10 @@ describe('FakeMusicProvider', () => {
       code: 'malformed-response',
       retryable: false,
     });
+  });
+
+  it('remains a catalog-only provider', () => {
+    expect(isAccountMusicProvider(provider)).toBe(false);
+    expect(isAccountMusicProvider(new QQMusicProvider())).toBe(true);
   });
 });

@@ -29,10 +29,12 @@ use std::{
 use thiserror::Error;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
+pub(crate) mod account;
 mod clock;
 mod redaction;
 mod transport;
 
+use account::ProviderErrorCode;
 use clock::{Clock, SystemClock};
 use transport::{QqTransport, ReqwestQqTransport};
 
@@ -60,7 +62,7 @@ pub struct Album {
     pub tracks: Vec<Song>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistOwner {
     pub id: String,
@@ -151,32 +153,15 @@ impl PreferredQuality {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProviderCapabilities {
+pub struct CatalogProviderCapabilities {
     pub search: bool,
     pub album: bool,
     pub artist: bool,
     pub playlist: bool,
     pub lyrics: bool,
     pub word_timed_lyrics: bool,
-    pub account: bool,
-    pub favorites_read: bool,
-    pub favorites_write: bool,
-    pub playlist_read: bool,
-    pub playlist_write: bool,
     pub streaming: bool,
     pub quality_selection: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "state", rename_all = "kebab-case")]
-pub enum AccountStatus {
-    Guest,
-    Authenticated {
-        #[serde(rename = "accountLabel")]
-        account_label: String,
-    },
-    ReauthenticationRequired,
-    SecureStoreUnavailable,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -186,9 +171,8 @@ pub struct ProviderStatus {
     pub display_name: String,
     pub connection: String,
     pub message: String,
-    pub account: AccountStatus,
     pub preferred_quality: PreferredQuality,
-    pub capabilities: ProviderCapabilities,
+    pub capabilities: CatalogProviderCapabilities,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -230,22 +214,25 @@ pub enum QQMusicError {
 }
 
 impl QQMusicError {
-    pub fn code(&self) -> &'static str {
+    pub fn error_code(&self) -> ProviderErrorCode {
         match self {
-            Self::Offline => "offline",
-            Self::Timeout => "timeout",
-            Self::RateLimited => "rate-limited",
-            Self::SchemaChanged => "schema-changed",
-            Self::MalformedResponse => "malformed-response",
-            Self::NotFound => "song-unavailable",
-            Self::AuthenticationExpired => "authentication-expired",
-            Self::AuthorizationRejected => "authorization-rejected",
-            Self::Protocol => "protocol-error",
-            Self::OutcomeUnknown => "outcome-unknown",
-            Self::Cancelled => "cancelled",
-            Self::EntitlementUnavailable => "entitlement-unavailable",
-            Self::Storage => "provider-failure",
+            Self::Offline => ProviderErrorCode::Offline,
+            Self::Timeout => ProviderErrorCode::Timeout,
+            Self::RateLimited => ProviderErrorCode::RateLimited,
+            Self::SchemaChanged => ProviderErrorCode::SchemaChanged,
+            Self::MalformedResponse | Self::Protocol => ProviderErrorCode::MalformedResponse,
+            Self::NotFound => ProviderErrorCode::SongUnavailable,
+            Self::AuthenticationExpired => ProviderErrorCode::AuthenticationExpired,
+            Self::AuthorizationRejected => ProviderErrorCode::AuthorizationRejected,
+            Self::OutcomeUnknown => ProviderErrorCode::ProviderFailure,
+            Self::Cancelled => ProviderErrorCode::Cancelled,
+            Self::EntitlementUnavailable => ProviderErrorCode::EntitlementUnavailable,
+            Self::Storage => ProviderErrorCode::StorageFailure,
         }
+    }
+
+    pub fn code(&self) -> &'static str {
+        self.error_code().as_str()
     }
 
     pub fn retryable(&self) -> bool {
@@ -340,19 +327,14 @@ impl QQMusicService {
         self.client.http.clone()
     }
 
-    pub fn capabilities(&self) -> ProviderCapabilities {
-        ProviderCapabilities {
+    pub fn capabilities(&self) -> CatalogProviderCapabilities {
+        CatalogProviderCapabilities {
             search: true,
             album: true,
             artist: true,
             playlist: true,
             lyrics: true,
             word_timed_lyrics: true,
-            account: false,
-            favorites_read: false,
-            favorites_write: false,
-            playlist_read: true,
-            playlist_write: false,
             streaming: true,
             quality_selection: true,
         }
@@ -373,18 +355,16 @@ impl QQMusicService {
             }
             Err(_) => "offline",
         };
-        let account = self.account_status();
         ProviderStatus {
             provider_id: "qqmusic".to_owned(),
             display_name: "QQ Music".to_owned(),
             connection: connection.to_owned(),
             message: match connection {
-                "online" => "Public catalog access is available. Account-only features require an approved authorization path.",
+                "online" => "Public catalog access is available.",
                 "cached" => "QQ Music is unreachable; cached catalog data remains available.",
                 _ => "QQ Music is currently unreachable. Offline fixtures remain available for development.",
             }
             .to_owned(),
-            account,
             preferred_quality: *self.preferred_quality.read().await,
             capabilities: self.capabilities(),
         }
@@ -643,30 +623,6 @@ impl QQMusicService {
 
     pub fn clear_cache(&self) -> Result<CacheStats, QQMusicError> {
         self.storage.clear().map_err(|_| QQMusicError::Storage)
-    }
-
-    fn account_status(&self) -> AccountStatus {
-        match self.credentials.load(SESSION_ACCOUNT) {
-            Ok(None) => AccountStatus::Guest,
-            Ok(Some(_)) if self.session_invalid.load(Ordering::Acquire) => {
-                AccountStatus::ReauthenticationRequired
-            }
-            Ok(Some(raw)) => match serde_json::from_str::<QQSession>(&raw) {
-                Ok(session)
-                    if session
-                        .expires_at_ms
-                        .is_some_and(|expires| expires <= unix_timestamp_ms()) =>
-                {
-                    self.session_invalid.store(true, Ordering::Release);
-                    AccountStatus::ReauthenticationRequired
-                }
-                Ok(session) => AccountStatus::Authenticated {
-                    account_label: mask_account(&session.uin),
-                },
-                Err(_) => AccountStatus::ReauthenticationRequired,
-            },
-            Err(_) => AccountStatus::SecureStoreUnavailable,
-        }
     }
 
     fn active_session(&self) -> Result<Option<QQSession>, QQMusicError> {
@@ -2408,14 +2364,6 @@ fn upgrade_https(value: &str) -> String {
     value.trim().replacen("http://", "https://", 1)
 }
 
-fn mask_account(value: &str) -> String {
-    if value.len() <= 4 {
-        "Connected account".to_owned()
-    } else {
-        format!("{}••{}", &value[..2], &value[value.len() - 2..])
-    }
-}
-
 fn unix_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2448,6 +2396,44 @@ mod tests {
         ) -> Result<TransportResponse, QQMusicError> {
             self.calls.fetch_add(1, Ordering::AcqRel);
             Err(QQMusicError::Protocol)
+        }
+    }
+
+    #[test]
+    fn catalog_status_serialization_contains_no_account_projection() {
+        let value = serde_json::to_value(ProviderStatus {
+            provider_id: "qqmusic".to_owned(),
+            display_name: "QQ Music".to_owned(),
+            connection: "online".to_owned(),
+            message: "Public catalog access is available.".to_owned(),
+            preferred_quality: PreferredQuality::Automatic,
+            capabilities: CatalogProviderCapabilities {
+                search: true,
+                album: true,
+                artist: true,
+                playlist: true,
+                lyrics: true,
+                word_timed_lyrics: true,
+                streaming: true,
+                quality_selection: true,
+            },
+        })
+        .expect("catalog status serializes");
+
+        assert!(value.get("account").is_none());
+        let capabilities = value["capabilities"]
+            .as_object()
+            .expect("capabilities object");
+        assert_eq!(capabilities.len(), 8);
+        for forbidden in [
+            "account",
+            "favoriteRead",
+            "favoriteWrite",
+            "playlistRead",
+            "playlistWrite",
+            "qrLogin",
+        ] {
+            assert!(capabilities.get(forbidden).is_none());
         }
     }
 

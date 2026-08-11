@@ -164,17 +164,207 @@ export interface PlaybackSource {
   expiresAt?: string;
 }
 
-export type ProviderErrorCode =
-  | 'offline'
-  | 'timeout'
-  | 'authentication-expired'
-  | 'unauthorized'
-  | 'entitlement-unavailable'
-  | 'rate-limited'
-  | 'schema-changed'
-  | 'song-unavailable'
-  | 'malformed-response'
-  | 'provider-failure';
+export const PROVIDER_ERROR_CODES = [
+  'offline',
+  'timeout',
+  'authentication-expired',
+  'authorization-rejected',
+  'entitlement-unavailable',
+  'rate-limited',
+  'schema-changed',
+  'song-unavailable',
+  'malformed-response',
+  'provider-failure',
+  'cancelled',
+  'not-found',
+  'invalid-request',
+  'unsupported-operation',
+  'mutation-in-progress',
+  'storage-failure',
+] as const;
+
+export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number];
+
+export interface Page<T> {
+  items: T[];
+  nextCursor: string | null;
+  total: number | null;
+  fetchedAtMs: number;
+  stale: boolean;
+  authRevision: number;
+}
+
+export interface PlaylistCapabilities {
+  canAddTracks: boolean;
+  canRemoveTracks: boolean;
+  canRename: boolean;
+  canDelete: boolean;
+  canReorder: boolean;
+}
+
+export type PlaylistOwnership = 'owned' | 'collected';
+
+export interface AccountPlaylistSummary {
+  id: EntityId;
+  title: string;
+  description: string;
+  owner: PlaylistOwner;
+  artwork: Artwork;
+  ownership: PlaylistOwnership;
+  capabilities: PlaylistCapabilities;
+  trackCount: number;
+  updatedAtMs: number | null;
+}
+
+export interface AccountPlaylistDetail {
+  summary: AccountPlaylistSummary;
+  tracks: Page<Song>;
+}
+
+export interface RemotePlayHistoryItem {
+  song: Song;
+  playedAtMs: number | null;
+  source: 'qqmusic-account';
+}
+
+export type EntitlementTier = 'free' | 'music-vip' | 'super-vip' | 'unknown';
+export type MembershipState = 'active' | 'expired' | 'inactive' | 'unknown';
+
+export interface EntitlementRestriction {
+  feature: 'playback' | 'favorite-write' | 'playlist-write' | 'quality';
+  quality?: AudioQuality;
+  reason: 'membership-required' | 'region-restricted' | 'upstream-restricted' | 'unknown';
+}
+
+export interface AccountEntitlement {
+  tier: EntitlementTier;
+  membership: MembershipState;
+  expiresAtMs: number | null;
+  permittedQualities: AudioQuality[];
+  observedMaximumQuality: AudioQuality | null;
+  restrictions: EntitlementRestriction[];
+}
+
+export interface AccountProfile {
+  avatarUrl: string | null;
+  nickname: string;
+  maskedIdentity: string;
+}
+
+export interface CatalogProviderCapabilities {
+  search: boolean;
+  album: boolean;
+  artist: boolean;
+  playlist: boolean;
+  lyrics: boolean;
+  wordTimedLyrics: boolean;
+  streaming: boolean;
+  qualitySelection: boolean;
+}
+
+export interface AccountCapabilities {
+  qrLogin: boolean;
+  favoriteRead: boolean;
+  favoriteWrite: boolean;
+  playlistRead: boolean;
+  playlistWrite: boolean;
+  recentHistoryRead: boolean;
+}
+
+export type AccountState =
+  | { state: 'guest'; profile: null; entitlement: null }
+  | { state: 'restoring-session'; profile: null; entitlement: null }
+  | {
+      state: 'starting-login';
+      attemptId: string;
+      ownerLeaseId: string;
+      pollAfterMs: number;
+      profile: null;
+      entitlement: null;
+    }
+  | {
+      state: 'waiting-for-scan';
+      attemptId: string;
+      ownerLeaseId: string;
+      qrImageDataUri: string;
+      expiresAtMs: number;
+      pollAfterMs: number;
+      profile: null;
+      entitlement: null;
+    }
+  | {
+      state: 'waiting-for-confirmation';
+      attemptId: string;
+      ownerLeaseId: string;
+      expiresAtMs: number;
+      pollAfterMs: number;
+      profile: null;
+      entitlement: null;
+    }
+  | { state: 'authenticated'; profile: AccountProfile; entitlement: AccountEntitlement }
+  | {
+      state: 'session-expired' | 'reauthentication-required' | 'secure-store-unavailable';
+      profile: AccountProfile | null;
+      entitlement: AccountEntitlement | null;
+    }
+  | {
+      state: 'cancelled' | 'expired' | 'rejected' | 'network-error' | 'protocol-error';
+      attemptId: string | null;
+      profile: null;
+      entitlement: null;
+    };
+
+export type AccountSnapshot = AccountState & {
+  revision: number;
+  capabilities: AccountCapabilities;
+};
+
+export type MutationStatus = 'applied' | 'rejected' | 'reconciled' | 'outcome-unknown';
+
+export interface FavoriteMutationRequest {
+  trackId: EntityId;
+  favorite: boolean;
+  clientOperationId: string;
+}
+
+export interface FavoriteMutationResult {
+  clientOperationId: string;
+  status: MutationStatus;
+  trackId: EntityId;
+  favorite: boolean;
+  errorCode: ProviderErrorCode | null;
+  authRevision: number;
+}
+
+export interface CreatePlaylistRequest {
+  title: string;
+  clientOperationId: string;
+}
+
+export interface RenamePlaylistRequest {
+  playlistId: EntityId;
+  title: string;
+  clientOperationId: string;
+}
+
+export interface PlaylistTrackMutationRequest {
+  playlistId: EntityId;
+  trackId: EntityId;
+  clientOperationId: string;
+}
+
+export interface DeletePlaylistRequest {
+  playlistId: EntityId;
+  clientOperationId: string;
+}
+
+export interface PlaylistMutationResult {
+  clientOperationId: string;
+  status: MutationStatus;
+  playlist: AccountPlaylistSummary | null;
+  errorCode: ProviderErrorCode | null;
+  authRevision: number;
+}
 
 export class ProviderError extends Error {
   constructor(

@@ -1,40 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
+import type { CatalogProviderCapabilities } from '../domain/music';
 import { clearArtworkMemoryCache } from './artwork-cache';
 import { isNativeRuntime } from './native-player-runtime';
 
 export type PreferredQuality = 'automatic' | 'standard' | 'high' | 'lossless';
-
-export interface ProviderCapabilities {
-  search: boolean;
-  album: boolean;
-  artist: boolean;
-  playlist: boolean;
-  lyrics: boolean;
-  wordTimedLyrics: boolean;
-  account: boolean;
-  favoritesRead: boolean;
-  favoritesWrite: boolean;
-  playlistRead: boolean;
-  playlistWrite: boolean;
-  streaming: boolean;
-  qualitySelection: boolean;
-}
-
-export type AccountStatus =
-  | { state: 'guest' }
-  | { state: 'authenticated'; accountLabel: string }
-  | { state: 'reauthentication-required' }
-  | { state: 'secure-store-unavailable' };
 
 export interface ProviderStatus {
   providerId: string;
   displayName: string;
   connection: 'online' | 'cached' | 'offline';
   message: string;
-  account: AccountStatus;
   preferredQuality: PreferredQuality;
-  capabilities: ProviderCapabilities;
+  capabilities: CatalogProviderCapabilities;
 }
 
 export interface CacheStats {
@@ -146,18 +124,6 @@ export function useProviderSettings() {
     }
   }, []);
 
-  const signOut = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setStatus(await invoke<ProviderStatus>('qqmusic_sign_out'));
-    } catch (caught) {
-      setError(message(caught));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
   return {
     available: isNativeRuntime,
     status,
@@ -169,6 +135,5 @@ export function useProviderSettings() {
     setQuality,
     setOutputDevice,
     clearCache,
-    signOut,
   };
 }

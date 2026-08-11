@@ -647,23 +647,10 @@ export function SettingsPage() {
           'account.online' | 'account.cached' | 'account.offline',
       )
     : null;
-  const accountState = provider.status?.account.state;
-  const accountTitle =
-    accountState === 'authenticated'
-      ? (provider.status?.account.accountLabel ?? t('account.authenticated'))
-      : accountState === 'reauthentication-required'
-        ? t('account.authorizationExpired')
-        : t('account.guest');
-  const accountMessage =
-    accountState === 'authenticated'
-      ? t('account.authenticatedMessage')
-      : accountState === 'reauthentication-required'
-        ? t('account.reauthMessage')
-        : accountState === 'secure-store-unavailable'
-          ? t('account.secureStoreMessage')
-          : accountState === 'guest'
-            ? t('account.guestMessage')
-            : t('account.statusUnavailable');
+  const accountTitle = t('account.guest');
+  const accountMessage = provider.status
+    ? t('account.guestMessage')
+    : t('account.statusUnavailable');
 
   return (
     <section className="page standard-page settings-page">
@@ -1089,20 +1076,9 @@ export function SettingsPage() {
             title={accountTitle}
             description={accountMessage}
             control={
-              provider.status && provider.status.account.state !== 'guest' ? (
-                <button
-                  type="button"
-                  className="button button--secondary"
-                  disabled={provider.busy}
-                  onClick={() => void provider.signOut()}
-                >
-                  {t('account.signOut')}
-                </button>
-              ) : (
-                <span className="settings-provider-mark">
-                  <ShieldCheck size={16} />
-                </span>
-              )
+              <span className="settings-provider-mark">
+                <ShieldCheck size={16} />
+              </span>
             }
           />
           <div className="settings-security-note">
