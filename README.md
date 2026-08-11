@@ -12,6 +12,14 @@ development and tests.
 
 YAQMC is not affiliated with Tencent or QQ Music. It does not bypass DRM, subscriptions or entitlement checks.
 
+## Acknowledgements and research references
+
+QQ Music interoperability research consulted `L-1124/QQMusicApi`, `wxuyu/QQMusicApi`,
+`RethinkQAQ/allmusic-qqmusicapi`, `tlyanyu/multiPlatformMusicApi`, and `wangwalk/qqm` at the commits and
+license-detection results recorded in [the QQ Music provider record](docs/qqmusic-provider.md). They were used as
+protocol-behavior references; YAQMC does not copy or vendor their implementations, and the projects do not endorse
+YAQMC. Account capability remains pending until the deterministic and explicit live acceptance gates pass.
+
 ## Platform status
 
 | Area                          | Windows                       | Linux                                                            |
