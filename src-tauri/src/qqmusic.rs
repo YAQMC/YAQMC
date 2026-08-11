@@ -29,6 +29,13 @@ use std::{
 use thiserror::Error;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
+mod clock;
+mod redaction;
+mod transport;
+
+use clock::{Clock, SystemClock};
+use transport::{QqTransport, ReqwestQqTransport};
+
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_SEARCH_URL: &str = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp";
 const QQ_ALBUM_URL: &str = "https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg";
@@ -208,6 +215,14 @@ pub enum QQMusicError {
     NotFound,
     #[error("the QQ Music session expired")]
     AuthenticationExpired,
+    #[error("QQ Music rejected this authorization request")]
+    AuthorizationRejected,
+    #[error("the QQ Music protocol response was invalid")]
+    Protocol,
+    #[error("the QQ Music operation outcome is unknown")]
+    OutcomeUnknown,
+    #[error("the QQ Music operation was cancelled")]
+    Cancelled,
     #[error("the account is not entitled to this media")]
     EntitlementUnavailable,
     #[error("local provider storage failed")]
@@ -224,6 +239,10 @@ impl QQMusicError {
             Self::MalformedResponse => "malformed-response",
             Self::NotFound => "song-unavailable",
             Self::AuthenticationExpired => "authentication-expired",
+            Self::AuthorizationRejected => "authorization-rejected",
+            Self::Protocol => "protocol-error",
+            Self::OutcomeUnknown => "outcome-unknown",
+            Self::Cancelled => "cancelled",
             Self::EntitlementUnavailable => "entitlement-unavailable",
             Self::Storage => "provider-failure",
         }
@@ -256,6 +275,22 @@ pub type ProviderResult<T> = Result<T, ProviderCommandError>;
 
 pub struct QQMusicService {
     client: QQMusicClient,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "used by the QQ account services introduced in later tasks"
+        )
+    )]
+    account_transport: Arc<dyn QqTransport>,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "used by the QQ account services introduced in later tasks"
+        )
+    )]
+    clock: Arc<dyn Clock>,
     storage: Arc<StorageService>,
     credentials: Arc<dyn CredentialStore>,
     preferred_quality: RwLock<PreferredQuality>,
@@ -270,6 +305,19 @@ impl QQMusicService {
         credentials: Arc<dyn CredentialStore>,
         fixture_root: PathBuf,
     ) -> Result<Self, QQMusicError> {
+        let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+        let account_transport: Arc<dyn QqTransport> =
+            Arc::new(ReqwestQqTransport::new(Arc::clone(&clock))?);
+        Self::new_with_runtime(storage, credentials, fixture_root, account_transport, clock)
+    }
+
+    pub(crate) fn new_with_runtime(
+        storage: Arc<StorageService>,
+        credentials: Arc<dyn CredentialStore>,
+        fixture_root: PathBuf,
+        account_transport: Arc<dyn QqTransport>,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self, QQMusicError> {
         let preferred_quality = PreferredQuality::from_setting(
             storage
                 .get_setting("preferred-quality")
@@ -277,6 +325,8 @@ impl QQMusicService {
         );
         Ok(Self {
             client: QQMusicClient::new()?,
+            account_transport,
+            clock,
             storage,
             credentials,
             preferred_quality: RwLock::new(preferred_quality),
@@ -711,12 +761,17 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
         QQMusicError::Offline | QQMusicError::Timeout | QQMusicError::RateLimited => {
             PlaybackSourceError::Network
         }
-        QQMusicError::AuthenticationExpired => PlaybackSourceError::AuthenticationExpired,
+        QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected => {
+            PlaybackSourceError::AuthenticationExpired
+        }
         QQMusicError::EntitlementUnavailable => PlaybackSourceError::EntitlementInsufficient,
         QQMusicError::NotFound => PlaybackSourceError::TrackUnavailable,
-        QQMusicError::SchemaChanged | QQMusicError::MalformedResponse | QQMusicError::Storage => {
-            PlaybackSourceError::UrlUnavailable
-        }
+        QQMusicError::SchemaChanged
+        | QQMusicError::MalformedResponse
+        | QQMusicError::Protocol
+        | QQMusicError::OutcomeUnknown
+        | QQMusicError::Cancelled
+        | QQMusicError::Storage => PlaybackSourceError::UrlUnavailable,
     }
 }
 
@@ -728,6 +783,8 @@ struct QQMusicClient {
 
 impl QQMusicClient {
     fn new() -> Result<Self, QQMusicError> {
+        #[cfg(test)]
+        let _proxy_environment_lock = transport::proxy_environment_lock();
         let http = Client::builder()
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(15))
@@ -2369,6 +2426,7 @@ fn unix_timestamp_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use super::transport::{TransportRequest, TransportResponse};
     use super::*;
     use crate::{
         audio::{AudioEngine, RodioAudioEngine},
@@ -2377,6 +2435,83 @@ mod tests {
     };
     use axum::{response::Redirect, routing::get, Router};
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct RecordingAccountTransport {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl QqTransport for RecordingAccountTransport {
+        async fn execute(
+            &self,
+            _request: TransportRequest,
+        ) -> Result<TransportResponse, QQMusicError> {
+            self.calls.fetch_add(1, Ordering::AcqRel);
+            Err(QQMusicError::Protocol)
+        }
+    }
+
+    #[tokio::test]
+    async fn public_catalog_does_not_use_the_account_transport() {
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let album = Album {
+            id: "qqmusic:album:fixture".to_owned(),
+            title: "Fixture album".to_owned(),
+            artist: ArtistSummary {
+                id: "qqmusic:artist:fixture".to_owned(),
+                name: "Fixture artist".to_owned(),
+            },
+            artwork: Artwork {
+                src: "/cover.svg".to_owned(),
+                alt: "Fixture cover".to_owned(),
+                dominant_color: "#000000".to_owned(),
+            },
+            release_year: 2026,
+            genre: "Fixture".to_owned(),
+            description: "Cached public catalog fixture".to_owned(),
+            tracks: Vec::new(),
+        };
+        storage
+            .put_json(
+                "qqmusic:home",
+                "metadata",
+                &HomeFeed {
+                    featured: FeaturedRelease {
+                        eyebrow: "FIXTURE".to_owned(),
+                        album,
+                    },
+                    recently_played: Vec::new(),
+                    made_for_you: Vec::new(),
+                    new_releases: Vec::new(),
+                },
+                METADATA_TTL_MS,
+            )
+            .expect("cache fixture");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let account_transport: Arc<dyn QqTransport> = Arc::new(RecordingAccountTransport {
+            calls: Arc::clone(&calls),
+        });
+        let clock: Arc<dyn Clock> = Arc::new(clock::ManualClock::new(4_200));
+        let service = QQMusicService::new_with_runtime(
+            Arc::clone(&storage),
+            Arc::new(MemoryCredentialStore::default()),
+            root.path().join("fixtures"),
+            account_transport,
+            clock,
+        )
+        .expect("service");
+
+        let home = service.home().await.expect("cached public home");
+
+        assert_eq!(home.featured.album.id, "qqmusic:album:fixture");
+        assert_eq!(calls.load(Ordering::Acquire), 0);
+        assert_eq!(service.clock.now_ms(), 4_200);
+        assert!(Arc::strong_count(&service.account_transport) >= 1);
+    }
 
     #[test]
     fn sanitized_search_fixture_normalizes_provider_identity_and_formats() {

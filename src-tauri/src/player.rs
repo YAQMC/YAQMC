@@ -1379,6 +1379,7 @@ mod tests {
         qqmusic::QQMusicService, storage::StorageService,
     };
     use async_trait::async_trait;
+    use axum::{http::header, routing::get, Router};
     use std::sync::atomic::AtomicUsize;
 
     fn song(id: &str, duration_ms: u64) -> Song {
@@ -1590,6 +1591,81 @@ mod tests {
         assert_eq!(snapshot.playback_state, PlaybackState::Playing);
         assert_eq!(resolver_calls.load(Ordering::Acquire), 2);
         assert_eq!(preparer_calls.load(Ordering::Acquire), 2);
+    }
+
+    #[tokio::test]
+    async fn qqmusic_http_client_still_prepares_media() {
+        let root = tempfile::tempdir().expect("temp root");
+        let fixture_path = root.path().join("served.wav");
+        crate::audio::write_fixture_wav(&fixture_path, Duration::from_millis(250), 7)
+            .expect("write fixture WAV");
+        let fixture_bytes = tokio::fs::read(&fixture_path)
+            .await
+            .expect("read fixture WAV");
+        let content_length = fixture_bytes.len() as u64;
+        let hits = Arc::new(AtomicUsize::new(0));
+        let server_hits = Arc::clone(&hits);
+        let app = Router::new().route(
+            "/fixture.wav",
+            get(move || {
+                let fixture_bytes = fixture_bytes.clone();
+                let server_hits = Arc::clone(&server_hits);
+                async move {
+                    server_hits.fetch_add(1, Ordering::AcqRel);
+                    ([(header::CONTENT_TYPE, "audio/wav")], fixture_bytes)
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("media listener");
+        let address = listener.local_addr().expect("media address");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("media server");
+        });
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let service = QQMusicService::new(
+            Arc::clone(&storage),
+            Arc::new(MemoryCredentialStore::default()),
+            root.path().join("fixtures"),
+        )
+        .expect("QQ Music service");
+        let preparer = CachedMediaPreparer::new(service.http_client(), storage);
+
+        let prepared = preparer
+            .prepare(crate::media::ResolvedPlaybackSource {
+                cache_key: "qqmusic:fixture:ordinary-http".to_owned(),
+                location: crate::media::PlaybackLocation::Http {
+                    url: format!("http://{address}/fixture.wav"),
+                    headers: Vec::new(),
+                },
+                format: crate::audio::AudioFormat::Wav,
+                mime_type: Some("audio/wav".to_owned()),
+                quality_label: "fixture".to_owned(),
+                bitrate_kbps: None,
+                sample_rate_hz: Some(16_000),
+                bit_depth: Some(16),
+                content_length: Some(content_length),
+                supports_range: false,
+                expires_at_ms: None,
+                timeline_offset_ms: 0,
+                timeline_end_ms: Some(250),
+                is_preview: false,
+            })
+            .await
+            .expect("ordinary client downloads fixture media");
+
+        match prepared.location {
+            crate::audio::PreparedPlaybackLocation::Local(path) => assert!(path.is_file()),
+            crate::audio::PreparedPlaybackLocation::Progressive(_) => {
+                panic!("non-range fixture must be fully cached")
+            }
+        }
+        assert_eq!(hits.load(Ordering::Acquire), 1);
+        server.abort();
     }
 
     #[tokio::test]
