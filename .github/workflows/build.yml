@@ -159,7 +159,40 @@ jobs:
           source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$source_appimage"
           cp "$source_appimage" "release/YAQMC-linux-${{ matrix.arch }}/"
-      - name: Write and verify SHA-256 checksums
+      - name: Build and verify x86_64 tester bundle
+        if: matrix.arch == 'x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="release/YAQMC-linux-x86_64"
+          tester_dir="$RUNNER_TEMP/YAQMC-linux-x86_64-tester"
+          tester_archive="$GITHUB_WORKSPACE/$release_dir/YAQMC-linux-x86_64-tester.tar.gz"
+          mkdir -p "$tester_dir"
+          cp "$release_dir"/*.AppImage "$tester_dir/"
+          cp "$release_dir/BUILD-IDENTITY.json" "$tester_dir/"
+          cp "$release_dir/TESTING.md" "$tester_dir/"
+          cp "$release_dir/ACCEPTANCE.md" "$tester_dir/"
+          cp "$release_dir/collect-linux-diagnostics.sh" "$tester_dir/"
+          cp "$release_dir/verify-lyrics-acceptance.mjs" "$tester_dir/"
+          (
+            cd "$tester_dir"
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\0' \
+              | sort -z \
+              | xargs -0 sha256sum >SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+          node scripts/verify-lyrics-acceptance.mjs \
+            --platform linux \
+            --identity-only \
+            --build-identity "$tester_dir/BUILD-IDENTITY.json"
+          tar -C "$tester_dir" -czf "$tester_archive" .
+          rm \
+            "$release_dir/BUILD-IDENTITY.json" \
+            "$release_dir/TESTING.md" \
+            "$release_dir/ACCEPTANCE.md" \
+            "$release_dir/collect-linux-diagnostics.sh" \
+            "$release_dir/verify-lyrics-acceptance.mjs"
+      - name: Write and verify release SHA-256 checksums
         shell: bash
         run: |
           set -euo pipefail
@@ -171,13 +204,6 @@ jobs:
               | xargs -0 sha256sum >"SHA256SUMS-linux-${{ matrix.arch }}.txt"
             sha256sum -c "SHA256SUMS-linux-${{ matrix.arch }}.txt"
           )
-      - name: Verify x86_64 tester identity
-        if: matrix.arch == 'x86_64'
-        run: >-
-          node scripts/verify-lyrics-acceptance.mjs
-          --platform linux
-          --identity-only
-          --build-identity "$GITHUB_WORKSPACE/release/YAQMC-linux-x86_64/BUILD-IDENTITY.json"
       - uses: actions/upload-artifact@v7
         with:
           name: YAQMC-linux-${{ matrix.arch }}
