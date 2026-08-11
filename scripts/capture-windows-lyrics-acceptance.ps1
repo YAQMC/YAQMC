@@ -84,7 +84,7 @@ function Receive-CdpMessage {
 function Connect-CdpSocket {
   param([string]$WebSocketUrl)
   $socket = New-Object Net.WebSockets.ClientWebSocket
-  $socket.ConnectAsync([Uri]$WebSocketUrl, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+  [void]$socket.ConnectAsync([Uri]$WebSocketUrl, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
   return $socket
 }
 
@@ -103,7 +103,7 @@ function Send-CdpRaw {
   $message = [ordered]@{ id = $id; method = $Method; params = $Params } | ConvertTo-Json -Depth 20 -Compress
   $bytes = [Text.Encoding]::UTF8.GetBytes($message)
   $segment = [ArraySegment[byte]]::new($bytes)
-  $Connection.Socket.SendAsync(
+  [void]$Connection.Socket.SendAsync(
     $segment,
     [Net.WebSockets.WebSocketMessageType]::Text,
     $true,
