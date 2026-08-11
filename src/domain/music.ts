@@ -18,6 +18,17 @@ export interface AlbumSummary {
 
 export type AudioQuality = 'standard' | 'high' | 'lossless';
 
+export type AudioQualityPreference = 'automatic' | AudioQuality;
+
+export type PlaybackFallbackReason = 'source-unavailable' | 'account-rights' | 'preview-only';
+
+export interface PlaybackSourceSelection {
+  requestedQuality: AudioQualityPreference;
+  resolvedQuality: AudioQuality;
+  fallbackReason?: PlaybackFallbackReason;
+  preview: boolean;
+}
+
 export type AudioCodec = 'mp3' | 'aac' | 'flac' | 'alac' | 'unknown';
 
 export interface AudioFormatInfo {

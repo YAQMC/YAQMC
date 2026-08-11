@@ -65,6 +65,7 @@ export function PlayerBar({
     playbackState,
     playbackDurationMs,
     playbackError,
+    sourceSelection,
     queueOpen,
     lyricsOpen,
     togglePlayback,
@@ -112,6 +113,14 @@ export function PlayerBar({
               {playbackState !== 'playing' && playbackState !== 'paused' && (
                 <small data-state={playbackState} title={playbackStatus || undefined}>
                   {playbackStatus}
+                </small>
+              )}
+              {sourceSelection?.fallbackReason && (
+                <small
+                  className="player-bar__fallback"
+                  data-fallback-reason={sourceSelection.fallbackReason}
+                >
+                  {playbackFallbackLabel(sourceSelection.fallbackReason, t)}
                 </small>
               )}
             </div>
@@ -279,4 +288,13 @@ const playbackErrorKeys: Readonly<Record<string, PlaybackErrorKey>> = {
 function playbackErrorLabel(code: string | undefined, t: TFunction<'player'>): string {
   const key = code ? playbackErrorKeys[code] : undefined;
   return key ? t(key) : t('unavailable');
+}
+
+function playbackFallbackLabel(
+  reason: 'source-unavailable' | 'account-rights' | 'preview-only',
+  t: TFunction<'player'>,
+): string {
+  if (reason === 'account-rights') return t('fallbackAccountRights');
+  if (reason === 'preview-only') return t('fallbackPreviewOnly');
+  return t('fallbackSourceUnavailable');
 }

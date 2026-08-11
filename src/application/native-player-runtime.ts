@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useEffect } from 'react';
-import type { Song } from '../domain/music';
+import type { PlaybackSourceSelection, Song } from '../domain/music';
 import { setPlayerCommandAdapter, type PlayerCommand } from './player-command-adapter';
 import {
   usePlayerStore,
@@ -23,12 +23,17 @@ interface NativePlayerSnapshot {
   playbackState: PlaybackState;
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
+  sourceSelection?: PlaybackSourceSelection | null;
 }
 
 export const isNativeRuntime = isTauri();
 
 function toAuthoritativeSnapshot(snapshot: NativePlayerSnapshot): AuthoritativePlayerSnapshot {
-  return { ...snapshot, currentIndex: snapshot.currentIndex ?? -1 };
+  return {
+    ...snapshot,
+    currentIndex: snapshot.currentIndex ?? -1,
+    sourceSelection: snapshot.sourceSelection ?? null,
+  };
 }
 
 async function invokePlayerCommand(command: PlayerCommand): Promise<void> {

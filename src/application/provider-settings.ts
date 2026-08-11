@@ -1,17 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
-import type { CatalogProviderCapabilities } from '../domain/music';
+import type { AudioQualityPreference, CatalogProviderCapabilities } from '../domain/music';
 import { clearArtworkMemoryCache } from './artwork-cache';
 import { isNativeRuntime } from './native-player-runtime';
-
-export type PreferredQuality = 'automatic' | 'standard' | 'high' | 'lossless';
 
 export interface ProviderStatus {
   providerId: string;
   displayName: string;
   connection: 'online' | 'cached' | 'offline';
   message: string;
-  preferredQuality: PreferredQuality;
+  preferredQuality: AudioQualityPreference;
   capabilities: CatalogProviderCapabilities;
 }
 
@@ -87,7 +85,7 @@ export function useProviderSettings() {
     };
   }, []);
 
-  const setQuality = useCallback(async (quality: PreferredQuality) => {
+  const setQuality = useCallback(async (quality: AudioQualityPreference) => {
     setBusy(true);
     setError(null);
     try {

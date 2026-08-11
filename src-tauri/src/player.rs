@@ -1,6 +1,7 @@
 use crate::{
     audio::{AudioEngine, AudioEngineError, AudioOutputDevice},
-    media::{MediaPreparer, PlaybackSourceError, PlaybackSourceResolver},
+    media::{MediaPreparer, PlaybackEpochGuard, PlaybackSourceError, PlaybackSourceResolver},
+    qqmusic::PlaybackSourceSelection,
 };
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -35,7 +36,7 @@ pub struct AlbumSummary {
     pub title: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AudioQuality {
     Standard,
@@ -43,7 +44,7 @@ pub enum AudioQuality {
     Lossless,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AudioCodec {
     Mp3,
@@ -228,6 +229,8 @@ pub struct PlayerSnapshot {
     pub playback_duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playback_error: Option<PlaybackFailure>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_selection: Option<PlaybackSourceSelection>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -325,6 +328,8 @@ struct PlayerCore {
     repeat: RepeatMode,
     shuffle: bool,
     lyrics: Option<LyricDocument>,
+    source_selection: Option<PlaybackSourceSelection>,
+    active_epoch_guard: Option<PlaybackEpochGuard>,
 }
 
 impl PlayerCore {
@@ -341,6 +346,7 @@ impl PlayerCore {
             playback_state: self.playback_state,
             playback_duration_ms: self.playback_duration_ms,
             playback_error: self.playback_error.clone(),
+            source_selection: self.source_selection.clone(),
         }
     }
 
@@ -350,13 +356,13 @@ impl PlayerCore {
 }
 
 pub struct PlayerService {
-    core: RwLock<PlayerCore>,
+    core: Arc<RwLock<PlayerCore>>,
     events: broadcast::Sender<ApiEvent>,
     clock_running: AtomicBool,
     transition_running: AtomicBool,
     recovery_running: AtomicBool,
     runtime_expiry_retry_available: AtomicBool,
-    load_generation: AtomicU64,
+    load_generation: Arc<AtomicU64>,
     audio: Arc<dyn AudioEngine>,
     resolver: Arc<dyn PlaybackSourceResolver>,
     preparer: Arc<dyn MediaPreparer>,
@@ -370,16 +376,16 @@ impl PlayerService {
     ) -> Self {
         let (events, _) = broadcast::channel(256);
         Self {
-            core: RwLock::new(PlayerCore {
+            core: Arc::new(RwLock::new(PlayerCore {
                 volume: 0.72,
                 ..PlayerCore::default()
-            }),
+            })),
             events,
             clock_running: AtomicBool::new(false),
             transition_running: AtomicBool::new(false),
             recovery_running: AtomicBool::new(false),
             runtime_expiry_retry_available: AtomicBool::new(true),
-            load_generation: AtomicU64::new(0),
+            load_generation: Arc::new(AtomicU64::new(0)),
             audio,
             resolver,
             preparer,
@@ -502,6 +508,8 @@ impl PlayerService {
             };
             core.playback_error = None;
             core.timeline_offset_ms = 0;
+            core.source_selection = None;
+            core.active_epoch_guard = None;
             core.snapshot()
         };
         let _ = self.audio.set_volume(if restored.is_muted {
@@ -548,26 +556,62 @@ impl PlayerService {
     }
 
     pub async fn play(&self) -> Result<PlayerSnapshot, PlayerError> {
-        let (index, position, loaded) = {
+        let (index, position, loaded, guard) = {
             let core = self.core.read().await;
             (
                 core.current_index.ok_or(PlayerError::EmptyQueue)?,
                 core.position_ms,
                 self.audio.snapshot().loaded,
+                core.active_epoch_guard.clone(),
             )
         };
+        if guard
+            .as_ref()
+            .is_some_and(|guard| guard.validate().is_err())
+        {
+            return Err(self.cancel_active_source().await);
+        }
         if !loaded {
             return self.load_index(index, true, position).await;
         }
         if let Err(error) = self.audio.play() {
             return Err(self.record_audio_failure(&error).await);
         }
-        self.mutate("player.playback", |core| {
-            core.playback_state = PlaybackState::Playing;
-            core.playback_error = None;
-            Ok(())
-        })
-        .await
+        let Some(guard) = guard else {
+            return self
+                .mutate("player.playback", |core| {
+                    core.playback_state = PlaybackState::Playing;
+                    core.playback_error = None;
+                    Ok(())
+                })
+                .await;
+        };
+        let commit = {
+            let mut core = self.core.write().await;
+            if guard.validate().is_err() {
+                Err(PlaybackSourceError::Cancelled)
+            } else if !core
+                .active_epoch_guard
+                .as_ref()
+                .is_some_and(|active| active.same_instance(&guard))
+            {
+                return Ok(core.snapshot());
+            } else {
+                let result = guard.validate_and_run(|| {
+                    core.playback_state = PlaybackState::Playing;
+                    core.playback_error = None;
+                    core.snapshot()
+                });
+                if let Ok(snapshot) = &result {
+                    self.publish("player.playback", snapshot);
+                }
+                result
+            }
+        };
+        match commit {
+            Ok(snapshot) => Ok(snapshot),
+            Err(_) => Err(self.cancel_active_source().await),
+        }
     }
 
     pub async fn pause(&self) -> Result<PlayerSnapshot, PlayerError> {
@@ -593,6 +637,8 @@ impl PlayerService {
             core.position_ms = core.timeline_offset_ms;
             core.playback_state = PlaybackState::Stopped;
             core.playback_error = None;
+            core.source_selection = None;
+            core.active_epoch_guard = None;
             Ok(())
         })
         .await
@@ -754,6 +800,8 @@ impl PlayerService {
                 core.position_ms = 0;
                 core.playback_state = PlaybackState::Idle;
                 core.playback_duration_ms = None;
+                core.source_selection = None;
+                core.active_epoch_guard = None;
             } else if let Some(current) = core.current_index {
                 core.current_index = Some(if index < current {
                     current - 1
@@ -823,6 +871,8 @@ impl PlayerService {
             core.playback_error = None;
             core.playback_duration_ms = Some(core.queue[index].duration_ms);
             core.timeline_offset_ms = 0;
+            core.source_selection = None;
+            core.active_epoch_guard = None;
             (core.queue[index].clone(), core.snapshot())
         };
         let _ = self.audio.stop();
@@ -860,10 +910,21 @@ impl PlayerService {
             return Ok(self.snapshot().await);
         }
 
+        if prepared.epoch_guard.validate().is_err() {
+            return self
+                .fail_load(generation, &PlaybackSourceError::Cancelled)
+                .await;
+        }
         let metadata = match self.audio.load(&prepared) {
             Ok(metadata) => metadata,
             Err(error) => return Err(self.record_audio_failure(&error).await),
         };
+        if prepared.epoch_guard.validate().is_err() {
+            let _ = self.audio.stop();
+            return self
+                .fail_load(generation, &PlaybackSourceError::Cancelled)
+                .await;
+        }
         if generation != self.load_generation.load(Ordering::Acquire) {
             let _ = self.audio.stop();
             return Ok(self.snapshot().await);
@@ -885,32 +946,64 @@ impl PlayerService {
             }
         }
         if autoplay {
+            if prepared.epoch_guard.validate().is_err() {
+                let _ = self.audio.stop();
+                return self
+                    .fail_load(generation, &PlaybackSourceError::Cancelled)
+                    .await;
+            }
             if let Err(error) = self.audio.play() {
                 return Err(self.record_audio_failure(&error).await);
             }
+            if prepared.epoch_guard.validate().is_err() {
+                let _ = self.audio.stop();
+                return self
+                    .fail_load(generation, &PlaybackSourceError::Cancelled)
+                    .await;
+            }
         }
 
-        let snapshot = {
+        let commit = {
             let mut core = self.core.write().await;
+            if generation != self.load_generation.load(Ordering::Acquire) {
+                let snapshot = core.snapshot();
+                drop(core);
+                let _ = self.audio.stop();
+                return Ok(snapshot);
+            }
             let playable_duration = metadata
                 .duration_ms
                 .map(|duration| prepared.timeline_offset_ms.saturating_add(duration))
                 .or(prepared.timeline_end_ms)
                 .unwrap_or(song.duration_ms);
-            core.timeline_offset_ms = prepared.timeline_offset_ms;
-            core.position_ms = resume_position_ms
-                .max(prepared.timeline_offset_ms)
-                .min(playable_duration);
-            core.playback_duration_ms = Some(playable_duration);
-            core.playback_state = if autoplay {
-                PlaybackState::Playing
-            } else {
-                PlaybackState::Paused
-            };
-            core.playback_error = None;
-            core.snapshot()
+            prepared.epoch_guard.validate_and_run(|| {
+                core.timeline_offset_ms = prepared.timeline_offset_ms;
+                core.position_ms = resume_position_ms
+                    .max(prepared.timeline_offset_ms)
+                    .min(playable_duration);
+                core.playback_duration_ms = Some(playable_duration);
+                core.playback_state = if autoplay {
+                    PlaybackState::Playing
+                } else {
+                    PlaybackState::Paused
+                };
+                core.playback_error = None;
+                core.source_selection = Some(prepared.selection.clone());
+                core.active_epoch_guard = Some(prepared.epoch_guard.clone());
+                core.snapshot()
+            })
+        };
+        let snapshot = match commit {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                let _ = self.audio.stop();
+                return self
+                    .fail_load(generation, &PlaybackSourceError::Cancelled)
+                    .await;
+            }
         };
         self.publish("player.playback", &snapshot);
+        self.watch_epoch_invalidation(prepared.epoch_guard);
         Ok(snapshot)
     }
 
@@ -922,6 +1015,9 @@ impl PlayerService {
         if generation != self.load_generation.load(Ordering::Acquire) {
             return Ok(self.snapshot().await);
         }
+        if matches!(error, PlaybackSourceError::Cancelled) {
+            return Err(self.cancel_active_source().await);
+        }
         let failure = source_failure(error);
         let snapshot = {
             let mut core = self.core.write().await;
@@ -931,6 +1027,8 @@ impl PlayerService {
                 PlaybackState::FatalError
             };
             core.playback_error = Some(failure.clone());
+            core.source_selection = None;
+            core.active_epoch_guard = None;
             core.snapshot()
         };
         self.publish("player.error", &snapshot);
@@ -938,6 +1036,9 @@ impl PlayerService {
     }
 
     async fn record_audio_failure(&self, error: &AudioEngineError) -> PlayerError {
+        if matches!(error, AudioEngineError::SourceCancelled) {
+            return self.cancel_active_source().await;
+        }
         let failure = audio_failure(error);
         let snapshot = {
             let mut core = self.core.write().await;
@@ -947,10 +1048,73 @@ impl PlayerService {
                 PlaybackState::FatalError
             };
             core.playback_error = Some(failure.clone());
+            core.source_selection = None;
+            core.active_epoch_guard = None;
             core.snapshot()
         };
         self.publish("player.error", &snapshot);
         PlayerError::Playback(failure.message)
+    }
+
+    async fn cancel_active_source(&self) -> PlayerError {
+        self.load_generation.fetch_add(1, Ordering::AcqRel);
+        let _ = self.audio.stop();
+        let snapshot = {
+            let mut core = self.core.write().await;
+            core.playback_state = if core.current_index.is_some() {
+                PlaybackState::Stopped
+            } else {
+                PlaybackState::Idle
+            };
+            core.playback_error = None;
+            core.source_selection = None;
+            core.active_epoch_guard = None;
+            core.snapshot()
+        };
+        self.publish("player.playback", &snapshot);
+        PlayerError::Playback("The account-bound playback source was cancelled.".to_owned())
+    }
+
+    fn watch_epoch_invalidation(&self, guard: PlaybackEpochGuard) {
+        if !guard.is_account_bound() {
+            return;
+        }
+        let cancellation = guard.cancellation_token();
+        let core = Arc::clone(&self.core);
+        let audio = Arc::clone(&self.audio);
+        let events = self.events.clone();
+        let load_generation = Arc::clone(&self.load_generation);
+        tauri::async_runtime::spawn(async move {
+            cancellation.cancelled().await;
+            let snapshot = {
+                let mut core = core.write().await;
+                if !core
+                    .active_epoch_guard
+                    .as_ref()
+                    .is_some_and(|active| active.same_instance(&guard))
+                {
+                    return;
+                }
+                load_generation.fetch_add(1, Ordering::AcqRel);
+                let _ = audio.stop();
+                core.playback_state = if core.current_index.is_some() {
+                    PlaybackState::Stopped
+                } else {
+                    PlaybackState::Idle
+                };
+                core.playback_error = None;
+                core.source_selection = None;
+                core.active_epoch_guard = None;
+                core.snapshot()
+            };
+            let data = serde_json::to_value(&snapshot).unwrap_or_else(|_| json!({}));
+            let _ = events.send(ApiEvent {
+                version: 1,
+                event_type: "player.playback".to_owned(),
+                timestamp_ms: unix_timestamp_ms(),
+                data,
+            });
+        });
     }
 
     async fn next_candidates(&self) -> Result<Vec<usize>, PlayerError> {
@@ -1001,6 +1165,8 @@ impl PlayerService {
                 core.position_ms = duration;
             }
             core.playback_state = PlaybackState::Ended;
+            core.source_selection = None;
+            core.active_epoch_guard = None;
             core.snapshot()
         };
         self.publish("player.playback", &snapshot);
@@ -1262,6 +1428,11 @@ fn source_failure(error: &PlaybackSourceError) -> PlaybackFailure {
             "The temporary media cache could not prepare this track.",
             true,
         ),
+        PlaybackSourceError::Cancelled => (
+            "source-cancelled",
+            "The account-bound playback source was cancelled.",
+            false,
+        ),
     };
     PlaybackFailure {
         code: code.to_owned(),
@@ -1301,6 +1472,11 @@ fn audio_failure(error: &AudioEngineError) -> PlaybackFailure {
             "audio-engine-unavailable",
             "The native audio engine is not responding.",
             true,
+        ),
+        AudioEngineError::SourceCancelled => (
+            "source-cancelled",
+            "The account-bound playback source was cancelled.",
+            false,
         ),
     };
     PlaybackFailure {
@@ -1375,12 +1551,17 @@ fn unix_timestamp_ms() -> u64 {
 mod tests {
     use super::*;
     use crate::{
-        audio::RodioAudioEngine, credentials::MemoryCredentialStore, media::CachedMediaPreparer,
-        qqmusic::QQMusicService, storage::StorageService,
+        audio::RodioAudioEngine,
+        credentials::MemoryCredentialStore,
+        media::CachedMediaPreparer,
+        media::PlaybackEpochClock,
+        qqmusic::{AccountEpoch, AudioQualityPreference, QQMusicService},
+        storage::StorageService,
     };
     use async_trait::async_trait;
     use axum::{http::header, routing::get, Router};
     use std::sync::atomic::AtomicUsize;
+    use tokio_util::sync::CancellationToken;
 
     fn song(id: &str, duration_ms: u64) -> Song {
         Song {
@@ -1473,11 +1654,40 @@ mod tests {
             timeline_offset_ms: 0,
             timeline_end_ms: Some(song.duration_ms),
             is_preview: false,
+            selection: PlaybackSourceSelection {
+                requested_quality: crate::qqmusic::AudioQualityPreference::Automatic,
+                resolved_quality: song.quality,
+                fallback_reason: None,
+                preview: false,
+            },
+            epoch_guard: PlaybackEpochGuard::unrestricted(),
         }
     }
 
     struct CountingResolver {
         calls: Arc<AtomicUsize>,
+    }
+
+    struct GuardedResolver {
+        guard: PlaybackEpochGuard,
+    }
+
+    #[async_trait]
+    impl PlaybackSourceResolver for GuardedResolver {
+        async fn resolve(
+            &self,
+            song: &Song,
+        ) -> Result<crate::media::ResolvedPlaybackSource, PlaybackSourceError> {
+            let mut source = resolved(song);
+            source.epoch_guard = self.guard.clone();
+            source.selection = PlaybackSourceSelection {
+                requested_quality: AudioQualityPreference::High,
+                resolved_quality: AudioQuality::Standard,
+                fallback_reason: None,
+                preview: false,
+            };
+            Ok(source)
+        }
     }
 
     #[async_trait]
@@ -1511,6 +1721,8 @@ mod tests {
                 timeline_end_ms: source.timeline_end_ms,
                 is_preview: source.is_preview,
                 cache_key: source.cache_key,
+                selection: source.selection,
+                epoch_guard: source.epoch_guard,
             })
         }
     }
@@ -1594,6 +1806,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_epoch_cancellation_stops_audio_and_clears_sanitized_selection() {
+        let clock = Arc::new(PlaybackEpochClock::default());
+        let epoch = AccountEpoch::for_test(23);
+        clock.replace(Some(epoch.clone()));
+        let cancellation = CancellationToken::new();
+        let guard = PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock);
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = PlayerService::with_runtime(
+            engine.clone(),
+            Arc::new(GuardedResolver { guard }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+
+        let playing = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("guarded", 10_000)],
+                start_at_id: None,
+            })
+            .await
+            .expect("current account source plays");
+        assert!(playing.source_selection.is_some());
+        let serialized = serde_json::to_string(&playing).expect("serialize snapshot");
+        assert!(!serialized.contains("account_bound"));
+        assert!(!serialized.contains("generation"));
+        assert!(!serialized.contains("scope"));
+
+        player.pause().await.expect("pause guarded source");
+        cancellation.cancel();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if player.snapshot().await.source_selection.is_none() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("cancellation watcher completed");
+
+        let cancelled = player.snapshot().await;
+        assert_eq!(cancelled.playback_state, PlaybackState::Stopped);
+        assert!(cancelled.playback_error.is_none());
+        assert!(cancelled.source_selection.is_none());
+        assert!(!engine.snapshot().loaded);
+    }
+
+    #[tokio::test]
+    async fn cancellation_between_guarded_resume_and_core_commit_cannot_publish_playing() {
+        let clock = Arc::new(PlaybackEpochClock::default());
+        let epoch = AccountEpoch::for_test(29);
+        clock.replace(Some(epoch.clone()));
+        let cancellation = CancellationToken::new();
+        let guard =
+            PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), Arc::clone(&clock));
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = PlayerService::with_runtime(
+            engine.clone(),
+            Arc::new(GuardedResolver { guard }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("guarded-resume", 10_000)],
+                start_at_id: None,
+            })
+            .await
+            .expect("guarded source plays");
+        player.pause().await.expect("guarded source pauses");
+        engine.cancel_after_next_play(cancellation);
+
+        assert!(player.play().await.is_err());
+        let snapshot = player.snapshot().await;
+        assert_eq!(snapshot.playback_state, PlaybackState::Stopped);
+        assert!(snapshot.playback_error.is_none());
+        assert!(snapshot.source_selection.is_none());
+        assert!(!engine.snapshot().loaded);
+    }
+
+    #[tokio::test]
     async fn qqmusic_http_client_still_prepares_media() {
         let root = tempfile::tempdir().expect("temp root");
         let fixture_path = root.path().join("served.wav");
@@ -1654,6 +1946,13 @@ mod tests {
                 timeline_offset_ms: 0,
                 timeline_end_ms: Some(250),
                 is_preview: false,
+                selection: PlaybackSourceSelection {
+                    requested_quality: crate::qqmusic::AudioQualityPreference::Automatic,
+                    resolved_quality: AudioQuality::Standard,
+                    fallback_reason: None,
+                    preview: false,
+                },
+                epoch_guard: PlaybackEpochGuard::unrestricted(),
             })
             .await
             .expect("ordinary client downloads fixture media");

@@ -1,0 +1,16 @@
+{
+  "code": 0,
+  "req": {
+    "code": 0,
+    "data": {
+      "svip": 0,
+      "identity": {
+        "vip": 0,
+        "HugeVip": 0
+      },
+      "userinfo": {
+        "expire": 0
+      }
+    }
+  }
+}

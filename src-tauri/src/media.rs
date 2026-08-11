@@ -1,13 +1,116 @@
 use crate::{
     audio::{AudioFormat, PreparedPlaybackLocation, PreparedPlaybackSource},
     player::Song,
+    qqmusic::{AccountEpoch, PlaybackSourceSelection},
     storage::{StorageError, StorageService},
     streaming::{prepare_progressive, ProgressiveError, ProgressivePreparation},
 };
 use async_trait::async_trait;
 use reqwest::{header::HeaderMap, Client};
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    fmt,
+    path::PathBuf,
+    sync::{Arc, RwLock as StdRwLock},
+};
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
+
+#[derive(Default)]
+pub struct PlaybackEpochClock {
+    current: StdRwLock<Option<AccountEpoch>>,
+}
+
+impl PlaybackEpochClock {
+    pub(crate) fn replace(&self, epoch: Option<AccountEpoch>) {
+        *self
+            .current
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = epoch;
+    }
+}
+
+#[derive(Clone)]
+pub struct PlaybackEpochGuard {
+    expected: Option<AccountEpoch>,
+    cancellation: CancellationToken,
+    clock: Arc<PlaybackEpochClock>,
+    identity: Arc<()>,
+}
+
+impl PlaybackEpochGuard {
+    pub fn unrestricted() -> Self {
+        Self {
+            expected: None,
+            cancellation: CancellationToken::new(),
+            clock: Arc::new(PlaybackEpochClock::default()),
+            identity: Arc::new(()),
+        }
+    }
+
+    pub(crate) fn account_bound(
+        expected: AccountEpoch,
+        cancellation: CancellationToken,
+        clock: Arc<PlaybackEpochClock>,
+    ) -> Self {
+        Self {
+            expected: Some(expected),
+            cancellation,
+            clock,
+            identity: Arc::new(()),
+        }
+    }
+
+    pub fn is_account_bound(&self) -> bool {
+        self.expected.is_some()
+    }
+
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.cancellation.clone()
+    }
+
+    pub fn same_instance(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.identity, &other.identity)
+    }
+
+    pub fn validate(&self) -> Result<(), PlaybackSourceError> {
+        self.validate_and_run(|| ())
+    }
+
+    pub fn validate_and_run<T>(
+        &self,
+        operation: impl FnOnce() -> T,
+    ) -> Result<T, PlaybackSourceError> {
+        if self.cancellation.is_cancelled() {
+            return Err(PlaybackSourceError::Cancelled);
+        }
+        let current = self
+            .clock
+            .current
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if self
+            .expected
+            .as_ref()
+            .is_some_and(|expected| current.as_ref() != Some(expected))
+        {
+            return Err(PlaybackSourceError::Cancelled);
+        }
+        let result = operation();
+        if self.cancellation.is_cancelled() {
+            return Err(PlaybackSourceError::Cancelled);
+        }
+        Ok(result)
+    }
+}
+
+impl fmt::Debug for PlaybackEpochGuard {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PlaybackEpochGuard")
+            .field("account_bound", &self.is_account_bound())
+            .finish()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum PlaybackLocation {
@@ -34,6 +137,8 @@ pub struct ResolvedPlaybackSource {
     pub timeline_offset_ms: u64,
     pub timeline_end_ms: Option<u64>,
     pub is_preview: bool,
+    pub selection: PlaybackSourceSelection,
+    pub epoch_guard: PlaybackEpochGuard,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -59,6 +164,8 @@ pub enum PlaybackSourceError {
     AuthenticationExpired,
     #[error("the track is unavailable")]
     TrackUnavailable,
+    #[error("the account-bound playback source was cancelled")]
+    Cancelled,
     #[error("the local media cache failed")]
     CacheFailure,
 }
@@ -93,6 +200,7 @@ impl MediaPreparer for CachedMediaPreparer {
         &self,
         source: ResolvedPlaybackSource,
     ) -> Result<PreparedPlaybackSource, PlaybackSourceError> {
+        source.epoch_guard.validate()?;
         if source
             .content_length
             .is_some_and(|bytes| bytes > self.storage.single_media_limit())
@@ -112,7 +220,7 @@ impl MediaPreparer for CachedMediaPreparer {
         );
         let location = match source.location {
             PlaybackLocation::Local(path) => {
-                if !path.is_file() {
+                if !source.epoch_guard.validate_and_run(|| path.is_file())? {
                     return Err(PlaybackSourceError::TrackUnavailable);
                 }
                 PreparedPlaybackLocation::Local(path)
@@ -127,19 +235,22 @@ impl MediaPreparer for CachedMediaPreparer {
                     request_headers.insert(name, value);
                 }
                 if source.supports_range {
-                    match prepare_progressive(
-                        &self.client,
-                        Arc::clone(&self.storage),
-                        source.cache_key.clone(),
-                        url.clone(),
-                        request_headers.clone(),
-                        source.format.extension().to_owned(),
-                        source.mime_type.clone(),
-                        self.storage.single_media_limit(),
-                    )
-                    .await
-                    .map_err(map_progressive_error)?
-                    {
+                    let cancellation = source.epoch_guard.cancellation_token();
+                    let preparation = tokio::select! {
+                        _ = cancellation.cancelled() => Err(PlaybackSourceError::Cancelled),
+                        result = prepare_progressive(
+                            &self.client,
+                            Arc::clone(&self.storage),
+                            source.cache_key.clone(),
+                            url.clone(),
+                            request_headers.clone(),
+                            source.format.extension().to_owned(),
+                            source.mime_type.clone(),
+                            self.storage.single_media_limit(),
+                        ) => result.map_err(map_progressive_error),
+                    }?;
+                    source.epoch_guard.validate()?;
+                    match preparation {
                         ProgressivePreparation::Complete(cached) => {
                             tracing::debug!(
                                 target: "media",
@@ -157,9 +268,10 @@ impl MediaPreparer for CachedMediaPreparer {
                             PreparedPlaybackLocation::Progressive(progressive)
                         }
                         ProgressivePreparation::FullDownloadFallback => {
-                            let cached = self
-                                .storage
-                                .fetch_cached(
+                            let cancellation = source.epoch_guard.cancellation_token();
+                            let cached = tokio::select! {
+                                _ = cancellation.cancelled() => Err(PlaybackSourceError::Cancelled),
+                                result = self.storage.fetch_cached(
                                     &self.client,
                                     "media",
                                     &source.cache_key,
@@ -168,16 +280,17 @@ impl MediaPreparer for CachedMediaPreparer {
                                     source.format.extension(),
                                     self.storage.single_media_limit(),
                                     None,
-                                )
-                                .await
-                                .map_err(map_storage_error)?;
+                                ) => result.map_err(map_storage_error),
+                            }?;
+                            source.epoch_guard.validate()?;
                             PreparedPlaybackLocation::Local(cached.path)
                         }
                     }
                 } else {
-                    let cached = self
-                        .storage
-                        .fetch_cached(
+                    let cancellation = source.epoch_guard.cancellation_token();
+                    let cached = tokio::select! {
+                        _ = cancellation.cancelled() => Err(PlaybackSourceError::Cancelled),
+                        result = self.storage.fetch_cached(
                             &self.client,
                             "media",
                             &source.cache_key,
@@ -186,14 +299,15 @@ impl MediaPreparer for CachedMediaPreparer {
                             source.format.extension(),
                             self.storage.single_media_limit(),
                             None,
-                        )
-                        .await
-                        .map_err(map_storage_error)?;
+                        ) => result.map_err(map_storage_error),
+                    }?;
+                    source.epoch_guard.validate()?;
                     PreparedPlaybackLocation::Local(cached.path)
                 }
             }
         };
 
+        source.epoch_guard.validate()?;
         Ok(PreparedPlaybackSource {
             location,
             format: source.format,
@@ -201,6 +315,8 @@ impl MediaPreparer for CachedMediaPreparer {
             timeline_end_ms: source.timeline_end_ms,
             is_preview: source.is_preview,
             cache_key: source.cache_key,
+            selection: source.selection,
+            epoch_guard: source.epoch_guard,
         })
     }
 }
@@ -254,6 +370,13 @@ impl PlaybackSourceResolver for TestPlaybackSourceResolver {
             timeline_offset_ms: 0,
             timeline_end_ms: Some(song.duration_ms),
             is_preview: false,
+            selection: PlaybackSourceSelection {
+                requested_quality: crate::qqmusic::AudioQualityPreference::Automatic,
+                resolved_quality: song.quality,
+                fallback_reason: None,
+                preview: false,
+            },
+            epoch_guard: PlaybackEpochGuard::unrestricted(),
         })
     }
 }
@@ -265,6 +388,7 @@ impl MediaPreparer for PassthroughMediaPreparer {
         &self,
         source: ResolvedPlaybackSource,
     ) -> Result<PreparedPlaybackSource, PlaybackSourceError> {
+        source.epoch_guard.validate()?;
         let PlaybackLocation::Local(path) = source.location else {
             return Err(PlaybackSourceError::Network);
         };
@@ -275,6 +399,8 @@ impl MediaPreparer for PassthroughMediaPreparer {
             timeline_end_ms: source.timeline_end_ms,
             is_preview: source.is_preview,
             cache_key: source.cache_key,
+            selection: source.selection,
+            epoch_guard: source.epoch_guard,
         })
     }
 }
@@ -282,6 +408,7 @@ impl MediaPreparer for PassthroughMediaPreparer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn invalid_content_type_maps_to_cache_failure() {
@@ -289,5 +416,38 @@ mod tests {
             map_storage_error(StorageError::InvalidContentType),
             PlaybackSourceError::CacheFailure
         );
+    }
+
+    #[test]
+    fn account_bound_guard_is_atomic_and_debug_output_is_sanitized() {
+        let clock = Arc::new(PlaybackEpochClock::default());
+        let epoch = AccountEpoch::for_test(7);
+        clock.replace(Some(epoch.clone()));
+        let cancellation = CancellationToken::new();
+        let guard = PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock.clone());
+
+        assert_eq!(guard.validate_and_run(|| 42), Ok(42));
+        let debug = format!("{guard:?}");
+        assert_eq!(debug, "PlaybackEpochGuard { account_bound: true }");
+        assert!(!debug.contains("000000"));
+
+        cancellation.cancel();
+        assert_eq!(guard.validate(), Err(PlaybackSourceError::Cancelled));
+        assert_eq!(
+            guard.validate_and_run(|| panic!("stale closure must not run")),
+            Err(PlaybackSourceError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn epoch_mismatch_rejects_even_without_token_delivery() {
+        let clock = Arc::new(PlaybackEpochClock::default());
+        let guard = PlaybackEpochGuard::account_bound(
+            AccountEpoch::for_test(1),
+            CancellationToken::new(),
+            clock.clone(),
+        );
+        clock.replace(Some(AccountEpoch::for_test(2)));
+        assert_eq!(guard.validate(), Err(PlaybackSourceError::Cancelled));
     }
 }

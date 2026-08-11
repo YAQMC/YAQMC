@@ -180,4 +180,32 @@ describe('SettingsPage account section', () => {
     expect(screen.getByText('QQ Music returned an unexpected response.')).toBeInTheDocument();
     expect(container.textContent).not.toContain('private-attempt-id');
   });
+
+  it('keeps preferred quality separate from the observed account maximum', async () => {
+    const account = accountProvider();
+    useAccountStore.setState({ snapshot: authenticatedSnapshot() });
+    renderSettings(account.value);
+
+    expect(screen.getByLabelText('Account can currently access')).toHaveTextContent('Standard');
+    expect(screen.getByLabelText('Preferred playback quality')).toHaveTextContent('Automatic');
+
+    const upgraded = authenticatedSnapshot();
+    if (upgraded.state !== 'authenticated') throw new Error('invalid authenticated fixture');
+    useAccountStore.setState({
+      snapshot: {
+        ...upgraded,
+        revision: 3,
+        entitlement: {
+          ...upgraded.entitlement,
+          permittedQualities: ['standard', 'high', 'lossless'],
+          observedMaximumQuality: 'lossless',
+        },
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Account can currently access')).toHaveTextContent('Lossless'),
+    );
+    expect(screen.getByLabelText('Preferred playback quality')).toHaveTextContent('Automatic');
+  });
 });

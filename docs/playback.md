@@ -45,6 +45,15 @@ from replacing a newer selection. A source URL that returns 401/403/404/410 is c
 once more. The retry count is deliberately bounded at one. Queue progression skips failed tracks only within one
 bounded pass through the queue.
 
+Account-bound QQ Music sources additionally carry a nonserializable playback epoch guard. The guard contains only
+an opaque account scope, auth generation, cancellation token, and a shared epoch clock. It is checked after provider
+resolution, around media preparation, inside synchronous decoder/load and play operations, and immediately before
+the authoritative Playing commit. Logout or account replacement cancels the old token and clears/replaces the clock
+before the old source can resume. The audio worker also drops a loaded source when its guard becomes stale.
+
+Only `sourceSelection` crosses the native/frontend boundary. It contains requested and resolved quality, a typed
+fallback reason, and the preview flag; it never contains a URL, vkey, cookie, cache scope, signature, or guard.
+
 The selected source may describe a preview timeline. `timelineOffsetMs` maps engine time to the song timeline and
 `timelineEndMs` limits the available preview. `playbackDurationMs` reports the decoded source duration separately
 from catalog `durationMs`.

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { EntityId, Song } from '../domain/music';
+import type { EntityId, PlaybackSourceSelection, Song } from '../domain/music';
 import { dispatchPlayerCommand } from './player-command-adapter';
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -32,6 +32,7 @@ export interface PlayerState {
   playbackState: PlaybackState;
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
+  sourceSelection: PlaybackSourceSelection | null;
   observedAtMs: number;
   timelineRevision: number;
   queueOpen: boolean;
@@ -74,6 +75,7 @@ export interface AuthoritativePlayerSnapshot {
   playbackState: PlaybackState;
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
+  sourceSelection?: PlaybackSourceSelection | null;
 }
 
 export const initialPlayerState: PlayerState = {
@@ -88,6 +90,7 @@ export const initialPlayerState: PlayerState = {
   playbackState: 'idle',
   playbackDurationMs: null,
   playbackError: null,
+  sourceSelection: null,
   observedAtMs: 0,
   timelineRevision: 0,
   queueOpen: false,
@@ -129,6 +132,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       playbackState: 'playing',
       playbackDurationMs: playable[requestedIndex >= 0 ? requestedIndex : 0]?.durationMs ?? null,
       playbackError: null,
+      sourceSelection: null,
       observedAtMs: performance.now(),
       timelineRevision: state.timelineRevision + 1,
     }));
@@ -145,6 +149,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       playbackState: 'playing',
       playbackDurationMs: queue[index]?.durationMs ?? null,
       playbackError: null,
+      sourceSelection: null,
       observedAtMs: performance.now(),
       timelineRevision: state.timelineRevision + 1,
     }));
@@ -176,6 +181,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         isPlaying: reachedEnd ? false : state.isPlaying,
         playbackState: reachedEnd ? 'ended' : state.isPlaying ? 'playing' : state.playbackState,
         playbackDurationMs: state.queue[nextIndex]?.durationMs ?? null,
+        sourceSelection: null,
         observedAtMs: performance.now(),
         timelineRevision: state.timelineRevision + 1,
       };
@@ -197,6 +203,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         currentIndex,
         positionMs: 0,
         playbackDurationMs: state.queue[currentIndex]?.durationMs ?? null,
+        sourceSelection: null,
         observedAtMs: performance.now(),
         timelineRevision: state.timelineRevision + 1,
       };
@@ -239,6 +246,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         isPlaying: !reachedEnd,
         playbackState: reachedEnd ? 'ended' : 'playing',
         playbackDurationMs: state.queue[nextIndex]?.durationMs ?? null,
+        sourceSelection: null,
         observedAtMs: performance.now(),
         timelineRevision: state.timelineRevision + 1,
       };
@@ -290,13 +298,18 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           playbackState: 'idle',
           playbackDurationMs: null,
           playbackError: null,
+          sourceSelection: null,
         };
       }
       const currentIndex =
         index < state.currentIndex
           ? state.currentIndex - 1
           : Math.min(state.currentIndex, queue.length - 1);
-      return { queue, currentIndex };
+      return {
+        queue,
+        currentIndex,
+        ...(index === state.currentIndex ? { sourceSelection: null } : {}),
+      };
     });
   },
 
@@ -319,6 +332,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
       return {
         ...snapshot,
+        sourceSelection: snapshot.sourceSelection ?? null,
         observedAtMs: now,
         timelineRevision: state.timelineRevision + (discontinuity ? 1 : 0),
       };

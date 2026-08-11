@@ -1,4 +1,8 @@
-use crate::streaming::{ProgressiveMonitor, ProgressiveSource};
+use crate::{
+    media::PlaybackEpochGuard,
+    qqmusic::PlaybackSourceSelection,
+    streaming::{ProgressiveMonitor, ProgressiveSource},
+};
 use rodio::{
     cpal::traits::HostTrait, decoder::DecoderBuilder, Decoder, Device, DeviceSinkBuilder,
     DeviceTrait, MixerDeviceSink, Player, Source,
@@ -61,6 +65,8 @@ pub struct PreparedPlaybackSource {
     pub timeline_end_ms: Option<u64>,
     pub is_preview: bool,
     pub cache_key: String,
+    pub selection: PlaybackSourceSelection,
+    pub epoch_guard: PlaybackEpochGuard,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -94,7 +100,7 @@ pub struct AudioOutputDevice {
     pub is_selected: bool,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum AudioEngineError {
     #[error("no audio output device is available")]
     OutputDeviceUnavailable,
@@ -112,6 +118,8 @@ pub enum AudioEngineError {
     WorkerUnavailable,
     #[error("the native audio worker did not respond")]
     WorkerTimeout,
+    #[error("the account-bound playback source was cancelled")]
+    SourceCancelled,
 }
 
 pub trait AudioEngine: Send + Sync {
@@ -356,8 +364,22 @@ fn audio_worker(
                 let _ = reply.send(result.map(|(metadata, _)| metadata));
             }
             Ok(AudioCommand::Play(reply)) => {
-                player.play();
-                let _ = reply.send(Ok(()));
+                let result = loaded_source.as_ref().map_or(Ok(()), |source| {
+                    source
+                        .epoch_guard
+                        .validate_and_run(|| player.play())
+                        .map_err(|_| AudioEngineError::SourceCancelled)
+                });
+                if result.is_err() {
+                    player.clear();
+                    progressive_monitor = None;
+                    loaded_source = None;
+                    *snapshot
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                        AudioEngineSnapshot::default();
+                }
+                let _ = reply.send(result);
             }
             Ok(AudioCommand::Pause(reply)) => {
                 player.pause();
@@ -414,6 +436,18 @@ fn audio_worker(
             }
             Ok(AudioCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+
+        if loaded_source
+            .as_ref()
+            .is_some_and(|source| source.epoch_guard.validate().is_err())
+        {
+            player.clear();
+            progressive_monitor = None;
+            loaded_source = None;
+            *snapshot
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = AudioEngineSnapshot::default();
         }
 
         let output_interrupted = snapshot
@@ -516,17 +550,22 @@ fn replace_output(
     let position = current_player.get_pos();
     let (sink, player, resolved_id) = open_output(device_id, snapshot)?;
     let monitor = if let Some(source) = loaded_source {
-        let (_, monitor) = load_source(&player, source)?;
-        if position > Duration::ZERO {
-            player
-                .try_seek(position)
-                .map_err(|_| AudioEngineError::SeekUnsupported)?;
-        }
-        player.set_volume(volume);
-        if !was_paused {
-            player.play();
-        }
-        monitor
+        source
+            .epoch_guard
+            .validate_and_run(|| {
+                let (_, monitor) = load_source_unchecked(&player, source)?;
+                if position > Duration::ZERO {
+                    player
+                        .try_seek(position)
+                        .map_err(|_| AudioEngineError::SeekUnsupported)?;
+                }
+                player.set_volume(volume);
+                if !was_paused {
+                    player.play();
+                }
+                Ok(monitor)
+            })
+            .map_err(|_| AudioEngineError::SourceCancelled)??
     } else {
         None
     };
@@ -534,6 +573,16 @@ fn replace_output(
 }
 
 fn load_source(
+    player: &Player,
+    source: &PreparedPlaybackSource,
+) -> Result<(AudioLoadMetadata, Option<ProgressiveMonitor>), AudioEngineError> {
+    source
+        .epoch_guard
+        .validate_and_run(|| load_source_unchecked(player, source))
+        .map_err(|_| AudioEngineError::SourceCancelled)?
+}
+
+fn load_source_unchecked(
     player: &Player,
     source: &PreparedPlaybackSource,
 ) -> Result<(AudioLoadMetadata, Option<ProgressiveMonitor>), AudioEngineError> {
@@ -720,6 +769,8 @@ pub fn write_fixture_wav(path: &Path, duration: Duration, seed: u32) -> std::io:
 pub struct TestAudioEngine {
     state: Mutex<AudioEngineSnapshot>,
     volume: Mutex<f32>,
+    loaded_guard: Mutex<Option<PlaybackEpochGuard>>,
+    cancel_after_play: Mutex<Option<tokio_util::sync::CancellationToken>>,
 }
 
 #[cfg(test)]
@@ -728,6 +779,8 @@ impl Default for TestAudioEngine {
         Self {
             state: Mutex::new(AudioEngineSnapshot::default()),
             volume: Mutex::new(0.72),
+            loaded_guard: Mutex::new(None),
+            cancel_after_play: Mutex::new(None),
         }
     }
 }
@@ -741,27 +794,67 @@ impl TestAudioEngine {
         state.ended = true;
         state.position_ms = state.duration_ms.unwrap_or(state.position_ms);
     }
+
+    pub fn cancel_after_next_play(&self, cancellation: tokio_util::sync::CancellationToken) {
+        *self
+            .cancel_after_play
+            .lock()
+            .expect("test engine cancellation lock") = Some(cancellation);
+    }
 }
 
 #[cfg(test)]
 impl AudioEngine for TestAudioEngine {
     fn load(&self, source: &PreparedPlaybackSource) -> Result<AudioLoadMetadata, AudioEngineError> {
-        let metadata = AudioLoadMetadata {
-            duration_ms: source
-                .timeline_end_ms
-                .map(|end| end - source.timeline_offset_ms),
-            format: source.format,
-        };
-        *self.state.lock().expect("test engine lock") = AudioEngineSnapshot {
-            loaded: true,
-            paused: true,
-            duration_ms: metadata.duration_ms,
-            ..AudioEngineSnapshot::default()
-        };
-        Ok(metadata)
+        source
+            .epoch_guard
+            .validate_and_run(|| {
+                let metadata = AudioLoadMetadata {
+                    duration_ms: source
+                        .timeline_end_ms
+                        .map(|end| end - source.timeline_offset_ms),
+                    format: source.format,
+                };
+                *self.state.lock().expect("test engine lock") = AudioEngineSnapshot {
+                    loaded: true,
+                    paused: true,
+                    duration_ms: metadata.duration_ms,
+                    ..AudioEngineSnapshot::default()
+                };
+                *self.loaded_guard.lock().expect("test engine guard lock") =
+                    Some(source.epoch_guard.clone());
+                metadata
+            })
+            .map_err(|_| AudioEngineError::SourceCancelled)
     }
 
     fn play(&self) -> Result<(), AudioEngineError> {
+        let guard = self
+            .loaded_guard
+            .lock()
+            .expect("test engine guard lock")
+            .clone();
+        if let Some(guard) = guard {
+            let result = guard.validate_and_run(|| {
+                let mut state = self.state.lock().expect("test engine lock");
+                state.playing = true;
+                state.paused = false;
+            });
+            if result.is_err() {
+                *self.state.lock().expect("test engine lock") = AudioEngineSnapshot::default();
+                *self.loaded_guard.lock().expect("test engine guard lock") = None;
+                return Err(AudioEngineError::SourceCancelled);
+            }
+            if let Some(cancellation) = self
+                .cancel_after_play
+                .lock()
+                .expect("test engine cancellation lock")
+                .take()
+            {
+                cancellation.cancel();
+            }
+            return Ok(());
+        }
         let mut state = self.state.lock().expect("test engine lock");
         state.playing = true;
         state.paused = false;
@@ -778,6 +871,11 @@ impl AudioEngine for TestAudioEngine {
 
     fn stop(&self) -> Result<(), AudioEngineError> {
         *self.state.lock().expect("test engine lock") = AudioEngineSnapshot::default();
+        *self.loaded_guard.lock().expect("test engine guard lock") = None;
+        *self
+            .cancel_after_play
+            .lock()
+            .expect("test engine cancellation lock") = None;
         Ok(())
     }
 
@@ -796,6 +894,16 @@ impl AudioEngine for TestAudioEngine {
     }
 
     fn snapshot(&self) -> AudioEngineSnapshot {
+        let cancelled = self
+            .loaded_guard
+            .lock()
+            .expect("test engine guard lock")
+            .as_ref()
+            .is_some_and(|guard| guard.validate().is_err());
+        if cancelled {
+            *self.state.lock().expect("test engine lock") = AudioEngineSnapshot::default();
+            *self.loaded_guard.lock().expect("test engine guard lock") = None;
+        }
         self.state.lock().expect("test engine lock").clone()
     }
 
@@ -812,6 +920,12 @@ impl AudioEngine for TestAudioEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        media::{PlaybackEpochClock, PlaybackEpochGuard},
+        player::AudioQuality,
+        qqmusic::{AccountEpoch, AudioQualityPreference, PlaybackSourceSelection},
+    };
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn generated_fixture_decodes_with_known_duration_and_supports_seek() {
@@ -835,5 +949,35 @@ mod tests {
         assert!(id.starts_with("device:"));
         assert!(!id.contains("Headphones"));
         assert!(!id.contains("WASAPI"));
+    }
+
+    #[test]
+    fn retained_guard_rejects_resume_after_account_epoch_changes() {
+        let clock = Arc::new(PlaybackEpochClock::default());
+        let epoch = AccountEpoch::for_test(11);
+        clock.replace(Some(epoch.clone()));
+        let cancellation = CancellationToken::new();
+        let engine = TestAudioEngine::default();
+        let source = PreparedPlaybackSource {
+            location: PreparedPlaybackLocation::Local(PathBuf::from("unused-test.wav")),
+            format: AudioFormat::Wav,
+            timeline_offset_ms: 0,
+            timeline_end_ms: Some(1_000),
+            is_preview: false,
+            cache_key: "test:guard".to_owned(),
+            selection: PlaybackSourceSelection {
+                requested_quality: AudioQualityPreference::High,
+                resolved_quality: AudioQuality::Standard,
+                fallback_reason: None,
+                preview: false,
+            },
+            epoch_guard: PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock),
+        };
+
+        engine.load(&source).expect("current source loads");
+        engine.pause().expect("source pauses");
+        cancellation.cancel();
+        assert_eq!(engine.play(), Err(AudioEngineError::SourceCancelled));
+        assert!(!engine.snapshot().loaded);
     }
 }

@@ -45,12 +45,13 @@ import {
   type SurfaceKind,
 } from '../application/preferences';
 import { isNativeRuntime } from '../application/native-player-runtime';
-import { useProviderSettings, type PreferredQuality } from '../application/provider-settings';
+import { useProviderSettings } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
 import { isAccountMusicProvider } from '../providers/music-provider';
+import type { AudioQuality, AudioQualityPreference } from '../domain/music';
 
 interface SurfaceCapabilities {
   desktop: boolean;
@@ -598,7 +599,7 @@ export function SettingsPage() {
     { value: 'show', label: t('lyrics.show') },
     { value: 'hide', label: t('lyrics.hide') },
   ];
-  const qualityOptions: readonly SelectOption<PreferredQuality>[] = [
+  const qualityOptions: readonly SelectOption<AudioQualityPreference>[] = [
     { value: 'automatic', label: t('playback.qualityAutomatic') },
     { value: 'standard', label: t('playback.qualityStandard') },
     { value: 'high', label: t('playback.qualityHigh') },
@@ -617,6 +618,16 @@ export function SettingsPage() {
         : [{ value: 'system:default', label: t('playback.systemOutput') }],
     [provider.devices, t],
   );
+  const observedMaximumQuality =
+    accountSnapshot.state === 'authenticated'
+      ? accountSnapshot.entitlement.observedMaximumQuality
+      : null;
+  const qualityLabel = (quality: AudioQuality | null): string => {
+    if (quality === 'lossless') return t('playback.qualityLossless');
+    if (quality === 'high') return t('playback.qualityHigh');
+    if (quality === 'standard') return t('playback.qualityStandard');
+    return t('playback.qualityUnknown');
+  };
   const lockedSurfaceKinds = (['desktop', 'island'] as const).filter(
     (kind) =>
       preferences.surfaces[kind].enabled &&
@@ -1091,6 +1102,15 @@ export function SettingsPage() {
                 icon={Music2}
                 disabled={!provider.available || provider.busy}
               />
+            }
+          />
+          <SettingRow
+            title={t('playback.observedQuality')}
+            description={t('playback.observedQualityDescription')}
+            control={
+              <output aria-label={t('playback.observedQualityLabel')}>
+                {qualityLabel(observedMaximumQuality)}
+              </output>
             }
           />
         </div>

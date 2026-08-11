@@ -87,7 +87,7 @@ pub struct PlaylistCapabilities {
     pub can_reorder: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PlaylistOwnership {
     Owned,
@@ -129,7 +129,7 @@ pub struct RemotePlayHistoryItem {
     pub source: RemotePlayHistorySource,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EntitlementTier {
     Free,
@@ -138,7 +138,7 @@ pub enum EntitlementTier {
     Unknown,
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MembershipState {
     Active,
@@ -147,7 +147,7 @@ pub enum MembershipState {
     Unknown,
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EntitlementFeature {
     Playback,
@@ -156,7 +156,7 @@ pub enum EntitlementFeature {
     Quality,
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EntitlementRestrictionReason {
     MembershipRequired,
@@ -165,7 +165,7 @@ pub enum EntitlementRestrictionReason {
     Unknown,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntitlementRestriction {
     pub feature: EntitlementFeature,
@@ -174,7 +174,7 @@ pub struct EntitlementRestriction {
     pub reason: EntitlementRestrictionReason,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountEntitlement {
     pub tier: EntitlementTier,

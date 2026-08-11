@@ -20,7 +20,7 @@ use crate::{
             PlaylistMutationResult, PlaylistTrackMutationRequest, RemotePlayHistoryItem,
             RenamePlaylistRequest,
         },
-        Album, HomeFeed, LibrarySnapshot, Playlist, PreferredQuality, ProviderResult,
+        Album, AudioQualityPreference, HomeFeed, LibrarySnapshot, Playlist, ProviderResult,
         ProviderStatus, QQMusicService, SearchResult,
     },
     storage::{CacheStats, StorageService},
@@ -159,7 +159,7 @@ pub async fn qqmusic_cache_artwork(
 #[tauri::command]
 pub async fn qqmusic_set_preferred_quality(
     provider: State<'_, Arc<QQMusicService>>,
-    quality: PreferredQuality,
+    quality: AudioQualityPreference,
 ) -> ProviderResult<ProviderStatus> {
     provider
         .set_preferred_quality(quality)

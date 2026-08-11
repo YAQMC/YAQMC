@@ -2,7 +2,8 @@ use crate::{
     audio::{write_fixture_wav, AudioFormat},
     credentials::{CredentialStore, SpawnBlockingCredentialStore},
     media::{
-        PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver, ResolvedPlaybackSource,
+        PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver,
+        ResolvedPlaybackSource,
     },
     player::{
         AlbumSummary, ArtistSummary, Artwork, AudioCodec, AudioFormatInfo, AudioQuality,
@@ -33,17 +34,25 @@ pub(crate) mod account;
 mod auth;
 mod cache;
 mod clock;
+mod entitlement;
 mod redaction;
 mod transport;
 
+pub(crate) use cache::AccountEpoch;
+pub use entitlement::{AudioQualityPreference, PlaybackSourceSelection};
+
 use account::{
-    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, CreatePlaylistRequest,
-    DeletePlaylistRequest, FavoriteMutationRequest, FavoriteMutationResult, Page,
-    PlaylistMutationResult, PlaylistTrackMutationRequest, ProviderErrorCode, QQMusicAccountService,
-    RemotePlayHistoryItem, RenamePlaylistRequest,
+    AccountEntitlement, AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
+    CreatePlaylistRequest, DeletePlaylistRequest, EntitlementTier, FavoriteMutationRequest,
+    FavoriteMutationResult, MembershipState, Page, PlaylistMutationResult,
+    PlaylistTrackMutationRequest, ProviderErrorCode, QQMusicAccountService, RemotePlayHistoryItem,
+    RenamePlaylistRequest,
 };
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
+use entitlement::{
+    candidates_for_request, choose_source, PreviewRange, SourceCandidate, VkeyAvailability,
+};
 use transport::{QqTransport, ReqwestQqTransport};
 
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
@@ -129,35 +138,6 @@ pub struct SearchResult {
     pub has_more: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PreferredQuality {
-    Automatic,
-    Standard,
-    High,
-    Lossless,
-}
-
-impl PreferredQuality {
-    fn from_setting(value: Option<String>) -> Self {
-        match value.as_deref() {
-            Some("standard") => Self::Standard,
-            Some("high") => Self::High,
-            Some("lossless") => Self::Lossless,
-            _ => Self::Automatic,
-        }
-    }
-
-    fn as_setting(self) -> &'static str {
-        match self {
-            Self::Automatic => "automatic",
-            Self::Standard => "standard",
-            Self::High => "high",
-            Self::Lossless => "lossless",
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogProviderCapabilities {
@@ -178,7 +158,7 @@ pub struct ProviderStatus {
     pub display_name: String,
     pub connection: String,
     pub message: String,
-    pub preferred_quality: PreferredQuality,
+    pub preferred_quality: AudioQualityPreference,
     pub capabilities: CatalogProviderCapabilities,
 }
 
@@ -303,7 +283,7 @@ pub struct QQMusicService {
     auth: Arc<QQMusicAuthService>,
     account: Arc<QQMusicAccountService>,
     storage: Arc<StorageService>,
-    preferred_quality: RwLock<PreferredQuality>,
+    preferred_quality: RwLock<AudioQualityPreference>,
     fixture_root: PathBuf,
     fixture_guard: AsyncMutex<()>,
     session_invalid: AtomicBool,
@@ -328,7 +308,7 @@ impl QQMusicService {
         account_transport: Arc<dyn QqTransport>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, QQMusicError> {
-        let preferred_quality = PreferredQuality::from_setting(
+        let preferred_quality = AudioQualityPreference::from_setting(
             storage
                 .get_setting("preferred-quality")
                 .map_err(|_| QQMusicError::Storage)?,
@@ -412,7 +392,7 @@ impl QQMusicService {
 
     pub async fn set_preferred_quality(
         &self,
-        quality: PreferredQuality,
+        quality: AudioQualityPreference,
     ) -> Result<ProviderStatus, QQMusicError> {
         self.storage
             .set_setting("preferred-quality", quality.as_setting())
@@ -880,15 +860,35 @@ impl QQMusicService {
         self.storage.clear().map_err(|_| QQMusicError::Storage)
     }
 
-    async fn active_session(&self) -> Result<Option<QQSession>, QQMusicError> {
-        let Some(session) = self.auth.current_session().await else {
-            return Ok(None);
-        };
-        if session.expires_at_ms <= unix_timestamp_ms() {
-            self.session_invalid.store(true, Ordering::Release);
-            return Err(QQMusicError::AuthenticationExpired);
+    async fn playback_context(
+        &self,
+    ) -> Result<(Option<QQSession>, AccountEntitlement, PlaybackEpochGuard), QQMusicError> {
+        if self.auth.current_session().await.is_none() {
+            return Ok((
+                None,
+                AccountEntitlement {
+                    tier: EntitlementTier::Free,
+                    membership: MembershipState::Inactive,
+                    expires_at_ms: None,
+                    permitted_qualities: vec![AudioQuality::Standard],
+                    observed_maximum_quality: Some(AudioQuality::Standard),
+                    restrictions: Vec::new(),
+                },
+                PlaybackEpochGuard::unrestricted(),
+            ));
         }
-        Ok(Some(QQSession::from(session)))
+        let context = self.auth.capture_account_context().await?;
+        let guard = PlaybackEpochGuard::account_bound(
+            context.epoch,
+            context.cancellation,
+            self.auth.playback_epoch_clock(),
+        );
+        guard.validate().map_err(|_| QQMusicError::Cancelled)?;
+        Ok((
+            Some(QQSession::from(context.session)),
+            context.entitlement,
+            guard,
+        ))
     }
 }
 
@@ -902,13 +902,13 @@ impl PlaybackSourceResolver for QQMusicService {
             == Some("qqmusic")
         {
             let quality = *self.preferred_quality.read().await;
-            let session = self
-                .active_session()
+            let (session, entitlement, epoch_guard) = self
+                .playback_context()
                 .await
                 .map_err(map_provider_source_error)?;
             let source = self
                 .client
-                .resolve_source(song, quality, session.as_ref())
+                .resolve_source(song, quality, session.as_ref(), &entitlement, epoch_guard)
                 .await;
             if matches!(&source, Err(QQMusicError::AuthenticationExpired)) {
                 self.session_invalid.store(true, Ordering::Release);
@@ -957,6 +957,13 @@ impl PlaybackSourceResolver for QQMusicService {
             timeline_offset_ms: 0,
             timeline_end_ms: Some(duration_ms),
             is_preview: false,
+            selection: PlaybackSourceSelection {
+                requested_quality: AudioQualityPreference::Automatic,
+                resolved_quality: song.quality,
+                fallback_reason: None,
+                preview: false,
+            },
+            epoch_guard: PlaybackEpochGuard::unrestricted(),
         })
     }
 }
@@ -977,9 +984,9 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
         | QQMusicError::UnsupportedOperation
         | QQMusicError::Protocol
         | QQMusicError::OutcomeUnknown
-        | QQMusicError::Cancelled
         | QQMusicError::MutationInProgress
         | QQMusicError::Storage => PlaybackSourceError::UrlUnavailable,
+        QQMusicError::Cancelled => PlaybackSourceError::Cancelled,
     }
 }
 
@@ -1327,17 +1334,23 @@ impl QQMusicClient {
     async fn resolve_source(
         &self,
         song: &Song,
-        preferred: PreferredQuality,
+        preferred: AudioQualityPreference,
         session: Option<&QQSession>,
+        entitlement: &AccountEntitlement,
+        epoch_guard: PlaybackEpochGuard,
     ) -> Result<ResolvedPlaybackSource, QQMusicError> {
+        epoch_guard
+            .validate()
+            .map_err(|_| QQMusicError::Cancelled)?;
         let provider = song.provider.as_ref().ok_or(QQMusicError::NotFound)?;
         let media_mid = provider
             .media_id
             .as_deref()
             .filter(|value| !value.is_empty())
             .unwrap_or(&provider.track_id);
-        let candidates = source_candidates(media_mid, preferred);
-        let filenames = candidates
+        let candidates = source_candidates(media_mid);
+        let requested_candidates = candidates_for_request(preferred, entitlement, &candidates);
+        let filenames = requested_candidates
             .iter()
             .map(|candidate| candidate.filename.clone())
             .collect::<Vec<_>>();
@@ -1365,9 +1378,47 @@ impl QQMusicClient {
                 self.musicu_request(&payload, session)
             })
             .await?;
+        epoch_guard
+            .validate()
+            .map_err(|_| QQMusicError::Cancelled)?;
         if response.code != 0 || response.request.code != 0 {
             return Err(QQMusicError::SchemaChanged);
         }
+        let mut available_paths = HashMap::new();
+        let availability = requested_candidates
+            .iter()
+            .zip(response.request.data.items)
+            .map(|(candidate, item)| {
+                let available = item.result == 0 && !item.path.is_empty();
+                if available {
+                    available_paths.insert(candidate.filename.clone(), item.path);
+                }
+                VkeyAvailability {
+                    filename: candidate.filename.clone(),
+                    available,
+                }
+            })
+            .collect::<Vec<_>>();
+        let preview = match &song.playback_capability {
+            Some(PlaybackCapability::Preview { start_ms, end_ms }) => Some(PreviewRange {
+                start_ms: *start_ms,
+                end_ms: *end_ms,
+            }),
+            _ => None,
+        };
+        let decision = choose_source(
+            preferred,
+            entitlement,
+            &song.audio_formats,
+            &candidates,
+            &availability,
+            preview,
+        )
+        .map_err(|error| match error {
+            PlaybackSourceError::EntitlementInsufficient => QQMusicError::EntitlementUnavailable,
+            PlaybackSourceError::Cancelled => QQMusicError::Cancelled,
+            _ => QQMusicError::NotFound,
+        })?;
         let sip = response
             .request
             .data
@@ -1375,63 +1426,50 @@ impl QQMusicClient {
             .into_iter()
             .find_map(|value| normalize_cdn_base(&value))
             .ok_or(QQMusicError::MalformedResponse)?;
-
-        for (candidate, item) in candidates.iter().zip(response.request.data.items) {
-            if item.result != 0 || item.path.is_empty() {
-                continue;
-            }
-            let url = normalize_cdn_url(&sip, &item.path)?;
-            let preview_range = match &song.playback_capability {
-                Some(PlaybackCapability::Preview { start_ms, end_ms }) => {
-                    Some((*start_ms, *end_ms))
-                }
-                _ => None,
-            };
-            let is_preview = candidate.preview;
-            let (timeline_offset_ms, timeline_end_ms) = if is_preview {
-                preview_range.unwrap_or((0, 60_000))
-            } else {
-                (0, song.duration_ms)
-            };
-            return Ok(ResolvedPlaybackSource {
-                cache_key: format!(
-                    "qqmusic:{}:{}:{}",
-                    provider.track_id, candidate.cache_label, media_mid
-                ),
-                location: PlaybackLocation::Http {
-                    url,
-                    headers: vec![
-                        ("Referer".to_owned(), "https://y.qq.com/".to_owned()),
-                        ("Origin".to_owned(), "https://y.qq.com".to_owned()),
-                    ],
-                },
-                format: candidate.format,
-                mime_type: Some(candidate.mime_type.to_owned()),
-                quality_label: candidate.cache_label.to_owned(),
-                bitrate_kbps: candidate.bitrate_kbps,
-                sample_rate_hz: None,
-                bit_depth: if candidate.format == AudioFormat::Flac {
-                    Some(16)
-                } else {
-                    None
-                },
-                content_length: candidate.content_length(song),
-                supports_range: true,
-                expires_at_ms: Some(unix_timestamp_ms().saturating_add(15 * 60 * 1_000)),
-                timeline_offset_ms,
-                timeline_end_ms: Some(timeline_end_ms),
-                is_preview,
-            });
-        }
-
-        if matches!(
-            song.playback_capability,
-            Some(PlaybackCapability::Preview { .. })
-        ) {
-            Err(QQMusicError::EntitlementUnavailable)
+        let path = available_paths
+            .remove(&decision.candidate.filename)
+            .ok_or(QQMusicError::MalformedResponse)?;
+        let url = normalize_cdn_url(&sip, &path)?;
+        let is_preview = decision.candidate.preview;
+        let (timeline_offset_ms, timeline_end_ms) = if let Some(preview) = decision.preview {
+            (preview.start_ms, preview.end_ms)
         } else {
-            Err(QQMusicError::NotFound)
-        }
+            (0, song.duration_ms)
+        };
+        epoch_guard
+            .validate()
+            .map_err(|_| QQMusicError::Cancelled)?;
+        Ok(ResolvedPlaybackSource {
+            cache_key: format!(
+                "qqmusic:{}:{}:{}",
+                provider.track_id, decision.candidate.cache_label, media_mid
+            ),
+            location: PlaybackLocation::Http {
+                url,
+                headers: vec![
+                    ("Referer".to_owned(), "https://y.qq.com/".to_owned()),
+                    ("Origin".to_owned(), "https://y.qq.com".to_owned()),
+                ],
+            },
+            format: decision.candidate.format,
+            mime_type: Some(decision.candidate.mime_type.to_owned()),
+            quality_label: decision.candidate.cache_label.to_owned(),
+            bitrate_kbps: decision.candidate.bitrate_kbps,
+            sample_rate_hz: None,
+            bit_depth: if decision.candidate.format == AudioFormat::Flac {
+                Some(16)
+            } else {
+                None
+            },
+            content_length: decision.candidate.content_length(),
+            supports_range: true,
+            expires_at_ms: Some(unix_timestamp_ms().saturating_add(15 * 60 * 1_000)),
+            timeline_offset_ms,
+            timeline_end_ms: Some(timeline_end_ms),
+            is_preview,
+            selection: decision.selection,
+            epoch_guard,
+        })
     }
 
     fn musicu_request(&self, payload: &Value, session: Option<&QQSession>) -> RequestBuilder {
@@ -1836,22 +1874,6 @@ struct VkeyItem {
     result: i32,
 }
 
-#[derive(Clone, Debug)]
-struct SourceCandidate {
-    filename: String,
-    cache_label: &'static str,
-    format: AudioFormat,
-    mime_type: &'static str,
-    bitrate_kbps: Option<u32>,
-    preview: bool,
-}
-
-impl SourceCandidate {
-    fn content_length(&self, _song: &Song) -> Option<u64> {
-        None
-    }
-}
-
 fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
     let song_mid = non_empty(raw.mid)?;
     let album_mid = non_empty(raw.album.mid).unwrap_or_else(|| "unknown".to_owned());
@@ -2120,53 +2142,58 @@ fn old_playability(
     )
 }
 
-fn source_candidates(media_mid: &str, preferred: PreferredQuality) -> Vec<SourceCandidate> {
+fn source_candidates(media_mid: &str) -> Vec<SourceCandidate> {
     let lossless = SourceCandidate {
         filename: format!("F000{media_mid}.flac"),
         cache_label: "lossless-flac",
         format: AudioFormat::Flac,
+        codec: AudioCodec::Flac,
         mime_type: "audio/flac",
         bitrate_kbps: None,
+        quality: AudioQuality::Lossless,
         preview: false,
     };
     let high = SourceCandidate {
         filename: format!("M800{media_mid}.mp3"),
         cache_label: "high-mp3",
         format: AudioFormat::Mp3,
+        codec: AudioCodec::Mp3,
         mime_type: "audio/mpeg",
         bitrate_kbps: Some(320),
+        quality: AudioQuality::High,
         preview: false,
     };
     let standard = SourceCandidate {
         filename: format!("M500{media_mid}.mp3"),
         cache_label: "standard-mp3",
         format: AudioFormat::Mp3,
+        codec: AudioCodec::Mp3,
         mime_type: "audio/mpeg",
         bitrate_kbps: Some(128),
+        quality: AudioQuality::Standard,
         preview: false,
     };
     let aac = SourceCandidate {
         filename: format!("C400{media_mid}.m4a"),
         cache_label: "efficient-aac",
         format: AudioFormat::Aac,
+        codec: AudioCodec::Aac,
         mime_type: "audio/mp4",
         bitrate_kbps: Some(96),
+        quality: AudioQuality::Standard,
         preview: false,
     };
     let preview = SourceCandidate {
         filename: format!("RS02{media_mid}.mp3"),
         cache_label: "official-preview-mp3",
         format: AudioFormat::Mp3,
+        codec: AudioCodec::Mp3,
         mime_type: "audio/mpeg",
         bitrate_kbps: Some(128),
+        quality: AudioQuality::Standard,
         preview: true,
     };
-    match preferred {
-        PreferredQuality::Lossless => vec![lossless, high, standard, aac, preview],
-        PreferredQuality::High => vec![high, standard, aac, preview],
-        PreferredQuality::Standard => vec![standard, aac, preview],
-        PreferredQuality::Automatic => vec![high, standard, aac, preview],
-    }
+    vec![lossless, high, standard, aac, preview]
 }
 
 fn decrypt_provider_lyric(value: &str) -> Option<String> {
@@ -2658,7 +2685,7 @@ mod tests {
             display_name: "QQ Music".to_owned(),
             connection: "online".to_owned(),
             message: "Public catalog access is available.".to_owned(),
-            preferred_quality: PreferredQuality::Automatic,
+            preferred_quality: AudioQualityPreference::Automatic,
             capabilities: CatalogProviderCapabilities {
                 search: true,
                 album: true,

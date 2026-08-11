@@ -16,6 +16,12 @@ interface TestNativeSnapshot {
   playbackState: 'playing' | 'paused';
   playbackDurationMs: number | null;
   playbackError: null;
+  sourceSelection?: {
+    requestedQuality: 'automatic' | 'standard' | 'high' | 'lossless';
+    resolvedQuality: 'standard' | 'high' | 'lossless';
+    fallbackReason?: 'source-unavailable' | 'account-rights' | 'preview-only';
+    preview: boolean;
+  };
 }
 
 const nativeMocks = vi.hoisted(() => ({
@@ -110,5 +116,27 @@ describe('native player runtime', () => {
     const state = usePlayerStore.getState();
     expect(state.queue[state.currentIndex]?.id).toBe('event-track');
     expect(state.positionMs).toBe(4_000);
+  });
+
+  it('carries the sanitized source decision and normalizes its absence to null', async () => {
+    nativeMocks.invoke.mockResolvedValue({
+      ...snapshot('selected', 2_000),
+      sourceSelection: {
+        requestedQuality: 'high',
+        resolvedQuality: 'standard',
+        fallbackReason: 'source-unavailable',
+        preview: false,
+      },
+    } satisfies TestNativeSnapshot);
+    render(createElement(RuntimeHarness));
+
+    await waitFor(() =>
+      expect(usePlayerStore.getState().sourceSelection).toMatchObject({
+        fallbackReason: 'source-unavailable',
+      }),
+    );
+
+    act(() => nativeMocks.snapshotHandler?.({ payload: snapshot('next', 0) }));
+    expect(usePlayerStore.getState().sourceSelection).toBeNull();
   });
 });

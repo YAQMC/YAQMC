@@ -140,4 +140,31 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(usePlayerStore.getState().queue[0]).toBe(track);
     expect(track.isFavorite).toBe(originalFavorite);
   });
+
+  it.each([
+    ['account-rights', 'Using the best quality available to this account'],
+    ['source-unavailable', 'Requested quality is unavailable; using the next available source'],
+    ['preview-only', 'Playing the official preview'],
+  ] as const)(
+    'renders the localized %s fallback without parsing provider labels',
+    (reason, copy) => {
+      const track = qqTrack();
+      usePlayerStore.setState({
+        queue: [track],
+        currentIndex: 0,
+        playbackState: 'playing',
+        isPlaying: true,
+        sourceSelection: {
+          requestedQuality: 'lossless',
+          resolvedQuality: 'standard',
+          fallbackReason: reason,
+          preview: reason === 'preview-only',
+        },
+      } as never);
+
+      render(<PlayerBar />);
+
+      expect(screen.getByText(copy)).toHaveAttribute('data-fallback-reason', reason);
+    },
+  );
 });

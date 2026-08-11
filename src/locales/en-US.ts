@@ -205,6 +205,9 @@ export const enUS = {
     },
   },
   player: {
+    fallbackAccountRights: 'Using the best quality available to this account',
+    fallbackSourceUnavailable: 'Requested quality is unavailable; using the next available source',
+    fallbackPreviewOnly: 'Playing the official preview',
     region: 'Music player',
     choose: 'Choose something to play',
     favorite: 'Favorite track',
@@ -447,6 +450,11 @@ export const enUS = {
       resetPosition: 'Reset position',
     },
     playback: {
+      observedQuality: 'Account access',
+      observedQualityDescription:
+        'The highest quality confirmed by the current sanitized account snapshot.',
+      observedQualityLabel: 'Account can currently access',
+      qualityUnknown: 'Unknown',
       title: 'Playback',
       description: 'Native audio output and preferred QQ Music stream quality.',
       audioOutput: 'Audio output',

@@ -208,6 +208,9 @@ export const zhCN = {
     },
   },
   player: {
+    fallbackAccountRights: '正在使用当前账号可用的最佳音质',
+    fallbackSourceUnavailable: '请求的音质暂无可用音源，已使用下一可用音源',
+    fallbackPreviewOnly: '正在播放官方试听片段',
     region: '音乐播放器',
     choose: '选择内容开始播放',
     favorite: '收藏歌曲',
@@ -449,6 +452,10 @@ export const zhCN = {
       resetPosition: '重置位置',
     },
     playback: {
+      observedQuality: '账号可用音质',
+      observedQualityDescription: '当前脱敏账号快照已确认的最高可用音质。',
+      observedQualityLabel: '账号当前可用音质',
+      qualityUnknown: '未知',
       title: '播放',
       description: '原生音频输出与 QQ 音乐首选播放音质。',
       audioOutput: '音频输出',

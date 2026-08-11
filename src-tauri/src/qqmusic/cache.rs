@@ -60,6 +60,17 @@ pub(crate) struct AccountEpoch {
     pub(crate) scope: OpaqueAccountScope,
 }
 
+#[cfg(test)]
+impl AccountEpoch {
+    pub(crate) fn for_test(generation: u64) -> Self {
+        Self {
+            generation,
+            scope: OpaqueAccountScope::parse(format!("{generation:032x}"))
+                .expect("test account scope"),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AccountLibraryProjection {

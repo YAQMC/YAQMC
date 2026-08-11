@@ -123,11 +123,40 @@ describe('player store', () => {
 
   it('keeps the active track stable when removing an earlier queue entry', () => {
     usePlayerStore.getState().playTracks([track('one'), track('two'), track('three')], 'two');
+    usePlayerStore.setState({
+      sourceSelection: {
+        requestedQuality: 'lossless',
+        resolvedQuality: 'high',
+        fallbackReason: 'account-rights',
+        preview: false,
+      },
+    });
     usePlayerStore.getState().removeFromQueue(0);
 
     const state = usePlayerStore.getState();
     expect(state.currentIndex).toBe(0);
     expect(state.queue[state.currentIndex]?.id).toBe('two');
+    expect(state.sourceSelection?.fallbackReason).toBe('account-rights');
+  });
+
+  it('clears source selection when removing the active queue entry', () => {
+    usePlayerStore.getState().playTracks([track('one'), track('two')]);
+    usePlayerStore.setState({
+      sourceSelection: {
+        requestedQuality: 'high',
+        resolvedQuality: 'standard',
+        fallbackReason: 'source-unavailable',
+        preview: false,
+      },
+    });
+
+    usePlayerStore.getState().removeFromQueue(0);
+
+    expect(usePlayerStore.getState()).toMatchObject({
+      currentIndex: 0,
+      sourceSelection: null,
+    });
+    expect(usePlayerStore.getState().queue[0]?.id).toBe('two');
   });
 
   it('opens lyrics, closes the queue, and preserves playback state', () => {
@@ -352,5 +381,27 @@ describe('player store', () => {
     usePlayerStore.getState().tick(100);
 
     expect(usePlayerStore.getState()).toMatchObject({ positionMs: 1_100, timelineRevision: 4 });
+  });
+
+  it('projects only the typed source selection and clears it when a later snapshot omits it', () => {
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({
+        sourceSelection: {
+          requestedQuality: 'lossless',
+          resolvedQuality: 'high',
+          fallbackReason: 'account-rights',
+          preview: false,
+        },
+      }),
+    );
+    expect(usePlayerStore.getState().sourceSelection).toEqual({
+      requestedQuality: 'lossless',
+      resolvedQuality: 'high',
+      fallbackReason: 'account-rights',
+      preview: false,
+    });
+
+    usePlayerStore.getState().applyExternalSnapshot(snapshot());
+    expect(usePlayerStore.getState().sourceSelection).toBeNull();
   });
 });
