@@ -40,6 +40,11 @@ $collectorSource = Get-Content -LiteralPath $collectorPath -Raw
 Assert-True $collectorSource.Contains('[void]$socket.ConnectAsync') 'CDP connect must not leak VoidTaskResult into the adapter connection'
 Assert-True $collectorSource.Contains('[void]$Connection.Socket.SendAsync') 'CDP send must not leak VoidTaskResult into command results'
 Assert-True $collectorSource.Contains('GetWindowTextLength(window) > 0') 'native HWND discovery must exclude untitled runtime utility windows'
+Assert-True $collectorSource.Contains("'.settings-page .settings-inline-control > button.button--secondary'") 'managed image selection must target the appearance image button'
+Assert-True $collectorSource.Contains('$topmost = [IntPtr]::new(-1)') 'native screen crops must temporarily raise the YAQMC window above occluding apps'
+Assert-True $collectorSource.Contains('$notTopmost = [IntPtr]::new(-2)') 'native screen crops must always restore non-topmost state'
+Assert-True $collectorSource.Contains('SetThreadDpiAwarenessContext([IntPtr]::new(-4))') 'native bounds and crops must run in per-monitor-v2 DPI coordinates'
+Assert-True $collectorSource.Contains('ForceForegroundWindow([IntPtr]$Window)') 'native screen crops must prove the YAQMC window owns the foreground'
 
 $undefinedEvaluation = [pscustomobject]@{
   result = [pscustomobject]@{ type = 'undefined' }

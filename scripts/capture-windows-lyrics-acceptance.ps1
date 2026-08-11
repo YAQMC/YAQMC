@@ -244,7 +244,7 @@ function Invoke-ProductionConfigureCase {
 })()
 '@
     if (-not $hasImage) {
-      $imageButton = Get-ProductionRect $Connection 'managed-image-picker' '.settings-page button.button--secondary'
+      $imageButton = Get-ProductionRect $Connection 'managed-image-picker' '.settings-page .settings-inline-control > button.button--secondary'
       Send-ProductionPointer $Connection $imageButton
       Add-Type -AssemblyName System.Windows.Forms
       Start-Sleep -Milliseconds 350
@@ -362,8 +362,8 @@ function New-ProductionCdpAdapter {
 }
 
 function Initialize-NativeWindowApi {
-  if ('YaqmcLyricsAcceptance.NativeWindow' -as [type]) { return }
-  Add-Type -TypeDefinition @'
+  if (-not ('YaqmcLyricsAcceptance.NativeWindow' -as [type])) {
+    Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -384,12 +384,44 @@ namespace YaqmcLyricsAcceptance {
     [DllImport("user32.dll")] public static extern bool AdjustWindowRectExForDpi(ref RECT rect, int style, bool menu, int exStyle, uint dpi);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint attach, uint attachTo, bool enabled);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int command);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextLength(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFOEX info);
+    public static bool ForceForegroundWindow(IntPtr target) {
+      var foreground = GetForegroundWindow();
+      uint unused;
+      var foregroundThread = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, out unused);
+      var targetThread = GetWindowThreadProcessId(target, out unused);
+      var currentThread = GetCurrentThreadId();
+      var foregroundAttached = false;
+      var targetAttached = false;
+      try {
+        if (foregroundThread != 0 && currentThread != foregroundThread) {
+          foregroundAttached = AttachThreadInput(currentThread, foregroundThread, true);
+        }
+        if (targetThread != 0 && currentThread != targetThread) {
+          targetAttached = AttachThreadInput(currentThread, targetThread, true);
+        }
+        ShowWindowAsync(target, 9);
+        var broughtToTop = BringWindowToTop(target);
+        var foregroundSet = SetForegroundWindow(target);
+        SetFocus(target);
+        return broughtToTop && foregroundSet && GetForegroundWindow() == target;
+      } finally {
+        if (targetAttached) AttachThreadInput(currentThread, targetThread, false);
+        if (foregroundAttached) AttachThreadInput(currentThread, foregroundThread, false);
+      }
+    }
     public static IntPtr[] VisibleWindowsForProcess(uint processId) {
       var windows = new List<IntPtr>();
       EnumWindows((window, parameter) => {
@@ -403,6 +435,11 @@ namespace YaqmcLyricsAcceptance {
   }
 }
 '@
+  }
+  $previousContext = [YaqmcLyricsAcceptance.NativeWindow]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+  if ($previousContext -eq [IntPtr]::Zero) {
+    throw 'Failed to enable per-monitor-v2 DPI coordinates for native acceptance.'
+  }
 }
 
 function Get-NativeClientBounds {
@@ -505,19 +542,33 @@ function New-ProductionCaptureAdapter {
       param($Window, [string]$Path, $PhysicalBounds)
       Add-Type -AssemblyName System.Drawing
       Initialize-NativeWindowApi
-      [YaqmcLyricsAcceptance.NativeWindow]::SetForegroundWindow([IntPtr]$Window) | Out-Null
-      Start-Sleep -Milliseconds 80
-      $bitmap = New-Object Drawing.Bitmap([int]$PhysicalBounds.width, [int]$PhysicalBounds.height)
-      $graphics = [Drawing.Graphics]::FromImage($bitmap)
+      $topmost = [IntPtr]::new(-1)
+      $notTopmost = [IntPtr]::new(-2)
+      $raiseFlags = 0x0013
+      if (-not [YaqmcLyricsAcceptance.NativeWindow]::SetWindowPos(
+        [IntPtr]$Window, $topmost, 0, 0, 0, 0, $raiseFlags
+      )) { throw 'Failed to raise the visual window for a native screen crop.' }
       try {
-        $graphics.CopyFromScreen(
-          [int]$PhysicalBounds.x, [int]$PhysicalBounds.y, 0, 0,
-          $bitmap.Size, [Drawing.CopyPixelOperation]::SourceCopy
-        )
-        $bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+        if (-not [YaqmcLyricsAcceptance.NativeWindow]::ForceForegroundWindow([IntPtr]$Window)) {
+          throw 'Failed to make the visual window foreground before a native screen crop.'
+        }
+        Start-Sleep -Milliseconds 80
+        $bitmap = New-Object Drawing.Bitmap([int]$PhysicalBounds.width, [int]$PhysicalBounds.height)
+        $graphics = [Drawing.Graphics]::FromImage($bitmap)
+        try {
+          $graphics.CopyFromScreen(
+            [int]$PhysicalBounds.x, [int]$PhysicalBounds.y, 0, 0,
+            $bitmap.Size, [Drawing.CopyPixelOperation]::SourceCopy
+          )
+          $bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+        } finally {
+          $graphics.Dispose()
+          $bitmap.Dispose()
+        }
       } finally {
-        $graphics.Dispose()
-        $bitmap.Dispose()
+        if (-not [YaqmcLyricsAcceptance.NativeWindow]::SetWindowPos(
+          [IntPtr]$Window, $notTopmost, 0, 0, 0, 0, $raiseFlags
+        )) { throw 'Failed to restore the visual window after a native screen crop.' }
       }
       return [pscustomobject]@{ PhysicalBounds = $PhysicalBounds }
     }
