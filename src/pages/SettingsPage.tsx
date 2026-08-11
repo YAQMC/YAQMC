@@ -11,6 +11,8 @@ import {
   Languages,
   LockKeyhole,
   Keyboard,
+  LogIn,
+  LogOut,
   Monitor,
   Music2,
   Palette,
@@ -27,6 +29,7 @@ import {
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocalApiSettings } from '../application/local-api';
+import { useAccountStore } from '../application/account-runtime';
 import {
   resetLyricsSurfacePosition,
   setLyricsSurfaceInteraction,
@@ -44,8 +47,10 @@ import {
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { useProviderSettings, type PreferredQuality } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
+import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
+import { isAccountMusicProvider } from '../providers/music-provider';
 
 interface SurfaceCapabilities {
   desktop: boolean;
@@ -223,6 +228,22 @@ function ColorControl({
       {!valid && <span className="color-control__error">{t('invalidColor')}</span>}
     </div>
   );
+}
+
+function safeAccountAvatarUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' &&
+      url.hostname === 'qpic.y.qq.com' &&
+      url.port === '' &&
+      url.username === '' &&
+      url.password === ''
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function SurfacePreview({ kind }: { kind: SurfaceKind }) {
@@ -512,6 +533,13 @@ export function SettingsPage() {
   const { t: errors } = useTranslation('errors');
   const api = useLocalApiSettings();
   const provider = useProviderSettings();
+  const musicProvider = useMusicProvider();
+  const accountProvider = isAccountMusicProvider(musicProvider) ? musicProvider : null;
+  const accountSnapshot = useAccountStore((state) => state.snapshot);
+  const accountBusy = useAccountStore((state) => state.busy);
+  const accountError = useAccountStore((state) => state.error);
+  const openAccountDialog = useAccountStore((state) => state.openDialog);
+  const signOut = useAccountStore((state) => state.signOut);
   const platform = usePlatformIntegration();
   const preferences = usePreferencesStore();
   const [copied, setCopied] = useState<'endpoint' | 'token' | null>(null);
@@ -647,10 +675,103 @@ export function SettingsPage() {
           'account.online' | 'account.cached' | 'account.offline',
       )
     : null;
-  const accountTitle = t('account.guest');
-  const accountMessage = provider.status
-    ? t('account.guestMessage')
-    : t('account.statusUnavailable');
+  const accountProfile = accountSnapshot.profile;
+  const accountEntitlement = accountSnapshot.entitlement;
+  const accountAvatarUrl = safeAccountAvatarUrl(accountProfile?.avatarUrl);
+  const accountStateLabel = (() => {
+    switch (accountSnapshot.state) {
+      case 'guest':
+      case 'cancelled':
+        return t('account.stateGuest');
+      case 'restoring-session':
+        return t('account.stateRestoring');
+      case 'starting-login':
+      case 'waiting-for-scan':
+      case 'waiting-for-confirmation':
+        return t('account.stateAuthorizing');
+      case 'authenticated':
+        return t('account.stateAuthenticated');
+      case 'expired':
+      case 'rejected':
+      case 'session-expired':
+      case 'reauthentication-required':
+        return t('account.stateAuthorizationRequired');
+      case 'network-error':
+        return t('account.stateOffline');
+      case 'protocol-error':
+      case 'secure-store-unavailable':
+        return t('account.stateUnavailable');
+    }
+  })();
+  const accountMessage = (() => {
+    if (accountError) {
+      switch (accountError) {
+        case 'network':
+          return t('account.networkMessage');
+        case 'authorization':
+          return t('account.reauthMessage');
+        case 'secure-store':
+          return t('account.secureStoreMessage');
+        case 'protocol':
+          return t('account.protocolMessage');
+        case 'unknown':
+          return t('account.unknownMessage');
+      }
+    }
+    switch (accountSnapshot.state) {
+      case 'guest':
+      case 'cancelled':
+        return provider.status ? t('account.guestMessage') : t('account.statusUnavailable');
+      case 'restoring-session':
+        return t('account.restoringMessage');
+      case 'starting-login':
+      case 'waiting-for-scan':
+      case 'waiting-for-confirmation':
+        return t('account.authorizingMessage');
+      case 'authenticated':
+        return t('account.authenticatedMessage');
+      case 'expired':
+        return t('account.expiredMessage');
+      case 'rejected':
+        return t('account.rejectedMessage');
+      case 'network-error':
+        return t('account.networkMessage');
+      case 'protocol-error':
+        return t('account.protocolMessage');
+      case 'session-expired':
+      case 'reauthentication-required':
+        return t('account.reauthMessage');
+      case 'secure-store-unavailable':
+        return t('account.secureStoreMessage');
+    }
+  })();
+  const accountTierLabel = accountEntitlement
+    ? {
+        free: t('account.tierFree'),
+        'music-vip': t('account.tierMusicVip'),
+        'super-vip': t('account.tierSuperVip'),
+        unknown: t('account.tierUnknown'),
+      }[accountEntitlement.tier]
+    : null;
+  const accountMembershipLabel = accountEntitlement
+    ? {
+        active: t('account.membershipActive'),
+        expired: t('account.membershipExpired'),
+        inactive: t('account.membershipInactive'),
+        unknown: t('account.membershipUnknown'),
+      }[accountEntitlement.membership]
+    : null;
+  const accountExpiryLabel = (() => {
+    if (!accountEntitlement) return null;
+    if (accountEntitlement.expiresAtMs === null) return t('account.noExpiry');
+    const expiry = new Date(accountEntitlement.expiresAtMs);
+    return Number.isFinite(expiry.getTime())
+      ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(expiry)
+      : t('account.expiryUnknown');
+  })();
+  const accountNeedsReauthentication =
+    accountSnapshot.state === 'session-expired' ||
+    accountSnapshot.state === 'reauthentication-required';
 
   return (
     <section className="page standard-page settings-page">
@@ -1072,15 +1193,69 @@ export function SettingsPage() {
         }
       >
         <div className="settings-card">
-          <SettingRow
-            title={accountTitle}
-            description={accountMessage}
-            control={
-              <span className="settings-provider-mark">
+          <div className="settings-account-profile">
+            {accountAvatarUrl ? (
+              <img
+                className="settings-account-profile__avatar"
+                src={accountAvatarUrl}
+                alt={t('account.avatarAlt', { nickname: accountProfile?.nickname ?? '' })}
+              />
+            ) : (
+              <span className="settings-provider-mark" aria-hidden="true">
                 <ShieldCheck size={16} />
               </span>
-            }
-          />
+            )}
+            <div className="settings-account-profile__identity">
+              <strong>{accountProfile?.nickname ?? t('account.guest')}</strong>
+              <span>{accountProfile?.maskedIdentity ?? accountStateLabel}</span>
+            </div>
+            {accountProvider ? (
+              accountSnapshot.state === 'authenticated' ? (
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  disabled={accountBusy}
+                  onClick={() => void signOut(accountProvider)}
+                >
+                  <LogOut size={14} />
+                  {accountBusy ? t('account.signingOut') : t('account.signOut')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="button button--primary"
+                  disabled={accountBusy}
+                  onClick={openAccountDialog}
+                >
+                  <LogIn size={14} />
+                  {accountNeedsReauthentication ? t('account.reauthenticate') : t('account.signIn')}
+                </button>
+              )
+            ) : null}
+          </div>
+          <p className="settings-account-message">{accountMessage}</p>
+          <dl className="settings-account-metadata">
+            <div>
+              <dt>{t('account.state')}</dt>
+              <dd>{accountStateLabel}</dd>
+            </div>
+            {accountEntitlement && (
+              <>
+                <div>
+                  <dt>{t('account.tier')}</dt>
+                  <dd>{accountTierLabel}</dd>
+                </div>
+                <div>
+                  <dt>{t('account.membership')}</dt>
+                  <dd>{accountMembershipLabel}</dd>
+                </div>
+                <div>
+                  <dt>{t('account.expires')}</dt>
+                  <dd>{accountExpiryLabel}</dd>
+                </div>
+              </>
+            )}
+          </dl>
           <div className="settings-security-note">
             <ShieldCheck size={17} />
             <p>{t('account.security')}</p>
