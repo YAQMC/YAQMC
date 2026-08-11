@@ -4,10 +4,15 @@ import type {
   AccountPlaylistDetail,
   AccountPlaylistSummary,
   AccountSnapshot,
+  CreatePlaylistRequest,
+  DeletePlaylistRequest,
   EntityId,
   Page,
   Playlist,
+  PlaylistMutationResult,
+  PlaylistTrackMutationRequest,
   RemotePlayHistoryItem,
+  RenamePlaylistRequest,
   Song,
 } from '../domain/music';
 import { ProviderError } from '../domain/music';
@@ -57,6 +62,14 @@ export const FAVORITE_RECONCILED_MESSAGE =
 export const FAVORITE_OUTCOME_UNKNOWN_MESSAGE =
   'The server could not confirm the library change. Refreshing Favorites.';
 
+export type PlaylistMutationOperation = 'create' | 'rename' | 'add' | 'remove' | 'delete';
+export type PlaylistMutationOutcome = 'rejected' | 'outcome-unknown' | 'failed' | 'reconciled';
+
+export interface PlaylistMutationNotice {
+  operation: PlaylistMutationOperation;
+  outcome: PlaylistMutationOutcome;
+}
+
 type OwnedSnapshot = Extract<
   AccountSnapshot,
   { state: 'starting-login' | 'waiting-for-scan' | 'waiting-for-confirmation' }
@@ -74,6 +87,8 @@ interface AccountStoreState {
   accountPlaylistDetails: Record<EntityId, LibraryResource<AccountPlaylistDetail>>;
   favoriteByTrackId: Record<EntityId, boolean>;
   favoritePendingByTrackId: Record<EntityId, string>;
+  playlistPendingById: Record<EntityId, string>;
+  playlistMutationNoticeById: Record<EntityId, PlaylistMutationNotice>;
   mutationMessage: string | null;
   openDialog: () => void;
   closeDialog: (provider: AccountMusicProvider) => Promise<void>;
@@ -94,6 +109,29 @@ interface AccountStoreState {
   ) => Promise<void>;
   loadNextAccountPlaylist: (provider: AccountMusicProvider, id: EntityId) => Promise<void>;
   setFavorite: (provider: AccountMusicProvider, track: Song, favorite: boolean) => Promise<void>;
+  createPlaylist: (
+    provider: AccountMusicProvider,
+    title: string,
+  ) => Promise<PlaylistMutationResult | null>;
+  renamePlaylist: (
+    provider: AccountMusicProvider,
+    playlist: AccountPlaylistSummary,
+    title: string,
+  ) => Promise<PlaylistMutationResult | null>;
+  addPlaylistTrack: (
+    provider: AccountMusicProvider,
+    playlist: AccountPlaylistSummary,
+    track: Song,
+  ) => Promise<PlaylistMutationResult | null>;
+  removePlaylistTrack: (
+    provider: AccountMusicProvider,
+    playlist: AccountPlaylistSummary,
+    track: Song,
+  ) => Promise<PlaylistMutationResult | null>;
+  deletePlaylist: (
+    provider: AccountMusicProvider,
+    playlist: AccountPlaylistSummary,
+  ) => Promise<PlaylistMutationResult | null>;
 }
 
 const initialSnapshot: AccountSnapshot = {
@@ -174,15 +212,17 @@ function libraryResetForSnapshot(snapshot: AccountSnapshot) {
     accountPlaylistDetails: {} as Record<EntityId, LibraryResource<AccountPlaylistDetail>>,
     favoriteByTrackId: {} as Record<EntityId, boolean>,
     favoritePendingByTrackId: {} as Record<EntityId, string>,
+    playlistPendingById: {} as Record<EntityId, string>,
+    playlistMutationNoticeById: {} as Record<EntityId, PlaylistMutationNotice>,
     mutationMessage: null,
   };
 }
 
-function favoriteOperationId(): string {
+function mutationOperationId(prefix = 'mutation'): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return `favorite-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 function withoutKey<T>(record: Record<EntityId, T>, key: EntityId): Record<EntityId, T> {
@@ -631,7 +671,8 @@ async function loadAccountPlaylistResource(
   }
   const previous = useAccountStore.getState().accountPlaylistDetails[id] ?? idleResource();
   if (previous.status === 'loading') return;
-  const previousDetail = reset ? null : loadedData(previous);
+  const visibleDetail = loadedData(previous);
+  const mergeBase = reset ? null : visibleDetail;
   const requestedCursor = reset ? null : nextCursor(previous);
   if (!reset && requestedCursor === null) return;
   const revision = snapshot.revision;
@@ -639,7 +680,7 @@ async function loadAccountPlaylistResource(
   accountPlaylistGenerations.set(id, generation);
   setAccountPlaylistResource(id, {
     status: 'loading',
-    data: previousDetail,
+    data: visibleDetail,
     nextCursor: requestedCursor,
     requestedCursor,
   });
@@ -658,7 +699,7 @@ async function loadAccountPlaylistResource(
       return;
     }
     const tracks = mergeFirstSeen(
-      previousDetail?.tracks.items ?? [],
+      mergeBase?.tracks.items ?? [],
       detail.tracks.items,
       (song) => song.id,
     );
@@ -695,7 +736,7 @@ async function loadAccountPlaylistResource(
       setAccountPlaylistResource(id, {
         status: 'error',
         error: failure,
-        data: previousDetail,
+        data: visibleDetail,
         nextCursor: requestedCursor,
       });
     }
@@ -729,6 +770,8 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   accountPlaylistDetails: {},
   favoriteByTrackId: {},
   favoritePendingByTrackId: {},
+  playlistPendingById: {},
+  playlistMutationNoticeById: {},
   mutationMessage: null,
   openDialog: () => {
     const snapshot = get().snapshot;
@@ -864,7 +907,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
 
     const revision = initial.snapshot.revision;
     const previous = initial.favoriteByTrackId[track.id] ?? track.isFavorite;
-    const operationId = favoriteOperationId();
+    const operationId = mutationOperationId('favorite');
     set((state) => ({
       favoriteByTrackId: { ...state.favoriteByTrackId, [track.id]: favorite },
       favoritePendingByTrackId: {
@@ -947,7 +990,414 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       mutationMessage: result.status === 'reconciled' ? FAVORITE_RECONCILED_MESSAGE : null,
     });
   },
+  createPlaylist: (provider, title) => runCreatePlaylistMutation(provider, title),
+  renamePlaylist: (provider, playlist, title) =>
+    runEntityPlaylistMutation({ provider, playlist, operation: 'rename', title }),
+  addPlaylistTrack: (provider, playlist, track) =>
+    runEntityPlaylistMutation({ provider, playlist, operation: 'add', track }),
+  removePlaylistTrack: (provider, playlist, track) =>
+    runEntityPlaylistMutation({ provider, playlist, operation: 'remove', track }),
+  deletePlaylist: (provider, playlist) =>
+    runEntityPlaylistMutation({ provider, playlist, operation: 'delete' }),
 }));
+
+function resourceWithData<T>(resource: LibraryResource<T>, data: T): LibraryResource<T> {
+  if (
+    resource.status === 'ready' ||
+    resource.status === 'stale' ||
+    resource.status === 'loading' ||
+    resource.status === 'error'
+  ) {
+    return { ...resource, data };
+  }
+  return resource;
+}
+
+function replacePlaylistSummary(
+  resource: LibraryResource<AccountPlaylistSummary[]>,
+  playlistId: EntityId,
+  summary: AccountPlaylistSummary | null,
+): LibraryResource<AccountPlaylistSummary[]> {
+  const data = loadedData(resource);
+  if (!data) return resource;
+  const index = data.findIndex((playlist) => playlist.id === playlistId);
+  const next = summary
+    ? index < 0
+      ? [...data, summary]
+      : data.map((playlist, candidate) => (candidate === index ? summary : playlist))
+    : data.filter((playlist) => playlist.id !== playlistId);
+  return resourceWithData(resource, next);
+}
+
+function updateDetailSummary(
+  resource: LibraryResource<AccountPlaylistDetail> | undefined,
+  summary: AccountPlaylistSummary,
+): LibraryResource<AccountPlaylistDetail> | undefined {
+  if (!resource) return resource;
+  const detail = loadedData(resource);
+  return detail ? resourceWithData(resource, { ...detail, summary }) : resource;
+}
+
+function projectPlaylistSummary(
+  state: AccountStoreState,
+  summary: AccountPlaylistSummary,
+): Pick<AccountStoreState, 'playlists' | 'accountPlaylistDetails'> {
+  const detail = updateDetailSummary(state.accountPlaylistDetails[summary.id], summary);
+  return {
+    playlists: replacePlaylistSummary(state.playlists, summary.id, summary),
+    accountPlaylistDetails: detail
+      ? { ...state.accountPlaylistDetails, [summary.id]: detail }
+      : state.accountPlaylistDetails,
+  };
+}
+
+function projectPlaylistTracks(
+  state: AccountStoreState,
+  playlist: AccountPlaylistSummary,
+  track: Song,
+  add: boolean,
+): Pick<AccountStoreState, 'playlists' | 'accountPlaylistDetails'> {
+  const resource = state.accountPlaylistDetails[playlist.id];
+  const detail = resource ? loadedData(resource) : null;
+  const previouslyContained = detail?.tracks.items.some((item) => item.id === track.id) ?? false;
+  const changed = add ? !previouslyContained : previouslyContained;
+  const summary = changed
+    ? {
+        ...playlist,
+        trackCount: Math.max(0, playlist.trackCount + (add ? 1 : -1)),
+      }
+    : playlist;
+  if (!resource || !detail) return projectPlaylistSummary(state, summary);
+  const tracks = add
+    ? mergeFirstSeen(detail.tracks.items, [track], (item) => item.id)
+    : detail.tracks.items.filter((item) => item.id !== track.id);
+  return {
+    playlists: replacePlaylistSummary(state.playlists, playlist.id, summary),
+    accountPlaylistDetails: {
+      ...state.accountPlaylistDetails,
+      [playlist.id]: resourceWithData(resource, {
+        ...detail,
+        summary,
+        tracks: { ...detail.tracks, items: tracks, total: summary.trackCount },
+      }),
+    },
+  };
+}
+
+function restorePlaylistEntity(
+  state: AccountStoreState,
+  playlistId: EntityId,
+  previousSummary: AccountPlaylistSummary | null,
+  previousDetail: LibraryResource<AccountPlaylistDetail> | undefined,
+): Pick<AccountStoreState, 'playlists' | 'accountPlaylistDetails'> {
+  const accountPlaylistDetails = { ...state.accountPlaylistDetails };
+  if (previousDetail) accountPlaylistDetails[playlistId] = previousDetail;
+  else delete accountPlaylistDetails[playlistId];
+  return {
+    playlists: replacePlaylistSummary(state.playlists, playlistId, previousSummary),
+    accountPlaylistDetails,
+  };
+}
+
+interface EntityPlaylistMutationOptions {
+  provider: AccountMusicProvider;
+  playlist: AccountPlaylistSummary;
+  operation: Exclude<PlaylistMutationOperation, 'create'>;
+  title?: string;
+  track?: Song;
+}
+
+async function runEntityPlaylistMutation({
+  provider,
+  playlist,
+  operation,
+  title,
+  track,
+}: EntityPlaylistMutationOptions): Promise<PlaylistMutationResult | null> {
+  const initial = useAccountStore.getState();
+  if (initial.snapshot.state !== 'authenticated') {
+    initial.openDialog();
+    return null;
+  }
+  const capability =
+    operation === 'rename'
+      ? playlist.capabilities.canRename
+      : operation === 'add'
+        ? playlist.capabilities.canAddTracks
+        : operation === 'remove'
+          ? playlist.capabilities.canRemoveTracks
+          : playlist.capabilities.canDelete;
+  if (!initial.snapshot.capabilities.playlistWrite || !capability) {
+    useAccountStore.setState((state) => ({
+      playlistMutationNoticeById: {
+        ...state.playlistMutationNoticeById,
+        [playlist.id]: { operation, outcome: 'failed' },
+      },
+    }));
+    return null;
+  }
+  if (initial.playlistPendingById[playlist.id]) return null;
+  if (
+    (operation === 'rename' && title === undefined) ||
+    ((operation === 'add' || operation === 'remove') && !track)
+  ) {
+    return null;
+  }
+
+  const revision = initial.snapshot.revision;
+  const operationId = mutationOperationId(`playlist-${operation}`);
+  const previousSummary =
+    loadedData(initial.playlists)?.find((item) => item.id === playlist.id) ?? null;
+  const previousDetail = initial.accountPlaylistDetails[playlist.id];
+  accountPlaylistGenerations.set(
+    playlist.id,
+    (accountPlaylistGenerations.get(playlist.id) ?? 0) + 1,
+  );
+  useAccountStore.setState((state) => {
+    const projected =
+      operation === 'rename'
+        ? projectPlaylistSummary(state, { ...playlist, title: title!.trim() })
+        : operation === 'add' || operation === 'remove'
+          ? projectPlaylistTracks(state, playlist, track!, operation === 'add')
+          : { playlists: state.playlists, accountPlaylistDetails: state.accountPlaylistDetails };
+    return {
+      ...projected,
+      playlistPendingById: { ...state.playlistPendingById, [playlist.id]: operationId },
+      playlistMutationNoticeById: withoutKey(state.playlistMutationNoticeById, playlist.id),
+    };
+  });
+
+  let result: PlaylistMutationResult;
+  try {
+    const signal = runtimeSignal(provider);
+    if (operation === 'rename') {
+      const request: RenamePlaylistRequest = {
+        playlistId: playlist.id,
+        title: title!,
+        clientOperationId: operationId,
+      };
+      result = await provider.renamePlaylist(request, signal);
+    } else if (operation === 'add' || operation === 'remove') {
+      const request: PlaylistTrackMutationRequest = {
+        playlistId: playlist.id,
+        trackId: track!.id,
+        clientOperationId: operationId,
+      };
+      result =
+        operation === 'add'
+          ? await provider.addPlaylistTrack(request, signal)
+          : await provider.removePlaylistTrack(request, signal);
+    } else {
+      const request: DeletePlaylistRequest = {
+        playlistId: playlist.id,
+        clientOperationId: operationId,
+      };
+      result = await provider.deletePlaylist(request, signal);
+    }
+  } catch (error) {
+    const current = useAccountStore.getState();
+    if (current.playlistPendingById[playlist.id] !== operationId) return null;
+    const pending = withoutKey(current.playlistPendingById, playlist.id);
+    if (current.snapshot.revision !== revision) {
+      useAccountStore.setState({ playlistPendingById: pending });
+      return null;
+    }
+    const failure = classifyLibraryFailure(error);
+    useAccountStore.setState({
+      ...restorePlaylistEntity(current, playlist.id, previousSummary, previousDetail),
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [playlist.id]: { operation, outcome: 'failed' },
+      },
+    });
+    if (failure === 'reauthentication-required') {
+      void current.refreshSnapshot(provider);
+    }
+    return null;
+  }
+
+  const current = useAccountStore.getState();
+  if (current.playlistPendingById[playlist.id] !== operationId) return null;
+  const pending = withoutKey(current.playlistPendingById, playlist.id);
+  if (
+    current.snapshot.revision !== revision ||
+    result.authRevision !== revision ||
+    result.clientOperationId !== operationId ||
+    (result.playlist !== null &&
+      (result.playlist.id !== playlist.id || result.playlist.ownership !== 'owned'))
+  ) {
+    useAccountStore.setState({ playlistPendingById: pending });
+    return null;
+  }
+  const confirmed = result.status === 'applied' || result.status === 'reconciled';
+  const invalidConfirmedShape =
+    confirmed && (operation === 'delete' ? result.playlist !== null : result.playlist === null);
+  if (invalidConfirmedShape) {
+    useAccountStore.setState({
+      ...restorePlaylistEntity(current, playlist.id, previousSummary, previousDetail),
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [playlist.id]: { operation, outcome: 'failed' },
+      },
+    });
+    return null;
+  }
+  if (result.status === 'rejected') {
+    useAccountStore.setState({
+      ...restorePlaylistEntity(current, playlist.id, previousSummary, previousDetail),
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [playlist.id]: { operation, outcome: 'rejected' },
+      },
+    });
+    return result;
+  }
+  if (result.status === 'outcome-unknown') {
+    useAccountStore.setState({
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [playlist.id]: { operation, outcome: 'outcome-unknown' },
+      },
+    });
+    if (operation === 'delete') void current.loadPlaylists(provider, true);
+    else void current.loadAccountPlaylist(provider, playlist.id, true);
+    return result;
+  }
+  useAccountStore.setState((state) => {
+    if (operation === 'delete') {
+      const accountPlaylistDetails = { ...state.accountPlaylistDetails };
+      delete accountPlaylistDetails[playlist.id];
+      return {
+        playlists: replacePlaylistSummary(state.playlists, playlist.id, null),
+        accountPlaylistDetails,
+        playlistPendingById: pending,
+        playlistMutationNoticeById:
+          result.status === 'reconciled'
+            ? {
+                ...state.playlistMutationNoticeById,
+                [playlist.id]: { operation, outcome: 'reconciled' },
+              }
+            : withoutKey(state.playlistMutationNoticeById, playlist.id),
+      };
+    }
+    const projected = result.playlist
+      ? projectPlaylistSummary(state, result.playlist)
+      : { playlists: state.playlists, accountPlaylistDetails: state.accountPlaylistDetails };
+    return {
+      ...projected,
+      playlistPendingById: pending,
+      playlistMutationNoticeById:
+        result.status === 'reconciled'
+          ? {
+              ...state.playlistMutationNoticeById,
+              [playlist.id]: { operation, outcome: 'reconciled' },
+            }
+          : withoutKey(state.playlistMutationNoticeById, playlist.id),
+    };
+  });
+  return result;
+}
+
+const CREATE_PLAYLIST_KEY = 'playlist-create';
+
+async function runCreatePlaylistMutation(
+  provider: AccountMusicProvider,
+  title: string,
+): Promise<PlaylistMutationResult | null> {
+  const initial = useAccountStore.getState();
+  if (initial.snapshot.state !== 'authenticated') {
+    initial.openDialog();
+    return null;
+  }
+  if (
+    !initial.snapshot.capabilities.playlistWrite ||
+    initial.playlistPendingById[CREATE_PLAYLIST_KEY]
+  ) {
+    return null;
+  }
+  const revision = initial.snapshot.revision;
+  const operationId = mutationOperationId('playlist-create');
+  useAccountStore.setState((state) => ({
+    playlistPendingById: { ...state.playlistPendingById, [CREATE_PLAYLIST_KEY]: operationId },
+    playlistMutationNoticeById: withoutKey(state.playlistMutationNoticeById, CREATE_PLAYLIST_KEY),
+  }));
+  const request: CreatePlaylistRequest = { title, clientOperationId: operationId };
+  let result: PlaylistMutationResult;
+  try {
+    result = await provider.createPlaylist(request, runtimeSignal(provider));
+  } catch (error) {
+    const current = useAccountStore.getState();
+    if (current.playlistPendingById[CREATE_PLAYLIST_KEY] !== operationId) return null;
+    const pending = withoutKey(current.playlistPendingById, CREATE_PLAYLIST_KEY);
+    if (current.snapshot.revision !== revision) {
+      useAccountStore.setState({ playlistPendingById: pending });
+      return null;
+    }
+    const failure = classifyLibraryFailure(error);
+    useAccountStore.setState({
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [CREATE_PLAYLIST_KEY]: { operation: 'create', outcome: 'failed' },
+      },
+    });
+    if (failure === 'reauthentication-required') {
+      void current.refreshSnapshot(provider);
+    }
+    return null;
+  }
+  const current = useAccountStore.getState();
+  if (current.playlistPendingById[CREATE_PLAYLIST_KEY] !== operationId) return null;
+  const pending = withoutKey(current.playlistPendingById, CREATE_PLAYLIST_KEY);
+  if (
+    current.snapshot.revision !== revision ||
+    result.authRevision !== revision ||
+    result.clientOperationId !== operationId
+  ) {
+    useAccountStore.setState({ playlistPendingById: pending });
+    return null;
+  }
+  if (result.status === 'applied' || result.status === 'reconciled') {
+    if (!result.playlist || result.playlist.ownership !== 'owned') {
+      useAccountStore.setState({
+        playlistPendingById: pending,
+        playlistMutationNoticeById: {
+          ...current.playlistMutationNoticeById,
+          [CREATE_PLAYLIST_KEY]: { operation: 'create', outcome: 'failed' },
+        },
+      });
+      return null;
+    }
+    useAccountStore.setState((state) => ({
+      ...projectPlaylistSummary(state, result.playlist!),
+      playlistPendingById: pending,
+      playlistMutationNoticeById:
+        result.status === 'reconciled'
+          ? {
+              ...state.playlistMutationNoticeById,
+              [CREATE_PLAYLIST_KEY]: { operation: 'create', outcome: 'reconciled' },
+            }
+          : withoutKey(state.playlistMutationNoticeById, CREATE_PLAYLIST_KEY),
+    }));
+  } else {
+    useAccountStore.setState({
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [CREATE_PLAYLIST_KEY]: {
+          operation: 'create',
+          outcome: result.status === 'rejected' ? 'rejected' : 'outcome-unknown',
+        },
+      },
+    });
+    if (result.status === 'outcome-unknown') void current.loadPlaylists(provider, true);
+  }
+  return result;
+}
 
 export function useFavoriteState(
   trackId: EntityId | null | undefined,
@@ -960,6 +1410,130 @@ export function useFavoriteState(
     trackId ? Boolean(state.favoritePendingByTrackId[trackId]) : false,
   );
   return { favorite, pending };
+}
+
+export function usePlaylistMutationState(playlistId: EntityId | null | undefined): {
+  pending: boolean;
+  notice: PlaylistMutationNotice | null;
+} {
+  const pending = useAccountStore((state) =>
+    playlistId ? Boolean(state.playlistPendingById[playlistId]) : false,
+  );
+  const notice = useAccountStore((state) =>
+    playlistId ? (state.playlistMutationNoticeById[playlistId] ?? null) : null,
+  );
+  return { pending, notice };
+}
+
+function requireAcceptedPlaylistMutation(
+  result: PlaylistMutationResult,
+  operation: PlaylistMutationOperation,
+): AccountPlaylistSummary | null {
+  if (result.status !== 'applied' && result.status !== 'reconciled') {
+    throw new Error(`Temporary playlist ${operation} was not confirmed`);
+  }
+  return result.playlist;
+}
+
+function requireConfirmedPlaylistDeletion(result: PlaylistMutationResult): void {
+  if (requireAcceptedPlaylistMutation(result, 'delete') !== null) {
+    throw new Error('Temporary playlist deletion returned an invalid confirmation');
+  }
+}
+
+function isTemporaryPlaylist(playlist: AccountPlaylistSummary, createdId: EntityId): boolean {
+  return (
+    playlist.id === createdId &&
+    playlist.ownership === 'owned' &&
+    playlist.title.startsWith('YAQMC Integration Test (')
+  );
+}
+
+/**
+ * Deterministic fake/live-gate helper. It never targets a playlist unless the
+ * provider identified it as the owned, uniquely created playlist for this run.
+ */
+export async function runTemporaryPlaylistAcceptance(
+  provider: AccountMusicProvider,
+  knownTrack: Song,
+): Promise<AccountPlaylistSummary> {
+  const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const title = `YAQMC Integration Test (${timestamp})`;
+  const create = await provider.createPlaylist({
+    title,
+    clientOperationId: mutationOperationId('playlist-create-acceptance'),
+  });
+  const created = requireAcceptedPlaylistMutation(create, 'create');
+  if (!created || created.title !== title || !isTemporaryPlaylist(created, created.id)) {
+    throw new Error('Temporary playlist creation returned an unsafe cleanup target');
+  }
+
+  let cleanupTarget = created;
+  let deleteAttempted = false;
+  let primaryError: unknown;
+  try {
+    const add = await provider.addPlaylistTrack({
+      playlistId: created.id,
+      trackId: knownTrack.id,
+      clientOperationId: mutationOperationId('playlist-add-acceptance'),
+    });
+    requireAcceptedPlaylistMutation(add, 'add');
+
+    const detail = await provider.getAccountPlaylistTracks(created.id, undefined, 100);
+    if (
+      !isTemporaryPlaylist(detail.summary, created.id) ||
+      !detail.tracks.items.some((track) => track.id === knownTrack.id)
+    ) {
+      throw new Error('Temporary playlist add could not be verified safely');
+    }
+    cleanupTarget = detail.summary;
+
+    const remove = await provider.removePlaylistTrack({
+      playlistId: created.id,
+      trackId: knownTrack.id,
+      clientOperationId: mutationOperationId('playlist-remove-acceptance'),
+    });
+    requireAcceptedPlaylistMutation(remove, 'remove');
+
+    const renamedTitle = `${title} Verified`;
+    const rename = await provider.renamePlaylist({
+      playlistId: created.id,
+      title: renamedTitle,
+      clientOperationId: mutationOperationId('playlist-rename-acceptance'),
+    });
+    const renamed = requireAcceptedPlaylistMutation(rename, 'rename');
+    if (!renamed || renamed.title !== renamedTitle || !isTemporaryPlaylist(renamed, created.id)) {
+      throw new Error('Temporary playlist rename could not be verified safely');
+    }
+    cleanupTarget = renamed;
+
+    deleteAttempted = true;
+    const deleted = await provider.deletePlaylist({
+      playlistId: created.id,
+      clientOperationId: mutationOperationId('playlist-delete-acceptance'),
+    });
+    requireConfirmedPlaylistDeletion(deleted);
+    return created;
+  } catch (error) {
+    primaryError = error;
+  }
+
+  if (!deleteAttempted && isTemporaryPlaylist(cleanupTarget, created.id)) {
+    try {
+      const cleanup = await provider.deletePlaylist({
+        playlistId: created.id,
+        clientOperationId: mutationOperationId('playlist-cleanup-acceptance'),
+      });
+      requireConfirmedPlaylistDeletion(cleanup);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [primaryError, cleanupError],
+        'Temporary playlist operation and cleanup both failed',
+        { cause: cleanupError },
+      );
+    }
+  }
+  throw primaryError;
 }
 
 export function useAccountRuntime(provider: MusicProvider): void {
@@ -1013,6 +1587,8 @@ export function resetAccountRuntimeForTest(): void {
     accountPlaylistDetails: {},
     favoriteByTrackId: {},
     favoritePendingByTrackId: {},
+    playlistPendingById: {},
+    playlistMutationNoticeById: {},
     mutationMessage: null,
   });
 }

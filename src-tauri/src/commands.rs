@@ -15,8 +15,10 @@ use crate::{
     },
     qqmusic::{
         account::{
-            AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
-            FavoriteMutationRequest, FavoriteMutationResult, Page, RemotePlayHistoryItem,
+            AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, CreatePlaylistRequest,
+            DeletePlaylistRequest, FavoriteMutationRequest, FavoriteMutationResult, Page,
+            PlaylistMutationResult, PlaylistTrackMutationRequest, RemotePlayHistoryItem,
+            RenamePlaylistRequest,
         },
         Album, HomeFeed, LibrarySnapshot, Playlist, PreferredQuality, ProviderResult,
         ProviderStatus, QQMusicService, SearchResult,
@@ -242,6 +244,62 @@ pub async fn qqmusic_set_favorite(
 }
 
 #[tauri::command]
+pub async fn qqmusic_create_playlist(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: CreatePlaylistRequest,
+) -> ProviderResult<PlaylistMutationResult> {
+    require_main_window(&window)?;
+    provider.create_playlist(request).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_rename_playlist(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: RenamePlaylistRequest,
+) -> ProviderResult<PlaylistMutationResult> {
+    require_main_window(&window)?;
+    provider.rename_playlist(request).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_add_playlist_track(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: PlaylistTrackMutationRequest,
+) -> ProviderResult<PlaylistMutationResult> {
+    require_main_window(&window)?;
+    provider
+        .add_playlist_track(request)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_remove_playlist_track(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: PlaylistTrackMutationRequest,
+) -> ProviderResult<PlaylistMutationResult> {
+    require_main_window(&window)?;
+    provider
+        .remove_playlist_track(request)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_delete_playlist(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: DeletePlaylistRequest,
+) -> ProviderResult<PlaylistMutationResult> {
+    require_main_window(&window)?;
+    provider.delete_playlist(request).await.map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn qqmusic_auth_start(
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
@@ -303,13 +361,18 @@ pub async fn qqmusic_sign_out(
 mod account_command_tests {
     use crate::command_guard::require_main_window_label;
 
-    const GUARDED_ACCOUNT_COMMANDS: [&str; 11] = [
+    const GUARDED_ACCOUNT_COMMANDS: [&str; 16] = [
         "qqmusic_account_snapshot",
         "qqmusic_favorite_songs",
         "qqmusic_account_playlists",
         "qqmusic_account_playlist_tracks",
         "qqmusic_account_recently_played",
         "qqmusic_set_favorite",
+        "qqmusic_create_playlist",
+        "qqmusic_rename_playlist",
+        "qqmusic_add_playlist_track",
+        "qqmusic_remove_playlist_track",
+        "qqmusic_delete_playlist",
         "qqmusic_auth_start",
         "qqmusic_auth_heartbeat",
         "qqmusic_auth_cancel",
@@ -318,8 +381,26 @@ mod account_command_tests {
     ];
 
     #[test]
-    fn every_account_lifecycle_command_uses_the_main_window_guard_contract() {
+    fn every_account_command_uses_the_main_window_guard_contract() {
+        let source = include_str!("commands.rs");
         for command in GUARDED_ACCOUNT_COMMANDS {
+            let marker = format!("pub async fn {command}(");
+            let block = source
+                .split_once(&marker)
+                .and_then(|(_, remainder)| {
+                    remainder
+                        .split_once("\n#[tauri::command]")
+                        .map(|(block, _)| block)
+                })
+                .expect("guarded account command source block");
+            assert!(
+                block.contains("window: tauri::WebviewWindow"),
+                "{command} must receive the invoking window"
+            );
+            assert!(
+                block.contains("require_main_window(&window)?;"),
+                "{command} must call the main-window guard"
+            );
             assert!(
                 require_main_window_label("main").is_ok(),
                 "{command} must allow the main window"

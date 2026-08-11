@@ -358,6 +358,7 @@ export default function App() {
         onLoadMore={() => {
           if (accountProvider) void loadNextAccountPlaylist(accountProvider, route.id);
         }}
+        onDeleted={() => navigate({ page: 'account-playlists' })}
       />
     );
   } else if (catalog.status === 'loading') {
@@ -455,11 +456,13 @@ function AccountPlaylistRoute({
   resource,
   onRetry,
   onLoadMore,
+  onDeleted,
 }: {
   id: string;
   resource: LibraryResource<AccountPlaylistDetail>;
   onRetry: () => void;
   onLoadMore: () => void;
+  onDeleted: () => void;
 }) {
   const { t } = useTranslation('pages');
   const { t: common } = useTranslation('common');
@@ -492,6 +495,7 @@ function AccountPlaylistRoute({
           hasMore={resource.status === 'ready' && resource.nextCursor !== null}
           loadingMore={resource.status === 'loading'}
           onLoadMore={onLoadMore}
+          onDeleted={onDeleted}
         />
       </>
     );

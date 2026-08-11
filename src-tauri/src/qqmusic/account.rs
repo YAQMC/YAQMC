@@ -450,6 +450,8 @@ struct MutationState {
     epoch: Option<AccountEpoch>,
     favorite_in_flight: HashMap<String, String>,
     favorite_completed: CompletedResultCache<CompletedFavoriteMutation>,
+    playlist_in_flight: HashMap<String, String>,
+    playlist_completed: CompletedResultCache<CompletedPlaylistMutation>,
 }
 
 #[derive(Clone)]
@@ -457,6 +459,34 @@ struct CompletedFavoriteMutation {
     requested_track_id: String,
     requested_favorite: bool,
     result: FavoriteMutationResult,
+}
+
+#[derive(Clone, PartialEq)]
+enum PlaylistMutationFingerprint {
+    Create {
+        title: String,
+    },
+    Rename {
+        playlist_id: String,
+        title: String,
+    },
+    AddTrack {
+        playlist_id: String,
+        track_id: String,
+    },
+    RemoveTrack {
+        playlist_id: String,
+        track_id: String,
+    },
+    Delete {
+        playlist_id: String,
+    },
+}
+
+#[derive(Clone)]
+struct CompletedPlaylistMutation {
+    fingerprint: PlaylistMutationFingerprint,
+    result: PlaylistMutationResult,
 }
 
 impl MutationState {
@@ -471,6 +501,8 @@ impl MutationState {
         self.epoch = None;
         self.favorite_in_flight.clear();
         self.favorite_completed.clear();
+        self.playlist_in_flight.clear();
+        self.playlist_completed.clear();
     }
 }
 
@@ -512,6 +544,40 @@ pub struct PlaylistMutationResult {
     pub playlist: Option<AccountPlaylistSummary>,
     pub error_code: Option<ProviderErrorCode>,
     pub auth_revision: u64,
+}
+
+#[derive(Serialize)]
+struct EditPlaylistPayload {
+    #[serde(rename = "dirId")]
+    dir_id: u64,
+    mask: u8,
+    #[serde(rename = "dirNewName")]
+    dir_new_name: String,
+    #[serde(rename = "dirNewDesc")]
+    dir_new_desc: String,
+    #[serde(rename = "dirNewPicUrl")]
+    dir_new_pic_url: String,
+    #[serde(rename = "dirNewtaglist")]
+    dir_new_tag_list: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PlaylistWriteCertainty {
+    Accepted,
+    OutcomeUnknown,
+}
+
+enum PlaylistProjectionUpdate {
+    Upsert(AccountPlaylistSummary),
+    Delete(String),
+}
+
+struct FreshPlaylistPage {
+    summary: AccountPlaylistSummary,
+    provider_dir_id: Option<u64>,
+    edit_value: Value,
+    songs: Vec<Song>,
+    next_offset: Option<u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -985,6 +1051,984 @@ impl QQMusicAccountService {
         {
             state.favorite_in_flight.remove(mutation_key);
         }
+    }
+
+    pub(crate) async fn create_playlist(
+        &self,
+        mut request: CreatePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        request.title = validate_playlist_title(&request.title)?;
+        validate_operation_id(&request.client_operation_id)?;
+        let context = self.auth.capture_account_context().await?;
+        let fingerprint = PlaylistMutationFingerprint::Create {
+            title: request.title.clone(),
+        };
+        let mutation_key = format!("playlist-create:{}", request.client_operation_id);
+        if let Some(cached) = self
+            .acquire_playlist_mutation(
+                &context,
+                &mutation_key,
+                &request.client_operation_id,
+                &fingerprint,
+            )
+            .await?
+        {
+            return Ok(cached);
+        }
+        let result = self.create_playlist_owned(&context, &request).await;
+        self.finish_playlist_mutation(
+            &context,
+            &mutation_key,
+            &request.client_operation_id,
+            fingerprint,
+            result,
+        )
+        .await
+    }
+
+    pub(crate) async fn rename_playlist(
+        &self,
+        mut request: RenamePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        provider_playlist_id(&request.playlist_id)?;
+        request.title = validate_playlist_title(&request.title)?;
+        validate_operation_id(&request.client_operation_id)?;
+        let context = self.auth.capture_account_context().await?;
+        let fingerprint = PlaylistMutationFingerprint::Rename {
+            playlist_id: request.playlist_id.clone(),
+            title: request.title.clone(),
+        };
+        let mutation_key = format!("playlist:{}", request.playlist_id);
+        if let Some(cached) = self
+            .acquire_playlist_mutation(
+                &context,
+                &mutation_key,
+                &request.client_operation_id,
+                &fingerprint,
+            )
+            .await?
+        {
+            return Ok(cached);
+        }
+        let result = self.rename_playlist_owned(&context, &request).await;
+        self.finish_playlist_mutation(
+            &context,
+            &mutation_key,
+            &request.client_operation_id,
+            fingerprint,
+            result,
+        )
+        .await
+    }
+
+    pub(crate) async fn add_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.playlist_track_mutation(request, true).await
+    }
+
+    pub(crate) async fn remove_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.playlist_track_mutation(request, false).await
+    }
+
+    async fn playlist_track_mutation(
+        &self,
+        request: PlaylistTrackMutationRequest,
+        add: bool,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        provider_playlist_id(&request.playlist_id)?;
+        provider_track_id(&request.track_id)?;
+        validate_operation_id(&request.client_operation_id)?;
+        let context = self.auth.capture_account_context().await?;
+        let fingerprint = if add {
+            PlaylistMutationFingerprint::AddTrack {
+                playlist_id: request.playlist_id.clone(),
+                track_id: request.track_id.clone(),
+            }
+        } else {
+            PlaylistMutationFingerprint::RemoveTrack {
+                playlist_id: request.playlist_id.clone(),
+                track_id: request.track_id.clone(),
+            }
+        };
+        let mutation_key = format!("playlist:{}", request.playlist_id);
+        if let Some(cached) = self
+            .acquire_playlist_mutation(
+                &context,
+                &mutation_key,
+                &request.client_operation_id,
+                &fingerprint,
+            )
+            .await?
+        {
+            return Ok(cached);
+        }
+        let result = self
+            .playlist_track_mutation_owned(&context, &request, add)
+            .await;
+        self.finish_playlist_mutation(
+            &context,
+            &mutation_key,
+            &request.client_operation_id,
+            fingerprint,
+            result,
+        )
+        .await
+    }
+
+    pub(crate) async fn delete_playlist(
+        &self,
+        request: DeletePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        provider_playlist_id(&request.playlist_id)?;
+        validate_operation_id(&request.client_operation_id)?;
+        let context = self.auth.capture_account_context().await?;
+        let fingerprint = PlaylistMutationFingerprint::Delete {
+            playlist_id: request.playlist_id.clone(),
+        };
+        let mutation_key = format!("playlist:{}", request.playlist_id);
+        if let Some(cached) = self
+            .acquire_playlist_mutation(
+                &context,
+                &mutation_key,
+                &request.client_operation_id,
+                &fingerprint,
+            )
+            .await?
+        {
+            return Ok(cached);
+        }
+        let result = self.delete_playlist_owned(&context, &request).await;
+        self.finish_playlist_mutation(
+            &context,
+            &mutation_key,
+            &request.client_operation_id,
+            fingerprint,
+            result,
+        )
+        .await
+    }
+
+    async fn acquire_playlist_mutation(
+        &self,
+        context: &AuthenticatedAccountContext,
+        mutation_key: &str,
+        operation_id: &str,
+        fingerprint: &PlaylistMutationFingerprint,
+    ) -> Result<Option<PlaylistMutationResult>, QQMusicError> {
+        self.auth.ensure_current(&context.epoch).await?;
+        let mut state = self.mutations.lock().await;
+        state.ensure_epoch(&context.epoch);
+        if let Some(completed) = state.playlist_completed.get(&context.epoch, operation_id) {
+            if &completed.fingerprint != fingerprint {
+                return Err(QQMusicError::InvalidRequest);
+            }
+            return Ok(Some(completed.result));
+        }
+        if state.playlist_in_flight.contains_key(mutation_key) {
+            return Err(QQMusicError::MutationInProgress);
+        }
+        state
+            .playlist_in_flight
+            .insert(mutation_key.to_owned(), operation_id.to_owned());
+        drop(state);
+        self.auth.ensure_current(&context.epoch).await?;
+        Ok(None)
+    }
+
+    async fn finish_playlist_mutation(
+        &self,
+        context: &AuthenticatedAccountContext,
+        mutation_key: &str,
+        operation_id: &str,
+        fingerprint: PlaylistMutationFingerprint,
+        result: Result<PlaylistMutationResult, QQMusicError>,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        let result = match result {
+            Ok(result) => result,
+            Err(QQMusicError::AuthenticationExpired) => {
+                self.release_playlist_mutation(&context.epoch, mutation_key, operation_id)
+                    .await;
+                return self.expire_mutation_session(context).await;
+            }
+            Err(error) => {
+                self.release_playlist_mutation(&context.epoch, mutation_key, operation_id)
+                    .await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.auth.ensure_current(&context.epoch).await {
+            self.release_playlist_mutation(&context.epoch, mutation_key, operation_id)
+                .await;
+            return Err(error);
+        }
+        let mut state = self.mutations.lock().await;
+        if state.epoch.as_ref() != Some(&context.epoch)
+            || !state
+                .playlist_in_flight
+                .get(mutation_key)
+                .is_some_and(|owner| owner == operation_id)
+        {
+            return Err(QQMusicError::Cancelled);
+        }
+        state.playlist_completed.insert_if_current(
+            &context.epoch,
+            operation_id.to_owned(),
+            CompletedPlaylistMutation {
+                fingerprint,
+                result: result.clone(),
+            },
+        );
+        state.playlist_in_flight.remove(mutation_key);
+        drop(state);
+        self.auth.ensure_current(&context.epoch).await?;
+        Ok(result)
+    }
+
+    async fn release_playlist_mutation(
+        &self,
+        epoch: &AccountEpoch,
+        mutation_key: &str,
+        operation_id: &str,
+    ) {
+        let mut state = self.mutations.lock().await;
+        if state.epoch.as_ref() == Some(epoch)
+            && state
+                .playlist_in_flight
+                .get(mutation_key)
+                .is_some_and(|owner| owner == operation_id)
+        {
+            state.playlist_in_flight.remove(mutation_key);
+        }
+    }
+
+    async fn create_playlist_owned(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &CreatePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        let before = self
+            .fetch_all_playlist_summaries(
+                context,
+                RetryClass::SafeRead,
+                "account.playlist.create.before",
+            )
+            .await?;
+        let before_ids = before
+            .iter()
+            .filter(|playlist| playlist.ownership == PlaylistOwnership::Owned)
+            .map(|playlist| playlist.id.clone())
+            .collect::<HashSet<_>>();
+        let write = self
+            .execute_playlist_write(
+                context,
+                "account.playlist.create.write",
+                "playlist-create-mutation",
+                "music.musicasset.PlaylistBaseWrite",
+                "AddPlaylist",
+                json!({ "dirName": request.title }),
+            )
+            .await;
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::WriteClassified)
+            .await;
+        self.auth.ensure_current(&context.epoch).await?;
+        let certainty = match write {
+            Ok(true) => PlaylistWriteCertainty::Accepted,
+            Ok(false) => {
+                return Ok(playlist_mutation_result(
+                    request.client_operation_id.clone(),
+                    MutationStatus::Rejected,
+                    None,
+                    Some(ProviderErrorCode::ProviderFailure),
+                    context.auth_revision,
+                ));
+            }
+            Err(QQMusicError::OutcomeUnknown) => PlaylistWriteCertainty::OutcomeUnknown,
+            Err(error) => return Err(error),
+        };
+
+        for delay_ms in reconciliation_delays(certainty) {
+            self.wait_for_reconciliation(context, *delay_ms).await?;
+            let observed = self
+                .fetch_all_playlist_summaries(
+                    context,
+                    RetryClass::ReconciliationRead,
+                    "account.playlist.create.reconcile",
+                )
+                .await;
+            #[cfg(test)]
+            self.hit_write_boundary(WriteBoundary::ReconciliationRead)
+                .await;
+            let playlists = match observed {
+                Ok(playlists) => playlists,
+                Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                    return Err(QQMusicError::AuthenticationExpired);
+                }
+                Err(QQMusicError::Cancelled) => return Err(QQMusicError::Cancelled),
+                Err(_) => continue,
+            };
+            let mut candidates = playlists.into_iter().filter(|playlist| {
+                playlist.ownership == PlaylistOwnership::Owned
+                    && !before_ids.contains(&playlist.id)
+                    && playlist.title == request.title
+            });
+            let Some(created) = candidates.next() else {
+                continue;
+            };
+            if candidates.next().is_some() {
+                continue;
+            }
+            self.commit_playlist_projection(
+                context,
+                PlaylistProjectionUpdate::Upsert(created.clone()),
+            )
+            .await?;
+            return Ok(playlist_mutation_result(
+                request.client_operation_id.clone(),
+                if certainty == PlaylistWriteCertainty::Accepted {
+                    MutationStatus::Applied
+                } else {
+                    MutationStatus::Reconciled
+                },
+                Some(created),
+                None,
+                context.auth_revision,
+            ));
+        }
+        Ok(playlist_mutation_result(
+            request.client_operation_id.clone(),
+            MutationStatus::OutcomeUnknown,
+            None,
+            Some(ProviderErrorCode::ProviderFailure),
+            context.auth_revision,
+        ))
+    }
+
+    async fn rename_playlist_owned(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &RenamePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        let before = self
+            .fetch_playlist_page(
+                context,
+                &request.playlist_id,
+                0,
+                RetryClass::SafeRead,
+                "account.playlist.rename.before",
+            )
+            .await?;
+        require_owned_playlist(&before.summary)?;
+        let edit =
+            parse_owned_playlist_edit_value(&before.edit_value).map_err(|error| match error {
+                PlaylistEditSafetyError::SchemaChanged => QQMusicError::SchemaChanged,
+                PlaylistEditSafetyError::TaggedRenameUnverified => {
+                    QQMusicError::UnsupportedOperation
+                }
+            })?;
+        if !before.summary.capabilities.can_rename {
+            return Err(QQMusicError::AuthorizationRejected);
+        }
+        let payload = serde_json::to_value(EditPlaylistPayload {
+            dir_id: edit.provider_dir_id,
+            mask: 15,
+            dir_new_name: request.title.clone(),
+            dir_new_desc: edit.description.clone(),
+            dir_new_pic_url: edit.picture_url.clone(),
+            dir_new_tag_list: String::new(),
+        })
+        .map_err(|_| QQMusicError::Protocol)?;
+        let write = self
+            .execute_playlist_write(
+                context,
+                "account.playlist.rename.write",
+                "playlist-rename-mutation",
+                "music.musicasset.PlaylistBaseWrite",
+                "EditPlaylist",
+                payload,
+            )
+            .await;
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::WriteClassified)
+            .await;
+        self.auth.ensure_current(&context.epoch).await?;
+        let certainty = match write {
+            Ok(true) => PlaylistWriteCertainty::Accepted,
+            Ok(false) => {
+                return Ok(playlist_mutation_result(
+                    request.client_operation_id.clone(),
+                    MutationStatus::Rejected,
+                    Some(before.summary),
+                    Some(ProviderErrorCode::ProviderFailure),
+                    context.auth_revision,
+                ));
+            }
+            Err(QQMusicError::OutcomeUnknown) => PlaylistWriteCertainty::OutcomeUnknown,
+            Err(error) => return Err(error),
+        };
+
+        for delay_ms in reconciliation_delays(certainty) {
+            self.wait_for_reconciliation(context, *delay_ms).await?;
+            let observed = self
+                .fetch_playlist_page(
+                    context,
+                    &request.playlist_id,
+                    0,
+                    RetryClass::ReconciliationRead,
+                    "account.playlist.rename.reconcile",
+                )
+                .await;
+            #[cfg(test)]
+            self.hit_write_boundary(WriteBoundary::ReconciliationRead)
+                .await;
+            let after = match observed {
+                Ok(after) => after,
+                Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                    return Err(QQMusicError::AuthenticationExpired);
+                }
+                Err(QQMusicError::Cancelled) => return Err(QQMusicError::Cancelled),
+                Err(_) => continue,
+            };
+            let Ok(readback) = parse_owned_playlist_edit_value(&after.edit_value) else {
+                continue;
+            };
+            if readback.provider_dir_id != edit.provider_dir_id
+                || readback.original_title != request.title
+                || readback.description != edit.description
+                || readback.picture_url != edit.picture_url
+                || !readback.tag_names.is_empty()
+            {
+                continue;
+            }
+            self.commit_playlist_projection(
+                context,
+                PlaylistProjectionUpdate::Upsert(after.summary.clone()),
+            )
+            .await?;
+            return Ok(playlist_mutation_result(
+                request.client_operation_id.clone(),
+                if certainty == PlaylistWriteCertainty::Accepted {
+                    MutationStatus::Applied
+                } else {
+                    MutationStatus::Reconciled
+                },
+                Some(after.summary),
+                None,
+                context.auth_revision,
+            ));
+        }
+        Ok(playlist_mutation_result(
+            request.client_operation_id.clone(),
+            MutationStatus::OutcomeUnknown,
+            Some(before.summary),
+            Some(ProviderErrorCode::ProviderFailure),
+            context.auth_revision,
+        ))
+    }
+
+    async fn playlist_track_mutation_owned(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &PlaylistTrackMutationRequest,
+        add: bool,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        let before = self
+            .fetch_playlist_page(
+                context,
+                &request.playlist_id,
+                0,
+                RetryClass::SafeRead,
+                if add {
+                    "account.playlist.add.before"
+                } else {
+                    "account.playlist.remove.before"
+                },
+            )
+            .await?;
+        require_owned_playlist(&before.summary)?;
+        let capability = if add {
+            before.summary.capabilities.can_add_tracks
+        } else {
+            before.summary.capabilities.can_remove_tracks
+        };
+        if !capability {
+            return Err(QQMusicError::AuthorizationRejected);
+        }
+        let numeric_track_id = self
+            .track_references
+            .lock()
+            .await
+            .numeric_id(&request.track_id)
+            .ok_or(QQMusicError::InvalidRequest)?;
+        let provider_dir_id = before.provider_dir_id.ok_or(QQMusicError::SchemaChanged)?;
+        let method = if add { "AddSonglist" } else { "DelSonglist" };
+        let operation = if add {
+            "account.playlist.add.write"
+        } else {
+            "account.playlist.remove.write"
+        };
+        let write = self
+            .execute_playlist_write(
+                context,
+                operation,
+                "playlist-track-mutation",
+                "music.musicasset.PlaylistDetailWrite",
+                method,
+                json!({
+                    "dirId": provider_dir_id,
+                    "tid": 0,
+                    "bFmtUtf8": true,
+                    "v_songInfo": [{ "songId": numeric_track_id, "songType": 13 }]
+                }),
+            )
+            .await;
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::WriteClassified)
+            .await;
+        self.auth.ensure_current(&context.epoch).await?;
+        let certainty = match write {
+            Ok(true) => PlaylistWriteCertainty::Accepted,
+            Ok(false) => {
+                return Ok(playlist_mutation_result(
+                    request.client_operation_id.clone(),
+                    MutationStatus::Rejected,
+                    Some(before.summary),
+                    Some(ProviderErrorCode::ProviderFailure),
+                    context.auth_revision,
+                ));
+            }
+            Err(QQMusicError::OutcomeUnknown) => PlaylistWriteCertainty::OutcomeUnknown,
+            Err(error) => return Err(error),
+        };
+
+        for delay_ms in reconciliation_delays(certainty) {
+            self.wait_for_reconciliation(context, *delay_ms).await?;
+            let observed = self
+                .playlist_contains_track(
+                    context,
+                    &request.playlist_id,
+                    &request.track_id,
+                    if add {
+                        "account.playlist.add.reconcile"
+                    } else {
+                        "account.playlist.remove.reconcile"
+                    },
+                )
+                .await;
+            #[cfg(test)]
+            self.hit_write_boundary(WriteBoundary::ReconciliationRead)
+                .await;
+            let (contains, summary) = match observed {
+                Ok(observed) => observed,
+                Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                    return Err(QQMusicError::AuthenticationExpired);
+                }
+                Err(QQMusicError::Cancelled) => return Err(QQMusicError::Cancelled),
+                Err(_) => continue,
+            };
+            if contains != add {
+                continue;
+            }
+            self.commit_playlist_projection(
+                context,
+                PlaylistProjectionUpdate::Upsert(summary.clone()),
+            )
+            .await?;
+            return Ok(playlist_mutation_result(
+                request.client_operation_id.clone(),
+                if certainty == PlaylistWriteCertainty::Accepted {
+                    MutationStatus::Applied
+                } else {
+                    MutationStatus::Reconciled
+                },
+                Some(summary),
+                None,
+                context.auth_revision,
+            ));
+        }
+        Ok(playlist_mutation_result(
+            request.client_operation_id.clone(),
+            MutationStatus::OutcomeUnknown,
+            Some(before.summary),
+            Some(ProviderErrorCode::ProviderFailure),
+            context.auth_revision,
+        ))
+    }
+
+    async fn delete_playlist_owned(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &DeletePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        let before = self
+            .fetch_playlist_page(
+                context,
+                &request.playlist_id,
+                0,
+                RetryClass::SafeRead,
+                "account.playlist.delete.before",
+            )
+            .await?;
+        require_owned_playlist(&before.summary)?;
+        if !before.summary.capabilities.can_delete {
+            return Err(QQMusicError::AuthorizationRejected);
+        }
+        let provider_dir_id = before.provider_dir_id.ok_or(QQMusicError::SchemaChanged)?;
+        let write = self
+            .execute_playlist_write(
+                context,
+                "account.playlist.delete.write",
+                "playlist-delete-mutation",
+                "music.musicasset.PlaylistBaseWrite",
+                "DelPlaylist",
+                json!({ "dirId": provider_dir_id }),
+            )
+            .await;
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::WriteClassified)
+            .await;
+        self.auth.ensure_current(&context.epoch).await?;
+        let certainty = match write {
+            Ok(true) => PlaylistWriteCertainty::Accepted,
+            Ok(false) => {
+                return Ok(playlist_mutation_result(
+                    request.client_operation_id.clone(),
+                    MutationStatus::Rejected,
+                    Some(before.summary),
+                    Some(ProviderErrorCode::ProviderFailure),
+                    context.auth_revision,
+                ));
+            }
+            Err(QQMusicError::OutcomeUnknown) => PlaylistWriteCertainty::OutcomeUnknown,
+            Err(error) => return Err(error),
+        };
+
+        for delay_ms in reconciliation_delays(certainty) {
+            self.wait_for_reconciliation(context, *delay_ms).await?;
+            let observed = self
+                .fetch_all_playlist_summaries(
+                    context,
+                    RetryClass::ReconciliationRead,
+                    "account.playlist.delete.reconcile",
+                )
+                .await;
+            #[cfg(test)]
+            self.hit_write_boundary(WriteBoundary::ReconciliationRead)
+                .await;
+            let playlists = match observed {
+                Ok(playlists) => playlists,
+                Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                    return Err(QQMusicError::AuthenticationExpired);
+                }
+                Err(QQMusicError::Cancelled) => return Err(QQMusicError::Cancelled),
+                Err(_) => continue,
+            };
+            if playlists
+                .iter()
+                .any(|playlist| playlist.id == request.playlist_id)
+            {
+                continue;
+            }
+            self.commit_playlist_projection(
+                context,
+                PlaylistProjectionUpdate::Delete(request.playlist_id.clone()),
+            )
+            .await?;
+            return Ok(playlist_mutation_result(
+                request.client_operation_id.clone(),
+                if certainty == PlaylistWriteCertainty::Accepted {
+                    MutationStatus::Applied
+                } else {
+                    MutationStatus::Reconciled
+                },
+                None,
+                None,
+                context.auth_revision,
+            ));
+        }
+        Ok(playlist_mutation_result(
+            request.client_operation_id.clone(),
+            MutationStatus::OutcomeUnknown,
+            Some(before.summary),
+            Some(ProviderErrorCode::ProviderFailure),
+            context.auth_revision,
+        ))
+    }
+
+    async fn execute_playlist_write(
+        &self,
+        context: &AuthenticatedAccountContext,
+        operation: &'static str,
+        response_shape: &'static str,
+        module: &'static str,
+        method: &'static str,
+        param: Value,
+    ) -> Result<bool, QQMusicError> {
+        let response = self
+            .execute_account_transport(
+                context,
+                operation,
+                response_shape,
+                musicu_request(&context.session, module, method, param),
+                RetryClass::Write,
+            )
+            .await?;
+        playlist_write_accepted(&response.body)
+    }
+
+    async fn execute_account_transport(
+        &self,
+        context: &AuthenticatedAccountContext,
+        operation: &'static str,
+        response_shape: &'static str,
+        payload: Value,
+        retry: RetryClass,
+    ) -> Result<TransportResponse, QQMusicError> {
+        self.auth.ensure_current(&context.epoch).await?;
+        let response = self
+            .transport
+            .execute(TransportRequest {
+                operation,
+                method: Method::POST,
+                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
+                headers: account_headers(&context.session)?,
+                body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
+                retry,
+                redirects: RedirectMode::FollowValidated,
+                response_shape,
+                cancellation: context.cancellation.clone(),
+            })
+            .await
+            .map_err(|error| match error {
+                QQMusicError::AuthorizationRejected => QQMusicError::AuthenticationExpired,
+                other => other,
+            })?;
+        self.auth.ensure_current(&context.epoch).await?;
+        if !response.status.is_success() {
+            return Err(match response.status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                    QQMusicError::AuthenticationExpired
+                }
+                StatusCode::TOO_MANY_REQUESTS => QQMusicError::RateLimited,
+                status if status.is_server_error() && retry == RetryClass::Write => {
+                    QQMusicError::OutcomeUnknown
+                }
+                status if status.is_server_error() => QQMusicError::Offline,
+                _ => QQMusicError::Protocol,
+            });
+        }
+        Ok(response)
+    }
+
+    async fn fetch_all_playlist_summaries(
+        &self,
+        context: &AuthenticatedAccountContext,
+        retry: RetryClass,
+        operation: &'static str,
+    ) -> Result<Vec<AccountPlaylistSummary>, QQMusicError> {
+        let mut offset = 0_u64;
+        let mut playlists = Vec::new();
+        for _ in 0..100 {
+            let payload = musicu_request(
+                &context.session,
+                "music.musicasset.PlaylistBaseRead",
+                "GetPlaylistByUin",
+                json!({
+                    "uin": context.session.uin,
+                    "sin": offset,
+                    "ein": offset.saturating_add(99)
+                }),
+            );
+            let response = self
+                .execute_account_transport(
+                    context,
+                    operation,
+                    "playlist-summary-reconciliation",
+                    payload,
+                    retry,
+                )
+                .await?;
+            let page = normalize_playlist_page_response(&response.body, offset)?;
+            playlists.extend(page.items);
+            let Some(next) = page.next_provider_cursor else {
+                return Ok(playlists);
+            };
+            let next = provider_offset(&next).map_err(|_| QQMusicError::SchemaChanged)?;
+            if next <= offset {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            offset = next;
+        }
+        Err(QQMusicError::SchemaChanged)
+    }
+
+    async fn fetch_playlist_page(
+        &self,
+        context: &AuthenticatedAccountContext,
+        playlist_id: &str,
+        offset: u64,
+        retry: RetryClass,
+        operation: &'static str,
+    ) -> Result<FreshPlaylistPage, QQMusicError> {
+        let provider_id = provider_playlist_id(playlist_id)?;
+        let response = self
+            .execute_account_transport(
+                context,
+                operation,
+                "playlist-detail-reconciliation",
+                musicu_request(
+                    &context.session,
+                    "music.srfDissInfo.DissInfo",
+                    "CgiGetDiss",
+                    json!({
+                        "disstid": provider_id,
+                        "song_begin": offset,
+                        "song_num": 100
+                    }),
+                ),
+                retry,
+            )
+            .await?;
+        let value: Value =
+            serde_json::from_slice(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
+        let data = response_data(&value)?;
+        let edit_value = data
+            .get("dirinfo")
+            .or_else(|| data.pointer("/cdlist/0"))
+            .cloned()
+            .ok_or(QQMusicError::SchemaChanged)?;
+        let provider_dir_id = edit_value
+            .get("dirId")
+            .and_then(Value::as_u64)
+            .filter(|id| *id > 0);
+        let (summary, page) = normalize_playlist_detail_response(&response.body, offset)?;
+        if summary.id != playlist_id {
+            return Err(QQMusicError::SchemaChanged);
+        }
+        let next_offset = page
+            .next_provider_cursor
+            .as_deref()
+            .map(provider_offset)
+            .transpose()
+            .map_err(|_| QQMusicError::SchemaChanged)?;
+        Ok(FreshPlaylistPage {
+            summary,
+            provider_dir_id,
+            edit_value,
+            songs: page.items,
+            next_offset,
+        })
+    }
+
+    async fn playlist_contains_track(
+        &self,
+        context: &AuthenticatedAccountContext,
+        playlist_id: &str,
+        track_id: &str,
+        operation: &'static str,
+    ) -> Result<(bool, AccountPlaylistSummary), QQMusicError> {
+        let mut offset = 0;
+        for _ in 0..100 {
+            let page = self
+                .fetch_playlist_page(
+                    context,
+                    playlist_id,
+                    offset,
+                    RetryClass::ReconciliationRead,
+                    operation,
+                )
+                .await?;
+            if page.songs.iter().any(|song| song.id == track_id) {
+                return Ok((true, page.summary));
+            }
+            let Some(next) = page.next_offset else {
+                return Ok((false, page.summary));
+            };
+            if next <= offset {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            offset = next;
+        }
+        Err(QQMusicError::SchemaChanged)
+    }
+
+    async fn wait_for_reconciliation(
+        &self,
+        context: &AuthenticatedAccountContext,
+        delay_ms: u64,
+    ) -> Result<(), QQMusicError> {
+        self.auth.ensure_current(&context.epoch).await?;
+        if delay_ms > 0 {
+            tokio::select! {
+                biased;
+                _ = context.cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+                _ = tokio::time::sleep(std::time::Duration::from_millis(delay_ms)) => {}
+            }
+        }
+        self.auth.ensure_current(&context.epoch).await
+    }
+
+    async fn commit_playlist_projection(
+        &self,
+        context: &AuthenticatedAccountContext,
+        update: PlaylistProjectionUpdate,
+    ) -> Result<(), QQMusicError> {
+        let _commit = self.projection_commit.lock().await;
+        self.auth.ensure_current(&context.epoch).await?;
+        let mut projection = self.projection_for(context)?;
+        let affected_id = match update {
+            PlaylistProjectionUpdate::Upsert(summary) => {
+                let id = summary.id.clone();
+                if let Some(existing) = projection
+                    .playlists
+                    .iter_mut()
+                    .find(|playlist| playlist.id == summary.id)
+                {
+                    *existing = summary;
+                } else {
+                    projection.playlists.push(summary);
+                }
+                id
+            }
+            PlaylistProjectionUpdate::Delete(id) => {
+                projection.playlists.retain(|playlist| playlist.id != id);
+                id
+            }
+        };
+        projection.profile = context.profile.clone();
+        projection.entitlement = context.entitlement.clone();
+        projection.fetched_at_ms = self.clock.now_ms();
+        let operations = [
+            ProviderCacheMutation::DeleteKindPrefix {
+                kind: ACCOUNT_CACHE_KIND.to_owned(),
+                prefix: AccountCache::playlists_prefix(&context.epoch.scope),
+            },
+            ProviderCacheMutation::DeleteKindPrefix {
+                kind: ACCOUNT_CACHE_KIND.to_owned(),
+                prefix: AccountCache::playlist_tracks_prefix(&context.epoch.scope, &affected_id),
+            },
+            cache_put(
+                &AccountCache::projection_key(&context.epoch.scope),
+                &projection,
+                u64::MAX,
+            )?,
+        ];
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::BeforeCacheCommit)
+            .await;
+        self.commit_cache(context, &operations).await?;
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::AfterCacheCommit)
+            .await;
+        self.auth.ensure_current(&context.epoch).await?;
+        self.cursors.lock().await.clear();
+        self.refreshes.lock().await.clear();
+        Ok(())
     }
 
     pub(crate) async fn favorite_songs(
@@ -1673,15 +2717,52 @@ fn provider_track_id(value: &str) -> Result<&str, QQMusicError> {
 
 fn validate_favorite_request(request: &FavoriteMutationRequest) -> Result<(), QQMusicError> {
     provider_track_id(&request.track_id)?;
-    if !(8..=128).contains(&request.client_operation_id.len())
-        || !request
-            .client_operation_id
-            .bytes()
-            .all(|byte| byte.is_ascii_graphic())
-    {
+    validate_operation_id(&request.client_operation_id)
+}
+
+fn validate_operation_id(value: &str) -> Result<(), QQMusicError> {
+    if !(8..=128).contains(&value.len()) || !value.bytes().all(|byte| byte.is_ascii_graphic()) {
         return Err(QQMusicError::InvalidRequest);
     }
     Ok(())
+}
+
+fn validate_playlist_title(value: &str) -> Result<String, QQMusicError> {
+    let value = value.trim();
+    if !(1..=80).contains(&value.chars().count()) || value.chars().any(char::is_control) {
+        return Err(QQMusicError::InvalidRequest);
+    }
+    Ok(value.to_owned())
+}
+
+fn require_owned_playlist(summary: &AccountPlaylistSummary) -> Result<(), QQMusicError> {
+    if summary.ownership != PlaylistOwnership::Owned {
+        return Err(QQMusicError::AuthorizationRejected);
+    }
+    Ok(())
+}
+
+fn reconciliation_delays(certainty: PlaylistWriteCertainty) -> &'static [u64] {
+    match certainty {
+        PlaylistWriteCertainty::Accepted => &[0],
+        PlaylistWriteCertainty::OutcomeUnknown => &[300, 700, 1_500],
+    }
+}
+
+fn playlist_mutation_result(
+    client_operation_id: String,
+    status: MutationStatus,
+    playlist: Option<AccountPlaylistSummary>,
+    error_code: Option<ProviderErrorCode>,
+    auth_revision: u64,
+) -> PlaylistMutationResult {
+    PlaylistMutationResult {
+        client_operation_id,
+        status,
+        playlist,
+        error_code,
+        auth_revision,
+    }
 }
 
 fn favorite_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
@@ -1693,6 +2774,10 @@ fn favorite_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
         .and_then(Value::as_i64)
         .ok_or(QQMusicError::SchemaChanged)?;
     Ok(return_code == 0)
+}
+
+fn playlist_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
+    favorite_write_accepted(body)
 }
 
 fn ensure_cgi_response_success(value: &Value) -> Result<(), QQMusicError> {
@@ -3411,6 +4496,667 @@ mod tests {
                 .operation_count("account.favorite.write")
                 .await,
             2
+        );
+    }
+
+    fn create_playlist_request() -> CreatePlaylistRequest {
+        CreatePlaylistRequest {
+            title: "YAQMC Integration Test (2026-08-11T00:00:00Z)".to_owned(),
+            client_operation_id: "playlist-create-operation".to_owned(),
+        }
+    }
+
+    fn rename_playlist_request(title: &str) -> RenamePlaylistRequest {
+        RenamePlaylistRequest {
+            playlist_id: "qqmusic:playlist:SANITIZED_PLAYLIST_OWNED".to_owned(),
+            title: title.to_owned(),
+            client_operation_id: "playlist-rename-operation".to_owned(),
+        }
+    }
+
+    fn playlist_track_request(operation: &str) -> PlaylistTrackMutationRequest {
+        PlaylistTrackMutationRequest {
+            playlist_id: "qqmusic:playlist:SANITIZED_PLAYLIST_OWNED".to_owned(),
+            track_id: "qqmusic:track:SANITIZED_TRACK_C".to_owned(),
+            client_operation_id: operation.to_owned(),
+        }
+    }
+
+    fn delete_playlist_request() -> DeletePlaylistRequest {
+        DeletePlaylistRequest {
+            playlist_id: "qqmusic:playlist:SANITIZED_PLAYLIST_OWNED".to_owned(),
+            client_operation_id: "playlist-delete-operation".to_owned(),
+        }
+    }
+
+    fn owned_playlist_detail_with_title(title: &str) -> TestReply {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .expect("owned playlist fixture");
+        value["req"]["data"]["dirinfo"]["dirName"] = json!(title);
+        TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
+    }
+
+    fn playlists_with_unique_new_playlist() -> TestReply {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlists.json"
+        ))
+        .expect("playlist summaries fixture");
+        value["req"]["data"]["v_playlist"]
+            .as_array_mut()
+            .expect("playlist array")
+            .push(json!({
+                "tid": "SANITIZED_PLAYLIST_NEW",
+                "dirId": 3009,
+                "dirName": "YAQMC Integration Test (2026-08-11T00:00:00Z)",
+                "desc": "",
+                "picUrl": "",
+                "tagNameList": [],
+                "trackCount": 0,
+                "ownership": "owned",
+                "creator": { "uin": "SANITIZED_ACCOUNT", "nick": "Synthetic Listener" },
+                "capabilities": {
+                    "canAdd": true,
+                    "canRemove": true,
+                    "canRename": true,
+                    "canDelete": true
+                }
+            }));
+        value["req"]["data"]["total"] = json!(3);
+        TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
+    }
+
+    fn playlists_with_two_matching_new_playlists() -> TestReply {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlists.json"
+        ))
+        .expect("playlist summaries fixture");
+        let playlists = value["req"]["data"]["v_playlist"]
+            .as_array_mut()
+            .expect("playlist array");
+        for (tid, dir_id) in [
+            ("SANITIZED_PLAYLIST_NEW_A", 3009),
+            ("SANITIZED_PLAYLIST_NEW_B", 3010),
+        ] {
+            playlists.push(json!({
+                "tid": tid,
+                "dirId": dir_id,
+                "dirName": "YAQMC Integration Test (2026-08-11T00:00:00Z)",
+                "desc": "",
+                "picUrl": "",
+                "tagNameList": [],
+                "trackCount": 0,
+                "ownership": "owned",
+                "creator": { "uin": "SANITIZED_ACCOUNT", "nick": "Synthetic Listener" },
+                "capabilities": {
+                    "canAdd": true,
+                    "canRemove": true,
+                    "canRename": true,
+                    "canDelete": true
+                }
+            }));
+        }
+        value["req"]["data"]["total"] = json!(4);
+        TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
+    }
+
+    fn owned_playlist_detail_with_track_c() -> TestReply {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .expect("owned playlist fixture");
+        value["req"]["data"]["songlist"]
+            .as_array_mut()
+            .expect("song list")
+            .push(json!({
+                "songid": 1003,
+                "songmid": "SANITIZED_TRACK_C",
+                "songname": "Synthetic Favorite C",
+                "albumid": 2003,
+                "albummid": "SANITIZED_ALBUM_C",
+                "albumname": "Synthetic Album C",
+                "singer": [{ "mid": "SANITIZED_ARTIST_C", "name": "Synthetic Artist" }],
+                "interval": 203,
+                "cdIdx": 3,
+                "strMediaMid": "SANITIZED_MEDIA_C",
+                "size128": 4096
+            }));
+        value["req"]["data"]["total_song_num"] = json!(3);
+        value["req"]["data"]["dirinfo"]["trackCount"] = json!(3);
+        TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
+    }
+
+    fn owned_playlist_detail_without_track_a() -> TestReply {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .expect("owned playlist fixture");
+        value["req"]["data"]["songlist"]
+            .as_array_mut()
+            .expect("song list")
+            .retain(|song| song["songmid"] != "SANITIZED_TRACK_A");
+        value["req"]["data"]["total_song_num"] = json!(1);
+        value["req"]["data"]["dirinfo"]["trackCount"] = json!(1);
+        TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
+    }
+
+    fn playlists_without_owned_playlist() -> TestReply {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlists.json"
+        ))
+        .expect("playlist summaries fixture");
+        value["req"]["data"]["v_playlist"]
+            .as_array_mut()
+            .expect("playlist array")
+            .retain(|playlist| playlist["tid"] != "SANITIZED_PLAYLIST_OWNED");
+        value["req"]["data"]["total"] = json!(1);
+        TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
+    }
+
+    fn unsafe_owned_playlist_detail(tagged: bool) -> TestReply {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .expect("owned playlist fixture");
+        if tagged {
+            value["req"]["data"]["dirinfo"]["tagNameList"] = json!(["Synthetic tag"]);
+        } else {
+            value["req"]["data"]["dirinfo"]
+                .as_object_mut()
+                .expect("dirinfo object")
+                .remove("tagNameList");
+        }
+        TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn unknown_playlist_create_reconciles_by_unique_owned_summary_diff() {
+        let fixture = AccountServiceFixture::authenticated([
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlists.json"
+            )),
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            playlists_with_unique_new_playlist(),
+        ])
+        .await;
+        let service = Arc::clone(&fixture.service);
+        let mutation =
+            tokio::spawn(async move { service.create_playlist(create_playlist_request()).await });
+        tokio::time::advance(std::time::Duration::from_millis(300)).await;
+        let result = mutation
+            .await
+            .expect("create joins")
+            .expect("create reconciles");
+
+        assert_eq!(result.status, MutationStatus::Reconciled);
+        assert_eq!(
+            result.playlist.expect("created playlist").id,
+            "qqmusic:playlist:SANITIZED_PLAYLIST_NEW"
+        );
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.playlist.create.write")
+                .await,
+            1
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ambiguous_unknown_playlist_create_stays_unknown_without_retrying_write() {
+        let fixture = AccountServiceFixture::authenticated([
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlists.json"
+            )),
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            playlists_with_two_matching_new_playlists(),
+            playlists_with_two_matching_new_playlists(),
+            playlists_with_two_matching_new_playlists(),
+        ])
+        .await;
+        let service = Arc::clone(&fixture.service);
+        let mutation =
+            tokio::spawn(async move { service.create_playlist(create_playlist_request()).await });
+        tokio::time::advance(std::time::Duration::from_millis(2_500)).await;
+        let result = mutation
+            .await
+            .expect("create joins")
+            .expect("typed unknown result");
+
+        assert_eq!(result.status, MutationStatus::OutcomeUnknown);
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.playlist.create.write")
+                .await,
+            1
+        );
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.playlist.create.reconcile")
+                .await,
+            3
+        );
+    }
+
+    #[tokio::test]
+    async fn safe_rename_preserves_native_description_picture_and_empty_tags() {
+        let fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            owned_playlist_detail_with_title("Renamed safely"),
+        ])
+        .await;
+        let result = fixture
+            .service
+            .rename_playlist(rename_playlist_request("Renamed safely"))
+            .await
+            .expect("rename succeeds");
+        let request: Value = serde_json::from_slice(
+            &fixture
+                .transport
+                .request_body("account.playlist.rename.write")
+                .await
+                .expect("rename request"),
+        )
+        .expect("rename JSON");
+
+        assert_eq!(result.status, MutationStatus::Applied);
+        assert_eq!(request.pointer("/req/param/mask"), Some(&json!(15)));
+        assert_eq!(
+            request.pointer("/req/param/dirNewName"),
+            Some(&json!("Renamed safely"))
+        );
+        assert_eq!(request.pointer("/req/param/dirNewDesc"), Some(&json!("")));
+        assert_eq!(
+            request.pointer("/req/param/dirNewPicUrl"),
+            Some(&json!("https://qpic.y.qq.com/synthetic-owned.png"))
+        );
+        assert_eq!(
+            request.pointer("/req/param/dirNewtaglist"),
+            Some(&json!(""))
+        );
+    }
+
+    #[tokio::test]
+    async fn incomplete_or_tagged_edit_metadata_blocks_rename_before_write() {
+        for tagged in [false, true] {
+            let reply = unsafe_owned_playlist_detail(tagged);
+            let fixture = AccountServiceFixture::authenticated([reply]).await;
+            let result = fixture
+                .service
+                .rename_playlist(rename_playlist_request("Unsafe rename"))
+                .await;
+
+            if tagged {
+                assert!(matches!(result, Err(QQMusicError::UnsupportedOperation)));
+            } else {
+                assert!(matches!(result, Err(QQMusicError::SchemaChanged)));
+            }
+            assert_eq!(
+                fixture
+                    .transport
+                    .operation_count("account.playlist.rename.write")
+                    .await,
+                0
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn playlist_track_and_delete_writes_use_exact_payloads_and_confirm_readback() {
+        let add_fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            owned_playlist_detail_with_track_c(),
+        ])
+        .await;
+        let add = add_fixture
+            .service
+            .add_playlist_track(playlist_track_request("playlist-add-exact"))
+            .await
+            .expect("add succeeds");
+        let add_request: Value = serde_json::from_slice(
+            &add_fixture
+                .transport
+                .request_body("account.playlist.add.write")
+                .await
+                .expect("add request"),
+        )
+        .expect("add JSON");
+        assert_eq!(add.status, MutationStatus::Applied);
+        assert_eq!(add_request.pointer("/req/param/dirId"), Some(&json!(3001)));
+        assert_eq!(add_request.pointer("/req/param/tid"), Some(&json!(0)));
+        assert_eq!(
+            add_request.pointer("/req/param/bFmtUtf8"),
+            Some(&json!(true))
+        );
+        assert_eq!(
+            add_request.pointer("/req/param/v_songInfo/0"),
+            Some(&json!({ "songId": 1003, "songType": 13 }))
+        );
+
+        let mut remove_request = playlist_track_request("playlist-remove-exact");
+        remove_request.track_id = "qqmusic:track:SANITIZED_TRACK_A".to_owned();
+        let remove_fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            owned_playlist_detail_without_track_a(),
+        ])
+        .await;
+        let remove = remove_fixture
+            .service
+            .remove_playlist_track(remove_request)
+            .await
+            .expect("remove succeeds");
+        assert_eq!(remove.status, MutationStatus::Applied);
+        assert_eq!(
+            remove_fixture
+                .transport
+                .operation_count("account.playlist.remove.write")
+                .await,
+            1
+        );
+
+        let delete_fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            playlists_without_owned_playlist(),
+        ])
+        .await;
+        let deleted = delete_fixture
+            .service
+            .delete_playlist(delete_playlist_request())
+            .await
+            .expect("delete succeeds");
+        let delete_request: Value = serde_json::from_slice(
+            &delete_fixture
+                .transport
+                .request_body("account.playlist.delete.write")
+                .await
+                .expect("delete request"),
+        )
+        .expect("delete JSON");
+        assert_eq!(deleted.status, MutationStatus::Applied);
+        assert!(deleted.playlist.is_none());
+        assert_eq!(
+            delete_request.pointer("/req/param/dirId"),
+            Some(&json!(3001))
+        );
+    }
+
+    #[tokio::test]
+    async fn rejected_playlist_write_is_typed_and_does_not_reconcile_or_commit() {
+        let fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-rejected.json"
+            )),
+        ])
+        .await;
+        let result = fixture
+            .service
+            .rename_playlist(rename_playlist_request("Rejected rename"))
+            .await
+            .expect("typed rejection");
+
+        assert_eq!(result.status, MutationStatus::Rejected);
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.playlist.rename.reconcile")
+                .await,
+            0
+        );
+        assert!(fixture
+            .storage
+            .get_json::<AccountLibraryProjection>(
+                &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                true,
+            )
+            .expect("projection lookup")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn same_playlist_mutations_serialize_and_completed_ids_are_idempotent() {
+        let fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            owned_playlist_detail_with_title("Serialized rename"),
+        ])
+        .await;
+        let barrier = fixture
+            .service
+            .set_write_barrier(WriteBoundary::WriteClassified);
+        let mut request = rename_playlist_request("Serialized rename");
+        request.client_operation_id = "playlist-shared-id".to_owned();
+        let first_request = request.clone();
+        let service = Arc::clone(&fixture.service);
+        let first = tokio::spawn(async move { service.rename_playlist(first_request).await });
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            barrier.entered.notified(),
+        )
+        .await
+        .expect("first write reaches barrier");
+
+        assert!(matches!(
+            fixture
+                .service
+                .delete_playlist(delete_playlist_request())
+                .await,
+            Err(QQMusicError::MutationInProgress)
+        ));
+        barrier.release.notify_one();
+        let first_result = first
+            .await
+            .expect("first rename joins")
+            .expect("first rename succeeds");
+        let cached = fixture
+            .service
+            .rename_playlist(request)
+            .await
+            .expect("completed result is reused");
+
+        assert!(cached == first_result);
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.playlist.rename.write")
+                .await,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn playlist_operation_id_is_reusable_after_account_epoch_change() {
+        let fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            owned_playlist_detail_with_title("First rename"),
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            owned_playlist_detail_with_title("Second rename"),
+        ])
+        .await;
+        let mut first = rename_playlist_request("First rename");
+        first.client_operation_id = "playlist-reused-operation".to_owned();
+        fixture
+            .service
+            .rename_playlist(first)
+            .await
+            .expect("first epoch rename");
+        fixture
+            .auth
+            .complete_confirmation(synthetic_session('b'))
+            .await
+            .expect("new epoch");
+        let mut second = rename_playlist_request("Second rename");
+        second.client_operation_id = "playlist-reused-operation".to_owned();
+        fixture
+            .service
+            .rename_playlist(second)
+            .await
+            .expect("second epoch rename");
+
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.playlist.rename.write")
+                .await,
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn playlist_epoch_change_at_write_or_cache_boundaries_cancels_without_old_cache() {
+        for boundary in [
+            WriteBoundary::WriteClassified,
+            WriteBoundary::BeforeCacheCommit,
+            WriteBoundary::AfterCacheCommit,
+        ] {
+            let fixture = AccountServiceFixture::authenticated([
+                body(include_str!(
+                    "../../tests/fixtures/qqmusic/account/playlists.json"
+                )),
+                body(include_str!(
+                    "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+                )),
+                playlists_with_unique_new_playlist(),
+            ])
+            .await;
+            let barrier = fixture.service.set_write_barrier(boundary);
+            let service = Arc::clone(&fixture.service);
+            let mutation =
+                tokio::spawn(
+                    async move { service.create_playlist(create_playlist_request()).await },
+                );
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                barrier.entered.notified(),
+            )
+            .await
+            .expect("playlist write reaches boundary");
+            fixture.auth.logout().await.expect("logout");
+            barrier.release.notify_one();
+
+            assert!(matches!(
+                mutation.await.expect("playlist mutation joins"),
+                Err(QQMusicError::Cancelled)
+            ));
+            assert!(fixture
+                .storage
+                .get_json::<AccountLibraryProjection>(
+                    &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                    true,
+                )
+                .expect("projection lookup")
+                .is_none());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn playlist_epoch_change_during_reconciliation_cancels_before_projection_commit() {
+        let fixture = AccountServiceFixture::authenticated([
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlists.json"
+            )),
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            playlists_with_unique_new_playlist(),
+        ])
+        .await;
+        let barrier = fixture
+            .service
+            .set_write_barrier(WriteBoundary::ReconciliationRead);
+        let service = Arc::clone(&fixture.service);
+        let mutation =
+            tokio::spawn(async move { service.create_playlist(create_playlist_request()).await });
+        tokio::time::advance(std::time::Duration::from_millis(300)).await;
+        barrier.entered.notified().await;
+        fixture.auth.logout().await.expect("logout");
+        barrier.release.notify_one();
+
+        assert!(matches!(
+            mutation.await.expect("playlist mutation joins"),
+            Err(QQMusicError::Cancelled)
+        ));
+        assert!(fixture
+            .storage
+            .get_json::<AccountLibraryProjection>(
+                &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                true,
+            )
+            .expect("projection lookup")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn collected_playlist_rejects_every_owner_write_before_write_transport() {
+        let collected = || {
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-collected.json"
+            ))
+        };
+        let fixture = AccountServiceFixture::authenticated([
+            collected(),
+            collected(),
+            collected(),
+            collected(),
+        ])
+        .await;
+        let collected_id = "qqmusic:playlist:SANITIZED_PLAYLIST_COLLECTED";
+        let mut rename = rename_playlist_request("Denied");
+        rename.playlist_id = collected_id.to_owned();
+        let mut add = playlist_track_request("playlist-add-operation");
+        add.playlist_id = collected_id.to_owned();
+        let mut remove = playlist_track_request("playlist-remove-operation");
+        remove.playlist_id = collected_id.to_owned();
+        let mut delete = delete_playlist_request();
+        delete.playlist_id = collected_id.to_owned();
+
+        assert!(matches!(
+            fixture.service.rename_playlist(rename).await,
+            Err(QQMusicError::AuthorizationRejected)
+        ));
+        assert!(matches!(
+            fixture.service.add_playlist_track(add).await,
+            Err(QQMusicError::AuthorizationRejected)
+        ));
+        assert!(matches!(
+            fixture.service.remove_playlist_track(remove).await,
+            Err(QQMusicError::AuthorizationRejected)
+        ));
+        assert!(matches!(
+            fixture.service.delete_playlist(delete).await,
+            Err(QQMusicError::AuthorizationRejected)
+        ));
+        assert_eq!(
+            fixture
+                .transport
+                .operations
+                .lock()
+                .await
+                .iter()
+                .filter(|operation| operation.ends_with(".write"))
+                .count(),
+            0
         );
     }
 }

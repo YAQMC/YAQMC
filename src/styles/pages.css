@@ -582,6 +582,76 @@
   font-size: var(--text-xs);
 }
 
+.detail-hero__icon-action--danger {
+  color: var(--danger);
+}
+
+.account-playlist-mutation-form,
+.account-playlist-delete-confirmation {
+  display: grid;
+  gap: 8px;
+  max-width: 520px;
+  margin-top: 14px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.account-playlist-mutation-form > div,
+.account-playlist-delete-confirmation {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.account-playlist-mutation-form > div {
+  display: grid;
+  gap: 8px;
+}
+
+.account-playlist-mutation-form input {
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  outline: none;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text);
+  font: inherit;
+}
+
+.account-playlist-mutation-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.account-playlist-mutation-form button,
+.account-playlist-delete-confirmation button {
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.account-playlist-delete-confirmation button:first-of-type {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  color: var(--danger);
+}
+
+.account-playlist-mutation-form button:disabled,
+.account-playlist-delete-confirmation button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.account-playlist-mutation-notice {
+  max-width: 560px;
+  margin-top: 11px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
 .account-library-pagination {
   display: flex;
   justify-content: center;

@@ -37,8 +37,10 @@ mod redaction;
 mod transport;
 
 use account::{
-    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, FavoriteMutationRequest,
-    FavoriteMutationResult, Page, ProviderErrorCode, QQMusicAccountService, RemotePlayHistoryItem,
+    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, CreatePlaylistRequest,
+    DeletePlaylistRequest, FavoriteMutationRequest, FavoriteMutationResult, Page,
+    PlaylistMutationResult, PlaylistTrackMutationRequest, ProviderErrorCode, QQMusicAccountService,
+    RemotePlayHistoryItem, RenamePlaylistRequest,
 };
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
@@ -210,6 +212,8 @@ pub enum QQMusicError {
     NotFound,
     #[error("the QQ Music request was invalid")]
     InvalidRequest,
+    #[error("the QQ Music operation is intentionally unsupported")]
+    UnsupportedOperation,
     #[error("the QQ Music session expired")]
     AuthenticationExpired,
     #[error("QQ Music rejected this authorization request")]
@@ -238,6 +242,7 @@ impl QQMusicError {
             Self::MalformedResponse | Self::Protocol => ProviderErrorCode::MalformedResponse,
             Self::NotFound => ProviderErrorCode::SongUnavailable,
             Self::InvalidRequest => ProviderErrorCode::InvalidRequest,
+            Self::UnsupportedOperation => ProviderErrorCode::UnsupportedOperation,
             Self::AuthenticationExpired => ProviderErrorCode::AuthenticationExpired,
             Self::AuthorizationRejected => ProviderErrorCode::AuthorizationRejected,
             Self::OutcomeUnknown => ProviderErrorCode::ProviderFailure,
@@ -469,6 +474,41 @@ impl QQMusicService {
         request: FavoriteMutationRequest,
     ) -> Result<FavoriteMutationResult, QQMusicError> {
         self.account.set_favorite(request).await
+    }
+
+    pub async fn create_playlist(
+        &self,
+        request: CreatePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.account.create_playlist(request).await
+    }
+
+    pub async fn rename_playlist(
+        &self,
+        request: RenamePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.account.rename_playlist(request).await
+    }
+
+    pub async fn add_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.account.add_playlist_track(request).await
+    }
+
+    pub async fn remove_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.account.remove_playlist_track(request).await
+    }
+
+    pub async fn delete_playlist(
+        &self,
+        request: DeletePlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.account.delete_playlist(request).await
     }
 
     pub async fn start_qr_login(&self) -> Result<AccountSnapshot, QQMusicError> {
@@ -934,6 +974,7 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
         QQMusicError::SchemaChanged
         | QQMusicError::MalformedResponse
         | QQMusicError::InvalidRequest
+        | QQMusicError::UnsupportedOperation
         | QQMusicError::Protocol
         | QQMusicError::OutcomeUnknown
         | QQMusicError::Cancelled

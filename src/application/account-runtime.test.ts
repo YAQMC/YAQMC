@@ -9,13 +9,19 @@ import {
   type FavoriteMutationRequest,
   type FavoriteMutationResult,
   type Page,
+  type PlaylistMutationResult,
   type Song,
 } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
 import { allSongs, homeFeed, librarySnapshot, playlists } from '../providers/fake/fixtures';
 import { MusicProviderRoot } from './provider-root';
 import { useCatalog } from './use-catalog';
-import { resetAccountRuntimeForTest, useAccountRuntime, useAccountStore } from './account-runtime';
+import {
+  resetAccountRuntimeForTest,
+  runTemporaryPlaylistAcceptance,
+  useAccountRuntime,
+  useAccountStore,
+} from './account-runtime';
 
 const capabilities = {
   qrLogin: true,
@@ -78,6 +84,14 @@ function authenticatedSnapshot(revision = 3): AccountSnapshot {
   };
 }
 
+function playlistAuthenticatedSnapshot(revision = 3): AccountSnapshot {
+  const snapshot = authenticatedSnapshot(revision);
+  return {
+    ...snapshot,
+    capabilities: { ...snapshot.capabilities, playlistWrite: true },
+  };
+}
+
 function page<T>(items: T[], revision: number, nextCursor: string | null = null): Page<T> {
   return {
     items,
@@ -135,6 +149,35 @@ function accountPlaylistSummary(id = 'account-playlist-a'): AccountPlaylistSumma
     },
     trackCount: 3,
     updatedAtMs: 1_800_000_000_000,
+  };
+}
+
+function playlistMutationResult(
+  clientOperationId: string,
+  status: PlaylistMutationResult['status'],
+  playlist: AccountPlaylistSummary | null,
+  authRevision = 3,
+): PlaylistMutationResult {
+  return {
+    clientOperationId,
+    status,
+    playlist,
+    errorCode: status === 'applied' || status === 'reconciled' ? null : 'provider-failure',
+    authRevision,
+  };
+}
+
+function playlistResource(summary: AccountPlaylistSummary, tracks: Song[] = []) {
+  return {
+    status: 'ready' as const,
+    data: {
+      summary,
+      tracks: page(tracks, 3),
+    },
+    nextCursor: null,
+    total: tracks.length,
+    fetchedAtMs: 1_800_000_000_000,
+    authRevision: 3,
   };
 }
 
@@ -619,6 +662,197 @@ describe('account runtime', () => {
     });
   });
 
+  it('serializes one playlist entity, applies an optimistic rename, and rolls back rejection', async () => {
+    const summary = accountPlaylistSummary();
+    const pending = deferred<PlaylistMutationResult>();
+    const renamePlaylist = vi.fn((request) => {
+      void request;
+      return pending.promise;
+    });
+    const deletePlaylist = vi.fn();
+    const provider = accountProvider({ renamePlaylist, deletePlaylist });
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(3),
+      playlists: {
+        status: 'ready',
+        data: [summary],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+      accountPlaylistDetails: { [summary.id]: playlistResource(summary) },
+    });
+
+    const mutation = useAccountStore
+      .getState()
+      .renamePlaylist(provider, summary, 'Optimistic rename');
+    const request = renamePlaylist.mock.calls[0]![0];
+    expect(useAccountStore.getState()).toMatchObject({
+      playlists: { data: [{ id: summary.id, title: 'Optimistic rename' }] },
+      accountPlaylistDetails: {
+        [summary.id]: { data: { summary: { title: 'Optimistic rename' } } },
+      },
+      playlistPendingById: { [summary.id]: request.clientOperationId },
+    });
+
+    await expect(useAccountStore.getState().deletePlaylist(provider, summary)).resolves.toBeNull();
+    expect(deletePlaylist).not.toHaveBeenCalled();
+
+    pending.resolve(playlistMutationResult(request.clientOperationId, 'rejected', summary));
+    await mutation;
+
+    expect(useAccountStore.getState()).toMatchObject({
+      playlists: { data: [{ id: summary.id, title: summary.title }] },
+      accountPlaylistDetails: {
+        [summary.id]: { data: { summary: { title: summary.title } } },
+      },
+      playlistMutationNoticeById: {
+        [summary.id]: { operation: 'rename', outcome: 'rejected' },
+      },
+    });
+    expect(useAccountStore.getState().playlistPendingById[summary.id]).toBeUndefined();
+  });
+
+  it('rejects a malformed confirmed playlist result instead of committing optimistic state', async () => {
+    const summary = accountPlaylistSummary();
+    const renamePlaylist = vi.fn(async (request) =>
+      playlistMutationResult(request.clientOperationId, 'applied', null),
+    );
+    const provider = accountProvider({ renamePlaylist });
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(3),
+      playlists: {
+        status: 'ready',
+        data: [summary],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+      accountPlaylistDetails: { [summary.id]: playlistResource(summary) },
+    });
+
+    const result = await useAccountStore
+      .getState()
+      .renamePlaylist(provider, summary, 'Malformed confirmation');
+
+    expect(result).toBeNull();
+    expect(useAccountStore.getState().playlists).toMatchObject({
+      data: [{ title: summary.title }],
+    });
+    expect(useAccountStore.getState().playlistMutationNoticeById[summary.id]).toEqual({
+      operation: 'rename',
+      outcome: 'failed',
+    });
+  });
+
+  it('retains an optimistic track after an unknown outcome and starts a read-only refresh', async () => {
+    const summary = accountPlaylistSummary();
+    const track = allSongs[0]!;
+    const refresh = deferred<AccountPlaylistDetail>();
+    const addPlaylistTrack = vi.fn(async (request) =>
+      playlistMutationResult(request.clientOperationId, 'outcome-unknown', summary),
+    );
+    const getAccountPlaylistTracks = vi.fn(() => refresh.promise);
+    const provider = accountProvider({ addPlaylistTrack, getAccountPlaylistTracks });
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(3),
+      playlists: {
+        status: 'ready',
+        data: [summary],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+      accountPlaylistDetails: { [summary.id]: playlistResource(summary) },
+    });
+
+    await useAccountStore.getState().addPlaylistTrack(provider, summary, track);
+
+    expect(addPlaylistTrack).toHaveBeenCalledOnce();
+    expect(getAccountPlaylistTracks).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).toMatchObject({
+      status: 'loading',
+      data: { tracks: { items: [{ id: track.id }] } },
+    });
+    expect(useAccountStore.getState().playlistMutationNoticeById[summary.id]).toEqual({
+      operation: 'add',
+      outcome: 'outcome-unknown',
+    });
+    expect(useAccountStore.getState().playlistPendingById[summary.id]).toBeUndefined();
+
+    refresh.resolve({
+      summary: { ...summary, trackCount: 1 },
+      tracks: page([track], 3),
+    });
+    await waitFor(() =>
+      expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).toMatchObject({
+        status: 'ready',
+        data: { tracks: { items: [{ id: track.id }] } },
+      }),
+    );
+  });
+
+  it('drops an old playlist rejection without restoring data from the prior account revision', async () => {
+    const prior = accountPlaylistSummary();
+    const replacement = { ...prior, title: 'Replacement account playlist' };
+    const pending = deferred<PlaylistMutationResult>();
+    const renamePlaylist = vi.fn(() => pending.promise);
+    const provider = accountProvider({ renamePlaylist });
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(3),
+      playlists: {
+        status: 'ready',
+        data: [prior],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+      accountPlaylistDetails: { [prior.id]: playlistResource(prior) },
+    });
+
+    const mutation = useAccountStore
+      .getState()
+      .renamePlaylist(provider, prior, 'Prior account optimistic title');
+    const operationId = useAccountStore.getState().playlistPendingById[prior.id]!;
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(4),
+      playlists: {
+        status: 'ready',
+        data: [replacement],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1_800_000_000_100,
+        authRevision: 4,
+      },
+      accountPlaylistDetails: {
+        [prior.id]: {
+          ...playlistResource(replacement),
+          authRevision: 4,
+          data: {
+            summary: replacement,
+            tracks: page([], 4),
+          },
+        },
+      },
+    });
+    pending.resolve(playlistMutationResult(operationId, 'rejected', prior, 3));
+    await mutation;
+
+    expect(useAccountStore.getState().playlists).toMatchObject({
+      data: [{ title: replacement.title }],
+      authRevision: 4,
+    });
+    expect(useAccountStore.getState().accountPlaylistDetails[prior.id]).toMatchObject({
+      data: { summary: { title: replacement.title } },
+      authRevision: 4,
+    });
+    expect(useAccountStore.getState().playlistPendingById[prior.id]).toBeUndefined();
+  });
+
   it('loads account playlist pages through the private detail API and deduplicates tracks', async () => {
     const [first, second, third] = allSongs;
     if (!first || !second || !third) throw new Error('missing song fixtures');
@@ -691,5 +925,121 @@ describe('account runtime', () => {
     expect(provider.getLibrary).toHaveBeenCalledOnce();
     expect(getFavoriteSongs).not.toHaveBeenCalled();
     unmount();
+  });
+
+  it('creates, verifies, mutates, and deletes only the playlist ID created by this run', async () => {
+    const knownTrack = allSongs[0]!;
+    const operations: string[] = [];
+    let createdSummary: AccountPlaylistSummary | null = null;
+    const result = (
+      clientOperationId: string,
+      playlist: AccountPlaylistSummary | null,
+    ): PlaylistMutationResult => ({
+      clientOperationId,
+      status: 'applied',
+      playlist,
+      errorCode: null,
+      authRevision: 3,
+    });
+    const provider = accountProvider({
+      createPlaylist: vi.fn(async (request) => {
+        createdSummary = {
+          ...accountPlaylistSummary('qqmusic:playlist:SANITIZED_CREATED_BY_RUN'),
+          title: request.title,
+        };
+        operations.push(`create:${request.title}`);
+        return result(request.clientOperationId, createdSummary);
+      }),
+      addPlaylistTrack: vi.fn(async (request) => {
+        operations.push(`add:${request.playlistId}:${request.trackId}`);
+        return result(request.clientOperationId, createdSummary);
+      }),
+      getAccountPlaylistTracks: vi.fn(async (id) => {
+        operations.push(`read:${id}`);
+        if (!createdSummary) throw new Error('playlist was not created');
+        return {
+          summary: createdSummary,
+          tracks: page([knownTrack], 3),
+        };
+      }),
+      removePlaylistTrack: vi.fn(async (request) => {
+        operations.push(`remove:${request.playlistId}:${request.trackId}`);
+        return result(request.clientOperationId, createdSummary);
+      }),
+      renamePlaylist: vi.fn(async (request) => {
+        operations.push(`rename:${request.playlistId}:${request.title}`);
+        if (!createdSummary) throw new Error('playlist was not created');
+        createdSummary = { ...createdSummary, title: request.title };
+        return result(request.clientOperationId, createdSummary);
+      }),
+      deletePlaylist: vi.fn(async (request) => {
+        operations.push(`delete:${request.playlistId}`);
+        return result(request.clientOperationId, null);
+      }),
+    });
+
+    const created = await runTemporaryPlaylistAcceptance(provider, knownTrack);
+
+    expect(created.title).toMatch(/^YAQMC Integration Test \([0-9TZ:-]+\)$/);
+    expect(operations).toEqual([
+      `create:${created.title}`,
+      `add:${created.id}:${knownTrack.id}`,
+      `read:${created.id}`,
+      `remove:${created.id}:${knownTrack.id}`,
+      `rename:${created.id}:${created.title} Verified`,
+      `delete:${created.id}`,
+    ]);
+    expect(operations.join('\n')).not.toContain('EXISTING_PLAYLIST_ID');
+  });
+
+  it('refuses to mutate or clean up a create result that is not an owned run-scoped playlist', async () => {
+    const existing = {
+      ...accountPlaylistSummary('EXISTING_PLAYLIST_ID'),
+      title: 'Existing personal playlist',
+      ownership: 'owned' as const,
+    };
+    const addPlaylistTrack = vi.fn();
+    const deletePlaylist = vi.fn();
+    const provider = accountProvider({
+      createPlaylist: vi.fn(async (request) =>
+        playlistMutationResult(request.clientOperationId, 'applied', existing),
+      ),
+      addPlaylistTrack,
+      deletePlaylist,
+    });
+
+    await expect(runTemporaryPlaylistAcceptance(provider, allSongs[0]!)).rejects.toThrow(
+      'unsafe cleanup target',
+    );
+    expect(addPlaylistTrack).not.toHaveBeenCalled();
+    expect(deletePlaylist).not.toHaveBeenCalled();
+  });
+
+  it('cleans only the created temporary ID once after a confirmed intermediate rejection', async () => {
+    let created: AccountPlaylistSummary | null = null;
+    const deletePlaylist = vi.fn(async (request) =>
+      playlistMutationResult(request.clientOperationId, 'applied', null),
+    );
+    const provider = accountProvider({
+      createPlaylist: vi.fn(async (request) => {
+        created = {
+          ...accountPlaylistSummary('qqmusic:playlist:SANITIZED_TEMPORARY_FAILURE'),
+          title: request.title,
+        };
+        return playlistMutationResult(request.clientOperationId, 'applied', created);
+      }),
+      addPlaylistTrack: vi.fn(async (request) =>
+        playlistMutationResult(request.clientOperationId, 'rejected', created),
+      ),
+      deletePlaylist,
+    });
+
+    await expect(runTemporaryPlaylistAcceptance(provider, allSongs[0]!)).rejects.toThrow(
+      'Temporary playlist add was not confirmed',
+    );
+    expect(deletePlaylist).toHaveBeenCalledOnce();
+    expect(deletePlaylist.mock.calls[0]![0].playlistId).toBe(
+      'qqmusic:playlist:SANITIZED_TEMPORARY_FAILURE',
+    );
   });
 });

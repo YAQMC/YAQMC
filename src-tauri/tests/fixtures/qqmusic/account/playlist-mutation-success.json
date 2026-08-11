@@ -1,0 +1,14 @@
+{
+  "code": 0,
+  "req": {
+    "code": 0,
+    "data": {
+      "retCode": 0,
+      "result": {
+        "tid": "SANITIZED_PLAYLIST_NEW",
+        "dirId": 3009,
+        "dirName": "YAQMC Integration Test (2026-08-11T00:00:00Z)"
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ export const enUS = {
     add: 'Add',
     close: 'Close',
     apply: 'Apply',
+    cancel: 'Cancel',
     reset: 'Reset',
     refresh: 'Refresh',
     retry: 'Retry',
@@ -158,6 +159,49 @@ export const enUS = {
       readOnly: 'Read-only',
       loadMore: 'Load more tracks',
       loadingMore: 'Loading more tracks…',
+      rename: 'Rename playlist',
+      delete: 'Delete playlist',
+      addCurrentTrack: 'Add current track',
+      removeCurrentTrack: 'Remove current track',
+      playlistName: 'Playlist name',
+      saveRename: 'Save playlist name',
+      deleteConfirmation: 'Delete this playlist? This cannot be undone.',
+      confirmDelete: 'Confirm delete playlist',
+      mutation: {
+        create: {
+          rejected: 'QQ Music rejected the new playlist.',
+          'outcome-unknown':
+            'QQ Music could not confirm whether the playlist was created. Refreshing playlists.',
+          failed: 'The playlist could not be created.',
+          reconciled: 'The new playlist was verified with QQ Music.',
+        },
+        rename: {
+          rejected: 'QQ Music rejected the playlist rename.',
+          'outcome-unknown': 'QQ Music could not confirm the rename. Refreshing this playlist.',
+          failed: 'The playlist could not be renamed.',
+          reconciled: 'The playlist rename was verified with QQ Music.',
+        },
+        add: {
+          rejected: 'QQ Music rejected adding the track.',
+          'outcome-unknown':
+            'QQ Music could not confirm the added track. Refreshing this playlist.',
+          failed: 'The track could not be added to the playlist.',
+          reconciled: 'The added track was verified with QQ Music.',
+        },
+        remove: {
+          rejected: 'QQ Music rejected removing the track.',
+          'outcome-unknown':
+            'QQ Music could not confirm the removed track. Refreshing this playlist.',
+          failed: 'The track could not be removed from the playlist.',
+          reconciled: 'The removed track was verified with QQ Music.',
+        },
+        delete: {
+          rejected: 'QQ Music rejected deleting the playlist.',
+          'outcome-unknown': 'QQ Music could not confirm deletion. Refreshing playlists.',
+          failed: 'The playlist could not be deleted.',
+          reconciled: 'Playlist deletion was verified with QQ Music.',
+        },
+      },
     },
   },
   player: {

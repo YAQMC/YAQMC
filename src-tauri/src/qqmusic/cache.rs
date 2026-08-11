@@ -141,6 +141,14 @@ impl AccountCache {
     pub(crate) fn playlists_prefix(scope: &OpaqueAccountScope) -> String {
         format!("{}playlists:", Self::scope_prefix(scope))
     }
+
+    pub(crate) fn playlist_tracks_prefix(scope: &OpaqueAccountScope, playlist_id: &str) -> String {
+        format!(
+            "{}playlist:{}:tracks:",
+            Self::scope_prefix(scope),
+            stable_key_component(playlist_id)
+        )
+    }
 }
 
 pub(crate) struct CompletedResultCache<T> {
