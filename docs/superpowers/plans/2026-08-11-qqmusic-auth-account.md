@@ -39,7 +39,7 @@
 ### Complexity and bounded-work budgets
 
 - Normalize each returned account page in `O(n)` time and `O(n)` output space for that page; cap `n` at 100 and use expected-`O(1)` stable-ID membership maps/sets rather than rescanning all loaded pages per row.
-- Keep cursor lookup and completed-operation lookup expected `O(1)` with bounded in-memory maps. Expire cursor entries with the account generation and cap completed operation IDs at 256.
+- Keep cursor lookup and completed-operation lookup expected `O(1)` with bounded in-memory maps. Key both by the complete account epoch, clear them on generation/scope change, and cap the current epoch's completed operation IDs at 256.
 - Bound mutation reconciliation to three safe reads; never scan an unbounded remote library and never turn reconciliation into a write retry.
 - Evaluate playback candidates in `O(q)` time and `O(q)` temporary space, where `q <= 4` normalized qualities. Do not add a second queue, decoder, or playback state machine.
 - Account-cache invalidation is `O(k)` in the account-cache rows selected by the existing `(kind, expires_at)` index; it must not scan or delete guest catalog cache kinds, local history, or settings.
@@ -65,16 +65,16 @@
 - Modify `src-tauri/src/credentials.rs`: retain the blocking backend used by startup/local API and add an async `spawn_blocking` adapter for account auth.
 - Create `src-tauri/src/qqmusic/clock.rs`: injectable wall clock for expiry, polling, cache freshness, and deterministic tests.
 - Create `src-tauri/src/qqmusic/redaction.rs`: secret-key/header/URL redaction plus sanitized request diagnostics.
-- Create `src-tauri/src/qqmusic/transport.rs`: exact HTTPS host allowlist, three-hop manual redirect policy, cross-host secret stripping, timeout/retry/write-uncertainty classification, and injectable transport trait.
+- Create `src-tauri/src/qqmusic/transport.rs`: dedicated direct/no-proxy account transport with exact HTTPS host allowlist, three-hop manual redirect policy, cross-origin secret stripping, timeout/cancellation/write-uncertainty classification, while preserving the ordinary public/media client.
 - Create `src-tauri/src/qqmusic/auth.rs`: auth state machine, single attempt/generation ownership, QR rendering, bounded native polling, session staging/promotion/restore/logout.
 - Create `src-tauri/src/qqmusic/account.rs`: account profile/entitlement/library DTO parsing, pagination, normalized reads, mutation requests, and operation-specific reconciliation.
 - Create `src-tauri/src/qqmusic/cache.rs`: opaque account scope keys, stale/fresh account projections, and account-only invalidation over `StorageService`.
 - Create `src-tauri/src/qqmusic/entitlement.rs`: normalized account rights and deterministic source candidate decision matrix.
 - Modify `src-tauri/src/qqmusic.rs`: compose the new modules into the existing service, preserve public methods, split public and account status, and delegate playback candidate selection.
 - Modify `src-tauri/src/storage.rs`: delete provider cache entries by exact kind and test that guest metadata/history/settings survive account invalidation.
-- Modify `src-tauri/src/media.rs`: carry typed requested/resolved quality and fallback reason through `ResolvedPlaybackSource`/`PreparedPlaybackSource` without exposing signed URLs.
-- Modify `src-tauri/src/audio.rs`: preserve the selection projection across preparation/load without changing the engine or decoder ownership.
-- Modify `src-tauri/src/player.rs`: publish the sanitized source-selection projection in the authoritative snapshot and retain one-time URL refresh behavior.
+- Modify `src-tauri/src/media.rs`: carry typed requested/resolved quality, fallback reason, and a nonserializable account-epoch cancellation guard through `ResolvedPlaybackSource`/`PreparedPlaybackSource` without exposing signed URLs.
+- Modify `src-tauri/src/audio.rs`: retain and validate the prepared epoch guard immediately before source load and every play/resume without changing decoder ownership.
+- Modify `src-tauri/src/player.rs`: validate the guard at preparation/load/play/final-commit boundaries, publish only the sanitized source-selection projection, preserve the ordinary media client, and retain one-time URL refresh behavior.
 - Modify `src-tauri/src/commands.rs`: add main-window-guarded auth/account/read/mutation commands and remove account state from the public catalog status command.
 - Modify `src-tauri/src/lib.rs`: register/manage the composed service, restore the account session asynchronously, and register the new command names without global account events.
 
@@ -88,7 +88,7 @@
 - Create `src/components/AccountDialog.tsx` and `src/components/AccountDialog.test.tsx`: accessible QR/auth state UI that never renders raw challenge material.
 - Modify `src/pages/SettingsPage.tsx`: account/profile/membership surface and preferred-versus-observed quality display.
 - Modify `src/pages/LibraryPage.tsx`; create `src/pages/LibraryPage.test.tsx`: account-required/loading/empty/stale/reauth/retry states, paged Favorites/My Playlists/remote Recently Played.
-- Modify `src/pages/PlaylistPage.tsx`; create `src/pages/PlaylistPage.test.tsx`: capability-gated rename/add/remove/delete controls and pending/error states.
+- Modify `src/pages/PlaylistPage.tsx` and the Task 10-created `src/pages/PlaylistPage.test.tsx`: capability-gated rename/add/remove/delete controls and pending/error states.
 - Modify `src/components/Sidebar.tsx`: separate Favorites, My Playlists, and Recently Played destinations while leaving Home/Search/Explore unchanged.
 - Modify `src/components/TrackList.tsx`, `src/components/PlayerBar.tsx`, `src/pages/AlbumPage.tsx`: one shared favorite projection and mutation action; display typed source fallback without parsing provider strings.
 - Modify `src/application/navigation.ts`, `src/application/provider-root.tsx`, `src/application/provider-context.ts`, `src/App.tsx`: route account pages and mount one account runtime without coupling guest catalog loading to account state.
@@ -102,6 +102,7 @@
 - Create sanitized fixtures under `src-tauri/tests/fixtures/qqmusic/account/`: profile, entitlement combinations, favorite pages, owned/collected playlists, recent history, mutation success/rejection/unknown reconciliation, and auth status shapes. Values use `SANITIZED_*` identifiers and non-live URLs only.
 - Create `scripts/check-secrets.ps1`: tracked-file scanner with field-name documentation allowlist and assigned-token/value detection.
 - Create `scripts/check-secrets.sh`: equivalent Linux/CI scanner.
+- Create `scripts/invoke-qqmusic-auth-preflight-command.ps1` and `scripts/run-qqmusic-auth-preflight.ps1`: Windows PowerShell 5.1-safe fixed-ID command harness plus deterministic pre-QR runner.
 - Create `scripts/record-qqmusic-live-acceptance.ps1`: fixed-enum, secret-free live-gate recorder that alone writes ignored acceptance evidence.
 - Modify `.github/workflows/build.yml`: run both platform-appropriate secret scan and existing test/build gates before packaging.
 - Modify `docs/qqmusic-provider.md`, `docs/authentication.md`, `docs/provider-contract.md`, `docs/caching.md`, `docs/playback.md`, `docs/architecture.md`, and `README.md`; create `docs/account-library.md` and `docs/entitlement.md`.
@@ -117,7 +118,7 @@
 **Interfaces:**
 
 - Consumes: approved design source pins `L-1124/QQMusicApi@108617ffe80abefec6358717b9f4d3677550db10`, `wxuyu/QQMusicApi@44c3b26c8741521266c63002844564392a1fa38c`, and `RethinkQAQ/allmusic-qqmusicapi@a828f1f2d2dc8416bd1a549ee4c14efbb8ba4974`.
-- Produces: a dated endpoint ledger in `docs/qqmusic-provider.md` with one row each for QR create, QR status, post-confirmation exchange, session validation/profile, Favorites read/write, playlist summaries/detail/create/rename/add/remove/delete, recent history, entitlement, and playback vkey. Every row records exact HTTPS host/path, CGI module/method when applicable, request class (`public-read`, `account-read`, `auth-poll`, or `account-write`), conceptual secret inputs, every exact secret-bearing request header name (or literal `none`), pagination, observed success/error codes, independent corroboration, live-observation date, and confidence.
+- Produces: a dated endpoint ledger in `docs/qqmusic-provider.md` with one row each for QR create, QR status, post-confirmation exchange, session validation/profile, Favorites read/write, playlist summaries/detail/create/rename/add/remove/delete, recent history, entitlement, and playback vkey. Every row records exact HTTPS host/path plus CGI module/method, request class (`public-read`, `account-read`, `auth-poll`, or `account-write`), sanitized request-key names/pagination controls, conceptual secret inputs, every exact secret-bearing request header name (or literal `none`), result-code literals, exact corroborating repository/commit/path, live-observation date/status, and confidence.
 - Produces: a factual `README.md` acknowledgement stating the three repositories were protocol references and no source was copied; account capability remains described as pending until the deterministic and live gates pass.
 
 - [ ] **Step 1: Verify the pinned source objects and licenses without copying them into the tracked tree**
@@ -165,10 +166,27 @@ Run:
 ```powershell
 $headers = @{ 'User-Agent' = 'YAQMC-interoperability-audit' }
 $targets = @(
-  @{ Repo='L-1124/QQMusicApi'; Sha='108617ffe80abefec6358717b9f4d3677550db10'; Paths=@('qqmusic_api/modules/login.py','qqmusic_api/modules/user.py','qqmusic_api/modules/songlist.py','qqmusic_api/models/request.py') },
-  @{ Repo='wxuyu/QQMusicApi'; Sha='44c3b26c8741521266c63002844564392a1fa38c'; Paths=@('src/services/apis/user/getQQLoginQr.ts','src/services/apis/user/checkQQLoginQr.ts','src/services/apis/user/getUserLikedSongs.ts','src/services/apis/user/getUserPlaylists.ts','src/config/user-info.ts') },
+  @{ Repo='L-1124/QQMusicApi'; Sha='108617ffe80abefec6358717b9f4d3677550db10'; Paths=@('qqmusic_api/modules/login.py','qqmusic_api/modules/login_utils.py','qqmusic_api/modules/user.py','qqmusic_api/modules/songlist.py','qqmusic_api/modules/song.py','qqmusic_api/models/request.py') },
+  @{ Repo='wxuyu/QQMusicApi'; Sha='44c3b26c8741521266c63002844564392a1fa38c'; Paths=@('src/services/apis/user/getQQLoginQr.ts','src/services/apis/user/checkQQLoginQr.ts','src/services/apis/user/getUserLikedSongs.ts','src/services/apis/user/getUserPlaylists.ts','src/services/apis/user/getUserCollections.ts','src/services/apis/user/getUserDetail.ts','src/services/apis/songLists/songListDetail.ts','src/config/user-info.ts') },
   @{ Repo='RethinkQAQ/allmusic-qqmusicapi'; Sha='a828f1f2d2dc8416bd1a549ee4c14efbb8ba4974'; Paths=@('src/main/java/qqmusicapi/QQMusicLoginHelper.java') }
 )
+$operationsByPath = @{
+  'qqmusic_api/modules/login.py' = @('QR create','QR status','post-confirmation exchange','session validation/profile')
+  'qqmusic_api/modules/login_utils.py' = @('QR status','post-confirmation exchange')
+  'qqmusic_api/modules/user.py' = @('session validation/profile','Favorites read','Favorites write','recent history','entitlement')
+  'qqmusic_api/modules/songlist.py' = @('playlist summaries','playlist detail','playlist create','playlist rename','playlist add','playlist remove','playlist delete')
+  'qqmusic_api/modules/song.py' = @('playback vkey','entitlement')
+  'qqmusic_api/models/request.py' = @('session validation/profile','Favorites read','Favorites write','playlist summaries','playlist detail','playlist create','playlist rename','playlist add','playlist remove','playlist delete','recent history','entitlement','playback vkey')
+  'src/services/apis/user/getQQLoginQr.ts' = @('QR create')
+  'src/services/apis/user/checkQQLoginQr.ts' = @('QR status','post-confirmation exchange')
+  'src/services/apis/user/getUserLikedSongs.ts' = @('Favorites read','Favorites write')
+  'src/services/apis/user/getUserPlaylists.ts' = @('playlist summaries')
+  'src/services/apis/user/getUserCollections.ts' = @('playlist summaries')
+  'src/services/apis/user/getUserDetail.ts' = @('session validation/profile','entitlement')
+  'src/services/apis/songLists/songListDetail.ts' = @('playlist detail')
+  'src/config/user-info.ts' = @('session validation/profile')
+  'src/main/java/qqmusicapi/QQMusicLoginHelper.java' = @('QR create','QR status','post-confirmation exchange')
+}
 $index = foreach ($target in $targets) {
   foreach ($path in $target.Paths) {
     $uri = "https://raw.githubusercontent.com/$($target.Repo)/$($target.Sha)/$path"
@@ -181,23 +199,49 @@ $index = foreach ($target in $targets) {
       $body,
       '(?i)(?:module|method)\s*[:=]\s*["'']([A-Za-z0-9_.-]+)["'']'
     ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    $headerNames = [regex]::Matches(
+      $body,
+      '(?i)(?:headers?\s*[.\[]|headers?\s*[:=][^{]*\{)[^\r\n]{0,160}?["'']([A-Za-z][A-Za-z0-9-]{1,63})["'']'
+    ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    $requestKeys = [regex]::Matches(
+      $body,
+      '["'']([A-Za-z_][A-Za-z0-9_]{1,63})["'']\s*:'
+    ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+    $paginationKeys = @($requestKeys | Where-Object {
+      $_ -match '^(begin|cursor|ein|limit|num|offset|page|pageNo|pageSize|sin|size)$'
+    })
+    $resultCodes = [regex]::Matches(
+      $body,
+      '(?i)(?:code|ret|status)\s*(?:==|===|:|=)\s*["'']?(-?[0-9]{1,8}|[A-Za-z][A-Za-z0-9_-]{1,31})'
+    ) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
     [pscustomobject]@{
       repository = $target.Repo
       commit = $target.Sha
       path = $path
       sha256 = $hash
+      operations = @($operationsByPath[$path])
       endpointConstants = @($endpoints)
       moduleMethods = @($moduleMethods)
+      headerNames = @($headerNames)
+      requestKeys = @($requestKeys)
+      paginationKeys = @($paginationKeys)
+      resultCodeLiterals = @($resultCodes)
+      corroboration = "$($target.Repo)@$($target.Sha):$path"
     }
   }
 }
 if ($index.Where({ $_.commit.Length -ne 40 -or $_.sha256.Length -ne 64 })) {
   throw 'A provenance hash was truncated'
 }
+foreach ($operation in $operationsByPath.Values | ForEach-Object { $_ } | Sort-Object -Unique) {
+  if (-not $index.Where({ $_.operations -contains $operation })) {
+    throw "No sanitized inspection evidence for operation: $operation"
+  }
+}
 $index | ConvertTo-Json -Depth 6
 ```
 
-Expected: nontruncating JSON contains each full 40-character commit, full 64-character content SHA-256, and only extracted read-only endpoint constants/module-method literals. No reference source body, response body, cookie, or QR artifact is written to the repository or `output/`.
+Expected: nontruncating JSON contains each full 40-character commit and 64-character content SHA-256 plus operation tags, path-only endpoint constants, module/method literals, header names, request-key names, pagination-key names, result-code literals, and exact source corroboration. It contains no header/request values, source excerpt, reference source body, response body, cookie, or QR artifact and writes nothing to the repository or `output/`.
 
 - [ ] **Step 3: Corroborate protocol declarations without creating or polling a live QR**
 
@@ -226,8 +270,8 @@ Add to `docs/qqmusic-provider.md`:
 
 Each row records current observable protocol behavior, not a supported public SDK. GPL/LGPL sources were used only to locate behaviors for independent observation; YAQMC's Rust implementation is original.
 
-| Operation | Exact surface | Class | Secret inputs (conceptual only) | Secret header names | Pagination/result codes | Corroboration | Confidence |
-| --------- | ------------- | ----- | ------------------------------- | ------------------- | ----------------------- | ------------- | ---------- |
+| Operation | Exact host/path + module/method | Class | Request keys/pagination | Secret inputs (conceptual only) | Secret header names | Result codes | Corroboration | Live date/status | Confidence |
+| --------- | ------------------------------- | ----- | ----------------------- | ------------------------------- | ------------------- | ------------ | ------------- | ---------------- | ---------- |
 ```
 
 Populate all operations named in this task from the evidence. Under the table, record the selected single QR flow, exact hosts added to the auth allowlist, unsupported operations, the `reference-correlated; live acceptance pending` status for auth requests, and the rule that current observed behavior overrides reference code. Do not claim a successful auth request before Task 16 completes the post-preflight live gate.
@@ -257,16 +301,24 @@ foreach ($operation in $required) {
   $rows = @($lines | Where-Object { $_ -match ('^\|\s*' + [regex]::Escape($operation) + '\s*\|') })
   if ($rows.Count -ne 1) { throw "Ledger row count for ${operation}: $($rows.Count)" }
   $cells = @($rows[0].Trim('|').Split('|') | ForEach-Object Trim)
-  if ($cells.Count -ne 8 -or $cells.Where({ [string]::IsNullOrWhiteSpace($_) })) {
+  if ($cells.Count -ne 10 -or $cells.Where({ [string]::IsNullOrWhiteSpace($_) })) {
     throw "Incomplete ledger row: $operation"
+  }
+  if ($cells[7] -notmatch '@[0-9a-f]{40}:') { throw "Missing exact corroboration: $operation" }
+  if ($cells[8] -notmatch '2026-[0-9]{2}-[0-9]{2}|live acceptance pending') {
+    throw "Missing live date/status: $operation"
   }
 }
 $ignored = cargo test --manifest-path src-tauri/Cargo.toml qqmusic::tests::live_ -- --ignored --list
 if (@($ignored | Select-String 'live_').Count -ne 3) { throw 'Live tests are not all explicitly ignored' }
+$outputState = @(git status --short --ignored --untracked-files=all -- output/)
+if ($outputState -match 'qqmusic-auth-account|qr|cookie|protocol-source') {
+  throw "Premature ignored account evidence exists: $($outputState -join ', ')"
+}
 git diff --check
 ```
 
-Expected: no missing operation and the diff contains no whitespace errors; no protocol source body or QR artifact appears in `git status --short --ignored`.
+Expected: no missing/incomplete operation, every row has exact corroboration and live status, the diff contains no whitespace errors, and the recursive ignored/untracked `output/` status contains no protocol source body, QR artifact, or premature QQ account evidence.
 
 - [ ] **Step 6: Commit the independently reviewable research gate**
 
@@ -594,7 +646,9 @@ git commit -m "refactor: isolate keyring work from async runtime"
 - Create: `src-tauri/src/qqmusic/redaction.rs`
 - Create: `src-tauri/src/qqmusic/transport.rs`
 - Modify: `src-tauri/src/qqmusic.rs`
+- Modify: `src-tauri/src/player.rs`
 - Modify: `src-tauri/Cargo.toml`
+- Modify: `src-tauri/Cargo.lock`
 - Test: inline unit tests in the three new Rust modules
 
 **Interfaces:**
@@ -603,10 +657,11 @@ git commit -m "refactor: isolate keyring work from async runtime"
 - Produces: `RetryClass::{SafeRead, AuthPoll, Write}`; only `SafeRead` can retry once.
 - Produces: `TransportRequest { operation: &'static str, method: reqwest::Method, url: reqwest::Url, headers: HeaderMap, body: Option<Vec<u8>>, retry: RetryClass, response_shape: &'static str, cancellation: tokio_util::sync::CancellationToken }` with a custom `Debug` that omits headers/body/query values and cancellation internals.
 - Produces: `TransportResponse { status: StatusCode, final_url: Url, headers: HeaderMap, body: Vec<u8> }` with a custom `Debug` that prints only status, redacted URL, header names, and byte length.
-- Produces: `#[async_trait] pub(crate) trait QqTransport { async fn execute(&self, request: TransportRequest) -> Result<TransportResponse, QQMusicError>; }`, `ReqwestQqTransport::new(clock: Arc<dyn Clock>) -> Result<Self, QQMusicError>`, and test-only `ReqwestQqTransport::new_with_policy(client: Client, clock: Arc<dyn Clock>, policy: TransportPolicy)` for loopback redirect fixtures. `TransportPolicy { allowed_authorities: HashSet<String>, allow_loopback_http: bool }` is private; production always sets `allow_loopback_http: false`.
+- Produces: `#[async_trait] pub(crate) trait QqTransport { async fn execute(&self, request: TransportRequest) -> Result<TransportResponse, QQMusicError>; }`, `build_direct_client(timeouts: TransportTimeouts) -> Result<Client, QQMusicError>`, and `ReqwestQqTransport::new(clock: Arc<dyn Clock>) -> Result<Self, QQMusicError>`. The production constructor and test-only `ReqwestQqTransport::new_with_policy(clock, policy, timeouts)` both call the same builder; tests may inject only validation authorities/loopback-HTTP allowance and shorter timeouts, never an arbitrary already-built `Client`.
 - Produces: `redact_url`, `redact_headers`, `redact_json`, and `RequestDiagnostic { operation, status, duration_ms, retry_count, response_shape }` whose serialized form contains no request URL/body/header values.
-- Consumes later: all public/auth/account QQ request builders and deterministic fake transports.
+- Consumes later: only Task 1-selected auth/account QQ request builders and their deterministic fake transports; public catalog/media builders stay on `QQMusicClient::http`.
 - Adds `tokio-util = { version = "0.7", features = ["rt"] }`. Safe reads and auth polls select cancellation against send, response-body collection, retry delay, and poll delay; a write checks cancellation before dispatch but is not aborted after dispatch, because its result may be outcome-unknown.
+- Preserves the existing ordinary `reqwest::Client` as `QQMusicClient::http` and preserves `QQMusicService::http_client() -> reqwest::Client` for `CachedMediaPreparer`, public catalog requests, signed media downloads, and all current proxy/media behavior. The dedicated direct/no-proxy `Arc<dyn QqTransport>` is an additional account/auth field; it does not replace, wrap, or reconfigure the ordinary client.
 
 - [ ] **Step 1: Write failing clock and redaction tests**
 
@@ -687,7 +742,7 @@ const SECRET_KEYS: &[&str] = &[
 
 - [ ] **Step 4: Write failing local transport tests for redirects, retries, and write uncertainty**
 
-Use two loopback Axum listeners and inject their exact IP-and-port authorities through the test-only policy with `allow_loopback_http: true`. That exception accepts `http` only when `Url::host()` is the loopback IP literal `127.0.0.1` or `::1` and the exact authority is in the injected set; it is unavailable in non-test construction. Listener A exposes `/cross-host`, `/loop`, `/read-timeout`, and `/write-timeout`; `/cross-host` redirects to listener B. Assert:
+Use two loopback Axum listeners and inject their exact IP-and-port authorities through the test-only validation policy with `allow_loopback_http: true`. Construct every fixture transport through `ReqwestQqTransport::new_with_policy(clock, policy, short_timeouts)`, which calls the real `build_direct_client`; do not pass a `Client` into the transport. The exception accepts `http` only when `Url::host()` is the loopback IP literal `127.0.0.1` or `::1` and the exact authority is in the injected set; it is unavailable in non-test construction. Listener A exposes `/cross-host`, `/loop`, `/read-timeout`, and `/write-timeout`; `/cross-host` redirects to listener B. Assert:
 
 ```rust
 #[tokio::test]
@@ -723,7 +778,7 @@ async fn safe_read_retries_once_but_auth_poll_does_not() {
 }
 ```
 
-Also test all of the following: set `HTTP_PROXY`/`HTTPS_PROXY` to a loopback trap and prove the production-built client reaches the allowlisted fixture directly via `.no_proxy()`; cancel a safe read, its retry delay, and an auth poll and assert `Cancelled` without another request; return `200` plus `Location` and assert it is not followed; follow only 301/302/303/307/308; strip every secret header on a cross-origin hop; and reject a cross-origin authenticated 307/308 when it would preserve any request body. The latter test asserts listener B receives neither request nor body.
+Also test all of the following: under one process-wide test mutex, save/restore `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`; point all proxy variables at listener A, clear `NO_PROXY`, target listener B, construct the transport through the shared-builder test factory, and assert A receives zero requests while B receives one. This is the no-proxy proof and must not use `Client::new()` or an injected client. Cancel a safe read, its retry delay, and an auth poll and assert `Cancelled` without another request; return `200` plus `Location` and assert it is not followed; follow only 301/302/303/307/308; strip every secret header on a cross-origin hop; and reject a cross-origin authenticated 307/308 when it would preserve any request body. The latter test asserts listener B receives neither request nor body.
 
 - [ ] **Step 5: Run the transport tests and verify the missing behavior**
 
@@ -737,7 +792,7 @@ Expected: FAIL before `ReqwestQqTransport` and `QQMusicError::OutcomeUnknown` ex
 
 - [ ] **Step 6: Implement manual redirect and request-class behavior**
 
-Build the production client with `reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())`, five-second connect timeout, and fifteen-second total timeout. Do not consult `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, system proxy settings, PAC, or user proxy configuration for auth/account endpoints. Permit the strict host set corroborated in Task 1 for the selected QQ QR/account flow:
+Implement `build_direct_client` once with `reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())` and supplied timeouts. Production passes five-second connect/fifteen-second total values; test construction passes bounded short values but the same proxy/redirect configuration. Do not consult `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, system proxy settings, PAC, or user proxy configuration for auth/account endpoints. Permit the strict host set corroborated in Task 1 for the selected QQ QR/account flow:
 
 ```rust
 const ALLOWED_HOSTS: &[&str] = &[
@@ -775,19 +830,27 @@ Treat a scheme, host, or effective-port change as cross-origin and remove every 
 
 Add `AuthorizationRejected`, `Protocol`, and `OutcomeUnknown` variants/codes to `QQMusicError`; only the first two map to non-retryable provider errors, while `OutcomeUnknown` is handled only by mutation reconciliation.
 
-- [ ] **Step 7: Inject transport/clock into `QQMusicClient` and preserve guest behavior**
+- [ ] **Step 7: Add the dedicated account transport without replacing the ordinary client**
 
-Change construction to:
+Keep the current `QQMusicClient` field and constructor behavior intact, and add the account transport beside it:
 
 ```rust
-impl QQMusicClient {
-    fn new(transport: Arc<dyn QqTransport>, clock: Arc<dyn Clock>) -> Self {
-        Self { transport, clock }
-    }
+pub struct QQMusicService {
+    client: QQMusicClient,
+    account_transport: Arc<dyn QqTransport>,
+    clock: Arc<dyn Clock>,
+    storage: Arc<StorageService>,
+    credentials: Arc<dyn CredentialStore>,
+    preferred_quality: RwLock<PreferredQuality>,
+    fixture_root: PathBuf,
+    fixture_guard: AsyncMutex<()>,
+    session_invalid: AtomicBool,
 }
 ```
 
-Add `QQMusicService::new_with_runtime(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf, transport: Arc<dyn QqTransport>, clock: Arc<dyn Clock>) -> Result<Self, QQMusicError>` for deterministic tests. Keep the existing production signature `QQMusicService::new(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf) -> Result<Self, QQMusicError>` and have it build `SystemClock` plus `ReqwestQqTransport`. Migrate existing `send_json` callers through `QqTransport` without changing their normalized results or cache TTLs.
+Add `QQMusicService::new_with_runtime(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf, account_transport: Arc<dyn QqTransport>, clock: Arc<dyn Clock>) -> Result<Self, QQMusicError>` for deterministic account/auth tests. Keep the existing production signature `QQMusicService::new(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf) -> Result<Self, QQMusicError>` and have it construct the ordinary `QQMusicClient` exactly as today, then construct `SystemClock` plus the separate direct `ReqwestQqTransport`. Route only the Task 1-selected auth/account request builders through `account_transport`; existing public `send_json`, `client.http`, `http_client()`, media preparation, and guest cache TTLs remain unchanged.
+
+Add a constructor regression test in `src-tauri/src/qqmusic.rs` that injects a recording account transport, performs one existing public catalog request, and asserts the recording transport has zero calls. Add a `src-tauri/src/player.rs` regression around `CachedMediaPreparer::new(service.http_client(), ...)` proving a synthetic media fixture still downloads/prepares through the ordinary client. The four existing `QQMusicService::new` call sites keep the compatibility signature from Tasks 4/6.
 
 - [ ] **Step 8: Verify safety and guest-provider parity**
 
@@ -798,16 +861,17 @@ cargo test --manifest-path src-tauri/Cargo.toml qqmusic::clock::tests -- --nocap
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::redaction::tests -- --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::transport::tests -- --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::tests -- --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml player::tests::qqmusic_http_client_still_prepares_media -- --nocapture
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-Expected: deterministic safety suites and existing QQ normalization/lyrics/CDN tests PASS; no raw URL/header/body appears in captured logs.
+Expected: deterministic safety suites and existing QQ normalization/lyrics/CDN/media tests PASS; auth/account calls use the dedicated transport, public/media calls never enter it, `http_client()` remains usable by `CachedMediaPreparer`, and no raw URL/header/body appears in captured logs.
 
 - [ ] **Step 9: Commit the independently reviewable transport foundation**
 
 ```powershell
-git add src-tauri/Cargo.toml src-tauri/src/qqmusic.rs src-tauri/src/qqmusic/clock.rs src-tauri/src/qqmusic/redaction.rs src-tauri/src/qqmusic/transport.rs
+git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/qqmusic.rs src-tauri/src/player.rs src-tauri/src/qqmusic/clock.rs src-tauri/src/qqmusic/redaction.rs src-tauri/src/qqmusic/transport.rs
 git commit -m "security: harden qq music authenticated transport"
 ```
 
@@ -1198,7 +1262,7 @@ git commit -m "refactor: split qq catalog and account contracts"
 - Produces a native `LoginOwnerLease` keyed by a second opaque 128-bit `ownerLeaseId`, renewed only by the guarded heartbeat command. Lease duration is 7 seconds and the advertised heartbeat interval is 2 seconds. Expiry cancels the poll task, increments the attempt generation, clears challenge/image bytes, and publishes `Cancelled`; late transport completion cannot revive it.
 - Produces one `tokio::sync::Mutex<()>` lifecycle lock shared by restore, session promotion, and logout plus an atomic generation. Logout increments the generation and cancels poll/read cancellation tokens before waiting for this lock; restore/promotion capture the generation and recheck it after every await and again before publishing.
 - Produces `ValidatedAccount { profile: AccountProfile, entitlement: AccountEntitlement }` from the lightweight validation/profile call.
-- Preserves Task 4's constructor contracts exactly: `QQMusicService::new(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf) -> Result<Self, QQMusicError>` and `QQMusicService::new_with_runtime(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf, transport: Arc<dyn QqTransport>, clock: Arc<dyn Clock>) -> Result<Self, QQMusicError>`. Each constructor immediately wraps `credentials` in one owned `SpawnBlockingCredentialStore` for auth work. This keeps all four existing call sites (`src-tauri/src/lib.rs`, the test in `src-tauri/src/player.rs`, and the two tests in `src-tauri/src/qqmusic.rs`) compiling unchanged through this task; no async auth method retains or invokes `Arc<dyn CredentialStore>` directly.
+- Preserves Task 4's constructor contracts exactly: `QQMusicService::new(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf) -> Result<Self, QQMusicError>` and `QQMusicService::new_with_runtime(storage: Arc<StorageService>, credentials: Arc<dyn CredentialStore>, fixture_root: PathBuf, account_transport: Arc<dyn QqTransport>, clock: Arc<dyn Clock>) -> Result<Self, QQMusicError>`. Each constructor immediately wraps `credentials` in one owned `SpawnBlockingCredentialStore` for auth work while retaining Task 4's separate ordinary `QQMusicClient`. This keeps all four existing call sites (`src-tauri/src/lib.rs`, the test in `src-tauri/src/player.rs`, and the two tests in `src-tauri/src/qqmusic.rs`) compiling unchanged through this task; no async auth method retains or invokes `Arc<dyn CredentialStore>` directly.
 
 - [ ] **Step 1: Add deterministic sanitized auth fixtures**
 
@@ -1450,7 +1514,7 @@ Expected: FAIL until restore/logout and exact-kind invalidation exist.
 
 `restore_session()` first captures generation, acquires the Task 6 lifecycle mutex, rechecks generation, publishes `RestoringSession`, loads ACTIVE asynchronously, rechecks, validates expiry and upstream profile with a cancellable read, rechecks, and publishes only while still holding the lock. Map missing -> `Guest`, unavailable store -> `SecureStoreUnavailable`, malformed/expired/explicit upstream auth invalid -> `ReauthenticationRequired`, and offline/timeout -> `NetworkError` with no profile projection. A generation mismatch at any boundary returns `Cancelled` without publishing. Never call a session authenticated or expose a stale profile without successful validation in this process.
 
-`logout()` increments generation and cancels QR polls plus account read/reconciliation tokens before awaiting the lifecycle mutex. Once it owns the mutex, attempt staging deletion, ACTIVE deletion, exact-kind account-cache invalidation, cursor-registry clearing, and pending-mutation clearing even when an earlier cleanup fails. Hold the mutex through the final snapshot publication. Never publish `Guest` if either sensitive credential deletion failed; publish `SecureStoreUnavailable` and return the stable storage error instead. A cache-only failure may publish `Guest` after both credentials are gone but still returns an error so stale account metadata is not silently treated as cleared. Do not call an upstream logout endpoint as a prerequisite for local logout; if Task 1 verified one, issue it best-effort before local invalidation with `RetryClass::Write`, but local generation invalidation and cleanup still complete when upstream is unavailable.
+`logout()` increments generation and cancels QR polls plus account read/reconciliation tokens before awaiting the lifecycle mutex. Once it owns the mutex, attempt staging deletion, ACTIVE deletion, exact-kind account-cache invalidation, cursor-registry clearing, and both in-flight/completed mutation-index clearing even when an earlier cleanup fails. A successful promotion to a new scope performs the same old-epoch index clearing before publication. Hold the mutex through the final snapshot publication. Never publish `Guest` if either sensitive credential deletion failed; publish `SecureStoreUnavailable` and return the stable storage error instead. A cache-only failure may publish `Guest` after both credentials are gone but still returns an error so stale account metadata is not silently treated as cleared. Do not call an upstream logout endpoint as a prerequisite for local logout; if Task 1 verified one, issue it best-effort before local invalidation with `RetryClass::Write`, but local generation invalidation and cleanup still complete when upstream is unavailable.
 
 - [ ] **Step 4: Add and guard the six commands**
 
@@ -1932,6 +1996,7 @@ git commit -m "feat: render paged qq music account library"
 - Modify: `src-tauri/src/qqmusic/cache.rs`
 - Modify: `src-tauri/src/qqmusic.rs`
 - Modify: `src-tauri/src/commands.rs`
+- Modify: `src-tauri/src/lib.rs`
 - Create: `src-tauri/tests/fixtures/qqmusic/account/favorite-success.json`
 - Create: `src-tauri/tests/fixtures/qqmusic/account/favorite-rejected.json`
 - Modify: `src/domain/music.ts`
@@ -1943,6 +2008,7 @@ git commit -m "feat: render paged qq music account library"
 - Modify: `src/components/TrackList.tsx`
 - Create: `src/components/TrackList.test.tsx`
 - Modify: `src/components/PlayerBar.tsx`
+- Modify: `src/components/PlayerBar.test.tsx`
 - Modify: `src/pages/AlbumPage.tsx`
 - Create: `src/pages/AlbumPage.test.tsx`
 - Modify: `src/pages/PlaylistPage.tsx`
@@ -1953,7 +2019,7 @@ git commit -m "feat: render paged qq music account library"
 **Interfaces:**
 
 - Consumes the exact `MutationStatus`, `FavoriteMutationRequest`, and `FavoriteMutationResult` declarations from Task 5; this task implements their native and frontend behavior without changing their shapes.
-- Produces: one in-flight mutation mutex per key `favorite:<trackId>` and a bounded completed-operation-ID memory cache to suppress duplicate frontend delivery. The mutex is held across write, every reconciliation read, and the final guarded cache commit.
+- Produces: one in-flight mutation mutex per key `favorite:<trackId>` and a bounded completed-result cache keyed by `(AccountEpoch, clientOperationId)`, never operation ID alone. The mutex is held across write, every reconciliation read, and the final guarded cache commit. Generation/scope change and logout synchronously evict completed and in-flight indexes for the old epoch before a replacement account can mutate.
 - Produces one canonical `favoriteByTrackId` map in `useAccountStore` plus `useFavoriteState(trackId) -> { favorite, pending }`. TrackList, AlbumPage, PlaylistPage, and PlayerBar select by stable ID at render time; they never mutate `Song` props, album/playlist arrays, the player queue, or the active-track object.
 
 - [ ] **Step 1: Write failing native success/rejection/unknown/duplicate tests**
@@ -2002,6 +2068,16 @@ async fn auth_epoch_change_during_write_timeout_reconciliation_or_commit_returns
         assert!(!fixture.new_scope_contains_candidate_state());
     }
 }
+
+#[tokio::test]
+async fn the_same_operation_id_after_login_swap_executes_for_the_new_epoch() {
+    let fixture = favorite_fixture(WriteResult::Accepted);
+    fixture.service().set_favorite(request("TRACK", true, "shared-op-id")).await.expect("first");
+    fixture.login_as_new_scope().await;
+    fixture.service().set_favorite(request("TRACK", false, "shared-op-id")).await.expect("second");
+    assert_eq!(fixture.transport().write_calls(), 2);
+    assert_eq!(fixture.completed_keys(), [fixture.current_epoch_key("shared-op-id")]);
+}
 ```
 
 - [ ] **Step 2: Write failing frontend rollback/convergence tests**
@@ -2040,7 +2116,7 @@ Expected: FAIL before native and frontend mutation logic exists.
 
 - [ ] **Step 4: Implement one non-retried write plus bounded reconciliation**
 
-Capture `(generation, OpaqueAccountScope)` before acquiring the same-track mutex, then recheck after acquiring it. Send the write once with `RetryClass::Write`. Definite provider rejection returns `Rejected` and does not change cache. `OutcomeUnknown` runs at most three safe-read checks at 300 ms, 700 ms, and 1,500 ms; recheck the complete epoch before each delay/read and after every await. Observed desired state returns `Reconciled`, observed opposite state after all checks returns `Rejected`, and no definitive read returns `OutcomeUnknown`. Never send the write again.
+Capture `(generation, OpaqueAccountScope)` before completed-result lookup or same-track mutex acquisition, key both lookups by that epoch, and recheck after acquisition. Send the write once with `RetryClass::Write`. Definite provider rejection returns `Rejected` and does not change cache. `OutcomeUnknown` runs at most three safe-read checks at 300 ms, 700 ms, and 1,500 ms; recheck the complete epoch before each delay/read and after every await. Observed desired state returns `Reconciled`, observed opposite state after all checks returns `Rejected`, and no definitive read returns `OutcomeUnknown`. Never send the write again. Store a completed result only through `insert_if_current(epoch, operation_id, result)` while holding the lifecycle guard; auth epoch changes clear old entries, so an identical operation ID on a new login performs a new write.
 
 Authentication failure transitions auth to `ReauthenticationRequired` and never downgrades the write to guest. On applied/reconciled, call the Task 9 lifecycle-guarded transactional batch to update `AccountLibraryProjection.favorite_ids` and affected page caches. Recheck epoch immediately before and after that commit and before returning. A stale operation returns `Cancelled`; it never commits to the replacement scope or returns success. Tests cover logout and login swap at timeout classification, each reconciliation read, pre-commit, and post-commit.
 
@@ -2050,7 +2126,9 @@ Before optimistic update, capture only the canonical `favoriteByTrackId[trackId]
 
 - [ ] **Step 6: Add the guarded command and interactive controls**
 
-`qqmusic_set_favorite(window, provider, request)` validates main caller and operation ID length 8–128 ASCII characters. TrackList, AlbumPage, PlaylistPage, and PlayerBar all call the same account runtime action; buttons expose pending state and localized accessible labels. Refactor TrackList's current full-row `<button role="row">` into a noninteractive `<div role="row">` containing a dedicated play/pause `<button>` and a sibling favorite `IconButton`, so no button is nested inside another interactive element. Guest click opens sign-in rather than showing a generic provider error.
+`qqmusic_set_favorite(window, provider, request)` validates main caller and operation ID length 8–128 ASCII characters. Add `commands::qqmusic_set_favorite` to the existing `tauri::generate_handler![...]` in `src-tauri/src/lib.rs` in the same commit; declaring the command and ACL alone is insufficient. TrackList, AlbumPage, PlaylistPage, and PlayerBar all call the same account runtime action; buttons expose pending state and localized accessible labels. Refactor TrackList's current full-row `<button role="row">` into a noninteractive `<div role="row">` containing a dedicated play/pause `<button>` and a sibling favorite `IconButton`, so no button is nested inside another interactive element. Guest click opens sign-in rather than showing a generic provider error.
+
+Extend an inline `src-tauri/src/lib.rs` source-registration test that extracts the current `tauri::generate_handler![...]` token block from `include_str!("lib.rs")` and asserts exactly one `commands::qqmusic_set_favorite` entry. The test must fail if the function exists but is absent/duplicated in the handler. Also retain Task 2's ACL/guard table assertion for the same command name.
 
 Create focused tests for `TrackList`, `AlbumPage`, and `PlaylistPage`, and extend `PlayerBar.test.tsx`. Seed the same track ID on all four surfaces, change one canonical map entry, and assert every rendered selector converges; cover definite rollback, cancelled account swap, pending labels, and `container.querySelector('button button') === null` for TrackList.
 
@@ -2060,6 +2138,7 @@ Run:
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::account::tests -- --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml handler_registration -- --nocapture
 npm test -- src/application/account-runtime.test.ts src/application/player-store.test.ts src/components/TrackList.test.tsx src/pages/AlbumPage.test.tsx src/pages/PlaylistPage.test.tsx src/components/PlayerBar.test.tsx
 npm run typecheck
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -2070,7 +2149,7 @@ Expected: no duplicate writes, definite rollback, outcome-unknown read-after-wri
 - [ ] **Step 8: Commit the independently reviewable Favorites mutation**
 
 ```powershell
-git add src-tauri/src/qqmusic/account.rs src-tauri/src/qqmusic/cache.rs src-tauri/src/qqmusic.rs src-tauri/src/commands.rs src-tauri/tests/fixtures/qqmusic/account/favorite-success.json src-tauri/tests/fixtures/qqmusic/account/favorite-rejected.json src/domain/music.ts src/providers/qqmusic/qq-music-provider.ts src/application/account-runtime.ts src/application/account-runtime.test.ts src/application/player-store.ts src/application/player-store.test.ts src/components/TrackList.tsx src/components/TrackList.test.tsx src/components/PlayerBar.tsx src/pages/AlbumPage.tsx src/pages/AlbumPage.test.tsx src/pages/PlaylistPage.tsx src/pages/PlaylistPage.test.tsx src/locales/en-US.ts src/locales/zh-CN.ts
+git add src-tauri/src/qqmusic/account.rs src-tauri/src/qqmusic/cache.rs src-tauri/src/qqmusic.rs src-tauri/src/commands.rs src-tauri/src/lib.rs src-tauri/tests/fixtures/qqmusic/account/favorite-success.json src-tauri/tests/fixtures/qqmusic/account/favorite-rejected.json src/domain/music.ts src/providers/qqmusic/qq-music-provider.ts src/application/account-runtime.ts src/application/account-runtime.test.ts src/application/player-store.ts src/application/player-store.test.ts src/components/TrackList.tsx src/components/TrackList.test.tsx src/components/PlayerBar.tsx src/components/PlayerBar.test.tsx src/pages/AlbumPage.tsx src/pages/AlbumPage.test.tsx src/pages/PlaylistPage.tsx src/pages/PlaylistPage.test.tsx src/locales/en-US.ts src/locales/zh-CN.ts
 git commit -m "feat: reconcile qq music favorite mutations"
 ```
 
@@ -2082,6 +2161,7 @@ git commit -m "feat: reconcile qq music favorite mutations"
 - Modify: `src-tauri/src/qqmusic/cache.rs`
 - Modify: `src-tauri/src/qqmusic.rs`
 - Modify: `src-tauri/src/commands.rs`
+- Modify: `src-tauri/src/lib.rs`
 - Create: `src-tauri/tests/fixtures/qqmusic/account/playlist-mutation-success.json`
 - Create: `src-tauri/tests/fixtures/qqmusic/account/playlist-mutation-rejected.json`
 - Modify: `src/domain/music.ts`
@@ -2089,7 +2169,7 @@ git commit -m "feat: reconcile qq music favorite mutations"
 - Modify: `src/application/account-runtime.ts`
 - Modify: `src/application/account-runtime.test.ts`
 - Modify: `src/pages/PlaylistPage.tsx`
-- Create: `src/pages/PlaylistPage.test.tsx`
+- Modify: `src/pages/PlaylistPage.test.tsx`
 - Modify: `src/locales/en-US.ts`
 - Modify: `src/locales/zh-CN.ts`
 
@@ -2098,6 +2178,7 @@ git commit -m "feat: reconcile qq music favorite mutations"
 - Consumes the exact `CreatePlaylistRequest`, `RenamePlaylistRequest`, `PlaylistTrackMutationRequest`, `DeletePlaylistRequest`, and `PlaylistMutationResult` declarations from Task 5; this task implements their native and frontend behavior without changing their shapes.
 - Produces a create-operation key `playlist-create:<operationId>` and one shared same-entity mutex `playlist:<id>` for rename, add/remove track, and delete. Different writes against one playlist cannot overlap, including rename versus delete or two distinct track mutations.
 - Reconciliation queries: create -> playlist summaries diff; rename -> playlist detail title; add/remove -> paged playlist track membership; delete -> playlist summaries absence.
+- Reuses Task 11's `(AccountEpoch, clientOperationId)` completed-result cache for all playlist mutations; a completion from a prior scope/generation is never returned for an identical ID after login swap.
 
 - [ ] **Step 1: Write failing native capability and operation-specific reconciliation tests**
 
@@ -2126,6 +2207,15 @@ async fn ambiguous_unknown_create_stays_unknown_without_second_create() {
     let result = fixture.service().create_playlist(create_request()).await.expect("typed result");
     assert_eq!(result.status, MutationStatus::OutcomeUnknown);
     assert_eq!(fixture.transport().create_calls(), 1);
+}
+
+#[tokio::test]
+async fn playlist_operation_id_is_reusable_after_account_epoch_changes() {
+    let fixture = playlist_mutation_fixture();
+    fixture.service().rename_playlist(rename_request("shared-op-id")).await.expect("first");
+    fixture.login_as_new_scope().await;
+    fixture.service().rename_playlist(rename_request("shared-op-id")).await.expect("second");
+    assert_eq!(fixture.transport().rename_calls(), 2);
 }
 ```
 
@@ -2175,7 +2265,7 @@ For unknown create, snapshot owned playlist IDs before send and accept only one 
 
 - [ ] **Step 6: Add commands and capability-gated UI**
 
-Add/register the five main-guarded commands. PlaylistPage reads only `playlist.capabilities`; it never derives ownership from owner ID/title. Disable or hide owner-only actions for collected playlists, expose a confirmation before delete, and show operation-specific localized errors without personal playlist names in logs.
+Add the five main-guarded commands and add `commands::qqmusic_create_playlist`, `commands::qqmusic_rename_playlist`, `commands::qqmusic_add_playlist_track`, `commands::qqmusic_remove_playlist_track`, and `commands::qqmusic_delete_playlist` to the existing `tauri::generate_handler![...]` in `src-tauri/src/lib.rs`. Extend the Task 11 source-registration test to require exactly one occurrence of each of the six mutation handlers and run it with the focused suite. PlaylistPage reads only `playlist.capabilities`; it never derives ownership from owner ID/title. Disable or hide owner-only actions for collected playlists, expose a confirmation before delete, and show operation-specific localized errors without personal playlist names in logs.
 
 - [ ] **Step 7: Verify all mutations, uncertainty, and acceptance safety**
 
@@ -2183,6 +2273,7 @@ Run:
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::account::tests -- --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml handler_registration -- --nocapture
 npm test -- src/pages/PlaylistPage.test.tsx src/application/account-runtime.test.ts
 npm run typecheck
 npm run lint
@@ -2194,7 +2285,7 @@ Expected: create/rename/add/remove/delete success, rejection, unknown reconcilia
 - [ ] **Step 8: Commit the independently reviewable playlist mutation layer**
 
 ```powershell
-git add src-tauri/src/qqmusic/account.rs src-tauri/src/qqmusic/cache.rs src-tauri/src/qqmusic.rs src-tauri/src/commands.rs src-tauri/tests/fixtures/qqmusic/account/playlist-mutation-success.json src-tauri/tests/fixtures/qqmusic/account/playlist-mutation-rejected.json src/domain/music.ts src/providers/qqmusic/qq-music-provider.ts src/application/account-runtime.ts src/application/account-runtime.test.ts src/pages/PlaylistPage.tsx src/pages/PlaylistPage.test.tsx src/locales/en-US.ts src/locales/zh-CN.ts
+git add src-tauri/src/qqmusic/account.rs src-tauri/src/qqmusic/cache.rs src-tauri/src/qqmusic.rs src-tauri/src/commands.rs src-tauri/src/lib.rs src-tauri/tests/fixtures/qqmusic/account/playlist-mutation-success.json src-tauri/tests/fixtures/qqmusic/account/playlist-mutation-rejected.json src/domain/music.ts src/providers/qqmusic/qq-music-provider.ts src/application/account-runtime.ts src/application/account-runtime.test.ts src/pages/PlaylistPage.tsx src/pages/PlaylistPage.test.tsx src/locales/en-US.ts src/locales/zh-CN.ts
 git commit -m "feat: reconcile qq music playlist mutations"
 ```
 
@@ -2203,6 +2294,8 @@ git commit -m "feat: reconcile qq music playlist mutations"
 **Files:**
 
 - Create: `src-tauri/src/qqmusic/entitlement.rs`
+- Modify: `src-tauri/src/qqmusic/auth.rs`
+- Modify: `src-tauri/src/qqmusic/account.rs`
 - Modify: `src-tauri/src/qqmusic.rs`
 - Modify: `src-tauri/src/player.rs`
 - Modify: `src-tauri/src/media.rs`
@@ -2214,6 +2307,7 @@ git commit -m "feat: reconcile qq music playlist mutations"
 - Modify: `src/application/player-store.ts`
 - Modify: `src/application/native-player-runtime.ts`
 - Modify: `src/components/PlayerBar.tsx`
+- Modify: `src/components/PlayerBar.test.tsx`
 - Modify: `src/pages/SettingsPage.tsx`
 - Modify: `src/pages/SettingsPage.test.tsx`
 - Modify: `src/locales/en-US.ts`
@@ -2229,7 +2323,10 @@ git commit -m "feat: reconcile qq music playlist mutations"
 - Moves the current private Rust `SourceCandidate { filename, cache_label, format, mime_type, bitrate_kbps, preview }` from `qqmusic.rs` into `entitlement.rs` and adds `quality: AudioQuality`; candidate construction remains provider-native.
 - Produces `SourceDecision { candidate: SourceCandidate, selection: PlaybackSourceSelection }` and pure `choose_source(preference: AudioQualityPreference, entitlement: &AccountEntitlement, track_formats: &[AudioFormatInfo], vkey_results: &[VkeyAvailability], preview: Option<PreviewRange>) -> Result<SourceDecision, PlaybackSourceError>`. `VkeyAvailability { filename: String, available: bool }` contains no URL; `PreviewRange { start_ms: u64, end_ms: u64 }` contains only normalized timing.
 - Preserves: the same `QQMusicService: PlaybackSourceResolver`, `CachedMediaPreparer`, `ProgressiveSource`/full-file-cache preparation, `AudioEngine`, `PlayerService`, cache, and one-time expired-URL re-resolution.
-- Applies the Task 9 `AccountEpoch` guard whenever source resolution uses account entitlement/cookies: capture generation+scope, recheck after entitlement/vkey awaits and before returning a source or committing `sourceSelection`; logout/login swap returns `Cancelled` and cannot attach an old account's source to the player.
+- Produces nonserializable `PlaybackEpochGuard { expected: Option<AccountEpoch>, cancellation: CancellationToken, clock: Arc<PlaybackEpochClock> }` in `media.rs`; its manual `Debug` prints only `account_bound: bool`. `PlaybackEpochClock` stores the current generation+opaque scope behind `std::sync::RwLock<Option<AccountEpoch>>`; `validate()` compares both, while `validate_and_run(closure)` holds a read lock across one synchronous audio/core operation. Auth promotion/logout takes the write lock, changes/clears the epoch, and cancels the old token inside the Task 6 lifecycle mutex. Guest/public sources use `PlaybackEpochGuard::unrestricted()`.
+- Adds `epoch_guard: PlaybackEpochGuard` to `ResolvedPlaybackSource` and `PreparedPlaybackSource`; `CachedMediaPreparer` moves the same guard through unchanged and never serializes it. `AudioEngine`/its worker retains the loaded source guard, validates inside `load` immediately before decoder/source creation and inside every `play`/resume immediately before backend playback, and returns a typed source-cancelled error on mismatch.
+- Adds `PlaybackSourceError::Cancelled` and `AudioEngineError::SourceCancelled`; player error mapping treats both as non-retryable cancellation, stops the loaded source, and does not publish a provider/network failure toast for expected logout/login-swap invalidation.
+- Applies this guard whenever source resolution uses account entitlement/cookies: validate after entitlement/vkey awaits; before and after media preparation; wrap audio load and every audio play/resume in `validate_and_run`; validate after audio load/play; and call `validate_and_run` while already holding the PlayerCore write lock immediately before `sourceSelection`/Playing commit. The audio worker also registers a cancellation watcher for the loaded guard and stops/clears the backend when auth invalidates it. After a valid commit, `PlayerService` owns a generation-bound cancellation task that increments `load_generation`, calls `audio.stop()`, clears `active_epoch_guard`/`sourceSelection`/Playing state under the core lock, and publishes one sanitized playback update; a newer load makes an older watcher a no-op. Thus a play that started just before invalidation is stopped, and a play after invalidation cannot enter the guarded closure. Any mismatch clears pending selection/guard, returns `PlaybackSourceError::Cancelled`, and cannot attach or keep playing an old account source after logout/login swap.
 
 - [ ] **Step 1: Write the failing full candidate-matrix tests**
 
@@ -2273,9 +2370,9 @@ fn missing_source_and_insufficient_right_are_distinct() {
 
 - [ ] **Step 2: Write failing player projection and one-time refresh tests**
 
-Extend the existing player test fixtures with `PlaybackSourceSelection`. Assert the selection appears in `PlayerSnapshot`, survives media preparation, clears on a new load/error, and that `expired_media_url_is_resolved_again_once_then_played` still makes exactly two resolver/preparer calls.
+Extend the existing media/audio/player test fixtures with `PlaybackSourceSelection` and `PlaybackEpochGuard`. Assert the selection and exact guard instance move resolved -> prepared -> loaded without appearing in serialized snapshots; the selection survives valid media preparation, clears on a new load/error/cancellation, and `expired_media_url_is_resolved_again_once_then_played` still makes exactly two resolver/preparer calls.
 
-Add barriers after entitlement read, after vkey response, and before PlayerSnapshot commit. At each barrier, perform logout or replace the account epoch, release the result, and assert typed cancellation, no stale `sourceSelection`, and no preparation request with old account material.
+Add deterministic barriers `PlaybackBoundary::{AfterEntitlementRead, AfterVkeyResponse, BeforePrepare, DuringPrepare, BeforeAudioLoad, InsideAudioLoad, BeforeAudioPlay, InsideAudioPlay, BeforeSnapshotCommit}`. At each boundary, run both logout and login-swap cases, release the operation, and assert typed cancellation, engine stop/not-playing, no stale `sourceSelection`, no final Playing snapshot, and no preparation/audio request with old account material. Add a separate resume test: load while current, pause, swap epoch, then `PlayerService::play()` must be rejected by the audio worker's retained guard without invoking backend play.
 
 - [ ] **Step 3: Run focused native tests and verify missing matrix/projection**
 
@@ -2305,7 +2402,7 @@ Do not request a paid candidate excluded by `permitted_qualities`. Batch candida
 
 - [ ] **Step 5: Carry only the sanitized selection through the existing pipeline**
 
-Add `selection: PlaybackSourceSelection` to resolved/prepared sources and `source_selection: Option<PlaybackSourceSelection>` to player snapshots. Never include the source URL, headers, cookie, cache scope, media signature, or vkey. Keep cache identity:
+Add `selection: PlaybackSourceSelection` and the nonserializable guard to resolved/prepared sources, `active_epoch_guard: Option<PlaybackEpochGuard>` to private `PlayerCore`, and `source_selection: Option<PlaybackSourceSelection>` only to serializable player snapshots. `CachedMediaPreparer::prepare` calls `validate()` before cache lookup/network start, selects the cancellation token against all download/progressive waits, validates after each await and before returning, then copies the guard to `PreparedPlaybackSource`. Never include the guard, source URL, headers, cookie, cache scope, media signature, or vkey in a snapshot. Keep cache identity:
 
 ```rust
 format!("qqmusic:{}:{}:{}", provider.track_id, decision.candidate.cache_label, media_mid)
@@ -2319,7 +2416,7 @@ In `SettingsPage.test.tsx`, assert changing `Preferred quality` changes only the
 
 - [ ] **Step 7: Implement frontend projection and presentation**
 
-Mirror the serde fields in `domain/music.ts`, thread `sourceSelection` through `native-player-runtime.ts` and `player-store.ts`, and render a small status only when fallback reason is non-null. Clear it on new track/loading/error so a prior fallback does not label the next song.
+Mirror only the serde selection fields in `domain/music.ts`, thread `sourceSelection` through `native-player-runtime.ts` and `player-store.ts`, and render a small status only when fallback reason is non-null. The native guard never crosses IPC. Clear selection/guard on new track, loading failure, cancellation, logout, and error so a prior fallback does not label or authorize the next song.
 
 - [ ] **Step 8: Verify matrix, engine reuse, UI, and lyric/player regressions**
 
@@ -2327,6 +2424,9 @@ Run:
 
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::entitlement::tests -- --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml qqmusic::auth::tests -- --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml media::tests -- --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml audio::tests -- --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml player::tests -- --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml streaming::tests -- --nocapture
 npm test -- src/application/player-store.test.ts src/application/native-player-runtime.test.ts src/components/PlayerBar.test.tsx src/pages/SettingsPage.test.tsx src/application/lyrics-timing.test.ts
@@ -2334,12 +2434,12 @@ npm run typecheck
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-Expected: full matrix and one-time URL refresh PASS; the existing engine/clock/Range path and lyric timing remain unchanged.
+Expected: full matrix, all nine logout/login-swap barriers, guarded resume, and one-time URL refresh PASS; an old account source is never prepared, loaded, played, resumed, or committed after epoch cancellation, while the existing engine/clock/Range path and lyric timing remain unchanged.
 
 - [ ] **Step 9: Commit the independently reviewable entitlement integration**
 
 ```powershell
-git add src-tauri/src/qqmusic/entitlement.rs src-tauri/src/qqmusic.rs src-tauri/src/player.rs src-tauri/src/media.rs src-tauri/src/audio.rs src-tauri/tests/fixtures/qqmusic/account/entitlement-free.json src-tauri/tests/fixtures/qqmusic/account/entitlement-vip.json src/domain/music.ts src/application/provider-settings.ts src/application/player-store.ts src/application/native-player-runtime.ts src/components/PlayerBar.tsx src/pages/SettingsPage.tsx src/pages/SettingsPage.test.tsx src/locales/en-US.ts src/locales/zh-CN.ts docs/playback.md docs/entitlement.md
+git add src-tauri/src/qqmusic/entitlement.rs src-tauri/src/qqmusic/auth.rs src-tauri/src/qqmusic/account.rs src-tauri/src/qqmusic.rs src-tauri/src/player.rs src-tauri/src/media.rs src-tauri/src/audio.rs src-tauri/tests/fixtures/qqmusic/account/entitlement-free.json src-tauri/tests/fixtures/qqmusic/account/entitlement-vip.json src/domain/music.ts src/application/provider-settings.ts src/application/player-store.ts src/application/native-player-runtime.ts src/components/PlayerBar.tsx src/components/PlayerBar.test.tsx src/pages/SettingsPage.tsx src/pages/SettingsPage.test.tsx src/locales/en-US.ts src/locales/zh-CN.ts docs/playback.md docs/entitlement.md
 git commit -m "feat: enforce qq music account entitlement in playback"
 ```
 
@@ -2349,6 +2449,7 @@ git commit -m "feat: enforce qq music account entitlement in playback"
 
 - Create: `scripts/check-secrets.ps1`
 - Create: `scripts/check-secrets.sh`
+- Create: `scripts/invoke-qqmusic-auth-preflight-command.ps1`
 - Create: `scripts/run-qqmusic-auth-preflight.ps1`
 - Create: `scripts/record-qqmusic-live-acceptance.ps1`
 - Modify: `.github/workflows/build.yml`
@@ -2366,7 +2467,8 @@ git commit -m "feat: enforce qq music account entitlement in playback"
 **Interfaces:**
 
 - Produces PowerShell parameter sets `scripts/check-secrets.ps1 [-SelfTest] [-Path $evidencePath]` and Bash modes `scripts/check-secrets.sh [--self-test] [--path "$evidence_path"]`; default scans tracked plus nonignored candidate `README.md`, `docs/**`, and `src-tauri/tests/fixtures/**` files, while the single-file mode scans a generated evidence file. Both report `path:line` and exit 1 on an assigned secret-like value.
-- Produces `scripts/run-qqmusic-auth-preflight.ps1 [-SelfTest]` that executes the exact deterministic Task 15 executable/argument list, streams output to the console, writes a machine-readable ignored result under `output/qqmusic-auth-account/preflight/`, and exits at the first failed gate. It never invokes an ignored/live test or auth command and is compatible with Windows PowerShell 5.1.
+- Produces `scripts/invoke-qqmusic-auth-preflight-command.ps1` with mutually exclusive `-CommandId <ValidateSet>` and `-ArgvProbe -First <string> -Second <string>` parameter sets. Its switch branches contain only literal executable/argument tokens; it accepts no executable path, free-form command, or arbitrary argument array.
+- Produces `scripts/run-qqmusic-auth-preflight.ps1 [-SelfTest]` that invokes that fixed `-File` harness by command ID, streams output to the console, writes a machine-readable ignored result under `output/qqmusic-auth-account/preflight/`, and exits at the first failed gate. It never invokes an ignored/live test or auth command and is compatible with Windows PowerShell 5.1.
 - Produces `scripts/record-qqmusic-live-acceptance.ps1` with `-Start`, `-Record`, `-Finish`, and `-SelfTest` parameter sets. `-Record` accepts only fixed `ValidateSet` values for check name, `pass|fail|blocked|not-supported`, sanitized failure classification, and the recent-history advertised-capability boolean; it accepts no arbitrary note/body/URL/profile fields and alone writes the ignored live-acceptance JSON.
 - Produces CI gates before packaging; PowerShell runs on Windows and Bash runs on Linux.
 
@@ -2407,30 +2509,28 @@ https://qpic.y.qq.com/synthetic.png      -> allow
 
 - [ ] **Step 3: Create the deterministic preflight and fixed-schema live-evidence runners as reviewed scripts**
 
-The script runs this exact ordered command array and records display name, fixed executable, fixed argument array, exit code, start/end UTC, and log SHA-256; it does not store environment variables:
+Create the harness and both runners with `apply_patch`. The preflight owns this exact ordered ID/display table and records ID, display, exit code, start/end UTC, and log SHA-256; it does not store environment variables:
 
 ```powershell
 $commands = @(
-  @{ Name='secret-scan'; FilePath='powershell.exe'; Arguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/check-secrets.ps1') },
-  @{ Name='format'; FilePath='npm.cmd'; Arguments=@('run','format:check') },
-  @{ Name='lint'; FilePath='npm.cmd'; Arguments=@('run','lint') },
-  @{ Name='typecheck'; FilePath='npm.cmd'; Arguments=@('run','typecheck') },
-  @{ Name='frontend-tests'; FilePath='npm.cmd'; Arguments=@('test') },
-  @{ Name='vite-build'; FilePath='npm.cmd'; Arguments=@('run','build') },
-  @{ Name='rustfmt'; FilePath='cargo.exe'; Arguments=@('fmt','--manifest-path','src-tauri/Cargo.toml','--all','--','--check') },
-  @{ Name='clippy'; FilePath='cargo.exe'; Arguments=@('clippy','--manifest-path','src-tauri/Cargo.toml','--all-targets','--','-D','warnings') },
-  @{ Name='rust-tests'; FilePath='cargo.exe'; Arguments=@('test','--manifest-path','src-tauri/Cargo.toml','--all-targets') },
-  @{ Name='local-release-binary'; FilePath='npm.cmd'; Arguments=@('run','tauri','--','build','--no-bundle') }
+  @{ Id='secret-scan'; Display='powershell -File scripts/check-secrets.ps1' },
+  @{ Id='format'; Display='npm run format:check' },
+  @{ Id='lint'; Display='npm run lint' },
+  @{ Id='typecheck'; Display='npm run typecheck' },
+  @{ Id='frontend-tests'; Display='npm test' },
+  @{ Id='vite-build'; Display='npm run build' },
+  @{ Id='rustfmt'; Display='cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check' },
+  @{ Id='clippy'; Display='cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings' },
+  @{ Id='rust-tests'; Display='cargo test --manifest-path src-tauri/Cargo.toml --all-targets' },
+  @{ Id='local-release-binary'; Display='npm run tauri -- build --no-bundle' }
 )
 ```
 
-Resolve the repository root once as `Split-Path -Parent $PSScriptRoot` and resolve each fixed executable with `Get-Command -CommandType Application`. Reject forbidden tokens across `Name`, `FilePath`, and every argument before execution. Use the Windows PowerShell 5.1-compatible call-operator path below; do not depend on newer process argument APIs. `Tee-Object` streams output while the ignored log is hashed; no command string is evaluated and no user/environment-supplied argument is accepted. Use `[IO.File]::WriteAllText` only inside this reviewed script for its ignored JSON result artifact; it must never write a tracked path.
+`invoke-qqmusic-auth-preflight-command.ps1` sets the repository working directory, switches on the validated ID, and uses literal calls such as `& npm.cmd run format:check` and `& cargo.exe clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`; each branch exits with the immediately captured `$LASTEXITCODE`. The main runner calls only `& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fixedHarness -CommandId $command.Id 2>&1 | Tee-Object -FilePath $ignoredLogPath`. Because the only dynamic value is a no-space `ValidateSet` ID consumed by the reviewed harness, it does not rely on legacy native-array quoting. Capture `$LASTEXITCODE` immediately after the pipeline. `Tee-Object` streams and writes only the ignored log; `[IO.File]::WriteAllText` writes only the ignored JSON result.
 
-Before invocation assign `[string[]] $arguments = $command.Arguments`, then use `& $resolvedPath @arguments 2>&1 | Tee-Object -FilePath $ignoredLogPath`; `@arguments` is PowerShell 5.1 variable splatting, not an interpolated command string. Capture `$LASTEXITCODE` immediately after the pipeline.
+`-SelfTest` invokes the same tracked harness through `powershell.exe -File` with literal `-ArgvProbe -First alpha -Second 'two words'`. The probe parameter set exits 17 unless `$First -ceq 'alpha'` and `$Second -ceq 'two words'`, and prints one fixed success line otherwise. Assert exit 0, the spaced value remains one argument, stdout reaches the ignored log, and a fixed `self-test-fail` command ID preserves exit 23. Run this self-test under `powershell.exe`, not only `pwsh`, on Windows CI.
 
-`-SelfTest` runs the same helper with a fixed `powershell.exe` argument array containing a static `-Command` script block and two positional arguments, `alpha` and `two words`; the child exits 17 unless both arrive unchanged. Assert exit 0, the spaced argument is not split, stdout reaches the log, and a deliberately failing child preserves its nonzero exit code. This is an argument-bearing runner test, not merely a schema test.
-
-Create both runner files with `apply_patch`. For the live recorder, `-Start` generates a random run ID and UTC start time; `-Record` accepts one check from `qr-created`, `authenticated`, `restart-restore`, `favorites-read`, `favorite-write`, `playlists-read`, `recent-history-read`, `temporary-playlist-cleanup`, `entitlement-playback`, `lyrics-regression`, `logout`, or `guest-fallback`; `-Finish` derives the aggregate result. Failure classification is limited to `none`, `owner-unavailable`, `upstream-unavailable`, `authentication-rejected`, `entitlement-required`, `endpoint-changed`, `capability-not-advertised`, `cleanup-failed`, or `unknown`. Only `recent-history-read` may use `not-supported`, and only with `-CapabilityAdvertised false -Classification capability-not-advertised`; every other check requires pass/fail/blocked, while an advertised recent-history capability requires pass/fail. `-Finish` excludes that one fixed not-supported row from the aggregate denominator but emits `recentHistoryVerified: false`; it still requires `favorite-write` and every other check to pass. Reject every other key/value, store only enum/boolean values and UTC timestamps, and run the tracked secret scanner over the result before atomically replacing the JSON file.
+For the live recorder, `-Start` generates a random run ID and UTC start time; `-Record` accepts one check from `qr-created`, `authenticated`, `restart-restore`, `favorites-read`, `favorite-write`, `playlists-read`, `recent-history-read`, `temporary-playlist-cleanup`, `entitlement-playback`, `lyrics-regression`, `logout`, or `guest-fallback`; `-Finish` derives the aggregate result. Failure classification is limited to `none`, `owner-unavailable`, `upstream-unavailable`, `authentication-rejected`, `entitlement-required`, `endpoint-changed`, `capability-not-advertised`, `cleanup-failed`, or `unknown`. Only `recent-history-read` may use `not-supported`, and only with `-CapabilityAdvertised false -Classification capability-not-advertised`; every other check requires pass/fail/blocked, while an advertised recent-history capability requires pass/fail. `-Finish` excludes that one fixed not-supported row from the aggregate denominator but emits `recentHistoryVerified: false`; it still requires `favorite-write` and every other check to pass. Reject every other key/value, store only enum/boolean values and UTC timestamps, and run the tracked secret scanner over the result before atomically replacing the JSON file.
 
 - [ ] **Step 4: Run scanner and recorder self-tests after every required script exists**
 
@@ -2445,7 +2545,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qqmusic-auth-pre
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/record-qqmusic-live-acceptance.ps1 -SelfTest
 ```
 
-Expected: scanner and recorder self-tests PASS; repository scan exits 0. Any false positive is fixed by sanitizing the value or narrowing the parser around a field-name-only mention, not by allowlisting a real-looking token value.
+Expected: scanner, fixed-harness argv/exit-code, and recorder self-tests PASS under Windows PowerShell 5.1; repository scan exits 0. Any false positive is fixed by sanitizing the value or narrowing the parser around a field-name-only mention, not by allowlisting a real-looking token value.
 
 - [ ] **Step 5: Document exact security, cache, account, and entitlement behavior without live claims**
 
@@ -2489,6 +2589,7 @@ account-secret-scan:
       run: |
         powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1 -SelfTest
         powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
+        powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qqmusic-auth-preflight.ps1 -SelfTest
 ```
 
 Keep the existing package-job bodies intact. The matrix must pass on both platforms before either package job starts. Do not upload `output/qqmusic-auth-account` as an artifact.
@@ -2511,7 +2612,7 @@ Expected: both scanner modes PASS, docs are linked, formatting passes, and no li
 - [ ] **Step 8: Commit the independently reviewable security/documentation gate**
 
 ```powershell
-git add scripts/check-secrets.ps1 scripts/check-secrets.sh scripts/run-qqmusic-auth-preflight.ps1 scripts/record-qqmusic-live-acceptance.ps1 .github/workflows/build.yml src-tauri/src/qqmusic/redaction.rs docs/architecture.md docs/provider-contract.md docs/qqmusic-provider.md docs/authentication.md docs/caching.md docs/playback.md docs/account-library.md docs/entitlement.md README.md
+git add scripts/check-secrets.ps1 scripts/check-secrets.sh scripts/invoke-qqmusic-auth-preflight-command.ps1 scripts/run-qqmusic-auth-preflight.ps1 scripts/record-qqmusic-live-acceptance.ps1 .github/workflows/build.yml src-tauri/src/qqmusic/redaction.rs docs/architecture.md docs/provider-contract.md docs/qqmusic-provider.md docs/authentication.md docs/caching.md docs/playback.md docs/account-library.md docs/entitlement.md README.md
 git commit -m "security: gate qq music account secrets and documentation"
 ```
 
@@ -2534,7 +2635,7 @@ Run:
 
 ```powershell
 git status --short
-rg -n -- '--ignored|qqmusic_auth_start|ptqrshow|ptqrlogin' scripts/run-qqmusic-auth-preflight.ps1
+rg -n -- '--ignored|qqmusic_auth_start|ptqrshow|ptqrlogin' scripts/run-qqmusic-auth-preflight.ps1 scripts/invoke-qqmusic-auth-preflight-command.ps1
 ```
 
 Expected: only intended implementation changes are present; `rg` finds only the runner's explicit refusal guard, not an executable command.
@@ -2563,7 +2664,7 @@ $serializedCommands = $result.commands | ConvertTo-Json -Depth 5 -Compress
 if ($serializedCommands -match '--ignored|qqmusic_auth_start|ptqrshow|ptqrlogin') {
   throw 'Preflight contained a forbidden live auth action'
 }
-$result.commands | Format-Table name, filePath, exitCode, startedAtUtc, endedAtUtc, logSha256
+$result.commands | Format-Table id, display, exitCode, startedAtUtc, endedAtUtc, logSha256
 ```
 
 Expected: every exit code is 0; each log SHA is present; no forbidden action appears.
@@ -2698,6 +2799,11 @@ $latest = Get-ChildItem 'output/qqmusic-auth-account/preflight' -Filter '*.json'
   Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 $result = Get-Content -Raw $latest.FullName | ConvertFrom-Json
 if ($result.status -ne 'passed') { throw 'Post-documentation preflight did not pass' }
+$outputState = @(git status --short --ignored --untracked-files=all -- output/qqmusic-auth-account/)
+$unexpectedOutput = @($outputState | Where-Object {
+  $_ -notmatch '^!! output/qqmusic-auth-account/(preflight|live-acceptance)/[^/]+\.(json|log)$'
+})
+if ($unexpectedOutput) { throw "Unexpected recursive output artifact: $($unexpectedOutput -join ', ')" }
 git diff --check
 git status --short
 ```
