@@ -699,9 +699,10 @@ fn map_storage_error(error: StorageError) -> ProgressiveError {
         StorageError::UrlExpired => ProgressiveError::UrlExpired,
         StorageError::Network | StorageError::Http(_) => ProgressiveError::Network,
         StorageError::ResponseTooLarge => ProgressiveError::ResponseTooLarge,
-        StorageError::Initialize | StorageError::Database | StorageError::File => {
-            ProgressiveError::Cache
-        }
+        StorageError::Initialize
+        | StorageError::Database
+        | StorageError::File
+        | StorageError::InvalidContentType => ProgressiveError::Cache,
     }
 }
 
@@ -935,6 +936,14 @@ mod tests {
         assert_eq!(parse_content_range("bytes 512-511/1024"), None);
         assert_eq!(parse_content_range("bytes 0-1024/1024"), None);
         assert_eq!(parse_content_range("bytes */1024"), None);
+    }
+
+    #[test]
+    fn invalid_content_type_maps_to_cache_failure() {
+        assert_eq!(
+            map_storage_error(StorageError::InvalidContentType),
+            ProgressiveError::Cache
+        );
     }
 
     #[test]

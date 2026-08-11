@@ -582,7 +582,7 @@ impl QQMusicService {
             return Err(QQMusicError::MalformedResponse);
         }
         self.storage
-            .artwork_data_uri(&self.client.http, &url)
+            .artwork_data_uri(&self.client.artwork_http, &url)
             .await
             .map_err(|_| QQMusicError::Storage)
     }
@@ -723,6 +723,7 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
 #[derive(Clone)]
 struct QQMusicClient {
     http: Client,
+    artwork_http: Client,
 }
 
 impl QQMusicClient {
@@ -733,7 +734,14 @@ impl QQMusicClient {
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .build()
             .map_err(|_| QQMusicError::Offline)?;
-        Ok(Self { http })
+        let artwork_http = Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(15))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| QQMusicError::Offline)?;
+        Ok(Self { http, artwork_http })
     }
 
     async fn search(
@@ -2233,6 +2241,9 @@ fn is_allowed_artwork_url(value: &str) -> bool {
         return false;
     };
     url.scheme() == "https"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port_or_known_default() == Some(443)
         && url
             .host_str()
             .is_some_and(|host| host == "y.gtimg.cn" || host == "qpic.y.qq.com")
@@ -2364,6 +2375,8 @@ mod tests {
         credentials::MemoryCredentialStore,
         media::{CachedMediaPreparer, MediaPreparer, PlaybackSourceResolver},
     };
+    use axum::{response::Redirect, routing::get, Router};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn sanitized_search_fixture_normalizes_provider_identity_and_formats() {
@@ -2495,6 +2508,74 @@ mod tests {
         assert!(
             normalize_cdn_url("https://example.invalid/", "C400fixture.m4a?vkey=redacted").is_err()
         );
+    }
+
+    #[test]
+    fn artwork_urls_accept_only_exact_https_origins_without_credentials() {
+        for value in [
+            "https://y.gtimg.cn/a.jpg",
+            "https://y.gtimg.cn:443/a.jpg",
+            "https://qpic.y.qq.com/a.jpg",
+        ] {
+            assert!(is_allowed_artwork_url(value), "expected allowed: {value}");
+        }
+        for value in [
+            "http://y.gtimg.cn/a.jpg",
+            "https://sub.y.gtimg.cn/a.jpg",
+            "https://user:password@y.gtimg.cn/a.jpg",
+            "https://y.gtimg.cn:444/a.jpg",
+            "https://aqqmusic.tc.qq.com/a.jpg",
+            "https://music.tc.qq.com/a.jpg",
+            "https://example.com/a.jpg",
+        ] {
+            assert!(!is_allowed_artwork_url(value), "expected rejected: {value}");
+        }
+    }
+
+    #[tokio::test]
+    async fn artwork_http_client_does_not_follow_redirects() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("loopback listener");
+        let address = listener.local_addr().expect("loopback address");
+        let redirected_hits = Arc::new(AtomicUsize::new(0));
+        let target_hits = Arc::clone(&redirected_hits);
+        let redirect_target = format!("http://{address}/redirected");
+        let app = Router::new()
+            .route(
+                "/artwork",
+                get(move || {
+                    let redirect_target = redirect_target.clone();
+                    async move { Redirect::temporary(&redirect_target) }
+                }),
+            )
+            .route(
+                "/redirected",
+                get(move || {
+                    let target_hits = Arc::clone(&target_hits);
+                    async move {
+                        target_hits.fetch_add(1, Ordering::SeqCst);
+                        "unexpected redirect target"
+                    }
+                }),
+            );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("redirect test server");
+        });
+        let client = QQMusicClient::new().expect("QQ Music client");
+
+        let response = client
+            .artwork_http
+            .get(format!("http://{address}/artwork"))
+            .send()
+            .await
+            .expect("redirect response");
+
+        assert!(response.status().is_redirection());
+        assert_eq!(redirected_hits.load(Ordering::SeqCst), 0);
+        server.abort();
     }
 
     #[tokio::test]

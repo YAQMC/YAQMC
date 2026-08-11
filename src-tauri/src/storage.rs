@@ -34,6 +34,8 @@ pub enum StorageError {
     Http(u16),
     #[error("the downloaded response exceeded the configured cache limit")]
     ResponseTooLarge,
+    #[error("the cached response did not provide the required content type")]
+    InvalidContentType,
 }
 
 #[derive(Clone, Debug)]
@@ -319,9 +321,10 @@ impl StorageService {
         headers: HeaderMap,
         extension: &str,
         max_bytes: u64,
+        required_mime_prefix: Option<&str>,
     ) -> Result<CachedFile, StorageError> {
         if let Some(cached) = self.lookup_file(stable_key)? {
-            return Ok(cached);
+            return self.validate_cached_mime(stable_key, cached, required_mime_prefix);
         }
 
         let _guard = self
@@ -330,7 +333,7 @@ impl StorageService {
             .await
             .map_err(|_| StorageError::File)?;
         if let Some(cached) = self.lookup_file(stable_key)? {
-            return Ok(cached);
+            return self.validate_cached_mime(stable_key, cached, required_mime_prefix);
         }
 
         let response = client
@@ -363,7 +366,10 @@ impl StorageService {
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .map(|value| value.split(';').next().unwrap_or(value).trim().to_owned());
+            .and_then(normalize_mime_type);
+        if !mime_matches_prefix(mime_type.as_deref(), required_mime_prefix) {
+            return Err(StorageError::InvalidContentType);
+        }
 
         let directory = self.cache_root.join(kind);
         async_fs::create_dir_all(&directory)
@@ -443,12 +449,17 @@ impl StorageService {
                 HeaderMap::new(),
                 "img",
                 SINGLE_ARTWORK_LIMIT,
+                Some("image/"),
             )
             .await?;
         let bytes = async_fs::read(file.path)
             .await
             .map_err(|_| StorageError::File)?;
-        let mime = file.mime_type.as_deref().unwrap_or("image/jpeg");
+        let mime = file
+            .mime_type
+            .as_deref()
+            .filter(|mime| mime.starts_with("image/"))
+            .ok_or(StorageError::InvalidContentType)?;
         Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
     }
 
@@ -644,6 +655,33 @@ impl StorageService {
         }))
     }
 
+    fn validate_cached_mime(
+        &self,
+        stable_key: &str,
+        mut cached: CachedFile,
+        required_mime_prefix: Option<&str>,
+    ) -> Result<CachedFile, StorageError> {
+        if required_mime_prefix.is_none() {
+            return Ok(cached);
+        }
+        cached.mime_type = cached.mime_type.as_deref().and_then(normalize_mime_type);
+        if mime_matches_prefix(cached.mime_type.as_deref(), required_mime_prefix) {
+            return Ok(cached);
+        }
+        if cached.path.is_file() {
+            fs::remove_file(&cached.path).map_err(|_| StorageError::File)?;
+        }
+        self.connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .execute(
+                "DELETE FROM cache_files WHERE cache_key = ?1",
+                params![stable_key],
+            )
+            .map_err(|_| StorageError::Database)?;
+        Err(StorageError::InvalidContentType)
+    }
+
     fn record_file(
         &self,
         cache_key: &str,
@@ -828,6 +866,28 @@ fn cache_limit(kind: &str) -> u64 {
     }
 }
 
+fn normalize_mime_type(value: &str) -> Option<String> {
+    let value = value.split(';').next()?.trim().to_ascii_lowercase();
+    let (top_level, subtype) = value.split_once('/')?;
+    let valid_token = |token: &str| {
+        !token.is_empty()
+            && token.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(
+                        byte,
+                        b'!' | b'#' | b'$' | b'&' | b'^' | b'_' | b'.' | b'+' | b'-'
+                    )
+            })
+    };
+    (valid_token(top_level) && valid_token(subtype)).then_some(value)
+}
+
+fn mime_matches_prefix(mime_type: Option<&str>, required_prefix: Option<&str>) -> bool {
+    required_prefix.is_none_or(|prefix| {
+        mime_type.is_some_and(|mime_type| mime_type.starts_with(&prefix.to_ascii_lowercase()))
+    })
+}
+
 fn sha256(input: &[u8]) -> String {
     let digest = Sha256::digest(input);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
@@ -874,6 +934,7 @@ fn sqlite_i64(value: u64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::Body, http::header::CONTENT_TYPE, response::Response, routing::get, Router};
 
     fn storage() -> (tempfile::TempDir, StorageService) {
         let root = tempfile::tempdir().expect("temp directory");
@@ -952,5 +1013,113 @@ mod tests {
                 .expect("schema lookup"),
             Some("2".to_owned())
         );
+    }
+
+    async fn start_artwork_server() -> (String, tokio::task::JoinHandle<()>) {
+        let app = Router::new()
+            .route(
+                "/image",
+                get(|| async {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(CONTENT_TYPE, "Image/PNG; charset=binary")
+                        .body(Body::from(vec![0_u8, 1, 2, 3]))
+                        .expect("image response")
+                }),
+            )
+            .route(
+                "/html",
+                get(|| async {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(CONTENT_TYPE, "text/html")
+                        .body(Body::from("not an image"))
+                        .expect("HTML response")
+                }),
+            )
+            .route(
+                "/missing",
+                get(|| async {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Body::from(vec![0_u8, 1, 2, 3]))
+                        .expect("response without Content-Type")
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("loopback listener");
+        let address = listener.local_addr().expect("loopback address");
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("artwork test server");
+        });
+        (format!("http://{address}"), task)
+    }
+
+    #[tokio::test]
+    async fn artwork_responses_require_an_explicit_image_content_type() {
+        let (base_url, server) = start_artwork_server().await;
+        let client = Client::builder().no_proxy().build().expect("HTTP client");
+
+        for path in ["html", "missing"] {
+            let (root, storage) = storage();
+            let result = storage
+                .artwork_data_uri(&client, &format!("{base_url}/{path}"))
+                .await;
+            assert!(matches!(result, Err(StorageError::InvalidContentType)));
+            assert_eq!(storage.stats().expect("cache stats").artwork_entries, 0);
+            assert!(!root.path().join("cache/artwork").exists());
+        }
+
+        let (_root, storage) = storage();
+        let data_uri = storage
+            .artwork_data_uri(&client, &format!("{base_url}/image"))
+            .await
+            .expect("valid image response is cached");
+        assert_eq!(data_uri, "data:image/png;base64,AAECAw==");
+        assert_eq!(storage.stats().expect("cache stats").artwork_entries, 1);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn artwork_cache_hit_revalidates_mime_and_evicts_an_invalid_entry() {
+        let (root, storage) = storage();
+        let relative_path = "artwork/invalid.img";
+        let cached_path = root.path().join("cache").join(relative_path);
+        fs::create_dir_all(cached_path.parent().expect("cache directory"))
+            .expect("cache directory");
+        fs::write(&cached_path, b"not an image").expect("cached bytes");
+        storage
+            .record_file(
+                "artwork:invalid",
+                "artwork",
+                relative_path,
+                12,
+                Some("text/html"),
+            )
+            .expect("cache row");
+        let client = Client::builder().no_proxy().build().expect("HTTP client");
+
+        let result = storage
+            .fetch_cached(
+                &client,
+                "artwork",
+                "artwork:invalid",
+                "http://127.0.0.1:1/not-used",
+                HeaderMap::new(),
+                "img",
+                SINGLE_ARTWORK_LIMIT,
+                Some("image/"),
+            )
+            .await;
+
+        assert!(matches!(result, Err(StorageError::InvalidContentType)));
+        assert!(!cached_path.exists());
+        assert!(storage
+            .lookup_cached_file("artwork:invalid")
+            .expect("cache lookup")
+            .is_none());
     }
 }

@@ -167,6 +167,7 @@ impl MediaPreparer for CachedMediaPreparer {
                                     request_headers,
                                     source.format.extension(),
                                     self.storage.single_media_limit(),
+                                    None,
                                 )
                                 .await
                                 .map_err(map_storage_error)?;
@@ -184,6 +185,7 @@ impl MediaPreparer for CachedMediaPreparer {
                             request_headers,
                             source.format.extension(),
                             self.storage.single_media_limit(),
+                            None,
                         )
                         .await
                         .map_err(map_storage_error)?;
@@ -220,9 +222,10 @@ fn map_storage_error(error: StorageError) -> PlaybackSourceError {
         StorageError::UrlExpired => PlaybackSourceError::UrlExpired,
         StorageError::Network | StorageError::Http(_) => PlaybackSourceError::Network,
         StorageError::ResponseTooLarge => PlaybackSourceError::ResponseTooLarge,
-        StorageError::Initialize | StorageError::Database | StorageError::File => {
-            PlaybackSourceError::CacheFailure
-        }
+        StorageError::Initialize
+        | StorageError::Database
+        | StorageError::File
+        | StorageError::InvalidContentType => PlaybackSourceError::CacheFailure,
     }
 }
 
@@ -273,5 +276,18 @@ impl MediaPreparer for PassthroughMediaPreparer {
             is_preview: source.is_preview,
             cache_key: source.cache_key,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_content_type_maps_to_cache_failure() {
+        assert_eq!(
+            map_storage_error(StorageError::InvalidContentType),
+            PlaybackSourceError::CacheFailure
+        );
     }
 }
