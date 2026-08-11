@@ -45,6 +45,8 @@ Assert-True $collectorSource.Contains('$topmost = [IntPtr]::new(-1)') 'native sc
 Assert-True $collectorSource.Contains('$notTopmost = [IntPtr]::new(-2)') 'native screen crops must always restore non-topmost state'
 Assert-True $collectorSource.Contains('SetThreadDpiAwarenessContext([IntPtr]::new(-4))') 'native bounds and crops must run in per-monitor-v2 DPI coordinates'
 Assert-True $collectorSource.Contains('ForceForegroundWindow([IntPtr]$Window)') 'native screen crops must prove the YAQMC window owns the foreground'
+Assert-True $collectorSource.Contains('SelectFileInDialog([IntPtr]$dialog') 'managed image selection must address the native file-name edit and Open button'
+Assert-True (-not $collectorSource.Contains('[Windows.Forms.SendKeys]')) 'managed image selection must not depend on ambient keyboard focus'
 
 $undefinedEvaluation = [pscustomobject]@{
   result = [pscustomobject]@{ type = 'undefined' }

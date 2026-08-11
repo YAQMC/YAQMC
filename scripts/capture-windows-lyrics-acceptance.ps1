@@ -218,6 +218,41 @@ function Select-ProductionOption {
   Start-Sleep -Milliseconds 80
 }
 
+function Select-ProductionManagedImage {
+  param($Connection, [string]$Path)
+  if (-not ($Connection -is [Collections.IDictionary]) -or -not $Connection.Contains('ProcessId')) {
+    throw 'The production CDP connection lacks its visual process identity.'
+  }
+  Initialize-NativeWindowApi
+  $dialog = [IntPtr]::Zero
+  for ($attempt = 0; $attempt -lt 50; $attempt += 1) {
+    $dialogs = @([YaqmcLyricsAcceptance.NativeWindow]::VisibleFileDialogsForProcess([uint32]$Connection.ProcessId))
+    if ($dialogs.Count -gt 1) { throw 'Multiple native file dialogs matched the visual process.' }
+    if ($dialogs.Count -eq 1) { $dialog = [IntPtr]$dialogs[0]; break }
+    Start-Sleep -Milliseconds 100
+  }
+  if ($dialog -eq [IntPtr]::Zero) { throw 'The managed-image file dialog did not appear.' }
+  if (-not [YaqmcLyricsAcceptance.NativeWindow]::ForceForegroundWindow($dialog)) {
+    throw 'The managed-image file dialog could not become foreground.'
+  }
+  if (-not [YaqmcLyricsAcceptance.NativeWindow]::SelectFileInDialog([IntPtr]$dialog, $Path)) {
+    throw 'The managed-image file dialog rejected its deterministic path input.'
+  }
+  for ($attempt = 0; $attempt -lt 100; $attempt += 1) {
+    $ready = Get-CdpRuntimeValue $Connection @'
+/*YAQMC:managed-image-converged*/ (() => {
+  const replace = [...document.querySelectorAll('.settings-page button.button--secondary')]
+    .some((button) => /replace image|更换图片/i.test(button.textContent || ''));
+  const image = document.querySelector('.app-background__image');
+  return replace && Boolean(image?.getAttribute('src')?.startsWith('data:image/'));
+})()
+'@
+    if ($ready) { return }
+    Start-Sleep -Milliseconds 100
+  }
+  throw 'The managed background image did not converge after native selection.'
+}
+
 function Invoke-ProductionConfigureCase {
   param($Connection, $Case)
   $settingsRect = Get-ProductionRect $Connection 'settings-navigation' '.sidebar__nav button:last-of-type'
@@ -237,21 +272,9 @@ function Invoke-ProductionConfigureCase {
   Select-ProductionOption $Connection 3 ([int]$backgroundIndexes[$Case.backgroundMode])
 
   if ($Case.backgroundMode -eq 'image') {
-    $hasImage = Get-CdpRuntimeValue $Connection @'
-/*YAQMC:managed-image-ready*/ (() => {
-  const buttons = [...document.querySelectorAll('.settings-page button.button--secondary')];
-  return buttons.some((button) => /replace/i.test(button.textContent || ''));
-})()
-'@
-    if (-not $hasImage) {
-      $imageButton = Get-ProductionRect $Connection 'managed-image-picker' '.settings-page .settings-inline-control > button.button--secondary'
-      Send-ProductionPointer $Connection $imageButton
-      Add-Type -AssemblyName System.Windows.Forms
-      Start-Sleep -Milliseconds 350
-      [Windows.Forms.SendKeys]::SendWait([string]$Case.backgroundImagePath)
-      [Windows.Forms.SendKeys]::SendWait('{ENTER}')
-      Start-Sleep -Milliseconds 500
-    }
+    $imageButton = Get-ProductionRect $Connection 'managed-image-picker' '.settings-page .settings-inline-control > button.button--secondary'
+    Send-ProductionPointer $Connection $imageButton
+    Select-ProductionManagedImage $Connection ([string]$Case.backgroundImagePath)
   }
 
   $homeRect = Get-ProductionRect $Connection 'home-navigation' '.sidebar__nav button:first-of-type'
@@ -367,6 +390,7 @@ function Initialize-NativeWindowApi {
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 namespace YaqmcLyricsAcceptance {
   public static class NativeWindow {
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr parameter);
@@ -392,9 +416,14 @@ namespace YaqmcLyricsAcceptance {
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc callback, IntPtr parameter);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextLength(IntPtr hWnd);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder name, int count);
+    [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr hWnd, int id);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFOEX info);
     public static bool ForceForegroundWindow(IntPtr target) {
@@ -421,6 +450,39 @@ namespace YaqmcLyricsAcceptance {
         if (targetAttached) AttachThreadInput(currentThread, targetThread, false);
         if (foregroundAttached) AttachThreadInput(currentThread, foregroundThread, false);
       }
+    }
+    public static IntPtr[] VisibleFileDialogsForProcess(uint processId) {
+      var dialogs = new List<IntPtr>();
+      EnumWindows((window, parameter) => {
+        uint owner;
+        GetWindowThreadProcessId(window, out owner);
+        var className = new StringBuilder(64);
+        GetClassName(window, className, className.Capacity);
+        if (owner == processId && IsWindowVisible(window) && className.ToString() == "#32770") {
+          dialogs.Add(window);
+        }
+        return true;
+      }, IntPtr.Zero);
+      return dialogs.ToArray();
+    }
+    public static bool SelectFileInDialog(IntPtr dialog, string path) {
+      if (dialog == IntPtr.Zero || String.IsNullOrWhiteSpace(path)) return false;
+      var fileNameEdit = IntPtr.Zero;
+      EnumChildWindows(dialog, (window, parameter) => {
+        var className = new StringBuilder(64);
+        GetClassName(window, className, className.Capacity);
+        if (GetDlgCtrlID(window) == 1148 && className.ToString() == "Edit") fileNameEdit = window;
+        return true;
+      }, IntPtr.Zero);
+      if (fileNameEdit == IntPtr.Zero) return false;
+      SendMessage(fileNameEdit, 0x00B1, IntPtr.Zero, new IntPtr(-1));
+      foreach (var character in path) {
+        SendMessage(fileNameEdit, 0x0102, new IntPtr(character), new IntPtr(1));
+      }
+      var openButton = GetDlgItem(dialog, 1);
+      if (openButton == IntPtr.Zero) return false;
+      SendMessage(openButton, 0x00F5, IntPtr.Zero, IntPtr.Zero);
+      return true;
     }
     public static IntPtr[] VisibleWindowsForProcess(uint processId) {
       var windows = new List<IntPtr>();
@@ -886,6 +948,9 @@ function Invoke-WindowsLyricsAcceptance {
     if ($identity.provider -ne 'fake') { throw 'The application provider marker is not fake.' }
 
     $windowHandle = & $Hwnd.ResolveExactlyOne $processHandle
+    if ($connection -is [Collections.IDictionary]) {
+      $connection['ProcessId'] = [uint32]$processHandle.Id
+    }
     Invoke-CdpPointer $Cdp $connection (Get-ControlRect $Cdp $connection 'home-play')
     Invoke-CdpPointer $Cdp $connection (Get-ControlRect $Cdp $connection 'playerbar-lyrics')
     $initialState = Wait-SemanticState $Cdp $connection {
