@@ -286,6 +286,7 @@ pub fn run() {
             commands::qqmusic_account_playlists,
             commands::qqmusic_account_playlist_tracks,
             commands::qqmusic_account_recently_played,
+            commands::qqmusic_set_favorite,
             commands::qqmusic_auth_start,
             commands::qqmusic_auth_heartbeat,
             commands::qqmusic_auth_cancel,
@@ -365,5 +366,18 @@ mod account_owner_lifecycle_tests {
             assert!(owner_loss_reason(event).is_some());
         }
         assert!(owner_loss_reason(MainOwnerLifecycleEvent::PageLoadFinished).is_none());
+    }
+}
+
+#[cfg(test)]
+mod handler_registration_tests {
+    #[test]
+    fn favorite_command_is_registered_exactly_once() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split_once(".invoke_handler(tauri::generate_handler![")
+            .and_then(|(_, remainder)| remainder.split_once("])").map(|(block, _)| block))
+            .expect("generate_handler block");
+        assert_eq!(handler.matches("commands::qqmusic_set_favorite").count(), 1);
     }
 }

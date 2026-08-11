@@ -6,7 +6,10 @@ import {
   type AccountPlaylistDetail,
   type AccountPlaylistSummary,
   type AccountSnapshot,
+  type FavoriteMutationRequest,
+  type FavoriteMutationResult,
   type Page,
+  type Song,
 } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
 import { allSongs, homeFeed, librarySnapshot, playlists } from '../providers/fake/fixtures';
@@ -68,6 +71,7 @@ function authenticatedSnapshot(revision = 3): AccountSnapshot {
     capabilities: {
       ...capabilities,
       favoriteRead: true,
+      favoriteWrite: true,
       playlistRead: true,
       recentHistoryRead: true,
     },
@@ -82,6 +86,34 @@ function page<T>(items: T[], revision: number, nextCursor: string | null = null)
     fetchedAtMs: 1_800_000_000_000,
     stale: false,
     authRevision: revision,
+  };
+}
+
+function pageResource(items: Song[], revision: number) {
+  return {
+    status: 'ready' as const,
+    data: items,
+    nextCursor: null,
+    total: items.length,
+    fetchedAtMs: 1_800_000_000_000,
+    authRevision: revision,
+  };
+}
+
+function favoriteResult(
+  clientOperationId: string,
+  track: Song,
+  status: FavoriteMutationResult['status'],
+  favorite: boolean,
+  authRevision = 3,
+): FavoriteMutationResult {
+  return {
+    clientOperationId,
+    status,
+    trackId: track.id,
+    favorite,
+    errorCode: null,
+    authRevision,
   };
 }
 
@@ -380,14 +412,17 @@ describe('account runtime', () => {
   });
 
   it('appends paged favorites with stable first-seen deduplication', async () => {
-    const [first, second, third] = allSongs;
-    if (!first || !second || !third) throw new Error('missing song fixtures');
+    const [first, second, third, stale] = allSongs;
+    if (!first || !second || !third || !stale) throw new Error('missing song fixtures');
     const getFavoriteSongs = vi
       .fn()
       .mockResolvedValueOnce(page([first, second], 3, 'next-a'))
       .mockResolvedValueOnce(page([second, third], 3));
     const provider = accountProvider({ getFavoriteSongs });
-    useAccountStore.setState({ snapshot: authenticatedSnapshot(3) });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favoriteByTrackId: { [stale.id]: true },
+    });
 
     await useAccountStore.getState().loadFavorites(provider);
     await useAccountStore.getState().loadNext(provider, 'favorites');
@@ -399,6 +434,145 @@ describe('account runtime', () => {
       data: [first, second, third],
       nextCursor: null,
       authRevision: 3,
+    });
+    expect(useAccountStore.getState().favoriteByTrackId).toMatchObject({
+      [first.id]: true,
+      [second.id]: true,
+      [third.id]: true,
+      [stale.id]: false,
+    });
+  });
+
+  it('optimistically updates one canonical favorite and rolls back a definite rejection', async () => {
+    const track = allSongs[0]!;
+    const pending = deferred<FavoriteMutationResult>();
+    const setFavorite = vi.fn((request: FavoriteMutationRequest) => {
+      void request;
+      return pending.promise;
+    });
+    const provider = accountProvider({ setFavorite });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favorites: pageResource([track], 3),
+      favoriteByTrackId: { [track.id]: false },
+    });
+
+    const mutation = useAccountStore.getState().setFavorite(provider, track, true);
+    const request = setFavorite.mock.calls[0]?.[0];
+    expect(request).toMatchObject({ trackId: track.id, favorite: true });
+    expect(request?.clientOperationId).toMatch(/^favorite-|^[0-9a-f-]{36}$/i);
+    expect(useAccountStore.getState()).toMatchObject({
+      favoriteByTrackId: { [track.id]: true },
+    });
+    expect(useAccountStore.getState().favoritePendingByTrackId[track.id]).toBe(
+      request?.clientOperationId,
+    );
+
+    pending.resolve(favoriteResult(request!.clientOperationId, track, 'rejected', false));
+    await mutation;
+
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(false);
+    expect(useAccountStore.getState().favoritePendingByTrackId[track.id]).toBeUndefined();
+    expect(useAccountStore.getState().mutationMessage).toBe(
+      'QQ Music rejected the Favorites change.',
+    );
+  });
+
+  it('commits a reconciled server bit and exposes a neutral reconciliation message', async () => {
+    const track = allSongs[0]!;
+    const setFavorite = vi.fn(async (request: FavoriteMutationRequest) =>
+      favoriteResult(request.clientOperationId, track, 'reconciled', false),
+    );
+    const provider = accountProvider({ setFavorite });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favoriteByTrackId: { [track.id]: false },
+    });
+
+    await useAccountStore.getState().setFavorite(provider, track, true);
+
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(false);
+    expect(useAccountStore.getState().favoritePendingByTrackId[track.id]).toBeUndefined();
+    expect(useAccountStore.getState().mutationMessage).toBe(
+      'The server result was checked before the library was updated.',
+    );
+  });
+
+  it('keeps the optimistic bit, clears pending, and refreshes after an unknown outcome', async () => {
+    const track = allSongs[0]!;
+    const setFavorite = vi.fn(async (request: FavoriteMutationRequest) =>
+      favoriteResult(request.clientOperationId, track, 'outcome-unknown', true),
+    );
+    const getFavoriteSongs = vi.fn().mockResolvedValue(page([track], 3));
+    const provider = accountProvider({ setFavorite, getFavoriteSongs });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favoriteByTrackId: { [track.id]: false },
+    });
+
+    await useAccountStore.getState().setFavorite(provider, track, true);
+
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
+    expect(useAccountStore.getState().favoritePendingByTrackId[track.id]).toBeUndefined();
+    expect(useAccountStore.getState().mutationMessage).toBe(
+      'The server could not confirm the library change. Refreshing Favorites.',
+    );
+    await waitFor(() => expect(getFavoriteSongs).toHaveBeenCalledOnce());
+  });
+
+  it('does not roll an old rejected mutation into a replacement account revision', async () => {
+    const track = { ...allSongs[0]!, isFavorite: true };
+    const pending = deferred<FavoriteMutationResult>();
+    const setFavorite = vi.fn((request: FavoriteMutationRequest) => {
+      void request;
+      return pending.promise;
+    });
+    const provider = accountProvider({ setFavorite });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favoriteByTrackId: { [track.id]: true },
+    });
+
+    const mutation = useAccountStore.getState().setFavorite(provider, track, false);
+    const operationId = setFavorite.mock.calls[0]![0].clientOperationId;
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(4),
+      favoriteByTrackId: { [track.id]: false },
+    });
+    pending.resolve(favoriteResult(operationId, track, 'rejected', true, 3));
+    await mutation;
+
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(false);
+    expect(useAccountStore.getState().favoritePendingByTrackId[track.id]).toBeUndefined();
+  });
+
+  it('opens account sign-in for a guest favorite without invoking the provider', async () => {
+    const setFavorite = vi.fn();
+    const provider = accountProvider({ setFavorite });
+    useAccountStore.setState({ snapshot: guestSnapshot(), dialogOpen: false });
+
+    await useAccountStore.getState().setFavorite(provider, allSongs[0]!, true);
+
+    expect(setFavorite).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().dialogOpen).toBe(true);
+  });
+
+  it('replaces stale canonical favorite bits after a terminal refresh', async () => {
+    const [present, absent] = allSongs;
+    if (!present || !absent) throw new Error('missing song fixtures');
+    const provider = accountProvider({
+      getFavoriteSongs: vi.fn().mockResolvedValue(page([present], 3)),
+    });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favoriteByTrackId: { [absent.id]: true },
+    });
+
+    await useAccountStore.getState().loadFavorites(provider);
+
+    expect(useAccountStore.getState().favoriteByTrackId).toMatchObject({
+      [present.id]: true,
+      [absent.id]: false,
     });
   });
 

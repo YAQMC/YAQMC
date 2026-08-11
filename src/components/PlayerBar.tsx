@@ -13,9 +13,12 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { useContext, type CSSProperties } from 'react';
 import type { TFunction } from 'i18next';
+import { useAccountStore, useFavoriteState } from '../application/account-runtime';
 import { useCurrentSong, usePlayerStore, type PlaybackFailure } from '../application/player-store';
+import { ProviderContext } from '../application/provider-context';
+import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
 import { Artwork } from './ui/Artwork';
 import { IconButton } from './ui/IconButton';
@@ -44,6 +47,14 @@ export function PlayerBar({
   const { t: lyrics } = useTranslation('lyrics');
   const { t: common } = useTranslation('common');
   const current = useCurrentSong();
+  const provider = useContext(ProviderContext);
+  const accountProvider = provider && isAccountMusicProvider(provider) ? provider : null;
+  const accountSnapshot = useAccountStore((state) => state.snapshot);
+  const setFavorite = useAccountStore((state) => state.setFavorite);
+  const { favorite, pending: favoritePending } = useFavoriteState(
+    current?.id,
+    current?.isFavorite ?? false,
+  );
   const {
     positionMs,
     isPlaying,
@@ -72,6 +83,22 @@ export function PlayerBar({
   const progress = duration === 0 ? 0 : (positionMs / duration) * 100;
   const volumeProgress = (isMuted ? 0 : volume) * 100;
   const playbackStatus = playbackLabel(playbackState, playbackError, t);
+  const favoriteLabel = current
+    ? favoritePending
+      ? t('favoritePending', { title: current.title })
+      : favorite
+        ? t('removeFavorite', { title: current.title })
+        : t('addFavorite', { title: current.title })
+    : t('favorite');
+  const hasWritableProviderReference =
+    current?.provider?.providerId === accountProvider?.id &&
+    Number.isSafeInteger(current?.provider?.numericId) &&
+    (current?.provider?.numericId ?? 0) > 0;
+  const favoriteAvailable =
+    current !== undefined &&
+    accountProvider !== null &&
+    (accountSnapshot.state !== 'authenticated' ||
+      (accountSnapshot.capabilities.favoriteWrite && hasWritableProviderReference));
 
   return (
     <footer className="player-bar" aria-label={t('region')}>
@@ -88,8 +115,16 @@ export function PlayerBar({
                 </small>
               )}
             </div>
-            <IconButton label={t('favorite')} size="small" active={current.isFavorite}>
-              <Heart size={15} fill={current.isFavorite ? 'currentColor' : 'none'} />
+            <IconButton
+              label={favoriteLabel}
+              size="small"
+              active={favorite}
+              disabled={!favoriteAvailable || favoritePending}
+              onClick={() => {
+                if (accountProvider) void setFavorite(accountProvider, current, !favorite);
+              }}
+            >
+              <Heart size={15} fill={favorite ? 'currentColor' : 'none'} />
             </IconButton>
           </>
         ) : (

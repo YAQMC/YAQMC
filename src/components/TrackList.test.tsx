@@ -4,9 +4,10 @@ import { resetAccountRuntimeForTest, useAccountStore } from '../application/acco
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import type { AccountSnapshot, FavoriteMutationResult } from '../domain/music';
+import i18n from '../i18n';
 import { allSongs } from '../providers/fake/fixtures';
 import { qqMusicProvider } from '../providers/qqmusic/qq-music-provider';
-import { PlayerBar } from './PlayerBar';
+import { TrackList } from './TrackList';
 
 function qqTrack() {
   return {
@@ -52,72 +53,38 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-describe('PlayerBar lyrics presentation entry', () => {
-  beforeEach(() => {
+describe('TrackList favorite controls', () => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
+    await i18n.changeLanguage('en-US');
     resetAccountRuntimeForTest();
     usePlayerStore.setState(initialPlayerState);
   });
 
-  it('enables the Lyrics-specific fullscreen action only when a callback is available', () => {
-    const onEnterLyricsFullscreen = vi.fn();
-    const { rerender } = render(<PlayerBar onEnterLyricsFullscreen={onEnterLyricsFullscreen} />);
-
-    const enabledEntry = screen.getByRole('button', { name: 'Enter fullscreen lyrics' });
-    expect(enabledEntry).toBeEnabled();
-    fireEvent.click(enabledEntry);
-    expect(onEnterLyricsFullscreen).toHaveBeenCalledOnce();
-
-    rerender(
-      <PlayerBar onEnterLyricsFullscreen={onEnterLyricsFullscreen} lyricsFullscreenPending />,
-    );
-    expect(screen.getByRole('button', { name: 'Enter fullscreen lyrics' })).toBeDisabled();
-
-    rerender(<PlayerBar />);
-    expect(screen.getByRole('button', { name: 'Enter fullscreen lyrics' })).toBeDisabled();
-  });
-
-  it('delegates an open Lyrics panel to safe close without changing visibility directly', () => {
-    usePlayerStore.setState({ lyricsOpen: true });
-    const onCloseLyrics = vi.fn();
-    render(<PlayerBar onCloseLyrics={onCloseLyrics} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show lyrics' }));
-
-    expect(onCloseLyrics).toHaveBeenCalledOnce();
-    expect(usePlayerStore.getState().lyricsOpen).toBe(true);
-  });
-
-  it('delegates Queue entry without changing panel state directly', () => {
-    const onToggleQueue = vi.fn();
-    render(<PlayerBar onToggleQueue={onToggleQueue} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show queue' }));
-
-    expect(onToggleQueue).toHaveBeenCalledOnce();
-    expect(usePlayerStore.getState()).toMatchObject({ queueOpen: false, lyricsOpen: false });
-  });
-
-  it('uses the shared favorite projection and exposes pending state', async () => {
+  it('uses sibling play and favorite buttons without nested interactive elements', async () => {
     const track = qqTrack();
     const originalFavorite = track.isFavorite;
     const pending = deferred<FavoriteMutationResult>();
     const setFavorite = vi
       .spyOn(qqMusicProvider, 'setFavorite')
       .mockImplementation(() => pending.promise);
-    usePlayerStore.setState({ queue: [track], currentIndex: 0 });
     useAccountStore.setState({
       snapshot: authenticatedSnapshot(),
       favoriteByTrackId: { [track.id]: false },
     });
-    render(
+    const { container } = render(
       <ProviderContext.Provider value={qqMusicProvider}>
-        <PlayerBar />
+        <TrackList tracks={[track]} />
       </ProviderContext.Provider>,
     );
 
+    expect(container.querySelector('button button')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`Play ${track.title}`) }));
+    expect(usePlayerStore.getState().queue).toEqual([track]);
+
     fireEvent.click(screen.getByRole('button', { name: `Add ${track.title} to Favorites` }));
     const request = setFavorite.mock.calls[0]![0];
+    expect(request).toMatchObject({ trackId: track.id, favorite: true });
     expect(
       screen.getByRole('button', { name: `Updating favorite for ${track.title}` }),
     ).toBeDisabled();
@@ -139,5 +106,40 @@ describe('PlayerBar lyrics presentation entry', () => {
     ).toBeEnabled();
     expect(usePlayerStore.getState().queue[0]).toBe(track);
     expect(track.isFavorite).toBe(originalFavorite);
+  });
+
+  it('opens sign-in for a guest without sending a favorite write', () => {
+    const track = allSongs[0]!;
+    const setFavorite = vi.spyOn(qqMusicProvider, 'setFavorite');
+    useAccountStore.setState({ favoriteByTrackId: { [track.id]: false }, dialogOpen: false });
+    render(
+      <ProviderContext.Provider value={qqMusicProvider}>
+        <TrackList tracks={[track]} />
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: `Add ${track.title} to Favorites` }));
+
+    expect(setFavorite).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().dialogOpen).toBe(true);
+  });
+
+  it('does not send an authenticated write without a numeric QQ Music track reference', () => {
+    const track = allSongs[0]!;
+    const setFavorite = vi.spyOn(qqMusicProvider, 'setFavorite');
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(),
+      favoriteByTrackId: { [track.id]: false },
+    });
+    render(
+      <ProviderContext.Provider value={qqMusicProvider}>
+        <TrackList tracks={[track]} />
+      </ProviderContext.Provider>,
+    );
+
+    const favorite = screen.getByRole('button', { name: `Add ${track.title} to Favorites` });
+    expect(favorite).toBeDisabled();
+    fireEvent.click(favorite);
+    expect(setFavorite).not.toHaveBeenCalled();
   });
 });

@@ -15,8 +15,8 @@ use crate::{
     },
     qqmusic::{
         account::{
-            AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Page,
-            RemotePlayHistoryItem,
+            AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
+            FavoriteMutationRequest, FavoriteMutationResult, Page, RemotePlayHistoryItem,
         },
         Album, HomeFeed, LibrarySnapshot, Playlist, PreferredQuality, ProviderResult,
         ProviderStatus, QQMusicService, SearchResult,
@@ -232,6 +232,16 @@ pub async fn qqmusic_account_recently_played(
 }
 
 #[tauri::command]
+pub async fn qqmusic_set_favorite(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: FavoriteMutationRequest,
+) -> ProviderResult<FavoriteMutationResult> {
+    require_main_window(&window)?;
+    provider.set_favorite(request).await.map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn qqmusic_auth_start(
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
@@ -293,12 +303,13 @@ pub async fn qqmusic_sign_out(
 mod account_command_tests {
     use crate::command_guard::require_main_window_label;
 
-    const GUARDED_ACCOUNT_COMMANDS: [&str; 10] = [
+    const GUARDED_ACCOUNT_COMMANDS: [&str; 11] = [
         "qqmusic_account_snapshot",
         "qqmusic_favorite_songs",
         "qqmusic_account_playlists",
         "qqmusic_account_playlist_tracks",
         "qqmusic_account_recently_played",
+        "qqmusic_set_favorite",
         "qqmusic_auth_start",
         "qqmusic_auth_heartbeat",
         "qqmusic_auth_cancel",

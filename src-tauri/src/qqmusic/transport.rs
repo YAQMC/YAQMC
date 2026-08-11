@@ -52,6 +52,7 @@ pub(crate) fn proxy_environment_lock() -> MutexGuard<'static, ()> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RetryClass {
     SafeRead,
+    ReconciliationRead,
     AuthPoll,
     Write,
 }
@@ -266,7 +267,11 @@ impl ReqwestQqTransport {
                 return Err(QQMusicError::RateLimited);
             }
             if status.is_server_error() {
-                return Err(QQMusicError::Offline);
+                return Err(if request.retry == RetryClass::Write {
+                    QQMusicError::OutcomeUnknown
+                } else {
+                    QQMusicError::Offline
+                });
             }
             if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
                 return Err(QQMusicError::AuthorizationRejected);
@@ -764,6 +769,32 @@ mod tests {
             .execute(request)
             .await
             .expect_err("write must not report a definite failure");
+
+        assert!(matches!(error, QQMusicError::OutcomeUnknown));
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+    }
+
+    #[tokio::test]
+    async fn write_server_error_is_outcome_unknown_and_is_not_retried() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let server_calls = Arc::clone(&calls);
+        let server = spawn_server(Router::new().fallback(any(move || {
+            let server_calls = Arc::clone(&server_calls);
+            async move {
+                server_calls.fetch_add(1, Ordering::AcqRel);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })))
+        .await;
+        let transport = fixture_transport([server.address], short_timeouts());
+        let mut request = request(server.url("/write-server-error"), RetryClass::Write);
+        request.method = Method::POST;
+        request.body = Some(b"mutation".to_vec());
+
+        let error = transport
+            .execute(request)
+            .await
+            .expect_err("server failure leaves write outcome unknown");
 
         assert!(matches!(error, QQMusicError::OutcomeUnknown));
         assert_eq!(calls.load(Ordering::Acquire), 1);

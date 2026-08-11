@@ -326,6 +326,23 @@ input[type='range']:disabled {
   font-size: var(--text-xs);
 }
 
+.track-row__play-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+
+.track-row__play-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+
 .track-row__play-icon {
   display: none;
   color: var(--text);
@@ -389,12 +406,16 @@ input[type='range']:disabled {
 }
 
 .track-row:hover .track-row__actions,
-.track-row:focus-visible .track-row__actions {
+.track-row:focus-within .track-row__actions {
   opacity: 1;
 }
 
 .track-row__favorite {
   color: var(--accent);
+}
+
+.track-row__favorite-action {
+  flex: 0 0 auto;
 }
 
 .track-list--compact .track-row {

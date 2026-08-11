@@ -52,6 +52,11 @@ export type LibraryResource<T> =
 
 export type AccountListResource = 'favorites' | 'playlists' | 'recent';
 
+export const FAVORITE_RECONCILED_MESSAGE =
+  'The server result was checked before the library was updated.';
+export const FAVORITE_OUTCOME_UNKNOWN_MESSAGE =
+  'The server could not confirm the library change. Refreshing Favorites.';
+
 type OwnedSnapshot = Extract<
   AccountSnapshot,
   { state: 'starting-login' | 'waiting-for-scan' | 'waiting-for-confirmation' }
@@ -67,6 +72,9 @@ interface AccountStoreState {
   playlists: LibraryResource<AccountPlaylistSummary[]>;
   recent: LibraryResource<RemotePlayHistoryItem[]>;
   accountPlaylistDetails: Record<EntityId, LibraryResource<AccountPlaylistDetail>>;
+  favoriteByTrackId: Record<EntityId, boolean>;
+  favoritePendingByTrackId: Record<EntityId, string>;
+  mutationMessage: string | null;
   openDialog: () => void;
   closeDialog: (provider: AccountMusicProvider) => Promise<void>;
   refreshSnapshot: (provider: AccountMusicProvider) => Promise<void>;
@@ -85,6 +93,7 @@ interface AccountStoreState {
     reset?: boolean,
   ) => Promise<void>;
   loadNextAccountPlaylist: (provider: AccountMusicProvider, id: EntityId) => Promise<void>;
+  setFavorite: (provider: AccountMusicProvider, track: Song, favorite: boolean) => Promise<void>;
 }
 
 const initialSnapshot: AccountSnapshot = {
@@ -163,7 +172,23 @@ function libraryResetForSnapshot(snapshot: AccountSnapshot) {
     playlists: resourceForSnapshot<AccountPlaylistSummary[]>(snapshot),
     recent: resourceForSnapshot<RemotePlayHistoryItem[]>(snapshot),
     accountPlaylistDetails: {} as Record<EntityId, LibraryResource<AccountPlaylistDetail>>,
+    favoriteByTrackId: {} as Record<EntityId, boolean>,
+    favoritePendingByTrackId: {} as Record<EntityId, string>,
+    mutationMessage: null,
   };
+}
+
+function favoriteOperationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `favorite-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function withoutKey<T>(record: Record<EntityId, T>, key: EntityId): Record<EntityId, T> {
+  const next = { ...record };
+  delete next[key];
+  return next;
 }
 
 function ownedSnapshot(snapshot: AccountSnapshot): OwnedSnapshot | null {
@@ -405,6 +430,35 @@ function mergeFirstSeen<T>(base: T[], incoming: T[], keyOf: (item: T) => EntityI
   return merged;
 }
 
+function projectFavoritePage(songs: Song[], replace: boolean): void {
+  useAccountStore.setState((state) => {
+    const favoriteByTrackId = replace
+      ? Object.fromEntries(Object.keys(state.favoriteByTrackId).map((id) => [id, false]))
+      : { ...state.favoriteByTrackId };
+    for (const song of songs) favoriteByTrackId[song.id] = true;
+    return { favoriteByTrackId };
+  });
+}
+
+function confirmedFavoritesResource(
+  resource: LibraryResource<Song[]>,
+  track: Song,
+  favorite: boolean,
+): LibraryResource<Song[]> {
+  const data = loadedData(resource);
+  if (!data) return resource;
+  const nextData = favorite
+    ? mergeFirstSeen(data, [track], (song) => song.id)
+    : data.filter((song) => song.id !== track.id);
+  if (resource.status === 'ready' || resource.status === 'stale') {
+    return { ...resource, data: nextData };
+  }
+  if (resource.status === 'loading' || resource.status === 'error') {
+    return { ...resource, data: nextData };
+  }
+  return resource;
+}
+
 function classifyLibraryFailure(
   error: unknown,
 ): LibraryResourceError | 'cancelled' | 'reauthentication-required' {
@@ -508,6 +562,9 @@ async function loadPagedList<T>(options: {
         fetchedAtMs: page.fetchedAtMs,
         authRevision: page.authRevision,
       });
+    }
+    if (resource === 'favorites') {
+      projectFavoritePage(data as Song[], page.nextCursor === null);
     }
   } catch (error) {
     if (!canCommitListResult(resource, generation, revision, requestedCursor)) return;
@@ -670,6 +727,9 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   playlists: idleResource(),
   recent: idleResource(),
   accountPlaylistDetails: {},
+  favoriteByTrackId: {},
+  favoritePendingByTrackId: {},
+  mutationMessage: null,
   openDialog: () => {
     const snapshot = get().snapshot;
     const owner = ownedSnapshot(snapshot);
@@ -790,7 +850,117 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   loadAccountPlaylist: (provider, id, reset = true) =>
     loadAccountPlaylistResource(provider, id, reset),
   loadNextAccountPlaylist: (provider, id) => loadAccountPlaylistResource(provider, id, false),
+  setFavorite: async (provider, track, favorite) => {
+    const initial = get();
+    if (initial.snapshot.state !== 'authenticated') {
+      initial.openDialog();
+      return;
+    }
+    if (!initial.snapshot.capabilities.favoriteWrite) {
+      set({ mutationMessage: 'This account cannot change Favorites.' });
+      return;
+    }
+    if (initial.favoritePendingByTrackId[track.id]) return;
+
+    const revision = initial.snapshot.revision;
+    const previous = initial.favoriteByTrackId[track.id] ?? track.isFavorite;
+    const operationId = favoriteOperationId();
+    set((state) => ({
+      favoriteByTrackId: { ...state.favoriteByTrackId, [track.id]: favorite },
+      favoritePendingByTrackId: {
+        ...state.favoritePendingByTrackId,
+        [track.id]: operationId,
+      },
+      mutationMessage: null,
+    }));
+
+    let result;
+    try {
+      result = await provider.setFavorite(
+        {
+          trackId: track.id,
+          favorite,
+          clientOperationId: operationId,
+        },
+        runtimeSignal(provider),
+      );
+    } catch (error) {
+      const current = get();
+      if (current.favoritePendingByTrackId[track.id] !== operationId) return;
+      const pending = withoutKey(current.favoritePendingByTrackId, track.id);
+      if (current.snapshot.revision !== revision) {
+        set({ favoritePendingByTrackId: pending });
+        return;
+      }
+      const failure = classifyLibraryFailure(error);
+      set({
+        favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: previous },
+        favoritePendingByTrackId: pending,
+        favorites:
+          failure === 'reauthentication-required'
+            ? { status: 'reauthentication-required' }
+            : current.favorites,
+        mutationMessage:
+          failure === 'reauthentication-required'
+            ? 'Your QQ Music session expired before Favorites could be updated.'
+            : 'Favorites could not be updated.',
+      });
+      if (failure === 'reauthentication-required') {
+        void get().refreshSnapshot(provider);
+      }
+      return;
+    }
+
+    const current = get();
+    if (current.favoritePendingByTrackId[track.id] !== operationId) return;
+    const pending = withoutKey(current.favoritePendingByTrackId, track.id);
+    if (
+      current.snapshot.revision !== revision ||
+      result.authRevision !== revision ||
+      result.clientOperationId !== operationId ||
+      result.trackId !== track.id
+    ) {
+      set({ favoritePendingByTrackId: pending });
+      return;
+    }
+
+    if (result.status === 'rejected') {
+      set({
+        favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: previous },
+        favoritePendingByTrackId: pending,
+        mutationMessage: 'QQ Music rejected the Favorites change.',
+      });
+      return;
+    }
+    if (result.status === 'outcome-unknown') {
+      set({
+        favoritePendingByTrackId: pending,
+        mutationMessage: FAVORITE_OUTCOME_UNKNOWN_MESSAGE,
+      });
+      void get().loadFavorites(provider, true);
+      return;
+    }
+    set({
+      favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: result.favorite },
+      favoritePendingByTrackId: pending,
+      favorites: confirmedFavoritesResource(current.favorites, track, result.favorite),
+      mutationMessage: result.status === 'reconciled' ? FAVORITE_RECONCILED_MESSAGE : null,
+    });
+  },
 }));
+
+export function useFavoriteState(
+  trackId: EntityId | null | undefined,
+  fallbackFavorite = false,
+): { favorite: boolean; pending: boolean } {
+  const favorite = useAccountStore((state) =>
+    trackId ? (state.favoriteByTrackId[trackId] ?? fallbackFavorite) : fallbackFavorite,
+  );
+  const pending = useAccountStore((state) =>
+    trackId ? Boolean(state.favoritePendingByTrackId[trackId]) : false,
+  );
+  return { favorite, pending };
+}
 
 export function useAccountRuntime(provider: MusicProvider): void {
   useEffect(() => {
@@ -841,5 +1011,8 @@ export function resetAccountRuntimeForTest(): void {
     playlists: idleResource(),
     recent: idleResource(),
     accountPlaylistDetails: {},
+    favoriteByTrackId: {},
+    favoritePendingByTrackId: {},
+    mutationMessage: null,
   });
 }

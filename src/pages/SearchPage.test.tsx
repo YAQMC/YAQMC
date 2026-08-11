@@ -35,10 +35,10 @@ describe('SearchPage', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Search music' }), {
       target: { value: 'page' },
     });
-    await waitFor(() => expect(container.querySelectorAll('button.track-row')).toHaveLength(8));
+    await waitFor(() => expect(container.querySelectorAll('.track-row')).toHaveLength(8));
 
     fireEvent.click(screen.getByRole('button', { name: 'Load more songs' }));
-    await waitFor(() => expect(container.querySelectorAll('button.track-row')).toHaveLength(16));
+    await waitFor(() => expect(container.querySelectorAll('.track-row')).toHaveLength(16));
     expect(screen.getByText('Page track 15')).toBeInTheDocument();
   });
 });

@@ -1,7 +1,12 @@
 import { Check, Heart, MoreHorizontal, Pause, Play } from 'lucide-react';
+import { useContext } from 'react';
+import { useFavoriteState, useAccountStore } from '../application/account-runtime';
 import { usePlayerStore } from '../application/player-store';
+import { ProviderContext } from '../application/provider-context';
 import type { Song } from '../domain/music';
+import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
+import { IconButton } from './ui/IconButton';
 import { useTranslation } from 'react-i18next';
 
 interface TrackListProps {
@@ -12,19 +17,8 @@ interface TrackListProps {
 
 export function TrackList({ tracks, showAlbum = false, compact = false }: TrackListProps) {
   const { t } = useTranslation('player');
-  const { t: common } = useTranslation('common');
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
-  const playTracks = usePlayerStore((state) => state.playTracks);
-  const togglePlayback = usePlayerStore((state) => state.togglePlayback);
-
-  const activateTrack = (track: Song) => {
-    if (track.id === currentId) {
-      togglePlayback();
-      return;
-    }
-    playTracks(tracks, track.id);
-  };
 
   return (
     <div className={`track-list ${compact ? 'track-list--compact' : ''}`} role="table">
@@ -41,64 +35,128 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
         <span className="track-list__actions" role="columnheader" />
       </div>
       <div role="rowgroup">
-        {tracks.map((track, index) => {
-          const active = track.id === currentId;
-          return (
-            <button
-              type="button"
-              className="track-row"
-              role="row"
-              data-active={active || undefined}
-              key={track.id}
-              onClick={() => activateTrack(track)}
-              aria-label={t('trackAction', {
-                action: active && isPlaying ? common('pause') : common('play'),
-                title: track.title,
-                artist: joinArtistNames(track.artists),
-              })}
-            >
-              <span className="track-list__number track-row__index" role="cell">
-                <span className="track-row__ordinal">{index + 1}</span>
-                <span className="track-row__play-icon">
-                  {active && isPlaying ? (
-                    <Pause size={14} fill="currentColor" />
-                  ) : (
-                    <Play size={14} fill="currentColor" />
-                  )}
-                </span>
-                {active && isPlaying && (
-                  <span className="now-playing-bars" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                )}
-              </span>
-              <span className="track-row__primary" role="cell">
-                <span className="track-row__title">{track.title}</span>
-                <span className="track-row__artist">{joinArtistNames(track.artists)}</span>
-              </span>
-              {showAlbum && (
-                <span className="track-row__album" role="cell">
-                  {track.album.title}
-                </span>
-              )}
-              <span className="track-list__quality track-row__quality" role="cell">
-                {track.quality === 'lossless' && <Check size={12} aria-label={t('lossless')} />}
-              </span>
-              <span className="track-list__duration" role="cell">
-                {formatDuration(track.durationMs)}
-              </span>
-              <span className="track-list__actions track-row__actions" role="cell">
-                {track.isFavorite && (
-                  <Heart className="track-row__favorite" size={14} fill="currentColor" />
-                )}
-                <MoreHorizontal size={16} />
-              </span>
-            </button>
-          );
-        })}
+        {tracks.map((track, index) => (
+          <TrackRow
+            key={track.id}
+            track={track}
+            tracks={tracks}
+            index={index}
+            active={track.id === currentId}
+            isPlaying={isPlaying}
+            showAlbum={showAlbum}
+          />
+        ))}
       </div>
+    </div>
+  );
+}
+
+interface TrackRowProps {
+  track: Song;
+  tracks: Song[];
+  index: number;
+  active: boolean;
+  isPlaying: boolean;
+  showAlbum: boolean;
+}
+
+function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackRowProps) {
+  const { t } = useTranslation('player');
+  const { t: common } = useTranslation('common');
+  const provider = useContext(ProviderContext);
+  const accountProvider = provider && isAccountMusicProvider(provider) ? provider : null;
+  const snapshot = useAccountStore((state) => state.snapshot);
+  const setFavorite = useAccountStore((state) => state.setFavorite);
+  const playTracks = usePlayerStore((state) => state.playTracks);
+  const togglePlayback = usePlayerStore((state) => state.togglePlayback);
+  const { favorite, pending } = useFavoriteState(track.id, track.isFavorite);
+  const playbackAction = active && isPlaying ? common('pause') : common('play');
+  const favoriteLabel = pending
+    ? t('favoritePending', { title: track.title })
+    : favorite
+      ? t('removeFavorite', { title: track.title })
+      : t('addFavorite', { title: track.title });
+  const hasWritableProviderReference =
+    track.provider?.providerId === accountProvider?.id &&
+    Number.isSafeInteger(track.provider?.numericId) &&
+    (track.provider?.numericId ?? 0) > 0;
+  const favoriteAvailable =
+    accountProvider !== null &&
+    (snapshot.state !== 'authenticated' ||
+      (snapshot.capabilities.favoriteWrite && hasWritableProviderReference));
+
+  const activateTrack = () => {
+    if (active) {
+      togglePlayback();
+      return;
+    }
+    playTracks(tracks, track.id);
+  };
+
+  return (
+    <div className="track-row" role="row" data-active={active || undefined}>
+      <span className="track-list__number track-row__index" role="cell">
+        <button
+          type="button"
+          className="track-row__play-button"
+          onClick={activateTrack}
+          aria-label={t('trackAction', {
+            action: playbackAction,
+            title: track.title,
+            artist: joinArtistNames(track.artists),
+          })}
+        >
+          <span className="track-row__ordinal">{index + 1}</span>
+          <span className="track-row__play-icon">
+            {active && isPlaying ? (
+              <Pause size={14} fill="currentColor" />
+            ) : (
+              <Play size={14} fill="currentColor" />
+            )}
+          </span>
+          {active && isPlaying && (
+            <span className="now-playing-bars" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          )}
+        </button>
+      </span>
+      <span className="track-row__primary" role="cell">
+        <span className="track-row__title">{track.title}</span>
+        <span className="track-row__artist">{joinArtistNames(track.artists)}</span>
+      </span>
+      {showAlbum && (
+        <span className="track-row__album" role="cell">
+          {track.album.title}
+        </span>
+      )}
+      <span className="track-list__quality track-row__quality" role="cell">
+        {track.quality === 'lossless' && <Check size={12} aria-label={t('lossless')} />}
+      </span>
+      <span className="track-list__duration" role="cell">
+        {formatDuration(track.durationMs)}
+      </span>
+      <span className="track-list__actions track-row__actions" role="cell">
+        <IconButton
+          label={favoriteLabel}
+          size="small"
+          className="track-row__favorite-action"
+          active={favorite}
+          disabled={!favoriteAvailable || pending}
+          onClick={() => {
+            if (accountProvider) void setFavorite(accountProvider, track, !favorite);
+          }}
+        >
+          <Heart
+            className="track-row__favorite"
+            size={14}
+            fill={favorite ? 'currentColor' : 'none'}
+          />
+        </IconButton>
+        <MoreHorizontal size={16} aria-hidden="true" />
+      </span>
     </div>
   );
 }

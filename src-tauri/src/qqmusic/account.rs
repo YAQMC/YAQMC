@@ -7,7 +7,7 @@ use super::{
     auth::{AuthenticatedAccountContext, QQMusicAuthService, SessionRecord},
     cache::{
         AccountCache, AccountEpoch, AccountLibraryProjection, CachedAccountPage,
-        OpaqueCursorRegistry, ACCOUNT_CACHE_KIND,
+        CompletedResultCache, OpaqueCursorRegistry, ProviderTrackRegistry, ACCOUNT_CACHE_KIND,
     },
     clock::Clock,
     color_for, is_allowed_artwork_url, normalize_old_song, playlist_id, stable_component,
@@ -24,7 +24,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 #[cfg(test)]
 use std::sync::Mutex as StdMutex;
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use tokio::sync::Mutex;
 #[cfg(test)]
 use tokio::sync::Notify;
@@ -43,6 +46,22 @@ enum ReadBoundary {
 #[cfg(test)]
 struct ReadBarrier {
     boundary: ReadBoundary,
+    entered: Notify,
+    release: Notify,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WriteBoundary {
+    WriteClassified,
+    ReconciliationRead,
+    BeforeCacheCommit,
+    AfterCacheCommit,
+}
+
+#[cfg(test)]
+struct WriteBarrier {
+    boundary: WriteBoundary,
     entered: Notify,
     release: Notify,
 }
@@ -110,7 +129,7 @@ pub struct RemotePlayHistoryItem {
     pub source: RemotePlayHistorySource,
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EntitlementTier {
     Free,
@@ -398,7 +417,7 @@ impl ProviderErrorCode {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MutationStatus {
     Applied,
@@ -424,6 +443,35 @@ pub struct FavoriteMutationResult {
     pub favorite: bool,
     pub error_code: Option<ProviderErrorCode>,
     pub auth_revision: u64,
+}
+
+#[derive(Default)]
+struct MutationState {
+    epoch: Option<AccountEpoch>,
+    favorite_in_flight: HashMap<String, String>,
+    favorite_completed: CompletedResultCache<CompletedFavoriteMutation>,
+}
+
+#[derive(Clone)]
+struct CompletedFavoriteMutation {
+    requested_track_id: String,
+    requested_favorite: bool,
+    result: FavoriteMutationResult,
+}
+
+impl MutationState {
+    fn ensure_epoch(&mut self, epoch: &AccountEpoch) {
+        if self.epoch.as_ref() != Some(epoch) {
+            self.clear();
+            self.epoch = Some(epoch.clone());
+        }
+    }
+
+    fn clear(&mut self) {
+        self.epoch = None;
+        self.favorite_in_flight.clear();
+        self.favorite_completed.clear();
+    }
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -523,8 +571,13 @@ pub(crate) struct QQMusicAccountService {
     auth: Arc<QQMusicAuthService>,
     cursors: Mutex<OpaqueCursorRegistry>,
     refreshes: Mutex<RefreshState>,
+    mutations: Mutex<MutationState>,
+    projection_commit: Mutex<()>,
+    track_references: Mutex<ProviderTrackRegistry>,
     #[cfg(test)]
     read_barrier: StdMutex<Option<Arc<ReadBarrier>>>,
+    #[cfg(test)]
+    write_barrier: StdMutex<Option<Arc<WriteBarrier>>>,
 }
 
 impl QQMusicAccountService {
@@ -541,14 +594,40 @@ impl QQMusicAccountService {
             auth,
             cursors: Mutex::new(OpaqueCursorRegistry::default()),
             refreshes: Mutex::new(RefreshState::default()),
+            mutations: Mutex::new(MutationState::default()),
+            projection_commit: Mutex::new(()),
+            track_references: Mutex::new(ProviderTrackRegistry::default()),
             #[cfg(test)]
             read_barrier: StdMutex::new(None),
+            #[cfg(test)]
+            write_barrier: StdMutex::new(None),
         }
     }
 
     pub(crate) async fn clear_runtime_state(&self) {
         self.cursors.lock().await.clear();
         self.refreshes.lock().await.clear();
+        self.mutations.lock().await.clear();
+    }
+
+    pub(crate) async fn remember_songs<'a>(&self, songs: impl IntoIterator<Item = &'a Song>) {
+        let references = songs
+            .into_iter()
+            .filter_map(|song| {
+                song.provider.as_ref().and_then(|provider| {
+                    provider
+                        .numeric_id
+                        .map(|numeric_id| (song.id.clone(), numeric_id))
+                })
+            })
+            .collect::<Vec<_>>();
+        if references.is_empty() {
+            return;
+        }
+        let mut registry = self.track_references.lock().await;
+        for (stable_id, numeric_id) in references {
+            registry.remember(stable_id, numeric_id);
+        }
     }
 
     #[cfg(test)]
@@ -563,6 +642,349 @@ impl QQMusicAccountService {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::clone(&barrier));
         barrier
+    }
+
+    #[cfg(test)]
+    fn set_write_barrier(&self, boundary: WriteBoundary) -> Arc<WriteBarrier> {
+        let barrier = Arc::new(WriteBarrier {
+            boundary,
+            entered: Notify::new(),
+            release: Notify::new(),
+        });
+        *self
+            .write_barrier
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::clone(&barrier));
+        barrier
+    }
+
+    pub(crate) async fn set_favorite(
+        &self,
+        request: FavoriteMutationRequest,
+    ) -> Result<FavoriteMutationResult, QQMusicError> {
+        validate_favorite_request(&request)?;
+        let context = self.auth.capture_account_context().await?;
+        let mutation_key = format!("favorite:{}", request.track_id);
+        let cached = {
+            let mut state = self.mutations.lock().await;
+            state.ensure_epoch(&context.epoch);
+            if let Some(completed) = state
+                .favorite_completed
+                .get(&context.epoch, &request.client_operation_id)
+            {
+                if completed.requested_track_id != request.track_id
+                    || completed.requested_favorite != request.favorite
+                {
+                    return Err(QQMusicError::InvalidRequest);
+                }
+                Some(completed.result)
+            } else {
+                if state.favorite_in_flight.contains_key(&mutation_key) {
+                    return Err(QQMusicError::MutationInProgress);
+                }
+                state
+                    .favorite_in_flight
+                    .insert(mutation_key.clone(), request.client_operation_id.clone());
+                None
+            }
+        };
+        if let Some(cached) = cached {
+            self.auth.ensure_current(&context.epoch).await?;
+            return Ok(cached);
+        }
+
+        let result = match self.set_favorite_owned(&context, &request).await {
+            Ok(result) => result,
+            Err(error) => {
+                self.release_favorite_mutation(
+                    &context.epoch,
+                    &mutation_key,
+                    &request.client_operation_id,
+                )
+                .await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.auth.ensure_current(&context.epoch).await {
+            self.release_favorite_mutation(
+                &context.epoch,
+                &mutation_key,
+                &request.client_operation_id,
+            )
+            .await;
+            return Err(error);
+        }
+        let mut state = self.mutations.lock().await;
+        if state.epoch.as_ref() != Some(&context.epoch)
+            || state.favorite_in_flight.get(&mutation_key) != Some(&request.client_operation_id)
+        {
+            return Err(QQMusicError::Cancelled);
+        }
+        state.favorite_completed.insert_if_current(
+            &context.epoch,
+            request.client_operation_id.clone(),
+            CompletedFavoriteMutation {
+                requested_track_id: request.track_id.clone(),
+                requested_favorite: request.favorite,
+                result: result.clone(),
+            },
+        );
+        state.favorite_in_flight.remove(&mutation_key);
+        drop(state);
+        self.auth.ensure_current(&context.epoch).await?;
+        Ok(result)
+    }
+
+    async fn set_favorite_owned(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &FavoriteMutationRequest,
+    ) -> Result<FavoriteMutationResult, QQMusicError> {
+        let write = self.execute_favorite_write(context, request).await;
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::WriteClassified)
+            .await;
+        self.auth.ensure_current(&context.epoch).await?;
+
+        let (status, favorite, error_code) = match write {
+            Ok(true) => (MutationStatus::Applied, request.favorite, None),
+            Ok(false) => (
+                MutationStatus::Rejected,
+                !request.favorite,
+                Some(ProviderErrorCode::ProviderFailure),
+            ),
+            Err(QQMusicError::OutcomeUnknown) => self.reconcile_favorite(context, request).await?,
+            Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                return self.expire_mutation_session(context).await;
+            }
+            Err(error) => return Err(error),
+        };
+
+        if matches!(status, MutationStatus::Applied | MutationStatus::Reconciled) {
+            self.commit_favorite_projection(context, &request.track_id, favorite)
+                .await?;
+        }
+        Ok(FavoriteMutationResult {
+            client_operation_id: request.client_operation_id.clone(),
+            status,
+            track_id: request.track_id.clone(),
+            favorite,
+            error_code,
+            auth_revision: context.auth_revision,
+        })
+    }
+
+    async fn execute_favorite_write(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &FavoriteMutationRequest,
+    ) -> Result<bool, QQMusicError> {
+        self.auth.ensure_current(&context.epoch).await?;
+        let provider_track_id = self
+            .track_references
+            .lock()
+            .await
+            .numeric_id(&request.track_id)
+            .ok_or(QQMusicError::InvalidRequest)?;
+        let method = if request.favorite {
+            "AddSonglist"
+        } else {
+            "DelSonglist"
+        };
+        let payload = musicu_request(
+            &context.session,
+            "music.musicasset.PlaylistDetailWrite",
+            method,
+            json!({
+                "dirId": 201,
+                "tid": 0,
+                "bFmtUtf8": true,
+                "v_songInfo": [{ "songId": provider_track_id, "songType": 13 }]
+            }),
+        );
+        let response = self
+            .transport
+            .execute(TransportRequest {
+                operation: "account.favorite.write",
+                method: Method::POST,
+                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
+                headers: account_headers(&context.session)?,
+                body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
+                retry: RetryClass::Write,
+                redirects: RedirectMode::FollowValidated,
+                response_shape: "favorite-mutation",
+                cancellation: context.cancellation.clone(),
+            })
+            .await?;
+        self.auth.ensure_current(&context.epoch).await?;
+        if !response.status.is_success() {
+            return Ok(false);
+        }
+        favorite_write_accepted(&response.body)
+    }
+
+    async fn reconcile_favorite(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &FavoriteMutationRequest,
+    ) -> Result<(MutationStatus, bool, Option<ProviderErrorCode>), QQMusicError> {
+        let mut observed_opposite = false;
+        for delay_ms in [300_u64, 700, 1_500] {
+            self.auth.ensure_current(&context.epoch).await?;
+            tokio::select! {
+                biased;
+                _ = context.cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+                _ = tokio::time::sleep(std::time::Duration::from_millis(delay_ms)) => {}
+            }
+            self.auth.ensure_current(&context.epoch).await?;
+            let observed = match self.read_favorite_state(context, &request.track_id).await {
+                Ok(observed) => observed,
+                Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                    return self.expire_mutation_session(context).await;
+                }
+                Err(QQMusicError::Cancelled) => return Err(QQMusicError::Cancelled),
+                Err(_) => None,
+            };
+            #[cfg(test)]
+            self.hit_write_boundary(WriteBoundary::ReconciliationRead)
+                .await;
+            self.auth.ensure_current(&context.epoch).await?;
+            if observed == Some(request.favorite) {
+                return Ok((MutationStatus::Reconciled, request.favorite, None));
+            }
+            if observed == Some(!request.favorite) {
+                observed_opposite = true;
+            }
+        }
+        if observed_opposite {
+            Ok((
+                MutationStatus::Rejected,
+                !request.favorite,
+                Some(ProviderErrorCode::ProviderFailure),
+            ))
+        } else {
+            Ok((
+                MutationStatus::OutcomeUnknown,
+                request.favorite,
+                Some(ProviderErrorCode::ProviderFailure),
+            ))
+        }
+    }
+
+    async fn read_favorite_state(
+        &self,
+        context: &AuthenticatedAccountContext,
+        track_id: &str,
+    ) -> Result<Option<bool>, QQMusicError> {
+        let payload = musicu_request(
+            &context.session,
+            "music.srfDissInfo.DissInfo",
+            "CgiGetDiss",
+            json!({ "dirid": 201, "song_begin": 0, "song_num": 100 }),
+        );
+        let response = self
+            .transport
+            .execute(TransportRequest {
+                operation: "account.favorite.reconcile",
+                method: Method::POST,
+                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
+                headers: account_headers(&context.session)?,
+                body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
+                retry: RetryClass::ReconciliationRead,
+                redirects: RedirectMode::FollowValidated,
+                response_shape: "favorite-reconciliation-page",
+                cancellation: context.cancellation.clone(),
+            })
+            .await
+            .map_err(|error| match error {
+                QQMusicError::AuthorizationRejected => QQMusicError::AuthenticationExpired,
+                other => other,
+            })?;
+        self.auth.ensure_current(&context.epoch).await?;
+        if !response.status.is_success() {
+            return Err(QQMusicError::Protocol);
+        }
+        let page = normalize_favorite_response(&response.body, 0)?;
+        if page.items.iter().any(|song| song.id == track_id) {
+            Ok(Some(true))
+        } else if page.next_provider_cursor.is_none() {
+            Ok(Some(false))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn commit_favorite_projection(
+        &self,
+        context: &AuthenticatedAccountContext,
+        track_id: &str,
+        favorite: bool,
+    ) -> Result<(), QQMusicError> {
+        let _commit = self.projection_commit.lock().await;
+        self.auth.ensure_current(&context.epoch).await?;
+        let mut projection = self.projection_for(context)?;
+        if favorite {
+            if !projection.favorite_ids.iter().any(|id| id == track_id) {
+                projection.favorite_ids.push(track_id.to_owned());
+            }
+        } else {
+            projection.favorite_ids.retain(|id| id != track_id);
+        }
+        projection.fetched_at_ms = self.clock.now_ms();
+        let operations = [
+            ProviderCacheMutation::DeleteKindPrefix {
+                kind: ACCOUNT_CACHE_KIND.to_owned(),
+                prefix: AccountCache::scope_prefix(&context.epoch.scope),
+            },
+            cache_put(
+                &AccountCache::projection_key(&context.epoch.scope),
+                &projection,
+                u64::MAX,
+            )?,
+        ];
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::BeforeCacheCommit)
+            .await;
+        self.commit_cache(context, &operations).await?;
+        #[cfg(test)]
+        self.hit_write_boundary(WriteBoundary::AfterCacheCommit)
+            .await;
+        self.auth.ensure_current(&context.epoch).await?;
+        self.cursors.lock().await.clear();
+        self.refreshes.lock().await.clear();
+        Ok(())
+    }
+
+    async fn expire_mutation_session<T>(
+        &self,
+        context: &AuthenticatedAccountContext,
+    ) -> Result<T, QQMusicError> {
+        match self
+            .auth
+            .require_reauthentication_if_current(&context.epoch)
+            .await
+        {
+            Ok(()) => Err(QQMusicError::AuthenticationExpired),
+            Err(QQMusicError::Cancelled) => Err(QQMusicError::Cancelled),
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn release_favorite_mutation(
+        &self,
+        epoch: &AccountEpoch,
+        mutation_key: &str,
+        operation_id: &str,
+    ) {
+        let mut state = self.mutations.lock().await;
+        if state.epoch.as_ref() == Some(epoch)
+            && state
+                .favorite_in_flight
+                .get(mutation_key)
+                .is_some_and(|owner| owner == operation_id)
+        {
+            state.favorite_in_flight.remove(mutation_key);
+        }
     }
 
     pub(crate) async fn favorite_songs(
@@ -1148,6 +1570,21 @@ impl QQMusicAccountService {
             barrier.release.notified().await;
         }
     }
+
+    #[cfg(test)]
+    async fn hit_write_boundary(&self, boundary: WriteBoundary) {
+        let barrier = self
+            .write_barrier
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .filter(|barrier| barrier.boundary == boundary)
+            .cloned();
+        if let Some(barrier) = barrier {
+            barrier.entered.notify_one();
+            barrier.release.notified().await;
+        }
+    }
 }
 
 fn musicu_request(
@@ -1219,6 +1656,61 @@ fn provider_playlist_id(value: &str) -> Result<&str, QQMusicError> {
         return Err(QQMusicError::InvalidRequest);
     }
     Ok(value)
+}
+
+fn provider_track_id(value: &str) -> Result<&str, QQMusicError> {
+    let value = value.strip_prefix("qqmusic:track:").unwrap_or(value);
+    if value.is_empty()
+        || value.len() > 160
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(QQMusicError::InvalidRequest);
+    }
+    Ok(value)
+}
+
+fn validate_favorite_request(request: &FavoriteMutationRequest) -> Result<(), QQMusicError> {
+    provider_track_id(&request.track_id)?;
+    if !(8..=128).contains(&request.client_operation_id.len())
+        || !request
+            .client_operation_id
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic())
+    {
+        return Err(QQMusicError::InvalidRequest);
+    }
+    Ok(())
+}
+
+fn favorite_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
+    let value: Value = serde_json::from_slice(body).map_err(|_| QQMusicError::MalformedResponse)?;
+    ensure_cgi_response_success(&value)?;
+    let return_code = value
+        .pointer("/req/data/retCode")
+        .or_else(|| value.pointer("/data/retCode"))
+        .and_then(Value::as_i64)
+        .ok_or(QQMusicError::SchemaChanged)?;
+    Ok(return_code == 0)
+}
+
+fn ensure_cgi_response_success(value: &Value) -> Result<(), QQMusicError> {
+    for code in [
+        value.get("code").and_then(Value::as_i64),
+        value.pointer("/req/code").and_then(Value::as_i64),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        match code {
+            0 => {}
+            1000 | 104_400 | 104_401 => return Err(QQMusicError::AuthenticationExpired),
+            2001 => return Err(QQMusicError::RateLimited),
+            _ => return Err(QQMusicError::Protocol),
+        }
+    }
+    Ok(())
 }
 
 fn cache_put<T: Serialize>(
@@ -1469,17 +1961,7 @@ fn value_string(value: &Value) -> Option<String> {
 }
 
 fn response_data(value: &Value) -> Result<&Value, QQMusicError> {
-    if value.get("code").and_then(Value::as_i64).unwrap_or(0) != 0 {
-        return Err(QQMusicError::Protocol);
-    }
-    if value
-        .pointer("/req/code")
-        .and_then(Value::as_i64)
-        .unwrap_or(0)
-        != 0
-    {
-        return Err(QQMusicError::Protocol);
-    }
+    ensure_cgi_response_success(value)?;
     value
         .pointer("/req/data")
         .or_else(|| value.get("data"))
@@ -1776,6 +2258,8 @@ mod tests {
     struct QueueTransport {
         replies: Mutex<VecDeque<TestReply>>,
         calls: AtomicUsize,
+        operations: Mutex<Vec<&'static str>>,
+        requests: Mutex<Vec<(&'static str, Vec<u8>)>>,
     }
 
     impl QueueTransport {
@@ -1783,6 +2267,8 @@ mod tests {
             Self {
                 replies: Mutex::new(replies.into_iter().collect()),
                 calls: AtomicUsize::new(0),
+                operations: Mutex::new(Vec::new()),
+                requests: Mutex::new(Vec::new()),
             }
         }
 
@@ -1793,15 +2279,40 @@ mod tests {
         fn call_count(&self) -> usize {
             self.calls.load(Ordering::Acquire)
         }
+
+        async fn operation_count(&self, operation: &str) -> usize {
+            self.operations
+                .lock()
+                .await
+                .iter()
+                .filter(|candidate| **candidate == operation)
+                .count()
+        }
+
+        async fn request_body(&self, operation: &str) -> Option<Vec<u8>> {
+            self.requests
+                .lock()
+                .await
+                .iter()
+                .find(|(candidate, _)| *candidate == operation)
+                .map(|(_, body)| body.clone())
+        }
     }
 
     #[async_trait]
     impl QqTransport for QueueTransport {
         async fn execute(
             &self,
-            _request: TransportRequest,
+            request: TransportRequest,
         ) -> Result<TransportResponse, QQMusicError> {
             self.calls.fetch_add(1, Ordering::AcqRel);
+            self.operations.lock().await.push(request.operation);
+            if let Some(body) = request.body.as_ref() {
+                self.requests
+                    .lock()
+                    .await
+                    .push((request.operation, body.clone()));
+            }
             match self
                 .replies
                 .lock()
@@ -1851,6 +2362,12 @@ mod tests {
                 Arc::clone(&storage),
                 Arc::clone(&auth),
             ));
+            {
+                let mut references = service.track_references.lock().await;
+                references.remember("qqmusic:track:SANITIZED_TRACK_A".to_owned(), 1001);
+                references.remember("qqmusic:track:SANITIZED_TRACK_B".to_owned(), 1002);
+                references.remember("qqmusic:track:SANITIZED_TRACK_C".to_owned(), 1003);
+            }
             Self {
                 service,
                 auth,
@@ -1876,6 +2393,12 @@ mod tests {
                 Arc::clone(&self.storage),
                 Arc::clone(&auth),
             ));
+            {
+                let mut references = service.track_references.lock().await;
+                references.remember("qqmusic:track:SANITIZED_TRACK_A".to_owned(), 1001);
+                references.remember("qqmusic:track:SANITIZED_TRACK_B".to_owned(), 1002);
+                references.remember("qqmusic:track:SANITIZED_TRACK_C".to_owned(), 1003);
+            }
             Self {
                 service,
                 auth,
@@ -2428,5 +2951,466 @@ mod tests {
                 .expect("projection lookup")
                 .is_none());
         }
+    }
+
+    fn favorite_request(track: &str, favorite: bool, operation: &str) -> FavoriteMutationRequest {
+        FavoriteMutationRequest {
+            track_id: format!("qqmusic:track:{track}"),
+            favorite,
+            client_operation_id: operation.to_owned(),
+        }
+    }
+
+    fn favorite_success_body() -> TestReply {
+        body(include_str!(
+            "../../tests/fixtures/qqmusic/account/favorite-success.json"
+        ))
+    }
+
+    fn favorite_rejected_body() -> TestReply {
+        body(include_str!(
+            "../../tests/fixtures/qqmusic/account/favorite-rejected.json"
+        ))
+    }
+
+    #[tokio::test]
+    async fn favorite_success_and_rejection_update_only_confirmed_projection_state() {
+        let fixture = AccountServiceFixture::authenticated([
+            favorite_success_body(),
+            favorite_rejected_body(),
+        ])
+        .await;
+        let accepted = fixture
+            .service
+            .set_favorite(favorite_request(
+                "SANITIZED_TRACK_A",
+                true,
+                "favorite-op-0001",
+            ))
+            .await
+            .expect("accepted favorite");
+        assert_eq!(accepted.status, MutationStatus::Applied);
+        let projection_key = AccountCache::projection_key(&fixture.session.account_cache_scope);
+        let projection = fixture
+            .storage
+            .get_json::<AccountLibraryProjection>(&projection_key, true)
+            .expect("projection lookup")
+            .expect("projection after accepted favorite");
+        assert_eq!(projection.favorite_ids, ["qqmusic:track:SANITIZED_TRACK_A"]);
+
+        let rejected = fixture
+            .service
+            .set_favorite(favorite_request(
+                "SANITIZED_TRACK_A",
+                false,
+                "favorite-op-0002",
+            ))
+            .await
+            .expect("typed rejection");
+        assert_eq!(rejected.status, MutationStatus::Rejected);
+        let projection = fixture
+            .storage
+            .get_json::<AccountLibraryProjection>(&projection_key, true)
+            .expect("projection lookup")
+            .expect("projection remains");
+        assert_eq!(projection.favorite_ids, ["qqmusic:track:SANITIZED_TRACK_A"]);
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.write")
+                .await,
+            2
+        );
+        let request: Value = serde_json::from_slice(
+            &fixture
+                .transport
+                .request_body("account.favorite.write")
+                .await
+                .expect("captured favorite request"),
+        )
+        .expect("favorite request JSON");
+        assert_eq!(
+            request.pointer("/req/param/v_songInfo/0/songId"),
+            Some(&json!(1001))
+        );
+        assert_eq!(
+            request.pointer("/req/param/v_songInfo/0/songType"),
+            Some(&json!(13))
+        );
+    }
+
+    #[tokio::test]
+    async fn completed_favorite_operation_is_idempotent_and_rejects_conflicting_reuse() {
+        let fixture = AccountServiceFixture::authenticated([favorite_success_body()]).await;
+        let request = favorite_request("SANITIZED_TRACK_A", true, "favorite-idempotent-operation");
+        let first = fixture
+            .service
+            .set_favorite(request.clone())
+            .await
+            .expect("first favorite");
+        let second = fixture
+            .service
+            .set_favorite(request)
+            .await
+            .expect("cached favorite");
+        assert_eq!(first.status, second.status);
+        assert_eq!(first.favorite, second.favorite);
+        assert_eq!(fixture.transport.call_count(), 1);
+
+        assert!(matches!(
+            fixture
+                .service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    false,
+                    "favorite-idempotent-operation",
+                ))
+                .await,
+            Err(QQMusicError::InvalidRequest)
+        ));
+        assert_eq!(fixture.transport.call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn favorite_requires_a_native_numeric_track_reference_before_transport() {
+        let fixture = AccountServiceFixture::authenticated([favorite_success_body()]).await;
+        assert!(matches!(
+            fixture
+                .service
+                .set_favorite(favorite_request(
+                    "UNSEEN_TRACK",
+                    true,
+                    "favorite-unseen-operation",
+                ))
+                .await,
+            Err(QQMusicError::InvalidRequest)
+        ));
+        assert_eq!(fixture.transport.call_count(), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn favorite_timeout_reconciles_by_safe_read_without_retrying_the_write() {
+        let fixture = AccountServiceFixture::authenticated([
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            terminal_favorites_body(),
+        ])
+        .await;
+        let service = Arc::clone(&fixture.service);
+        let mutation = tokio::spawn(async move {
+            service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_C",
+                    true,
+                    "favorite-op-0003",
+                ))
+                .await
+        });
+        tokio::time::advance(std::time::Duration::from_millis(300)).await;
+        let result = mutation
+            .await
+            .expect("mutation joins")
+            .expect("mutation reconciles");
+
+        assert_eq!(result.status, MutationStatus::Reconciled);
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.write")
+                .await,
+            1
+        );
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.reconcile")
+                .await,
+            1
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn favorite_unknown_outcome_stops_after_three_read_checks() {
+        let fixture = AccountServiceFixture::authenticated([
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            TestReply::Error(QQMusicError::Offline),
+            TestReply::Error(QQMusicError::Timeout),
+            TestReply::Error(QQMusicError::Protocol),
+        ])
+        .await;
+        let service = Arc::clone(&fixture.service);
+        let mutation = tokio::spawn(async move {
+            service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    true,
+                    "favorite-op-unknown",
+                ))
+                .await
+        });
+        tokio::time::advance(std::time::Duration::from_millis(2_500)).await;
+        let result = mutation
+            .await
+            .expect("mutation joins")
+            .expect("typed unknown outcome");
+
+        assert_eq!(result.status, MutationStatus::OutcomeUnknown);
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.write")
+                .await,
+            1
+        );
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.reconcile")
+                .await,
+            3
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_favorite_for_one_track_is_rejected_before_transport() {
+        let fixture = AccountServiceFixture::authenticated([favorite_success_body()]).await;
+        let barrier = fixture
+            .service
+            .set_write_barrier(WriteBoundary::WriteClassified);
+        let service = Arc::clone(&fixture.service);
+        let first = tokio::spawn(async move {
+            service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    true,
+                    "favorite-op-0004",
+                ))
+                .await
+        });
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            barrier.entered.notified(),
+        )
+        .await
+        .expect("first write reaches barrier");
+
+        assert!(matches!(
+            fixture
+                .service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    false,
+                    "favorite-op-0005",
+                ))
+                .await,
+            Err(QQMusicError::MutationInProgress)
+        ));
+        assert_eq!(fixture.transport.call_count(), 1);
+        barrier.release.notify_one();
+        first
+            .await
+            .expect("first write joins")
+            .expect("first write succeeds");
+    }
+
+    #[tokio::test]
+    async fn auth_epoch_change_at_write_or_cache_boundaries_cancels_without_old_cache() {
+        for (index, boundary) in [
+            WriteBoundary::WriteClassified,
+            WriteBoundary::BeforeCacheCommit,
+            WriteBoundary::AfterCacheCommit,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let fixture = AccountServiceFixture::authenticated([favorite_success_body()]).await;
+            let barrier = fixture.service.set_write_barrier(boundary);
+            let service = Arc::clone(&fixture.service);
+            let mutation = tokio::spawn(async move {
+                service
+                    .set_favorite(favorite_request(
+                        "SANITIZED_TRACK_A",
+                        true,
+                        &format!("favorite-boundary-{index}"),
+                    ))
+                    .await
+            });
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                barrier.entered.notified(),
+            )
+            .await
+            .expect("write reaches boundary");
+            fixture.auth.logout().await.expect("logout");
+            barrier.release.notify_one();
+
+            assert!(matches!(
+                mutation.await.expect("mutation joins"),
+                Err(QQMusicError::Cancelled)
+            ));
+            assert!(fixture
+                .storage
+                .get_json::<AccountLibraryProjection>(
+                    &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                    true,
+                )
+                .expect("projection lookup")
+                .is_none());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn auth_epoch_change_during_reconciliation_cancels_before_projection_commit() {
+        let fixture = AccountServiceFixture::authenticated([
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            terminal_favorites_body(),
+        ])
+        .await;
+        let barrier = fixture
+            .service
+            .set_write_barrier(WriteBoundary::ReconciliationRead);
+        let service = Arc::clone(&fixture.service);
+        let mutation = tokio::spawn(async move {
+            service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_C",
+                    true,
+                    "favorite-reconcile-boundary",
+                ))
+                .await
+        });
+        tokio::time::advance(std::time::Duration::from_millis(300)).await;
+        barrier.entered.notified().await;
+        fixture.auth.logout().await.expect("logout");
+        barrier.release.notify_one();
+
+        assert!(matches!(
+            mutation.await.expect("mutation joins"),
+            Err(QQMusicError::Cancelled)
+        ));
+        assert!(fixture
+            .storage
+            .get_json::<AccountLibraryProjection>(
+                &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                true,
+            )
+            .expect("projection lookup")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn favorite_authentication_failure_transitions_to_reauthentication_required() {
+        let fixture = AccountServiceFixture::authenticated([TestReply::Error(
+            QQMusicError::AuthenticationExpired,
+        )])
+        .await;
+
+        assert!(matches!(
+            fixture
+                .service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    true,
+                    "favorite-auth-expired",
+                ))
+                .await,
+            Err(QQMusicError::AuthenticationExpired)
+        ));
+        assert!(matches!(
+            fixture.auth.snapshot().await.account,
+            AccountState::ReauthenticationRequired { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn favorite_cgi_authentication_code_transitions_to_reauthentication_required() {
+        let fixture = AccountServiceFixture::authenticated([body(
+            r#"{"code":0,"req":{"code":104401,"data":{}}}"#,
+        )])
+        .await;
+
+        assert!(matches!(
+            fixture
+                .service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    true,
+                    "favorite-cgi-auth-expired",
+                ))
+                .await,
+            Err(QQMusicError::AuthenticationExpired)
+        ));
+        assert!(matches!(
+            fixture.auth.snapshot().await.account,
+            AccountState::ReauthenticationRequired { .. }
+        ));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn favorite_reconciliation_cgi_authentication_code_requires_reauthentication() {
+        let fixture = AccountServiceFixture::authenticated([
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            body(r#"{"code":0,"req":{"code":104400,"data":{}}}"#),
+        ])
+        .await;
+        let service = Arc::clone(&fixture.service);
+        let mutation = tokio::spawn(async move {
+            service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    true,
+                    "favorite-reconcile-auth-expired",
+                ))
+                .await
+        });
+        tokio::time::advance(std::time::Duration::from_millis(300)).await;
+
+        assert!(matches!(
+            mutation.await.expect("mutation joins"),
+            Err(QQMusicError::AuthenticationExpired)
+        ));
+        assert!(matches!(
+            fixture.auth.snapshot().await.account,
+            AccountState::ReauthenticationRequired { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn favorite_operation_id_is_reusable_after_account_epoch_change() {
+        let fixture = AccountServiceFixture::authenticated([
+            favorite_success_body(),
+            favorite_success_body(),
+        ])
+        .await;
+        fixture
+            .service
+            .set_favorite(favorite_request(
+                "SANITIZED_TRACK_A",
+                true,
+                "favorite-shared-operation",
+            ))
+            .await
+            .expect("first epoch write");
+        fixture
+            .auth
+            .complete_confirmation(synthetic_session('b'))
+            .await
+            .expect("new epoch");
+        fixture
+            .service
+            .set_favorite(favorite_request(
+                "SANITIZED_TRACK_A",
+                false,
+                "favorite-shared-operation",
+            ))
+            .await
+            .expect("second epoch write");
+
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.write")
+                .await,
+            2
+        );
     }
 }

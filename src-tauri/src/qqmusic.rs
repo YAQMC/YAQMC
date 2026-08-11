@@ -37,8 +37,8 @@ mod redaction;
 mod transport;
 
 use account::{
-    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Page, ProviderErrorCode,
-    QQMusicAccountService, RemotePlayHistoryItem,
+    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, FavoriteMutationRequest,
+    FavoriteMutationResult, Page, ProviderErrorCode, QQMusicAccountService, RemotePlayHistoryItem,
 };
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
@@ -220,6 +220,8 @@ pub enum QQMusicError {
     OutcomeUnknown,
     #[error("the QQ Music operation was cancelled")]
     Cancelled,
+    #[error("another mutation for this QQ Music entity is already running")]
+    MutationInProgress,
     #[error("the account is not entitled to this media")]
     EntitlementUnavailable,
     #[error("local provider storage failed")]
@@ -240,6 +242,7 @@ impl QQMusicError {
             Self::AuthorizationRejected => ProviderErrorCode::AuthorizationRejected,
             Self::OutcomeUnknown => ProviderErrorCode::ProviderFailure,
             Self::Cancelled => ProviderErrorCode::Cancelled,
+            Self::MutationInProgress => ProviderErrorCode::MutationInProgress,
             Self::EntitlementUnavailable => ProviderErrorCode::EntitlementUnavailable,
             Self::Storage => ProviderErrorCode::StorageFailure,
         }
@@ -422,7 +425,9 @@ impl QQMusicService {
         cursor: Option<String>,
         limit: u32,
     ) -> Result<Page<Song>, QQMusicError> {
-        self.account.favorite_songs(cursor, limit).await
+        let page = self.account.favorite_songs(cursor, limit).await?;
+        self.account.remember_songs(&page.items).await;
+        Ok(page)
     }
 
     pub async fn account_playlists(
@@ -439,9 +444,12 @@ impl QQMusicService {
         cursor: Option<String>,
         limit: u32,
     ) -> Result<AccountPlaylistDetail, QQMusicError> {
-        self.account
+        let detail = self
+            .account
             .playlist_tracks(playlist_id, cursor, limit)
-            .await
+            .await?;
+        self.account.remember_songs(&detail.tracks.items).await;
+        Ok(detail)
     }
 
     pub async fn account_recently_played(
@@ -449,7 +457,18 @@ impl QQMusicService {
         cursor: Option<String>,
         limit: u32,
     ) -> Result<Page<RemotePlayHistoryItem>, QQMusicError> {
-        self.account.recently_played(cursor, limit).await
+        let page = self.account.recently_played(cursor, limit).await?;
+        self.account
+            .remember_songs(page.items.iter().map(|item| &item.song))
+            .await;
+        Ok(page)
+    }
+
+    pub async fn set_favorite(
+        &self,
+        request: FavoriteMutationRequest,
+    ) -> Result<FavoriteMutationResult, QQMusicError> {
+        self.account.set_favorite(request).await
     }
 
     pub async fn start_qr_login(&self) -> Result<AccountSnapshot, QQMusicError> {
@@ -515,9 +534,23 @@ impl QQMusicService {
         let key = format!("qqmusic:search:{}:{page}:{limit}", stable_component(&query));
         if let Some(result) = self
             .storage
-            .get_json(&key, false)
+            .get_json::<SearchResult>(&key, false)
             .map_err(|_| QQMusicError::Storage)?
         {
+            self.account
+                .remember_songs(
+                    result
+                        .songs
+                        .iter()
+                        .chain(result.albums.iter().flat_map(|album| album.tracks.iter()))
+                        .chain(
+                            result
+                                .playlists
+                                .iter()
+                                .flat_map(|playlist| playlist.tracks.iter()),
+                        ),
+                )
+                .await;
             return Ok(result);
         }
 
@@ -529,13 +562,44 @@ impl QQMusicService {
                 self.storage
                     .put_json(&key, "metadata", &result, METADATA_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
+                self.account
+                    .remember_songs(
+                        result
+                            .songs
+                            .iter()
+                            .chain(result.albums.iter().flat_map(|album| album.tracks.iter()))
+                            .chain(
+                                result
+                                    .playlists
+                                    .iter()
+                                    .flat_map(|playlist| playlist.tracks.iter()),
+                            ),
+                    )
+                    .await;
                 Ok(result)
             }
-            Err(error) => self
-                .storage
-                .get_json(&key, true)
-                .map_err(|_| QQMusicError::Storage)?
-                .ok_or(error),
+            Err(error) => {
+                let result = self
+                    .storage
+                    .get_json::<SearchResult>(&key, true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .ok_or(error)?;
+                self.account
+                    .remember_songs(
+                        result
+                            .songs
+                            .iter()
+                            .chain(result.albums.iter().flat_map(|album| album.tracks.iter()))
+                            .chain(
+                                result
+                                    .playlists
+                                    .iter()
+                                    .flat_map(|playlist| playlist.tracks.iter()),
+                            ),
+                    )
+                    .await;
+                Ok(result)
+            }
         }
     }
 
@@ -544,9 +608,10 @@ impl QQMusicService {
         let key = format!("qqmusic:album:{mid}");
         if let Some(album) = self
             .storage
-            .get_json(&key, false)
+            .get_json::<Album>(&key, false)
             .map_err(|_| QQMusicError::Storage)?
         {
+            self.account.remember_songs(&album.tracks).await;
             return Ok(album);
         }
         match self.client.album(mid).await {
@@ -554,13 +619,18 @@ impl QQMusicService {
                 self.storage
                     .put_json(&key, "metadata", &album, ENTITY_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
+                self.account.remember_songs(&album.tracks).await;
                 Ok(album)
             }
-            Err(error) => self
-                .storage
-                .get_json(&key, true)
-                .map_err(|_| QQMusicError::Storage)?
-                .ok_or(error),
+            Err(error) => {
+                let album = self
+                    .storage
+                    .get_json::<Album>(&key, true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .ok_or(error)?;
+                self.account.remember_songs(&album.tracks).await;
+                Ok(album)
+            }
         }
     }
 
@@ -568,9 +638,10 @@ impl QQMusicService {
         let key = id.clone();
         if let Some(playlist) = self
             .storage
-            .get_json(&key, false)
+            .get_json::<Playlist>(&key, false)
             .map_err(|_| QQMusicError::Storage)?
         {
+            self.account.remember_songs(&playlist.tracks).await;
             return Ok(playlist);
         }
         let result = if let Some(top_id) = id.strip_prefix("qqmusic:toplist:") {
@@ -587,13 +658,18 @@ impl QQMusicService {
                 self.storage
                     .put_json(&key, "metadata", &playlist, METADATA_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
+                self.account.remember_songs(&playlist.tracks).await;
                 Ok(playlist)
             }
-            Err(error) => self
-                .storage
-                .get_json(&key, true)
-                .map_err(|_| QQMusicError::Storage)?
-                .ok_or(error),
+            Err(error) => {
+                let playlist = self
+                    .storage
+                    .get_json::<Playlist>(&key, true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .ok_or(error)?;
+                self.account.remember_songs(&playlist.tracks).await;
+                Ok(playlist)
+            }
         }
     }
 
@@ -603,6 +679,7 @@ impl QQMusicService {
             .get_json("qqmusic:home", false)
             .map_err(|_| QQMusicError::Storage)?
         {
+            self.remember_home_songs(&feed).await;
             return Ok(feed);
         }
         match self.build_home().await {
@@ -610,14 +687,48 @@ impl QQMusicService {
                 self.storage
                     .put_json("qqmusic:home", "metadata", &feed, METADATA_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
+                self.remember_home_songs(&feed).await;
                 Ok(feed)
             }
-            Err(error) => self
-                .storage
-                .get_json("qqmusic:home", true)
-                .map_err(|_| QQMusicError::Storage)?
-                .ok_or(error),
+            Err(error) => {
+                let feed = self
+                    .storage
+                    .get_json("qqmusic:home", true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .ok_or(error)?;
+                self.remember_home_songs(&feed).await;
+                Ok(feed)
+            }
         }
+    }
+
+    async fn remember_home_songs(&self, feed: &HomeFeed) {
+        self.account
+            .remember_songs(
+                feed.featured
+                    .album
+                    .tracks
+                    .iter()
+                    .chain(
+                        feed.recently_played
+                            .iter()
+                            .flat_map(|collection| match collection {
+                                MediaCollection::Album(album) => album.tracks.iter(),
+                                MediaCollection::Playlist(playlist) => playlist.tracks.iter(),
+                            }),
+                    )
+                    .chain(
+                        feed.made_for_you
+                            .iter()
+                            .flat_map(|playlist| playlist.tracks.iter()),
+                    )
+                    .chain(
+                        feed.new_releases
+                            .iter()
+                            .flat_map(|album| album.tracks.iter()),
+                    ),
+            )
+            .await;
     }
 
     async fn build_home(&self) -> Result<HomeFeed, QQMusicError> {
@@ -826,6 +937,7 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
         | QQMusicError::Protocol
         | QQMusicError::OutcomeUnknown
         | QQMusicError::Cancelled
+        | QQMusicError::MutationInProgress
         | QQMusicError::Storage => PlaybackSourceError::UrlUnavailable,
     }
 }

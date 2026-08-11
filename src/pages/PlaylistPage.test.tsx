@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import type { AccountPlaylistSummary } from '../domain/music';
 import i18n from '../i18n';
@@ -30,6 +31,7 @@ function accountSummary(): AccountPlaylistSummary {
 describe('PlaylistPage account projection', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('en-US');
+    resetAccountRuntimeForTest();
     usePlayerStore.setState(initialPlayerState);
   });
 
@@ -67,5 +69,17 @@ describe('PlaylistPage account projection', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Loading more tracks…' })).toBeDisabled();
+  });
+
+  it('renders playlist rows from the canonical favorite projection', () => {
+    const playlist = playlists[0]!;
+    const track = playlist.tracks[0]!;
+    useAccountStore.setState({ favoriteByTrackId: { [track.id]: true } });
+
+    render(<PlaylistPage playlist={playlist} />);
+
+    expect(
+      screen.getByRole('button', { name: `Remove ${track.title} from Favorites` }),
+    ).toBeVisible();
   });
 });

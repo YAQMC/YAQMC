@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Song } from '../domain/music';
+import type { AccountSnapshot, FavoriteMutationRequest, Song } from '../domain/music';
+import type { AccountMusicProvider } from '../providers/music-provider';
+import { resetAccountRuntimeForTest, useAccountStore } from './account-runtime';
 import { setPlayerCommandAdapter } from './player-command-adapter';
 import {
   initialPlayerState,
@@ -42,12 +44,57 @@ function snapshot(
 describe('player store', () => {
   beforeEach(() => {
     setPlayerCommandAdapter(null);
+    resetAccountRuntimeForTest();
     usePlayerStore.setState(initialPlayerState);
   });
 
   afterEach(() => {
     setPlayerCommandAdapter(null);
+    resetAccountRuntimeForTest();
     vi.restoreAllMocks();
+  });
+
+  it('does not mutate the player queue or active track during a favorite mutation', async () => {
+    const song = track('one');
+    const queue = [song];
+    const snapshot: AccountSnapshot = {
+      state: 'authenticated',
+      profile: { avatarUrl: null, nickname: 'Listener', maskedIdentity: '10******01' },
+      entitlement: {
+        tier: 'free',
+        membership: 'active',
+        expiresAtMs: null,
+        permittedQualities: ['standard'],
+        observedMaximumQuality: 'standard',
+        restrictions: [],
+      },
+      revision: 7,
+      capabilities: {
+        qrLogin: true,
+        favoriteRead: true,
+        favoriteWrite: true,
+        playlistRead: true,
+        playlistWrite: false,
+        recentHistoryRead: true,
+      },
+    };
+    const provider = {
+      setFavorite: vi.fn(async (request: FavoriteMutationRequest) => ({
+        ...request,
+        status: 'applied' as const,
+        errorCode: null,
+        authRevision: 7,
+      })),
+    } as unknown as AccountMusicProvider;
+    usePlayerStore.setState({ queue, currentIndex: 0 });
+    useAccountStore.setState({ snapshot, favoriteByTrackId: { [song.id]: false } });
+
+    await useAccountStore.getState().setFavorite(provider, song, true);
+
+    expect(usePlayerStore.getState().queue).toBe(queue);
+    expect(usePlayerStore.getState().queue[0]).toBe(song);
+    expect(song.isFavorite).toBe(false);
+    expect(useAccountStore.getState().favoriteByTrackId[song.id]).toBe(true);
   });
 
   it('starts a requested track in a new queue', () => {

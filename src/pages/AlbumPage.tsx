@@ -1,4 +1,4 @@
-import { Heart, MoreHorizontal, Play, Shuffle } from 'lucide-react';
+import { MoreHorizontal, Play, Shuffle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { usePlayerStore } from '../application/player-store';
 import type { Album } from '../domain/music';
@@ -61,9 +61,6 @@ export function AlbumPage({ album }: AlbumPageProps) {
               <Shuffle size={16} />
               {t('shuffle')}
             </button>
-            <IconButton label={t('favorite')} className="detail-hero__icon-action">
-              <Heart size={18} />
-            </IconButton>
             <IconButton label={t('more')} className="detail-hero__icon-action">
               <MoreHorizontal size={19} />
             </IconButton>

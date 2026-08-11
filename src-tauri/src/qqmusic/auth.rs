@@ -703,6 +703,38 @@ impl QQMusicAuthService {
         Ok(value)
     }
 
+    pub(crate) async fn require_reauthentication_if_current(
+        &self,
+        epoch: &AccountEpoch,
+    ) -> Result<(), QQMusicError> {
+        let _lifecycle = self.lifecycle.lock().await;
+        self.ensure_current(epoch).await?;
+        let (profile, entitlement) = match self.snapshot.read().await.account.clone() {
+            AccountState::Authenticated {
+                profile,
+                entitlement,
+            } => (Some(profile), Some(entitlement)),
+            _ => return Err(QQMusicError::Cancelled),
+        };
+        let (generation, _) = self.begin_generation().await;
+        let _ = self.credentials.delete(ACTIVE_SESSION).await;
+        let _ = self.storage.delete_provider_cache_kind(ACCOUNT_CACHE_KIND);
+        *self.active_session.write().await = None;
+        if !self
+            .publish_if_current(
+                generation,
+                AccountState::ReauthenticationRequired {
+                    profile,
+                    entitlement,
+                },
+            )
+            .await
+        {
+            return Err(QQMusicError::Cancelled);
+        }
+        Ok(())
+    }
+
     pub(crate) async fn start(self: &Arc<Self>) -> Result<AccountSnapshot, QQMusicError> {
         let (generation, cancellation) = self.begin_generation().await;
         let attempt_id = random_opaque_id();

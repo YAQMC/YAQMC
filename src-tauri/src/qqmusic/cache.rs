@@ -6,6 +6,8 @@ use std::collections::{HashMap, VecDeque};
 pub(crate) const ACCOUNT_CACHE_KIND: &str = "qqmusic-account";
 const CURSOR_PREFIX: &str = "cursor:";
 const MAX_CURSOR_ENTRIES: usize = 512;
+const MAX_COMPLETED_MUTATIONS: usize = 256;
+const MAX_TRACK_REFERENCES: usize = 4_096;
 
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub(crate) struct OpaqueAccountScope(String);
@@ -141,6 +143,92 @@ impl AccountCache {
     }
 }
 
+pub(crate) struct CompletedResultCache<T> {
+    epoch: Option<AccountEpoch>,
+    entries: HashMap<String, T>,
+    order: VecDeque<String>,
+}
+
+impl<T> Default for CompletedResultCache<T> {
+    fn default() -> Self {
+        Self {
+            epoch: None,
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+}
+
+impl<T: Clone> CompletedResultCache<T> {
+    pub(crate) fn get(&mut self, epoch: &AccountEpoch, operation_id: &str) -> Option<T> {
+        self.ensure_epoch(epoch);
+        self.entries.get(operation_id).cloned()
+    }
+
+    pub(crate) fn insert_if_current(
+        &mut self,
+        epoch: &AccountEpoch,
+        operation_id: String,
+        result: T,
+    ) {
+        self.ensure_epoch(epoch);
+        if !self.entries.contains_key(&operation_id) {
+            self.order.push_back(operation_id.clone());
+        }
+        self.entries.insert(operation_id, result);
+        while self.entries.len() > MAX_COMPLETED_MUTATIONS {
+            if let Some(expired) = self.order.pop_front() {
+                self.entries.remove(&expired);
+            }
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.epoch = None;
+        self.entries.clear();
+        self.order.clear();
+    }
+
+    fn ensure_epoch(&mut self, epoch: &AccountEpoch) {
+        if self.epoch.as_ref() != Some(epoch) {
+            self.clear();
+            self.epoch = Some(epoch.clone());
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct ProviderTrackRegistry {
+    numeric_ids: HashMap<String, u64>,
+    order: VecDeque<String>,
+}
+
+impl ProviderTrackRegistry {
+    pub(crate) fn remember(&mut self, stable_id: String, numeric_id: u64) {
+        if numeric_id == 0 {
+            return;
+        }
+        if !self.numeric_ids.contains_key(&stable_id) {
+            self.order.push_back(stable_id.clone());
+        }
+        self.numeric_ids.insert(stable_id, numeric_id);
+        while self.numeric_ids.len() > MAX_TRACK_REFERENCES {
+            if let Some(expired) = self.order.pop_front() {
+                self.numeric_ids.remove(&expired);
+            }
+        }
+    }
+
+    pub(crate) fn numeric_id(&self, stable_id: &str) -> Option<u64> {
+        self.numeric_ids.get(stable_id).copied()
+    }
+}
+
 #[derive(Clone)]
 struct CursorEntry {
     epoch: AccountEpoch,
@@ -268,6 +356,38 @@ mod tests {
         assert!(key.starts_with(&format!("qqmusic:account:{}:favorites:", scope.as_str())));
         assert!(!key.contains("cursor:opaque"));
         assert_eq!(key.rsplit(':').next().expect("digest").len(), 64);
+    }
+
+    #[test]
+    fn completed_results_are_bounded_and_scoped_to_one_account_epoch() {
+        let first_epoch = AccountEpoch {
+            generation: 1,
+            scope: scope('a'),
+        };
+        let second_epoch = AccountEpoch {
+            generation: 2,
+            scope: scope('b'),
+        };
+        let mut cache = CompletedResultCache::default();
+        for index in 0..300 {
+            cache.insert_if_current(&first_epoch, format!("operation-{index:03}"), index);
+        }
+        assert_eq!(cache.len(), MAX_COMPLETED_MUTATIONS);
+        assert!(cache.get(&first_epoch, "operation-000").is_none());
+        assert_eq!(cache.get(&first_epoch, "operation-299"), Some(299));
+
+        assert!(cache.get(&second_epoch, "operation-299").is_none());
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn provider_track_references_are_bounded_and_keep_numeric_wire_ids() {
+        let mut registry = ProviderTrackRegistry::default();
+        for index in 1..=4_100_u64 {
+            registry.remember(format!("qqmusic:track:MID-{index}"), index);
+        }
+        assert_eq!(registry.numeric_id("qqmusic:track:MID-1"), None);
+        assert_eq!(registry.numeric_id("qqmusic:track:MID-4100"), Some(4_100));
     }
 
     #[test]
