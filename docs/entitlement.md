@@ -5,6 +5,9 @@ The QQ Music adapter normalizes account data to provider-independent `AudioQuali
 `AudioQualityPreference`, and `PlaybackSourceSelection` contracts. Components never infer rights from membership
 marketing strings or from a provider quality label.
 
+The deterministic entitlement and playback-epoch test matrix is complete. The QQ account endpoint and authenticated
+source selection remain `implemented; live account acceptance pending` until the explicit QR gate is performed.
+
 Authenticated validation reads the provider's direct `VipLogin.VipLoginInter/vip_login_base` response through the
 same allowlisted, cancellable transport used by the account runtime. The normalizer consumes only numeric membership
 flags and expiry time. If this medium-confidence endpoint is unavailable or changes shape, login remains usable but

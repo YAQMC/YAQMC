@@ -2,19 +2,15 @@
 
 ## Current product state
 
-QQ Music runs in guest mode. Account capability is reported as unavailable because no approved QQ Music
-third-party authorization flow was identified for this desktop client. The application does not display a password
-form, intercept first-party login, import browser cookies, or persist an unofficial credential.
+Guest mode remains the startup fallback. QQ QR login and the authenticated account runtime are implemented from the
+compatibility behavior recorded in [the provider ledger](qqmusic-provider.md); live account acceptance is pending.
+This is not an official third-party OAuth SDK contract. The application never displays a QQ password form, imports
+browser cookies, or asks the user to paste session data.
 
-The normalized account state still supports:
-
-- `guest`
-- `authenticated` with a masked account label
-- `reauthentication-required`
-- `secure-store-unavailable`
-
-This keeps UI and provider boundaries ready for a legitimate browser/QR authorization callback without pretending
-one exists today.
+The normalized state machine includes guest, restoring, QR creation/waiting/confirmation, authenticated,
+cancelled/expired/rejected, network/protocol failure, reauthentication-required, and secure-store-unavailable. React
+receives only a data-URI QR image, opaque attempt/lease IDs, cadence/expiry, masked profile data, normalized
+entitlement, capabilities, and a revision number.
 
 ## Secure storage boundary
 
@@ -23,8 +19,9 @@ crate and the operating system's credential service under application service na
 Existing secrets under the legacy `dev.music-client.desktop` service name are migrated once on read.
 There is no plaintext file, SQLite, browser storage, environment-variable, or log fallback.
 
-Current secure-store accounts are separate:
+Secure-store account names are separate:
 
+- `qqmusic-session-staging` — transactional candidate slot
 - `qqmusic-session` — reserved serialized provider session
 - `local-api-bearer-token` — random 32-byte loopback API token
 
@@ -32,21 +29,34 @@ The local API configuration file contains only `enabled` and `port`. Builds pred
 `token` property; startup attempts a one-time move to the OS store and always removes the plaintext field. If the OS
 store is unavailable, listener startup fails closed and the secret is not written back to disk.
 
-## Future QQ authorization flow
+## QR ownership and session promotion
 
-A legitimate integration must satisfy all of the following before `account` capability becomes true:
+Only the `main` WebView has the `qqmusic-account` capability, and every Rust command independently checks the caller
+label. Desktop Lyrics and Lyrics Island cannot call account commands. The visible account dialog renews an opaque
+native owner lease; closing, navigating/reloading, hiding the owner, or missing the lease deadline cancels the
+challenge and poll loop. Polling is bounded by provider cadence and a five-minute attempt lifetime.
 
-1. use an approved QQ/Tencent authorization surface and callback owned by this application;
-2. validate state/nonce and exact redirect origin;
-3. exchange short-lived authorization material only in the native process;
-4. store the minimum refresh/session secret through `CredentialStore`;
-5. add session material only to allowlisted QQ Music requests;
-6. detect explicit expiry and provider authentication errors, then transition to
-   `reauthentication-required` without retry loops;
-7. make sign-out delete secure storage and invalidate in-memory session state;
-8. never expose cookies, refresh tokens, vkeys, or signed media URLs to React, the local API, telemetry, or logs.
+After confirmation, the native service follows a transactional sequence:
 
-Password capture and first-party cookie scraping are not acceptable substitutes.
+1. validate the candidate session;
+2. load the prior active record;
+3. save and read back the staging record;
+4. validate the staged record;
+5. save and read back the active record;
+6. delete staging and the prior account cache;
+7. publish the masked authenticated snapshot.
+
+A single lifecycle mutex serializes promotion, restore, and logout. Generation and opaque-scope checks occur around
+awaited storage/network boundaries. Failure before activation clears staging; failure after activation restores and
+reads back the prior active value. Logout cancels the generation, removes staging and active records, clears the
+account cache and playback epoch, then publishes guest state.
+
+## Native transport boundary
+
+Account traffic uses a dedicated direct client with OS/system proxies disabled, exact HTTPS host/path validation,
+explicit cancellation, and no automatic redirects. At most three reviewed redirect hops are followed; every hop is
+revalidated. Cross-origin secret headers are stripped, and authenticated body-preserving cross-origin redirects are
+rejected. Account writes are never automatically retried. Logs keep only redacted URL/header/body shapes.
 
 ## Threat model
 
@@ -58,3 +68,6 @@ The loopback bearer token prevents unauthenticated local web pages and ordinary 
 accident. The API also binds only `127.0.0.1`, does not enable CORS, caps bodies at 16 KiB, compares bearer tokens in
 constant time, and exposes no generic command/filesystem endpoint. This is defense in depth, not a sandbox against a
 fully compromised user session.
+
+Tracked documentation/fixtures are scanned on Windows and Linux before packaging. Deterministic tests are complete;
+no live QR, account profile, cookie, token, playlist name, or response body is committed as evidence.

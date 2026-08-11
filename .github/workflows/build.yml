@@ -20,8 +20,29 @@ permissions:
   contents: read
 
 jobs:
+  account-secret-scan:
+    name: Account secret scan (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan tracked account artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/check-secrets.sh --self-test && bash scripts/check-secrets.sh
+      - name: Scan tracked account artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1 -SelfTest
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qqmusic-auth-preflight.ps1 -SelfTest
+
   linux-appimage:
     name: Linux x86_64 AppImage
+    needs: account-secret-scan
     if: ${{ inputs.target == '' || inputs.target == 'all' || inputs.target == 'linux' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 60
@@ -75,6 +96,7 @@ jobs:
 
   windows-nsis:
     name: Windows x86_64 NSIS
+    needs: account-secret-scan
     if: ${{ inputs.target == '' || inputs.target == 'all' || inputs.target == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 60

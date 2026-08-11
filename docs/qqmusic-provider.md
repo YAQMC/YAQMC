@@ -7,13 +7,13 @@ claim that the endpoints below are a supported public SDK contract.
 
 Tencent's public [Open Platform](https://open.tencent.com/) did not expose a general QQ Music catalog/playback API
 for this desktop use case. Tencent Cloud's published music material is a separate commercial product rather than a
-drop-in authorization and playback contract for a third-party QQ Music client. No approved third-party account
-login flow was identified.
+drop-in authorization and playback contract for a third-party QQ Music client. YAQMC therefore treats QR login as
+an undocumented compatibility surface, not an approved third-party OAuth SDK contract.
 
 The implemented guest provider therefore uses the same public web compatibility surfaces currently reachable by
 QQ Music pages. They are undocumented/unstable from this application's perspective and may change without notice.
-Account password entry, cookie scraping, DRM bypass, entitlement bypass, and private first-party client secrets are
-out of scope.
+Account password entry, imported/browser cookie scraping, DRM bypass, entitlement bypass, and private first-party
+client secrets are out of scope. QR/account code is implemented, but live account acceptance remains pending.
 
 ## Current endpoint map
 
@@ -119,21 +119,25 @@ than invented timing.
 Normalized lyric cache keys include a parser revision (`v2`) so parser fixes invalidate malformed cached documents
 without clearing unrelated media.
 
-## Session foundation
+## Session and account boundary
 
-The domain supports `guest`, `authenticated`, `reauthentication-required`, and `secure-store-unavailable`. A future
-approved authorization callback can store a serialized session in the OS credential store, add the appropriate
-cookie header only in native HTTP, mask account labels, detect expiry, and delete the session on sign-out.
+The native QR lifecycle, secure-store promotion/restore/logout, favorites, owned playlists, conditional recent
+history, and account-aware entitlement are implemented. The provider adds session material only inside the native
+direct transport and returns masked profile/account projections. Capabilities are derived from the current account
+snapshot; a missing recent-history capability suppresses that request rather than fabricating an empty page.
 
-Today the provider advertises `account: false`; the Settings page explains guest mode and deliberately presents no
-password form. See [authentication](authentication.md).
+Account commands are limited to the `main` WebView by both Tauri ACL and a Rust caller-label guard. Each account
+operation captures the authentication generation plus random opaque cache scope. Logout or a replacement session
+cancels old I/O and prevents its cache/UI result from committing. See [authentication](authentication.md),
+[account library](account-library.md), and [entitlement](entitlement.md).
 
 ## Stability and verification
 
 Metadata responses are cached for 15 minutes (home/search) or 24 hours (entities), lyrics for 30 days, with stale
-metadata fallback during an outage. Live ignored tests verify search, album, toplist, lyrics, artwork, source
-resolution, download, decode, actual clock advance, pause, seek, and native output. Sanitized fixtures protect core
-normalization and entitlement rules from upstream availability.
+metadata fallback during an outage. Account pages use short session-scoped TTLs and never stale-fallback across
+authentication errors. Deterministic account/auth/mutation/entitlement tests use sanitized fixtures. Existing live
+ignored tests cover guest search, album, toplist, lyrics, artwork, source resolution, download, decode, actual clock
+advance, pause, seek, and native output; the owner-controlled live QR/account matrix has not yet been run.
 
 If an endpoint changes, update the boundary DTO/parser and its sanitized fixture; do not push raw compatibility
 fields into React.

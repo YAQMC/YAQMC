@@ -20,6 +20,7 @@ const SECRET_KEYS: &[&str] = &[
     "authorization",
     "cookie",
     "cookies",
+    "setcookie",
     "musickey",
     "qmkeyst",
     "qrsig",
@@ -201,5 +202,77 @@ mod tests {
             provider_specific_headers.is_empty(),
             "Task 1 records no provider-specific secret request headers"
         );
+    }
+
+    #[test]
+    fn every_account_secret_shape_is_redacted_without_hiding_public_metadata() {
+        let secrets = serde_json::json!({
+            "authorization": "Bearer SECRET",
+            "Cookie": "uin=SECRET",
+            "Set-Cookie": "qm_keyst=SECRET",
+            "qm_keyst": "SECRET",
+            "qrsig": "SECRET",
+            "ptqrtoken": "SECRET",
+            "access_token": "SECRET",
+            "refresh_token": "SECRET",
+            "refresh_key": "SECRET",
+            "musickey": "SECRET",
+            "openid": "SECRET",
+            "unionid": "SECRET",
+            "uin": "SECRET",
+            "musicid": "SECRET",
+            "str_musicid": "SECRET",
+            "callback_url": "https://y.qq.com/callback?code=SECRET",
+            "pollSecret": "SECRET",
+        });
+        let redacted = redact_json(&secrets);
+        for (key, value) in redacted.as_object().expect("redacted object") {
+            assert_eq!(value, REDACTED, "{key}");
+        }
+
+        let public = serde_json::json!({
+            "offset": 20,
+            "limit": 50,
+            "trackId": "qqmusic:track:SYNTHETIC_PUBLIC_ID",
+            "documentationField": "cookie",
+            "sentinel": "SANITIZED_ACCOUNT",
+            "avatarUrl": "https://qpic.y.qq.com/synthetic.png",
+        });
+        assert_eq!(redact_json(&public), public);
+    }
+
+    #[test]
+    fn signed_media_url_and_all_secret_headers_keep_no_original_value() {
+        let url = Url::parse(
+            "https://isure.stream.qqmusic.qq.com/M500synthetic.mp3?vkey=SECRET123&token=SECRET456",
+        )
+        .expect("signed media URL");
+        let redacted_url = redact_url(&url);
+        assert!(!redacted_url.contains("SECRET123"));
+        assert!(!redacted_url.contains("SECRET456"));
+        assert_eq!(redacted_url.matches("%5BREDACTED%5D").count(), 2);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, "cookie-secret".parse().expect("cookie"));
+        headers.insert(
+            header::SET_COOKIE,
+            "set-cookie-secret".parse().expect("set-cookie"),
+        );
+        headers.insert(
+            header::AUTHORIZATION,
+            "Bearer authorization-secret"
+                .parse()
+                .expect("authorization"),
+        );
+        headers.insert(
+            header::PROXY_AUTHORIZATION,
+            "Basic proxy-secret".parse().expect("proxy authorization"),
+        );
+        let redacted = redact_headers(&headers);
+        assert!(redacted.values().all(|value| value == REDACTED));
+        let rendered = format!("{redacted:?}");
+        for forbidden in ["cookie-secret", "authorization-secret", "proxy-secret"] {
+            assert!(!rendered.contains(forbidden));
+        }
     }
 }

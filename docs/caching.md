@@ -13,10 +13,20 @@ foreign keys are enabled at open. Current tables cover:
 - recent searches (bounded to 100)
 - playback history (bounded to 2,000)
 - one persisted queue/player snapshot
+- account pages and one complete account-library projection under an opaque per-session scope
 
 Provider cache entries are bounded to 5,000 rows. Home/search metadata uses a 15-minute TTL, album/playlist entities
-24 hours, and lyrics 30 days. During a provider outage, entity/home reads may return an expired coherent value as a
-stale fallback. Media URLs and secrets are never stored in SQLite.
+24 hours, and lyrics 30 days. Account favorites use a two-minute TTL; account playlists, playlist detail, and recent
+history use five minutes. During a provider outage, eligible reads may return an expired coherent value explicitly
+marked stale. Authentication expiry never falls back to stale account data. Media URLs and secrets are never stored
+in SQLite.
+
+Every authenticated session receives a cryptographically random opaque cache scope. Keys contain that scope plus
+hashed outward cursors, never UIN, raw provider cursors, or credentials. Provider cursors live only in a bounded
+in-memory registry tied to the current auth generation/resource. After restart, a cached nonterminal first page is
+refetched before a new outward cursor is issued; offline stale pages are terminal. Full refreshes accumulate pages
+in an epoch and atomically replace the complete favorites/playlist projection. Logout or account replacement deletes
+the entire `qqmusic-account` cache kind.
 
 ## File caches
 
@@ -42,14 +52,15 @@ aborted view.
 
 ## Playback trade-off
 
-The current media preparer completes the bounded disk download before decode. Advantages are deterministic seek,
-simple expiry handling, stable decoder input, and no unbounded memory buffer. Costs are startup latency, full file
-transfer for a short listen, and disk pressure.
+Range-capable sources now use a bounded sparse cache: playback can start after the first 512 KiB segment,
+decoder-requested seeks outrank three-segment read-ahead, and overlapping readers share segment work. Exact
+200/206/416 validation prevents corrupt sparse files. A completed sparse source is atomically promoted into the
+normal provider-aware media cache. Servers without reliable Range behavior retain the bounded full-download path.
+Signed URL expiry is refreshed once, and neither URL nor account scope becomes a stable filename.
 
-Progressive Range-backed playback is the next performance step. It must remain bounded, verify Range behavior,
-support random access for seeks, coordinate overlapping reads, and retain the one-time URL refresh rule. Until that
-exists, the UI's `loading` and `buffering` states represent source resolution and complete preparation rather than a
-claim of progressive startup.
+The trade-off is additional range coordination and host-dependent startup behavior in exchange for lower startup
+latency and avoiding a mandatory full transfer for short listens. Both paths retain per-file/total limits,
+cancellation, safe relative paths, and atomic completion.
 
 ## Operational controls
 

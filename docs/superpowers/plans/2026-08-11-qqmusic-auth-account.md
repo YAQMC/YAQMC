@@ -710,9 +710,9 @@ fn redaction_removes_credentials_and_signed_query_values() {
         "https://u.y.qq.com/cgi-bin/musicu.fcg?vkey=%5BREDACTED%5D&guid=%5BREDACTED%5D"
     );
     let value = serde_json::json!({
-        "cookie": "uin=10001; qm_keyst=SECRET",
+        "cookie": "[REDACTED]",
         "qm_keyst": "SECRET",
-        "uin": "10001",
+        "uin": "SANITIZED_ACCOUNT",
         "nickname": "Synthetic Listener",
         "nested": { "authorization": "Bearer SECRET", "count": 2 }
     });

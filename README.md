@@ -7,8 +7,9 @@ SMTC, tray and shortcuts are adapters over that service rather than separate pla
 YAQMC currently provides QQ Music guest-catalog search, albums, playlists/toplists, legitimate public streams or
 official previews, HTTP Range playback, a bounded media cache, queue persistence, QRC/LRC word-synchronized
 lyrics, Desktop Lyrics, Lyrics Island, English/Simplified Chinese UI, appearance personalization, output-device
-selection and an optional authenticated loopback API. A deterministic fake provider remains available for browser
-development and tests.
+selection and an optional authenticated loopback API. QR account login, favorites, owned playlists, recent history
+when advertised, and account-aware playback entitlement are implemented; live account acceptance is pending. A
+deterministic fake provider remains available for browser development and tests.
 
 YAQMC is not affiliated with Tencent or QQ Music. It does not bypass DRM, subscriptions or entitlement checks.
 
@@ -18,7 +19,8 @@ QQ Music interoperability research consulted `L-1124/QQMusicApi`, `wxuyu/QQMusic
 `RethinkQAQ/allmusic-qqmusicapi`, `tlyanyu/multiPlatformMusicApi`, and `wangwalk/qqm` at the commits and
 license-detection results recorded in [the QQ Music provider record](docs/qqmusic-provider.md). They were used as
 protocol-behavior references; YAQMC does not copy or vendor their implementations, and the projects do not endorse
-YAQMC. Account capability remains pending until the deterministic and explicit live acceptance gates pass.
+YAQMC. The account implementation remains marked `implemented; live account acceptance pending` until the
+deterministic preflight and explicit owner-controlled QR acceptance gate both pass.
 
 ## Platform status
 
@@ -74,8 +76,9 @@ npm run tauri -- build --bundles appimage
 npm run tauri -- build --bundles nsis
 ```
 
-`.github/workflows/build.yml` performs reproducible x86_64 AppImage and Windows NSIS builds. GitHub Actions artifacts
-are packaging evidence; real Linux runtime results must still be recorded separately.
+`.github/workflows/build.yml` runs the account-secret scanner on Linux and Windows before reproducible x86_64
+AppImage and Windows NSIS builds. GitHub Actions artifacts are packaging evidence; real Linux runtime results must
+still be recorded separately.
 
 ## Quality checks
 
@@ -106,7 +109,9 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
   remain controlled diagnostics rather than global guesses.
 - Secrets use the operating-system credential store. The loopback API is disabled by default, binds only to
   `127.0.0.1`, and requires a random bearer token for every `/v1` endpoint.
-- Account login and library mutation are intentionally out of scope until an approved authorization route exists.
+- QQ QR login and account-library operations are isolated behind a main-window-only Tauri capability plus a Rust
+  caller-label guard. The implementation is complete, but no live-account claim is made before the explicit QR
+  acceptance gate.
 
 ## Repository map
 
@@ -125,5 +130,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 Start with [architecture](docs/architecture.md), [streaming](docs/streaming.md),
 [platform integration](docs/platform-integration.md), [Linux runtime](docs/linux.md),
 [Linux graphics](docs/linux-graphics.md), [playback](docs/playback.md),
-[QQ Music provider](docs/qqmusic-provider.md), [lyrics surfaces](docs/lyrics-surfaces.md), and
-[local API](docs/local-api.md). The original long-form product brief remains in `GPT-Read-me.md`.
+[QQ Music provider](docs/qqmusic-provider.md), [authentication](docs/authentication.md),
+[account library](docs/account-library.md), [entitlement](docs/entitlement.md),
+[lyrics surfaces](docs/lyrics-surfaces.md), and [local API](docs/local-api.md). The original long-form product brief
+remains in `GPT-Read-me.md`.
