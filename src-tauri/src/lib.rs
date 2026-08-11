@@ -27,6 +27,32 @@ use storage::StorageService;
 use system_media::SystemMediaIntegration;
 use tauri::{Emitter, Manager};
 
+#[derive(Clone, Copy)]
+enum MainOwnerLifecycleEvent {
+    CloseRequested,
+    Destroyed,
+    PageLoadStarted,
+    PageLoadFinished,
+}
+
+fn owner_loss_reason(event: MainOwnerLifecycleEvent) -> Option<&'static str> {
+    match event {
+        MainOwnerLifecycleEvent::CloseRequested => Some("main-window-close-requested"),
+        MainOwnerLifecycleEvent::Destroyed => Some("main-window-destroyed"),
+        MainOwnerLifecycleEvent::PageLoadStarted => Some("main-webview-page-load-started"),
+        MainOwnerLifecycleEvent::PageLoadFinished => None,
+    }
+}
+
+fn cancel_login_owner(app: &tauri::AppHandle, event: MainOwnerLifecycleEvent) {
+    let Some(reason) = owner_loss_reason(event) else {
+        return;
+    };
+    if let Some(provider) = app.try_state::<Arc<QQMusicService>>() {
+        provider.cancel_login_owner(reason);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let process_started = std::time::Instant::now();
@@ -42,21 +68,45 @@ pub fn run() {
     let builder = builder.plugin(desktop_integration::global_shortcut_plugin());
     let app = builder
         .plugin(tauri_plugin_dialog::init())
+        .on_page_load(|webview, payload| {
+            if webview.label() != "main" {
+                return;
+            }
+            let event = match payload.event() {
+                tauri::webview::PageLoadEvent::Started => {
+                    MainOwnerLifecycleEvent::PageLoadStarted
+                }
+                tauri::webview::PageLoadEvent::Finished => {
+                    MainOwnerLifecycleEvent::PageLoadFinished
+                }
+            };
+            cancel_login_owner(webview.app_handle(), event);
+        })
         .on_window_event(|window, event| {
             if window.label() != "main" {
                 return;
             }
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let app = window.app_handle();
-                let should_hide = app
-                    .try_state::<Arc<StorageService>>()
-                    .is_none_or(|storage| app_preferences::close_hides_to_tray(&storage));
-                if should_hide {
-                    api.prevent_close();
-                    if let Err(error) = window.hide() {
-                        tracing::warn!(target: "tray", error = %error, "main window could not hide to tray");
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    let app = window.app_handle();
+                    cancel_login_owner(app, MainOwnerLifecycleEvent::CloseRequested);
+                    let should_hide = app
+                        .try_state::<Arc<StorageService>>()
+                        .is_none_or(|storage| app_preferences::close_hides_to_tray(&storage));
+                    if should_hide {
+                        api.prevent_close();
+                        if let Err(error) = window.hide() {
+                            tracing::warn!(target: "tray", error = %error, "main window could not hide to tray");
+                        }
                     }
                 }
+                tauri::WindowEvent::Destroyed => {
+                    cancel_login_owner(
+                        window.app_handle(),
+                        MainOwnerLifecycleEvent::Destroyed,
+                    );
+                }
+                _ => {}
             }
         })
         .setup(move |app| {
@@ -208,7 +258,11 @@ pub fn run() {
             app.manage(system_media);
             app.manage(desktop_integration);
             app.manage(storage);
-            app.manage(qq_music);
+            app.manage(Arc::clone(&qq_music));
+            let account_restore = Arc::clone(&qq_music);
+            tauri::async_runtime::spawn(async move {
+                account_restore.restore_session().await;
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -227,6 +281,11 @@ pub fn run() {
             commands::qqmusic_lyrics,
             commands::qqmusic_cache_artwork,
             commands::qqmusic_set_preferred_quality,
+            commands::qqmusic_account_snapshot,
+            commands::qqmusic_auth_start,
+            commands::qqmusic_auth_heartbeat,
+            commands::qqmusic_auth_cancel,
+            commands::qqmusic_auth_refresh,
             commands::qqmusic_sign_out,
             commands::qqmusic_cache_stats,
             commands::qqmusic_clear_cache,
@@ -286,4 +345,21 @@ pub fn run() {
             });
         }
     });
+}
+
+#[cfg(test)]
+mod account_owner_lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn close_destroy_and_navigation_start_are_owner_loss_events() {
+        for event in [
+            MainOwnerLifecycleEvent::CloseRequested,
+            MainOwnerLifecycleEvent::Destroyed,
+            MainOwnerLifecycleEvent::PageLoadStarted,
+        ] {
+            assert!(owner_loss_reason(event).is_some());
+        }
+        assert!(owner_loss_reason(MainOwnerLifecycleEvent::PageLoadFinished).is_none());
+    }
 }

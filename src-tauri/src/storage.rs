@@ -4,6 +4,8 @@ use reqwest::{header::HeaderMap, Client, StatusCode};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[cfg(test)]
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -70,6 +72,10 @@ pub struct StorageService {
     connection: Mutex<Connection>,
     cache_root: PathBuf,
     download_guard: Semaphore,
+    #[cfg(test)]
+    _temporary_root: Option<tempfile::TempDir>,
+    #[cfg(test)]
+    fail_provider_cache_delete: AtomicBool,
 }
 
 impl StorageService {
@@ -90,7 +96,20 @@ impl StorageService {
             connection: Mutex::new(connection),
             cache_root,
             download_guard: Semaphore::new(4),
+            #[cfg(test)]
+            _temporary_root: None,
+            #[cfg(test)]
+            fail_provider_cache_delete: AtomicBool::new(false),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn temporary() -> Self {
+        let root = tempfile::tempdir().expect("temporary storage root");
+        let mut storage = Self::open(root.path().join("data"), root.path().join("cache"))
+            .expect("temporary storage opens");
+        storage._temporary_root = Some(root);
+        storage
     }
 
     pub fn get_json<T: DeserializeOwned>(
@@ -158,6 +177,29 @@ impl StorageService {
             )
             .map_err(|_| StorageError::Database)?;
         Ok(())
+    }
+
+    pub fn delete_provider_cache_kind(&self, kind: &str) -> Result<u64, StorageError> {
+        #[cfg(test)]
+        if self
+            .fail_provider_cache_delete
+            .load(AtomicOrdering::Acquire)
+        {
+            return Err(StorageError::Database);
+        }
+        let deleted = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .execute("DELETE FROM provider_cache WHERE kind = ?1", params![kind])
+            .map_err(|_| StorageError::Database)?;
+        Ok(deleted as u64)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_provider_cache_delete_for_test(&self) {
+        self.fail_provider_cache_delete
+            .store(true, AtomicOrdering::Release);
     }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, StorageError> {
@@ -975,6 +1017,59 @@ mod tests {
             Some("high".to_owned())
         );
         assert_eq!(storage.stats().expect("stats").metadata_entries, 0);
+    }
+
+    #[test]
+    fn account_cache_invalidation_preserves_guest_cache_settings_and_history() {
+        let (_root, storage) = storage();
+        storage
+            .put_json("qqmusic:home", "metadata", &vec!["guest"], 60_000)
+            .expect("guest cache write");
+        storage
+            .put_json(
+                "qqmusic:account:opaque:favorites",
+                "qqmusic-account",
+                &vec!["private"],
+                60_000,
+            )
+            .expect("account cache write");
+        storage
+            .set_setting("preferred-quality", "high")
+            .expect("setting write");
+        storage
+            .record_playback("qqmusic", "TRACK")
+            .expect("history write");
+
+        assert_eq!(
+            storage
+                .delete_provider_cache_kind("qqmusic-account")
+                .expect("account cache delete"),
+            1
+        );
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:home", true)
+            .expect("guest cache read")
+            .is_some());
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:opaque:favorites", true)
+            .expect("account cache read")
+            .is_none());
+        assert_eq!(
+            storage
+                .get_setting("preferred-quality")
+                .expect("setting read")
+                .as_deref(),
+            Some("high")
+        );
+        let history_entries: i64 = storage
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .query_row("SELECT COUNT(*) FROM playback_history", [], |row| {
+                row.get(0)
+            })
+            .expect("history count");
+        assert_eq!(history_entries, 1);
     }
 
     #[test]

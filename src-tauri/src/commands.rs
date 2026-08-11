@@ -14,8 +14,8 @@ use crate::{
         Song,
     },
     qqmusic::{
-        Album, HomeFeed, LibrarySnapshot, Playlist, PreferredQuality, ProviderResult,
-        ProviderStatus, QQMusicService, SearchResult,
+        account::AccountSnapshot, Album, HomeFeed, LibrarySnapshot, Playlist, PreferredQuality,
+        ProviderResult, ProviderStatus, QQMusicService, SearchResult,
     },
     storage::{CacheStats, StorageService},
     system_media::SystemMediaIntegration,
@@ -162,12 +162,98 @@ pub async fn qqmusic_set_preferred_quality(
 }
 
 #[tauri::command]
+pub async fn qqmusic_account_snapshot(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+) -> ProviderResult<AccountSnapshot> {
+    require_main_window(&window)?;
+    Ok(provider.account_snapshot().await)
+}
+
+#[tauri::command]
+pub async fn qqmusic_auth_start(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+) -> ProviderResult<AccountSnapshot> {
+    require_main_window(&window)?;
+    provider.start_qr_login().await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_auth_heartbeat(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    attempt_id: String,
+    owner_lease_id: String,
+) -> ProviderResult<AccountSnapshot> {
+    require_main_window(&window)?;
+    provider
+        .heartbeat_qr_login(attempt_id, owner_lease_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_auth_cancel(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    attempt_id: String,
+) -> ProviderResult<AccountSnapshot> {
+    require_main_window(&window)?;
+    provider
+        .cancel_qr_login(attempt_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_auth_refresh(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    attempt_id: Option<String>,
+) -> ProviderResult<AccountSnapshot> {
+    require_main_window(&window)?;
+    provider
+        .refresh_qr_login(attempt_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn qqmusic_sign_out(
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
-) -> ProviderResult<ProviderStatus> {
+) -> ProviderResult<AccountSnapshot> {
     require_main_window(&window)?;
     provider.sign_out().await.map_err(Into::into)
+}
+
+#[cfg(test)]
+mod account_command_tests {
+    use crate::command_guard::require_main_window_label;
+
+    const GUARDED_ACCOUNT_COMMANDS: [&str; 6] = [
+        "qqmusic_account_snapshot",
+        "qqmusic_auth_start",
+        "qqmusic_auth_heartbeat",
+        "qqmusic_auth_cancel",
+        "qqmusic_auth_refresh",
+        "qqmusic_sign_out",
+    ];
+
+    #[test]
+    fn every_account_lifecycle_command_uses_the_main_window_guard_contract() {
+        for command in GUARDED_ACCOUNT_COMMANDS {
+            assert!(
+                require_main_window_label("main").is_ok(),
+                "{command} must allow the main window"
+            );
+            let error = require_main_window_label("lyrics-desktop")
+                .expect_err("lyrics window must be denied");
+            assert_eq!(error.code, "caller-not-authorized", "{command}");
+            assert!(!error.retryable, "{command}");
+        }
+    }
 }
 
 #[tauri::command]

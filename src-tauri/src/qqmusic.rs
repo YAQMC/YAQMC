@@ -35,7 +35,7 @@ mod clock;
 mod redaction;
 mod transport;
 
-use account::ProviderErrorCode;
+use account::{AccountSnapshot, ProviderErrorCode};
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
 use transport::{QqTransport, ReqwestQqTransport};
@@ -325,6 +325,7 @@ impl QQMusicService {
             auth_protocol,
             SpawnBlockingCredentialStore::new(Arc::clone(&credentials)),
             Arc::clone(&clock),
+            Arc::clone(&storage),
         ));
         Ok(Self {
             client: QQMusicClient::new()?,
@@ -397,10 +398,48 @@ impl QQMusicService {
         Ok(self.status().await)
     }
 
-    pub async fn sign_out(&self) -> Result<ProviderStatus, QQMusicError> {
-        self.auth.logout().await?;
+    pub async fn account_snapshot(&self) -> AccountSnapshot {
+        self.auth.snapshot().await
+    }
+
+    pub async fn start_qr_login(&self) -> Result<AccountSnapshot, QQMusicError> {
+        self.auth.start().await
+    }
+
+    pub async fn heartbeat_qr_login(
+        &self,
+        attempt_id: String,
+        owner_lease_id: String,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        self.auth.heartbeat(&attempt_id, &owner_lease_id).await
+    }
+
+    pub async fn cancel_qr_login(
+        &self,
+        attempt_id: String,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        self.auth.cancel(&attempt_id).await
+    }
+
+    pub async fn refresh_qr_login(
+        &self,
+        attempt_id: Option<String>,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        self.auth.refresh(attempt_id.as_deref()).await
+    }
+
+    pub async fn restore_session(&self) {
+        let _ = self.auth.restore().await;
+    }
+
+    pub fn cancel_login_owner(&self, reason: &'static str) -> bool {
+        self.auth.cancel_login_owner(reason)
+    }
+
+    pub async fn sign_out(&self) -> Result<AccountSnapshot, QQMusicError> {
+        let result = self.auth.logout().await;
         self.session_invalid.store(false, Ordering::Release);
-        Ok(self.status().await)
+        result
     }
 
     pub async fn search(

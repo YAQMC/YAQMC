@@ -22,7 +22,9 @@ use super::{
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     QQMusicError,
 };
-use crate::{credentials::SpawnBlockingCredentialStore, player::AudioQuality};
+use crate::{
+    credentials::SpawnBlockingCredentialStore, player::AudioQuality, storage::StorageService,
+};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use reqwest::{
@@ -54,6 +56,7 @@ const DEFAULT_QR_LIFETIME_MS: u64 = 2 * 60 * 1_000;
 const OWNER_LEASE_MS: u64 = 7_000;
 const MAX_QR_BYTES: usize = 256 * 1_024;
 const SESSION_VERSION: u8 = 1;
+const ACCOUNT_CACHE_KIND: &str = "qqmusic-account";
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -535,6 +538,12 @@ struct ActiveAttempt {
     cancellation: CancellationToken,
 }
 
+struct OwnerSignal {
+    attempt_id: String,
+    generation: u64,
+    cancellation: CancellationToken,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LifecycleBoundary {
     CandidateValidated,
@@ -563,9 +572,11 @@ pub(crate) struct QQMusicAuthService {
     protocol: Arc<dyn QQMusicAuthProtocol>,
     credentials: SpawnBlockingCredentialStore,
     clock: Arc<dyn Clock>,
+    storage: Arc<StorageService>,
     snapshot: RwLock<AccountSnapshot>,
     active_session: RwLock<Option<SessionRecord>>,
     active_attempt: Mutex<Option<ActiveAttempt>>,
+    owner_signal: StdMutex<Option<OwnerSignal>>,
     lifecycle: Mutex<()>,
     generation: AtomicU64,
     generation_token: StdMutex<CancellationToken>,
@@ -578,11 +589,13 @@ impl QQMusicAuthService {
         protocol: Arc<dyn QQMusicAuthProtocol>,
         credentials: SpawnBlockingCredentialStore,
         clock: Arc<dyn Clock>,
+        storage: Arc<StorageService>,
     ) -> Self {
         Self {
             protocol,
             credentials,
             clock,
+            storage,
             snapshot: RwLock::new(AccountSnapshot {
                 account: AccountState::Guest {
                     profile: (),
@@ -593,6 +606,7 @@ impl QQMusicAuthService {
             }),
             active_session: RwLock::new(None),
             active_attempt: Mutex::new(None),
+            owner_signal: StdMutex::new(None),
             lifecycle: Mutex::new(()),
             generation: AtomicU64::new(0),
             generation_token: StdMutex::new(CancellationToken::new()),
@@ -618,9 +632,15 @@ impl QQMusicAuthService {
         let attempt_id = random_opaque_id();
         let owner_lease_id = random_opaque_id();
         let poll_after_ms = MIN_POLL_INTERVAL_MS;
+        self.install_owner_signal(OwnerSignal {
+            attempt_id: attempt_id.clone(),
+            generation,
+            cancellation: cancellation.clone(),
+        });
         {
             let mut active = self.active_attempt.lock().await;
             if !self.is_current(generation) || cancellation.is_cancelled() {
+                self.clear_owner_signal(&attempt_id);
                 return Err(QQMusicError::Cancelled);
             }
             if let Some(previous) = active.take() {
@@ -750,15 +770,16 @@ impl QQMusicAuthService {
 
     pub(crate) async fn cancel(&self, attempt_id: &str) -> Result<AccountSnapshot, QQMusicError> {
         let mut active = self.active_attempt.lock().await;
-        let Some(current) = active
-            .as_ref()
-            .filter(|current| current.attempt_id == attempt_id)
-        else {
+        let Some(current) = active.as_ref().filter(|current| {
+            current.attempt_id == attempt_id && self.is_current(current.generation)
+        }) else {
             return Err(QQMusicError::Cancelled);
         };
         let cancelled_attempt = current.attempt_id.clone();
         current.cancellation.cancel();
         active.take();
+        drop(active);
+        self.clear_owner_signal(&cancelled_attempt);
         let (generation, _) = self.begin_generation().await;
         self.publish_if_current(
             generation,
@@ -769,8 +790,52 @@ impl QQMusicAuthService {
             },
         )
         .await;
-        drop(active);
         Ok(self.snapshot().await)
+    }
+
+    pub(crate) fn has_active_owner(&self) -> bool {
+        let generation = self.generation.load(Ordering::Acquire);
+        self.owner_signal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .is_some_and(|owner| {
+                owner.generation == generation && !owner.cancellation.is_cancelled()
+            })
+    }
+
+    pub(crate) fn cancel_login_owner(self: &Arc<Self>, reason: &'static str) -> bool {
+        let (owner, generation) = {
+            let mut generation_token = self
+                .generation_token
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let current_generation = self.generation.load(Ordering::Acquire);
+            let mut owner_signal = self
+                .owner_signal
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let Some(owner) = owner_signal.take() else {
+                return false;
+            };
+            owner.cancellation.cancel();
+            if owner.generation != current_generation {
+                return false;
+            }
+            let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
+            generation_token.cancel();
+            *generation_token = CancellationToken::new();
+            (owner, generation)
+        };
+
+        tracing::info!(target: "qqmusic.auth", reason, "QR login owner was released");
+        let service = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            service
+                .cleanup_owner_loss(generation, owner.attempt_id)
+                .await;
+        });
+        true
     }
 
     pub(crate) async fn refresh(
@@ -810,6 +875,8 @@ impl QQMusicAuthService {
 
     pub(crate) async fn restore(&self) -> Result<AccountSnapshot, QQMusicError> {
         let (generation, cancellation) = self.capture_generation();
+        let _lifecycle = self.lifecycle.lock().await;
+        self.ensure_current(generation)?;
         if !self
             .publish_if_current(
                 generation,
@@ -822,12 +889,12 @@ impl QQMusicAuthService {
         {
             return Err(QQMusicError::Cancelled);
         }
-        let _lifecycle = self.lifecycle.lock().await;
-        self.ensure_current(generation)?;
         let raw = match self.credentials.load(ACTIVE_SESSION).await {
             Ok(raw) => raw,
             Err(_) => {
-                self.publish_secure_store_unavailable().await;
+                self.ensure_current(generation)?;
+                self.publish_secure_store_unavailable_if_current(generation)
+                    .await;
                 return Err(QQMusicError::Storage);
             }
         };
@@ -845,7 +912,7 @@ impl QQMusicAuthService {
                 *self.active_session.write().await = None;
                 self.publish_if_current(
                     generation,
-                    AccountState::SessionExpired {
+                    AccountState::ReauthenticationRequired {
                         profile: None,
                         entitlement: None,
                     },
@@ -854,22 +921,24 @@ impl QQMusicAuthService {
                 return Err(QQMusicError::AuthenticationExpired);
             }
         };
+        if session.expires_at_ms <= self.clock.now_ms() {
+            *self.active_session.write().await = None;
+            self.publish_if_current(
+                generation,
+                AccountState::ReauthenticationRequired {
+                    profile: None,
+                    entitlement: None,
+                },
+            )
+            .await;
+            return Err(QQMusicError::AuthenticationExpired);
+        }
         let validated = match self.protocol.validate_session(&session, cancellation).await {
             Ok(validated) => validated,
             Err(error) => {
                 self.ensure_current(generation)?;
                 *self.active_session.write().await = None;
-                let state = if matches!(error, QQMusicError::AuthenticationExpired) {
-                    AccountState::SessionExpired {
-                        profile: None,
-                        entitlement: None,
-                    }
-                } else {
-                    AccountState::ReauthenticationRequired {
-                        profile: None,
-                        entitlement: None,
-                    }
-                };
+                let state = restore_error_state(&error);
                 self.publish_if_current(generation, state).await;
                 return Err(error);
             }
@@ -893,19 +962,33 @@ impl QQMusicAuthService {
 
     pub(crate) async fn logout(&self) -> Result<AccountSnapshot, QQMusicError> {
         let (generation, _) = self.begin_generation().await;
-        if let Some(attempt) = self.active_attempt.lock().await.take() {
-            attempt.cancellation.cancel();
+        {
+            let mut active = self.active_attempt.lock().await;
+            if active
+                .as_ref()
+                .is_some_and(|attempt| attempt.generation < generation)
+            {
+                if let Some(attempt) = active.take() {
+                    attempt.cancellation.cancel();
+                }
+            }
         }
+        self.cancel_owner_signals_before(generation);
         let _lifecycle = self.lifecycle.lock().await;
         let staging = self.credentials.delete(STAGING_SESSION).await;
         let active = self.credentials.delete(ACTIVE_SESSION).await;
+        let account_cache = self.storage.delete_provider_cache_kind(ACCOUNT_CACHE_KIND);
         *self.active_session.write().await = None;
         if staging.is_err() || active.is_err() {
-            self.publish_secure_store_unavailable().await;
+            self.publish_secure_store_unavailable_if_current(generation)
+                .await;
             return Err(QQMusicError::Storage);
         }
         if !self.publish_if_current(generation, guest_state()).await {
             return Err(QQMusicError::Cancelled);
+        }
+        if account_cache.is_err() {
+            return Err(QQMusicError::Storage);
         }
         Ok(self.snapshot().await)
     }
@@ -984,10 +1067,11 @@ impl QQMusicAuthService {
                     if !self.take_attempt(generation, &attempt_id, false).await {
                         return;
                     }
-                    if let Err(error) = self
+                    let promotion = self
                         .promote_session(generation, cancellation.clone(), session)
-                        .await
-                    {
+                        .await;
+                    self.clear_owner_signal(&attempt_id);
+                    if let Err(error) = promotion {
                         if self.is_current(generation)
                             && self.snapshot().await.state_name() != "secure-store-unavailable"
                         {
@@ -1041,7 +1125,8 @@ impl QQMusicAuthService {
         let prior = match self.credentials.load(ACTIVE_SESSION).await {
             Ok(prior) => prior,
             Err(_) => {
-                self.publish_secure_store_unavailable().await;
+                self.publish_secure_store_unavailable_if_current(generation)
+                    .await;
                 return Err(QQMusicError::Storage);
             }
         };
@@ -1058,40 +1143,50 @@ impl QQMusicAuthService {
             .await
             .is_err()
         {
-            return self.fail_before_active(QQMusicError::Storage).await;
+            return self
+                .fail_before_active(generation, QQMusicError::Storage)
+                .await;
         }
         self.hit_lifecycle_boundary(LifecycleBoundary::AfterStagingSave)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.fail_before_active(error).await;
+            return self.fail_before_active(generation, error).await;
         }
         let staged_raw = match self.credentials.load(STAGING_SESSION).await {
             Ok(Some(raw)) if constant_time_equivalent(&raw, &serialized) => raw,
-            _ => return self.fail_before_active(QQMusicError::Storage).await,
+            _ => {
+                return self
+                    .fail_before_active(generation, QQMusicError::Storage)
+                    .await;
+            }
         };
         self.hit_lifecycle_boundary(LifecycleBoundary::AfterStagingReadback)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.fail_before_active(error).await;
+            return self.fail_before_active(generation, error).await;
         }
         let staged: SessionRecord = match serde_json::from_str(&staged_raw) {
             Ok(staged) => staged,
-            Err(_) => return self.fail_before_active(QQMusicError::Storage).await,
+            Err(_) => {
+                return self
+                    .fail_before_active(generation, QQMusicError::Storage)
+                    .await;
+            }
         };
         let validated = match self.protocol.validate_session(&staged, cancellation).await {
             Ok(validated) => validated,
-            Err(error) => return self.fail_before_active(error).await,
+            Err(error) => return self.fail_before_active(generation, error).await,
         };
         self.hit_lifecycle_boundary(LifecycleBoundary::AfterStagedValidation)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.fail_before_active(error).await;
+            return self.fail_before_active(generation, error).await;
         }
 
         self.hit_lifecycle_boundary(LifecycleBoundary::BeforeActiveSave)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.fail_before_active(error).await;
+            return self.fail_before_active(generation, error).await;
         }
 
         if self
@@ -1101,42 +1196,64 @@ impl QQMusicAuthService {
             .is_err()
         {
             return self
-                .rollback_after_active(prior.as_deref(), QQMusicError::Storage)
+                .rollback_after_active(generation, prior.as_deref(), QQMusicError::Storage)
                 .await;
         }
         self.hit_lifecycle_boundary(LifecycleBoundary::AfterActiveSave)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.rollback_after_active(prior.as_deref(), error).await;
+            return self
+                .rollback_after_active(generation, prior.as_deref(), error)
+                .await;
         }
         match self.credentials.load(ACTIVE_SESSION).await {
             Ok(Some(active)) if constant_time_equivalent(&active, &serialized) => {}
             _ => {
                 return self
-                    .rollback_after_active(prior.as_deref(), QQMusicError::Storage)
+                    .rollback_after_active(generation, prior.as_deref(), QQMusicError::Storage)
                     .await;
             }
         }
         self.hit_lifecycle_boundary(LifecycleBoundary::AfterActiveReadback)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.rollback_after_active(prior.as_deref(), error).await;
+            return self
+                .rollback_after_active(generation, prior.as_deref(), error)
+                .await;
         }
         if self.credentials.delete(STAGING_SESSION).await.is_err() {
             return self
-                .rollback_after_active(prior.as_deref(), QQMusicError::Storage)
+                .rollback_after_active(generation, prior.as_deref(), QQMusicError::Storage)
                 .await;
         }
         self.hit_lifecycle_boundary(LifecycleBoundary::AfterStagingDelete)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.rollback_after_active(prior.as_deref(), error).await;
+            return self
+                .rollback_after_active(generation, prior.as_deref(), error)
+                .await;
+        }
+        if self
+            .storage
+            .delete_provider_cache_kind(ACCOUNT_CACHE_KIND)
+            .is_err()
+        {
+            return self
+                .rollback_after_active(generation, prior.as_deref(), QQMusicError::Storage)
+                .await;
+        }
+        if let Err(error) = self.ensure_current(generation) {
+            return self
+                .rollback_after_active(generation, prior.as_deref(), error)
+                .await;
         }
 
         self.hit_lifecycle_boundary(LifecycleBoundary::BeforePublish)
             .await;
         if let Err(error) = self.ensure_current(generation) {
-            return self.rollback_after_active(prior.as_deref(), error).await;
+            return self
+                .rollback_after_active(generation, prior.as_deref(), error)
+                .await;
         }
 
         *self.active_session.write().await = Some(candidate);
@@ -1146,15 +1263,20 @@ impl QQMusicAuthService {
         {
             *self.active_session.write().await = None;
             return self
-                .rollback_after_active(prior.as_deref(), QQMusicError::Cancelled)
+                .rollback_after_active(generation, prior.as_deref(), QQMusicError::Cancelled)
                 .await;
         }
         Ok(self.snapshot().await)
     }
 
-    async fn fail_before_active<T>(&self, error: QQMusicError) -> Result<T, QQMusicError> {
+    async fn fail_before_active<T>(
+        &self,
+        generation: u64,
+        error: QQMusicError,
+    ) -> Result<T, QQMusicError> {
         if self.credentials.delete(STAGING_SESSION).await.is_err() {
-            self.publish_secure_store_unavailable().await;
+            self.publish_secure_store_unavailable_if_current(generation)
+                .await;
             return Err(QQMusicError::Storage);
         }
         Err(error)
@@ -1162,6 +1284,7 @@ impl QQMusicAuthService {
 
     async fn rollback_after_active<T>(
         &self,
+        generation: u64,
         prior: Option<&str>,
         error: QQMusicError,
     ) -> Result<T, QQMusicError> {
@@ -1178,7 +1301,8 @@ impl QQMusicAuthService {
         };
         let staging = self.credentials.delete(STAGING_SESSION).await;
         if restore.is_err() || !restored || staging.is_err() {
-            self.publish_secure_store_unavailable().await;
+            self.publish_secure_store_unavailable_if_current(generation)
+                .await;
             return Err(QQMusicError::Storage);
         }
         Err(error)
@@ -1251,8 +1375,8 @@ impl QQMusicAuthService {
         self.publish_if_current(generation, state).await;
     }
 
-    async fn expire_owner_if_due(&self, generation: u64, attempt_id: &str) -> bool {
-        let mut active = self.active_attempt.lock().await;
+    async fn expire_owner_if_due(self: &Arc<Self>, generation: u64, attempt_id: &str) -> bool {
+        let active = self.active_attempt.lock().await;
         let Some(current) = active
             .as_ref()
             .filter(|current| current.generation == generation && current.attempt_id == attempt_id)
@@ -1262,21 +1386,8 @@ impl QQMusicAuthService {
         if Instant::now() < current.owner_deadline {
             return false;
         }
-        let cancelled_attempt = current.attempt_id.clone();
-        current.cancellation.cancel();
-        active.take();
-        let (next_generation, _) = self.begin_generation().await;
-        self.publish_if_current(
-            next_generation,
-            AccountState::Cancelled {
-                attempt_id: Some(cancelled_attempt),
-                profile: (),
-                entitlement: (),
-            },
-        )
-        .await;
         drop(active);
-        true
+        self.cancel_login_owner("owner-lease-expired") || !self.is_current(generation)
     }
 
     async fn take_attempt(&self, generation: u64, attempt_id: &str, cancel: bool) -> bool {
@@ -1287,8 +1398,13 @@ impl QQMusicAuthService {
         if !matches {
             return false;
         }
-        if let Some(current) = active.take().filter(|_| cancel) {
+        let removed = active.take();
+        if let Some(current) = removed.as_ref().filter(|_| cancel) {
             current.cancellation.cancel();
+        }
+        drop(active);
+        if cancel {
+            self.clear_owner_signal(attempt_id);
         }
         true
     }
@@ -1311,6 +1427,10 @@ impl QQMusicAuthService {
 
     async fn begin_generation(&self) -> (u64, CancellationToken) {
         let _state_order = self.snapshot.write().await;
+        self.advance_generation()
+    }
+
+    fn advance_generation(&self) -> (u64, CancellationToken) {
         let mut token = self
             .generation_token
             .lock()
@@ -1319,6 +1439,79 @@ impl QQMusicAuthService {
         token.cancel();
         *token = CancellationToken::new();
         (generation, token.clone())
+    }
+
+    fn install_owner_signal(&self, signal: OwnerSignal) {
+        let mut current = self
+            .owner_signal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(previous) = current.replace(signal) {
+            previous.cancellation.cancel();
+        }
+    }
+
+    fn clear_owner_signal(&self, attempt_id: &str) {
+        let mut current = self
+            .owner_signal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if current
+            .as_ref()
+            .is_some_and(|owner| owner.attempt_id == attempt_id)
+        {
+            current.take();
+        }
+    }
+
+    fn cancel_owner_signals_before(&self, generation: u64) {
+        let mut current = self
+            .owner_signal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if current
+            .as_ref()
+            .is_some_and(|owner| owner.generation < generation)
+        {
+            if let Some(owner) = current.take() {
+                owner.cancellation.cancel();
+            }
+        }
+    }
+
+    fn release_owner_signal_for_generation(&self, generation: u64) {
+        let mut current = self
+            .owner_signal
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if current
+            .as_ref()
+            .is_some_and(|owner| owner.generation == generation)
+        {
+            current.take();
+        }
+    }
+
+    async fn cleanup_owner_loss(&self, generation: u64, attempt_id: String) {
+        let _lifecycle = self.lifecycle.lock().await;
+        let mut active = self.active_attempt.lock().await;
+        if active.as_ref().is_some_and(|attempt| {
+            attempt.attempt_id == attempt_id && attempt.generation < generation
+        }) {
+            if let Some(attempt) = active.take() {
+                attempt.cancellation.cancel();
+            }
+        }
+        drop(active);
+        self.publish_if_current(
+            generation,
+            AccountState::Cancelled {
+                attempt_id: Some(attempt_id),
+                profile: (),
+                entitlement: (),
+            },
+        )
+        .await;
     }
 
     fn capture_generation(&self) -> (u64, CancellationToken) {
@@ -1341,13 +1534,12 @@ impl QQMusicAuthService {
         }
     }
 
-    async fn publish(&self, account: AccountState) {
-        let mut snapshot = self.snapshot.write().await;
-        Self::write_account(&mut snapshot, account);
-    }
-
     async fn publish_if_current(&self, generation: u64, account: AccountState) -> bool {
         let mut snapshot = self.snapshot.write().await;
+        let _generation_commit = self
+            .generation_token
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if !self.is_current(generation) {
             return false;
         }
@@ -1366,19 +1558,35 @@ impl QQMusicAuthService {
         generation: u64,
         validated: ValidatedAccount,
     ) -> bool {
-        self.publish_if_current(
-            generation,
+        let mut snapshot = self.snapshot.write().await;
+        let _generation_commit = self
+            .generation_token
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !self.is_current(generation) {
+            return false;
+        }
+        self.release_owner_signal_for_generation(generation);
+        Self::write_account(
+            &mut snapshot,
             AccountState::Authenticated {
                 profile: validated.profile,
                 entitlement: validated.entitlement,
             },
-        )
-        .await
+        );
+        true
     }
 
-    async fn publish_secure_store_unavailable(&self) {
-        let current = self.snapshot().await;
-        let (profile, entitlement) = match current.account {
+    async fn publish_secure_store_unavailable_if_current(&self, generation: u64) -> bool {
+        let mut snapshot = self.snapshot.write().await;
+        let _generation_commit = self
+            .generation_token
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !self.is_current(generation) {
+            return false;
+        }
+        let (profile, entitlement) = match &snapshot.account {
             AccountState::Authenticated {
                 profile,
                 entitlement,
@@ -1394,14 +1602,17 @@ impl QQMusicAuthService {
             | AccountState::SecureStoreUnavailable {
                 profile: Some(profile),
                 entitlement: Some(entitlement),
-            } => (Some(profile), Some(entitlement)),
+            } => (Some(profile.clone()), Some(entitlement.clone())),
             _ => (None, None),
         };
-        self.publish(AccountState::SecureStoreUnavailable {
-            profile,
-            entitlement,
-        })
-        .await;
+        Self::write_account(
+            &mut snapshot,
+            AccountState::SecureStoreUnavailable {
+                profile,
+                entitlement,
+            },
+        );
+        true
     }
 
     async fn hit_lifecycle_boundary(&self, boundary: LifecycleBoundary) {
@@ -1519,6 +1730,29 @@ fn error_state(attempt_id: &str, error: &QQMusicError) -> AccountState {
         }
         _ => AccountState::ProtocolError {
             attempt_id,
+            profile: (),
+            entitlement: (),
+        },
+    }
+}
+
+fn restore_error_state(error: &QQMusicError) -> AccountState {
+    match error {
+        QQMusicError::Offline | QQMusicError::Timeout | QQMusicError::RateLimited => {
+            AccountState::NetworkError {
+                attempt_id: None,
+                profile: (),
+                entitlement: (),
+            }
+        }
+        QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected => {
+            AccountState::ReauthenticationRequired {
+                profile: None,
+                entitlement: None,
+            }
+        }
+        _ => AccountState::ProtocolError {
+            attempt_id: None,
             profile: (),
             entitlement: (),
         },
@@ -1769,6 +2003,7 @@ mod tests {
     use crate::{
         credentials::{CredentialError, CredentialStore},
         qqmusic::{clock::ManualClock, transport::TransportResponse},
+        storage::StorageService,
     };
     use std::{
         collections::{BTreeMap, VecDeque},
@@ -1817,6 +2052,7 @@ mod tests {
         validation_entered: Notify,
         validation_release: Notify,
         invalid_challenge: AtomicBool,
+        validation_error: StdMutex<Option<QQMusicError>>,
     }
 
     impl FakeProtocol {
@@ -1831,6 +2067,7 @@ mod tests {
                 validation_entered: Notify::new(),
                 validation_release: Notify::new(),
                 invalid_challenge: AtomicBool::new(false),
+                validation_error: StdMutex::new(None),
             }
         }
 
@@ -1844,6 +2081,10 @@ mod tests {
 
         fn return_invalid_challenge(&self) {
             self.invalid_challenge.store(true, Ordering::Release);
+        }
+
+        fn fail_validation(&self, error: QQMusicError) {
+            *self.validation_error.lock().expect("validation error lock") = Some(error);
         }
     }
 
@@ -1890,6 +2131,14 @@ mod tests {
                 self.validation_entered.notify_one();
                 self.validation_release.notified().await;
             }
+            if let Some(error) = self
+                .validation_error
+                .lock()
+                .expect("validation error lock")
+                .take()
+            {
+                return Err(error);
+            }
             Ok(validated_account())
         }
     }
@@ -1900,6 +2149,7 @@ mod tests {
         ActiveReadback,
         StagingSave,
         StagingDelete,
+        StagingDeleteAlways,
     }
 
     #[derive(Default)]
@@ -1990,8 +2240,9 @@ mod tests {
                 .expect("operations lock")
                 .push(format!("delete:{account}"));
             if account == STAGING_SESSION
-                && self.active_save_seen.load(Ordering::Acquire)
-                && self.consume_fault(CredentialFault::StagingDelete)
+                && ((self.active_save_seen.load(Ordering::Acquire)
+                    && self.consume_fault(CredentialFault::StagingDelete))
+                    || self.consume_fault(CredentialFault::StagingDeleteAlways))
             {
                 return Err(CredentialError::OperationFailed);
             }
@@ -2004,14 +2255,26 @@ mod tests {
         protocol: Arc<FakeProtocol>,
         credentials: Arc<RecordingCredentialStore>,
     ) -> Arc<QQMusicAuthService> {
+        auth_service_with_storage(protocol, credentials).0
+    }
+
+    fn auth_service_with_storage(
+        protocol: Arc<FakeProtocol>,
+        credentials: Arc<RecordingCredentialStore>,
+    ) -> (Arc<QQMusicAuthService>, Arc<StorageService>) {
         let clock: Arc<dyn Clock> = Arc::new(ManualClock::new(1_700_000_000_000));
         let protocol: Arc<dyn QQMusicAuthProtocol> = protocol;
         let credentials: Arc<dyn CredentialStore> = credentials;
-        Arc::new(QQMusicAuthService::new(
-            protocol,
-            SpawnBlockingCredentialStore::new(credentials),
-            clock,
-        ))
+        let storage = Arc::new(StorageService::temporary());
+        (
+            Arc::new(QQMusicAuthService::new(
+                protocol,
+                SpawnBlockingCredentialStore::new(credentials),
+                clock,
+                Arc::clone(&storage),
+            )),
+            storage,
+        )
     }
 
     async fn wait_for_state(service: &QQMusicAuthService, expected: &str) {
@@ -2133,6 +2396,68 @@ mod tests {
         wait_for_state(&service, "cancelled").await;
         assert!(service.challenge_bytes_for_test().await.is_none());
         assert!(service.poll_task_is_cancelled().await);
+    }
+
+    #[tokio::test]
+    async fn synchronous_owner_loss_invalidates_generation_before_delayed_poll_returns() {
+        let protocol = Arc::new(FakeProtocol::new(vec![AuthPollResult::Confirmed(session(
+            "late-owner",
+        ))]));
+        protocol.hold_poll();
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        let service = auth_service(Arc::clone(&protocol), Arc::clone(&credentials));
+        service.start().await.expect("start");
+        wait_for_notification(&protocol.poll_entered).await;
+        let before = service.generation();
+
+        assert!(service.has_active_owner());
+        assert!(service.cancel_login_owner("navigation-started"));
+        assert!(service.generation() > before);
+        assert!(!service.has_active_owner());
+        protocol.poll_release.notify_waiters();
+
+        wait_for_state(&service, "cancelled").await;
+        assert!(service.challenge_bytes_for_test().await.is_none());
+        assert!(credentials.value(ACTIVE_SESSION).is_none());
+        assert!(credentials.value(STAGING_SESSION).is_none());
+    }
+
+    #[tokio::test]
+    async fn owner_loss_at_final_promotion_boundary_rolls_back_candidate() {
+        let protocol = Arc::new(FakeProtocol::new(vec![AuthPollResult::Confirmed(session(
+            "late-promotion",
+        ))]));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        let service = auth_service(Arc::clone(&protocol), Arc::clone(&credentials));
+        let barrier = service.set_lifecycle_barrier(LifecycleBoundary::BeforePublish);
+        service.start().await.expect("start");
+        wait_for_notification(&barrier.entered).await;
+
+        assert!(service.has_active_owner());
+        assert!(service.cancel_login_owner("main-window-destroyed"));
+        barrier.release.notify_one();
+
+        wait_for_state(&service, "cancelled").await;
+        assert!(credentials.value(ACTIVE_SESSION).is_none());
+        assert!(credentials.value(STAGING_SESSION).is_none());
+        assert_ne!(service.snapshot().await.state_name(), "authenticated");
+    }
+
+    #[tokio::test]
+    async fn successful_owner_release_keeps_the_authenticated_generation_token_live() {
+        let protocol = Arc::new(FakeProtocol::new(vec![AuthPollResult::Confirmed(session(
+            "authenticated-owner",
+        ))]));
+        let service = auth_service(
+            Arc::clone(&protocol),
+            Arc::new(RecordingCredentialStore::default()),
+        );
+        service.start().await.expect("start");
+        wait_for_state(&service, "authenticated").await;
+
+        let (_, token) = service.capture_generation();
+        assert!(!token.is_cancelled());
+        assert!(!service.has_active_owner());
     }
 
     #[tokio::test]
@@ -2424,6 +2749,180 @@ mod tests {
         );
         assert_eq!(service.snapshot().await.state_name(), "guest");
         assert!(credentials.value(ACTIVE_SESSION).is_none());
+    }
+
+    #[tokio::test]
+    async fn restore_validates_before_authenticated_and_maps_invalid_material_to_reauth() {
+        let valid_protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let valid_credentials = Arc::new(RecordingCredentialStore::default());
+        valid_credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("valid")).expect("session JSON"),
+        );
+        let valid = auth_service(valid_protocol, valid_credentials);
+        valid.restore().await.expect("valid restore");
+        assert_eq!(valid.snapshot().await.state_name(), "authenticated");
+
+        let malformed_protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let malformed_credentials = Arc::new(RecordingCredentialStore::default());
+        malformed_credentials.seed(ACTIVE_SESSION, "not-json".to_owned());
+        let malformed = auth_service(malformed_protocol, malformed_credentials);
+        assert!(malformed.restore().await.is_err());
+        assert_eq!(
+            malformed.snapshot().await.state_name(),
+            "reauthentication-required"
+        );
+
+        let expired_protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let expired_credentials = Arc::new(RecordingCredentialStore::default());
+        let mut expired_session = session("expired");
+        expired_session.expires_at_ms = 1_600_000_000_000;
+        expired_credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&expired_session).expect("expired session JSON"),
+        );
+        let expired = auth_service(expired_protocol, expired_credentials);
+        assert!(expired.restore().await.is_err());
+        assert_eq!(
+            expired.snapshot().await.state_name(),
+            "reauthentication-required"
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_maps_offline_validation_to_network_error_without_profile() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        protocol.fail_validation(QQMusicError::Offline);
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("offline")).expect("session JSON"),
+        );
+        let service = auth_service(protocol, credentials);
+
+        assert!(service.restore().await.is_err());
+        assert_eq!(service.snapshot().await.state_name(), "network-error");
+        assert!(service.current_session().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn logout_and_successful_promotion_clear_only_account_cache_entries() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        let (service, storage) =
+            auth_service_with_storage(Arc::clone(&protocol), Arc::clone(&credentials));
+        storage
+            .put_json("qqmusic:home", "metadata", &vec!["guest"], 60_000)
+            .expect("guest cache write");
+        storage
+            .put_json(
+                "qqmusic:account:old:favorites",
+                "qqmusic-account",
+                &vec!["private"],
+                60_000,
+            )
+            .expect("old account cache write");
+
+        service
+            .complete_confirmation(session("candidate"))
+            .await
+            .expect("promotion");
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:old:favorites", true)
+            .expect("account cache read")
+            .is_none());
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:home", true)
+            .expect("guest cache read")
+            .is_some());
+
+        storage
+            .put_json(
+                "qqmusic:account:new:favorites",
+                "qqmusic-account",
+                &vec!["new-private"],
+                60_000,
+            )
+            .expect("new account cache write");
+        service.logout().await.expect("logout");
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:new:favorites", true)
+            .expect("account cache read")
+            .is_none());
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:home", true)
+            .expect("guest cache read")
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn logout_continues_cleanup_and_never_publishes_guest_on_credential_delete_failure() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::with_fault(
+            CredentialFault::StagingDeleteAlways,
+        ));
+        credentials.seed(STAGING_SESSION, "stale-stage".to_owned());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("active")).expect("active session JSON"),
+        );
+        let (service, storage) = auth_service_with_storage(protocol, Arc::clone(&credentials));
+        storage
+            .put_json(
+                "qqmusic:account:active:favorites",
+                ACCOUNT_CACHE_KIND,
+                &vec!["private"],
+                60_000,
+            )
+            .expect("account cache write");
+
+        assert!(service.logout().await.is_err());
+        assert_eq!(
+            service.snapshot().await.state_name(),
+            "secure-store-unavailable"
+        );
+        assert!(credentials.value(ACTIVE_SESSION).is_none());
+        assert!(storage
+            .get_json::<Vec<String>>("qqmusic:account:active:favorites", true)
+            .expect("account cache read")
+            .is_none());
+        assert!(credentials
+            .operations()
+            .iter()
+            .any(|operation| operation == "delete:qqmusic-session"));
+    }
+
+    #[tokio::test]
+    async fn cache_only_logout_failure_publishes_guest_but_returns_error() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("active")).expect("active session JSON"),
+        );
+        let (service, storage) = auth_service_with_storage(protocol, Arc::clone(&credentials));
+        storage.fail_provider_cache_delete_for_test();
+
+        assert!(service.logout().await.is_err());
+        assert_eq!(service.snapshot().await.state_name(), "guest");
+        assert!(credentials.value(ACTIVE_SESSION).is_none());
+        assert!(credentials.value(STAGING_SESSION).is_none());
+    }
+
+    #[tokio::test]
+    async fn promotion_rolls_back_active_when_old_account_cache_cannot_be_cleared() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        let (service, storage) = auth_service_with_storage(protocol, Arc::clone(&credentials));
+        storage.fail_provider_cache_delete_for_test();
+
+        assert!(service
+            .complete_confirmation(session("candidate"))
+            .await
+            .is_err());
+        assert!(credentials.value(ACTIVE_SESSION).is_none());
+        assert!(credentials.value(STAGING_SESSION).is_none());
+        assert_ne!(service.snapshot().await.state_name(), "authenticated");
     }
 
     #[tokio::test]
