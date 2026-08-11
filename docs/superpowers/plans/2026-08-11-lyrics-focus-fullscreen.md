@@ -37,11 +37,13 @@
 - Modify `src/components/PlayerBar.tsx`: make the existing fullscreen control open Fullscreen Lyrics instead of remaining disabled.
 - Modify `src/styles/shell.css`, `components.css`, and `platform.css`: one-column Focus layout, fullscreen layout, transport, containment, and Linux cost limits.
 - Modify `src/locales/en-US.ts` and `zh-CN.ts`: labels and nonfatal fullscreen error copy.
-- Split `src-tauri/capabilities/default.json` and create `src-tauri/capabilities/main-window.json`: least-privilege fullscreen permission.
+- Split `src-tauri/capabilities/default.json`, create `src-tauri/capabilities/main-window.json`, and regenerate
+  `src-tauri/gen/schemas/capabilities.json`: least-privilege fullscreen permission with tracked schema consistency.
 - Modify `docs/lyrics.md`, `docs/design-system.md`, and `docs/linux-acceptance.md`: behavior, shortcuts, performance, and physical acceptance.
 - Create `src/application/artwork-source.ts` and tests; modify `src/application/artwork-cache.ts`,
-  `src-tauri/src/qqmusic.rs`, and `src-tauri/src/storage.rs`: a closed native artwork boundary with exact origins,
-  no redirects, image-only MIME, and validated data-URI results used only by immersive Lyrics.
+  `src-tauri/src/qqmusic.rs`, `src-tauri/src/storage.rs`, `src-tauri/src/media.rs`, and
+  `src-tauri/src/streaming.rs`: a closed native artwork boundary with exact origins, no redirects, image-only MIME,
+  validated data-URI results, and exhaustive dependent error mapping used only by immersive Lyrics.
 - Create `src/application/lyrics-appearance.ts` and tests: a pure projection from persisted appearance to immersive Lyrics presentation.
 - Create `scripts/capture-windows-lyrics-acceptance.ps1`: semantic WebView2 automation plus native-window image capture.
 - Create `scripts/capture-windows-lyrics-acceptance.test.ps1`: hermetic process/CDP/HWND/capture adapter tests.
@@ -132,6 +134,7 @@ git commit -m "feat: persist lyrics focus preference"
 - Create: `src/application/lyrics-presentation.test.ts`
 - Modify: `src-tauri/capabilities/default.json`
 - Create: `src-tauri/capabilities/main-window.json`
+- Modify generated: `src-tauri/gen/schemas/capabilities.json`
 
 **Interfaces:**
 
@@ -262,14 +265,29 @@ Run:
 npx vitest run src/application/lyrics-presentation.test.ts
 Get-Content src-tauri/capabilities/default.json -Raw | ConvertFrom-Json | Out-Null
 Get-Content src-tauri/capabilities/main-window.json -Raw | ConvertFrom-Json | Out-Null
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml --all-targets --no-run
+$capabilities = Get-Content src-tauri/gen/schemas/capabilities.json -Raw | ConvertFrom-Json
+$ids = @($capabilities.PSObject.Properties.Name)
+if (Compare-Object $ids @('lyrics-surfaces', 'main-window')) { throw 'generated capability IDs differ' }
+if ($ids -contains 'default') { throw 'obsolete default capability remains' }
+if ($capabilities.'lyrics-surfaces'.identifier -ne 'lyrics-surfaces') { throw 'lyrics identifier differs' }
+if ($capabilities.'main-window'.identifier -ne 'main-window') { throw 'main identifier differs' }
+if ((@($capabilities.'lyrics-surfaces'.windows) -join ',') -ne 'lyrics-desktop,lyrics-island') { throw 'lyrics surface windows differ' }
+if ((@($capabilities.'main-window'.windows) -join ',') -ne 'main') { throw 'main window scope differs' }
+if (@($capabilities.'lyrics-surfaces'.permissions) -notcontains 'core:window:allow-start-dragging') { throw 'surface drag permission missing' }
+if (@($capabilities.'lyrics-surfaces'.permissions) -contains 'core:window:allow-set-fullscreen') { throw 'surface fullscreen permission leaked' }
+if (@($capabilities.'main-window'.permissions) -notcontains 'core:window:allow-set-fullscreen') { throw 'fullscreen permission missing' }
 ```
 
-Expected: tests pass; both JSON commands exit 0.
+Expected: tests and Rust commands pass; the tracked generated schema contains exactly `lyrics-surfaces` and
+`main-window`, scopes fullscreen to `main`, and contains no obsolete `default` entry. `git status --short` shows the
+schema update as part of this task rather than leaving regeneration for a later dirty-tree surprise.
 
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add -- src/application/lyrics-presentation.ts src/application/lyrics-presentation.test.ts src-tauri/capabilities/default.json src-tauri/capabilities/main-window.json
+git add -- src/application/lyrics-presentation.ts src/application/lyrics-presentation.test.ts src-tauri/capabilities/default.json src-tauri/capabilities/main-window.json src-tauri/gen/schemas/capabilities.json
 git commit -m "feat: add native lyrics fullscreen state"
 ```
 
@@ -804,6 +822,8 @@ git commit -m "perf: bound immersive lyrics rendering work"
 - Modify: `src/application/artwork-cache.ts`
 - Modify: `src-tauri/src/qqmusic.rs`
 - Modify: `src-tauri/src/storage.rs`
+- Modify: `src-tauri/src/media.rs`
+- Modify: `src-tauri/src/streaming.rs`
 
 **Interfaces:**
 
@@ -827,6 +847,10 @@ git commit -m "perf: bound immersive lyrics rendering work"
   host. `StorageService` requires a normalized `image/*` Content-Type both for a fresh response before writing bytes
   and for a cache hit before returning a data URI; missing/non-image MIME is rejected and any invalid cached artwork
   row/file is evicted.
+- The generic `fetch_cached(..., required_mime_prefix)` extension is source-compatible only after both playback-media
+  call sites in `media.rs` pass `None`. The new `StorageError::InvalidContentType` maps exhaustively to
+  `PlaybackSourceError::CacheFailure` in `media.rs` and `ProgressiveError::Cache` in `streaming.rs`; it must not be
+  misclassified as a network, expiry, or entitlement error.
 - The raw remote URL must not enter immersive Lyrics DOM, CSS, logs, or evidence. This closes the current live-DOM
   gap only when Task 8 adopts the hook in both `LyricsPanel` and `LyricsFullscreenTransport`; existing non-Lyrics
   public-artwork consumers remain unchanged and are deferred to the authenticated-beta privacy audit.
@@ -846,7 +870,10 @@ object, and `null`; every mutant must yield `null`. Assert the native hook never
 Add Rust unit/integration tests that exact-host URL validation rejects the frontend's former `music.tc` wildcard and
 arbitrary remotes; a test-only loopback server returning 302 proves the dedicated artwork client does not follow the
 redirect; and storage servers returning `text/html`, missing Content-Type, and `image/png` prove only the image case
-is cached/encoded. Seed an invalid cached artwork row to prove cache hits are revalidated and evicted.
+is cached/encoded. Seed an invalid cached artwork row to prove cache hits are revalidated and evicted. Add focused
+mapping tests requiring `media::map_storage_error(StorageError::InvalidContentType)` to produce
+`PlaybackSourceError::CacheFailure` and `streaming::map_storage_error(StorageError::InvalidContentType)` to produce
+`ProgressiveError::Cache`; deleting either new match arm must fail compilation or the focused test.
 
 - [ ] **Step 2: Run the focused tests and confirm RED**
 
@@ -854,6 +881,8 @@ is cached/encoded. Seed an invalid cached artwork row to prove cache hits are re
 npx vitest run src/application/artwork-source.test.tsx
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::tests::artwork
 cargo test --manifest-path src-tauri/Cargo.toml storage::tests::artwork
+cargo test --manifest-path src-tauri/Cargo.toml media::tests
+cargo test --manifest-path src-tauri/Cargo.toml streaming::tests
 ```
 
 Expected: fail because the closed frontend boundary and scoped redirect/MIME defenses do not exist,
@@ -876,6 +905,11 @@ general `http` client. Extend the cache fetch contract with `required_mime_prefi
 before creating the target file, and on cache hit revalidate recorded MIME, evicting the invalid row/file before
 returning `StorageError::InvalidContentType`. A 3xx from the no-redirect client remains a non-success HTTP error.
 
+Append `required_mime_prefix` as the final `fetch_cached` parameter. Update exactly the two full-download calls in
+`media.rs` (the `FullDownloadFallback` branch and the non-progressive branch) to pass `None`; artwork passes
+`Some("image/")`. Add `StorageError::InvalidContentType` to the cache-failure arm of `media.rs::map_storage_error`
+and `streaming.rs::map_storage_error`. Do not change progressive Range behavior or classify ordinary media by MIME.
+
 - [ ] **Step 5: Run focused and regression checks**
 
 ```powershell
@@ -886,6 +920,8 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml qqmusic::tests::artwork
 cargo test --manifest-path src-tauri/Cargo.toml storage::tests::artwork
+cargo test --manifest-path src-tauri/Cargo.toml media::tests
+cargo test --manifest-path src-tauri/Cargo.toml streaming::tests
 ```
 
 Expected: all pass, and tests restore mocked Tauri globals, promises, and DOM.
@@ -893,7 +929,7 @@ Expected: all pass, and tests restore mocked Tauri globals, promises, and DOM.
 - [ ] **Step 6: Commit the isolated boundary**
 
 ```powershell
-git add -- src/application/artwork-cache.ts src/application/artwork-source.ts src/application/artwork-source.test.tsx src-tauri/src/qqmusic.rs src-tauri/src/storage.rs
+git add -- src/application/artwork-cache.ts src/application/artwork-source.ts src/application/artwork-source.test.tsx src-tauri/src/qqmusic.rs src-tauri/src/storage.rs src-tauri/src/media.rs src-tauri/src/streaming.rs
 git commit -m "fix: keep native artwork behind the cache"
 ```
 
@@ -984,8 +1020,9 @@ git commit -m "fix: honor appearance in immersive lyrics"
 - CLI in this task: `node scripts/verify-lyrics-acceptance.mjs --platform windows --root <absolute-root>`.
   Deferred delivery checkpoints extend it for final NSIS and Linux schemas.
 - Windows attaches to a loopback-only WebView2 CDP port, locates visible controls by role/name or stable `data-*`
-  state, and sends real pointer/keyboard input. It must not mutate Zustand or invoke player commands through CDP.
-  Required images are real desktop crops of the native HWND client bounds; CDP screenshots are diagnostic only.
+  state, and sends real pointer/keyboard input through the existing injected `Cdp.Send` adapter using CDP
+  `Input.dispatchMouseEvent` and `Input.dispatchKeyEvent`. It must not mutate Zustand or invoke player commands through
+  CDP. Required images are real desktop crops of the native HWND client bounds; CDP screenshots are diagnostic only.
 - `App` exposes the actual provider as `.app-shell[data-provider-id]`. After CDP attaches, the collector installs its
   preload instrumentation, navigates the existing target to the same Tauri origin with the exact URL
   `/?provider=fake`, waits for `Page.loadEventFired`, and requires both `location.search === '?provider=fake'` and
@@ -1082,8 +1119,9 @@ implementations; the test script supplies scriptblocks and never launches a GUI.
 In `capture-windows-lyrics-acceptance.test.ps1`, implement a no-dependency assertion harness with three suites:
 
 1. success records adapter call order, proves `Page.navigate` uses the attached target's same origin plus
-   `/?provider=fake`, proves the Home Play and PlayerBar Lyrics pointer actions precede the identity assertion, emits a
-   manifest with `provider = 'fake'` and `fixtureSongId = 'quiet-light'`, and writes only adapter-supplied native crops;
+   `/?provider=fake`, proves `Cdp.Send` receives `Input.dispatchMouseEvent` for Home Play and PlayerBar Lyrics plus
+   `Input.dispatchKeyEvent` for keyboard cases before the identity assertion, emits a manifest with
+   `provider = 'fake'` and `fixtureSongId = 'quiet-light'`, and writes only adapter-supplied native crops;
 2. failure cases independently inject provider/search mismatch, fixture song `paper-sun`, ambiguous HWND, stale CDP
    state, and crop-bounds mismatch, and require a nonzero/throwing result before a pass manifest is written;
 3. finally cleanup makes `Capture.SaveClientPng` throw after process/CDP setup, then proves `Cdp.Disconnect` and
@@ -1102,10 +1140,11 @@ origin, reject non-Tauri or changed origins, call `Page.navigate` to the same or
 `/?provider=fake`, and wait for the matching `Page.loadEventFired`. Reconnect/reselect the single target if WebView2
 changes its target ID during reload. Poll until `document.readyState === 'complete'`, exact `location.search`, and the
 stable provider marker all agree; otherwise abort. Use CDP only to locate the unique visible Home featured primary Play
-button and PlayerBar Lyrics button, calculate their screen/client centers, and send real pointer input through the input
-adapter. Poll `.lyrics-stage[data-song-id]` and abort unless it becomes exactly `quiet-light`; do not set player state,
-call a player command, or match the localized title through CDP. Record `provider: 'fake'` and
-`fixtureSongId: 'quiet-light'` in the manifest.
+button and PlayerBar Lyrics button and calculate their client centers. Send press/release pairs through
+`Cdp.Send('Input.dispatchMouseEvent', ...)`; send F11/Escape and other keyboard paths through
+`Cdp.Send('Input.dispatchKeyEvent', ...)`. Poll `.lyrics-stage[data-song-id]` and abort unless it becomes exactly
+`quiet-light`; do not set player state, call a player command, or match the localized title through CDP. Record
+`provider: 'fake'` and `fixtureSongId: 'quiet-light'` in the manifest.
 
 For the external-exit probe, first enter fullscreen with real UI input. Then issue these exact CDP
 `Runtime.evaluate` expressions separately, each with `awaitPromise: true` and `returnByValue: true`, rejecting
