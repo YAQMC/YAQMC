@@ -39,6 +39,7 @@ $collectorPath = Join-Path $PSScriptRoot 'capture-windows-lyrics-acceptance.ps1'
 $collectorSource = Get-Content -LiteralPath $collectorPath -Raw
 Assert-True $collectorSource.Contains('[void]$socket.ConnectAsync') 'CDP connect must not leak VoidTaskResult into the adapter connection'
 Assert-True $collectorSource.Contains('[void]$Connection.Socket.SendAsync') 'CDP send must not leak VoidTaskResult into command results'
+Assert-True $collectorSource.Contains('GetWindowTextLength(window) > 0') 'native HWND discovery must exclude untitled runtime utility windows'
 
 $undefinedEvaluation = [pscustomobject]@{
   result = [pscustomobject]@{ type = 'undefined' }

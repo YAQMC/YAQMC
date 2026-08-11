@@ -387,6 +387,7 @@ namespace YaqmcLyricsAcceptance {
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowTextLength(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFOEX info);
     public static IntPtr[] VisibleWindowsForProcess(uint processId) {
@@ -394,7 +395,7 @@ namespace YaqmcLyricsAcceptance {
       EnumWindows((window, parameter) => {
         uint owner;
         GetWindowThreadProcessId(window, out owner);
-        if (owner == processId && IsWindowVisible(window)) windows.Add(window);
+        if (owner == processId && IsWindowVisible(window) && GetWindowTextLength(window) > 0) windows.Add(window);
         return true;
       }, IntPtr.Zero);
       return windows.ToArray();
