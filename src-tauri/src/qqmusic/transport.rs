@@ -1,11 +1,3 @@
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the authenticated request builders are introduced in later tasks"
-    )
-)]
-
 use super::{
     clock::Clock,
     redaction::{redact_headers, redact_url, AUTH_SECRET_HEADERS},

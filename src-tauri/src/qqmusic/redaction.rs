@@ -1,21 +1,15 @@
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the authenticated request builders are introduced in later tasks"
-    )
-)]
-
 use reqwest::{
     header::{self, HeaderMap},
     Url,
 };
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 const REDACTED: &str = "[REDACTED]";
 const PRESENT: &str = "[PRESENT]";
 
+#[cfg(test)]
 const SECRET_KEYS: &[&str] = &[
     "authorization",
     "cookie",
@@ -88,6 +82,7 @@ pub(crate) fn redact_headers(headers: &HeaderMap) -> BTreeMap<String, String> {
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn redact_json(value: &Value) -> Value {
     match value {
         Value::Object(values) => Value::Object(
@@ -112,6 +107,7 @@ pub(crate) fn is_secret_header(name: &header::HeaderName) -> bool {
     *name == header::SET_COOKIE || AUTH_SECRET_HEADERS.iter().any(|secret| secret == name)
 }
 
+#[cfg(test)]
 fn is_secret_key(key: &str) -> bool {
     let normalized = key
         .chars()
