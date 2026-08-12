@@ -220,17 +220,20 @@ fn unlock_lyric_surfaces(app: &AppHandle) {
     let (Some(storage), Some(manager)) = (storage, manager) else {
         return;
     };
-    match crate::app_preferences::unlock_all_lyrics_surfaces(app, &storage, &manager) {
-        Ok(unlocked) => {
-            tracing::info!(target: "tray", unlocked, "lyric surfaces unlocked from tray recovery action");
-            let _ = app.emit("lyrics://surfaces-unlocked", unlocked);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match crate::app_preferences::unlock_all_lyrics_surfaces(&app, &storage, &manager) {
+            Ok(unlocked) => {
+                tracing::info!(target: "tray", unlocked, "lyric surfaces unlocked from tray recovery action");
+                let _ = app.emit("lyrics://surfaces-unlocked", unlocked);
+            }
+            Err(error) => {
+                tracing::warn!(target: "tray", error = %error, "tray lyric-surface recovery failed");
+                show_main_window(&app);
+                let _ = app.emit("app://open-settings", ());
+            }
         }
-        Err(error) => {
-            tracing::warn!(target: "tray", error = %error, "tray lyric-surface recovery failed");
-            show_main_window(app);
-            let _ = app.emit("app://open-settings", ());
-        }
-    }
+    });
 }
 
 fn dispatch_tray_action(player: Arc<PlayerService>, action: &str) {
@@ -286,5 +289,20 @@ mod tests {
             Some(ShortcutAction::Next)
         );
         assert_eq!(shortcut_action(Code::KeyP), None);
+    }
+
+    #[test]
+    fn tray_unlock_recovery_is_dispatched_off_the_window_event_thread() {
+        let source = include_str!("desktop_integration.rs");
+        let block = source
+            .split_once("fn unlock_lyric_surfaces(app: &AppHandle) {")
+            .and_then(|(_, remainder)| remainder.split_once("\nfn dispatch_tray_action"))
+            .map(|(block, _)| block)
+            .expect("tray unlock function source block");
+
+        assert!(
+            block.contains("tauri::async_runtime::spawn"),
+            "tray recovery must not create or close WebViews on the tray event thread"
+        );
     }
 }

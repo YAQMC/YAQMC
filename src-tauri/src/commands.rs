@@ -452,6 +452,29 @@ mod account_command_tests {
     }
 }
 
+#[cfg(test)]
+mod lyrics_window_command_tests {
+    const WINDOW_MUTATING_COMMANDS: [&str; 6] = [
+        "lyrics_surfaces_unlock_all",
+        "lyrics_surface_unlock",
+        "lyrics_surface_close",
+        "lyrics_surface_set_interaction",
+        "lyrics_surface_reset_position",
+        "lyrics_surface_show_settings",
+    ];
+
+    #[test]
+    fn lyric_window_mutations_do_not_run_on_the_tauri_main_thread() {
+        let source = include_str!("commands.rs");
+        for command in WINDOW_MUTATING_COMMANDS {
+            assert!(
+                source.contains(&format!("pub async fn {command}(")),
+                "{command} must be async because it creates, closes, or mutates native windows"
+            );
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn qqmusic_cache_stats(
     provider: State<'_, Arc<QQMusicService>>,
@@ -686,7 +709,7 @@ pub fn lyrics_surface_status(app: AppHandle) -> std::collections::HashMap<&'stat
 }
 
 #[tauri::command]
-pub fn lyrics_surfaces_unlock_all(
+pub async fn lyrics_surfaces_unlock_all(
     app: AppHandle,
     storage: State<'_, Arc<StorageService>>,
     manager: State<'_, Arc<LyricsSurfaceManager>>,
@@ -695,7 +718,7 @@ pub fn lyrics_surfaces_unlock_all(
 }
 
 #[tauri::command]
-pub fn lyrics_surface_unlock(
+pub async fn lyrics_surface_unlock(
     app: AppHandle,
     window: WebviewWindow,
     storage: State<'_, Arc<StorageService>>,
@@ -710,7 +733,7 @@ pub fn lyrics_surface_unlock(
 }
 
 #[tauri::command]
-pub fn lyrics_surface_close(
+pub async fn lyrics_surface_close(
     app: AppHandle,
     storage: State<'_, Arc<crate::storage::StorageService>>,
     kind: String,
@@ -719,7 +742,7 @@ pub fn lyrics_surface_close(
 }
 
 #[tauri::command]
-pub fn lyrics_surface_set_interaction(
+pub async fn lyrics_surface_set_interaction(
     app: AppHandle,
     storage: State<'_, Arc<StorageService>>,
     manager: State<'_, Arc<LyricsSurfaceManager>>,
@@ -746,7 +769,7 @@ pub fn lyrics_surface_set_interaction(
 }
 
 #[tauri::command]
-pub fn lyrics_surface_reset_position(
+pub async fn lyrics_surface_reset_position(
     app: AppHandle,
     storage: State<'_, Arc<crate::storage::StorageService>>,
     manager: State<'_, Arc<LyricsSurfaceManager>>,
@@ -756,7 +779,7 @@ pub fn lyrics_surface_reset_position(
 }
 
 #[tauri::command]
-pub fn lyrics_surface_show_settings(app: AppHandle) -> CommandResult<()> {
+pub async fn lyrics_surface_show_settings(app: AppHandle) -> CommandResult<()> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window is unavailable".to_owned())?;

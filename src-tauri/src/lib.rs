@@ -349,7 +349,7 @@ pub fn run() {
         if matches!(event, tauri::RunEvent::Exit) {
             let surfaces = Arc::clone(app_handle.state::<Arc<LyricsSurfaceManager>>().inner());
             let storage = Arc::clone(app_handle.state::<Arc<StorageService>>().inner());
-            surfaces.close_all(app_handle, &storage);
+            surfaces.save_all_geometry(app_handle, &storage);
             let player = Arc::clone(app_handle.state::<Arc<PlayerService>>().inner());
             let snapshot = tauri::async_runtime::block_on(player.snapshot());
             let storage = app_handle.state::<Arc<StorageService>>();

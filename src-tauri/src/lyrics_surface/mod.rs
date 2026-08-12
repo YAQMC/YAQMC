@@ -309,13 +309,11 @@ impl LyricsSurfaceManager {
         });
     }
 
-    pub fn close_all(&self, app: &AppHandle, storage: &Arc<StorageService>) {
+    pub fn save_all_geometry(&self, app: &AppHandle, storage: &Arc<StorageService>) {
         for kind in [SurfaceKind::Desktop, SurfaceKind::Island] {
             if let Some(window) = app.get_webview_window(kind.label()) {
                 save_geometry(&window, storage, kind);
-                let _ = window.close();
             }
-            close_unlock_window(app, kind);
         }
     }
 
@@ -325,22 +323,35 @@ impl LyricsSurfaceManager {
         kind: SurfaceKind,
         interaction: SurfaceInteraction,
     ) -> Result<(), String> {
-        let mut configs = self
-            .configs
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let config = configs.get_mut(kind);
-        let previous = config.interaction;
-        config.interaction = interaction;
+        let (previous, config) = {
+            let mut configs = self
+                .configs
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let config = configs.get_mut(kind);
+            let previous = config.interaction;
+            config.interaction = interaction;
+            (previous, config.clone())
+        };
         if let Some(window) = app.get_webview_window(kind.label()) {
             let visible =
                 !(self.fullscreen_active.load(Ordering::Acquire) && config.hide_in_fullscreen);
-            let result = apply_window_interaction(&window, kind, interaction_state(config))
-                .and_then(|()| sync_unlock_window(app, kind, config, &window, visible));
+            let result = apply_window_interaction(&window, kind, interaction_state(&config))
+                .and_then(|()| sync_unlock_window(app, kind, &config, &window, visible));
             if let Err(error) = result {
-                config.interaction = previous;
-                let _ = apply_window_interaction(&window, kind, interaction_state(config));
-                let _ = sync_unlock_window(app, kind, config, &window, visible);
+                let rollback = {
+                    let mut configs = self
+                        .configs
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let current = configs.get_mut(kind);
+                    if current.interaction == interaction {
+                        current.interaction = previous;
+                    }
+                    current.clone()
+                };
+                let _ = apply_window_interaction(&window, kind, interaction_state(&rollback));
+                let _ = sync_unlock_window(app, kind, &rollback, &window, visible);
                 return Err(error);
             }
         }
@@ -747,7 +758,10 @@ fn attach_geometry_persistence(
     window.on_window_event(move |event| match event {
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
             if let Some(unlock) = app.get_webview_window(kind.unlock_label()) {
-                let _ = position_unlock_window(&tracked_window, &unlock);
+                let window = tracked_window.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = position_unlock_window(&window, &unlock);
+                });
             }
             let current = generation.fetch_add(1, Ordering::AcqRel) + 1;
             let generation = Arc::clone(&generation);
@@ -761,9 +775,14 @@ fn attach_geometry_persistence(
             });
         }
         WindowEvent::CloseRequested { .. } => {
-            save_geometry(&tracked_window, &storage, kind);
-            close_unlock_window(&app, kind);
-            let _ = app.emit("lyrics://surface-closed", kind.value());
+            let window = tracked_window.clone();
+            let storage = Arc::clone(&storage);
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                save_geometry(&window, &storage, kind);
+                close_unlock_window(&app, kind);
+                let _ = app.emit("lyrics://surface-closed", kind.value());
+            });
         }
         _ => {}
     });

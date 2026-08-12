@@ -689,7 +689,10 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
                 "/ifpicurl",
             ],
         );
-        let avatar_url = raw_avatar_url.filter(|url| is_sanitized_avatar_url(url));
+        let avatar_url = raw_avatar_url
+            .as_deref()
+            .and_then(normalize_avatar_url)
+            .or_else(|| fallback_qq_avatar_url(&session.uin));
 
         let entitlement = match self.fetch_entitlement(session, cancellation).await {
             Ok(entitlement) => entitlement,
@@ -2386,6 +2389,37 @@ fn is_sanitized_avatar_url(value: &str) -> bool {
     })
 }
 
+fn normalize_avatar_url(value: &str) -> Option<String> {
+    let value = value.trim();
+    let mut url = if value.starts_with("//") {
+        Url::parse(&format!("https:{value}")).ok()?
+    } else {
+        Url::parse(value).ok()?
+    };
+    if url.scheme() == "http" {
+        if url.port_or_known_default() != Some(80)
+            || !matches!(
+                url.host_str(),
+                Some("qpic.y.qq.com" | "q.qlogo.cn" | "thirdwx.qlogo.cn" | "thirdqq.qlogo.cn")
+            )
+            || !url.username().is_empty()
+            || url.password().is_some()
+        {
+            return None;
+        }
+        url.set_scheme("https").ok()?;
+        url.set_port(None).ok()?;
+    }
+    let normalized = url.to_string();
+    is_sanitized_avatar_url(&normalized).then_some(normalized)
+}
+
+fn fallback_qq_avatar_url(uin: &str) -> Option<String> {
+    let plausible_qq =
+        (5..=12).contains(&uin.len()) && uin.bytes().all(|character| character.is_ascii_digit());
+    plausible_qq.then(|| format!("https://q.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640"))
+}
+
 fn require_endpoint(url: &Url, host: &str, path: &str) -> Result<(), QQMusicError> {
     if url.scheme() == "https"
         && url.port_or_known_default() == Some(443)
@@ -2661,6 +2695,49 @@ mod tests {
             assert!(
                 !is_sanitized_avatar_url(untrusted),
                 "expected untrusted: {untrusted}"
+            );
+        }
+    }
+
+    #[test]
+    fn avatar_url_normalizer_upgrades_only_exact_tencent_hosts() {
+        for (input, expected) in [
+            (
+                "//q.qlogo.cn/headimg_dl?dst_uin=1000000001&spec=640",
+                "https://q.qlogo.cn/headimg_dl?dst_uin=1000000001&spec=640",
+            ),
+            (
+                "http://thirdwx.qlogo.cn/mmopen/synthetic",
+                "https://thirdwx.qlogo.cn/mmopen/synthetic",
+            ),
+            (
+                "https://qpic.y.qq.com/synthetic-avatar.png",
+                "https://qpic.y.qq.com/synthetic-avatar.png",
+            ),
+        ] {
+            assert_eq!(normalize_avatar_url(input).as_deref(), Some(expected));
+        }
+
+        for rejected in [
+            "http://thirdwx.qlogo.cn.evil.example/avatar.png",
+            "//evil.example/avatar.png",
+            "javascript:alert(1)",
+        ] {
+            assert_eq!(normalize_avatar_url(rejected), None, "rejected: {rejected}");
+        }
+    }
+
+    #[test]
+    fn qq_avatar_fallback_accepts_only_plausible_numeric_qq_ids() {
+        assert_eq!(
+            fallback_qq_avatar_url("1000000001").as_deref(),
+            Some("https://q.qlogo.cn/headimg_dl?dst_uin=1000000001&spec=640")
+        );
+        for rejected in ["", "1234", "1000000000000", "wx-user", "10000?x=1"] {
+            assert_eq!(
+                fallback_qq_avatar_url(rejected),
+                None,
+                "rejected: {rejected}"
             );
         }
     }

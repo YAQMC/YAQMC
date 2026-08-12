@@ -356,7 +356,7 @@
   font-size: var(--text-sm);
 }
 
-.settings-surface__header span {
+.settings-surface__header > div > span {
   margin-top: 3px;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
