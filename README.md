@@ -20,7 +20,8 @@
 </p>
 
 > [!IMPORTANT]
-> YAQMC 与腾讯或 QQ 音乐没有从属或合作关系。项目不会绕过会员、DRM、地区限制或歌曲权限。
+> YAQMC 与腾讯或 QQ 音乐没有从属或合作关系。项目不会绕过会员、地区限制或歌曲权限。对于服务端已按
+> 当前账号权益下发 URL 与 ekey 的加密音频，YAQMC 只在本地内存中解密播放，不获取未授权内容。
 
 ## 先看这里
 
@@ -58,6 +59,8 @@ Linux 用户：
 - 浏览 QQ 音乐首页、搜索结果、专辑和歌单。
 - 使用原生音频引擎播放、暂停、拖动进度和管理队列。
 - 根据访客或账号实际拥有的权限选择音质，不伪造会员能力。
+- 可以在播放器右侧的音符菜单中临时切换当前歌曲音质；设置页仍负责之后歌曲的默认音质。
+- 支持账号已获授权的 QQ Music `mflac` 流式解密、边下边播和随机拖动；磁盘缓存只保存密文。
 - 支持媒体快捷键、系统媒体面板、托盘和可选的本地控制 API。
 
 ### 登录与账号
@@ -137,6 +140,10 @@ chmod +x YAQMC*.AppImage
 访客目录、原生播放、歌词窗口、账号恢复、用户资料和登录后的首页目录已经有自动化测试与 Windows
 本地验证。
 
+QMC/MFLAC 解密与随机拖动已经通过外部样本验证。线上“臻品”取源仍以 QQ 音乐实际按当前账号权益
+返回 URL 与 ekey 为前提；本项目不实现或伪造 QQ 音乐客户端的 VMP 签名，因此不把未完成的会员线上
+取源验收写成已验证。
+
 收藏与歌单写操作虽然已经实现，但在合适账号完成真实写入、回读和恢复测试之前，发布说明会继续把
 这部分标为“等待账号所有者验收”。Linux 原生 Wayland 验收也仍然是待完成项。
 
@@ -205,6 +212,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 - [账号资料库](docs/account-library.md)
 - [歌词窗口](docs/lyrics-surfaces.md)
 - [本地 API](docs/local-api.md)
+- [第三方许可证与致谢](THIRD_PARTY_NOTICES.md)
 
 </details>
 
@@ -215,3 +223,6 @@ QQ 音乐互操作研究参考了 `L-1124/QQMusicApi`、`wxuyu/QQMusicApi`、
 
 具体固定提交与许可证检测结果记录在 [QQ 音乐提供器文档](docs/qqmusic-provider.md)。YAQMC 没有复制或
 内置这些项目的实现，它们也不代表对 YAQMC 的认可。
+
+`mflac` 互操作还参考了 MIT 许可的 QMCDecode、Unlock Music 与 miaosic；完整版权与许可文本见
+[第三方许可证](THIRD_PARTY_NOTICES.md)。用户提供的无许可证参考仓库只用于核对协议行为，未复制代码。

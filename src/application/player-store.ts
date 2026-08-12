@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { EntityId, PlaybackSourceSelection, Song } from '../domain/music';
+import type {
+  AudioQualityPreference,
+  EntityId,
+  PlaybackSourceSelection,
+  Song,
+} from '../domain/music';
 import { dispatchPlayerCommand } from './player-command-adapter';
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -52,6 +57,7 @@ interface PlayerActions {
   toggleMuted: () => void;
   toggleShuffle: () => void;
   setShuffle: (enabled: boolean) => void;
+  setQuality: (quality: AudioQualityPreference) => void;
   cycleRepeat: () => void;
   toggleQueue: () => void;
   toggleLyrics: () => void;
@@ -122,7 +128,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }),
 
   playTracks: (tracks, startAtId, shuffle) => {
-    const playable = tracks.filter((track) => track.availability.status === 'available');
+    const playable = tracks.filter((track) => track.availability.status !== 'unavailable');
     if (playable.length === 0) return;
     if (dispatchPlayerCommand({ type: 'playTracks', tracks: playable, startAtId, shuffle })) return;
     const requestedIndex = startAtId ? playable.findIndex((track) => track.id === startAtId) : 0;
@@ -272,6 +278,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (dispatchPlayerCommand({ type: 'setShuffle', enabled })) return;
     set({ shuffle: enabled });
   },
+  setQuality: (quality) => {
+    if (dispatchPlayerCommand({ type: 'setQuality', quality })) return;
+    set((state) => ({
+      sourceSelection: state.sourceSelection
+        ? { ...state.sourceSelection, requestedQuality: quality }
+        : state.sourceSelection,
+    }));
+  },
   cycleRepeat: () => {
     if (dispatchPlayerCommand({ type: 'cycleRepeat' })) return;
     set((state) => ({
@@ -292,7 +306,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   addTracksToQueue: (tracks) => {
-    const playable = tracks.filter((track) => track.availability.status === 'available');
+    const playable = tracks.filter((track) => track.availability.status !== 'unavailable');
     if (playable.length === 0) return;
     if (dispatchPlayerCommand({ type: 'addTracksToQueue', tracks: playable })) return;
     set((state) => ({

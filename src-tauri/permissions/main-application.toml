@@ -17,6 +17,7 @@ permissions = [
   "allow-qqmusic-lyrics",
   "allow-qqmusic-cache-artwork",
   "allow-qqmusic-set-preferred-quality",
+  "allow-qqmusic-set-current-quality",
   "allow-qqmusic-cache-stats",
   "allow-qqmusic-clear-cache",
   "allow-player-snapshot",

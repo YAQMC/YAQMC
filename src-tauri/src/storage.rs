@@ -759,6 +759,10 @@ impl StorageService {
         SINGLE_MEDIA_LIMIT
     }
 
+    pub fn encrypted_media_limit(&self) -> u64 {
+        MEDIA_CACHE_LIMIT
+    }
+
     pub(crate) fn lookup_cached_file(
         &self,
         stable_key: &str,

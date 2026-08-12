@@ -20,7 +20,8 @@
   display: grid;
   width: 100%;
   height: 100%;
-  place-items: center;
+  padding-right: 4px;
+  place-items: center end;
 }
 
 .lyrics-unlock-button {

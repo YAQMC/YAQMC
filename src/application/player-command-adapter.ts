@@ -1,4 +1,4 @@
-import type { EntityId, Song } from '../domain/music';
+import type { AudioQualityPreference, EntityId, Song } from '../domain/music';
 
 export type PlayerCommand =
   | { type: 'hydrateQueue'; tracks: Song[] }
@@ -12,6 +12,7 @@ export type PlayerCommand =
   | { type: 'toggleMuted' }
   | { type: 'toggleShuffle' }
   | { type: 'setShuffle'; enabled: boolean }
+  | { type: 'setQuality'; quality: AudioQualityPreference }
   | { type: 'cycleRepeat' }
   | { type: 'addToQueue'; song: Song }
   | { type: 'addTracksToQueue'; tracks: Song[] }

@@ -21,8 +21,9 @@
 </p>
 
 > [!IMPORTANT]
-> YAQMC is not affiliated with Tencent or QQ Music. It does not bypass DRM, subscriptions, regional restrictions,
-> or entitlement checks. Playback uses legitimate public streams, account-entitled sources, or official previews.
+> YAQMC is not affiliated with Tencent or QQ Music. It does not bypass subscriptions, regional restrictions, or
+> entitlement checks. For encrypted media whose URL and ekey were issued by the service for the active account,
+> YAQMC decrypts only the authorized stream locally; it does not obtain unentitled content.
 
 ## Highlights
 
@@ -38,6 +39,8 @@
   backgrounds, and native output-device selection.
 - Seekable HTTP Range streaming, bounded cache, queue persistence, one-time signed-URL recovery, and an optional
   authenticated loopback API bound to `127.0.0.1`.
+- A current-track quality menu in PlayerBar, with Settings remaining the default for later tracks. Account-entitled
+  QQ Music `mflac` is decrypted as a seekable stream; only encrypted bytes are retained in the disk cache.
 
 ## Downloads
 
@@ -59,6 +62,11 @@ The guest catalog, native playback, lyric surfaces, account session restore, pro
 home catalog have deterministic coverage and local native validation. Account reads and mutations are implemented,
 but release notes must keep live favorite/playlist acceptance explicitly pending until the owner-controlled gate has
 been run against an appropriate account.
+
+QMC/MFLAC decryption and random seeking have passed an external-sample acceptance test. Live Master-source
+resolution still requires QQ Music to issue a URL and ekey for the active account. YAQMC does not implement or
+forge the proprietary QQ Music client VMP signer, so that uncompleted entitled-account gate is not reported as
+verified.
 
 | Area                            | Windows                                    | Linux                                                      |
 | ------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
@@ -164,7 +172,8 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),
 [authentication](docs/authentication.md), [account library](docs/account-library.md),
 [entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md), and
-[local API](docs/local-api.md).
+[local API](docs/local-api.md). Third-party copyright and license texts are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Research acknowledgements
 
@@ -172,3 +181,7 @@ QQ Music interoperability research consulted `L-1124/QQMusicApi`, `wxuyu/QQMusic
 `RethinkQAQ/allmusic-qqmusicapi`, `tlyanyu/multiPlatformMusicApi`, and `wangwalk/qqm` at the pinned commits and
 license-detection results recorded in [the provider record](docs/qqmusic-provider.md). They were protocol-behavior
 references only; YAQMC does not vendor their implementations, and those projects do not endorse YAQMC.
+
+QMC/mflac interoperability also uses independently adapted behavior from the MIT-licensed QMCDecode, Unlock Music,
+and miaosic projects. The user-supplied unlicensed reference repository was inspected only to corroborate behavior;
+none of its source code is copied. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

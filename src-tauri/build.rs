@@ -14,6 +14,7 @@ const APP_COMMANDS: &[&str] = &[
     "qqmusic_lyrics",
     "qqmusic_cache_artwork",
     "qqmusic_set_preferred_quality",
+    "qqmusic_set_current_quality",
     "qqmusic_account_snapshot",
     "qqmusic_auth_start",
     "qqmusic_auth_oauth_start",

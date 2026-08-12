@@ -17,8 +17,8 @@ interface TestNativeSnapshot {
   playbackDurationMs: number | null;
   playbackError: null;
   sourceSelection?: {
-    requestedQuality: 'automatic' | 'standard' | 'high' | 'lossless';
-    resolvedQuality: 'standard' | 'high' | 'lossless';
+    requestedQuality: 'automatic' | 'standard' | 'high' | 'lossless' | 'master';
+    resolvedQuality: 'standard' | 'high' | 'lossless' | 'master';
     fallbackReason?: 'source-unavailable' | 'account-rights' | 'preview-only';
     preview: boolean;
   };
@@ -138,5 +138,20 @@ describe('native player runtime', () => {
 
     act(() => nativeMocks.snapshotHandler?.({ payload: snapshot('next', 0) }));
     expect(usePlayerStore.getState().sourceSelection).toBeNull();
+  });
+
+  it('maps the player quality command to the immediate native preference command', async () => {
+    nativeMocks.invoke.mockResolvedValue(snapshot('current', 2_000));
+    render(createElement(RuntimeHarness));
+    await waitFor(() => expect(nativeMocks.snapshotHandler).not.toBeNull());
+    nativeMocks.invoke.mockClear();
+
+    usePlayerStore.getState().setQuality('master');
+
+    await waitFor(() =>
+      expect(nativeMocks.invoke).toHaveBeenCalledWith('qqmusic_set_current_quality', {
+        quality: 'master',
+      }),
+    );
   });
 });

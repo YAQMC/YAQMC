@@ -16,7 +16,7 @@ export interface AlbumSummary {
   title: string;
 }
 
-export type AudioQuality = 'standard' | 'high' | 'lossless';
+export type AudioQuality = 'standard' | 'high' | 'lossless' | 'master';
 
 export type AudioQualityPreference = 'automatic' | AudioQuality;
 

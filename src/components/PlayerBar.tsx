@@ -1,5 +1,6 @@
 import {
   Heart,
+  AudioLines,
   ListMusic,
   Maximize2,
   Mic2,
@@ -22,7 +23,9 @@ import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
 import { Artwork } from './ui/Artwork';
 import { IconButton } from './ui/IconButton';
+import { Select, type SelectOption } from './ui/Select';
 import { useTranslation } from 'react-i18next';
+import type { AudioQualityPreference } from '../domain/music';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   if (muted || volume === 0) return <VolumeX size={17} />;
@@ -73,6 +76,7 @@ export function PlayerBar({
     previous,
     seek,
     setVolume,
+    setQuality,
     toggleMuted,
     toggleShuffle,
     cycleRepeat,
@@ -106,6 +110,14 @@ export function PlayerBar({
     accountProvider !== null &&
     (accountSnapshot.state !== 'authenticated' ||
       (accountSnapshot.capabilities.favoriteWrite && hasWritableProviderReference));
+  const selectedQuality = sourceSelection?.requestedQuality ?? 'automatic';
+  const qualityOptions: readonly SelectOption<AudioQualityPreference>[] = [
+    { value: 'automatic', label: t('qualityAutomatic') },
+    { value: 'standard', label: t('qualityStandard') },
+    { value: 'high', label: t('qualityHigh') },
+    { value: 'lossless', label: t('qualityLossless') },
+    { value: 'master', label: t('qualityMaster') },
+  ];
 
   return (
     <footer className="player-bar" aria-label={t('region')}>
@@ -207,6 +219,15 @@ export function PlayerBar({
       </div>
 
       <div className="player-bar__tools">
+        <Select
+          value={selectedQuality}
+          options={qualityOptions}
+          onChange={setQuality}
+          ariaLabel={t('qualityMenu')}
+          icon={AudioLines}
+          className="player-quality-select"
+          disabled={!current || current.provider?.providerId !== 'qqmusic'}
+        />
         <IconButton
           label={t('showLyrics')}
           size="small"

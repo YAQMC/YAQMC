@@ -28,7 +28,8 @@ account acceptance remains pending.
 | current toplist       | `u.y.qq.com/cgi-bin/musicu.fcg`                           | home feed/toplist tracks    |
 | QRC lyrics            | `musicu.fcg`, `GetPlayLyricInfo`                          | word-timed `LyricDocument`  |
 | LRC fallback          | `c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg`       | line/plain lyrics           |
-| playback source       | `musicu.fcg` vkey response                                | allowlisted HTTPS media URL |
+| clear playback source | `musicu.fcg` vkey response                                | allowlisted HTTPS media URL |
+| encrypted source      | `musics.fcg`, `GetEVkey/CgiGetEVkey`                      | URL + in-memory ekey        |
 | artwork               | `y.gtimg.cn` / `qpic.y.qq.com`                            | cached data URI             |
 
 Search currently normalizes songs and albums. Playlist discovery is supplied through the home/toplist and direct
@@ -88,9 +89,15 @@ complete.
 | RethinkQAQ/allmusic-qqmusicapi | a828f1f2d2dc8416bd1a549ee4c14efbb8ba4974 | LGPL-3.0                      | Protocol-behavior reference only; no source reuse      |
 | tlyanyu/multiPlatformMusicApi  | 0fd583b384f5d6477067ff3d29ccedd97fc3a317 | no license detected by GitHub | Rename-behavior research only; no source reuse         |
 | wangwalk/qqm                   | 4a434ccf7468af29731a9792917cb6fc5a126bab | no license detected by GitHub | Recent-history behavior research only; no source reuse |
+| Flechazo/qmc                   | 5039640e4b7e3a57d97003c62990841a3089e871 | no license in repository      | User-supplied behavior check only; no source reuse     |
+| gongjiehong/QMCDecode          | aea76301a08678100ec677cb61a8458bc75662ec | MIT                           | Independently adapted QMC cipher behavior              |
+| Mirror/unlock-music            | 986e02f182c1f8f30101568a8246cd5f30785378 | MIT                           | Independently adapted EncV2 wrapper behavior           |
+| AynaLivePlayer/miaosic         | c509534bd7bbc9c4094ec6c2663901cb67fec342 | MIT                           | EVkey/quality interoperability corroboration           |
 
 The pinned-source validator downloads these immutable paths only in memory, verifies each content SHA-256, emits
 symbol-only evidence, and writes neither source bodies nor authentication artifacts to the repository.
+
+The complete reused-license notices are reproduced in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 ## Identity and entitlement
 
@@ -102,18 +109,26 @@ The provider separates catalog availability from playback capability:
 
 - free/public play permission -> full playback candidate chain
 - paywalled item with an official try segment -> preview with explicit start/end bounds
-- paywalled item without a try segment -> entitlement required and not playable
+- paywalled item without a try segment -> queue-admissible entitlement resolution; the authenticated resolver makes
+  the final allow/fallback/deny decision
 
 Preferred source order is:
 
-- Automatic: 320 kbps MP3, 128 kbps MP3, AAC/M4A, official preview
+- Automatic: highest account-entitled available full source, then official preview
 - Standard: 128 kbps MP3, AAC/M4A, official preview
 - High: 320 kbps MP3, 128 kbps MP3, AAC/M4A, official preview
-- Lossless: FLAC, then the High chain
+- Lossless: encrypted/clear FLAC, then the High chain
+- Master: authorized master mflac, then Lossless/High/Standard/preview
 
 The vkey response, not filename construction alone, decides whether a candidate exists. Resulting URLs must be
 HTTPS and end in an allowlisted `qqmusic.qq.com` or `tc.qq.com` host. URLs, cookie headers, and vkeys are never
 logged or persisted as stable cache keys. A 401/403/404/410 media response triggers one fresh resolution.
+
+Encrypted master (`AIM0…mflac`) and encrypted lossless (`F0M0…mflac`) are requested only when the normalized current
+account permits that quality. The signed direct request uses `music.vkey.GetEVkey/CgiGetEVkey`; an empty/denied
+result is unavailable, not proof of entitlement. The returned ekey is redacted/zeroized and remains native-only.
+The media cache stores ciphertext and decrypts on decoder reads/seeks. YAQMC never derives or fabricates a vkey,
+ekey, subscription, or account privilege.
 
 ## Lyrics
 

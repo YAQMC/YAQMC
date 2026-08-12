@@ -42,6 +42,7 @@ pub enum AudioQuality {
     Standard,
     High,
     Lossless,
+    Master,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -111,7 +112,10 @@ pub enum SongAvailability {
 
 impl SongAvailability {
     fn is_available(&self) -> bool {
-        matches!(self, Self::Available)
+        // Account-gated catalog rows still need to reach the account-bound
+        // source resolver. Only the resolver has the current entitlement and
+        // can make the authoritative allow/fallback/deny decision.
+        matches!(self, Self::Available | Self::EntitlementRequired { .. })
     }
 }
 
@@ -559,6 +563,21 @@ impl PlayerService {
             return Err(PlayerError::IndexOutOfRange(index));
         }
         self.load_index(index, true, 0).await
+    }
+
+    pub async fn reload_current(&self) -> Result<PlayerSnapshot, PlayerError> {
+        let (index, position_ms, autoplay) = {
+            let core = self.core.read().await;
+            (
+                core.current_index.ok_or(PlayerError::EmptyQueue)?,
+                core.position_ms,
+                matches!(
+                    core.playback_state,
+                    PlaybackState::Playing | PlaybackState::Buffering
+                ),
+            )
+        };
+        self.load_index(index, autoplay, position_ms).await
     }
 
     pub async fn play(&self) -> Result<PlayerSnapshot, PlayerError> {
@@ -1459,6 +1478,11 @@ fn source_failure(error: &PlaybackSourceError) -> PlaybackFailure {
             "The temporary media cache could not prepare this track.",
             true,
         ),
+        PlaybackSourceError::DecryptionFailed => (
+            "media-decryption-failed",
+            "The encrypted QQ Music source could not be decrypted.",
+            true,
+        ),
         PlaybackSourceError::Cancelled => (
             "source-cancelled",
             "The account-bound playback source was cancelled.",
@@ -1788,6 +1812,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_gated_tracks_reach_the_source_resolver() {
+        let resolver_calls = Arc::new(AtomicUsize::new(0));
+        let player = PlayerService::with_runtime(
+            Arc::new(crate::audio::TestAudioEngine::default()),
+            Arc::new(CountingResolver {
+                calls: Arc::clone(&resolver_calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        let mut gated = song("vip-track", 10_000);
+        gated.availability = SongAvailability::EntitlementRequired {
+            required_tier: "QQ Music VIP".to_owned(),
+        };
+
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![gated],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("the resolver, not queue admission, decides account rights");
+
+        assert_eq!(resolver_calls.load(Ordering::Acquire), 1);
+    }
+
+    #[tokio::test]
+    async fn explicitly_unavailable_tracks_are_rejected_before_source_resolution() {
+        let resolver_calls = Arc::new(AtomicUsize::new(0));
+        let player = PlayerService::with_runtime(
+            Arc::new(crate::audio::TestAudioEngine::default()),
+            Arc::new(CountingResolver {
+                calls: Arc::clone(&resolver_calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        let mut unavailable = song("removed-track", 10_000);
+        unavailable.availability = SongAvailability::Unavailable {
+            reason: "copyright".to_owned(),
+        };
+
+        assert!(matches!(
+            player
+                .play_tracks(PlayTracksRequest {
+                    tracks: vec![unavailable],
+                    start_at_id: None,
+                    shuffle: None,
+                })
+                .await,
+            Err(PlayerError::NoPlayableTracks)
+        ));
+        assert_eq!(resolver_calls.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn reload_current_resolves_again_and_preserves_position_and_play_state() {
+        let resolver_calls = Arc::new(AtomicUsize::new(0));
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = PlayerService::with_runtime(
+            engine.clone(),
+            Arc::new(CountingResolver {
+                calls: Arc::clone(&resolver_calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("initial source plays");
+        player.seek(4_200).await.expect("seek succeeds");
+
+        let reloaded = player.reload_current().await.expect("reload succeeds");
+
+        assert_eq!(resolver_calls.load(Ordering::Acquire), 2);
+        assert_eq!(reloaded.position_ms, 4_200);
+        assert_eq!(reloaded.playback_state, PlaybackState::Playing);
+        assert_eq!(engine.snapshot().position_ms, 4_200);
+
+        player.pause().await.expect("pause succeeds");
+        let paused = player
+            .reload_current()
+            .await
+            .expect("paused reload succeeds");
+        assert_eq!(resolver_calls.load(Ordering::Acquire), 3);
+        assert_eq!(paused.position_ms, 4_200);
+        assert_eq!(paused.playback_state, PlaybackState::Paused);
+        assert!(engine.snapshot().paused);
+    }
+
+    #[tokio::test]
     async fn play_tracks_applies_shuffle_atomically_and_bulk_queue_append_preserves_order() {
         let player = PlayerService::with_runtime(
             Arc::new(crate::audio::TestAudioEngine::default()),
@@ -2059,6 +2177,10 @@ mod tests {
             crate::audio::PreparedPlaybackLocation::Local(path) => assert!(path.is_file()),
             crate::audio::PreparedPlaybackLocation::Progressive(_) => {
                 panic!("non-range fixture must be fully cached")
+            }
+            crate::audio::PreparedPlaybackLocation::EncryptedLocal { .. }
+            | crate::audio::PreparedPlaybackLocation::EncryptedProgressive { .. } => {
+                panic!("ordinary fixture must not use an encrypted location")
             }
         }
         assert_eq!(hits.load(Ordering::Acquire), 1);

@@ -1,6 +1,7 @@
 use crate::{
     audio::{AudioFormat, PreparedPlaybackLocation, PreparedPlaybackSource},
     player::Song,
+    qmc::{EncryptedMediaKey, QmcDecryptor, QmcError},
     qqmusic::{AccountEpoch, PlaybackSourceSelection},
     storage::{StorageError, StorageService},
     streaming::{prepare_progressive, ProgressiveError, ProgressivePreparation},
@@ -119,6 +120,11 @@ pub enum PlaybackLocation {
         url: String,
         headers: Vec<(String, String)>,
     },
+    EncryptedHttp {
+        url: String,
+        headers: Vec<(String, String)>,
+        ekey: EncryptedMediaKey,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -168,6 +174,8 @@ pub enum PlaybackSourceError {
     Cancelled,
     #[error("the local media cache failed")]
     CacheFailure,
+    #[error("the encrypted media could not be decrypted")]
+    DecryptionFailed,
 }
 
 #[async_trait]
@@ -201,9 +209,14 @@ impl MediaPreparer for CachedMediaPreparer {
         source: ResolvedPlaybackSource,
     ) -> Result<PreparedPlaybackSource, PlaybackSourceError> {
         source.epoch_guard.validate()?;
+        let source_limit = if matches!(&source.location, PlaybackLocation::EncryptedHttp { .. }) {
+            self.storage.encrypted_media_limit()
+        } else {
+            self.storage.single_media_limit()
+        };
         if source
             .content_length
-            .is_some_and(|bytes| bytes > self.storage.single_media_limit())
+            .is_some_and(|bytes| bytes > source_limit)
         {
             return Err(PlaybackSourceError::ResponseTooLarge);
         }
@@ -305,6 +318,98 @@ impl MediaPreparer for CachedMediaPreparer {
                     PreparedPlaybackLocation::Local(cached.path)
                 }
             }
+            PlaybackLocation::EncryptedHttp { url, headers, ekey } => {
+                let decryptor = QmcDecryptor::new(&ekey).map_err(map_qmc_error)?;
+                let encrypted_key = format!("{}:encrypted", source.cache_key);
+                let encrypted_limit = self.storage.encrypted_media_limit();
+                if let Some(cached) = self
+                    .storage
+                    .lookup_cached_file(&encrypted_key)
+                    .map_err(map_storage_error)?
+                {
+                    PreparedPlaybackLocation::EncryptedLocal {
+                        path: cached.path,
+                        content_length: cached.bytes,
+                        decryptor,
+                    }
+                } else if source.supports_range {
+                    let request_headers = parse_headers(headers)?;
+                    let cancellation = source.epoch_guard.cancellation_token();
+                    let preparation = tokio::select! {
+                        _ = cancellation.cancelled() => Err(PlaybackSourceError::Cancelled),
+                        result = prepare_progressive(
+                            &self.client,
+                            Arc::clone(&self.storage),
+                            encrypted_key.clone(),
+                            url.clone(),
+                            request_headers.clone(),
+                            "mflac".to_owned(),
+                            None,
+                            encrypted_limit,
+                        ) => result.map_err(map_progressive_error),
+                    }?;
+                    source.epoch_guard.validate()?;
+                    match preparation {
+                        ProgressivePreparation::Complete(cached) => {
+                            PreparedPlaybackLocation::EncryptedLocal {
+                                path: cached.path,
+                                content_length: cached.bytes,
+                                decryptor,
+                            }
+                        }
+                        ProgressivePreparation::Progressive(progressive) => {
+                            PreparedPlaybackLocation::EncryptedProgressive {
+                                source: progressive,
+                                decryptor,
+                            }
+                        }
+                        ProgressivePreparation::FullDownloadFallback => {
+                            let cancellation = source.epoch_guard.cancellation_token();
+                            let encrypted = tokio::select! {
+                                _ = cancellation.cancelled() => Err(PlaybackSourceError::Cancelled),
+                                result = self.storage.fetch_cached(
+                                    &self.client,
+                                    "media",
+                                    &encrypted_key,
+                                    &url,
+                                    request_headers,
+                                    "mflac",
+                                    encrypted_limit,
+                                    None,
+                                ) => result.map_err(map_storage_error),
+                            }?;
+                            source.epoch_guard.validate()?;
+                            PreparedPlaybackLocation::EncryptedLocal {
+                                path: encrypted.path,
+                                content_length: encrypted.bytes,
+                                decryptor,
+                            }
+                        }
+                    }
+                } else {
+                    let request_headers = parse_headers(headers)?;
+                    let cancellation = source.epoch_guard.cancellation_token();
+                    let encrypted = tokio::select! {
+                        _ = cancellation.cancelled() => Err(PlaybackSourceError::Cancelled),
+                        result = self.storage.fetch_cached(
+                            &self.client,
+                            "media",
+                            &encrypted_key,
+                            &url,
+                            request_headers,
+                            "mflac",
+                            encrypted_limit,
+                            None,
+                        ) => result.map_err(map_storage_error),
+                    }?;
+                    source.epoch_guard.validate()?;
+                    PreparedPlaybackLocation::EncryptedLocal {
+                        path: encrypted.path,
+                        content_length: encrypted.bytes,
+                        decryptor,
+                    }
+                }
+            }
         };
 
         source.epoch_guard.validate()?;
@@ -318,6 +423,24 @@ impl MediaPreparer for CachedMediaPreparer {
             selection: source.selection,
             epoch_guard: source.epoch_guard,
         })
+    }
+}
+
+fn parse_headers(headers: Vec<(String, String)>) -> Result<HeaderMap, PlaybackSourceError> {
+    let mut parsed = HeaderMap::new();
+    for (name, value) in headers {
+        let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| PlaybackSourceError::Network)?;
+        let value = reqwest::header::HeaderValue::from_str(&value)
+            .map_err(|_| PlaybackSourceError::Network)?;
+        parsed.insert(name, value);
+    }
+    Ok(parsed)
+}
+
+fn map_qmc_error(error: QmcError) -> PlaybackSourceError {
+    match error {
+        QmcError::InvalidKey => PlaybackSourceError::DecryptionFailed,
     }
 }
 

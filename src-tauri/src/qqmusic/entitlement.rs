@@ -14,6 +14,7 @@ pub enum AudioQualityPreference {
     Standard,
     High,
     Lossless,
+    Master,
 }
 
 impl AudioQualityPreference {
@@ -22,6 +23,7 @@ impl AudioQualityPreference {
             Some("standard") => Self::Standard,
             Some("high") => Self::High,
             Some("lossless") => Self::Lossless,
+            Some("master") => Self::Master,
             _ => Self::Automatic,
         }
     }
@@ -32,6 +34,7 @@ impl AudioQualityPreference {
             Self::Standard => "standard",
             Self::High => "high",
             Self::Lossless => "lossless",
+            Self::Master => "master",
         }
     }
 
@@ -41,6 +44,7 @@ impl AudioQualityPreference {
             Self::Standard => Some(AudioQuality::Standard),
             Self::High => Some(AudioQuality::High),
             Self::Lossless => Some(AudioQuality::Lossless),
+            Self::Master => Some(AudioQuality::Master),
         }
     }
 }
@@ -85,6 +89,7 @@ pub struct SourceCandidate {
     pub bitrate_kbps: Option<u32>,
     pub quality: AudioQuality,
     pub preview: bool,
+    pub encrypted: bool,
 }
 
 impl SourceCandidate {
@@ -94,7 +99,7 @@ impl SourceCandidate {
 
     #[cfg(test)]
     fn test(name: &str, quality: AudioQuality, preview: bool) -> Self {
-        let (format, codec) = if quality == AudioQuality::Lossless {
+        let (format, codec) = if matches!(quality, AudioQuality::Lossless | AudioQuality::Master) {
             (AudioFormat::Flac, AudioCodec::Flac)
         } else {
             (AudioFormat::Mp3, AudioCodec::Mp3)
@@ -108,6 +113,7 @@ impl SourceCandidate {
             bitrate_kbps: None,
             quality,
             preview,
+            encrypted: false,
         }
     }
 }
@@ -124,6 +130,7 @@ fn rank(quality: AudioQuality) -> u8 {
         AudioQuality::Standard => 1,
         AudioQuality::High => 2,
         AudioQuality::Lossless => 3,
+        AudioQuality::Master => 4,
     }
 }
 
@@ -140,7 +147,8 @@ fn quality_in_preference_order(preference: AudioQualityPreference, quality: Audi
         AudioQualityPreference::Automatic => true,
         AudioQualityPreference::Standard => quality == AudioQuality::Standard,
         AudioQualityPreference::High => rank(quality) <= rank(AudioQuality::High),
-        AudioQualityPreference::Lossless => true,
+        AudioQualityPreference::Lossless => rank(quality) <= rank(AudioQuality::Lossless),
+        AudioQualityPreference::Master => true,
     }
 }
 
@@ -264,6 +272,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
                 "standard" => Some(AudioQuality::Standard),
                 "high" => Some(AudioQuality::High),
                 "lossless" => Some(AudioQuality::Lossless),
+                "master" => Some(AudioQuality::Master),
                 _ => None,
             },
         )
@@ -278,6 +287,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
             "standard" => Some(AudioQuality::Standard),
             "high" => Some(AudioQuality::High),
             "lossless" => Some(AudioQuality::Lossless),
+            "master" => Some(AudioQuality::Master),
             _ => None,
         });
     if normalized.is_some() {
@@ -352,15 +362,21 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
         },
         expires_at_ms,
         permitted_qualities: if active {
-            vec![
+            let mut qualities = vec![
                 AudioQuality::Standard,
                 AudioQuality::High,
                 AudioQuality::Lossless,
-            ]
+            ];
+            if super_vip {
+                qualities.push(AudioQuality::Master);
+            }
+            qualities
         } else {
             vec![AudioQuality::Standard]
         },
-        observed_maximum_quality: Some(if active {
+        observed_maximum_quality: Some(if super_vip {
+            AudioQuality::Master
+        } else if active {
             AudioQuality::Lossless
         } else {
             AudioQuality::Standard
@@ -405,6 +421,7 @@ mod tests {
 
     fn all_candidates() -> Vec<SourceCandidate> {
         vec![
+            candidate("master", AudioQuality::Master, false),
             candidate("lossless", AudioQuality::Lossless, false),
             candidate("high", AudioQuality::High, false),
             candidate("standard", AudioQuality::Standard, false),
@@ -417,6 +434,7 @@ mod tests {
             format(AudioQuality::Standard, AudioCodec::Mp3),
             format(AudioQuality::High, AudioCodec::Mp3),
             format(AudioQuality::Lossless, AudioCodec::Flac),
+            format(AudioQuality::Master, AudioCodec::Flac),
         ]
     }
 
@@ -433,6 +451,45 @@ mod tests {
     #[test]
     fn deterministic_quality_matrix_respects_rights_availability_and_preview() {
         let cases = [
+            (
+                "master-super-vip",
+                AudioQualityPreference::Master,
+                entitlement(vec![
+                    AudioQuality::Standard,
+                    AudioQuality::High,
+                    AudioQuality::Lossless,
+                    AudioQuality::Master,
+                ]),
+                availability(&["master", "lossless", "high", "standard"]),
+                AudioQuality::Master,
+                None,
+            ),
+            (
+                "lossless-never-upgrades-to-master",
+                AudioQualityPreference::Lossless,
+                entitlement(vec![
+                    AudioQuality::Standard,
+                    AudioQuality::High,
+                    AudioQuality::Lossless,
+                    AudioQuality::Master,
+                ]),
+                availability(&["master", "lossless", "high", "standard"]),
+                AudioQuality::Lossless,
+                None,
+            ),
+            (
+                "master-missing",
+                AudioQualityPreference::Master,
+                entitlement(vec![
+                    AudioQuality::Standard,
+                    AudioQuality::High,
+                    AudioQuality::Lossless,
+                    AudioQuality::Master,
+                ]),
+                availability(&["lossless", "high", "standard"]),
+                AudioQuality::Lossless,
+                Some(PlaybackFallbackReason::SourceUnavailable),
+            ),
             (
                 "auto-vip-lossless",
                 AudioQualityPreference::Automatic,

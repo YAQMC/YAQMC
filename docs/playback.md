@@ -17,6 +17,7 @@ Enabled decoder/container paths are:
 | MP3             | MP3                  | enabled and exercised with a live QQ track              |
 | AAC in MP4/M4A  | AAC                  | enabled; not yet exercised in the native acceptance run |
 | FLAC            | FLAC                 | enabled; lossless selection is opt-in                   |
+| QQ mflac        | streamed FLAC        | enabled for account-authorized URL + ekey sources       |
 | PCM WAV         | WAV                  | enabled and exercised by the deterministic native test  |
 | ALAC            | domain metadata only | not emitted or claimed as supported                     |
 
@@ -68,10 +69,16 @@ Servers without reliable Range support retain the bounded atomic full-download p
 ## Account entitlement projection
 
 Preferred quality is a request, not proof of rights. The QQ resolver intersects the catalog formats, normalized
-account entitlement, and the live vkey response before the existing media path runs. Automatic selects the highest
-entitled available full source; explicit High/Lossless preferences may fall back with a typed `account-rights`,
-`source-unavailable`, or `preview-only` reason. Unknown/failed entitlement validation is conservative and permits
-only Standard. See [entitlement](entitlement.md) for the matrix.
+account entitlement, and the live vkey/evkey response before the existing media path runs. Automatic selects the
+highest entitled available full source; explicit High/Lossless/Master preferences may fall back with a typed
+`account-rights`, `source-unavailable`, or `preview-only` reason. Unknown/failed entitlement validation is
+conservative and permits only Standard. The PlayerBar selector is scoped to the current song and reloads it at the
+same position/play state; the Settings preference remains the default for later songs. See
+[entitlement](entitlement.md) for the matrix.
+
+Paid catalog rows are queue-admissible when they require account resolution: catalog metadata alone cannot know the
+current secure-session entitlement. The resolver remains the authoritative allow/fallback/deny boundary. Rows the
+provider explicitly marks unavailable (for example a removed-copyright item) are still rejected before resolution.
 
 The account layer does not introduce a second player. It supplies a guarded source to the same `PlayerService`,
 Range/cache path, Rodio worker, queue, lyrics clock, MPRIS/SMTC adapters, and tray controls. The loopback local API

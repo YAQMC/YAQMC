@@ -107,6 +107,41 @@ describe('player store', () => {
     });
   });
 
+  it('lets account-gated tracks reach the native entitlement resolver', () => {
+    const gated = {
+      ...track('vip-track'),
+      availability: {
+        status: 'entitlement-required' as const,
+        requiredTier: 'QQ Music VIP',
+      },
+    };
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+
+    usePlayerStore.getState().playTracks([gated]);
+
+    expect(commands).toEqual([
+      { type: 'playTracks', tracks: [gated], startAtId: undefined, shuffle: undefined },
+    ]);
+  });
+
+  it('still rejects explicitly unavailable catalog rows before native playback', () => {
+    const unavailable = {
+      ...track('removed-track'),
+      availability: { status: 'unavailable' as const, reason: 'copyright' },
+    };
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+
+    usePlayerStore.getState().playTracks([unavailable]);
+
+    expect(commands).toEqual([]);
+  });
+
   it('sends queue replacement and shuffle mode as one native command', () => {
     const commands: unknown[] = [];
     setPlayerCommandAdapter(async (command) => {

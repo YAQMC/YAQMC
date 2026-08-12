@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
+import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import type { AccountSnapshot, FavoriteMutationResult } from '../domain/music';
@@ -57,6 +58,23 @@ describe('PlayerBar lyrics presentation entry', () => {
     vi.restoreAllMocks();
     resetAccountRuntimeForTest();
     usePlayerStore.setState(initialPlayerState);
+    setPlayerCommandAdapter(null);
+  });
+
+  afterEach(() => setPlayerCommandAdapter(null));
+
+  it('changes QQ Music quality from the player bar through the native command adapter', () => {
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    usePlayerStore.setState({ queue: [qqTrack()], currentIndex: 0 });
+    render(<PlayerBar />);
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Audio quality for the current track' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Master quality' }));
+
+    expect(commands).toEqual([{ type: 'setQuality', quality: 'master' }]);
   });
 
   it('enables the Lyrics-specific fullscreen action only when a callback is available', () => {

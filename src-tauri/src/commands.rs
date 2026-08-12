@@ -21,7 +21,8 @@ use crate::{
             RemotePlayHistoryItem, RenamePlaylistRequest,
         },
         oauth, Album, AudioQualityPreference, HomeFeed, LibrarySnapshot, OAuthLoginProvider,
-        Playlist, ProviderResult, ProviderStatus, QQMusicService, SearchResult,
+        Playlist, ProviderCommandError, ProviderResult, ProviderStatus, QQMusicService,
+        SearchResult,
     },
     storage::{CacheStats, StorageService},
     system_media::SystemMediaIntegration,
@@ -159,12 +160,55 @@ pub async fn qqmusic_cache_artwork(
 #[tauri::command]
 pub async fn qqmusic_set_preferred_quality(
     provider: State<'_, Arc<QQMusicService>>,
+    player: State<'_, Arc<PlayerService>>,
     quality: AudioQualityPreference,
 ) -> ProviderResult<ProviderStatus> {
-    provider
+    let current = player.current_track().await;
+    let current_reference = current.as_ref().and_then(|song| song.provider.as_ref());
+    let current_is_qqmusic =
+        current_reference.is_some_and(|reference| reference.provider_id == "qqmusic");
+    let status = provider
         .set_preferred_quality(quality)
         .await
-        .map_err(Into::into)
+        .map_err(ProviderCommandError::from)?;
+    if current_is_qqmusic {
+        player
+            .reload_current()
+            .await
+            .map_err(|error| ProviderCommandError {
+                code: "player-reload-failed".to_owned(),
+                message: error.to_string(),
+                retryable: true,
+            })?;
+    }
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn qqmusic_set_current_quality(
+    provider: State<'_, Arc<QQMusicService>>,
+    player: State<'_, Arc<PlayerService>>,
+    quality: AudioQualityPreference,
+) -> ProviderResult<PlayerSnapshot> {
+    let track_id = player
+        .current_track()
+        .await
+        .and_then(|song| song.provider)
+        .filter(|reference| reference.provider_id == "qqmusic")
+        .map(|reference| reference.track_id)
+        .ok_or_else(|| ProviderCommandError::from(crate::qqmusic::QQMusicError::InvalidRequest))?;
+    provider
+        .set_current_quality(track_id, quality)
+        .await
+        .map_err(ProviderCommandError::from)?;
+    player
+        .reload_current()
+        .await
+        .map_err(|error| ProviderCommandError {
+            code: "player-reload-failed".to_owned(),
+            message: error.to_string(),
+            retryable: true,
+        })
 }
 
 #[tauri::command]

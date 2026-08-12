@@ -524,7 +524,7 @@ fn sync_unlock_window(
     let unlock = if let Some(window) = existing {
         window
     } else {
-        build_unlock_window(app, kind, config.always_on_top)?
+        build_unlock_window(app, kind, config.always_on_top, surface)?
     };
     unlock
         .set_always_on_top(config.always_on_top)
@@ -542,9 +542,10 @@ fn build_unlock_window(
     app: &AppHandle,
     kind: SurfaceKind,
     always_on_top: bool,
+    surface: &WebviewWindow,
 ) -> Result<WebviewWindow, String> {
     let url = WebviewUrl::App(format!("index.html?unlockSurface={}", kind.value()).into());
-    WebviewWindowBuilder::new(app, kind.unlock_label(), url)
+    let builder = WebviewWindowBuilder::new(app, kind.unlock_label(), url)
         .title("Unlock YAQMC Lyrics")
         .inner_size(42.0, 42.0)
         .min_inner_size(42.0, 42.0)
@@ -557,7 +558,10 @@ fn build_unlock_window(
         .shadow(false)
         .focused(false)
         .focusable(false)
-        .visible(false)
+        .visible(false);
+    builder
+        .parent(surface)
+        .map_err(|error| error.to_string())?
         .build()
         .map_err(|error| error.to_string())
 }
@@ -567,18 +571,28 @@ fn position_unlock_window(surface: &WebviewWindow, unlock: &WebviewWindow) -> Re
         .outer_position()
         .map_err(|error| error.to_string())?;
     let surface_size = surface.outer_size().map_err(|error| error.to_string())?;
+    let unlock_size = unlock.outer_size().map_err(|error| error.to_string())?;
     let scale = surface.scale_factor().map_err(|error| error.to_string())?;
-    let control_size = (42.0 * scale).round() as i32;
+    let position = unlock_window_position(surface_position, surface_size, unlock_size, scale);
+    unlock
+        .set_position(position)
+        .map_err(|error| error.to_string())
+}
+
+fn unlock_window_position(
+    surface_position: PhysicalPosition<i32>,
+    surface_size: tauri::PhysicalSize<u32>,
+    unlock_size: tauri::PhysicalSize<u32>,
+    scale: f64,
+) -> PhysicalPosition<i32> {
     let inset = (14.0 * scale).round() as i32;
     let x = surface_position
         .x
         .saturating_add(surface_size.width as i32)
-        .saturating_sub(control_size)
+        .saturating_sub(unlock_size.width as i32)
         .saturating_sub(inset);
     let y = surface_position.y.saturating_add(inset);
-    unlock
-        .set_position(PhysicalPosition::new(x, y))
-        .map_err(|error| error.to_string())
+    PhysicalPosition::new(x, y)
 }
 
 fn close_unlock_window(app: &AppHandle, kind: SurfaceKind) {
@@ -946,5 +960,18 @@ mod tests {
             logical_dimensions(SurfaceKind::Island, SurfaceWidth::Compact),
             (420.0, 156.0)
         );
+    }
+
+    #[test]
+    fn unlock_position_uses_the_real_platform_window_width() {
+        let position = unlock_window_position(
+            PhysicalPosition::new(638, 39),
+            tauri::PhysicalSize::new(520, 156),
+            tauri::PhysicalSize::new(135, 42),
+            1.0,
+        );
+
+        assert_eq!(position, PhysicalPosition::new(1_009, 53));
+        assert!(position.x + 135 <= 638 + 520);
     }
 }

@@ -1,5 +1,6 @@
 use crate::{
     media::PlaybackEpochGuard,
+    qmc::{QmcDecryptor, QmcReader},
     qqmusic::PlaybackSourceSelection,
     streaming::{ProgressiveMonitor, ProgressiveSource},
 };
@@ -55,6 +56,15 @@ impl AudioFormat {
 pub enum PreparedPlaybackLocation {
     Local(PathBuf),
     Progressive(ProgressiveSource),
+    EncryptedLocal {
+        path: PathBuf,
+        content_length: u64,
+        decryptor: QmcDecryptor,
+    },
+    EncryptedProgressive {
+        source: ProgressiveSource,
+        decryptor: QmcDecryptor,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -645,6 +655,61 @@ fn load_source_unchecked(
                 AudioLoadMetadata {
                     duration_ms: duration,
                     format: source.format,
+                },
+                Some(monitor),
+            ))
+        }
+        PreparedPlaybackLocation::EncryptedLocal {
+            path,
+            content_length,
+            decryptor,
+        } => {
+            let reader = QmcReader::new(
+                File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?,
+                decryptor.clone(),
+            );
+            let decoder = DecoderBuilder::new()
+                .with_data(reader)
+                .with_byte_len(*content_length)
+                .with_seekable(true)
+                .with_hint(source.format.extension())
+                .build()
+                .map_err(|_| AudioEngineError::DecoderUnsupported)?;
+            let duration = decoder.total_duration().map(duration_ms);
+            player.clear();
+            player.append(decoder);
+            player.pause();
+            Ok((
+                AudioLoadMetadata {
+                    duration_ms: duration,
+                    format: source.format,
+                },
+                None,
+            ))
+        }
+        PreparedPlaybackLocation::EncryptedProgressive { source, decryptor } => {
+            let reader = QmcReader::new(
+                source
+                    .open_reader()
+                    .map_err(|_| AudioEngineError::StreamingFailed)?,
+                decryptor.clone(),
+            );
+            let decoder = DecoderBuilder::new()
+                .with_data(reader)
+                .with_byte_len(source.content_length())
+                .with_seekable(true)
+                .with_hint("flac")
+                .build()
+                .map_err(|_| AudioEngineError::DecoderUnsupported)?;
+            let duration = decoder.total_duration().map(duration_ms);
+            let monitor = source.monitor();
+            player.clear();
+            player.append(decoder);
+            player.pause();
+            Ok((
+                AudioLoadMetadata {
+                    duration_ms: duration,
+                    format: AudioFormat::Flac,
                 },
                 Some(monitor),
             ))

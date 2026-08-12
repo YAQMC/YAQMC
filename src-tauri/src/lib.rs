@@ -9,6 +9,7 @@ mod lyrics_surface;
 mod media;
 mod platform;
 mod player;
+mod qmc;
 mod qqmusic;
 mod storage;
 mod streaming;
@@ -282,6 +283,7 @@ pub fn run() {
             commands::qqmusic_lyrics,
             commands::qqmusic_cache_artwork,
             commands::qqmusic_set_preferred_quality,
+            commands::qqmusic_set_current_quality,
             commands::qqmusic_account_snapshot,
             commands::qqmusic_favorite_songs,
             commands::qqmusic_account_playlists,

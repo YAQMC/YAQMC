@@ -77,6 +77,9 @@ async function invokePlayerCommand(command: PlayerCommand): Promise<void> {
     case 'setShuffle':
       await invoke('player_set_shuffle', { enabled: command.enabled });
       return;
+    case 'setQuality':
+      await invoke('qqmusic_set_current_quality', { quality: command.quality });
+      return;
     case 'cycleRepeat':
       await invoke('player_cycle_repeat');
       return;
