@@ -1,4 +1,4 @@
-import { Check, Minus, MoreHorizontal, Pencil, Play, Plus, Shuffle, Trash2 } from 'lucide-react';
+import { Check, Minus, Pencil, Play, Plus, Shuffle, Trash2 } from 'lucide-react';
 import { useContext, useState, type CSSProperties, type FormEvent } from 'react';
 import { usePlaylistMutationState, useAccountStore } from '../application/account-runtime';
 import { useCurrentSong, usePlayerStore } from '../application/player-store';
@@ -9,6 +9,7 @@ import { formatTotalDuration } from '../utils/format';
 import { TrackList } from '../components/TrackList';
 import { Artwork } from '../components/ui/Artwork';
 import { IconButton } from '../components/ui/IconButton';
+import { ActionMenu, ActionMenuItem } from '../components/ui/ActionMenu';
 import { useTranslation } from 'react-i18next';
 
 interface PlaylistPageProps {
@@ -33,12 +34,26 @@ export function PlaylistPage({
   const provider = useContext(ProviderContext);
   const accountProvider = provider && isAccountMusicProvider(provider) ? provider : null;
   const playTracks = usePlayerStore((state) => state.playTracks);
+  const addTracksToQueue = usePlayerStore((state) => state.addTracksToQueue);
+  const shuffle = usePlayerStore((state) => state.shuffle);
   const currentSong = useCurrentSong();
+  const projectedSummary = useAccountStore((state) => {
+    const resource = state.playlists;
+    const items =
+      resource.status === 'ready' || resource.status === 'stale'
+        ? resource.data
+        : resource.status === 'loading' || resource.status === 'error'
+          ? resource.data
+          : null;
+    return items?.find((item) => item.id === playlist.id);
+  });
   const renamePlaylist = useAccountStore((state) => state.renamePlaylist);
   const addPlaylistTrack = useAccountStore((state) => state.addPlaylistTrack);
   const removePlaylistTrack = useAccountStore((state) => state.removePlaylistTrack);
   const deletePlaylist = useAccountStore((state) => state.deletePlaylist);
-  const { pending, notice } = usePlaylistMutationState(accountSummary?.id);
+  const setPlaylistCollected = useAccountStore((state) => state.setPlaylistCollected);
+  const { pending, notice } = usePlaylistMutationState(playlist.id);
+  const [collectionOverride, setCollectionOverride] = useState<boolean | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(accountSummary?.title ?? playlist.title);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -76,6 +91,19 @@ export function PlaylistPage({
     const result = await deletePlaylist(accountProvider, accountSummary);
     setConfirmingDelete(false);
     if (result?.status === 'applied' || result?.status === 'reconciled') onDeleted?.();
+  };
+
+  const collectionSummary = accountSummary ?? projectedSummary;
+  const collected = collectionOverride ?? collectionSummary?.ownership === 'collected';
+  const canChangeCollection =
+    playlist.id.startsWith('qqmusic:playlist:') && collectionSummary?.ownership !== 'owned';
+  const changeCollection = async () => {
+    if (!accountProvider || pending) return;
+    const next = !collected;
+    const result = await setPlaylistCollected(accountProvider, playlist, next);
+    if (result?.status === 'applied' || result?.status === 'reconciled') {
+      setCollectionOverride(next);
+    }
   };
 
   return (
@@ -119,7 +147,7 @@ export function PlaylistPage({
             <button
               type="button"
               className="button button--primary"
-              onClick={() => playTracks(playlist.tracks)}
+              onClick={() => playTracks(playlist.tracks, undefined, false)}
             >
               <Play size={16} fill="currentColor" />
               {t('play')}
@@ -127,14 +155,22 @@ export function PlaylistPage({
             <button
               type="button"
               className="button button--secondary"
-              onClick={() => playTracks(playlist.tracks.slice().reverse())}
+              aria-pressed={shuffle}
+              onClick={() => playTracks(playlist.tracks, undefined, !shuffle)}
             >
               <Shuffle size={16} />
-              {t('shuffle')}
+              {shuffle ? t('ordered') : t('shuffle')}
             </button>
-            <IconButton label={t('more')} className="detail-hero__icon-action">
-              <MoreHorizontal size={19} />
-            </IconButton>
+            <ActionMenu label={t('more')} className="detail-hero__icon-action">
+              <ActionMenuItem onClick={() => addTracksToQueue(playlist.tracks)}>
+                {t('addToQueue')}
+              </ActionMenuItem>
+              {canChangeCollection && (
+                <ActionMenuItem disabled={pending} onClick={changeCollection}>
+                  {collected ? t('uncollect') : t('collect')}
+                </ActionMenuItem>
+              )}
+            </ActionMenu>
             {accountSummary?.capabilities.canRename && (
               <IconButton
                 label={t('rename')}

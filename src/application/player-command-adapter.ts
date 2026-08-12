@@ -2,7 +2,7 @@ import type { EntityId, Song } from '../domain/music';
 
 export type PlayerCommand =
   | { type: 'hydrateQueue'; tracks: Song[] }
-  | { type: 'playTracks'; tracks: Song[]; startAtId?: EntityId }
+  | { type: 'playTracks'; tracks: Song[]; startAtId?: EntityId; shuffle?: boolean }
   | { type: 'playFromQueue'; index: number }
   | { type: 'togglePlayback' }
   | { type: 'next' }
@@ -11,8 +11,10 @@ export type PlayerCommand =
   | { type: 'setVolume'; volume: number }
   | { type: 'toggleMuted' }
   | { type: 'toggleShuffle' }
+  | { type: 'setShuffle'; enabled: boolean }
   | { type: 'cycleRepeat' }
   | { type: 'addToQueue'; song: Song }
+  | { type: 'addTracksToQueue'; tracks: Song[] }
   | { type: 'removeFromQueue'; index: number };
 
 export type PlayerCommandAdapter = (command: PlayerCommand) => Promise<void>;

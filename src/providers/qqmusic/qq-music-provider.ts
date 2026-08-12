@@ -7,6 +7,7 @@ import {
   type AccountPlaylistSummary,
   type AccountSnapshot,
   type Album,
+  type CollectPlaylistRequest,
   type CreatePlaylistRequest,
   type DeletePlaylistRequest,
   type EntityId,
@@ -204,6 +205,13 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
     signal?: AbortSignal,
   ): Promise<PlaylistMutationResult> {
     return nativeRequest('qqmusic_delete_playlist', { request }, signal);
+  }
+
+  setPlaylistCollected(
+    request: CollectPlaylistRequest,
+    signal?: AbortSignal,
+  ): Promise<PlaylistMutationResult> {
+    return nativeRequest('qqmusic_set_playlist_collected', { request }, signal);
   }
 }
 

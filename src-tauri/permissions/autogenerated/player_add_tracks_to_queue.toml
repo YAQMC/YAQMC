@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-add-tracks-to-queue"
+description = "Enables the player_add_tracks_to_queue command without any pre-configured scope."
+commands.allow = ["player_add_tracks_to_queue"]
+
+[[permission]]
+identifier = "deny-player-add-tracks-to-queue"
+description = "Denies the player_add_tracks_to_queue command without any pre-configured scope."
+commands.deny = ["player_add_tracks_to_queue"]

@@ -1,4 +1,4 @@
-import { Check, Heart, MoreHorizontal, Pause, Play } from 'lucide-react';
+import { Check, Heart, Pause, Play } from 'lucide-react';
 import { useContext } from 'react';
 import { useFavoriteState, useAccountStore } from '../application/account-runtime';
 import { usePlayerStore } from '../application/player-store';
@@ -7,6 +7,7 @@ import type { Song } from '../domain/music';
 import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
 import { IconButton } from './ui/IconButton';
+import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import { useTranslation } from 'react-i18next';
 
 interface TrackListProps {
@@ -69,6 +70,7 @@ function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackR
   const setFavorite = useAccountStore((state) => state.setFavorite);
   const playTracks = usePlayerStore((state) => state.playTracks);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
+  const addToQueue = usePlayerStore((state) => state.addToQueue);
   const { favorite, pending } = useFavoriteState(track.id, track.isFavorite);
   const playbackAction = active && isPlaying ? common('pause') : common('play');
   const favoriteLabel = pending
@@ -77,9 +79,7 @@ function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackR
       ? t('removeFavorite', { title: track.title })
       : t('addFavorite', { title: track.title });
   const hasWritableProviderReference =
-    track.provider?.providerId === accountProvider?.id &&
-    Number.isSafeInteger(track.provider?.numericId) &&
-    (track.provider?.numericId ?? 0) > 0;
+    track.provider?.providerId === accountProvider?.id && Boolean(track.provider?.trackId.trim());
   const favoriteAvailable =
     accountProvider !== null &&
     (snapshot.state !== 'authenticated' ||
@@ -155,7 +155,9 @@ function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackR
             fill={favorite ? 'currentColor' : 'none'}
           />
         </IconButton>
-        <MoreHorizontal size={16} aria-hidden="true" />
+        <ActionMenu label={t('moreActions', { title: track.title })} size="small">
+          <ActionMenuItem onClick={() => addToQueue(track)}>{t('addToQueue')}</ActionMenuItem>
+        </ActionMenu>
       </span>
     </div>
   );

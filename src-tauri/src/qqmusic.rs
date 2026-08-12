@@ -44,8 +44,8 @@ pub use entitlement::{AudioQualityPreference, PlaybackSourceSelection};
 
 use account::{
     AccountEntitlement, AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
-    CreatePlaylistRequest, DeletePlaylistRequest, EntitlementTier, FavoriteMutationRequest,
-    FavoriteMutationResult, MembershipState, Page, PlaylistMutationResult,
+    CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest, EntitlementTier,
+    FavoriteMutationRequest, FavoriteMutationResult, MembershipState, Page, PlaylistMutationResult,
     PlaylistTrackMutationRequest, ProviderErrorCode, QQMusicAccountService, RemotePlayHistoryItem,
     RenamePlaylistRequest,
 };
@@ -492,6 +492,13 @@ impl QQMusicService {
         request: DeletePlaylistRequest,
     ) -> Result<PlaylistMutationResult, QQMusicError> {
         self.account.delete_playlist(request).await
+    }
+
+    pub async fn set_playlist_collected(
+        &self,
+        request: CollectPlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        self.account.set_playlist_collected(request).await
     }
 
     pub async fn start_qr_login(&self) -> Result<AccountSnapshot, QQMusicError> {

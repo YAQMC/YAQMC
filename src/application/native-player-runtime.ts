@@ -43,7 +43,11 @@ async function invokePlayerCommand(command: PlayerCommand): Promise<void> {
       return;
     case 'playTracks':
       await invoke('player_play_tracks', {
-        request: { tracks: command.tracks, startAtId: command.startAtId ?? null },
+        request: {
+          tracks: command.tracks,
+          startAtId: command.startAtId ?? null,
+          shuffle: command.shuffle ?? null,
+        },
       });
       return;
     case 'playFromQueue':
@@ -70,11 +74,17 @@ async function invokePlayerCommand(command: PlayerCommand): Promise<void> {
     case 'toggleShuffle':
       await invoke('player_toggle_shuffle');
       return;
+    case 'setShuffle':
+      await invoke('player_set_shuffle', { enabled: command.enabled });
+      return;
     case 'cycleRepeat':
       await invoke('player_cycle_repeat');
       return;
     case 'addToQueue':
       await invoke('player_add_to_queue', { track: command.song });
+      return;
+    case 'addTracksToQueue':
+      await invoke('player_add_tracks_to_queue', { tracks: command.tracks });
       return;
     case 'removeFromQueue':
       await invoke('player_remove_from_queue', { index: command.index });

@@ -15,10 +15,10 @@ use crate::{
     },
     qqmusic::{
         account::{
-            AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, CreatePlaylistRequest,
-            DeletePlaylistRequest, FavoriteMutationRequest, FavoriteMutationResult, Page,
-            PlaylistMutationResult, PlaylistTrackMutationRequest, RemotePlayHistoryItem,
-            RenamePlaylistRequest,
+            AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, CollectPlaylistRequest,
+            CreatePlaylistRequest, DeletePlaylistRequest, FavoriteMutationRequest,
+            FavoriteMutationResult, Page, PlaylistMutationResult, PlaylistTrackMutationRequest,
+            RemotePlayHistoryItem, RenamePlaylistRequest,
         },
         oauth, Album, AudioQualityPreference, HomeFeed, LibrarySnapshot, OAuthLoginProvider,
         Playlist, ProviderResult, ProviderStatus, QQMusicService, SearchResult,
@@ -300,6 +300,19 @@ pub async fn qqmusic_delete_playlist(
 }
 
 #[tauri::command]
+pub async fn qqmusic_set_playlist_collected(
+    window: tauri::WebviewWindow,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: CollectPlaylistRequest,
+) -> ProviderResult<PlaylistMutationResult> {
+    require_main_window(&window)?;
+    provider
+        .set_playlist_collected(request)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn qqmusic_auth_start(
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
@@ -385,7 +398,7 @@ pub async fn qqmusic_sign_out(
 mod account_command_tests {
     use crate::command_guard::require_main_window_label;
 
-    const GUARDED_ACCOUNT_COMMANDS: [&str; 17] = [
+    const GUARDED_ACCOUNT_COMMANDS: [&str; 18] = [
         "qqmusic_account_snapshot",
         "qqmusic_favorite_songs",
         "qqmusic_account_playlists",
@@ -397,6 +410,7 @@ mod account_command_tests {
         "qqmusic_add_playlist_track",
         "qqmusic_remove_playlist_track",
         "qqmusic_delete_playlist",
+        "qqmusic_set_playlist_collected",
         "qqmusic_auth_start",
         "qqmusic_auth_oauth_start",
         "qqmusic_auth_heartbeat",
@@ -556,6 +570,14 @@ pub async fn player_toggle_shuffle(
 }
 
 #[tauri::command]
+pub async fn player_set_shuffle(
+    player: State<'_, Arc<PlayerService>>,
+    enabled: bool,
+) -> CommandResult<PlayerSnapshot> {
+    Ok(player.set_shuffle(enabled).await)
+}
+
+#[tauri::command]
 pub async fn player_cycle_repeat(
     player: State<'_, Arc<PlayerService>>,
 ) -> CommandResult<PlayerSnapshot> {
@@ -568,6 +590,14 @@ pub async fn player_add_to_queue(
     track: Song,
 ) -> CommandResult<PlayerSnapshot> {
     Ok(player.add_to_queue(track).await)
+}
+
+#[tauri::command]
+pub async fn player_add_tracks_to_queue(
+    player: State<'_, Arc<PlayerService>>,
+    tracks: Vec<Song>,
+) -> CommandResult<PlayerSnapshot> {
+    Ok(player.add_tracks_to_queue(tracks).await)
 }
 
 #[tauri::command]

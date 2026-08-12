@@ -5,6 +5,7 @@ import type {
   AccountPlaylistDetail,
   AccountPlaylistSummary,
   AccountSnapshot,
+  CollectPlaylistRequest,
   CreatePlaylistRequest,
   DeletePlaylistRequest,
   EntityId,
@@ -63,7 +64,8 @@ export const FAVORITE_RECONCILED_MESSAGE =
 export const FAVORITE_OUTCOME_UNKNOWN_MESSAGE =
   'The server could not confirm the library change. Refreshing Favorites.';
 
-export type PlaylistMutationOperation = 'create' | 'rename' | 'add' | 'remove' | 'delete';
+export type PlaylistMutationOperation =
+  'create' | 'rename' | 'add' | 'remove' | 'delete' | 'collect' | 'uncollect';
 export type PlaylistMutationOutcome = 'rejected' | 'outcome-unknown' | 'failed' | 'reconciled';
 
 export interface PlaylistMutationNotice {
@@ -132,6 +134,11 @@ interface AccountStoreState {
   deletePlaylist: (
     provider: AccountMusicProvider,
     playlist: AccountPlaylistSummary,
+  ) => Promise<PlaylistMutationResult | null>;
+  setPlaylistCollected: (
+    provider: AccountMusicProvider,
+    playlist: Playlist,
+    collected: boolean,
   ) => Promise<PlaylistMutationResult | null>;
 }
 
@@ -581,14 +588,15 @@ async function loadPagedList<T>(options: {
 
   const previous = listResource<T>(resource);
   if (previous.status === 'loading') return;
-  const previousData = reset ? [] : (loadedData(previous) ?? []);
+  const visibleData = loadedData(previous) ?? [];
+  const previousData = reset ? [] : visibleData;
   const requestedCursor = reset ? null : nextCursor(previous);
   if (!reset && requestedCursor === null) return;
   const revision = snapshot.revision;
   const generation = ++libraryGenerations[resource];
   publishListResource(resource, {
     status: 'loading',
-    data: previousData.length > 0 ? previousData : null,
+    data: visibleData.length > 0 ? visibleData : null,
     nextCursor: requestedCursor,
     requestedCursor,
   });
@@ -602,7 +610,7 @@ async function loadPagedList<T>(options: {
       return;
     }
     const data = mergeFirstSeen(previousData, page.items, keyOf);
-    if (data.length === 0) {
+    if (data.length === 0 && page.nextCursor === null) {
       publishListResource(resource, { status: 'empty' });
     } else if (page.stale) {
       publishListResource(resource, {
@@ -636,7 +644,7 @@ async function loadPagedList<T>(options: {
       publishListResource(resource, {
         status: 'error',
         error: failure,
-        data: previousData.length > 0 ? previousData : null,
+        data: visibleData.length > 0 ? visibleData : null,
         nextCursor: requestedCursor,
       });
     }
@@ -1018,6 +1026,8 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     runEntityPlaylistMutation({ provider, playlist, operation: 'remove', track }),
   deletePlaylist: (provider, playlist) =>
     runEntityPlaylistMutation({ provider, playlist, operation: 'delete' }),
+  setPlaylistCollected: (provider, playlist, collected) =>
+    runPlaylistCollectionMutation(provider, playlist, collected),
 }));
 
 function resourceWithData<T>(resource: LibraryResource<T>, data: T): LibraryResource<T> {
@@ -1116,6 +1126,135 @@ function restorePlaylistEntity(
     playlists: replacePlaylistSummary(state.playlists, playlistId, previousSummary),
     accountPlaylistDetails,
   };
+}
+
+function collectedSummaryFromPlaylist(playlist: Playlist): AccountPlaylistSummary {
+  return {
+    id: playlist.id,
+    title: playlist.title,
+    description: playlist.description,
+    owner: playlist.owner,
+    artwork: playlist.artwork,
+    ownership: 'collected',
+    capabilities: {
+      canAddTracks: false,
+      canRemoveTracks: false,
+      canRename: false,
+      canDelete: false,
+      canReorder: false,
+    },
+    trackCount: playlist.tracks.length,
+    updatedAtMs: null,
+  };
+}
+
+async function runPlaylistCollectionMutation(
+  provider: AccountMusicProvider,
+  playlist: Playlist,
+  collected: boolean,
+): Promise<PlaylistMutationResult | null> {
+  const initial = useAccountStore.getState();
+  if (initial.snapshot.state !== 'authenticated') {
+    initial.openDialog();
+    return null;
+  }
+  if (!initial.snapshot.capabilities.playlistWrite || initial.playlistPendingById[playlist.id]) {
+    return null;
+  }
+  const operation: PlaylistMutationOperation = collected ? 'collect' : 'uncollect';
+  const revision = initial.snapshot.revision;
+  const operationId = mutationOperationId(`playlist-${operation}`);
+  const previousSummary =
+    loadedData(initial.playlists)?.find((item) => item.id === playlist.id) ?? null;
+  const optimisticSummary = collected ? collectedSummaryFromPlaylist(playlist) : null;
+  useAccountStore.setState((state) => ({
+    playlists: replacePlaylistSummary(state.playlists, playlist.id, optimisticSummary),
+    playlistPendingById: { ...state.playlistPendingById, [playlist.id]: operationId },
+    playlistMutationNoticeById: withoutKey(state.playlistMutationNoticeById, playlist.id),
+  }));
+
+  const request: CollectPlaylistRequest = {
+    playlistId: playlist.id,
+    collected,
+    clientOperationId: operationId,
+  };
+  let result: PlaylistMutationResult;
+  try {
+    result = await provider.setPlaylistCollected(request, runtimeSignal(provider));
+  } catch (error) {
+    const current = useAccountStore.getState();
+    if (current.playlistPendingById[playlist.id] !== operationId) return null;
+    const pending = withoutKey(current.playlistPendingById, playlist.id);
+    useAccountStore.setState({
+      playlists: replacePlaylistSummary(current.playlists, playlist.id, previousSummary),
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [playlist.id]: { operation, outcome: 'failed' },
+      },
+    });
+    if (classifyLibraryFailure(error) === 'reauthentication-required') {
+      void current.refreshSnapshot(provider);
+    }
+    return null;
+  }
+
+  const current = useAccountStore.getState();
+  if (current.playlistPendingById[playlist.id] !== operationId) return null;
+  const pending = withoutKey(current.playlistPendingById, playlist.id);
+  const resultPlaylistValid =
+    result.playlist === null ||
+    (result.playlist.id === playlist.id && result.playlist.ownership === 'collected');
+  const confirmed = result.status === 'applied' || result.status === 'reconciled';
+  const confirmationMatchesRequestedState =
+    !confirmed || (collected ? result.playlist !== null : result.playlist === null);
+  if (
+    current.snapshot.revision !== revision ||
+    result.authRevision !== revision ||
+    result.clientOperationId !== operationId ||
+    !resultPlaylistValid ||
+    !confirmationMatchesRequestedState
+  ) {
+    useAccountStore.setState({
+      playlists: replacePlaylistSummary(current.playlists, playlist.id, previousSummary),
+      playlistPendingById: pending,
+    });
+    return null;
+  }
+  if (result.status === 'applied' || result.status === 'reconciled') {
+    useAccountStore.setState((state) => ({
+      playlists: replacePlaylistSummary(state.playlists, playlist.id, result.playlist),
+      playlistPendingById: pending,
+      playlistMutationNoticeById:
+        result.status === 'reconciled'
+          ? {
+              ...state.playlistMutationNoticeById,
+              [playlist.id]: { operation, outcome: 'reconciled' },
+            }
+          : withoutKey(state.playlistMutationNoticeById, playlist.id),
+    }));
+    return result;
+  }
+  if (result.status === 'outcome-unknown') {
+    useAccountStore.setState({
+      playlistPendingById: pending,
+      playlistMutationNoticeById: {
+        ...current.playlistMutationNoticeById,
+        [playlist.id]: { operation, outcome: 'outcome-unknown' },
+      },
+    });
+    void current.loadPlaylists(provider, true);
+    return result;
+  }
+  useAccountStore.setState({
+    playlists: replacePlaylistSummary(current.playlists, playlist.id, previousSummary),
+    playlistPendingById: pending,
+    playlistMutationNoticeById: {
+      ...current.playlistMutationNoticeById,
+      [playlist.id]: { operation, outcome: 'rejected' },
+    },
+  });
+  return result;
 }
 
 interface EntityPlaylistMutationOptions {

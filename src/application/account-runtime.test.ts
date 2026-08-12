@@ -244,6 +244,7 @@ function accountProvider(
     addPlaylistTrack: unsupported,
     removePlaylistTrack: unsupported,
     deletePlaylist: unsupported,
+    setPlaylistCollected: unsupported,
     ...overrides,
   } as MusicProvider & AccountMusicProvider;
 }
@@ -787,6 +788,75 @@ describe('account runtime', () => {
       operation: 'rename',
       outcome: 'failed',
     });
+  });
+
+  it('surfaces a rejected public-playlist collection instead of silently discarding it', async () => {
+    const playlist = { ...playlists[0]!, id: 'qqmusic:playlist:7001' };
+    const setPlaylistCollected = vi.fn(async (request) =>
+      playlistMutationResult(request.clientOperationId, 'rejected', null),
+    );
+    const provider = accountProvider({ setPlaylistCollected });
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(3),
+      playlists: {
+        status: 'ready',
+        data: [],
+        nextCursor: null,
+        total: 0,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+    });
+
+    const result = await useAccountStore.getState().setPlaylistCollected(provider, playlist, true);
+
+    expect(result?.status).toBe('rejected');
+    expect(useAccountStore.getState().playlistMutationNoticeById[playlist.id]).toEqual({
+      operation: 'collect',
+      outcome: 'rejected',
+    });
+    expect(useAccountStore.getState().playlists).toMatchObject({ data: [] });
+  });
+
+  it('keeps an unknown collection visible while starting a read-only playlist refresh', async () => {
+    const playlist = { ...playlists[0]!, id: 'qqmusic:playlist:7001' };
+    const refresh = deferred<Page<AccountPlaylistSummary>>();
+    const setPlaylistCollected = vi.fn(async (request) =>
+      playlistMutationResult(request.clientOperationId, 'outcome-unknown', null),
+    );
+    const getAccountPlaylists = vi.fn(() => refresh.promise);
+    const provider = accountProvider({ setPlaylistCollected, getAccountPlaylists });
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(3),
+      playlists: {
+        status: 'ready',
+        data: [],
+        nextCursor: null,
+        total: 0,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+    });
+
+    const result = await useAccountStore.getState().setPlaylistCollected(provider, playlist, true);
+
+    expect(result?.status).toBe('outcome-unknown');
+    expect(getAccountPlaylists).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().playlists).toMatchObject({
+      status: 'loading',
+      data: [{ id: playlist.id, ownership: 'collected' }],
+    });
+    expect(useAccountStore.getState().playlistMutationNoticeById[playlist.id]).toEqual({
+      operation: 'collect',
+      outcome: 'outcome-unknown',
+    });
+
+    refresh.resolve(page([], 3));
+    await waitFor(() =>
+      expect(useAccountStore.getState().playlists).toEqual({
+        status: 'empty',
+      }),
+    );
   });
 
   it('retains an optimistic track after an unknown outcome and starts a read-only refresh', async () => {

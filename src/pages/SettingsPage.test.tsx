@@ -76,6 +76,7 @@ function accountProvider(overrides: Partial<AccountMusicProvider> = {}) {
       'addPlaylistTrack',
       'removePlaylistTrack',
       'deletePlaylist',
+      'setPlaylistCollected',
     ].map((name) => [name, unused]),
   );
   return {

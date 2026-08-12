@@ -41,7 +41,7 @@ export interface PlayerState {
 
 interface PlayerActions {
   hydrateQueue: (tracks: Song[]) => void;
-  playTracks: (tracks: Song[], startAtId?: EntityId) => void;
+  playTracks: (tracks: Song[], startAtId?: EntityId, shuffle?: boolean) => void;
   playFromQueue: (index: number) => void;
   togglePlayback: () => void;
   next: () => void;
@@ -51,12 +51,14 @@ interface PlayerActions {
   setVolume: (volume: number) => void;
   toggleMuted: () => void;
   toggleShuffle: () => void;
+  setShuffle: (enabled: boolean) => void;
   cycleRepeat: () => void;
   toggleQueue: () => void;
   toggleLyrics: () => void;
   openLyrics: () => void;
   closePanels: () => void;
   addToQueue: (song: Song) => void;
+  addTracksToQueue: (tracks: Song[]) => void;
   removeFromQueue: (index: number) => void;
   applyExternalSnapshot: (snapshot: AuthoritativePlayerSnapshot) => void;
 }
@@ -119,10 +121,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return { queue: tracks, currentIndex: 0 };
     }),
 
-  playTracks: (tracks, startAtId) => {
+  playTracks: (tracks, startAtId, shuffle) => {
     const playable = tracks.filter((track) => track.availability.status === 'available');
     if (playable.length === 0) return;
-    if (dispatchPlayerCommand({ type: 'playTracks', tracks: playable, startAtId })) return;
+    if (dispatchPlayerCommand({ type: 'playTracks', tracks: playable, startAtId, shuffle })) return;
     const requestedIndex = startAtId ? playable.findIndex((track) => track.id === startAtId) : 0;
     set((state) => ({
       queue: playable,
@@ -135,6 +137,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       sourceSelection: null,
       observedAtMs: performance.now(),
       timelineRevision: state.timelineRevision + 1,
+      ...(shuffle === undefined ? {} : { shuffle }),
     }));
   },
 
@@ -265,6 +268,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (dispatchPlayerCommand({ type: 'toggleShuffle' })) return;
     set((state) => ({ shuffle: !state.shuffle }));
   },
+  setShuffle: (enabled) => {
+    if (dispatchPlayerCommand({ type: 'setShuffle', enabled })) return;
+    set({ shuffle: enabled });
+  },
   cycleRepeat: () => {
     if (dispatchPlayerCommand({ type: 'cycleRepeat' })) return;
     set((state) => ({
@@ -280,6 +287,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (dispatchPlayerCommand({ type: 'addToQueue', song })) return;
     set((state) => ({
       queue: [...state.queue, song],
+      currentIndex: state.currentIndex < 0 ? 0 : state.currentIndex,
+    }));
+  },
+
+  addTracksToQueue: (tracks) => {
+    const playable = tracks.filter((track) => track.availability.status === 'available');
+    if (playable.length === 0) return;
+    if (dispatchPlayerCommand({ type: 'addTracksToQueue', tracks: playable })) return;
+    set((state) => ({
+      queue: [...state.queue, ...playable],
       currentIndex: state.currentIndex < 0 ? 0 : state.currentIndex,
     }));
   },

@@ -293,6 +293,7 @@ pub fn run() {
             commands::qqmusic_add_playlist_track,
             commands::qqmusic_remove_playlist_track,
             commands::qqmusic_delete_playlist,
+            commands::qqmusic_set_playlist_collected,
             commands::qqmusic_auth_start,
             commands::qqmusic_auth_oauth_start,
             commands::qqmusic_auth_heartbeat,
@@ -314,8 +315,10 @@ pub fn run() {
             commands::player_set_volume,
             commands::player_toggle_muted,
             commands::player_toggle_shuffle,
+            commands::player_set_shuffle,
             commands::player_cycle_repeat,
             commands::player_add_to_queue,
+            commands::player_add_tracks_to_queue,
             commands::player_remove_from_queue,
             commands::player_set_lyrics,
             commands::player_lyrics,
@@ -393,6 +396,7 @@ mod handler_registration_tests {
             "commands::qqmusic_add_playlist_track",
             "commands::qqmusic_remove_playlist_track",
             "commands::qqmusic_delete_playlist",
+            "commands::qqmusic_set_playlist_collected",
         ] {
             assert_eq!(handler.matches(command).count(), 1, "{command}");
         }

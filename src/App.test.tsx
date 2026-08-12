@@ -161,6 +161,7 @@ function accountProvider() {
       addPlaylistTrack: unused,
       removePlaylistTrack: unused,
       deletePlaylist: unused,
+      setPlaylistCollected: unused,
     }) as MusicProvider & AccountMusicProvider,
     getPlaylist,
     getAccountPlaylistTracks,

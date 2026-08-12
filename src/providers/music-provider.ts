@@ -4,6 +4,7 @@ import type {
   AccountPlaylistSummary,
   AccountSnapshot,
   Album,
+  CollectPlaylistRequest,
   CreatePlaylistRequest,
   DeletePlaylistRequest,
   EntityId,
@@ -87,6 +88,10 @@ export interface AccountMusicProvider {
     request: DeletePlaylistRequest,
     signal?: AbortSignal,
   ): Promise<PlaylistMutationResult>;
+  setPlaylistCollected(
+    request: CollectPlaylistRequest,
+    signal?: AbortSignal,
+  ): Promise<PlaylistMutationResult>;
 }
 
 export function isAccountMusicProvider(
@@ -111,5 +116,6 @@ export function isAccountMusicProvider(
     'addPlaylistTrack',
     'removePlaylistTrack',
     'deletePlaylist',
+    'setPlaylistCollected',
   ].every((method) => typeof candidate[method as keyof AccountMusicProvider] === 'function');
 }

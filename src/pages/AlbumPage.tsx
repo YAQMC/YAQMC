@@ -1,11 +1,11 @@
-import { MoreHorizontal, Play, Shuffle } from 'lucide-react';
+import { Play, Shuffle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { usePlayerStore } from '../application/player-store';
 import type { Album } from '../domain/music';
 import { formatTotalDuration } from '../utils/format';
 import { TrackList } from '../components/TrackList';
 import { Artwork } from '../components/ui/Artwork';
-import { IconButton } from '../components/ui/IconButton';
+import { ActionMenu, ActionMenuItem } from '../components/ui/ActionMenu';
 import { useTranslation } from 'react-i18next';
 
 interface AlbumPageProps {
@@ -16,6 +16,8 @@ export function AlbumPage({ album }: AlbumPageProps) {
   const { t, i18n } = useTranslation('pages', { keyPrefix: 'album' });
   const { t: common } = useTranslation('common');
   const playTracks = usePlayerStore((state) => state.playTracks);
+  const addTracksToQueue = usePlayerStore((state) => state.addTracksToQueue);
+  const shuffle = usePlayerStore((state) => state.shuffle);
   const totalDuration = album.tracks.reduce((sum, track) => sum + track.durationMs, 0);
   const releaseLabel =
     album.releaseYear > 0
@@ -48,7 +50,7 @@ export function AlbumPage({ album }: AlbumPageProps) {
             <button
               type="button"
               className="button button--primary"
-              onClick={() => playTracks(album.tracks)}
+              onClick={() => playTracks(album.tracks, undefined, false)}
             >
               <Play size={16} fill="currentColor" />
               {t('play')}
@@ -56,14 +58,17 @@ export function AlbumPage({ album }: AlbumPageProps) {
             <button
               type="button"
               className="button button--secondary"
-              onClick={() => playTracks(album.tracks.slice().reverse())}
+              aria-pressed={shuffle}
+              onClick={() => playTracks(album.tracks, undefined, !shuffle)}
             >
               <Shuffle size={16} />
-              {t('shuffle')}
+              {shuffle ? t('ordered') : t('shuffle')}
             </button>
-            <IconButton label={t('more')} className="detail-hero__icon-action">
-              <MoreHorizontal size={19} />
-            </IconButton>
+            <ActionMenu label={t('more')} className="detail-hero__icon-action">
+              <ActionMenuItem onClick={() => addTracksToQueue(album.tracks)}>
+                {t('addToQueue')}
+              </ActionMenuItem>
+            </ActionMenu>
           </div>
         </div>
       </section>

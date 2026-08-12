@@ -107,6 +107,25 @@ describe('player store', () => {
     });
   });
 
+  it('sends queue replacement and shuffle mode as one native command', () => {
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    const tracks = [track('one'), track('two')];
+
+    usePlayerStore.getState().playTracks(tracks, undefined, true);
+
+    expect(commands).toEqual([{ type: 'playTracks', tracks, startAtId: undefined, shuffle: true }]);
+  });
+
+  it('appends multiple tracks in one queue mutation', () => {
+    usePlayerStore.setState({ queue: [track('zero')], currentIndex: 0 });
+    usePlayerStore.getState().addTracksToQueue([track('one'), track('two')]);
+
+    expect(usePlayerStore.getState().queue.map((song) => song.id)).toEqual(['zero', 'one', 'two']);
+  });
+
   it('advances when a track reaches its duration', () => {
     usePlayerStore.getState().playTracks([track('one'), track('two')]);
     usePlayerStore.getState().tick(10_000);

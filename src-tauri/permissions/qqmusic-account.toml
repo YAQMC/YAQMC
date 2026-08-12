@@ -19,4 +19,5 @@ permissions = [
   "allow-qqmusic-add-playlist-track",
   "allow-qqmusic-remove-playlist-track",
   "allow-qqmusic-delete-playlist",
+  "allow-qqmusic-set-playlist-collected",
 ]

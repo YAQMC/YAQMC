@@ -344,7 +344,7 @@ function Get-CommonResultDecoderBlock {
     return $block + "`n" + ($derived -join "`n")
   }
   if ($Operation -in @(
-    'post-confirmation exchange','session validation/profile','Favorites read','Favorites write',
+    'post-confirmation exchange','session validation/profile','Favorites read',
     'playlist summaries','playlist detail','playlist create','playlist add','playlist remove',
     'playlist delete','entitlement','playback vkey'
   )) {
@@ -418,6 +418,9 @@ function Get-RequestHeaderNames {
     if ($match.Groups['body'].Value -match '(?i)(?:["'']?Cookie["'']?\s*:|\bcookie\b)') {
       [void]$headers.Add('Cookie')
     }
+  }
+  if ($Block -match '(?is)\bheaders\s*:\s*[^,\r\n{}]{0,240}\{\s*Cookie\s*:') {
+    [void]$headers.Add('Cookie')
   }
   if ($Block -match '(?is)setRequestHeader\s*\(\s*["'']Cookie["'']' -or
       $Block -match '(?is)\.header\s*\(\s*(?:header::COOKIE|["'']Cookie["''])' -or
@@ -564,8 +567,9 @@ function Get-OperationDefinitions {
     @{ Operation='post-confirmation exchange'; Class='auth-poll'; Selectors=@((New-Selector python $login 'py:def' '_authorize_qq_qr'),(New-Selector typescript 'src/services/apis/user/checkQQLoginQr.ts' 'ts:export' 'checkQQLoginQr')); EndpointGroups=@('url:https://ssl.ptlogin2.graph.qq.com/check_sig||mm:QQConnectLogin.LoginServer/QQLogin'); Keys=@('client_id','redirect_uri','response_type','code'); Headers='Cookie'; Pagination='none'; Results=@('0','QRCodeLoginEvents.DONE'); Minimum=2; SecretInputs='qrsig, authorization code' },
     @{ Operation='session validation/profile'; Class='account-read'; Selectors=@((New-Selector python $login 'py:def' 'check_expired'),(New-Selector typescript 'src/services/apis/user/getUserDetail.ts' 'ts:export' 'getUserDetail')); EndpointGroups=@('mm:music.UserInfo.userInfoServer/GetLoginUserInfo||url:https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg'); Keys=@('uin','g_tk'); Headers='Cookie'; Pagination='none'; Results=@('0'); Minimum=2; SecretInputs='session credential, UIN' },
     @{ Operation='Favorites read'; Class='account-read'; Selectors=@((New-Selector python $user 'py:def' 'get_fav_song'),(New-Selector typescript 'src/services/apis/user/getUserLikedSongs.ts' 'ts:export' 'getUserLikedSongs')); EndpointGroups=@(@('mm:music.srfDissInfo.DissInfo/CgiGetDiss')); Keys=@('dirid','song_begin','song_num'); Headers='Cookie'; Pagination='song_begin, song_num'; Results=@('0'); Minimum=2; SecretInputs='session credential, UIN' },
-    @{ Operation='Favorites write'; Class='account-write'; Selectors=@((New-Selector python $songlist 'py:def' 'like_song'),(New-Selector python $songlist 'py:def' 'unlike_song')); EndpointGroups=@('mm:music.musicasset.PlaylistDetailWrite/AddSonglist||mm:music.musicasset.PlaylistDetailWrite/DelSonglist'); Keys=@('dirId','songId','songType'); Headers='none'; Pagination='none'; Results=@('0'); Minimum=1; SecretInputs='session credential, UIN' },
-    @{ Operation='playlist summaries'; Class='account-read'; Selectors=@((New-Selector python $user 'py:def' 'get_created_songlist'),(New-Selector typescript 'src/services/apis/user/getUserPlaylists.ts' 'ts:export' 'getUserPlaylists'),(New-Selector typescript 'src/services/apis/user/getUserCollections.ts' 'ts:export' 'getUserCollectedSongLists')); EndpointGroups=@('mm:music.musicasset.PlaylistBaseRead/GetPlaylistByUin||url:https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg||url:https://c.y.qq.com/fav/fcgi-bin/fcg_get_profile_order_asset.fcg'); Keys=@('uin','sin','ein'); Headers='Cookie'; Pagination='offset, limit, page, sin, ein'; Results=@('0'); Minimum=2; SecretInputs='session credential, UIN' },
+    @{ Operation='Favorites write'; Class='account-write'; Selectors=@((New-Selector typescript 'src/api/user.ts' 'ts:export' 'likeTrack'),(New-Selector typescript 'src/api/client.ts' 'ts:method' 'ApiClient.request')); EndpointGroups=@(@('mm:music.musicasset.SongFavRead/AddSongFav'),@('mm:music.musicasset.SongFavRead/RemoveSongFav')); Keys=@('songmid'); Headers='Cookie'; Pagination='none'; Results=@('0'); Minimum=1; SecretInputs='session credential, UIN' },
+    @{ Operation='playlist summaries'; Class='account-read'; Selectors=@((New-Selector python $user 'py:def' 'get_created_songlist'),(New-Selector python $user 'py:def' 'get_fav_songlist')); EndpointGroups=@(@('mm:music.musicasset.PlaylistBaseRead/GetPlaylistByUin'),@('mm:music.musicasset.PlaylistFavRead/CgiGetPlaylistFavInfo')); Keys=@('uin','offset','size'); Headers='none'; Pagination='offset, size'; Results=@('0'); Minimum=1; SecretInputs='session credential, UIN' },
+    @{ Operation='playlist collect'; Class='account-write'; Selectors=@((New-Selector python $user 'py:def' 'fav_songlist'),(New-Selector python $user 'py:def' 'unfav_songlist')); EndpointGroups=@(@('mm:music.musicasset.PlaylistFavWrite/FavPlaylist'),@('mm:music.musicasset.PlaylistFavWrite/CancelFavPlaylist')); Keys=@('uin','v_playlistId'); Headers='none'; Pagination='none'; Results=@('0'); Minimum=1; SecretInputs='session credential, UIN' },
     @{ Operation='playlist detail'; Class='account-read'; Selectors=@((New-Selector python $songlist 'py:def' 'get_detail'),(New-Selector typescript 'src/services/apis/songLists/songListDetail.ts' 'ts:default-export' 'default')); EndpointGroups=@(@('mm:music.srfDissInfo.DissInfo/CgiGetDiss')); Keys=@('disstid','song_begin','song_num'); Headers='none'; Pagination='song_begin, song_num'; Results=@('0'); Minimum=2; SecretInputs='session credential, UIN' },
     @{ Operation='playlist create'; Class='account-write'; Selectors=@((New-Selector python $songlist 'py:def' 'create')); EndpointGroups=@(@('mm:music.musicasset.PlaylistBaseWrite/AddPlaylist')); Keys=@('dirName'); Headers='none'; Pagination='none'; Results=@('0'); Minimum=1; SecretInputs='session credential, UIN' },
     @{ Operation='playlist rename'; Class='account-write'; Selectors=@((New-Selector javascript 'platforms/qqmusic/module/playlist_update.js' 'js:module-exports' 'module.exports'),(New-Selector javascript 'platforms/qqmusic/module/user_playlist_created.js' 'js:module-exports' 'module.exports'),(New-Selector javascript 'platforms/base/BasePlatform.js' 'js:class' 'BasePlatform'),(New-Selector javascript 'platforms/base/BasePlatform.js' 'js:method' 'BasePlatform.loadModules'),(New-Selector javascript 'platforms/base/BasePlatform.js' 'js:method' 'BasePlatform.callModule'),(New-Selector javascript 'platforms/qqmusic/QQMusicPlatform.js' 'js:class' 'QQMusicPlatform'),(New-Selector javascript 'platforms/qqmusic/QQMusicPlatform.js' 'js:method' 'QQMusicPlatform.createRequestFunction'),(New-Selector javascript 'platforms/qqmusic/util/request.js' 'js:const' 'createRequest')); EndpointGroups=@(@('mm:music.musicasset.PlaylistBaseRead/GetPlaylistByUin'),@('mm:music.musicasset.PlaylistBaseWrite/EditPlaylist')); Keys=@('uin','dirId','mask','dirNewName','dirNewDesc','dirNewPicUrl','dirNewtaglist'); ResponseKeys=@('dirId','dirName','picUrl','desc','tagNameList'); Headers='Cookie'; Pagination='none'; Results=@('0'); Minimum=1; SecretInputs='qm_keyst, UIN'; Edges=(Get-DeclarationEdges) },
@@ -646,40 +650,13 @@ function Resolve-OperationEvidence {
     $blocks.Add($block) | Out-Null
     [void]$sources.Add("$($target.Repository)@$($target.Commit):$($target.Path)")
   }
-  if ($Definition.Operation -eq 'Favorites write') {
-    $songlistBody = $Bodies['qqmusic_api/modules/songlist.py']
-    $likeBlock = Get-PythonDeclarationBlock $songlistBody 'like_song'
-    $unlikeBlock = Get-PythonDeclarationBlock $songlistBody 'unlike_song'
-    if ($likeBlock -notmatch '\bself\.add_songs\s*\(' -or $unlikeBlock -notmatch '\bself\.del_songs\s*\(') {
-      throw 'Favorites write delegates are disconnected.'
-    }
-    $blocks.Add((Get-PythonDeclarationBlock $songlistBody 'add_songs')) | Out-Null
-    $blocks.Add((Get-PythonDeclarationBlock $songlistBody 'del_songs')) | Out-Null
-  }
-  if ($Definition.Operation -in @('Favorites write','playlist add','playlist remove')) {
+  if ($Definition.Operation -in @('playlist add','playlist remove')) {
     $songlistBody = $Bodies['qqmusic_api/modules/songlist.py']
     $requestBuilder = Get-PythonDeclarationBlock $songlistBody '_build_songlist_oper_param'
     if (-not (@($blocks | Where-Object { $_ -match '\b_build_songlist_oper_param\s*\(' }).Count -gt 0)) {
       throw "Disconnected song-list request builder for $($Definition.Operation)."
     }
     $blocks.Add($requestBuilder) | Out-Null
-  }
-  if ($Definition.Operation -eq 'playlist summaries') {
-    $collectionBody = $Bodies['src/services/apis/user/getUserCollections.ts']
-    $entryBlock = Get-AnchorBlock $collectionBody (New-Selector typescript 'src/services/apis/user/getUserCollections.ts' 'ts:export' 'getUserCollectedSongLists')
-    if ($entryBlock -notmatch '\bgetUserCollection\s*\(') { throw 'Collected-playlist delegate is disconnected.' }
-    $blocks.Add((Get-AnchorBlock $collectionBody (New-Selector typescript 'src/services/apis/user/getUserCollections.ts' 'ts:export' 'getUserCollection'))) | Out-Null
-    $requestBody = Remove-CodeComments $Bodies['src/util/request.ts'] 'typescript'
-    $requestMatch = [regex]::Match($requestBody, '(?m)function\s+request(?:<[^\r\n{]+>)?\s*\(')
-    if (-not $requestMatch.Success) { throw 'Missing playlist-summary request wrapper.' }
-    $requestBlock = Get-BalancedBraceBlock $requestBody $requestMatch.Index
-    if ($requestBlock -notmatch '\bBASE_URL_MAP\b' -or
-        $requestBody -notmatch '(?m)^const\s+cURL\s*=\s*["'']https://c\.y\.qq\.com["'']' -or
-        $requestBody -notmatch '(?m)^\s*c\s*:\s*cURL\s*,?\s*$') {
-      throw 'Collected-playlist relative URL is not connected to the c.y.qq.com base.'
-    }
-    $blocks.Add($requestBlock) | Out-Null
-    $blocks.Add('https://c.y.qq.com') | Out-Null
   }
   if ($Definition.Operation -eq 'entitlement') {
     if (-not (@($blocks | Where-Object { $_ -match '\bcredential\s*=\s*credential\b' }).Count -gt 0)) {

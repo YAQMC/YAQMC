@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-set-shuffle"
+description = "Enables the player_set_shuffle command without any pre-configured scope."
+commands.allow = ["player_set_shuffle"]
+
+[[permission]]
+identifier = "deny-player-set-shuffle"
+description = "Denies the player_set_shuffle command without any pre-configured scope."
+commands.deny = ["player_set_shuffle"]

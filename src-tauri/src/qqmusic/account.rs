@@ -10,9 +10,10 @@ use super::{
         CompletedResultCache, OpaqueCursorRegistry, ProviderTrackRegistry, ACCOUNT_CACHE_KIND,
     },
     clock::Clock,
-    color_for, is_allowed_artwork_url, normalize_old_song, playlist_id, stable_component,
+    color_for, is_allowed_artwork_url, normalize_new_song, normalize_old_song, playlist_id,
+    stable_component,
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
-    upgrade_https, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
+    upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
 use crate::player::{Artwork, AudioQuality, Song};
 use crate::storage::{ProviderCacheMutation, StorageService};
@@ -481,6 +482,10 @@ enum PlaylistMutationFingerprint {
     Delete {
         playlist_id: String,
     },
+    Collect {
+        playlist_id: String,
+        collected: bool,
+    },
 }
 
 #[derive(Clone)]
@@ -846,27 +851,17 @@ impl QQMusicAccountService {
         request: &FavoriteMutationRequest,
     ) -> Result<bool, QQMusicError> {
         self.auth.ensure_current(&context.epoch).await?;
-        let provider_track_id = self
-            .track_references
-            .lock()
-            .await
-            .numeric_id(&request.track_id)
-            .ok_or(QQMusicError::InvalidRequest)?;
+        let provider_track_id = provider_track_id(&request.track_id)?;
         let method = if request.favorite {
-            "AddSonglist"
+            "AddSongFav"
         } else {
-            "DelSonglist"
+            "RemoveSongFav"
         };
         let payload = musicu_request(
             &context.session,
-            "music.musicasset.PlaylistDetailWrite",
+            "music.musicasset.SongFavRead",
             method,
-            json!({
-                "dirId": 201,
-                "tid": 0,
-                "bFmtUtf8": true,
-                "v_songInfo": [{ "songId": provider_track_id, "songType": 13 }]
-            }),
+            json!({ "songmid": [provider_track_id] }),
         );
         let response = self
             .transport
@@ -886,7 +881,7 @@ impl QQMusicAccountService {
         if !response.status.is_success() {
             return Ok(false);
         }
-        favorite_write_accepted(&response.body)
+        song_favorite_write_accepted(&response.body, provider_track_id)
     }
 
     async fn reconcile_favorite(
@@ -1211,6 +1206,158 @@ impl QQMusicAccountService {
             result,
         )
         .await
+    }
+
+    pub(crate) async fn set_playlist_collected(
+        &self,
+        request: CollectPlaylistRequest,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        let provider_id = provider_playlist_id(&request.playlist_id)?;
+        provider_id
+            .parse::<u64>()
+            .ok()
+            .filter(|id| *id > 0)
+            .ok_or(QQMusicError::InvalidRequest)?;
+        validate_operation_id(&request.client_operation_id)?;
+        let context = self.auth.capture_account_context().await?;
+        let fingerprint = PlaylistMutationFingerprint::Collect {
+            playlist_id: request.playlist_id.clone(),
+            collected: request.collected,
+        };
+        let mutation_key = format!("playlist-collection:{}", request.playlist_id);
+        if let Some(cached) = self
+            .acquire_playlist_mutation(
+                &context,
+                &mutation_key,
+                &request.client_operation_id,
+                &fingerprint,
+            )
+            .await?
+        {
+            return Ok(cached);
+        }
+        let result = self
+            .set_playlist_collected_inner(&context, &request, provider_id)
+            .await;
+        self.finish_playlist_mutation(
+            &context,
+            &mutation_key,
+            &request.client_operation_id,
+            fingerprint,
+            result,
+        )
+        .await
+    }
+
+    async fn set_playlist_collected_inner(
+        &self,
+        context: &AuthenticatedAccountContext,
+        request: &CollectPlaylistRequest,
+        provider_id: &str,
+    ) -> Result<PlaylistMutationResult, QQMusicError> {
+        let encrypted_uin = context
+            .session
+            .encrypted_uin
+            .as_deref()
+            .ok_or(QQMusicError::UnsupportedOperation)?;
+        let method = if request.collected {
+            "FavPlaylist"
+        } else {
+            "CancelFavPlaylist"
+        };
+        let write = self
+            .execute_account_transport(
+                context,
+                "account.playlist.collection.write",
+                "playlist-collection-result",
+                musicu_request(
+                    &context.session,
+                    "music.musicasset.PlaylistFavWrite",
+                    method,
+                    json!({
+                        "uin": encrypted_uin,
+                        "v_playlistId": [provider_id.parse::<u64>().map_err(|_| QQMusicError::InvalidRequest)?]
+                    }),
+                ),
+                RetryClass::Write,
+            )
+            .await;
+        let (accepted, definitively_rejected) = match write {
+            Ok(response) => (
+                playlist_collection_write_accepted(&response.body, provider_id)?,
+                true,
+            ),
+            Err(QQMusicError::OutcomeUnknown | QQMusicError::Timeout | QQMusicError::Offline) => {
+                (false, false)
+            }
+            Err(error) => return Err(error),
+        };
+        if !accepted && definitively_rejected {
+            return Ok(playlist_mutation_result(
+                request.client_operation_id.clone(),
+                MutationStatus::Rejected,
+                None,
+                Some(ProviderErrorCode::ProviderFailure),
+                context.auth_revision,
+            ));
+        }
+
+        let summaries = self
+            .fetch_all_collected_playlist_summaries(
+                context,
+                RetryClass::ReconciliationRead,
+                "account.playlist.collection.reconcile",
+            )
+            .await;
+        let matching = summaries
+            .as_ref()
+            .ok()
+            .and_then(|items| items.iter().find(|item| item.id == request.playlist_id))
+            .cloned();
+        let confirmed = matching.is_some() == request.collected;
+        if !confirmed {
+            return Ok(playlist_mutation_result(
+                request.client_operation_id.clone(),
+                MutationStatus::OutcomeUnknown,
+                matching,
+                Some(ProviderErrorCode::ProviderFailure),
+                context.auth_revision,
+            ));
+        }
+
+        let mut projection = self.projection_for(context)?;
+        projection
+            .playlists
+            .retain(|playlist| playlist.id != request.playlist_id);
+        if let Some(summary) = matching.clone() {
+            projection.playlists.push(summary);
+        }
+        projection.fetched_at_ms = self.clock.now_ms();
+        let operations = [
+            ProviderCacheMutation::DeleteKindPrefix {
+                kind: ACCOUNT_CACHE_KIND.to_owned(),
+                prefix: AccountCache::playlists_prefix(&context.epoch.scope),
+            },
+            cache_put(
+                &AccountCache::projection_key(&context.epoch.scope),
+                &projection,
+                u64::MAX,
+            )?,
+        ];
+        self.commit_cache(context, &operations).await?;
+        self.cursors.lock().await.clear();
+        self.refreshes.lock().await.clear();
+        Ok(playlist_mutation_result(
+            request.client_operation_id.clone(),
+            if accepted {
+                MutationStatus::Applied
+            } else {
+                MutationStatus::Reconciled
+            },
+            matching,
+            None,
+            context.auth_revision,
+        ))
     }
 
     async fn acquire_playlist_mutation(
@@ -1853,7 +2000,59 @@ impl QQMusicAccountService {
                     retry,
                 )
                 .await?;
-            let page = normalize_playlist_page_response(&response.body, offset)?;
+            let page = normalize_playlist_page_response_with_ownership(
+                &response.body,
+                offset,
+                PlaylistOwnership::Owned,
+                &["v_playlist", "playlist"],
+            )?;
+            playlists.extend(page.items);
+            let Some(next) = page.next_provider_cursor else {
+                return Ok(playlists);
+            };
+            let next = provider_offset(&next).map_err(|_| QQMusicError::SchemaChanged)?;
+            if next <= offset {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            offset = next;
+        }
+        Err(QQMusicError::SchemaChanged)
+    }
+
+    async fn fetch_all_collected_playlist_summaries(
+        &self,
+        context: &AuthenticatedAccountContext,
+        retry: RetryClass,
+        operation: &'static str,
+    ) -> Result<Vec<AccountPlaylistSummary>, QQMusicError> {
+        let encrypted_uin = context
+            .session
+            .encrypted_uin
+            .as_deref()
+            .ok_or(QQMusicError::UnsupportedOperation)?;
+        let mut offset = 0_u64;
+        let mut playlists = Vec::new();
+        for _ in 0..100 {
+            let response = self
+                .execute_account_transport(
+                    context,
+                    operation,
+                    "collected-playlist-reconciliation",
+                    musicu_request(
+                        &context.session,
+                        "music.musicasset.PlaylistFavRead",
+                        "CgiGetPlaylistFavInfo",
+                        json!({"uin": encrypted_uin, "offset": offset, "size": 100}),
+                    ),
+                    retry,
+                )
+                .await?;
+            let page = normalize_playlist_page_response_with_ownership(
+                &response.body,
+                offset,
+                PlaylistOwnership::Collected,
+                &["v_list", "v_playlist", "playlist"],
+            )?;
             playlists.extend(page.items);
             let Some(next) = page.next_provider_cursor else {
                 return Ok(playlists);
@@ -2057,11 +2256,24 @@ impl QQMusicAccountService {
         }
 
         let limit = limit.clamp(1, 100);
+        let mut params = json!({
+            "disstid": 0,
+            "dirid": 201,
+            "tag": true,
+            "song_begin": offset,
+            "song_num": limit,
+            "userinfo": true,
+            "orderlist": true,
+            "onlysonglist": 1
+        });
+        if let Some(encrypted_uin) = context.session.encrypted_uin.as_deref() {
+            params["enc_host_uin"] = json!(encrypted_uin);
+        }
         let payload = musicu_request(
             &context.session,
             "music.srfDissInfo.DissInfo",
             "CgiGetDiss",
-            json!({ "dirid": 201, "song_begin": offset, "song_num": limit }),
+            params,
         );
         let response = match self
             .execute_read(&context, "account.favorites", "favorite-page", payload)
@@ -2158,7 +2370,10 @@ impl QQMusicAccountService {
         let provider_cursor = self
             .resolve_provider_cursor(&context, resource, cursor.as_deref())
             .await?;
-        let offset = provider_offset(&provider_cursor)?;
+        let (collected_phase, offset) = provider_cursor
+            .strip_prefix("saved:")
+            .map(|cursor| provider_offset(cursor).map(|offset| (true, offset)))
+            .unwrap_or_else(|| provider_offset(&provider_cursor).map(|offset| (false, offset)))?;
         let key = AccountCache::playlists_key(&context.epoch.scope, cursor.as_deref());
         let cached = self.cached_page::<AccountPlaylistSummary>(&key)?;
         if let Some(cached) = cached
@@ -2174,18 +2389,45 @@ impl QQMusicAccountService {
         }
 
         let limit = limit.clamp(1, 100);
-        let payload = musicu_request(
-            &context.session,
-            "music.musicasset.PlaylistBaseRead",
-            "GetPlaylistByUin",
-            json!({
-                "uin": context.session.uin,
-                "sin": offset,
-                "ein": offset.saturating_add(limit as u64).saturating_sub(1)
-            }),
-        );
+        let payload = if collected_phase {
+            let encrypted_uin = context
+                .session
+                .encrypted_uin
+                .as_deref()
+                .ok_or(QQMusicError::InvalidRequest)?;
+            musicu_request(
+                &context.session,
+                "music.musicasset.PlaylistFavRead",
+                "CgiGetPlaylistFavInfo",
+                json!({"uin": encrypted_uin, "offset": offset, "size": limit}),
+            )
+        } else {
+            musicu_request(
+                &context.session,
+                "music.musicasset.PlaylistBaseRead",
+                "GetPlaylistByUin",
+                json!({
+                    "uin": context.session.uin,
+                    "sin": offset,
+                    "ein": offset.saturating_add(limit as u64).saturating_sub(1)
+                }),
+            )
+        };
         let response = match self
-            .execute_read(&context, "account.playlists", "playlist-page", payload)
+            .execute_read(
+                &context,
+                if collected_phase {
+                    "account.playlists.saved"
+                } else {
+                    "account.playlists"
+                },
+                if collected_phase {
+                    "collected-playlist-page"
+                } else {
+                    "playlist-page"
+                },
+                payload,
+            )
             .await
         {
             Ok(response) => response,
@@ -2193,8 +2435,34 @@ impl QQMusicAccountService {
                 return self.stale_page_or_error(&context, cached, error).await;
             }
         };
-        let normalized = normalize_playlist_page_response(&response.body, offset)?;
-        validate_next_provider_cursor(offset, normalized.next_provider_cursor.as_deref())?;
+        let mut normalized = normalize_playlist_page_response_with_ownership(
+            &response.body,
+            offset,
+            if collected_phase {
+                PlaylistOwnership::Collected
+            } else {
+                PlaylistOwnership::Owned
+            },
+            if collected_phase {
+                &["v_list", "v_playlist", "playlist"]
+            } else {
+                &["v_playlist", "playlist"]
+            },
+        )?;
+        if collected_phase {
+            normalized.next_provider_cursor = normalized
+                .next_provider_cursor
+                .map(|cursor| format!("saved:{cursor}"));
+        } else if normalized.next_provider_cursor.is_none()
+            && context.session.encrypted_uin.is_some()
+        {
+            normalized.next_provider_cursor = Some("saved:0".to_owned());
+        }
+        validate_playlist_next_provider_cursor(
+            collected_phase,
+            offset,
+            normalized.next_provider_cursor.as_deref(),
+        )?;
         self.auth.ensure_current(&context.epoch).await?;
         let now = self.clock.now_ms();
         let next_cursor = self
@@ -2637,19 +2905,53 @@ fn musicu_request(
     method: &'static str,
     param: Value,
 ) -> Value {
+    let mut comm = json!({
+        "ct": 24,
+        "cv": 4_747_474,
+        "format": "json",
+        "inCharset": "utf-8",
+        "outCharset": "utf-8",
+        "notice": 0,
+        "needNewCode": 1,
+        "platform": "yqq.json",
+        "uin": session.uin,
+    });
+    if let Some(key) = cookie_value(&session.cookie_header, "qm_keyst")
+        .or_else(|| cookie_value(&session.cookie_header, "qqmusic_key"))
+    {
+        let gtk = hash33(key.as_bytes());
+        comm["g_tk"] = json!(gtk);
+        comm["g_tk_new_20200303"] = json!(gtk);
+    }
     json!({
-        "comm": {
-            "ct": 24,
-            "cv": 0,
-            "format": "json",
-            "uin": session.uin,
-        },
+        "comm": comm,
         "req": {
             "module": module,
             "method": method,
             "param": param,
         },
     })
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectPlaylistRequest {
+    pub playlist_id: String,
+    pub collected: bool,
+    pub client_operation_id: String,
+}
+
+fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
+    header.split(';').find_map(|part| {
+        let (key, value) = part.trim().split_once('=')?;
+        (key == name && !value.is_empty()).then_some(value)
+    })
+}
+
+fn hash33(value: &[u8]) -> u32 {
+    value.iter().fold(5_381_u32, |hash, byte| {
+        hash.wrapping_mul(33).wrapping_add(u32::from(*byte))
+    }) & 0x7fff_ffff
 }
 
 fn account_headers(session: &SessionRecord) -> Result<HeaderMap, QQMusicError> {
@@ -2687,6 +2989,30 @@ fn validate_next_provider_cursor(
         }
     }
     Ok(())
+}
+
+fn validate_playlist_next_provider_cursor(
+    collected_phase: bool,
+    current_offset: u64,
+    next_cursor: Option<&str>,
+) -> Result<(), QQMusicError> {
+    let Some(next_cursor) = next_cursor else {
+        return Ok(());
+    };
+    if !collected_phase && next_cursor == "saved:0" {
+        return Ok(());
+    }
+    let raw = if collected_phase {
+        next_cursor
+            .strip_prefix("saved:")
+            .ok_or(QQMusicError::SchemaChanged)?
+    } else {
+        next_cursor
+    };
+    let next = provider_offset(raw).map_err(|_| QQMusicError::SchemaChanged)?;
+    (next > current_offset)
+        .then_some(())
+        .ok_or(QQMusicError::SchemaChanged)
 }
 
 fn provider_playlist_id(value: &str) -> Result<&str, QQMusicError> {
@@ -2770,6 +3096,7 @@ fn favorite_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
     ensure_cgi_response_success(&value)?;
     let return_code = value
         .pointer("/req/data/retCode")
+        .or_else(|| value.pointer("/req_0/data/retCode"))
         .or_else(|| value.pointer("/data/retCode"))
         .and_then(Value::as_i64)
         .ok_or(QQMusicError::SchemaChanged)?;
@@ -2780,10 +3107,57 @@ fn playlist_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
     favorite_write_accepted(body)
 }
 
+fn song_favorite_write_accepted(
+    body: &[u8],
+    provider_track_id: &str,
+) -> Result<bool, QQMusicError> {
+    let value: Value = serde_json::from_slice(body).map_err(|_| QQMusicError::MalformedResponse)?;
+    let data = response_data(&value)?;
+    let failed = ["v_failTids", "v_failedSongMid", "failedSongMids"]
+        .into_iter()
+        .filter_map(|key| data.get(key).and_then(Value::as_array))
+        .flatten()
+        .filter_map(value_string)
+        .any(|id| id == provider_track_id);
+    if failed {
+        return Ok(false);
+    }
+    let result = ["retCode", "result", "code"].into_iter().find_map(|key| {
+        data.get(key)
+            .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
+    });
+    Ok(result.is_none_or(|code| code == 0))
+}
+
+fn playlist_collection_write_accepted(
+    body: &[u8],
+    provider_id: &str,
+) -> Result<bool, QQMusicError> {
+    let value: Value = serde_json::from_slice(body).map_err(|_| QQMusicError::MalformedResponse)?;
+    let data = response_data(&value)?;
+    let result = data
+        .get("result")
+        .or_else(|| data.get("retCode"))
+        .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
+        .ok_or(QQMusicError::SchemaChanged)?;
+    let failed = data
+        .get("v_failedPlaylistId")
+        .or_else(|| data.get("v_failTids"))
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            values
+                .iter()
+                .filter_map(value_string)
+                .any(|id| id == provider_id)
+        });
+    Ok(result == 0 && !failed)
+}
+
 fn ensure_cgi_response_success(value: &Value) -> Result<(), QQMusicError> {
     for code in [
         value.get("code").and_then(Value::as_i64),
         value.pointer("/req/code").and_then(Value::as_i64),
+        value.pointer("/req_0/code").and_then(Value::as_i64),
     ]
     .into_iter()
     .flatten()
@@ -2944,22 +3318,42 @@ struct RawPlaylistCapabilities {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawAccountPlaylist {
-    #[serde(default, rename = "tid", alias = "disstid", alias = "id")]
+    #[serde(
+        default,
+        rename = "tid",
+        alias = "disstid",
+        alias = "dissid",
+        alias = "id"
+    )]
     id: Option<Value>,
-    #[serde(default, rename = "dirName", alias = "dissname", alias = "title")]
+    #[serde(
+        default,
+        rename = "dirName",
+        alias = "dissname",
+        alias = "title",
+        alias = "name"
+    )]
     title: Option<String>,
     #[serde(default, rename = "desc", alias = "description")]
     description: Option<String>,
-    #[serde(default, rename = "picUrl", alias = "logo")]
+    #[serde(
+        default,
+        rename = "picUrl",
+        alias = "picurl",
+        alias = "logo",
+        alias = "cover"
+    )]
     picture_url: Option<String>,
     #[serde(
         default,
         rename = "trackCount",
         alias = "songnum",
-        alias = "song_count"
+        alias = "songNum",
+        alias = "song_count",
+        alias = "song_cnt"
     )]
     track_count: u64,
-    #[serde(default, rename = "updateTime", alias = "mtime")]
+    #[serde(default, rename = "updateTime", alias = "update_time", alias = "mtime")]
     updated_at_ms: Option<u64>,
     #[serde(default)]
     ownership: Option<String>,
@@ -2967,11 +3361,20 @@ struct RawAccountPlaylist {
     is_owner: Option<bool>,
     #[serde(default)]
     creator: RawPlaylistCreator,
+    #[serde(default, alias = "nickname")]
+    nick: String,
     #[serde(default)]
     capabilities: RawPlaylistCapabilities,
 }
 
 fn normalize_playlist_value(value: &Value) -> Result<AccountPlaylistSummary, QQMusicError> {
+    normalize_playlist_value_with_ownership(value, None)
+}
+
+fn normalize_playlist_value_with_ownership(
+    value: &Value,
+    ownership_hint: Option<PlaylistOwnership>,
+) -> Result<AccountPlaylistSummary, QQMusicError> {
     let raw: RawAccountPlaylist =
         serde_json::from_value(value.clone()).map_err(|_| QQMusicError::SchemaChanged)?;
     let provider_id = raw
@@ -2992,15 +3395,18 @@ fn normalize_playlist_value(value: &Value) -> Result<AccountPlaylistSummary, QQM
     {
         PlaylistOwnership::Owned
     } else {
-        PlaylistOwnership::Collected
+        ownership_hint.unwrap_or(PlaylistOwnership::Collected)
     };
     let capabilities = if ownership == PlaylistOwnership::Owned {
         PlaylistCapabilities {
-            can_add_tracks: raw.capabilities.can_add,
-            can_remove_tracks: raw.capabilities.can_remove,
+            can_add_tracks: raw.capabilities.can_add
+                || ownership_hint == Some(PlaylistOwnership::Owned),
+            can_remove_tracks: raw.capabilities.can_remove
+                || ownership_hint == Some(PlaylistOwnership::Owned),
             can_rename: raw.capabilities.can_rename
                 && parse_owned_playlist_edit_value(value).is_ok(),
-            can_delete: raw.capabilities.can_delete,
+            can_delete: raw.capabilities.can_delete
+                || ownership_hint == Some(PlaylistOwnership::Owned),
             can_reorder: false,
         }
     } else {
@@ -3019,10 +3425,12 @@ fn normalize_playlist_value(value: &Value) -> Result<AccountPlaylistSummary, QQM
         description: raw.description.unwrap_or_default(),
         owner: PlaylistOwner {
             id: format!("qqmusic:owner:{}", stable_component(&stable_id)),
-            display_name: if raw.creator.nick.trim().is_empty() {
-                "QQ Music".to_owned()
-            } else {
+            display_name: if !raw.creator.nick.trim().is_empty() {
                 raw.creator.nick.trim().to_owned()
+            } else if !raw.nick.trim().is_empty() {
+                raw.nick.trim().to_owned()
+            } else {
+                "QQ Music".to_owned()
             },
         },
         artwork: Artwork {
@@ -3033,8 +3441,16 @@ fn normalize_playlist_value(value: &Value) -> Result<AccountPlaylistSummary, QQM
         ownership,
         capabilities,
         track_count: raw.track_count,
-        updated_at_ms: raw.updated_at_ms,
+        updated_at_ms: raw.updated_at_ms.map(normalize_timestamp_ms),
     })
+}
+
+fn normalize_timestamp_ms(value: u64) -> u64 {
+    if value > 0 && value < 1_000_000_000_000 {
+        value.saturating_mul(1_000)
+    } else {
+        value
+    }
 }
 
 fn value_string(value: &Value) -> Option<String> {
@@ -3049,6 +3465,7 @@ fn response_data(value: &Value) -> Result<&Value, QQMusicError> {
     ensure_cgi_response_success(value)?;
     value
         .pointer("/req/data")
+        .or_else(|| value.pointer("/req_0/data"))
         .or_else(|| value.get("data"))
         .ok_or(QQMusicError::SchemaChanged)
 }
@@ -3093,14 +3510,12 @@ pub(crate) fn normalize_favorite_response(
         .get("songlist")
         .or_else(|| data.pointer("/cdlist/0/songlist"))
         .or_else(|| data.get("tracks"))
-        .cloned()
         .ok_or(QQMusicError::SchemaChanged)?;
-    let songs: Vec<OldSongDto> =
-        serde_json::from_value(songs).map_err(|_| QQMusicError::SchemaChanged)?;
+    let songs = songs.as_array().ok_or(QQMusicError::SchemaChanged)?;
     let mut items = songs
-        .into_iter()
+        .iter()
         .enumerate()
-        .filter_map(|(index, song)| normalize_old_song(song, index as u32 + 1))
+        .filter_map(|(index, song)| normalize_song_value(song, index as u32 + 1))
         .collect::<Vec<_>>();
     for song in &mut items {
         song.is_favorite = true;
@@ -3113,24 +3528,60 @@ pub(crate) fn normalize_favorite_response(
     })
 }
 
+fn normalize_song_value(value: &Value, fallback_track_number: u32) -> Option<Song> {
+    if value.get("mid").is_some() || value.get("name").is_some() || value.get("title").is_some() {
+        serde_json::from_value::<NewSongDto>(value.clone())
+            .ok()
+            .and_then(normalize_new_song)
+            .or_else(|| {
+                serde_json::from_value::<OldSongDto>(value.clone())
+                    .ok()
+                    .and_then(|song| normalize_old_song(song, fallback_track_number))
+            })
+    } else {
+        serde_json::from_value::<OldSongDto>(value.clone())
+            .ok()
+            .and_then(|song| normalize_old_song(song, fallback_track_number))
+    }
+}
+
 pub(crate) fn normalize_playlist_page_response(
     body: &[u8],
     fallback_offset: u64,
 ) -> Result<NormalizedProviderPage<AccountPlaylistSummary>, QQMusicError> {
+    normalize_playlist_page_response_inner(body, fallback_offset, None, &["v_playlist", "playlist"])
+}
+
+fn normalize_playlist_page_response_with_ownership(
+    body: &[u8],
+    fallback_offset: u64,
+    ownership: PlaylistOwnership,
+    list_keys: &[&str],
+) -> Result<NormalizedProviderPage<AccountPlaylistSummary>, QQMusicError> {
+    normalize_playlist_page_response_inner(body, fallback_offset, Some(ownership), list_keys)
+}
+
+fn normalize_playlist_page_response_inner(
+    body: &[u8],
+    fallback_offset: u64,
+    ownership: Option<PlaylistOwnership>,
+    list_keys: &[&str],
+) -> Result<NormalizedProviderPage<AccountPlaylistSummary>, QQMusicError> {
     let value: Value = serde_json::from_slice(body).map_err(|_| QQMusicError::MalformedResponse)?;
     let data = response_data(&value)?;
-    let list = data
-        .get("v_playlist")
-        .or_else(|| data.get("playlist"))
+    let list = list_keys
+        .iter()
+        .find_map(|key| data.get(*key))
         .and_then(Value::as_array)
         .ok_or(QQMusicError::SchemaChanged)?;
+    let provider_count = list.len();
     let items = list
         .iter()
-        .map(normalize_playlist_value)
-        .collect::<Result<Vec<_>, _>>()?;
+        .filter_map(|value| normalize_playlist_value_with_ownership(value, ownership).ok())
+        .collect::<Vec<_>>();
     let (offset, total) = page_numbers(data, fallback_offset);
     Ok(NormalizedProviderPage {
-        next_provider_cursor: next_provider_cursor(offset, items.len(), total),
+        next_provider_cursor: next_provider_cursor(offset, provider_count, total),
         items,
         total,
     })
@@ -3151,14 +3602,12 @@ pub(crate) fn normalize_playlist_detail_response(
     let songs = data
         .get("songlist")
         .or_else(|| data.pointer("/cdlist/0/songlist"))
-        .cloned()
         .ok_or(QQMusicError::SchemaChanged)?;
-    let songs: Vec<OldSongDto> =
-        serde_json::from_value(songs).map_err(|_| QQMusicError::SchemaChanged)?;
+    let songs = songs.as_array().ok_or(QQMusicError::SchemaChanged)?;
     let items = songs
-        .into_iter()
+        .iter()
         .enumerate()
-        .filter_map(|(index, song)| normalize_old_song(song, index as u32 + 1))
+        .filter_map(|(index, song)| normalize_song_value(song, index as u32 + 1))
         .collect::<Vec<_>>();
     let (offset, total) = page_numbers(data, fallback_offset);
     Ok((
@@ -3180,20 +3629,24 @@ pub(crate) fn normalize_recent_response(
     let list = data
         .get("songlist")
         .or_else(|| data.get("tracks"))
+        .or_else(|| data.get("vecPlayRecord"))
         .and_then(Value::as_array)
         .ok_or(QQMusicError::SchemaChanged)?;
     let mut items = Vec::with_capacity(list.len());
     for (index, item) in list.iter().enumerate() {
-        let song_value = item.get("song").unwrap_or(item).clone();
-        let song: OldSongDto =
-            serde_json::from_value(song_value).map_err(|_| QQMusicError::SchemaChanged)?;
-        if let Some(song) = normalize_old_song(song, index as u32 + 1) {
+        let song_value = item
+            .get("song")
+            .or_else(|| item.get("stSongInfo"))
+            .unwrap_or(item);
+        if let Some(song) = normalize_song_value(song_value, index as u32 + 1) {
             items.push(RemotePlayHistoryItem {
                 song,
                 played_at_ms: item
                     .get("playedAtMs")
                     .or_else(|| item.get("playtime"))
-                    .and_then(Value::as_u64),
+                    .or_else(|| item.get("unPlayTime"))
+                    .and_then(value_u64)
+                    .map(normalize_timestamp_ms),
                 source: RemotePlayHistorySource::QqmusicAccount,
             });
         }
@@ -3204,6 +3657,10 @@ pub(crate) fn normalize_recent_response(
         items,
         total,
     })
+}
+
+fn value_u64(value: &Value) -> Option<u64> {
+    value.as_u64().or_else(|| value.as_str()?.parse().ok())
 }
 
 #[cfg(test)]
@@ -3522,6 +3979,7 @@ mod tests {
         SessionRecord {
             version: 1,
             uin: "1000000001".to_owned(),
+            encrypted_uin: None,
             cookie_header: "synthetic_session=redacted".to_owned(),
             expires_at_ms: 1_800_000_000_000,
             account_cache_scope: OpaqueAccountScope::parse(scope_character.to_string().repeat(32))
@@ -3544,6 +4002,7 @@ mod tests {
                 observed_maximum_quality: Some(AudioQuality::High),
                 restrictions: Vec::new(),
             },
+            encrypted_uin: None,
         }
     }
 
@@ -3694,6 +4153,80 @@ mod tests {
     }
 
     #[test]
+    fn current_musicu_favorite_shape_uses_req_0_and_new_song_fields() {
+        let body = json!({
+            "code": 0,
+            "req_0": {
+                "code": 0,
+                "data": {
+                    "song_begin": 0,
+                    "total_song_num": 1,
+                    "songlist": [{
+                        "id": 1001,
+                        "mid": "SANITIZED_TRACK_CURRENT",
+                        "name": "Current Favorite",
+                        "singer": [{"mid": "SANITIZED_ARTIST", "name": "Synthetic Artist"}],
+                        "album": {"mid": "SANITIZED_ALBUM", "name": "Synthetic Album"},
+                        "interval": 203,
+                        "file": {"media_mid": "SANITIZED_MEDIA", "size_128mp3": 4096}
+                    }]
+                }
+            }
+        });
+        let page = normalize_favorite_response(&serde_json::to_vec(&body).unwrap(), 0)
+            .expect("current favorite response");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].id, "qqmusic:track:SANITIZED_TRACK_CURRENT");
+        assert_eq!(page.items[0].title, "Current Favorite");
+        assert!(page.items[0].is_favorite);
+    }
+
+    #[test]
+    fn current_song_favorite_write_uses_subrequest_status_and_failure_ids() {
+        assert!(song_favorite_write_accepted(
+            br#"{"code":0,"req_0":{"code":0,"data":{}}}"#,
+            "SANITIZED_TRACK_A",
+        )
+        .expect("zero subrequest without a legacy retCode is accepted"));
+        assert!(!song_favorite_write_accepted(
+            br#"{"code":0,"req_0":{"code":0,"data":{"v_failTids":["SANITIZED_TRACK_A"]}}}"#,
+            "SANITIZED_TRACK_A",
+        )
+        .expect("explicit failed track is rejected"));
+    }
+
+    #[test]
+    fn current_playlist_shape_accepts_direct_fields_and_skips_only_bad_entries() {
+        let body = json!({
+            "code": 0,
+            "req_0": {
+                "code": 0,
+                "data": {
+                    "total": 2,
+                    "v_playlist": [
+                        {"dissid": 7001, "name": "Current Playlist", "cover": "https://qpic.y.qq.com/current.png", "songNum": 9, "updateTime": 1_800_000_000, "nick": "Current Owner"},
+                        {"id": null, "title": "Provider placeholder"}
+                    ]
+                }
+            }
+        });
+        let page = normalize_playlist_page_response_with_ownership(
+            &serde_json::to_vec(&body).unwrap(),
+            0,
+            PlaylistOwnership::Owned,
+            &["v_playlist"],
+        )
+        .expect("current playlist response");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].id, "qqmusic:playlist:7001");
+        assert_eq!(page.items[0].track_count, 9);
+        assert_eq!(page.items[0].owner.display_name, "Current Owner");
+        assert_eq!(page.items[0].updated_at_ms, Some(1_800_000_000_000));
+        assert_eq!(page.items[0].ownership, PlaylistOwnership::Owned);
+        assert!(page.items[0].capabilities.can_add_tracks);
+    }
+
+    #[test]
     fn collected_playlist_has_no_owner_mutation_capabilities() {
         let playlist = normalize_playlist_fixture(include_str!(
             "../../tests/fixtures/qqmusic/account/playlist-collected.json"
@@ -3753,6 +4286,55 @@ mod tests {
         assert!(!json.to_ascii_lowercase().contains("cookie"));
     }
 
+    #[test]
+    fn current_recent_shape_normalizes_vec_play_record_and_second_timestamp() {
+        let body = json!({
+            "code": 0,
+            "req_0": {
+                "code": 0,
+                "data": {
+                    "total": 1,
+                    "vecPlayRecord": [{
+                        "unPlayTime": "1800000000",
+                        "stSongInfo": {
+                            "id": 1002,
+                            "mid": "SANITIZED_RECENT_CURRENT",
+                            "title": "Current Recent",
+                            "singer": [{"mid": "SANITIZED_ARTIST", "name": "Synthetic Artist"}],
+                            "album": {"mid": "SANITIZED_ALBUM", "title": "Synthetic Album"},
+                            "interval": 188,
+                            "file": {"media_mid": "SANITIZED_MEDIA", "size_128mp3": 4096}
+                        }
+                    }]
+                }
+            }
+        });
+        let page = normalize_recent_response(&serde_json::to_vec(&body).unwrap(), 0)
+            .expect("current recent response");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(
+            page.items[0].song.id,
+            "qqmusic:track:SANITIZED_RECENT_CURRENT"
+        );
+        assert_eq!(page.items[0].played_at_ms, Some(1_800_000_000_000));
+    }
+
+    #[test]
+    fn authenticated_musicu_request_has_web_context_without_serializing_credentials() {
+        let mut session = synthetic_session('f');
+        session.cookie_header = "qm_keyst=SYNTHETIC_KEY; other=value".to_owned();
+        let request = musicu_request(&session, "module", "method", json!({}));
+        assert_eq!(request.pointer("/comm/platform"), Some(&json!("yqq.json")));
+        assert_eq!(request.pointer("/comm/cv"), Some(&json!(4_747_474)));
+        assert!(request
+            .pointer("/comm/g_tk")
+            .and_then(Value::as_u64)
+            .is_some());
+        let serialized = request.to_string();
+        assert!(!serialized.contains("SYNTHETIC_KEY"));
+        assert!(!serialized.contains("cookie"));
+    }
+
     #[tokio::test]
     async fn two_page_favorites_commit_one_complete_projection_and_opaque_cursors() {
         let fixture = AccountServiceFixture::authenticated([
@@ -3800,6 +4382,129 @@ mod tests {
             .expect("projection lookup")
             .expect("terminal projection");
         assert_eq!(projection.favorite_ids.len(), 3);
+        assert_eq!(fixture.transport.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn playlist_library_continues_from_owned_into_saved_playlists() {
+        let saved = json!({
+            "code": 0,
+            "req_0": {
+                "code": 0,
+                "data": {
+                    "offset": 0,
+                    "total": 1,
+                    "v_list": [{
+                        "id": 7001,
+                        "title": "Saved Public Playlist",
+                        "picurl": "https://qpic.y.qq.com/saved.png",
+                        "songnum": 4,
+                        "nickname": "Public Curator"
+                    }]
+                }
+            }
+        });
+        let fixture = AccountServiceFixture::authenticated([
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlists.json"
+            )),
+            TestReply::Body(serde_json::to_vec(&saved).unwrap()),
+        ])
+        .await;
+        let mut upgraded = synthetic_session('b');
+        upgraded.encrypted_uin = Some("SANITIZED_ENCRYPTED_UIN".to_owned());
+        fixture
+            .auth
+            .complete_confirmation(upgraded)
+            .await
+            .expect("upgrade account identity");
+
+        let owned = fixture
+            .service
+            .playlists(None, 100)
+            .await
+            .expect("owned page");
+        let cursor = owned.next_cursor.expect("saved phase cursor");
+        assert!(owned
+            .items
+            .iter()
+            .all(|playlist| playlist.ownership == PlaylistOwnership::Owned));
+
+        let saved = fixture
+            .service
+            .playlists(Some(cursor), 100)
+            .await
+            .expect("saved page");
+        assert_eq!(saved.items.len(), 1);
+        assert_eq!(saved.items[0].id, "qqmusic:playlist:7001");
+        assert_eq!(saved.items[0].ownership, PlaylistOwnership::Collected);
+        assert_eq!(saved.items[0].owner.display_name, "Public Curator");
+        assert!(saved.next_cursor.is_none());
+    }
+
+    #[tokio::test]
+    async fn public_playlist_collection_writes_once_and_reconciles_saved_state() {
+        let write =
+            body(r#"{"code":0,"req_0":{"code":0,"data":{"result":0,"v_failedPlaylistId":[]}}}"#);
+        let saved = json!({
+            "code": 0,
+            "req_0": {
+                "code": 0,
+                "data": {
+                    "offset": 0,
+                    "total": 1,
+                    "v_list": [{
+                        "id": 7001,
+                        "title": "Saved Public Playlist",
+                        "songnum": 4,
+                        "nickname": "Public Curator"
+                    }]
+                }
+            }
+        });
+        let fixture = AccountServiceFixture::authenticated([
+            write,
+            TestReply::Body(serde_json::to_vec(&saved).unwrap()),
+        ])
+        .await;
+        let mut upgraded = synthetic_session('c');
+        upgraded.encrypted_uin = Some("SANITIZED_ENCRYPTED_UIN".to_owned());
+        fixture
+            .auth
+            .complete_confirmation(upgraded)
+            .await
+            .expect("upgrade account identity");
+
+        let result = fixture
+            .service
+            .set_playlist_collected(CollectPlaylistRequest {
+                playlist_id: "qqmusic:playlist:7001".to_owned(),
+                collected: true,
+                client_operation_id: "playlist-collection-operation".to_owned(),
+            })
+            .await
+            .expect("collection result");
+        assert_eq!(result.status, MutationStatus::Applied);
+        assert_eq!(
+            result
+                .playlist
+                .as_ref()
+                .map(|playlist| playlist.id.as_str()),
+            Some("qqmusic:playlist:7001")
+        );
+        let request: Value = serde_json::from_slice(
+            &fixture
+                .transport
+                .request_body("account.playlist.collection.write")
+                .await
+                .expect("collection write request"),
+        )
+        .unwrap();
+        assert_eq!(request.pointer("/req/method"), Some(&json!("FavPlaylist")));
+        assert_eq!(
+            request.pointer("/req/param/v_playlistId/0"),
+            Some(&json!(7001))
+        );
         assert_eq!(fixture.transport.call_count(), 2);
     }
 
@@ -4124,12 +4829,13 @@ mod tests {
         )
         .expect("favorite request JSON");
         assert_eq!(
-            request.pointer("/req/param/v_songInfo/0/songId"),
-            Some(&json!(1001))
+            request.pointer("/req/module"),
+            Some(&json!("music.musicasset.SongFavRead"))
         );
+        assert_eq!(request.pointer("/req/method"), Some(&json!("AddSongFav")));
         assert_eq!(
-            request.pointer("/req/param/v_songInfo/0/songType"),
-            Some(&json!(13))
+            request.pointer("/req/param/songmid/0"),
+            Some(&json!("SANITIZED_TRACK_A"))
         );
     }
 
@@ -4166,20 +4872,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn favorite_requires_a_native_numeric_track_reference_before_transport() {
+    async fn favorite_uses_the_stable_song_mid_without_a_numeric_track_reference() {
         let fixture = AccountServiceFixture::authenticated([favorite_success_body()]).await;
-        assert!(matches!(
-            fixture
-                .service
-                .set_favorite(favorite_request(
-                    "UNSEEN_TRACK",
-                    true,
-                    "favorite-unseen-operation",
-                ))
-                .await,
-            Err(QQMusicError::InvalidRequest)
-        ));
-        assert_eq!(fixture.transport.call_count(), 0);
+        let result = fixture
+            .service
+            .set_favorite(favorite_request(
+                "UNSEEN_TRACK",
+                true,
+                "favorite-unseen-operation",
+            ))
+            .await
+            .expect("stable song mid is sufficient");
+        assert_eq!(result.status, MutationStatus::Applied);
+        assert_eq!(fixture.transport.call_count(), 1);
+        let request: Value = serde_json::from_slice(
+            &fixture
+                .transport
+                .request_body("account.favorite.write")
+                .await
+                .expect("captured favorite request"),
+        )
+        .expect("favorite request JSON");
+        assert_eq!(
+            request.pointer("/req/param/songmid/0"),
+            Some(&json!("UNSEEN_TRACK"))
+        );
     }
 
     #[tokio::test(start_paused = true)]

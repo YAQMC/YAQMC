@@ -70,6 +70,8 @@ const SESSION_VERSION: u8 = 1;
 pub(crate) struct SessionRecord {
     pub(crate) version: u8,
     pub(crate) uin: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) encrypted_uin: Option<String>,
     pub(crate) cookie_header: String,
     pub(crate) expires_at_ms: u64,
     pub(crate) account_cache_scope: OpaqueAccountScope,
@@ -114,6 +116,7 @@ pub(crate) enum AuthPollResult {
 pub(crate) struct ValidatedAccount {
     pub(crate) profile: AccountProfile,
     pub(crate) entitlement: AccountEntitlement,
+    pub(crate) encrypted_uin: Option<String>,
 }
 
 #[async_trait]
@@ -340,9 +343,17 @@ impl TransportQQMusicAuthProtocol {
             _ => self.clock.now_ms().saturating_add(24 * 60 * 60 * 1_000),
         };
 
+        let encrypted_uin = first_string(data, &["/encryptUin", "/encrypt_uin", "/euin"])
+            .or_else(|| {
+                ["euin", "encryptUin"]
+                    .into_iter()
+                    .find_map(|name| cookies.get(name).map(str::to_owned))
+            })
+            .filter(|value| !value.trim().is_empty());
         Ok(SessionRecord {
             version: SESSION_VERSION,
             uin,
+            encrypted_uin,
             cookie_header: cookies.header_value(),
             expires_at_ms,
             account_cache_scope: OpaqueAccountScope::generate(),
@@ -693,6 +704,17 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
                 masked_identity: mask_identity(&session.uin),
             },
             entitlement,
+            encrypted_uin: first_string(
+                profile,
+                &["/encryptUin", "/encrypt_uin", "/euin", "/EncryptUin"],
+            )
+            .or_else(|| {
+                first_string(
+                    data,
+                    &["/encryptUin", "/encrypt_uin", "/euin", "/EncryptUin"],
+                )
+            })
+            .filter(|value| !value.trim().is_empty()),
         })
     }
 }
@@ -1363,7 +1385,7 @@ impl QQMusicAuthService {
             self.publish_if_current(generation, guest_state()).await;
             return Ok(self.snapshot().await);
         };
-        let session: SessionRecord = match serde_json::from_str(&raw) {
+        let mut session: SessionRecord = match serde_json::from_str(&raw) {
             Ok(session) => session,
             Err(_) => {
                 *self.active_session.write().await = None;
@@ -1392,6 +1414,9 @@ impl QQMusicAuthService {
             .await;
             return Err(QQMusicError::AuthenticationExpired);
         }
+        if session.encrypted_uin.is_none() {
+            session.encrypted_uin = encrypted_uin_from_cookie_header(&session.cookie_header);
+        }
         let validated = match self.protocol.validate_session(&session, cancellation).await {
             Ok(validated) => validated,
             Err(error) => {
@@ -1407,6 +1432,9 @@ impl QQMusicAuthService {
                 return Err(error);
             }
         };
+        if session.encrypted_uin.is_none() {
+            session.encrypted_uin = validated.encrypted_uin.clone();
+        }
         self.hit_lifecycle_boundary(LifecycleBoundary::RestoreValidated)
             .await;
         self.ensure_generation_current(generation)?;
@@ -1617,12 +1645,16 @@ impl QQMusicAuthService {
         &self,
         generation: u64,
         cancellation: CancellationToken,
-        candidate: SessionRecord,
+        mut candidate: SessionRecord,
     ) -> Result<AccountSnapshot, QQMusicError> {
-        let _candidate_validation = self
+        let candidate_validation = self
             .protocol
             .validate_session(&candidate, cancellation.clone())
             .await?;
+        if candidate.encrypted_uin.is_none() {
+            candidate.encrypted_uin = encrypted_uin_from_cookie_header(&candidate.cookie_header)
+                .or(candidate_validation.encrypted_uin);
+        }
         self.hit_lifecycle_boundary(LifecycleBoundary::CandidateValidated)
             .await;
         self.ensure_generation_current(generation)?;
@@ -2467,6 +2499,14 @@ impl SecretCookieJar {
     }
 }
 
+fn encrypted_uin_from_cookie_header(header: &str) -> Option<String> {
+    header.split(';').find_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        (["euin", "encryptUin"].contains(&name) && !value.trim().is_empty())
+            .then(|| value.trim().to_owned())
+    })
+}
+
 fn form_body(pairs: &[(&str, String)]) -> Result<Vec<u8>, QQMusicError> {
     let mut url = Url::parse("https://yaqmc.invalid/").map_err(|_| QQMusicError::Protocol)?;
     {
@@ -2570,6 +2610,7 @@ mod tests {
         SessionRecord {
             version: SESSION_VERSION,
             uin: "1000000001".to_owned(),
+            encrypted_uin: None,
             cookie_header: format!("synthetic_session={label}"),
             expires_at_ms: 1_800_000_000_000,
             account_cache_scope: OpaqueAccountScope::parse(format!("{scope_seed:032x}"))
@@ -2592,6 +2633,7 @@ mod tests {
                 observed_maximum_quality: None,
                 restrictions: Vec::new(),
             },
+            encrypted_uin: None,
         }
     }
 
@@ -3505,6 +3547,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restore_recovers_encrypted_uin_from_a_legacy_session_cookie() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        let mut legacy = session("legacy-euin");
+        legacy.encrypted_uin = None;
+        legacy
+            .cookie_header
+            .push_str("; euin=SANITIZED_ENCRYPTED_UIN");
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&legacy).expect("legacy session JSON"),
+        );
+        let service = auth_service(protocol, credentials);
+
+        service.restore().await.expect("legacy session restores");
+
+        assert_eq!(
+            service
+                .current_session()
+                .await
+                .and_then(|session| session.encrypted_uin),
+            Some("SANITIZED_ENCRYPTED_UIN".to_owned())
+        );
+    }
+
+    #[tokio::test]
     async fn restore_maps_offline_validation_to_network_error_without_profile() {
         let protocol = Arc::new(FakeProtocol::new(Vec::new()));
         protocol.fail_validation(QQMusicError::Offline);
@@ -4216,6 +4284,7 @@ mod tests {
         let session = SessionRecord {
             version: SESSION_VERSION,
             uin: "1000000001".to_owned(),
+            encrypted_uin: None,
             cookie_header: "qqmusic_key=SYNTHETIC_MUSIC_KEY".to_owned(),
             expires_at_ms: 1_800_000_000_000,
             account_cache_scope: OpaqueAccountScope::parse("0123456789abcdef0123456789abcdef")

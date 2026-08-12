@@ -125,6 +125,54 @@ describe('PlaylistPage account projection', () => {
     ).toBeVisible();
   });
 
+  it('saves and removes a public QQ Music playlist from the overflow menu', async () => {
+    const playlist = { ...playlists[0]!, id: 'qqmusic:playlist:7001' };
+    authenticatePlaylistWrites();
+    const setPlaylistCollected = vi
+      .spyOn(qqMusicProvider, 'setPlaylistCollected')
+      .mockImplementation(async (request) => ({
+        clientOperationId: request.clientOperationId,
+        status: 'applied',
+        playlist: request.collected
+          ? {
+              ...accountSummary(),
+              id: playlist.id,
+              ownership: 'collected',
+              capabilities: {
+                canAddTracks: false,
+                canRemoveTracks: false,
+                canRename: false,
+                canDelete: false,
+                canReorder: false,
+              },
+            }
+          : null,
+        errorCode: null,
+        authRevision: 3,
+      }));
+    render(
+      <ProviderContext.Provider value={qqMusicProvider}>
+        <PlaylistPage playlist={playlist} />
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'More playlist actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Save playlist' }));
+    await waitFor(() => expect(setPlaylistCollected).toHaveBeenCalledOnce());
+    expect(setPlaylistCollected.mock.calls[0]![0]).toMatchObject({
+      playlistId: playlist.id,
+      collected: true,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'More playlist actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove saved playlist' }));
+    await waitFor(() => expect(setPlaylistCollected).toHaveBeenCalledTimes(2));
+    expect(setPlaylistCollected.mock.calls[1]![0]).toMatchObject({
+      playlistId: playlist.id,
+      collected: false,
+    });
+  });
+
   it('shows only capability-authorized owner controls', () => {
     const summary = accountSummary();
     authenticatePlaylistWrites();

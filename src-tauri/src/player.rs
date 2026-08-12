@@ -212,6 +212,8 @@ pub struct LyricDocument {
 pub struct PlayTracksRequest {
     pub tracks: Vec<Song>,
     pub start_at_id: Option<String>,
+    #[serde(default)]
+    pub shuffle: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -544,6 +546,9 @@ impl PlayerService {
             core.current_index = Some(index);
             core.position_ms = 0;
             core.lyrics = None;
+            if let Some(shuffle) = request.shuffle {
+                core.shuffle = shuffle;
+            }
         }
         self.load_index(index, true, 0).await
     }
@@ -778,6 +783,18 @@ impl PlayerService {
         self.mutate("queue.changed", move |core| {
             core.queue.push(track);
             if core.current_index.is_none() {
+                core.current_index = Some(0);
+            }
+            Ok(())
+        })
+        .await
+        .expect("queue append cannot fail")
+    }
+
+    pub async fn add_tracks_to_queue(&self, tracks: Vec<Song>) -> PlayerSnapshot {
+        self.mutate("queue.changed", move |core| {
+            core.queue.extend(tracks);
+            if core.current_index.is_none() && !core.queue.is_empty() {
                 core.current_index = Some(0);
             }
             Ok(())
@@ -1757,6 +1774,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn play_tracks_applies_shuffle_atomically_and_bulk_queue_append_preserves_order() {
+        let player = PlayerService::with_runtime(
+            Arc::new(crate::audio::TestAudioEngine::default()),
+            Arc::new(crate::media::TestPlaybackSourceResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        let first = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 1_000), song("two", 1_000)],
+                start_at_id: None,
+                shuffle: Some(true),
+            })
+            .await
+            .expect("shuffle playback starts");
+        assert!(first.shuffle);
+        assert_eq!(
+            first
+                .queue
+                .iter()
+                .map(|track| track.id.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two"]
+        );
+
+        let appended = player
+            .add_tracks_to_queue(vec![song("three", 1_000), song("four", 1_000)])
+            .await;
+        assert_eq!(
+            appended
+                .queue
+                .iter()
+                .map(|track| track.id.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two", "three", "four"]
+        );
+        assert!(appended.shuffle);
+    }
+
+    #[tokio::test]
     async fn actual_engine_end_event_advances_the_authoritative_queue() {
         let engine = Arc::new(crate::audio::TestAudioEngine::default());
         let player = Arc::new(PlayerService::with_runtime(
@@ -1769,6 +1825,7 @@ mod tests {
             .play_tracks(PlayTracksRequest {
                 tracks: vec![song("one", 1_000), song("two", 1_000)],
                 start_at_id: None,
+                shuffle: None,
             })
             .await
             .expect("playback starts");
@@ -1797,6 +1854,7 @@ mod tests {
             .play_tracks(PlayTracksRequest {
                 tracks: vec![song("one", 10_000)],
                 start_at_id: None,
+                shuffle: None,
             })
             .await
             .expect("bounded refresh succeeds");
@@ -1823,6 +1881,7 @@ mod tests {
             .play_tracks(PlayTracksRequest {
                 tracks: vec![song("guarded", 10_000)],
                 start_at_id: None,
+                shuffle: None,
             })
             .await
             .expect("current account source plays");
@@ -1871,6 +1930,7 @@ mod tests {
             .play_tracks(PlayTracksRequest {
                 tracks: vec![song("guarded-resume", 10_000)],
                 start_at_id: None,
+                shuffle: None,
             })
             .await
             .expect("guarded source plays");
@@ -2078,6 +2138,7 @@ mod tests {
             .play_tracks(PlayTracksRequest {
                 tracks: vec![song("one", 1_600), song("two", 1_600)],
                 start_at_id: Some("one".to_owned()),
+                shuffle: None,
             })
             .await
             .expect("local playback starts");

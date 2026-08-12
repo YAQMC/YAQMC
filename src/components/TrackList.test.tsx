@@ -1,15 +1,20 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
-import type { AccountSnapshot, FavoriteMutationResult } from '../domain/music';
+import type {
+  AccountSnapshot,
+  FavoriteMutationResult,
+  ProviderTrackReference,
+  Song,
+} from '../domain/music';
 import i18n from '../i18n';
 import { allSongs } from '../providers/fake/fixtures';
 import { qqMusicProvider } from '../providers/qqmusic/qq-music-provider';
 import { TrackList } from './TrackList';
 
-function qqTrack() {
+function qqTrack(): Song {
   return {
     ...allSongs[0]!,
     id: 'qqmusic:track:SANITIZED_TRACK_A',
@@ -124,9 +129,21 @@ describe('TrackList favorite controls', () => {
     expect(useAccountStore.getState().dialogOpen).toBe(true);
   });
 
-  it('does not send an authenticated write without a numeric QQ Music track reference', () => {
-    const track = allSongs[0]!;
-    const setFavorite = vi.spyOn(qqMusicProvider, 'setFavorite');
+  it('uses a stable QQ Music song mid when the current payload has no numeric song id', async () => {
+    const track = qqTrack();
+    const providerReference: ProviderTrackReference = { ...track.provider! };
+    delete providerReference.numericId;
+    track.provider = providerReference;
+    const setFavorite = vi
+      .spyOn(qqMusicProvider, 'setFavorite')
+      .mockImplementation(async (request) => ({
+        clientOperationId: request.clientOperationId,
+        status: 'applied',
+        trackId: request.trackId,
+        favorite: request.favorite,
+        errorCode: null,
+        authRevision: 3,
+      }));
     useAccountStore.setState({
       snapshot: authenticatedSnapshot(),
       favoriteByTrackId: { [track.id]: false },
@@ -138,8 +155,23 @@ describe('TrackList favorite controls', () => {
     );
 
     const favorite = screen.getByRole('button', { name: `Add ${track.title} to Favorites` });
-    expect(favorite).toBeDisabled();
+    expect(favorite).toBeEnabled();
     fireEvent.click(favorite);
-    expect(setFavorite).not.toHaveBeenCalled();
+    await waitFor(() => expect(setFavorite).toHaveBeenCalledOnce());
+    expect(setFavorite.mock.calls[0]![0]).toMatchObject({
+      trackId: track.id,
+      favorite: true,
+    });
+  });
+
+  it('turns the row overflow affordance into a working queue action', () => {
+    const track = allSongs[0]!;
+    render(<TrackList tracks={[track]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: `More actions for ${track.title}` }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to queue' }));
+
+    expect(usePlayerStore.getState().queue).toEqual([track]);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });

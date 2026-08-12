@@ -371,6 +371,12 @@ export interface DeletePlaylistRequest {
   clientOperationId: string;
 }
 
+export interface CollectPlaylistRequest {
+  playlistId: EntityId;
+  collected: boolean;
+  clientOperationId: string;
+}
+
 export interface PlaylistMutationResult {
   clientOperationId: string;
   status: MutationStatus;

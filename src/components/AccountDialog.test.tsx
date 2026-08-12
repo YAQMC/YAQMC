@@ -112,6 +112,7 @@ function provider() {
       'addPlaylistTrack',
       'removePlaylistTrack',
       'deletePlaylist',
+      'setPlaylistCollected',
     ].map((name) => [name, fallback]),
   );
   return {
