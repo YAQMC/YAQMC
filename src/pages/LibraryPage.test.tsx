@@ -119,7 +119,7 @@ describe('LibraryPage account resources', () => {
       },
     });
 
-    expect(screen.getByText('QQ Music account history')).toBeVisible();
+    expect(screen.getByText('QQ Music and local playback history')).toBeVisible();
     expect(screen.queryByText('Local playback history')).not.toBeInTheDocument();
   });
 

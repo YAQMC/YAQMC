@@ -440,7 +440,16 @@ export function LyricsPanel({
     if (!lyricsOpen || !following || cursor.lineIndex < 0) return;
     if (stage.current) stage.current.scrollTop = 0;
     centerLyricLine(scrollArea.current, cursor.lineIndex, lyricScrollBehavior(reducedMotion));
-  }, [cursor.lineIndex, focus, following, fullscreen, lyricsOpen, reducedMotion]);
+  }, [
+    activeDocument?.songId,
+    cursor.lineIndex,
+    focus,
+    following,
+    fullscreen,
+    lyricsOpen,
+    reducedMotion,
+    timelineRevision,
+  ]);
 
   if (!lyricsOpen) return null;
 
@@ -525,15 +534,6 @@ export function LyricsPanel({
               <strong>{currentTitle}</strong>
               <span>{currentArtistLabel}</span>
             </div>
-            {activeDocument && (
-              <div className="lyrics-stage__sync-badge">
-                {activeDocument.syncMode === 'word'
-                  ? t('wordSynced')
-                  : activeDocument.syncMode === 'line'
-                    ? t('lineSynced')
-                    : t('plain')}
-              </div>
-            )}
           </aside>
 
           {status === 'loading' ? (

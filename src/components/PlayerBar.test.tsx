@@ -167,4 +167,33 @@ describe('PlayerBar lyrics presentation entry', () => {
       expect(screen.getByText(copy)).toHaveAttribute('data-fallback-reason', reason);
     },
   );
+
+  it('shows preview progress relative to the clip and seeks on the absolute lyric timeline', () => {
+    const track = {
+      ...qqTrack(),
+      durationMs: 249_000,
+      playbackCapability: { status: 'preview', startMs: 200_000, endMs: 249_000 } as const,
+    };
+    usePlayerStore.setState({
+      queue: [track],
+      currentIndex: 0,
+      positionMs: 220_000,
+      playbackDurationMs: 249_000,
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        fallbackReason: 'preview-only',
+        preview: true,
+      },
+    });
+
+    render(<PlayerBar />);
+
+    expect(screen.getByText('0:20')).toBeVisible();
+    expect(screen.getByText('0:49')).toBeVisible();
+    const slider = screen.getByRole('slider', { name: 'Playback position' });
+    expect(slider).toHaveValue('20000');
+    fireEvent.change(slider, { target: { value: '30000' } });
+    expect(usePlayerStore.getState().positionMs).toBe(230_000);
+  });
 });

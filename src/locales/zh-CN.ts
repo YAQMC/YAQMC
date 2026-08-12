@@ -108,7 +108,7 @@ export const zhCN = {
       myPlaylists: '我的歌单',
       yourPlaylists: '你的歌单',
       recentlyPlayed: '最近播放',
-      remoteHistoryLabel: 'QQ 音乐账号播放记录',
+      remoteHistoryLabel: 'QQ 音乐与本机播放记录',
       signInHeading: '登录以查看{{title}}',
       signInBody: '连接 QQ 音乐账号后即可加载此私有音乐库。',
       signIn: '登录',

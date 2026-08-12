@@ -80,8 +80,14 @@ export function PlayerBar({
     toggleLyrics,
   } = usePlayerStore();
 
-  const duration = playbackDurationMs ?? current?.durationMs ?? 0;
-  const progress = duration === 0 ? 0 : (positionMs / duration) * 100;
+  const timelineDuration = playbackDurationMs ?? current?.durationMs ?? 0;
+  const previewStartMs =
+    sourceSelection?.preview && current?.playbackCapability?.status === 'preview'
+      ? current.playbackCapability.startMs
+      : 0;
+  const duration = Math.max(0, timelineDuration - previewStartMs);
+  const displayPosition = Math.max(0, Math.min(positionMs - previewStartMs, duration));
+  const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
   const volumeProgress = (isMuted ? 0 : volume) * 100;
   const playbackStatus = playbackLabel(playbackState, playbackError, t);
   const favoriteLabel = current
@@ -184,14 +190,14 @@ export function PlayerBar({
           </IconButton>
         </div>
         <div className="player-progress">
-          <span>{formatDuration(positionMs)}</span>
+          <span>{formatDuration(displayPosition)}</span>
           <input
             type="range"
             min={0}
             max={Math.max(duration, 1)}
             step={1_000}
-            value={Math.min(positionMs, duration)}
-            onChange={(event) => seek(Number(event.target.value))}
+            value={displayPosition}
+            onChange={(event) => seek(Number(event.target.value) + previewStartMs)}
             disabled={!current}
             aria-label={t('position')}
             style={{ '--range-progress': `${progress}%` } as CSSProperties}

@@ -102,7 +102,7 @@ export const enUS = {
       myPlaylists: 'My playlists',
       yourPlaylists: 'Your playlists',
       recentlyPlayed: 'Recently played',
-      remoteHistoryLabel: 'QQ Music account history',
+      remoteHistoryLabel: 'QQ Music and local playback history',
       signInHeading: 'Sign in to view {{title}}',
       signInBody: 'Connect your QQ Music account to load this private library.',
       signIn: 'Sign in',

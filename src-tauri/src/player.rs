@@ -512,6 +512,7 @@ impl PlayerService {
             core.timeline_offset_ms = 0;
             core.source_selection = None;
             core.active_epoch_guard = None;
+            core.lyrics = None;
             core.snapshot()
         };
         let _ = self.audio.set_volume(if restored.is_muted {
@@ -882,6 +883,7 @@ impl PlayerService {
             if index >= core.queue.len() {
                 return Err(PlayerError::IndexOutOfRange(index));
             }
+            let previous_song_id = core.current_song().map(|song| song.id.clone());
             core.current_index = Some(index);
             core.position_ms = resume_position_ms.min(core.queue[index].duration_ms);
             core.playback_state = PlaybackState::Loading;
@@ -890,6 +892,9 @@ impl PlayerService {
             core.timeline_offset_ms = 0;
             core.source_selection = None;
             core.active_epoch_guard = None;
+            if previous_song_id.as_deref() != Some(core.queue[index].id.as_str()) {
+                core.lyrics = None;
+            }
             (core.queue[index].clone(), core.snapshot())
         };
         let _ = self.audio.stop();
@@ -1213,7 +1218,16 @@ impl PlayerService {
     pub async fn set_lyrics(&self, document: Option<LyricDocument>) {
         let state = {
             let mut core = self.core.write().await;
-            core.lyrics = document;
+            let current_song_id = core
+                .current_index
+                .and_then(|index| core.queue.get(index))
+                .map(|song| song.id.as_str());
+            if document
+                .as_ref()
+                .is_none_or(|candidate| Some(candidate.song_id.as_str()) == current_song_id)
+            {
+                core.lyrics = document;
+            }
             current_lyric_state(&core)
         };
         self.publish("lyrics.changed", &state);
@@ -1829,12 +1843,36 @@ mod tests {
             })
             .await
             .expect("playback starts");
+        player.set_lyrics(Some(lyric_document())).await;
         engine.finish();
         tokio::time::sleep(Duration::from_millis(180)).await;
         let snapshot = player.snapshot().await;
         assert_eq!(snapshot.current_index, Some(1));
         assert_eq!(snapshot.playback_state, PlaybackState::Playing);
+        assert!(player.lyrics().await.is_none());
+        assert_eq!(
+            player.current_lyric_state().await.song_id.as_deref(),
+            Some("two")
+        );
+        assert!(player.current_lyric_state().await.line_index.is_none());
         player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn late_lyrics_for_the_previous_track_cannot_replace_the_current_document() {
+        let player = PlayerService::new();
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play_from_queue(1).await.expect("second track loads");
+
+        player.set_lyrics(Some(lyric_document())).await;
+
+        assert!(player.lyrics().await.is_none());
+        assert_eq!(
+            player.current_lyric_state().await.song_id.as_deref(),
+            Some("two")
+        );
     }
 
     #[tokio::test]

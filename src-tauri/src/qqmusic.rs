@@ -47,7 +47,7 @@ use account::{
     CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest, EntitlementTier,
     FavoriteMutationRequest, FavoriteMutationResult, MembershipState, Page, PlaylistMutationResult,
     PlaylistTrackMutationRequest, ProviderErrorCode, QQMusicAccountService, RemotePlayHistoryItem,
-    RenamePlaylistRequest,
+    RemotePlayHistorySource, RenamePlaylistRequest,
 };
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
@@ -445,11 +445,60 @@ impl QQMusicService {
         cursor: Option<String>,
         limit: u32,
     ) -> Result<Page<RemotePlayHistoryItem>, QQMusicError> {
-        let page = self.account.recently_played(cursor, limit).await?;
+        let limit = limit.clamp(1, 100);
+        let remote = self.account.recently_played(cursor.clone(), limit).await;
+        let local = self.local_recent_history(if cursor.is_none() { limit } else { 0 })?;
+        let page = match remote {
+            Ok(page) => merge_recent_history(page, local, limit),
+            Err(error) if recent_history_fallback_eligible(&error) => {
+                let snapshot = self.auth.snapshot().await;
+                Page {
+                    total: Some(local.len() as u64),
+                    items: local,
+                    next_cursor: None,
+                    fetched_at_ms: unix_timestamp_ms(),
+                    stale: false,
+                    auth_revision: snapshot.revision,
+                }
+            }
+            Err(error) => return Err(error),
+        };
         self.account
             .remember_songs(page.items.iter().map(|item| &item.song))
             .await;
         Ok(page)
+    }
+
+    fn local_recent_history(&self, limit: u32) -> Result<Vec<RemotePlayHistoryItem>, QQMusicError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        if let Ok(Some(snapshot)) = self.storage.load_queue::<crate::player::PlayerSnapshot>() {
+            for song in snapshot.queue {
+                if let Some(provider) = song
+                    .provider
+                    .as_ref()
+                    .filter(|provider| provider.provider_id == "qqmusic")
+                {
+                    self.storage
+                        .backfill_playback_history_snapshot("qqmusic", &provider.track_id, &song)
+                        .map_err(|_| QQMusicError::Storage)?;
+                }
+            }
+        }
+        self.storage
+            .load_playback_history::<Song>("qqmusic", limit)
+            .map_err(|_| QQMusicError::Storage)
+            .map(|history| {
+                history
+                    .into_iter()
+                    .map(|(song, played_at_ms)| RemotePlayHistoryItem {
+                        song,
+                        played_at_ms: Some(played_at_ms),
+                        source: RemotePlayHistorySource::LocalPlayback,
+                    })
+                    .collect()
+            })
     }
 
     pub async fn set_favorite(
@@ -954,9 +1003,11 @@ impl PlaybackSourceResolver for QQMusicService {
             }
             let source = source.map_err(map_provider_source_error)?;
             if let Some(provider) = &song.provider {
-                let _ = self
-                    .storage
-                    .record_playback(&provider.provider_id, &provider.track_id);
+                let _ = self.storage.record_playback_snapshot(
+                    &provider.provider_id,
+                    &provider.track_id,
+                    song,
+                );
             }
             return Ok(source);
         }
@@ -2673,6 +2724,42 @@ fn stable_component(value: &str) -> String {
         .collect()
 }
 
+fn recent_history_fallback_eligible(error: &QQMusicError) -> bool {
+    matches!(
+        error,
+        QQMusicError::Offline
+            | QQMusicError::Timeout
+            | QQMusicError::RateLimited
+            | QQMusicError::SchemaChanged
+            | QQMusicError::MalformedResponse
+            | QQMusicError::Protocol
+            | QQMusicError::UnsupportedOperation
+    )
+}
+
+fn merge_recent_history(
+    mut remote: Page<RemotePlayHistoryItem>,
+    local: Vec<RemotePlayHistoryItem>,
+    limit: u32,
+) -> Page<RemotePlayHistoryItem> {
+    let mut by_song = HashMap::<String, RemotePlayHistoryItem>::new();
+    for item in remote.items.drain(..).chain(local) {
+        let song_id = item.song.id.clone();
+        let replace = by_song.get(&song_id).is_none_or(|existing| {
+            item.played_at_ms.unwrap_or_default() > existing.played_at_ms.unwrap_or_default()
+        });
+        if replace {
+            by_song.insert(song_id, item);
+        }
+    }
+    let mut items = by_song.into_values().collect::<Vec<_>>();
+    items.sort_by_key(|item| std::cmp::Reverse(item.played_at_ms.unwrap_or_default()));
+    items.truncate(limit as usize);
+    remote.total = remote.total.map(|total| total.max(items.len() as u64));
+    remote.items = items;
+    remote
+}
+
 fn stable_guid() -> String {
     let value = unix_timestamp_ms() % 9_000_000_000 + 1_000_000_000;
     value.to_string()
@@ -2753,6 +2840,85 @@ mod tests {
         ] {
             assert!(capabilities.get(forbidden).is_none());
         }
+    }
+
+    #[test]
+    fn local_recent_history_replaces_older_remote_duplicates_and_keeps_time_order() {
+        let mut remote_song = normalize_new_song(
+            serde_json::from_str::<SearchResponse>(include_str!(
+                "../tests/fixtures/qqmusic/search-song.json"
+            ))
+            .expect("search fixture")
+            .data
+            .song
+            .expect("song block")
+            .list
+            .remove(0),
+        )
+        .expect("song normalizes");
+        let mut local_song = remote_song.clone();
+        local_song.title = "Locally remembered title".to_owned();
+        let second_song = Song {
+            id: "qqmusic:track:SECOND".to_owned(),
+            title: "Second".to_owned(),
+            ..remote_song.clone()
+        };
+        remote_song.title = "Older remote title".to_owned();
+        let remote = Page {
+            items: vec![RemotePlayHistoryItem {
+                song: remote_song,
+                played_at_ms: Some(100),
+                source: RemotePlayHistorySource::QqmusicAccount,
+            }],
+            next_cursor: None,
+            total: Some(1),
+            fetched_at_ms: 1,
+            stale: false,
+            auth_revision: 3,
+        };
+        let merged = merge_recent_history(
+            remote,
+            vec![
+                RemotePlayHistoryItem {
+                    song: local_song,
+                    played_at_ms: Some(300),
+                    source: RemotePlayHistorySource::LocalPlayback,
+                },
+                RemotePlayHistoryItem {
+                    song: second_song,
+                    played_at_ms: Some(200),
+                    source: RemotePlayHistorySource::LocalPlayback,
+                },
+            ],
+            100,
+        );
+
+        assert_eq!(merged.items.len(), 2);
+        assert_eq!(merged.items[0].song.title, "Locally remembered title");
+        assert_eq!(
+            merged.items[0].source,
+            RemotePlayHistorySource::LocalPlayback
+        );
+        assert_eq!(merged.items[1].song.id, "qqmusic:track:SECOND");
+    }
+
+    #[test]
+    fn recent_history_falls_back_only_for_provider_availability_and_shape_failures() {
+        for error in [
+            QQMusicError::Offline,
+            QQMusicError::Timeout,
+            QQMusicError::RateLimited,
+            QQMusicError::SchemaChanged,
+            QQMusicError::MalformedResponse,
+            QQMusicError::Protocol,
+            QQMusicError::UnsupportedOperation,
+        ] {
+            assert!(recent_history_fallback_eligible(&error));
+        }
+        assert!(!recent_history_fallback_eligible(
+            &QQMusicError::AuthenticationExpired
+        ));
+        assert!(!recent_history_fallback_eligible(&QQMusicError::Storage));
     }
 
     #[tokio::test]

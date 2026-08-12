@@ -445,23 +445,86 @@ impl StorageService {
         Ok(())
     }
 
-    pub fn record_playback(&self, provider: &str, track_id: &str) -> Result<(), StorageError> {
+    pub fn record_playback_snapshot<T: Serialize>(
+        &self,
+        provider: &str,
+        track_id: &str,
+        value: &T,
+    ) -> Result<(), StorageError> {
+        let value_json = serde_json::to_string(value).map_err(|_| StorageError::Database)?;
+        let now = sqlite_i64(unix_timestamp_ms());
         let connection = self
             .connection
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         connection
             .execute(
-                "INSERT INTO playback_history(provider, track_id, played_at_ms) VALUES (?1, ?2, ?3)",
-                params![provider, track_id, sqlite_i64(unix_timestamp_ms())],
+                "INSERT INTO playback_history(provider, track_id, played_at_ms, value_json)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![provider, track_id, now, value_json],
             )
             .map_err(|_| StorageError::Database)?;
         connection
             .execute(
                 "DELETE FROM playback_history WHERE id NOT IN (
-                   SELECT id FROM playback_history ORDER BY played_at_ms DESC LIMIT 2000
+                   SELECT id FROM playback_history ORDER BY played_at_ms DESC, id DESC LIMIT 2000
                  )",
                 [],
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(())
+    }
+
+    pub fn load_playback_history<T: DeserializeOwned>(
+        &self,
+        provider: &str,
+        limit: u32,
+    ) -> Result<Vec<(T, u64)>, StorageError> {
+        let connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut statement = connection
+            .prepare(
+                "SELECT value_json, played_at_ms FROM playback_history AS history
+                 WHERE provider = ?1 AND value_json IS NOT NULL
+                   AND id = (
+                     SELECT MAX(latest.id) FROM playback_history AS latest
+                     WHERE latest.provider = history.provider
+                       AND latest.track_id = history.track_id
+                       AND latest.value_json IS NOT NULL
+                   )
+                 ORDER BY played_at_ms DESC, id DESC LIMIT ?2",
+            )
+            .map_err(|_| StorageError::Database)?;
+        let rows = statement
+            .query_map(params![provider, i64::from(limit.clamp(1, 500))], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|_| StorageError::Database)?;
+        let mut history = Vec::new();
+        for row in rows {
+            let (json, played_at_ms) = row.map_err(|_| StorageError::Database)?;
+            let value = serde_json::from_str(&json).map_err(|_| StorageError::Database)?;
+            history.push((value, played_at_ms.max(0) as u64));
+        }
+        Ok(history)
+    }
+
+    pub fn backfill_playback_history_snapshot<T: Serialize>(
+        &self,
+        provider: &str,
+        track_id: &str,
+        value: &T,
+    ) -> Result<(), StorageError> {
+        let value_json = serde_json::to_string(value).map_err(|_| StorageError::Database)?;
+        self.connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .execute(
+                "UPDATE playback_history SET value_json = ?3
+                 WHERE provider = ?1 AND track_id = ?2 AND value_json IS NULL",
+                params![provider, track_id, value_json],
             )
             .map_err(|_| StorageError::Database)?;
         Ok(())
@@ -1012,6 +1075,43 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
             )
             .map_err(|_| StorageError::Database)?;
     }
+    if version < 5 {
+        connection
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS playback_history (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   provider TEXT NOT NULL,
+                   track_id TEXT NOT NULL,
+                   played_at_ms INTEGER NOT NULL
+                 );",
+            )
+            .map_err(|_| StorageError::Database)?;
+        let has_value_json = connection
+            .prepare("PRAGMA table_info(playback_history)")
+            .and_then(|mut statement| {
+                let columns = statement
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(columns.iter().any(|column| column == "value_json"))
+            })
+            .map_err(|_| StorageError::Database)?;
+        if !has_value_json {
+            connection
+                .execute_batch(
+                    "BEGIN;
+                     ALTER TABLE playback_history ADD COLUMN value_json TEXT;
+                     CREATE INDEX IF NOT EXISTS playback_history_time
+                       ON playback_history(played_at_ms DESC);
+                     PRAGMA user_version = 5;
+                     COMMIT;",
+                )
+                .map_err(|_| StorageError::Database)?;
+        } else {
+            connection
+                .pragma_update(None, "user_version", 5)
+                .map_err(|_| StorageError::Database)?;
+        }
+    }
     Ok(())
 }
 
@@ -1108,7 +1208,7 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("migration version");
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
         storage
             .put_json("qq:search:test", "metadata", &vec!["one", "two"], 60_000)
             .expect("cache write");
@@ -1151,7 +1251,7 @@ mod tests {
             .set_setting("preferred-quality", "high")
             .expect("setting write");
         storage
-            .record_playback("qqmusic", "TRACK")
+            .record_playback_snapshot("qqmusic", "TRACK", &vec!["history"])
             .expect("history write");
 
         assert_eq!(
@@ -1184,6 +1284,46 @@ mod tests {
             })
             .expect("history count");
         assert_eq!(history_entries, 1);
+    }
+
+    #[test]
+    fn local_playback_history_keeps_latest_unique_song_snapshots() {
+        #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+        struct Track {
+            id: String,
+            title: String,
+        }
+
+        let (_root, storage) = storage();
+        let first = Track {
+            id: "one".to_owned(),
+            title: "First".to_owned(),
+        };
+        let second = Track {
+            id: "two".to_owned(),
+            title: "Second".to_owned(),
+        };
+        let updated = Track {
+            id: "one".to_owned(),
+            title: "First updated".to_owned(),
+        };
+        storage
+            .record_playback_snapshot("qqmusic", "one", &first)
+            .expect("first record");
+        storage
+            .record_playback_snapshot("qqmusic", "two", &second)
+            .expect("second record");
+        storage
+            .record_playback_snapshot("qqmusic", "one", &updated)
+            .expect("updated record");
+
+        let history = storage
+            .load_playback_history::<Track>("qqmusic", 10)
+            .expect("history loads");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].0, updated);
+        assert_eq!(history[1].0, second);
+        assert!(history[0].1 >= history[1].1);
     }
 
     #[test]

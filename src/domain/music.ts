@@ -235,7 +235,7 @@ export interface AccountPlaylistDetail {
 export interface RemotePlayHistoryItem {
   song: Song;
   playedAtMs: number | null;
-  source: 'qqmusic-account';
+  source: 'qqmusic-account' | 'local-playback';
 }
 
 export type EntitlementTier = 'free' | 'music-vip' | 'super-vip' | 'unknown';

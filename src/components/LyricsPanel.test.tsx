@@ -229,7 +229,41 @@ describe('LyricsPanel', () => {
       name: 'The room keeps the shape of the evening',
     });
     expect(line.querySelectorAll('.lyrics-word')).toHaveLength(8);
-    expect(screen.getByText('Word synced')).toBeVisible();
+    expect(screen.queryByText('Word synced')).not.toBeInTheDocument();
+  });
+
+  it('recenters when the song changes even when the active line index stays the same', async () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: scrollTo,
+    });
+    usePlayerStore.setState({ positionMs: 5_000 });
+    render(<LyricsPanel {...presentationProps()} />);
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    scrollTo.mockClear();
+
+    const nextSong = allSongs.find((candidate) => candidate.id !== 'quiet-light');
+    if (!nextSong) throw new Error('second song fixture is missing');
+    const nextDocument = {
+      ...(lyricsBySong['quiet-light'] ?? timedDocument()),
+      songId: nextSong.id,
+    };
+    act(() => {
+      usePlayerStore.setState((state) => ({
+        queue: [nextSong],
+        currentIndex: 0,
+        timelineRevision: state.timelineRevision + 1,
+      }));
+      useLyricsStore.setState({
+        songId: nextSong.id,
+        status: 'ready',
+        document: nextDocument,
+        error: null,
+      });
+    });
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
   });
 
   it('delegates focus and fullscreen controls and updates their accessible labels', () => {
