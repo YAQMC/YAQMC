@@ -166,6 +166,8 @@ pub enum PlaybackSourceError {
     DecoderUnsupported,
     #[error("the active account is not entitled to this track or quality")]
     EntitlementInsufficient,
+    #[error("the active account entitlement could not be confirmed")]
+    EntitlementUnknown,
     #[error("the provider session expired")]
     AuthenticationExpired,
     #[error("the track is unavailable")]
@@ -498,6 +500,7 @@ impl PlaybackSourceResolver for TestPlaybackSourceResolver {
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::unrestricted(),
         })

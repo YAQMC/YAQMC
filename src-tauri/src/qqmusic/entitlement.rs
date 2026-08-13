@@ -54,7 +54,43 @@ impl AudioQualityPreference {
 pub enum PlaybackFallbackReason {
     SourceUnavailable,
     AccountRights,
+    EntitlementUnknown,
+    ClientUnsupported,
     PreviewOnly,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EntitlementCapabilityState {
+    Allowed,
+    Denied,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResourceCapabilityState {
+    Available,
+    Unavailable,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClientCapabilityState {
+    Supported,
+    Unsupported,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QualityCapabilityState {
+    pub quality: AudioQuality,
+    pub entitlement: EntitlementCapabilityState,
+    pub resource: ResourceCapabilityState,
+    pub client: ClientCapabilityState,
+    pub playable: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -65,6 +101,8 @@ pub struct PlaybackSourceSelection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback_reason: Option<PlaybackFallbackReason>,
     pub preview: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quality_capabilities: Vec<QualityCapabilityState>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,6 +115,7 @@ pub struct PreviewRange {
 pub struct VkeyAvailability {
     pub filename: String,
     pub available: bool,
+    pub known: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,6 +129,7 @@ pub struct SourceCandidate {
     pub quality: AudioQuality,
     pub preview: bool,
     pub encrypted: bool,
+    pub client_supported: bool,
 }
 
 impl SourceCandidate {
@@ -114,6 +154,7 @@ impl SourceCandidate {
             quality,
             preview,
             encrypted: false,
+            client_supported: true,
         }
     }
 }
@@ -150,6 +191,87 @@ fn quality_in_preference_order(preference: AudioQualityPreference, quality: Audi
         AudioQualityPreference::Lossless => rank(quality) <= rank(AudioQuality::Lossless),
         AudioQualityPreference::Master => true,
     }
+}
+
+fn entitlement_capability(
+    entitlement: &AccountEntitlement,
+    quality: AudioQuality,
+) -> EntitlementCapabilityState {
+    if quality == AudioQuality::Standard {
+        return EntitlementCapabilityState::Allowed;
+    }
+    if entitlement.membership == MembershipState::Unknown {
+        return EntitlementCapabilityState::Unknown;
+    }
+    if entitlement.permitted_qualities.contains(&quality) {
+        EntitlementCapabilityState::Allowed
+    } else {
+        EntitlementCapabilityState::Denied
+    }
+}
+
+pub(crate) fn quality_capabilities(
+    entitlement: &AccountEntitlement,
+    track_formats: &[AudioFormatInfo],
+    candidates: &[SourceCandidate],
+    vkey_results: &[VkeyAvailability],
+) -> Vec<QualityCapabilityState> {
+    [
+        AudioQuality::Standard,
+        AudioQuality::High,
+        AudioQuality::Lossless,
+        AudioQuality::Master,
+    ]
+    .into_iter()
+    .map(|quality| {
+        let matching = candidates
+            .iter()
+            .filter(|candidate| {
+                !candidate.preview
+                    && candidate.quality == quality
+                    && candidate_matches_track(candidate, track_formats)
+            })
+            .collect::<Vec<_>>();
+        let entitlement = entitlement_capability(entitlement, quality);
+        let resource = if matching.iter().any(|candidate| {
+            vkey_results.iter().any(|result| {
+                result.filename == candidate.filename && result.known && result.available
+            })
+        }) {
+            ResourceCapabilityState::Available
+        } else if matching.is_empty() {
+            if track_formats.is_empty() {
+                ResourceCapabilityState::Unknown
+            } else {
+                ResourceCapabilityState::Unavailable
+            }
+        } else if matching.iter().all(|candidate| {
+            vkey_results.iter().any(|result| {
+                result.filename == candidate.filename && result.known && !result.available
+            })
+        }) {
+            ResourceCapabilityState::Unavailable
+        } else {
+            ResourceCapabilityState::Unknown
+        };
+        let client = if matching.is_empty() {
+            ClientCapabilityState::Unknown
+        } else if matching.iter().any(|candidate| candidate.client_supported) {
+            ClientCapabilityState::Supported
+        } else {
+            ClientCapabilityState::Unsupported
+        };
+        QualityCapabilityState {
+            quality,
+            playable: entitlement == EntitlementCapabilityState::Allowed
+                && resource == ResourceCapabilityState::Available
+                && client == ClientCapabilityState::Supported,
+            entitlement,
+            resource,
+            client,
+        }
+    })
+    .collect()
 }
 
 pub(crate) fn candidates_for_request(
@@ -190,6 +312,13 @@ pub(crate) fn choose_source(
     let requested_has_format = requested.is_some_and(|quality| {
         track_formats.is_empty() || track_formats.iter().any(|format| format.quality == quality)
     });
+    let quality_capabilities =
+        quality_capabilities(entitlement, track_formats, candidates, vkey_results);
+    let requested_capability = requested.and_then(|quality| {
+        quality_capabilities
+            .iter()
+            .find(|capability| capability.quality == quality)
+    });
 
     for candidate in candidates_for_request(preference, entitlement, candidates) {
         if !candidate_matches_track(&candidate, track_formats) {
@@ -198,9 +327,12 @@ pub(crate) fn choose_source(
         if candidate.preview && preview.is_none() {
             continue;
         }
+        if !candidate.client_supported {
+            continue;
+        }
         if !vkey_results
             .iter()
-            .any(|result| result.filename == candidate.filename && result.available)
+            .any(|result| result.filename == candidate.filename && result.known && result.available)
         {
             continue;
         }
@@ -209,13 +341,47 @@ pub(crate) fn choose_source(
         } else if let Some(requested) = requested {
             if requested == candidate.quality {
                 None
-            } else if requested_has_format && !requested_allowed {
-                Some(PlaybackFallbackReason::AccountRights)
             } else {
-                Some(PlaybackFallbackReason::SourceUnavailable)
+                match requested_capability {
+                    Some(capability)
+                        if requested_has_format
+                            && capability.entitlement == EntitlementCapabilityState::Denied =>
+                    {
+                        Some(PlaybackFallbackReason::AccountRights)
+                    }
+                    Some(capability)
+                        if capability.entitlement == EntitlementCapabilityState::Unknown =>
+                    {
+                        Some(PlaybackFallbackReason::EntitlementUnknown)
+                    }
+                    Some(capability)
+                        if capability.resource == ResourceCapabilityState::Available
+                            && capability.client == ClientCapabilityState::Unsupported =>
+                    {
+                        Some(PlaybackFallbackReason::ClientUnsupported)
+                    }
+                    _ => Some(PlaybackFallbackReason::SourceUnavailable),
+                }
             }
         } else {
-            None
+            quality_capabilities
+                .iter()
+                .rev()
+                .find(|capability| {
+                    rank(capability.quality) > rank(candidate.quality)
+                        && capability.entitlement == EntitlementCapabilityState::Allowed
+                })
+                .and_then(|capability| {
+                    if capability.resource == ResourceCapabilityState::Available
+                        && capability.client == ClientCapabilityState::Unsupported
+                    {
+                        Some(PlaybackFallbackReason::ClientUnsupported)
+                    } else if capability.resource == ResourceCapabilityState::Unavailable {
+                        Some(PlaybackFallbackReason::SourceUnavailable)
+                    } else {
+                        None
+                    }
+                })
         };
         return Ok(SourceDecision {
             selection: PlaybackSourceSelection {
@@ -223,6 +389,7 @@ pub(crate) fn choose_source(
                 resolved_quality: candidate.quality,
                 fallback_reason,
                 preview: candidate.preview,
+                quality_capabilities,
             },
             preview: candidate.preview.then_some(preview).flatten(),
             candidate,
@@ -230,11 +397,33 @@ pub(crate) fn choose_source(
     }
 
     if requested.is_some() {
-        if requested_has_format && !requested_allowed {
-            Err(PlaybackSourceError::EntitlementInsufficient)
-        } else {
-            Err(PlaybackSourceError::TrackUnavailable)
+        match requested_capability {
+            Some(capability)
+                if requested_has_format
+                    && capability.entitlement == EntitlementCapabilityState::Denied =>
+            {
+                Err(PlaybackSourceError::EntitlementInsufficient)
+            }
+            Some(capability) if capability.entitlement == EntitlementCapabilityState::Unknown => {
+                Err(PlaybackSourceError::EntitlementUnknown)
+            }
+            Some(capability)
+                if capability.resource == ResourceCapabilityState::Available
+                    && capability.client == ClientCapabilityState::Unsupported =>
+            {
+                Err(PlaybackSourceError::DecoderUnsupported)
+            }
+            _ if requested_has_format && !requested_allowed => {
+                Err(PlaybackSourceError::EntitlementInsufficient)
+            }
+            _ => Err(PlaybackSourceError::TrackUnavailable),
         }
+    } else if quality_capabilities.iter().any(|capability| {
+        capability.entitlement == EntitlementCapabilityState::Allowed
+            && capability.resource == ResourceCapabilityState::Available
+            && capability.client == ClientCapabilityState::Unsupported
+    }) {
+        Err(PlaybackSourceError::DecoderUnsupported)
     } else {
         Err(PlaybackSourceError::TrackUnavailable)
     }
@@ -506,6 +695,7 @@ mod tests {
             .into_iter()
             .map(|candidate| VkeyAvailability {
                 available: names.contains(&candidate.filename.as_str()),
+                known: true,
                 filename: candidate.filename,
             })
             .collect()
@@ -677,6 +867,139 @@ mod tests {
                 None,
             ),
             Err(PlaybackSourceError::EntitlementInsufficient)
+        );
+    }
+
+    #[test]
+    fn quality_capability_matrix_keeps_entitlement_resource_and_client_independent() {
+        let mut unsupported = candidate("master", AudioQuality::Master, false);
+        unsupported.client_supported = false;
+        let formats = [format(AudioQuality::Master, AudioCodec::Flac)];
+        let vkeys = [VkeyAvailability {
+            filename: "master".to_owned(),
+            available: true,
+            known: true,
+        }];
+
+        let supported = quality_capabilities(
+            &entitlement(vec![AudioQuality::Master]),
+            &formats,
+            &[candidate("master", AudioQuality::Master, false)],
+            &vkeys,
+        );
+        assert_eq!(
+            supported.last(),
+            Some(&QualityCapabilityState {
+                quality: AudioQuality::Master,
+                entitlement: EntitlementCapabilityState::Allowed,
+                resource: ResourceCapabilityState::Available,
+                client: ClientCapabilityState::Supported,
+                playable: true,
+            })
+        );
+
+        let client_unsupported = quality_capabilities(
+            &entitlement(vec![AudioQuality::Master]),
+            &formats,
+            &[unsupported.clone()],
+            &vkeys,
+        );
+        assert_eq!(
+            client_unsupported
+                .last()
+                .map(|state| (state.client, state.playable)),
+            Some((ClientCapabilityState::Unsupported, false))
+        );
+        assert_eq!(
+            choose_source(
+                AudioQualityPreference::Master,
+                &entitlement(vec![AudioQuality::Master]),
+                &formats,
+                &[unsupported],
+                &vkeys,
+                None,
+            ),
+            Err(PlaybackSourceError::DecoderUnsupported)
+        );
+
+        let unavailable = quality_capabilities(
+            &entitlement(vec![AudioQuality::Master]),
+            &formats,
+            &[candidate("master", AudioQuality::Master, false)],
+            &[VkeyAvailability {
+                filename: "master".to_owned(),
+                available: false,
+                known: true,
+            }],
+        );
+        assert_eq!(
+            unavailable
+                .last()
+                .map(|state| (state.resource, state.playable)),
+            Some((ResourceCapabilityState::Unavailable, false))
+        );
+
+        let resource_unknown = quality_capabilities(
+            &entitlement(vec![AudioQuality::Master]),
+            &formats,
+            &[candidate("master", AudioQuality::Master, false)],
+            &[VkeyAvailability {
+                filename: "master".to_owned(),
+                available: false,
+                known: false,
+            }],
+        );
+        assert_eq!(
+            resource_unknown
+                .last()
+                .map(|state| (state.resource, state.playable)),
+            Some((ResourceCapabilityState::Unknown, false))
+        );
+
+        let denied = quality_capabilities(
+            &entitlement(vec![AudioQuality::Standard]),
+            &formats,
+            &[candidate("master", AudioQuality::Master, false)],
+            &vkeys,
+        );
+        assert_eq!(
+            denied
+                .last()
+                .map(|state| (state.entitlement, state.playable)),
+            Some((EntitlementCapabilityState::Denied, false))
+        );
+
+        let unknown_entitlement = AccountEntitlement {
+            tier: EntitlementTier::Unknown,
+            membership: MembershipState::Unknown,
+            expires_at_ms: None,
+            secondary_entitlements: Vec::new(),
+            permitted_qualities: vec![AudioQuality::Standard],
+            observed_maximum_quality: None,
+            restrictions: Vec::new(),
+        };
+        let unknown = quality_capabilities(
+            &unknown_entitlement,
+            &formats,
+            &[candidate("master", AudioQuality::Master, false)],
+            &vkeys,
+        );
+        assert_eq!(
+            unknown
+                .last()
+                .map(|state| (state.entitlement, state.playable)),
+            Some((EntitlementCapabilityState::Unknown, false))
+        );
+        assert_eq!(
+            choose_source(
+                AudioQualityPreference::Master,
+                &unknown_entitlement,
+                &formats,
+                &[candidate("master", AudioQuality::Master, false)],
+                &vkeys,
+                None,
+            ),
+            Err(PlaybackSourceError::EntitlementUnknown)
         );
     }
 

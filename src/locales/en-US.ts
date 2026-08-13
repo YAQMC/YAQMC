@@ -246,6 +246,10 @@ export const enUS = {
   },
   player: {
     fallbackAccountRights: 'Using the best quality available to this account',
+    fallbackEntitlementUnknown:
+      'Premium entitlement could not be confirmed; using a confirmed source',
+    fallbackClientUnsupported:
+      'A higher-quality source exists but this client cannot decode it; using a supported source',
     fallbackSourceUnavailable: 'Requested quality is unavailable; using the next available source',
     fallbackPreviewOnly: 'Playing the official preview',
     region: 'Music player',
@@ -282,6 +286,8 @@ export const enUS = {
     errorOutput: 'No usable audio output device is available.',
     errorDecoder: 'This audio format is not supported by the native player.',
     errorEntitlement: 'The active account is not entitled to this track or quality.',
+    errorEntitlementUnknown: 'The account entitlement for this quality could not be confirmed.',
+    errorDecryption: 'The encrypted source could not be decrypted into valid media.',
     errorSession: 'The QQ Music session must be authorized again.',
     errorSeek: 'This media source cannot seek to the requested position.',
     errorCache: 'The temporary media cache could not prepare this track.',
@@ -293,6 +299,24 @@ export const enUS = {
     qualityHigh: 'High',
     qualityLossless: 'Lossless',
     qualityMaster: 'Master quality',
+    qualityAutomaticResolved: 'Automatic selection: currently {{quality}}',
+    qualityCapabilitySummary:
+      'Account: {{entitlement}} · Resource: {{resource}} · Client: {{client}}',
+    qualityEntitlement: {
+      allowed: 'allowed',
+      denied: 'denied',
+      unknown: 'unknown',
+    },
+    qualityResource: {
+      available: 'available',
+      unavailable: 'unavailable',
+      unknown: 'unknown',
+    },
+    qualityClient: {
+      supported: 'supported',
+      unsupported: 'unsupported',
+      unknown: 'unknown',
+    },
     title: 'Title',
     album: 'Album',
     time: 'Time',

@@ -12,7 +12,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     fs::File,
-    io::{BufWriter, Write},
+    io::{BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
     thread,
@@ -183,6 +183,8 @@ pub enum AudioEngineError {
     MediaOpenFailed,
     #[error("the media format is unsupported or malformed")]
     DecoderUnsupported,
+    #[error("the encrypted media did not decrypt to a valid FLAC stream")]
+    DecryptionFailed,
     #[error("seeking is not supported by this media source")]
     SeekUnsupported,
     #[error("the progressive media stream failed")]
@@ -854,17 +856,26 @@ fn load_source_unchecked(
             content_length,
             decryptor,
         } => {
-            let reader = QmcReader::new(
+            let mut reader = QmcReader::new(
                 File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?,
                 decryptor.clone(),
             );
+            validate_decrypted_flac(&mut reader)?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(*content_length)
                 .with_seekable(true)
                 .with_hint(source.format.extension())
                 .build()
-                .map_err(|_| AudioEngineError::DecoderUnsupported)?;
+                .map_err(|error| {
+                    tracing::warn!(
+                        target: "audio",
+                        media_kind = "encrypted-flac",
+                        error = %error,
+                        "decoder rejected decrypted media"
+                    );
+                    AudioEngineError::DecoderUnsupported
+                })?;
             let duration = decoder.total_duration().map(duration_ms);
             player.clear();
             player.append(decoder);
@@ -878,19 +889,28 @@ fn load_source_unchecked(
             ))
         }
         PreparedPlaybackLocation::EncryptedProgressive { source, decryptor } => {
-            let reader = QmcReader::new(
+            let mut reader = QmcReader::new(
                 source
                     .open_reader()
                     .map_err(|_| AudioEngineError::StreamingFailed)?,
                 decryptor.clone(),
             );
+            validate_decrypted_flac(&mut reader)?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(source.content_length())
                 .with_seekable(true)
                 .with_hint("flac")
                 .build()
-                .map_err(|_| AudioEngineError::DecoderUnsupported)?;
+                .map_err(|error| {
+                    tracing::warn!(
+                        target: "audio",
+                        media_kind = "encrypted-progressive-flac",
+                        error = %error,
+                        "decoder rejected decrypted progressive media"
+                    );
+                    AudioEngineError::DecoderUnsupported
+                })?;
             let duration = decoder.total_duration().map(duration_ms);
             let monitor = source.monitor();
             player.clear();
@@ -905,6 +925,28 @@ fn load_source_unchecked(
             ))
         }
     }
+}
+
+fn validate_decrypted_flac<Reader: Read + Seek>(
+    reader: &mut Reader,
+) -> Result<(), AudioEngineError> {
+    let mut magic = [0_u8; 4];
+    reader
+        .read_exact(&mut magic)
+        .map_err(|_| AudioEngineError::DecryptionFailed)?;
+    reader
+        .seek(SeekFrom::Start(0))
+        .map_err(|_| AudioEngineError::DecryptionFailed)?;
+    let valid = magic == *b"fLaC";
+    tracing::debug!(
+        target: "audio",
+        decrypted_magic = %format_args!("{:02x}{:02x}{:02x}{:02x}", magic[0], magic[1], magic[2], magic[3]),
+        valid_flac = valid,
+        "probed decrypted media signature"
+    );
+    valid
+        .then_some(())
+        .ok_or(AudioEngineError::DecryptionFailed)
 }
 
 fn list_output_devices(
@@ -1296,6 +1338,20 @@ mod tests {
     }
 
     #[test]
+    fn decrypted_flac_probe_requires_magic_and_rewinds() {
+        let mut valid = std::io::Cursor::new(b"fLaCpayload".to_vec());
+        assert_eq!(validate_decrypted_flac(&mut valid), Ok(()));
+        assert_eq!(valid.position(), 0);
+
+        let mut invalid = std::io::Cursor::new(b"ID3 payload".to_vec());
+        assert_eq!(
+            validate_decrypted_flac(&mut invalid),
+            Err(AudioEngineError::DecryptionFailed)
+        );
+        assert_eq!(invalid.position(), 0);
+    }
+
+    #[test]
     fn retained_guard_rejects_resume_after_account_epoch_changes() {
         let clock = Arc::new(PlaybackEpochClock::default());
         let epoch = AccountEpoch::for_test(11);
@@ -1314,6 +1370,7 @@ mod tests {
                 resolved_quality: AudioQuality::Standard,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock),
         };

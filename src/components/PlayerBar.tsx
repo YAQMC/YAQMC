@@ -24,7 +24,7 @@ import { Artwork } from './ui/Artwork';
 import { IconButton } from './ui/IconButton';
 import { Select, type SelectOption } from './ui/Select';
 import { useTranslation } from 'react-i18next';
-import type { AudioQualityPreference } from '../domain/music';
+import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } from '../domain/music';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   if (muted || volume === 0) return <VolumeX size={17} />;
@@ -102,12 +102,35 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     (accountSnapshot.state !== 'authenticated' ||
       (accountSnapshot.capabilities.favoriteWrite && hasWritableProviderReference));
   const selectedQuality = sourceSelection?.requestedQuality ?? 'automatic';
+  const capabilityByQuality = new Map(
+    sourceSelection?.qualityCapabilities?.map((capability) => [capability.quality, capability]),
+  );
+  const qualityOption = (
+    quality: AudioQuality,
+    label: string,
+  ): SelectOption<AudioQualityPreference> => {
+    const capability = capabilityByQuality.get(quality);
+    return {
+      value: quality,
+      label,
+      description: capability ? qualityCapabilityLabel(capability, t) : undefined,
+      disabled: capability ? !capability.playable : false,
+    };
+  };
   const qualityOptions: readonly SelectOption<AudioQualityPreference>[] = [
-    { value: 'automatic', label: t('qualityAutomatic') },
-    { value: 'standard', label: t('qualityStandard') },
-    { value: 'high', label: t('qualityHigh') },
-    { value: 'lossless', label: t('qualityLossless') },
-    { value: 'master', label: t('qualityMaster') },
+    {
+      value: 'automatic',
+      label: t('qualityAutomatic'),
+      description: sourceSelection
+        ? t('qualityAutomaticResolved', {
+            quality: qualityLabel(sourceSelection.resolvedQuality, t),
+          })
+        : undefined,
+    },
+    qualityOption('standard', t('qualityStandard')),
+    qualityOption('high', t('qualityHigh')),
+    qualityOption('lossless', t('qualityLossless')),
+    qualityOption('master', t('qualityMaster')),
   ];
 
   return (
@@ -287,6 +310,8 @@ type PlaybackErrorKey =
   | 'errorOutput'
   | 'errorDecoder'
   | 'errorEntitlement'
+  | 'errorEntitlementUnknown'
+  | 'errorDecryption'
   | 'errorSession'
   | 'errorSeek'
   | 'errorCache';
@@ -301,6 +326,8 @@ const playbackErrorKeys: Readonly<Record<string, PlaybackErrorKey>> = {
   'media-open-failed': 'errorDecoder',
   'decoder-unsupported': 'errorDecoder',
   'entitlement-insufficient': 'errorEntitlement',
+  'entitlement-unknown': 'errorEntitlementUnknown',
+  'media-decryption-failed': 'errorDecryption',
   'authentication-expired': 'errorSession',
   'http-range-unsupported': 'errorSeek',
   'seek-unsupported': 'errorSeek',
@@ -314,10 +341,35 @@ function playbackErrorLabel(code: string | undefined, t: TFunction<'player'>): s
 }
 
 function playbackFallbackLabel(
-  reason: 'source-unavailable' | 'account-rights' | 'preview-only',
+  reason:
+    | 'source-unavailable'
+    | 'account-rights'
+    | 'entitlement-unknown'
+    | 'client-unsupported'
+    | 'preview-only',
   t: TFunction<'player'>,
 ): string {
   if (reason === 'account-rights') return t('fallbackAccountRights');
+  if (reason === 'entitlement-unknown') return t('fallbackEntitlementUnknown');
+  if (reason === 'client-unsupported') return t('fallbackClientUnsupported');
   if (reason === 'preview-only') return t('fallbackPreviewOnly');
   return t('fallbackSourceUnavailable');
+}
+
+function qualityCapabilityLabel(
+  capability: QualityCapabilityState,
+  t: TFunction<'player'>,
+): string {
+  return t('qualityCapabilitySummary', {
+    entitlement: t(`qualityEntitlement.${capability.entitlement}`),
+    resource: t(`qualityResource.${capability.resource}`),
+    client: t(`qualityClient.${capability.client}`),
+  });
+}
+
+function qualityLabel(quality: AudioQuality, t: TFunction<'player'>): string {
+  if (quality === 'standard') return t('qualityStandard');
+  if (quality === 'high') return t('qualityHigh');
+  if (quality === 'lossless') return t('qualityLossless');
+  return t('qualityMaster');
 }

@@ -1443,6 +1443,12 @@ impl PlayerService {
             return Err(self.cancel_active_source().await);
         }
         let failure = source_failure(error);
+        tracing::warn!(
+            target: "player.source",
+            error_code = failure.code,
+            retryable = failure.retryable,
+            "playback source resolution failed"
+        );
         let snapshot = {
             let mut core = self.core.write().await;
             core.playback_state = if failure.retryable {
@@ -1464,6 +1470,12 @@ impl PlayerService {
             return self.cancel_active_source().await;
         }
         let failure = audio_failure(error);
+        tracing::warn!(
+            target: "player.audio",
+            error_code = failure.code,
+            retryable = failure.retryable,
+            "native audio probe or playback failed"
+        );
         let snapshot = {
             let mut core = self.core.write().await;
             core.playback_state = if failure.retryable {
@@ -1862,6 +1874,11 @@ fn source_failure(error: &PlaybackSourceError) -> PlaybackFailure {
             "The active QQ Music account is not entitled to this track or quality.",
             false,
         ),
+        PlaybackSourceError::EntitlementUnknown => (
+            "entitlement-unknown",
+            "The QQ Music account entitlement could not be confirmed.",
+            true,
+        ),
         PlaybackSourceError::AuthenticationExpired => (
             "authentication-expired",
             "The QQ Music session expired and must be authorized again.",
@@ -1916,6 +1933,11 @@ fn audio_failure(error: &AudioEngineError) -> PlaybackFailure {
             "decoder-unsupported",
             "The native decoder rejected this audio format.",
             false,
+        ),
+        AudioEngineError::DecryptionFailed => (
+            "media-decryption-failed",
+            "The encrypted QQ Music source did not decrypt to valid FLAC media.",
+            true,
         ),
         AudioEngineError::SeekUnsupported => (
             "seek-unsupported",
@@ -2139,6 +2161,7 @@ mod tests {
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::unrestricted(),
         }
@@ -2165,6 +2188,7 @@ mod tests {
                 resolved_quality: AudioQuality::Standard,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             };
             Ok(source)
         }
@@ -3018,6 +3042,7 @@ mod tests {
                     resolved_quality: AudioQuality::Standard,
                     fallback_reason: None,
                     preview: false,
+                    quality_capabilities: Vec::new(),
                 },
                 epoch_guard: PlaybackEpochGuard::unrestricted(),
             })

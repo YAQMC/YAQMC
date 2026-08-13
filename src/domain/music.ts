@@ -20,13 +20,31 @@ export type AudioQuality = 'standard' | 'high' | 'lossless' | 'master';
 
 export type AudioQualityPreference = 'automatic' | AudioQuality;
 
-export type PlaybackFallbackReason = 'source-unavailable' | 'account-rights' | 'preview-only';
+export type PlaybackFallbackReason =
+  | 'source-unavailable'
+  | 'account-rights'
+  | 'entitlement-unknown'
+  | 'client-unsupported'
+  | 'preview-only';
+
+export type EntitlementCapabilityState = 'allowed' | 'denied' | 'unknown';
+export type ResourceCapabilityState = 'available' | 'unavailable' | 'unknown';
+export type ClientCapabilityState = 'supported' | 'unsupported' | 'unknown';
+
+export interface QualityCapabilityState {
+  quality: AudioQuality;
+  entitlement: EntitlementCapabilityState;
+  resource: ResourceCapabilityState;
+  client: ClientCapabilityState;
+  playable: boolean;
+}
 
 export interface PlaybackSourceSelection {
   requestedQuality: AudioQualityPreference;
   resolvedQuality: AudioQuality;
   fallbackReason?: PlaybackFallbackReason;
   preview: boolean;
+  qualityCapabilities?: QualityCapabilityState[];
 }
 
 export type AudioCodec = 'mp3' | 'aac' | 'flac' | 'alac' | 'unknown';
@@ -181,6 +199,8 @@ export const PROVIDER_ERROR_CODES = [
   'authentication-expired',
   'authorization-rejected',
   'entitlement-unavailable',
+  'entitlement-unknown',
+  'client-unsupported',
   'rate-limited',
   'schema-changed',
   'song-unavailable',

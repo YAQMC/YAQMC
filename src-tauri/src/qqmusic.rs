@@ -224,6 +224,10 @@ pub enum QQMusicError {
     MutationInProgress,
     #[error("the account is not entitled to this media")]
     EntitlementUnavailable,
+    #[error("the account entitlement could not be confirmed")]
+    EntitlementUnknown,
+    #[error("the native client does not support this media source")]
+    ClientUnsupported,
     #[error("local provider storage failed")]
     Storage,
 }
@@ -247,6 +251,8 @@ impl QQMusicError {
             Self::Cancelled => ProviderErrorCode::Cancelled,
             Self::MutationInProgress => ProviderErrorCode::MutationInProgress,
             Self::EntitlementUnavailable => ProviderErrorCode::EntitlementUnavailable,
+            Self::EntitlementUnknown => ProviderErrorCode::EntitlementUnknown,
+            Self::ClientUnsupported => ProviderErrorCode::ClientUnsupported,
             Self::Storage => ProviderErrorCode::StorageFailure,
         }
     }
@@ -1103,6 +1109,7 @@ impl PlaybackSourceResolver for QQMusicService {
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::unrestricted(),
         })
@@ -1118,6 +1125,8 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
             PlaybackSourceError::AuthenticationExpired
         }
         QQMusicError::EntitlementUnavailable => PlaybackSourceError::EntitlementInsufficient,
+        QQMusicError::EntitlementUnknown => PlaybackSourceError::EntitlementUnknown,
+        QQMusicError::ClientUnsupported => PlaybackSourceError::DecoderUnsupported,
         QQMusicError::NotFound => PlaybackSourceError::TrackUnavailable,
         QQMusicError::SchemaChanged
         | QQMusicError::MalformedResponse
@@ -1495,6 +1504,7 @@ impl QQMusicClient {
         let candidates = source_candidates(&provider.track_id, media_mid);
         let requested_candidates = candidates_for_request(preferred, entitlement, &candidates);
         let mut encrypted_results = HashMap::new();
+        let mut encrypted_lookup_known = true;
         if let Some(session) = session {
             let encrypted_candidates = requested_candidates
                 .iter()
@@ -1518,6 +1528,7 @@ impl QQMusicClient {
                         return Err(QQMusicError::AuthenticationExpired)
                     }
                     Err(error) => {
+                        encrypted_lookup_known = false;
                         tracing::warn!(
                             target: "qqmusic",
                             error = %error,
@@ -1585,6 +1596,7 @@ impl QQMusicClient {
                 VkeyAvailability {
                     filename: candidate.filename.clone(),
                     available,
+                    known: true,
                 }
             })
             .collect::<Vec<_>>();
@@ -1594,6 +1606,7 @@ impl QQMusicClient {
                 .map(|(filename, source)| VkeyAvailability {
                     filename: filename.clone(),
                     available: source.is_some(),
+                    known: encrypted_lookup_known,
                 }),
         );
         let preview = match &song.playback_capability {
@@ -1613,6 +1626,8 @@ impl QQMusicClient {
         )
         .map_err(|error| match error {
             PlaybackSourceError::EntitlementInsufficient => QQMusicError::EntitlementUnavailable,
+            PlaybackSourceError::EntitlementUnknown => QQMusicError::EntitlementUnknown,
+            PlaybackSourceError::DecoderUnsupported => QQMusicError::ClientUnsupported,
             PlaybackSourceError::Cancelled => QQMusicError::Cancelled,
             _ => QQMusicError::NotFound,
         })?;
@@ -1635,6 +1650,20 @@ impl QQMusicClient {
                 .ok_or(QQMusicError::MalformedResponse)?;
             (normalize_cdn_url(&sip, &path)?, None)
         };
+        tracing::info!(
+            target: "qqmusic.playback",
+            requested_quality = preferred.as_setting(),
+            resolved_quality = ?decision.candidate.quality,
+            provider_quality_code = decision.candidate.cache_label,
+            provider_file_type = decision.candidate.format.as_str(),
+            extension = decision.candidate.format.extension(),
+            encrypted = decision.candidate.encrypted,
+            resolution_path = if decision.candidate.encrypted { "evkey" } else { "vkey" },
+            ekey_present = encrypted_key.is_some(),
+            client_supported = decision.candidate.client_supported,
+            preview = decision.candidate.preview,
+            "resolved sanitized QQ Music playback source"
+        );
         let is_preview = decision.candidate.preview;
         let (timeline_offset_ms, timeline_end_ms) = if let Some(preview) = decision.preview {
             (preview.start_ms, preview.end_ms)
@@ -2603,6 +2632,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Master,
         preview: false,
         encrypted: true,
+        client_supported: true,
     };
     let encrypted_lossless = SourceCandidate {
         filename: format!("F0M0{media_mid}.mflac"),
@@ -2614,6 +2644,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Lossless,
         preview: false,
         encrypted: true,
+        client_supported: true,
     };
     let lossless = SourceCandidate {
         filename: format!("F000{media_mid}.flac"),
@@ -2625,6 +2656,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Lossless,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let high = SourceCandidate {
         filename: format!("M800{media_mid}.mp3"),
@@ -2636,6 +2668,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::High,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let standard = SourceCandidate {
         filename: format!("M500{media_mid}.mp3"),
@@ -2647,6 +2680,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Standard,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let aac = SourceCandidate {
         filename: format!("C400{media_mid}.m4a"),
@@ -2658,6 +2692,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Standard,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let preview = SourceCandidate {
         filename: format!("RS02{media_mid}.mp3"),
@@ -2669,6 +2704,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Standard,
         preview: true,
         encrypted: false,
+        client_supported: true,
     };
     vec![
         master,

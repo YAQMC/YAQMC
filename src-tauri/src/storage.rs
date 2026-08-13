@@ -561,6 +561,19 @@ impl StorageService {
             .send()
             .await
             .map_err(|_| StorageError::Network)?;
+        let response_status = response.status().as_u16();
+        let response_content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(normalize_mime_type);
+        tracing::debug!(
+            target: "storage.fetch",
+            cache_kind = kind,
+            status = response_status,
+            content_type = response_content_type.as_deref().unwrap_or("missing"),
+            "cache fetch response received"
+        );
         if kind == "media"
             && matches!(
                 response.status(),
@@ -581,11 +594,7 @@ impl StorageService {
         {
             return Err(StorageError::ResponseTooLarge);
         }
-        let mime_type = response
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .and_then(normalize_mime_type);
+        let mime_type = response_content_type;
         if !mime_matches_prefix(mime_type.as_deref(), required_mime_prefix) {
             return Err(StorageError::InvalidContentType);
         }
