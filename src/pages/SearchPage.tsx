@@ -89,8 +89,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   const hasResults = result.songs.length + result.albums.length + result.playlists.length > 0;
   const displayedResultQuery = searchState.status === 'ready' ? searchState.query : '';
   const searching = Boolean(
-    normalizedInput &&
-      (searchState.status === 'loading' || searchState.query !== normalizedInput),
+    normalizedInput && (searchState.status === 'loading' || searchState.query !== normalizedInput),
   );
   const canDisplayResult =
     searchState.status === 'ready' && displayedResultQuery === normalizedInput;
