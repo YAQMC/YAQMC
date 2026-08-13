@@ -24,9 +24,24 @@ the fallback. Normalized cache keys carry a parser revision so fixes invalidate 
 
 ## Renderer
 
-The full lyrics surface uses a single diffused artwork layer plus restrained color and contrast washes. The
-active line is anchored near the viewport center. Wheel or pointer interaction suspends following; the user
-can resume it explicitly. Timed lines seek through the same player contract used elsewhere in the UI.
+The lyrics page is a full-window immersive surface over a cover-derived background. It offers three cover
+layouts selectable from the top bar: `split` (cover artwork on the left with title/artist), `full`
+(full-window sharp cover with a frosted, gradient-masked lyrics panel on the right), and `vinyl` (a CSS-drawn
+record whose circular cover spins while playing and freezes in place when paused). Cover layouts persist
+through the lyric preferences.
+
+The blurred background for `split`/`vinyl` is produced once per artwork by an offscreen canvas render using
+`stackblur-canvas`, then served as a static image; the live CSS `filter: blur()` path is avoided because
+WebKitGTK can rasterize large blurred layers as black. The `full` layout renders the raw cover instead.
+
+Line emphasis uses a cover-aware ink color: controls, progress, word fill, and sung text use pure ink, while
+the active line mixes the artwork color with ink so light covers stay readable. Non-active lines share one
+default dimmed color; only the singing line stands out.
+
+The active line is anchored at 35% of the viewport and tracks playback through a damped spring animation on a
+transform-based scroll layer, which avoids per-frame text repaint. Wheel or pointer interaction suspends
+following; the user can resume it explicitly, and clicking a timed line seeks and resumes following. Timed
+lines seek through the same player contract used elsewhere in the UI.
 
 React does not reconcile the whole document on every audio poll. The native service publishes line/word boundary
 changes from the actual engine position; a small visual loop only updates word-fill progress between boundaries.
@@ -34,6 +49,9 @@ The active word's fill is written to one CSS custom property through a ref. Memo
 changes that do not affect their own visual state. Reduced-motion
 mode uses immediate scrolling and disables the general transition/animation system through the existing
 design token fallback.
+
+Long instrumental gaps (>= 4 s between timed lines) surface an instrumental badge while the last sung line
+stays dimmed; short gaps between lines never trigger it.
 
 The fake provider permanently includes examples for plain text, line timing, word timing, translation and
 romanization, long lines, rapid alternating vocals, instrumental gaps, and missing lyrics.
