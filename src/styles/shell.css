@@ -336,11 +336,31 @@
   min-width: 0;
 }
 
+.player-bar__artwork-button {
+  display: inline-flex;
+  flex: 0 0 54px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  cursor: pointer;
+}
+
+.player-bar__artwork-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .player-bar__artwork {
   flex: 0 0 54px;
   width: 54px;
   height: 54px;
   border-radius: var(--radius-xs);
+  transition: filter var(--motion-fast);
+}
+
+.player-bar__artwork-button:hover .player-bar__artwork {
+  filter: brightness(1.12);
 }
 
 .player-bar__track-copy {

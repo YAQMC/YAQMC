@@ -38,7 +38,6 @@ import {
 } from './application/lyrics-presentation';
 import {
   closeLyricsPresentation,
-  enterLyricsFullscreen,
   exitLyricsFullscreen,
   runAfterLyricsClose,
   toggleQueueAfterLyricsClose,
@@ -134,10 +133,6 @@ export default function App() {
 
   const closeLyrics = useCallback(() => {
     void closeLyricsPresentation();
-  }, []);
-
-  const enterFullscreenLyrics = useCallback(() => {
-    void enterLyricsFullscreen();
   }, []);
 
   const toggleQueue = useCallback(() => {
@@ -423,12 +418,7 @@ export default function App() {
             {pageContent}
           </main>
         </div>
-        <PlayerBar
-          onEnterLyricsFullscreen={enterFullscreenLyrics}
-          onCloseLyrics={closeLyrics}
-          onToggleQueue={toggleQueue}
-          lyricsFullscreenPending={fullscreenPending}
-        />
+        <PlayerBar onCloseLyrics={closeLyrics} onToggleQueue={toggleQueue} />
         <QueuePanel />
         <LyricsPanel
           focus={focusSidebarCollapsed}

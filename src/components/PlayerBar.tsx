@@ -2,7 +2,6 @@ import {
   Heart,
   AudioLines,
   ListMusic,
-  Maximize2,
   Mic2,
   Pause,
   Play,
@@ -34,20 +33,12 @@ function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
 }
 
 interface PlayerBarProps {
-  onEnterLyricsFullscreen?: () => void;
   onCloseLyrics?: () => void;
   onToggleQueue?: () => void;
-  lyricsFullscreenPending?: boolean;
 }
 
-export function PlayerBar({
-  onEnterLyricsFullscreen,
-  onCloseLyrics,
-  onToggleQueue,
-  lyricsFullscreenPending = false,
-}: PlayerBarProps) {
+export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
   const { t } = useTranslation('player');
-  const { t: lyrics } = useTranslation('lyrics');
   const { t: common } = useTranslation('common');
   const current = useCurrentSong();
   const provider = useContext(ProviderContext);
@@ -82,6 +73,7 @@ export function PlayerBar({
     cycleRepeat,
     toggleQueue,
     toggleLyrics,
+    openLyrics,
   } = usePlayerStore();
 
   const timelineDuration = playbackDurationMs ?? current?.durationMs ?? 0;
@@ -124,7 +116,14 @@ export function PlayerBar({
       <div className="player-bar__track">
         {current ? (
           <>
-            <Artwork artwork={current.artwork} className="player-bar__artwork" loading="eager" />
+            <button
+              type="button"
+              className="player-bar__artwork-button"
+              aria-label={t('openLyrics')}
+              onClick={openLyrics}
+            >
+              <Artwork artwork={current.artwork} className="player-bar__artwork" loading="eager" />
+            </button>
             <div className="player-bar__track-copy">
               <strong>{current.title}</strong>
               <span>{joinArtistNames(current.artists)}</span>
@@ -259,14 +258,6 @@ export function PlayerBar({
             style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
           />
         </div>
-        <IconButton
-          label={lyrics('enterFullscreen')}
-          size="small"
-          onClick={onEnterLyricsFullscreen}
-          disabled={!onEnterLyricsFullscreen || lyricsFullscreenPending}
-        >
-          <Maximize2 size={15} />
-        </IconButton>
       </div>
     </footer>
   );

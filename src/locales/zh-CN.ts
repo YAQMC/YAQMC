@@ -264,6 +264,7 @@ export const zhCN = {
     repeatOne: '单曲',
     position: '播放进度',
     showLyrics: '显示歌词',
+    openLyrics: '打开歌词页面',
     showQueue: '显示播放队列',
     mute: '静音',
     unmute: '取消静音',

@@ -77,22 +77,15 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(commands).toEqual([{ type: 'setQuality', quality: 'master' }]);
   });
 
-  it('enables the Lyrics-specific fullscreen action only when a callback is available', () => {
-    const onEnterLyricsFullscreen = vi.fn();
-    const { rerender } = render(<PlayerBar onEnterLyricsFullscreen={onEnterLyricsFullscreen} />);
+  it('opens the lyrics page from the artwork without requesting fullscreen', () => {
+    usePlayerStore.setState({ queue: [qqTrack()], currentIndex: 0 });
+    render(<PlayerBar />);
 
-    const enabledEntry = screen.getByRole('button', { name: 'Enter fullscreen lyrics' });
-    expect(enabledEntry).toBeEnabled();
-    fireEvent.click(enabledEntry);
-    expect(onEnterLyricsFullscreen).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Enter fullscreen lyrics' })).toBeNull();
 
-    rerender(
-      <PlayerBar onEnterLyricsFullscreen={onEnterLyricsFullscreen} lyricsFullscreenPending />,
-    );
-    expect(screen.getByRole('button', { name: 'Enter fullscreen lyrics' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Open lyrics page' }));
 
-    rerender(<PlayerBar />);
-    expect(screen.getByRole('button', { name: 'Enter fullscreen lyrics' })).toBeDisabled();
+    expect(usePlayerStore.getState()).toMatchObject({ lyricsOpen: true, queueOpen: false });
   });
 
   it('delegates an open Lyrics panel to safe close without changing visibility directly', () => {

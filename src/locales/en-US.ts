@@ -261,6 +261,7 @@ export const enUS = {
     repeatOne: 'one',
     position: 'Playback position',
     showLyrics: 'Show lyrics',
+    openLyrics: 'Open lyrics page',
     showQueue: 'Show queue',
     mute: 'Mute',
     unmute: 'Unmute',
