@@ -35,6 +35,7 @@ import { usePreferencesStore, type SecondaryLyricVisibility } from '../applicati
 import { shouldShowLyricSecondary } from '../application/lyrics-presentation';
 import { resolveLyricsAppearance } from '../application/lyrics-appearance';
 import { useSafeArtworkSource } from '../application/artwork-source';
+import { resolveArtworkSource } from '../application/artwork-resolver';
 import { useBlurredArtwork } from '../application/blurred-artwork';
 import {
   lyricsArtworkFallback,
@@ -542,8 +543,11 @@ export function LyricsPanel({
   const currentArtistLabel = usePlayerStore((state) =>
     joinArtistNames(state.queue[state.currentIndex]?.artists ?? []),
   );
-  const currentArtworkSrc = usePlayerStore(
+  const currentArtworkBaseSrc = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.artwork.src ?? '',
+  );
+  const currentArtworkVariants = usePlayerStore(
+    (state) => state.queue[state.currentIndex]?.artwork.variants,
   );
   const currentArtworkAlt = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.artwork.alt ?? '',
@@ -588,6 +592,17 @@ export function LyricsPanel({
   const backgroundColor = usePreferencesStore((state) => state.appearance.backgroundColor);
   const backgroundFit = usePreferencesStore((state) => state.appearance.backgroundFit);
   const backgroundImageSource = usePreferencesStore((state) => state.backgroundImageData);
+  const currentArtworkSrc = currentArtworkBaseSrc
+    ? resolveArtworkSource(
+        {
+          src: currentArtworkBaseSrc,
+          alt: currentArtworkAlt,
+          dominantColor: currentArtworkColor,
+          variants: currentArtworkVariants,
+        },
+        'fullscreen',
+      )
+    : '';
   const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null);
   useEffect(() => rememberLyricsArtwork(safeArtworkSource), [safeArtworkSource]);
   const appearance = resolveLyricsAppearance(

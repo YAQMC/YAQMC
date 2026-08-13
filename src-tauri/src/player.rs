@@ -17,10 +17,20 @@ use tokio::sync::{broadcast, RwLock};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ArtworkVariant {
+    pub src: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Artwork {
     pub src: String,
     pub alt: String,
     pub dominant_color: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variants: Vec<ArtworkVariant>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2081,6 +2091,7 @@ mod tests {
                 src: "/cover.svg".to_owned(),
                 alt: "Cover".to_owned(),
                 dominant_color: "#000000".to_owned(),
+                variants: Vec::new(),
             },
             duration_ms,
             track_number: 1,

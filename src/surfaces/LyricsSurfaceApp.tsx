@@ -33,6 +33,8 @@ import { visibleSurfaceInteractionState } from '../application/lyrics-surface-in
 import type { LyricDocument, LyricLine, LyricWord } from '../domain/music';
 import { joinArtistNames } from '../utils/format';
 import { IconButton } from '../components/ui/IconButton';
+import { resolveArtworkSource } from '../application/artwork-resolver';
+import { useSafeArtworkSource } from '../application/artwork-source';
 
 export interface SurfaceProps {
   kind: SurfaceKind;
@@ -340,6 +342,9 @@ export function IslandSurface(props: SurfaceProps) {
   const hover = useSurfaceHover(interactive);
   const interactionState = visibleSurfaceInteractionState(settings.interaction, hover.hovered);
   const track = projection?.value.currentTrack;
+  const artworkSource = useSafeArtworkSource(
+    track ? resolveArtworkSource(track.artwork, 'small') : null,
+  );
   const duration = projection?.value.playbackDurationMs ?? track?.durationMs ?? 0;
   const progress =
     duration > 0 ? Math.min(100, ((projection?.value.positionMs ?? 0) / duration) * 100) : 0;
@@ -352,7 +357,7 @@ export function IslandSurface(props: SurfaceProps) {
       onPointerLeave={hover.onPointerLeave}
     >
       <div className="island-card" data-tauri-drag-region={interactive ? true : undefined}>
-        {track && <img src={track.artwork.src} alt="" draggable={false} />}
+        {artworkSource && <img src={artworkSource} alt="" draggable={false} />}
         <span
           className="island-card__state"
           data-playing={projection?.value.isPlaying || undefined}

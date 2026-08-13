@@ -37,6 +37,7 @@ use thiserror::Error;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 pub(crate) mod account;
+mod artwork;
 mod auth;
 mod cache;
 mod clock;
@@ -47,6 +48,8 @@ mod transport;
 
 pub(crate) use cache::AccountEpoch;
 pub use entitlement::{AudioQualityPreference, PlaybackSourceSelection};
+
+use artwork::{artwork_for_album, artwork_from_provider_url, is_allowed_artwork_url};
 
 use account::{
     AccountEntitlement, AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
@@ -1328,7 +1331,6 @@ impl QQMusicClient {
             .next()
             .ok_or(QQMusicError::NotFound)?;
         let title = clean_text(&data.name);
-        let artwork_url = upgrade_https(&data.logo);
         Ok(Playlist {
             id: playlist_id(diss_id),
             title: title.clone(),
@@ -1337,15 +1339,7 @@ impl QQMusicClient {
                 id: format!("qqmusic:user:{}", stable_component(&data.nickname)),
                 display_name: clean_text(&data.nickname),
             },
-            artwork: Artwork {
-                src: if artwork_url.is_empty() {
-                    fallback_artwork()
-                } else {
-                    artwork_url
-                },
-                alt: format!("Cover for {title}"),
-                dominant_color: color_for(diss_id),
-            },
+            artwork: artwork_from_provider_url(&data.logo, &title, color_for(diss_id)),
             updated_label: if data.modified_at > 0 {
                 "Updated on QQ Music".to_owned()
             } else {
@@ -1384,12 +1378,14 @@ impl QQMusicClient {
             .filter_map(normalize_new_song)
             .collect();
         let title = clean_text(&details.title);
-        let artwork_url = upgrade_https(
-            non_empty(details.artwork)
-                .or_else(|| non_empty(details.front_artwork))
-                .unwrap_or_default()
-                .as_str(),
-        );
+        let artwork_url = non_empty(details.head_artwork)
+            .or_else(|| non_empty(details.front_artwork))
+            .or_else(|| non_empty(details.artwork))
+            .unwrap_or_default();
+        let artwork_color = details
+            .magic_color
+            .map(|color| format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b))
+            .unwrap_or_else(|| color_for(&top_id.to_string()));
         Ok(Playlist {
             id: format!("qqmusic:toplist:{top_id}"),
             title: title.clone(),
@@ -1398,18 +1394,7 @@ impl QQMusicClient {
                 id: "qqmusic".to_owned(),
                 display_name: "QQ Music".to_owned(),
             },
-            artwork: Artwork {
-                src: if artwork_url.is_empty() {
-                    fallback_artwork()
-                } else {
-                    artwork_url
-                },
-                alt: format!("Cover for {title}"),
-                dominant_color: details
-                    .magic_color
-                    .map(|color| format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b))
-                    .unwrap_or_else(|| color_for(&top_id.to_string())),
-            },
+            artwork: artwork_from_provider_url(&artwork_url, &title, artwork_color),
             updated_label: non_empty(details.update_time)
                 .map(|value| format!("Updated {value}"))
                 .unwrap_or_else(|| "Updated daily".to_owned()),
@@ -2234,6 +2219,8 @@ struct ToplistDetails {
     artwork: String,
     #[serde(default, rename = "frontPicUrl")]
     front_artwork: String,
+    #[serde(default, rename = "headPicUrl")]
+    head_artwork: String,
     #[serde(default, rename = "magicColor")]
     magic_color: Option<MagicColor>,
 }
@@ -3033,35 +3020,6 @@ fn album_from_songs(summary: &AlbumSummary, artists: &[ArtistSummary], songs: Ve
     }
 }
 
-fn artwork_for_album(mid: &str, title: &str) -> Artwork {
-    Artwork {
-        src: if mid == "unknown" || mid.is_empty() {
-            fallback_artwork()
-        } else {
-            format!("https://y.gtimg.cn/music/photo_new/T002R300x300M000{mid}.jpg?max_age=2592000")
-        },
-        alt: format!("Cover for {}", clean_text(title)),
-        dominant_color: color_for(mid),
-    }
-}
-
-fn fallback_artwork() -> String {
-    "/artwork/stillness.svg".to_owned()
-}
-
-fn is_allowed_artwork_url(value: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(value) else {
-        return false;
-    };
-    url.scheme() == "https"
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.port_or_known_default() == Some(443)
-        && url
-            .host_str()
-            .is_some_and(|host| host == "y.gtimg.cn" || host == "qpic.y.qq.com")
-}
-
 fn normalize_cdn_base(value: &str) -> Option<String> {
     let upgraded = upgrade_https(value);
     let url = reqwest::Url::parse(&upgraded).ok()?;
@@ -3548,6 +3506,7 @@ mod tests {
                 src: "/cover.svg".to_owned(),
                 alt: "Fixture cover".to_owned(),
                 dominant_color: "#000000".to_owned(),
+                variants: Vec::new(),
             },
             release_year: 2026,
             genre: "Fixture".to_owned(),

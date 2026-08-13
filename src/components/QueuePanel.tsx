@@ -139,7 +139,7 @@ export function QueuePanel() {
           <section className="queue-now">
             <p className="context-panel__label">{t('nowPlaying')}</p>
             <div className="queue-now__track" data-queue-entry-id={current.id}>
-              <Artwork artwork={current.track.artwork} />
+              <Artwork artwork={current.track.artwork} purpose="small" />
               <div>
                 <strong>{current.track.title}</strong>
                 <span>{joinArtistNames(current.track.artists)}</span>

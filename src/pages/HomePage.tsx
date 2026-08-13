@@ -62,7 +62,7 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
           onClick={() => onNavigate({ page: 'album', id: featured.id })}
           aria-label={t('openItem', { title: featured.title })}
         >
-          <Artwork artwork={featured.artwork} loading="eager" />
+          <Artwork artwork={featured.artwork} loading="eager" purpose="large" />
         </button>
       </section>
 

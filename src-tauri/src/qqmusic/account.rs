@@ -4,14 +4,14 @@
 )]
 
 use super::{
+    artwork::{artwork_from_provider_url, is_allowed_artwork_url},
     auth::{AuthenticatedAccountContext, QQMusicAuthService, SessionRecord},
     cache::{
         AccountCache, AccountEpoch, AccountLibraryProjection, CachedAccountPage,
         CompletedResultCache, OpaqueCursorRegistry, ProviderTrackRegistry, ACCOUNT_CACHE_KIND,
     },
     clock::Clock,
-    color_for, is_allowed_artwork_url, normalize_new_song, normalize_old_song, playlist_id,
-    stable_component,
+    color_for, normalize_new_song, normalize_old_song, playlist_id, stable_component,
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
@@ -3676,11 +3676,7 @@ fn normalize_playlist_value_with_ownership(
                 "QQ Music".to_owned()
             },
         },
-        artwork: Artwork {
-            src: artwork_src,
-            alt: format!("{title} cover"),
-            dominant_color: color_for(&stable_id),
-        },
+        artwork: artwork_from_provider_url(&artwork_src, &title, color_for(&stable_id)),
         ownership,
         capabilities,
         track_count: raw.track_count,
@@ -5186,6 +5182,7 @@ mod tests {
                 src: String::new(),
                 alt: String::new(),
                 dominant_color: String::new(),
+                variants: Vec::new(),
             },
             ownership: PlaylistOwnership::Collected,
             capabilities: PlaylistCapabilities::read_only(),
@@ -5214,6 +5211,7 @@ mod tests {
                 src: String::new(),
                 alt: String::new(),
                 dominant_color: String::new(),
+                variants: Vec::new(),
             },
             ownership: PlaylistOwnership::System,
             capabilities: PlaylistCapabilities::read_only(),

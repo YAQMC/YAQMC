@@ -144,7 +144,12 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
               aria-label={t('openLyrics')}
               onClick={openLyrics}
             >
-              <Artwork artwork={current.artwork} className="player-bar__artwork" loading="eager" />
+              <Artwork
+                artwork={current.artwork}
+                className="player-bar__artwork"
+                loading="eager"
+                purpose="small"
+              />
             </button>
             <div className="player-bar__track-copy">
               <strong>{current.title}</strong>

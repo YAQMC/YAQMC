@@ -1,9 +1,16 @@
 export type EntityId = string;
 
+export interface ArtworkVariant {
+  src: string;
+  width: number;
+  height: number;
+}
+
 export interface Artwork {
   src: string;
   alt: string;
   dominantColor: string;
+  variants?: ArtworkVariant[];
 }
 
 export interface ArtistSummary {
