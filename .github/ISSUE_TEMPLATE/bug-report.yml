@@ -15,7 +15,7 @@ body:
     attributes:
       label: YAQMC 版本
       description: 设置页或安装包文件名中的版本；不要只写“最新版”。
-      placeholder: v0.1.0-beta.5
+      placeholder: v0.1.0-beta.6
     validations:
       required: true
   - type: dropdown

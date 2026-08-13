@@ -14,7 +14,7 @@ body:
     id: version
     attributes:
       label: YAQMC 版本与包格式
-      placeholder: v0.1.0-beta.5 / AppImage x86_64
+      placeholder: v0.1.0-beta.6 / AppImage x86_64
     validations:
       required: true
   - type: input

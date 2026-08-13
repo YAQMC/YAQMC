@@ -5,7 +5,17 @@
 本文件记录用户可见变化。项目仍处于 `0.1.x` 测试阶段；未通过真实账号或 Linux 真机验收的能力会明确
 标为待验收，不会用自动化测试替代真实结论。
 
-## 0.1.0-beta.5 — 2026-08-13
+## 0.1.0-beta.6 — 2026-08-13
+
+### 公开仓库准备
+
+- 中文 `README.md` 保持默认入口，英文入口为 `README-EN.md`；20 份公开技术文档均提供中文对应页；
+- 新增中英文贡献、安全、行为准则、支持、更新记录和独立鸣谢；
+- 新增中文 Issue Forms、Pull Request 模板以及文档/断链/占位符 CI 校验；
+- 新增无跟踪器、无 CDN、无 Cookie 的双语 GitHub Pages 站点和可版本化 Wiki 源；
+- 从公开分支的完整历史中移除旧的内部生成说明文件路径。
+
+### 本版包含的功能与修复
 
 ### 新增
 
@@ -29,4 +39,4 @@
 - QMC/mflac 外部样本解密与随机 seek 通过；
 - 收藏/歌单真实写回、线上臻品取源和最终 Arch/Wayland AppImage 仍需所有者/真机证据。
 
-完整产物与 SHA-256 见 [GitHub Release](https://github.com/YAQMC/YAQMC/releases/tag/v0.1.0-beta.5)。
+完整产物与 SHA-256 见 [GitHub Release](https://github.com/YAQMC/YAQMC/releases/tag/v0.1.0-beta.6)。
