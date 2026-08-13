@@ -121,4 +121,24 @@ describe('SearchPage', () => {
     next.resolve(resultFor('林俊杰'));
     await screen.findByText('林俊杰 result');
   });
+
+  it('does not discard a result when only surrounding input whitespace changes', async () => {
+    const provider = new FakeMusicProvider();
+    vi.spyOn(provider, 'search').mockImplementation(async (query) => resultFor(query));
+
+    render(
+      <ProviderContext.Provider value={provider}>
+        <SearchPage feed={homeFeed} onNavigate={() => undefined} />
+      </ProviderContext.Provider>,
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Search music' });
+    fireEvent.change(input, { target: { value: '周杰伦' } });
+    await screen.findByText('周杰伦 result');
+
+    fireEvent.change(input, { target: { value: ' 周杰伦 ' } });
+
+    expect(screen.getByText('周杰伦 result')).toBeInTheDocument();
+    expect(provider.search).toHaveBeenCalledTimes(1);
+  });
 });

@@ -18,14 +18,15 @@ interface SearchPageProps {
 const emptyResult: SearchResult = { query: '', songs: [], albums: [], playlists: [] };
 
 type SearchState =
-  | { status: 'idle'; query: ''; result: SearchResult; error: null }
-  | { status: 'loading'; query: string; result: SearchResult; error: null }
-  | { status: 'ready'; query: string; result: SearchResult; error: null }
-  | { status: 'error'; query: string; result: SearchResult; error: string };
+  | { status: 'idle'; query: ''; providerId: ''; result: SearchResult; error: null }
+  | { status: 'loading'; query: string; providerId: string; result: SearchResult; error: null }
+  | { status: 'ready'; query: string; providerId: string; result: SearchResult; error: null }
+  | { status: 'error'; query: string; providerId: string; result: SearchResult; error: string };
 
 const idleSearchState: SearchState = {
   status: 'idle',
   query: '',
+  providerId: '',
   result: emptyResult,
   error: null,
 };
@@ -36,7 +37,18 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   const provider = useMusicProvider();
   const playTracks = usePlayerStore((state) => state.playTracks);
   const [inputValue, setInputValue] = useState(initialQuery);
-  const [searchState, setSearchState] = useState<SearchState>(idleSearchState);
+  const [searchState, setSearchState] = useState<SearchState>(() => {
+    const query = initialQuery.trim();
+    return query
+      ? {
+          status: 'loading',
+          query,
+          providerId: provider.id,
+          result: { ...emptyResult, query },
+          error: null,
+        }
+      : idleSearchState;
+  });
   const [loadingMore, setLoadingMore] = useState(false);
   const normalizedInput = inputValue.trim();
   const submittedQuery = useDeferredValue(normalizedInput);
@@ -52,12 +64,6 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
     const controller = new AbortController();
     const generation = ++activeRequestGeneration.current;
     activeController.current = controller;
-    setSearchState({
-      status: 'loading',
-      query: submittedQuery,
-      result: { ...emptyResult, query: submittedQuery },
-      error: null,
-    });
     void provider
       .search(submittedQuery, controller.signal)
       .then((next) => {
@@ -65,6 +71,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
         setSearchState({
           status: 'ready',
           query: submittedQuery,
+          providerId: provider.id,
           result: { ...next, query: submittedQuery },
           error: null,
         });
@@ -75,6 +82,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
         setSearchState({
           status: 'error',
           query: submittedQuery,
+          providerId: provider.id,
           result: { ...emptyResult, query: submittedQuery },
           error: searchErrorMessage(error, errors),
         });
@@ -87,20 +95,34 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
 
   const { result, error } = searchState;
   const hasResults = result.songs.length + result.albums.length + result.playlists.length > 0;
-  const displayedResultQuery = searchState.status === 'ready' ? searchState.query : '';
+  const stateMatchesInput =
+    searchState.query === normalizedInput && searchState.providerId === provider.id;
+  const displayedResultQuery =
+    searchState.status === 'ready' && stateMatchesInput ? searchState.query : '';
   const searching = Boolean(
-    normalizedInput && (searchState.status === 'loading' || searchState.query !== normalizedInput),
+    normalizedInput && (searchState.status === 'loading' || !stateMatchesInput),
   );
-  const canDisplayResult =
-    searchState.status === 'ready' && displayedResultQuery === normalizedInput;
+  const canDisplayResult = searchState.status === 'ready' && stateMatchesInput;
 
   const updateQuery = (value: string) => {
     setInputValue(value);
+    const query = value.trim();
+    if (query === normalizedInput) return;
     activeController.current?.abort();
     activeController.current = null;
     activeRequestGeneration.current += 1;
     setLoadingMore(false);
-    if (!value.trim()) setSearchState(idleSearchState);
+    setSearchState(
+      query
+        ? {
+            status: 'loading',
+            query,
+            providerId: provider.id,
+            result: { ...emptyResult, query },
+            error: null,
+          }
+        : idleSearchState,
+    );
   };
 
   const loadMore = async () => {
@@ -116,6 +138,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
       setSearchState({
         status: 'ready',
         query: requestedQuery,
+        providerId: provider.id,
         result: {
           ...next,
           query: requestedQuery,
@@ -130,6 +153,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
         setSearchState({
           status: 'error',
           query: requestedQuery,
+          providerId: provider.id,
           result: { ...emptyResult, query: requestedQuery },
           error: searchErrorMessage(caught, errors),
         });
@@ -250,7 +274,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
             </button>
           )}
         </div>
-      ) : searchState.status === 'error' && searchState.query === normalizedInput ? (
+      ) : searchState.status === 'error' && stateMatchesInput ? (
         <div className="empty-state empty-state--error">
           <span>
             <Search size={24} />
@@ -258,7 +282,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
           <h1>{t('unavailable')}</h1>
           <p>{error}</p>
         </div>
-      ) : searchState.status === 'ready' && searchState.query === normalizedInput ? (
+      ) : searchState.status === 'ready' && stateMatchesInput ? (
         <div className="empty-state">
           <span>
             <Search size={24} />
