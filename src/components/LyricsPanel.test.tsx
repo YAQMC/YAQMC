@@ -2,6 +2,7 @@ import { Profiler } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearArtworkMemoryCache } from '../application/artwork-cache';
+import { resetLyricsArtworkFallbackForTests } from '../application/lyrics-artwork-fallback';
 import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
@@ -10,7 +11,7 @@ import type { LyricDocument } from '../domain/music';
 import { allSongs, lyricsBySong } from '../providers/fake/fixtures';
 import '../styles/components.css';
 import '../styles/platform.css';
-import { LyricsPanel, resetLyricsArtworkFallbackForTests } from './LyricsPanel';
+import { LyricsPanel } from './LyricsPanel';
 
 const nativeArtworkMocks = vi.hoisted(() => ({
   invoke: vi.fn(),

@@ -37,6 +37,12 @@ import { resolveLyricsAppearance } from '../application/lyrics-appearance';
 import { useSafeArtworkSource } from '../application/artwork-source';
 import { useBlurredArtwork } from '../application/blurred-artwork';
 import {
+  lyricsArtworkFallback,
+  lyricsBlurredBackdropFallback,
+  rememberLyricsArtwork,
+  rememberLyricsBlurredBackdrop,
+} from '../application/lyrics-artwork-fallback';
+import {
   LyricsFullscreenTransport,
   type LyricsFullscreenTransportHandle,
 } from './LyricsFullscreenTransport';
@@ -257,14 +263,6 @@ function springScrollTo(
 }
 
 const LYRIC_ALIGN = 0.35;
-
-let lastKnownArtworkSource: string | null = null;
-let lastKnownBlurredBackdrop: string | null = null;
-
-export function resetLyricsArtworkFallbackForTests(): void {
-  lastKnownArtworkSource = null;
-  lastKnownBlurredBackdrop = null;
-}
 
 function centerLyricLine(
   scrollArea: HTMLDivElement | null,
@@ -591,7 +589,7 @@ export function LyricsPanel({
   const backgroundFit = usePreferencesStore((state) => state.appearance.backgroundFit);
   const backgroundImageSource = usePreferencesStore((state) => state.backgroundImageData);
   const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null);
-  if (safeArtworkSource) lastKnownArtworkSource = safeArtworkSource;
+  useEffect(() => rememberLyricsArtwork(safeArtworkSource), [safeArtworkSource]);
   const appearance = resolveLyricsAppearance(
     {
       mode: backgroundMode,
@@ -606,13 +604,13 @@ export function LyricsPanel({
       ? null
       : appearance.mode === 'image'
         ? appearance.imageSource
-        : (safeArtworkSource ?? lastKnownArtworkSource);
+        : (safeArtworkSource ?? lyricsArtworkFallback());
   const blurredBackdrop = useBlurredArtwork(coverLayout === 'full' ? null : backdropImageSource);
-  if (blurredBackdrop) lastKnownBlurredBackdrop = blurredBackdrop;
+  useEffect(() => rememberLyricsBlurredBackdrop(blurredBackdrop), [blurredBackdrop]);
   const backdropSource =
     coverLayout === 'full'
       ? backdropImageSource
-      : (blurredBackdrop ?? lastKnownBlurredBackdrop ?? backdropImageSource);
+      : (blurredBackdrop ?? lyricsBlurredBackdropFallback() ?? backdropImageSource);
   const activeDocument = document?.songId === currentTrackId ? document : null;
   const {
     cursor,
