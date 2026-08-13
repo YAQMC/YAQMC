@@ -87,21 +87,39 @@ export function useLyricsSurfaceRuntime(): {
 
   useEffect(() => {
     let active = true;
+    let receivedProjectionEvent = false;
+    let receivedDocumentEvent = false;
     const listeners: UnlistenFn[] = [];
     const updateProjection = (value: LyricSurfaceProjection) => {
       if (active) setProjection({ value, receivedAt: performance.now() });
     };
 
-    void listen<LyricSurfaceProjection>('lyrics://projection', (event) =>
-      updateProjection(event.payload),
-    ).then((unlisten) => (active ? listeners.push(unlisten) : unlisten()));
+    void listen<LyricSurfaceProjection>('lyrics://projection', (event) => {
+      if (active) {
+        receivedProjectionEvent = true;
+        updateProjection(event.payload);
+      }
+    })
+      .then((unlisten) => (active ? listeners.push(unlisten) : unlisten()))
+      .catch(() => undefined);
     void listen<LyricDocument | null>('lyrics://document', (event) => {
-      if (active) setDocument(event.payload);
-    }).then((unlisten) => (active ? listeners.push(unlisten) : unlisten()));
-    void invoke<LyricSurfaceProjection>('lyrics_surface_projection').then(updateProjection);
-    void invoke<LyricDocument | null>('player_lyrics').then(
-      (value) => active && setDocument(value),
-    );
+      if (active) {
+        receivedDocumentEvent = true;
+        setDocument(event.payload);
+      }
+    })
+      .then((unlisten) => (active ? listeners.push(unlisten) : unlisten()))
+      .catch(() => undefined);
+    void invoke<LyricSurfaceProjection>('lyrics_surface_projection')
+      .then((value) => {
+        if (active && !receivedProjectionEvent) updateProjection(value);
+      })
+      .catch(() => undefined);
+    void invoke<LyricDocument | null>('player_lyrics')
+      .then((value) => {
+        if (active && !receivedDocumentEvent) setDocument(value);
+      })
+      .catch(() => undefined);
 
     return () => {
       active = false;

@@ -226,8 +226,10 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const editing = target?.matches('input, textarea, select, [contenteditable="true"]') ?? false;
+      const target = event.target;
+      const editing =
+        target instanceof Element &&
+        target.matches('input, textarea, select, [contenteditable="true"]');
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
         event.preventDefault();
@@ -421,9 +423,7 @@ export default function App() {
         <LyricsPanel
           focus={focusSidebarCollapsed}
           fullscreen={fullscreen}
-          fullscreenPending={fullscreenPending}
           fullscreenError={fullscreenError}
-          onToggleFullscreen={toggleLyricsFullscreen}
           onClose={closeLyrics}
         />
       </div>

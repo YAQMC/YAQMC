@@ -5,8 +5,6 @@ import {
   Heart,
   Image,
   LocateFixed,
-  Maximize2,
-  Minimize2,
   Music2,
   Pause,
   Play,
@@ -517,20 +515,11 @@ function LyricsMessage({
 interface LyricsPanelProps {
   focus: boolean;
   fullscreen: boolean;
-  fullscreenPending: boolean;
   fullscreenError: string | null;
-  onToggleFullscreen: () => void;
   onClose: () => void;
 }
 
-export function LyricsPanel({
-  focus,
-  fullscreen,
-  fullscreenPending,
-  fullscreenError,
-  onToggleFullscreen,
-  onClose,
-}: LyricsPanelProps) {
+export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: LyricsPanelProps) {
   const { t } = useTranslation('lyrics');
   const { t: player } = useTranslation('player');
   const { t: common } = useTranslation('common');
@@ -685,7 +674,13 @@ export function LyricsPanel({
     timelineRevision,
   ]);
 
-  const [controlsHidden, setControlsHidden] = useState(false);
+  const presentationKey = `${fullscreen}:${lyricsOpen}`;
+  const [controlsPresentationKey, setControlsPresentationKey] = useState(presentationKey);
+  const [controlsHidden, setControlsHidden] = useState(fullscreen);
+  if (controlsPresentationKey !== presentationKey) {
+    setControlsPresentationKey(presentationKey);
+    setControlsHidden(fullscreen);
+  }
 
   useEffect(() => () => cancelScrollSpring(scrollArea.current), []);
 
@@ -698,13 +693,23 @@ export function LyricsPanel({
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => setControlsHidden(true), 2_400);
     };
-    reveal();
-    stageElement.addEventListener('pointermove', reveal);
+    const handlePointerMove = (event: PointerEvent) => {
+      transportRef.current?.reveal();
+      if (!fullscreen || event.clientY <= 56) reveal();
+    };
+    const handleKeyDown = () => {
+      if (fullscreen) reveal();
+    };
+
+    if (!fullscreen) timer = window.setTimeout(() => setControlsHidden(true), 2_400);
+    stageElement.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      stageElement.removeEventListener('pointermove', reveal);
+      stageElement.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('keydown', handleKeyDown);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [lyricsOpen]);
+  }, [fullscreen, lyricsOpen]);
 
   if (!lyricsOpen) return null;
 
@@ -734,7 +739,6 @@ export function LyricsPanel({
       data-background-mode={appearance.mode}
       data-image-fit={appearance.imageFit}
       data-song-id={currentTrackId ?? undefined}
-      onPointerMove={() => transportRef.current?.reveal()}
     >
       {backdropSource && (
         <div
@@ -884,14 +888,6 @@ export function LyricsPanel({
               }
             >
               <Image size={18} />
-            </IconButton>
-            <IconButton
-              label={fullscreen ? t('exitFullscreen') : t('enterFullscreen')}
-              size="large"
-              onClick={onToggleFullscreen}
-              disabled={fullscreenPending}
-            >
-              {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </IconButton>
           </div>
 
