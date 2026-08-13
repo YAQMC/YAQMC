@@ -223,8 +223,16 @@
   backdrop-filter: blur(12px);
 }
 
+.topbar__drag {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+}
+
 .topbar__history,
 .topbar__tools {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -232,6 +240,20 @@
 
 .topbar__tools {
   gap: 10px;
+}
+
+.topbar__window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.icon-button.topbar__close:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--danger);
 }
 
 .search-trigger {

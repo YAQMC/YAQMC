@@ -61,6 +61,10 @@ export const enUS = {
     searchShortcut: 'Search',
     useLightTheme: 'Use light theme',
     useDarkTheme: 'Use dark theme',
+    minimizeWindow: 'Minimize',
+    maximizeWindow: 'Maximize',
+    restoreWindow: 'Restore',
+    closeWindow: 'Close',
   },
   pages: {
     musicUnavailable: 'Music is unavailable',

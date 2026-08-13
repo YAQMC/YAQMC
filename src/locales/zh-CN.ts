@@ -67,6 +67,10 @@ export const zhCN = {
     searchShortcut: '搜索',
     useLightTheme: '切换到浅色模式',
     useDarkTheme: '切换到深色模式',
+    minimizeWindow: '最小化',
+    maximizeWindow: '最大化',
+    restoreWindow: '还原',
+    closeWindow: '关闭',
   },
   pages: {
     musicUnavailable: '音乐暂时不可用',
