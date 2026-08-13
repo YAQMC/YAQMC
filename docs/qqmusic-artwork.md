@@ -1,5 +1,7 @@
 # QQ Music artwork resolution
 
+> [简体中文](zh-CN/qqmusic-artwork.md) | **English**
+
 This document records the artwork behavior used by YAQMC's centralized
 `ArtworkResolver`. It is an interoperability observation, not a permanent QQ Music API
 guarantee.

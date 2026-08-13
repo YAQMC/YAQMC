@@ -10,7 +10,9 @@
 - [整体架构](architecture.md)
 - [播放系统](playback.md)与[渐进式流媒体](streaming.md)
 - [QQ 音乐提供器](qqmusic-provider.md)、[登录与安全存储](authentication.md)、
-  [账号音乐库](account-library.md)与[播放权益](entitlement.md)
+  [账号音乐库](account-library.md)、[会员模型](account-membership.md)与[播放权益](entitlement.md)
+- [官方客户端互操作](qqmusic-official-interoperability.md)、[音质分类](audio-quality.md)、
+  [封面选择](artwork.md)与[外部 URI 安全](deep-link.md)
 - [歌词架构](lyrics.md)与[桌面歌词 / 歌词岛](lyrics-surfaces.md)
 - [外观个性化](appearance.md)、[设计系统](design-system.md)与[国际化](i18n.md)
 - [Linux 运行与测试](linux.md)、[Linux 图形策略](linux-graphics.md)与[桌面平台集成](platform-integration.md)

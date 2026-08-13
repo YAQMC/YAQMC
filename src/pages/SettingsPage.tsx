@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   Database,
+  ExternalLink,
   Eye,
   EyeOff,
   Globe2,
@@ -51,6 +52,13 @@ import {
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { useProviderSettings } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
+import { openProductLink } from '../application/external-links';
+import {
+  buildMetadata,
+  formatSafeDiagnostics,
+  productMetadata,
+  type ProductLink,
+} from '../application/product-metadata';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -614,6 +622,7 @@ export function SettingsPage() {
   const platform = usePlatformIntegration();
   const preferences = usePreferencesStore();
   const [copied, setCopied] = useState<'endpoint' | 'token' | null>(null);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
   const [unlockingAll, setUnlockingAll] = useState(false);
@@ -865,6 +874,32 @@ export function SettingsPage() {
   const accountNeedsReauthentication =
     accountSnapshot.state === 'session-expired' ||
     accountSnapshot.state === 'reauthentication-required';
+  const rendererLabel = platform.diagnostics
+    ? platform.diagnostics.os === 'windows'
+      ? 'WebView2 / Tauri'
+      : platform.diagnostics.os === 'linux'
+        ? 'WebKitGTK / Tauri'
+        : 'Tauri WebView'
+    : t('about.browserPreview');
+  const aboutLinks: Array<{ id: ProductLink; label: string }> = [
+    { id: 'repository', label: t('about.repository') },
+    { id: 'releases', label: t('about.releases') },
+    { id: 'issues', label: t('about.issues') },
+    { id: 'documentation', label: t('about.documentation') },
+    { id: 'acknowledgements', label: t('about.acknowledgements') },
+    { id: 'thirdPartyNotices', label: t('about.thirdPartyNotices') },
+  ];
+  const copySafeDiagnostics = async () => {
+    await navigator.clipboard.writeText(
+      formatSafeDiagnostics({
+        platform: platform.diagnostics,
+        provider: provider.status,
+        accountState: accountSnapshot.state,
+      }),
+    );
+    setDiagnosticsCopied(true);
+    window.setTimeout(() => setDiagnosticsCopied(false), 1_500);
+  };
 
   return (
     <section className="page standard-page settings-page">
@@ -1571,6 +1606,67 @@ export function SettingsPage() {
             <RefreshCw size={13} /> {t('api.refresh')}
           </button>
         )}
+      </SettingsSection>
+
+      <SettingsSection title={t('about.title')} description={t('about.description')}>
+        <div className="settings-about">
+          <div className="settings-about__identity">
+            <span className="settings-about__logo" aria-hidden="true" />
+            <div>
+              <strong>{productMetadata.name}</strong>
+              <span>{productMetadata.longName}</span>
+              <small>
+                {t('about.version', { version: productMetadata.version })} · {buildMetadata.channel}{' '}
+                · {buildMetadata.type}
+              </small>
+            </div>
+          </div>
+          <dl className="settings-about__runtime">
+            <div>
+              <dt>{t('about.commit')}</dt>
+              <dd>{buildMetadata.commit}</dd>
+            </div>
+            <div>
+              <dt>{t('about.platform')}</dt>
+              <dd>
+                {platform.diagnostics
+                  ? `${platform.diagnostics.os} / ${platform.diagnostics.architecture}`
+                  : t('about.browserPreview')}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('about.renderer')}</dt>
+              <dd>{rendererLabel}</dd>
+            </div>
+            <div>
+              <dt>{t('about.audioBackend')}</dt>
+              <dd>{platform.diagnostics?.audio.implementation ?? common('unavailable')}</dd>
+            </div>
+          </dl>
+          <div className="settings-about__links" aria-label={t('about.links')}>
+            {aboutLinks.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                className="button button--quiet"
+                onClick={() => void openProductLink(id)}
+              >
+                {label} <ExternalLink size={13} />
+              </button>
+            ))}
+          </div>
+          <div className="settings-about__footer">
+            <p>{t('about.unofficial')}</p>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => void copySafeDiagnostics()}
+            >
+              <Copy size={14} />
+              {diagnosticsCopied ? common('copied') : t('about.copyDiagnostics')}
+            </button>
+          </div>
+        </div>
       </SettingsSection>
     </section>
   );

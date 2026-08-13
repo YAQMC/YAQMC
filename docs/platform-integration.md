@@ -51,3 +51,8 @@ Output devices use stable hashed IDs rather than display names. Switching opens 
 the prepared source, restores actual position/volume/play-pause state, and swaps only on success. Disappearing
 devices trigger a bounded retry to the system default, while the persisted preference remains available for a
 future session.
+
+`SystemDefault` is a policy, not a cached device identity. Every initial open and recovery asks CPAL for the current
+native default again, then opens that exact device through Rodio's device sink builder. Diagnostics therefore report
+both the persisted selection kind and the currently resolved device/driver/host. Recovery retries five times at
+two-second intervals and retains the last output error rather than falsely publishing a healthy silent state.

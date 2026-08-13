@@ -5,12 +5,16 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicDocuments = [
+  'account-membership.md',
   'account-library.md',
   'appearance.md',
   'architecture.md',
+  'artwork.md',
+  'audio-quality.md',
   'authentication.md',
   'caching.md',
   'design-system.md',
+  'deep-link.md',
   'entitlement.md',
   'i18n.md',
   'linux.md',
@@ -23,6 +27,8 @@ const publicDocuments = [
   'playback.md',
   'provider-contract.md',
   'qqmusic-provider.md',
+  'qqmusic-artwork.md',
+  'qqmusic-official-interoperability.md',
   'streaming.md',
   'windows-acceptance.md',
 ];

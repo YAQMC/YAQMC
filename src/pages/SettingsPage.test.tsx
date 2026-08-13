@@ -108,6 +108,10 @@ describe('SettingsPage account section', () => {
       appearance: { ...defaultPreferences.appearance },
     });
     await i18n.changeLanguage('en-US');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
   });
 
   it('previews rapid color input without committing until the native change event', () => {
@@ -249,5 +253,24 @@ describe('SettingsPage account section', () => {
       expect(screen.getByLabelText('Account can currently access')).toHaveTextContent('Lossless'),
     );
     expect(screen.getByLabelText('Preferred playback quality')).toHaveTextContent('Automatic');
+  });
+
+  it('ends with localized product identity, live project links, and safe diagnostic copy', async () => {
+    const account = accountProvider();
+    useAccountStore.setState({ snapshot: authenticatedSnapshot() });
+    const { container } = renderSettings(account.value);
+
+    expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument();
+    expect(screen.getByText('Yet Another QMusicClient')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /GitHub repository/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Third-party licenses/ })).toBeInTheDocument();
+    expect(container.textContent).toContain('unofficial third-party QQ Music client');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledOnce());
+    const copied = vi.mocked(navigator.clipboard.writeText).mock.calls[0]?.[0];
+    expect(copied).toContain('YAQMC version: 0.1.0');
+    expect(copied).toContain('QQ provider mode: unavailable / authenticated');
+    expect(copied).not.toMatch(/cookie|oauth|token|qrsig|ekey|authorization|private/iu);
   });
 });

@@ -14,13 +14,14 @@ YAQMC 是独立实现的非官方 QQ 音乐桌面客户端。感谢下面的个�
 
 ## 互操作研究
 
-- `L-1124/QQMusicApi`
+- `L-1124/QQMusicApi` — 固定提交用于核对账号、会员、音源和互操作行为；该参考为 GPL-3.0-or-later，
+  YAQMC 没有复制其 GPL 实现，也不代表该项目为 YAQMC 背书。
 - `wxuyu/QQMusicApi`
 - `RethinkQAQ/allmusic-qqmusicapi`
 - `tlyanyu/multiPlatformMusicApi`
 - `wangwalk/qqm`
 
-以上项目仅用于在固定提交上核对可观察协议行为。精确提交、GitHub 检出的许可证与使用边界见
+其余项目仅用于在固定提交上核对可观察协议行为。精确提交、GitHub 检出的许可证与使用边界见
 [QQ 音乐提供器账本](docs/zh-CN/qqmusic-provider.md)。这些项目没有为 YAQMC 背书。
 
 ## QMC / mflac 基础

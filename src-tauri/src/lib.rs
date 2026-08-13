@@ -70,6 +70,7 @@ pub fn run() {
     let builder = builder.plugin(desktop_integration::global_shortcut_plugin());
     let app = builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .on_page_load(|webview, payload| {
             if webview.label() != "main" {
                 return;

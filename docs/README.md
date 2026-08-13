@@ -10,7 +10,10 @@ plans under `docs/plans/` and `docs/superpowers/` are historical development rec
 - [Architecture](architecture.md)
 - [Playback](playback.md) and [progressive streaming](streaming.md)
 - [QQ Music provider](qqmusic-provider.md), [authentication](authentication.md),
-  [account library](account-library.md), and [entitlement](entitlement.md)
+  [account library](account-library.md), [membership](account-membership.md), and
+  [entitlement](entitlement.md)
+- [Official-client interoperability](qqmusic-official-interoperability.md),
+  [audio quality](audio-quality.md), [artwork](artwork.md), and [external URI security](deep-link.md)
 - [Lyrics](lyrics.md) and [lyric surfaces](lyrics-surfaces.md)
 - [Appearance](appearance.md), [design system](design-system.md), and
   [internationalization](i18n.md)

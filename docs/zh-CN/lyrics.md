@@ -48,6 +48,10 @@ transition/animation。自动下一首和 seek 都依赖 timeline revision，旧
 全屏 transport 直接读共享播放器 store，2400ms 播放无操作后隐藏，指针移动/换歌显示，拥有焦点时固定，
 上下首和播放暂停使用 PlayerBar 相同命令。
 
+全屏去掉重复的屏幕内全屏图标：F11 进入/退出，Escape 逐层返回。顶栏只在进入、键盘交互或指针到达顶部
+56px 时显示，随后使用同一 2400ms 宽限。换歌会分别淘汰旧文档和旧 cursor generation，较慢的辅助窗口
+初始 snapshot 不能覆盖自动下一首已经发布的新歌事件。
+
 沉浸歌词封面必须经过 safe-artwork resolver：本地/同源和合法 image data URI 可直接用；远程只允许 HTTPS
 `y.gtimg.cn`、`qpic.y.qq.com` 经原生缓存，拒绝重定向、凭据、非 443、`music.tc.qq.com`、其他来源、
 非图片 MIME 和错误 IPC data URI。
