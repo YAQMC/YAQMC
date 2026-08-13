@@ -534,6 +534,12 @@ export const zhCN = {
       export: '导出诊断',
       exported: '已导出到 {{path}}',
     },
+    debug: {
+      title: '调试',
+      description: '开发者与性能诊断选项。',
+      fpsCounter: '显示帧率',
+      fpsCounterDescription: '在窗口角落叠加实时帧率（FPS）计数，用于排查渲染卡顿。',
+    },
     account: {
       title: 'QQ 音乐账号',
       description: '音乐服务连接与授权能力。',

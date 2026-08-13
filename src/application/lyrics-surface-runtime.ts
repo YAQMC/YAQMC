@@ -154,6 +154,7 @@ function currentPreferenceDocument(): AppPreferences {
     lyrics: state.lyrics,
     surfaces: state.surfaces,
     system: state.system,
+    debug: state.debug,
   };
 }
 

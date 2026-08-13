@@ -1205,6 +1205,22 @@ export function SettingsPage() {
         )}
       </SettingsSection>
 
+      <SettingsSection title={t('debug.title')} description={t('debug.description')}>
+        <div className="settings-card">
+          <SettingRow
+            title={t('debug.fpsCounter')}
+            description={t('debug.fpsCounterDescription')}
+            control={
+              <Toggle
+                checked={preferences.debug.showFpsCounter}
+                label={t('debug.fpsCounter')}
+                onChange={(showFpsCounter) => preferences.updateDebug({ showFpsCounter })}
+              />
+            }
+          />
+        </div>
+      </SettingsSection>
+
       <SettingsSection
         title={t('account.title')}
         description={t('account.description')}

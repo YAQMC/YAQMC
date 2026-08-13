@@ -33,6 +33,10 @@ export interface SystemSettings {
   globalShortcutsEnabled: boolean;
 }
 
+export interface DebugSettings {
+  showFpsCounter: boolean;
+}
+
 export interface AppearanceSettings {
   colorMode: ColorModePreference;
   palette: PaletteId;
@@ -79,6 +83,7 @@ export interface AppPreferences {
   lyrics: LyricDisplaySettings;
   surfaces: Record<SurfaceKind, LyricSurfaceSettings>;
   system: SystemSettings;
+  debug: DebugSettings;
 }
 
 const defaultSurface = (kind: SurfaceKind): LyricSurfaceSettings => ({
@@ -128,6 +133,9 @@ export const defaultPreferences: AppPreferences = {
   system: {
     closeBehavior: 'hide-to-tray',
     globalShortcutsEnabled: false,
+  },
+  debug: {
+    showFpsCounter: false,
   },
 };
 
@@ -215,6 +223,9 @@ export function normalizePreferences(value: unknown): AppPreferences {
   const system = (
     source.system && typeof source.system === 'object' ? source.system : {}
   ) as Partial<SystemSettings>;
+  const debug = (
+    source.debug && typeof source.debug === 'object' ? source.debug : {}
+  ) as Partial<DebugSettings>;
   return {
     version: 2,
     locale: valueIn(source.locale, ['system', 'en-US', 'zh-CN'], 'system'),
@@ -257,6 +268,9 @@ export function normalizePreferences(value: unknown): AppPreferences {
       closeBehavior: valueIn(system.closeBehavior, ['hide-to-tray', 'quit'], 'hide-to-tray'),
       globalShortcutsEnabled:
         typeof system.globalShortcutsEnabled === 'boolean' ? system.globalShortcutsEnabled : false,
+    },
+    debug: {
+      showFpsCounter: typeof debug.showFpsCounter === 'boolean' ? debug.showFpsCounter : false,
     },
   };
 }
@@ -330,6 +344,7 @@ interface PreferencesState extends AppPreferences {
   resetAppearance: () => void;
   updateLyrics: (patch: Partial<LyricDisplaySettings>) => void;
   updateSystem: (patch: Partial<SystemSettings>) => void;
+  updateDebug: (patch: Partial<DebugSettings>) => void;
   updateSurface: (kind: SurfaceKind, patch: Partial<LyricSurfaceSettings>) => void;
   setSurfaceInteractionLocal: (kind: SurfaceKind, interaction: SurfaceInteraction) => void;
   setManagedBackground: (reference: string, dataUri: string) => void;
@@ -345,6 +360,7 @@ function persistedSlice(state: PreferencesState): AppPreferences {
     lyrics: state.lyrics,
     surfaces: state.surfaces,
     system: state.system,
+    debug: state.debug,
   };
 }
 
@@ -400,6 +416,16 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
         ...persistedSlice(state),
         system: { ...state.system, ...patch },
       }).system,
+      persistenceError: null,
+    }));
+    persist(persistedSlice(get()));
+  },
+  updateDebug: (patch) => {
+    set((state) => ({
+      debug: normalizePreferences({
+        ...persistedSlice(state),
+        debug: { ...state.debug, ...patch },
+      }).debug,
       persistenceError: null,
     }));
     persist(persistedSlice(get()));

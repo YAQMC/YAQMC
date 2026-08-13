@@ -29,6 +29,7 @@ import { LibraryPage } from './pages/LibraryPage';
 import { SearchPage } from './pages/SearchPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AppBackground } from './components/AppBackground';
+import { FpsOverlay } from './components/FpsOverlay';
 import { usePreferencesRuntime, usePreferencesStore } from './application/preferences';
 import {
   lyricsEscapeAction,
@@ -83,6 +84,7 @@ export default function App() {
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);
   const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
   const focusSidebarCollapsed = usePreferencesStore((state) => state.lyrics.focusSidebarCollapsed);
+  const showFpsCounter = usePreferencesStore((state) => state.debug.showFpsCounter);
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
   const fullscreen = useLyricsPresentationStore((state) => state.fullscreen);
   const fullscreenPending = useLyricsPresentationStore((state) => state.pending);
@@ -399,6 +401,7 @@ export default function App() {
   return (
     <div className="application-frame">
       <AppBackground />
+      {showFpsCounter && <FpsOverlay />}
       <div
         className="app-shell"
         data-provider-id={provider.id}

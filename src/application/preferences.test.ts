@@ -132,4 +132,22 @@ describe('preference persistence model', () => {
         .system,
     ).toEqual(defaultPreferences.system);
   });
+
+  it('normalizes debug preferences and keeps the FPS counter opt-in by default', () => {
+    expect(normalizePreferences({ version: 2 }).debug).toEqual({ showFpsCounter: false });
+    expect(
+      normalizePreferences({ version: 2, debug: { showFpsCounter: 'yes' } }).debug.showFpsCounter,
+    ).toBe(false);
+    expect(
+      normalizePreferences({ version: 2, debug: { showFpsCounter: true } }).debug.showFpsCounter,
+    ).toBe(true);
+  });
+
+  it('updates debug preferences without changing appearance or lyrics', () => {
+    usePreferencesStore.setState(defaultPreferences);
+    usePreferencesStore.getState().updateDebug({ showFpsCounter: true });
+    expect(usePreferencesStore.getState().debug.showFpsCounter).toBe(true);
+    expect(usePreferencesStore.getState().appearance).toEqual(defaultPreferences.appearance);
+    expect(usePreferencesStore.getState().lyrics).toEqual(defaultPreferences.lyrics);
+  });
 });

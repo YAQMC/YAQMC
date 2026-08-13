@@ -55,6 +55,7 @@
   --accent-hover: #e1f6a6;
   --accent-ink: #171b0d;
   --danger: #e58a84;
+  --warning: #e3c07a;
   --focus: #c5e478;
   --selection: rgba(197, 228, 120, 0.25);
 
@@ -86,6 +87,7 @@
   --accent-hover: #617d2c;
   --accent-ink: #ffffff;
   --danger: #a74741;
+  --warning: #9a7423;
   --focus: #6e8e34;
   --selection: rgba(112, 143, 53, 0.2);
   --shadow-sm: 0 8px 24px rgba(31, 35, 25, 0.1);

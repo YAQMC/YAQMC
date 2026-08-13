@@ -539,6 +539,13 @@ export const enUS = {
       export: 'Export diagnostics',
       exported: 'Exported to {{path}}',
     },
+    debug: {
+      title: 'Debug',
+      description: 'Developer and performance diagnostics.',
+      fpsCounter: 'Show frame rate',
+      fpsCounterDescription:
+        'Overlays a live frames-per-second counter in the window corner for rendering diagnostics.',
+    },
     account: {
       title: 'QQ Music account',
       description: 'Provider connectivity and authorization capability.',
