@@ -8,8 +8,10 @@ buffering are separate failure domains and are logged separately.
 ## Default policy
 
 `YAQMC_LINUX_RENDERER=auto` is implicit and sets no acceleration variables. YAQMC source does not force a GTK
-backend. The final AppImage repack replaces Tauri's generated unconditional `GDK_BACKEND=x11` assignment with this
-session-aware policy:
+backend. Auto mode applies exactly one targeted compatibility rule: when Hyprland is detected and the tester has
+not set `WEBKIT_DISABLE_DMABUF_RENDERER` themselves, YAQMC disables WebKitGTK's DMA-BUF renderer to avoid the
+Wayland protocol error that otherwise kills the process during webview creation. The final AppImage repack replaces
+Tauri's generated unconditional `GDK_BACKEND=x11` assignment with this session-aware policy:
 
 1. Preserve an explicit `GDK_BACKEND` chosen by the tester.
 2. Otherwise select Wayland when `XDG_SESSION_TYPE=wayland` and `WAYLAND_DISPLAY` is present.
@@ -26,7 +28,7 @@ source-level reductions are risk controls, not proof of a compositor performance
 
 | Mode             | Environment change                                               | Rule                                      |
 | ---------------- | ---------------------------------------------------------------- | ----------------------------------------- |
-| `auto`           | no GTK or renderer override                                      | required first                            |
+| `auto`           | targeted Hyprland DMABUF fallback only, no other override | required first                            |
 | `native-wayland` | `GDK_BACKEND=wayland`; `DISPLAY` cleared                         | required; must report `wayland-native`    |
 | `x11`            | `GDK_BACKEND=x11`                                                | required controlled fallback comparison   |
 | `software`       | `YAQMC_LINUX_RENDERER=software`, DMABUF off, software GL enabled | conditional after a reproduced native bug |

@@ -7,7 +7,9 @@ Tauri 在 Linux 使用 WebKitGTK。React 调度、WebKitGTK/合成器、窗口�
 
 ## 默认策略
 
-隐式默认 `YAQMC_LINUX_RENDERER=auto`，不设置加速变量；源码不强制 GTK 后端。最终 AppImage launcher：
+隐式默认 `YAQMC_LINUX_RENDERER=auto`，不设置加速变量；源码不强制 GTK 后端。auto 模式只做一项定向
+兼容：检测到 Hyprland 且用户未自行设置 `WEBKIT_DISABLE_DMABUF_RENDERER` 时，自动禁用 WebKitGTK 的
+DMA-BUF 渲染器，规避其在 Hyprland 上触发 Wayland 协议错误导致进程退出。最终 AppImage launcher：
 
 1. 保留测试者显式设置的 `GDK_BACKEND`；
 2. 否则当 `XDG_SESSION_TYPE=wayland` 且有 `WAYLAND_DISPLAY` 时选择 Wayland；
@@ -21,7 +23,7 @@ Tauri 在 Linux 使用 WebKitGTK。React 调度、WebKitGTK/合成器、窗口�
 
 | 模式             | 环境变化                 | 规则                     |
 | ---------------- | ------------------------ | ------------------------ |
-| `auto`           | 无 GTK/renderer override | 首先必跑                 |
+| `auto`           | 仅 Hyprland 定向 DMABUF 回退，无其他 override | 首先必跑                 |
 | `native-wayland` | Wayland，清除 `DISPLAY`  | 必跑且必须报原生 Wayland |
 | `x11`            | `GDK_BACKEND=x11`        | 必跑回退对照             |
 | `software`       | 禁 DMABUF、软件 GL       | 仅复现原生 bug 后        |

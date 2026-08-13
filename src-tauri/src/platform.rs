@@ -112,7 +112,7 @@ pub struct PlatformDiagnostics {
 }
 
 /// Applies only an explicitly requested compatibility mode. Auto mode leaves GTK/WebKitGTK's
-/// backend and acceleration decisions untouched.
+/// backend decisions untouched and applies only a targeted Hyprland workaround.
 pub fn apply_startup_graphics_policy() {
     #[cfg(target_os = "linux")]
     match std::env::var(GRAPHICS_MODE_ENV)
@@ -127,8 +127,27 @@ pub fn apply_startup_graphics_policy() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
             std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
         }
-        _ => {}
+        _ => {
+            if should_apply_hyprland_dmabuf_workaround(
+                compositor_hint().as_deref(),
+                std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some(),
+            ) {
+                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            }
+        }
     }
+}
+
+/// WebKitGTK's DMA-BUF renderer trips a Wayland protocol error on Hyprland, which kills the
+/// process while the webview is being created. Auto mode applies the known-safe renderer
+/// fallback only for Hyprland and only when the user has not configured the renderer variable
+/// themselves.
+#[cfg(target_os = "linux")]
+fn should_apply_hyprland_dmabuf_workaround(
+    compositor: Option<&str>,
+    dmabuf_renderer_configured: bool,
+) -> bool {
+    compositor == Some("HYPRLAND_INSTANCE_SIGNATURE") && !dmabuf_renderer_configured
 }
 
 pub fn collect(
@@ -416,6 +435,24 @@ mod tests {
             .notes
             .iter()
             .any(|note| note.contains("XWayland")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn auto_mode_applies_dmabuf_workaround_only_for_hyprland_without_user_override() {
+        assert!(should_apply_hyprland_dmabuf_workaround(
+            Some("HYPRLAND_INSTANCE_SIGNATURE"),
+            false
+        ));
+        assert!(!should_apply_hyprland_dmabuf_workaround(
+            Some("HYPRLAND_INSTANCE_SIGNATURE"),
+            true
+        ));
+        assert!(!should_apply_hyprland_dmabuf_workaround(
+            Some("SWAYSOCK"),
+            false
+        ));
+        assert!(!should_apply_hyprland_dmabuf_workaround(None, false));
     }
 
     #[test]
