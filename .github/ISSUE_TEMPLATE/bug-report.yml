@@ -1,0 +1,99 @@
+name: Bug 报告
+description: 报告可以稳定复现的功能、界面或播放问题。
+title: '[Bug] '
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请搜索现有 Issue，并移除 Cookie、OAuth code、token、vkey/ekey、签名 URL、真实账号资料和完整响应体。
+        未修复安全问题请使用私有漏洞报告，不要填写本表。
+  - type: input
+    id: version
+    attributes:
+      label: YAQMC 版本
+      description: 设置页或安装包文件名中的版本；不要只写“最新版”。
+      placeholder: v0.1.0-beta.5
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 操作系统
+      options:
+        - Windows 11
+        - Windows 10
+        - Arch Linux
+        - Debian / Ubuntu
+        - Fedora / openSUSE
+        - 其他 Linux
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 架构与桌面环境
+      description: 例如 x86_64 + Windows WebView2，或 x86_64 + Hyprland/Wayland。
+      placeholder: x86_64，Hyprland，Wayland
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题区域
+      options:
+        - 启动 / 安装 / 更新
+        - 首页 / 搜索 / 专辑 / 歌单
+        - 登录 / 头像 / 账号资料
+        - 收藏 / 账号歌单 / 最近播放
+        - 播放 / 队列 / 随机 / 循环
+        - 音质 / 试听 / QMC / mflac
+        - 主歌词 / 桌面歌词 / 歌词岛
+        - 主题 / 布局 / 无障碍
+        - 托盘 / 媒体键 / 本地 API
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从完全退出应用开始，给出最短稳定步骤。
+      placeholder: |
+        1. 启动 YAQMC
+        2. 打开……
+        3. 点击……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 可拖入已遮盖账号信息的截图或短视频。
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 已脱敏诊断信息
+      description: 只粘贴与问题相邻的日志；Linux 可附诊断压缩包 SHA-256 和环境摘要。
+      render: text
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已搜索现有 Issue，并确认不是重复问题。
+          required: true
+        - label: 我已移除所有账号秘密、签名地址和个人信息。
+          required: true
+        - label: 这不是尚未公开修复的安全漏洞。
+          required: true

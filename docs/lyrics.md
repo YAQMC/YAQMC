@@ -1,5 +1,7 @@
 # Lyrics architecture
 
+> [简体中文](zh-CN/lyrics.md) | **English**
+
 The lyrics pipeline keeps provider formats out of presentation code:
 
 ```text

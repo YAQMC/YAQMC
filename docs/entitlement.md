@@ -1,5 +1,7 @@
 # Playback entitlement
 
+> [简体中文](zh-CN/entitlement.md) | **English**
+
 YAQMC treats catalog metadata, account rights, source availability, and playback authorization as separate inputs.
 The QQ Music adapter normalizes account data to provider-independent `AudioQuality`,
 `AudioQualityPreference`, and `PlaybackSourceSelection` contracts. Components never infer rights from membership

@@ -11,9 +11,11 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "docs:check": "node scripts/check-public-docs.mjs",
+    "pages:build": "node scripts/build-pages.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run lint && npm run test && npm run build",
+    "check": "npm run docs:check && npm run lint && npm run test && npm run build",
     "tauri": "tauri"
   },
   "dependencies": {

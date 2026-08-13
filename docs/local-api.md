@@ -1,5 +1,7 @@
 # Local HTTP API
 
+> [简体中文](zh-CN/local-api.md) | **English**
+
 The embedded API is a local automation surface for widgets, scripts, status displays, Stream Deck-style
 integrations, and future companion applications. It is not a public or LAN server.
 
@@ -43,7 +45,7 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:19532/v1/player' -Headers $headers
 curl:
 
 ```bash
-curl -H "Authorization: Bearer $PROJECT_NAME_API_TOKEN" \
+curl -H "Authorization: Bearer $YAQMC_API_TOKEN" \
   http://127.0.0.1:19532/v1/player
 ```
 
@@ -63,7 +65,7 @@ curl -H "Authorization: Bearer $PROJECT_NAME_API_TOKEN" \
 | `PUT`  | `/v1/player/seek`     | Seek with `{ "positionMs": 123456 }`            |
 | `PUT`  | `/v1/player/volume`   | Set normalized volume with `{ "volume": 0.72 }` |
 | `PUT`  | `/v1/player/shuffle`  | Set shuffle with `{ "enabled": true }`          |
-| `PUT`  | `/v1/player/repeat`   | Set `{ "mode": "off"                            | "all" | "one" }` |
+| `PUT`  | `/v1/player/repeat`   | Set repeat mode to `off`, `all`, or `one`       |
 | `GET`  | `/v1/lyrics`          | Complete normalized lyric document or `null`    |
 | `GET`  | `/v1/lyrics/current`  | Current structured line/word state              |
 | `GET`  | `/v1/events`          | Server-Sent Events stream                       |
@@ -89,7 +91,7 @@ Invoke-RestMethod -Method Put -Uri 'http://127.0.0.1:19532/v1/player/seek' `
 Connect with the bearer header:
 
 ```bash
-curl -N -H "Authorization: Bearer $PROJECT_NAME_API_TOKEN" \
+curl -N -H "Authorization: Bearer $YAQMC_API_TOKEN" \
   http://127.0.0.1:19532/v1/events
 ```
 

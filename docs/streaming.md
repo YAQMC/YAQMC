@@ -1,5 +1,7 @@
 # Progressive HTTP Range streaming
 
+> [简体中文](zh-CN/streaming.md) | **English**
+
 ## Data path
 
 ```text

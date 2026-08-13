@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="YAQMC（Yet Another Q Music Client）是适用于 Windows 与 Linux 的非官方 QQ 音乐桌面客户端。"
+    />
+    <meta name="theme-color" content="#0d100c" />
+    <title>YAQMC — Windows 与 Linux QQ 音乐桌面客户端</title>
+    <link rel="icon" href="assets/yaqmc-logo.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="YAQMC 首页">
+        <img src="assets/yaqmc-logo.png" alt="" width="44" height="44" />
+        <span>YAQMC</span>
+      </a>
+      <nav aria-label="主要导航">
+        <a href="#features">能力</a>
+        <a href="#status">状态</a>
+        <a href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/README.md">文档</a>
+        <a href="en/" lang="en">English</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Yet Another Q Music Client</p>
+          <h1 id="hero-title">把音乐、歌词与桌面<br />放回同一个节奏。</h1>
+          <p class="lead">
+            YAQMC 是面向 Windows 与 Linux 的非官方 QQ
+            音乐桌面客户端。原生音频、逐字歌词、账号音乐库与 桌面集成由一套权威播放状态驱动。
+          </p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/YAQMC/YAQMC/releases/latest"
+              >下载测试版</a
+            >
+            <a class="button secondary" href="https://github.com/YAQMC/YAQMC">查看源代码</a>
+          </div>
+          <p class="fine-print">与腾讯或 QQ 音乐无从属关系；不绕过会员、地区、版权或账号权益。</p>
+        </div>
+        <div class="hero-mark" aria-hidden="true">
+          <div class="signal signal-one"></div>
+          <div class="signal signal-two"></div>
+          <img src="assets/yaqmc-logo.png" alt="" width="280" height="280" />
+          <span class="pulse"></span>
+        </div>
+      </section>
+
+      <section class="feature-grid" id="features" aria-labelledby="features-title">
+        <div class="section-heading">
+          <p class="eyebrow">一套状态，多个界面</p>
+          <h2 id="features-title">桌面音乐客户端应该彼此一致。</h2>
+        </div>
+        <article class="feature feature-wide">
+          <span class="number">01</span>
+          <h3>原生播放，不用浏览器时钟猜进度</h3>
+          <p>
+            Rust PlayerService
+            统一队列、seek、随机/循环、试听时间轴、音质与错误；系统媒体面板和歌词共用真实音频时钟。
+          </p>
+        </article>
+        <article class="feature">
+          <span class="number">02</span>
+          <h3>逐字歌词与悬浮表面</h3>
+          <p>主歌词、桌面歌词、Lyrics Island 支持翻译与罗马音；锁定后仍保留独立悬浮解锁入口。</p>
+        </article>
+        <article class="feature">
+          <span class="number">03</span>
+          <h3>受限的 QQ / 微信 OAuth</h3>
+          <p>
+            登录发生在腾讯托管页面。凭据进入操作系统安全存储，歌词窗口与 OAuth
+            窗口没有账号命令权限。
+          </p>
+        </article>
+        <article class="feature">
+          <span class="number">04</span>
+          <h3>音质由实际权益决定</h3>
+          <p>
+            标准、高品质、无损与臻品按账号权益和实时音源选择；授权 mflac
+            只在本地内存流式解密，磁盘保留密文。
+          </p>
+        </article>
+        <article class="feature feature-accent">
+          <span class="number">05</span>
+          <h3>Windows 与 Linux</h3>
+          <p>
+            提供多架构安装包、托盘、SMTC/MPRIS、输出设备与 Linux 诊断工具。Wayland
+            能力会如实标注限制。
+          </p>
+        </article>
+      </section>
+
+      <section class="status" id="status" aria-labelledby="status-title">
+        <div>
+          <p class="eyebrow">Beta 状态</p>
+          <h2 id="status-title">把“实现了”和“验收了”分开写。</h2>
+        </div>
+        <div class="status-list">
+          <div>
+            <span class="dot done"></span><strong>已覆盖</strong>
+            <p>访客目录、Windows 原生播放、歌词与 QMC/mflac 外部样本 seek。</p>
+          </div>
+          <div>
+            <span class="dot pending"></span><strong>待所有者验收</strong>
+            <p>真实收藏/歌单写回与线上臻品取源。</p>
+          </div>
+          <div>
+            <span class="dot pending"></span><strong>待真机验收</strong>
+            <p>最终 Arch / 原生 Wayland AppImage 矩阵。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <p class="eyebrow">下载、验证、反馈</p>
+        <h2 id="closing-title">从测试版开始。</h2>
+        <p>每个发布包都带架构标识与 SHA-256。Linux 测试包同时提供诊断和验收工具。</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/YAQMC/YAQMC/releases">查看全部发布</a>
+          <a class="text-link" href="https://github.com/YAQMC/YAQMC/issues/new/choose"
+            >提交问题 →</a
+          >
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div><strong>YAQMC</strong><span>Yet Another Q Music Client</span></div>
+      <div class="footer-links">
+        <a href="https://github.com/YAQMC/YAQMC/blob/main/SECURITY.md">安全</a>
+        <a href="https://github.com/YAQMC/YAQMC/blob/main/ACKNOWLEDGEMENTS.md">鸣谢</a>
+        <a href="https://github.com/YAQMC/YAQMC">GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>

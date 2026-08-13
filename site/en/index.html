@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="YAQMC is an unofficial native QQ Music desktop client for Windows and Linux."
+    />
+    <meta name="theme-color" content="#0d100c" />
+    <title>YAQMC — native QQ Music desktop client</title>
+    <link rel="icon" href="../assets/yaqmc-logo.png" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="YAQMC home">
+        <img src="../assets/yaqmc-logo.png" alt="" width="44" height="44" />
+        <span>YAQMC</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#status">Status</a>
+        <a href="https://github.com/YAQMC/YAQMC/blob/main/docs/README.md">Docs</a>
+        <a href="../" lang="zh-CN">简体中文</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Yet Another Q Music Client</p>
+          <h1 id="hero-title">Music, lyrics, and desktop—<br />on one clock.</h1>
+          <p class="lead">
+            YAQMC is an unofficial QQ Music client for Windows and Linux. Native audio, word-timed
+            lyrics, account library, and desktop integrations project one authoritative player
+            state.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/YAQMC/YAQMC/releases/latest"
+              >Download beta</a
+            >
+            <a class="button secondary" href="https://github.com/YAQMC/YAQMC">View source</a>
+          </div>
+          <p class="fine-print">
+            Not affiliated with Tencent or QQ Music. No subscription, regional, copyright, or
+            entitlement bypass.
+          </p>
+        </div>
+        <div class="hero-mark" aria-hidden="true">
+          <div class="signal signal-one"></div>
+          <div class="signal signal-two"></div>
+          <img src="../assets/yaqmc-logo.png" alt="" width="280" height="280" />
+          <span class="pulse"></span>
+        </div>
+      </section>
+
+      <section class="feature-grid" id="features" aria-labelledby="features-title">
+        <div class="section-heading">
+          <p class="eyebrow">One state, many surfaces</p>
+          <h2 id="features-title">A desktop player should agree with itself.</h2>
+        </div>
+        <article class="feature feature-wide">
+          <span class="number">01</span>
+          <h3>Native playback, not a guessed browser clock</h3>
+          <p>
+            Rust owns queue, seek, shuffle/repeat, preview timelines, quality, and errors. Media
+            sessions and lyrics follow the real audio engine.
+          </p>
+        </article>
+        <article class="feature">
+          <span class="number">02</span>
+          <h3>Word timing and lyric overlays</h3>
+          <p>
+            Immersive Lyrics, Desktop Lyrics, and Lyrics Island support translation, romanization,
+            and a dedicated unlock control.
+          </p>
+        </article>
+        <article class="feature">
+          <span class="number">03</span>
+          <h3>Restricted QQ / WeChat OAuth</h3>
+          <p>
+            Sign-in stays on Tencent-hosted pages. Durable credentials live in the OS store; OAuth
+            and lyric WebViews have no account-command access.
+          </p>
+        </article>
+        <article class="feature">
+          <span class="number">04</span>
+          <h3>Quality follows real entitlement</h3>
+          <p>
+            Standard through Master intersect account rights and live source availability.
+            Authorized mflac is decrypted in memory; disk cache stays encrypted.
+          </p>
+        </article>
+        <article class="feature feature-accent">
+          <span class="number">05</span>
+          <h3>Windows and Linux</h3>
+          <p>
+            Multi-architecture packages, tray, SMTC/MPRIS, output devices, and Linux
+            diagnostics—without hiding native Wayland limits.
+          </p>
+        </article>
+      </section>
+
+      <section class="status" id="status" aria-labelledby="status-title">
+        <div>
+          <p class="eyebrow">Beta status</p>
+          <h2 id="status-title">Implemented is not the same as accepted.</h2>
+        </div>
+        <div class="status-list">
+          <div>
+            <span class="dot done"></span><strong>Covered</strong>
+            <p>
+              Guest catalog, Windows native playback, lyrics, and external QMC/mflac seek samples.
+            </p>
+          </div>
+          <div>
+            <span class="dot pending"></span><strong>Owner gate open</strong>
+            <p>Live favorite/playlist writes and live Master-source acquisition.</p>
+          </div>
+          <div>
+            <span class="dot pending"></span><strong>Device gate open</strong>
+            <p>Final Arch/native-Wayland AppImage matrix.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="closing" aria-labelledby="closing-title">
+        <p class="eyebrow">Download, verify, report</p>
+        <h2 id="closing-title">Start with the beta.</h2>
+        <p>
+          Every release identifies its architecture and SHA-256. Linux tester bundles include
+          diagnostics and acceptance tooling.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/YAQMC/YAQMC/releases">All releases</a
+          ><a class="text-link" href="https://github.com/YAQMC/YAQMC/issues/new/choose"
+            >Report an issue →</a
+          >
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div><strong>YAQMC</strong><span>Yet Another Q Music Client</span></div>
+      <div class="footer-links">
+        <a href="https://github.com/YAQMC/YAQMC/blob/main/SECURITY-EN.md">Security</a
+        ><a href="https://github.com/YAQMC/YAQMC/blob/main/ACKNOWLEDGEMENTS-EN.md">Credits</a
+        ><a href="https://github.com/YAQMC/YAQMC">GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>

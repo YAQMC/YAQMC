@@ -1,5 +1,7 @@
 # Music provider contract
 
+> [简体中文](zh-CN/provider-contract.md) | **English**
+
 `MusicProvider` exposes public catalog operations rather than upstream payloads:
 
 - home feed and guest library snapshot

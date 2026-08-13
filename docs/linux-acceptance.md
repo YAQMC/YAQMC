@@ -1,5 +1,7 @@
 # Linux acceptance evidence
 
+> [简体中文](zh-CN/linux-acceptance.md) | **English**
+
 This ledger separates historical observations from the final-AppImage acceptance that still requires an Arch Linux
 tester. A collection run produces evidence with `verification: pending`; it does not declare a pass.
 

@@ -1,5 +1,7 @@
 # Linux graphics policy
 
+> [简体中文](zh-CN/linux-graphics.md) | **English**
+
 Tauri uses WebKitGTK on Linux. React scheduling, WebKitGTK/compositor behavior, window-backend selection, and audio
 buffering are separate failure domains and are logged separately.
 

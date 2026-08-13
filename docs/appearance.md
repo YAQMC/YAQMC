@@ -1,5 +1,7 @@
 # Appearance and personalization
 
+> [简体中文](zh-CN/appearance.md) | **English**
+
 Appearance is a versioned, serializable preference domain rather than arbitrary CSS. The stored model separates
 color mode, palette/colors, background, surface material, lyric presentation, and independent lyric-window
 settings. This keeps a future import/export format possible without accepting user-supplied CSS or JavaScript.

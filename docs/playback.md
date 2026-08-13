@@ -1,5 +1,7 @@
 # Playback contract
 
+> [简体中文](zh-CN/playback.md) | **English**
+
 `PlayerService` in `src-tauri/src/player.rs` is the authoritative desktop player. It owns the queue, selected
 track, actual engine position and duration, lifecycle state, repeat/shuffle semantics, volume/mute, current lyrics,
 and structured playback failure.

@@ -1,5 +1,7 @@
 # Linux runtime and acceptance
 
+> [简体中文](zh-CN/linux.md) | **English**
+
 ## Current evidence boundary
 
 The x86_64 AppImage is built and finally repacked on Ubuntu by GitHub Actions. The latest Arch/Hyprland baseline,

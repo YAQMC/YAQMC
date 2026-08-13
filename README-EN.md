@@ -172,16 +172,21 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),
 [authentication](docs/authentication.md), [account library](docs/account-library.md),
 [entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md), and
-[local API](docs/local-api.md). Third-party copyright and license texts are in
+[local API](docs/local-api.md), or the complete [English documentation index](docs/README.md). Community guidance is
+in [CONTRIBUTING-EN.md](CONTRIBUTING-EN.md), [SUPPORT-EN.md](SUPPORT-EN.md),
+[SECURITY-EN.md](SECURITY-EN.md), and [CODE_OF_CONDUCT-EN.md](CODE_OF_CONDUCT-EN.md). Third-party copyright and
+license texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Acknowledgements and project policy
+
+Special thanks to Flechazo for public QMC/MFLAC, Master-quality, and seekable-decryption research ideas, and to
+OpenAI Codex / GPT-5.6 Sol for engineering, testing, review, documentation, and release-workflow assistance. The
+complete, carefully scoped credits—including the no-source-reuse boundary for unlicensed references—are in
+[ACKNOWLEDGEMENTS-EN.md](ACKNOWLEDGEMENTS-EN.md) and the
+[provider ledger](docs/qqmusic-provider.md). Reused copyright and license texts remain in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Research acknowledgements
-
-QQ Music interoperability research consulted `L-1124/QQMusicApi`, `wxuyu/QQMusicApi`,
-`RethinkQAQ/allmusic-qqmusicapi`, `tlyanyu/multiPlatformMusicApi`, and `wangwalk/qqm` at the pinned commits and
-license-detection results recorded in [the provider record](docs/qqmusic-provider.md). They were protocol-behavior
-references only; YAQMC does not vendor their implementations, and those projects do not endorse YAQMC.
-
-QMC/mflac interoperability also uses independently adapted behavior from the MIT-licensed QMCDecode, Unlock Music,
-and miaosic projects. The user-supplied unlicensed reference repository was inspected only to corroborate behavior;
-none of its source code is copied. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+> [!NOTE]
+> The repository does not yet have a project license. Public source visibility does not itself grant permission to
+> copy, modify, or redistribute the project. The maintainer must choose a license before the public launch and
+> before accepting outside contributions.

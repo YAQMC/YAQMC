@@ -1,5 +1,7 @@
 # Account library
 
+> [简体中文](zh-CN/account-library.md) | **English**
+
 QQ Music account pages and mutations are implemented; live account acceptance is pending. Public catalog routes
 remain usable in guest mode and do not depend on this subsystem.
 

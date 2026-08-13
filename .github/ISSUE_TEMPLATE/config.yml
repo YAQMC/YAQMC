@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞（请勿公开）
+    url: https://github.com/YAQMC/YAQMC/security/advisories/new
+    about: OAuth、凭据、越权、路径或本地 API 漏洞请通过私有漏洞报告提交。
+  - name: 中文使用文档
+    url: https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/README.md
+    about: 安装、Linux、歌词、登录、音质和本地 API 的说明。

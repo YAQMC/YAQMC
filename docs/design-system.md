@@ -1,5 +1,7 @@
 # Design system
 
+> [简体中文](zh-CN/design-system.md) | **English**
+
 The visual system is intentionally small. `src/styles/tokens.css` defines color, type, spacing, radius,
 shadow, and motion primitives. `src/application/theme-tokens.ts` overlays the resolved color mode, user accent
 pair, safe surface alpha, and material preference. Shared controls, artwork, media cards, track rows, and context

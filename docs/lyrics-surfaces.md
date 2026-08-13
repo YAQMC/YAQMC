@@ -1,5 +1,7 @@
 # Lyrics surfaces
 
+> [简体中文](zh-CN/lyrics-surfaces.md) | **English**
+
 The immersive in-app view remains the full lyrics experience. Desktop Lyrics and Lyrics Island are dedicated,
 lightweight Tauri WebViews. Both consume the same Rust `LyricSurfaceProjection` and normalized `LyricDocument`;
 neither polls the local HTTP API or owns a playback clock.

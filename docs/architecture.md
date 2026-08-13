@@ -1,5 +1,7 @@
 # Architecture
 
+> [简体中文](zh-CN/architecture.md) | **English**
+
 The desktop runtime keeps transport, persistence, playback, and presentation independently replaceable:
 
 ```text

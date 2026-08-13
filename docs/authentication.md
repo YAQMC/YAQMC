@@ -1,5 +1,7 @@
 # Authentication and secret storage
 
+> [简体中文](zh-CN/authentication.md) | **English**
+
 ## Current product state
 
 Guest mode remains the startup fallback. QQ and WeChat authorization now open Tencent-hosted OAuth pages in a

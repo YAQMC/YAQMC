@@ -1,5 +1,7 @@
 # Desktop platform integration
 
+> [简体中文](zh-CN/platform-integration.md) | **English**
+
 All platform controls are thin adapters over the authoritative Rust `PlayerService`. Tauri commands, local HTTP,
 tray actions, shortcuts, MPRIS and SMTC do not own independent queue or playback state.
 

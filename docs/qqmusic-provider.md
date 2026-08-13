@@ -1,5 +1,7 @@
 # QQ Music provider
 
+> [简体中文解读](zh-CN/qqmusic-provider.md) | **English protocol ledger**
+
 This document records the compatibility surface validated on 2026-08-12. It is an engineering record, not a
 claim that the endpoints below are a supported public SDK contract.
 

@@ -116,7 +116,8 @@ Linux 用户：
 ### Linux Wayland 下为什么有些功能受限？
 
 Wayland 不允许普通应用随意控制其他窗口。全局快捷键、悬浮窗定位和点击穿透能力会受到桌面环境与
-合成器限制。X11 / XWayland 的兼容性通常更完整，具体说明见 [Linux 使用与测试指南](docs/linux.md)。
+合成器限制。X11 / XWayland 的兼容性通常更完整，具体说明见
+[Linux 使用与测试指南](docs/zh-CN/linux.md)。
 
 ### AppImage 打不开怎么办？
 
@@ -202,27 +203,35 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 
 ### 进一步阅读
 
-- [架构](docs/architecture.md)
-- [播放](docs/playback.md)
-- [流式传输](docs/streaming.md)
-- [平台集成](docs/platform-integration.md)
-- [Linux 运行环境](docs/linux.md)
-- [QQ 音乐提供器](docs/qqmusic-provider.md)
-- [登录与安全存储](docs/authentication.md)
-- [账号资料库](docs/account-library.md)
-- [歌词窗口](docs/lyrics-surfaces.md)
-- [本地 API](docs/local-api.md)
-- [第三方许可证与致谢](THIRD_PARTY_NOTICES.md)
+- [中文文档总目录](docs/zh-CN/README.md)
+- [架构](docs/zh-CN/architecture.md)
+- [播放](docs/zh-CN/playback.md)
+- [流式传输](docs/zh-CN/streaming.md)
+- [平台集成](docs/zh-CN/platform-integration.md)
+- [Linux 运行环境](docs/zh-CN/linux.md)
+- [QQ 音乐提供器](docs/zh-CN/qqmusic-provider.md)
+- [登录与安全存储](docs/zh-CN/authentication.md)
+- [账号资料库](docs/zh-CN/account-library.md)
+- [歌词窗口](docs/zh-CN/lyrics-surfaces.md)
+- [本地 API](docs/zh-CN/local-api.md)
+- [第三方许可证](THIRD_PARTY_NOTICES.md)与[鸣谢](ACKNOWLEDGEMENTS.md)
 
 </details>
 
-## 研究致谢
+## 参与、支持与鸣谢
 
-QQ 音乐互操作研究参考了 `L-1124/QQMusicApi`、`wxuyu/QQMusicApi`、
-`RethinkQAQ/allmusic-qqmusicapi`、`tlyanyu/multiPlatformMusicApi` 和 `wangwalk/qqm`。
+- [参与贡献](CONTRIBUTING.md)
+- [问题与使用支持](SUPPORT.md)
+- [安全策略](SECURITY.md)
+- [社区行为准则](CODE_OF_CONDUCT.md)
+- [更新记录](CHANGELOG.md)
+- [鸣谢](ACKNOWLEDGEMENTS.md)与[第三方许可证](THIRD_PARTY_NOTICES.md)
 
-具体固定提交与许可证检测结果记录在 [QQ 音乐提供器文档](docs/qqmusic-provider.md)。YAQMC 没有复制或
-内置这些项目的实现，它们也不代表对 YAQMC 的认可。
+特别感谢 Flechazo 提供 QMC/MFLAC、臻品音质与流式解密链路的公开研究思路，也感谢
+OpenAI Codex / GPT-5.6 Sol 在工程实现、测试、审查、文档和发布流程中的协助。精确研究来源、许可证
+边界和“未复制无许可证源码”的说明均集中在[鸣谢](ACKNOWLEDGEMENTS.md)与
+[QQ 音乐提供器文档](docs/zh-CN/qqmusic-provider.md)。
 
-`mflac` 互操作还参考了 MIT 许可的 QMCDecode、Unlock Music 与 miaosic；完整版权与许可文本见
-[第三方许可证](THIRD_PARTY_NOTICES.md)。用户提供的无许可证参考仓库只用于核对协议行为，未复制代码。
+> [!NOTE]
+> 仓库尚未选择项目许可证。公开可见不等于自动授予复制、修改或再分发权；正式公开和接收外部贡献前，
+> 维护者仍需明确选择许可证。

@@ -1,5 +1,7 @@
 # Persistence and caching
 
+> [简体中文](zh-CN/caching.md) | **English**
+
 `StorageService` separates durable structured state from disposable response files.
 
 ## SQLite

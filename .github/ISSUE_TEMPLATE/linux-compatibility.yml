@@ -1,0 +1,71 @@
+name: Linux 兼容性报告
+description: 报告 AppImage/deb/rpm、Wayland/X11、WebKitGTK、托盘、媒体键或音频问题。
+title: '[Linux] '
+labels:
+  - bug
+  - linux
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请优先使用发布包内的诊断脚本。不要上传账号凭据或未脱敏的 provider 响应。
+  - type: input
+    id: version
+    attributes:
+      label: YAQMC 版本与包格式
+      placeholder: v0.1.0-beta.5 / AppImage x86_64
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: 发行版与内核
+      placeholder: Arch Linux / 7.x-zen
+    validations:
+      required: true
+  - type: input
+    id: desktop
+    attributes:
+      label: 桌面、合成器与会话
+      placeholder: Hyprland / Wayland / wayland-native
+    validations:
+      required: true
+  - type: input
+    id: graphics
+    attributes:
+      label: GPU、驱动与 WebKitGTK
+      placeholder: Intel i915 + NVIDIA 610.xx / WebKitGTK 2.xx
+  - type: input
+    id: audio
+    attributes:
+      label: 音频环境
+      placeholder: PipeWire / ALSA route
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤与启动模式
+      description: 说明 auto、native-wayland、x11 或有前置失败证据的软件模式。
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 实际结果与可见现象
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 诊断包摘要
+      description: 写文件名、SHA-256、采集模式和 verifier 结果；大文件可拖入附件。
+      render: text
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我没有用 Windows 软件模式代替 Linux 验收。
+          required: true
+        - label: 我已移除 Cookie、token、ekey、签名 URL 和真实账号资料。
+          required: true
