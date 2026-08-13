@@ -183,6 +183,14 @@ pub enum PlaybackSourceError {
 #[async_trait]
 pub trait PlaybackSourceResolver: Send + Sync {
     async fn resolve(&self, song: &Song) -> Result<ResolvedPlaybackSource, PlaybackSourceError>;
+
+    async fn resolve_client_fallback(
+        &self,
+        _song: &Song,
+        _failed: &PlaybackSourceSelection,
+    ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
+        Err(PlaybackSourceError::DecoderUnsupported)
+    }
 }
 
 #[async_trait]

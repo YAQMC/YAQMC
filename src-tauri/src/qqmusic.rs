@@ -47,7 +47,7 @@ mod redaction;
 mod transport;
 
 pub(crate) use cache::AccountEpoch;
-pub use entitlement::{AudioQualityPreference, PlaybackSourceSelection};
+pub use entitlement::{AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection};
 
 use artwork::{artwork_for_album, artwork_from_provider_url, is_allowed_artwork_url};
 
@@ -61,7 +61,8 @@ use account::{
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
 use entitlement::{
-    candidates_for_request, choose_source, PreviewRange, SourceCandidate, VkeyAvailability,
+    candidates_for_request, choose_source, ClientCapabilityState, PreviewRange, SourceCandidate,
+    VkeyAvailability,
 };
 use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, TransportRequest};
 use zeroize::Zeroize;
@@ -1116,6 +1117,65 @@ impl PlaybackSourceResolver for QQMusicService {
             },
             epoch_guard: PlaybackEpochGuard::unrestricted(),
         })
+    }
+
+    async fn resolve_client_fallback(
+        &self,
+        song: &Song,
+        failed: &PlaybackSourceSelection,
+    ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
+        if failed.requested_quality != AudioQualityPreference::Automatic
+            || !matches!(
+                failed.resolved_quality,
+                AudioQuality::Lossless | AudioQuality::Master
+            )
+            || song
+                .provider
+                .as_ref()
+                .map(|provider| provider.provider_id.as_str())
+                != Some("qqmusic")
+        {
+            return Err(PlaybackSourceError::DecoderUnsupported);
+        }
+
+        let provider = song
+            .provider
+            .as_ref()
+            .ok_or(PlaybackSourceError::TrackUnavailable)?;
+        let (session, entitlement, epoch_guard) = self
+            .playback_context()
+            .await
+            .map_err(map_provider_source_error)?;
+        let source = self
+            .client
+            .resolve_source(
+                song,
+                AudioQualityPreference::High,
+                session.as_ref(),
+                &entitlement,
+                epoch_guard,
+                self.account_transport.as_ref(),
+            )
+            .await;
+        if matches!(&source, Err(QQMusicError::AuthenticationExpired)) {
+            self.session_invalid.store(true, Ordering::Release);
+        }
+        let mut source = source.map_err(map_provider_source_error)?;
+        source.selection.requested_quality = AudioQualityPreference::Automatic;
+        source.selection.fallback_reason = Some(PlaybackFallbackReason::ClientUnsupported);
+        if let Some(capability) = source
+            .selection
+            .quality_capabilities
+            .iter_mut()
+            .find(|capability| capability.quality == failed.resolved_quality)
+        {
+            capability.client = ClientCapabilityState::Unsupported;
+            capability.playable = false;
+        }
+        let _ =
+            self.storage
+                .record_playback_snapshot(&provider.provider_id, &provider.track_id, song);
+        Ok(source)
     }
 }
 
