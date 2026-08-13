@@ -18,6 +18,8 @@ const LEGACY_PREFERENCES_CACHE_KEY = 'music-client.preferences.v1';
 const nativeRuntime = isTauri();
 
 export type SecondaryLyricVisibility = 'auto' | 'show' | 'hide';
+export type LyricFontSize = 'small' | 'medium' | 'large';
+export type LyricCoverLayout = 'split' | 'full' | 'vinyl';
 export type BackgroundMode = 'default' | 'artwork' | 'color' | 'image';
 export type MaterialMode = 'opaque' | 'translucent';
 export type SurfaceKind = 'desktop' | 'island';
@@ -55,6 +57,8 @@ export interface LyricDisplaySettings {
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
   timingOffsetMs: number;
+  fontSize: LyricFontSize;
+  coverLayout: LyricCoverLayout;
   focusSidebarCollapsed: boolean;
 }
 
@@ -124,6 +128,8 @@ export const defaultPreferences: AppPreferences = {
     translation: 'auto',
     romanization: 'auto',
     timingOffsetMs: 0,
+    fontSize: 'medium',
+    coverLayout: 'split',
     focusSidebarCollapsed: false,
   },
   surfaces: {
@@ -257,6 +263,8 @@ export function normalizePreferences(value: unknown): AppPreferences {
       translation: valueIn(lyrics.translation, ['auto', 'show', 'hide'], 'auto'),
       romanization: valueIn(lyrics.romanization, ['auto', 'show', 'hide'], 'auto'),
       timingOffsetMs: numberInRange(lyrics.timingOffsetMs, 0, -2_000, 2_000),
+      fontSize: valueIn(lyrics.fontSize, ['small', 'medium', 'large'], 'medium'),
+      coverLayout: valueIn(lyrics.coverLayout, ['split', 'full', 'vinyl'], 'split'),
       focusSidebarCollapsed:
         typeof lyrics.focusSidebarCollapsed === 'boolean' ? lyrics.focusSidebarCollapsed : false,
     },

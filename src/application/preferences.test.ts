@@ -38,6 +38,8 @@ describe('preference persistence model', () => {
       translation: 'hide',
       romanization: 'show',
       timingOffsetMs: -320,
+      fontSize: 'medium',
+      coverLayout: 'split',
       focusSidebarCollapsed: false,
     });
   });
