@@ -26,7 +26,7 @@ import {
   Unlock,
   Download,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocalApiSettings } from '../application/local-api';
 import { useAccountStore } from '../application/account-runtime';
@@ -37,9 +37,13 @@ import {
 } from '../application/lyrics-surface-runtime';
 import {
   defaultPreferences,
+  finishAppearancePreview,
   pickManagedBackgroundImage,
+  previewAppearance,
+  restoreCommittedAppearance,
   usePreferencesStore,
   validatedColorPatch,
+  type AppearanceSettings,
   type LyricSurfaceSettings,
   type SecondaryLyricVisibility,
   type SurfaceKind,
@@ -178,33 +182,89 @@ function ColorControl({
   value,
   fallback,
   onChange,
+  previewPatch,
 }: {
   name: string;
   value: string;
   fallback: string;
   onChange: (value: string) => void;
+  previewPatch?: (value: string) => Partial<AppearanceSettings>;
 }) {
   const { t } = useTranslation('settings', { keyPrefix: 'appearance' });
   const { t: common } = useTranslation('common');
   const [draftState, setDraftState] = useState({ source: value, draft: value });
+  const commitTimer = useRef<number | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const commitPickerValue = useRef<(next: string) => void>(() => undefined);
+  const previewsAppearance = Boolean(previewPatch);
   const draft = draftState.source === value ? draftState.draft : value;
   const valid = validatedColorPatch(draft, fallback);
 
-  const updateDraft = (next: string) => {
+  const previewDraft = (next: string) => {
     setDraftState({ source: value, draft: next });
     const normalized = validatedColorPatch(next, fallback);
-    if (normalized) onChange(normalized);
+    if (normalized && previewPatch) previewAppearance(previewPatch(normalized));
   };
+  const commitDraft = (next: string) => {
+    const normalized = validatedColorPatch(next, fallback);
+    if (!normalized) {
+      if (previewsAppearance) restoreCommittedAppearance();
+      return;
+    }
+    if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+    commitTimer.current = null;
+    if (previewPatch) finishAppearancePreview();
+    setDraftState({ source: normalized, draft: normalized });
+    onChange(normalized);
+  };
+  const scheduleTextCommit = (next: string) => {
+    previewDraft(next);
+    if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+    if (!validatedColorPatch(next, fallback)) return;
+    commitTimer.current = window.setTimeout(() => commitDraft(next), 240);
+  };
+
+  useEffect(
+    () => () => {
+      if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+      if (previewsAppearance) restoreCommittedAppearance();
+    },
+    [previewsAppearance],
+  );
+
+  useEffect(() => {
+    commitPickerValue.current = (next: string) => {
+      const normalized = validatedColorPatch(next, fallback);
+      if (!normalized) {
+        if (previewsAppearance) restoreCommittedAppearance();
+        return;
+      }
+      if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+      commitTimer.current = null;
+      if (previewsAppearance) finishAppearancePreview();
+      setDraftState({ source: normalized, draft: normalized });
+      onChange(normalized);
+    };
+  }, [fallback, onChange, previewsAppearance]);
+
+  useEffect(() => {
+    const input = picker.current;
+    if (!input) return;
+    const commit = () => commitPickerValue.current(input.value);
+    input.addEventListener('change', commit);
+    return () => input.removeEventListener('change', commit);
+  }, []);
 
   return (
     <div className="color-control" data-invalid={!valid || undefined}>
       <label className="color-control__picker" title={t('pickerLabel', { name })}>
-        <span style={{ background: value }} />
+        <span style={{ background: valid ?? value }} />
         <input
+          ref={picker}
           type="color"
-          value={value}
+          value={valid ?? value}
           aria-label={t('pickerLabel', { name })}
-          onChange={(event) => updateDraft(event.target.value)}
+          onInput={(event) => previewDraft(event.currentTarget.value)}
         />
       </label>
       <label className="color-control__hex">
@@ -215,14 +275,22 @@ function ColorControl({
           spellCheck={false}
           aria-label={t('hexLabel', { name })}
           aria-invalid={!valid}
-          onChange={(event) => updateDraft(`#${event.target.value}`)}
+          onChange={(event) => scheduleTextCommit(`#${event.target.value}`)}
+          onBlur={() => commitDraft(draft)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitDraft(draft);
+            if (event.key === 'Escape') {
+              setDraftState({ source: value, draft: value });
+              restoreCommittedAppearance();
+            }
+          }}
         />
       </label>
       <button
         type="button"
         className="settings-icon-button"
         aria-label={`${common('reset')} ${name}`}
-        onClick={() => onChange(fallback)}
+        onClick={() => commitDraft(fallback)}
       >
         <RotateCcw size={14} />
       </button>
@@ -875,6 +943,7 @@ export function SettingsPage() {
                 onChange={(primaryColor) =>
                   preferences.updateAppearance({ primaryColor, palette: 'custom' })
                 }
+                previewPatch={(primaryColor) => ({ primaryColor, palette: 'custom' })}
               />
             }
           />
@@ -889,6 +958,7 @@ export function SettingsPage() {
                 onChange={(secondaryColor) =>
                   preferences.updateAppearance({ secondaryColor, palette: 'custom' })
                 }
+                previewPatch={(secondaryColor) => ({ secondaryColor, palette: 'custom' })}
               />
             }
           />
@@ -925,6 +995,7 @@ export function SettingsPage() {
                   value={preferences.appearance.backgroundColor}
                   fallback={defaultPreferences.appearance.backgroundColor}
                   onChange={(backgroundColor) => preferences.updateAppearance({ backgroundColor })}
+                  previewPatch={(backgroundColor) => ({ backgroundColor })}
                 />
               }
             />

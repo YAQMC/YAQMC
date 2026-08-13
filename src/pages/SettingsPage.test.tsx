@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
+import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import { ProviderContext } from '../application/provider-context';
 import type { AccountSnapshot } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
@@ -102,7 +103,33 @@ function renderSettings(provider: MusicProvider) {
 describe('SettingsPage account section', () => {
   beforeEach(async () => {
     resetAccountRuntimeForTest();
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      appearance: { ...defaultPreferences.appearance },
+    });
     await i18n.changeLanguage('en-US');
+  });
+
+  it('previews rapid color input without committing until the native change event', () => {
+    const account = accountProvider();
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    renderSettings(account.value);
+    const picker = screen.getByLabelText('Pick Primary color');
+
+    fireEvent.input(picker, { target: { value: '#112233' } });
+    fireEvent.input(picker, { target: { value: '#445566' } });
+
+    expect(window.requestAnimationFrame).toHaveBeenCalledOnce();
+    expect(usePreferencesStore.getState().appearance.primaryColor).toBe('#A8C95E');
+    frames[0]?.(16);
+    expect(document.documentElement.style.getPropertyValue('--accent-primary')).toBe('#445566');
+
+    fireEvent.change(picker, { target: { value: '#445566' } });
+    expect(usePreferencesStore.getState().appearance.primaryColor).toBe('#445566');
   });
 
   it('opens the sanitized account dialog without starting login from Settings', () => {

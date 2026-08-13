@@ -22,9 +22,11 @@
 }
 
 .app-background {
-  position: absolute;
+  position: fixed;
   z-index: 0;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
   background: var(--bg-opaque);
   pointer-events: none;
@@ -39,9 +41,17 @@
   inset: -5%;
   width: 110%;
   height: 110%;
+  max-width: none;
   object-fit: cover;
   opacity: var(--artwork-influence);
   animation: background-crossfade 500ms var(--ease-out) both;
+}
+
+.app-background[data-mode='image'] .app-background__image {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .app-background[data-mode='artwork'] .app-background__image {
