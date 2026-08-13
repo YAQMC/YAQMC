@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { LyricDocument, LyricLine } from '../domain/music';
 import {
+  lastSungLineIndex,
+  lyricInterludeRemainingMs,
   lyricScrollBehavior,
+  MIN_INTERLUDE_GAP_MS,
   nextLyricBoundaryMs,
   selectLyricCursor,
   wordProgress,
@@ -70,6 +73,41 @@ describe('lyrics timing', () => {
     expect(selectLyricCursor(lyrics, 3_500)).toEqual(
       expect.objectContaining({ lineIndex: -1, line: null }),
     );
+  });
+
+  it('reports interludes only for gaps at least the minimum interlude length', () => {
+    const lyrics = document([
+      line({ id: 'one', text: 'One', startMs: 1_000, endMs: 2_000 }),
+      line({ id: 'two', text: 'Two', startMs: 2_000 + MIN_INTERLUDE_GAP_MS - 1, endMs: 30_000 }),
+    ]);
+
+    expect(lyricInterludeRemainingMs(lyrics, 2_500)).toBeNull();
+    expect(lyricInterludeRemainingMs(lyrics, 1_500)).toBeNull();
+  });
+
+  it('reports the remaining interlude during a long gap and a long intro', () => {
+    const lyrics = document([
+      line({ id: 'one', text: 'One', startMs: MIN_INTERLUDE_GAP_MS + 2_000, endMs: 9_000 }),
+      line({ id: 'two', text: 'Two', startMs: 14_000, endMs: 15_000 }),
+    ]);
+
+    expect(lyricInterludeRemainingMs(lyrics, 1_000)).toBe(MIN_INTERLUDE_GAP_MS + 1_000);
+    expect(lyricInterludeRemainingMs(lyrics, 10_000)).toBe(4_000);
+    expect(lyricInterludeRemainingMs(lyrics, 14_000)).toBeNull();
+    expect(lyricInterludeRemainingMs(lyrics, 14_500)).toBeNull();
+  });
+
+  it('tracks the last sung line through timed gaps', () => {
+    const lyrics = document([
+      line({ id: 'one', text: 'One', startMs: 1_000, endMs: 2_000 }),
+      line({ id: 'two', text: 'Two', startMs: 5_000, endMs: 6_000 }),
+    ]);
+
+    expect(lastSungLineIndex(lyrics, 999)).toBe(-1);
+    expect(lastSungLineIndex(lyrics, 1_500)).toBe(0);
+    expect(lastSungLineIndex(lyrics, 3_500)).toBe(0);
+    expect(lastSungLineIndex(lyrics, 5_500)).toBe(1);
+    expect(lastSungLineIndex(null, 3_500)).toBe(-1);
   });
 
   it('keeps translated text associated with its normalized line', () => {

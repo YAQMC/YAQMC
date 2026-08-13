@@ -89,6 +89,59 @@ export function lyricCursorKey(document: LyricDocument | null, positionMs: numbe
   return `${cursor.lineIndex}:${cursor.wordIndex}`;
 }
 
+export const MIN_INTERLUDE_GAP_MS = 4_000;
+
+function timedLines(document: LyricDocument): { index: number; startMs: number }[] {
+  const timed: { index: number; startMs: number }[] = [];
+  document.lines.forEach((line, index) => {
+    if (line.startMs !== null) timed.push({ index, startMs: line.startMs });
+  });
+  return timed;
+}
+
+export function lastSungLineIndex(document: LyricDocument | null, rawPositionMs: number): number {
+  if (!document || document.syncMode === 'unsynchronized') return -1;
+  const positionMs = rawPositionMs - document.metadata.offsetMs;
+  let last = -1;
+  for (const entry of timedLines(document)) {
+    if (entry.startMs <= positionMs) last = entry.index;
+  }
+  return last;
+}
+
+export function lyricInterludeRemainingMs(
+  document: LyricDocument | null,
+  rawPositionMs: number,
+): number | null {
+  if (!document || document.syncMode === 'unsynchronized') return null;
+  const positionMs = rawPositionMs - document.metadata.offsetMs;
+  const timed = timedLines(document);
+  if (timed.length === 0) return null;
+
+  const first = timed[0];
+  if (!first) return null;
+  if (positionMs < first.startMs && first.startMs >= MIN_INTERLUDE_GAP_MS) {
+    return first.startMs - positionMs;
+  }
+
+  for (let entry = 1; entry < timed.length; entry += 1) {
+    const previous = timed[entry - 1];
+    const current = timed[entry];
+    if (!previous || !current) continue;
+    const previousEnd = effectiveLineEnd(document, previous.index);
+    if (!Number.isFinite(previousEnd)) continue;
+    const gapMs = current.startMs - previousEnd;
+    if (
+      gapMs >= MIN_INTERLUDE_GAP_MS &&
+      positionMs >= previousEnd &&
+      positionMs < current.startMs
+    ) {
+      return current.startMs - positionMs;
+    }
+  }
+  return null;
+}
+
 export function wordProgress(word: LyricWord, positionMs: number): number {
   const duration = Math.max(1, word.endMs - word.startMs);
   return Math.max(0, Math.min(1, (positionMs - word.startMs) / duration));
