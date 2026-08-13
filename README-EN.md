@@ -119,6 +119,9 @@ artifact filename does not change its architecture.
 
 ## Verification
 
+The release `generate_context!` requires `dist/` to exist, so run `npm run build` (or `npm run check`) once before
+running cargo commands directly.
+
 ```powershell
 npm run format:check
 npm run check

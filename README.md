@@ -187,6 +187,9 @@ npm run tauri -- build --bundles appimage,deb,rpm
 
 ### 验证
 
+release 配置的 `generate_context!` 要求 `dist/` 存在，直接运行 cargo 命令前请先执行一次
+`npm run build`（或 `npm run check`）。
+
 ```powershell
 npm run format:check
 npm run check
