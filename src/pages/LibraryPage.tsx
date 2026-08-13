@@ -269,7 +269,7 @@ export function LibraryPage({
                       type="button"
                       className="account-playlist-card"
                       key={playlist.id}
-                      onClick={() => onNavigate({ page: 'account-playlist', id: playlist.id })}
+                      onClick={() => onNavigate({ page: 'account-playlist', playlist })}
                     >
                       <Artwork artwork={playlist.artwork} />
                       <span className="account-playlist-card__copy">
@@ -279,7 +279,13 @@ export function LibraryPage({
                           {common('songCount', { count: playlist.trackCount })}
                         </small>
                         <small>
-                          {playlist.ownership === 'owned' ? t('ownedPlaylist') : t('savedPlaylist')}
+                          {playlist.ownership === 'owned'
+                            ? t('ownedPlaylist')
+                            : playlist.ownership === 'favorite'
+                              ? t('favoriteCollection')
+                              : playlist.ownership === 'system'
+                                ? t('systemCollection')
+                                : t('savedPlaylist')}
                         </small>
                       </span>
                     </button>

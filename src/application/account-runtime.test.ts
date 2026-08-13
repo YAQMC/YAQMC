@@ -145,6 +145,7 @@ function accountPlaylistSummary(id = 'account-playlist-a'): AccountPlaylistSumma
   const fixture = playlists[0]!;
   return {
     id,
+    reference: { kind: 'owned', tid: id, dirId: 3001 },
     title: 'Synthetic account playlist',
     description: fixture.description,
     owner: { id: 'account-owner', displayName: 'Synthetic Listener' },
@@ -305,6 +306,22 @@ describe('account runtime', () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
     expect(getAccountSnapshot).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('hydrates favorite authority immediately after an authenticated session restore', async () => {
+    const track = allSongs[0]!;
+    const getFavoriteSongs = vi.fn().mockResolvedValue(page([track], 3));
+    const provider = accountProvider({
+      getAccountSnapshot: vi.fn().mockResolvedValue(authenticatedSnapshot()),
+      getFavoriteSongs,
+    });
+
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await waitFor(() => expect(useAccountStore.getState().favorites.status).toBe('ready'));
+    expect(getFavoriteSongs).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
     unmount();
   });
 
@@ -662,6 +679,78 @@ describe('account runtime', () => {
     });
   });
 
+  it('does not let a delayed Favorites read overwrite a newer confirmed mutation', async () => {
+    const track = { ...allSongs[0]!, isFavorite: false };
+    const delayedRead = deferred<Page<Song>>();
+    const provider = accountProvider({
+      getFavoriteSongs: vi.fn(() => delayedRead.promise),
+      setFavorite: vi.fn(async (request: FavoriteMutationRequest) =>
+        favoriteResult(request.clientOperationId, track, 'applied', true),
+      ),
+    });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favorites: { status: 'empty' },
+      favoriteByTrackId: { [track.id]: false },
+    });
+
+    const read = useAccountStore.getState().loadFavorites(provider);
+    await useAccountStore.getState().setFavorite(provider, track, true);
+    delayedRead.resolve(page([], 3));
+    await read;
+
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
+    expect(useAccountStore.getState().favorites).toMatchObject({
+      status: 'ready',
+      data: [expect.objectContaining({ id: track.id })],
+    });
+  });
+
+  it('protects confirmed favorite state from delayed provider propagation on later refreshes', async () => {
+    const track = { ...allSongs[0]!, isFavorite: false };
+    const provider = accountProvider({
+      getFavoriteSongs: vi.fn().mockResolvedValue(page([], 3)),
+      setFavorite: vi.fn(async (request: FavoriteMutationRequest) =>
+        favoriteResult(request.clientOperationId, track, 'applied', true),
+      ),
+    });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favorites: { status: 'empty' },
+      favoriteByTrackId: { [track.id]: false },
+    });
+
+    await useAccountStore.getState().setFavorite(provider, track, true);
+    await useAccountStore.getState().loadFavorites(provider, true);
+
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
+    expect(useAccountStore.getState().favorites).toMatchObject({
+      status: 'ready',
+      data: [expect.objectContaining({ id: track.id })],
+    });
+  });
+
+  it('keeps account favorite truth when rapid player projections carry stale song metadata', async () => {
+    const track = { ...allSongs[0]!, isFavorite: false };
+    const provider = accountProvider({
+      setFavorite: vi.fn(async (request: FavoriteMutationRequest) =>
+        favoriteResult(request.clientOperationId, track, 'applied', true),
+      ),
+    });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favoriteByTrackId: { [track.id]: false },
+    });
+    await useAccountStore.getState().setFavorite(provider, track, true);
+
+    // Player snapshots are deliberately not an account-library input. Repeated
+    // stale Song.isFavorite values cannot write this central projection.
+    for (let index = 0; index < 4; index += 1) {
+      expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
+      void { ...track, isFavorite: false };
+    }
+  });
+
   it('keeps stale data visible and maps authentication expiry to reauthorization', async () => {
     const song = allSongs[0]!;
     const stalePage = { ...page([song], 3), stale: true };
@@ -984,19 +1073,13 @@ describe('account runtime', () => {
     const provider = accountProvider({ getAccountPlaylistTracks });
     useAccountStore.setState({ snapshot: authenticatedSnapshot(3) });
 
-    await useAccountStore.getState().loadAccountPlaylist(provider, summary.id);
-    await useAccountStore.getState().loadNextAccountPlaylist(provider, summary.id);
+    await useAccountStore.getState().loadAccountPlaylist(provider, summary);
+    await useAccountStore.getState().loadNextAccountPlaylist(provider, summary);
 
-    expect(getAccountPlaylistTracks).toHaveBeenNthCalledWith(
-      1,
-      summary.id,
-      undefined,
-      100,
-      undefined,
-    );
+    expect(getAccountPlaylistTracks).toHaveBeenNthCalledWith(1, summary, undefined, 100, undefined);
     expect(getAccountPlaylistTracks).toHaveBeenNthCalledWith(
       2,
-      summary.id,
+      summary,
       'detail-next',
       100,
       undefined,
@@ -1005,6 +1088,40 @@ describe('account runtime', () => {
       status: 'ready',
       data: { tracks: { items: [first, second, third] } },
       nextCursor: null,
+    });
+  });
+
+  it('projects tracks loaded from the structural Favorite Songs collection into favorite truth', async () => {
+    const track = { ...allSongs[0]!, isFavorite: false };
+    const summary: AccountPlaylistSummary = {
+      ...accountPlaylistSummary('qqmusic:account-collection:favorites'),
+      reference: { kind: 'favorite-songs', dirId: 201 },
+      ownership: 'favorite',
+      capabilities: {
+        canAddTracks: false,
+        canRemoveTracks: false,
+        canRename: false,
+        canDelete: false,
+        canReorder: false,
+      },
+    };
+    const provider = accountProvider({
+      getAccountPlaylistTracks: vi.fn().mockResolvedValue({
+        summary,
+        tracks: page([track], 3),
+      }),
+    });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(3),
+      favoriteByTrackId: { [track.id]: false },
+    });
+
+    await useAccountStore.getState().loadAccountPlaylist(provider, summary);
+
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
+    expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).toMatchObject({
+      status: 'ready',
+      data: { summary: { ownership: 'favorite' } },
     });
   });
 
@@ -1066,8 +1183,8 @@ describe('account runtime', () => {
         operations.push(`add:${request.playlistId}:${request.trackId}`);
         return result(request.clientOperationId, createdSummary);
       }),
-      getAccountPlaylistTracks: vi.fn(async (id) => {
-        operations.push(`read:${id}`);
+      getAccountPlaylistTracks: vi.fn(async (playlist) => {
+        operations.push(`read:${playlist.id}`);
         if (!createdSummary) throw new Error('playlist was not created');
         return {
           summary: createdSummary,

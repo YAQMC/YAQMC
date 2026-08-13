@@ -53,6 +53,7 @@ function accountSummary(): AccountPlaylistSummary {
   const playlist = playlists[0]!;
   return {
     id: playlist.id,
+    reference: { kind: 'owned', tid: playlist.id, dirId: 3001 },
     title: playlist.title,
     description: playlist.description,
     owner: playlist.owner,
@@ -98,6 +99,32 @@ describe('PlaylistPage account projection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Load more tracks' }));
     expect(onLoadMore).toHaveBeenCalledOnce();
+  });
+
+  it('renders the structural Favorite Songs collection without calling it a saved playlist', () => {
+    const favoriteCollection: AccountPlaylistSummary = {
+      ...accountSummary(),
+      id: 'qqmusic:account-collection:favorites',
+      reference: { kind: 'favorite-songs', dirId: 201 },
+      ownership: 'favorite',
+      capabilities: {
+        canAddTracks: false,
+        canRemoveTracks: false,
+        canRename: false,
+        canDelete: false,
+        canReorder: false,
+      },
+    };
+    const { container } = render(
+      <PlaylistPage playlist={playlists[0]!} accountSummary={favoriteCollection} />,
+    );
+
+    expect(container.querySelector('.detail-page')).toHaveAttribute(
+      'data-account-ownership',
+      'favorite',
+    );
+    expect(screen.getByText('Favorite Songs · Read-only')).toBeVisible();
+    expect(screen.queryByText('Saved playlist · Read-only')).not.toBeInTheDocument();
   });
 
   it('disables pagination while a next page is loading', () => {
@@ -194,6 +221,7 @@ describe('PlaylistPage account projection', () => {
     const summary: AccountPlaylistSummary = {
       ...accountSummary(),
       ownership: 'collected',
+      reference: { kind: 'collected', tid: accountSummary().id },
       capabilities: {
         canAddTracks: false,
         canRemoveTracks: false,

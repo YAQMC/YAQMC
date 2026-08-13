@@ -3,7 +3,6 @@ use crate::{
     media::{MediaPreparer, PlaybackEpochGuard, PlaybackSourceError, PlaybackSourceResolver},
     qqmusic::PlaybackSourceSelection,
 };
-use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -220,17 +219,48 @@ pub struct PlayTracksRequest {
     pub shuffle: Option<bool>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlaybackOrder {
+    #[default]
+    Sequential,
+    Shuffle,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueEntry {
+    pub id: String,
+    pub track: Song,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerSnapshot {
     pub queue: Vec<Song>,
+    #[serde(default)]
+    pub queue_entries: Vec<QueueEntry>,
     pub current_index: Option<usize>,
+    #[serde(default)]
+    pub current_queue_entry_id: Option<String>,
     pub position_ms: u64,
     pub is_playing: bool,
     pub volume: f64,
     pub is_muted: bool,
     pub repeat: RepeatMode,
+    #[serde(default)]
+    pub playback_order: PlaybackOrder,
     pub shuffle: bool,
+    #[serde(default)]
+    pub shuffle_traversal: Vec<String>,
+    #[serde(default)]
+    pub shuffle_cursor: usize,
+    #[serde(default)]
+    pub playback_history: Vec<String>,
+    #[serde(default)]
+    pub history_cursor: usize,
+    #[serde(default)]
+    pub upcoming_queue_entry_ids: Vec<String>,
     pub playback_state: PlaybackState,
     pub playback_duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -266,7 +296,12 @@ pub struct PlaybackFailure {
 #[serde(rename_all = "camelCase")]
 pub struct QueueSnapshot {
     pub current_index: Option<usize>,
+    pub current_queue_entry_id: Option<String>,
     pub tracks: Vec<Song>,
+    pub entries: Vec<QueueEntry>,
+    pub playback_order: PlaybackOrder,
+    pub shuffle: bool,
+    pub upcoming_queue_entry_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -312,6 +347,8 @@ pub enum PlayerError {
     EmptyQueue,
     #[error("queue index {0} is out of range")]
     IndexOutOfRange(usize),
+    #[error("queue entry {0} does not exist")]
+    QueueEntryNotFound(String),
     #[error("the requested queue has no playable tracks")]
     NoPlayableTracks,
     #[error("volume must be between 0 and 1")]
@@ -323,6 +360,7 @@ pub enum PlayerError {
 #[derive(Default)]
 struct PlayerCore {
     queue: Vec<Song>,
+    queue_entry_ids: Vec<String>,
     current_index: Option<usize>,
     position_ms: u64,
     playback_state: PlaybackState,
@@ -332,23 +370,150 @@ struct PlayerCore {
     volume: f64,
     is_muted: bool,
     repeat: RepeatMode,
-    shuffle: bool,
+    playback_order: PlaybackOrder,
+    shuffle_traversal: Vec<String>,
+    shuffle_cursor: usize,
+    playback_history: Vec<String>,
+    history_cursor: usize,
+    shuffle_generation: u64,
     lyrics: Option<LyricDocument>,
     source_selection: Option<PlaybackSourceSelection>,
     active_epoch_guard: Option<PlaybackEpochGuard>,
 }
 
 impl PlayerCore {
+    fn current_entry_id(&self) -> Option<&str> {
+        self.current_index
+            .and_then(|index| self.queue_entry_ids.get(index))
+            .map(String::as_str)
+    }
+
+    fn entries(&self) -> Vec<QueueEntry> {
+        self.queue_entry_ids
+            .iter()
+            .cloned()
+            .zip(self.queue.iter().cloned())
+            .map(|(id, track)| QueueEntry { id, track })
+            .collect()
+    }
+
+    fn index_of_entry(&self, entry_id: &str) -> Option<usize> {
+        self.queue_entry_ids.iter().position(|id| id == entry_id)
+    }
+
+    fn upcoming_entry_ids(&self) -> Vec<String> {
+        let Some(current) = self.current_index else {
+            return Vec::new();
+        };
+        match self.playback_order {
+            PlaybackOrder::Sequential => self.queue_entry_ids[current + 1..].to_vec(),
+            PlaybackOrder::Shuffle => self.shuffle_traversal[self
+                .shuffle_cursor
+                .saturating_add(1)
+                .min(self.shuffle_traversal.len())..]
+                .to_vec(),
+        }
+    }
+
+    fn rebuild_shuffle_traversal(&mut self) {
+        self.shuffle_generation = self.shuffle_generation.wrapping_add(1);
+        let Some(current) = self.current_entry_id().map(str::to_owned) else {
+            self.shuffle_traversal.clear();
+            self.shuffle_cursor = 0;
+            return;
+        };
+        let mut remaining = self
+            .queue_entry_ids
+            .iter()
+            .filter(|id| **id != current)
+            .cloned()
+            .collect::<Vec<_>>();
+        deterministic_shuffle(&mut remaining, self.shuffle_generation);
+        self.shuffle_traversal = std::iter::once(current.clone()).chain(remaining).collect();
+        self.shuffle_cursor = 0;
+        let mut played_history = self
+            .playback_history
+            .iter()
+            .take(self.history_cursor.saturating_add(1))
+            .filter(|id| self.queue_entry_ids.contains(id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if played_history.last() != Some(&current) {
+            played_history.push(current);
+        }
+        self.playback_history = played_history;
+        self.history_cursor = self.playback_history.len().saturating_sub(1);
+    }
+
+    fn set_playback_order(&mut self, order: PlaybackOrder) {
+        if self.playback_order == order {
+            return;
+        }
+        self.playback_order = order;
+        if order == PlaybackOrder::Shuffle {
+            self.playback_history.clear();
+            self.history_cursor = 0;
+            self.rebuild_shuffle_traversal();
+        } else {
+            self.shuffle_traversal.clear();
+            self.shuffle_cursor = 0;
+            self.playback_history.clear();
+            self.history_cursor = 0;
+        }
+    }
+
+    fn record_loaded_entry(&mut self, entry_id: &str) {
+        if self.playback_order != PlaybackOrder::Shuffle {
+            return;
+        }
+        if let Some(index) = self.shuffle_traversal.iter().position(|id| id == entry_id) {
+            self.shuffle_cursor = index;
+        }
+        if self
+            .playback_history
+            .get(self.history_cursor)
+            .is_some_and(|id| id == entry_id)
+        {
+            return;
+        }
+        if self
+            .playback_history
+            .get(self.history_cursor.saturating_add(1))
+            .is_some_and(|id| id == entry_id)
+        {
+            self.history_cursor = self.history_cursor.saturating_add(1);
+            return;
+        }
+        self.playback_history
+            .truncate(self.history_cursor.saturating_add(1));
+        self.playback_history.push(entry_id.to_owned());
+        self.history_cursor = self.playback_history.len().saturating_sub(1);
+    }
+
+    fn queue_materially_changed(&mut self) {
+        if self.playback_order == PlaybackOrder::Shuffle {
+            self.rebuild_shuffle_traversal();
+        }
+    }
+
     fn snapshot(&self) -> PlayerSnapshot {
         PlayerSnapshot {
             queue: self.queue.clone(),
+            queue_entries: self.entries(),
             current_index: self.current_index,
+            current_queue_entry_id: self.current_entry_id().map(str::to_owned),
             position_ms: self.position_ms,
             is_playing: self.playback_state == PlaybackState::Playing,
             volume: self.volume,
             is_muted: self.is_muted,
             repeat: self.repeat,
-            shuffle: self.shuffle,
+            playback_order: self.playback_order,
+            shuffle: self.playback_order == PlaybackOrder::Shuffle,
+            shuffle_traversal: self.shuffle_traversal.clone(),
+            shuffle_cursor: self.shuffle_cursor,
+            playback_history: self.playback_history.clone(),
+            history_cursor: self.history_cursor,
+            upcoming_queue_entry_ids: self.upcoming_entry_ids(),
             playback_state: self.playback_state,
             playback_duration_ms: self.playback_duration_ms,
             playback_error: self.playback_error.clone(),
@@ -423,7 +588,12 @@ impl PlayerService {
         let core = self.core.read().await;
         QueueSnapshot {
             current_index: core.current_index,
+            current_queue_entry_id: core.current_entry_id().map(str::to_owned),
             tracks: core.queue.clone(),
+            entries: core.entries(),
+            playback_order: core.playback_order,
+            shuffle: core.playback_order == PlaybackOrder::Shuffle,
+            upcoming_queue_entry_ids: core.upcoming_entry_ids(),
         }
     }
 
@@ -477,7 +647,11 @@ impl PlayerService {
         let mut core = self.core.write().await;
         if core.queue.is_empty() && !tracks.is_empty() {
             core.queue = tracks;
+            core.queue_entry_ids = (0..core.queue.len())
+                .map(|_| new_queue_entry_id())
+                .collect();
             core.current_index = Some(0);
+            core.queue_materially_changed();
         }
         let snapshot = core.snapshot();
         drop(core);
@@ -488,14 +662,64 @@ impl PlayerService {
     pub async fn restore(&self, snapshot: PlayerSnapshot) -> PlayerSnapshot {
         let restored = {
             let mut core = self.core.write().await;
-            core.queue = snapshot.queue;
+            if snapshot.queue_entries.len() == snapshot.queue.len()
+                && snapshot
+                    .queue_entries
+                    .iter()
+                    .zip(&snapshot.queue)
+                    .all(|(entry, track)| entry.track == *track)
+            {
+                core.queue = snapshot
+                    .queue_entries
+                    .iter()
+                    .map(|entry| entry.track.clone())
+                    .collect();
+                core.queue_entry_ids = snapshot
+                    .queue_entries
+                    .iter()
+                    .map(|entry| entry.id.clone())
+                    .collect();
+            } else {
+                core.queue = snapshot.queue;
+                core.queue_entry_ids = (0..core.queue.len())
+                    .map(|_| new_queue_entry_id())
+                    .collect();
+            }
             core.current_index = snapshot
-                .current_index
-                .filter(|index| *index < core.queue.len());
+                .current_queue_entry_id
+                .as_deref()
+                .and_then(|id| core.index_of_entry(id))
+                .or_else(|| {
+                    snapshot
+                        .current_index
+                        .filter(|index| *index < core.queue.len())
+                });
             core.volume = snapshot.volume.clamp(0.0, 1.0);
             core.is_muted = snapshot.is_muted;
             core.repeat = snapshot.repeat;
-            core.shuffle = snapshot.shuffle;
+            core.playback_order = if snapshot.shuffle {
+                PlaybackOrder::Shuffle
+            } else {
+                snapshot.playback_order
+            };
+            core.shuffle_traversal = snapshot
+                .shuffle_traversal
+                .into_iter()
+                .filter(|id| core.queue_entry_ids.contains(id))
+                .collect();
+            core.shuffle_cursor = snapshot.shuffle_cursor;
+            core.playback_history = snapshot
+                .playback_history
+                .into_iter()
+                .filter(|id| core.queue_entry_ids.contains(id))
+                .collect();
+            core.history_cursor = snapshot.history_cursor;
+            if core.playback_order == PlaybackOrder::Shuffle
+                && (core.shuffle_traversal.len() != core.queue.len()
+                    || core.shuffle_cursor >= core.shuffle_traversal.len())
+            {
+                core.rebuild_shuffle_traversal();
+            }
             core.playback_duration_ms = snapshot.playback_duration_ms.or_else(|| {
                 core.current_index
                     .and_then(|index| core.queue.get(index))
@@ -548,11 +772,25 @@ impl PlayerService {
         {
             let mut core = self.core.write().await;
             core.queue = tracks;
+            core.queue_entry_ids = (0..core.queue.len())
+                .map(|_| new_queue_entry_id())
+                .collect();
             core.current_index = Some(index);
             core.position_ms = 0;
             core.lyrics = None;
             if let Some(shuffle) = request.shuffle {
-                core.shuffle = shuffle;
+                let order = if shuffle {
+                    PlaybackOrder::Shuffle
+                } else {
+                    PlaybackOrder::Sequential
+                };
+                if core.playback_order == order {
+                    core.queue_materially_changed();
+                } else {
+                    core.set_playback_order(order);
+                }
+            } else {
+                core.queue_materially_changed();
             }
         }
         self.load_index(index, true, 0).await
@@ -683,17 +921,30 @@ impl PlayerService {
     }
 
     pub async fn previous(&self) -> Result<PlayerSnapshot, PlayerError> {
-        let (current, position) = {
+        let (current, local_position, timeline_offset) = {
             let core = self.core.read().await;
             (
                 core.current_index.ok_or(PlayerError::EmptyQueue)?,
-                core.position_ms,
+                core.position_ms.saturating_sub(core.timeline_offset_ms),
+                core.timeline_offset_ms,
             )
         };
-        if position > 4_000 {
-            self.seek(0).await
+        if local_position > 4_000 {
+            self.seek(timeline_offset).await
         } else {
-            self.load_index(current.saturating_sub(1), true, 0).await
+            let target = {
+                let mut core = self.core.write().await;
+                if core.playback_order == PlaybackOrder::Shuffle && core.history_cursor > 0 {
+                    core.history_cursor -= 1;
+                    core.playback_history
+                        .get(core.history_cursor)
+                        .and_then(|id| core.index_of_entry(id))
+                        .unwrap_or(current)
+                } else {
+                    current.saturating_sub(1)
+                }
+            };
+            self.load_index(target, true, 0).await
         }
     }
 
@@ -760,21 +1011,45 @@ impl PlayerService {
     }
 
     pub async fn set_shuffle(&self, enabled: bool) -> PlayerSnapshot {
-        self.mutate("player.mode", move |core| {
-            core.shuffle = enabled;
-            Ok(())
-        })
-        .await
-        .expect("shuffle cannot fail")
+        let snapshot = self
+            .mutate("player.mode", move |core| {
+                core.set_playback_order(if enabled {
+                    PlaybackOrder::Shuffle
+                } else {
+                    PlaybackOrder::Sequential
+                });
+                Ok(())
+            })
+            .await
+            .expect("shuffle cannot fail");
+        tracing::info!(
+            target: "player.order",
+            order = ?snapshot.playback_order,
+            "authoritative playback order changed"
+        );
+        snapshot
     }
 
     pub async fn toggle_shuffle(&self) -> PlayerSnapshot {
-        self.mutate("player.mode", |core| {
-            core.shuffle = !core.shuffle;
-            Ok(())
-        })
-        .await
-        .expect("shuffle cannot fail")
+        let snapshot = self
+            .mutate("player.mode", |core| {
+                let order = if core.playback_order == PlaybackOrder::Sequential {
+                    PlaybackOrder::Shuffle
+                } else {
+                    PlaybackOrder::Sequential
+                };
+                core.set_playback_order(order);
+                Ok(())
+            })
+            .await
+            .expect("shuffle cannot fail");
+        tracing::info!(
+            target: "player.shuffle",
+            order = ?snapshot.playback_order,
+            traversal_size = snapshot.shuffle_traversal.len(),
+            "shuffle toggle committed"
+        );
+        snapshot
     }
 
     pub async fn set_repeat(&self, repeat: RepeatMode) -> PlayerSnapshot {
@@ -802,9 +1077,11 @@ impl PlayerService {
     pub async fn add_to_queue(&self, track: Song) -> PlayerSnapshot {
         self.mutate("queue.changed", move |core| {
             core.queue.push(track);
+            core.queue_entry_ids.push(new_queue_entry_id());
             if core.current_index.is_none() {
                 core.current_index = Some(0);
             }
+            core.queue_materially_changed();
             Ok(())
         })
         .await
@@ -813,10 +1090,14 @@ impl PlayerService {
 
     pub async fn add_tracks_to_queue(&self, tracks: Vec<Song>) -> PlayerSnapshot {
         self.mutate("queue.changed", move |core| {
+            let count = tracks.len();
             core.queue.extend(tracks);
+            core.queue_entry_ids
+                .extend((0..count).map(|_| new_queue_entry_id()));
             if core.current_index.is_none() && !core.queue.is_empty() {
                 core.current_index = Some(0);
             }
+            core.queue_materially_changed();
             Ok(())
         })
         .await
@@ -832,6 +1113,7 @@ impl PlayerService {
             let removed_current = core.current_index == Some(index);
             let autoplay = core.playback_state == PlaybackState::Playing;
             core.queue.remove(index);
+            core.queue_entry_ids.remove(index);
             if core.queue.is_empty() {
                 core.current_index = None;
                 core.position_ms = 0;
@@ -848,6 +1130,7 @@ impl PlayerService {
             }
             let reload =
                 removed_current.then_some((core.current_index.expect("non-empty queue"), autoplay));
+            core.queue_materially_changed();
             (core.snapshot(), reload, core.queue.is_empty())
         };
         self.publish("queue.changed", &snapshot);
@@ -858,6 +1141,104 @@ impl PlayerService {
         if let Some((next_index, autoplay)) = reload {
             return self.load_index(next_index, autoplay, 0).await;
         }
+        Ok(snapshot)
+    }
+
+    pub async fn play_queue_entry(&self, entry_id: &str) -> Result<PlayerSnapshot, PlayerError> {
+        let index = self
+            .core
+            .read()
+            .await
+            .index_of_entry(entry_id)
+            .ok_or_else(|| PlayerError::QueueEntryNotFound(entry_id.to_owned()))?;
+        self.load_index(index, true, 0).await
+    }
+
+    pub async fn remove_queue_entry(&self, entry_id: &str) -> Result<PlayerSnapshot, PlayerError> {
+        let index = self
+            .core
+            .read()
+            .await
+            .index_of_entry(entry_id)
+            .ok_or_else(|| PlayerError::QueueEntryNotFound(entry_id.to_owned()))?;
+        self.remove_from_queue(index).await
+    }
+
+    pub async fn reorder_queue_entry(
+        &self,
+        entry_id: &str,
+        target_index: usize,
+    ) -> Result<PlayerSnapshot, PlayerError> {
+        let snapshot = {
+            let mut core = self.core.write().await;
+            let from = core
+                .index_of_entry(entry_id)
+                .ok_or_else(|| PlayerError::QueueEntryNotFound(entry_id.to_owned()))?;
+            if target_index >= core.queue.len() {
+                return Err(PlayerError::IndexOutOfRange(target_index));
+            }
+            if from == target_index {
+                return Ok(core.snapshot());
+            }
+            let current_id = core.current_entry_id().map(str::to_owned);
+            let track = core.queue.remove(from);
+            let id = core.queue_entry_ids.remove(from);
+            core.queue.insert(target_index, track);
+            core.queue_entry_ids.insert(target_index, id);
+            core.current_index = current_id
+                .as_deref()
+                .and_then(|current| core.index_of_entry(current));
+            // Reorder always edits the canonical queue. Shuffle keeps the
+            // current entry/history and deterministically rebuilds the future.
+            core.queue_materially_changed();
+            core.snapshot()
+        };
+        tracing::info!(
+            target: "queue.reorder",
+            queue_entry_id = %entry_id,
+            target_index,
+            "authoritative queue entry reordered"
+        );
+        self.publish("queue.changed", &snapshot);
+        Ok(snapshot)
+    }
+
+    pub async fn play_next_queue_entry(
+        &self,
+        entry_id: &str,
+    ) -> Result<PlayerSnapshot, PlayerError> {
+        let snapshot = {
+            let mut core = self.core.write().await;
+            let from = core
+                .index_of_entry(entry_id)
+                .ok_or_else(|| PlayerError::QueueEntryNotFound(entry_id.to_owned()))?;
+            let current = core.current_index.ok_or(PlayerError::EmptyQueue)?;
+            if from == current {
+                return Ok(core.snapshot());
+            }
+            let current_id = core.current_entry_id().map(str::to_owned);
+            let track = core.queue.remove(from);
+            let id = core.queue_entry_ids.remove(from);
+            let current_after_remove = current_id
+                .as_deref()
+                .and_then(|current| core.index_of_entry(current))
+                .ok_or(PlayerError::EmptyQueue)?;
+            let target = (current_after_remove + 1).min(core.queue.len());
+            core.queue.insert(target, track);
+            core.queue_entry_ids.insert(target, id.clone());
+            core.current_index = current_id
+                .as_deref()
+                .and_then(|current| core.index_of_entry(current));
+            if core.playback_order == PlaybackOrder::Shuffle {
+                let played_count = core.history_cursor.saturating_add(1);
+                core.playback_history.truncate(played_count);
+                core.shuffle_traversal.retain(|candidate| candidate != &id);
+                let insert_at = (core.shuffle_cursor + 1).min(core.shuffle_traversal.len());
+                core.shuffle_traversal.insert(insert_at, id);
+            }
+            core.snapshot()
+        };
+        self.publish("queue.changed", &snapshot);
         Ok(snapshot)
     }
 
@@ -903,7 +1284,9 @@ impl PlayerService {
                 return Err(PlayerError::IndexOutOfRange(index));
             }
             let previous_song_id = core.current_song().map(|song| song.id.clone());
+            let entry_id = core.queue_entry_ids[index].clone();
             core.current_index = Some(index);
+            core.record_loaded_entry(&entry_id);
             core.position_ms = resume_position_ms.min(core.queue[index].duration_ms);
             core.playback_state = PlaybackState::Loading;
             core.playback_error = None;
@@ -1159,25 +1542,41 @@ impl PlayerService {
     }
 
     async fn next_candidates(&self) -> Result<Vec<usize>, PlayerError> {
-        let core = self.core.read().await;
+        let mut core = self.core.write().await;
         let current = core.current_index.ok_or(PlayerError::EmptyQueue)?;
         if core.queue.is_empty() {
             return Err(PlayerError::EmptyQueue);
         }
-        let mut candidates = if core.shuffle {
-            let mut values = (0..core.queue.len())
-                .filter(|candidate| *candidate != current)
-                .collect::<Vec<_>>();
-            values.shuffle(&mut rand::rng());
-            values
-        } else {
-            (current + 1..core.queue.len()).collect::<Vec<_>>()
+        let mut candidates = match core.playback_order {
+            PlaybackOrder::Sequential => (current + 1..core.queue.len()).collect::<Vec<_>>(),
+            PlaybackOrder::Shuffle => {
+                let ids = if core.history_cursor + 1 < core.playback_history.len() {
+                    core.playback_history[core.history_cursor + 1..].to_vec()
+                } else {
+                    core.shuffle_traversal[core
+                        .shuffle_cursor
+                        .saturating_add(1)
+                        .min(core.shuffle_traversal.len())..]
+                        .to_vec()
+                };
+                ids.iter()
+                    .filter_map(|id| core.index_of_entry(id))
+                    .collect::<Vec<_>>()
+            }
         };
-        if core.repeat == RepeatMode::All {
-            if core.shuffle && candidates.is_empty() {
-                candidates.push(current);
-            } else if !core.shuffle {
-                candidates.extend(0..=current);
+        if candidates.is_empty() && core.repeat == RepeatMode::All {
+            match core.playback_order {
+                PlaybackOrder::Sequential => candidates.extend(0..=current),
+                PlaybackOrder::Shuffle => {
+                    core.rebuild_shuffle_traversal();
+                    candidates = core.shuffle_traversal[1..]
+                        .iter()
+                        .filter_map(|id| core.index_of_entry(id))
+                        .collect();
+                    if candidates.is_empty() {
+                        candidates.push(current);
+                    }
+                }
             }
         }
         Ok(candidates)
@@ -1602,6 +2001,27 @@ fn unix_timestamp_ms() -> u64 {
         .min(u64::MAX as u128) as u64
 }
 
+fn new_queue_entry_id() -> String {
+    format!("queue:{:032x}", rand::random::<u128>())
+}
+
+fn deterministic_shuffle(values: &mut [String], generation: u64) {
+    let mut state = generation ^ 0x9e37_79b9_7f4a_7c15;
+    for value in values.iter() {
+        for byte in value.as_bytes() {
+            state ^= u64::from(*byte);
+            state = state.wrapping_mul(0x100_0000_01b3);
+        }
+    }
+    for index in (1..values.len()).rev() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let target = (state as usize) % (index + 1);
+        values.swap(index, target);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1942,6 +2362,432 @@ mod tests {
             ["one", "two", "three", "four"]
         );
         assert!(appended.shuffle);
+    }
+
+    #[tokio::test]
+    async fn queue_entries_are_unique_for_duplicates_and_reorder_preserves_active_playback() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = PlayerService::with_runtime(
+            engine.clone(),
+            Arc::new(crate::media::TestPlaybackSourceResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        let playing = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![
+                    song("duplicate", 10_000),
+                    song("middle", 10_000),
+                    song("duplicate", 10_000),
+                    song("last", 10_000),
+                ],
+                start_at_id: Some("middle".to_owned()),
+                shuffle: None,
+            })
+            .await
+            .expect("queue starts");
+        player.seek(3_400).await.expect("position advances");
+        let current_id = playing.current_queue_entry_id.expect("current identity");
+        let duplicate_ids = playing
+            .queue_entries
+            .iter()
+            .filter(|entry| entry.track.id == "duplicate")
+            .map(|entry| entry.id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(duplicate_ids.len(), 2);
+        assert_ne!(duplicate_ids[0], duplicate_ids[1]);
+
+        let mut events = player.subscribe();
+        let reordered = player
+            .reorder_queue_entry(&duplicate_ids[1], 0)
+            .await
+            .expect("identity reorder succeeds");
+
+        assert_eq!(
+            reordered.current_queue_entry_id.as_deref(),
+            Some(current_id.as_str())
+        );
+        assert_eq!(reordered.current_index, Some(2));
+        assert_eq!(reordered.position_ms, 3_400);
+        assert!(engine.snapshot().playing);
+        assert_eq!(engine.snapshot().position_ms, 3_400);
+        assert_eq!(reordered.queue_entries[0].id, duplicate_ids[1]);
+        let event = events
+            .recv()
+            .await
+            .expect("SSE source receives queue event");
+        assert_eq!(event.event_type, "queue.changed");
+        assert_eq!(
+            event.data["queueEntries"][0]["id"],
+            serde_json::Value::String(duplicate_ids[1].clone())
+        );
+    }
+
+    #[tokio::test]
+    async fn reorder_moves_both_directions_and_rejects_unknown_identity() {
+        let player = PlayerService::new();
+        let initial = player
+            .hydrate_queue(vec![
+                song("a", 10_000),
+                song("b", 10_000),
+                song("c", 10_000),
+            ])
+            .await;
+        let a = initial.queue_entries[0].id.clone();
+        let c = initial.queue_entries[2].id.clone();
+
+        let later = player
+            .reorder_queue_entry(&a, 2)
+            .await
+            .expect("earlier moves later");
+        assert_eq!(
+            later
+                .queue
+                .iter()
+                .map(|track| track.id.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "c", "a"]
+        );
+        let earlier = player
+            .reorder_queue_entry(&c, 0)
+            .await
+            .expect("later moves earlier");
+        assert_eq!(
+            earlier
+                .queue
+                .iter()
+                .map(|track| track.id.as_str())
+                .collect::<Vec<_>>(),
+            ["c", "b", "a"]
+        );
+        assert!(matches!(
+            player.reorder_queue_entry("missing-entry", 0).await,
+            Err(PlayerError::QueueEntryNotFound(id)) if id == "missing-entry"
+        ));
+    }
+
+    #[tokio::test]
+    async fn shuffle_toggle_is_reversible_stable_and_next_becomes_canonical() {
+        let player = PlayerService::new();
+        let playing = player
+            .play_tracks(PlayTracksRequest {
+                tracks: ["a", "b", "c", "d", "e", "f"]
+                    .into_iter()
+                    .map(|id| song(id, 10_000))
+                    .collect(),
+                start_at_id: Some("b".to_owned()),
+                shuffle: None,
+            })
+            .await
+            .expect("ordered queue starts");
+        player.seek(2_750).await.expect("position set");
+        let current_id = playing.current_queue_entry_id.expect("current identity");
+
+        let shuffled = player.toggle_shuffle().await;
+        assert_eq!(shuffled.playback_order, PlaybackOrder::Shuffle);
+        assert_eq!(
+            shuffled.current_queue_entry_id.as_deref(),
+            Some(current_id.as_str())
+        );
+        assert_eq!(shuffled.position_ms, 2_750);
+        assert_eq!(shuffled.shuffle_traversal.first(), Some(&current_id));
+        assert_eq!(shuffled.shuffle_traversal.len(), 6);
+        assert_eq!(
+            shuffled
+                .shuffle_traversal
+                .iter()
+                .collect::<std::collections::HashSet<_>>(),
+            shuffled
+                .queue_entries
+                .iter()
+                .map(|entry| &entry.id)
+                .collect::<std::collections::HashSet<_>>()
+        );
+        let stable_traversal = shuffled.shuffle_traversal.clone();
+        assert_eq!(player.snapshot().await.shuffle_traversal, stable_traversal);
+
+        let next = player.next().await.expect("shuffled next succeeds");
+        let shuffled_next_id = next.current_queue_entry_id.clone().expect("next identity");
+        assert_ne!(shuffled_next_id, current_id);
+        let previous = player.previous().await.expect("history previous succeeds");
+        assert_eq!(
+            previous.current_queue_entry_id.as_deref(),
+            Some(current_id.as_str())
+        );
+        let next_again = player.next().await.expect("history forward succeeds");
+        assert_eq!(
+            next_again.current_queue_entry_id.as_deref(),
+            Some(shuffled_next_id.as_str())
+        );
+
+        let current_before_disable = player
+            .previous()
+            .await
+            .expect("history returns to a canonical entry with a successor");
+        assert_eq!(
+            current_before_disable.current_queue_entry_id.as_deref(),
+            Some(current_id.as_str())
+        );
+
+        player.seek(1_900).await.expect("position before disable");
+        let sequential = player.toggle_shuffle().await;
+        assert_eq!(sequential.playback_order, PlaybackOrder::Sequential);
+        assert!(!sequential.shuffle);
+        assert_eq!(sequential.position_ms, 1_900);
+        assert_eq!(
+            sequential.current_queue_entry_id.as_deref(),
+            Some(current_id.as_str())
+        );
+        let canonical_index = sequential.current_index.expect("canonical position");
+        let canonical_next = player.next().await.expect("sequential next succeeds");
+        assert_eq!(canonical_next.current_index, Some(canonical_index + 1));
+    }
+
+    #[tokio::test]
+    async fn previous_uses_preview_local_time_before_traversing_shuffle_history() {
+        let player = PlayerService::new();
+        let started = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("a", 120_000), song("b", 120_000), song("c", 120_000)],
+                start_at_id: Some("a".to_owned()),
+                shuffle: Some(true),
+            })
+            .await
+            .expect("preview-like queue starts");
+        let initial_id = started
+            .current_queue_entry_id
+            .expect("initial queue identity");
+        let advanced = player.next().await.expect("shuffle advances");
+        let advanced_id = advanced
+            .current_queue_entry_id
+            .clone()
+            .expect("advanced queue identity");
+        {
+            let mut core = player.core.write().await;
+            core.timeline_offset_ms = 60_000;
+            core.position_ms = 61_500;
+            core.playback_duration_ms = Some(90_000);
+        }
+
+        let previous = player
+            .previous()
+            .await
+            .expect("preview-local position permits history traversal");
+
+        assert_eq!(
+            previous.current_queue_entry_id.as_deref(),
+            Some(initial_id.as_str())
+        );
+        assert_ne!(
+            previous.current_queue_entry_id.as_deref(),
+            Some(advanced_id.as_str())
+        );
+    }
+
+    #[tokio::test]
+    async fn playback_order_and_repeat_modes_remain_independent() {
+        let player = PlayerService::new();
+        player
+            .hydrate_queue(vec![
+                song("a", 10_000),
+                song("b", 10_000),
+                song("c", 10_000),
+            ])
+            .await;
+        for order in [PlaybackOrder::Sequential, PlaybackOrder::Shuffle] {
+            player.set_shuffle(order == PlaybackOrder::Shuffle).await;
+            for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
+                let snapshot = player.set_repeat(repeat).await;
+                assert_eq!(snapshot.playback_order, order);
+                assert_eq!(snapshot.repeat, repeat);
+                assert_eq!(snapshot.shuffle, order == PlaybackOrder::Shuffle);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn end_of_stream_respects_all_playback_order_and_repeat_combinations() {
+        for order in [PlaybackOrder::Sequential, PlaybackOrder::Shuffle] {
+            for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
+                let player = Arc::new(PlayerService::new());
+                let initial = player
+                    .play_tracks(PlayTracksRequest {
+                        tracks: vec![song("a", 1_000), song("b", 1_000), song("c", 1_000)],
+                        start_at_id: Some("a".to_owned()),
+                        shuffle: Some(order == PlaybackOrder::Shuffle),
+                    })
+                    .await
+                    .expect("matrix queue starts");
+                if order == PlaybackOrder::Sequential {
+                    let last_id = initial.queue_entries[2].id.clone();
+                    player
+                        .play_queue_entry(&last_id)
+                        .await
+                        .expect("sequential traversal reaches its end");
+                } else {
+                    while !player.snapshot().await.upcoming_queue_entry_ids.is_empty() {
+                        player.next().await.expect("shuffle traversal advances");
+                    }
+                }
+                player.set_repeat(repeat).await;
+                let ending = player.snapshot().await;
+                let ending_id = ending
+                    .current_queue_entry_id
+                    .clone()
+                    .expect("ending entry identity");
+
+                Arc::clone(&player).handle_end().await;
+                let after = player.snapshot().await;
+
+                assert_eq!(after.playback_order, order);
+                assert_eq!(after.repeat, repeat);
+                match repeat {
+                    RepeatMode::Off => {
+                        assert_eq!(after.playback_state, PlaybackState::Ended);
+                        assert_eq!(
+                            after.current_queue_entry_id.as_deref(),
+                            Some(ending_id.as_str())
+                        );
+                    }
+                    RepeatMode::One => {
+                        assert_eq!(after.playback_state, PlaybackState::Playing);
+                        assert_eq!(
+                            after.current_queue_entry_id.as_deref(),
+                            Some(ending_id.as_str())
+                        );
+                        assert_eq!(after.position_ms, 0);
+                    }
+                    RepeatMode::All => {
+                        assert_eq!(after.playback_state, PlaybackState::Playing);
+                        assert_ne!(
+                            after.current_queue_entry_id.as_deref(),
+                            Some(ending_id.as_str())
+                        );
+                        assert_eq!(after.position_ms, 0);
+                    }
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn persisted_shuffle_restores_entry_identity_traversal_and_history() {
+        let source = PlayerService::new();
+        source
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("a", 10_000), song("b", 10_000), song("c", 10_000)],
+                start_at_id: Some("b".to_owned()),
+                shuffle: Some(true),
+            })
+            .await
+            .expect("shuffle queue starts");
+        source.next().await.expect("history contains next entry");
+        source
+            .previous()
+            .await
+            .expect("history cursor moves backward");
+        source.seek(2_300).await.expect("position persists");
+        let persisted = source.snapshot().await;
+
+        let restored = PlayerService::new().restore(persisted.clone()).await;
+
+        assert_eq!(restored.queue_entries, persisted.queue_entries);
+        assert_eq!(
+            restored.current_queue_entry_id,
+            persisted.current_queue_entry_id
+        );
+        assert_eq!(restored.playback_order, PlaybackOrder::Shuffle);
+        assert_eq!(restored.shuffle_traversal, persisted.shuffle_traversal);
+        assert_eq!(restored.shuffle_cursor, persisted.shuffle_cursor);
+        assert_eq!(restored.playback_history, persisted.playback_history);
+        assert_eq!(restored.history_cursor, persisted.history_cursor);
+        assert_eq!(restored.position_ms, 2_300);
+        assert_eq!(restored.playback_state, PlaybackState::Paused);
+    }
+
+    #[tokio::test]
+    async fn shuffle_repeat_one_keeps_current_and_repeat_all_starts_a_new_cycle() {
+        let player = PlayerService::new();
+        let initial = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("a", 10_000), song("b", 10_000), song("c", 10_000)],
+                start_at_id: Some("a".to_owned()),
+                shuffle: Some(true),
+            })
+            .await
+            .expect("shuffle queue starts");
+        let active = initial
+            .current_queue_entry_id
+            .clone()
+            .expect("active identity");
+        player.set_repeat(RepeatMode::One).await;
+        player
+            .load_index(initial.current_index.expect("active index"), true, 0)
+            .await
+            .expect("repeat-one reloads active entry");
+        assert_eq!(
+            player.snapshot().await.current_queue_entry_id.as_deref(),
+            Some(active.as_str())
+        );
+
+        player.set_repeat(RepeatMode::All).await;
+        while !player.snapshot().await.upcoming_queue_entry_ids.is_empty() {
+            player.next().await.expect("advance within traversal");
+        }
+        let before_cycle = player.snapshot().await;
+        let after_cycle = player
+            .next()
+            .await
+            .expect("repeat-all starts new traversal");
+        assert_eq!(after_cycle.playback_order, PlaybackOrder::Shuffle);
+        assert_ne!(
+            after_cycle.current_queue_entry_id,
+            before_cycle.current_queue_entry_id
+        );
+        assert_eq!(after_cycle.shuffle_traversal.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn play_next_replaces_stale_forward_history_while_shuffle_is_active() {
+        let player = PlayerService::new();
+        let initial = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![
+                    song("a", 10_000),
+                    song("b", 10_000),
+                    song("c", 10_000),
+                    song("d", 10_000),
+                ],
+                start_at_id: Some("a".to_owned()),
+                shuffle: Some(true),
+            })
+            .await
+            .expect("shuffle queue starts");
+        let first_next = player.next().await.expect("shuffle advances");
+        player
+            .previous()
+            .await
+            .expect("shuffle history moves backward");
+        let chosen = initial
+            .queue_entries
+            .iter()
+            .find(|entry| {
+                Some(entry.id.as_str()) != initial.current_queue_entry_id.as_deref()
+                    && Some(entry.id.as_str()) != first_next.current_queue_entry_id.as_deref()
+            })
+            .expect("a third entry exists")
+            .id
+            .clone();
+
+        let scheduled = player
+            .play_next_queue_entry(&chosen)
+            .await
+            .expect("play next is scheduled");
+        assert_eq!(scheduled.upcoming_queue_entry_ids.first(), Some(&chosen));
+        let next = player.next().await.expect("scheduled item plays next");
+        assert_eq!(
+            next.current_queue_entry_id.as_deref(),
+            Some(chosen.as_str())
+        );
     }
 
     #[tokio::test]

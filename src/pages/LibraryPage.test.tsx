@@ -55,6 +55,7 @@ function playlistSummary(): AccountPlaylistSummary {
   const fixture = playlists[0]!;
   return {
     id: 'account-playlist-a',
+    reference: { kind: 'owned', tid: 'account-playlist-a', dirId: 3001 },
     title: 'Synthetic Mix',
     description: fixture.description,
     owner: { id: 'account-owner', displayName: 'Synthetic Listener' },
@@ -192,9 +193,40 @@ describe('LibraryPage account resources', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: /Synthetic Mix/ }));
-    expect(onNavigate).toHaveBeenCalledWith({ page: 'account-playlist', id: summary.id });
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'account-playlist', playlist: summary });
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
     expect(onLoadMore).toHaveBeenCalledWith('playlists');
+  });
+
+  it('labels the structural Favorite Songs collection separately from saved playlists', () => {
+    const favoriteCollection: AccountPlaylistSummary = {
+      ...playlistSummary(),
+      id: 'qqmusic:account-collection:favorites',
+      reference: { kind: 'favorite-songs', dirId: 201 },
+      title: 'Liked Tracks',
+      ownership: 'favorite',
+      capabilities: {
+        canAddTracks: false,
+        canRemoveTracks: false,
+        canRename: false,
+        canDelete: false,
+        canReorder: false,
+      },
+    };
+    renderLibrary({
+      view: 'playlists',
+      playlists: {
+        status: 'ready',
+        data: [favoriteCollection],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+    });
+
+    expect(screen.getByText('Favorite Songs')).toBeVisible();
+    expect(screen.queryByText('Saved playlist')).not.toBeInTheDocument();
   });
 
   it('does not render an untrusted profile avatar URL', () => {

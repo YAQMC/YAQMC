@@ -202,6 +202,10 @@ pub enum QQMusicError {
     MalformedResponse,
     #[error("the requested QQ Music item is unavailable")]
     NotFound,
+    #[error("the QQ Music playlist reference contains an invalid provider identifier")]
+    InvalidPlaylistIdentifier,
+    #[error("this QQ Music account collection is not supported")]
+    UnsupportedAccountCollection,
     #[error("the QQ Music request was invalid")]
     InvalidRequest,
     #[error("the QQ Music operation is intentionally unsupported")]
@@ -233,6 +237,8 @@ impl QQMusicError {
             Self::SchemaChanged => ProviderErrorCode::SchemaChanged,
             Self::MalformedResponse | Self::Protocol => ProviderErrorCode::MalformedResponse,
             Self::NotFound => ProviderErrorCode::SongUnavailable,
+            Self::InvalidPlaylistIdentifier => ProviderErrorCode::InvalidPlaylistIdentifier,
+            Self::UnsupportedAccountCollection => ProviderErrorCode::UnsupportedAccountCollection,
             Self::InvalidRequest => ProviderErrorCode::InvalidRequest,
             Self::UnsupportedOperation => ProviderErrorCode::UnsupportedOperation,
             Self::AuthenticationExpired => ProviderErrorCode::AuthenticationExpired,
@@ -457,13 +463,13 @@ impl QQMusicService {
 
     pub async fn account_playlist_tracks(
         &self,
-        playlist_id: String,
+        playlist: AccountPlaylistSummary,
         cursor: Option<String>,
         limit: u32,
     ) -> Result<AccountPlaylistDetail, QQMusicError> {
         let detail = self
             .account
-            .playlist_tracks(playlist_id, cursor, limit)
+            .playlist_tracks(playlist, cursor, limit)
             .await?;
         self.account.remember_songs(&detail.tracks.items).await;
         Ok(detail)
@@ -535,6 +541,10 @@ impl QQMusicService {
         request: FavoriteMutationRequest,
     ) -> Result<FavoriteMutationResult, QQMusicError> {
         self.account.set_favorite(request).await
+    }
+
+    pub(crate) async fn remember_songs<'a>(&self, songs: impl IntoIterator<Item = &'a Song>) {
+        self.account.remember_songs(songs).await;
     }
 
     pub async fn create_playlist(
@@ -1111,6 +1121,8 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
         QQMusicError::SchemaChanged
         | QQMusicError::MalformedResponse
         | QQMusicError::InvalidRequest
+        | QQMusicError::InvalidPlaylistIdentifier
+        | QQMusicError::UnsupportedAccountCollection
         | QQMusicError::UnsupportedOperation
         | QQMusicError::Protocol
         | QQMusicError::OutcomeUnknown

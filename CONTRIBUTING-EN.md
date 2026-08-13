@@ -29,6 +29,5 @@ or unredacted diagnostics. Do not implement subscription, regional, copyright, o
 
 Security reports belong in the private channel described by [SECURITY.md](SECURITY.md), not a public issue.
 
-The repository does not yet have a project license. Before accepting outside contributions, the maintainer must
-choose a license and contribution policy; public source visibility alone grants no general permission to copy,
-modify, or redistribute it.
+The repository currently has no project license; public source visibility alone grants no general permission to
+copy, modify, or redistribute it.

@@ -476,7 +476,7 @@ done
   for phase in "${PHASES[@]}"; do
     printf -- '- [x] %s\n' "$phase"
   done
-  printf '\nThis collector records evidence only. A maintainer must run the verifier before any pass claim.\n'
+  printf '\nThis collector records evidence only. A pass verdict requires a successful verifier run.\n'
 } >"$OUT/checklist.md"
 
 write_manifest captured "$(utc_now)"

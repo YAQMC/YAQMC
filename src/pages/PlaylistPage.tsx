@@ -134,7 +134,14 @@ export function PlaylistPage({
           </p>
           {accountSummary && (
             <p className="account-playlist-capability" role="status">
-              {accountSummary.ownership === 'owned' ? t('owned') : t('collected')} ·{' '}
+              {accountSummary.ownership === 'owned'
+                ? t('owned')
+                : accountSummary.ownership === 'favorite'
+                  ? t('favoriteCollection')
+                  : accountSummary.ownership === 'system'
+                    ? t('systemCollection')
+                    : t('collected')}{' '}
+              ·{' '}
               {accountSummary.capabilities.canAddTracks ||
               accountSummary.capabilities.canRemoveTracks ||
               accountSummary.capabilities.canRename ||

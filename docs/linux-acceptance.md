@@ -99,4 +99,4 @@ sha256sum YAQMC-linux-acceptance.tar.gz
 ```
 
 Return the archive and digest with distribution/kernel, compositor, monitor, scale/DPR, audio observations, and any
-visible defect. Final acceptance remains pending until the maintainer verifies the archive and records a verdict.
+visible defect. Final acceptance closes only after the archive is verified and a verdict is recorded.

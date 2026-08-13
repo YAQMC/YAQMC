@@ -22,7 +22,7 @@ if (-not (Test-Path -LiteralPath $wikiSource -PathType Container)) {
 
 $repositoryInfo = gh repo view $Repository --json visibility,hasWikiEnabled | ConvertFrom-Json
 if ($repositoryInfo.visibility -ne "PUBLIC") {
-  throw "GitHub Free organization wikis cannot be published from this private repository. Make the repository public only after choosing a project license."
+  throw "This GitHub plan does not support publishing an organization Wiki from a private repository."
 }
 if (-not $repositoryInfo.hasWikiEnabled) {
   throw "Enable GitHub Wiki for $Repository before publishing."

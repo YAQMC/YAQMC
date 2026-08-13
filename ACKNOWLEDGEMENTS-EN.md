@@ -13,8 +13,7 @@ does not imply endorsement, participation in a release, or support for YAQMC.
   YAQMC used it only to corroborate behavior: no source was copied, vendored, or rewritten. YAQMC's Rust
   implementation and tests are independent.
 - **OpenAI Codex / GPT-5.6 Sol** — for assistance with implementation, test design, code review, documentation,
-  and release workflow. The project maintainer remains responsible for product choices, account operations, legal
-  decisions, and releases.
+  and release workflow.
 
 ## Interoperability research
 

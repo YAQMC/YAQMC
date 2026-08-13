@@ -192,6 +192,8 @@ export const PROVIDER_ERROR_CODES = [
   'unsupported-operation',
   'mutation-in-progress',
   'storage-failure',
+  'invalid-playlist-identifier',
+  'unsupported-account-collection',
 ] as const;
 
 export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number];
@@ -213,10 +215,17 @@ export interface PlaylistCapabilities {
   canReorder: boolean;
 }
 
-export type PlaylistOwnership = 'owned' | 'collected';
+export type PlaylistOwnership = 'owned' | 'collected' | 'favorite' | 'system';
+
+export type AccountPlaylistReference =
+  | { kind: 'owned'; tid: string; dirId?: number }
+  | { kind: 'collected'; tid: string }
+  | { kind: 'favorite-songs'; dirId: number }
+  | { kind: 'system-collection'; dirId: number; tid?: string; collectionType?: string };
 
 export interface AccountPlaylistSummary {
   id: EntityId;
+  reference: AccountPlaylistReference;
   title: string;
   description: string;
   owner: PlaylistOwner;

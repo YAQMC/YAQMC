@@ -149,12 +149,12 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
   }
 
   getAccountPlaylistTracks(
-    id: EntityId,
+    playlist: AccountPlaylistSummary,
     cursor?: string,
     limit?: number,
     signal?: AbortSignal,
   ): Promise<AccountPlaylistDetail> {
-    return nativeRequest('qqmusic_account_playlist_tracks', { id, cursor, limit }, signal);
+    return nativeRequest('qqmusic_account_playlist_tracks', { playlist, cursor, limit }, signal);
   }
 
   getAccountRecentlyPlayed(

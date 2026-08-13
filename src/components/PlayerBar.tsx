@@ -55,7 +55,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     volume,
     isMuted,
     repeat,
-    shuffle,
+    playbackOrder,
     playbackState,
     playbackDurationMs,
     playbackError,
@@ -95,8 +95,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     : t('favorite');
   const hasWritableProviderReference =
     current?.provider?.providerId === accountProvider?.id &&
-    Number.isSafeInteger(current?.provider?.numericId) &&
-    (current?.provider?.numericId ?? 0) > 0;
+    Boolean(current?.provider?.trackId.trim());
   const favoriteAvailable =
     current !== undefined &&
     accountProvider !== null &&
@@ -160,7 +159,13 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
 
       <div className="player-bar__center">
         <div className="player-controls">
-          <IconButton label={t('shuffle')} size="small" active={shuffle} onClick={toggleShuffle}>
+          <IconButton
+            label={playbackOrder === 'shuffle' ? t('disableShuffle') : t('enableShuffle')}
+            size="small"
+            active={playbackOrder === 'shuffle'}
+            aria-pressed={playbackOrder === 'shuffle'}
+            onClick={toggleShuffle}
+          >
             <Shuffle size={15} />
           </IconButton>
           <IconButton label={t('previous')} size="small" onClick={previous} disabled={!current}>

@@ -252,13 +252,13 @@ pub async fn qqmusic_account_playlists(
 pub async fn qqmusic_account_playlist_tracks(
     window: tauri::WebviewWindow,
     provider: State<'_, Arc<QQMusicService>>,
-    id: String,
+    playlist: AccountPlaylistSummary,
     cursor: Option<String>,
     limit: u32,
 ) -> ProviderResult<AccountPlaylistDetail> {
     require_main_window(&window)?;
     provider
-        .account_playlist_tracks(id, cursor, limit)
+        .account_playlist_tracks(playlist, cursor, limit)
         .await
         .map_err(Into::into)
 }
@@ -571,6 +571,17 @@ pub async fn player_play_from_queue(
 }
 
 #[tauri::command]
+pub async fn player_play_queue_entry(
+    player: State<'_, Arc<PlayerService>>,
+    entry_id: String,
+) -> CommandResult<PlayerSnapshot> {
+    player
+        .play_queue_entry(&entry_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn player_play(player: State<'_, Arc<PlayerService>>) -> CommandResult<PlayerSnapshot> {
     player.play().await.map_err(|error| error.to_string())
 }
@@ -674,6 +685,40 @@ pub async fn player_remove_from_queue(
 ) -> CommandResult<PlayerSnapshot> {
     player
         .remove_from_queue(index)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn player_remove_queue_entry(
+    player: State<'_, Arc<PlayerService>>,
+    entry_id: String,
+) -> CommandResult<PlayerSnapshot> {
+    player
+        .remove_queue_entry(&entry_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn player_reorder_queue_entry(
+    player: State<'_, Arc<PlayerService>>,
+    entry_id: String,
+    target_index: usize,
+) -> CommandResult<PlayerSnapshot> {
+    player
+        .reorder_queue_entry(&entry_id, target_index)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn player_play_next_queue_entry(
+    player: State<'_, Arc<PlayerService>>,
+    entry_id: String,
+) -> CommandResult<PlayerSnapshot> {
+    player
+        .play_next_queue_entry(&entry_id)
         .await
         .map_err(|error| error.to_string())
 }

@@ -1,4 +1,4 @@
-import type { EntityId } from '../domain/music';
+import type { AccountPlaylistSummary, EntityId } from '../domain/music';
 
 export type AppRoute =
   | { page: 'home' }
@@ -7,7 +7,7 @@ export type AppRoute =
   | { page: 'library' }
   | { page: 'favorites' }
   | { page: 'account-playlists' }
-  | { page: 'account-playlist'; id: EntityId }
+  | { page: 'account-playlist'; playlist: AccountPlaylistSummary }
   | { page: 'account-recent' }
   | { page: 'settings' }
   | { page: 'album'; id: EntityId }

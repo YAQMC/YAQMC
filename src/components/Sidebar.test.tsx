@@ -43,7 +43,27 @@ describe('Sidebar navigation', () => {
   });
 
   it('keeps the playlists destination active on an account detail route', () => {
-    renderSidebar({ page: 'account-playlist', id: 'account-playlist-a' });
+    renderSidebar({
+      page: 'account-playlist',
+      playlist: {
+        id: 'account-playlist-a',
+        reference: { kind: 'owned', tid: 'account-playlist-a', dirId: 3001 },
+        title: 'Playlist',
+        description: '',
+        owner: { id: 'owner', displayName: 'Owner' },
+        artwork: { src: '', alt: '', dominantColor: '#000000' },
+        ownership: 'owned',
+        capabilities: {
+          canAddTracks: true,
+          canRemoveTracks: true,
+          canRename: true,
+          canDelete: true,
+          canReorder: false,
+        },
+        trackCount: 0,
+        updatedAtMs: null,
+      },
+    });
 
     expect(screen.getByRole('button', { name: 'Playlists' })).toHaveAttribute(
       'data-active',
