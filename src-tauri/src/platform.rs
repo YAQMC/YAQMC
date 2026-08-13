@@ -112,7 +112,8 @@ pub struct PlatformDiagnostics {
 }
 
 /// Applies only an explicitly requested compatibility mode. Auto mode leaves GTK/WebKitGTK's
-/// backend decisions untouched and applies only a targeted Hyprland workaround.
+/// backend decisions untouched and applies only targeted workarounds for known-broken
+/// WebKitGTK combinations (NVIDIA explicit sync, Hyprland DMA-BUF).
 pub fn apply_startup_graphics_policy() {
     #[cfg(target_os = "linux")]
     match std::env::var(GRAPHICS_MODE_ENV)
@@ -120,15 +121,23 @@ pub fn apply_startup_graphics_policy() {
         .to_ascii_lowercase()
         .as_str()
     {
+        "dmabuf" | "native" => {
+            std::env::remove_var("WEBKIT_DISABLE_DMABUF_RENDERER");
+        }
         "disable-dmabuf" | "compatibility" => {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+        "compositing-off" => {
+            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
         }
         "software" | "safe" => {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
             std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
         }
         _ => {
-            if should_apply_hyprland_dmabuf_workaround(
+            if nvidia_gpu_present() && std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_none() {
+                std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+            } else if should_apply_hyprland_dmabuf_workaround(
                 compositor_hint().as_deref(),
                 std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some(),
             ) {
@@ -136,6 +145,17 @@ pub fn apply_startup_graphics_policy() {
             }
         }
     }
+}
+
+/// NVIDIA's EGL advertises explicit-sync support that WebKitGTK 2.5x consumes without setting
+/// the required acquire point (WebKit bug 317089), so strict compositors such as Hyprland and
+/// KWin disconnect the client. Disabling the driver-level explicit sync makes WebKitGTK fall
+/// back to implicit-sync DMA-BUF, keeping hardware acceleration instead of dropping to the
+/// 60 Hz CPU compositing path.
+#[cfg(target_os = "linux")]
+fn nvidia_gpu_present() -> bool {
+    std::path::Path::new("/proc/driver/nvidia/version").exists()
+        || std::path::Path::new("/sys/module/nvidia").exists()
 }
 
 /// WebKitGTK's DMA-BUF renderer trips a Wayland protocol error on Hyprland, which kills the

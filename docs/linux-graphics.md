@@ -8,9 +8,15 @@ buffering are separate failure domains and are logged separately.
 ## Default policy
 
 `YAQMC_LINUX_RENDERER=auto` is implicit and sets no acceleration variables. YAQMC source does not force a GTK
-backend. Auto mode applies exactly one targeted compatibility rule: when Hyprland is detected and the tester has
-not set `WEBKIT_DISABLE_DMABUF_RENDERER` themselves, YAQMC disables WebKitGTK's DMA-BUF renderer to avoid the
-Wayland protocol error that otherwise kills the process during webview creation. The final AppImage repack replaces
+backend. Auto mode applies two targeted compatibility rules:
+
+1. When an NVIDIA driver is detected and the tester has not set `__NV_DISABLE_EXPLICIT_SYNC` themselves, YAQMC
+   disables driver-level explicit sync so WebKitGTK falls back to implicit-sync DMA-BUF and keeps hardware
+   acceleration, avoiding the WebKit bug 317089 protocol-error disconnect on Hyprland/KWin.
+2. When Hyprland is detected without NVIDIA and the tester has not set `WEBKIT_DISABLE_DMABUF_RENDERER`, YAQMC
+   disables WebKitGTK's DMA-BUF renderer to avoid the same protocol error.
+
+The final AppImage repack replaces
 Tauri's generated unconditional `GDK_BACKEND=x11` assignment with this session-aware policy:
 
 1. Preserve an explicit `GDK_BACKEND` chosen by the tester.
@@ -26,12 +32,14 @@ source-level reductions are risk controls, not proof of a compositor performance
 
 ## Acceptance modes
 
-| Mode             | Environment change                                               | Rule                                      |
-| ---------------- | ---------------------------------------------------------------- | ----------------------------------------- |
-| `auto`           | targeted Hyprland DMABUF fallback only, no other override        | required first                            |
-| `native-wayland` | `GDK_BACKEND=wayland`; `DISPLAY` cleared                         | required; must report `wayland-native`    |
-| `x11`            | `GDK_BACKEND=x11`                                                | required controlled fallback comparison   |
-| `software`       | `YAQMC_LINUX_RENDERER=software`, DMABUF off, software GL enabled | conditional after a reproduced native bug |
+| Mode              | Environment change                                                  | Rule                                                |
+| ----------------- | ------------------------------------------------------------------- | --------------------------------------------------- |
+| `auto`            | NVIDIA: driver explicit sync off, DMABUF kept; Hyprland: DMABUF off | required first                                      |
+| `dmabuf`          | removes the DMABUF disable, forcing the native path                 | comparison mode; known-crash combos may still crash |
+| `native-wayland`  | `GDK_BACKEND=wayland`; `DISPLAY` cleared                            | required; must report `wayland-native`              |
+| `x11`             | `GDK_BACKEND=x11`                                                   | required controlled fallback comparison             |
+| `compositing-off` | disables WebKitGTK accelerated compositing                          | optional rendering comparison                       |
+| `software`        | `YAQMC_LINUX_RENDERER=software`, DMABUF off, software GL enabled    | conditional after a reproduced native bug           |
 
 `baseline` is only a compatibility alias for `auto`, never a claim that the window is XWayland. Legacy one-off
 variables such as NVIDIA explicit-sync or compositing toggles are not canonical acceptance modes and cannot replace

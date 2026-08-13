@@ -7,9 +7,16 @@ Tauri 在 Linux 使用 WebKitGTK。React 调度、WebKitGTK/合成器、窗口�
 
 ## 默认策略
 
-隐式默认 `YAQMC_LINUX_RENDERER=auto`，不设置加速变量；源码不强制 GTK 后端。auto 模式只做一项定向
-兼容：检测到 Hyprland 且用户未自行设置 `WEBKIT_DISABLE_DMABUF_RENDERER` 时，自动禁用 WebKitGTK 的
-DMA-BUF 渲染器，规避其在 Hyprland 上触发 Wayland 协议错误导致进程退出。最终 AppImage launcher：
+隐式默认 `YAQMC_LINUX_RENDERER=auto`，不设置加速变量；源码不强制 GTK 后端。auto 模式做两项定向
+兼容：
+
+1. 检测到 NVIDIA 驱动且用户未自行设置 `__NV_DISABLE_EXPLICIT_SYNC` 时，关闭驱动级显式同步，
+   让 WebKitGTK 改用隐式同步 DMA-BUF 并保留硬件加速，规避 WebKit bug 317089 在 Hyprland/KWin
+   上的协议错误断连；
+2. 检测到 Hyprland（非 NVIDIA）且用户未设置 `WEBKIT_DISABLE_DMABUF_RENDERER` 时，禁用 WebKitGTK
+   的 DMA-BUF 渲染器，规避同样的协议错误。
+
+最终 AppImage launcher：
 
 1. 保留测试者显式设置的 `GDK_BACKEND`；
 2. 否则当 `XDG_SESSION_TYPE=wayland` 且有 `WAYLAND_DISPLAY` 时选择 Wayland；
@@ -21,12 +28,14 @@ DMA-BUF 渲染器，规避其在 Hyprland 上触发 Wayland 协议错误导致�
 
 ## 验收模式
 
-| 模式             | 环境变化                                      | 规则                     |
-| ---------------- | --------------------------------------------- | ------------------------ |
-| `auto`           | 仅 Hyprland 定向 DMABUF 回退，无其他 override | 首先必跑                 |
-| `native-wayland` | Wayland，清除 `DISPLAY`                       | 必跑且必须报原生 Wayland |
-| `x11`            | `GDK_BACKEND=x11`                             | 必跑回退对照             |
-| `software`       | 禁 DMABUF、软件 GL                            | 仅复现原生 bug 后        |
+| 模式              | 环境变化                                                 | 规则                             |
+| ----------------- | -------------------------------------------------------- | -------------------------------- |
+| `auto`            | NVIDIA：关驱动显式同步，保留 DMABUF；Hyprland：禁 DMABUF | 首先必跑                         |
+| `dmabuf`          | 移除 DMABUF 禁用，强制原生路径                           | 对照模式；已知崩溃组合可能仍崩溃 |
+| `native-wayland`  | Wayland，清除 `DISPLAY`                                  | 必跑且必须报原生 Wayland         |
+| `x11`             | `GDK_BACKEND=x11`                                        | 必跑回退对照                     |
+| `compositing-off` | 关闭 WebKitGTK 加速合成                                  | 可选渲染对照                     |
+| `software`        | 禁 DMABUF、软件 GL                                       | 仅复现原生 bug 后                |
 
 软件模式需 `YAQMC_ALLOW_SOFTWARE=confirmed-native-failure`，必须保留翻译后的界面和定位 transform。
 
