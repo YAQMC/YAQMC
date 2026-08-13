@@ -528,6 +528,7 @@ export const zhCN = {
       description: '原生音频输出与 QQ 音乐首选播放音质。',
       audioOutput: '音频输出',
       audioOutputDescription: '在宿主允许时切换输出设备，并尽量保持当前曲目与进度。',
+      resolvedOutput: '实际设备：{{device}} · {{rate}} Hz · {{channels}} 声道。',
       outputLabel: '音频输出设备',
       systemOutput: '系统默认输出',
       quality: '首选音质',

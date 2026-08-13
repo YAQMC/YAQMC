@@ -87,8 +87,15 @@ pub async fn audio_set_output_device(
     let devices = player
         .set_output_device(&device_id)
         .map_err(|error| error.to_string())?;
+    let selected_id = devices
+        .iter()
+        .find(|device| device.is_selected)
+        .map(|device| device.id.as_str())
+        .ok_or_else(|| {
+            "the selected audio output was not reported by the audio engine".to_owned()
+        })?;
     storage
-        .set_setting(AUDIO_OUTPUT_SETTING, &device_id)
+        .set_setting(AUDIO_OUTPUT_SETTING, selected_id)
         .map_err(|error| error.to_string())?;
     Ok(devices)
 }

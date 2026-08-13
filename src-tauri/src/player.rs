@@ -1897,6 +1897,11 @@ fn source_failure(error: &PlaybackSourceError) -> PlaybackFailure {
 
 fn audio_failure(error: &AudioEngineError) -> PlaybackFailure {
     let (code, message, retryable) = match error {
+        AudioEngineError::InvalidOutputSelection => (
+            "invalid-output-selection",
+            "The requested audio output selection is invalid.",
+            false,
+        ),
         AudioEngineError::OutputDeviceUnavailable | AudioEngineError::OutputDeviceOpenFailed => (
             "output-device-unavailable",
             "No usable audio output device is available.",

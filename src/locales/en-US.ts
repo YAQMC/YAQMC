@@ -529,6 +529,7 @@ export const enUS = {
       audioOutput: 'Audio output',
       audioOutputDescription:
         'Switches devices without losing the current track when the host permits it.',
+      resolvedOutput: 'Resolved device: {{device}} · {{rate}} Hz · {{channels}} ch.',
       outputLabel: 'Audio output device',
       systemOutput: 'System default output',
       quality: 'Preferred quality',

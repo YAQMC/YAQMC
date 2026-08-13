@@ -94,6 +94,13 @@ pub struct AudioDiagnostics {
     pub route: String,
     pub available: bool,
     pub selected_output: Option<String>,
+    pub selected_output_kind: Option<String>,
+    pub resolved_output: Option<String>,
+    pub resolved_driver: Option<String>,
+    pub resolved_host: Option<String>,
+    pub resolved_sample_rate: Option<u32>,
+    pub resolved_channels: Option<u16>,
+    pub resolved_sample_format: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -185,10 +192,10 @@ pub fn collect(
         desktop_integration.global_shortcuts_supported,
     );
     let devices = player.output_devices().unwrap_or_default();
-    let selected_output = devices
-        .iter()
-        .find(|device| device.is_selected)
-        .map(|device| device.label.clone());
+    let selected_device = devices.iter().find(|device| device.is_selected);
+    let selected_output = selected_device.map(|device| device.label.clone());
+    let selected_output_kind = selected_device.map(|device| device.selection_kind.clone());
+    let resolved_output = selected_device.and_then(|device| device.resolved_output.as_ref());
     PlatformDiagnostics {
         generated_at_unix_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -218,6 +225,13 @@ pub fn collect(
             },
             available: !devices.is_empty(),
             selected_output,
+            selected_output_kind,
+            resolved_output: resolved_output.map(|output| output.name.clone()),
+            resolved_driver: resolved_output.map(|output| output.driver.clone()),
+            resolved_host: resolved_output.map(|output| output.host.clone()),
+            resolved_sample_rate: resolved_output.map(|output| output.sample_rate),
+            resolved_channels: resolved_output.map(|output| output.channels),
+            resolved_sample_format: resolved_output.map(|output| output.sample_format.clone()),
         },
         system_media,
         desktop_integration,
@@ -245,7 +259,10 @@ pub fn log_startup(diagnostics: &PlatformDiagnostics) {
         target: "audio.backend",
         implementation = diagnostics.audio.implementation,
         route = diagnostics.audio.route,
-        output = diagnostics.audio.selected_output.as_deref().unwrap_or("unavailable"),
+        selection = diagnostics.audio.selected_output_kind.as_deref().unwrap_or("unavailable"),
+        output = diagnostics.audio.resolved_output.as_deref().unwrap_or("unavailable"),
+        driver = diagnostics.audio.resolved_driver.as_deref().unwrap_or("unavailable"),
+        host = diagnostics.audio.resolved_host.as_deref().unwrap_or("unavailable"),
         "audio backend detected"
     );
 }

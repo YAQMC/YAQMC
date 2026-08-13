@@ -614,10 +614,15 @@ export function SettingsPage() {
   ];
   const selectedOutput =
     provider.devices.find((device) => device.isSelected)?.id ?? 'system:default';
+  const resolvedOutput = provider.devices.find((device) => device.isSelected)?.resolvedOutput;
   const outputOptions = useMemo(
     () =>
       provider.devices.length > 0
-        ? provider.devices.map((device) => ({ value: device.id, label: device.label }))
+        ? provider.devices.map((device) => ({
+            value: device.id,
+            label:
+              device.selectionKind === 'system-default' ? t('playback.systemOutput') : device.label,
+          }))
         : [{ value: 'system:default', label: t('playback.systemOutput') }],
     [provider.devices, t],
   );
@@ -1082,7 +1087,15 @@ export function SettingsPage() {
         <div className="settings-card">
           <SettingRow
             title={t('playback.audioOutput')}
-            description={t('playback.audioOutputDescription')}
+            description={
+              resolvedOutput
+                ? `${t('playback.audioOutputDescription')} ${t('playback.resolvedOutput', {
+                    device: resolvedOutput.name,
+                    rate: resolvedOutput.sampleRate,
+                    channels: resolvedOutput.channels,
+                  })}`
+                : t('playback.audioOutputDescription')
+            }
             control={
               <Select
                 value={selectedOutput}

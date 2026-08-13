@@ -30,6 +30,15 @@ export interface AudioOutputDevice {
   label: string;
   isDefault: boolean;
   isSelected: boolean;
+  selectionKind: 'system-default' | 'specific-device';
+  resolvedOutput: {
+    name: string;
+    driver: string;
+    host: string;
+    sampleRate: number;
+    channels: number;
+    sampleFormat: string;
+  } | null;
 }
 
 function message(error: unknown): string {
