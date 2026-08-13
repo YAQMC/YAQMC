@@ -28,7 +28,7 @@ source-level reductions are risk controls, not proof of a compositor performance
 
 | Mode             | Environment change                                               | Rule                                      |
 | ---------------- | ---------------------------------------------------------------- | ----------------------------------------- |
-| `auto`           | targeted Hyprland DMABUF fallback only, no other override | required first                            |
+| `auto`           | targeted Hyprland DMABUF fallback only, no other override        | required first                            |
 | `native-wayland` | `GDK_BACKEND=wayland`; `DISPLAY` cleared                         | required; must report `wayland-native`    |
 | `x11`            | `GDK_BACKEND=x11`                                                | required controlled fallback comparison   |
 | `software`       | `YAQMC_LINUX_RENDERER=software`, DMABUF off, software GL enabled | conditional after a reproduced native bug |

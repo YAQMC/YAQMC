@@ -21,12 +21,12 @@ DMA-BUF 渲染器，规避其在 Hyprland 上触发 Wayland 协议错误导致�
 
 ## 验收模式
 
-| 模式             | 环境变化                 | 规则                     |
-| ---------------- | ------------------------ | ------------------------ |
+| 模式             | 环境变化                                      | 规则                     |
+| ---------------- | --------------------------------------------- | ------------------------ |
 | `auto`           | 仅 Hyprland 定向 DMABUF 回退，无其他 override | 首先必跑                 |
-| `native-wayland` | Wayland，清除 `DISPLAY`  | 必跑且必须报原生 Wayland |
-| `x11`            | `GDK_BACKEND=x11`        | 必跑回退对照             |
-| `software`       | 禁 DMABUF、软件 GL       | 仅复现原生 bug 后        |
+| `native-wayland` | Wayland，清除 `DISPLAY`                       | 必跑且必须报原生 Wayland |
+| `x11`            | `GDK_BACKEND=x11`                             | 必跑回退对照             |
+| `software`       | 禁 DMABUF、软件 GL                            | 仅复现原生 bug 后        |
 
 软件模式需 `YAQMC_ALLOW_SOFTWARE=confirmed-native-failure`，必须保留翻译后的界面和定位 transform。
 
