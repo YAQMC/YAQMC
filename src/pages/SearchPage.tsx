@@ -1,13 +1,13 @@
 import { Search, X } from 'lucide-react';
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { usePlayerStore } from '../application/player-store';
 import { useMusicProvider } from '../application/provider-context';
 import type { AppRoute } from '../application/navigation';
-import type { HomeFeed, SearchResult } from '../domain/music';
 import { MediaCard } from '../components/MediaCard';
 import { TrackList } from '../components/TrackList';
 import { IconButton } from '../components/ui/IconButton';
-import { useTranslation } from 'react-i18next';
+import type { HomeFeed, SearchResult } from '../domain/music';
 
 interface SearchPageProps {
   initialQuery?: string;
@@ -17,69 +17,126 @@ interface SearchPageProps {
 
 const emptyResult: SearchResult = { query: '', songs: [], albums: [], playlists: [] };
 
+type SearchState =
+  | { status: 'idle'; query: ''; result: SearchResult; error: null }
+  | { status: 'loading'; query: string; result: SearchResult; error: null }
+  | { status: 'ready'; query: string; result: SearchResult; error: null }
+  | { status: 'error'; query: string; result: SearchResult; error: string };
+
+const idleSearchState: SearchState = {
+  status: 'idle',
+  query: '',
+  result: emptyResult,
+  error: null,
+};
+
 export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPageProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'search' });
   const { t: errors } = useTranslation('errors');
   const provider = useMusicProvider();
   const playTracks = usePlayerStore((state) => state.playTracks);
-  const [query, setQuery] = useState(initialQuery);
-  const [result, setResult] = useState<SearchResult>(emptyResult);
-  const [error, setError] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState(initialQuery);
+  const [searchState, setSearchState] = useState<SearchState>(idleSearchState);
   const [loadingMore, setLoadingMore] = useState(false);
-  const deferredQuery = useDeferredValue(query.trim());
+  const normalizedInput = inputValue.trim();
+  const submittedQuery = useDeferredValue(normalizedInput);
   const inputRef = useRef<HTMLInputElement>(null);
-  const activeQuery = useRef('');
+  const activeRequestGeneration = useRef(0);
+  const activeController = useRef<AbortController | null>(null);
 
   useEffect(() => inputRef.current?.focus(), []);
 
   useEffect(() => {
-    if (!deferredQuery) return;
+    if (!submittedQuery) return;
 
     const controller = new AbortController();
-    activeQuery.current = deferredQuery;
+    const generation = ++activeRequestGeneration.current;
+    activeController.current = controller;
+    setSearchState({
+      status: 'loading',
+      query: submittedQuery,
+      result: { ...emptyResult, query: submittedQuery },
+      error: null,
+    });
     void provider
-      .search(deferredQuery, controller.signal)
+      .search(submittedQuery, controller.signal)
       .then((next) => {
-        setResult(next);
-        setError(null);
+        if (controller.signal.aborted || generation !== activeRequestGeneration.current) return;
+        setSearchState({
+          status: 'ready',
+          query: submittedQuery,
+          result: { ...next, query: submittedQuery },
+          error: null,
+        });
       })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setResult({ ...emptyResult, query: deferredQuery });
-          setError(searchErrorMessage(error, errors));
-        }
+        if (controller.signal.aborted || generation !== activeRequestGeneration.current) return;
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setSearchState({
+          status: 'error',
+          query: submittedQuery,
+          result: { ...emptyResult, query: submittedQuery },
+          error: searchErrorMessage(error, errors),
+        });
       });
-    return () => controller.abort();
-  }, [deferredQuery, errors, provider]);
+    return () => {
+      controller.abort();
+      if (activeController.current === controller) activeController.current = null;
+    };
+  }, [submittedQuery, errors, provider]);
 
+  const { result, error } = searchState;
   const hasResults = result.songs.length + result.albums.length + result.playlists.length > 0;
-  const searching = Boolean(deferredQuery && result.query !== deferredQuery);
+  const displayedResultQuery = searchState.status === 'ready' ? searchState.query : '';
+  const searching = Boolean(
+    normalizedInput &&
+      (searchState.status === 'loading' || searchState.query !== normalizedInput),
+  );
+  const canDisplayResult =
+    searchState.status === 'ready' && displayedResultQuery === normalizedInput;
 
   const updateQuery = (value: string) => {
-    setQuery(value);
-    if (!value.trim()) {
-      setResult(emptyResult);
-      setError(null);
-    }
+    setInputValue(value);
+    activeController.current?.abort();
+    activeController.current = null;
+    activeRequestGeneration.current += 1;
+    setLoadingMore(false);
+    if (!value.trim()) setSearchState(idleSearchState);
   };
 
   const loadMore = async () => {
-    if (!result.hasMore || loadingMore) return;
+    if (!canDisplayResult || !result.hasMore || loadingMore) return;
     const requestedQuery = result.query;
+    const generation = activeRequestGeneration.current;
     setLoadingMore(true);
     try {
       const next = await provider.search(requestedQuery, undefined, (result.page ?? 1) + 1, 20);
-      if (activeQuery.current !== requestedQuery) return;
-      setResult({
-        ...next,
-        songs: uniqueById([...result.songs, ...next.songs]),
-        albums: uniqueById([...result.albums, ...next.albums]),
-        playlists: uniqueById([...result.playlists, ...next.playlists]),
+      if (generation !== activeRequestGeneration.current || normalizedInput !== requestedQuery) {
+        return;
+      }
+      setSearchState({
+        status: 'ready',
+        query: requestedQuery,
+        result: {
+          ...next,
+          query: requestedQuery,
+          songs: uniqueById([...result.songs, ...next.songs]),
+          albums: uniqueById([...result.albums, ...next.albums]),
+          playlists: uniqueById([...result.playlists, ...next.playlists]),
+        },
+        error: null,
       });
     } catch (caught) {
-      if (activeQuery.current === requestedQuery) setError(searchErrorMessage(caught, errors));
+      if (generation === activeRequestGeneration.current && normalizedInput === requestedQuery) {
+        setSearchState({
+          status: 'error',
+          query: requestedQuery,
+          result: { ...emptyResult, query: requestedQuery },
+          error: searchErrorMessage(caught, errors),
+        });
+      }
     } finally {
-      setLoadingMore(false);
+      if (generation === activeRequestGeneration.current) setLoadingMore(false);
     }
   };
 
@@ -89,19 +146,19 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
         <Search size={20} />
         <input
           ref={inputRef}
-          value={query}
+          value={inputValue}
           onChange={(event) => updateQuery(event.target.value)}
           placeholder={t('placeholder')}
           aria-label={t('label')}
         />
-        {query && (
+        {inputValue && (
           <IconButton label={t('clear')} size="small" onClick={() => updateQuery('')}>
             <X size={16} />
           </IconButton>
         )}
       </div>
 
-      {!deferredQuery ? (
+      {!normalizedInput ? (
         <>
           <header className="search-page__intro">
             <p className="eyebrow">{t('introEyebrow')}</p>
@@ -127,11 +184,11 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
             </div>
           </section>
         </>
-      ) : hasResults ? (
+      ) : canDisplayResult && hasResults ? (
         <div className="search-results">
           <header className="search-results__heading">
             <p className="eyebrow">{t('resultsFor')}</p>
-            <h1>“{result.query}”</h1>
+            <h1>“{displayedResultQuery}”</h1>
           </header>
           {result.songs.length > 0 && (
             <section className="content-section">
@@ -193,9 +250,8 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
               {loadingMore ? t('loading') : t('loadMore')}
             </button>
           )}
-          {error && <p className="search-results__error">{error}</p>}
         </div>
-      ) : error ? (
+      ) : searchState.status === 'error' && searchState.query === normalizedInput ? (
         <div className="empty-state empty-state--error">
           <span>
             <Search size={24} />
@@ -203,12 +259,12 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
           <h1>{t('unavailable')}</h1>
           <p>{error}</p>
         </div>
-      ) : !searching ? (
+      ) : searchState.status === 'ready' && searchState.query === normalizedInput ? (
         <div className="empty-state">
           <span>
             <Search size={24} />
           </span>
-          <h1>{t('noMatches', { query: deferredQuery })}</h1>
+          <h1>{t('noMatches', { query: displayedResultQuery })}</h1>
           <p>{t('noMatchesHint')}</p>
         </div>
       ) : null}
