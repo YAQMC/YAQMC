@@ -81,6 +81,42 @@
   opacity: 0.55;
 }
 
+.context-menu__surface {
+  position: fixed;
+  z-index: 100;
+  display: grid;
+  width: 220px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+}
+
+.context-menu__surface button {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.context-menu__surface button:not(:disabled):hover,
+.context-menu__surface button:not(:disabled):focus-visible {
+  background: var(--surface-hover);
+  color: var(--text);
+  outline: none;
+}
+
+.context-menu__surface button:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+
 .artwork {
   position: relative;
   display: block;

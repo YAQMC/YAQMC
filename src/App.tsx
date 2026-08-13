@@ -19,6 +19,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
 import { QueuePanel } from './components/QueuePanel';
+import { ApplicationContextMenu } from './components/ApplicationContextMenu';
 import { LyricsPanel } from './components/LyricsPanel';
 import { LoadingState } from './components/ui/LoadingState';
 import { HomePage } from './pages/HomePage';
@@ -391,6 +392,7 @@ export default function App() {
   return (
     <div className="application-frame">
       <AppBackground />
+      <ApplicationContextMenu />
       {showFpsCounter && <FpsOverlay />}
       <div
         className="app-shell"

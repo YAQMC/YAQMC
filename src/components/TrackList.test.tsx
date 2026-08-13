@@ -174,4 +174,20 @@ describe('TrackList favorite controls', () => {
     expect(usePlayerStore.getState().queue).toEqual([track]);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
+
+  it('opens the same song actions from right click and keyboard context menu', () => {
+    const track = allSongs[0]!;
+    const { container } = render(<TrackList tracks={[track]} />);
+    const row = container.querySelector<HTMLElement>('.track-row')!;
+
+    fireEvent.contextMenu(row, { clientX: 120, clientY: 80 });
+    expect(screen.getByRole('menu', { name: `More actions for ${track.title}` })).toBeVisible();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to queue' }));
+    expect(usePlayerStore.getState().queue).toEqual([track]);
+
+    fireEvent.keyDown(row, { key: 'F10', shiftKey: true });
+    expect(screen.getByRole('menu', { name: `More actions for ${track.title}` })).toBeVisible();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
 });

@@ -8,6 +8,8 @@ import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
 import { IconButton } from './ui/IconButton';
 import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
+import type { ContextMenuItem } from './ui/ContextMenu';
+import { useContextMenu } from './ui/use-context-menu';
 import { useTranslation } from 'react-i18next';
 
 interface TrackListProps {
@@ -92,9 +94,28 @@ function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackR
     }
     playTracks(tracks, track.id);
   };
+  const contextItems: readonly ContextMenuItem[] = [
+    { id: 'play', label: playbackAction, action: activateTrack },
+    { id: 'queue', label: t('addToQueue'), action: () => addToQueue(track) },
+    {
+      id: 'favorite',
+      label: favoriteLabel,
+      disabled: !favoriteAvailable || pending,
+      action: () => {
+        if (accountProvider) return setFavorite(accountProvider, track, !favorite);
+      },
+    },
+  ];
+  const contextMenu = useContextMenu(t('moreActions', { title: track.title }), contextItems);
 
   return (
-    <div className="track-row" role="row" data-active={active || undefined}>
+    <div
+      className="track-row"
+      role="row"
+      tabIndex={0}
+      data-active={active || undefined}
+      {...contextMenu.triggerProps}
+    >
       <span className="track-list__number track-row__index" role="cell">
         <button
           type="button"
@@ -159,6 +180,7 @@ function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackR
           <ActionMenuItem onClick={() => addToQueue(track)}>{t('addToQueue')}</ActionMenuItem>
         </ActionMenu>
       </span>
+      {contextMenu.menu}
     </div>
   );
 }
