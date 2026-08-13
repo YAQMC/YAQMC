@@ -19,3 +19,6 @@ src-tauri/target/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Tauri generated schemas
+src-tauri/gen/
