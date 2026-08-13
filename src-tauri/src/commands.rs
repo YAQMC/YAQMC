@@ -875,3 +875,113 @@ pub async fn local_api_regenerate_token(
         .await
         .map_err(|error| error.to_string())
 }
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugPerfSample {
+    pub fps: u32,
+    pub average_ms: f64,
+    pub p95_ms: f64,
+    pub max_ms: f64,
+    pub long_tasks: u32,
+}
+
+const PERF_LOG_MAX_BYTES: u64 = 1 << 20;
+
+fn perf_sample_header() -> String {
+    "unix_ms,fps,average_ms,p95_ms,max_ms,long_tasks\n".to_owned()
+}
+
+fn perf_sample_line(sample: &DebugPerfSample) -> Option<String> {
+    if sample.fps > 10_000
+        || !sample.average_ms.is_finite()
+        || !sample.p95_ms.is_finite()
+        || !sample.max_ms.is_finite()
+    {
+        return None;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    Some(format!(
+        "{now},{},{:.2},{:.2},{:.2},{}",
+        sample.fps, sample.average_ms, sample.p95_ms, sample.max_ms, sample.long_tasks
+    ))
+}
+
+#[tauri::command]
+pub fn debug_perf_sample(app: AppHandle, sample: DebugPerfSample) -> CommandResult<()> {
+    tracing::info!(
+        target: "perf",
+        fps = sample.fps,
+        average_ms = format_args!("{:.2}", sample.average_ms),
+        p95_ms = format_args!("{:.2}", sample.p95_ms),
+        max_ms = format_args!("{:.2}", sample.max_ms),
+        long_tasks = sample.long_tasks,
+        "render sample received"
+    );
+    let Some(line) = perf_sample_line(&sample) else {
+        return Err("invalid performance sample".to_owned());
+    };
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let path = dir.join("performance-samples.csv");
+    let rotated = std::fs::metadata(&path)
+        .map(|meta| meta.len() > PERF_LOG_MAX_BYTES)
+        .unwrap_or(true);
+    if rotated {
+        std::fs::write(&path, perf_sample_header()).map_err(|error| error.to_string())?;
+    }
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    writeln!(file, "{line}").map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod debug_perf_sample_tests {
+    use super::*;
+
+    #[test]
+    fn perf_log_line_rejects_invalid_samples() {
+        assert!(perf_sample_line(&DebugPerfSample {
+            fps: 60,
+            average_ms: f64::NAN,
+            p95_ms: 17.0,
+            max_ms: 40.0,
+            long_tasks: 0,
+        })
+        .is_none());
+        assert!(perf_sample_line(&DebugPerfSample {
+            fps: u32::MAX,
+            average_ms: 17.0,
+            p95_ms: 17.0,
+            max_ms: 40.0,
+            long_tasks: 0,
+        })
+        .is_none());
+    }
+
+    #[test]
+    fn perf_log_line_matches_the_csv_header() {
+        let line = perf_sample_line(&DebugPerfSample {
+            fps: 60,
+            average_ms: 16.7,
+            p95_ms: 17.0,
+            max_ms: 40.0,
+            long_tasks: 2,
+        })
+        .expect("valid sample");
+        let columns = line.split(',').count();
+        assert_eq!(perf_sample_header().split(',').count(), columns);
+        assert!(line.contains("60,16.70,17.00,40.00,2"));
+    }
+}

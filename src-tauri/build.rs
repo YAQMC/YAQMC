@@ -74,6 +74,7 @@ const APP_COMMANDS: &[&str] = &[
     "local_api_set_port",
     "local_api_reveal_token",
     "local_api_regenerate_token",
+    "debug_perf_sample",
 ];
 
 fn main() {

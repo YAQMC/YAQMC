@@ -58,4 +58,5 @@ permissions = [
   "allow-local-api-set-port",
   "allow-local-api-reveal-token",
   "allow-local-api-regenerate-token",
+  "allow-debug-perf-sample",
 ]

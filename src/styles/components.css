@@ -1507,3 +1507,16 @@ input[type='range']:disabled {
 .fps-overlay[data-tier='low'] strong {
   color: var(--danger);
 }
+
+.fps-overlay__detail {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fps-overlay__longtask {
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}

@@ -343,6 +343,7 @@ pub fn run() {
             commands::local_api_set_port,
             commands::local_api_reveal_token,
             commands::local_api_regenerate_token,
+            commands::debug_perf_sample,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build desktop application");
