@@ -1,4 +1,4 @@
-use super::account::{AccountEntitlement, EntitlementTier, MembershipState};
+use super::account::{AccountEntitlement, EntitlementTier, MembershipState, SecondaryEntitlement};
 use crate::{
     audio::AudioFormat,
     media::PlaybackSourceError,
@@ -252,7 +252,9 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
     };
     let normalized_tier = match string("tier").as_deref() {
         Some("free") => EntitlementTier::Free,
-        Some("music-vip" | "music_vip" | "vip") => EntitlementTier::MusicVip,
+        Some("green-diamond" | "green_diamond" | "music-vip" | "music_vip" | "vip") => {
+            EntitlementTier::GreenDiamond
+        }
         Some("super-vip" | "super_vip" | "svip") => EntitlementTier::SuperVip,
         _ => EntitlementTier::Unknown,
     };
@@ -290,6 +292,33 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
             "master" => Some(AudioQuality::Master),
             _ => None,
         });
+    let mut secondary_entitlements = normalized
+        .and_then(|value| value.get("secondaryEntitlements"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(
+            |value| match value.as_str()?.trim().to_ascii_lowercase().as_str() {
+                "luxury-green-diamond" => Some(SecondaryEntitlement::LuxuryGreenDiamond),
+                "annual-green-diamond" => Some(SecondaryEntitlement::AnnualGreenDiamond),
+                "annual-luxury-green-diamond" => {
+                    Some(SecondaryEntitlement::AnnualLuxuryGreenDiamond)
+                }
+                "star" => Some(SecondaryEntitlement::Star),
+                "annual-star" => Some(SecondaryEntitlement::AnnualStar),
+                "eight-platform" => Some(SecondaryEntitlement::EightPlatform),
+                "twelve-platform" => Some(SecondaryEntitlement::TwelvePlatform),
+                "family" => Some(SecondaryEntitlement::Family),
+                "child" => Some(SecondaryEntitlement::Child),
+                "trial" => Some(SecondaryEntitlement::Trial),
+                "couple" => Some(SecondaryEntitlement::Couple),
+                "ad-free" => Some(SecondaryEntitlement::AdFree),
+                _ => None,
+            },
+        )
+        .collect::<Vec<_>>();
+    secondary_entitlements.sort_by_key(|value| *value as u8);
+    secondary_entitlements.dedup();
     if normalized.is_some() {
         return AccountEntitlement {
             tier: normalized_tier,
@@ -297,6 +326,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
             expires_at_ms: normalized
                 .and_then(|value| value.get("expiresAtMs"))
                 .and_then(Value::as_u64),
+            secondary_entitlements,
             permitted_qualities,
             observed_maximum_quality: normalized_observed_maximum,
             restrictions: Vec::new(),
@@ -308,6 +338,8 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
         .or_else(|| payload.pointer("/req_0/data"))
         .filter(|value| {
             value.get("svip").is_some()
+                || value.get("star").is_some()
+                || value.get("ystar").is_some()
                 || value.pointer("/identity/vip").is_some()
                 || value.pointer("/identity/HugeVip").is_some()
                 || value.pointer("/userinfo/expire").is_some()
@@ -321,9 +353,9 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
                     .or_else(|| value.as_str()?.parse::<u64>().ok())
             })
     };
-    let vip = numeric("/identity/vip").unwrap_or_default() > 0;
-    let super_vip = numeric("/svip").unwrap_or_default() > 0
+    let green_diamond = numeric("/identity/vip").unwrap_or_default() > 0
         || numeric("/identity/HugeVip").unwrap_or_default() > 0;
+    let super_vip = numeric("/svip").unwrap_or_default() > 0;
     let expires_at_ms = numeric("/userinfo/expire")
         .filter(|value| *value >= 946_684_800)
         .map(|value| {
@@ -338,18 +370,47 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
             tier: EntitlementTier::Unknown,
             membership: MembershipState::Unknown,
             expires_at_ms: None,
+            secondary_entitlements: Vec::new(),
             permitted_qualities: vec![AudioQuality::Standard],
             observed_maximum_quality: None,
             restrictions: Vec::new(),
         };
     }
 
-    let active = vip || super_vip;
+    let active = green_diamond || super_vip;
+    let secondary_entitlements = [
+        (
+            "/identity/HugeVip",
+            SecondaryEntitlement::LuxuryGreenDiamond,
+        ),
+        (
+            "/identity/yearflag",
+            SecondaryEntitlement::AnnualGreenDiamond,
+        ),
+        (
+            "/identity/HugeYearFlag",
+            SecondaryEntitlement::AnnualLuxuryGreenDiamond,
+        ),
+        ("/star", SecondaryEntitlement::Star),
+        ("/ystar", SecondaryEntitlement::AnnualStar),
+        ("/identity/eight", SecondaryEntitlement::EightPlatform),
+        ("/identity/twelve", SecondaryEntitlement::TwelvePlatform),
+        ("/identity/GroupVipFlag", SecondaryEntitlement::Family),
+        ("/identity/ChildVip", SecondaryEntitlement::Child),
+        ("/identity/ExpVip", SecondaryEntitlement::Trial),
+        ("/identity/CPLoverFlag", SecondaryEntitlement::Couple),
+        ("/identity/AdVipFlag", SecondaryEntitlement::AdFree),
+    ]
+    .into_iter()
+    .filter_map(|(pointer, entitlement)| {
+        (numeric(pointer).unwrap_or_default() > 0).then_some(entitlement)
+    })
+    .collect();
     AccountEntitlement {
         tier: if super_vip {
             EntitlementTier::SuperVip
-        } else if vip {
-            EntitlementTier::MusicVip
+        } else if green_diamond {
+            EntitlementTier::GreenDiamond
         } else {
             EntitlementTier::Free
         },
@@ -361,6 +422,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
             MembershipState::Inactive
         },
         expires_at_ms,
+        secondary_entitlements,
         permitted_qualities: if active {
             let mut qualities = vec![
                 AudioQuality::Standard,
@@ -398,6 +460,7 @@ mod tests {
             tier: EntitlementTier::Unknown,
             membership: MembershipState::Active,
             expires_at_ms: None,
+            secondary_entitlements: Vec::new(),
             observed_maximum_quality: qualities.last().cloned(),
             permitted_qualities: qualities,
             restrictions: Vec::new(),
@@ -648,9 +711,16 @@ mod tests {
         assert_eq!(free.tier, EntitlementTier::Free);
         assert_eq!(free.membership, MembershipState::Inactive);
         assert_eq!(free.permitted_qualities, vec![AudioQuality::Standard]);
-        assert_eq!(vip.tier, EntitlementTier::MusicVip);
+        assert_eq!(vip.tier, EntitlementTier::GreenDiamond);
         assert_eq!(vip.membership, MembershipState::Active);
         assert_eq!(vip.expires_at_ms, Some(4_102_444_800_000));
+        assert_eq!(
+            vip.secondary_entitlements,
+            vec![
+                SecondaryEntitlement::AnnualGreenDiamond,
+                SecondaryEntitlement::Family
+            ]
+        );
         assert_eq!(
             vip.permitted_qualities,
             vec![
@@ -672,6 +742,79 @@ mod tests {
             vec![AudioQuality::Standard]
         );
         assert_eq!(entitlement.observed_maximum_quality, None);
+        assert!(entitlement.secondary_entitlements.is_empty());
+    }
+
+    #[test]
+    fn huge_vip_is_luxury_green_diamond_not_super_vip() {
+        let entitlement = normalize_account_entitlement(&serde_json::json!({
+            "req": {
+                "data": {
+                    "svip": 0,
+                    "identity": {
+                        "vip": 0,
+                        "HugeVip": 1,
+                        "HugeYearFlag": 1,
+                        "eight": 1,
+                        "twelve": 1
+                    },
+                    "userinfo": { "expire": 4_102_444_800_u64 }
+                }
+            }
+        }));
+
+        assert_eq!(entitlement.tier, EntitlementTier::GreenDiamond);
+        assert_eq!(entitlement.membership, MembershipState::Active);
+        assert_eq!(
+            entitlement.secondary_entitlements,
+            vec![
+                SecondaryEntitlement::LuxuryGreenDiamond,
+                SecondaryEntitlement::AnnualLuxuryGreenDiamond,
+                SecondaryEntitlement::EightPlatform,
+                SecondaryEntitlement::TwelvePlatform
+            ]
+        );
+    }
+
+    #[test]
+    fn only_authoritative_svip_flag_selects_super_vip() {
+        let entitlement = normalize_account_entitlement(&serde_json::json!({
+            "req": {
+                "data": {
+                    "svip": 1,
+                    "identity": { "vip": 1, "HugeVip": 1 },
+                    "userinfo": { "expire": 4_102_444_800_u64 }
+                }
+            }
+        }));
+
+        assert_eq!(entitlement.tier, EntitlementTier::SuperVip);
+    }
+
+    #[test]
+    fn normalized_entitlement_accepts_legacy_tier_and_deduplicates_known_details() {
+        let entitlement = normalize_account_entitlement(&serde_json::json!({
+            "entitlement": {
+                "tier": "music-vip",
+                "membership": "active",
+                "secondaryEntitlements": [
+                    "annual-green-diamond",
+                    "family",
+                    "family",
+                    "untrusted-marketing-label"
+                ],
+                "permittedQualities": ["standard"]
+            }
+        }));
+
+        assert_eq!(entitlement.tier, EntitlementTier::GreenDiamond);
+        assert_eq!(
+            entitlement.secondary_entitlements,
+            vec![
+                SecondaryEntitlement::AnnualGreenDiamond,
+                SecondaryEntitlement::Family
+            ]
+        );
     }
 
     #[test]

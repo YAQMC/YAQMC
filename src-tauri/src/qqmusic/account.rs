@@ -200,9 +200,27 @@ pub struct RemotePlayHistoryItem {
 #[serde(rename_all = "kebab-case")]
 pub enum EntitlementTier {
     Free,
-    MusicVip,
+    #[serde(alias = "music-vip")]
+    GreenDiamond,
     SuperVip,
     Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SecondaryEntitlement {
+    LuxuryGreenDiamond,
+    AnnualGreenDiamond,
+    AnnualLuxuryGreenDiamond,
+    Star,
+    AnnualStar,
+    EightPlatform,
+    TwelvePlatform,
+    Family,
+    Child,
+    Trial,
+    Couple,
+    AdFree,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -247,6 +265,8 @@ pub struct AccountEntitlement {
     pub tier: EntitlementTier,
     pub membership: MembershipState,
     pub expires_at_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secondary_entitlements: Vec<SecondaryEntitlement>,
     pub permitted_qualities: Vec<AudioQuality>,
     pub observed_maximum_quality: Option<AudioQuality>,
     pub restrictions: Vec<EntitlementRestriction>,
@@ -4215,9 +4235,10 @@ mod tests {
                 masked_identity: "10******01".to_owned(),
             },
             entitlement: AccountEntitlement {
-                tier: EntitlementTier::MusicVip,
+                tier: EntitlementTier::GreenDiamond,
                 membership: MembershipState::Active,
                 expires_at_ms: Some(1_800_000_000_000),
+                secondary_entitlements: Vec::new(),
                 permitted_qualities: vec![AudioQuality::Standard, AudioQuality::High],
                 observed_maximum_quality: Some(AudioQuality::High),
                 restrictions: Vec::new(),
@@ -4249,9 +4270,10 @@ mod tests {
                     masked_identity: "10******01".to_owned(),
                 },
                 entitlement: AccountEntitlement {
-                    tier: EntitlementTier::MusicVip,
+                    tier: EntitlementTier::GreenDiamond,
                     membership: MembershipState::Active,
                     expires_at_ms: Some(1_800_000_000_000),
+                    secondary_entitlements: Vec::new(),
                     permitted_qualities: vec![AudioQuality::Standard, AudioQuality::High],
                     observed_maximum_quality: Some(AudioQuality::High),
                     restrictions: Vec::new(),

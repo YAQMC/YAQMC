@@ -247,8 +247,22 @@ export interface RemotePlayHistoryItem {
   source: 'qqmusic-account' | 'local-playback';
 }
 
-export type EntitlementTier = 'free' | 'music-vip' | 'super-vip' | 'unknown';
+export type EntitlementTier = 'free' | 'green-diamond' | 'super-vip' | 'unknown';
 export type MembershipState = 'active' | 'expired' | 'inactive' | 'unknown';
+
+export type SecondaryEntitlement =
+  | 'luxury-green-diamond'
+  | 'annual-green-diamond'
+  | 'annual-luxury-green-diamond'
+  | 'star'
+  | 'annual-star'
+  | 'eight-platform'
+  | 'twelve-platform'
+  | 'family'
+  | 'child'
+  | 'trial'
+  | 'couple'
+  | 'ad-free';
 
 export interface EntitlementRestriction {
   feature: 'playback' | 'favorite-write' | 'playlist-write' | 'quality';
@@ -260,6 +274,7 @@ export interface AccountEntitlement {
   tier: EntitlementTier;
   membership: MembershipState;
   expiresAtMs: number | null;
+  secondaryEntitlements?: SecondaryEntitlement[];
   permittedQualities: AudioQuality[];
   observedMaximumQuality: AudioQuality | null;
   restrictions: EntitlementRestriction[];

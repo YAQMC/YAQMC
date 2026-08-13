@@ -997,6 +997,7 @@ impl QQMusicService {
                     tier: EntitlementTier::Free,
                     membership: MembershipState::Inactive,
                     expires_at_ms: None,
+                    secondary_entitlements: Vec::new(),
                     permitted_qualities: vec![AudioQuality::Standard],
                     observed_maximum_quality: Some(AudioQuality::Standard),
                     restrictions: Vec::new(),

@@ -768,7 +768,7 @@ export function SettingsPage() {
   const accountTierLabel = accountEntitlement
     ? {
         free: t('account.tierFree'),
-        'music-vip': t('account.tierMusicVip'),
+        'green-diamond': t('account.tierGreenDiamond'),
         'super-vip': t('account.tierSuperVip'),
         unknown: t('account.tierUnknown'),
       }[accountEntitlement.tier]
@@ -781,6 +781,11 @@ export function SettingsPage() {
         unknown: t('account.membershipUnknown'),
       }[accountEntitlement.membership]
     : null;
+  const accountSecondaryEntitlements = accountEntitlement
+    ? (accountEntitlement.secondaryEntitlements ?? []).map((entitlement) =>
+        t(`account.secondary.${entitlement}`),
+      )
+    : [];
   const accountExpiryLabel = (() => {
     if (!accountEntitlement) return null;
     if (accountEntitlement.expiresAtMs === null) return t('account.noExpiry');
@@ -1306,6 +1311,12 @@ export function SettingsPage() {
                   <dt>{t('account.expires')}</dt>
                   <dd>{accountExpiryLabel}</dd>
                 </div>
+                {accountSecondaryEntitlements.length > 0 && (
+                  <div>
+                    <dt>{t('account.secondaryEntitlements')}</dt>
+                    <dd>{accountSecondaryEntitlements.join(' · ')}</dd>
+                  </div>
+                )}
               </>
             )}
           </dl>

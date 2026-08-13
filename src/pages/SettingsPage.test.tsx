@@ -37,7 +37,7 @@ function authenticatedSnapshot(
       maskedIdentity: '10******01',
     },
     entitlement: {
-      tier: 'music-vip',
+      tier: 'green-diamond',
       membership: 'active',
       expiresAtMs: 1_800_000_000_000,
       permittedQualities: ['standard'],
@@ -124,7 +124,7 @@ describe('SettingsPage account section', () => {
 
     expect(screen.getByText('Synthetic Listener')).toBeInTheDocument();
     expect(screen.getByText('10******01')).toBeInTheDocument();
-    expect(screen.getByText('Music VIP')).toBeInTheDocument();
+    expect(screen.getByText('Green Diamond')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Synthetic Listener account avatar' })).toHaveAttribute(
       'src',
@@ -135,6 +135,19 @@ describe('SettingsPage account section', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out locally' }));
     await waitFor(() => expect(account.signOut).toHaveBeenCalledOnce());
     await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('guest'));
+  });
+
+  it('renders verified secondary entitlements as understated account metadata', () => {
+    const account = accountProvider();
+    const snapshot = authenticatedSnapshot();
+    if (snapshot.state !== 'authenticated') throw new Error('authenticated fixture expected');
+    snapshot.entitlement.secondaryEntitlements = ['annual-green-diamond', 'family'];
+    useAccountStore.setState({ snapshot });
+
+    renderSettings(account.value);
+
+    expect(screen.getByText('Additional entitlements')).toBeInTheDocument();
+    expect(screen.getByText('Annual Green Diamond · Family entitlement')).toBeInTheDocument();
   });
 
   it('refuses an untrusted avatar origin', () => {

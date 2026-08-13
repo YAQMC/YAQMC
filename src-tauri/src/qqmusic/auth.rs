@@ -2663,6 +2663,7 @@ mod tests {
                 tier: EntitlementTier::Unknown,
                 membership: MembershipState::Unknown,
                 expires_at_ms: None,
+                secondary_entitlements: Vec::new(),
                 permitted_qualities: vec![AudioQuality::Standard],
                 observed_maximum_quality: None,
                 restrictions: Vec::new(),
@@ -4198,7 +4199,7 @@ mod tests {
             Some("https://thirdwx.qlogo.cn/synthetic-avatar.png")
         );
         assert_eq!(validated.profile.masked_identity, "10******01");
-        assert_eq!(validated.entitlement.tier, EntitlementTier::MusicVip);
+        assert_eq!(validated.entitlement.tier, EntitlementTier::GreenDiamond);
         assert_eq!(validated.entitlement.membership, MembershipState::Active);
         assert_eq!(
             validated.entitlement.observed_maximum_quality,

@@ -100,7 +100,7 @@ function authenticatedSnapshot(): AccountSnapshot {
       maskedIdentity: '10******01',
     },
     entitlement: {
-      tier: 'music-vip',
+      tier: 'green-diamond',
       membership: 'active',
       expiresAtMs: null,
       permittedQualities: ['standard'],
