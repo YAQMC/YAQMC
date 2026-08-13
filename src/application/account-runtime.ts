@@ -107,10 +107,13 @@ interface AccountStoreState {
   loadNext: (provider: AccountMusicProvider, resource: AccountListResource) => Promise<void>;
   loadAccountPlaylist: (
     provider: AccountMusicProvider,
-    id: EntityId,
+    playlist: AccountPlaylistSummary,
     reset?: boolean,
   ) => Promise<void>;
-  loadNextAccountPlaylist: (provider: AccountMusicProvider, id: EntityId) => Promise<void>;
+  loadNextAccountPlaylist: (
+    provider: AccountMusicProvider,
+    playlist: AccountPlaylistSummary,
+  ) => Promise<void>;
   setFavorite: (provider: AccountMusicProvider, track: Song, favorite: boolean) => Promise<void>;
   createPlaylist: (
     provider: AccountMusicProvider,
@@ -173,6 +176,12 @@ const libraryGenerations: Record<AccountListResource, number> = {
   recent: 0,
 };
 const accountPlaylistGenerations = new Map<EntityId, number>();
+let favoriteMutationVersion = 0;
+const favoriteMutationVersionByTrackId = new Map<EntityId, number>();
+const favoriteConfirmedGuardByTrackId = new Map<
+  EntityId,
+  { version: number; desired: boolean; track: Song }
+>();
 
 const idleResource = <T>(): LibraryResource<T> => ({ status: 'idle' });
 
@@ -214,6 +223,9 @@ function resourceForSnapshot<T>(snapshot: AccountSnapshot): LibraryResource<T> {
 function libraryResetForSnapshot(snapshot: AccountSnapshot) {
   invalidateLibraryRequests();
   accountPlaylistGenerations.clear();
+  favoriteMutationVersion = 0;
+  favoriteMutationVersionByTrackId.clear();
+  favoriteConfirmedGuardByTrackId.clear();
   return {
     favorites: resourceForSnapshot<Song[]>(snapshot),
     playlists: resourceForSnapshot<AccountPlaylistSummary[]>(snapshot),
@@ -389,6 +401,17 @@ function reconcileOwnershipTimers(provider: AccountMusicProvider): void {
   }, 2_000);
 }
 
+function hydrateAuthenticatedFavoriteAuthority(provider: AccountMusicProvider): void {
+  const state = useAccountStore.getState();
+  if (
+    state.snapshot.state === 'authenticated' &&
+    state.snapshot.capabilities.favoriteRead &&
+    state.favorites.status === 'idle'
+  ) {
+    void state.loadFavorites(provider, true);
+  }
+}
+
 async function runSnapshotRequest(
   provider: AccountMusicProvider,
   request: (signal?: AbortSignal) => Promise<AccountSnapshot>,
@@ -496,23 +519,59 @@ function mergeFirstSeen<T>(base: T[], incoming: T[], keyOf: (item: T) => EntityI
   return merged;
 }
 
-function projectFavoritePage(songs: Song[], replace: boolean): void {
+function projectFavoritePage(songs: Song[], replace: boolean, requestVersion: number): void {
+  const returned = new Set(songs.map((song) => song.id));
   useAccountStore.setState((state) => {
-    const favoriteByTrackId = replace
-      ? Object.fromEntries(Object.keys(state.favoriteByTrackId).map((id) => [id, false]))
-      : { ...state.favoriteByTrackId };
-    for (const song of songs) favoriteByTrackId[song.id] = true;
+    const favoriteByTrackId = { ...state.favoriteByTrackId };
+    const ids = new Set([...Object.keys(favoriteByTrackId), ...returned]);
+    for (const id of ids) {
+      const guard = favoriteConfirmedGuardByTrackId.get(id);
+      const observed = returned.has(id);
+      if (guard) {
+        favoriteByTrackId[id] = guard.desired;
+        continue;
+      }
+      if ((favoriteMutationVersionByTrackId.get(id) ?? 0) > requestVersion) continue;
+      if (observed) favoriteByTrackId[id] = true;
+      else if (replace) favoriteByTrackId[id] = false;
+    }
     return { favoriteByTrackId };
   });
+}
+
+function reconcileConfirmedFavoriteSongs(songs: Song[]): Song[] {
+  let reconciled = [...songs];
+  for (const [id, guard] of favoriteConfirmedGuardByTrackId) {
+    const observed = reconciled.some((song) => song.id === id);
+    if (observed === guard.desired) {
+      favoriteConfirmedGuardByTrackId.delete(id);
+    } else if (guard.desired) {
+      reconciled = mergeFirstSeen(reconciled, [guard.track], (song) => song.id);
+    } else {
+      reconciled = reconciled.filter((song) => song.id !== id);
+    }
+  }
+  return reconciled;
 }
 
 function confirmedFavoritesResource(
   resource: LibraryResource<Song[]>,
   track: Song,
   favorite: boolean,
+  authRevision: number,
 ): LibraryResource<Song[]> {
   const data = loadedData(resource);
-  if (!data) return resource;
+  if (!data) {
+    if (!favorite) return resource.status === 'empty' ? resource : { status: 'empty' };
+    return {
+      status: 'ready',
+      data: [track],
+      nextCursor: null,
+      total: 1,
+      fetchedAtMs: Date.now(),
+      authRevision,
+    };
+  }
   const nextData = favorite
     ? mergeFirstSeen(data, [track], (song) => song.id)
     : data.filter((song) => song.id !== track.id);
@@ -540,8 +599,16 @@ function classifyLibraryFailure(
     return 'reauthentication-required';
   }
   if (code === 'offline' || code === 'timeout' || code === 'rate-limited') return 'network';
-  if (code === 'schema-changed' || code === 'malformed-response') return 'protocol';
-  if (code === 'unsupported-operation') return 'unsupported';
+  if (
+    code === 'schema-changed' ||
+    code === 'malformed-response' ||
+    code === 'invalid-playlist-identifier'
+  ) {
+    return 'protocol';
+  }
+  if (code === 'unsupported-operation' || code === 'unsupported-account-collection') {
+    return 'unsupported';
+  }
   return 'unknown';
 }
 
@@ -594,6 +661,7 @@ async function loadPagedList<T>(options: {
   if (!reset && requestedCursor === null) return;
   const revision = snapshot.revision;
   const generation = ++libraryGenerations[resource];
+  const favoriteVersionAtRequest = favoriteMutationVersion;
   publishListResource(resource, {
     status: 'loading',
     data: visibleData.length > 0 ? visibleData : null,
@@ -609,7 +677,10 @@ async function loadPagedList<T>(options: {
     ) {
       return;
     }
-    const data = mergeFirstSeen(previousData, page.items, keyOf);
+    let data = mergeFirstSeen(previousData, page.items, keyOf);
+    if (resource === 'favorites') {
+      data = reconcileConfirmedFavoriteSongs(data as Song[]) as T[];
+    }
     if (data.length === 0 && page.nextCursor === null) {
       publishListResource(resource, { status: 'empty' });
     } else if (page.stale) {
@@ -631,7 +702,7 @@ async function loadPagedList<T>(options: {
       });
     }
     if (resource === 'favorites') {
-      projectFavoritePage(data as Song[], page.nextCursor === null);
+      projectFavoritePage(data as Song[], page.nextCursor === null, favoriteVersionAtRequest);
     }
   } catch (error) {
     if (!canCommitListResult(resource, generation, revision, requestedCursor)) return;
@@ -679,9 +750,10 @@ function canCommitAccountPlaylist(
 
 async function loadAccountPlaylistResource(
   provider: AccountMusicProvider,
-  id: EntityId,
+  playlist: AccountPlaylistSummary,
   reset: boolean,
 ): Promise<void> {
+  const id = playlist.id;
   const snapshot = useAccountStore.getState().snapshot;
   if (snapshot.state !== 'authenticated') {
     setAccountPlaylistResource(id, resourceForSnapshot(snapshot));
@@ -703,6 +775,7 @@ async function loadAccountPlaylistResource(
   const requestedCursor = reset ? null : nextCursor(previous);
   if (!reset && requestedCursor === null) return;
   const revision = snapshot.revision;
+  const favoriteRequestVersion = favoriteMutationVersion;
   const generation = (accountPlaylistGenerations.get(id) ?? 0) + 1;
   accountPlaylistGenerations.set(id, generation);
   setAccountPlaylistResource(id, {
@@ -714,7 +787,7 @@ async function loadAccountPlaylistResource(
 
   try {
     const detail = await provider.getAccountPlaylistTracks(
-      id,
+      playlist,
       requestedCursor ?? undefined,
       100,
       runtimeSignal(provider),
@@ -724,6 +797,9 @@ async function loadAccountPlaylistResource(
       detail.tracks.authRevision !== revision
     ) {
       return;
+    }
+    if (detail.summary.ownership === 'favorite') {
+      projectFavoritePage(detail.tracks.items, false, favoriteRequestVersion);
     }
     const tracks = mergeFirstSeen(
       mergeBase?.tracks.items ?? [],
@@ -917,9 +993,10 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     if (resource === 'playlists') return get().loadPlaylists(provider, false);
     return get().loadRecent(provider, false);
   },
-  loadAccountPlaylist: (provider, id, reset = true) =>
-    loadAccountPlaylistResource(provider, id, reset),
-  loadNextAccountPlaylist: (provider, id) => loadAccountPlaylistResource(provider, id, false),
+  loadAccountPlaylist: (provider, playlist, reset = true) =>
+    loadAccountPlaylistResource(provider, playlist, reset),
+  loadNextAccountPlaylist: (provider, playlist) =>
+    loadAccountPlaylistResource(provider, playlist, false),
   setFavorite: async (provider, track, favorite) => {
     const initial = get();
     if (initial.snapshot.state !== 'authenticated') {
@@ -935,6 +1012,13 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     const revision = initial.snapshot.revision;
     const previous = initial.favoriteByTrackId[track.id] ?? track.isFavorite;
     const operationId = mutationOperationId('favorite');
+    const mutationVersion = ++favoriteMutationVersion;
+    favoriteMutationVersionByTrackId.set(track.id, mutationVersion);
+    favoriteConfirmedGuardByTrackId.set(track.id, {
+      version: mutationVersion,
+      desired: favorite,
+      track,
+    });
     set((state) => ({
       favoriteByTrackId: { ...state.favoriteByTrackId, [track.id]: favorite },
       favoritePendingByTrackId: {
@@ -963,6 +1047,9 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
         return;
       }
       const failure = classifyLibraryFailure(error);
+      if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
+        favoriteConfirmedGuardByTrackId.delete(track.id);
+      }
       set({
         favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: previous },
         favoritePendingByTrackId: pending,
@@ -995,6 +1082,9 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     }
 
     if (result.status === 'rejected') {
+      if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
+        favoriteConfirmedGuardByTrackId.delete(track.id);
+      }
       set({
         favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: previous },
         favoritePendingByTrackId: pending,
@@ -1003,6 +1093,9 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       return;
     }
     if (result.status === 'outcome-unknown') {
+      if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
+        favoriteConfirmedGuardByTrackId.delete(track.id);
+      }
       set({
         favoritePendingByTrackId: pending,
         mutationMessage: FAVORITE_OUTCOME_UNKNOWN_MESSAGE,
@@ -1010,10 +1103,22 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       void get().loadFavorites(provider, true);
       return;
     }
+    if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
+      favoriteConfirmedGuardByTrackId.set(track.id, {
+        version: mutationVersion,
+        desired: result.favorite,
+        track,
+      });
+    }
     set({
       favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: result.favorite },
       favoritePendingByTrackId: pending,
-      favorites: confirmedFavoritesResource(current.favorites, track, result.favorite),
+      favorites: confirmedFavoritesResource(
+        current.favorites,
+        track,
+        result.favorite,
+        result.authRevision,
+      ),
       mutationMessage: result.status === 'reconciled' ? FAVORITE_RECONCILED_MESSAGE : null,
     });
   },
@@ -1131,6 +1236,10 @@ function restorePlaylistEntity(
 function collectedSummaryFromPlaylist(playlist: Playlist): AccountPlaylistSummary {
   return {
     id: playlist.id,
+    reference: {
+      kind: 'collected',
+      tid: playlist.id.replace(/^qqmusic:playlist:/, ''),
+    },
     title: playlist.title,
     description: playlist.description,
     owner: playlist.owner,
@@ -1422,7 +1531,7 @@ async function runEntityPlaylistMutation({
       },
     });
     if (operation === 'delete') void current.loadPlaylists(provider, true);
-    else void current.loadAccountPlaylist(provider, playlist.id, true);
+    else void current.loadAccountPlaylist(provider, playlist, true);
     return result;
   }
   useAccountStore.setState((state) => {
@@ -1637,7 +1746,7 @@ export async function runTemporaryPlaylistAcceptance(
     });
     requireAcceptedPlaylistMutation(add, 'add');
 
-    const detail = await provider.getAccountPlaylistTracks(created.id, undefined, 100);
+    const detail = await provider.getAccountPlaylistTracks(created, undefined, 100);
     if (
       !isTemporaryPlaylist(detail.summary, created.id) ||
       !detail.tracks.items.some((track) => track.id === knownTrack.id)
@@ -1700,11 +1809,15 @@ export function useAccountRuntime(provider: MusicProvider): void {
     const controller = new AbortController();
     runtimeProvider = provider;
     runtimeAbortController = controller;
-    const unsubscribe = useAccountStore.subscribe(() => reconcileOwnershipTimers(provider));
+    const unsubscribe = useAccountStore.subscribe(() => {
+      reconcileOwnershipTimers(provider);
+      hydrateAuthenticatedFavoriteAuthority(provider);
+    });
     const release = () => disposeOwnership(provider);
     window.addEventListener('pagehide', release);
     void useAccountStore.getState().refreshSnapshot(provider);
     reconcileOwnershipTimers(provider);
+    hydrateAuthenticatedFavoriteAuthority(provider);
 
     return () => {
       window.removeEventListener('pagehide', release);
@@ -1733,6 +1846,9 @@ export function resetAccountRuntimeForTest(): void {
   runtimeProvider = null;
   blockedAttempts.clear();
   cancellationRequests.clear();
+  favoriteMutationVersion = 0;
+  favoriteMutationVersionByTrackId.clear();
+  favoriteConfirmedGuardByTrackId.clear();
   useAccountStore.setState({
     snapshot: initialSnapshot,
     displayedQrImageDataUri: null,

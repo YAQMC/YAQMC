@@ -6,13 +6,21 @@ import { initialPlayerState, usePlayerStore } from './player-store';
 
 interface TestNativeSnapshot {
   queue: Song[];
+  queueEntries?: Array<{ id: string; track: Song }>;
   currentIndex: number | null;
+  currentQueueEntryId?: string | null;
   positionMs: number;
   isPlaying: boolean;
   volume: number;
   isMuted: boolean;
   repeat: 'off' | 'all' | 'one';
+  playbackOrder?: 'sequential' | 'shuffle';
   shuffle: boolean;
+  shuffleTraversal?: string[];
+  shuffleCursor?: number;
+  playbackHistory?: string[];
+  historyCursor?: number;
+  upcomingQueueEntryIds?: string[];
   playbackState: 'playing' | 'paused';
   playbackDurationMs: number | null;
   playbackError: null;
@@ -153,5 +161,64 @@ describe('native player runtime', () => {
         quality: 'master',
       }),
     );
+  });
+
+  it('projects authoritative queue entry identity and playback order', async () => {
+    const one = track('one');
+    const two = track('two');
+    nativeMocks.invoke.mockResolvedValue({
+      ...snapshot('ignored', 2_000),
+      queue: [one, two],
+      queueEntries: [
+        { id: 'queue-one', track: one },
+        { id: 'queue-two', track: two },
+      ],
+      currentQueueEntryId: 'queue-one',
+      playbackOrder: 'shuffle',
+      shuffle: true,
+      shuffleTraversal: ['queue-one', 'queue-two'],
+      shuffleCursor: 0,
+      playbackHistory: ['queue-one'],
+      historyCursor: 0,
+      upcomingQueueEntryIds: ['queue-two'],
+    } satisfies TestNativeSnapshot);
+    render(createElement(RuntimeHarness));
+
+    await waitFor(() => expect(usePlayerStore.getState().playbackOrder).toBe('shuffle'));
+    expect(usePlayerStore.getState()).toMatchObject({
+      currentQueueEntryId: 'queue-one',
+      upcomingQueueEntryIds: ['queue-two'],
+    });
+  });
+
+  it.each([
+    ['playQueueEntry', 'player_play_queue_entry', { entryId: 'queue-two' }],
+    ['playNextQueueEntry', 'player_play_next_queue_entry', { entryId: 'queue-two' }],
+    ['removeQueueEntry', 'player_remove_queue_entry', { entryId: 'queue-two' }],
+    ['reorderQueueEntry', 'player_reorder_queue_entry', { entryId: 'queue-two', targetIndex: 0 }],
+  ] as const)('maps %s to the identity-based native command', async (action, command, args) => {
+    nativeMocks.invoke.mockResolvedValue(snapshot('current', 2_000));
+    render(createElement(RuntimeHarness));
+    await waitFor(() => expect(nativeMocks.snapshotHandler).not.toBeNull());
+    const one = track('one');
+    const two = track('two');
+    usePlayerStore.setState({
+      queue: [one, two],
+      queueEntries: [
+        { id: 'queue-one', track: one },
+        { id: 'queue-two', track: two },
+      ],
+      currentIndex: 0,
+      currentQueueEntryId: 'queue-one',
+    });
+    nativeMocks.invoke.mockClear();
+
+    if (action === 'reorderQueueEntry') {
+      usePlayerStore.getState().reorderQueueEntry('queue-two', 0);
+    } else {
+      usePlayerStore.getState()[action]('queue-two');
+    }
+
+    await waitFor(() => expect(nativeMocks.invoke).toHaveBeenCalledWith(command, args));
   });
 });

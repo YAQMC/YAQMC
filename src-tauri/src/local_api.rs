@@ -557,7 +557,9 @@ impl ApiError {
             PlayerError::EmptyQueue => {
                 Self::new(StatusCode::CONFLICT, "empty_queue", error.to_string())
             }
-            PlayerError::IndexOutOfRange(_) | PlayerError::InvalidVolume => Self::new(
+            PlayerError::IndexOutOfRange(_)
+            | PlayerError::QueueEntryNotFound(_)
+            | PlayerError::InvalidVolume => Self::new(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "invalid_parameter",
                 error.to_string(),
@@ -865,6 +867,79 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(invalid_volume.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn queue_and_player_endpoints_expose_identity_order_and_reversible_shuffle() {
+        let player = Arc::new(PlayerService::new());
+        let initial = player
+            .hydrate_queue(vec![
+                song("one", 10_000),
+                song("duplicate", 10_000),
+                song("duplicate", 10_000),
+                song("four", 10_000),
+            ])
+            .await;
+        let moved = initial.queue_entries[2].id.clone();
+        player
+            .reorder_queue_entry(&moved, 1)
+            .await
+            .expect("queue reorder succeeds");
+        let router = build_router(Arc::clone(&player), "secret".to_owned());
+
+        let queue_response = router
+            .clone()
+            .oneshot(
+                authorization(Request::get("/v1/player/queue"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let queue = response_json(queue_response).await;
+        assert_eq!(queue["entries"][1]["id"], moved);
+        assert_ne!(queue["entries"][1]["id"], queue["entries"][2]["id"]);
+        assert_eq!(queue["playbackOrder"], "sequential");
+
+        let shuffled = router
+            .clone()
+            .oneshot(
+                authorization(Request::put("/v1/player/shuffle"))
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/json"),
+                    )
+                    .body(Body::from(r#"{"enabled":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let shuffled = response_json(shuffled).await;
+        assert_eq!(shuffled["playbackOrder"], "shuffle");
+        assert_eq!(shuffled["shuffle"], true);
+        assert_eq!(
+            shuffled["shuffleTraversal"].as_array().map(Vec::len),
+            Some(4)
+        );
+
+        let sequential = router
+            .oneshot(
+                authorization(Request::put("/v1/player/shuffle"))
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/json"),
+                    )
+                    .body(Body::from(r#"{"enabled":false}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let sequential = response_json(sequential).await;
+        assert_eq!(sequential["playbackOrder"], "sequential");
+        assert_eq!(sequential["shuffle"], false);
+        assert!(sequential["shuffleTraversal"]
+            .as_array()
+            .is_some_and(Vec::is_empty));
     }
 
     #[tokio::test]

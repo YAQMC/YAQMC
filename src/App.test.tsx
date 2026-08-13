@@ -46,12 +46,19 @@ vi.mock('./components/Sidebar', () => ({
   Sidebar: ({ route, onNavigate }: { route: AppRoute; onNavigate: (route: AppRoute) => void }) => (
     <aside>
       <output data-testid="active-route">{route.page}</output>
+      <output data-testid="active-playlist-reference">
+        {route.page === 'account-playlist'
+          ? `${route.playlist.reference.kind}:${'tid' in route.playlist.reference ? route.playlist.reference.tid : route.playlist.reference.dirId}`
+          : ''}
+      </output>
       <button type="button" onClick={() => onNavigate({ page: 'search' })}>
         Navigate to search
       </button>
       <button
         type="button"
-        onClick={() => onNavigate({ page: 'account-playlist', id: 'account-playlist-a' })}
+        onClick={() =>
+          onNavigate({ page: 'account-playlist', playlist: accountPlaylistDetail().summary })
+        }
       >
         Navigate to account playlist
       </button>
@@ -110,6 +117,7 @@ function accountPlaylistDetail(): AccountPlaylistDetail {
   return {
     summary: {
       id: 'account-playlist-a',
+      reference: { kind: 'owned', tid: 'account-playlist-a', dirId: 3001 },
       title: 'Private synthetic playlist',
       description: playlist.description,
       owner: { id: 'account-owner', displayName: 'Synthetic Listener' },
@@ -278,7 +286,7 @@ describe('App TopBar history navigation', () => {
 
     await waitFor(() =>
       expect(account.getAccountPlaylistTracks).toHaveBeenCalledWith(
-        'account-playlist-a',
+        accountPlaylistDetail().summary,
         undefined,
         100,
         undefined,
@@ -288,5 +296,21 @@ describe('App TopBar history navigation', () => {
     expect(
       await screen.findByRole('heading', { name: 'Private synthetic playlist' }),
     ).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to search' }));
+    await waitFor(() => expect(screen.getByTestId('active-route')).toHaveTextContent('search'));
+    fireEvent.click(screen.getByTitle('Go back'));
+    await waitFor(() =>
+      expect(screen.getByTestId('active-playlist-reference')).toHaveTextContent(
+        'owned:account-playlist-a',
+      ),
+    );
+    expect(account.getAccountPlaylistTracks).toHaveBeenCalledTimes(2);
+    expect(account.getAccountPlaylistTracks).toHaveBeenLastCalledWith(
+      accountPlaylistDetail().summary,
+      undefined,
+      100,
+      undefined,
+    );
   });
 });

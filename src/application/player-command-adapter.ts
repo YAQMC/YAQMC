@@ -4,6 +4,8 @@ export type PlayerCommand =
   | { type: 'hydrateQueue'; tracks: Song[] }
   | { type: 'playTracks'; tracks: Song[]; startAtId?: EntityId; shuffle?: boolean }
   | { type: 'playFromQueue'; index: number }
+  | { type: 'playQueueEntry'; entryId: string }
+  | { type: 'playNextQueueEntry'; entryId: string }
   | { type: 'togglePlayback' }
   | { type: 'next' }
   | { type: 'previous' }
@@ -16,7 +18,9 @@ export type PlayerCommand =
   | { type: 'cycleRepeat' }
   | { type: 'addToQueue'; song: Song }
   | { type: 'addTracksToQueue'; tracks: Song[] }
-  | { type: 'removeFromQueue'; index: number };
+  | { type: 'removeFromQueue'; index: number }
+  | { type: 'removeQueueEntry'; entryId: string }
+  | { type: 'reorderQueueEntry'; entryId: string; targetIndex: number };
 
 export type PlayerCommandAdapter = (command: PlayerCommand) => Promise<void>;
 

@@ -154,6 +154,111 @@ describe('player store', () => {
     expect(commands).toEqual([{ type: 'playTracks', tracks, startAtId: undefined, shuffle: true }]);
   });
 
+  it('toggles a stable shuffle traversal back to canonical sequential order', () => {
+    usePlayerStore
+      .getState()
+      .playTracks([track('one'), track('two'), track('three'), track('four')], 'two');
+    const before = usePlayerStore.getState();
+    const currentEntryId = before.currentQueueEntryId;
+
+    usePlayerStore.getState().toggleShuffle();
+    const shuffled = usePlayerStore.getState();
+
+    expect(shuffled).toMatchObject({
+      playbackOrder: 'shuffle',
+      shuffle: true,
+      currentQueueEntryId: currentEntryId,
+      currentIndex: 1,
+    });
+    expect(shuffled.shuffleTraversal).toHaveLength(4);
+    expect(new Set(shuffled.shuffleTraversal)).toEqual(
+      new Set(shuffled.queueEntries.map((entry) => entry.id)),
+    );
+    expect(shuffled.upcomingQueueEntryIds).toEqual(shuffled.shuffleTraversal.slice(1));
+
+    usePlayerStore.getState().toggleShuffle();
+    expect(usePlayerStore.getState()).toMatchObject({
+      playbackOrder: 'sequential',
+      shuffle: false,
+      currentQueueEntryId: currentEntryId,
+      currentIndex: 1,
+      upcomingQueueEntryIds: before.queueEntries.slice(2).map((entry) => entry.id),
+    });
+  });
+
+  it('uses shuffle history for Previous and canonical Next after shuffle is disabled', () => {
+    usePlayerStore
+      .getState()
+      .playTracks([track('one'), track('two'), track('three'), track('four')], 'two', true);
+    const firstId = usePlayerStore.getState().currentQueueEntryId;
+
+    usePlayerStore.getState().next();
+    const secondId = usePlayerStore.getState().currentQueueEntryId;
+    expect(secondId).not.toBe(firstId);
+    usePlayerStore.getState().previous();
+    expect(usePlayerStore.getState().currentQueueEntryId).toBe(firstId);
+
+    usePlayerStore.getState().next();
+    const currentId = usePlayerStore.getState().currentQueueEntryId;
+    usePlayerStore.getState().setShuffle(false);
+    const canonicalIndex = usePlayerStore
+      .getState()
+      .queueEntries.findIndex((entry) => entry.id === currentId);
+    usePlayerStore.getState().next();
+    const after = usePlayerStore.getState();
+    const expectedIndex = Math.min(canonicalIndex + 1, after.queueEntries.length - 1);
+    expect(after.currentQueueEntryId).toBe(after.queueEntries[expectedIndex]?.id);
+  });
+
+  it('keeps duplicate songs as uniquely addressable queue entries during reorder', () => {
+    usePlayerStore
+      .getState()
+      .playTracks([track('duplicate'), track('middle'), track('duplicate'), track('last')]);
+    const original = usePlayerStore.getState();
+    const firstDuplicate = original.queueEntries[0]!;
+    const secondDuplicate = original.queueEntries[2]!;
+    expect(firstDuplicate.id).not.toBe(secondDuplicate.id);
+
+    usePlayerStore.getState().reorderQueueEntry(secondDuplicate.id, 1);
+    const reordered = usePlayerStore.getState();
+    expect(reordered.queueEntries.map((entry) => entry.id)).toEqual([
+      firstDuplicate.id,
+      secondDuplicate.id,
+      original.queueEntries[1]!.id,
+      original.queueEntries[3]!.id,
+    ]);
+    expect(reordered.currentQueueEntryId).toBe(firstDuplicate.id);
+  });
+
+  it('sends identity-based queue actions through the native adapter', () => {
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    const queueEntries = [
+      { id: 'entry-a', track: track('one') },
+      { id: 'entry-b', track: track('two') },
+    ];
+    usePlayerStore.setState({
+      queue: queueEntries.map((entry) => entry.track),
+      queueEntries,
+      currentIndex: 0,
+      currentQueueEntryId: 'entry-a',
+    });
+
+    usePlayerStore.getState().playQueueEntry('entry-b');
+    usePlayerStore.getState().playNextQueueEntry('entry-b');
+    usePlayerStore.getState().removeQueueEntry('entry-b');
+    usePlayerStore.getState().reorderQueueEntry('entry-b', 0);
+
+    expect(commands).toEqual([
+      { type: 'playQueueEntry', entryId: 'entry-b' },
+      { type: 'playNextQueueEntry', entryId: 'entry-b' },
+      { type: 'removeQueueEntry', entryId: 'entry-b' },
+      { type: 'reorderQueueEntry', entryId: 'entry-b', targetIndex: 0 },
+    ]);
+  });
+
   it('appends multiple tracks in one queue mutation', () => {
     usePlayerStore.setState({ queue: [track('zero')], currentIndex: 0 });
     usePlayerStore.getState().addTracksToQueue([track('one'), track('two')]);

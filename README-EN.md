@@ -59,9 +59,8 @@ Wayland—so the x86_64 AppImage also ships with the diagnostics and acceptance 
 ## Current status
 
 The guest catalog, native playback, lyric surfaces, account session restore, profile projection, and authenticated
-home catalog have deterministic coverage and local native validation. Account reads and mutations are implemented,
-but release notes must keep live favorite/playlist acceptance explicitly pending until the owner-controlled gate has
-been run against an appropriate account.
+home catalog have deterministic coverage and local native validation. Account reads and mutations are implemented;
+live favorite/playlist acceptance is recorded separately from deterministic coverage.
 
 QMC/MFLAC decryption and random seeking have passed an external-sample acceptance test. Live Master-source
 resolution still requires QQ Music to issue a URL and ekey for the active account. YAQMC does not implement or
@@ -190,6 +189,5 @@ complete, carefully scoped credits—including the no-source-reuse boundary for 
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 > [!NOTE]
-> The repository does not yet have a project license. Public source visibility does not itself grant permission to
-> copy, modify, or redistribute the project. The maintainer must choose a license before the public launch and
-> before accepting outside contributions.
+> The repository currently has no project license. Public source visibility does not itself grant permission to copy,
+> modify, or redistribute the project.

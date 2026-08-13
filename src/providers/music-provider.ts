@@ -54,7 +54,7 @@ export interface AccountMusicProvider {
     signal?: AbortSignal,
   ): Promise<Page<AccountPlaylistSummary>>;
   getAccountPlaylistTracks(
-    id: EntityId,
+    playlist: AccountPlaylistSummary,
     cursor?: string,
     limit?: number,
     signal?: AbortSignal,

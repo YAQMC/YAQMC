@@ -147,6 +147,7 @@ pub fn run() {
             ));
             let player = Arc::new(PlayerService::with_runtime(audio, resolver, preparer));
             if let Ok(Some(snapshot)) = storage.load_queue::<PlayerSnapshot>() {
+                tauri::async_runtime::block_on(qq_music.remember_songs(&snapshot.queue));
                 tauri::async_runtime::block_on(player.restore(snapshot));
             }
             let config_path = app.path().app_config_dir()?.join("local-api.json");
@@ -308,6 +309,7 @@ pub fn run() {
             commands::player_hydrate_queue,
             commands::player_play_tracks,
             commands::player_play_from_queue,
+            commands::player_play_queue_entry,
             commands::player_play,
             commands::player_pause,
             commands::player_toggle,
@@ -322,6 +324,9 @@ pub fn run() {
             commands::player_add_to_queue,
             commands::player_add_tracks_to_queue,
             commands::player_remove_from_queue,
+            commands::player_remove_queue_entry,
+            commands::player_reorder_queue_entry,
+            commands::player_play_next_queue_entry,
             commands::player_set_lyrics,
             commands::player_lyrics,
             commands::lyrics_surface_projection,
@@ -385,6 +390,18 @@ mod account_owner_lifecycle_tests {
 
 #[cfg(test)]
 mod handler_registration_tests {
+    #[test]
+    fn restored_queue_rehydrates_provider_track_references_before_player_restore() {
+        let source = include_str!("lib.rs");
+        let remember = source
+            .find("qq_music.remember_songs(&snapshot.queue)")
+            .expect("restored queue provider-reference hydration");
+        let restore = source
+            .find("player.restore(snapshot)")
+            .expect("player queue restoration");
+        assert!(remember < restore);
+    }
+
     #[test]
     fn account_mutation_commands_are_registered_exactly_once() {
         let source = include_str!("lib.rs");

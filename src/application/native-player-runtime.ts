@@ -7,19 +7,29 @@ import {
   usePlayerStore,
   type AuthoritativePlayerSnapshot,
   type PlaybackFailure,
+  type PlaybackOrder,
   type PlaybackState,
+  type QueueEntry,
   type RepeatMode,
 } from './player-store';
 
 interface NativePlayerSnapshot {
   queue: Song[];
+  queueEntries: QueueEntry[];
   currentIndex: number | null;
+  currentQueueEntryId: string | null;
   positionMs: number;
   isPlaying: boolean;
   volume: number;
   isMuted: boolean;
   repeat: RepeatMode;
+  playbackOrder: PlaybackOrder;
   shuffle: boolean;
+  shuffleTraversal: string[];
+  shuffleCursor: number;
+  playbackHistory: string[];
+  historyCursor: number;
+  upcomingQueueEntryIds: string[];
   playbackState: PlaybackState;
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
@@ -52,6 +62,12 @@ async function invokePlayerCommand(command: PlayerCommand): Promise<void> {
       return;
     case 'playFromQueue':
       await invoke('player_play_from_queue', { index: command.index });
+      return;
+    case 'playQueueEntry':
+      await invoke('player_play_queue_entry', { entryId: command.entryId });
+      return;
+    case 'playNextQueueEntry':
+      await invoke('player_play_next_queue_entry', { entryId: command.entryId });
       return;
     case 'togglePlayback':
       await invoke('player_toggle');
@@ -91,6 +107,15 @@ async function invokePlayerCommand(command: PlayerCommand): Promise<void> {
       return;
     case 'removeFromQueue':
       await invoke('player_remove_from_queue', { index: command.index });
+      return;
+    case 'removeQueueEntry':
+      await invoke('player_remove_queue_entry', { entryId: command.entryId });
+      return;
+    case 'reorderQueueEntry':
+      await invoke('player_reorder_queue_entry', {
+        entryId: command.entryId,
+        targetIndex: command.targetIndex,
+      });
   }
 }
 

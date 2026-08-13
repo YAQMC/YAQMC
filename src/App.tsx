@@ -180,7 +180,7 @@ export default function App() {
     } else if (route.page === 'account-recent') {
       void loadRecent(accountProvider, true);
     } else if (route.page === 'account-playlist') {
-      void loadAccountPlaylist(accountProvider, route.id, true);
+      void loadAccountPlaylist(accountProvider, route.playlist, true);
     }
   }, [
     accountProvider,
@@ -340,13 +340,13 @@ export default function App() {
   } else if (route.page === 'account-playlist') {
     pageContent = (
       <AccountPlaylistRoute
-        id={route.id}
-        resource={accountPlaylistDetails[route.id] ?? { status: 'idle' }}
+        id={route.playlist.id}
+        resource={accountPlaylistDetails[route.playlist.id] ?? { status: 'idle' }}
         onRetry={() => {
-          if (accountProvider) void loadAccountPlaylist(accountProvider, route.id, true);
+          if (accountProvider) void loadAccountPlaylist(accountProvider, route.playlist, true);
         }}
         onLoadMore={() => {
-          if (accountProvider) void loadNextAccountPlaylist(accountProvider, route.id);
+          if (accountProvider) void loadNextAccountPlaylist(accountProvider, route.playlist);
         }}
         onDeleted={() => navigate({ page: 'account-playlists' })}
       />
@@ -407,7 +407,12 @@ export default function App() {
             onSearch={() => navigate({ page: 'search' })}
             onToggleTheme={toggleTheme}
           />
-          <main className="main-content" key={route.page + ('id' in route ? route.id : '')}>
+          <main
+            className="main-content"
+            key={
+              route.page + ('id' in route ? route.id : 'playlist' in route ? route.playlist.id : '')
+            }
+          >
             {pageContent}
           </main>
         </div>

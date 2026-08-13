@@ -8,6 +8,11 @@ import type {
 import { dispatchPlayerCommand } from './player-command-adapter';
 
 export type RepeatMode = 'off' | 'all' | 'one';
+export type PlaybackOrder = 'sequential' | 'shuffle';
+export interface QueueEntry {
+  id: string;
+  track: Song;
+}
 export type PlaybackState =
   | 'idle'
   | 'loading'
@@ -27,13 +32,21 @@ export interface PlaybackFailure {
 
 export interface PlayerState {
   queue: Song[];
+  queueEntries: QueueEntry[];
   currentIndex: number;
+  currentQueueEntryId: string | null;
   positionMs: number;
   isPlaying: boolean;
   volume: number;
   isMuted: boolean;
   repeat: RepeatMode;
+  playbackOrder: PlaybackOrder;
   shuffle: boolean;
+  shuffleTraversal: string[];
+  shuffleCursor: number;
+  playbackHistory: string[];
+  historyCursor: number;
+  upcomingQueueEntryIds: string[];
   playbackState: PlaybackState;
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
@@ -48,6 +61,8 @@ interface PlayerActions {
   hydrateQueue: (tracks: Song[]) => void;
   playTracks: (tracks: Song[], startAtId?: EntityId, shuffle?: boolean) => void;
   playFromQueue: (index: number) => void;
+  playQueueEntry: (entryId: string) => void;
+  playNextQueueEntry: (entryId: string) => void;
   togglePlayback: () => void;
   next: () => void;
   previous: () => void;
@@ -66,6 +81,8 @@ interface PlayerActions {
   addToQueue: (song: Song) => void;
   addTracksToQueue: (tracks: Song[]) => void;
   removeFromQueue: (index: number) => void;
+  removeQueueEntry: (entryId: string) => void;
+  reorderQueueEntry: (entryId: string, targetIndex: number) => void;
   applyExternalSnapshot: (snapshot: AuthoritativePlayerSnapshot) => void;
 }
 
@@ -73,13 +90,21 @@ export type PlayerStore = PlayerState & PlayerActions;
 
 export interface AuthoritativePlayerSnapshot {
   queue: Song[];
+  queueEntries?: QueueEntry[];
   currentIndex: number;
+  currentQueueEntryId?: string | null;
   positionMs: number;
   isPlaying: boolean;
   volume: number;
   isMuted: boolean;
   repeat: RepeatMode;
+  playbackOrder?: PlaybackOrder;
   shuffle: boolean;
+  shuffleTraversal?: string[];
+  shuffleCursor?: number;
+  playbackHistory?: string[];
+  historyCursor?: number;
+  upcomingQueueEntryIds?: string[];
   playbackState: PlaybackState;
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
@@ -88,13 +113,21 @@ export interface AuthoritativePlayerSnapshot {
 
 export const initialPlayerState: PlayerState = {
   queue: [],
+  queueEntries: [],
   currentIndex: -1,
+  currentQueueEntryId: null,
   positionMs: 0,
   isPlaying: false,
   volume: 0.72,
   isMuted: false,
   repeat: 'off',
+  playbackOrder: 'sequential',
   shuffle: false,
+  shuffleTraversal: [],
+  shuffleCursor: 0,
+  playbackHistory: [],
+  historyCursor: 0,
+  upcomingQueueEntryIds: [],
   playbackState: 'idle',
   playbackDurationMs: null,
   playbackError: null,
@@ -105,16 +138,179 @@ export const initialPlayerState: PlayerState = {
   lyricsOpen: false,
 };
 
-function getNextIndex(state: PlayerState): number {
-  if (state.queue.length === 0) return -1;
-  if (state.shuffle && state.queue.length > 1) {
-    const candidates = state.queue
-      .map((_, index) => index)
-      .filter((index) => index !== state.currentIndex);
-    return candidates[Math.floor(Math.random() * candidates.length)] ?? state.currentIndex;
+let localQueueEntrySequence = 0;
+let localShuffleGeneration = 0;
+
+function newLocalQueueEntry(track: Song): QueueEntry {
+  localQueueEntrySequence += 1;
+  return { id: `local-queue:${localQueueEntrySequence}`, track };
+}
+
+function entriesForTracks(tracks: Song[]): QueueEntry[] {
+  return tracks.map(newLocalQueueEntry);
+}
+
+function indexOfEntry(entries: QueueEntry[], id: string | null): number {
+  return id === null ? -1 : entries.findIndex((entry) => entry.id === id);
+}
+
+function deterministicLocalShuffle(ids: string[]): string[] {
+  localShuffleGeneration += 1;
+  let state = (localShuffleGeneration ^ 0x9e3779b9) >>> 0;
+  for (const id of ids) {
+    for (let index = 0; index < id.length; index += 1) {
+      state ^= id.charCodeAt(index);
+      state = Math.imul(state, 16777619) >>> 0;
+    }
   }
-  if (state.currentIndex < state.queue.length - 1) return state.currentIndex + 1;
-  return state.repeat === 'all' ? 0 : state.currentIndex;
+  const result = [...ids];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    const target = (state >>> 0) % (index + 1);
+    [result[index], result[target]] = [result[target]!, result[index]!];
+  }
+  return result;
+}
+
+function shuffledFromCurrent(entries: QueueEntry[], currentId: string | null): string[] {
+  if (currentId === null) return [];
+  return [
+    currentId,
+    ...deterministicLocalShuffle(
+      entries.filter((entry) => entry.id !== currentId).map((entry) => entry.id),
+    ),
+  ];
+}
+
+function sequentialUpcoming(entries: QueueEntry[], currentIndex: number): string[] {
+  return currentIndex < 0 ? [] : entries.slice(currentIndex + 1).map((entry) => entry.id);
+}
+
+function fallbackOrderState(
+  entries: QueueEntry[],
+  currentId: string | null,
+  playbackOrder: PlaybackOrder,
+): Pick<
+  PlayerState,
+  | 'playbackOrder'
+  | 'shuffle'
+  | 'shuffleTraversal'
+  | 'shuffleCursor'
+  | 'playbackHistory'
+  | 'historyCursor'
+  | 'upcomingQueueEntryIds'
+> {
+  const currentIndex = indexOfEntry(entries, currentId);
+  if (playbackOrder === 'sequential') {
+    return {
+      playbackOrder,
+      shuffle: false,
+      shuffleTraversal: [],
+      shuffleCursor: 0,
+      playbackHistory: [],
+      historyCursor: 0,
+      upcomingQueueEntryIds: sequentialUpcoming(entries, currentIndex),
+    };
+  }
+  const traversal = shuffledFromCurrent(entries, currentId);
+  return {
+    playbackOrder,
+    shuffle: true,
+    shuffleTraversal: traversal,
+    shuffleCursor: 0,
+    playbackHistory: currentId === null ? [] : [currentId],
+    historyCursor: 0,
+    upcomingQueueEntryIds: traversal.slice(1),
+  };
+}
+
+function normalizedEntries(
+  snapshot: AuthoritativePlayerSnapshot,
+  previous: PlayerState,
+): QueueEntry[] {
+  if (
+    snapshot.queueEntries?.length === snapshot.queue.length &&
+    snapshot.queueEntries.every((entry, index) => entry.track.id === snapshot.queue[index]?.id)
+  ) {
+    return snapshot.queueEntries;
+  }
+  if (
+    previous.queueEntries.length === snapshot.queue.length &&
+    previous.queueEntries.every((entry, index) => entry.track.id === snapshot.queue[index]?.id)
+  ) {
+    return previous.queueEntries.map((entry, index) => ({
+      ...entry,
+      track: snapshot.queue[index]!,
+    }));
+  }
+  return entriesForTracks(snapshot.queue);
+}
+
+function localEntries(state: PlayerState): QueueEntry[] {
+  if (
+    state.queueEntries.length === state.queue.length &&
+    state.queueEntries.every((entry, index) => entry.track.id === state.queue[index]?.id)
+  ) {
+    return [...state.queueEntries];
+  }
+  return state.queue.map((track, index) => ({
+    id: `local-legacy:${index}:${track.id}`,
+    track,
+  }));
+}
+
+function localCurrentId(state: PlayerState, entries: QueueEntry[]): string | null {
+  if (indexOfEntry(entries, state.currentQueueEntryId) >= 0) return state.currentQueueEntryId;
+  return entries[state.currentIndex]?.id ?? null;
+}
+
+function getNextTransition(state: PlayerState): {
+  index: number;
+  orderPatch: Partial<PlayerState>;
+  reachedEnd: boolean;
+} {
+  if (state.queueEntries.length === 0 || state.currentQueueEntryId === null) {
+    return { index: -1, orderPatch: {}, reachedEnd: true };
+  }
+  if (state.playbackOrder === 'shuffle') {
+    let traversal = state.shuffleTraversal;
+    let cursor = state.shuffleCursor;
+    let targetId = state.playbackHistory[state.historyCursor + 1];
+    let history = state.playbackHistory;
+    let historyCursor = state.historyCursor;
+    if (!targetId) targetId = traversal[cursor + 1];
+    if (!targetId && state.repeat === 'all') {
+      traversal = shuffledFromCurrent(state.queueEntries, state.currentQueueEntryId);
+      targetId = traversal[1] ?? state.currentQueueEntryId;
+    }
+    if (!targetId) return { index: state.currentIndex, orderPatch: {}, reachedEnd: true };
+    const index = indexOfEntry(state.queueEntries, targetId);
+    if (index < 0) return { index: state.currentIndex, orderPatch: {}, reachedEnd: true };
+    cursor = Math.max(0, traversal.indexOf(targetId));
+    if (history[historyCursor + 1] === targetId) {
+      historyCursor += 1;
+    } else {
+      history = [...history.slice(0, historyCursor + 1), targetId];
+      historyCursor = history.length - 1;
+    }
+    return {
+      index,
+      reachedEnd: false,
+      orderPatch: {
+        shuffleTraversal: traversal,
+        shuffleCursor: cursor,
+        playbackHistory: history,
+        historyCursor,
+        upcomingQueueEntryIds: traversal.slice(cursor + 1),
+      },
+    };
+  }
+  const index = state.currentIndex + 1;
+  if (index < state.queueEntries.length) return { index, orderPatch: {}, reachedEnd: false };
+  if (state.repeat === 'all') return { index: 0, orderPatch: {}, reachedEnd: false };
+  return { index: state.currentIndex, orderPatch: {}, reachedEnd: true };
 }
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
@@ -124,7 +320,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set((state) => {
       if (state.queue.length > 0 || tracks.length === 0) return state;
       if (dispatchPlayerCommand({ type: 'hydrateQueue', tracks })) return state;
-      return { queue: tracks, currentIndex: 0 };
+      const queueEntries = entriesForTracks(tracks);
+      const currentQueueEntryId = queueEntries[0]?.id ?? null;
+      return {
+        queue: tracks,
+        queueEntries,
+        currentIndex: 0,
+        currentQueueEntryId,
+        ...fallbackOrderState(queueEntries, currentQueueEntryId, state.playbackOrder),
+      };
     }),
 
   playTracks: (tracks, startAtId, shuffle) => {
@@ -132,27 +336,39 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (playable.length === 0) return;
     if (dispatchPlayerCommand({ type: 'playTracks', tracks: playable, startAtId, shuffle })) return;
     const requestedIndex = startAtId ? playable.findIndex((track) => track.id === startAtId) : 0;
+    const currentIndex = requestedIndex >= 0 ? requestedIndex : 0;
+    const queueEntries = entriesForTracks(playable);
+    const currentQueueEntryId = queueEntries[currentIndex]?.id ?? null;
+    const playbackOrder =
+      shuffle === undefined ? get().playbackOrder : shuffle ? 'shuffle' : 'sequential';
     set((state) => ({
       queue: playable,
-      currentIndex: requestedIndex >= 0 ? requestedIndex : 0,
+      queueEntries,
+      currentIndex,
+      currentQueueEntryId,
       positionMs: 0,
       isPlaying: true,
       playbackState: 'playing',
-      playbackDurationMs: playable[requestedIndex >= 0 ? requestedIndex : 0]?.durationMs ?? null,
+      playbackDurationMs: playable[currentIndex]?.durationMs ?? null,
       playbackError: null,
       sourceSelection: null,
       observedAtMs: performance.now(),
       timelineRevision: state.timelineRevision + 1,
-      ...(shuffle === undefined ? {} : { shuffle }),
+      ...fallbackOrderState(queueEntries, currentQueueEntryId, playbackOrder),
     }));
   },
 
   playFromQueue: (index) => {
-    const { queue } = get();
+    const state = get();
+    const { queue } = state;
     if (index < 0 || index >= queue.length) return;
     if (dispatchPlayerCommand({ type: 'playFromQueue', index })) return;
+    const queueEntries = localEntries(state);
+    const currentQueueEntryId = queueEntries[index]?.id ?? null;
     set((state) => ({
+      queueEntries,
       currentIndex: index,
+      currentQueueEntryId,
       positionMs: 0,
       isPlaying: true,
       playbackState: 'playing',
@@ -161,7 +377,45 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       sourceSelection: null,
       observedAtMs: performance.now(),
       timelineRevision: state.timelineRevision + 1,
+      ...(state.playbackOrder === 'sequential'
+        ? { upcomingQueueEntryIds: sequentialUpcoming(queueEntries, index) }
+        : fallbackOrderState(queueEntries, currentQueueEntryId, 'shuffle')),
     }));
+  },
+
+  playQueueEntry: (entryId) => {
+    const state = get();
+    const entries = localEntries(state);
+    const index = indexOfEntry(entries, entryId);
+    if (index < 0) return;
+    if (dispatchPlayerCommand({ type: 'playQueueEntry', entryId })) return;
+    state.playFromQueue(index);
+  },
+
+  playNextQueueEntry: (entryId) => {
+    const state = get();
+    const entries = localEntries(state);
+    const from = indexOfEntry(entries, entryId);
+    const currentId = localCurrentId(state, entries);
+    const current = indexOfEntry(entries, currentId);
+    if (from < 0 || current < 0 || from === current) return;
+    if (dispatchPlayerCommand({ type: 'playNextQueueEntry', entryId })) return;
+    const [entry] = entries.splice(from, 1);
+    if (!entry) return;
+    const currentAfterRemove = indexOfEntry(entries, currentId);
+    entries.splice(currentAfterRemove + 1, 0, entry);
+    const currentIndex = indexOfEntry(entries, currentId);
+    const queue = entries.map((candidate) => candidate.track);
+    const order = fallbackOrderState(entries, currentId, state.playbackOrder);
+    if (state.playbackOrder === 'shuffle') {
+      const traversal = state.shuffleTraversal.filter((candidate) => candidate !== entryId);
+      const cursor = Math.max(0, traversal.indexOf(currentId ?? ''));
+      traversal.splice(cursor + 1, 0, entryId);
+      order.shuffleTraversal = traversal;
+      order.shuffleCursor = cursor;
+      order.upcomingQueueEntryIds = traversal.slice(cursor + 1);
+    }
+    set({ queue, queueEntries: entries, currentIndex, currentQueueEntryId: currentId, ...order });
   },
 
   togglePlayback: () => {
@@ -181,18 +435,30 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   next: () => {
     if (dispatchPlayerCommand({ type: 'next' })) return;
     set((state) => {
-      const nextIndex = getNextIndex(state);
+      const entries = localEntries(state);
+      const currentQueueEntryId = localCurrentId(state, entries);
+      const normalized = { ...state, queueEntries: entries, currentQueueEntryId };
+      const transition = getNextTransition(normalized);
+      const nextIndex = transition.index;
       if (nextIndex < 0) return state;
-      const reachedEnd = nextIndex === state.currentIndex && state.repeat === 'off';
       return {
+        queueEntries: entries,
         currentIndex: nextIndex,
+        currentQueueEntryId: entries[nextIndex]?.id ?? null,
         positionMs: 0,
-        isPlaying: reachedEnd ? false : state.isPlaying,
-        playbackState: reachedEnd ? 'ended' : state.isPlaying ? 'playing' : state.playbackState,
+        isPlaying: transition.reachedEnd ? false : state.isPlaying,
+        playbackState: transition.reachedEnd
+          ? 'ended'
+          : state.isPlaying
+            ? 'playing'
+            : state.playbackState,
         playbackDurationMs: state.queue[nextIndex]?.durationMs ?? null,
         sourceSelection: null,
         observedAtMs: performance.now(),
         timelineRevision: state.timelineRevision + 1,
+        ...(state.playbackOrder === 'sequential'
+          ? { upcomingQueueEntryIds: sequentialUpcoming(entries, nextIndex) }
+          : transition.orderPatch),
       };
     });
   },
@@ -207,14 +473,26 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           observedAtMs: performance.now(),
           timelineRevision: state.timelineRevision + 1,
         };
-      const currentIndex = state.currentIndex > 0 ? state.currentIndex - 1 : 0;
+      const entries = localEntries(state);
+      let currentIndex = state.currentIndex > 0 ? state.currentIndex - 1 : 0;
+      let historyCursor = state.historyCursor;
+      if (state.playbackOrder === 'shuffle' && state.historyCursor > 0) {
+        historyCursor -= 1;
+        currentIndex = indexOfEntry(entries, state.playbackHistory[historyCursor] ?? null);
+        if (currentIndex < 0) currentIndex = state.currentIndex;
+      }
       return {
+        queueEntries: entries,
         currentIndex,
+        currentQueueEntryId: entries[currentIndex]?.id ?? null,
         positionMs: 0,
         playbackDurationMs: state.queue[currentIndex]?.durationMs ?? null,
         sourceSelection: null,
         observedAtMs: performance.now(),
         timelineRevision: state.timelineRevision + 1,
+        ...(state.playbackOrder === 'shuffle'
+          ? { historyCursor }
+          : { upcomingQueueEntryIds: sequentialUpcoming(entries, currentIndex) }),
       };
     });
   },
@@ -247,17 +525,28 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           timelineRevision: state.timelineRevision + 1,
         };
 
-      const nextIndex = getNextIndex(state);
-      const reachedEnd = nextIndex === state.currentIndex && state.repeat === 'off';
+      const entries = localEntries(state);
+      const currentQueueEntryId = localCurrentId(state, entries);
+      const transition = getNextTransition({
+        ...state,
+        queueEntries: entries,
+        currentQueueEntryId,
+      });
+      const nextIndex = transition.index;
       return {
+        queueEntries: entries,
         currentIndex: nextIndex,
+        currentQueueEntryId: entries[nextIndex]?.id ?? null,
         positionMs: 0,
-        isPlaying: !reachedEnd,
-        playbackState: reachedEnd ? 'ended' : 'playing',
+        isPlaying: !transition.reachedEnd,
+        playbackState: transition.reachedEnd ? 'ended' : 'playing',
         playbackDurationMs: state.queue[nextIndex]?.durationMs ?? null,
         sourceSelection: null,
         observedAtMs: performance.now(),
         timelineRevision: state.timelineRevision + 1,
+        ...(state.playbackOrder === 'sequential'
+          ? { upcomingQueueEntryIds: sequentialUpcoming(entries, nextIndex) }
+          : transition.orderPatch),
       };
     }),
 
@@ -272,11 +561,28 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
   toggleShuffle: () => {
     if (dispatchPlayerCommand({ type: 'toggleShuffle' })) return;
-    set((state) => ({ shuffle: !state.shuffle }));
+    set((state) => {
+      const entries = localEntries(state);
+      const currentId = localCurrentId(state, entries);
+      const playbackOrder = state.playbackOrder === 'shuffle' ? 'sequential' : 'shuffle';
+      return {
+        queueEntries: entries,
+        currentQueueEntryId: currentId,
+        ...fallbackOrderState(entries, currentId, playbackOrder),
+      };
+    });
   },
   setShuffle: (enabled) => {
     if (dispatchPlayerCommand({ type: 'setShuffle', enabled })) return;
-    set({ shuffle: enabled });
+    set((state) => {
+      const entries = localEntries(state);
+      const currentId = localCurrentId(state, entries);
+      return {
+        queueEntries: entries,
+        currentQueueEntryId: currentId,
+        ...fallbackOrderState(entries, currentId, enabled ? 'shuffle' : 'sequential'),
+      };
+    });
   },
   setQuality: (quality) => {
     if (dispatchPlayerCommand({ type: 'setQuality', quality })) return;
@@ -299,48 +605,106 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   addToQueue: (song) => {
     if (dispatchPlayerCommand({ type: 'addToQueue', song })) return;
-    set((state) => ({
-      queue: [...state.queue, song],
-      currentIndex: state.currentIndex < 0 ? 0 : state.currentIndex,
-    }));
+    set((state) => {
+      const queueEntries = [...localEntries(state), newLocalQueueEntry(song)];
+      const currentIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
+      const currentQueueEntryId =
+        localCurrentId(state, queueEntries) ?? queueEntries[currentIndex]?.id ?? null;
+      return {
+        queue: queueEntries.map((entry) => entry.track),
+        queueEntries,
+        currentIndex,
+        currentQueueEntryId,
+        ...fallbackOrderState(queueEntries, currentQueueEntryId, state.playbackOrder),
+      };
+    });
   },
 
   addTracksToQueue: (tracks) => {
     const playable = tracks.filter((track) => track.availability.status !== 'unavailable');
     if (playable.length === 0) return;
     if (dispatchPlayerCommand({ type: 'addTracksToQueue', tracks: playable })) return;
-    set((state) => ({
-      queue: [...state.queue, ...playable],
-      currentIndex: state.currentIndex < 0 ? 0 : state.currentIndex,
-    }));
+    set((state) => {
+      const queueEntries = [...localEntries(state), ...entriesForTracks(playable)];
+      const currentIndex = state.currentIndex < 0 ? 0 : state.currentIndex;
+      const currentQueueEntryId =
+        localCurrentId(state, queueEntries) ?? queueEntries[currentIndex]?.id ?? null;
+      return {
+        queue: queueEntries.map((entry) => entry.track),
+        queueEntries,
+        currentIndex,
+        currentQueueEntryId,
+        ...fallbackOrderState(queueEntries, currentQueueEntryId, state.playbackOrder),
+      };
+    });
   },
 
   removeFromQueue: (index) => {
     if (dispatchPlayerCommand({ type: 'removeFromQueue', index })) return;
     set((state) => {
       if (index < 0 || index >= state.queue.length) return state;
-      const queue = state.queue.filter((_, candidateIndex) => candidateIndex !== index);
+      const previousEntries = localEntries(state);
+      const removedId = previousEntries[index]?.id ?? null;
+      const currentId = localCurrentId(state, previousEntries);
+      const queueEntries = previousEntries.filter((_, candidateIndex) => candidateIndex !== index);
+      const queue = queueEntries.map((entry) => entry.track);
       if (queue.length === 0) {
         return {
           queue,
+          queueEntries,
           currentIndex: -1,
+          currentQueueEntryId: null,
           positionMs: 0,
           isPlaying: false,
           playbackState: 'idle',
           playbackDurationMs: null,
           playbackError: null,
           sourceSelection: null,
+          ...fallbackOrderState(queueEntries, null, state.playbackOrder),
         };
       }
-      const currentIndex =
-        index < state.currentIndex
-          ? state.currentIndex - 1
-          : Math.min(state.currentIndex, queue.length - 1);
+      const currentQueueEntryId =
+        removedId === currentId
+          ? (queueEntries[Math.min(index, queueEntries.length - 1)]?.id ?? null)
+          : currentId;
+      const currentIndex = indexOfEntry(queueEntries, currentQueueEntryId);
       return {
         queue,
+        queueEntries,
         currentIndex,
+        currentQueueEntryId,
         ...(index === state.currentIndex ? { sourceSelection: null } : {}),
+        ...fallbackOrderState(queueEntries, currentQueueEntryId, state.playbackOrder),
       };
+    });
+  },
+
+  removeQueueEntry: (entryId) => {
+    const state = get();
+    const index = indexOfEntry(localEntries(state), entryId);
+    if (index < 0) return;
+    if (dispatchPlayerCommand({ type: 'removeQueueEntry', entryId })) return;
+    state.removeFromQueue(index);
+  },
+
+  reorderQueueEntry: (entryId, targetIndex) => {
+    const state = get();
+    const entries = localEntries(state);
+    const from = indexOfEntry(entries, entryId);
+    if (from < 0 || targetIndex < 0 || targetIndex >= entries.length || from === targetIndex)
+      return;
+    if (dispatchPlayerCommand({ type: 'reorderQueueEntry', entryId, targetIndex })) return;
+    const currentQueueEntryId = localCurrentId(state, entries);
+    const [entry] = entries.splice(from, 1);
+    if (!entry) return;
+    entries.splice(targetIndex, 0, entry);
+    const currentIndex = indexOfEntry(entries, currentQueueEntryId);
+    set({
+      queue: entries.map((candidate) => candidate.track),
+      queueEntries: entries,
+      currentIndex,
+      currentQueueEntryId,
+      ...fallbackOrderState(entries, currentQueueEntryId, state.playbackOrder),
     });
   },
 
@@ -353,16 +717,42 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       const predictedPositionMs = current
         ? Math.max(0, Math.min(durationMs, state.positionMs + elapsedMs))
         : 0;
+      const queueEntries = normalizedEntries(snapshot, state);
+      const currentQueueEntryId =
+        snapshot.currentQueueEntryId ?? queueEntries[snapshot.currentIndex]?.id ?? null;
       const previousTrackId = current?.id ?? null;
       const nextTrackId = snapshot.queue[snapshot.currentIndex]?.id ?? null;
+      const queueIdentityChanged =
+        state.currentQueueEntryId !== null && currentQueueEntryId !== null
+          ? state.currentQueueEntryId !== currentQueueEntryId
+          : state.currentIndex !== snapshot.currentIndex || previousTrackId !== nextTrackId;
       const discontinuity =
-        state.currentIndex !== snapshot.currentIndex ||
-        previousTrackId !== nextTrackId ||
+        queueIdentityChanged ||
         state.isPlaying !== snapshot.isPlaying ||
         Math.abs(snapshot.positionMs - predictedPositionMs) > 250;
 
+      const playbackOrder = snapshot.playbackOrder ?? (snapshot.shuffle ? 'shuffle' : 'sequential');
+      const shuffleTraversal = snapshot.shuffleTraversal ?? [];
+      const shuffleCursor = snapshot.shuffleCursor ?? 0;
+      const playbackHistory = snapshot.playbackHistory ?? [];
+      const historyCursor = snapshot.historyCursor ?? 0;
+      const upcomingQueueEntryIds =
+        snapshot.upcomingQueueEntryIds ??
+        (playbackOrder === 'shuffle'
+          ? shuffleTraversal.slice(shuffleCursor + 1)
+          : sequentialUpcoming(queueEntries, snapshot.currentIndex));
+
       return {
         ...snapshot,
+        queueEntries,
+        currentQueueEntryId,
+        playbackOrder,
+        shuffle: playbackOrder === 'shuffle',
+        shuffleTraversal,
+        shuffleCursor,
+        playbackHistory,
+        historyCursor,
+        upcomingQueueEntryIds,
         sourceSelection: snapshot.sourceSelection ?? null,
         observedAtMs: now,
         timelineRevision: state.timelineRevision + (discontinuity ? 1 : 0),

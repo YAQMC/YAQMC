@@ -95,7 +95,7 @@ pub(crate) struct AccountCache;
 
 impl AccountCache {
     pub(crate) fn projection_key(scope: &OpaqueAccountScope) -> String {
-        format!("qqmusic:account:{}:projection", scope.as_str())
+        format!("qqmusic:account:{}:projection-v3", scope.as_str())
     }
 
     pub(crate) fn favorites_key(
@@ -114,7 +114,7 @@ impl AccountCache {
         outward_cursor: Option<&str>,
     ) -> String {
         format!(
-            "{}playlists:{}",
+            "{}playlists-v3:{}",
             Self::scope_prefix(scope),
             cursor_digest(outward_cursor)
         )
@@ -126,7 +126,7 @@ impl AccountCache {
         outward_cursor: Option<&str>,
     ) -> String {
         format!(
-            "{}playlist:{}:tracks:{}",
+            "{}playlist-v3:{}:tracks:{}",
             Self::scope_prefix(scope),
             stable_key_component(playlist_id),
             cursor_digest(outward_cursor)
@@ -150,12 +150,12 @@ impl AccountCache {
     }
 
     pub(crate) fn playlists_prefix(scope: &OpaqueAccountScope) -> String {
-        format!("{}playlists:", Self::scope_prefix(scope))
+        format!("{}playlists-v3:", Self::scope_prefix(scope))
     }
 
     pub(crate) fn playlist_tracks_prefix(scope: &OpaqueAccountScope, playlist_id: &str) -> String {
         format!(
-            "{}playlist:{}:tracks:",
+            "{}playlist-v3:{}:tracks:",
             Self::scope_prefix(scope),
             stable_key_component(playlist_id)
         )
@@ -359,7 +359,7 @@ mod tests {
         assert!(!key.contains("10001"));
         assert_eq!(
             key,
-            format!("qqmusic:account:{}:projection", scope.as_str())
+            format!("qqmusic:account:{}:projection-v3", scope.as_str())
         );
         assert!(
             serde_json::from_str::<OpaqueAccountScope>("\"ABCDEF0123456789ABCDEF0123456789\"")
@@ -375,6 +375,18 @@ mod tests {
         assert!(key.starts_with(&format!("qqmusic:account:{}:favorites:", scope.as_str())));
         assert!(!key.contains("cursor:opaque"));
         assert_eq!(key.rsplit(':').next().expect("digest").len(), 64);
+    }
+
+    #[test]
+    fn playlist_identity_schema_uses_v3_keys_and_cannot_read_v2_entries() {
+        let scope = scope('a');
+        let list_key = AccountCache::playlists_key(&scope, None);
+        let detail_key =
+            AccountCache::playlist_tracks_key(&scope, "qqmusic:account-collection:favorites", None);
+        assert!(list_key.contains("playlists-v3:"));
+        assert!(detail_key.contains("playlist-v3:"));
+        assert!(!list_key.contains("playlists-v2:"));
+        assert!(!detail_key.contains("playlist-v2:"));
     }
 
     #[test]

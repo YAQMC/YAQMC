@@ -77,6 +77,28 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(commands).toEqual([{ type: 'setQuality', quality: 'master' }]);
   });
 
+  it('exposes authoritative shuffle as a reversible pressed toggle', () => {
+    usePlayerStore.getState().playTracks([qqTrack(), { ...qqTrack(), id: 'second' }]);
+    render(<PlayerBar />);
+
+    const enable = screen.getByRole('button', { name: 'Enable shuffle' });
+    expect(enable).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(enable);
+
+    const disable = screen.getByRole('button', {
+      name: 'Disable shuffle and return to sequential playback',
+    });
+    expect(disable).toHaveAttribute('aria-pressed', 'true');
+    expect(usePlayerStore.getState().playbackOrder).toBe('shuffle');
+    fireEvent.click(disable);
+
+    expect(screen.getByRole('button', { name: 'Enable shuffle' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(usePlayerStore.getState().playbackOrder).toBe('sequential');
+  });
+
   it('opens the lyrics page from the artwork without requesting fullscreen', () => {
     usePlayerStore.setState({ queue: [qqTrack()], currentIndex: 0 });
     render(<PlayerBar />);
@@ -150,6 +172,29 @@ describe('PlayerBar lyrics presentation entry', () => {
     ).toBeEnabled();
     expect(usePlayerStore.getState().queue[0]).toBe(track);
     expect(track.isFavorite).toBe(originalFavorite);
+  });
+
+  it('keeps restored QQ tracks writable when their stable songmid survives without a numeric id', () => {
+    const track = {
+      ...qqTrack(),
+      provider: {
+        providerId: 'qqmusic' as const,
+        trackId: 'SANITIZED_TRACK_A',
+      },
+    };
+    usePlayerStore.setState({ queue: [track], currentIndex: 0 });
+    useAccountStore.setState({
+      snapshot: authenticatedSnapshot(),
+      favoriteByTrackId: { [track.id]: false },
+    });
+
+    render(
+      <ProviderContext.Provider value={qqMusicProvider}>
+        <PlayerBar />
+      </ProviderContext.Provider>,
+    );
+
+    expect(screen.getByRole('button', { name: `Add ${track.title} to Favorites` })).toBeEnabled();
   });
 
   it.each([
