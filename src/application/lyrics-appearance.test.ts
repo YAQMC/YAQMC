@@ -27,7 +27,7 @@ describe('immersive lyrics appearance projection', () => {
         input: background('default'),
         expected: {
           mode: 'default',
-          imageSource: null,
+          imageSource: safeArtwork,
           imageFit: 'cover',
           baseColor: null,
         },

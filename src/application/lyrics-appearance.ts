@@ -45,7 +45,7 @@ export function resolveLyricsAppearance(
     default:
       return {
         mode: 'default',
-        imageSource: null,
+        imageSource: safeArtworkSource,
         imageFit: 'cover',
         baseColor: null,
       };

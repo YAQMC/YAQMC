@@ -10,7 +10,7 @@ import type { LyricDocument } from '../domain/music';
 import { allSongs, lyricsBySong } from '../providers/fake/fixtures';
 import '../styles/components.css';
 import '../styles/platform.css';
-import { LyricsPanel } from './LyricsPanel';
+import { LyricsPanel, resetLyricsArtworkFallbackForTests } from './LyricsPanel';
 
 const nativeArtworkMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -39,7 +39,6 @@ function presentationProps(overrides: Partial<React.ComponentProps<typeof Lyrics
     fullscreen: false,
     fullscreenPending: false,
     fullscreenError: null,
-    onToggleFocus: vi.fn(),
     onToggleFullscreen: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
@@ -64,6 +63,12 @@ function timedDocument(overrides: Partial<LyricDocument> = {}, wordTimed = false
     ],
     ...overrides,
   };
+}
+
+function lyricOffset(container: HTMLElement): number {
+  const content = container.querySelector<HTMLElement>('.lyrics-stage__scroll-content');
+  const match = /translate3d\(0, (-?[\d.]+)px/.exec(content?.style.transform ?? '');
+  return match ? -Number(match[1]) : 0;
 }
 
 describe('LyricsPanel', () => {
@@ -130,6 +135,7 @@ describe('LyricsPanel', () => {
   });
 
   beforeEach(() => {
+    resetLyricsArtworkFallbackForTests();
     nativeArtworkMocks.invoke.mockReset();
     nativeArtworkMocks.invoke.mockResolvedValue(safeArtwork);
     clearArtworkMemoryCache();
@@ -233,15 +239,26 @@ describe('LyricsPanel', () => {
   });
 
   it('recenters when the song changes even when the active line index stays the same', async () => {
-    const scrollTo = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    const rect = (top: number, height = 50) =>
+      ({ top, height, bottom: top + height, left: 0, right: 0, width: 0 }) as DOMRect;
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
       configurable: true,
-      value: scrollTo,
+      value: vi.fn(function (this: HTMLElement) {
+        if (this.classList.contains('lyrics-stage__scroll')) return rect(0, 400);
+        if (this.classList.contains('lyrics-stage__scroll-content')) return rect(0, 1_200);
+        if (this.hasAttribute('data-line-index')) return rect(600);
+        return rect(0, 0);
+      }),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      value: 400,
     });
     usePlayerStore.setState({ positionMs: 5_000 });
-    render(<LyricsPanel {...presentationProps()} />);
-    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
-    scrollTo.mockClear();
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+
+    await waitFor(() => expect(lyricOffset(container)).toBeGreaterThan(0));
+    const settled = lyricOffset(container);
 
     const nextSong = allSongs.find((candidate) => candidate.id !== 'quiet-light');
     if (!nextSong) throw new Error('second song fixture is missing');
@@ -263,32 +280,27 @@ describe('LyricsPanel', () => {
       });
     });
 
-    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    await waitFor(() => expect(lyricOffset(container)).toBeGreaterThan(settled));
   });
 
-  it('delegates focus and fullscreen controls and updates their accessible labels', () => {
+  it('delegates the fullscreen control and updates its accessible labels', () => {
     const props = presentationProps();
     const { rerender } = render(<LyricsPanel {...props} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Hide navigation' }));
-    expect(props.onToggleFocus).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen lyrics' }));
     expect(props.onToggleFullscreen).toHaveBeenCalledOnce();
 
-    rerender(<LyricsPanel {...props} focus fullscreen />);
-    expect(screen.getByRole('button', { name: 'Show navigation' })).toBeVisible();
+    rerender(<LyricsPanel {...props} fullscreen />);
     expect(screen.getByRole('button', { name: 'Exit fullscreen lyrics' })).toBeVisible();
   });
 
-  it('delegates the close button only and leaves visibility to the application callback', () => {
+  it('delegates the collapse button only and leaves visibility to the application callback', () => {
     const props = presentationProps();
     render(<LyricsPanel {...props} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close lyrics' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse lyrics page' }));
 
     expect(props.onClose).toHaveBeenCalledOnce();
-    expect(props.onToggleFocus).not.toHaveBeenCalled();
     expect(props.onToggleFullscreen).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().lyricsOpen).toBe(true);
   });
@@ -330,9 +342,6 @@ describe('LyricsPanel', () => {
     fireEvent.pointerMove(stage);
     expect(transport).toHaveAttribute('data-visible', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide navigation' }));
-    expect(props.onToggleFocus).toHaveBeenCalledOnce();
-
     fireEvent.click(screen.getByRole('button', { name: /A quiet light across the floor/i }));
     expect(usePlayerStore.getState().positionMs).toBe(18_000);
 
@@ -351,26 +360,42 @@ describe('LyricsPanel', () => {
   });
 
   it('recenters on presentation changes only while lyric following remains active', async () => {
-    const scrollTo = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-      configurable: true,
-      value: scrollTo,
+    const rect = (top: number, height = 50) =>
+      ({ top, height, bottom: top + height, left: 0, right: 0, width: 0 }) as DOMRect;
+    const scrollAreaRect = vi.fn(() => rect(0, 400));
+    const contentRect = vi.fn(() => rect(0, 1_200));
+    const lineRect = vi.fn(() => rect(600));
+    const getRect = vi.fn(function (this: HTMLElement) {
+      if (this.classList.contains('lyrics-stage__scroll')) return scrollAreaRect();
+      if (this.classList.contains('lyrics-stage__scroll-content')) return contentRect();
+      if (this.hasAttribute('data-line-index')) return lineRect();
+      return rect(0, 0);
     });
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: getRect,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      value: 400,
+    });
+
     usePlayerStore.setState({ positionMs: 5_000 });
     const props = presentationProps();
     const { container, rerender } = render(<LyricsPanel {...props} />);
-
-    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
-    scrollTo.mockClear();
-    rerender(<LyricsPanel {...props} focus />);
-    await waitFor(() => expect(scrollTo).toHaveBeenCalledOnce());
-
-    const scrollArea = container.querySelector('.lyrics-stage__scroll');
+    const scrollArea = container.querySelector<HTMLElement>('.lyrics-stage__scroll');
     if (!scrollArea) throw new Error('lyrics scroll area is missing');
+
+    await waitFor(() => expect(lyricOffset(container)).toBeGreaterThan(0));
+
+    const settled = lyricOffset(container);
+    rerender(<LyricsPanel {...props} focus />);
+    await waitFor(() => expect(lyricOffset(container)).toBeGreaterThan(settled));
+
     fireEvent.wheel(scrollArea);
-    scrollTo.mockClear();
+    const unfollowed = lyricOffset(container);
     rerender(<LyricsPanel {...props} focus fullscreen />);
-    expect(scrollTo).not.toHaveBeenCalled();
+    expect(lyricOffset(container)).toBe(unfollowed);
   });
 
   it.each([
@@ -393,8 +418,9 @@ describe('LyricsPanel', () => {
       render(<LyricsPanel {...presentationProps()} />);
 
       expect(requestFrame).not.toHaveBeenCalled();
-      expect(vi.getTimerCount()).toBe(1);
-      expect(setTimeoutSpy.mock.calls.some(([, delay]) => delay === expectedDelay)).toBe(true);
+      expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === expectedDelay)).toHaveLength(
+        1,
+      );
     },
   );
 
@@ -404,6 +430,7 @@ describe('LyricsPanel', () => {
   ])('retains no cursor timer or cursor frame while $label', ({ hidden, isPlaying }) => {
     vi.useFakeTimers();
     const requestFrame = vi.spyOn(window, 'requestAnimationFrame');
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
     documentHidden = hidden;
     usePlayerStore.setState({
       positionMs: 1_100,
@@ -415,12 +442,13 @@ describe('LyricsPanel', () => {
 
     render(<LyricsPanel {...presentationProps()} />);
 
-    expect(vi.getTimerCount()).toBe(0);
+    expect(setTimeoutSpy.mock.calls.filter((call) => (call[1] as number) <= 600)).toHaveLength(0);
     expect(requestFrame).not.toHaveBeenCalled();
   });
 
   it('corrects the cursor immediately on visibility restore and schedules one fresh timeout', () => {
     vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
     documentHidden = true;
     usePlayerStore.setState({
       positionMs: 1_100,
@@ -438,7 +466,7 @@ describe('LyricsPanel', () => {
       'aria-current',
       'true',
     );
-    expect(vi.getTimerCount()).toBe(1);
+    expect(setTimeoutSpy.mock.calls.filter((call) => (call[1] as number) <= 600)).toHaveLength(1);
   });
 
   it('wakes a paused cursor immediately when timeline revision changes', () => {
@@ -603,12 +631,21 @@ describe('LyricsPanel', () => {
     expect(usePlayerStore.getState().positionMs).toBe(18_100);
   });
 
-  it('centers a far active multiline lyric and preserves manual follow across later seeks', async () => {
-    const scrollTo = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-      configurable: true,
-      value: scrollTo,
-    });
+  it('centers a far active multiline lyric and preserves manual follow across later seeks', () => {
+    let nextFrame = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((callback: FrameRequestCallback) => {
+        const id = ++nextFrame;
+        frames.set(id, callback);
+        return id;
+      }),
+    );
+    vi.stubGlobal(
+      'cancelAnimationFrame',
+      vi.fn((id: number) => frames.delete(id)),
+    );
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
       configurable: true,
       get() {
@@ -620,10 +657,16 @@ describe('LyricsPanel', () => {
       value(this: HTMLElement) {
         const top = this.classList.contains('lyrics-stage__scroll')
           ? 100
+          : this.classList.contains('lyrics-stage__scroll-content')
+            ? 0
+            : this.dataset.lineIndex === '2'
+              ? 900
+              : 200;
+        const height = this.classList.contains('lyrics-stage__scroll-content')
+          ? 1_200
           : this.dataset.lineIndex === '2'
-            ? 900
-            : 200;
-        const height = this.dataset.lineIndex === '2' ? 100 : 40;
+            ? 100
+            : 40;
         return {
           x: 0,
           y: top,
@@ -664,17 +707,27 @@ describe('LyricsPanel', () => {
       status: 'ready',
     });
     const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const scrollArea = container.querySelector<HTMLElement>('.lyrics-stage__scroll');
+    if (!scrollArea) throw new Error('lyrics scroll area is missing');
 
-    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 650, behavior: 'smooth' }));
+    const runFrames = (count: number) => {
+      for (let step = 0; step < count; step += 1) {
+        const callbacks = [...frames.values()];
+        frames.clear();
+        for (const callback of callbacks) callback(performance.now() + step * 16);
+      }
+    };
+    runFrames(400);
+    expect(lyricOffset(container)).toBeCloseTo(710, 0);
+
     expect(screen.getByText('A secondary line that wraps')).toBeVisible();
     expect(screen.getByText('A second secondary line')).toBeVisible();
 
-    const scrollArea = container.querySelector('.lyrics-stage__scroll');
-    if (!scrollArea) throw new Error('lyrics scroll area is missing');
     fireEvent.wheel(scrollArea);
-    scrollTo.mockClear();
+    const unfollowed = lyricOffset(container);
     act(() => usePlayerStore.getState().seek(5_500));
-    expect(scrollTo).not.toHaveBeenCalled();
+    runFrames(10);
+    expect(lyricOffset(container)).toBe(unfollowed);
   });
 
   it.each(['software', 'safe'])(
@@ -753,7 +806,7 @@ describe('LyricsPanel', () => {
     );
     expect(container.innerHTML).not.toContain(remote);
     expect(container.querySelector('.lyrics-stage__backdrop')).not.toBeInTheDocument();
-    expect(container.querySelector('.lyrics-stage__track img')).not.toBeInTheDocument();
+    expect(container.querySelector('.lyrics-stage__control-panel img')).not.toBeInTheDocument();
     expect(container.querySelector('.lyrics-fullscreen-transport img')).not.toBeInTheDocument();
 
     await act(async () => pending.resolve(safeArtwork));

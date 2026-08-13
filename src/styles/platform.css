@@ -11,12 +11,6 @@
   transform: scale(1.02);
 }
 
-:root[data-platform='linux'] .lyrics-stage__backdrop {
-  filter: saturate(0.62);
-  opacity: 0.3;
-  transform: scale(1.02);
-}
-
 :root[data-platform='linux'] .lyrics-stage[data-background-mode='image'] .lyrics-stage__backdrop {
   filter: none;
   opacity: var(--artwork-influence);

@@ -118,13 +118,6 @@ export default function App() {
     });
   }, []);
 
-  const toggleLyricsFocus = useCallback(() => {
-    const preferences = usePreferencesStore.getState();
-    preferences.updateLyrics({
-      focusSidebarCollapsed: !preferences.lyrics.focusSidebarCollapsed,
-    });
-  }, []);
-
   const toggleLyricsFullscreen = useCallback(() => {
     const presentation = useLyricsPresentationStore.getState();
     if (presentation.pending) return;
@@ -425,7 +418,6 @@ export default function App() {
           fullscreen={fullscreen}
           fullscreenPending={fullscreenPending}
           fullscreenError={fullscreenError}
-          onToggleFocus={toggleLyricsFocus}
           onToggleFullscreen={toggleLyricsFullscreen}
           onClose={closeLyrics}
         />
