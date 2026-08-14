@@ -70,7 +70,7 @@ qqmusic.auth           qqmusic.search      qqmusic.account
 qqmusic.library        qqmusic.playlist    qqmusic.favorite
 qqmusic.entitlement    qqmusic.source      qqmusic.lyrics
 player.command         player.queue        player.order
-player.seek            player.eos
+player.mode            player.seek         player.eos
 audio.engine           audio.output        audio.decode
 audio.stream           audio.qmc
 lyrics.fetch           lyrics.parse        lyrics.timeline

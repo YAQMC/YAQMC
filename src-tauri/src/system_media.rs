@@ -696,6 +696,7 @@ mod tests {
             repeat: RepeatMode::One,
             playback_order: crate::player::PlaybackOrder::Shuffle,
             shuffle: true,
+            primary_playback_mode: crate::player::PrimaryPlaybackMode::RepeatOne,
             shuffle_traversal: Vec::new(),
             shuffle_cursor: 0,
             playback_history: Vec::new(),

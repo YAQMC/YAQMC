@@ -77,6 +77,8 @@ from `0.0` through `1.0`. Seek values beyond the current duration and volume val
 `playbackState` distinguishes `idle`, `loading`, `buffering`, `playing`, `paused`, `stopped`, `ended`,
 `recoverable-error`, and `fatal-error`. `playbackDurationMs` is the decoded source duration (which may be an
 official preview) and `playbackError` is a stable `{ code, message, retryable }` object when present.
+Snapshots also include `playbackOrder` (`sequential` | `shuffle`) and `primaryPlaybackMode`
+(`sequential` | `shuffle` | `repeat-one`). Repeat All remains `repeat=all` and is not a primary mode.
 
 Example control:
 

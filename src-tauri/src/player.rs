@@ -1,5 +1,6 @@
 use crate::{
     audio::{AudioEngine, AudioEngineError, AudioOutputDevice},
+    logging,
     media::{MediaPreparer, PlaybackEpochGuard, PlaybackSourceError, PlaybackSourceResolver},
     qqmusic::PlaybackSourceSelection,
 };
@@ -237,6 +238,50 @@ pub enum PlaybackOrder {
     Shuffle,
 }
 
+impl PlaybackOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sequential => "sequential",
+            Self::Shuffle => "shuffle",
+        }
+    }
+}
+
+/// Player-facing projection of [`PlaybackOrder`] + [`RepeatMode`].
+///
+/// This is not a replacement for the two authoritative enums. Repeat All remains
+/// a first-class [`RepeatMode::All`] value for the HTTP API, MPRIS, and
+/// persistence; the primary control only highlights Sequential / Shuffle /
+/// Repeat One.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PrimaryPlaybackMode {
+    #[default]
+    Sequential,
+    Shuffle,
+    RepeatOne,
+}
+
+impl PrimaryPlaybackMode {
+    pub fn from_state(order: PlaybackOrder, repeat: RepeatMode) -> Self {
+        if repeat == RepeatMode::One {
+            Self::RepeatOne
+        } else if order == PlaybackOrder::Shuffle {
+            Self::Shuffle
+        } else {
+            Self::Sequential
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sequential => "sequential",
+            Self::Shuffle => "shuffle",
+            Self::RepeatOne => "repeat-one",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueEntry {
@@ -261,6 +306,8 @@ pub struct PlayerSnapshot {
     #[serde(default)]
     pub playback_order: PlaybackOrder,
     pub shuffle: bool,
+    #[serde(default)]
+    pub primary_playback_mode: PrimaryPlaybackMode,
     #[serde(default)]
     pub shuffle_traversal: Vec<String>,
     #[serde(default)]
@@ -519,6 +566,10 @@ impl PlayerCore {
             repeat: self.repeat,
             playback_order: self.playback_order,
             shuffle: self.playback_order == PlaybackOrder::Shuffle,
+            primary_playback_mode: PrimaryPlaybackMode::from_state(
+                self.playback_order,
+                self.repeat,
+            ),
             shuffle_traversal: self.shuffle_traversal.clone(),
             shuffle_cursor: self.shuffle_cursor,
             playback_history: self.playback_history.clone(),
@@ -1021,6 +1072,8 @@ impl PlayerService {
     }
 
     pub async fn set_shuffle(&self, enabled: bool) -> PlayerSnapshot {
+        let op = logging::new_op_id();
+        let from = self.core.read().await.playback_order;
         let snapshot = self
             .mutate("player.mode", move |core| {
                 core.set_playback_order(if enabled {
@@ -1033,55 +1086,94 @@ impl PlayerService {
             .await
             .expect("shuffle cannot fail");
         tracing::info!(
-            target: "player.order",
-            order = ?snapshot.playback_order,
+            target: "player.mode",
+            op = %op,
+            from = ?from,
+            to = ?snapshot.playback_order,
+            repeat = ?snapshot.repeat,
+            primary = snapshot.primary_playback_mode.as_str(),
             "authoritative playback order changed"
         );
         snapshot
     }
 
     pub async fn toggle_shuffle(&self) -> PlayerSnapshot {
+        let enabled = self.core.read().await.playback_order != PlaybackOrder::Shuffle;
+        self.set_shuffle(enabled).await
+    }
+
+    pub async fn set_repeat(&self, repeat: RepeatMode) -> PlayerSnapshot {
+        let op = logging::new_op_id();
+        let from = self.core.read().await.repeat;
         let snapshot = self
-            .mutate("player.mode", |core| {
-                let order = if core.playback_order == PlaybackOrder::Sequential {
-                    PlaybackOrder::Shuffle
-                } else {
-                    PlaybackOrder::Sequential
-                };
-                core.set_playback_order(order);
+            .mutate("player.mode", move |core| {
+                core.repeat = repeat;
                 Ok(())
             })
             .await
-            .expect("shuffle cannot fail");
+            .expect("repeat cannot fail");
         tracing::info!(
-            target: "player.shuffle",
+            target: "player.mode",
+            op = %op,
+            from_repeat = ?from,
+            to_repeat = ?repeat,
             order = ?snapshot.playback_order,
-            traversal_size = snapshot.shuffle_traversal.len(),
-            "shuffle toggle committed"
+            primary = snapshot.primary_playback_mode.as_str(),
+            "repeat mode changed"
         );
         snapshot
     }
 
-    pub async fn set_repeat(&self, repeat: RepeatMode) -> PlayerSnapshot {
-        self.mutate("player.mode", move |core| {
-            core.repeat = repeat;
-            Ok(())
-        })
-        .await
-        .expect("repeat cannot fail")
+    pub async fn cycle_repeat(&self) -> PlayerSnapshot {
+        let next = match self.core.read().await.repeat {
+            RepeatMode::Off => RepeatMode::All,
+            RepeatMode::All => RepeatMode::One,
+            RepeatMode::One => RepeatMode::Off,
+        };
+        self.set_repeat(next).await
     }
 
-    pub async fn cycle_repeat(&self) -> PlayerSnapshot {
-        self.mutate("player.mode", |core| {
-            core.repeat = match core.repeat {
-                RepeatMode::Off => RepeatMode::All,
-                RepeatMode::All => RepeatMode::One,
-                RepeatMode::One => RepeatMode::Off,
-            };
-            Ok(())
-        })
-        .await
-        .expect("repeat cannot fail")
+    /// Atomically apply a player-facing primary mode without restarting playback.
+    ///
+    /// Sequential / Shuffle force [`RepeatMode::Off`] so the three visible modes are
+    /// exclusive. Repeat One keeps the current [`PlaybackOrder`] so leaving Repeat
+    /// One can restore Sequential or Shuffle without the user re-selecting it.
+    pub async fn set_primary_playback_mode(&self, mode: PrimaryPlaybackMode) -> PlayerSnapshot {
+        let op = logging::new_op_id();
+        let (from_order, from_repeat) = {
+            let core = self.core.read().await;
+            (core.playback_order, core.repeat)
+        };
+        let from = PrimaryPlaybackMode::from_state(from_order, from_repeat);
+        let snapshot = self
+            .mutate("player.mode", move |core| {
+                match mode {
+                    PrimaryPlaybackMode::Sequential => {
+                        core.repeat = RepeatMode::Off;
+                        core.set_playback_order(PlaybackOrder::Sequential);
+                    }
+                    PrimaryPlaybackMode::Shuffle => {
+                        core.repeat = RepeatMode::Off;
+                        core.set_playback_order(PlaybackOrder::Shuffle);
+                    }
+                    PrimaryPlaybackMode::RepeatOne => {
+                        core.repeat = RepeatMode::One;
+                    }
+                }
+                Ok(())
+            })
+            .await
+            .expect("primary playback mode cannot fail");
+        tracing::info!(
+            target: "player.mode",
+            op = %op,
+            from = from.as_str(),
+            to = mode.as_str(),
+            order = ?snapshot.playback_order,
+            repeat = ?snapshot.repeat,
+            "primary playback mode changed"
+        );
+        snapshot
     }
 
     pub async fn add_to_queue(&self, track: Song) -> PlayerSnapshot {
@@ -1693,6 +1785,11 @@ impl PlayerService {
         let repeat = self.core.read().await.repeat;
         let result = if repeat == RepeatMode::One {
             let index = self.core.read().await.current_index;
+            tracing::info!(
+                target: "player.eos",
+                repeat = "one",
+                "repeating current queue entry"
+            );
             match index {
                 Some(index) => self.load_index(index, true, 0).await,
                 None => Err(PlayerError::EmptyQueue),
@@ -3006,6 +3103,103 @@ mod tests {
             before_cycle.current_queue_entry_id
         );
         assert_eq!(after_cycle.shuffle_traversal.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn primary_playback_mode_preserves_previous_order_around_repeat_one() {
+        let player = PlayerService::new();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("a", 10_000), song("b", 10_000), song("c", 10_000)],
+                start_at_id: Some("a".to_owned()),
+                shuffle: Some(true),
+            })
+            .await
+            .expect("shuffle queue starts");
+        let shuffled = player
+            .set_primary_playback_mode(PrimaryPlaybackMode::Shuffle)
+            .await;
+        assert_eq!(shuffled.primary_playback_mode, PrimaryPlaybackMode::Shuffle);
+        assert_eq!(shuffled.playback_order, PlaybackOrder::Shuffle);
+        assert_eq!(shuffled.repeat, RepeatMode::Off);
+        let position = shuffled.position_ms;
+        let current = shuffled.current_queue_entry_id.clone();
+
+        let one = player
+            .set_primary_playback_mode(PrimaryPlaybackMode::RepeatOne)
+            .await;
+        assert_eq!(one.primary_playback_mode, PrimaryPlaybackMode::RepeatOne);
+        assert_eq!(one.playback_order, PlaybackOrder::Shuffle);
+        assert_eq!(one.repeat, RepeatMode::One);
+        assert_eq!(one.position_ms, position);
+        assert_eq!(one.current_queue_entry_id, current);
+
+        let restored = player
+            .set_primary_playback_mode(PrimaryPlaybackMode::Shuffle)
+            .await;
+        assert_eq!(restored.primary_playback_mode, PrimaryPlaybackMode::Shuffle);
+        assert_eq!(restored.playback_order, PlaybackOrder::Shuffle);
+        assert_eq!(restored.repeat, RepeatMode::Off);
+        assert_eq!(restored.current_queue_entry_id, current);
+
+        let sequential = player
+            .set_primary_playback_mode(PrimaryPlaybackMode::Sequential)
+            .await;
+        assert_eq!(
+            sequential.primary_playback_mode,
+            PrimaryPlaybackMode::Sequential
+        );
+        assert_eq!(sequential.playback_order, PlaybackOrder::Sequential);
+        assert_eq!(sequential.repeat, RepeatMode::Off);
+        let again = player
+            .set_primary_playback_mode(PrimaryPlaybackMode::RepeatOne)
+            .await;
+        assert_eq!(again.playback_order, PlaybackOrder::Sequential);
+        let back = player
+            .set_primary_playback_mode(PrimaryPlaybackMode::Sequential)
+            .await;
+        assert_eq!(back.playback_order, PlaybackOrder::Sequential);
+        assert_eq!(back.repeat, RepeatMode::Off);
+    }
+
+    #[tokio::test]
+    async fn repeat_one_eos_keeps_identity_and_does_not_grow_shuffle_history() {
+        let player = Arc::new(PlayerService::new());
+        let initial = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("a", 1_000), song("b", 1_000), song("c", 1_000)],
+                start_at_id: Some("a".to_owned()),
+                shuffle: Some(true),
+            })
+            .await
+            .expect("shuffle queue starts");
+        player.set_repeat(RepeatMode::One).await;
+        let active = initial
+            .current_queue_entry_id
+            .clone()
+            .expect("active identity");
+        let history_len = player.snapshot().await.playback_history.len();
+        for _ in 0..3 {
+            Arc::clone(&player).handle_end().await;
+            let after = player.snapshot().await;
+            assert_eq!(
+                after.current_queue_entry_id.as_deref(),
+                Some(active.as_str())
+            );
+            assert_eq!(after.position_ms, 0);
+            assert_eq!(after.playback_state, PlaybackState::Playing);
+            assert_eq!(after.repeat, RepeatMode::One);
+            assert_eq!(after.playback_order, PlaybackOrder::Shuffle);
+            assert_eq!(after.queue_entries.len(), 3);
+            assert_eq!(after.playback_history.len(), history_len);
+        }
+        let next = player.next().await.expect("explicit next leaves the track");
+        assert_ne!(
+            next.current_queue_entry_id.as_deref(),
+            Some(active.as_str())
+        );
+        assert_eq!(next.repeat, RepeatMode::One);
+        assert_eq!(next.primary_playback_mode, PrimaryPlaybackMode::RepeatOne);
     }
 
     #[tokio::test]

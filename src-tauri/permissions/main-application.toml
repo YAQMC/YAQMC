@@ -36,6 +36,8 @@ permissions = [
   "allow-player-toggle-shuffle",
   "allow-player-set-shuffle",
   "allow-player-cycle-repeat",
+  "allow-player-set-repeat",
+  "allow-player-set-primary-playback-mode",
   "allow-player-add-to-queue",
   "allow-player-add-tracks-to-queue",
   "allow-player-remove-from-queue",

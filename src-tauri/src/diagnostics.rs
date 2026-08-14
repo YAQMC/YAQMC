@@ -59,6 +59,9 @@ pub struct PlaybackSection {
     pub decoder_hint: Option<String>,
     pub queue_length: usize,
     pub current_source_kind: Option<&'static str>,
+    pub playback_order: &'static str,
+    pub repeat_mode: &'static str,
+    pub primary_playback_mode: &'static str,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -162,14 +165,17 @@ impl DiagnosticsSnapshot {
             ));
         }
         out.push_str(&format!(
-            "Playback: state={} · quality={} · source={} · queue_len={}\n",
+            "Playback: state={} · quality={} · source={} · queue_len={} · order={} · repeat={} · mode={}\n",
             self.playback.state,
             self.playback
                 .selected_quality
                 .as_deref()
                 .unwrap_or("unknown"),
             self.playback.current_source_kind.unwrap_or("none"),
-            self.playback.queue_length
+            self.playback.queue_length,
+            self.playback.playback_order,
+            self.playback.repeat_mode,
+            self.playback.primary_playback_mode
         ));
         out.push_str(&format!("Log level: {}\n", self.log_level.as_str()));
         if !self.recent_errors.is_empty() {
@@ -793,6 +799,9 @@ mod tests {
                 decoder_hint: Some("flac".into()),
                 queue_length: 3,
                 current_source_kind: Some("qqmusic"),
+                playback_order: "sequential",
+                repeat_mode: "off",
+                primary_playback_mode: "sequential",
             },
             vec![],
         )
@@ -961,6 +970,9 @@ mod tests {
                 decoder_hint: None,
                 queue_length: 0,
                 current_source_kind: None,
+                playback_order: "sequential",
+                repeat_mode: "off",
+                primary_playback_mode: "sequential",
             },
             AppSection {
                 name: "YAQMC",

@@ -213,6 +213,12 @@ components:
     RepeatMode:
       type: string
       enum: [off, all, one]
+    PlaybackOrder:
+      type: string
+      enum: [sequential, shuffle]
+    PrimaryPlaybackMode:
+      type: string
+      enum: [sequential, shuffle, repeat-one]
     Artwork:
       type: object
       additionalProperties: false
@@ -368,6 +374,8 @@ components:
         isMuted: { type: boolean }
         repeat: { $ref: '#/components/schemas/RepeatMode' }
         shuffle: { type: boolean }
+        playbackOrder: { $ref: '#/components/schemas/PlaybackOrder' }
+        primaryPlaybackMode: { $ref: '#/components/schemas/PrimaryPlaybackMode' }
         playbackState:
           type: string
           enum:

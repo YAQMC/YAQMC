@@ -91,7 +91,14 @@ continues to expose player operations only and never account/session data.
 - `playTracks` replaces the queue and selects a requested playable ID.
 - Removing the active item selects and loads the correct successor; it never continues stale audio.
 - `previous` restarts the current track after the normal threshold, otherwise selects the previous queue item.
-- repeat-one reloads the current item; repeat-all wraps; shuffle chooses from valid queue indices.
+- The player bar exposes three exclusive modes — Sequential, Shuffle, and Repeat One — as a projection of
+  `PlaybackOrder` + `RepeatMode`. Repeat All remains a first-class repeat value for the HTTP API, MPRIS
+  `LoopStatus=Playlist`, persistence, and an advanced menu row; it is not a fourth primary mode.
+- Selecting Sequential or Shuffle sets `repeat=off`. Repeat One keeps the previous order so leaving it restores
+  Sequential or Shuffle without rebuilding the shuffle traversal. Mode changes do not restart the current track.
+- Repeat One reloads the current queue entry at position 0 on engine end-of-stream; explicit Next/Previous still
+  advance. The current track is not duplicated in the queue list.
+- repeat-all wraps; shuffle chooses from valid queue indices.
 - engine end-of-stream, not catalog duration arithmetic, triggers automatic advancement.
 - queue, selected index, playback state, position, volume, mute, repeat, shuffle, and error state are restored from
   SQLite. A restored track remains paused until explicitly resumed.
