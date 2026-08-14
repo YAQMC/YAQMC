@@ -27,7 +27,12 @@ translation / romanization = primary × 0.42
 
 ## Editing
 
-- Click a widget to select it. Click empty canvas to deselect.
+- Click a widget to select it. Click empty canvas (letterbox) to deselect. Clicking an already
+  selected widget starts a drag after a short movement threshold; it does not clear selection.
+- Selected widgets show an overlay outline and resize handles in the same scene transform. Vinyl
+  selection uses the inscribed visual square so the disc stays circular.
+- The composer shell fills most of the application viewport. The scene uses one uniform fit scale
+  (`min(availableWidth / logicalWidth, availableHeight / logicalHeight)`). Zoom is presentation-only.
 - Selected widgets show a persistent outline and resize handles.
 - Drag and resize commit **one** undo step on pointer up. Pointer-move does not write SQLite.
 - Snap to center axes, margins, and sibling edges. Alt or Ctrl bypasses snap.

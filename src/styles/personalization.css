@@ -572,5 +572,8 @@
 }
 
 .lyrics-preset-preview .lyrics-stage__disc {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
 }

@@ -9,7 +9,20 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pause, Play } from 'lucide-react';
+import {
+  Pause,
+  Play,
+  Disc3,
+  Image,
+  Type,
+  Music,
+  Eye,
+  EyeOff,
+  Lock,
+  LockOpen,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react';
 import {
   applyOverride,
   clampFollowAnchor,
@@ -49,6 +62,18 @@ import {
   pushComposerHistory,
 } from '../application/lyrics-composer';
 import {
+  composerStageFit,
+  constrainVisualSquare,
+  DRAG_THRESHOLD_PX,
+  logicalSceneSize,
+  overlayBoundsForWidget,
+  percentFromUnit,
+  sceneAspectRatio,
+  screenDeltaToNormalized,
+  unitFromPercent,
+  type ComposerZoom,
+} from '../application/lyrics-composer-view';
+import {
   placeWidget,
   snapWidgetPosition,
   widgetBoxStyle,
@@ -76,10 +101,15 @@ function isPresetNameKey(value: string): value is PresetNameKey {
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    Boolean(target.closest('button, input, textarea, select, a, [data-no-drag]'))
-  );
+  return target instanceof Element && Boolean(target.closest('[data-editor-interactive]'));
+}
+
+function layerIcon(id: SceneWidgetId) {
+  if (id === 'artwork') return <Disc3 size={14} />;
+  if (id === 'metadata') return <Type size={14} />;
+  if (id === 'lyrics') return <Music size={14} />;
+  if (id === 'transport') return <Play size={14} />;
+  return <Image size={14} />;
 }
 
 function ComposerRange({
@@ -129,39 +159,66 @@ function ComposerRange({
   );
 }
 
-function UnitField({
+function PercentField({
   label,
   value,
-  min = -0.2,
-  max = 1.2,
-  step = 0.01,
-  digits = 3,
+  min = -20,
+  max = 120,
   onChange,
 }: {
   label: string;
   value: number;
   min?: number;
   max?: number;
-  step?: number;
-  digits?: number;
   onChange: (value: number) => void;
 }) {
   return (
     <label className="lyrics-preset-editor__select">
       <span>{label}</span>
-      <input
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={Number(value.toFixed(digits))}
-        aria-label={label}
-        onChange={(event) => {
-          const next = Number(event.target.value);
-          if (Number.isFinite(next)) onChange(next);
-        }}
-      />
+      <span className="lyrics-composer-percent">
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={1}
+          value={percentFromUnit(value)}
+          aria-label={label}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            if (Number.isFinite(next)) onChange(unitFromPercent(next));
+          }}
+        />
+        <abbr>%</abbr>
+      </span>
     </label>
+  );
+}
+
+function AnchorPicker({
+  value,
+  label,
+  onChange,
+}: {
+  value: WidgetAnchor;
+  label: string;
+  onChange: (value: WidgetAnchor) => void;
+}) {
+  return (
+    <div className="lyrics-preset-editor__select">
+      <span>{label}</span>
+      <div className="lyrics-composer-anchor" role="group" aria-label={label}>
+        {WIDGET_ANCHORS.map((anchor) => (
+          <button
+            key={anchor}
+            type="button"
+            aria-label={anchor}
+            aria-pressed={value === anchor}
+            title={anchor}
+            onClick={() => onChange(anchor)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -207,12 +264,20 @@ export function LyricsPresetEditor({
   const [frame, setFrame] = useState<LyricsPreviewFrame>('desktop');
   const [savePrompt, setSavePrompt] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [newName, setNewName] = useState(source.name ?? '');
   const [selectedId, setSelectedId] = useState<SceneWidgetId | null>(null);
   const [guides, setGuides] = useState<{ axis: 'x' | 'y'; position: number }[]>([]);
   const [past, setPast] = useState<LyricsPresetDefinition[]>([]);
   const [future, setFuture] = useState<LyricsPresetDefinition[]>([]);
   const [editorGesture, setEditorGesture] = useState(false);
+  const [zoom, setZoom] = useState<ComposerZoom>('fit');
+  const [available, setAvailable] = useState({ width: 0, height: 0 });
+  const [windowSize, setWindowSize] = useState(() => ({
+    width: typeof window === 'undefined' ? 1920 : window.innerWidth,
+    height: typeof window === 'undefined' ? 1080 : window.innerHeight,
+  }));
+  const openedDraft = useRef(source);
   const gesture = useRef<{
     kind: 'move' | 'resize';
     id: Exclude<SceneWidgetId, 'background'>;
@@ -221,6 +286,8 @@ export function LyricsPresetEditor({
     snapshot: LyricsPresetDefinition;
     originX: number;
     originY: number;
+    pointerId: number;
+    dragging: boolean;
   } | null>(null);
   const sliderSnapshot = useRef<LyricsPresetDefinition | null>(null);
   const draftRef = useRef(draft);
@@ -276,6 +343,22 @@ export function LyricsPresetEditor({
       useLyricsPresetPreviewStore.getState().reset();
     };
   }, [presetId, provider]);
+
+  useEffect(() => {
+    const node = canvasRef.current;
+    if (!node || typeof ResizeObserver !== 'function') return;
+    const update = () => setAvailable({ width: node.clientWidth, height: node.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   useEffect(() => {
     if (!preview.isPlaying) return undefined;
@@ -405,6 +488,15 @@ export function LyricsPresetEditor({
     onClose();
   };
 
+  const requestClose = () => {
+    if (gesture.current) return;
+    if (!presetsEqualForHistory(openedDraft.current, draftRef.current)) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  };
+
   const handlePlayToggle = () => {
     try {
       preview.toggle();
@@ -469,24 +561,38 @@ export function LyricsPresetEditor({
     ],
   );
 
-  const movable = selectedId && selectedId !== 'background' ? draft.scene[selectedId] : null;
+  const logical = useMemo(() => logicalSceneSize(frame, windowSize), [frame, windowSize]);
+  const fit = useMemo(() => composerStageFit(available, logical, zoom), [available, logical, zoom]);
+  const viewRef = useRef({ fit, logical, aspect: sceneAspectRatio(logical) });
+  useEffect(() => {
+    viewRef.current = { fit, logical, aspect: sceneAspectRatio(logical) };
+  }, [fit, logical]);
 
-  const sceneRect = () =>
-    canvasRef.current?.querySelector('.lyrics-scene')?.getBoundingClientRect();
+  const movable = selectedId && selectedId !== 'background' ? draft.scene[selectedId] : null;
+  const overlayBox =
+    movable && selectedId === 'artwork' && draft.scene.artwork.renderer === 'vinyl'
+      ? overlayBoundsForWidget(movable, 'vinyl', sceneAspectRatio(logical))
+      : movable;
 
   const applyPointerMove = useCallback(
     (event: PointerEvent) => {
       const current = gesture.current;
-      const rect = sceneRect();
-      if (!current || !rect || rect.width === 0 || rect.height === 0) return;
-      const dx = (event.clientX - current.originX) / rect.width;
-      const dy = (event.clientY - current.originY) / rect.height;
+      const view = viewRef.current;
+      if (!current || view.fit.scale === 0) return;
+      const pixelDx = event.clientX - current.originX;
+      const pixelDy = event.clientY - current.originY;
+      if (!current.dragging) {
+        if (Math.hypot(pixelDx, pixelDy) < DRAG_THRESHOLD_PX) return;
+        current.dragging = true;
+        if (current.id === 'lyrics') setEditorGesture(true);
+      }
+      const delta = screenDeltaToNormalized(pixelDx, pixelDy, view.fit.scale, view.logical);
       const bypass = event.altKey || event.ctrlKey || event.metaKey;
       if (current.kind === 'move') {
         const nextBox = {
           ...current.start,
-          x: current.start.x + dx,
-          y: current.start.y + dy,
+          x: current.start.x + delta.x,
+          y: current.start.y + delta.y,
         };
         const snapped = snapWidgetPosition(
           nextBox,
@@ -500,7 +606,17 @@ export function LyricsPresetEditor({
           updateSceneWidget(current.snapshot, current.id, { x: snapped.x, y: snapped.y }),
         );
       } else if (current.handle) {
-        const resized = applyResize(current.start, current.handle, dx, dy);
+        let resized = applyResize(current.start, current.handle, delta.x, delta.y);
+        if (
+          current.id === 'artwork' &&
+          current.snapshot.scene.artwork.renderer === 'vinyl' &&
+          !bypass
+        ) {
+          const prefer =
+            current.handle.includes('e') || current.handle.includes('w') ? 'width' : 'height';
+          const square = constrainVisualSquare(resized.width, resized.height, view.aspect, prefer);
+          resized = { ...resized, ...square };
+        }
         assignDraft(updateSceneWidget(current.snapshot, current.id, resized));
       }
     },
@@ -541,12 +657,18 @@ export function LyricsPresetEditor({
     flushPendingMove();
     const current = gesture.current;
     if (!current) return;
+    const pointerId = current.pointerId;
     gesture.current = null;
     setEditorGesture(false);
     setGuides([]);
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
-    if (!presetsEqualForHistory(current.snapshot, draftRef.current)) {
+    try {
+      canvasRef.current?.releasePointerCapture(pointerId);
+    } catch {
+      /* capture may already be released */
+    }
+    if (current.dragging && !presetsEqualForHistory(current.snapshot, draftRef.current)) {
       setPast((history) => pushComposerHistory(history, current.snapshot));
       setFuture([]);
       logger.info(
@@ -571,8 +693,15 @@ export function LyricsPresetEditor({
       snapshot: clonePresetDraft(live),
       originX: event.clientX,
       originY: event.clientY,
+      pointerId: event.pointerId,
+      dragging: false,
     };
-    setEditorGesture(id === 'lyrics');
+    setSelectedId(id);
+    try {
+      canvasRef.current?.setPointerCapture(event.pointerId);
+    } catch {
+      /* jsdom */
+    }
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
   };
@@ -590,8 +719,14 @@ export function LyricsPresetEditor({
       snapshot: clonePresetDraft(live),
       originX: event.clientX,
       originY: event.clientY,
+      pointerId: event.pointerId,
+      dragging: false,
     };
-    setEditorGesture(selectedId === 'lyrics');
+    try {
+      canvasRef.current?.setPointerCapture(event.pointerId);
+    } catch {
+      /* jsdom */
+    }
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
   };
@@ -611,7 +746,21 @@ export function LyricsPresetEditor({
       className="lyrics-preset-editor"
       aria-labelledby="lyrics-preset-editor-title"
       onClose={onClose}
-      onCancel={onClose}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (gesture.current) {
+          assignDraft(gesture.current.snapshot);
+          gesture.current = null;
+          setEditorGesture(false);
+          setGuides([]);
+          return;
+        }
+        if (selectedId) {
+          setSelectedId(null);
+          return;
+        }
+        requestClose();
+      }}
     >
       <div className="lyrics-preset-editor__body">
         <header className="lyrics-preset-editor__header">
@@ -621,7 +770,7 @@ export function LyricsPresetEditor({
               {preview.song.title} — {joinArtistNames(preview.song.artists)}
             </p>
           </div>
-          <button type="button" className="button button--quiet" onClick={onClose}>
+          <button type="button" className="button button--quiet" onClick={requestClose}>
             {t('cancel')}
           </button>
         </header>
@@ -640,6 +789,17 @@ export function LyricsPresetEditor({
               onClick={() => setFrame(option)}
             >
               {t(`frames.${option}`)}
+            </button>
+          ))}
+          {(['fit', 1, 0.75, 0.5] as const).map((option) => (
+            <button
+              key={String(option)}
+              type="button"
+              className="button button--quiet"
+              aria-pressed={zoom === option}
+              onClick={() => setZoom(option)}
+            >
+              {option === 'fit' ? t('fit') : `${option * 100}%`}
             </button>
           ))}
           <button
@@ -690,140 +850,197 @@ export function LyricsPresetEditor({
             ref={canvasRef}
             className="lyrics-composer-canvas"
             onPointerDown={(event) => {
-              const handle = (event.target as HTMLElement).closest('[data-resize]');
-              if (handle) return;
-              const widget = (event.target as HTMLElement).closest('[data-widget]');
-              const id = widget?.getAttribute('data-widget') as SceneWidgetId | null;
-              if (!id) {
+              if (event.target === event.currentTarget) {
                 setSelectedId(null);
                 return;
               }
-              if (
-                id === 'background' ||
-                isInteractiveTarget(event.target) ||
-                draft.scene[id].locked
-              ) {
+              const handle = (event.target as HTMLElement).closest('[data-resize]');
+              if (handle) return;
+              if (isInteractiveTarget(event.target)) return;
+              const widget = (event.target as HTMLElement).closest('[data-widget]');
+              const id = widget?.getAttribute('data-widget') as SceneWidgetId | null;
+              if (!id || id === 'background') {
+                if (id === 'background') setSelectedId('background');
+                return;
+              }
+              if (draftRef.current.scene[id].locked) {
+                setSelectedId(id);
                 return;
               }
               startMove(id, event);
             }}
           >
-            <LyricsScene
-              preset={draft}
-              bindings={bindings}
-              appearance={appearanceModel}
-              mode="editor"
-              selectedWidgetId={selectedId}
-              onSelectWidget={(id) => setSelectedId(id as SceneWidgetId | null)}
-              editorGesture={editorGesture}
-              guides={guides}
-              previewFrame={frame}
-              fallbackNotice={preview.offline ? t('offlinePreview') : null}
-            />
-            {movable && !movable.locked && (
-              <div className="lyrics-composer-handles" style={widgetBoxStyle(movable)}>
-                {RESIZE_HANDLES.map((handle) => (
-                  <button
-                    key={handle}
-                    type="button"
-                    className="lyrics-composer-handle"
-                    data-resize={handle}
-                    aria-label={t('resizeHandle', { handle })}
-                    onPointerDown={(event) => startResize(handle, event)}
-                  />
-                ))}
-              </div>
-            )}
+            <div
+              className="lyrics-composer-stage"
+              data-composer-stage="true"
+              style={{
+                width: Math.max(1, fit.width),
+                height: Math.max(1, fit.height),
+              }}
+            >
+              <LyricsScene
+                preset={draft}
+                bindings={bindings}
+                appearance={appearanceModel}
+                mode="editor"
+                selectedWidgetId={selectedId}
+                onSelectWidget={(id) => {
+                  if (gesture.current && id === null) return;
+                  setSelectedId(id as SceneWidgetId | null);
+                }}
+                editorGesture={editorGesture}
+                guides={guides}
+                previewFrame={frame}
+                fallbackNotice={preview.offline ? t('offlinePreview') : null}
+              />
+              {overlayBox && !movable?.locked && (
+                <div className="lyrics-composer-handles">
+                  <div
+                    className="lyrics-composer-handles__box"
+                    data-selection-bounds={selectedId ?? undefined}
+                    style={widgetBoxStyle(overlayBox)}
+                  >
+                    {RESIZE_HANDLES.map((handle) => (
+                      <button
+                        key={handle}
+                        type="button"
+                        className="lyrics-composer-handle"
+                        data-resize={handle}
+                        aria-label={t('resizeHandle', { handle })}
+                        onPointerDown={(event) => startResize(handle, event)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <aside className="lyrics-preset-editor__side">
             <div className="lyrics-composer-layers" aria-label={t('layers')}>
               <strong>{t('layers')}</strong>
               {SCENE_WIDGET_IDS.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  className="button button--quiet"
-                  aria-pressed={selectedId === id}
-                  onClick={() => setSelectedId(id)}
-                >
-                  {t(`widgets.${id}`)}
-                  {draft.scene[id].locked ? ` · ${t('locked')}` : ''}
-                  {!draft.scene[id].visible ? ` · ${t('hidden')}` : ''}
-                </button>
+                <div key={id} className="lyrics-composer-layer-row">
+                  <button
+                    type="button"
+                    className="lyrics-composer-layer"
+                    aria-pressed={selectedId === id}
+                    onClick={() => setSelectedId(id)}
+                  >
+                    {layerIcon(id)}
+                    <span>{t(`widgets.${id}`)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button icon-button--small"
+                    aria-label={t('visible')}
+                    aria-pressed={draft.scene[id].visible}
+                    onClick={() =>
+                      commit(
+                        updateSceneWidget(draftRef.current, id, {
+                          visible: !draftRef.current.scene[id].visible,
+                        }),
+                      )
+                    }
+                  >
+                    {draft.scene[id].visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button icon-button--small"
+                    aria-label={t('locked')}
+                    aria-pressed={draft.scene[id].locked}
+                    onClick={() =>
+                      commit(
+                        updateSceneWidget(draftRef.current, id, {
+                          locked: !draftRef.current.scene[id].locked,
+                        }),
+                      )
+                    }
+                  >
+                    {draft.scene[id].locked ? <Lock size={14} /> : <LockOpen size={14} />}
+                  </button>
+                </div>
               ))}
             </div>
 
             <div className="lyrics-composer-inspector">
-              <ComposerRange
-                label={t('fontSize')}
-                min={FONT_SCALE_MIN}
-                max={FONT_SCALE_MAX}
-                step={0.01}
-                value={draft.typography.fontScale}
-                output={`${Math.round(draft.typography.fontScale * 100)}%`}
-                onGestureStart={beginSlider}
-                onGestureEnd={endSlider}
-                onChange={(value) =>
-                  assignDraft({
-                    ...draftRef.current,
-                    typography: {
-                      ...draftRef.current.typography,
-                      fontScale: clampFontScale(value),
-                    },
-                  })
-                }
-                onReset={() =>
-                  commit({
-                    ...draft,
-                    typography: { ...draft.typography, fontScale: 1 },
-                  })
-                }
-              />
-              <ComposerRange
-                label={t('lineSpacing')}
-                min={LINE_HEIGHT_MIN}
-                max={LINE_HEIGHT_MAX}
-                step={0.01}
-                value={draft.typography.lineHeight}
-                output={draft.typography.lineHeight.toFixed(2)}
-                onGestureStart={beginSlider}
-                onGestureEnd={endSlider}
-                onChange={(value) =>
-                  assignDraft({
-                    ...draftRef.current,
-                    typography: {
-                      ...draftRef.current.typography,
-                      lineHeight: clampLineHeight(value),
-                    },
-                  })
-                }
-                onReset={() =>
-                  commit({
-                    ...draft,
-                    typography: { ...draft.typography, lineHeight: 1.16 },
-                  })
-                }
-              />
-              <label className="lyrics-preset-editor__select">
-                <span>{appearance('fit')}</span>
-                <select
-                  value={draft.background.fit}
-                  aria-label={appearance('fit')}
-                  onChange={(event) =>
-                    commit(
-                      updateSceneWidget(draft, 'background', {
-                        fit: event.target.value as LyricsBackgroundFit,
-                      }),
-                    )
+              <div className="lyrics-composer-section">
+                <h3>{t('typographySection')}</h3>
+                <ComposerRange
+                  label={t('fontSize')}
+                  min={FONT_SCALE_MIN}
+                  max={FONT_SCALE_MAX}
+                  step={0.01}
+                  value={draft.typography.fontScale}
+                  output={`${Math.round(draft.typography.fontScale * 100)}%`}
+                  onGestureStart={beginSlider}
+                  onGestureEnd={endSlider}
+                  onChange={(value) =>
+                    assignDraft({
+                      ...draftRef.current,
+                      typography: {
+                        ...draftRef.current.typography,
+                        fontScale: clampFontScale(value),
+                      },
+                    })
                   }
-                >
-                  <option value="cover">{appearance('fitCover')}</option>
-                  <option value="contain">{appearance('fitContain')}</option>
-                </select>
-              </label>
+                  onReset={() =>
+                    commit({
+                      ...draft,
+                      typography: { ...draft.typography, fontScale: 1 },
+                    })
+                  }
+                />
+                <ComposerRange
+                  label={t('lineSpacing')}
+                  min={LINE_HEIGHT_MIN}
+                  max={LINE_HEIGHT_MAX}
+                  step={0.01}
+                  value={draft.typography.lineHeight}
+                  output={draft.typography.lineHeight.toFixed(2)}
+                  onGestureStart={beginSlider}
+                  onGestureEnd={endSlider}
+                  onChange={(value) =>
+                    assignDraft({
+                      ...draftRef.current,
+                      typography: {
+                        ...draftRef.current.typography,
+                        lineHeight: clampLineHeight(value),
+                      },
+                    })
+                  }
+                  onReset={() =>
+                    commit({
+                      ...draft,
+                      typography: { ...draft.typography, lineHeight: 1.16 },
+                    })
+                  }
+                />
+              </div>
+              <div className="lyrics-composer-section">
+                <h3>{t('backgroundSection')}</h3>
+                <label className="lyrics-preset-editor__select">
+                  <span>{appearance('fit')}</span>
+                  <select
+                    value={draft.background.fit}
+                    aria-label={appearance('fit')}
+                    onChange={(event) =>
+                      commit(
+                        updateSceneWidget(draft, 'background', {
+                          fit: event.target.value as LyricsBackgroundFit,
+                        }),
+                      )
+                    }
+                  >
+                    <option value="cover">{appearance('fitCover')}</option>
+                    <option value="contain">{appearance('fitContain')}</option>
+                  </select>
+                </label>
+              </div>
               {selectedId && (
-                <>
+                <div className="lyrics-composer-section">
+                  <h3>{t('behaviorSection')}</h3>
                   <label className="lyrics-preset-editor__select">
                     <span>{t('visible')}</span>
                     <input
@@ -865,35 +1082,55 @@ export function LyricsPresetEditor({
                     onGestureStart={beginSlider}
                     onGestureEnd={endSlider}
                   />
-                </>
+                  {selectedId !== 'background' && (
+                    <div>
+                      <button
+                        type="button"
+                        className="button button--quiet"
+                        onClick={() =>
+                          commit(
+                            updateSceneWidget(draftRef.current, selectedId, {
+                              zIndex: Math.min(12, draftRef.current.scene[selectedId].zIndex + 1),
+                            }),
+                          )
+                        }
+                      >
+                        <ChevronUp size={14} /> {t('bringForward')}
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--quiet"
+                        onClick={() =>
+                          commit(
+                            updateSceneWidget(draftRef.current, selectedId, {
+                              zIndex: Math.max(0, draftRef.current.scene[selectedId].zIndex - 1),
+                            }),
+                          )
+                        }
+                      >
+                        <ChevronDown size={14} /> {t('sendBackward')}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
               {movable && (
-                <>
-                  <label className="lyrics-preset-editor__select">
-                    <span>{t('anchor')}</span>
-                    <select
-                      value={movable.anchor}
-                      aria-label={t('anchor')}
-                      onChange={(event) =>
-                        commit(
-                          updateSceneWidget(
-                            draftRef.current,
-                            selectedId as Exclude<SceneWidgetId, 'background'>,
-                            {
-                              anchor: event.target.value as WidgetAnchor,
-                            },
-                          ),
-                        )
-                      }
-                    >
-                      {WIDGET_ANCHORS.map((anchor) => (
-                        <option key={anchor} value={anchor}>
-                          {anchor}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <UnitField
+                <div className="lyrics-composer-section">
+                  <h3>{t('layoutSection')}</h3>
+                  <AnchorPicker
+                    label={t('anchor')}
+                    value={movable.anchor}
+                    onChange={(anchor) =>
+                      commit(
+                        updateSceneWidget(
+                          draftRef.current,
+                          selectedId as Exclude<SceneWidgetId, 'background'>,
+                          { anchor },
+                        ),
+                      )
+                    }
+                  />
+                  <PercentField
                     label={t('positionX')}
                     value={movable.x}
                     onChange={(value) =>
@@ -906,7 +1143,7 @@ export function LyricsPresetEditor({
                       )
                     }
                   />
-                  <UnitField
+                  <PercentField
                     label={t('positionY')}
                     value={movable.y}
                     onChange={(value) =>
@@ -919,11 +1156,11 @@ export function LyricsPresetEditor({
                       )
                     }
                   />
-                  <UnitField
+                  <PercentField
                     label={t('width')}
                     value={movable.width}
-                    min={0.04}
-                    max={1.2}
+                    min={4}
+                    max={120}
                     onChange={(value) =>
                       commit(
                         updateSceneWidget(
@@ -934,11 +1171,11 @@ export function LyricsPresetEditor({
                       )
                     }
                   />
-                  <UnitField
+                  <PercentField
                     label={t('height')}
                     value={movable.height}
-                    min={0.04}
-                    max={1.2}
+                    min={4}
+                    max={120}
                     onChange={(value) =>
                       commit(
                         updateSceneWidget(
@@ -963,7 +1200,7 @@ export function LyricsPresetEditor({
                   >
                     {t('resetPosition')}
                   </button>
-                </>
+                </div>
               )}
               {selectedId && (
                 <button
@@ -975,7 +1212,8 @@ export function LyricsPresetEditor({
                 </button>
               )}
               {selectedId === 'artwork' && (
-                <>
+                <div className="lyrics-composer-section">
+                  <h3>{t('artworkSection')}</h3>
                   <label className="lyrics-preset-editor__select">
                     <span>{t('artworkRenderer')}</span>
                     <select
@@ -1032,10 +1270,11 @@ export function LyricsPresetEditor({
                       )
                     }
                   />
-                </>
+                </div>
               )}
               {selectedId === 'metadata' && (
-                <>
+                <div className="lyrics-composer-section">
+                  <h3>{t('typographySection')}</h3>
                   <ComposerRange
                     label={t('titleScale')}
                     min={0.4}
@@ -1072,7 +1311,7 @@ export function LyricsPresetEditor({
                       commit(updateSceneWidget(draftRef.current, 'metadata', { artistScale: 0.72 }))
                     }
                   />
-                </>
+                </div>
               )}
               {(selectedId === 'lyrics' ||
                 selectedId === 'metadata' ||
@@ -1324,6 +1563,24 @@ export function LyricsPresetEditor({
               {t('cancel')}
             </button>
           </div>
+        ) : confirmDiscard ? (
+          <div
+            className="lyrics-preset-editor__prompt"
+            role="alertdialog"
+            aria-label={t('discardConfirm')}
+          >
+            <p>{t('discardConfirm')}</p>
+            <button type="button" className="button button--primary" onClick={onClose}>
+              {t('discardChanges')}
+            </button>
+            <button
+              type="button"
+              className="button button--quiet"
+              onClick={() => setConfirmDiscard(false)}
+            >
+              {t('keepEditing')}
+            </button>
+          </div>
         ) : (
           <div className="lyrics-preset-editor__actions">
             <button
@@ -1345,7 +1602,7 @@ export function LyricsPresetEditor({
                 {t('reset')}
               </button>
             )}
-            <button type="button" className="button button--quiet" onClick={onClose}>
+            <button type="button" className="button button--quiet" onClick={requestClose}>
               {t('cancel')}
             </button>
           </div>
