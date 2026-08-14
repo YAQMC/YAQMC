@@ -127,6 +127,10 @@ describe('LyricsPresetPicker', () => {
       expect(
         Number.parseFloat(scene()?.style.getPropertyValue('--lyrics-font-size') ?? '0'),
       ).toBeCloseTo(31.36, 2);
+      expect(document.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
+        '31.36px',
+      );
+      const gapAtSmallType = scene()?.style.getPropertyValue('--lyrics-line-gap');
       fireEvent.input(screen.getByRole('slider', { name: 'Lyrics font size' }), {
         target: { value: '1.45' },
       });
@@ -135,6 +139,10 @@ describe('LyricsPresetPicker', () => {
       );
       expect(largePx).toBeCloseTo(64.96, 2);
       expect(largePx / 31.36).toBeGreaterThan(2);
+      expect(document.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
+        '64.96px',
+      );
+      expect(scene()?.style.getPropertyValue('--lyrics-line-gap')).toBe(gapAtSmallType);
 
       fireEvent.input(screen.getByRole('slider', { name: 'Lyrics line spacing' }), {
         target: { value: '1.05' },

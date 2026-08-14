@@ -816,7 +816,7 @@ input[type='range']:disabled {
 .lyrics-stage {
   --lyrics-font-scale: 1;
   --lyrics-line-height: 1.16;
-  --lyrics-line-gap: 0.6em;
+  --lyrics-line-gap: 0.75cqh;
   position: fixed;
   z-index: 26;
   inset: 0;
@@ -1158,10 +1158,6 @@ input[type='range']:disabled {
   padding-block: 11vh 16vh;
 }
 
-.lyrics-stage[data-fullscreen] .lyrics-line {
-  margin-block: var(--lyrics-line-gap, 0.52em);
-}
-
 .lyrics-stage[data-fullscreen][data-cover-layout='full'] .lyrics-stage__content {
   padding: 0;
 }
@@ -1476,11 +1472,11 @@ input[type='range']:disabled {
   background: transparent;
   color: color-mix(in srgb, var(--lyrics-ink) 34%, transparent);
   font-family: var(--font-display);
-  font-size: var(--lyrics-font-size);
+  font-size: var(--lyrics-font-size, inherit);
   font-weight: 700;
   letter-spacing: -0.038em;
-  line-height: var(--lyrics-line-height, 1.16);
-  margin-block: var(--lyrics-line-gap, 0.6em);
+  line-height: 1.15;
+  margin-block: var(--lyrics-line-gap, 0.75cqh);
   scroll-margin-block: 40vh;
   scroll-snap-align: center;
   text-align: inherit;
@@ -1509,6 +1505,8 @@ input[type='range']:disabled {
 
 .lyrics-line__primary {
   display: block;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .lyrics-line__vocalist {
@@ -1530,7 +1528,7 @@ input[type='range']:disabled {
   font-size: var(--lyrics-secondary-font-size);
   font-weight: 520;
   letter-spacing: -0.012em;
-  line-height: var(--lyrics-line-height, 1.16);
+  line-height: 1.25;
 }
 
 .lyrics-line__translation {

@@ -23,7 +23,8 @@ effectivePrimary = fontBase × fontScale
 translation / romanization = primary × 0.42
 ```
 
-`--lyrics-font-size` is set on the scene. `.lyrics-line` does not clamp again.
+`--lyrics-font-size` is set on the scene as a resolved pixel value from the scene height, so the
+composer preview updates while dragging. `.lyrics-line` does not clamp again.
 
 ## Editing
 
@@ -34,7 +35,8 @@ translation / romanization = primary × 0.42
   selection uses the inscribed visual square so the disc stays circular. Transport uses a compact
   control-sized frame, not a full-width bar leftover from the old three-column player chrome.
 - Font size scales lyric **text** (`70%` is more than 2× smaller than `145%`). It does not shrink
-  the lyrics viewport rectangle.
+  the lyrics viewport rectangle, and it does not change the line gap. Line spacing uses a
+  scene-relative `cqh` gap, independent of `fontScale`.
 - The composer shell fills most of the application viewport. The scene uses one uniform fit scale
   (`min(availableWidth / logicalWidth, availableHeight / logicalHeight)`). Zoom is presentation-only.
 - Selected widgets show a persistent outline and resize handles.

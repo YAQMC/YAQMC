@@ -15,6 +15,7 @@ import {
   LYRICS_PRESET_SCHEMA_VERSION,
   lineGapFromLineHeight,
   lyricsPresetDiagnostics,
+  nextResolvedPreset,
   normalizeLyricsPresetState,
   resetOverride,
   resolveLyricsPreset,
@@ -167,6 +168,25 @@ describe('lyrics preset foundation', () => {
   });
 
   it('changes primary line gap when lineHeight moves from 1.05 to 1.60', () => {
+    expect(lineGapFromLineHeight(1.05)).toBeCloseTo(0.35);
+    expect(lineGapFromLineHeight(1.6)).toBeCloseTo(2.35);
     expect(lineGapFromLineHeight(1.6) / lineGapFromLineHeight(1.05)).toBeGreaterThan(1.4);
+  });
+
+  it('cycles custom full-layout presets after immersive in the cover group', () => {
+    const created = saveAsNewPreset(defaultLyricsPresetState, BUILTIN_IMMERSIVE_ID, {
+      name: 'Studio',
+    });
+    expect(created.state.custom[0]?.layout).toBe('full');
+    expect(nextResolvedPreset({ ...created.state, selectedId: BUILTIN_CLASSIC_ID }).id).toBe(
+      BUILTIN_IMMERSIVE_ID,
+    );
+    expect(nextResolvedPreset({ ...created.state, selectedId: BUILTIN_IMMERSIVE_ID }).id).toBe(
+      created.id,
+    );
+    expect(nextResolvedPreset(created.state).id).toBe(BUILTIN_VINYL_ID);
+    expect(nextResolvedPreset({ ...created.state, selectedId: BUILTIN_VINYL_ID }).id).toBe(
+      BUILTIN_CLASSIC_ID,
+    );
   });
 });

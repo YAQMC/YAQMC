@@ -2,7 +2,11 @@ import { useContext, useEffect, useRef, useState, type CSSProperties } from 'rea
 import { ChevronDown, Heart, Image } from 'lucide-react';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
 import { useLyricsStore } from '../application/lyrics-store';
-import { lineGapFromLineHeight, resolveLyricsPreset } from '../application/lyrics-preset';
+import {
+  lineGapFromLineHeight,
+  nextResolvedPreset,
+  resolveLyricsPreset,
+} from '../application/lyrics-preset';
 import { getEstimatedPositionMs, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import { isAccountMusicProvider } from '../providers/music-provider';
@@ -100,12 +104,21 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
   const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
-  const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
+  const selectLyricsPreset = usePreferencesStore((state) => state.selectLyricsPreset);
   const backgroundMode = usePreferencesStore((state) => state.appearance.backgroundMode);
   const backgroundColor = usePreferencesStore((state) => state.appearance.backgroundColor);
   const backgroundImageSource = usePreferencesStore((state) => state.backgroundImageData);
   const resolvedPreset = resolveLyricsPreset(lyricsPresets);
+  const nextPreset = nextResolvedPreset(lyricsPresets);
   const coverLayout = resolvedPreset.layout;
+  const nextCoverLabel =
+    nextPreset.source === 'custom'
+      ? (nextPreset.name ?? t('customPreset'))
+      : nextPreset.layout === 'full'
+        ? t('coverFull')
+        : nextPreset.layout === 'vinyl'
+          ? t('coverVinyl')
+          : t('coverSplit');
   const backgroundFit = resolvedPreset.background.fit;
   const currentArtworkSrc = currentArtworkBaseSrc
     ? resolveArtworkSource(
@@ -227,7 +240,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const style = {
     '--lyrics-font-scale': resolvedPreset.typography.fontScale,
     '--lyrics-line-height': resolvedPreset.typography.lineHeight,
-    '--lyrics-line-gap': `${lineGapFromLineHeight(resolvedPreset.typography.lineHeight)}em`,
+    '--lyrics-line-gap': `${lineGapFromLineHeight(resolvedPreset.typography.lineHeight)}cqh`,
     '--lyrics-stage-base':
       appearance.baseColor ?? resolvedPreset.background.fallbackColor ?? 'var(--bg-opaque)',
     backgroundColor: appearance.baseColor ?? resolvedPreset.background.fallbackColor ?? undefined,
@@ -300,20 +313,9 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
 
       <div className="lyrics-stage__topbar" data-hidden={controlsHidden || undefined}>
         <IconButton
-          label={
-            coverLayout === 'split'
-              ? t('coverFull')
-              : coverLayout === 'full'
-                ? t('coverVinyl')
-                : t('coverSplit')
-          }
+          label={nextCoverLabel}
           size="large"
-          onClick={() =>
-            updateLyrics({
-              coverLayout:
-                coverLayout === 'split' ? 'full' : coverLayout === 'full' ? 'vinyl' : 'split',
-            })
-          }
+          onClick={() => selectLyricsPreset(nextPreset.id)}
         >
           <Image size={18} />
         </IconButton>

@@ -361,6 +361,7 @@ export const enUS = {
     coverSplit: 'Split layout',
     coverFull: 'Full-window cover',
     coverVinyl: 'Vinyl record',
+    customPreset: 'Custom preset',
     fontSize: 'Lyrics font size',
     fontSizeSmall: 'Small',
     fontSizeMedium: 'Medium',

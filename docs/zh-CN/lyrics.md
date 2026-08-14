@@ -19,14 +19,16 @@ QQ QRC / LRC / 假数据文档
 ## 渲染
 
 歌词页是全窗口沉浸界面，背景来自封面。沉浸歌词页与[歌词编排器](lyrics-composer.md)共用同一个
-`LyricsScene`。顶栏仍按 `split` → `full` → `vinyl` 切换内置预设 id，只改变 `selectedId`。桌面歌词 /
-歌词岛保留各自的表面字体。布局同时作为当前[歌词预设](lyrics-presets.md)保存。
+`LyricsScene`。顶栏按版式分组循环**全部**已解析预设：经典后是分栏自定义，沉浸后是全窗口自定义，
+黑胶后是唱片自定义；只改变 `selectedId`。桌面歌词 / 歌词岛保留各自的表面字体。布局同时作为当前
+[歌词预设](lyrics-presets.md)保存。
 
 带模糊的版式仍用离屏 canvas（`stackblur-canvas`）生成静态模糊图——刻意避开实时 CSS `filter: blur()`，
 因为 WebKitGTK 会把大尺寸模糊层栅格化成黑色。沉浸工厂图的 blur 为 0，直接使用原始封面。
 
 行强调使用封面感知墨色：控件、进度、逐字填充与已唱文字用纯墨色，当前行取封面色与墨色混合。主字号为
-场景根上的 `clamp(18px, 5.6cqh, 96px) × fontScale`。
+场景根上的 `clamp(18px, 5.6cqh, 96px) × fontScale`。字号只改字形大小；行距是场景相对的 `cqh` 间距，
+放大字号不会把行与行之间的空隙一起撑开。
 
 当前行锚定在视口 35%（`followAnchor`，歌词组件可覆盖），通过阻尼弹簧在 transform 平移层上跟踪播放。
 带位移的滚轮会暂停跟随；单纯按下指针不会。**跟随当前行** 即使行号不变也会强制滚动。点击定时行 seek
