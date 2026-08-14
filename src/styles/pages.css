@@ -1565,3 +1565,61 @@
 .settings-refresh:hover {
   color: var(--text-secondary);
 }
+
+.plugin-manager__list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.plugin-card__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.plugin-card__main small {
+  display: block;
+  color: var(--text-tertiary);
+}
+
+.plugin-review {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.plugin-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.plugin-scan {
+  overflow: auto;
+  max-height: 160px;
+  font-size: var(--text-xs);
+}
+
+.settings-empty {
+  margin-top: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}

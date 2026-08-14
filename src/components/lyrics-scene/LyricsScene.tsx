@@ -61,6 +61,7 @@ function SceneWidget({
     <div
       className="lyrics-scene__widget"
       data-widget={id}
+      data-scene-widget={id}
       data-selected={selected || undefined}
       data-editor={editor || undefined}
       onPointerDown={(event) => {
@@ -121,6 +122,7 @@ export function LyricsScene({
   const { t: common } = useTranslation('common');
   const { t: settings } = useTranslation('settings', { keyPrefix: 'lyricsPresets' });
   const root = useRef<HTMLDivElement>(null);
+  const transportScrubbing = useRef(false);
   const [sceneHeight, setSceneHeight] = useState(0);
   const ink = coverInk(bindings.artworkColor);
   const editor = mode === 'editor';
@@ -171,6 +173,7 @@ export function LyricsScene({
         .filter(Boolean)
         .join(' ')}
       data-lyrics-scene="v1"
+      data-yaqmc-plugin-scene={preset.pluginId}
       data-mode={mode}
       data-cover-layout={preset.layout}
       data-background-mode={appearance.mode}
@@ -188,6 +191,7 @@ export function LyricsScene({
         <div
           className="lyrics-stage__backdrop"
           data-widget="background"
+          data-scene-widget="background"
           data-selected={selectedWidgetId === 'background' || undefined}
           style={{
             backgroundImage: `url("${appearance.imageSource}")`,
@@ -339,17 +343,25 @@ export function LyricsScene({
                   max={Math.max(bindings.durationMs, 1)}
                   step={1_000}
                   value={bindings.positionMs}
-                  onPointerDown={() => bindings.beginScrub?.()}
-                  onPointerUp={(event) =>
-                    (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value))
-                  }
-                  onPointerCancel={(event) =>
-                    (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value))
-                  }
+                  onPointerDown={() => {
+                    transportScrubbing.current = true;
+                    bindings.beginScrub?.();
+                  }}
+                  onPointerUp={(event) => {
+                    transportScrubbing.current = false;
+                    (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
+                  }}
+                  onPointerCancel={(event) => {
+                    transportScrubbing.current = false;
+                    (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
+                  }}
                   onChange={(event) => {
                     const next = Number(event.target.value);
-                    if (event.buttons > 0 && bindings.previewScrub) bindings.previewScrub(next);
-                    else bindings.seek(next);
+                    if (transportScrubbing.current && bindings.previewScrub) {
+                      bindings.previewScrub(next);
+                    } else {
+                      bindings.seek(next);
+                    }
                   }}
                   aria-label={player('position')}
                   style={{ '--range-progress': `${progress}%` } as CSSProperties}

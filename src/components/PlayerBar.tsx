@@ -153,7 +153,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
               />
             </button>
             <div className="player-bar__track-copy">
-              <strong>{current.title}</strong>
+              <strong data-yaqmc="track-title">{current.title}</strong>
               <span>{joinArtistNames(current.artists)}</span>
               {playbackState !== 'playing' && playbackState !== 'paused' && (
                 <small data-state={playbackState} title={playbackStatus || undefined}>
@@ -226,7 +226,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             }
             onChange={(event) => {
               const next = Number(event.target.value) + previewStartMs;
-              if (event.buttons > 0) previewScrub(next);
+              if (isScrubbing) previewScrub(next);
               else seek(next);
             }}
             disabled={!current}

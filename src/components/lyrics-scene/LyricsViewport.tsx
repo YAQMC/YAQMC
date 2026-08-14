@@ -335,6 +335,7 @@ const LyricLineView = memo(
         type="button"
         className="lyrics-line"
         data-line-index={lineIndex}
+        data-scene-state={active ? 'active-line' : undefined}
         data-active={highlighted || undefined}
         data-complete={complete || undefined}
         data-vocalist={line.vocalistId ?? undefined}

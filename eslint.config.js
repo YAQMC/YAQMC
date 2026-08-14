@@ -13,6 +13,8 @@ export default tseslint.config(
       'output/**',
       '.superpowers/**',
       '.playwright-cli/**',
+      'examples/plugins/**',
+      'sdk/plugin/**',
     ],
   },
   js.configs.recommended,
