@@ -335,6 +335,8 @@ pub fn run() {
             commands::player_toggle_shuffle,
             commands::player_set_shuffle,
             commands::player_cycle_repeat,
+            commands::player_set_repeat,
+            commands::player_set_primary_playback_mode,
             commands::player_add_to_queue,
             commands::player_add_tracks_to_queue,
             commands::player_remove_from_queue,

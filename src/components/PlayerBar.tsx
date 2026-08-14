@@ -5,8 +5,6 @@ import {
   Mic2,
   Pause,
   Play,
-  Repeat2,
-  Shuffle,
   SkipBack,
   SkipForward,
   Volume1,
@@ -23,6 +21,7 @@ import { formatDuration, joinArtistNames } from '../utils/format';
 import { Artwork } from './ui/Artwork';
 import { IconButton } from './ui/IconButton';
 import { Select, type SelectOption } from './ui/Select';
+import { PlaybackModeControl } from './PlaybackModeControl';
 import { useTranslation } from 'react-i18next';
 import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } from '../domain/music';
 
@@ -54,8 +53,6 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     isPlaying,
     volume,
     isMuted,
-    repeat,
-    playbackOrder,
     playbackState,
     playbackDurationMs,
     playbackError,
@@ -69,8 +66,6 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     setVolume,
     setQuality,
     toggleMuted,
-    toggleShuffle,
-    cycleRepeat,
     toggleQueue,
     toggleLyrics,
     openLyrics,
@@ -187,15 +182,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
 
       <div className="player-bar__center">
         <div className="player-controls">
-          <IconButton
-            label={playbackOrder === 'shuffle' ? t('disableShuffle') : t('enableShuffle')}
-            size="small"
-            active={playbackOrder === 'shuffle'}
-            aria-pressed={playbackOrder === 'shuffle'}
-            onClick={toggleShuffle}
-          >
-            <Shuffle size={15} />
-          </IconButton>
+          <PlaybackModeControl />
           <IconButton label={t('previous')} size="small" onClick={previous} disabled={!current}>
             <SkipBack size={17} fill="currentColor" />
           </IconButton>
@@ -214,23 +201,6 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
           </button>
           <IconButton label={t('next')} size="small" onClick={next} disabled={!current}>
             <SkipForward size={17} fill="currentColor" />
-          </IconButton>
-          <IconButton
-            label={t('repeat', {
-              mode:
-                repeat === 'off'
-                  ? t('repeatOff')
-                  : repeat === 'one'
-                    ? t('repeatOne')
-                    : t('repeatAll'),
-            })}
-            size="small"
-            active={repeat !== 'off'}
-            onClick={cycleRepeat}
-            className="repeat-button"
-          >
-            <Repeat2 size={15} />
-            {repeat === 'one' && <span className="repeat-button__one">1</span>}
           </IconButton>
         </div>
         <div className="player-progress">

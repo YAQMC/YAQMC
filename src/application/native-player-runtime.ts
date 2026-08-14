@@ -99,6 +99,12 @@ async function invokePlayerCommand(command: PlayerCommand): Promise<void> {
     case 'cycleRepeat':
       await invoke('player_cycle_repeat');
       return;
+    case 'setRepeat':
+      await invoke('player_set_repeat', { mode: command.mode });
+      return;
+    case 'setPrimaryPlaybackMode':
+      await invoke('player_set_primary_playback_mode', { mode: command.mode });
+      return;
     case 'addToQueue':
       await invoke('player_add_to_queue', { track: command.song });
       return;

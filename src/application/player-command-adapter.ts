@@ -1,4 +1,6 @@
 import type { AudioQualityPreference, EntityId, Song } from '../domain/music';
+import type { PrimaryPlaybackMode } from './playback-mode';
+import type { RepeatMode } from './player-store';
 
 export type PlayerCommand =
   | { type: 'hydrateQueue'; tracks: Song[] }
@@ -16,6 +18,8 @@ export type PlayerCommand =
   | { type: 'setShuffle'; enabled: boolean }
   | { type: 'setQuality'; quality: AudioQualityPreference }
   | { type: 'cycleRepeat' }
+  | { type: 'setRepeat'; mode: RepeatMode }
+  | { type: 'setPrimaryPlaybackMode'; mode: PrimaryPlaybackMode }
   | { type: 'addToQueue'; song: Song }
   | { type: 'addTracksToQueue'; tracks: Song[] }
   | { type: 'removeFromQueue'; index: number }

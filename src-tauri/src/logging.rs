@@ -256,9 +256,7 @@ pub fn global() -> Option<&'static LoggingHandle> {
 }
 
 /// Generate a short random correlation ID (16 hex chars) suitable for the `op` field
-/// on a chain of related log lines. Currently exposed for future callers (e.g. the
-/// player source-resolution pipeline) and tests.
-#[allow(dead_code)]
+/// on a chain of related log lines.
 pub fn new_op_id() -> String {
     let mut bytes = [0u8; 8];
     rng().fill_bytes(&mut bytes);

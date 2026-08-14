@@ -16,7 +16,7 @@ use crate::{
     platform::{self, PlatformDiagnostics},
     player::{
         LyricDocument, LyricSurfaceProjection, PlayTracksRequest, PlayerService, PlayerSnapshot,
-        Song,
+        PrimaryPlaybackMode, RepeatMode, Song,
     },
     qqmusic::{
         account::{
@@ -111,6 +111,13 @@ fn build_playback_section(snapshot: &PlayerSnapshot) -> PlaybackSection {
         decoder_hint: None,
         queue_length: snapshot.queue.len(),
         current_source_kind: current.map(|_| "qqmusic"),
+        playback_order: snapshot.playback_order.as_str(),
+        repeat_mode: match snapshot.repeat {
+            crate::player::RepeatMode::Off => "off",
+            crate::player::RepeatMode::All => "all",
+            crate::player::RepeatMode::One => "one",
+        },
+        primary_playback_mode: snapshot.primary_playback_mode.as_str(),
     }
 }
 
@@ -1044,6 +1051,22 @@ pub async fn player_cycle_repeat(
     player: State<'_, Arc<PlayerService>>,
 ) -> CommandResult<PlayerSnapshot> {
     Ok(player.cycle_repeat().await)
+}
+
+#[tauri::command]
+pub async fn player_set_repeat(
+    player: State<'_, Arc<PlayerService>>,
+    mode: RepeatMode,
+) -> CommandResult<PlayerSnapshot> {
+    Ok(player.set_repeat(mode).await)
+}
+
+#[tauri::command]
+pub async fn player_set_primary_playback_mode(
+    player: State<'_, Arc<PlayerService>>,
+    mode: PrimaryPlaybackMode,
+) -> CommandResult<PlayerSnapshot> {
+    Ok(player.set_primary_playback_mode(mode).await)
 }
 
 #[tauri::command]
