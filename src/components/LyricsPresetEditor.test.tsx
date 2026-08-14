@@ -74,6 +74,27 @@ describe('LyricsPresetPicker', () => {
     ).toEqual({ fontScale: 1.25, lineHeight: 1.4 });
   });
 
+  it('keeps background kind, blur, influence, and opacity in the composer inspector', () => {
+    render(<LyricsPresetPicker />);
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    expect(screen.getByRole('heading', { name: 'Background' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Image fit' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Background' }));
+    expect(screen.getByRole('button', { name: 'Background' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('combobox', { name: 'Background' })).toHaveValue('artwork');
+    expect(screen.getByRole('slider', { name: 'Background blur' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Artwork influence' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Background opacity' })).toBeInTheDocument();
+    expect(document.querySelector('.lyrics-stage__backdrop')).toHaveStyle({
+      backgroundImage: 'url("/artwork/gem-together.svg")',
+      opacity: '1',
+    });
+  });
+
   it('plays an isolated preview timeline and can save as a new preset', () => {
     render(<LyricsPresetPicker />);
     fireEvent.click(screen.getByRole('radio', { name: 'Vinyl' }));
