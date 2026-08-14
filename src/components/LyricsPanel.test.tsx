@@ -555,6 +555,54 @@ describe('LyricsPanel', () => {
     expect(word).toHaveStyle({ '--word-progress': '50%' });
   });
 
+  it('moves a whole Latin word together and keeps non-active lines unhighlighted in jump mode', () => {
+    usePreferencesStore.setState((state) => ({
+      lyrics: { ...state.lyrics, wordEffect: 'jump' },
+    }));
+    usePlayerStore.setState({
+      positionMs: 1_000,
+      observedAtMs: performance.now(),
+      isPlaying: false,
+      playbackState: 'paused',
+    });
+    useLyricsStore.setState({
+      document: timedDocument({}, true),
+      status: 'ready',
+    });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const jumpWord = container.querySelector<HTMLElement>('.lyrics-word--jump');
+    expect(jumpWord).not.toBeNull();
+    const characters = jumpWord?.querySelectorAll<HTMLElement>('[data-char-index]') ?? [];
+    expect(characters).toHaveLength(1);
+    expect(characters[0]).toHaveStyle({ '--char-progress': '0' });
+
+    act(() => usePlayerStore.getState().seek(5_000));
+
+    expect(characters[0]).toHaveStyle({ '--char-progress': '0.5' });
+  });
+
+  it('keeps past and upcoming lines plain without jump spans', () => {
+    usePreferencesStore.setState((state) => ({
+      lyrics: { ...state.lyrics, wordEffect: 'jump' },
+    }));
+    usePlayerStore.setState({
+      positionMs: 1_100,
+      observedAtMs: performance.now(),
+      isPlaying: false,
+      playbackState: 'paused',
+    });
+    useLyricsStore.setState({ document: timedDocument({}, true), status: 'ready' });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+
+    expect(container.querySelectorAll('.lyrics-word--jump')).toHaveLength(1);
+    const lines = container.querySelectorAll<HTMLElement>('.lyrics-line');
+    expect(lines[0]).toHaveAttribute('data-active');
+    expect(lines[1]).not.toHaveAttribute('data-active');
+    expect(container.querySelectorAll('.lyrics-line[data-active] .lyrics-word--jump')).toHaveLength(
+      1,
+    );
+  });
+
   it('switches the current word to discrete completion without a frame when reduced motion changes', () => {
     let nextFrame = 0;
     const frames = new Map<number, FrameRequestCallback>();

@@ -509,6 +509,10 @@ export const enUS = {
       timing: 'Lyrics timing offset',
       timingDescription: 'Presentation-only adjustment shared by lyric surfaces.',
       timingValue: '{{value}} ms',
+      wordEffect: 'Word highlight effect',
+      wordEffectDescription: 'Choose how the current word is revealed while it is sung.',
+      wordEffectFill: 'Gradual fill',
+      wordEffectJump: 'Per-character jump',
     },
     lyricsPresets: {
       title: 'Lyrics presets',

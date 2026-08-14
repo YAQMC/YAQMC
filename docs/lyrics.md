@@ -45,16 +45,27 @@ type does not inflate the space between lines.
 
 The active line is anchored at 35% of the viewport (`followAnchor`, overridable per lyrics widget) and tracks
 playback through a damped spring animation on a transform-based scroll layer, which avoids per-frame text
-repaint. A wheel gesture with a delta suspends following. Bare pointer-down does not. **Follow current line**
-always scrolls to the current line, even when the line index did not change. Clicking a timed line seeks and
-resumes following. Word highlight is independent and does not recenter.
+repaint. During a line transition the shared scroll spring is layered with a per-line cascade: lines ahead of the
+scroll direction lead the shared motion and lines behind trail it, so the gap between adjacent lines flexes as the
+wave passes instead of the whole block sliding rigidly (SPlayer-style liveliness). A wheel gesture with a delta
+suspends following. Bare pointer-down does not. **Follow current line** always scrolls to the current line, even
+when the line index did not change. Clicking a timed line seeks and resumes following. Word highlight is
+independent and does not recenter.
 
 React does not reconcile the whole document on every audio poll. The native service publishes line/word boundary
 changes from the actual engine position; a small visual loop only updates word-fill progress between boundaries.
-The active word's fill is written to one CSS custom property through a ref. Memoized line components ignore cursor
-changes that do not affect their own visual state. Reduced-motion
-mode uses immediate scrolling and disables the general transition/animation system through the existing
-design token fallback.
+The active word's reveal is written to CSS custom properties through a ref. Two reveal effects are available:
+
+- **Per-character jump** (default): splits the active word into movable units and lifts each one a short
+  distance as it is sung, staying raised while sung. CJK words split per character; Latin words move as a
+  single unit, matching SPlayer-style behavior. Only the highlighted line receives the effect; other lines
+  stay dim and unhighlighted.
+- **Gradual fill** writes `--word-progress` on the word and clips a pure-ink overlay from left to right.
+
+Both effects use the same rAF loop, stop while paused or hidden, and honor reduced motion by completing the
+word immediately. Memoized line components ignore cursor changes that do not affect their own visual state.
+Reduced-motion mode uses immediate scrolling and disables the general transition/animation system through the
+existing design token fallback.
 
 Long instrumental gaps (>= 4 s between timed lines) surface an instrumental badge while the last sung line
 stays dimmed; short gaps between lines never trigger it.

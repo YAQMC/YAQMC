@@ -277,4 +277,19 @@ describe('SettingsPage account section', () => {
     expect(screen.getByRole('radio', { name: 'Immersive' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Vinyl' })).toBeInTheDocument();
   });
+
+  it('switches the lyrics word effect between jump and fill', () => {
+    const account = accountProvider();
+    renderSettings(account.value);
+
+    const effect = screen.getByLabelText('Word highlight effect');
+    expect(effect).toHaveTextContent('Per-character jump');
+    expect(usePreferencesStore.getState().lyrics.wordEffect).toBe('jump');
+
+    fireEvent.click(effect);
+    fireEvent.click(screen.getByRole('option', { name: 'Gradual fill' }));
+
+    expect(usePreferencesStore.getState().lyrics.wordEffect).toBe('fill');
+    expect(screen.getByLabelText('Word highlight effect')).toHaveTextContent('Gradual fill');
+  });
 });

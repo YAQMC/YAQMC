@@ -1,6 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { LyricDocument } from '../../domain/music';
-import type { SecondaryLyricVisibility } from '../../application/preferences';
+import type { LyricWordEffect, SecondaryLyricVisibility } from '../../application/preferences';
 import type {
   LyricsPreviewFrame,
   LyricsPresetDefinition,
@@ -34,6 +34,7 @@ export interface LyricsSceneBindings {
   previous?: () => void;
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
+  wordEffect: LyricWordEffect;
 }
 
 export interface LyricsSceneProps {

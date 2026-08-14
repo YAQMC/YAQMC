@@ -61,6 +61,8 @@ export interface AppearanceSettings {
   material: MaterialMode;
 }
 
+export type LyricWordEffect = 'fill' | 'jump';
+
 export interface LyricDisplaySettings {
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
@@ -68,6 +70,7 @@ export interface LyricDisplaySettings {
   fontSize: LyricFontSize;
   coverLayout: LyricCoverLayout;
   focusSidebarCollapsed: boolean;
+  wordEffect: LyricWordEffect;
 }
 
 export interface LyricSurfaceSettings {
@@ -140,6 +143,7 @@ export const defaultPreferences: AppPreferences = {
     fontSize: 'medium',
     coverLayout: 'split',
     focusSidebarCollapsed: false,
+    wordEffect: 'jump',
   },
   lyricsPresets: defaultLyricsPresetState,
   surfaces: {
@@ -288,6 +292,7 @@ export function normalizePreferences(value: unknown): AppPreferences {
       coverLayout: resolvedPreset.layout,
       focusSidebarCollapsed:
         typeof lyrics.focusSidebarCollapsed === 'boolean' ? lyrics.focusSidebarCollapsed : false,
+      wordEffect: valueIn(lyrics.wordEffect, ['fill', 'jump'], 'jump'),
     },
     lyricsPresets,
     surfaces: {
