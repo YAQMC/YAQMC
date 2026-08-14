@@ -39,6 +39,25 @@ identity, and never written to diagnostics. Session replacement/logout invalidat
 pending Range work. The implementation does not invent account access. Without a successful account-bound EVkey
 response, it falls through to another permitted source or reports a typed entitlement/source error.
 
+### QMC cipher selection and the map rotate
+
+`QmcDecryptor::new` derives the stream key from the ekey (`derive_key`, including the `QQMusic EncV2,Key:`
+double-TEA wrapper when present), then picks a cipher by derived key length: lengths above 300 select segmented
+RC4, otherwise the map cipher is used. Map-encrypted lossless tracks must use the exact mask form
+`(key << rot) | (key >> rot)` with `rot = ((key_index & 7) + 4) % 8` — a non-circular combination that differs
+from `u8::rotate_left`. An earlier circular-rotate implementation produced a wrong mask stream for every
+map-encrypted source (decrypted header `714b6c4d` instead of `fLaC`), which only surfaced for fixed map tracks
+because RC4 tracks are unaffected. Both ciphers are offset-addressable, so sparse `Range` reads and seeks decrypt
+correctly at absolute file offsets.
+
+Diagnostics distinguish the failure layers:
+
+- `qmc` info on decryptor construction records `ekey_length`, `ekey_v2`, `derived_key_length` and `cipher`.
+- `media` warn on construction failure records the ekey shape and the specific `QmcError`
+  (`KeyNotBase64`, `InvalidV2Wrapper`, `InvalidDerivedKeyLength`, `TeaPaddingMismatch`, `EmptyCipherKey`).
+- `audio` warn on the FLAC signature probe failure records `cipher`, `derived_key_length` and the decrypted
+  magic bytes, telling a wrong-key case apart from a stream-offset mismatch.
+
 ## Correctness properties
 
 - Every 206 response must provide an exact, non-inverted `Content-Range` with the same total length.
