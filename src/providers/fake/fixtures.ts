@@ -279,6 +279,10 @@ export const homeFeed: HomeFeed = {
   ],
   madeForYou: [playlists[1]!, playlists[2]!, playlists[3]!, playlists[4]!],
   newReleases: [albums[0]!, albums[2]!, albums[1]!, albums[3]!],
+  guessSonglist: playlists[1]!,
+  recommendedSonglists: [playlists[1]!, playlists[2]!, playlists[3]!, playlists[4]!],
+  dailySonglist: playlists[0]!,
+  radarSongs: [...albums[2]!.tracks.slice(0, 4), ...albums[3]!.tracks.slice(0, 3)],
 };
 
 export const librarySnapshot: LibrarySnapshot = {

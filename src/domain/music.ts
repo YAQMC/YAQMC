@@ -137,6 +137,10 @@ export interface HomeFeed {
   recentlyPlayed: MediaCollection[];
   madeForYou: Playlist[];
   newReleases: Album[];
+  guessSonglist: Playlist | null;
+  recommendedSonglists: Playlist[];
+  dailySonglist: Playlist | null;
+  radarSongs: Song[];
 }
 
 export interface LibrarySnapshot {

@@ -291,6 +291,7 @@ pub fn run() {
             commands::audio_set_output_device,
             commands::qqmusic_status,
             commands::qqmusic_home,
+            commands::qqmusic_guess_next,
             commands::qqmusic_library,
             commands::qqmusic_search,
             commands::qqmusic_album,

@@ -92,6 +92,10 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
     return nativeRequest('qqmusic_playlist', { id }, signal);
   }
 
+  getGuessNext(limit = 5, signal?: AbortSignal): Promise<Song[]> {
+    return nativeRequest('qqmusic_guess_next', { limit }, signal);
+  }
+
   getLibrary(signal?: AbortSignal): Promise<LibrarySnapshot> {
     return nativeRequest('qqmusic_library', undefined, signal);
   }

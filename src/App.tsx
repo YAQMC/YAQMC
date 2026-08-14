@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AccountPlaylistDetail, Album, MediaCollection, Playlist } from './domain/music';
 import { useCatalog } from './application/use-catalog';
+import { useGuessContinuation } from './application/use-guess-continuation';
 import { useTheme } from './application/use-theme';
 import type { AppRoute } from './application/navigation';
 import { usePlayerStore } from './application/player-store';
@@ -79,6 +80,7 @@ export default function App() {
   useLyricsCoordinator();
   usePreferencesRuntime(true);
   usePlatformDiagnosticsRuntime();
+  useGuessContinuation(provider);
   const catalog = useCatalog();
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);

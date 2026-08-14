@@ -56,6 +56,7 @@ export interface PlayerState {
   timelineRevision: number;
   queueOpen: boolean;
   lyricsOpen: boolean;
+  guessSessionActive: boolean;
 }
 
 interface PlayerActions {
@@ -87,6 +88,8 @@ interface PlayerActions {
   removeQueueEntry: (entryId: string) => void;
   reorderQueueEntry: (entryId: string, targetIndex: number) => void;
   applyExternalSnapshot: (snapshot: AuthoritativePlayerSnapshot) => void;
+  startGuessSession: () => void;
+  endGuessSession: () => void;
 }
 
 export type PlayerStore = PlayerState & PlayerActions;
@@ -139,6 +142,7 @@ export const initialPlayerState: PlayerState = {
   timelineRevision: 0,
   queueOpen: false,
   lyricsOpen: false,
+  guessSessionActive: false,
 };
 
 let localQueueEntrySequence = 0;
@@ -357,6 +361,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       sourceSelection: null,
       observedAtMs: performance.now(),
       timelineRevision: state.timelineRevision + 1,
+      guessSessionActive: false,
       ...fallbackOrderState(queueEntries, currentQueueEntryId, playbackOrder),
     }));
   },
@@ -625,6 +630,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   toggleLyrics: () => set((state) => ({ lyricsOpen: !state.lyricsOpen, queueOpen: false })),
   openLyrics: () => set({ lyricsOpen: true, queueOpen: false }),
   closePanels: () => set({ queueOpen: false, lyricsOpen: false }),
+
+  startGuessSession: () => set({ guessSessionActive: true }),
+  endGuessSession: () => set({ guessSessionActive: false }),
 
   addToQueue: (song) => {
     if (dispatchPlayerCommand({ type: 'addToQueue', song })) return;

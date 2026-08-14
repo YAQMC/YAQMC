@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qqmusic-guess-next"
+description = "Enables the qqmusic_guess_next command without any pre-configured scope."
+commands.allow = ["qqmusic_guess_next"]
+
+[[permission]]
+identifier = "deny-qqmusic-guess-next"
+description = "Denies the qqmusic_guess_next command without any pre-configured scope."
+commands.deny = ["qqmusic_guess_next"]
