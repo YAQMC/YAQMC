@@ -4,7 +4,8 @@ use crate::{
     command_guard::require_main_window,
     desktop_integration::{DesktopIntegration, DesktopIntegrationStatus},
     diagnostics::{
-        self, AppSection, BundleExportResult, BundleOptions, DiagnosticsSnapshot, PlaybackSection,
+        self, AppSection, BundleExportResult, BundleOptions, DiagnosticsSnapshot,
+        LyricsPresetSection, PlaybackSection,
     },
     issue_reporter::{self, IssueDraft, IssuePreview},
     local_api::{LocalApiService, LocalApiStatus},
@@ -57,6 +58,8 @@ pub struct DiagnosticsRequest {
     pub account_state: Option<String>,
     pub membership_tier: Option<String>,
     pub membership_status: Option<String>,
+    #[serde(default)]
+    pub lyrics_preset: Option<LyricsPresetSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -146,9 +149,9 @@ async fn assemble_snapshot(
 ) -> DiagnosticsSnapshot {
     let platform_diagnostics =
         platform::collect(app, player, system_media.status(), desktop.status());
-    let snapshot = player.snapshot().await;
+    let player_snapshot = player.snapshot().await;
     let provider_status = provider.status().await;
-    diagnostics::snapshot_from_handle(
+    let mut snapshot = diagnostics::snapshot_from_handle(
         logging,
         platform_diagnostics,
         Some(provider_status),
@@ -156,9 +159,11 @@ async fn assemble_snapshot(
         request
             .membership_tier
             .zip(request.membership_status.or(Some("unknown".into()))),
-        build_playback_section(&snapshot),
+        build_playback_section(&player_snapshot),
         build_app_section(app),
-    )
+    );
+    snapshot.lyrics_preset = request.lyrics_preset;
+    snapshot
 }
 
 #[tauri::command]

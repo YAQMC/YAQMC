@@ -7,9 +7,18 @@ import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
+import {
+  applyOverride,
+  BUILTIN_CLASSIC_ID,
+  BUILTIN_IMMERSIVE_ID,
+  BUILTIN_VINYL_ID,
+  defaultLyricsPresetState,
+  saveAsNewPreset,
+} from '../application/lyrics-preset';
 import type { LyricDocument } from '../domain/music';
 import { allSongs, lyricsBySong } from '../providers/fake/fixtures';
 import '../styles/components.css';
+import '../styles/lyrics-scene.css';
 import '../styles/platform.css';
 import { LyricsPanel } from './LyricsPanel';
 
@@ -209,8 +218,10 @@ describe('LyricsPanel', () => {
       error: null,
     });
     usePreferencesStore.setState({
+      ...defaultPreferences,
       appearance: { ...defaultPreferences.appearance },
       lyrics: { ...defaultPreferences.lyrics },
+      lyricsPresets: defaultPreferences.lyricsPresets,
       backgroundImageData: null,
       backgroundImageMissing: false,
     });
@@ -428,7 +439,7 @@ describe('LyricsPanel', () => {
     rerender(<LyricsPanel {...props} focus />);
     await waitFor(() => expect(lyricOffset(container)).toBeGreaterThan(settled));
 
-    fireEvent.wheel(scrollArea);
+    fireEvent.wheel(scrollArea, { deltaY: 40 });
     const unfollowed = lyricOffset(container);
     rerender(<LyricsPanel {...props} focus fullscreen />);
     expect(lyricOffset(container)).toBe(unfollowed);
@@ -759,7 +770,7 @@ describe('LyricsPanel', () => {
     expect(screen.getByText('A secondary line that wraps')).toBeVisible();
     expect(screen.getByText('A second secondary line')).toBeVisible();
 
-    fireEvent.wheel(scrollArea);
+    fireEvent.wheel(scrollArea, { deltaY: 40 });
     const unfollowed = lyricOffset(container);
     act(() => usePlayerStore.getState().seek(5_500));
     runFrames(10);
@@ -792,6 +803,9 @@ describe('LyricsPanel', () => {
         backgroundMode: 'image',
         backgroundFit: 'contain',
       },
+      lyricsPresets: applyOverride(defaultLyricsPresetState, BUILTIN_CLASSIC_ID, {
+        background: { fit: 'contain' },
+      }),
       backgroundImageData: managedImage,
     });
     const { container } = render(<LyricsPanel {...presentationProps()} />);
@@ -887,5 +901,112 @@ describe('LyricsPanel', () => {
     act(() => usePlayerStore.setState({ queue: [next], currentIndex: 0 }));
 
     expect(stage).toHaveAttribute('data-song-id', 'paper-sun');
+  });
+
+  it('mounts the shared lyrics scene and applies font scale to computed line size', () => {
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get() {
+        if (this.classList.contains('lyrics-scene')) return 800;
+        if (this.classList.contains('lyrics-stage__scroll')) return 400;
+        return 0;
+      },
+    });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+    usePreferencesStore.setState({
+      lyricsPresets: applyOverride(defaultLyricsPresetState, BUILTIN_CLASSIC_ID, {
+        typography: { fontScale: 0.7 },
+      }),
+    });
+    const { container, unmount } = render(<LyricsPanel {...presentationProps()} />);
+    expect(container.querySelector('[data-lyrics-scene]')).not.toBeNull();
+    const small = container.querySelector<HTMLElement>('.lyrics-scene');
+    expect(small?.style.getPropertyValue('--lyrics-font-scale')).toBe('0.7');
+    expect(small?.style.getPropertyValue('--lyrics-font-size')).toBe('31.36px');
+    expect(container.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
+      '31.36px',
+    );
+    unmount();
+
+    usePreferencesStore.setState({
+      lyricsPresets: applyOverride(defaultLyricsPresetState, BUILTIN_CLASSIC_ID, {
+        typography: { fontScale: 1.45 },
+      }),
+    });
+    const again = render(<LyricsPanel {...presentationProps()} />);
+    const large = again.container.querySelector<HTMLElement>('.lyrics-scene');
+    expect(
+      Number.parseFloat(large?.style.getPropertyValue('--lyrics-font-size') ?? '0'),
+    ).toBeCloseTo(64.96, 2);
+    const smallPx = Number.parseFloat(small?.style.getPropertyValue('--lyrics-font-size') ?? '0');
+    const largePx = Number.parseFloat(large?.style.getPropertyValue('--lyrics-font-size') ?? '0');
+    expect(largePx / smallPx).toBeGreaterThan(2);
+    expect(large?.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
+      '64.96px',
+    );
+    expect(small?.style.getPropertyValue('--lyrics-line-gap')).toBe('0.75cqh');
+    expect(large?.style.getPropertyValue('--lyrics-line-gap')).toBe('0.75cqh');
+  });
+
+  it('cycles a saved custom full preset from the cover button', () => {
+    const created = saveAsNewPreset(defaultLyricsPresetState, BUILTIN_IMMERSIVE_ID, {
+      name: 'Studio',
+    });
+    usePreferencesStore.setState({
+      lyricsPresets: { ...created.state, selectedId: BUILTIN_CLASSIC_ID },
+    });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    expect(stage).toHaveAttribute('data-cover-layout', 'split');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full-window cover' }));
+    expect(usePreferencesStore.getState().lyricsPresets.selectedId).toBe(BUILTIN_IMMERSIVE_ID);
+    expect(stage).toHaveAttribute('data-cover-layout', 'full');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Studio' }));
+    expect(usePreferencesStore.getState().lyricsPresets.selectedId).toBe(created.id);
+    expect(stage).toHaveAttribute('data-cover-layout', 'full');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vinyl record' }));
+    expect(usePreferencesStore.getState().lyricsPresets.selectedId).toBe(BUILTIN_VINYL_ID);
+    expect(stage).toHaveAttribute('data-cover-layout', 'vinyl');
+  });
+
+  it('suspends follow on wheel and forces resume without a line change', async () => {
+    const rect = (top: number, height = 50) =>
+      ({ top, height, bottom: top + height, left: 0, right: 0, width: 0 }) as DOMRect;
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value(this: HTMLElement) {
+        if (this.classList.contains('lyrics-stage__scroll')) return rect(0, 400);
+        if (this.classList.contains('lyrics-stage__scroll-content')) return rect(0, 1_200);
+        if (this.hasAttribute('data-line-index')) return rect(200);
+        return rect(0, 0);
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      value: 400,
+    });
+    usePlayerStore.setState({ positionMs: 1_100, isPlaying: false, playbackState: 'paused' });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const scrollArea = container.querySelector<HTMLElement>('.lyrics-stage__scroll');
+    if (!scrollArea) throw new Error('lyrics scroll area is missing');
+    await waitFor(() => expect(lyricOffset(container)).toBeGreaterThanOrEqual(0));
+
+    fireEvent.pointerDown(scrollArea);
+    expect(screen.queryByRole('button', { name: 'Follow current line' })).not.toBeInTheDocument();
+
+    fireEvent.wheel(scrollArea, { deltaY: 80 });
+    const suspended = lyricOffset(container);
+    expect(screen.getByRole('button', { name: 'Follow current line' })).toBeVisible();
+
+    act(() => usePlayerStore.setState({ positionMs: 5_500, timelineRevision: 2 }));
+    expect(lyricOffset(container)).toBe(suspended);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Follow current line' }));
+    await waitFor(() => expect(lyricOffset(container)).not.toBe(suspended));
+    expect(screen.queryByRole('button', { name: 'Follow current line' })).not.toBeInTheDocument();
   });
 });

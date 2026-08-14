@@ -33,7 +33,7 @@ export function resolveLyricsAppearance(
         mode: 'image',
         imageSource: isCachedArtworkDataUri(background.imageSource) ? background.imageSource : null,
         imageFit: background.imageFit,
-        baseColor: null,
+        baseColor: normalizeHexColor(background.color, '#20231C'),
       };
     case 'artwork':
       return {

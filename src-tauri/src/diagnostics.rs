@@ -22,7 +22,7 @@ use crate::{
 
 /// Additional membership context (`tier`, `status`) passed alongside `ProviderStatus`.
 pub type ProviderExtras = (String, String);
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     fs,
@@ -74,6 +74,16 @@ pub struct ProviderSection {
     pub membership_status: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricsPresetSection {
+    pub id: String,
+    pub kind: String,
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renderer_version: Option<u32>,
+}
+
 /// Structured snapshot separate from raw logs, safe for direct display in the UI
 /// and safe for pasting into a GitHub issue.
 #[derive(Clone, Debug, Serialize)]
@@ -88,6 +98,8 @@ pub struct DiagnosticsSnapshot {
     pub playback: PlaybackSection,
     pub log_level: LogLevel,
     pub recent_errors: Vec<ErrorRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lyrics_preset: Option<LyricsPresetSection>,
 }
 
 impl DiagnosticsSnapshot {
@@ -122,6 +134,7 @@ impl DiagnosticsSnapshot {
             playback,
             log_level,
             recent_errors,
+            lyrics_preset: None,
         }
     }
 
@@ -178,6 +191,18 @@ impl DiagnosticsSnapshot {
             self.playback.primary_playback_mode
         ));
         out.push_str(&format!("Log level: {}\n", self.log_level.as_str()));
+        if let Some(preset) = &self.lyrics_preset {
+            out.push_str(&format!(
+                "Lyrics preset: {} ({}, schema v{}{})\n",
+                preset.id,
+                preset.kind,
+                preset.schema_version,
+                preset
+                    .renderer_version
+                    .map(|version| format!(", renderer v{version}"))
+                    .unwrap_or_default()
+            ));
+        }
         if !self.recent_errors.is_empty() {
             out.push_str("Recent errors:\n");
             for record in &self.recent_errors {
@@ -818,6 +843,21 @@ mod tests {
         assert!(text.contains("tier=green-diamond"));
         assert!(!text.contains("cookie"));
         assert!(!text.contains("ekey"));
+    }
+
+    #[test]
+    fn snapshot_plaintext_includes_compact_lyrics_preset() {
+        let mut snapshot = stub_diagnostics("abc123");
+        snapshot.lyrics_preset = Some(LyricsPresetSection {
+            id: "builtin.classic".into(),
+            kind: "built-in".into(),
+            schema_version: 1,
+            renderer_version: None,
+        });
+        let text = snapshot.to_plain_text();
+        assert!(text.contains("Lyrics preset: builtin.classic (built-in, schema v1)"));
+        assert!(!text.contains("overrides"));
+        assert!(!text.contains("backgrounds"));
     }
 
     #[test]

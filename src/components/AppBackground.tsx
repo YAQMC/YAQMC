@@ -20,7 +20,10 @@ export function AppBackground() {
       className="app-background"
       data-mode={background.mode}
       data-fit={background.fit}
-      style={{ backgroundColor: background.mode === 'color' ? background.color : undefined }}
+      style={{
+        backgroundColor:
+          background.mode === 'color' || background.mode === 'image' ? background.color : undefined,
+      }}
       aria-hidden="true"
     >
       {safeSource && (

@@ -50,9 +50,16 @@ Background images are rendered once behind the application and fade on source ch
 tokenized panels prevent raw images from becoming the text surface. No synchronous color extraction or expensive
 per-render filtering is performed.
 
-The background layer is fixed to `100vw × 100vh`. Its image opts out of the global responsive-image `max-width`
-rule, which previously clamped an overscanned image and exposed a right-edge strip. Cover fills the visual viewport;
-Contain intentionally letterboxes within that same viewport.
+Cover fills the visual viewport while preserving aspect ratio and cropping overflow.
+Contain shows the entire image and may letterbox when the aspect ratio does not match.
+Letterboxing is intentional, not a display bug. Unused regions use the configured fallback
+color (the appearance background color for the app shell, or the lyrics preset fallback
+color on the lyrics stage), not a raw WebView black fill.
+
+Appearance → Image fit still controls the application shell. Lyrics stages use the selected
+[lyrics preset](lyrics-presets.md) `background.fit` and the shared [Lyrics Composer](lyrics-composer.md)
+scene. Built-in immersive lyrics default to Cover unless a previous Contain preference is migrated as
+a user override. Range thumbs stay visible so font-size and line-spacing controls remain usable without hover.
 
 ## Immersive lyric appearance
 

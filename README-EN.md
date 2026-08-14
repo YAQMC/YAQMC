@@ -174,6 +174,8 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),
 [authentication](docs/authentication.md), [account library](docs/account-library.md),
 [entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md),
+[lyrics presets](docs/lyrics-presets.md),
+[lyrics composer](docs/lyrics-composer.md),
 [local API](docs/local-api.md), [logging](docs/logging.md),
 [diagnostics](docs/diagnostics.md), [Issue reporting](docs/issue-reporting.md), and
 [security & privacy](docs/security.md), or the complete

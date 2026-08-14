@@ -67,7 +67,7 @@ player.mode            player.seek         player.eos
 audio.engine           audio.output        audio.decode
 audio.stream           audio.qmc
 lyrics.fetch           lyrics.parse        lyrics.timeline
-lyrics.surface
+lyrics.surface         lyrics.preset       lyrics.preview
 network.http           network.range       cache.media   cache.artwork
 platform.windows       platform.linux
 platform.mpris         platform.smtc

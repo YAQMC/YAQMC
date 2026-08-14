@@ -49,7 +49,7 @@ describe('immersive lyrics appearance projection', () => {
           mode: 'image',
           imageSource: managedImage,
           imageFit: 'cover',
-          baseColor: null,
+          baseColor: '#20231C',
         },
       },
       {
@@ -59,7 +59,7 @@ describe('immersive lyrics appearance projection', () => {
           mode: 'image',
           imageSource: managedImage,
           imageFit: 'contain',
-          baseColor: null,
+          baseColor: '#20231C',
         },
       },
       {
@@ -98,5 +98,17 @@ describe('immersive lyrics appearance projection', () => {
     expect(resolveLyricsAppearance(background('color', { color: value }), null).baseColor).toBe(
       expected,
     );
+  });
+
+  it('uses the scene fallback color for Contain letterboxing', () => {
+    expect(
+      resolveLyricsAppearance(
+        background('image', { imageSource: managedImage, imageFit: 'contain', color: '#31415a' }),
+        safeArtwork,
+      ),
+    ).toMatchObject({
+      imageFit: 'contain',
+      baseColor: '#31415A',
+    });
   });
 });
