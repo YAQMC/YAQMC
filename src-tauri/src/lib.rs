@@ -5,6 +5,7 @@ mod commands;
 mod credentials;
 mod desktop_integration;
 mod diagnostics;
+mod error_codes;
 mod issue_reporter;
 mod local_api;
 mod logging;

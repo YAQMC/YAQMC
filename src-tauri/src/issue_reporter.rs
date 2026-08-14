@@ -107,6 +107,15 @@ impl IssueCategory {
             IssueCategory::Other => "other",
         }
     }
+
+    /// GitHub Issue Form field ID that receives the generated technical body.
+    /// Each supported template exposes a distinct diagnostics/evidence field.
+    pub fn body_field_id(self) -> &'static str {
+        match self {
+            IssueCategory::Linux => "evidence",
+            _ => "diagnostics",
+        }
+    }
 }
 
 /// User input plus optional linked application error, ready to be rendered into a
@@ -310,7 +319,9 @@ fn compose_url(category: IssueCategory, title: &str, body: &str) -> (String, boo
     )));
     url.push_str("&title=");
     url.push_str(&percent_encode(title));
-    url.push_str("&diagnostics=");
+    url.push('&');
+    url.push_str(category.body_field_id());
+    url.push('=');
     url.push_str(&percent_encode(body));
     if let Some(area) = category.area_label() {
         url.push_str("&area=");
@@ -321,7 +332,7 @@ fn compose_url(category: IssueCategory, title: &str, body: &str) -> (String, boo
 }
 
 fn included_fields_for(category: IssueCategory) -> Vec<&'static str> {
-    let mut fields = vec!["title", "diagnostics"];
+    let mut fields = vec!["title", category.body_field_id()];
     if category.area_label().is_some() {
         fields.push("area");
     }

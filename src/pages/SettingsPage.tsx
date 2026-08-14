@@ -1,11 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
+  Bug,
   Check,
   Copy,
   Database,
   ExternalLink,
   Eye,
   EyeOff,
+  FileText,
+  Folder,
   Globe2,
   Headphones,
   Image as ImageIcon,
@@ -23,6 +26,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Type,
   Unlock,
   Download,
@@ -59,6 +63,17 @@ import {
   productMetadata,
   type ProductLink,
 } from '../application/product-metadata';
+import {
+  clearOldLogs,
+  currentLogLevel,
+  exportDiagnosticsBundle,
+  openLogFolder,
+  revealDiagnosticBundle,
+  setLogLevel,
+  type BundleExportResult,
+} from '../application/diagnostics-runtime';
+import type { LogLevel } from '../application/logger';
+import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -626,6 +641,12 @@ export function SettingsPage() {
   const [imageError, setImageError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
   const [unlockingAll, setUnlockingAll] = useState(false);
+  const [logLevel, setLogLevelState] = useState<LogLevel>('info');
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+  const [diagnosticsMessage, setDiagnosticsMessage] = useState<string | null>(null);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [lastBundle, setLastBundle] = useState<BundleExportResult | null>(null);
+  const [issueReporterOpen, setIssueReporterOpen] = useState(false);
 
   useEffect(() => {
     if (!isNativeRuntime) return;
@@ -633,6 +654,82 @@ export function SettingsPage() {
       .then(setCapabilities)
       .catch(() => setCapabilities(null));
   }, []);
+
+  useEffect(() => {
+    if (!isNativeRuntime) return;
+    void currentLogLevel()
+      .then(setLogLevelState)
+      .catch(() => setLogLevelState('info'));
+  }, []);
+
+  const changeLogLevel = async (next: LogLevel) => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsError(null);
+    try {
+      const applied = await setLogLevel(next);
+      setLogLevelState(applied);
+      setDiagnosticsMessage(t('diagnostics.levelChangeHint'));
+    } catch (caught) {
+      setDiagnosticsError(String(caught));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const handleOpenLogFolder = async () => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsError(null);
+    setDiagnosticsMessage(null);
+    try {
+      await openLogFolder();
+    } catch (caught) {
+      setDiagnosticsError(String(caught));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsError(null);
+    setDiagnosticsMessage(null);
+    try {
+      const removed = await clearOldLogs();
+      setDiagnosticsMessage(t('diagnostics.clearLogsResult', { count: removed }));
+    } catch (caught) {
+      setDiagnosticsError(String(caught));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const handleExportBundle = async () => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsError(null);
+    setDiagnosticsMessage(null);
+    try {
+      const bundle = await exportDiagnosticsBundle({
+        accountState: accountSnapshot.state,
+        includeLogs: true,
+        overrideUnresolved: false,
+      });
+      setLastBundle(bundle);
+      setDiagnosticsMessage(t('diagnostics.bundleExported', { path: bundle.path }));
+    } catch (caught) {
+      setDiagnosticsError(t('diagnostics.bundleFailed', { error: String(caught) }));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const handleRevealBundle = async () => {
+    if (!lastBundle) return;
+    try {
+      await revealDiagnosticBundle(lastBundle.path);
+    } catch (caught) {
+      setDiagnosticsError(String(caught));
+    }
+  };
 
   const languageOptions: readonly SelectOption<typeof preferences.locale>[] = [
     { value: 'system', label: t('general.localeSystem') },
@@ -1329,6 +1426,105 @@ export function SettingsPage() {
         )}
       </SettingsSection>
 
+      <SettingsSection title={t('diagnostics.title')} description={t('diagnostics.description')}>
+        <div className="settings-card">
+          <SettingRow
+            title={t('diagnostics.logLevel')}
+            description={t('diagnostics.logLevelDescription')}
+            control={
+              <Select<LogLevel>
+                value={logLevel === 'error' || logLevel === 'warn' ? 'info' : logLevel}
+                options={[
+                  { value: 'info', label: t('diagnostics.logLevelInfo') },
+                  { value: 'debug', label: t('diagnostics.logLevelDebug') },
+                  { value: 'trace', label: t('diagnostics.logLevelTrace') },
+                ]}
+                onChange={(value) => void changeLogLevel(value)}
+                disabled={!isNativeRuntime || diagnosticsBusy}
+                ariaLabel={t('diagnostics.logLevel')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('diagnostics.openFolder')}
+            description={t('diagnostics.openFolderDescription')}
+            control={
+              <button
+                type="button"
+                className="button button--secondary"
+                disabled={!isNativeRuntime || diagnosticsBusy}
+                onClick={() => void handleOpenLogFolder()}
+              >
+                <Folder size={14} /> {t('diagnostics.openFolderAction')}
+              </button>
+            }
+          />
+          <SettingRow
+            title={t('diagnostics.exportBundle')}
+            description={t('diagnostics.exportBundleDescription')}
+            control={
+              <div className="settings-inline-actions">
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  disabled={!isNativeRuntime || diagnosticsBusy}
+                  onClick={() => void handleExportBundle()}
+                >
+                  <FileText size={14} /> {t('diagnostics.exportBundleAction')}
+                </button>
+                {lastBundle && (
+                  <button
+                    type="button"
+                    className="button button--quiet"
+                    disabled={diagnosticsBusy}
+                    onClick={() => void handleRevealBundle()}
+                  >
+                    <Folder size={14} /> {t('issueReporter.revealBundle')}
+                  </button>
+                )}
+              </div>
+            }
+          />
+          <SettingRow
+            title={t('diagnostics.clearLogs')}
+            description={t('diagnostics.clearLogsDescription')}
+            control={
+              <button
+                type="button"
+                className="button button--quiet"
+                disabled={!isNativeRuntime || diagnosticsBusy}
+                onClick={() => void handleClearLogs()}
+              >
+                <Trash2 size={14} /> {t('diagnostics.clearLogsAction')}
+              </button>
+            }
+          />
+          <SettingRow
+            title={t('diagnostics.reportProblem')}
+            description={t('diagnostics.reportProblemDescription')}
+            control={
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => setIssueReporterOpen(true)}
+              >
+                <Bug size={14} /> {t('diagnostics.reportProblemAction')}
+              </button>
+            }
+          />
+        </div>
+        {diagnosticsMessage && !diagnosticsError && (
+          <p className="settings-export-path" role="status">
+            {diagnosticsMessage}
+          </p>
+        )}
+        {diagnosticsError && (
+          <p className="settings-error" title={diagnosticsError} role="alert">
+            {diagnosticsError}
+          </p>
+        )}
+      </SettingsSection>
+
       <SettingsSection title={t('debug.title')} description={t('debug.description')}>
         <div className="settings-card">
           <SettingRow
@@ -1657,17 +1853,34 @@ export function SettingsPage() {
           </div>
           <div className="settings-about__footer">
             <p>{t('about.unofficial')}</p>
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() => void copySafeDiagnostics()}
-            >
-              <Copy size={14} />
-              {diagnosticsCopied ? common('copied') : t('about.copyDiagnostics')}
-            </button>
+            <div className="settings-inline-actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => void copySafeDiagnostics()}
+              >
+                <Copy size={14} />
+                {diagnosticsCopied ? common('copied') : t('about.copyDiagnostics')}
+              </button>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => setIssueReporterOpen(true)}
+              >
+                <Bug size={14} /> {t('about.reportProblem')}
+              </button>
+            </div>
           </div>
         </div>
       </SettingsSection>
+
+      <IssueReporterDialog
+        open={issueReporterOpen}
+        onClose={() => setIssueReporterOpen(false)}
+        diagnosticsRequest={{
+          accountState: accountSnapshot.state,
+        }}
+      />
     </section>
   );
 }
