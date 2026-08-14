@@ -51,3 +51,18 @@ export function resolveLyricsAppearance(
       };
   }
 }
+
+export function applySceneBackdrop(
+  appearance: ResolvedLyricsAppearance,
+  blur: number,
+  blurredSource: string | null,
+): ResolvedLyricsAppearance {
+  if (appearance.mode === 'color' || !appearance.imageSource) {
+    return appearance;
+  }
+  if (blur <= 0) return appearance;
+  return {
+    ...appearance,
+    imageSource: blurredSource ?? appearance.imageSource,
+  };
+}

@@ -80,8 +80,9 @@ import {
   widgetBoxStyle,
   widgetEdges,
 } from '../application/lyrics-scene-geometry';
-import { resolveLyricsAppearance } from '../application/lyrics-appearance';
+import { applySceneBackdrop, resolveLyricsAppearance } from '../application/lyrics-appearance';
 import { useSafeArtworkSource } from '../application/artwork-source';
+import { useBlurredArtwork } from '../application/blurred-artwork';
 import { logger } from '../application/logger';
 import { useLyricsPresetPreviewStore } from '../application/lyrics-preset-preview';
 import { hydrateLyricsPresetPreview } from '../application/lyrics-preset-preview-hydrate';
@@ -296,6 +297,11 @@ export function LyricsPresetEditor({
   const pendingMove = useRef<PointerEvent | null>(null);
   const preview = useLyricsPresetPreviewStore();
   const artworkSrc = useSafeArtworkSource(preview.artworkSrc);
+  const previewBlurred = useBlurredArtwork(
+    draft.scene.background.source === 'color' || draft.scene.background.blur <= 0
+      ? null
+      : artworkSrc,
+  );
   const builtin = isBuiltinPresetId(presetId);
   const getPositionMs = useCallback(() => useLyricsPresetPreviewStore.getState().positionMs, []);
 
@@ -509,19 +515,23 @@ export function LyricsPresetEditor({
     }
   };
 
-  const appearanceModel = resolveLyricsAppearance(
-    {
-      mode:
-        draft.scene.background.source === 'color'
-          ? 'color'
-          : draft.scene.background.source === 'image'
-            ? 'image'
-            : 'artwork',
-      imageSource: artworkSrc,
-      imageFit: draft.background.fit,
-      color: draft.background.fallbackColor,
-    },
-    artworkSrc,
+  const appearanceModel = applySceneBackdrop(
+    resolveLyricsAppearance(
+      {
+        mode:
+          draft.scene.background.source === 'color'
+            ? 'color'
+            : draft.scene.background.source === 'image'
+              ? 'image'
+              : 'artwork',
+        imageSource: artworkSrc,
+        imageFit: draft.background.fit,
+        color: draft.background.fallbackColor,
+      },
+      artworkSrc,
+    ),
+    draft.scene.background.blur,
+    previewBlurred,
   );
 
   const bindings: LyricsSceneBindings = useMemo(

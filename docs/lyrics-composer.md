@@ -24,7 +24,8 @@ translation / romanization = primary × 0.42
 ```
 
 `--lyrics-font-size` is set on the scene as a resolved pixel value from the scene height, so the
-composer preview updates while dragging. `.lyrics-line` does not clamp again.
+composer preview updates while dragging. `.lyrics-line` does not clamp again. Classic and Vinyl
+preview the same cover-fill backdrop as the runtime lyrics page.
 
 ## Editing
 
