@@ -1,0 +1,33 @@
+:root {
+  --yaqmc-primary: #e8b86d;
+  --yaqmc-secondary: #c4a882;
+  --yaqmc-radius-card: 14px;
+  --yaqmc-player-height: 92px;
+  --yaqmc-surface-alpha: 0.9;
+}
+
+[data-yaqmc='sidebar'] {
+  background: color-mix(in srgb, #241c12 60%, var(--sidebar, #1b1f18));
+  border-right: 1px solid color-mix(in srgb, var(--yaqmc-primary) 30%, transparent);
+}
+
+[data-yaqmc='player-bar'] {
+  min-height: var(--yaqmc-player-height);
+  border-radius: var(--yaqmc-radius-card) var(--yaqmc-radius-card) 0 0;
+  border-top: 3px solid var(--yaqmc-primary);
+  background: color-mix(
+    in srgb,
+    #2a2114 calc(var(--yaqmc-surface-alpha) * 72%),
+    var(--player, #161a13)
+  );
+}
+
+[data-yaqmc='queue'] {
+  border-radius: var(--yaqmc-radius-card);
+  border: 1px solid color-mix(in srgb, var(--yaqmc-primary) 32%, transparent);
+}
+
+[data-yaqmc='track-title'] {
+  color: var(--yaqmc-primary);
+  letter-spacing: 0.03em;
+}

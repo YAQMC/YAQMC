@@ -1,0 +1,25 @@
+[data-scene-widget='background'] {
+  filter: saturate(1.15) hue-rotate(-8deg);
+}
+
+[data-scene-widget='artwork'] {
+  box-shadow: 0 24px 60px rgba(80, 180, 255, 0.28);
+}
+
+[data-scene-widget='metadata'] {
+  letter-spacing: 0.02em;
+  text-shadow: 0 8px 24px rgba(7, 16, 28, 0.55);
+}
+
+[data-scene-widget='lyrics'] {
+  padding-inline: 8px;
+}
+
+[data-scene-widget='transport'] {
+  filter: drop-shadow(0 0 16px rgba(126, 224, 255, 0.35));
+}
+
+[data-scene-state='active-line'] {
+  color: #9be7ff;
+  text-shadow: 0 0 22px rgba(126, 224, 255, 0.45);
+}

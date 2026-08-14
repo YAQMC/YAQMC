@@ -338,6 +338,18 @@ mod tests {
     }
 
     #[test]
+    fn example_studio_package_inspects() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../examples/plugins/packages/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin");
+        let inspection = inspect_package(&path).expect("studio example package");
+        assert_eq!(inspection.manifest.id, "dev.yaqmc.example.studio");
+        assert_eq!(inspection.manifest.entrypoints.styles.len(), 1);
+        assert_eq!(inspection.manifest.entrypoints.scenes.len(), 2);
+        assert!(inspection.manifest.entrypoints.script.is_some());
+        assert!(inspection.sha256.len() == 64);
+    }
+
+    #[test]
     fn excessive_file_count_is_oversize() {
         let directory = tempfile::tempdir().expect("temp");
         let path = directory.path().join("plugin.yaqmc-plugin");

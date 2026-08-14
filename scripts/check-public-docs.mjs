@@ -34,6 +34,7 @@ const publicDocuments = [
   'plugin-manifest.md',
   'plugin-security.md',
   'plugin-development.md',
+  'plugin-examples.md',
   'plugin-style-api.md',
   'plugin-scene-api.md',
   'provider-contract.md',

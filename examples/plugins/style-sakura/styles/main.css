@@ -1,7 +1,36 @@
+:root {
+  --yaqmc-primary: #ff8fab;
+  --yaqmc-secondary: #e7b0be;
+  --yaqmc-radius-card: 22px;
+  --yaqmc-player-height: 96px;
+  --yaqmc-surface-alpha: 0.88;
+}
+
+[data-yaqmc='sidebar'] {
+  background: color-mix(in srgb, #3a1824 55%, var(--sidebar, #1b1f18));
+  border-right: 1px solid color-mix(in srgb, var(--yaqmc-primary) 35%, transparent);
+}
+
 [data-yaqmc='player-bar'] {
-  --yaqmc-radius-card: 18px;
+  min-height: var(--yaqmc-player-height);
+  border-radius: var(--yaqmc-radius-card) var(--yaqmc-radius-card) 0 0;
+  border-top: 2px solid var(--yaqmc-primary);
+  background: color-mix(
+    in srgb,
+    #4a1d2c calc(var(--yaqmc-surface-alpha) * 70%),
+    var(--player, #161a13)
+  );
+  box-shadow: 0 -16px 40px color-mix(in srgb, var(--yaqmc-primary) 18%, transparent);
+}
+
+[data-yaqmc='queue'] {
+  border-radius: var(--yaqmc-radius-card);
+  border: 1px solid color-mix(in srgb, var(--yaqmc-primary) 28%, transparent);
+  background: color-mix(in srgb, #3a1824 40%, var(--surface, #1b1f18));
 }
 
 [data-yaqmc='track-title'] {
-  letter-spacing: 0.01em;
+  color: var(--yaqmc-primary);
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--yaqmc-primary) 45%, transparent);
 }

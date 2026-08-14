@@ -49,3 +49,5 @@ plugins/
 ## 未实现（预留）
 
 插件市场、远程更新、`network:` 权限、Provider 插件、歌词源插件、任意 UI 插槽、原生/WASM 运行时、发行方签名、云同步。
+
+会真正改界面与播放会话的打包示例见[示例插件](plugin-examples.md)。

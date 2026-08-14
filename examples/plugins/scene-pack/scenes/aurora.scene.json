@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 2,
+  "id": "aurora",
+  "name": "Aurora",
+  "layout": "full",
+  "typography": { "fontScale": 1.08, "lineHeight": 1.22 },
+  "artwork": { "style": "square" },
+  "background": { "fit": "cover", "fallbackColor": "#07101c" },
+  "scene": {
+    "background": {
+      "id": "background",
+      "kind": "background",
+      "zIndex": 0,
+      "visible": true,
+      "locked": false,
+      "source": "artwork",
+      "fit": "cover",
+      "fallbackColor": "#07101c",
+      "opacity": 1,
+      "influence": 0.62,
+      "blur": 8
+    },
+    "artwork": {
+      "id": "artwork",
+      "kind": "artwork",
+      "x": 0.25,
+      "y": 0.5,
+      "width": 0.5,
+      "height": 1,
+      "anchor": "center",
+      "zIndex": 1,
+      "visible": true,
+      "locked": false,
+      "renderer": "rounded",
+      "opacity": 0.92,
+      "radius": 0.04
+    },
+    "metadata": {
+      "id": "metadata",
+      "kind": "metadata",
+      "x": 0.76,
+      "y": 0.12,
+      "width": 0.42,
+      "height": 0.14,
+      "anchor": "top-center",
+      "zIndex": 4,
+      "visible": true,
+      "locked": false,
+      "align": "left",
+      "titleScale": 1.08,
+      "artistScale": 0.7
+    },
+    "lyrics": {
+      "id": "lyrics",
+      "kind": "lyrics",
+      "x": 0.76,
+      "y": 0.56,
+      "width": 0.44,
+      "height": 0.7,
+      "anchor": "center",
+      "zIndex": 5,
+      "visible": true,
+      "locked": false,
+      "align": "left",
+      "followAnchor": 0.42
+    },
+    "transport": {
+      "id": "transport",
+      "kind": "transport",
+      "x": 0.5,
+      "y": 0.97,
+      "width": 0.28,
+      "height": 0.13,
+      "anchor": "bottom-center",
+      "zIndex": 8,
+      "visible": true,
+      "locked": false,
+      "align": "center"
+    }
+  }
+}

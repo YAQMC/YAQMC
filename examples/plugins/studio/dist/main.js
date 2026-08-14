@@ -13,7 +13,7 @@ definePlugin({
       var lyrics = await ctx.lyrics.get();
       var theme = await ctx.theme.get();
       await ctx.log.info(
-        'session snapshot title=' +
+        'studio snapshot title=' +
           (track.title || 'none') +
           ' lines=' +
           (lyrics.lines ? lyrics.lines.length : 0) +
@@ -32,9 +32,7 @@ definePlugin({
       var duration = asNumber(track.durationMs);
       var position = bookmark && asNumber(bookmark.positionMs);
       var sameEntry =
-        bookmark &&
-        bookmark.queueEntryId &&
-        bookmark.queueEntryId === track.queueEntryId;
+        bookmark && bookmark.queueEntryId && bookmark.queueEntryId === track.queueEntryId;
       if (
         sameEntry &&
         position > 1500 &&
@@ -42,7 +40,7 @@ definePlugin({
         Math.abs(position - player.positionMs) > 1200
       ) {
         await ctx.player.seek(position);
-        await ctx.log.info('restored seek ' + position);
+        await ctx.log.info('studio restored seek ' + position);
       }
       if (player.isPlaying || (bookmark && bookmark.playing)) {
         await ctx.player.play();
@@ -51,8 +49,7 @@ definePlugin({
 
     unsubscribers.push(
       ctx.events.on('track.changed', function (payload) {
-        var title = payload && payload.title ? payload.title : 'none';
-        void ctx.log.info('track.changed ' + title);
+        void ctx.log.info('track.changed ' + (payload && payload.title ? payload.title : 'none'));
         void restore();
       }),
     );
@@ -65,7 +62,8 @@ definePlugin({
     );
     unsubscribers.push(
       ctx.events.on('playback.positionCommitted', function (payload) {
-        var committed = payload && typeof payload.positionMs === 'number' ? payload.positionMs : null;
+        var committed =
+          payload && typeof payload.positionMs === 'number' ? payload.positionMs : null;
         void Promise.all([ctx.track.get(), ctx.player.get()]).then(function (pair) {
           var track = pair[0];
           var player = pair[1];

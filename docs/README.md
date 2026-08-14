@@ -20,6 +20,7 @@ plans under `docs/plans/` and `docs/superpowers/` are historical development rec
   [internationalization](i18n.md)
 - [Plugin platform](plugin-platform.md), [manifest](plugin-manifest.md),
   [security](plugin-security.md), [development](plugin-development.md),
+  [example plugins](plugin-examples.md),
   [style API](plugin-style-api.md), and [scene API](plugin-scene-api.md)
 - [Linux runtime](linux.md), [Linux graphics](linux-graphics.md), and
   [platform integration](platform-integration.md)

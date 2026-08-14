@@ -83,6 +83,7 @@ Linux 用户：
 - 可以分别设置主色与副色，应用内标志会自动跟随这两种颜色。
 - 托盘、任务栏和安装包使用固定的 YAQMC 原生标志。
 - 支持自定义背景、字体和歌词样式。
+- 可从[示例插件](docs/zh-CN/plugin-examples.md)安装本地 `*.yaqmc-plugin`（样式、歌词场景、隔离脚本）。默认不启用。
 
 ## 第一次使用
 
@@ -223,6 +224,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 - [歌词窗口](docs/zh-CN/lyrics-surfaces.md)
 - [歌词预设](docs/zh-CN/lyrics-presets.md)
 - [插件平台](docs/zh-CN/plugin-platform.md)
+- [示例插件下载](docs/zh-CN/plugin-examples.md)
 - [歌词编排器](docs/zh-CN/lyrics-composer.md)
 - [本地 API](docs/zh-CN/local-api.md)
 - [日志系统](docs/zh-CN/logging.md)与[诊断快照与诊断包](docs/zh-CN/diagnostics.md)
