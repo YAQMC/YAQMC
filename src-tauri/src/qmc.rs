@@ -31,10 +31,16 @@ impl EncryptedMediaKey {
             return Err(QmcError::InvalidKey);
         }
         Ok(Self(Zeroizing::new(value.to_owned())))
+    }    fn expose(&self) -> &str {
+        self.0.as_str()
     }
 
-    fn expose(&self) -> &str {
-        self.0.as_str()
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_v2(&self) -> bool {
+        self.0.as_str().starts_with("QQMusic EncV2,Key:")
     }
 }
 
@@ -48,6 +54,16 @@ impl fmt::Debug for EncryptedMediaKey {
 pub enum QmcError {
     #[error("the encrypted media key is invalid")]
     InvalidKey,
+    #[error("the encrypted media key is not valid base64")]
+    KeyNotBase64,
+    #[error("the encrypted media key has an invalid EncV2 wrapper")]
+    InvalidV2Wrapper,
+    #[error("the derived key has an invalid length")]
+    InvalidDerivedKeyLength,
+    #[error("the TEA padding check failed while deriving the key")]
+    TeaPaddingMismatch,
+    #[error("the media cipher key is empty")]
+    EmptyCipherKey,
 }
 
 enum QmcCipher {
@@ -60,7 +76,26 @@ pub(crate) struct QmcDecryptor(Arc<QmcCipher>);
 
 impl QmcDecryptor {
     pub(crate) fn new(ekey: &EncryptedMediaKey) -> Result<Self, QmcError> {
-        Ok(Self(Arc::new(QmcCipher::from_ekey(ekey)?)))
+        let expose = ekey.expose();
+        let key = derive_key(expose)?;
+        let cipher = if key.len() > 300 {
+            QmcCipher::Rc4(Rc4Cipher::new(key)?)
+        } else {
+            QmcCipher::Map(MapCipher::new(key)?)
+        };
+        tracing::info!(
+            target: "qmc",
+            ekey_length = expose.len(),
+            ekey_v2 = expose.starts_with("QQMusic EncV2,Key:"),
+            derived_key_length = key_len_hint(&cipher),
+            cipher = if matches!(cipher, QmcCipher::Rc4(_)) {
+                "rc4"
+            } else {
+                "map"
+            },
+            "constructed QMC stream decryptor"
+        );
+        Ok(Self(Arc::new(cipher)))
     }
 
     fn decrypt(&self, data: &mut [u8], offset: u64) -> io::Result<()> {
@@ -68,6 +103,23 @@ impl QmcDecryptor {
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "QMC offset is too large"))?;
         self.0.decrypt(data, offset);
         Ok(())
+    }
+
+    pub(crate) fn cipher_kind(&self) -> &'static str {
+        match self.0.as_ref() {
+            QmcCipher::Map(_) => "map",
+            QmcCipher::Rc4(_) => "rc4",
+        }
+    }
+
+    pub(crate) fn derived_key_length(&self) -> usize {
+        key_len_hint(&self.0)
+    }
+}
+
+fn key_len_hint(cipher: &QmcCipher) -> usize {
+    match cipher {
+        QmcCipher::Map(MapCipher { key }) | QmcCipher::Rc4(Rc4Cipher { key, .. }) => key.len(),
     }
 }
 
@@ -110,6 +162,7 @@ impl<Reader: Seek> Seek for QmcReader<Reader> {
 }
 
 impl QmcCipher {
+    #[cfg(test)]
     fn from_ekey(ekey: &EncryptedMediaKey) -> Result<Self, QmcError> {
         let key = derive_key(ekey.expose())?;
         if key.len() > 300 {
@@ -131,7 +184,7 @@ fn derive_key(raw_key: &str) -> Result<Zeroizing<Vec<u8>>, QmcError> {
     let mut decoded = Zeroizing::new(
         STANDARD
             .decode(raw_key.trim())
-            .map_err(|_| QmcError::InvalidKey)?,
+            .map_err(|_| QmcError::KeyNotBase64)?,
     );
     if let Some(encrypted_v2) = decoded.strip_prefix(V2_PREFIX) {
         let first_pass = decrypt_tencent_tea(encrypted_v2, &V2_MIX_KEY_ONE)?;
@@ -139,11 +192,11 @@ fn derive_key(raw_key: &str) -> Result<Zeroizing<Vec<u8>>, QmcError> {
         decoded = Zeroizing::new(
             STANDARD
                 .decode(&second_pass)
-                .map_err(|_| QmcError::InvalidKey)?,
+                .map_err(|_| QmcError::InvalidV2Wrapper)?,
         );
     }
     if decoded.len() < 24 || (decoded.len() - 8) % 8 != 0 {
-        return Err(QmcError::InvalidKey);
+        return Err(QmcError::InvalidDerivedKeyLength);
     }
 
     let simple_key = simple_make_key(106);
@@ -166,14 +219,14 @@ fn decrypt_tencent_tea(input: &[u8], key: &[u8; 16]) -> Result<Zeroizing<Vec<u8>
     const SALT_LENGTH: usize = 2;
     const ZERO_LENGTH: usize = 7;
     if input.len() < 16 || !input.len().is_multiple_of(8) {
-        return Err(QmcError::InvalidKey);
+        return Err(QmcError::InvalidV2Wrapper);
     }
 
     let tea_key = [
-        u32::from_be_bytes(key[0..4].try_into().map_err(|_| QmcError::InvalidKey)?),
-        u32::from_be_bytes(key[4..8].try_into().map_err(|_| QmcError::InvalidKey)?),
-        u32::from_be_bytes(key[8..12].try_into().map_err(|_| QmcError::InvalidKey)?),
-        u32::from_be_bytes(key[12..16].try_into().map_err(|_| QmcError::InvalidKey)?),
+        u32::from_be_bytes(key[0..4].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
+        u32::from_be_bytes(key[4..8].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
+        u32::from_be_bytes(key[8..12].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
+        u32::from_be_bytes(key[12..16].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
     ];
     let mut block = tea_decrypt_block(&input[..8], &tea_key)?;
     let padding = usize::from(block[0] & 0x07);
@@ -181,11 +234,11 @@ fn decrypt_tencent_tea(input: &[u8], key: &[u8; 16]) -> Result<Zeroizing<Vec<u8>
         .len()
         .checked_sub(1 + padding + SALT_LENGTH + ZERO_LENGTH)
     else {
-        return Err(QmcError::InvalidKey);
+        return Err(QmcError::InvalidV2Wrapper);
     };
     let mut output = Zeroizing::new(vec![0_u8; output_length]);
     let mut previous_cipher = [0_u8; 8];
-    let mut current_cipher: [u8; 8] = input[..8].try_into().map_err(|_| QmcError::InvalidKey)?;
+    let mut current_cipher: [u8; 8] = input[..8].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?;
     let mut input_position = 8_usize;
     let mut block_position = 1 + padding;
 
@@ -197,11 +250,11 @@ fn decrypt_tencent_tea(input: &[u8], key: &[u8; 16]) -> Result<Zeroizing<Vec<u8>
         let end = input_position
             .checked_add(8)
             .filter(|end| *end <= input.len())
-            .ok_or(QmcError::InvalidKey)?;
+            .ok_or(QmcError::InvalidV2Wrapper)?;
         *previous_cipher = *current_cipher;
         *current_cipher = input[*input_position..end]
             .try_into()
-            .map_err(|_| QmcError::InvalidKey)?;
+            .map_err(|_| QmcError::InvalidV2Wrapper)?;
         for (byte, cipher) in block.iter_mut().zip(current_cipher.iter()) {
             *byte ^= *cipher;
         }
@@ -248,7 +301,7 @@ fn decrypt_tencent_tea(input: &[u8], key: &[u8; 16]) -> Result<Zeroizing<Vec<u8>
             block_position = 0;
         }
         if block[block_position] != previous_cipher[block_position] {
-            return Err(QmcError::InvalidKey);
+            return Err(QmcError::TeaPaddingMismatch);
         }
         block_position += 1;
     }
@@ -260,10 +313,10 @@ fn decrypt_tencent_tea(input: &[u8], key: &[u8; 16]) -> Result<Zeroizing<Vec<u8>
 
 fn tea_decrypt_block(input: &[u8], key: &[u32; 4]) -> Result<[u8; 8], QmcError> {
     if input.len() != 8 {
-        return Err(QmcError::InvalidKey);
+        return Err(QmcError::InvalidV2Wrapper);
     }
-    let mut left = u32::from_be_bytes(input[..4].try_into().map_err(|_| QmcError::InvalidKey)?);
-    let mut right = u32::from_be_bytes(input[4..].try_into().map_err(|_| QmcError::InvalidKey)?);
+    let mut left = u32::from_be_bytes(input[..4].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?);
+    let mut right = u32::from_be_bytes(input[4..].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?);
     let delta = 0x9e37_79b9_u32;
     let mut sum = delta.wrapping_mul(16);
     for _ in 0..16 {
@@ -292,7 +345,7 @@ struct MapCipher {
 impl MapCipher {
     fn new(key: Zeroizing<Vec<u8>>) -> Result<Self, QmcError> {
         if key.is_empty() {
-            return Err(QmcError::InvalidKey);
+            return Err(QmcError::EmptyCipherKey);
         }
         Ok(Self { key })
     }
@@ -306,8 +359,11 @@ impl MapCipher {
                 position
             };
             let key_index = position.wrapping_mul(position).wrapping_add(71_214) % self.key.len();
+            // Mirrors QMCDecode's QMMapCipher: the mask is `(key << rot) | (key >> rot)`,
+            // NOT a circular rotate. rot = ((key_index & 7) + 4) % 8.
             let rotate = ((key_index & 7) + 4) % 8;
-            *byte ^= self.key[key_index].rotate_left(rotate as u32);
+            let value = self.key[key_index];
+            *byte ^= (value << rotate) | (value >> rotate);
         }
     }
 }
@@ -321,7 +377,7 @@ struct Rc4Cipher {
 impl Rc4Cipher {
     fn new(key: Zeroizing<Vec<u8>>) -> Result<Self, QmcError> {
         if key.is_empty() {
-            return Err(QmcError::InvalidKey);
+            return Err(QmcError::EmptyCipherKey);
         }
         let length = key.len();
         let mut seed_box = Zeroizing::new((0..length).map(|index| index as u8).collect::<Vec<_>>());
@@ -399,6 +455,14 @@ impl Rc4Cipher {
 }
 
 #[cfg(test)]
+pub(crate) fn valid_test_ekey_v1() -> EncryptedMediaKey {
+    let clear_key = (0..512)
+        .map(|value| (value % 251 + 1) as u8)
+        .collect::<Vec<_>>();
+    EncryptedMediaKey::new(tests::encode_test_ekey(&clear_key, false)).expect("valid fixture key")
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use rodio::Source;
@@ -464,7 +528,7 @@ mod tests {
         output
     }
 
-    fn encode_test_ekey(clear_key: &[u8], version_two: bool) -> String {
+    pub(crate) fn encode_test_ekey(clear_key: &[u8], version_two: bool) -> String {
         assert!(clear_key.len() >= 16);
         let simple_key = simple_make_key(106);
         let mut tea_key = [0_u8; 16];
@@ -519,7 +583,10 @@ mod tests {
         );
         let key = EncryptedMediaKey::new("not-secret".to_owned()).expect("bounded key");
         assert_eq!(format!("{key:?}"), "EncryptedMediaKey([REDACTED])");
-        assert_eq!(QmcCipher::from_ekey(&key).err(), Some(QmcError::InvalidKey));
+        assert_eq!(
+            QmcCipher::from_ekey(&key).err(),
+            Some(QmcError::KeyNotBase64)
+        );
     }
 
     #[test]

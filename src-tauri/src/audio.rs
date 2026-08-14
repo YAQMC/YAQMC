@@ -860,7 +860,7 @@ fn load_source_unchecked(
                 File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?,
                 decryptor.clone(),
             );
-            validate_decrypted_flac(&mut reader)?;
+            validate_decrypted_flac(&mut reader, decryptor)?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(*content_length)
@@ -895,7 +895,7 @@ fn load_source_unchecked(
                     .map_err(|_| AudioEngineError::StreamingFailed)?,
                 decryptor.clone(),
             );
-            validate_decrypted_flac(&mut reader)?;
+            validate_decrypted_flac(&mut reader, decryptor)?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(source.content_length())
@@ -929,21 +929,41 @@ fn load_source_unchecked(
 
 fn validate_decrypted_flac<Reader: Read + Seek>(
     reader: &mut Reader,
+    decryptor: &QmcDecryptor,
 ) -> Result<(), AudioEngineError> {
     let mut magic = [0_u8; 4];
     reader
         .read_exact(&mut magic)
-        .map_err(|_| AudioEngineError::DecryptionFailed)?;
+        .map_err(|error| {
+            tracing::warn!(
+                target: "audio",
+                error = %error,
+                "failed to read the decrypted media signature"
+            );
+            AudioEngineError::DecryptionFailed
+        })?;
     reader
         .seek(SeekFrom::Start(0))
         .map_err(|_| AudioEngineError::DecryptionFailed)?;
     let valid = magic == *b"fLaC";
-    tracing::debug!(
-        target: "audio",
-        decrypted_magic = %format_args!("{:02x}{:02x}{:02x}{:02x}", magic[0], magic[1], magic[2], magic[3]),
-        valid_flac = valid,
-        "probed decrypted media signature"
-    );
+    let magic_hex = format_args!("{:02x}{:02x}{:02x}{:02x}", magic[0], magic[1], magic[2], magic[3]);
+    if valid {
+        tracing::debug!(
+            target: "audio",
+            decrypted_magic = %magic_hex,
+            valid_flac = true,
+            "probed decrypted media signature"
+        );
+    } else {
+        tracing::warn!(
+            target: "audio",
+            decrypted_magic = %magic_hex,
+            valid_flac = false,
+            cipher = decryptor.cipher_kind(),
+            derived_key_length = decryptor.derived_key_length(),
+            "decrypted media does not start with the FLAC signature; key or stream mismatch"
+        );
+    }
     valid
         .then_some(())
         .ok_or(AudioEngineError::DecryptionFailed)
@@ -1339,13 +1359,15 @@ mod tests {
 
     #[test]
     fn decrypted_flac_probe_requires_magic_and_rewinds() {
+        let decryptor =
+            QmcDecryptor::new(&crate::qmc::valid_test_ekey_v1()).expect("valid fixture key");
         let mut valid = std::io::Cursor::new(b"fLaCpayload".to_vec());
-        assert_eq!(validate_decrypted_flac(&mut valid), Ok(()));
+        assert_eq!(validate_decrypted_flac(&mut valid, &decryptor), Ok(()));
         assert_eq!(valid.position(), 0);
 
         let mut invalid = std::io::Cursor::new(b"ID3 payload".to_vec());
         assert_eq!(
-            validate_decrypted_flac(&mut invalid),
+            validate_decrypted_flac(&mut invalid, &decryptor),
             Err(AudioEngineError::DecryptionFailed)
         );
         assert_eq!(invalid.position(), 0);

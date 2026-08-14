@@ -329,7 +329,18 @@ impl MediaPreparer for CachedMediaPreparer {
                 }
             }
             PlaybackLocation::EncryptedHttp { url, headers, ekey } => {
-                let decryptor = QmcDecryptor::new(&ekey).map_err(map_qmc_error)?;
+                let decryptor = QmcDecryptor::new(&ekey).map_err(|error| {
+                    tracing::warn!(
+                        target: "media",
+                        cache_key = %source.cache_key,
+                        url = %url,
+                        ekey_length = ekey.len(),
+                        ekey_v2 = ekey.is_v2(),
+                        error = %error,
+                        "failed to construct the QMC decryptor"
+                    );
+                    map_qmc_error(error)
+                })?;
                 let encrypted_key = format!("{}:encrypted", source.cache_key);
                 let encrypted_limit = self.storage.encrypted_media_limit();
                 if let Some(cached) = self
@@ -450,7 +461,12 @@ fn parse_headers(headers: Vec<(String, String)>) -> Result<HeaderMap, PlaybackSo
 
 fn map_qmc_error(error: QmcError) -> PlaybackSourceError {
     match error {
-        QmcError::InvalidKey => PlaybackSourceError::DecryptionFailed,
+        QmcError::InvalidKey
+        | QmcError::KeyNotBase64
+        | QmcError::InvalidV2Wrapper
+        | QmcError::InvalidDerivedKeyLength
+        | QmcError::TeaPaddingMismatch
+        | QmcError::EmptyCipherKey => PlaybackSourceError::DecryptionFailed,
     }
 }
 
