@@ -17,6 +17,8 @@
 - [外观个性化](appearance.md)、[设计系统](design-system.md)与[国际化](i18n.md)
 - [Linux 运行与测试](linux.md)、[Linux 图形策略](linux-graphics.md)与[桌面平台集成](platform-integration.md)
 - [本地 HTTP API](local-api.md)及其 [OpenAPI 3.1 定义](../local-api.openapi.yaml)
+- [日志系统](logging.md)、[诊断快照与诊断包](diagnostics.md)、
+  [GitHub Issue 报告](issue-reporting.md)与[安全与隐私](security.md)
 
 ## 验收记录
 
