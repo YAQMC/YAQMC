@@ -260,6 +260,7 @@ export function LyricsPresetEditor({
   const updateLyricsPresets = usePreferencesStore((state) => state.updateLyricsPresets);
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
+  const wordEffect = usePreferencesStore((state) => state.lyrics.wordEffect);
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
   const source = resolveLyricsPreset(lyricsPresets, presetId);
   const [draft, setDraft] = useState<LyricsPresetDefinition>(source);
@@ -554,6 +555,7 @@ export function LyricsPresetEditor({
       togglePlayback: preview.toggle,
       translation,
       romanization,
+      wordEffect,
     }),
     [
       artworkSrc,
@@ -569,6 +571,7 @@ export function LyricsPresetEditor({
       preview.toggle,
       romanization,
       translation,
+      wordEffect,
     ],
   );
 

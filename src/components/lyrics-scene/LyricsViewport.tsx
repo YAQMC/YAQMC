@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AlignLeft, LocateFixed, Music2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -19,9 +19,21 @@ import {
   setLyricOffset,
 } from '../../application/lyrics-scroll';
 import { logger } from '../../application/logger';
-import type { SecondaryLyricVisibility } from '../../application/preferences';
+import type { LyricWordEffect, SecondaryLyricVisibility } from '../../application/preferences';
 import type { LyricDocument, LyricLine, LyricWord } from '../../domain/music';
 import type { LyricsFollowState } from './types';
+
+const CJK_RE = /^[\p{Unified_Ideograph}\u0800-\u9FFC]+$/u;
+
+function isCjk(text: string): boolean {
+  return CJK_RE.test(text);
+}
+
+function splitWordCharacters(text: string): string[] {
+  const normalized = text.normalize('NFC');
+  if (isCjk(normalized)) return Array.from(normalized);
+  return [normalized];
+}
 
 function useReducedMotion(): boolean {
   const [reducedMotion, setReducedMotion] = useState(
@@ -147,6 +159,7 @@ function SyncedWord({
   reducedMotion,
   timelineRevision,
   getPositionMs,
+  wordEffect,
 }: {
   word: LyricWord;
   state: 'future' | 'current' | 'complete';
@@ -155,8 +168,11 @@ function SyncedWord({
   reducedMotion: boolean;
   timelineRevision: number;
   getPositionMs: () => number;
+  wordEffect: LyricWordEffect;
 }) {
   const element = useRef<HTMLSpanElement>(null);
+  const characters = useMemo(() => splitWordCharacters(word.text), [word.text]);
+  const jumping = wordEffect === 'jump';
 
   useEffect(() => {
     if (state !== 'current') return;
@@ -165,7 +181,16 @@ function SyncedWord({
 
     const updateProgress = () => {
       const progress = wordProgress(word, getPositionMs() - offsetMs);
-      element.current?.style.setProperty('--word-progress', `${progress * 100}%`);
+      const node = element.current;
+      if (!node) return;
+      node.style.setProperty('--word-progress', `${progress * 100}%`);
+      if (jumping) {
+        const charNodes = node.querySelectorAll<HTMLElement>('[data-char-index]');
+        charNodes.forEach((charNode, index) => {
+          const charProgress = Math.max(0, Math.min(1, progress * characters.length - index));
+          charNode.style.setProperty('--char-progress', String(charProgress));
+        });
+      }
     };
 
     const cancelFrame = () => {
@@ -198,7 +223,49 @@ function SyncedWord({
       cancelFrame();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [getPositionMs, isPlaying, offsetMs, reducedMotion, state, timelineRevision, word]);
+  }, [
+    characters.length,
+    getPositionMs,
+    isPlaying,
+    jumping,
+    offsetMs,
+    reducedMotion,
+    state,
+    timelineRevision,
+    word,
+  ]);
+
+  if (jumping) {
+    return (
+      <span
+        ref={element}
+        className="lyrics-word lyrics-word--jump"
+        data-state={state}
+        style={
+          {
+            '--word-progress':
+              state === 'complete' || (state === 'current' && reducedMotion) ? '100%' : '0%',
+          } as CSSProperties
+        }
+      >
+        {characters.map((character, index) => (
+          <span
+            key={`${index}-${character}`}
+            data-char-index={index}
+            className="lyrics-char"
+            style={
+              {
+                '--char-progress':
+                  state === 'complete' || (state === 'current' && reducedMotion) ? '1' : '0',
+              } as CSSProperties
+            }
+          >
+            {character}
+          </span>
+        ))}
+      </span>
+    );
+  }
 
   return (
     <span
@@ -224,12 +291,14 @@ interface LyricLineViewProps {
   line: LyricLine;
   lineIndex: number;
   cursor: LyricCursor;
+  highlightLineIndex: number;
   lastSungLineIndex: number;
   document: LyricDocument;
   onSeek: (positionMs: number) => void;
   presentationOffsetMs: number;
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
+  wordEffect: LyricWordEffect;
   isPlaying: boolean;
   reducedMotion: boolean;
   timelineRevision: number;
@@ -241,18 +310,21 @@ const LyricLineView = memo(
     line,
     lineIndex,
     cursor,
+    highlightLineIndex,
     lastSungLineIndex,
     document,
     onSeek,
     presentationOffsetMs,
     translation,
     romanization,
+    wordEffect,
     isPlaying,
     reducedMotion,
     timelineRevision,
     getPositionMs,
   }: LyricLineViewProps) {
     const active = cursor.lineIndex === lineIndex;
+    const highlighted = highlightLineIndex === lineIndex;
     const complete =
       cursor.lineIndex > lineIndex ||
       (cursor.lineIndex !== lineIndex && lastSungLineIndex >= lineIndex);
@@ -263,7 +335,7 @@ const LyricLineView = memo(
         type="button"
         className="lyrics-line"
         data-line-index={lineIndex}
-        data-active={active || undefined}
+        data-active={highlighted || undefined}
         data-complete={complete || undefined}
         data-vocalist={line.vocalistId ?? undefined}
         aria-disabled={line.startMs === null || undefined}
@@ -294,6 +366,7 @@ const LyricLineView = memo(
                     reducedMotion={reducedMotion}
                     timelineRevision={timelineRevision}
                     getPositionMs={getPositionMs}
+                    wordEffect={highlighted && wordEffect === 'jump' ? 'jump' : 'fill'}
                   />
                 );
               })
@@ -317,7 +390,9 @@ const LyricLineView = memo(
       previous.presentationOffsetMs !== next.presentationOffsetMs ||
       previous.translation !== next.translation ||
       previous.romanization !== next.romanization ||
+      previous.wordEffect !== next.wordEffect ||
       previous.lastSungLineIndex !== next.lastSungLineIndex ||
+      previous.highlightLineIndex !== next.highlightLineIndex ||
       previous.getPositionMs !== next.getPositionMs
     ) {
       return false;
@@ -371,6 +446,7 @@ export function LyricsViewport({
   seek,
   translation,
   romanization,
+  wordEffect,
   followAnchor,
   align,
   songId,
@@ -388,6 +464,7 @@ export function LyricsViewport({
   seek: (positionMs: number) => void;
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
+  wordEffect: LyricWordEffect;
   followAnchor: number;
   align: 'left' | 'center' | 'right';
   songId: string | null;
@@ -411,21 +488,62 @@ export function LyricsViewport({
     lastSungLineIndex: sungLineIndex,
     interludeRemainingMs,
   } = useLyricCursor(document, getPositionMs, presentationOffsetMs, timelineRevision, isPlaying);
+  const [highlightLineIndex, setHighlightLineIndex] = useState(cursor.lineIndex);
+  const [highlightSongId, setHighlightSongId] = useState(songId);
+  if (highlightSongId !== songId) {
+    setHighlightSongId(songId);
+    setHighlightLineIndex(cursor.lineIndex);
+  }
+  const followingActive = followState === 'active' && !editorGesture;
+  const handoffPending =
+    followingActive &&
+    !reducedMotion &&
+    highlightLineIndex >= 0 &&
+    cursor.lineIndex - highlightLineIndex === 1;
+  if (!handoffPending && highlightLineIndex !== cursor.lineIndex) {
+    setHighlightLineIndex(cursor.lineIndex);
+  }
 
   useEffect(() => {
     onFollowStateChange?.(followState);
   }, [followState, onFollowStateChange]);
 
-  const scrollToCurrentLine = (options: { force?: boolean } = {}) => {
+  const highlightLineRef = useRef(highlightLineIndex);
+  useEffect(() => {
+    highlightLineRef.current = highlightLineIndex;
+  }, [highlightLineIndex]);
+
+  const latestCursorLineRef = useRef(cursor.lineIndex);
+  useEffect(() => {
+    latestCursorLineRef.current = cursor.lineIndex;
+  }, [cursor.lineIndex]);
+
+  const scrollToCurrentLine = (options: { force?: boolean; onArrive?: () => void } = {}) => {
     centerLyricLine(scrollArea.current, scrollContent.current, cursor.lineIndex, reducedMotion, {
       followAnchor,
       force: options.force,
+      onArrive: options.onArrive,
     });
   };
 
   useEffect(() => {
     if (followState !== 'active' || editorGesture || cursor.lineIndex < 0) return;
-    scrollToCurrentLine();
+    const targetLine = cursor.lineIndex;
+    const needsHandoff =
+      !reducedMotion &&
+      highlightLineRef.current >= 0 &&
+      highlightLineRef.current === targetLine - 1;
+    scrollToCurrentLine({
+      onArrive: needsHandoff
+        ? () => {
+            requestAnimationFrame(() => {
+              if (latestCursorLineRef.current === targetLine) {
+                setHighlightLineIndex(targetLine);
+              }
+            });
+          }
+        : undefined,
+    });
     // Line-transition driven. Word ticks must not recenter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -467,6 +585,7 @@ export function LyricsViewport({
       <div
         ref={scrollArea}
         className="lyrics-stage__scroll"
+        data-follow={followState}
         onWheel={(event) => {
           if (!scrollArea.current || !scrollContent.current) return;
           if (event.deltaY === 0 && event.deltaX === 0) return;
@@ -498,6 +617,7 @@ export function LyricsViewport({
               line={line}
               lineIndex={lineIndex}
               cursor={cursor}
+              highlightLineIndex={highlightLineIndex}
               lastSungLineIndex={sungLineIndex}
               document={document}
               onSeek={(positionMs) => {
@@ -508,6 +628,7 @@ export function LyricsViewport({
               presentationOffsetMs={presentationOffsetMs}
               translation={translation}
               romanization={romanization}
+              wordEffect={wordEffect}
               isPlaying={isPlaying}
               reducedMotion={reducedMotion}
               timelineRevision={timelineRevision}

@@ -280,6 +280,7 @@ export function LyricsScene({
             seek={bindings.seek}
             translation={bindings.translation}
             romanization={bindings.romanization}
+            wordEffect={bindings.wordEffect}
             followAnchor={scene.lyrics.followAnchor}
             align={scene.lyrics.align}
             songId={bindings.songId}

@@ -41,6 +41,7 @@ describe('preference persistence model', () => {
       fontSize: 'medium',
       coverLayout: 'split',
       focusSidebarCollapsed: false,
+      wordEffect: 'jump',
     });
   });
 
@@ -54,6 +55,19 @@ describe('preference persistence model', () => {
       normalizePreferences({ version: 2, lyrics: { focusSidebarCollapsed: true } }).lyrics
         .focusSidebarCollapsed,
     ).toBe(true);
+  });
+
+  it('defaults and validates the lyrics word effect', () => {
+    expect(normalizePreferences({ version: 2 }).lyrics.wordEffect).toBe('jump');
+    expect(normalizePreferences({ version: 2, lyrics: { wordEffect: 'jump' } }).lyrics.wordEffect).toBe(
+      'jump',
+    );
+    expect(normalizePreferences({ version: 2, lyrics: { wordEffect: 'fill' } }).lyrics.wordEffect).toBe(
+      'fill',
+    );
+    expect(normalizePreferences({ version: 2, lyrics: { wordEffect: 'unknown' } }).lyrics.wordEffect).toBe(
+      'jump',
+    );
   });
 
   it('updates the lyrics focus-sidebar preference without changing appearance', () => {

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import {
+  AlignLeft,
   Bug,
   Check,
   Copy,
@@ -50,6 +51,7 @@ import {
   validatedColorPatch,
   type AppearanceSettings,
   type LyricSurfaceSettings,
+  type LyricWordEffect,
   type SecondaryLyricVisibility,
   type SurfaceKind,
 } from '../application/preferences';
@@ -772,6 +774,10 @@ export function SettingsPage() {
     { value: 'show', label: t('lyrics.show') },
     { value: 'hide', label: t('lyrics.hide') },
   ];
+  const wordEffectOptions: readonly SelectOption<LyricWordEffect>[] = [
+    { value: 'fill', label: t('lyrics.wordEffectFill') },
+    { value: 'jump', label: t('lyrics.wordEffectJump') },
+  ];
   const qualityOptions: readonly SelectOption<AudioQualityPreference>[] = [
     { value: 'automatic', label: t('playback.qualityAutomatic') },
     { value: 'standard', label: t('playback.qualityStandard') },
@@ -1233,6 +1239,19 @@ export function SettingsPage() {
                 onChange={(romanization) => preferences.updateLyrics({ romanization })}
                 ariaLabel={t('lyrics.visibilityLabel', { name: t('lyrics.romanization') })}
                 icon={Languages}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.wordEffect')}
+            description={t('lyrics.wordEffectDescription')}
+            control={
+              <Select
+                value={preferences.lyrics.wordEffect}
+                options={wordEffectOptions}
+                onChange={(wordEffect) => preferences.updateLyrics({ wordEffect })}
+                ariaLabel={t('lyrics.wordEffect')}
+                icon={AlignLeft}
               />
             }
           />

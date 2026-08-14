@@ -507,6 +507,10 @@ export const zhCN = {
       timing: '歌词时间偏移',
       timingDescription: '只调整显示时机，由所有歌词界面共享。',
       timingValue: '{{value}} 毫秒',
+      wordEffect: '逐字高亮效果',
+      wordEffectDescription: '选择当前行歌词被演唱时的揭示方式。',
+      wordEffectFill: '渐进填充',
+      wordEffectJump: '逐字跳动',
     },
     lyricsPresets: {
       title: '歌词预设',

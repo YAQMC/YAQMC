@@ -102,6 +102,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const status = useLyricsStore((state) => state.status);
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
+  const wordEffect = usePreferencesStore((state) => state.lyrics.wordEffect);
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
   const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
   const selectLyricsPreset = usePreferencesStore((state) => state.selectLyricsPreset);
@@ -276,6 +277,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     previous,
     translation,
     romanization,
+    wordEffect,
   };
 
   return (
