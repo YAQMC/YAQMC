@@ -29,7 +29,6 @@ describe('Sidebar navigation', () => {
       ['Home', { page: 'home' }],
       ['Search', { page: 'search' }],
       ['Explore', { page: 'explore' }],
-      ['Library', { page: 'library' }],
       ['Favorites', { page: 'favorites' }],
       ['Playlists', { page: 'account-playlists' }],
       ['Recently played', { page: 'account-recent' }],

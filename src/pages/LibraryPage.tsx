@@ -13,7 +13,7 @@ import type {
 import { TrackList } from '../components/TrackList';
 import { Artwork } from '../components/ui/Artwork';
 
-export type AccountLibraryView = 'summary' | AccountListResource;
+export type AccountLibraryView = AccountListResource;
 
 interface LibraryPageProps {
   view: AccountLibraryView;
@@ -37,24 +37,6 @@ function canLoadMore<T>(resource: LibraryResource<T>): boolean {
   return resource.status === 'ready' && resource.nextCursor !== null;
 }
 
-function safeAccountAvatarUrl(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' &&
-      ['qpic.y.qq.com', 'q.qlogo.cn', 'thirdwx.qlogo.cn', 'thirdqq.qlogo.cn'].includes(
-        url.hostname,
-      ) &&
-      url.port === '' &&
-      url.username === '' &&
-      url.password === ''
-      ? value
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export function LibraryPage({
   view,
   snapshot,
@@ -70,13 +52,11 @@ export function LibraryPage({
   const { t: common } = useTranslation('common');
   const playTracks = usePlayerStore((state) => state.playTracks);
   const title = t(
-    view === 'summary'
-      ? 'title'
-      : view === 'favorites'
-        ? 'favoriteSongs'
-        : view === 'playlists'
-          ? 'myPlaylists'
-          : 'recentlyPlayed',
+    view === 'favorites'
+      ? 'favoriteSongs'
+      : view === 'playlists'
+        ? 'myPlaylists'
+        : 'recentlyPlayed',
   );
 
   if (snapshot.state !== 'authenticated') {
@@ -110,8 +90,6 @@ export function LibraryPage({
       </div>
     );
   }
-
-  const avatarUrl = safeAccountAvatarUrl(snapshot.profile.avatarUrl);
 
   function renderResource<T>(
     resourceName: AccountListResource,
@@ -217,21 +195,6 @@ export function LibraryPage({
       <header className="page-heading">
         <p className="eyebrow">{t('eyebrow')}</p>
         <h1>{title}</h1>
-        {view === 'summary' && (
-          <div className="account-library-profile">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" referrerPolicy="no-referrer" />
-            ) : (
-              <span aria-hidden="true">{snapshot.profile.nickname.slice(0, 1)}</span>
-            )}
-            <div>
-              <strong>{snapshot.profile.nickname}</strong>
-              <small>
-                {snapshot.profile.maskedIdentity} · {t(`tier.${snapshot.entitlement.tier}`)}
-              </small>
-            </div>
-          </div>
-        )}
       </header>
 
       {view === 'favorites'
@@ -261,7 +224,7 @@ export function LibraryPage({
           : renderResource('playlists', playlists, (items) => (
               <section className="content-section content-section--last">
                 <div className="section-heading">
-                  <h2>{view === 'summary' ? t('yourPlaylists') : t('myPlaylists')}</h2>
+                  <h2>{t('myPlaylists')}</h2>
                 </div>
                 <div className="account-playlist-grid">
                   {items.map((playlist) => (
