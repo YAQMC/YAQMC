@@ -10,7 +10,7 @@
 ## 诊断快照包含什么
 
 `DiagnosticsSnapshot` 由 `src-tauri/src/diagnostics.rs::snapshot_from_handle`
-构造，分四块：
+构造，包含这些块：
 
 - **`app`**：应用版本、短提交 SHA（由 `src-tauri/build.rs` 在构建时嵌入）、
   构建通道 (`stable`/`beta`/`dev`)、构建类型 (`release`/`debug`)、本次
@@ -24,6 +24,9 @@
   (`direct-http`/`qmc-encrypted`/`local-file`)、解码器类型、简短歌曲 ID、
   播放顺序、循环模式，以及播放栏主模式（`sequential` / `shuffle` /
   `repeat-one`）——绝不包含签名后的媒体 URL。
+- **`lyricsPreset`**：当前歌词预设的紧凑标识（`id`、`kind` 为
+  `built-in` / `custom`、`schemaVersion`）。快照不导出完整预设 JSON，
+  也不暴露本地资源路径。
 
 快照还携带：
 
@@ -116,6 +119,10 @@ Reporter 会以预填的错误码打开。
 - **定位诊断包**：在文件管理器中定位最近一次生成的 ZIP。
 - **清理旧日志**：只删除滚动文件，当前日志保留。
 - **报告问题**：打开 Issue Reporter。
+- **平台采集**：原先放在桌面集成中的 Linux/平台诊断导出。
+
+关于页保持信息性。它可以提供“报告问题”作为支持入口，并打开同一个
+Issue Reporter。诊断包操作不再出现在桌面集成或关于页中。
 
 刻意 **不** 提供领域级别的一堆开关：日常用户不需要配置日志，维护者需要时
 可以打开 `TRACE`。

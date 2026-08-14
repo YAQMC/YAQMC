@@ -476,8 +476,10 @@ export const enUS = {
       imageUnavailable: 'The saved image is missing. Choose it again.',
       imageReady: 'Managed local image ready',
       fit: 'Image fit',
-      fitCover: 'Cover',
-      fitContain: 'Contain',
+      fitCover: 'Cover — fill the entire area; edges may be cropped.',
+      fitContain: 'Contain — show the entire image; empty margins may appear.',
+      fitHint:
+        'Cover fills the area and may crop edges. Contain shows the whole image and may letterbox. Letterboxing is intentional, not a display bug.',
       artworkInfluence: 'Artwork influence',
       artworkInfluenceDescription: 'Controls the artwork wash without reducing text clarity.',
       interfaceOpacity: 'Interface opacity',
@@ -506,6 +508,40 @@ export const enUS = {
       timing: 'Lyrics timing offset',
       timingDescription: 'Presentation-only adjustment shared by lyric surfaces.',
       timingValue: '{{value}} ms',
+    },
+    lyricsPresets: {
+      title: 'Lyrics presets',
+      description:
+        'Start from a built-in lyrics layout, then customize typography. Built-in sources stay recoverable.',
+      customize: 'Customize',
+      customized: 'Customized',
+      editorTitle: 'Customize {{name}}',
+      classic: 'Classic',
+      immersive: 'Immersive',
+      vinyl: 'Vinyl',
+      custom: 'Custom',
+      fontSize: 'Lyrics font size',
+      lineSpacing: 'Lyrics line spacing',
+      playPreview: 'Play preview',
+      pausePreview: 'Pause preview',
+      seekPreview: 'Preview timeline',
+      previewFrame: 'Preview frame',
+      save: 'Save',
+      cancel: 'Cancel',
+      applyToPreset: 'Apply to this preset',
+      saveAsNew: 'Save as new preset',
+      reset: 'Reset to built-in default',
+      resetConfirm: 'Remove your configuration for this built-in preset? Custom presets are kept.',
+      frames: {
+        desktop: 'Desktop 16:9',
+        window: 'Current window',
+        ultrawide: 'Ultrawide',
+      },
+      layouts: {
+        split: 'Split artwork and lyrics',
+        full: 'Immersive lyrics',
+        vinyl: 'Vinyl artwork',
+      },
     },
     surfaces: {
       title: 'Lyrics surfaces',
@@ -581,8 +617,7 @@ export const enUS = {
     },
     systemIntegration: {
       title: 'Desktop integration',
-      description:
-        'Tray, close behavior, media controls, global shortcuts, and platform diagnostics.',
+      description: 'Tray, close behavior, media controls, and global shortcuts.',
       closeBehavior: 'Main-window close action',
       closeBehaviorDescription: 'Keep playback in the tray or fully quit the process.',
       closeToTray: 'Hide to tray',
@@ -716,7 +751,7 @@ export const enUS = {
     },
     about: {
       title: 'About',
-      description: 'Product identity, build information, project links, and safe diagnostics.',
+      description: 'Product identity, build information, and project links.',
       version: 'Version {{version}}',
       commit: 'Commit',
       platform: 'Platform',
@@ -764,6 +799,10 @@ export const enUS = {
       reportProblemDescription:
         'Opens a guided issue reporter that prefills GitHub Issue fields and lets you attach the diagnostic bundle manually.',
       reportProblemAction: 'Report a problem',
+      platformExport: 'Platform collection',
+      platformExportDescription:
+        'Exports safe platform data and a guided Arch/Linux collection script to Downloads. Diagnostic bundles live in this section, not Desktop integration.',
+      platformExportAction: 'Export platform data',
       sessionId: 'Session ID',
       sessionIdDescription: 'Random identifier for this application run; no telemetry is sent.',
     },

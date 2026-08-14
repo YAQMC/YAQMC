@@ -25,6 +25,7 @@ const publicDocuments = [
   'local-api.md',
   'logging.md',
   'lyrics.md',
+  'lyrics-presets.md',
   'lyrics-surfaces.md',
   'platform-integration.md',
   'playback.md',

@@ -53,16 +53,12 @@ import {
   type SecondaryLyricVisibility,
   type SurfaceKind,
 } from '../application/preferences';
+import { lyricsPresetDiagnostics } from '../application/lyrics-preset';
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { useProviderSettings } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
 import { openProductLink } from '../application/external-links';
-import {
-  buildMetadata,
-  formatSafeDiagnostics,
-  productMetadata,
-  type ProductLink,
-} from '../application/product-metadata';
+import { buildMetadata, productMetadata, type ProductLink } from '../application/product-metadata';
 import {
   clearOldLogs,
   currentLogLevel,
@@ -74,6 +70,7 @@ import {
 } from '../application/diagnostics-runtime';
 import type { LogLevel } from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
+import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -637,7 +634,6 @@ export function SettingsPage() {
   const platform = usePlatformIntegration();
   const preferences = usePreferencesStore();
   const [copied, setCopied] = useState<'endpoint' | 'token' | null>(null);
-  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
   const [unlockingAll, setUnlockingAll] = useState(false);
@@ -710,6 +706,7 @@ export function SettingsPage() {
     try {
       const bundle = await exportDiagnosticsBundle({
         accountState: accountSnapshot.state,
+        lyricsPreset: lyricsPresetDiagnostics(preferences.lyricsPresets),
         includeLogs: true,
         overrideUnresolved: false,
       });
@@ -986,17 +983,6 @@ export function SettingsPage() {
     { id: 'acknowledgements', label: t('about.acknowledgements') },
     { id: 'thirdPartyNotices', label: t('about.thirdPartyNotices') },
   ];
-  const copySafeDiagnostics = async () => {
-    await navigator.clipboard.writeText(
-      formatSafeDiagnostics({
-        platform: platform.diagnostics,
-        provider: provider.status,
-        accountState: accountSnapshot.state,
-      }),
-    );
-    setDiagnosticsCopied(true);
-    window.setTimeout(() => setDiagnosticsCopied(false), 1_500);
-  };
 
   return (
     <section className="page standard-page settings-page">
@@ -1164,6 +1150,9 @@ export function SettingsPage() {
               }
             />
           )}
+          {preferences.appearance.backgroundMode === 'image' && (
+            <p className="settings-capability-note">{t('appearance.fitHint')}</p>
+          )}
           {(preferences.appearance.backgroundMode === 'artwork' ||
             preferences.appearance.backgroundMode === 'image') && (
             <SettingRow
@@ -1216,6 +1205,12 @@ export function SettingsPage() {
 
       <SettingsSection title={t('lyrics.title')} description={t('lyrics.description')}>
         <div className="settings-card">
+          <SettingRow
+            className="settings-row--presets"
+            title={t('lyricsPresets.title')}
+            description={t('lyricsPresets.description')}
+            control={<LyricsPresetPicker />}
+          />
           <SettingRow
             title={t('lyrics.translation')}
             description={t('lyrics.translationDescription')}
@@ -1399,31 +1394,7 @@ export function SettingsPage() {
               </span>
             }
           />
-          <SettingRow
-            title={t('systemIntegration.diagnostics')}
-            description={t('systemIntegration.diagnosticsDescription')}
-            control={
-              <button
-                type="button"
-                className="button button--secondary"
-                disabled={!platform.available || platform.busy}
-                onClick={() => void platform.exportDiagnostics()}
-              >
-                <Download size={14} /> {t('systemIntegration.export')}
-              </button>
-            }
-          />
         </div>
-        {platform.exportPath && (
-          <p className="settings-export-path">
-            {t('systemIntegration.exported', { path: platform.exportPath })}
-          </p>
-        )}
-        {platform.error && (
-          <p className="settings-error" title={platform.error}>
-            {errors('settingsFailed')}
-          </p>
-        )}
       </SettingsSection>
 
       <SettingsSection title={t('diagnostics.title')} description={t('diagnostics.description')}>
@@ -1512,7 +1483,31 @@ export function SettingsPage() {
               </button>
             }
           />
+          <SettingRow
+            title={t('diagnostics.platformExport')}
+            description={t('diagnostics.platformExportDescription')}
+            control={
+              <button
+                type="button"
+                className="button button--secondary"
+                disabled={!platform.available || platform.busy}
+                onClick={() => void platform.exportDiagnostics()}
+              >
+                <Download size={14} /> {t('diagnostics.platformExportAction')}
+              </button>
+            }
+          />
         </div>
+        {platform.exportPath && (
+          <p className="settings-export-path">
+            {t('systemIntegration.exported', { path: platform.exportPath })}
+          </p>
+        )}
+        {platform.error && (
+          <p className="settings-error" title={platform.error}>
+            {errors('settingsFailed')}
+          </p>
+        )}
         {diagnosticsMessage && !diagnosticsError && (
           <p className="settings-export-path" role="status">
             {diagnosticsMessage}
@@ -1856,14 +1851,6 @@ export function SettingsPage() {
             <div className="settings-inline-actions">
               <button
                 type="button"
-                className="button button--secondary"
-                onClick={() => void copySafeDiagnostics()}
-              >
-                <Copy size={14} />
-                {diagnosticsCopied ? common('copied') : t('about.copyDiagnostics')}
-              </button>
-              <button
-                type="button"
                 className="button button--primary"
                 onClick={() => setIssueReporterOpen(true)}
               >
@@ -1879,6 +1866,7 @@ export function SettingsPage() {
         onClose={() => setIssueReporterOpen(false)}
         diagnosticsRequest={{
           accountState: accountSnapshot.state,
+          lyricsPreset: lyricsPresetDiagnostics(preferences.lyricsPresets),
         }}
       />
     </section>

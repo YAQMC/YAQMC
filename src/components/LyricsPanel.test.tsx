@@ -7,6 +7,11 @@ import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
+import {
+  applyOverride,
+  BUILTIN_CLASSIC_ID,
+  defaultLyricsPresetState,
+} from '../application/lyrics-preset';
 import type { LyricDocument } from '../domain/music';
 import { allSongs, lyricsBySong } from '../providers/fake/fixtures';
 import '../styles/components.css';
@@ -209,8 +214,10 @@ describe('LyricsPanel', () => {
       error: null,
     });
     usePreferencesStore.setState({
+      ...defaultPreferences,
       appearance: { ...defaultPreferences.appearance },
       lyrics: { ...defaultPreferences.lyrics },
+      lyricsPresets: defaultPreferences.lyricsPresets,
       backgroundImageData: null,
       backgroundImageMissing: false,
     });
@@ -792,6 +799,9 @@ describe('LyricsPanel', () => {
         backgroundMode: 'image',
         backgroundFit: 'contain',
       },
+      lyricsPresets: applyOverride(defaultLyricsPresetState, BUILTIN_CLASSIC_ID, {
+        background: { fit: 'contain' },
+      }),
       backgroundImageData: managedImage,
     });
     const { container } = render(<LyricsPanel {...presentationProps()} />);
