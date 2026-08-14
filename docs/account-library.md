@@ -8,8 +8,10 @@ remain usable in guest mode and do not depend on this subsystem.
 ## Surfaces and state
 
 The main WebView exposes Favorites, Account playlists, Recently played when advertised, and owned-playlist detail.
-The `AccountMusicProvider` contract is separate from `MusicProvider`, and `isAccountMusicProvider` gates account UI
-at runtime. Desktop Lyrics and Lyrics Island have no account capability.
+The sidebar's "Library" entry was removed because it duplicated the "Playlists" page (both rendered the account
+playlist grid); only the Playlists entry remains. The `AccountMusicProvider` contract is separate from
+`MusicProvider`, and `isAccountMusicProvider` gates account UI at runtime. Desktop Lyrics and Lyrics Island have no
+account capability.
 
 Each list resource has explicit idle, loading, ready, empty, stale, account-required,
 reauthentication-required, and error states. Loading another page preserves coherent data. A network/protocol
@@ -27,6 +29,22 @@ A first-page refresh opens a projection epoch. Additional pages accumulate witho
 complete projection is atomically swapped only at the terminal page. A restart refetches a cached nonterminal first
 page before issuing a new outward cursor. Offline stale fallback is terminal so it never exposes an unusable next
 cursor.
+
+## Playlist detail normalization
+
+`CgiGetDiss` requires `disstid` as a numeric JSON value together with the full parameter set
+(`dirid`/`tag`/`userinfo`/`orderlist`/`onlysonglist`); a string `disstid` makes QQ Music return `req.code 10004`
+("not accessible"), which is surfaced to the UI as a distinct `unavailable` library error rather than a generic
+protocol message.
+
+For self-created (owned) and collected playlists the detail `dirinfo` may come back with an empty title, creator,
+and timestamp. `playlist_tracks` therefore falls back to the metadata already held from the playlist list for the
+title, description, owner, and update time; for owned playlists the empty creator falls back to the signed-in
+account nickname. This prevents "QQ Music" and a 1970 year from being rendered.
+
+Normalization failures emit a `qqmusic.playlist` warn with the request context, the CGI `code`/`req_code`/
+`subcode`, a redacted response preview, and a structural `shape` summary of the `req.data` object (key set,
+`songlist`/`cdlist` counts, `dirinfo` fields) so a schema drift or routing change is diagnosable from logs.
 
 ## Mutation outcomes
 

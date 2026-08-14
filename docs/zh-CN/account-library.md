@@ -7,7 +7,8 @@ QQ 音乐账号页面和写操作已经实现，但真实账号验收仍待完�
 
 ## 界面与状态
 
-主窗口提供收藏、账号歌单、服务端声明支持时的最近播放，以及自有歌单详情。账号接口
+主窗口提供收藏、账号歌单、服务端声明支持时的最近播放，以及自有歌单详情。侧边栏的“音乐库”入口已移除，
+因为它与“歌单”页面重复（两者渲染同一个账号歌单网格），只保留“歌单”。账号接口
 `AccountMusicProvider` 与公开目录 `MusicProvider` 分离，桌面歌词和歌词岛没有账号权限。
 
 每个列表都显式区分 idle、loading、ready、empty、stale、需要账号、需要重新认证和 error。加载下一页
@@ -22,6 +23,20 @@ React generation 与 AbortSignal 防止旧路由、旧分页或旧会话覆盖�
 
 首页刷新会开启投影 epoch，后续页只累积不丢前页，抵达终页后才原子替换完整投影。重启后若缓存首页
 还有下一页，先重新请求首页再发新 cursor；离线 stale 回退必须是终页，不能暴露已经失效的 cursor。
+
+## 歌单详情规范化
+
+`CgiGetDiss` 要求 `disstid` 为数字 JSON 值并携带完整参数集
+（`dirid`/`tag`/`userinfo`/`orderlist`/`onlysonglist`）；字符串 `disstid` 会让 QQ 音乐返回
+`req.code 10004`（“不可访问”），前端将其显示为独立的 `unavailable` 音乐库错误，而不是笼统的协议错误。
+
+自建与收藏歌单的详情 `dirinfo` 可能返回空的标题、创建者和时间戳。因此 `playlist_tracks` 会回退到列表
+接口已有的元数据来填充标题、描述、所有者和更新时间；自建歌单的空创建者则回退到当前登录账号昵称，
+避免渲染出 “QQ 音乐” 和 1970 年份。
+
+规范化失败会在 `qqmusic.playlist` 输出 warn，包含请求上下文、CGI `code`/`req_code`/`subcode`、脱敏后的
+响应预览，以及 `req.data` 对象的结构化 `shape` 摘要（键集合、`songlist`/`cdlist` 数量、`dirinfo` 字段），
+便于从日志判断 schema 漂移或路由变化。
 
 ## 写操作结果
 
