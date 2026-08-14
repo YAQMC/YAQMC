@@ -222,6 +222,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 - [账号资料库](docs/zh-CN/account-library.md)
 - [歌词窗口](docs/zh-CN/lyrics-surfaces.md)
 - [歌词预设](docs/zh-CN/lyrics-presets.md)
+- [插件平台](docs/zh-CN/plugin-platform.md)
 - [歌词编排器](docs/zh-CN/lyrics-composer.md)
 - [本地 API](docs/zh-CN/local-api.md)
 - [日志系统](docs/zh-CN/logging.md)与[诊断快照与诊断包](docs/zh-CN/diagnostics.md)

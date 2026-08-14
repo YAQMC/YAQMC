@@ -1,0 +1,7 @@
+[data-yaqmc='player-bar'] {
+  --yaqmc-radius-card: 18px;
+}
+
+[data-yaqmc='track-title'] {
+  letter-spacing: 0.01em;
+}

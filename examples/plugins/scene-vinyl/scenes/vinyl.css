@@ -1,0 +1,9 @@
+@scope ([data-yaqmc-plugin-scene='dev.yaqmc.example.scene']) {
+  [data-scene-widget='artwork'] {
+    filter: saturate(1.05);
+  }
+
+  [data-scene-state='active-line'] {
+    opacity: 1;
+  }
+}
