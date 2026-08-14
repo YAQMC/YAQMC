@@ -52,6 +52,7 @@ impl SeekMailbox {
         self.revision.load(Ordering::Acquire)
     }
 
+    #[allow(dead_code)]
     pub fn latest(&self) -> Option<SeekIntent> {
         *self
             .slot
@@ -72,6 +73,7 @@ impl SeekMailbox {
     }
 }
 
+#[allow(dead_code)]
 pub fn snapshot_is_stale(
     incoming_session: u64,
     incoming_revision: u64,
