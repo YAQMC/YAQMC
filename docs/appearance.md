@@ -57,8 +57,9 @@ color (the appearance background color for the app shell, or the lyrics preset f
 color on the lyrics stage), not a raw WebView black fill.
 
 Appearance → Image fit still controls the application shell. Lyrics stages use the selected
-[lyrics preset](lyrics-presets.md) `background.fit`. Built-in immersive lyrics default to
-Cover unless a previous Contain preference is migrated as a user override.
+[lyrics preset](lyrics-presets.md) `background.fit` and the shared [Lyrics Composer](lyrics-composer.md)
+scene. Built-in immersive lyrics default to Cover unless a previous Contain preference is migrated as
+a user override. Range thumbs stay visible so font-size and line-spacing controls remain usable without hover.
 
 ## Immersive lyric appearance
 

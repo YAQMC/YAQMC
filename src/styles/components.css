@@ -218,20 +218,28 @@ input[type='range']::-webkit-slider-runnable-track {
 }
 
 input[type='range']::-webkit-slider-thumb {
-  width: 9px;
-  height: 9px;
-  margin-top: -3px;
+  width: 14px;
+  height: 14px;
+  margin-top: -5.5px;
   appearance: none;
+  border: 2px solid var(--bg-opaque);
   border-radius: 50%;
   background: var(--text);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
-  opacity: 0;
-  transition: opacity var(--motion-fast);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  opacity: 1;
+  transition:
+    transform var(--motion-fast),
+    box-shadow var(--motion-fast);
 }
 
 input[type='range']:hover::-webkit-slider-thumb,
+input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
+
 input[type='range']:focus-visible::-webkit-slider-thumb {
-  opacity: 1;
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 input[type='range']:disabled {
@@ -1151,7 +1159,6 @@ input[type='range']:disabled {
 }
 
 .lyrics-stage[data-fullscreen] .lyrics-line {
-  font-size: calc(clamp(30px, 5.6vh, 78px) * var(--lyrics-font-scale, 1));
   margin-block: var(--lyrics-line-gap, 0.52em);
 }
 
@@ -1469,14 +1476,14 @@ input[type='range']:disabled {
   background: transparent;
   color: color-mix(in srgb, var(--lyrics-ink) 34%, transparent);
   font-family: var(--font-display);
-  font-size: calc(clamp(27px, 5.1vh, 74px) * var(--lyrics-font-scale, 1));
+  font-size: var(--lyrics-font-size);
   font-weight: 700;
   letter-spacing: -0.038em;
   line-height: var(--lyrics-line-height, 1.16);
   margin-block: var(--lyrics-line-gap, 0.6em);
   scroll-margin-block: 40vh;
   scroll-snap-align: center;
-  text-align: left;
+  text-align: inherit;
   transition:
     color 320ms var(--ease-out),
     filter 320ms var(--ease-out);
@@ -1494,8 +1501,6 @@ input[type='range']:disabled {
   color: color-mix(in srgb, var(--lyrics-color) 62%, var(--lyrics-ink) 38%);
   content-visibility: visible;
   filter: none;
-  transform: scale(1.035);
-  transform-origin: left center;
 }
 
 .lyrics-line[data-vocalist='response'] {
@@ -1519,13 +1524,13 @@ input[type='range']:disabled {
 .lyrics-line__romanization,
 .lyrics-line__translation {
   display: block;
-  margin-top: calc(9px * var(--lyrics-font-scale, 1));
+  margin-top: 0.28em;
   color: color-mix(in srgb, var(--lyrics-ink) 42%, transparent);
   font-family: var(--font-display);
-  font-size: calc(clamp(0.86rem, 1.3vw, 1.12rem) * var(--lyrics-font-scale, 1));
+  font-size: var(--lyrics-secondary-font-size);
   font-weight: 520;
   letter-spacing: -0.012em;
-  line-height: 1.35;
+  line-height: var(--lyrics-line-height, 1.16);
 }
 
 .lyrics-line__translation {

@@ -13,23 +13,30 @@ import {
   LINE_HEIGHT_MAX,
   LINE_HEIGHT_MIN,
   LYRICS_PRESET_SCHEMA_VERSION,
+  lineGapFromLineHeight,
   lyricsPresetDiagnostics,
   normalizeLyricsPresetState,
   resetOverride,
   resolveLyricsPreset,
+  resolvePrimaryFontSizePx,
   saveAsNewPreset,
 } from './lyrics-preset';
 
 describe('lyrics preset foundation', () => {
-  it('ships three built-in presets with stable ids and schema v1', () => {
+  it('ships three built-in presets with stable ids and schema v2 widget graphs', () => {
     expect(builtinPresetCatalog.map((preset) => preset.id)).toEqual([
       BUILTIN_CLASSIC_ID,
       BUILTIN_IMMERSIVE_ID,
       BUILTIN_VINYL_ID,
     ]);
-    expect(builtinPresetCatalog.every((preset) => preset.schemaVersion === 1)).toBe(true);
+    expect(builtinPresetCatalog.every((preset) => preset.schemaVersion === 2)).toBe(true);
     expect(builtinPresetCatalog.map((preset) => preset.layout)).toEqual(['split', 'full', 'vinyl']);
     expect(resolveLyricsPreset(defaultLyricsPresetState).background.fit).toBe('cover');
+    expect(resolveLyricsPreset(defaultLyricsPresetState).scene.lyrics.followAnchor).toBe(0.35);
+    expect(resolveLyricsPreset(defaultLyricsPresetState).scene.artwork.renderer).toBe('square');
+    expect(
+      resolveLyricsPreset(defaultLyricsPresetState, BUILTIN_VINYL_ID).scene.artwork.renderer,
+    ).toBe('vinyl');
   });
 
   it('keeps built-in definitions intact when applying an override', () => {
@@ -92,6 +99,7 @@ describe('lyrics preset foundation', () => {
       id: BUILTIN_CLASSIC_ID,
       kind: 'built-in',
       schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
+      rendererVersion: 1,
     });
   });
 
@@ -105,5 +113,60 @@ describe('lyrics preset foundation', () => {
     expect(restored.custom[0]?.id).toBe(created.id);
     expect(restored.custom[0]?.name).toBe('Studio');
     expect(resolveLyricsPreset(restored).typography.fontScale).toBe(1.2);
+    expect(resolveLyricsPreset(restored).scene.lyrics.id).toBe('lyrics');
+  });
+
+  it('migrates v1 overrides and custom presets into factory widget graphs', () => {
+    const migrated = normalizeLyricsPresetState({
+      schemaVersion: 1,
+      selectedId: 'builtin.vinyl',
+      overrides: { 'builtin.vinyl': { typography: { fontScale: 1.2 } } },
+      custom: [
+        {
+          schemaVersion: 1,
+          id: 'custom.old',
+          name: 'Studio',
+          layout: 'full',
+          typography: { fontScale: 1.1, lineHeight: 1.3 },
+          artwork: { style: 'square' },
+          background: { fit: 'contain', fallbackColor: '#20231C' },
+        },
+      ],
+    });
+    expect(migrated.schemaVersion).toBe(2);
+    expect(resolveLyricsPreset(migrated, BUILTIN_VINYL_ID).scene.artwork.renderer).toBe('vinyl');
+    expect(resolveLyricsPreset(migrated, BUILTIN_VINYL_ID).typography.fontScale).toBe(1.2);
+    const custom = resolveLyricsPreset(migrated, 'custom.old');
+    expect(custom.layout).toBe('full');
+    expect(custom.scene.artwork.width).toBe(0.5);
+    expect(custom.background.fit).toBe('contain');
+  });
+
+  it('falls back to the factory graph when layout is malformed', () => {
+    const migrated = normalizeLyricsPresetState({
+      selectedId: 'custom.broken',
+      custom: [
+        {
+          id: 'custom.broken',
+          layout: 'vinyl',
+          scene: { lyrics: { x: 'nope' } },
+        },
+      ],
+    });
+    const resolved = resolveLyricsPreset(migrated, 'custom.broken');
+    expect(resolved.scene.artwork.renderer).toBe('vinyl');
+    expect(resolved.scene.lyrics.followAnchor).toBe(0.35);
+  });
+
+  it('makes 70% and 145% font scales differ by a large computed ratio', () => {
+    const small = resolvePrimaryFontSizePx(0.7, 800);
+    const large = resolvePrimaryFontSizePx(1.45, 800);
+    expect(small).toBeCloseTo(44.8 * 0.7);
+    expect(large).toBeCloseTo(44.8 * 1.45);
+    expect(large / small).toBeGreaterThan(2);
+  });
+
+  it('changes primary line gap when lineHeight moves from 1.05 to 1.60', () => {
+    expect(lineGapFromLineHeight(1.6) / lineGapFromLineHeight(1.05)).toBeGreaterThan(1.4);
   });
 });

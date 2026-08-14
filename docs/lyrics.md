@@ -24,24 +24,27 @@ the fallback. Normalized cache keys carry a parser revision so fixes invalidate 
 
 ## Renderer
 
-The lyrics page is a full-window immersive surface over a cover-derived background. It offers three cover
-layouts selectable from the top bar: `split` (cover artwork on the left with title/artist), `full`
-(full-window sharp cover with a frosted, gradient-masked lyrics panel on the right), and `vinyl` (a CSS-drawn
-record whose circular cover spins while playing and freezes in place when paused). Cover layouts persist
-through the lyric preferences and as the selected [lyrics preset](lyrics-presets.md).
+The lyrics page is a full-window immersive surface over a cover-derived background. The immersive page and
+the [Lyrics Composer](lyrics-composer.md) share one `LyricsScene`. The top bar still cycles `split` → `full`
+→ `vinyl` by selecting the matching built-in preset id; that only changes `selectedId`. Desktop Lyrics and
+Lyrics Island keep their own surface typography.
 
-The blurred background for `split`/`vinyl` is produced once per artwork by an offscreen canvas render using
+Cover layouts persist through the lyric preferences and as the selected [lyrics preset](lyrics-presets.md).
+
+The blurred background for layouts with preset blur is produced once per artwork by an offscreen canvas render using
 `stackblur-canvas`, then served as a static image; the live CSS `filter: blur()` path is avoided because
-WebKitGTK can rasterize large blurred layers as black. The `full` layout renders the raw cover instead.
+WebKitGTK can rasterize large blurred layers as black. Immersive factory blur is 0 so the raw cover is used.
 
 Line emphasis uses a cover-aware ink color: controls, progress, word fill, and sung text use pure ink, while
 the active line mixes the artwork color with ink so light covers stay readable. Non-active lines share one
-default dimmed color; only the singing line stands out.
+default dimmed color; only the singing line stands out. Primary size is `clamp(18px, 5.6cqh, 96px) × fontScale`
+on the scene root.
 
-The active line is anchored at 35% of the viewport and tracks playback through a damped spring animation on a
-transform-based scroll layer, which avoids per-frame text repaint. Wheel or pointer interaction suspends
-following; the user can resume it explicitly, and clicking a timed line seeks and resumes following. Timed
-lines seek through the same player contract used elsewhere in the UI.
+The active line is anchored at 35% of the viewport (`followAnchor`, overridable per lyrics widget) and tracks
+playback through a damped spring animation on a transform-based scroll layer, which avoids per-frame text
+repaint. A wheel gesture with a delta suspends following. Bare pointer-down does not. **Follow current line**
+always scrolls to the current line, even when the line index did not change. Clicking a timed line seeks and
+resumes following. Word highlight is independent and does not recenter.
 
 React does not reconcile the whole document on every audio poll. The native service publishes line/word boundary
 changes from the actual engine position; a small visual loop only updates word-fill progress between boundaries.

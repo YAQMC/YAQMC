@@ -13,8 +13,8 @@
   [账号音乐库](account-library.md)、[会员模型](account-membership.md)与[播放权益](entitlement.md)
 - [官方客户端互操作](qqmusic-official-interoperability.md)、[音质分类](audio-quality.md)、
   [封面选择](artwork.md)与[外部 URI 安全](deep-link.md)
-- [歌词架构](lyrics.md)、[桌面歌词 / 歌词岛](lyrics-surfaces.md)与
-  [歌词预设](lyrics-presets.md)
+- [歌词架构](lyrics.md)、[桌面歌词 / 歌词岛](lyrics-surfaces.md)、
+  [歌词预设](lyrics-presets.md)与[歌词编排器](lyrics-composer.md)
 - [外观个性化](appearance.md)、[设计系统](design-system.md)与[国际化](i18n.md)
 - [Linux 运行与测试](linux.md)、[Linux 图形策略](linux-graphics.md)与[桌面平台集成](platform-integration.md)
 - [本地 HTTP API](local-api.md)及其 [OpenAPI 3.1 定义](../local-api.openapi.yaml)

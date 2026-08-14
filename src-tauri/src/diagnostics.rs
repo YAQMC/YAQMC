@@ -80,6 +80,8 @@ pub struct LyricsPresetSection {
     pub id: String,
     pub kind: String,
     pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renderer_version: Option<u32>,
 }
 
 /// Structured snapshot separate from raw logs, safe for direct display in the UI
@@ -191,8 +193,14 @@ impl DiagnosticsSnapshot {
         out.push_str(&format!("Log level: {}\n", self.log_level.as_str()));
         if let Some(preset) = &self.lyrics_preset {
             out.push_str(&format!(
-                "Lyrics preset: {} ({}, schema v{})\n",
-                preset.id, preset.kind, preset.schema_version
+                "Lyrics preset: {} ({}, schema v{}{})\n",
+                preset.id,
+                preset.kind,
+                preset.schema_version,
+                preset
+                    .renderer_version
+                    .map(|version| format!(", renderer v{version}"))
+                    .unwrap_or_default()
             ));
         }
         if !self.recent_errors.is_empty() {
@@ -844,6 +852,7 @@ mod tests {
             id: "builtin.classic".into(),
             kind: "built-in".into(),
             schema_version: 1,
+            renderer_version: None,
         });
         let text = snapshot.to_plain_text();
         assert!(text.contains("Lyrics preset: builtin.classic (built-in, schema v1)"));
