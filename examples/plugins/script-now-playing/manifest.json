@@ -1,0 +1,14 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.example.now-playing",
+  "name": "Now playing logger",
+  "description": "Example isolated script that reads the current track. Not enabled by default.",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "authors": ["YAQMC examples"],
+  "engines": { "yaqmc": ">=0.1.0" },
+  "entrypoints": {
+    "script": "dist/main.js"
+  },
+  "permissions": ["track.read", "player.read"]
+}

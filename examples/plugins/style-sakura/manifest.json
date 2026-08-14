@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.example.sakura",
+  "name": "Sakura style",
+  "description": "Example style-only personalization plugin. Not enabled by default.",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "authors": ["YAQMC examples"],
+  "engines": { "yaqmc": ">=0.1.0" },
+  "entrypoints": {
+    "styles": ["styles/main.css"]
+  }
+}

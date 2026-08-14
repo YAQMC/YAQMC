@@ -176,6 +176,7 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md),
 [lyrics presets](docs/lyrics-presets.md),
 [lyrics composer](docs/lyrics-composer.md),
+[plugin platform](docs/plugin-platform.md),
 [local API](docs/local-api.md), [logging](docs/logging.md),
 [diagnostics](docs/diagnostics.md), [Issue reporting](docs/issue-reporting.md), and
 [security & privacy](docs/security.md), or the complete
