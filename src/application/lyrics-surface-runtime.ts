@@ -13,6 +13,7 @@ import {
 
 export interface LyricSurfaceProjection {
   timestampMs: number;
+  sessionId?: number;
   currentTrack: Song | null;
   positionMs: number;
   isPlaying: boolean;
@@ -89,8 +90,14 @@ export function useLyricsSurfaceRuntime(): {
     let active = true;
     let receivedProjectionEvent = false;
     let receivedDocumentEvent = false;
+    let acceptedSession = 0;
+    let acceptedTrackId: string | null = null;
     const listeners: UnlistenFn[] = [];
     const updateProjection = (value: LyricSurfaceProjection) => {
+      const session = value.sessionId ?? 0;
+      if (session !== 0 && session < acceptedSession) return;
+      if (session > acceptedSession) acceptedSession = session;
+      acceptedTrackId = value.currentTrack?.id ?? null;
       if (active) setProjection({ value, receivedAt: performance.now() });
     };
 
@@ -104,8 +111,16 @@ export function useLyricsSurfaceRuntime(): {
       .catch(() => undefined);
     void listen<LyricDocument | null>('lyrics://document', (event) => {
       if (active) {
+        const payload = event.payload;
+        if (
+          payload &&
+          acceptedTrackId &&
+          payload.songId !== acceptedTrackId
+        ) {
+          return;
+        }
         receivedDocumentEvent = true;
-        setDocument(event.payload);
+        setDocument(payload);
       }
     })
       .then((unlisten) => (active ? listeners.push(unlisten) : unlisten()))

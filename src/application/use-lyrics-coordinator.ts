@@ -10,18 +10,21 @@ export function useLyricsCoordinator(): void {
   const { t } = useTranslation('errors');
   const provider = useMusicProvider();
   const currentSongId = usePlayerStore((state) => state.queue[state.currentIndex]?.id ?? null);
+  const sessionId = usePlayerStore((state) => state.sessionId);
+  const currentQueueEntryId = usePlayerStore((state) => state.currentQueueEntryId);
 
   useEffect(() => {
     if (!currentSongId) return;
     const controller = new AbortController();
+    const generation = sessionId;
     const store = useLyricsStore.getState();
-    store.startLoading(currentSongId);
+    store.startLoading(currentSongId, generation);
 
     void provider
       .getLyrics(currentSongId, controller.signal)
       .then((document) => {
         if (controller.signal.aborted) return;
-        useLyricsStore.getState().setDocument(currentSongId, document);
+        useLyricsStore.getState().setDocument(currentSongId, document, generation);
         if (isNativeRuntime) {
           void invoke('player_set_lyrics', { document }).catch((error: unknown) => {
             console.error('Native lyric synchronization failed', error);
@@ -30,9 +33,9 @@ export function useLyricsCoordinator(): void {
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
-        useLyricsStore.getState().setError(currentSongId, t('lyricsFailed'));
+        useLyricsStore.getState().setError(currentSongId, t('lyricsFailed'), generation);
       });
 
     return () => controller.abort();
-  }, [currentSongId, provider, t]);
+  }, [currentSongId, currentQueueEntryId, sessionId, provider, t]);
 }

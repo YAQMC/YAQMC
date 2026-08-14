@@ -339,7 +339,18 @@ export function LyricsScene({
                   max={Math.max(bindings.durationMs, 1)}
                   step={1_000}
                   value={bindings.positionMs}
-                  onChange={(event) => bindings.seek(Number(event.target.value))}
+                  onPointerDown={() => bindings.beginScrub?.()}
+                  onPointerUp={(event) =>
+                    (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value))
+                  }
+                  onPointerCancel={(event) =>
+                    (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value))
+                  }
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (event.buttons > 0 && bindings.previewScrub) bindings.previewScrub(next);
+                    else bindings.seek(next);
+                  }}
                   aria-label={player('position')}
                   style={{ '--range-progress': `${progress}%` } as CSSProperties}
                 />

@@ -56,6 +56,13 @@ export interface PlayerState {
   timelineRevision: number;
   queueOpen: boolean;
   lyricsOpen: boolean;
+  sessionId: number;
+  snapshotRevision: number;
+  sourceGeneration: number;
+  lastSeekRevision: number;
+  isScrubbing: boolean;
+  scrubPosition: number;
+  scrubAwaitingAckFrom: number | null;
 }
 
 interface PlayerActions {
@@ -68,6 +75,9 @@ interface PlayerActions {
   next: () => void;
   previous: () => void;
   seek: (positionMs: number) => void;
+  beginScrub: () => void;
+  previewScrub: (positionMs: number) => void;
+  commitScrub: (positionMs: number) => void;
   tick: (elapsedMs: number) => void;
   setVolume: (volume: number) => void;
   toggleMuted: () => void;
@@ -112,6 +122,10 @@ export interface AuthoritativePlayerSnapshot {
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
   sourceSelection?: PlaybackSourceSelection | null;
+  sessionId?: number;
+  snapshotRevision?: number;
+  sourceGeneration?: number;
+  lastSeekRevision?: number;
 }
 
 export const initialPlayerState: PlayerState = {
@@ -139,6 +153,13 @@ export const initialPlayerState: PlayerState = {
   timelineRevision: 0,
   queueOpen: false,
   lyricsOpen: false,
+  sessionId: 0,
+  snapshotRevision: 0,
+  sourceGeneration: 0,
+  lastSeekRevision: 0,
+  isScrubbing: false,
+  scrubPosition: 0,
+  scrubAwaitingAckFrom: null,
 };
 
 let localQueueEntrySequence = 0;
@@ -504,17 +525,65 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const state = get();
     const duration = state.playbackDurationMs ?? state.queue[state.currentIndex]?.durationMs ?? 0;
     const boundedPosition = Math.max(0, Math.min(positionMs, duration));
-    if (dispatchPlayerCommand({ type: 'seek', positionMs: boundedPosition })) return;
+    if (dispatchPlayerCommand({ type: 'seek', positionMs: boundedPosition })) {
+      set({
+        positionMs: boundedPosition,
+        observedAtMs: performance.now(),
+        timelineRevision: get().timelineRevision + 1,
+        isScrubbing: false,
+        scrubPosition: boundedPosition,
+        scrubAwaitingAckFrom: get().lastSeekRevision,
+      });
+      return;
+    }
     set((current) => ({
       positionMs: boundedPosition,
       observedAtMs: performance.now(),
       timelineRevision: current.timelineRevision + 1,
+      isScrubbing: false,
+      scrubPosition: boundedPosition,
     }));
+  },
+
+  beginScrub: () =>
+    set((state) => ({
+      isScrubbing: true,
+      scrubPosition: state.positionMs,
+      scrubAwaitingAckFrom: null,
+    })),
+
+  previewScrub: (positionMs) => {
+    const state = get();
+    const duration = state.playbackDurationMs ?? state.queue[state.currentIndex]?.durationMs ?? 0;
+    const boundedPosition = Math.max(0, Math.min(positionMs, duration));
+    set({
+      isScrubbing: true,
+      scrubPosition: boundedPosition,
+      positionMs: boundedPosition,
+      observedAtMs: performance.now(),
+    });
+  },
+
+  commitScrub: (positionMs) => {
+    const state = get();
+    const duration = state.playbackDurationMs ?? state.queue[state.currentIndex]?.durationMs ?? 0;
+    const boundedPosition = Math.max(0, Math.min(positionMs, duration));
+    set({
+      isScrubbing: true,
+      scrubPosition: boundedPosition,
+      positionMs: boundedPosition,
+      observedAtMs: performance.now(),
+      timelineRevision: state.timelineRevision + 1,
+      scrubAwaitingAckFrom: state.lastSeekRevision,
+    });
+    if (!dispatchPlayerCommand({ type: 'seek', positionMs: boundedPosition })) {
+      set({ isScrubbing: false, scrubAwaitingAckFrom: null });
+    }
   },
 
   tick: (elapsedMs) =>
     set((state) => {
-      if (!state.isPlaying || state.currentIndex < 0) return state;
+      if (state.isScrubbing || !state.isPlaying || state.currentIndex < 0) return state;
       const current = state.queue[state.currentIndex];
       if (!current) return state;
       const nextPosition = state.positionMs + elapsedMs;
@@ -733,6 +802,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   applyExternalSnapshot: (snapshot) =>
     set((state) => {
+      const incomingSession = snapshot.sessionId ?? 0;
+      const incomingRevision = snapshot.snapshotRevision ?? 0;
+      if (
+        incomingSession !== 0 &&
+        (incomingSession < state.sessionId ||
+          (incomingSession === state.sessionId && incomingRevision < state.snapshotRevision))
+      ) {
+        return state;
+      }
       const now = performance.now();
       const current = state.queue[state.currentIndex];
       const durationMs = state.playbackDurationMs ?? current?.durationMs ?? 0;
@@ -749,10 +827,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         state.currentQueueEntryId !== null && currentQueueEntryId !== null
           ? state.currentQueueEntryId !== currentQueueEntryId
           : state.currentIndex !== snapshot.currentIndex || previousTrackId !== nextTrackId;
+      const sessionChanged = incomingSession !== 0 && incomingSession !== state.sessionId;
+      const lastSeekRevision = snapshot.lastSeekRevision ?? 0;
+      const ackSeek =
+        state.isScrubbing &&
+        state.scrubAwaitingAckFrom !== null &&
+        lastSeekRevision > state.scrubAwaitingAckFrom;
+      const isScrubbing =
+        !sessionChanged && !queueIdentityChanged && state.isScrubbing && !ackSeek;
       const discontinuity =
         queueIdentityChanged ||
+        sessionChanged ||
         state.isPlaying !== snapshot.isPlaying ||
-        Math.abs(snapshot.positionMs - predictedPositionMs) > 250;
+        (!isScrubbing && Math.abs(snapshot.positionMs - predictedPositionMs) > 250);
 
       const playbackOrder = snapshot.playbackOrder ?? (snapshot.shuffle ? 'shuffle' : 'sequential');
       const shuffleTraversal = snapshot.shuffleTraversal ?? [];
@@ -777,6 +864,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         historyCursor,
         upcomingQueueEntryIds,
         sourceSelection: snapshot.sourceSelection ?? null,
+        sessionId: incomingSession || state.sessionId,
+        snapshotRevision: incomingSession === 0 ? state.snapshotRevision : incomingRevision,
+        sourceGeneration: snapshot.sourceGeneration ?? state.sourceGeneration,
+        lastSeekRevision,
+        positionMs: isScrubbing ? state.scrubPosition : snapshot.positionMs,
+        isScrubbing,
+        scrubPosition: isScrubbing ? state.scrubPosition : snapshot.positionMs,
+        scrubAwaitingAckFrom: isScrubbing ? state.scrubAwaitingAckFrom : null,
         observedAtMs: now,
         timelineRevision: state.timelineRevision + (discontinuity ? 1 : 0),
       };
@@ -791,6 +886,7 @@ export function getEstimatedPositionMs(now = performance.now()): number {
   const state = usePlayerStore.getState();
   const current = state.queue[state.currentIndex];
   if (!current) return 0;
+  if (state.isScrubbing) return state.scrubPosition;
   const elapsed = state.isPlaying ? Math.max(0, now - state.observedAtMs) : 0;
   return Math.min(state.playbackDurationMs ?? current.durationMs, state.positionMs + elapsed);
 }

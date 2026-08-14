@@ -59,10 +59,15 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     sourceSelection,
     queueOpen,
     lyricsOpen,
+    isScrubbing,
+    scrubPosition,
     togglePlayback,
     next,
     previous,
     seek,
+    beginScrub,
+    previewScrub,
+    commitScrub,
     setVolume,
     setQuality,
     toggleMuted,
@@ -77,7 +82,8 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
       ? current.playbackCapability.startMs
       : 0;
   const duration = Math.max(0, timelineDuration - previewStartMs);
-  const displayPosition = Math.max(0, Math.min(positionMs - previewStartMs, duration));
+  const timelinePosition = isScrubbing ? scrubPosition : positionMs;
+  const displayPosition = Math.max(0, Math.min(timelinePosition - previewStartMs, duration));
   const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
   const volumeProgress = (isMuted ? 0 : volume) * 100;
   const playbackStatus = playbackLabel(playbackState, playbackError, t);
@@ -129,7 +135,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
   ];
 
   return (
-    <footer className="player-bar" aria-label={t('region')}>
+    <footer className="player-bar" aria-label={t('region')} data-yaqmc="player-bar">
       <div className="player-bar__track">
         {current ? (
           <>
@@ -211,7 +217,18 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             max={Math.max(duration, 1)}
             step={1_000}
             value={displayPosition}
-            onChange={(event) => seek(Number(event.target.value) + previewStartMs)}
+            onPointerDown={() => beginScrub()}
+            onPointerUp={(event) =>
+              commitScrub(Number(event.currentTarget.value) + previewStartMs)
+            }
+            onPointerCancel={(event) =>
+              commitScrub(Number(event.currentTarget.value) + previewStartMs)
+            }
+            onChange={(event) => {
+              const next = Number(event.target.value) + previewStartMs;
+              if (event.buttons > 0) previewScrub(next);
+              else seek(next);
+            }}
             disabled={!current}
             aria-label={t('position')}
             style={{ '--range-progress': `${progress}%` } as CSSProperties}

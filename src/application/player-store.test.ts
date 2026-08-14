@@ -563,4 +563,54 @@ describe('player store', () => {
     usePlayerStore.getState().applyExternalSnapshot(snapshot());
     expect(usePlayerStore.getState().sourceSelection).toBeNull();
   });
+
+  it('ignores an older playback session snapshot so the current track cannot roll back', () => {
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({
+        currentIndex: 1,
+        sessionId: 12,
+        snapshotRevision: 4,
+        currentQueueEntryId: 'queue:b',
+        queueEntries: [
+          { id: 'queue:a', track: track('one') },
+          { id: 'queue:b', track: track('two') },
+        ],
+      }),
+    );
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({
+        currentIndex: 0,
+        sessionId: 11,
+        snapshotRevision: 99,
+        positionMs: 8_000,
+        currentQueueEntryId: 'queue:a',
+        queueEntries: [
+          { id: 'queue:a', track: track('one') },
+          { id: 'queue:b', track: track('two') },
+        ],
+      }),
+    );
+    expect(usePlayerStore.getState().currentIndex).toBe(1);
+    expect(usePlayerStore.getState().sessionId).toBe(12);
+    expect(usePlayerStore.getState().queue[1]?.id).toBe('two');
+  });
+
+  it('keeps the scrub thumb stable while native position events arrive', () => {
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({ sessionId: 3, snapshotRevision: 1, positionMs: 1_000 }),
+    );
+    usePlayerStore.getState().beginScrub();
+    usePlayerStore.getState().previewScrub(4_000);
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({ sessionId: 3, snapshotRevision: 1, positionMs: 1_250, lastSeekRevision: 0 }),
+    );
+    expect(usePlayerStore.getState().isScrubbing).toBe(true);
+    expect(usePlayerStore.getState().positionMs).toBe(4_000);
+    usePlayerStore.getState().commitScrub(4_000);
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({ sessionId: 3, snapshotRevision: 2, positionMs: 4_000, lastSeekRevision: 1 }),
+    );
+    expect(usePlayerStore.getState().isScrubbing).toBe(false);
+    expect(usePlayerStore.getState().positionMs).toBe(4_000);
+  });
 });
