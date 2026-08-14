@@ -23,6 +23,7 @@ export interface LyricsPresetDiagnostics {
   id: string;
   kind: 'built-in' | 'custom';
   schemaVersion: number;
+  rendererVersion?: number;
 }
 
 export interface AppSection {

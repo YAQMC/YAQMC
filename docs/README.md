@@ -14,8 +14,8 @@ plans under `docs/plans/` and `docs/superpowers/` are historical development rec
   [entitlement](entitlement.md)
 - [Official-client interoperability](qqmusic-official-interoperability.md),
   [audio quality](audio-quality.md), [artwork](artwork.md), and [external URI security](deep-link.md)
-- [Lyrics](lyrics.md), [lyric surfaces](lyrics-surfaces.md), and
-  [lyrics presets](lyrics-presets.md)
+- [Lyrics](lyrics.md), [lyric surfaces](lyrics-surfaces.md),
+  [lyrics presets](lyrics-presets.md), and [lyrics composer](lyrics-composer.md)
 - [Appearance](appearance.md), [design system](design-system.md), and
   [internationalization](i18n.md)
 - [Linux runtime](linux.md), [Linux graphics](linux-graphics.md), and

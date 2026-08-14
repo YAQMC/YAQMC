@@ -53,6 +53,8 @@ describe('LyricsPresetPicker', () => {
     expect(usePreferencesStore.getState().lyricsPresets.overrides).toEqual({});
     const preview = document.querySelector('.lyrics-preset-preview') as HTMLElement | null;
     expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1.25');
+    expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
+    expect(document.querySelector('.lyrics-line')).not.toBeNull();
 
     const lineSpacing = screen.getByRole('slider', { name: 'Lyrics line spacing' });
     fireEvent.input(lineSpacing, { target: { value: '1.4' } });

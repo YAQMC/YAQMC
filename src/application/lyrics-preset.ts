@@ -1,6 +1,9 @@
 import type { LyricCoverLayout } from './preferences';
+import { logger } from './logger';
 
-export const LYRICS_PRESET_SCHEMA_VERSION = 1 as const;
+export const LYRICS_PRESET_SCHEMA_VERSION = 2 as const;
+export const LYRICS_SCENE_RENDERER_VERSION = 1 as const;
+export const LYRICS_PRESET_LAYOUT_MALFORMED = 'lyrics.preset.layout.malformed';
 
 export const BUILTIN_CLASSIC_ID = 'builtin.classic';
 export const BUILTIN_IMMERSIVE_ID = 'builtin.immersive';
@@ -20,12 +23,50 @@ export const FONT_SCALE_DEFAULT = 1;
 export const LINE_HEIGHT_MIN = 1.05;
 export const LINE_HEIGHT_MAX = 1.6;
 export const LINE_HEIGHT_DEFAULT = 1.16;
+export const FOLLOW_ANCHOR_DEFAULT = 0.35;
+export const LYRICS_FONT_BASE_MIN_PX = 18;
+export const LYRICS_FONT_BASE_MAX_PX = 96;
+export const LYRICS_FONT_BASE_CQH = 0.056;
+export const SECONDARY_FONT_RATIO = 0.42;
 
 export type LyricsPresetSource = 'built-in' | 'custom';
 export type LyricsArtworkStyle = 'square' | 'vinyl';
+export type LyricsArtworkRenderer = 'square' | 'rounded' | 'vinyl';
 export type LyricsBackgroundFit = 'cover' | 'contain';
-/** Editor preview frames. `ultrawide` is reserved for a later Scene Engine pass. */
+export type LyricsBackgroundKind = 'color' | 'artwork' | 'image';
 export type LyricsPreviewFrame = 'desktop' | 'window' | 'ultrawide';
+export type WidgetAnchor =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center-left'
+  | 'center'
+  | 'center-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
+export type LyricsAlign = 'left' | 'center' | 'right';
+export type SceneWidgetId = 'background' | 'artwork' | 'metadata' | 'lyrics' | 'transport';
+
+export const SCENE_WIDGET_IDS: readonly SceneWidgetId[] = [
+  'background',
+  'artwork',
+  'metadata',
+  'lyrics',
+  'transport',
+];
+
+export const WIDGET_ANCHORS: readonly WidgetAnchor[] = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'center-left',
+  'center',
+  'center-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+];
 
 export interface LyricsPresetTypography {
   fontScale: number;
@@ -41,6 +82,71 @@ export interface LyricsPresetBackground {
   fallbackColor: string;
 }
 
+export interface WidgetTransform {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  anchor: WidgetAnchor;
+  zIndex: number;
+  visible: boolean;
+  locked: boolean;
+}
+
+export interface BackgroundWidget {
+  id: 'background';
+  kind: 'background';
+  zIndex: number;
+  visible: boolean;
+  locked: boolean;
+  source: LyricsBackgroundKind;
+  fit: LyricsBackgroundFit;
+  fallbackColor: string;
+  opacity: number;
+  influence: number;
+  blur: number;
+}
+
+export interface ArtworkWidget extends WidgetTransform {
+  id: 'artwork';
+  kind: 'artwork';
+  renderer: LyricsArtworkRenderer;
+  opacity: number;
+  radius: number;
+}
+
+export interface MetadataWidget extends WidgetTransform {
+  id: 'metadata';
+  kind: 'metadata';
+  align: LyricsAlign;
+  titleScale: number;
+  artistScale: number;
+}
+
+export interface LyricsWidget extends WidgetTransform {
+  id: 'lyrics';
+  kind: 'lyrics';
+  align: LyricsAlign;
+  followAnchor: number;
+}
+
+export interface TransportWidget extends WidgetTransform {
+  id: 'transport';
+  kind: 'transport';
+  align: LyricsAlign;
+}
+
+export interface LyricsSceneLayout {
+  background: BackgroundWidget;
+  artwork: ArtworkWidget;
+  metadata: MetadataWidget;
+  lyrics: LyricsWidget;
+  transport: TransportWidget;
+}
+
+export type SceneWidget =
+  BackgroundWidget | ArtworkWidget | MetadataWidget | LyricsWidget | TransportWidget;
+
 export interface LyricsPresetDefinition {
   schemaVersion: typeof LYRICS_PRESET_SCHEMA_VERSION;
   id: string;
@@ -51,6 +157,7 @@ export interface LyricsPresetDefinition {
   typography: LyricsPresetTypography;
   artwork: LyricsPresetArtwork;
   background: LyricsPresetBackground;
+  scene: LyricsSceneLayout;
 }
 
 export type LyricsPresetPatch = {
@@ -59,6 +166,13 @@ export type LyricsPresetPatch = {
   background?: Partial<LyricsPresetBackground>;
   layout?: LyricCoverLayout;
   name?: string;
+  scene?: Partial<{
+    background: Partial<BackgroundWidget>;
+    artwork: Partial<ArtworkWidget>;
+    metadata: Partial<MetadataWidget>;
+    lyrics: Partial<LyricsWidget>;
+    transport: Partial<TransportWidget>;
+  }>;
 };
 
 export interface LyricsPresetState {
@@ -78,6 +192,140 @@ export const defaultBackground: LyricsPresetBackground = {
   fallbackColor: '#20231C',
 };
 
+function widgetBox(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  extras: { anchor?: WidgetAnchor; zIndex: number; locked?: boolean; visible?: boolean },
+): WidgetTransform {
+  return {
+    x,
+    y,
+    width,
+    height,
+    anchor: extras.anchor ?? 'center',
+    zIndex: extras.zIndex,
+    visible: extras.visible ?? true,
+    locked: extras.locked ?? false,
+  };
+}
+
+function factoryBackground(
+  extras: Partial<Pick<BackgroundWidget, 'blur' | 'influence' | 'fit'>> = {},
+): BackgroundWidget {
+  return {
+    id: 'background',
+    kind: 'background',
+    zIndex: 0,
+    visible: true,
+    locked: false,
+    source: 'artwork',
+    fit: extras.fit ?? 'cover',
+    fallbackColor: defaultBackground.fallbackColor,
+    opacity: 1,
+    influence: extras.influence ?? 0.38,
+    blur: extras.blur ?? 22,
+  };
+}
+
+function factoryTransport(): TransportWidget {
+  return {
+    ...widgetBox(0.5, 0.975, 0.92, 0.11, { anchor: 'bottom-center', zIndex: 8 }),
+    id: 'transport',
+    kind: 'transport',
+    align: 'center',
+  };
+}
+
+export function factoryScene(layout: LyricCoverLayout): LyricsSceneLayout {
+  if (layout === 'full') {
+    return {
+      background: factoryBackground({ blur: 0, influence: 0.55 }),
+      artwork: {
+        ...widgetBox(0.25, 0.5, 0.5, 1, { zIndex: 1 }),
+        id: 'artwork',
+        kind: 'artwork',
+        renderer: 'square',
+        opacity: 1,
+        radius: 0,
+      },
+      metadata: {
+        ...widgetBox(0.76, 0.11, 0.42, 0.12, { anchor: 'top-center', zIndex: 4 }),
+        id: 'metadata',
+        kind: 'metadata',
+        align: 'left',
+        titleScale: 1,
+        artistScale: 0.72,
+      },
+      lyrics: {
+        ...widgetBox(0.76, 0.55, 0.44, 0.7, { zIndex: 5 }),
+        id: 'lyrics',
+        kind: 'lyrics',
+        align: 'left',
+        followAnchor: FOLLOW_ANCHOR_DEFAULT,
+      },
+      transport: factoryTransport(),
+    };
+  }
+  if (layout === 'vinyl') {
+    return {
+      background: factoryBackground(),
+      artwork: {
+        ...widgetBox(0.225, 0.4, 0.34, 0.48, { zIndex: 3 }),
+        id: 'artwork',
+        kind: 'artwork',
+        renderer: 'vinyl',
+        opacity: 1,
+        radius: 0.5,
+      },
+      metadata: {
+        ...widgetBox(0.225, 0.7, 0.36, 0.14, { zIndex: 4 }),
+        id: 'metadata',
+        kind: 'metadata',
+        align: 'center',
+        titleScale: 1,
+        artistScale: 0.72,
+      },
+      lyrics: {
+        ...widgetBox(0.73, 0.46, 0.5, 0.72, { zIndex: 5 }),
+        id: 'lyrics',
+        kind: 'lyrics',
+        align: 'left',
+        followAnchor: FOLLOW_ANCHOR_DEFAULT,
+      },
+      transport: factoryTransport(),
+    };
+  }
+  return {
+    background: factoryBackground(),
+    artwork: {
+      ...widgetBox(0.225, 0.4, 0.3, 0.42, { zIndex: 3 }),
+      id: 'artwork',
+      kind: 'artwork',
+      renderer: 'square',
+      opacity: 1,
+      radius: 0.06,
+    },
+    metadata: {
+      ...widgetBox(0.225, 0.68, 0.36, 0.14, { zIndex: 4 }),
+      id: 'metadata',
+      kind: 'metadata',
+      align: 'center',
+      titleScale: 1,
+      artistScale: 0.72,
+    },
+    lyrics: {
+      ...widgetBox(0.73, 0.46, 0.5, 0.72, { zIndex: 5 }),
+      id: 'lyrics',
+      kind: 'lyrics',
+      align: 'left',
+      followAnchor: FOLLOW_ANCHOR_DEFAULT,
+    },
+    transport: factoryTransport(),
+  };
+}
+
 export const builtinPresetCatalog: readonly LyricsPresetDefinition[] = [
   {
     schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
@@ -88,6 +336,7 @@ export const builtinPresetCatalog: readonly LyricsPresetDefinition[] = [
     typography: defaultTypography,
     artwork: { style: 'square' },
     background: defaultBackground,
+    scene: factoryScene('split'),
   },
   {
     schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
@@ -98,6 +347,7 @@ export const builtinPresetCatalog: readonly LyricsPresetDefinition[] = [
     typography: defaultTypography,
     artwork: { style: 'square' },
     background: defaultBackground,
+    scene: factoryScene('full'),
   },
   {
     schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
@@ -108,6 +358,7 @@ export const builtinPresetCatalog: readonly LyricsPresetDefinition[] = [
     typography: defaultTypography,
     artwork: { style: 'vinyl' },
     background: defaultBackground,
+    scene: factoryScene('vinyl'),
   },
 ];
 
@@ -136,31 +387,260 @@ export function clampLineHeight(value: number): number {
   return Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, value));
 }
 
+export function clampFollowAnchor(value: number): number {
+  return Math.min(0.85, Math.max(0.15, value));
+}
+
+export function resolvePrimaryFontSizePx(fontScale: number, containerHeightPx: number): number {
+  const height = Number.isFinite(containerHeightPx) ? Math.max(0, containerHeightPx) : 0;
+  const fontBase = Math.min(
+    LYRICS_FONT_BASE_MAX_PX,
+    Math.max(LYRICS_FONT_BASE_MIN_PX, height * LYRICS_FONT_BASE_CQH),
+  );
+  return fontBase * clampFontScale(fontScale);
+}
+
+export function resolveSecondaryFontSizePx(primaryPx: number): number {
+  return Math.max(11, primaryPx * SECONDARY_FONT_RATIO);
+}
+
+export function lineGapFromLineHeight(lineHeight: number): number {
+  return Math.max(0.25, (clampLineHeight(lineHeight) - 0.7) * 0.85);
+}
+
+function clampUnit(value: number, fallback: number): number {
+  return Number.isFinite(value) ? Math.min(1.2, Math.max(-0.2, value)) : fallback;
+}
+
+function clampPositive(value: number, fallback: number, max = 1.2): number {
+  return Number.isFinite(value) ? Math.min(max, Math.max(0.04, value)) : fallback;
+}
+
+function clamp01(value: number, fallback: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+}
+
+function isAnchor(value: unknown): value is WidgetAnchor {
+  return typeof value === 'string' && (WIDGET_ANCHORS as readonly string[]).includes(value);
+}
+
+function isAlign(value: unknown): value is LyricsAlign {
+  return value === 'left' || value === 'center' || value === 'right';
+}
+
+function isRenderer(value: unknown): value is LyricsArtworkRenderer {
+  return value === 'square' || value === 'rounded' || value === 'vinyl';
+}
+
+function cloneScene(scene: LyricsSceneLayout): LyricsSceneLayout {
+  return {
+    background: { ...scene.background },
+    artwork: { ...scene.artwork },
+    metadata: { ...scene.metadata },
+    lyrics: { ...scene.lyrics },
+    transport: { ...scene.transport },
+  };
+}
+
+function styleFromRenderer(renderer: LyricsArtworkRenderer): LyricsArtworkStyle {
+  return renderer === 'vinyl' ? 'vinyl' : 'square';
+}
+
+function syncDerived(preset: LyricsPresetDefinition): LyricsPresetDefinition {
+  return {
+    ...preset,
+    schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
+    artwork: { style: styleFromRenderer(preset.scene.artwork.renderer) },
+    background: {
+      fit: preset.scene.background.fit,
+      fallbackColor: preset.scene.background.fallbackColor,
+    },
+  };
+}
+
+function normalizeTransform(
+  value: Partial<WidgetTransform> | undefined,
+  fallback: WidgetTransform,
+): WidgetTransform {
+  return {
+    x: clampUnit(typeof value?.x === 'number' ? value.x : fallback.x, fallback.x),
+    y: clampUnit(typeof value?.y === 'number' ? value.y : fallback.y, fallback.y),
+    width: clampPositive(
+      typeof value?.width === 'number' ? value.width : fallback.width,
+      fallback.width,
+    ),
+    height: clampPositive(
+      typeof value?.height === 'number' ? value.height : fallback.height,
+      fallback.height,
+    ),
+    anchor: isAnchor(value?.anchor) ? value.anchor : fallback.anchor,
+    zIndex:
+      typeof value?.zIndex === 'number' && Number.isFinite(value.zIndex)
+        ? Math.round(value.zIndex)
+        : fallback.zIndex,
+    visible: typeof value?.visible === 'boolean' ? value.visible : fallback.visible,
+    locked: typeof value?.locked === 'boolean' ? value.locked : fallback.locked,
+  };
+}
+
+export function normalizeScene(
+  value: unknown,
+  layout: LyricCoverLayout,
+): { scene: LyricsSceneLayout; malformed: boolean } {
+  const factory = factoryScene(layout);
+  if (!value || typeof value !== 'object') return { scene: factory, malformed: value != null };
+  const source = value as Partial<LyricsSceneLayout>;
+  if (
+    !source.artwork ||
+    !source.metadata ||
+    !source.lyrics ||
+    !source.transport ||
+    !source.background
+  ) {
+    return { scene: factory, malformed: true };
+  }
+  const backgroundSource = source.background as Partial<BackgroundWidget>;
+  const artworkSource = source.artwork as Partial<ArtworkWidget>;
+  const metadataSource = source.metadata as Partial<MetadataWidget>;
+  const lyricsSource = source.lyrics as Partial<LyricsWidget>;
+  const transportSource = source.transport as Partial<TransportWidget>;
+  return {
+    malformed: false,
+    scene: {
+      background: {
+        id: 'background',
+        kind: 'background',
+        zIndex:
+          typeof backgroundSource.zIndex === 'number' ? Math.round(backgroundSource.zIndex) : 0,
+        visible: backgroundSource.visible !== false,
+        locked: backgroundSource.locked === true,
+        source:
+          backgroundSource.source === 'color' || backgroundSource.source === 'image'
+            ? backgroundSource.source
+            : 'artwork',
+        fit: backgroundSource.fit === 'contain' ? 'contain' : 'cover',
+        fallbackColor:
+          typeof backgroundSource.fallbackColor === 'string' &&
+          /^#[0-9A-Fa-f]{6}$/.test(backgroundSource.fallbackColor)
+            ? backgroundSource.fallbackColor
+            : factory.background.fallbackColor,
+        opacity: clamp01(
+          typeof backgroundSource.opacity === 'number' ? backgroundSource.opacity : 1,
+          1,
+        ),
+        influence: clamp01(
+          typeof backgroundSource.influence === 'number' ? backgroundSource.influence : 0.38,
+          0.38,
+        ),
+        blur: Math.min(
+          64,
+          Math.max(
+            0,
+            typeof backgroundSource.blur === 'number'
+              ? backgroundSource.blur
+              : factory.background.blur,
+          ),
+        ),
+      },
+      artwork: {
+        ...normalizeTransform(artworkSource, factory.artwork),
+        id: 'artwork',
+        kind: 'artwork',
+        renderer: isRenderer(artworkSource.renderer)
+          ? artworkSource.renderer
+          : factory.artwork.renderer,
+        opacity: clamp01(typeof artworkSource.opacity === 'number' ? artworkSource.opacity : 1, 1),
+        radius: clamp01(
+          typeof artworkSource.radius === 'number' ? artworkSource.radius : factory.artwork.radius,
+          factory.artwork.radius,
+        ),
+      },
+      metadata: {
+        ...normalizeTransform(metadataSource, factory.metadata),
+        id: 'metadata',
+        kind: 'metadata',
+        align: isAlign(metadataSource.align) ? metadataSource.align : factory.metadata.align,
+        titleScale: clampPositive(
+          typeof metadataSource.titleScale === 'number' ? metadataSource.titleScale : 1,
+          1,
+          2,
+        ),
+        artistScale: clampPositive(
+          typeof metadataSource.artistScale === 'number' ? metadataSource.artistScale : 0.72,
+          0.72,
+          2,
+        ),
+      },
+      lyrics: {
+        ...normalizeTransform(lyricsSource, factory.lyrics),
+        id: 'lyrics',
+        kind: 'lyrics',
+        align: isAlign(lyricsSource.align) ? lyricsSource.align : factory.lyrics.align,
+        followAnchor: clampFollowAnchor(
+          typeof lyricsSource.followAnchor === 'number'
+            ? lyricsSource.followAnchor
+            : FOLLOW_ANCHOR_DEFAULT,
+        ),
+      },
+      transport: {
+        ...normalizeTransform(transportSource, factory.transport),
+        id: 'transport',
+        kind: 'transport',
+        align: isAlign(transportSource.align) ? transportSource.align : 'center',
+      },
+    },
+  };
+}
+
 function builtinById(id: string): LyricsPresetDefinition | undefined {
   return builtinPresetCatalog.find((preset) => preset.id === id);
+}
+
+function mergeWidget<T extends object>(base: T, patch?: Partial<T>): T {
+  return patch ? { ...base, ...patch } : base;
+}
+
+export function mergeScene(
+  base: LyricsSceneLayout,
+  patch: LyricsPresetPatch['scene'] | undefined,
+): LyricsSceneLayout {
+  if (!patch) return cloneScene(base);
+  return {
+    background: mergeWidget(base.background, patch.background),
+    artwork: mergeWidget(base.artwork, patch.artwork),
+    metadata: mergeWidget(base.metadata, patch.metadata),
+    lyrics: mergeWidget(base.lyrics, patch.lyrics),
+    transport: mergeWidget(base.transport, patch.transport),
+  };
 }
 
 function applyPatch(
   base: LyricsPresetDefinition,
   patch: LyricsPresetPatch | undefined,
 ): LyricsPresetDefinition {
-  if (!patch) return base;
-  return {
+  if (!patch) return syncDerived({ ...base, scene: cloneScene(base.scene) });
+  const layout = patch.layout ?? base.layout;
+  const layoutChanged = layout !== base.layout && !patch.scene;
+  const merged = mergeScene(layoutChanged ? factoryScene(layout) : base.scene, patch.scene);
+  if (patch.artwork?.style === 'vinyl') merged.artwork.renderer = 'vinyl';
+  if (patch.artwork?.style === 'square' && merged.artwork.renderer === 'vinyl') {
+    merged.artwork.renderer = 'square';
+  }
+  if (patch.background?.fit) merged.background.fit = patch.background.fit;
+  if (patch.background?.fallbackColor) {
+    merged.background.fallbackColor = patch.background.fallbackColor;
+  }
+  const next: LyricsPresetDefinition = {
     ...base,
-    layout: patch.layout ?? base.layout,
+    layout,
     name: patch.name ?? base.name,
     typography: {
       fontScale: clampFontScale(patch.typography?.fontScale ?? base.typography.fontScale),
       lineHeight: clampLineHeight(patch.typography?.lineHeight ?? base.typography.lineHeight),
     },
-    artwork: {
-      style: patch.artwork?.style ?? base.artwork.style,
-    },
-    background: {
-      fit: patch.background?.fit ?? base.background.fit,
-      fallbackColor: patch.background?.fallbackColor ?? base.background.fallbackColor,
-    },
+    scene: normalizeScene(merged, layout).scene,
   };
+  return syncDerived(next);
 }
 
 export function hasBuiltinOverride(state: LyricsPresetState, id: string): boolean {
@@ -174,6 +654,7 @@ export function patchFromDefinition(preset: LyricsPresetDefinition): LyricsPrese
     typography: { ...preset.typography },
     artwork: { ...preset.artwork },
     background: { ...preset.background },
+    scene: cloneScene(preset.scene),
   };
 }
 
@@ -205,12 +686,23 @@ export function mergePresetPatch(
   current: LyricsPresetPatch | undefined,
   patch: LyricsPresetPatch,
 ): LyricsPresetPatch {
+  const scene =
+    current?.scene || patch.scene
+      ? {
+          background: { ...current?.scene?.background, ...patch.scene?.background },
+          artwork: { ...current?.scene?.artwork, ...patch.scene?.artwork },
+          metadata: { ...current?.scene?.metadata, ...patch.scene?.metadata },
+          lyrics: { ...current?.scene?.lyrics, ...patch.scene?.lyrics },
+          transport: { ...current?.scene?.transport, ...patch.scene?.transport },
+        }
+      : undefined;
   return {
     layout: patch.layout ?? current?.layout,
     name: patch.name ?? current?.name,
     typography: { ...current?.typography, ...patch.typography },
     artwork: { ...current?.artwork, ...patch.artwork },
     background: { ...current?.background, ...patch.background },
+    scene,
   };
 }
 
@@ -286,28 +778,38 @@ function normalizeTypography(value: unknown): LyricsPresetTypography {
   };
 }
 
-function normalizeBackground(value: unknown): LyricsPresetBackground {
-  const source =
-    value && typeof value === 'object' ? (value as Partial<LyricsPresetBackground>) : {};
-  return {
-    fit: source.fit === 'contain' ? 'contain' : 'cover',
-    fallbackColor:
-      typeof source.fallbackColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(source.fallbackColor)
-        ? source.fallbackColor
-        : defaultBackground.fallbackColor,
-  };
+function normalizeCoverLayout(value: unknown): LyricCoverLayout {
+  return value === 'full' || value === 'vinyl' || value === 'split' ? value : 'split';
 }
 
 function normalizeDefinition(value: unknown, fallbackId: string): LyricsPresetDefinition | null {
   if (!value || typeof value !== 'object') return null;
-  const source = value as Partial<LyricsPresetDefinition> & { id?: unknown };
+  const source = value as Partial<LyricsPresetDefinition> & { id?: unknown; scene?: unknown };
   const id = typeof source.id === 'string' && source.id.trim() ? source.id.trim() : fallbackId;
   if (!id || id.length > 80) return null;
-  const layout =
-    source.layout === 'full' || source.layout === 'vinyl' || source.layout === 'split'
-      ? source.layout
-      : 'split';
-  return {
+  const layout = normalizeCoverLayout(source.layout);
+  const normalizedScene = normalizeScene(source.scene, layout);
+  if (normalizedScene.malformed) {
+    logger.warn(LYRICS_PRESET_LAYOUT_MALFORMED, 'malformed lyrics preset layout; using factory', {
+      id,
+      code: LYRICS_PRESET_LAYOUT_MALFORMED,
+    });
+  }
+  const artworkStyle = source.artwork?.style === 'vinyl' ? 'vinyl' : 'square';
+  if (!source.scene) {
+    normalizedScene.scene.artwork.renderer =
+      artworkStyle === 'vinyl' ? 'vinyl' : normalizedScene.scene.artwork.renderer;
+  }
+  if (source.background?.fit === 'contain' || source.background?.fit === 'cover') {
+    normalizedScene.scene.background.fit = source.background.fit;
+  }
+  if (
+    typeof source.background?.fallbackColor === 'string' &&
+    /^#[0-9A-Fa-f]{6}$/.test(source.background.fallbackColor)
+  ) {
+    normalizedScene.scene.background.fallbackColor = source.background.fallbackColor;
+  }
+  return syncDerived({
     schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
     id,
     nameKey: typeof source.nameKey === 'string' ? source.nameKey.slice(0, 40) : 'custom',
@@ -315,9 +817,10 @@ function normalizeDefinition(value: unknown, fallbackId: string): LyricsPresetDe
     source: 'custom',
     layout,
     typography: normalizeTypography(source.typography),
-    artwork: { style: source.artwork?.style === 'vinyl' ? 'vinyl' : 'square' },
-    background: normalizeBackground(source.background),
-  };
+    artwork: { style: artworkStyle },
+    background: defaultBackground,
+    scene: normalizedScene.scene,
+  });
 }
 
 function normalizePatch(value: unknown): LyricsPresetPatch | null {
@@ -331,9 +834,35 @@ function normalizePatch(value: unknown): LyricsPresetPatch | null {
   if (source.artwork?.style === 'square' || source.artwork?.style === 'vinyl') {
     patch.artwork = { style: source.artwork.style };
   }
-  if (source.background) patch.background = normalizeBackground(source.background);
+  if (source.background) {
+    patch.background = {
+      fit:
+        source.background.fit === 'contain'
+          ? 'contain'
+          : source.background.fit === 'cover'
+            ? 'cover'
+            : 'cover',
+      fallbackColor:
+        typeof source.background.fallbackColor === 'string' &&
+        /^#[0-9A-Fa-f]{6}$/.test(source.background.fallbackColor)
+          ? source.background.fallbackColor
+          : defaultBackground.fallbackColor,
+    };
+  }
   if (typeof source.name === 'string' && source.name.trim()) {
     patch.name = source.name.trim().slice(0, 80);
+  }
+  if (source.scene) {
+    const layout = patch.layout ?? 'split';
+    const normalized = normalizeScene(source.scene, layout);
+    if (normalized.malformed) {
+      logger.warn(LYRICS_PRESET_LAYOUT_MALFORMED, 'malformed lyrics preset override layout', {
+        code: LYRICS_PRESET_LAYOUT_MALFORMED,
+      });
+      patch.scene = factoryScene(layout);
+    } else {
+      patch.scene = normalized.scene;
+    }
   }
   return patch;
 }
@@ -363,7 +892,10 @@ export function normalizeLyricsPresetState(
   const selectedId =
     isBuiltinPresetId(requested) || customIds.has(requested) ? requested : selectedFallback;
   if (options.preserveContainFit && Object.keys(overrides).length === 0 && !source.selectedId) {
-    overrides[selectedId] = { background: { fit: 'contain' } };
+    overrides[selectedId] = {
+      background: { fit: 'contain' },
+      scene: { background: { fit: 'contain' } },
+    };
   }
   return {
     schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
@@ -377,15 +909,53 @@ export function lyricsPresetDiagnostics(state: LyricsPresetState): {
   id: string;
   kind: LyricsPresetSource;
   schemaVersion: typeof LYRICS_PRESET_SCHEMA_VERSION;
+  rendererVersion: typeof LYRICS_SCENE_RENDERER_VERSION;
 } {
   const resolved = resolveLyricsPreset(state);
   return {
     id: resolved.id,
     kind: resolved.source,
     schemaVersion: LYRICS_PRESET_SCHEMA_VERSION,
+    rendererVersion: LYRICS_SCENE_RENDERER_VERSION,
   };
 }
 
-export function lineGapFromLineHeight(lineHeight: number): number {
-  return Math.max(0.25, (clampLineHeight(lineHeight) - 0.7) * 0.85);
+export function updateSceneWidget<K extends Exclude<SceneWidgetId, never>>(
+  preset: LyricsPresetDefinition,
+  id: K,
+  patch: Partial<LyricsSceneLayout[K]>,
+): LyricsPresetDefinition {
+  return syncDerived({
+    ...preset,
+    scene: {
+      ...preset.scene,
+      [id]: { ...preset.scene[id], ...patch },
+    },
+  });
+}
+
+export function resetSceneWidget(
+  preset: LyricsPresetDefinition,
+  id: SceneWidgetId,
+): LyricsPresetDefinition {
+  const factory = factoryScene(preset.layout);
+  return updateSceneWidget(preset, id, factory[id] as Partial<LyricsSceneLayout[typeof id]>);
+}
+
+export function resetSceneWidgetPosition(
+  preset: LyricsPresetDefinition,
+  id: Exclude<SceneWidgetId, 'background'>,
+): LyricsPresetDefinition {
+  const factory = factoryScene(preset.layout)[id];
+  return updateSceneWidget(preset, id, {
+    x: factory.x,
+    y: factory.y,
+    width: factory.width,
+    height: factory.height,
+    anchor: factory.anchor,
+  });
+}
+
+export function listSceneWidgets(scene: LyricsSceneLayout): SceneWidget[] {
+  return SCENE_WIDGET_IDS.map((id) => scene[id]).sort((left, right) => left.zIndex - right.zIndex);
 }
