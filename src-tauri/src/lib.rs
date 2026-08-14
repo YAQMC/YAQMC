@@ -12,6 +12,7 @@ mod logging;
 mod lyrics_surface;
 mod media;
 mod platform;
+mod playback_session;
 mod player;
 mod qmc;
 mod qqmusic;
@@ -199,7 +200,26 @@ pub fn run() {
             let snapshot_source = Arc::clone(&player);
             let media_projection = Arc::clone(&system_media);
             tauri::async_runtime::spawn(async move {
-                while let Ok(event) = event_receiver.recv().await {
+                loop {
+                    let event = match event_receiver.recv().await {
+                        Ok(event) => event,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                            tracing::warn!(
+                                target: "player.session",
+                                skipped,
+                                "player event subscriber lagged; resyncing authoritative snapshot"
+                            );
+                            let snapshot = snapshot_source.snapshot().await;
+                            let _ = app_handle.emit("player://snapshot", &snapshot);
+                            let projection = snapshot_source.lyric_surface_projection().await;
+                            let _ = app_handle.emit("lyrics://projection", &projection);
+                            let document = snapshot_source.lyrics().await;
+                            let _ = app_handle.emit("lyrics://document", &document);
+                            media_projection.update(&snapshot, false);
+                            continue;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    };
                     let _ = app_handle.emit("api://event", &event);
                     if matches!(
                         event.event_type.as_str(),

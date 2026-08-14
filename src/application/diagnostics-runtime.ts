@@ -51,6 +51,10 @@ export interface PlaybackSection {
   playbackOrder: string;
   repeatMode: string;
   primaryPlaybackMode: string;
+  playbackSessionId?: number;
+  snapshotRevision?: number;
+  sourceGeneration?: number;
+  lastSeekRevision?: number;
 }
 
 export interface ErrorRecord {

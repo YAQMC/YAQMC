@@ -39,6 +39,23 @@ idle / stopped / ended
 每次加载都有 generation。旧加载即使较晚完成也会被丢弃，避免快速切歌时旧声音或旧歌词覆盖当前曲目。
 401/403/404/410 的签名 URL 只允许重新解析一次。队列跳过失败曲目也限制为一轮。
 
+## 播放会话与 Seek 合并
+
+每次权威当前队列项开始加载时，`PlayerService` 都会分配新的 `sessionId`。音源解析、解码器加载、HTTP Range、
+音质回退、URL 恢复、进度时钟、EOS 和歌词投影都必须带上该会话（音频引擎还有 `sourceGeneration`）。会话 41
+的异步结果不得改写会话 42，即使两首歌的 song ID 相同。
+
+同一会话内的 Seek 使用最新值邮箱（`lastSeekRevision`）。进度条快速拖动不会把无限 FIFO 的原生 Seek 塞进音频
+线程：拖动时前端只预览，命令适配器合并飞行中的 Seek，Rodio 工作线程只保留一个待执行 Seek。Play/Pause/Next/Stop
+不会被大量 Seek 堵住。松手时提交最终位置；更早的 Seek 完成不能把进度或当前曲目滚回去。
+
+Player 快照还有单调递增的 `snapshotRevision`。React 投影会忽略更旧的会话，或同一会话中更旧的 revision，避免滞后
+的 `player://snapshot` 把底栏或歌词页显示成上一首歌。若 UI 事件订阅者发生 `Lagged`，会从权威快照重新同步，而
+不是退出循环。
+
+单曲循环仍然只在当前会话的 EOS 上重载当前队列项。Seek 或切歌之前的过期 EOS 会被丢弃。随机遍历和历史与 Seek
+正交。
+
 账号音源额外携带不可序列化的播放 epoch（账号 scope、auth generation、取消令牌和共享时钟）。提供器
 解析、缓存准备、解码加载、播放以及最终 `Playing` 提交前都会校验。注销/换号会立即让旧音源失效。
 前端只能看到请求音质、实际音质、回退原因和试听标记，看不到 URL、vkey、Cookie、ekey 或 scope。

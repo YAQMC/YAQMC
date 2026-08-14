@@ -443,6 +443,7 @@ impl MediaPreparer for CachedMediaPreparer {
             cache_key: source.cache_key,
             selection: source.selection,
             epoch_guard: source.epoch_guard,
+            load_generation: 0,
         })
     }
 }
@@ -551,6 +552,7 @@ impl MediaPreparer for PassthroughMediaPreparer {
             cache_key: source.cache_key,
             selection: source.selection,
             epoch_guard: source.epoch_guard,
+            load_generation: 0,
         })
     }
 }

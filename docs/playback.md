@@ -48,6 +48,27 @@ from replacing a newer selection. A source URL that returns 401/403/404/410 is c
 once more. The retry count is deliberately bounded at one. Queue progression skips failed tracks only within one
 bounded pass through the queue.
 
+## Playback session and seek coalescing
+
+Each time the authoritative current queue entry is loaded, `PlayerService` starts a new `sessionId`. Async source
+resolution, decoder load, HTTP Range work, quality fallback, URL recovery, position ticks, EOS, and lyric
+projection all carry that session (and a `sourceGeneration` on the audio engine). A result from session 41 must
+not mutate session 42, even when both entries are the same song ID.
+
+Within a session, seek intents use a latest-wins mailbox (`lastSeekRevision`). Rapid progress-bar drags do not
+enqueue an unbounded FIFO of native seeks: the frontend previews locally while the pointer is down, the command
+adapter coalesces in-flight seeks, and the Rodio worker keeps a single pending seek slot. Control commands such as
+Play/Pause/Next/Stop are not queued behind hundreds of Seek entries. Pointer-up commits the final position; an
+older seek completion cannot restore an earlier time or the previous track.
+
+Player snapshots also carry a monotonic `snapshotRevision`. The React projection ignores an older session, or an
+older revision in the same session, so a lagged `player://snapshot` event cannot roll the Player Bar or Lyrics
+surface back to a previous song. If the UI event subscriber lags, it resynchronizes from the authoritative
+snapshot instead of exiting.
+
+Repeat One still reloads the current queue entry on a current-session EOS. A stale EOS from before a seek or track
+change is ignored. Shuffle traversal and history are orthogonal to seek.
+
 Account-bound QQ Music sources additionally carry a nonserializable playback epoch guard. The guard contains only
 an opaque account scope, auth generation, cancellation token, and a shared epoch clock. It is checked after provider
 resolution, around media preparation, inside synchronous decoder/load and play operations, and immediately before

@@ -434,6 +434,10 @@ mod tests {
                 playback_order: "sequential",
                 repeat_mode: "off",
                 primary_playback_mode: "sequential",
+                playback_session_id: 0,
+                snapshot_revision: 0,
+                source_generation: 0,
+                last_seek_revision: 0,
             },
             vec![ErrorRecord::new(
                 "YAQMC-AUDIO-OUTPUT-001",

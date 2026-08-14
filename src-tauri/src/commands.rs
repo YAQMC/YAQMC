@@ -121,6 +121,10 @@ fn build_playback_section(snapshot: &PlayerSnapshot) -> PlaybackSection {
             crate::player::RepeatMode::One => "one",
         },
         primary_playback_mode: snapshot.primary_playback_mode.as_str(),
+        playback_session_id: snapshot.session_id,
+        snapshot_revision: snapshot.snapshot_revision,
+        source_generation: snapshot.source_generation,
+        last_seek_revision: snapshot.last_seek_revision,
     }
 }
 
