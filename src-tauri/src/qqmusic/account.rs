@@ -12,9 +12,11 @@ use super::{
     },
     clock::Clock,
     color_for, normalize_new_song, normalize_old_song, playlist_id, stable_component,
+    redaction::redact_json,
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
+use crate::logging::sanitize_field;
 use crate::player::{Artwork, AudioQuality, Song};
 use crate::storage::{ProviderCacheMutation, StorageService};
 use reqwest::{
@@ -2549,20 +2551,33 @@ impl QQMusicAccountService {
                 return self.stale_page_or_error(&context, cached, error).await;
             }
         };
-        let mut normalized = normalize_playlist_page_response_with_ownership(
-            &response.body,
-            offset,
-            if collected_phase {
-                PlaylistOwnership::Collected
-            } else {
-                PlaylistOwnership::Owned
-            },
-            if collected_phase {
-                &["v_list", "v_playlist", "playlist"]
-            } else {
-                &["v_playlist", "playlist"]
-            },
-        )?;
+        let mut normalized =
+            normalize_playlist_page_response_with_ownership(
+                &response.body,
+                offset,
+                if collected_phase {
+                    PlaylistOwnership::Collected
+                } else {
+                    PlaylistOwnership::Owned
+                },
+                if collected_phase {
+                    &["v_list", "v_playlist", "playlist"]
+                } else {
+                    &["v_playlist", "playlist"]
+                },
+            )
+            .map_err(|error| {
+                tracing::warn!(
+                    target: "qqmusic.playlist",
+                    cursor = ?cursor,
+                    offset,
+                    collected_phase,
+                    error = %error,
+                    response = %response_preview(&response.body),
+                    "account playlist list response failed to normalize"
+                );
+                error
+            })?;
         if collected_phase {
             normalized.next_provider_cursor = normalized
                 .next_provider_cursor
@@ -2744,12 +2759,46 @@ impl QQMusicAccountService {
         let (summary, mut normalized) = match &reference {
             AccountPlaylistReference::FavoriteSongs { .. } => (
                 requested_summary.clone(),
-                normalize_favorite_response(&response.body, offset)?,
+                normalize_favorite_response(&response.body, offset).map_err(|error| {
+                    tracing::warn!(
+                        target: "qqmusic.playlist",
+                        playlist_id = %playlist_id,
+                        reference = ?reference,
+                        cursor = ?cursor,
+                        offset,
+                        error = %error,
+                        response = %response_preview(&response.body),
+                        "account favorites response failed to normalize"
+                    );
+                    error
+                })?,
             ),
             _ => {
                 let (mut summary, page) =
-                    normalize_playlist_detail_response(&response.body, offset)?;
+                    normalize_playlist_detail_response(&response.body, offset).map_err(|error| {
+                        tracing::warn!(
+                            target: "qqmusic.playlist",
+                            playlist_id = %playlist_id,
+                            reference = ?reference,
+                            cursor = ?cursor,
+                            offset,
+                            error = %error,
+                            response = %response_preview(&response.body),
+                            "account playlist detail response failed to normalize"
+                        );
+                        error
+                    })?;
                 if summary.reference.generic_tid()? != reference.generic_tid()? {
+                    tracing::warn!(
+                        target: "qqmusic.playlist",
+                        playlist_id = %playlist_id,
+                        reference = ?reference,
+                        cursor = ?cursor,
+                        offset,
+                        error = "tid mismatch after normalization",
+                        response = %response_preview(&response.body),
+                        "account playlist detail resolved a different playlist than requested"
+                    );
                     return Err(QQMusicError::SchemaChanged);
                 }
                 summary.id = playlist_id.clone();
@@ -3707,6 +3756,17 @@ fn response_data(value: &Value) -> Result<&Value, QQMusicError> {
         .or_else(|| value.pointer("/req_0/data"))
         .or_else(|| value.get("data"))
         .ok_or(QQMusicError::SchemaChanged)
+}
+
+/// Redacted, truncated preview of a provider response body for diagnostics.
+/// Secret-shaped fields are masked; the value is additionally sanitized and
+/// bounded by the shared log-field cap before it can reach disk.
+fn response_preview(body: &[u8]) -> String {
+    let preview = match serde_json::from_slice::<Value>(body) {
+        Ok(value) => redact_json(&value).to_string(),
+        Err(_) => format!("<non-json {} bytes>", body.len()),
+    };
+    sanitize_field(&preview).into_owned()
 }
 
 fn playlist_value(value: &Value) -> Option<&Value> {
