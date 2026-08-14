@@ -34,7 +34,8 @@ Ship it in a `*.yaqmc-plugin` zip with `manifest.json`.
 Developer Mode (Settings → Plugins, not on by default) is for authors: unpacked folders and extra validation. Do not
 enable it for ordinary users unless they are developing a plugin.
 
-Examples live in `examples/plugins/` and are **not** enabled by default.
+Examples live in `examples/plugins/` and are **not** enabled by default. Packed downloads:
+[example plugins](plugin-examples.md).
 
 ## Events and control
 

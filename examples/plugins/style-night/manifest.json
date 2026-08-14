@@ -1,8 +1,8 @@
 {
   "manifestVersion": 1,
-  "id": "dev.yaqmc.example.sakura",
-  "name": "Sakura",
-  "description": "Restyles the public chrome: sidebar, player bar, queue, and track title. Conflicts with Night.",
+  "id": "dev.yaqmc.example.night",
+  "name": "Night",
+  "description": "Cool-ink chrome using every v1 style selector and token. Conflicts with Sakura.",
   "version": "1.0.0",
   "apiVersion": 1,
   "authors": ["YAQMC examples"],
@@ -15,5 +15,5 @@
     "styles": ["styles/main.css"]
   },
   "permissions": ["style.register"],
-  "conflicts": ["dev.yaqmc.example.night"]
+  "conflicts": ["dev.yaqmc.example.sakura"]
 }

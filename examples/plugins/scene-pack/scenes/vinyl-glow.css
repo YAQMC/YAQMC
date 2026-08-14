@@ -1,0 +1,26 @@
+[data-scene-widget='background'] {
+  filter: contrast(1.08) saturate(1.2);
+}
+
+[data-scene-widget='artwork'],
+[data-scene-widget='vinyl'] {
+  filter: drop-shadow(0 0 28px rgba(255, 143, 171, 0.45));
+}
+
+[data-scene-widget='metadata'] {
+  color: #ffd6e0;
+}
+
+[data-scene-widget='lyrics'] {
+  border-left: 2px solid rgba(255, 143, 171, 0.45);
+  padding-left: 12px;
+}
+
+[data-scene-widget='transport'] {
+  opacity: 0.92;
+}
+
+[data-scene-state='active-line'] {
+  color: #ffb4c8;
+  font-weight: 650;
+}

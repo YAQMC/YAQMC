@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 2,
+  "id": "studio-split",
+  "name": "Studio split",
+  "layout": "split",
+  "typography": { "fontScale": 1.06, "lineHeight": 1.2 },
+  "artwork": { "style": "square" },
+  "background": { "fit": "cover", "fallbackColor": "#241c12" },
+  "scene": {
+    "background": {
+      "id": "background",
+      "kind": "background",
+      "zIndex": 0,
+      "visible": true,
+      "locked": false,
+      "source": "artwork",
+      "fit": "cover",
+      "fallbackColor": "#241c12",
+      "opacity": 1,
+      "influence": 0.4,
+      "blur": 20
+    },
+    "artwork": {
+      "id": "artwork",
+      "kind": "artwork",
+      "x": 0.225,
+      "y": 0.4,
+      "width": 0.3,
+      "height": 0.42,
+      "anchor": "center",
+      "zIndex": 3,
+      "visible": true,
+      "locked": false,
+      "renderer": "rounded",
+      "opacity": 1,
+      "radius": 0.08
+    },
+    "metadata": {
+      "id": "metadata",
+      "kind": "metadata",
+      "x": 0.225,
+      "y": 0.68,
+      "width": 0.36,
+      "height": 0.14,
+      "anchor": "center",
+      "zIndex": 4,
+      "visible": true,
+      "locked": false,
+      "align": "center",
+      "titleScale": 1.06,
+      "artistScale": 0.72
+    },
+    "lyrics": {
+      "id": "lyrics",
+      "kind": "lyrics",
+      "x": 0.73,
+      "y": 0.46,
+      "width": 0.5,
+      "height": 0.72,
+      "anchor": "center",
+      "zIndex": 5,
+      "visible": true,
+      "locked": false,
+      "align": "left",
+      "followAnchor": 0.36
+    },
+    "transport": {
+      "id": "transport",
+      "kind": "transport",
+      "x": 0.225,
+      "y": 0.94,
+      "width": 0.26,
+      "height": 0.13,
+      "anchor": "bottom-center",
+      "zIndex": 8,
+      "visible": true,
+      "locked": false,
+      "align": "center"
+    }
+  }
+}

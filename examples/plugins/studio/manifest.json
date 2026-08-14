@@ -1,0 +1,44 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.example.studio",
+  "name": "Studio",
+  "description": "One package that restyles chrome, registers two lyrics scenes, and runs an isolated session-bookmark script using every v1 Plugin API.",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "authors": ["YAQMC examples"],
+  "homepage": "https://github.com/YAQMC/YAQMC",
+  "repository": "https://github.com/YAQMC/YAQMC",
+  "license": "MIT",
+  "engines": { "yaqmc": ">=0.1.0" },
+  "platforms": ["windows", "linux"],
+  "entrypoints": {
+    "styles": ["styles/main.css"],
+    "scenes": ["scenes/studio-split.scene.json", "scenes/studio-vinyl.scene.json"],
+    "script": "dist/main.js"
+  },
+  "permissions": [
+    "style.register",
+    "scene.register",
+    "track.read",
+    "lyrics.read",
+    "player.read",
+    "player.control",
+    "theme.read",
+    "plugin.storage"
+  ],
+  "settingsSchema": {
+    "fields": [
+      { "id": "resume", "type": "boolean", "label": "Restore last position", "default": true },
+      { "id": "label", "type": "text", "label": "Studio label", "default": "Studio" },
+      { "id": "radius", "type": "number", "label": "Corner radius", "min": 0, "max": 28, "default": 14 },
+      {
+        "id": "scene",
+        "type": "select",
+        "label": "Preferred scene",
+        "options": ["studio-split", "studio-vinyl"],
+        "default": "studio-split"
+      },
+      { "id": "accent", "type": "color", "label": "Accent", "default": "#e8b86d" }
+    ]
+  }
+}

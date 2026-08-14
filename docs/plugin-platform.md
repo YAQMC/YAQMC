@@ -57,3 +57,6 @@ The active version is stored explicitly. Symlinks are not used for active-versio
 
 Marketplace, remote updates, `network:` permissions, Provider plugins, lyric-source plugins, arbitrary UI slots,
 native/WASM runtimes, publisher signing, and cloud sync are reserved. Architecture should not make them impossible.
+
+Packed example plugins that actually restyle chrome, register lyrics scenes, and exercise the isolated script bridge
+are listed in [example plugins](plugin-examples.md).
