@@ -29,8 +29,12 @@ translation / romanization = primary × 0.42
 
 - Click a widget to select it. Click empty canvas (letterbox) to deselect. Clicking an already
   selected widget starts a drag after a short movement threshold; it does not clear selection.
+  The selection overlay is the drag surface. Runtime controls such as Follow stay clickable.
 - Selected widgets show an overlay outline and resize handles in the same scene transform. Vinyl
-  selection uses the inscribed visual square so the disc stays circular.
+  selection uses the inscribed visual square so the disc stays circular. Transport uses a compact
+  control-sized frame, not a full-width bar leftover from the old three-column player chrome.
+- Font size scales lyric **text** (`70%` is more than 2× smaller than `145%`). It does not shrink
+  the lyrics viewport rectangle.
 - The composer shell fills most of the application viewport. The scene uses one uniform fit scale
   (`min(availableWidth / logicalWidth, availableHeight / logicalHeight)`). Zoom is presentation-only.
 - Selected widgets show a persistent outline and resize handles.

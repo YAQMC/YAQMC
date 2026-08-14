@@ -267,9 +267,12 @@ describe('SettingsPage account section', () => {
     expect(container.textContent).toContain('unofficial third-party QQ Music client');
     expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Diagnostics & logging' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Debug' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export bundle' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Export diagnostics' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Report a problem' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Report a problem' })).toHaveLength(1);
+    expect(screen.getByRole('switch', { name: 'Show frame rate' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Report an issue/ })).not.toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Classic' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Immersive' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Vinyl' })).toBeInTheDocument();

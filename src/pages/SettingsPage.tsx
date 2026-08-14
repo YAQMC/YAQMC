@@ -978,7 +978,6 @@ export function SettingsPage() {
   const aboutLinks: Array<{ id: ProductLink; label: string }> = [
     { id: 'repository', label: t('about.repository') },
     { id: 'releases', label: t('about.releases') },
-    { id: 'issues', label: t('about.issues') },
     { id: 'documentation', label: t('about.documentation') },
     { id: 'acknowledgements', label: t('about.acknowledgements') },
     { id: 'thirdPartyNotices', label: t('about.thirdPartyNotices') },
@@ -1484,6 +1483,17 @@ export function SettingsPage() {
             }
           />
           <SettingRow
+            title={t('debug.fpsCounter')}
+            description={t('debug.fpsCounterDescription')}
+            control={
+              <Toggle
+                checked={preferences.debug.showFpsCounter}
+                label={t('debug.fpsCounter')}
+                onChange={(showFpsCounter) => preferences.updateDebug({ showFpsCounter })}
+              />
+            }
+          />
+          <SettingRow
             title={t('diagnostics.platformExport')}
             description={t('diagnostics.platformExportDescription')}
             control={
@@ -1518,22 +1528,6 @@ export function SettingsPage() {
             {diagnosticsError}
           </p>
         )}
-      </SettingsSection>
-
-      <SettingsSection title={t('debug.title')} description={t('debug.description')}>
-        <div className="settings-card">
-          <SettingRow
-            title={t('debug.fpsCounter')}
-            description={t('debug.fpsCounterDescription')}
-            control={
-              <Toggle
-                checked={preferences.debug.showFpsCounter}
-                label={t('debug.fpsCounter')}
-                onChange={(showFpsCounter) => preferences.updateDebug({ showFpsCounter })}
-              />
-            }
-          />
-        </div>
       </SettingsSection>
 
       <SettingsSection
@@ -1810,6 +1804,7 @@ export function SettingsPage() {
                 {t('about.version', { version: productMetadata.version })} · {buildMetadata.channel}{' '}
                 · {buildMetadata.type}
               </small>
+              <p className="settings-about__disclaimer">{t('about.unofficial')}</p>
             </div>
           </div>
           <dl className="settings-about__runtime">
@@ -1845,18 +1840,6 @@ export function SettingsPage() {
                 {label} <ExternalLink size={13} />
               </button>
             ))}
-          </div>
-          <div className="settings-about__footer">
-            <p>{t('about.unofficial')}</p>
-            <div className="settings-inline-actions">
-              <button
-                type="button"
-                className="button button--primary"
-                onClick={() => setIssueReporterOpen(true)}
-              >
-                <Bug size={14} /> {t('about.reportProblem')}
-              </button>
-            </div>
           </div>
         </div>
       </SettingsSection>

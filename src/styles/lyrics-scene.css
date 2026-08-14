@@ -46,6 +46,27 @@
   justify-content: center;
 }
 
+.lyrics-scene__hit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.lyrics-scene__widget:active .lyrics-scene__hit {
+  cursor: grabbing;
+}
+
+.lyrics-scene[data-mode='editor'] .lyrics-stage__follow {
+  z-index: 4;
+}
+
+.lyrics-scene[data-mode='editor'] .lyrics-line {
+  content-visibility: visible;
+  contain: none;
+}
+
 .lyrics-scene__widget[data-widget='lyrics'] .lyrics-stage__viewport,
 .lyrics-scene__widget[data-widget='lyrics'] .lyrics-stage__scroll {
   width: 100%;
@@ -98,11 +119,34 @@
 .lyrics-scene__transport {
   position: relative;
   inset: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
-  padding: 0 12px;
+  min-width: 0;
+  padding: 0;
   background: transparent;
   pointer-events: auto;
+  grid-template-columns: none;
+  gap: 8px;
+}
+
+.lyrics-scene__transport[data-align='left'] {
+  align-items: flex-start;
+}
+
+.lyrics-scene__transport[data-align='right'] {
+  align-items: flex-end;
+}
+
+.lyrics-scene__transport .lyrics-stage__controls-center,
+.lyrics-scene__transport .lyrics-stage__progress,
+.lyrics-scene__transport .lyrics-stage__control-buttons {
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .lyrics-scene__safe {
@@ -202,7 +246,13 @@
   position: absolute;
   box-sizing: border-box;
   border: 2px solid color-mix(in srgb, var(--accent-primary) 85%, white);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.lyrics-composer-handles__box:active {
+  cursor: grabbing;
 }
 
 .lyrics-composer-handle {
@@ -343,7 +393,7 @@
 
 .lyrics-preset-editor__workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
   gap: 16px;
   flex: 1 1 auto;
   min-height: 0;
@@ -355,5 +405,6 @@
   align-content: start;
   gap: 12px;
   min-width: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }

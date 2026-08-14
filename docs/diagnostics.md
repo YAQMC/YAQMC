@@ -133,12 +133,13 @@ Everything the user needs is exposed under
 - **Reveal bundle** — reveals the most recent bundle in the file manager.
 - **Clear old logs** — deletes rotated files only; the current log file stays.
 - **Report a problem** — opens the guided Issue Reporter dialog.
+- **Show frame rate** — optional overlay FPS counter for rendering diagnostics.
 - **Platform collection** — the Linux/platform diagnostic export previously
   shown under Desktop integration.
 
-About remains informational. It may offer **Report a problem** as a support
-entry point; that button opens the same Issue Reporter. Diagnostic bundle
-actions are not duplicated under Desktop integration or About.
+About stays informational: product identity, build metadata, and project links.
+The unofficial-client disclaimer sits under the version line. About does not
+duplicate Report a problem or host a separate Debug section.
 
 There is intentionally no dashboard of per-domain toggles: users should not
 need to configure logging, and maintainers can enable `TRACE` when needed.

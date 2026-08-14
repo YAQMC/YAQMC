@@ -988,6 +988,14 @@
   font-size: var(--text-xs);
 }
 
+.settings-about__disclaimer {
+  margin: 10px 0 0;
+  max-width: 46rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
 .settings-about__runtime {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1023,35 +1031,15 @@
   flex-wrap: wrap;
   gap: 7px;
   padding: 17px 20px;
-  border-bottom: 1px solid var(--border);
 }
 
 .settings-about__links .button {
   gap: 6px;
 }
 
-.settings-about__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 19px 24px;
-}
-
-.settings-about__footer p {
-  max-width: 590px;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-}
-
 @media (max-width: 760px) {
   .settings-about__runtime {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-about__footer {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }
 
@@ -1068,10 +1056,10 @@
   border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.1));
   border-radius: 12px;
   padding: 0;
-  width: min(96vw, 1800px);
-  height: min(92vh, 1100px);
-  max-width: 96vw;
-  max-height: 94vh;
+  width: min(98vw, 1920px);
+  height: min(96vh, 1240px);
+  max-width: 98vw;
+  max-height: 96vh;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
@@ -1146,8 +1134,30 @@
 }
 
 .lyrics-composer-inspector .settings-range {
-  grid-template-columns: minmax(0, 1fr) 56px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 6px 8px;
   min-width: 0;
+  width: 100%;
+}
+
+.lyrics-composer-inspector .settings-range > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics-composer-inspector .settings-range > input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+.lyrics-composer-inspector .settings-range > output {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .lyrics-composer-stage .lyrics-stage__spacer {
@@ -1160,12 +1170,12 @@
 
 @media (max-width: 1280px) {
   .lyrics-preset-editor {
-    width: 96vw;
-    height: 94vh;
+    width: 98vw;
+    height: 96vh;
   }
 
   .lyrics-preset-editor__workspace {
-    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
   }
 }
 

@@ -42,6 +42,7 @@ import {
   resetSceneWidget,
   resetSceneWidgetPosition,
   resolveLyricsPreset,
+  resolvePrimaryFontSizePx,
   saveAsNewPreset,
   SCENE_WIDGET_IDS,
   updateSceneWidget,
@@ -661,6 +662,7 @@ export function LyricsPresetEditor({
     gesture.current = null;
     setEditorGesture(false);
     setGuides([]);
+    canvasRef.current?.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     try {
@@ -686,6 +688,8 @@ export function LyricsPresetEditor({
   const startMove = (id: Exclude<SceneWidgetId, 'background'>, event: ReactPointerEvent) => {
     const live = draftRef.current;
     if (live.scene[id].locked) return;
+    event.preventDefault();
+    event.stopPropagation();
     gesture.current = {
       kind: 'move',
       id,
@@ -702,6 +706,7 @@ export function LyricsPresetEditor({
     } catch {
       /* jsdom */
     }
+    canvasRef.current?.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
   };
@@ -727,6 +732,7 @@ export function LyricsPresetEditor({
     } catch {
       /* jsdom */
     }
+    canvasRef.current?.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
   };
@@ -734,6 +740,7 @@ export function LyricsPresetEditor({
   useEffect(
     () => () => {
       if (moveRaf.current !== null) window.cancelAnimationFrame(moveRaf.current);
+      canvasRef.current?.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     },
@@ -852,22 +859,7 @@ export function LyricsPresetEditor({
             onPointerDown={(event) => {
               if (event.target === event.currentTarget) {
                 setSelectedId(null);
-                return;
               }
-              const handle = (event.target as HTMLElement).closest('[data-resize]');
-              if (handle) return;
-              if (isInteractiveTarget(event.target)) return;
-              const widget = (event.target as HTMLElement).closest('[data-widget]');
-              const id = widget?.getAttribute('data-widget') as SceneWidgetId | null;
-              if (!id || id === 'background') {
-                if (id === 'background') setSelectedId('background');
-                return;
-              }
-              if (draftRef.current.scene[id].locked) {
-                setSelectedId(id);
-                return;
-              }
-              startMove(id, event);
             }}
           >
             <div
@@ -888,6 +880,10 @@ export function LyricsPresetEditor({
                   if (gesture.current && id === null) return;
                   setSelectedId(id as SceneWidgetId | null);
                 }}
+                onEditorDragStart={(id, event) => {
+                  if (id === 'background' || isInteractiveTarget(event.target)) return;
+                  startMove(id, event);
+                }}
                 editorGesture={editorGesture}
                 guides={guides}
                 previewFrame={frame}
@@ -899,6 +895,23 @@ export function LyricsPresetEditor({
                     className="lyrics-composer-handles__box"
                     data-selection-bounds={selectedId ?? undefined}
                     style={widgetBoxStyle(overlayBox)}
+                    onPointerDown={(event) => {
+                      if ((event.target as HTMLElement).closest('[data-resize]')) return;
+                      if (!selectedId || selectedId === 'background') return;
+                      const hits = document.elementsFromPoint(event.clientX, event.clientY);
+                      const interactive = hits.find(
+                        (node) =>
+                          node instanceof Element && node.closest('[data-editor-interactive]'),
+                      );
+                      if (interactive instanceof Element) {
+                        const control = interactive.closest('[data-editor-interactive]');
+                        if (control instanceof HTMLElement) control.click();
+                        return;
+                      }
+                      event.preventDefault();
+                      event.stopPropagation();
+                      startMove(selectedId, event);
+                    }}
                   >
                     {RESIZE_HANDLES.map((handle) => (
                       <button
@@ -973,7 +986,7 @@ export function LyricsPresetEditor({
                   max={FONT_SCALE_MAX}
                   step={0.01}
                   value={draft.typography.fontScale}
-                  output={`${Math.round(draft.typography.fontScale * 100)}%`}
+                  output={`${Math.round(draft.typography.fontScale * 100)}% · ${Math.round(resolvePrimaryFontSizePx(draft.typography.fontScale, fit.height))}px`}
                   onGestureStart={beginSlider}
                   onGestureEnd={endSlider}
                   onChange={(value) =>
