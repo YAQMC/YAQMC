@@ -476,6 +476,7 @@ pub enum ProviderErrorCode {
     SchemaChanged,
     SongUnavailable,
     MalformedResponse,
+    Unavailable,
     ProviderFailure,
     Cancelled,
     NotFound,
@@ -501,6 +502,7 @@ impl ProviderErrorCode {
             Self::SchemaChanged => "schema-changed",
             Self::SongUnavailable => "song-unavailable",
             Self::MalformedResponse => "malformed-response",
+            Self::Unavailable => "unavailable",
             Self::ProviderFailure => "provider-failure",
             Self::Cancelled => "cancelled",
             Self::NotFound => "not-found",
@@ -2567,12 +2569,16 @@ impl QQMusicAccountService {
                 },
             )
             .map_err(|error| {
+                let (top, req, subcode) = response_codes(&response.body);
                 tracing::warn!(
                     target: "qqmusic.playlist",
                     cursor = ?cursor,
                     offset,
                     collected_phase,
                     error = %error,
+                    code = ?top,
+                    req_code = ?req,
+                    subcode = ?subcode,
                     response = %response_preview(&response.body),
                     "account playlist list response failed to normalize"
                 );
@@ -2721,11 +2727,23 @@ impl QQMusicAccountService {
             }
             AccountPlaylistReference::Owned { .. }
             | AccountPlaylistReference::Collected { .. }
-            | AccountPlaylistReference::SystemCollection { tid: Some(_), .. } => json!({
-                "disstid": reference.generic_tid()?,
-                "song_begin": offset,
-                "song_num": limit
-            }),
+            | AccountPlaylistReference::SystemCollection { tid: Some(_), .. } => {
+                let tid = reference.generic_tid()?;
+                let disstid = tid
+                    .parse::<u64>()
+                    .map(Value::from)
+                    .unwrap_or_else(|_| Value::String(tid.to_owned()));
+                json!({
+                    "disstid": disstid,
+                    "dirid": 0,
+                    "tag": true,
+                    "song_begin": offset,
+                    "song_num": limit,
+                    "userinfo": true,
+                    "orderlist": true,
+                    "onlysonglist": 1
+                })
+            }
             AccountPlaylistReference::SystemCollection { tid: None, .. } => {
                 return Err(QQMusicError::UnsupportedAccountCollection);
             }
@@ -2760,6 +2778,7 @@ impl QQMusicAccountService {
             AccountPlaylistReference::FavoriteSongs { .. } => (
                 requested_summary.clone(),
                 normalize_favorite_response(&response.body, offset).map_err(|error| {
+                    let (top, req, subcode) = response_codes(&response.body);
                     tracing::warn!(
                         target: "qqmusic.playlist",
                         playlist_id = %playlist_id,
@@ -2767,6 +2786,9 @@ impl QQMusicAccountService {
                         cursor = ?cursor,
                         offset,
                         error = %error,
+                        code = ?top,
+                        req_code = ?req,
+                        subcode = ?subcode,
                         response = %response_preview(&response.body),
                         "account favorites response failed to normalize"
                     );
@@ -2776,26 +2798,34 @@ impl QQMusicAccountService {
             _ => {
                 let (mut summary, page) =
                     normalize_playlist_detail_response(&response.body, offset).map_err(|error| {
-                        tracing::warn!(
-                            target: "qqmusic.playlist",
-                            playlist_id = %playlist_id,
-                            reference = ?reference,
-                            cursor = ?cursor,
-                            offset,
-                            error = %error,
-                            response = %response_preview(&response.body),
-                            "account playlist detail response failed to normalize"
-                        );
-                        error
-                    })?;
-                if summary.reference.generic_tid()? != reference.generic_tid()? {
+                    let (top, req, subcode) = response_codes(&response.body);
                     tracing::warn!(
                         target: "qqmusic.playlist",
                         playlist_id = %playlist_id,
                         reference = ?reference,
                         cursor = ?cursor,
                         offset,
-                        error = "tid mismatch after normalization",
+                        error = %error,
+                        code = ?top,
+                        req_code = ?req,
+                        subcode = ?subcode,
+                        shape = %response_shape(&response.body),
+                        response = %response_preview(&response.body),
+                        "account playlist detail response failed to normalize"
+                    );
+                        error
+                    })?;
+                if summary.reference.generic_tid()? != reference.generic_tid()? {
+                    let (top, req, subcode) = response_codes(&response.body);
+                    tracing::warn!(
+                        target: "qqmusic.playlist",
+                        playlist_id = %playlist_id,
+                        reference = ?reference,
+                        cursor = ?cursor,
+                        offset,
+                        code = ?top,
+                        req_code = ?req,
+                        subcode = ?subcode,
                         response = %response_preview(&response.body),
                         "account playlist detail resolved a different playlist than requested"
                     );
@@ -2805,6 +2835,29 @@ impl QQMusicAccountService {
                 summary.reference = reference.clone();
                 summary.ownership = requested_summary.ownership;
                 summary.capabilities = requested_summary.capabilities.clone();
+                if summary.title.trim().is_empty() {
+                    summary.title = requested_summary.title.clone();
+                }
+                if summary.description.trim().is_empty() {
+                    summary.description = requested_summary.description.clone();
+                }
+                if summary.owner.display_name.is_empty()
+                    || summary.owner.display_name == "QQ Music"
+                {
+                    let account_nickname = context.profile.nickname.trim();
+                    if matches!(reference, AccountPlaylistReference::Owned { .. })
+                        && !account_nickname.is_empty()
+                    {
+                        summary.owner.display_name = account_nickname.to_owned();
+                    } else if !requested_summary.owner.display_name.is_empty()
+                        && requested_summary.owner.display_name != "QQ Music"
+                    {
+                        summary.owner = requested_summary.owner.clone();
+                    }
+                }
+                if summary.updated_at_ms.is_none() || summary.updated_at_ms == Some(0) {
+                    summary.updated_at_ms = requested_summary.updated_at_ms;
+                }
                 (summary, page)
             }
         };
@@ -3410,6 +3463,7 @@ fn ensure_cgi_response_success(value: &Value) -> Result<(), QQMusicError> {
             0 => {}
             1000 | 104_400 | 104_401 => return Err(QQMusicError::AuthenticationExpired),
             2001 => return Err(QQMusicError::RateLimited),
+            10004 => return Err(QQMusicError::Unavailable),
             _ => return Err(QQMusicError::Protocol),
         }
     }
@@ -3635,7 +3689,7 @@ fn normalize_playlist_value_with_ownership(
     let title = raw
         .title
         .filter(|title| !title.trim().is_empty())
-        .ok_or(QQMusicError::SchemaChanged)?;
+        .unwrap_or_default();
     let explicit_owned = raw
         .ownership
         .as_deref()
@@ -3767,6 +3821,115 @@ fn response_preview(body: &[u8]) -> String {
         Err(_) => format!("<non-json {} bytes>", body.len()),
     };
     sanitize_field(&preview).into_owned()
+}
+
+/// Top-level and per-request CGI status codes from a provider response body.
+/// These are status integers, not credentials, and are logged unredacted so a
+/// non-zero code (which `ensure_cgi_response_success` collapses into a generic
+/// protocol error) can be identified.
+fn response_codes(body: &[u8]) -> (Option<i64>, Option<i64>, Option<i64>) {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return (None, None, None);
+    };
+    let top = value.get("code").and_then(Value::as_i64);
+    let req = value
+        .pointer("/req/code")
+        .and_then(Value::as_i64)
+        .or_else(|| value.pointer("/req_0/code").and_then(Value::as_i64));
+    let subcode = value
+        .pointer("/req/subcode")
+        .and_then(Value::as_i64)
+        .or_else(|| value.pointer("/req_0/subcode").and_then(Value::as_i64));
+    (top, req, subcode)
+}
+
+/// Compact structural summary of a provider response body for diagnostics:
+/// the `req.data` key set and which playlist-detail fields are present. This
+/// reveals whether QQ Music returned a playlist payload at all versus some
+/// other structure (e.g. a personal-center page) under the same envelope.
+fn response_shape(body: &[u8]) -> String {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return format!("<non-json {} bytes>", body.len());
+    };
+    let data = value
+        .pointer("/req/data")
+        .or_else(|| value.pointer("/req_0/data"))
+        .or_else(|| value.get("data"));
+    let Some(data) = data else {
+        return "<no data>".to_owned();
+    };
+    let keys = data
+        .as_object()
+        .map(|object| {
+            let mut keys = object.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            keys.join(",")
+        })
+        .unwrap_or_else(|| data.to_string());
+    let songlist_len = data
+        .get("songlist")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let cdlist_len = data
+        .pointer("/cdlist/0/songlist")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let has_cdlist = data.get("cdlist").is_some();
+    let subcode = data
+        .get("subcode")
+        .or_else(|| data.get("code"))
+        .and_then(Value::as_i64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_owned());
+    let msg = data
+        .get("msg")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| "".to_owned());
+    let dirinfo = data
+        .get("dirinfo")
+        .and_then(Value::as_object)
+        .map(|object| {
+            let mut keys = object.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            keys.join(",")
+        })
+        .unwrap_or_else(|| "none".to_owned());
+    let dirinfo_fields = data
+        .get("dirinfo")
+        .and_then(Value::as_object)
+        .map(|object| {
+            [
+                "title",
+                "dirName",
+                "dissname",
+                "songnum",
+                "trackCount",
+                "dirid",
+                "id",
+                "disstid",
+                "mtime",
+                "updateTime",
+                "picurl",
+                "picUrl",
+                "nick",
+                "dirtype",
+            ]
+            .into_iter()
+            .map(|key| {
+                let value = object
+                    .get(key)
+                    .map(Value::to_string)
+                    .unwrap_or_else(|| "<missing>".to_owned());
+                format!("{key}={value}")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+        })
+        .unwrap_or_else(|| "none".to_owned());
+    format!(
+        "keys=[{keys}] songlist={songlist_len} cdlist0_songlist={cdlist_len} dirinfo=({dirinfo}) dirinfo_fields=[{dirinfo_fields}] cdlist={has_cdlist} subcode={subcode} msg={msg}"
+    )
 }
 
 fn playlist_value(value: &Value) -> Option<&Value> {
@@ -4416,6 +4579,7 @@ mod tests {
             (ProviderErrorCode::SchemaChanged, "schema-changed"),
             (ProviderErrorCode::SongUnavailable, "song-unavailable"),
             (ProviderErrorCode::MalformedResponse, "malformed-response"),
+            (ProviderErrorCode::Unavailable, "unavailable"),
             (ProviderErrorCode::ProviderFailure, "provider-failure"),
             (ProviderErrorCode::Cancelled, "cancelled"),
             (ProviderErrorCode::NotFound, "not-found"),
@@ -5188,7 +5352,18 @@ mod tests {
             owned_request.pointer("/req/param/disstid"),
             Some(&json!("SANITIZED_PLAYLIST_OWNED"))
         );
-        assert!(owned_request.pointer("/req/param/dirid").is_none());
+        assert_eq!(
+            owned_request.pointer("/req/param/dirid"),
+            Some(&json!(0))
+        );
+        assert_eq!(
+            owned_request.pointer("/req/param/orderlist"),
+            Some(&json!(true))
+        );
+        assert_eq!(
+            owned_request.pointer("/req/param/onlysonglist"),
+            Some(&json!(1))
+        );
 
         let favorite = normalize_playlist_value(&json!({
             "tid": "9412769971",
