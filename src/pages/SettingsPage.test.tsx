@@ -255,7 +255,7 @@ describe('SettingsPage account section', () => {
     expect(screen.getByLabelText('Preferred playback quality')).toHaveTextContent('Automatic');
   });
 
-  it('ends with localized product identity, live project links, and safe diagnostic copy', async () => {
+  it('ends with localized product identity and project links without duplicating diagnostic controls', async () => {
     const account = accountProvider();
     useAccountStore.setState({ snapshot: authenticatedSnapshot() });
     const { container } = renderSettings(account.value);
@@ -265,12 +265,16 @@ describe('SettingsPage account section', () => {
     expect(screen.getByRole('button', { name: /GitHub repository/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Third-party licenses/ })).toBeInTheDocument();
     expect(container.textContent).toContain('unofficial third-party QQ Music client');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledOnce());
-    const copied = vi.mocked(navigator.clipboard.writeText).mock.calls[0]?.[0];
-    expect(copied).toContain('YAQMC version: 0.1.0');
-    expect(copied).toContain('QQ provider mode: unavailable / authenticated');
-    expect(copied).not.toMatch(/cookie|oauth|token|qrsig|ekey|authorization|private/iu);
+    expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Diagnostics & logging' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Debug' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export bundle' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Export diagnostics' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Report a problem' })).toHaveLength(1);
+    expect(screen.getByRole('switch', { name: 'Show frame rate' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Report an issue/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Classic' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Immersive' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Vinyl' })).toBeInTheDocument();
   });
 });

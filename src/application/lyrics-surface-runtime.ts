@@ -170,6 +170,7 @@ function currentPreferenceDocument(): AppPreferences {
     locale: state.locale,
     appearance: state.appearance,
     lyrics: state.lyrics,
+    lyricsPresets: state.lyricsPresets,
     surfaces: state.surfaces,
     system: state.system,
     debug: state.debug,
