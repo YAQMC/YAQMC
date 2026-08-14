@@ -275,4 +275,39 @@ describe('LyricsPresetPicker', () => {
     expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
     expect(document.querySelector('.lyrics-stage__disc')).not.toBeNull();
   });
+
+  it('drags lyrics from the widget and keeps the selection', () => {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    try {
+      render(<LyricsPresetPicker />);
+      fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+      const lyrics = document.querySelector('[data-widget="lyrics"]');
+      if (!lyrics) throw new Error('lyrics widget is missing');
+      fireEvent.pointerDown(lyrics, { clientX: 40, clientY: 40 });
+      fireEvent.pointerMove(window, { clientX: 140, clientY: 40, altKey: true });
+      fireEvent.pointerUp(window);
+      expect(screen.getByRole('button', { name: 'Lyrics' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      const positionX = screen.getByRole('spinbutton', { name: 'Position X' });
+      expect(Number((positionX as HTMLInputElement).value)).not.toBeCloseTo(73, 0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('selects a compact transport frame instead of a full-width bar', () => {
+    render(<LyricsPresetPicker />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Vinyl' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Transport' }));
+    const box = document.querySelector('.lyrics-composer-handles__box') as HTMLElement | null;
+    expect(box).toHaveAttribute('data-selection-bounds', 'transport');
+    expect(Number.parseFloat(box?.style.width ?? '100')).toBeLessThanOrEqual(30);
+  });
 });

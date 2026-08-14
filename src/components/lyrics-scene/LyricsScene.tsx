@@ -1,4 +1,9 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -43,6 +48,7 @@ function SceneWidget({
   editor,
   style,
   onSelect,
+  onEditorDragStart,
   children,
 }: {
   id: SceneWidgetId;
@@ -50,6 +56,7 @@ function SceneWidget({
   editor: boolean;
   style: CSSProperties;
   onSelect?: (id: SceneWidgetId) => void;
+  onEditorDragStart?: (id: SceneWidgetId, event: ReactPointerEvent<HTMLElement>) => void;
   children: React.ReactNode;
 }) {
   return (
@@ -58,12 +65,38 @@ function SceneWidget({
       data-widget={id}
       data-selected={selected || undefined}
       data-editor={editor || undefined}
-      style={style}
-      onPointerDown={() => {
-        if (!editor || !onSelect) return;
-        onSelect(id);
+      onPointerDown={(event) => {
+        if (!editor) return;
+        onSelect?.(id);
+        if (event.target instanceof Element && event.target.closest('[data-editor-interactive]')) {
+          return;
+        }
+        onEditorDragStart?.(id, event);
       }}
+      style={style}
     >
+      {editor && (
+        <div
+          className="lyrics-scene__hit"
+          data-editor-hit=""
+          aria-hidden="true"
+          onWheel={(event) => {
+            const scroll =
+              event.currentTarget.parentElement?.querySelector('.lyrics-stage__scroll');
+            if (!(scroll instanceof HTMLElement) || (event.deltaY === 0 && event.deltaX === 0)) {
+              return;
+            }
+            scroll.dispatchEvent(
+              new WheelEvent('wheel', {
+                deltaX: event.deltaX,
+                deltaY: event.deltaY,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+          }}
+        />
+      )}
       {children}
     </div>
   );
@@ -82,6 +115,7 @@ export function LyricsScene({
   previewFrame,
   fallbackNotice,
   onFollowStateChange,
+  onEditorDragStart,
   transportHidden = false,
   layoutKey,
 }: LyricsSceneProps & { transportHidden?: boolean; layoutKey?: string }) {
@@ -169,7 +203,8 @@ export function LyricsScene({
           id="artwork"
           editor={editor}
           selected={selectedWidgetId === 'artwork'}
-          onSelect={onSelectWidget}
+          onSelect={(id) => onSelectWidget?.(id)}
+          onEditorDragStart={onEditorDragStart}
           style={widgetBoxStyle(scene.artwork)}
         >
           {scene.artwork.renderer === 'vinyl' ? (
@@ -212,7 +247,8 @@ export function LyricsScene({
           id="metadata"
           editor={editor}
           selected={selectedWidgetId === 'metadata'}
-          onSelect={onSelectWidget}
+          onSelect={(id) => onSelectWidget?.(id)}
+          onEditorDragStart={onEditorDragStart}
           style={{ ...widgetBoxStyle(scene.metadata), textAlign: scene.metadata.align }}
         >
           <div className="lyrics-scene__metadata" data-align={scene.metadata.align}>
@@ -229,7 +265,8 @@ export function LyricsScene({
           id="lyrics"
           editor={editor}
           selected={selectedWidgetId === 'lyrics'}
-          onSelect={onSelectWidget}
+          onSelect={(id) => onSelectWidget?.(id)}
+          onEditorDragStart={onEditorDragStart}
           style={widgetBoxStyle(scene.lyrics)}
         >
           <LyricsViewport
@@ -258,7 +295,8 @@ export function LyricsScene({
           id="transport"
           editor={editor}
           selected={selectedWidgetId === 'transport'}
-          onSelect={onSelectWidget}
+          onSelect={(id) => onSelectWidget?.(id)}
+          onEditorDragStart={onEditorDragStart}
           style={widgetBoxStyle(scene.transport)}
         >
           <div

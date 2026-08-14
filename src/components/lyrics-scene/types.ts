@@ -1,6 +1,11 @@
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { LyricDocument } from '../../domain/music';
 import type { SecondaryLyricVisibility } from '../../application/preferences';
-import type { LyricsPreviewFrame, LyricsPresetDefinition } from '../../application/lyrics-preset';
+import type {
+  LyricsPreviewFrame,
+  LyricsPresetDefinition,
+  SceneWidgetId,
+} from '../../application/lyrics-preset';
 import type { ResolvedLyricsAppearance } from '../../application/lyrics-appearance';
 import type { SnapGuide } from '../../application/lyrics-scene-geometry';
 
@@ -44,4 +49,5 @@ export interface LyricsSceneProps {
   previewFrame?: LyricsPreviewFrame;
   fallbackNotice?: string | null;
   onFollowStateChange?: (state: LyricsFollowState) => void;
+  onEditorDragStart?: (id: SceneWidgetId, event: ReactPointerEvent<HTMLElement>) => void;
 }

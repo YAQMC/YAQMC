@@ -87,4 +87,12 @@ describe('lyrics composer view transform', () => {
     expect(zoomed.scale).toBeCloseTo(Math.min(fit.scale, 0.5), 6);
     expect(zoomed.width / zoomed.height).toBeCloseTo(fit.width / fit.height, 6);
   });
+
+  it('keeps factory transport compact so the selection can hug the controls', () => {
+    for (const layout of ['split', 'vinyl', 'full'] as const) {
+      const transport = factoryScene(layout).transport;
+      expect(transport.width).toBeLessThanOrEqual(0.3);
+      expect(transport.height).toBeLessThanOrEqual(0.16);
+    }
+  });
 });

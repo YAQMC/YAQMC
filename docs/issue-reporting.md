@@ -8,13 +8,14 @@ clicks Submit.
 
 ## Entry points
 
-- **Settings → About → Report a problem** — the primary entry point for
-  general feedback.
-- **Settings → Diagnostics & logging → Report a problem** — the same dialog,
-  positioned next to the bundle exporter for maintainers walking users
-  through a bug.
+- **Settings → Diagnostics & logging → Report a problem** — the entry point for
+  general feedback and maintainer-guided reports. It sits next to the bundle
+  exporter.
 - **Error surfaces → Report this issue** — opens the dialog with the linked
   error code and correlation ID prefilled.
+
+About is product identity and project links only. It does not duplicate the
+issue reporter.
 
 The dialog is `src/components/IssueReporterDialog.tsx`. It uses the native
 HTML `<dialog>` element for modality and focus trapping.

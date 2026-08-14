@@ -229,9 +229,13 @@ function factoryBackground(
   };
 }
 
-function factoryTransport(): TransportWidget {
+function factoryTransport(layout: LyricCoverLayout = 'split'): TransportWidget {
+  const leftColumn = layout !== 'full';
   return {
-    ...widgetBox(0.5, 0.975, 0.92, 0.11, { anchor: 'bottom-center', zIndex: 8 }),
+    ...widgetBox(leftColumn ? 0.225 : 0.5, leftColumn ? 0.94 : 0.97, 0.26, 0.13, {
+      anchor: 'bottom-center',
+      zIndex: 8,
+    }),
     id: 'transport',
     kind: 'transport',
     align: 'center',
@@ -265,7 +269,7 @@ export function factoryScene(layout: LyricCoverLayout): LyricsSceneLayout {
         align: 'left',
         followAnchor: FOLLOW_ANCHOR_DEFAULT,
       },
-      transport: factoryTransport(),
+      transport: factoryTransport('full'),
     };
   }
   if (layout === 'vinyl') {
@@ -294,7 +298,7 @@ export function factoryScene(layout: LyricCoverLayout): LyricsSceneLayout {
         align: 'left',
         followAnchor: FOLLOW_ANCHOR_DEFAULT,
       },
-      transport: factoryTransport(),
+      transport: factoryTransport('vinyl'),
     };
   }
   return {
@@ -322,7 +326,7 @@ export function factoryScene(layout: LyricCoverLayout): LyricsSceneLayout {
       align: 'left',
       followAnchor: FOLLOW_ANCHOR_DEFAULT,
     },
-    transport: factoryTransport(),
+    transport: factoryTransport('split'),
   };
 }
 
