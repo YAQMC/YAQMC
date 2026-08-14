@@ -14,7 +14,7 @@ import { joinArtistNames } from '../utils/format';
 import { IconButton } from './ui/IconButton';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '../application/preferences';
-import { resolveLyricsAppearance } from '../application/lyrics-appearance';
+import { applySceneBackdrop, resolveLyricsAppearance } from '../application/lyrics-appearance';
 import { useSafeArtworkSource } from '../application/artwork-source';
 import { resolveArtworkSource } from '../application/artwork-resolver';
 import { useBlurredArtwork } from '../application/blurred-artwork';
@@ -162,16 +162,15 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
         : (safeArtworkSource ?? lyricsArtworkFallback());
   const blurredBackdrop = useBlurredArtwork(sceneBackground.blur > 0 ? backdropImageSource : null);
   useEffect(() => rememberLyricsBlurredBackdrop(blurredBackdrop), [blurredBackdrop]);
-  const sceneAppearance = {
-    ...appearance,
-    imageSource:
-      appearance.mode === 'color'
-        ? null
-        : sceneBackground.blur > 0
-          ? (blurredBackdrop ?? lyricsBlurredBackdropFallback() ?? backdropImageSource)
-          : backdropImageSource,
-    imageFit: backgroundFit,
-  };
+  const sceneAppearance = applySceneBackdrop(
+    {
+      ...appearance,
+      imageSource: backdropImageSource,
+      imageFit: backgroundFit,
+    },
+    sceneBackground.blur,
+    blurredBackdrop ?? lyricsBlurredBackdropFallback(),
+  );
   const activeDocument = document?.songId === currentTrackId ? document : null;
   const stage = useRef<HTMLElement>(null);
   const transportRef = useRef<LyricsFullscreenTransportHandle>(null);
