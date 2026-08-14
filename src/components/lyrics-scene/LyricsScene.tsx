@@ -24,6 +24,7 @@ type SceneStyle = CSSProperties & {
   '--lyrics-secondary-font-size': string;
   '--lyrics-line-height': number;
   '--lyrics-line-gap': string;
+  '--artwork-influence': string;
 };
 
 function applyTypography(node: HTMLElement, fontScale: number): void {
@@ -58,9 +59,8 @@ function SceneWidget({
       data-selected={selected || undefined}
       data-editor={editor || undefined}
       style={style}
-      onPointerDown={(event) => {
+      onPointerDown={() => {
         if (!editor || !onSelect) return;
-        event.stopPropagation();
         onSelect(id);
       }}
     >
@@ -116,6 +116,7 @@ export function LyricsScene({
     '--lyrics-secondary-font-size': `calc(var(--lyrics-font-size) * 0.42)`,
     '--lyrics-line-height': preset.typography.lineHeight,
     '--lyrics-line-gap': `${lineGapFromLineHeight(preset.typography.lineHeight)}em`,
+    '--artwork-influence': String(scene.background.influence),
     backgroundColor: appearance.baseColor ?? scene.background.fallbackColor,
   } as SceneStyle;
 
@@ -154,7 +155,7 @@ export function LyricsScene({
           style={{
             backgroundImage: `url("${appearance.imageSource}")`,
             backgroundSize: appearance.imageFit,
-            opacity: scene.background.opacity,
+            opacity: scene.background.opacity * scene.background.influence,
             filter: scene.background.blur > 0 ? `blur(${scene.background.blur}px)` : undefined,
             transform: scene.background.blur > 0 ? 'scale(1.5)' : undefined,
           }}

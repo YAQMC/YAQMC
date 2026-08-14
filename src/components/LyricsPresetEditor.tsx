@@ -12,10 +12,13 @@ import { useTranslation } from 'react-i18next';
 import { Pause, Play } from 'lucide-react';
 import {
   applyOverride,
+  clampFollowAnchor,
   clampFontScale,
   clampLineHeight,
   FONT_SCALE_MAX,
   FONT_SCALE_MIN,
+  FOLLOW_ANCHOR_DEFAULT,
+  factoryScene,
   hasBuiltinOverride,
   isBuiltinPresetId,
   LINE_HEIGHT_MAX,
@@ -56,7 +59,7 @@ import { useSafeArtworkSource } from '../application/artwork-source';
 import { logger } from '../application/logger';
 import { useLyricsPresetPreviewStore } from '../application/lyrics-preset-preview';
 import { hydrateLyricsPresetPreview } from '../application/lyrics-preset-preview-hydrate';
-import { usePreferencesStore } from '../application/preferences';
+import { usePreferencesStore, type SecondaryLyricVisibility } from '../application/preferences';
 import { ProviderContext } from '../application/provider-context';
 import { joinArtistNames } from '../utils/format';
 import { LyricsScene } from './lyrics-scene';
@@ -126,6 +129,42 @@ function ComposerRange({
   );
 }
 
+function UnitField({
+  label,
+  value,
+  min = -0.2,
+  max = 1.2,
+  step = 0.01,
+  digits = 3,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  digits?: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="lyrics-preset-editor__select">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={Number(value.toFixed(digits))}
+        aria-label={label}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (Number.isFinite(next)) onChange(next);
+        }}
+      />
+    </label>
+  );
+}
+
 function applyResize(
   start: WidgetTransform,
   handle: ResizeHandle,
@@ -154,11 +193,15 @@ export function LyricsPresetEditor({
 }) {
   const { t } = useTranslation('settings', { keyPrefix: 'lyricsPresets' });
   const { t: appearance } = useTranslation('settings', { keyPrefix: 'appearance' });
+  const { t: lyricsCopy } = useTranslation('settings', { keyPrefix: 'lyrics' });
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const provider = useContext(ProviderContext);
   const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
   const updateLyricsPresets = usePreferencesStore((state) => state.updateLyricsPresets);
+  const translation = usePreferencesStore((state) => state.lyrics.translation);
+  const romanization = usePreferencesStore((state) => state.lyrics.romanization);
+  const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
   const source = resolveLyricsPreset(lyricsPresets, presetId);
   const [draft, setDraft] = useState<LyricsPresetDefinition>(source);
   const [frame, setFrame] = useState<LyricsPreviewFrame>('desktop');
@@ -181,6 +224,8 @@ export function LyricsPresetEditor({
   } | null>(null);
   const sliderSnapshot = useRef<LyricsPresetDefinition | null>(null);
   const draftRef = useRef(draft);
+  const moveRaf = useRef<number | null>(null);
+  const pendingMove = useRef<PointerEvent | null>(null);
   const preview = useLyricsPresetPreviewStore();
   const artworkSrc = useSafeArtworkSource(preview.artworkSrc);
   const builtin = isBuiltinPresetId(presetId);
@@ -189,6 +234,31 @@ export function LyricsPresetEditor({
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  const assignDraft = useCallback((next: LyricsPresetDefinition) => {
+    draftRef.current = next;
+    setDraft(next);
+  }, []);
+
+  const commit = (next: LyricsPresetDefinition, snapshot = draftRef.current) => {
+    if (presetsEqualForHistory(snapshot, next)) {
+      assignDraft(next);
+      return;
+    }
+    setPast((current) => pushComposerHistory(current, snapshot));
+    setFuture([]);
+    assignDraft(next);
+  };
+
+  const beginSlider = () => {
+    sliderSnapshot.current = clonePresetDraft(draftRef.current);
+  };
+
+  const endSlider = () => {
+    if (!sliderSnapshot.current) return;
+    commit(draftRef.current, sliderSnapshot.current);
+    sliderSnapshot.current = null;
+  };
 
   useEffect(() => {
     logger.info('lyrics.composer.open', 'opened lyrics composer', { id: presetId });
@@ -220,30 +290,20 @@ export function LyricsPresetEditor({
     return () => window.cancelAnimationFrame(frameHandle);
   }, [preview.isPlaying]);
 
-  const commit = (next: LyricsPresetDefinition, snapshot = draft) => {
-    if (presetsEqualForHistory(snapshot, next)) {
-      setDraft(next);
-      return;
-    }
-    setPast((current) => pushComposerHistory(current, snapshot));
-    setFuture([]);
-    setDraft(next);
-  };
-
   const undo = () => {
     const snapshot = past.at(-1);
     if (!snapshot) return;
     setPast((current) => current.slice(0, -1));
-    setFuture((current) => [clonePresetDraft(draft), ...current]);
-    setDraft(snapshot);
+    setFuture((current) => [clonePresetDraft(draftRef.current), ...current]);
+    assignDraft(snapshot);
   };
 
   const redo = () => {
     const snapshot = future[0];
     if (!snapshot) return;
     setFuture((current) => current.slice(1));
-    setPast((current) => pushComposerHistory(current, draft));
-    setDraft(snapshot);
+    setPast((current) => pushComposerHistory(current, draftRef.current));
+    assignDraft(snapshot);
   };
 
   useEffect(() => {
@@ -262,7 +322,10 @@ export function LyricsPresetEditor({
         redo();
         return;
       }
-      if (!selectedId || selectedId === 'background' || draft.scene[selectedId].locked) return;
+      if (!selectedId || selectedId === 'background' || draftRef.current.scene[selectedId].locked) {
+        return;
+      }
+      const live = draftRef.current;
       const step = event.shiftKey ? 0.02 : 0.008;
       const delta =
         event.key === 'ArrowLeft'
@@ -277,9 +340,9 @@ export function LyricsPresetEditor({
       if (!delta) return;
       event.preventDefault();
       commit(
-        updateSceneWidget(draft, selectedId, {
-          x: draft.scene[selectedId].x + delta.x,
-          y: draft.scene[selectedId].y + delta.y,
+        updateSceneWidget(live, selectedId, {
+          x: live.scene[selectedId].x + delta.x,
+          y: live.scene[selectedId].y + delta.y,
         }),
       );
     };
@@ -291,7 +354,9 @@ export function LyricsPresetEditor({
     source.name ?? (isPresetNameKey(source.nameKey) ? t(source.nameKey) : t('custom'));
 
   const applyToSlot = () => {
-    updateLyricsPresets((current) => applyOverride(current, presetId, patchFromDefinition(draft)));
+    updateLyricsPresets((current) =>
+      applyOverride(current, presetId, patchFromDefinition(draftRef.current)),
+    );
     logger.info('lyrics.preset.save', 'applied lyrics preset configuration', {
       id: presetId,
       mode: builtin ? 'override' : 'custom',
@@ -304,7 +369,7 @@ export function LyricsPresetEditor({
     const name = newName.trim() || undefined;
     updateLyricsPresets((current) => {
       const created = saveAsNewPreset(current, presetId, {
-        patch: patchFromDefinition(draft),
+        patch: patchFromDefinition(draftRef.current),
         name,
       });
       createdId = created.id;
@@ -321,7 +386,7 @@ export function LyricsPresetEditor({
     let createdId = '';
     updateLyricsPresets((current) => {
       const created = saveAsNewPreset(current, presetId, {
-        patch: patchFromDefinition(draft),
+        patch: patchFromDefinition(draftRef.current),
         name: `${presetLabel} copy`,
       });
       createdId = created.id;
@@ -384,8 +449,8 @@ export function LyricsPresetEditor({
       getPositionMs,
       seek: preview.seek,
       togglePlayback: preview.toggle,
-      translation: 'show',
-      romanization: 'show',
+      translation,
+      romanization,
     }),
     [
       artworkSrc,
@@ -399,6 +464,8 @@ export function LyricsPresetEditor({
       preview.song,
       preview.songId,
       preview.toggle,
+      romanization,
+      translation,
     ],
   );
 
@@ -407,42 +474,78 @@ export function LyricsPresetEditor({
   const sceneRect = () =>
     canvasRef.current?.querySelector('.lyrics-scene')?.getBoundingClientRect();
 
-  const onPointerMove = (event: PointerEvent) => {
-    const current = gesture.current;
-    const rect = sceneRect();
-    if (!current || !rect || rect.width === 0 || rect.height === 0) return;
-    const dx = (event.clientX - current.originX) / rect.width;
-    const dy = (event.clientY - current.originY) / rect.height;
-    const bypass = event.altKey || event.ctrlKey || event.metaKey;
-    if (current.kind === 'move') {
-      const nextBox = {
-        ...current.start,
-        x: current.start.x + dx,
-        y: current.start.y + dy,
-      };
-      const snapped = snapWidgetPosition(
-        nextBox,
-        SCENE_WIDGET_IDS.filter(
-          (id) => id !== 'background' && id !== current.id && draft.scene[id].visible,
-        ).map((id) => draft.scene[id] as WidgetTransform),
-        bypass,
-      );
-      setGuides(snapped.guides);
-      setDraft(updateSceneWidget(draft, current.id, { x: snapped.x, y: snapped.y }));
-    } else if (current.handle) {
-      const resized = applyResize(current.start, current.handle, dx, dy);
-      setDraft(updateSceneWidget(draft, current.id, resized));
-    }
-  };
+  const applyPointerMove = useCallback(
+    (event: PointerEvent) => {
+      const current = gesture.current;
+      const rect = sceneRect();
+      if (!current || !rect || rect.width === 0 || rect.height === 0) return;
+      const dx = (event.clientX - current.originX) / rect.width;
+      const dy = (event.clientY - current.originY) / rect.height;
+      const bypass = event.altKey || event.ctrlKey || event.metaKey;
+      if (current.kind === 'move') {
+        const nextBox = {
+          ...current.start,
+          x: current.start.x + dx,
+          y: current.start.y + dy,
+        };
+        const snapped = snapWidgetPosition(
+          nextBox,
+          SCENE_WIDGET_IDS.filter(
+            (id) => id !== 'background' && id !== current.id && current.snapshot.scene[id].visible,
+          ).map((id) => current.snapshot.scene[id] as WidgetTransform),
+          bypass,
+        );
+        setGuides(snapped.guides);
+        assignDraft(
+          updateSceneWidget(current.snapshot, current.id, { x: snapped.x, y: snapped.y }),
+        );
+      } else if (current.handle) {
+        const resized = applyResize(current.start, current.handle, dx, dy);
+        assignDraft(updateSceneWidget(current.snapshot, current.id, resized));
+      }
+    },
+    [assignDraft],
+  );
 
-  const endGesture = () => {
+  const flushPendingMove = useCallback(() => {
+    if (moveRaf.current !== null) {
+      window.cancelAnimationFrame(moveRaf.current);
+      moveRaf.current = null;
+    }
+    const pending = pendingMove.current;
+    pendingMove.current = null;
+    if (pending) applyPointerMove(pending);
+  }, [applyPointerMove]);
+
+  const onPointerMove = useCallback(
+    (event: PointerEvent) => {
+      pendingMove.current = event;
+      if (moveRaf.current !== null) return;
+      moveRaf.current = window.requestAnimationFrame(() => {
+        moveRaf.current = null;
+        const pending = pendingMove.current;
+        pendingMove.current = null;
+        if (pending) applyPointerMove(pending);
+      });
+    },
+    [applyPointerMove],
+  );
+
+  const endGestureRef = useRef<() => void>(() => {});
+
+  const onPointerUp = useCallback(() => {
+    endGestureRef.current();
+  }, []);
+
+  const endGesture = useCallback(() => {
+    flushPendingMove();
     const current = gesture.current;
     if (!current) return;
     gesture.current = null;
     setEditorGesture(false);
     setGuides([]);
     window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', endGesture);
+    window.removeEventListener('pointerup', onPointerUp);
     if (!presetsEqualForHistory(current.snapshot, draftRef.current)) {
       setPast((history) => pushComposerHistory(history, current.snapshot));
       setFuture([]);
@@ -452,40 +555,55 @@ export function LyricsPresetEditor({
         { id: current.id },
       );
     }
-  };
+  }, [flushPendingMove, onPointerMove, onPointerUp]);
+
+  useEffect(() => {
+    endGestureRef.current = endGesture;
+  }, [endGesture]);
 
   const startMove = (id: Exclude<SceneWidgetId, 'background'>, event: ReactPointerEvent) => {
-    if (draft.scene[id].locked) return;
+    const live = draftRef.current;
+    if (live.scene[id].locked) return;
     gesture.current = {
       kind: 'move',
       id,
-      start: { ...draft.scene[id] },
-      snapshot: clonePresetDraft(draft),
+      start: { ...live.scene[id] },
+      snapshot: clonePresetDraft(live),
       originX: event.clientX,
       originY: event.clientY,
     };
     setEditorGesture(id === 'lyrics');
     window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', endGesture);
+    window.addEventListener('pointerup', onPointerUp);
   };
 
   const startResize = (handle: ResizeHandle, event: ReactPointerEvent) => {
-    if (!selectedId || selectedId === 'background' || draft.scene[selectedId].locked) return;
+    const live = draftRef.current;
+    if (!selectedId || selectedId === 'background' || live.scene[selectedId].locked) return;
     event.preventDefault();
     event.stopPropagation();
     gesture.current = {
       kind: 'resize',
       id: selectedId,
       handle,
-      start: { ...draft.scene[selectedId] },
-      snapshot: clonePresetDraft(draft),
+      start: { ...live.scene[selectedId] },
+      snapshot: clonePresetDraft(live),
       originX: event.clientX,
       originY: event.clientY,
     };
     setEditorGesture(selectedId === 'lyrics');
     window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', endGesture);
+    window.addEventListener('pointerup', onPointerUp);
   };
+
+  useEffect(
+    () => () => {
+      if (moveRaf.current !== null) window.cancelAnimationFrame(moveRaf.current);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    },
+    [onPointerMove, onPointerUp],
+  );
 
   return (
     <dialog
@@ -644,17 +762,15 @@ export function LyricsPresetEditor({
                 step={0.01}
                 value={draft.typography.fontScale}
                 output={`${Math.round(draft.typography.fontScale * 100)}%`}
-                onGestureStart={() => {
-                  sliderSnapshot.current = clonePresetDraft(draft);
-                }}
-                onGestureEnd={() => {
-                  if (sliderSnapshot.current) commit(draft, sliderSnapshot.current);
-                  sliderSnapshot.current = null;
-                }}
+                onGestureStart={beginSlider}
+                onGestureEnd={endSlider}
                 onChange={(value) =>
-                  setDraft({
-                    ...draft,
-                    typography: { ...draft.typography, fontScale: clampFontScale(value) },
+                  assignDraft({
+                    ...draftRef.current,
+                    typography: {
+                      ...draftRef.current.typography,
+                      fontScale: clampFontScale(value),
+                    },
                   })
                 }
                 onReset={() =>
@@ -671,17 +787,15 @@ export function LyricsPresetEditor({
                 step={0.01}
                 value={draft.typography.lineHeight}
                 output={draft.typography.lineHeight.toFixed(2)}
-                onGestureStart={() => {
-                  sliderSnapshot.current = clonePresetDraft(draft);
-                }}
-                onGestureEnd={() => {
-                  if (sliderSnapshot.current) commit(draft, sliderSnapshot.current);
-                  sliderSnapshot.current = null;
-                }}
+                onGestureStart={beginSlider}
+                onGestureEnd={endSlider}
                 onChange={(value) =>
-                  setDraft({
-                    ...draft,
-                    typography: { ...draft.typography, lineHeight: clampLineHeight(value) },
+                  assignDraft({
+                    ...draftRef.current,
+                    typography: {
+                      ...draftRef.current.typography,
+                      lineHeight: clampLineHeight(value),
+                    },
                   })
                 }
                 onReset={() =>
@@ -744,15 +858,12 @@ export function LyricsPresetEditor({
                     value={draft.scene[selectedId].zIndex}
                     output={String(draft.scene[selectedId].zIndex)}
                     onChange={(value) =>
-                      setDraft(updateSceneWidget(draft, selectedId, { zIndex: value }))
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, selectedId, { zIndex: value }),
+                      )
                     }
-                    onGestureStart={() => {
-                      sliderSnapshot.current = clonePresetDraft(draft);
-                    }}
-                    onGestureEnd={() => {
-                      if (sliderSnapshot.current) commit(draft, sliderSnapshot.current);
-                      sliderSnapshot.current = null;
-                    }}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
                   />
                 </>
               )}
@@ -766,7 +877,7 @@ export function LyricsPresetEditor({
                       onChange={(event) =>
                         commit(
                           updateSceneWidget(
-                            draft,
+                            draftRef.current,
                             selectedId as Exclude<SceneWidgetId, 'background'>,
                             {
                               anchor: event.target.value as WidgetAnchor,
@@ -782,13 +893,69 @@ export function LyricsPresetEditor({
                       ))}
                     </select>
                   </label>
+                  <UnitField
+                    label={t('positionX')}
+                    value={movable.x}
+                    onChange={(value) =>
+                      commit(
+                        updateSceneWidget(
+                          draftRef.current,
+                          selectedId as Exclude<SceneWidgetId, 'background'>,
+                          { x: value },
+                        ),
+                      )
+                    }
+                  />
+                  <UnitField
+                    label={t('positionY')}
+                    value={movable.y}
+                    onChange={(value) =>
+                      commit(
+                        updateSceneWidget(
+                          draftRef.current,
+                          selectedId as Exclude<SceneWidgetId, 'background'>,
+                          { y: value },
+                        ),
+                      )
+                    }
+                  />
+                  <UnitField
+                    label={t('width')}
+                    value={movable.width}
+                    min={0.04}
+                    max={1.2}
+                    onChange={(value) =>
+                      commit(
+                        updateSceneWidget(
+                          draftRef.current,
+                          selectedId as Exclude<SceneWidgetId, 'background'>,
+                          { width: value },
+                        ),
+                      )
+                    }
+                  />
+                  <UnitField
+                    label={t('height')}
+                    value={movable.height}
+                    min={0.04}
+                    max={1.2}
+                    onChange={(value) =>
+                      commit(
+                        updateSceneWidget(
+                          draftRef.current,
+                          selectedId as Exclude<SceneWidgetId, 'background'>,
+                          { height: value },
+                        ),
+                      )
+                    }
+                  />
                   <button
                     type="button"
                     className="button button--quiet"
                     onClick={() =>
                       commit(
                         resetSceneWidgetPosition(
-                          draft,
+                          draftRef.current,
                           selectedId as Exclude<SceneWidgetId, 'background'>,
                         ),
                       )
@@ -802,30 +969,110 @@ export function LyricsPresetEditor({
                 <button
                   type="button"
                   className="button button--quiet"
-                  onClick={() => commit(resetSceneWidget(draft, selectedId))}
+                  onClick={() => commit(resetSceneWidget(draftRef.current, selectedId))}
                 >
                   {t('resetWidget')}
                 </button>
               )}
               {selectedId === 'artwork' && (
-                <label className="lyrics-preset-editor__select">
-                  <span>{t('artworkRenderer')}</span>
-                  <select
-                    value={draft.scene.artwork.renderer}
-                    aria-label={t('artworkRenderer')}
-                    onChange={(event) =>
+                <>
+                  <label className="lyrics-preset-editor__select">
+                    <span>{t('artworkRenderer')}</span>
+                    <select
+                      value={draft.scene.artwork.renderer}
+                      aria-label={t('artworkRenderer')}
+                      onChange={(event) =>
+                        commit(
+                          updateSceneWidget(draftRef.current, 'artwork', {
+                            renderer: event.target.value as LyricsArtworkRenderer,
+                          }),
+                        )
+                      }
+                    >
+                      <option value="square">square</option>
+                      <option value="rounded">rounded</option>
+                      <option value="vinyl">vinyl</option>
+                    </select>
+                  </label>
+                  <ComposerRange
+                    label={t('artworkOpacity')}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={draft.scene.artwork.opacity}
+                    output={`${Math.round(draft.scene.artwork.opacity * 100)}%`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, 'artwork', { opacity: value }),
+                      )
+                    }
+                    onReset={() =>
+                      commit(updateSceneWidget(draftRef.current, 'artwork', { opacity: 1 }))
+                    }
+                  />
+                  <ComposerRange
+                    label={t('artworkRadius')}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={draft.scene.artwork.radius}
+                    output={`${Math.round(draft.scene.artwork.radius * 100)}%`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(updateSceneWidget(draftRef.current, 'artwork', { radius: value }))
+                    }
+                    onReset={() =>
                       commit(
-                        updateSceneWidget(draft, 'artwork', {
-                          renderer: event.target.value as LyricsArtworkRenderer,
+                        updateSceneWidget(draftRef.current, 'artwork', {
+                          radius: factoryScene(draftRef.current.layout).artwork.radius,
                         }),
                       )
                     }
-                  >
-                    <option value="square">square</option>
-                    <option value="rounded">rounded</option>
-                    <option value="vinyl">vinyl</option>
-                  </select>
-                </label>
+                  />
+                </>
+              )}
+              {selectedId === 'metadata' && (
+                <>
+                  <ComposerRange
+                    label={t('titleScale')}
+                    min={0.4}
+                    max={1.2}
+                    step={0.01}
+                    value={draft.scene.metadata.titleScale}
+                    output={`${Math.round(draft.scene.metadata.titleScale * 100)}%`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, 'metadata', { titleScale: value }),
+                      )
+                    }
+                    onReset={() =>
+                      commit(updateSceneWidget(draftRef.current, 'metadata', { titleScale: 1 }))
+                    }
+                  />
+                  <ComposerRange
+                    label={t('artistScale')}
+                    min={0.4}
+                    max={1.2}
+                    step={0.01}
+                    value={draft.scene.metadata.artistScale}
+                    output={`${Math.round(draft.scene.metadata.artistScale * 100)}%`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, 'metadata', { artistScale: value }),
+                      )
+                    }
+                    onReset={() =>
+                      commit(updateSceneWidget(draftRef.current, 'metadata', { artistScale: 0.72 }))
+                    }
+                  />
+                </>
               )}
               {(selectedId === 'lyrics' ||
                 selectedId === 'metadata' ||
@@ -843,7 +1090,7 @@ export function LyricsPresetEditor({
                     aria-label={t('align')}
                     onChange={(event) =>
                       commit(
-                        updateSceneWidget(draft, selectedId, {
+                        updateSceneWidget(draftRef.current, selectedId, {
                           align: event.target.value as LyricsAlign,
                         }),
                       )
@@ -855,6 +1102,70 @@ export function LyricsPresetEditor({
                   </select>
                 </label>
               )}
+              {selectedId === 'lyrics' && (
+                <>
+                  <ComposerRange
+                    label={t('followAnchor')}
+                    min={0.15}
+                    max={0.85}
+                    step={0.01}
+                    value={draft.scene.lyrics.followAnchor}
+                    output={`${Math.round(draft.scene.lyrics.followAnchor * 100)}%`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, 'lyrics', {
+                          followAnchor: clampFollowAnchor(value),
+                        }),
+                      )
+                    }
+                    onReset={() =>
+                      commit(
+                        updateSceneWidget(draftRef.current, 'lyrics', {
+                          followAnchor: FOLLOW_ANCHOR_DEFAULT,
+                        }),
+                      )
+                    }
+                  />
+                  <label className="lyrics-preset-editor__select">
+                    <span>{lyricsCopy('translation')}</span>
+                    <select
+                      value={translation}
+                      aria-label={lyricsCopy('visibilityLabel', {
+                        name: lyricsCopy('translation'),
+                      })}
+                      onChange={(event) =>
+                        updateLyrics({
+                          translation: event.target.value as SecondaryLyricVisibility,
+                        })
+                      }
+                    >
+                      <option value="auto">{lyricsCopy('auto')}</option>
+                      <option value="show">{lyricsCopy('show')}</option>
+                      <option value="hide">{lyricsCopy('hide')}</option>
+                    </select>
+                  </label>
+                  <label className="lyrics-preset-editor__select">
+                    <span>{lyricsCopy('romanization')}</span>
+                    <select
+                      value={romanization}
+                      aria-label={lyricsCopy('visibilityLabel', {
+                        name: lyricsCopy('romanization'),
+                      })}
+                      onChange={(event) =>
+                        updateLyrics({
+                          romanization: event.target.value as SecondaryLyricVisibility,
+                        })
+                      }
+                    >
+                      <option value="auto">{lyricsCopy('auto')}</option>
+                      <option value="show">{lyricsCopy('show')}</option>
+                      <option value="hide">{lyricsCopy('hide')}</option>
+                    </select>
+                  </label>
+                </>
+              )}
               {selectedId === 'background' && (
                 <>
                   <label className="lyrics-preset-editor__select">
@@ -864,7 +1175,7 @@ export function LyricsPresetEditor({
                       aria-label={t('backgroundKind')}
                       onChange={(event) =>
                         commit(
-                          updateSceneWidget(draft, 'background', {
+                          updateSceneWidget(draftRef.current, 'background', {
                             source: event.target.value as LyricsBackgroundKind,
                           }),
                         )
@@ -883,13 +1194,75 @@ export function LyricsPresetEditor({
                       aria-label={t('fallbackColor')}
                       onChange={(event) =>
                         commit(
-                          updateSceneWidget(draft, 'background', {
+                          updateSceneWidget(draftRef.current, 'background', {
                             fallbackColor: event.target.value.toUpperCase(),
                           }),
                         )
                       }
                     />
                   </label>
+                  <ComposerRange
+                    label={t('backgroundBlur')}
+                    min={0}
+                    max={64}
+                    step={1}
+                    value={draft.scene.background.blur}
+                    output={`${Math.round(draft.scene.background.blur)}px`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, 'background', { blur: value }),
+                      )
+                    }
+                    onReset={() =>
+                      commit(
+                        updateSceneWidget(draftRef.current, 'background', {
+                          blur: factoryScene(draftRef.current.layout).background.blur,
+                        }),
+                      )
+                    }
+                  />
+                  <ComposerRange
+                    label={t('backgroundInfluence')}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={draft.scene.background.influence}
+                    output={`${Math.round(draft.scene.background.influence * 100)}%`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, 'background', { influence: value }),
+                      )
+                    }
+                    onReset={() =>
+                      commit(
+                        updateSceneWidget(draftRef.current, 'background', {
+                          influence: factoryScene(draftRef.current.layout).background.influence,
+                        }),
+                      )
+                    }
+                  />
+                  <ComposerRange
+                    label={t('backgroundOpacity')}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={draft.scene.background.opacity}
+                    output={`${Math.round(draft.scene.background.opacity * 100)}%`}
+                    onGestureStart={beginSlider}
+                    onGestureEnd={endSlider}
+                    onChange={(value) =>
+                      assignDraft(
+                        updateSceneWidget(draftRef.current, 'background', { opacity: value }),
+                      )
+                    }
+                    onReset={() =>
+                      commit(updateSceneWidget(draftRef.current, 'background', { opacity: 1 }))
+                    }
+                  />
                 </>
               )}
             </div>

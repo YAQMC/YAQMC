@@ -1119,7 +1119,9 @@
   font-size: var(--text-sm);
 }
 
-.lyrics-preset-editor__select select {
+.lyrics-preset-editor__select select,
+.lyrics-preset-editor__select input[type='number'],
+.lyrics-preset-editor__select input:not([type]) {
   height: 36px;
   padding: 0 10px;
   border: 1px solid var(--border-strong);
