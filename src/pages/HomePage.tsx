@@ -72,7 +72,7 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
             <p className="eyebrow">{t('recentEyebrow')}</p>
             <h2>{t('recent')}</h2>
           </div>
-          <button type="button" onClick={() => onNavigate({ page: 'library' })}>
+          <button type="button" onClick={() => onNavigate({ page: 'account-recent' })}>
             {t('viewAll')} <ArrowRight size={14} />
           </button>
         </div>

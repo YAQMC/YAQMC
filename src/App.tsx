@@ -174,7 +174,7 @@ export default function App() {
 
   useEffect(() => {
     if (!accountProvider) return;
-    if (route.page === 'library' || route.page === 'account-playlists') {
+    if (route.page === 'account-playlists') {
       void loadPlaylists(accountProvider, true);
     } else if (route.page === 'favorites') {
       void loadFavorites(accountProvider, true);
@@ -314,7 +314,6 @@ export default function App() {
   if (route.page === 'settings') {
     pageContent = <SettingsPage />;
   } else if (
-    route.page === 'library' ||
     route.page === 'favorites' ||
     route.page === 'account-playlists' ||
     route.page === 'account-recent'
@@ -322,13 +321,11 @@ export default function App() {
     pageContent = (
       <LibraryPage
         view={
-          route.page === 'library'
-            ? 'summary'
-            : route.page === 'account-playlists'
-              ? 'playlists'
-              : route.page === 'account-recent'
-                ? 'recent'
-                : 'favorites'
+          route.page === 'account-playlists'
+            ? 'playlists'
+            : route.page === 'account-recent'
+              ? 'recent'
+              : 'favorites'
         }
         snapshot={accountSnapshot}
         favorites={favorites}

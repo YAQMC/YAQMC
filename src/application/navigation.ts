@@ -4,7 +4,6 @@ export type AppRoute =
   | { page: 'home' }
   | { page: 'search'; query?: string }
   | { page: 'explore' }
-  | { page: 'library' }
   | { page: 'favorites' }
   | { page: 'account-playlists' }
   | { page: 'account-playlist'; playlist: AccountPlaylistSummary }
