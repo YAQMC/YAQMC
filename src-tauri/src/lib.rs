@@ -14,6 +14,7 @@ mod media;
 mod platform;
 mod playback_session;
 mod player;
+mod plugin;
 mod qmc;
 mod qqmusic;
 mod storage;
@@ -128,6 +129,16 @@ pub fn run() {
             let data_root = app.path().app_data_dir()?;
             let cache_root = app.path().app_cache_dir()?;
             let storage = Arc::new(StorageService::open(data_root.clone(), cache_root.clone())?);
+            let plugins = match plugin::ExtensionHost::open(data_root.join("plugins")) {
+                Ok(host) => Arc::new(host),
+                Err(error) => {
+                    tracing::error!(target: "plugin.host", error = %error, "plugin host could not open");
+                    Arc::new(
+                        plugin::ExtensionHost::open(std::env::temp_dir().join("YAQMC/plugins"))
+                            .map_err(|error| std::io::Error::other(error.to_string()))?,
+                    )
+                }
+            };
             let level = std::env::var("YAQMC_LOG_LEVEL")
                 .ok()
                 .and_then(|value| logging::LogLevel::parse(&value))
@@ -294,6 +305,7 @@ pub fn run() {
             app.manage(system_media);
             app.manage(desktop_integration);
             app.manage(storage);
+            app.manage(plugins);
             app.manage(Arc::clone(&logging_handle));
             app.manage(Arc::clone(&qq_music));
             let account_restore = Arc::clone(&qq_music);
@@ -397,6 +409,19 @@ pub fn run() {
             commands::diagnostics_log_frontend,
             commands::issue_reporter_preview,
             commands::issue_reporter_validate_url,
+            plugin::commands::plugin_list,
+            plugin::commands::plugin_inspect_path,
+            plugin::commands::plugin_install,
+            plugin::commands::plugin_set_enabled,
+            plugin::commands::plugin_uninstall,
+            plugin::commands::plugin_set_safe_mode,
+            plugin::commands::plugin_set_developer_mode,
+            plugin::commands::plugin_active_resources,
+            plugin::commands::plugin_diagnostics,
+            plugin::commands::plugin_runtime_start,
+            plugin::commands::plugin_runtime_stop,
+            plugin::commands::plugin_mark_failed,
+            plugin::commands::plugin_bridge,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build desktop application");
@@ -412,6 +437,9 @@ pub fn run() {
             let _ = storage.save_queue(&snapshot);
             player.stop_clock();
             let api = Arc::clone(app_handle.state::<Arc<LocalApiService>>().inner());
+            if let Some(host) = app_handle.try_state::<Arc<plugin::ExtensionHost>>() {
+                host.mark_clean_exit();
+            }
             tauri::async_runtime::block_on(async move {
                 let _ = api.stop().await;
             });
@@ -479,9 +507,10 @@ mod handler_registration_tests {
             .expect("generate_handler block");
         let build = include_str!("../build.rs");
         let commands = handler.lines().filter_map(|line| {
-            line.trim()
+            let trimmed = line.trim().trim_end_matches(',');
+            trimmed
                 .strip_prefix("commands::")
-                .map(|command| command.trim_end_matches(','))
+                .or_else(|| trimmed.strip_prefix("plugin::commands::"))
         });
 
         for command in commands {

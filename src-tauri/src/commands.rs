@@ -167,6 +167,10 @@ async fn assemble_snapshot(
         build_app_section(app),
     );
     snapshot.lyrics_preset = request.lyrics_preset;
+    snapshot.plugins = app
+        .try_state::<Arc<crate::plugin::ExtensionHost>>()
+        .map(|host| host.diagnostics())
+        .unwrap_or_default();
     snapshot
 }
 

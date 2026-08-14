@@ -267,6 +267,15 @@ fn compose_body(draft: &IssueDraft, snapshot: &DiagnosticsSnapshot) -> String {
         snapshot.session_id
     )
     .ok();
+    if !snapshot.plugins.is_empty() {
+        let summary = snapshot
+            .plugins
+            .iter()
+            .map(|plugin| format!("{} {} ({:?})", plugin.id, plugin.version, plugin.status))
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(&mut body, "- Plugins: {summary}").ok();
+    }
     if let Some(preset) = &snapshot.lyrics_preset {
         writeln!(
             &mut body,
