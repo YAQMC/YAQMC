@@ -212,6 +212,7 @@ export const PROVIDER_ERROR_CODES = [
   'schema-changed',
   'song-unavailable',
   'malformed-response',
+  'unavailable',
   'provider-failure',
   'cancelled',
   'not-found',

@@ -220,6 +220,8 @@ pub enum QQMusicError {
     AuthorizationRejected,
     #[error("the QQ Music protocol response was invalid")]
     Protocol,
+    #[error("the requested QQ Music playlist is not accessible to this account")]
+    Unavailable,
     #[error("the QQ Music operation outcome is unknown")]
     OutcomeUnknown,
     #[error("the QQ Music operation was cancelled")]
@@ -244,6 +246,7 @@ impl QQMusicError {
             Self::RateLimited => ProviderErrorCode::RateLimited,
             Self::SchemaChanged => ProviderErrorCode::SchemaChanged,
             Self::MalformedResponse | Self::Protocol => ProviderErrorCode::MalformedResponse,
+            Self::Unavailable => ProviderErrorCode::Unavailable,
             Self::NotFound => ProviderErrorCode::SongUnavailable,
             Self::InvalidPlaylistIdentifier => ProviderErrorCode::InvalidPlaylistIdentifier,
             Self::UnsupportedAccountCollection => ProviderErrorCode::UnsupportedAccountCollection,
@@ -1191,6 +1194,7 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
         QQMusicError::EntitlementUnknown => PlaybackSourceError::EntitlementUnknown,
         QQMusicError::ClientUnsupported => PlaybackSourceError::DecoderUnsupported,
         QQMusicError::NotFound => PlaybackSourceError::TrackUnavailable,
+        QQMusicError::Unavailable => PlaybackSourceError::TrackUnavailable,
         QQMusicError::SchemaChanged
         | QQMusicError::MalformedResponse
         | QQMusicError::InvalidRequest

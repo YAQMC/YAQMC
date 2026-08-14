@@ -139,6 +139,7 @@ export const zhCN = {
         network: '暂时无法连接 QQ 音乐。',
         protocol: 'QQ 音乐返回了无法识别的账号数据。',
         unsupported: '当前未开放此账号资源。',
+        unavailable: '此歌单对当前账号不可访问。',
         unknown: '无法加载账号音乐库。',
       },
       tier: {

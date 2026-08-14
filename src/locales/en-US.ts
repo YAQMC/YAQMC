@@ -133,6 +133,7 @@ export const enUS = {
         network: 'QQ Music could not be reached.',
         protocol: 'QQ Music returned an unexpected account response.',
         unsupported: 'This account resource is not currently advertised.',
+        unavailable: 'This playlist is not accessible to your account.',
         unknown: 'The account library could not be loaded.',
       },
       tier: {

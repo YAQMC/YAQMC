@@ -27,7 +27,12 @@ import {
 export type AccountRuntimeError =
   'network' | 'authorization' | 'secure-store' | 'protocol' | 'unknown';
 
-export type LibraryResourceError = 'network' | 'protocol' | 'unsupported' | 'unknown';
+export type LibraryResourceError =
+  | 'network'
+  | 'protocol'
+  | 'unsupported'
+  | 'unavailable'
+  | 'unknown';
 
 interface LoadedLibraryResource<T> {
   data: T;
@@ -599,6 +604,7 @@ function classifyLibraryFailure(
     return 'reauthentication-required';
   }
   if (code === 'offline' || code === 'timeout' || code === 'rate-limited') return 'network';
+  if (code === 'unavailable') return 'unavailable';
   if (
     code === 'schema-changed' ||
     code === 'malformed-response' ||
@@ -854,7 +860,7 @@ export function accountPlaylistDetailToPlaylist(detail: AccountPlaylistDetail): 
     owner: detail.summary.owner,
     artwork: detail.summary.artwork,
     updatedLabel:
-      detail.summary.updatedAtMs === null
+      detail.summary.updatedAtMs === null || detail.summary.updatedAtMs === 0
         ? 'QQ Music'
         : String(new Date(detail.summary.updatedAtMs).getUTCFullYear()),
     tracks: detail.tracks.items,
