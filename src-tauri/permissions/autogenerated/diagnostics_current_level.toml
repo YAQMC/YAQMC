@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-diagnostics-current-level"
+description = "Enables the diagnostics_current_level command without any pre-configured scope."
+commands.allow = ["diagnostics_current_level"]
+
+[[permission]]
+identifier = "deny-diagnostics-current-level"
+description = "Denies the diagnostics_current_level command without any pre-configured scope."
+commands.deny = ["diagnostics_current_level"]
