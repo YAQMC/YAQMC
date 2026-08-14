@@ -20,6 +20,8 @@ plans under `docs/plans/` and `docs/superpowers/` are historical development rec
 - [Linux runtime](linux.md), [Linux graphics](linux-graphics.md), and
   [platform integration](platform-integration.md)
 - [Local API](local-api.md) and its [OpenAPI 3.1 schema](local-api.openapi.yaml)
+- [Logging](logging.md), [diagnostics](diagnostics.md),
+  [Issue reporting](issue-reporting.md), and [security & privacy](security.md)
 
 ## Acceptance records
 

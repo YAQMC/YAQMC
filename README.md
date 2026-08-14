@@ -106,7 +106,9 @@ Linux 用户：
 ### 为什么显示“音乐暂时不可用”？
 
 先确认网络能够访问 QQ 音乐。访客目录和账号恢复是两条独立路径：即使没有登录，公开目录也应该
-能够加载。如果持续失败，请附上设置页导出的诊断信息提交 Issue，不要公开上传 Cookie 或账号凭据。
+能够加载。如果持续失败，推荐通过 **设置 → 关于 → 报告问题** 打开内置的 Issue Reporter：
+应用会自动预填技术信息，并可选生成脱敏诊断包 ZIP，你只需在浏览器里核对并提交 GitHub Issue。
+详细流程见 [GitHub Issue 报告文档](docs/zh-CN/issue-reporting.md)。不要公开上传 Cookie 或账号凭据。
 
 ### 为什么登录后没有头像或昵称？
 
@@ -133,7 +135,10 @@ chmod +x YAQMC*.AppImage
 - 账号命令只允许主窗口调用，歌词窗口没有账号权限。
 - OAuth 窗口只允许经过审核的腾讯域名和回调地址。
 - 跨域重定向会移除认证信息；写操作不会自动重试。
-- 日志和诊断工具会检查常见的 Cookie、token 与账号秘密形态。
+- 日志与诊断包在写入磁盘前就会脱敏 Cookie、token、签名 URL 与账号秘密；导出诊断包时还会
+  再扫一次。详见 [安全与隐私](docs/zh-CN/security.md)。
+- 报告问题走内置 Reporter，仅在浏览器打开预填的 GitHub Issue；YAQMC 不索要令牌，也不会自动
+  提交（[GitHub Issue 报告](docs/zh-CN/issue-reporting.md)）。
 - 本地 API 默认关闭，并且只绑定 `127.0.0.1`。
 
 ## 项目状态
@@ -217,6 +222,8 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 - [账号资料库](docs/zh-CN/account-library.md)
 - [歌词窗口](docs/zh-CN/lyrics-surfaces.md)
 - [本地 API](docs/zh-CN/local-api.md)
+- [日志系统](docs/zh-CN/logging.md)与[诊断快照与诊断包](docs/zh-CN/diagnostics.md)
+- [GitHub Issue 报告](docs/zh-CN/issue-reporting.md)
 - [第三方许可证](THIRD_PARTY_NOTICES.md)与[鸣谢](ACKNOWLEDGEMENTS.md)
 - [官方客户端互操作证据](docs/zh-CN/qqmusic-official-interoperability.md)、
   [音质分类](docs/zh-CN/audio-quality.md)与[外部 URI 安全](docs/zh-CN/deep-link.md)

@@ -173,8 +173,11 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [streaming](docs/streaming.md), [platform integration](docs/platform-integration.md),
 [Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),
 [authentication](docs/authentication.md), [account library](docs/account-library.md),
-[entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md), and
-[local API](docs/local-api.md), or the complete [English documentation index](docs/README.md). Community guidance is
+[entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md),
+[local API](docs/local-api.md), [logging](docs/logging.md),
+[diagnostics](docs/diagnostics.md), [Issue reporting](docs/issue-reporting.md), and
+[security & privacy](docs/security.md), or the complete
+[English documentation index](docs/README.md). Community guidance is
 in [CONTRIBUTING-EN.md](CONTRIBUTING-EN.md), [SUPPORT-EN.md](SUPPORT-EN.md),
 [SECURITY-EN.md](SECURITY-EN.md), and [CODE_OF_CONDUCT-EN.md](CODE_OF_CONDUCT-EN.md). Third-party copyright and
 license texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
