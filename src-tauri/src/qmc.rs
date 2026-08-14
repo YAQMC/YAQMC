@@ -31,7 +31,8 @@ impl EncryptedMediaKey {
             return Err(QmcError::InvalidKey);
         }
         Ok(Self(Zeroizing::new(value.to_owned())))
-    }    fn expose(&self) -> &str {
+    }
+    fn expose(&self) -> &str {
         self.0.as_str()
     }
 
@@ -223,10 +224,26 @@ fn decrypt_tencent_tea(input: &[u8], key: &[u8; 16]) -> Result<Zeroizing<Vec<u8>
     }
 
     let tea_key = [
-        u32::from_be_bytes(key[0..4].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
-        u32::from_be_bytes(key[4..8].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
-        u32::from_be_bytes(key[8..12].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
-        u32::from_be_bytes(key[12..16].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?),
+        u32::from_be_bytes(
+            key[0..4]
+                .try_into()
+                .map_err(|_| QmcError::InvalidV2Wrapper)?,
+        ),
+        u32::from_be_bytes(
+            key[4..8]
+                .try_into()
+                .map_err(|_| QmcError::InvalidV2Wrapper)?,
+        ),
+        u32::from_be_bytes(
+            key[8..12]
+                .try_into()
+                .map_err(|_| QmcError::InvalidV2Wrapper)?,
+        ),
+        u32::from_be_bytes(
+            key[12..16]
+                .try_into()
+                .map_err(|_| QmcError::InvalidV2Wrapper)?,
+        ),
     ];
     let mut block = tea_decrypt_block(&input[..8], &tea_key)?;
     let padding = usize::from(block[0] & 0x07);
@@ -238,7 +255,9 @@ fn decrypt_tencent_tea(input: &[u8], key: &[u8; 16]) -> Result<Zeroizing<Vec<u8>
     };
     let mut output = Zeroizing::new(vec![0_u8; output_length]);
     let mut previous_cipher = [0_u8; 8];
-    let mut current_cipher: [u8; 8] = input[..8].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?;
+    let mut current_cipher: [u8; 8] = input[..8]
+        .try_into()
+        .map_err(|_| QmcError::InvalidV2Wrapper)?;
     let mut input_position = 8_usize;
     let mut block_position = 1 + padding;
 
@@ -315,8 +334,16 @@ fn tea_decrypt_block(input: &[u8], key: &[u32; 4]) -> Result<[u8; 8], QmcError> 
     if input.len() != 8 {
         return Err(QmcError::InvalidV2Wrapper);
     }
-    let mut left = u32::from_be_bytes(input[..4].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?);
-    let mut right = u32::from_be_bytes(input[4..].try_into().map_err(|_| QmcError::InvalidV2Wrapper)?);
+    let mut left = u32::from_be_bytes(
+        input[..4]
+            .try_into()
+            .map_err(|_| QmcError::InvalidV2Wrapper)?,
+    );
+    let mut right = u32::from_be_bytes(
+        input[4..]
+            .try_into()
+            .map_err(|_| QmcError::InvalidV2Wrapper)?,
+    );
     let delta = 0x9e37_79b9_u32;
     let mut sum = delta.wrapping_mul(16);
     for _ in 0..16 {
