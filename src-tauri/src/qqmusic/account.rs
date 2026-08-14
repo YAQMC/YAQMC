@@ -11,8 +11,9 @@ use super::{
         CompletedResultCache, OpaqueCursorRegistry, ProviderTrackRegistry, ACCOUNT_CACHE_KIND,
     },
     clock::Clock,
-    color_for, normalize_new_song, normalize_old_song, playlist_id, stable_component,
+    color_for, normalize_new_song, normalize_old_song, playlist_id,
     redaction::redact_json,
+    stable_component,
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
@@ -2551,33 +2552,32 @@ impl QQMusicAccountService {
                 return self.stale_page_or_error(&context, cached, error).await;
             }
         };
-        let mut normalized =
-            normalize_playlist_page_response_with_ownership(
-                &response.body,
+        let mut normalized = normalize_playlist_page_response_with_ownership(
+            &response.body,
+            offset,
+            if collected_phase {
+                PlaylistOwnership::Collected
+            } else {
+                PlaylistOwnership::Owned
+            },
+            if collected_phase {
+                &["v_list", "v_playlist", "playlist"]
+            } else {
+                &["v_playlist", "playlist"]
+            },
+        )
+        .map_err(|error| {
+            tracing::warn!(
+                target: "qqmusic.playlist",
+                cursor = ?cursor,
                 offset,
-                if collected_phase {
-                    PlaylistOwnership::Collected
-                } else {
-                    PlaylistOwnership::Owned
-                },
-                if collected_phase {
-                    &["v_list", "v_playlist", "playlist"]
-                } else {
-                    &["v_playlist", "playlist"]
-                },
-            )
-            .map_err(|error| {
-                tracing::warn!(
-                    target: "qqmusic.playlist",
-                    cursor = ?cursor,
-                    offset,
-                    collected_phase,
-                    error = %error,
-                    response = %response_preview(&response.body),
-                    "account playlist list response failed to normalize"
-                );
-                error
-            })?;
+                collected_phase,
+                error = %error,
+                response = %response_preview(&response.body),
+                "account playlist list response failed to normalize"
+            );
+            error
+        })?;
         if collected_phase {
             normalized.next_provider_cursor = normalized
                 .next_provider_cursor
@@ -2775,19 +2775,21 @@ impl QQMusicAccountService {
             ),
             _ => {
                 let (mut summary, page) =
-                    normalize_playlist_detail_response(&response.body, offset).map_err(|error| {
-                        tracing::warn!(
-                            target: "qqmusic.playlist",
-                            playlist_id = %playlist_id,
-                            reference = ?reference,
-                            cursor = ?cursor,
-                            offset,
-                            error = %error,
-                            response = %response_preview(&response.body),
-                            "account playlist detail response failed to normalize"
-                        );
-                        error
-                    })?;
+                    normalize_playlist_detail_response(&response.body, offset).map_err(
+                        |error| {
+                            tracing::warn!(
+                                target: "qqmusic.playlist",
+                                playlist_id = %playlist_id,
+                                reference = ?reference,
+                                cursor = ?cursor,
+                                offset,
+                                error = %error,
+                                response = %response_preview(&response.body),
+                                "account playlist detail response failed to normalize"
+                            );
+                            error
+                        },
+                    )?;
                 if summary.reference.generic_tid()? != reference.generic_tid()? {
                     tracing::warn!(
                         target: "qqmusic.playlist",
