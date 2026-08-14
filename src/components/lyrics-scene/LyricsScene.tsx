@@ -212,9 +212,10 @@ export function LyricsScene({
           onEditorDragStart={onEditorDragStart}
           style={widgetBoxStyle(scene.artwork)}
         >
-          {scene.artwork.renderer === 'vinyl' ? (
+              {scene.artwork.renderer === 'vinyl' ? (
             <div
               className="lyrics-stage__disc"
+              data-scene-widget="vinyl"
               data-playing={bindings.isPlaying || undefined}
               style={{ opacity: scene.artwork.opacity }}
             >

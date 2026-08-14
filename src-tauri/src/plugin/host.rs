@@ -796,10 +796,7 @@ impl ExtensionHost {
                     .and_then(|value| value.as_str())
                     .unwrap_or("scene")
                     .to_owned();
-                let css_path = scene_path
-                    .rsplit_once('.')
-                    .map(|(stem, _)| format!("{stem}.css"))
-                    .unwrap_or_default();
+                let css_path = scene_css_path(scene_path);
                 let css = fs::read_to_string(dir.join(&css_path)).ok();
                 scenes.push(ActiveSceneResource {
                     plugin_id: id.clone(),
@@ -997,6 +994,16 @@ impl ExtensionHost {
             .join("versions")
             .join(&manifest.version)
     }
+}
+
+fn scene_css_path(scene_path: &str) -> String {
+    if let Some(stem) = scene_path.strip_suffix(".scene.json") {
+        return format!("{stem}.css");
+    }
+    scene_path
+        .rsplit_once('.')
+        .map(|(stem, _)| format!("{stem}.css"))
+        .unwrap_or_default()
 }
 
 fn compatibility_reason(
@@ -1350,6 +1357,15 @@ mod tests {
     }
 
     #[test]
+    fn scene_css_path_maps_scene_json_to_sibling_css() {
+        assert_eq!(
+            scene_css_path("scenes/vinyl.scene.json"),
+            "scenes/vinyl.css"
+        );
+        assert_eq!(scene_css_path("scenes/aurora.json"), "scenes/aurora.css");
+    }
+
+    #[test]
     fn scene_registration_is_removed_on_disable() {
         let root = tempfile::tempdir().expect("root");
         let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");
@@ -1357,6 +1373,10 @@ mod tests {
             .expect("install");
         assert_eq!(host.active_resources().scenes.len(), 1);
         assert_eq!(host.active_resources().scenes[0].scene_id, "vinyl");
+        assert_eq!(
+            host.active_resources().scenes[0].css.as_deref(),
+            Some("[data-scene-widget=\"vinyl\"]{opacity:1}")
+        );
         host.set_enabled("dev.example.scene", false)
             .expect("disable");
         assert!(host.active_resources().scenes.is_empty());
