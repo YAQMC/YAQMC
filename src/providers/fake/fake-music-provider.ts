@@ -74,6 +74,11 @@ export class FakeMusicProvider implements MusicProvider {
       ),
     });
   }
+
+  async getGuessNext(limit = 5, signal?: AbortSignal) {
+    throwIfAborted(signal);
+    return clone(allSongs.slice(0, limit));
+  }
 }
 
 export const fakeMusicProvider = new FakeMusicProvider();

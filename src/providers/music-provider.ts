@@ -33,6 +33,7 @@ export interface MusicProvider {
   getLibrary(signal?: AbortSignal): Promise<LibrarySnapshot>;
   getLyrics(songId: EntityId, signal?: AbortSignal): Promise<LyricDocument | null>;
   search(query: string, signal?: AbortSignal, page?: number, limit?: number): Promise<SearchResult>;
+  getGuessNext(limit?: number, signal?: AbortSignal): Promise<Song[]>;
 }
 
 export interface AccountMusicProvider {

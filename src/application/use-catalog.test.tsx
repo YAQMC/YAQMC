@@ -21,6 +21,7 @@ describe('useCatalog', () => {
       getLibrary: vi.fn().mockResolvedValue(librarySnapshot),
       getLyrics: vi.fn(),
       search: vi.fn(),
+      getGuessNext: vi.fn().mockResolvedValue([]),
       getAccountSnapshot: vi.fn().mockRejectedValue(new Error('account unavailable')),
     } satisfies MusicProvider & {
       getAccountSnapshot: () => Promise<never>;

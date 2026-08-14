@@ -80,6 +80,7 @@ const DEFAULT_TOPLIST_ID: u64 = 62;
 const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
 const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
+const HOME_CACHE_KEY: &str = "qqmusic:home:v2";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +134,14 @@ pub struct HomeFeed {
     pub recently_played: Vec<MediaCollection>,
     pub made_for_you: Vec<Playlist>,
     pub new_releases: Vec<Album>,
+    #[serde(default)]
+    pub guess_songlist: Option<Playlist>,
+    #[serde(default)]
+    pub recommended_songlists: Vec<Playlist>,
+    #[serde(default)]
+    pub daily_songlist: Option<Playlist>,
+    #[serde(default)]
+    pub radar_songs: Vec<Song>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -311,6 +320,7 @@ pub struct QQMusicService {
     current_quality_override: RwLock<Option<(String, AudioQualityPreference)>>,
     fixture_root: PathBuf,
     fixture_guard: AsyncMutex<()>,
+    home_guard: AsyncMutex<()>,
     session_invalid: AtomicBool,
 }
 
@@ -365,6 +375,7 @@ impl QQMusicService {
             current_quality_override: RwLock::new(None),
             fixture_root,
             fixture_guard: AsyncMutex::new(()),
+            home_guard: AsyncMutex::new(()),
             session_invalid: AtomicBool::new(false),
         })
     }
@@ -392,7 +403,7 @@ impl QQMusicService {
             Err(_)
                 if self
                     .storage
-                    .get_json::<HomeFeed>("qqmusic:home", true)
+                    .get_json::<HomeFeed>(HOME_CACHE_KEY, true)
                     .ok()
                     .flatten()
                     .is_some() =>
@@ -834,9 +845,10 @@ impl QQMusicService {
     }
 
     pub async fn home(&self) -> Result<HomeFeed, QQMusicError> {
+        let _home_lock = self.home_guard.lock().await;
         if let Some(feed) = self
             .storage
-            .get_json("qqmusic:home", false)
+            .get_json(HOME_CACHE_KEY, false)
             .map_err(|_| QQMusicError::Storage)?
         {
             self.remember_home_songs(&feed).await;
@@ -845,7 +857,7 @@ impl QQMusicService {
         match self.build_home().await {
             Ok(feed) => {
                 self.storage
-                    .put_json("qqmusic:home", "metadata", &feed, METADATA_TTL_MS)
+                    .put_json(HOME_CACHE_KEY, "metadata", &feed, METADATA_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
                 self.remember_home_songs(&feed).await;
                 Ok(feed)
@@ -853,7 +865,7 @@ impl QQMusicService {
             Err(error) => {
                 let feed = self
                     .storage
-                    .get_json("qqmusic:home", true)
+                    .get_json(HOME_CACHE_KEY, true)
                     .map_err(|_| QQMusicError::Storage)?
                     .ok_or(error)?;
                 self.remember_home_songs(&feed).await;
@@ -886,7 +898,23 @@ impl QQMusicService {
                         feed.new_releases
                             .iter()
                             .flat_map(|album| album.tracks.iter()),
-                    ),
+                    )
+                    .chain(
+                        feed.guess_songlist
+                            .iter()
+                            .flat_map(|playlist| playlist.tracks.iter()),
+                    )
+                    .chain(
+                        feed.recommended_songlists
+                            .iter()
+                            .flat_map(|playlist| playlist.tracks.iter()),
+                    )
+                    .chain(
+                        feed.daily_songlist
+                            .iter()
+                            .flat_map(|playlist| playlist.tracks.iter()),
+                    )
+                    .chain(feed.radar_songs.iter()),
             )
             .await;
     }
@@ -940,6 +968,90 @@ impl QQMusicService {
             .map(|(summary, artists, songs)| album_from_songs(&summary, &artists, songs))
             .collect();
 
+        let session = self.auth.current_session().await.map(QQSession::from);
+        let session_ref = session.as_ref();
+        let guess_tracks = match self.client.guess_recommend(session_ref, 10).await {
+            Ok(tracks) => tracks,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "home guess-you-like failed; falling back to new songs");
+                match self.client.general_newsongs().await {
+                    Ok(tracks) => tracks,
+                    Err(error) => {
+                        tracing::warn!(target: "qqmusic", %error, "home guess-you-like fallback failed; leaving the section empty");
+                        Vec::new()
+                    }
+                }
+            }
+        };
+        let guess_songlist = (!guess_tracks.is_empty()).then(|| {
+            let artwork = guess_tracks
+                .first()
+                .map(|song| song.artwork.clone())
+                .unwrap_or_else(|| artwork_from_provider_url("", "Guess you like", color_for("guess")));
+            Playlist {
+                id: playlist_id("generated-guess"),
+                title: "Guess you like".to_owned(),
+                description: "A personalized pick refreshed for you.".to_owned(),
+                owner: PlaylistOwner {
+                    id: "qqmusic".to_owned(),
+                    display_name: "QQ Music".to_owned(),
+                },
+                artwork,
+                updated_label: "Updated for you".to_owned(),
+                tracks: guess_tracks,
+            }
+        });
+        let recommended_songlists = match self.client.recommend_songlists(session_ref, 6).await {
+            Ok(songlists) => songlists,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "home recommended songlists failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+        let daily_tracks = match self.client.daily_songs(session_ref).await {
+            Ok(tracks) => tracks,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "home daily 30 failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+        let daily_songlist = (!daily_tracks.is_empty()).then(|| {
+            let artwork = daily_tracks
+                .first()
+                .map(|song| song.artwork.clone())
+                .unwrap_or_else(|| artwork_from_provider_url("", "Daily 30", color_for("daily30")));
+            Playlist {
+                id: playlist_id("5505165762"),
+                title: "Daily 30".to_owned(),
+                description: "A personalized daily selection refreshed for you.".to_owned(),
+                owner: PlaylistOwner {
+                    id: "qqmusic".to_owned(),
+                    display_name: "QQ Music".to_owned(),
+                },
+                artwork,
+                updated_label: "Updated daily".to_owned(),
+                tracks: daily_tracks,
+            }
+        });
+        let radar_songs = match session_ref {
+            Some(session) => match self.client.radar_recommend(session).await {
+                Ok(songs) => songs,
+                Err(error) => {
+                    tracing::warn!(target: "qqmusic", %error, "home radar recommendations failed; leaving the section empty");
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        };
+
+        tracing::info!(
+            target: "qqmusic",
+            guess = guess_songlist.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
+            songlists = recommended_songlists.len(),
+            daily = daily_songlist.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
+            radar = radar_songs.len(),
+            "home feed built with personalized sections"
+        );
         Ok(HomeFeed {
             featured: FeaturedRelease {
                 eyebrow: "LIVE FROM QQ MUSIC".to_owned(),
@@ -948,6 +1060,10 @@ impl QQMusicService {
             recently_played: vec![MediaCollection::Playlist(rising.clone())],
             made_for_you: vec![rising, preview_mix],
             new_releases,
+            guess_songlist,
+            recommended_songlists,
+            daily_songlist,
+            radar_songs,
         })
     }
 
@@ -982,8 +1098,14 @@ impl QQMusicService {
         }
     }
 
-    pub async fn artwork_data_uri(&self, url: String) -> Result<String, QQMusicError> {
-        if !is_allowed_artwork_url(&url) {
+    pub async fn guess_next(&self, limit: u32) -> Result<Vec<Song>, QQMusicError> {
+        let session = self.auth.current_session().await.map(QQSession::from);
+        self.client
+            .guess_recommend(session.as_ref(), limit.clamp(1, 30))
+            .await
+    }
+
+    pub async fn artwork_data_uri(&self, url: String) -> Result<String, QQMusicError> {        if !is_allowed_artwork_url(&url) {
             return Err(QQMusicError::MalformedResponse);
         }
         self.storage
@@ -1464,6 +1586,377 @@ impl QQMusicClient {
                 .unwrap_or_else(|| "Updated daily".to_owned()),
             tracks: songs,
         })
+    }
+
+    async fn recommend_songlists(
+        &self,
+        session: Option<&QQSession>,
+        limit: u32,
+    ) -> Result<Vec<Playlist>, QQMusicError> {
+        match session {
+            Some(session) => self.personalized_songlists(session, limit).await,
+            None => self.general_songlists(limit).await,
+        }
+    }
+
+    async fn personalized_songlists(
+        &self,
+        session: &QQSession,
+        limit: u32,
+    ) -> Result<Vec<Playlist>, QQMusicError> {
+        let mut playlists = Vec::new();
+        let mut v_cache: Vec<String> = Vec::new();
+        let mut seen_shelves = Vec::new();
+        for page in 1..=5 {
+            let payload = json!({
+                "comm": { "ct": 24, "cv": 0 },
+                "req_1": {
+                    "module": "music.recommend.RecommendFeed",
+                    "method": "get_recommend_feed",
+                    "param": {
+                        "direction": 0,
+                        "page": page,
+                        "s_num": seen_shelves.len(),
+                        "v_cache": v_cache.clone()
+                    }
+                }
+            });
+            let response: Value = self
+                .send_json("recommend.songlists", || self.musicu_request(&payload, Some(session)))
+                .await?;
+            if response["code"].as_i64() != Some(0) || response["req_1"]["code"].as_i64() != Some(0) {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            let data = &response["req_1"]["data"];
+            let Some(shelves) = data["v_shelf"].as_array() else {
+                tracing::debug!(
+                    target: "qqmusic",
+                    page,
+                    shape = shape_for_value(data),
+                    "recommend.songlists response has no v_shelf array"
+                );
+                break;
+            };
+            let mut card_type_counts = BTreeMap::<String, usize>::new();
+            for shelf in shelves {
+                for niche in shelf["v_niche"].as_array().cloned().unwrap_or_default() {
+                    for card in niche["v_card"].as_array().cloned().unwrap_or_default() {
+                        let ty = card["type"].as_i64().unwrap_or(-1);
+                        let st = card["subtype"].as_i64().unwrap_or(-1);
+                        *card_type_counts.entry(format!("{ty}/{st}")).or_default() += 1;
+                    }
+                }
+            }
+            tracing::debug!(
+                target: "qqmusic",
+                page,
+                shelves = shelves.len(),
+                card_types = ?card_type_counts,
+                collected = playlists.len(),
+                "recommend.songlists feed page scanned"
+            );
+            let mut advanced = false;
+            for shelf in shelves {
+                let shelf_id = shelf["id"].as_i64().map(|id| id.to_string());
+                if let Some(shelf_id) = &shelf_id {
+                    if !v_cache.contains(shelf_id) {
+                        v_cache.push(shelf_id.clone());
+                    }
+                }
+                for niche in shelf["v_niche"].as_array().cloned().unwrap_or_default() {
+                    for card in niche["v_card"].as_array().cloned().unwrap_or_default() {
+                        if card["type"].as_i64() != Some(500) || card["subtype"].as_i64() != Some(0) {
+                            continue;
+                        }
+                        let tid = card["id"].as_str();
+                        let title = card["title"].as_str().map(clean_text).filter(|v| !v.is_empty());
+                        let Some((tid, title)) = tid.zip(title) else {
+                            continue;
+                        };
+                        advanced = true;
+                        let artwork_url = card["cover"].as_str().unwrap_or_default();
+                        playlists.push(Playlist {
+                            id: playlist_id(tid),
+                            title: title.clone(),
+                            description: card["subtitle"]
+                                .as_str()
+                                .map(clean_text)
+                                .unwrap_or_default(),
+                            owner: PlaylistOwner {
+                                id: "qqmusic".to_owned(),
+                                display_name: "QQ Music".to_owned(),
+                            },
+                            artwork: artwork_from_provider_url(
+                                artwork_url,
+                                &title,
+                                color_for(tid),
+                            ),
+                            updated_label: String::new(),
+                            tracks: Vec::new(),
+                        });
+                        if playlists.len() as u32 >= limit {
+                            return Ok(playlists);
+                        }
+                    }
+                }
+            }
+            let before = seen_shelves.len();
+            seen_shelves.extend(shelves.iter().filter_map(|s| s["id"].as_i64()));
+            if seen_shelves.len() == before || !advanced {
+                break;
+            }
+        }
+        Ok(playlists)
+    }
+
+    async fn general_songlists(&self, limit: u32) -> Result<Vec<Playlist>, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.playlist.PlaylistSquare",
+                "method": "GetRecommendFeed",
+                "param": { "From": 0, "Size": limit }
+            }
+        });
+        let response: Value = self
+            .send_json("recommend.songlists.general", || self.musicu_request(&payload, None))
+            .await?;
+        if response["code"].as_i64() != Some(0) {
+            return Err(QQMusicError::SchemaChanged);
+        }
+        let data = &response["req_1"]["data"];
+        let list = data["List"].as_array();
+        let Some(list) = list else {
+            tracing::debug!(
+                target: "qqmusic",
+                shape = shape_for_value(data),
+                "recommend.songlists.general response has no List array"
+            );
+            return Ok(Vec::new());
+        };
+        let mut playlists = Vec::with_capacity(list.len());
+        for entry in list {
+            let basic = &entry["Playlist"]["basic"];
+            let tid = basic
+                .get("tid")
+                .or_else(|| basic.get("dissid"))
+                .or_else(|| basic.get("id"))
+                .and_then(Value::as_i64);
+            let title = basic["dissname"]
+                .as_str()
+                .or_else(|| basic["title"].as_str())
+                .map(clean_text)
+                .filter(|value| !value.is_empty());
+            let Some((tid, title)) = tid.zip(title) else {
+                continue;
+            };
+            let artwork_url = basic["cover"]["default_url"]
+                .as_str()
+                .or_else(|| basic["picurl"].as_str())
+                .unwrap_or_default();
+            let creator_nick = basic["creator"]["nick"]
+                .as_str()
+                .or_else(|| basic["creator_nick"].as_str())
+                .map(clean_text)
+                .unwrap_or_else(|| "QQ Music".to_owned());
+            playlists.push(Playlist {
+                id: playlist_id(&tid.to_string()),
+                title: title.clone(),
+                description: basic["desc"]
+                    .as_str()
+                    .map(clean_text)
+                    .unwrap_or_default(),
+                owner: PlaylistOwner {
+                    id: "qqmusic".to_owned(),
+                    display_name: creator_nick,
+                },
+                artwork: artwork_from_provider_url(
+                    artwork_url,
+                    &title,
+                    color_for(&tid.to_string()),
+                ),
+                updated_label: String::new(),
+                tracks: Vec::new(),
+            });
+        }
+        Ok(playlists)
+    }
+
+    async fn daily_songs(&self, session: Option<&QQSession>) -> Result<Vec<Song>, QQMusicError> {
+        match session {
+            Some(session) => self.personalized_daily_songs(session).await,
+            None => self.general_newsongs().await,
+        }
+    }
+
+    async fn personalized_daily_songs(&self, session: &QQSession) -> Result<Vec<Song>, QQMusicError> {
+        const DAILY30_DISSID: u64 = 5_505_165_762;
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.srfDissInfo.DissInfo",
+                "method": "CgiGetDiss",
+                "param": {
+                    "disstid": DAILY30_DISSID,
+                    "dirid": 0,
+                    "tag": 1,
+                    "song_begin": 0,
+                    "song_num": 30,
+                    "userinfo": 1,
+                    "orderlist": 1,
+                    "onlysonglist": 1
+                }
+            }
+        });
+        let response: Value = self
+            .send_json("recommend.daily30", || self.musicu_request(&payload, Some(session)))
+            .await?;
+        if response["code"].as_i64() != Some(0) || response["req_1"]["code"].as_i64() != Some(0) {
+            return Err(QQMusicError::SchemaChanged);
+        }
+        let data = &response["req_1"]["data"];
+        let songlist = data["songlist"].as_array();
+        let Some(songlist) = songlist else {
+            tracing::debug!(
+                target: "qqmusic",
+                shape = shape_for_value(data),
+                "recommend.daily30 response has no songlist array"
+            );
+            return Ok(Vec::new());
+        };
+        let songs = songlist
+            .iter()
+            .filter_map(|raw| {
+                serde_json::from_value::<NewSongDto>(raw.clone())
+                    .ok()
+                    .and_then(normalize_new_song)
+            })
+            .collect();
+        Ok(songs)
+    }
+
+    async fn general_newsongs(&self) -> Result<Vec<Song>, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "newsong.NewSongServer",
+                "method": "get_new_song_info",
+                "param": { "type": 5 }
+            }
+        });
+        let response: Value = self
+            .send_json("recommend.newsongs", || self.musicu_request(&payload, None))
+            .await?;
+        if response["code"].as_i64() != Some(0) {
+            return Err(QQMusicError::SchemaChanged);
+        }
+        let data = &response["req_1"]["data"];
+        let songlist = data["songlist"].as_array();
+        let Some(songlist) = songlist else {
+            tracing::debug!(
+                target: "qqmusic",
+                shape = shape_for_value(data),
+                "recommend.newsongs response has no songlist array"
+            );
+            return Ok(Vec::new());
+        };
+        let songs = songlist
+            .iter()
+            .filter_map(|raw| {
+                serde_json::from_value::<NewSongDto>(raw.clone())
+                    .ok()
+                    .and_then(normalize_new_song)
+            })
+            .collect();
+        Ok(songs)
+    }
+
+    async fn guess_recommend(
+        &self,
+        session: Option<&QQSession>,
+        limit: u32,
+    ) -> Result<Vec<Song>, QQMusicError> {
+        let Some(session) = session else {
+            return self.general_newsongs().await;
+        };
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.radioProxy.MbTrackRadioSvr",
+                "method": "get_radio_track",
+                "param": { "id": 99, "num": limit, "from": 0, "scene": 0, "song_ids": [] }
+            }
+        });
+        let response: Value = self
+            .send_json("recommend.guess", || self.musicu_request(&payload, Some(session)))
+            .await?;
+        if response["code"].as_i64() != Some(0) || response["req_1"]["code"].as_i64() != Some(0) {
+            tracing::warn!(
+                target: "qqmusic",
+                top_code = response["code"].as_i64(),
+                req_code = response["req_1"]["code"].as_i64(),
+                "recommend.guess returned a non-zero code"
+            );
+            return Err(QQMusicError::SchemaChanged);
+        }
+        let data = &response["req_1"]["data"];
+        let tracks = data["tracks"].as_array();
+        let Some(tracks) = tracks else {
+            tracing::debug!(
+                target: "qqmusic",
+                shape = shape_for_value(data),
+                "recommend.guess response has no tracks array"
+            );
+            return Ok(Vec::new());
+        };
+        let songs = tracks
+            .iter()
+            .filter_map(|raw| {
+                serde_json::from_value::<NewSongDto>(raw.clone())
+                    .ok()
+                    .and_then(normalize_new_song)
+            })
+            .collect();
+        Ok(songs)
+    }
+
+    async fn radar_recommend(
+        &self,
+        session: &QQSession,
+    ) -> Result<Vec<Song>, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.recommend.TrackRelationServer",
+                "method": "GetRadarSong",
+                "param": { "Page": 1, "ReqType": 0, "FavSongs": [], "EntranceSongs": [] }
+            }
+        });
+        let response: Value = self
+            .send_json("recommend.radar", || self.musicu_request(&payload, Some(session)))
+            .await?;
+        if response["code"].as_i64() != Some(0) || response["req_1"]["code"].as_i64() != Some(0) {
+            return Err(QQMusicError::SchemaChanged);
+        }
+        let data = &response["req_1"]["data"];
+        let vec_songs = data["VecSongs"].as_array();
+        let Some(vec_songs) = vec_songs else {
+            tracing::debug!(
+                target: "qqmusic",
+                shape = shape_for_value(data),
+                "recommend.radar response has no VecSongs array"
+            );
+            return Ok(Vec::new());
+        };
+        let songs = vec_songs
+            .iter()
+            .filter_map(|entry| {
+                serde_json::from_value::<NewSongDto>(entry["Track"].clone())
+                    .ok()
+                    .and_then(normalize_new_song)
+            })
+            .collect();
+        Ok(songs)
     }
 
     async fn lyrics(&self, mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
@@ -3133,6 +3626,18 @@ fn parse_year(value: &str) -> u32 {
         .unwrap_or(0)
 }
 
+fn shape_for_value(value: &Value) -> String {
+    let keys = value
+        .as_object()
+        .map(|object| {
+            let mut keys = object.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            keys
+        })
+        .unwrap_or_default();
+    format!("{{{}}}", keys.join(","))
+}
+
 fn color_for(value: &str) -> String {
     const PALETTE: [&str; 8] = [
         "#6b4f46", "#53606f", "#4c6259", "#705f48", "#5a526f", "#44636d", "#6d4e5d", "#59624a",
@@ -3579,7 +4084,7 @@ mod tests {
         };
         storage
             .put_json(
-                "qqmusic:home",
+                HOME_CACHE_KEY,
                 "metadata",
                 &HomeFeed {
                     featured: FeaturedRelease {
@@ -3589,6 +4094,10 @@ mod tests {
                     recently_played: Vec::new(),
                     made_for_you: Vec::new(),
                     new_releases: Vec::new(),
+                    guess_songlist: None,
+                    recommended_songlists: Vec::new(),
+                    daily_songlist: None,
+                    radar_songs: Vec::new(),
                 },
                 METADATA_TTL_MS,
             )
@@ -3871,6 +4380,108 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "opt-in current QQ Music network contract check"]
+    async fn live_recommendation_contracts() {
+        let client = QQMusicClient::new().expect("client");
+        let songlists = client.recommend_songlists(None, 6).await.expect("songlists");
+        let newsongs = client.daily_songs(None).await.expect("newsongs");
+        assert!(!songlists.is_empty(), "expected recommended songlists");
+        assert!(!newsongs.is_empty(), "expected recommended new songs");
+        assert!(
+            songlists.iter().all(|playlist| !playlist.title.is_empty()),
+            "recommended songlists carry titles"
+        );
+        assert!(
+            newsongs.iter().all(|song| !song.title.is_empty()),
+            "recommended new songs carry titles"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "opt-in current QQ Music network contract check; requires the real signed-in session in the platform keyring"]
+    async fn live_authenticated_personalized_recommendations() {
+        let _guard = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_test_writer()
+            .try_init();
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let service = Arc::new(
+            QQMusicService::new(
+                Arc::clone(&storage),
+                Arc::new(crate::credentials::PlatformCredentialStore::new()),
+                root.path().join("fixtures"),
+            )
+            .expect("service"),
+        );
+        service.restore_session().await;
+        let snapshot = service.account_snapshot().await;
+        assert_eq!(snapshot.state_name(), "authenticated");
+        let session = service
+            .auth
+            .current_session()
+            .await
+            .expect("restored session");
+        let client = QQMusicClient::new().expect("client");
+        let qq_session = QQSession::from(session);
+
+        let home = service.home().await.expect("authenticated home feed");
+        eprintln!(
+            "auth home: guess={} songlists={} daily={} radar={}",
+            home.guess_songlist.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
+            home.recommended_songlists.len(),
+            home.daily_songlist.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
+            home.radar_songs.len(),
+        );
+
+        let songlists = client
+            .recommend_songlists(Some(&qq_session), 6)
+            .await
+            .expect("personalized songlists");
+        let daily = client
+            .daily_songs(Some(&qq_session))
+            .await
+            .expect("personalized daily songs");
+        let radar = client
+            .radar_recommend(&qq_session)
+            .await
+            .expect("personalized radar songs");
+        let guess = client
+            .guess_recommend(Some(&qq_session), 10)
+            .await
+            .expect("guess songs");
+        eprintln!(
+            "auth direct: songlists={} daily={} radar={} guess={}",
+            songlists.len(),
+            daily.len(),
+            radar.len(),
+            guess.len()
+        );
+        assert!(
+            songlists.iter().all(|playlist| !playlist.title.is_empty()),
+            "personalized songlists carry titles"
+        );
+        assert!(!daily.is_empty(), "daily 30 songs resolve");
+        assert!(
+            daily.iter().all(|song| !song.title.is_empty()),
+            "daily songs carry titles"
+        );
+        assert!(!radar.is_empty(), "radar songs resolve");
+        assert!(
+            radar.iter().all(|song| !song.title.is_empty()),
+            "radar songs carry titles"
+        );
+        assert!(!guess.is_empty(), "guess songs resolve");
+        assert!(
+            guess.iter().all(|song| !song.title.is_empty()),
+            "guess songs carry titles"
+        );
+    }
+
+    #[tokio::test]
     #[ignore = "opt-in audible QQ Music playback acceptance"]
     async fn live_guest_source_downloads_decodes_and_uses_real_audio_clock() {
         let root = tempfile::tempdir().expect("temp root");
@@ -3887,6 +4498,12 @@ mod tests {
             .expect("service"),
         );
         let home = service.home().await.expect("live home feed");
+        eprintln!(
+            "guest home: guess={} songlists={} daily={}",
+            home.guess_songlist.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
+            home.recommended_songlists.len(),
+            home.daily_songlist.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
+        );
         let tracks = home
             .made_for_you
             .into_iter()

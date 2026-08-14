@@ -502,6 +502,14 @@ pub async fn qqmusic_home(provider: State<'_, Arc<QQMusicService>>) -> ProviderR
 }
 
 #[tauri::command]
+pub async fn qqmusic_guess_next(
+    provider: State<'_, Arc<QQMusicService>>,
+    limit: u32,
+) -> ProviderResult<Vec<Song>> {
+    provider.guess_next(limit).await.map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn qqmusic_library(
     provider: State<'_, Arc<QQMusicService>>,
 ) -> CommandResult<LibrarySnapshot> {

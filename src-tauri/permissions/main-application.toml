@@ -10,6 +10,7 @@ permissions = [
   "allow-audio-set-output-device",
   "allow-qqmusic-status",
   "allow-qqmusic-home",
+  "allow-qqmusic-guess-next",
   "allow-qqmusic-library",
   "allow-qqmusic-search",
   "allow-qqmusic-album",
