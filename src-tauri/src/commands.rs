@@ -3,7 +3,12 @@ use crate::{
     audio::AudioOutputDevice,
     command_guard::require_main_window,
     desktop_integration::{DesktopIntegration, DesktopIntegrationStatus},
+    diagnostics::{
+        self, AppSection, BundleExportResult, BundleOptions, DiagnosticsSnapshot, PlaybackSection,
+    },
+    issue_reporter::{self, IssueDraft, IssuePreview},
     local_api::{LocalApiService, LocalApiStatus},
+    logging::{self, ErrorRecord, LogLevel, LoggingHandle},
     lyrics_surface::{
         close_surface, surface_statuses, LyricsSurfaceManager, SurfaceCapabilities,
         SurfaceInteraction, SurfaceKind, SurfaceRuntimeMap,
@@ -27,11 +32,383 @@ use crate::{
     storage::{CacheStats, StorageService},
     system_media::SystemMediaIntegration,
 };
-use std::sync::Arc;
+use serde::Deserialize;
+use std::{path::PathBuf, sync::Arc};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 type CommandResult<T> = Result<T, String>;
 pub const AUDIO_OUTPUT_SETTING: &str = "audio-output-device";
+pub const LOGGING_LEVEL_SETTING: &str = "logging.level";
+
+/// Load the configured log level from persistent storage. Falls back to the debug
+/// default (Debug) if the setting is absent or malformed.
+pub fn load_persisted_log_level(storage: &Arc<StorageService>) -> LogLevel {
+    storage
+        .get_setting(LOGGING_LEVEL_SETTING)
+        .ok()
+        .flatten()
+        .and_then(|value| LogLevel::parse(&value))
+        .unwrap_or_default()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsRequest {
+    pub account_state: Option<String>,
+    pub membership_tier: Option<String>,
+    pub membership_status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsBundleRequest {
+    pub include_logs: Option<bool>,
+    pub override_unresolved: Option<bool>,
+    pub description: Option<String>,
+    pub issue_category: Option<String>,
+    #[serde(flatten)]
+    pub base: DiagnosticsRequest,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontendLogEntry {
+    pub level: LogLevel,
+    pub target: String,
+    pub message: String,
+    pub op_id: Option<String>,
+    pub fields: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordErrorRequest {
+    pub code: String,
+    pub domain: String,
+    pub message: String,
+    pub op_id: Option<String>,
+}
+
+fn build_playback_section(snapshot: &PlayerSnapshot) -> PlaybackSection {
+    let current = snapshot
+        .current_index
+        .and_then(|index| snapshot.queue.get(index));
+    let quality_label = current.map(|song| match song.quality {
+        crate::player::AudioQuality::Standard => "standard".to_owned(),
+        crate::player::AudioQuality::High => "high".to_owned(),
+        crate::player::AudioQuality::Lossless => "lossless".to_owned(),
+        crate::player::AudioQuality::Master => "master".to_owned(),
+    });
+    PlaybackSection {
+        state: if snapshot.is_playing {
+            "playing"
+        } else if current.is_some() {
+            "paused"
+        } else {
+            "idle"
+        },
+        selected_quality: quality_label,
+        decoder_hint: None,
+        queue_length: snapshot.queue.len(),
+        current_source_kind: current.map(|_| "qqmusic"),
+    }
+}
+
+fn build_app_section(app: &AppHandle) -> AppSection {
+    AppSection {
+        name: "YAQMC",
+        version: app.package_info().version.to_string(),
+        commit: option_env!("YAQMC_BUILD_COMMIT").map(String::from),
+        channel: std::env::var("YAQMC_RELEASE_CHANNEL").unwrap_or_else(|_| "development".into()),
+        build_type: if cfg!(debug_assertions) {
+            "debug".into()
+        } else {
+            "release".into()
+        },
+    }
+}
+
+async fn assemble_snapshot(
+    app: &AppHandle,
+    player: &Arc<PlayerService>,
+    system_media: &Arc<SystemMediaIntegration>,
+    desktop: &Arc<DesktopIntegration>,
+    logging: &Arc<LoggingHandle>,
+    provider: &Arc<QQMusicService>,
+    request: DiagnosticsRequest,
+) -> DiagnosticsSnapshot {
+    let platform_diagnostics =
+        platform::collect(app, player, system_media.status(), desktop.status());
+    let snapshot = player.snapshot().await;
+    let provider_status = provider.status().await;
+    diagnostics::snapshot_from_handle(
+        logging,
+        platform_diagnostics,
+        Some(provider_status),
+        request.account_state,
+        request
+            .membership_tier
+            .zip(request.membership_status.or(Some("unknown".into()))),
+        build_playback_section(&snapshot),
+        build_app_section(app),
+    )
+}
+
+#[tauri::command]
+pub async fn diagnostics_snapshot(
+    app: AppHandle,
+    player: State<'_, Arc<PlayerService>>,
+    system_media: State<'_, Arc<SystemMediaIntegration>>,
+    desktop: State<'_, Arc<DesktopIntegration>>,
+    logging: State<'_, Arc<LoggingHandle>>,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: DiagnosticsRequest,
+) -> CommandResult<DiagnosticsSnapshot> {
+    Ok(assemble_snapshot(
+        &app,
+        &player,
+        &system_media,
+        &desktop,
+        &logging,
+        &provider,
+        request,
+    )
+    .await)
+}
+
+#[tauri::command]
+pub async fn diagnostics_export_bundle(
+    app: AppHandle,
+    player: State<'_, Arc<PlayerService>>,
+    system_media: State<'_, Arc<SystemMediaIntegration>>,
+    desktop: State<'_, Arc<DesktopIntegration>>,
+    logging: State<'_, Arc<LoggingHandle>>,
+    provider: State<'_, Arc<QQMusicService>>,
+    request: DiagnosticsBundleRequest,
+) -> CommandResult<BundleExportResult> {
+    let dest = app
+        .path()
+        .download_dir()
+        .map_err(|error| error.to_string())?;
+    let snapshot = assemble_snapshot(
+        &app,
+        &player,
+        &system_media,
+        &desktop,
+        &logging,
+        &provider,
+        request.base,
+    )
+    .await;
+    let options = BundleOptions {
+        include_logs: request.include_logs.unwrap_or(true),
+        override_unresolved: request.override_unresolved.unwrap_or(false),
+        description: request.description.as_deref(),
+        issue_category: request.issue_category.as_deref(),
+    };
+    diagnostics::export_bundle(&dest, &snapshot, logging.log_dir(), options)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn diagnostics_reveal_bundle(
+    app: AppHandle,
+    logging: State<'_, Arc<LoggingHandle>>,
+    path: String,
+) -> CommandResult<()> {
+    let target = PathBuf::from(&path);
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|error| error.to_string())?;
+    let inside_downloads = target.starts_with(&downloads);
+    let inside_logs = target.starts_with(logging.log_dir());
+    if !inside_downloads && !inside_logs {
+        return Err("path is outside diagnostic download/log directories".into());
+    }
+    reveal_in_file_manager(&target).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn diagnostics_open_log_folder(
+    logging: State<'_, Arc<LoggingHandle>>,
+) -> CommandResult<String> {
+    let dir = logging.log_dir().to_path_buf();
+    open_folder_in_file_manager(&dir).map_err(|error| error.to_string())?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn diagnostics_clear_logs(logging: State<'_, Arc<LoggingHandle>>) -> CommandResult<usize> {
+    let mut removed = 0usize;
+    let entries = match std::fs::read_dir(logging.log_dir()) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(0),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_log = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.starts_with(logging::LOG_FILE_PREFIX))
+            .unwrap_or(false);
+        if is_log && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+#[tauri::command]
+pub fn diagnostics_set_log_level(
+    storage: State<'_, Arc<StorageService>>,
+    level: LogLevel,
+) -> CommandResult<LogLevel> {
+    storage
+        .set_setting(LOGGING_LEVEL_SETTING, level.as_str())
+        .map_err(|error| error.to_string())?;
+    Ok(level)
+}
+
+#[tauri::command]
+pub fn diagnostics_current_level(logging: State<'_, Arc<LoggingHandle>>) -> LogLevel {
+    logging.level()
+}
+
+#[tauri::command]
+pub fn diagnostics_recent_errors(logging: State<'_, Arc<LoggingHandle>>) -> Vec<ErrorRecord> {
+    logging.recent_errors()
+}
+
+#[tauri::command]
+pub fn diagnostics_record_error(
+    logging: State<'_, Arc<LoggingHandle>>,
+    request: RecordErrorRequest,
+) -> CommandResult<()> {
+    let mut record = ErrorRecord::new(request.code, request.domain, request.message);
+    if let Some(op_id) = request.op_id {
+        record = record.with_op_id(op_id);
+    }
+    logging.record_error(record);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn diagnostics_log_frontend(
+    logging: State<'_, Arc<LoggingHandle>>,
+    entries: Vec<FrontendLogEntry>,
+) -> CommandResult<()> {
+    for entry in entries {
+        let target = if entry.target.is_empty() {
+            "frontend".to_owned()
+        } else {
+            format!("frontend.{}", entry.target)
+        };
+        let message = logging::sanitize_field(&entry.message).into_owned();
+        let fields_repr = entry
+            .fields
+            .as_ref()
+            .map(|value| logging::sanitize_field(&value.to_string()).into_owned())
+            .unwrap_or_default();
+        let op = entry.op_id.unwrap_or_default();
+        match entry.level {
+            LogLevel::Error => {
+                tracing::error!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
+            }
+            LogLevel::Warn => {
+                tracing::warn!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
+            }
+            LogLevel::Info => {
+                tracing::info!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
+            }
+            LogLevel::Debug => {
+                tracing::debug!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
+            }
+            LogLevel::Trace => {
+                tracing::trace!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
+            }
+        }
+        if matches!(entry.level, LogLevel::Error | LogLevel::Warn) {
+            logging.record_error(ErrorRecord::new("YAQMC-UI-EVENT", target, &message));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn issue_reporter_preview(
+    app: AppHandle,
+    player: State<'_, Arc<PlayerService>>,
+    system_media: State<'_, Arc<SystemMediaIntegration>>,
+    desktop: State<'_, Arc<DesktopIntegration>>,
+    logging: State<'_, Arc<LoggingHandle>>,
+    provider: State<'_, Arc<QQMusicService>>,
+    draft: IssueDraft,
+    request: DiagnosticsRequest,
+) -> CommandResult<IssuePreview> {
+    let snapshot = assemble_snapshot(
+        &app,
+        &player,
+        &system_media,
+        &desktop,
+        &logging,
+        &provider,
+        request,
+    )
+    .await;
+    Ok(issue_reporter::prepare_preview(&draft, &snapshot))
+}
+
+#[tauri::command]
+pub fn issue_reporter_validate_url(url: String) -> CommandResult<()> {
+    issue_reporter::validate_open_url(&url).map_err(|reason| reason.to_owned())
+}
+
+fn open_folder_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(path)
+            .spawn()?;
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(path).spawn()?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        std::process::Command::new("open").arg(path).spawn()?;
+        Ok(())
+    }
+}
+
+fn reveal_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg("/select,")
+            .arg(path)
+            .spawn()?;
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let parent = path.parent().unwrap_or(path);
+        std::process::Command::new("xdg-open").arg(parent).spawn()?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(path)
+            .spawn()?;
+        Ok(())
+    }
+}
 
 #[tauri::command]
 pub fn platform_diagnostics(

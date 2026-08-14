@@ -79,9 +79,43 @@ const APP_COMMANDS: &[&str] = &[
     "local_api_reveal_token",
     "local_api_regenerate_token",
     "debug_perf_sample",
+    "diagnostics_snapshot",
+    "diagnostics_export_bundle",
+    "diagnostics_reveal_bundle",
+    "diagnostics_open_log_folder",
+    "diagnostics_clear_logs",
+    "diagnostics_set_log_level",
+    "diagnostics_current_level",
+    "diagnostics_recent_errors",
+    "diagnostics_record_error",
+    "diagnostics_log_frontend",
+    "issue_reporter_preview",
+    "issue_reporter_validate_url",
 ];
 
+fn embed_build_metadata() {
+    // Best-effort git commit — matches vite.config.ts. Never fails the build.
+    let commit = std::env::var("YAQMC_BUILD_COMMIT")
+        .ok()
+        .or_else(|| std::env::var("GITHUB_SHA").ok())
+        .or_else(|| {
+            std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .and_then(|output| String::from_utf8(output.stdout).ok())
+                .map(|value| value.trim().to_owned())
+        })
+        .unwrap_or_else(|| "unknown".into());
+    println!("cargo:rustc-env=YAQMC_BUILD_COMMIT={commit}");
+    println!("cargo:rerun-if-env-changed=YAQMC_BUILD_COMMIT");
+    println!("cargo:rerun-if-env-changed=GITHUB_SHA");
+    println!("cargo:rerun-if-changed=../.git/HEAD");
+}
+
 fn main() {
+    embed_build_metadata();
     tauri_build::try_build(
         tauri_build::Attributes::new()
             .app_manifest(tauri_build::AppManifest::new().commands(APP_COMMANDS)),
