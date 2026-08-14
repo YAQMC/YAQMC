@@ -202,21 +202,19 @@ describe('LyricsPresetPicker', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Artwork' }));
       const positionX = screen.getByRole('spinbutton', { name: 'Position X' });
-      expect(
-        Number(positionX.getAttribute('value') ?? (positionX as HTMLInputElement).value),
-      ).toBeCloseTo(0.425, 3);
+      expect(Number((positionX as HTMLInputElement).value)).toBeCloseTo(32.9, 1);
 
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
       expect(
         Number((screen.getByRole('spinbutton', { name: 'Position X' }) as HTMLInputElement).value),
-      ).toBeCloseTo(0.225, 3);
+      ).toBeCloseTo(22.5, 1);
       expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
 
       fireEvent.change(screen.getByRole('spinbutton', { name: 'Position X' }), {
-        target: { value: '0.41' },
+        target: { value: '41' },
       });
       fireEvent.change(screen.getByRole('spinbutton', { name: 'Width' }), {
-        target: { value: '0.33' },
+        target: { value: '33' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Lyrics' }));
       fireEvent.input(screen.getByRole('slider', { name: 'Follow anchor' }), {
@@ -235,5 +233,46 @@ describe('LyricsPresetPicker', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('keeps a selected widget selected on click and only deselects on blank canvas', () => {
+    render(<LyricsPresetPicker />);
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    const artwork = document.querySelector('[data-widget="artwork"]');
+    if (!artwork) throw new Error('artwork widget is missing');
+    fireEvent.pointerDown(artwork, { clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window);
+    expect(screen.getByRole('button', { name: 'Artwork' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('spinbutton', { name: 'Position X' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+
+    fireEvent.pointerDown(artwork, { clientX: 12, clientY: 12 });
+    fireEvent.pointerUp(window);
+    expect(screen.getByRole('button', { name: 'Artwork' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Artwork' }));
+    expect(screen.getByRole('button', { name: 'Artwork' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.pointerDown(document.querySelector('.lyrics-composer-canvas')!, {
+      clientX: 1,
+      clientY: 1,
+    });
+    expect(screen.queryByRole('spinbutton', { name: 'Position X' })).not.toBeInTheDocument();
+  });
+
+  it('uses widget overlay bounds and keeps vinyl selection visually square', () => {
+    render(<LyricsPresetPicker />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Vinyl' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Artwork' }));
+    const box = document.querySelector('.lyrics-composer-handles__box') as HTMLElement | null;
+    expect(box).toHaveAttribute('data-selection-bounds', 'artwork');
+    const width = Number.parseFloat(box?.style.width ?? '0');
+    const height = Number.parseFloat(box?.style.height ?? '0');
+    const visualWidth = (width / 100) * (16 / 9);
+    const visualHeight = height / 100;
+    expect(visualWidth / visualHeight).toBeCloseTo(1, 2);
+    expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
+    expect(document.querySelector('.lyrics-stage__disc')).not.toBeNull();
   });
 });

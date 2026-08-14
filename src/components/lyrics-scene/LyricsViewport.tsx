@@ -375,6 +375,7 @@ export function LyricsViewport({
   align,
   songId,
   editorGesture = false,
+  allowSeek = true,
   onFollowStateChange,
   layoutKey,
 }: {
@@ -391,6 +392,7 @@ export function LyricsViewport({
   align: 'left' | 'center' | 'right';
   songId: string | null;
   editorGesture?: boolean;
+  allowSeek?: boolean;
   onFollowStateChange?: (state: LyricsFollowState) => void;
   layoutKey?: string;
 }) {
@@ -499,6 +501,7 @@ export function LyricsViewport({
               lastSungLineIndex={sungLineIndex}
               document={document}
               onSeek={(positionMs) => {
+                if (!allowSeek) return;
                 seek(positionMs);
                 setFollowState('active');
               }}
@@ -516,7 +519,12 @@ export function LyricsViewport({
       </div>
 
       {followState === 'suspended' && (
-        <button type="button" className="lyrics-stage__follow" onClick={resumeFollowing}>
+        <button
+          type="button"
+          className="lyrics-stage__follow"
+          data-editor-interactive="true"
+          onClick={resumeFollowing}
+        >
           <LocateFixed size={15} />
           {t('follow')}
         </button>

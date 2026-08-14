@@ -1068,9 +1068,12 @@
   border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.1));
   border-radius: 12px;
   padding: 0;
-  width: min(1080px, 96vw);
-  max-height: min(92vh, 980px);
+  width: min(96vw, 1800px);
+  height: min(92vh, 1100px);
+  max-width: 96vw;
+  max-height: 94vh;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
 }
 
 .lyrics-preset-editor::backdrop {
@@ -1080,10 +1083,11 @@
 .lyrics-preset-editor__body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 24px 24px;
-  overflow: auto;
-  max-height: min(92vh, 980px);
+  gap: 12px;
+  height: 100%;
+  max-height: 100%;
+  padding: 16px 20px 18px;
+  overflow: hidden;
 }
 
 .lyrics-preset-editor__header,
@@ -1130,8 +1134,39 @@
   color: inherit;
 }
 
+.lyrics-composer-percent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
 .lyrics-preset-editor__controls .settings-range {
   grid-template-columns: 120px minmax(150px, 1fr) 68px;
+}
+
+.lyrics-composer-inspector .settings-range {
+  grid-template-columns: minmax(0, 1fr) 56px;
+  min-width: 0;
+}
+
+.lyrics-composer-stage .lyrics-stage__spacer {
+  flex-basis: 36cqh;
+}
+
+.lyrics-composer-stage .lyrics-stage__scroll-content {
+  padding-block: 6cqh 8cqh;
+}
+
+@media (max-width: 1280px) {
+  .lyrics-preset-editor {
+    width: 96vw;
+    height: 94vh;
+  }
+
+  .lyrics-preset-editor__workspace {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
 }
 
 .issue-reporter-dialog {

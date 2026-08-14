@@ -246,6 +246,7 @@ export function LyricsScene({
             align={scene.lyrics.align}
             songId={bindings.songId}
             editorGesture={editorGesture}
+            allowSeek={!editor}
             onFollowStateChange={onFollowStateChange}
             layoutKey={layoutKey}
           />
