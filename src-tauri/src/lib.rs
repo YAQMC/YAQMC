@@ -4,7 +4,10 @@ mod command_guard;
 mod commands;
 mod credentials;
 mod desktop_integration;
+mod diagnostics;
+mod issue_reporter;
 mod local_api;
+mod logging;
 mod lyrics_surface;
 mod media;
 mod platform;
@@ -113,16 +116,24 @@ pub fn run() {
             }
         })
         .setup(move |app| {
-            let _ = tracing_subscriber::fmt()
-                .with_env_filter(
-                    tracing_subscriber::EnvFilter::try_from_default_env()
-                        .unwrap_or_else(|_| "yaqmc=info,audio=info,qqmusic=info".into()),
-                )
-                .try_init();
+            let log_dir = app.path().app_log_dir().unwrap_or_else(|_| {
+                app.path()
+                    .app_data_dir()
+                    .map(|dir| dir.join("logs"))
+                    .unwrap_or_else(|_| std::env::temp_dir().join("YAQMC/logs"))
+            });
 
             let data_root = app.path().app_data_dir()?;
             let cache_root = app.path().app_cache_dir()?;
             let storage = Arc::new(StorageService::open(data_root.clone(), cache_root.clone())?);
+            let level = std::env::var("YAQMC_LOG_LEVEL")
+                .ok()
+                .and_then(|value| logging::LogLevel::parse(&value))
+                .unwrap_or_else(|| commands::load_persisted_log_level(&storage));
+            let logging_handle = Arc::new(logging::init(log_dir, level).unwrap_or_else(|_| {
+                logging::init(std::env::temp_dir().join("YAQMC/logs"), level)
+                    .expect("secondary log directory")
+            }));
             let credentials: Arc<dyn CredentialStore> = Arc::new(PlatformCredentialStore::new());
             let qq_music = Arc::new(QQMusicService::new(
                 Arc::clone(&storage),
@@ -262,6 +273,7 @@ pub fn run() {
             app.manage(system_media);
             app.manage(desktop_integration);
             app.manage(storage);
+            app.manage(Arc::clone(&logging_handle));
             app.manage(Arc::clone(&qq_music));
             let account_restore = Arc::clone(&qq_music);
             tauri::async_runtime::spawn(async move {
@@ -350,6 +362,18 @@ pub fn run() {
             commands::local_api_reveal_token,
             commands::local_api_regenerate_token,
             commands::debug_perf_sample,
+            commands::diagnostics_snapshot,
+            commands::diagnostics_export_bundle,
+            commands::diagnostics_reveal_bundle,
+            commands::diagnostics_open_log_folder,
+            commands::diagnostics_clear_logs,
+            commands::diagnostics_set_log_level,
+            commands::diagnostics_current_level,
+            commands::diagnostics_recent_errors,
+            commands::diagnostics_record_error,
+            commands::diagnostics_log_frontend,
+            commands::issue_reporter_preview,
+            commands::issue_reporter_validate_url,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build desktop application");

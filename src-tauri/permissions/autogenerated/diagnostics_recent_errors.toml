@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-diagnostics-recent-errors"
+description = "Enables the diagnostics_recent_errors command without any pre-configured scope."
+commands.allow = ["diagnostics_recent_errors"]
+
+[[permission]]
+identifier = "deny-diagnostics-recent-errors"
+description = "Denies the diagnostics_recent_errors command without any pre-configured scope."
+commands.deny = ["diagnostics_recent_errors"]
