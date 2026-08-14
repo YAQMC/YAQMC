@@ -10,7 +10,10 @@ import { defaultPreferences, usePreferencesStore } from '../application/preferen
 import {
   applyOverride,
   BUILTIN_CLASSIC_ID,
+  BUILTIN_IMMERSIVE_ID,
+  BUILTIN_VINYL_ID,
   defaultLyricsPresetState,
+  saveAsNewPreset,
 } from '../application/lyrics-preset';
 import type { LyricDocument } from '../domain/music';
 import { allSongs, lyricsBySong } from '../providers/fake/fixtures';
@@ -920,6 +923,9 @@ describe('LyricsPanel', () => {
     const small = container.querySelector<HTMLElement>('.lyrics-scene');
     expect(small?.style.getPropertyValue('--lyrics-font-scale')).toBe('0.7');
     expect(small?.style.getPropertyValue('--lyrics-font-size')).toBe('31.36px');
+    expect(container.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
+      '31.36px',
+    );
     unmount();
 
     usePreferencesStore.setState({
@@ -935,6 +941,35 @@ describe('LyricsPanel', () => {
     const smallPx = Number.parseFloat(small?.style.getPropertyValue('--lyrics-font-size') ?? '0');
     const largePx = Number.parseFloat(large?.style.getPropertyValue('--lyrics-font-size') ?? '0');
     expect(largePx / smallPx).toBeGreaterThan(2);
+    expect(large?.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
+      '64.96px',
+    );
+    expect(small?.style.getPropertyValue('--lyrics-line-gap')).toBe('0.75cqh');
+    expect(large?.style.getPropertyValue('--lyrics-line-gap')).toBe('0.75cqh');
+  });
+
+  it('cycles a saved custom full preset from the cover button', () => {
+    const created = saveAsNewPreset(defaultLyricsPresetState, BUILTIN_IMMERSIVE_ID, {
+      name: 'Studio',
+    });
+    usePreferencesStore.setState({
+      lyricsPresets: { ...created.state, selectedId: BUILTIN_CLASSIC_ID },
+    });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    expect(stage).toHaveAttribute('data-cover-layout', 'split');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full-window cover' }));
+    expect(usePreferencesStore.getState().lyricsPresets.selectedId).toBe(BUILTIN_IMMERSIVE_ID);
+    expect(stage).toHaveAttribute('data-cover-layout', 'full');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Studio' }));
+    expect(usePreferencesStore.getState().lyricsPresets.selectedId).toBe(created.id);
+    expect(stage).toHaveAttribute('data-cover-layout', 'full');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vinyl record' }));
+    expect(usePreferencesStore.getState().lyricsPresets.selectedId).toBe(BUILTIN_VINYL_ID);
+    expect(stage).toHaveAttribute('data-cover-layout', 'vinyl');
   });
 
   it('suspends follow on wheel and forces resume without a line change', async () => {

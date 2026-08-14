@@ -54,8 +54,8 @@ effectivePrimary = fontBase × fontScale
 ```
 
 70% and 145% must read as obviously different sizes. Translation and romanization scale from the
-primary size. Line height changes the primary line box, not only the translation gap. The renderer
-does not reparse QRC when typography changes.
+primary size. Font size changes glyph size only. Line spacing changes the scene-relative gap between
+lines (`cqh`), not the font size. The renderer does not reparse QRC when typography changes.
 
 ## Widget graph
 

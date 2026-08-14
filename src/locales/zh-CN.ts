@@ -361,6 +361,7 @@ export const zhCN = {
     coverSplit: '分栏布局',
     coverFull: '全窗口封面',
     coverVinyl: '唱片样式',
+    customPreset: '自定义预设',
     fontSize: '歌词字号',
     fontSizeSmall: '小',
     fontSizeMedium: '中',

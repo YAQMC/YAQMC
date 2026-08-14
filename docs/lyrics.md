@@ -25,9 +25,9 @@ the fallback. Normalized cache keys carry a parser revision so fixes invalidate 
 ## Renderer
 
 The lyrics page is a full-window immersive surface over a cover-derived background. The immersive page and
-the [Lyrics Composer](lyrics-composer.md) share one `LyricsScene`. The top bar still cycles `split` → `full`
-→ `vinyl` by selecting the matching built-in preset id; that only changes `selectedId`. Desktop Lyrics and
-Lyrics Island keep their own surface typography.
+the [Lyrics Composer](lyrics-composer.md) share one `LyricsScene`. The top bar cycles every resolved preset
+grouped by layout: split customs after Classic, full customs after Immersive, vinyl customs after Vinyl.
+That only changes `selectedId`. Desktop Lyrics and Lyrics Island keep their own surface typography.
 
 Cover layouts persist through the lyric preferences and as the selected [lyrics preset](lyrics-presets.md).
 
@@ -38,7 +38,8 @@ WebKitGTK can rasterize large blurred layers as black. Immersive factory blur is
 Line emphasis uses a cover-aware ink color: controls, progress, word fill, and sung text use pure ink, while
 the active line mixes the artwork color with ink so light covers stay readable. Non-active lines share one
 default dimmed color; only the singing line stands out. Primary size is `clamp(18px, 5.6cqh, 96px) × fontScale`
-on the scene root.
+on the scene root. Font size changes glyph size. Line spacing is a scene-relative `cqh` gap, so enlarging
+type does not inflate the space between lines.
 
 The active line is anchored at 35% of the viewport (`followAnchor`, overridable per lyrics widget) and tracks
 playback through a damped spring animation on a transform-based scroll layer, which avoids per-frame text

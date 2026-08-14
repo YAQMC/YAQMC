@@ -67,6 +67,10 @@
   contain: none;
 }
 
+.lyrics-scene__widget[data-widget='lyrics'] {
+  font-size: var(--lyrics-font-size);
+}
+
 .lyrics-scene__widget[data-widget='lyrics'] .lyrics-stage__viewport,
 .lyrics-scene__widget[data-widget='lyrics'] .lyrics-stage__scroll {
   width: 100%;

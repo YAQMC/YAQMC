@@ -1,6 +1,7 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -24,22 +25,20 @@ type SceneStyle = CSSProperties & {
   '--lyrics-ink': string;
   '--lyrics-ink-contrast': string;
   '--lyrics-stage-base': string;
-  '--lyrics-font-scale': number;
+  '--lyrics-font-scale': string;
   '--lyrics-font-size': string;
   '--lyrics-secondary-font-size': string;
-  '--lyrics-line-height': number;
+  '--lyrics-line-height': string;
   '--lyrics-line-gap': string;
   '--artwork-influence': string;
 };
 
-function applyTypography(node: HTMLElement, fontScale: number): void {
-  const height = node.clientHeight || node.getBoundingClientRect().height;
-  const primary = resolvePrimaryFontSizePx(fontScale, height);
-  node.style.setProperty('--lyrics-font-size', `${primary}px`);
-  node.style.setProperty(
-    '--lyrics-secondary-font-size',
-    `${resolveSecondaryFontSizePx(primary)}px`,
-  );
+function cssPx(value: number): string {
+  return `${Number(value.toFixed(2))}px`;
+}
+
+function readSceneHeightPx(node: HTMLElement): number {
+  return node.clientHeight || node.getBoundingClientRect().height || 0;
 }
 
 function SceneWidget({
@@ -123,33 +122,39 @@ export function LyricsScene({
   const { t: common } = useTranslation('common');
   const { t: settings } = useTranslation('settings', { keyPrefix: 'lyricsPresets' });
   const root = useRef<HTMLDivElement>(null);
+  const [sceneHeight, setSceneHeight] = useState(0);
   const ink = coverInk(bindings.artworkColor);
   const editor = mode === 'editor';
   const scene = preset.scene;
   const progress =
     bindings.durationMs === 0 ? 0 : (bindings.positionMs / Math.max(bindings.durationMs, 1)) * 100;
+  const primaryFontPx = resolvePrimaryFontSizePx(preset.typography.fontScale, sceneHeight);
+  const secondaryFontPx = resolveSecondaryFontSizePx(primaryFontPx);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = root.current;
     if (!node) return;
-    const update = () => applyTypography(node, preset.typography.fontScale);
+    const update = () => {
+      const next = readSceneHeightPx(node);
+      setSceneHeight((current) => (current === next ? current : next));
+    };
     update();
     if (typeof ResizeObserver !== 'function') return;
     const observer = new ResizeObserver(update);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [preset.typography.fontScale]);
+  }, [previewFrame, layoutKey]);
 
   const style = {
     '--lyrics-color': bindings.artworkColor,
     '--lyrics-ink': ink.ink,
     '--lyrics-ink-contrast': ink.contrast,
     '--lyrics-stage-base': appearance.baseColor ?? scene.background.fallbackColor,
-    '--lyrics-font-scale': preset.typography.fontScale,
-    '--lyrics-font-size': `calc(clamp(18px, 5.6cqh, 96px) * ${preset.typography.fontScale})`,
-    '--lyrics-secondary-font-size': `calc(var(--lyrics-font-size) * 0.42)`,
-    '--lyrics-line-height': preset.typography.lineHeight,
-    '--lyrics-line-gap': `${lineGapFromLineHeight(preset.typography.lineHeight)}em`,
+    '--lyrics-font-scale': String(preset.typography.fontScale),
+    '--lyrics-font-size': cssPx(primaryFontPx),
+    '--lyrics-secondary-font-size': cssPx(secondaryFontPx),
+    '--lyrics-line-height': String(preset.typography.lineHeight),
+    '--lyrics-line-gap': `${lineGapFromLineHeight(preset.typography.lineHeight)}cqh`,
     '--artwork-influence': String(scene.background.influence),
     backgroundColor: appearance.baseColor ?? scene.background.fallbackColor,
   } as SceneStyle;
@@ -267,7 +272,7 @@ export function LyricsScene({
           selected={selectedWidgetId === 'lyrics'}
           onSelect={(id) => onSelectWidget?.(id)}
           onEditorDragStart={onEditorDragStart}
-          style={widgetBoxStyle(scene.lyrics)}
+          style={{ ...widgetBoxStyle(scene.lyrics), fontSize: cssPx(primaryFontPx) }}
         >
           <LyricsViewport
             document={bindings.lyrics}

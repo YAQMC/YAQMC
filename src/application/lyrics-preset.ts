@@ -379,6 +379,22 @@ export function presetIdForLayout(layout: LyricCoverLayout): BuiltinLyricsPreset
   return BUILTIN_CLASSIC_ID;
 }
 
+const COVER_CYCLE_ORDER: readonly LyricCoverLayout[] = ['split', 'full', 'vinyl'];
+
+export function orderedPresetsForCycle(state: LyricsPresetState): LyricsPresetDefinition[] {
+  const presets = listResolvedPresets(state);
+  return COVER_CYCLE_ORDER.flatMap((layout) =>
+    presets.filter((preset) => preset.layout === layout),
+  );
+}
+
+export function nextResolvedPreset(state: LyricsPresetState): LyricsPresetDefinition {
+  const presets = orderedPresetsForCycle(state);
+  const index = presets.findIndex((preset) => preset.id === state.selectedId);
+  const nextIndex = index < 0 ? 0 : (index + 1) % Math.max(presets.length, 1);
+  return presets[nextIndex] ?? presets[0]!;
+}
+
 export function isBuiltinPresetId(id: string): id is BuiltinLyricsPresetId {
   return (BUILTIN_PRESET_IDS as readonly string[]).includes(id);
 }
@@ -409,7 +425,9 @@ export function resolveSecondaryFontSizePx(primaryPx: number): number {
 }
 
 export function lineGapFromLineHeight(lineHeight: number): number {
-  return Math.max(0.25, (clampLineHeight(lineHeight) - 0.7) * 0.85);
+  const span = LINE_HEIGHT_MAX - LINE_HEIGHT_MIN;
+  const t = (clampLineHeight(lineHeight) - LINE_HEIGHT_MIN) / Math.max(span, 0.0001);
+  return Math.round((0.35 + t * 2) * 1000) / 1000;
 }
 
 function clampUnit(value: number, fallback: number): number {
