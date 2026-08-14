@@ -47,7 +47,7 @@ The active line is anchored at 35% of the viewport (`followAnchor`, overridable 
 playback through a damped spring animation on a transform-based scroll layer, which avoids per-frame text
 repaint. During a line transition the shared scroll spring is layered with a per-line cascade: lines ahead of the
 scroll direction lead the shared motion and lines behind trail it, so the gap between adjacent lines flexes as the
-wave passes instead of the whole block sliding rigidly (SPlayer-style liveliness). A wheel gesture with a delta
+wave passes instead of the whole block sliding rigidly (Apple Music-like liveliness). A wheel gesture with a delta
 suspends following. Bare pointer-down does not. **Follow current line** always scrolls to the current line, even
 when the line index did not change. Clicking a timed line seeks and resumes following. Word highlight is
 independent and does not recenter.
@@ -58,7 +58,7 @@ The active word's reveal is written to CSS custom properties through a ref. Two 
 
 - **Per-character jump** (default): splits the active word into movable units and lifts each one a short
   distance as it is sung, staying raised while sung. CJK words split per character; Latin words move as a
-  single unit, matching SPlayer-style behavior. Only the highlighted line receives the effect; other lines
+  single unit, matching Apple Music-like behavior. Only the highlighted line receives the effect; other lines
   stay dim and unhighlighted.
 - **Gradual fill** writes `--word-progress` on the word and clips a pure-ink overlay from left to right.
 
