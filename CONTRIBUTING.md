@@ -43,6 +43,10 @@ cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 Pull Request 应说明问题、方案、风险/回退、测试证据和界面截图（如适用）。不要把本机凭据或真实账号数据
 放入测试 fixture。
 
+CI（`.github/workflows/ci.yml`）会在 pull request 和 `main` 上构建 Windows x86_64 的 NSIS 安装包与
+便携 zip，并作为 Actions artifact 保留 14 天。正式多架构安装包仍由 `build.yml` 在 tag / 手动触发时产出。
+也可以在 Actions 里对当前分支手动运行 **CI**。
+
 ## 安全与协议边界
 
 - 不提交 Cookie、OAuth code、token、vkey/ekey、真实账号资料、签名媒体 URL 或播放日志原文。

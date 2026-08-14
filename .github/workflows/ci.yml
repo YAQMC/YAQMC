@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -37,3 +42,54 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+
+  windows-x86_64:
+    name: Windows x86_64 artifact
+    runs-on: windows-2025
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.88'
+          targets: x86_64-pc-windows-msvc
+      - run: npm ci
+      - name: Build NSIS installer
+        run: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
+      - name: Stage installer, portable zip, and checksums
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = 'release/YAQMC-windows-x86_64'
+          $targetRoot = 'src-tauri/target/x86_64-pc-windows-msvc/release'
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+          Get-ChildItem -LiteralPath "$targetRoot/bundle" -Recurse -File |
+            Where-Object { $_.Extension -eq '.exe' } |
+            ForEach-Object {
+              $destination = Join-Path $releaseDir "YAQMC-windows-x86_64-$($_.Name)"
+              Copy-Item -LiteralPath $_.FullName -Destination $destination
+            }
+          $portableBinary = "$targetRoot/yaqmc.exe"
+          if (-not (Test-Path -LiteralPath $portableBinary -PathType Leaf)) {
+            throw "Portable binary is missing: $portableBinary"
+          }
+          Compress-Archive -LiteralPath $portableBinary -DestinationPath "$releaseDir/YAQMC-windows-x86_64-portable.zip"
+          $packages = Get-ChildItem -LiteralPath $releaseDir -File | Sort-Object Name
+          if (($packages | Measure-Object).Count -lt 2) {
+            throw 'Expected NSIS installer and portable zip'
+          }
+          $checksumLines = $packages | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant(), $_.Name
+          }
+          Set-Content -LiteralPath "$releaseDir/SHA256SUMS-windows-x86_64.txt" -Value $checksumLines -Encoding ascii
+      - uses: actions/upload-artifact@v7
+        with:
+          name: YAQMC-windows-x86_64
+          path: release/YAQMC-windows-x86_64
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
