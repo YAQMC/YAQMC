@@ -28,7 +28,7 @@ The lyrics page is a full-window immersive surface over a cover-derived backgrou
 layouts selectable from the top bar: `split` (cover artwork on the left with title/artist), `full`
 (full-window sharp cover with a frosted, gradient-masked lyrics panel on the right), and `vinyl` (a CSS-drawn
 record whose circular cover spins while playing and freezes in place when paused). Cover layouts persist
-through the lyric preferences.
+through the lyric preferences and as the selected [lyrics preset](lyrics-presets.md).
 
 The blurred background for `split`/`vinyl` is produced once per artwork by an offscreen canvas render using
 `stackblur-canvas`, then served as a static image; the live CSS `filter: blur()` path is avoided because

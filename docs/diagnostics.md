@@ -12,7 +12,7 @@ only created when the user explicitly asks for it.
 ## What lives inside a diagnostic snapshot
 
 `DiagnosticsSnapshot` is produced by
-`src-tauri/src/diagnostics.rs::snapshot_from_handle` and contains four
+`src-tauri/src/diagnostics.rs::snapshot_from_handle` and contains these
 sections:
 
 - **`app`** — application version, short commit SHA (embedded at build time by
@@ -29,6 +29,9 @@ sections:
   short song identifier, playback order, repeat mode, and the player-facing
   primary mode (`sequential` / `shuffle` / `repeat-one`) — but never the raw
   signed media URL.
+- **`lyricsPreset`** — compact active lyrics-preset identity (`id`,
+  `kind` = `built-in` | `custom`, `schemaVersion`). The snapshot does not dump
+  the full preset JSON or local asset paths.
 
 The snapshot also carries:
 
@@ -130,6 +133,12 @@ Everything the user needs is exposed under
 - **Reveal bundle** — reveals the most recent bundle in the file manager.
 - **Clear old logs** — deletes rotated files only; the current log file stays.
 - **Report a problem** — opens the guided Issue Reporter dialog.
+- **Platform collection** — the Linux/platform diagnostic export previously
+  shown under Desktop integration.
+
+About remains informational. It may offer **Report a problem** as a support
+entry point; that button opens the same Issue Reporter. Diagnostic bundle
+actions are not duplicated under Desktop integration or About.
 
 There is intentionally no dashboard of per-domain toggles: users should not
 need to configure logging, and maintainers can enable `TRACE` when needed.

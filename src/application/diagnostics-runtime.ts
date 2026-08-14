@@ -16,6 +16,13 @@ export interface DiagnosticsRequest {
   accountState?: string;
   membershipTier?: string;
   membershipStatus?: string;
+  lyricsPreset?: LyricsPresetDiagnostics;
+}
+
+export interface LyricsPresetDiagnostics {
+  id: string;
+  kind: 'built-in' | 'custom';
+  schemaVersion: number;
 }
 
 export interface AppSection {
@@ -63,6 +70,7 @@ export interface DiagnosticsSnapshot {
   playback: PlaybackSection;
   logLevel: LogLevel;
   recentErrors: ErrorRecord[];
+  lyricsPreset?: LyricsPresetDiagnostics | null;
 }
 
 export interface RedactionReport {

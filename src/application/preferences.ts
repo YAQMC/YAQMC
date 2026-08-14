@@ -12,6 +12,14 @@ import {
   type PaletteId,
   type ResolvedColorMode,
 } from './theme-tokens';
+import {
+  defaultLyricsPresetState,
+  normalizeLyricsPresetState,
+  presetIdForLayout,
+  resolveLyricsPreset,
+  type LyricsPresetState,
+} from './lyrics-preset';
+import { logger } from './logger';
 
 const PREFERENCES_CACHE_KEY = 'yaqmc.preferences.v2';
 const LEGACY_PREFERENCES_CACHE_KEY = 'music-client.preferences.v1';
@@ -85,6 +93,7 @@ export interface AppPreferences {
   locale: LocalePreference;
   appearance: AppearanceSettings;
   lyrics: LyricDisplaySettings;
+  lyricsPresets: LyricsPresetState;
   surfaces: Record<SurfaceKind, LyricSurfaceSettings>;
   system: SystemSettings;
   debug: DebugSettings;
@@ -132,6 +141,7 @@ export const defaultPreferences: AppPreferences = {
     coverLayout: 'split',
     focusSidebarCollapsed: false,
   },
+  lyricsPresets: defaultLyricsPresetState,
   surfaces: {
     desktop: defaultSurface('desktop'),
     island: defaultSurface('island'),
@@ -232,6 +242,17 @@ export function normalizePreferences(value: unknown): AppPreferences {
   const debug = (
     source.debug && typeof source.debug === 'object' ? source.debug : {}
   ) as Partial<DebugSettings>;
+  const coverLayout = valueIn(lyrics.coverLayout, ['split', 'full', 'vinyl'], 'split');
+  const lyricsPresets = normalizeLyricsPresetState(
+    'lyricsPresets' in source ? (source as { lyricsPresets?: unknown }).lyricsPresets : undefined,
+    {
+      coverLayout,
+      preserveContainFit:
+        !('lyricsPresets' in source) &&
+        valueIn(appearance.backgroundFit, ['cover', 'contain'], 'cover') === 'contain',
+    },
+  );
+  const resolvedPreset = resolveLyricsPreset(lyricsPresets);
   return {
     version: 2,
     locale: valueIn(source.locale, ['system', 'en-US', 'zh-CN'], 'system'),
@@ -264,10 +285,11 @@ export function normalizePreferences(value: unknown): AppPreferences {
       romanization: valueIn(lyrics.romanization, ['auto', 'show', 'hide'], 'auto'),
       timingOffsetMs: numberInRange(lyrics.timingOffsetMs, 0, -2_000, 2_000),
       fontSize: valueIn(lyrics.fontSize, ['small', 'medium', 'large'], 'medium'),
-      coverLayout: valueIn(lyrics.coverLayout, ['split', 'full', 'vinyl'], 'split'),
+      coverLayout: resolvedPreset.layout,
       focusSidebarCollapsed:
         typeof lyrics.focusSidebarCollapsed === 'boolean' ? lyrics.focusSidebarCollapsed : false,
     },
+    lyricsPresets,
     surfaces: {
       desktop: normalizeSurface(surfaces.desktop, 'desktop', legacyPreferences),
       island: normalizeSurface(surfaces.island, 'island', legacyPreferences),
@@ -293,6 +315,7 @@ export function preferencesRequireMigration(value: unknown): boolean {
   if (
     source.version !== 2 ||
     source.surfaces?.taskbar ||
+    !(source as { lyricsPresets?: unknown }).lyricsPresets ||
     !source.system ||
     !['hide-to-tray', 'quit'].includes(String(source.system.closeBehavior)) ||
     typeof source.system.globalShortcutsEnabled !== 'boolean'
@@ -351,6 +374,10 @@ interface PreferencesState extends AppPreferences {
   selectPalette: (palette: PaletteId) => void;
   resetAppearance: () => void;
   updateLyrics: (patch: Partial<LyricDisplaySettings>) => void;
+  updateLyricsPresets: (
+    recipe: LyricsPresetState | ((current: LyricsPresetState) => LyricsPresetState),
+  ) => void;
+  selectLyricsPreset: (id: string) => void;
   updateSystem: (patch: Partial<SystemSettings>) => void;
   updateDebug: (patch: Partial<DebugSettings>) => void;
   updateSurface: (kind: SurfaceKind, patch: Partial<LyricSurfaceSettings>) => void;
@@ -366,6 +393,7 @@ function persistedSlice(state: PreferencesState): AppPreferences {
     locale: state.locale,
     appearance: state.appearance,
     lyrics: state.lyrics,
+    lyricsPresets: state.lyricsPresets,
     surfaces: state.surfaces,
     system: state.system,
     debug: state.debug,
@@ -409,14 +437,47 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     persist(persistedSlice(get()));
   },
   updateLyrics: (patch) => {
-    set((state) => ({
-      lyrics: normalizePreferences({
+    set((state) => {
+      const lyricsPresets =
+        patch.coverLayout && patch.coverLayout !== state.lyrics.coverLayout
+          ? { ...state.lyricsPresets, selectedId: presetIdForLayout(patch.coverLayout) }
+          : state.lyricsPresets;
+      if (patch.coverLayout && patch.coverLayout !== state.lyrics.coverLayout) {
+        logger.info('lyrics.preset.select', 'selected lyrics preset', {
+          id: presetIdForLayout(patch.coverLayout),
+        });
+      }
+      const normalized = normalizePreferences({
         ...persistedSlice(state),
         lyrics: { ...state.lyrics, ...patch },
-      }).lyrics,
-      persistenceError: null,
-    }));
+        lyricsPresets,
+      });
+      return {
+        lyrics: normalized.lyrics,
+        lyricsPresets: normalized.lyricsPresets,
+        persistenceError: null,
+      };
+    });
     persist(persistedSlice(get()));
+  },
+  updateLyricsPresets: (recipe) => {
+    set((state) => {
+      const next = typeof recipe === 'function' ? recipe(state.lyricsPresets) : recipe;
+      const normalized = normalizePreferences({
+        ...persistedSlice(state),
+        lyricsPresets: next,
+      });
+      return {
+        lyrics: normalized.lyrics,
+        lyricsPresets: normalized.lyricsPresets,
+        persistenceError: null,
+      };
+    });
+    persist(persistedSlice(get()));
+  },
+  selectLyricsPreset: (id) => {
+    logger.info('lyrics.preset.select', 'selected lyrics preset', { id });
+    get().updateLyricsPresets((current) => ({ ...current, selectedId: id }));
   },
   updateSystem: (patch) => {
     set((state) => ({

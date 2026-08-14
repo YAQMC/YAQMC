@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
 import { useLyricsStore } from '../application/lyrics-store';
+import { lineGapFromLineHeight, resolveLyricsPreset } from '../application/lyrics-preset';
 import {
   emptyLyricCursor,
   lastSungLineIndex,
@@ -51,6 +52,9 @@ type LyricsStyle = CSSProperties & {
   '--lyrics-ink': string;
   '--lyrics-ink-contrast': string;
   '--lyrics-stage-base': string;
+  '--lyrics-font-scale': number;
+  '--lyrics-line-height': number;
+  '--lyrics-line-gap': string;
 };
 
 function coverInk(hexColor: string): { ink: string; contrast: string } {
@@ -575,12 +579,14 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
-  const coverLayout = usePreferencesStore((state) => state.lyrics.coverLayout);
+  const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
   const backgroundMode = usePreferencesStore((state) => state.appearance.backgroundMode);
   const backgroundColor = usePreferencesStore((state) => state.appearance.backgroundColor);
-  const backgroundFit = usePreferencesStore((state) => state.appearance.backgroundFit);
   const backgroundImageSource = usePreferencesStore((state) => state.backgroundImageData);
+  const resolvedPreset = resolveLyricsPreset(lyricsPresets);
+  const coverLayout = resolvedPreset.layout;
+  const backgroundFit = resolvedPreset.background.fit;
   const currentArtworkSrc = currentArtworkBaseSrc
     ? resolveArtworkSource(
         {
@@ -718,8 +724,12 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     '--lyrics-color': currentArtworkColor,
     '--lyrics-ink': coverInkColors.ink,
     '--lyrics-ink-contrast': coverInkColors.contrast,
-    '--lyrics-stage-base': appearance.baseColor ?? 'var(--bg-opaque)',
-    backgroundColor: appearance.baseColor ?? undefined,
+    '--lyrics-stage-base':
+      appearance.baseColor ?? resolvedPreset.background.fallbackColor ?? 'var(--bg-opaque)',
+    '--lyrics-font-scale': resolvedPreset.typography.fontScale,
+    '--lyrics-line-height': resolvedPreset.typography.lineHeight,
+    '--lyrics-line-gap': `${lineGapFromLineHeight(resolvedPreset.typography.lineHeight)}em`,
+    backgroundColor: appearance.baseColor ?? resolvedPreset.background.fallbackColor ?? undefined,
   } as LyricsStyle;
 
   const resumeFollowing = () => {
@@ -764,7 +774,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
         <>
           <div className="lyrics-stage__content">
             <aside className="lyrics-stage__control-panel">
-              {coverLayout === 'vinyl' ? (
+              {resolvedPreset.artwork.style === 'vinyl' || coverLayout === 'vinyl' ? (
                 <div className="lyrics-stage__disc" data-playing={isPlaying || undefined}>
                   {safeArtworkSource && (
                     <img

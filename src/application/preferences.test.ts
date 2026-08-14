@@ -152,4 +152,42 @@ describe('preference persistence model', () => {
     expect(usePreferencesStore.getState().appearance).toEqual(defaultPreferences.appearance);
     expect(usePreferencesStore.getState().lyrics).toEqual(defaultPreferences.lyrics);
   });
+
+  it('persists lyrics preset selection, overrides, and custom presets', () => {
+    const selected = normalizePreferences({
+      lyricsPresets: {
+        schemaVersion: 1,
+        selectedId: 'builtin.vinyl',
+        overrides: { 'builtin.vinyl': { typography: { fontScale: 1.1 } } },
+        custom: [],
+      },
+    });
+    expect(selected.lyrics.coverLayout).toBe('vinyl');
+    expect(selected.lyricsPresets.selectedId).toBe('builtin.vinyl');
+    expect(selected.lyricsPresets.overrides['builtin.vinyl']?.typography?.fontScale).toBe(1.1);
+
+    const created = normalizePreferences({
+      lyricsPresets: {
+        schemaVersion: 1,
+        selectedId: 'custom.keep-me',
+        overrides: {},
+        custom: [
+          {
+            schemaVersion: 1,
+            id: 'custom.keep-me',
+            nameKey: 'custom',
+            name: 'Studio',
+            source: 'custom',
+            layout: 'full',
+            typography: { fontScale: 1.2, lineHeight: 1.3 },
+            artwork: { style: 'square' },
+            background: { fit: 'cover', fallbackColor: '#20231C' },
+          },
+        ],
+      },
+    });
+    expect(created.lyricsPresets.custom[0]?.id).toBe('custom.keep-me');
+    expect(created.lyrics.coverLayout).toBe('full');
+    expect(preferencesRequireMigration({ version: 2 })).toBe(true);
+  });
 });

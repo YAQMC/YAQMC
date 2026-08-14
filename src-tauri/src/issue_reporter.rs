@@ -267,6 +267,14 @@ fn compose_body(draft: &IssueDraft, snapshot: &DiagnosticsSnapshot) -> String {
         snapshot.session_id
     )
     .ok();
+    if let Some(preset) = &snapshot.lyrics_preset {
+        writeln!(
+            &mut body,
+            "- Lyrics preset: {} ({}, schema v{})",
+            preset.id, preset.kind, preset.schema_version
+        )
+        .ok();
+    }
     if let Some(error) = draft.linked_error_code.as_deref() {
         writeln!(
             &mut body,
