@@ -642,8 +642,9 @@ async function loadPagedList<T>(options: {
   capability: 'favoriteRead' | 'playlistRead' | 'recentHistoryRead';
   request: (cursor: string | undefined, signal?: AbortSignal) => Promise<Page<T>>;
   keyOf: (item: T) => EntityId;
+  autoLoadAll?: boolean;
 }): Promise<void> {
-  const { provider, resource, reset, capability, request, keyOf } = options;
+  const { provider, resource, reset, capability, request, keyOf, autoLoadAll } = options;
   const snapshot = useAccountStore.getState().snapshot;
   if (snapshot.state !== 'authenticated') {
     publishListResource(resource, resourceForSnapshot<T[]>(snapshot));
@@ -676,7 +677,7 @@ async function loadPagedList<T>(options: {
   });
 
   try {
-    const page = await request(requestedCursor ?? undefined, runtimeSignal(provider));
+    let page = await request(requestedCursor ?? undefined, runtimeSignal(provider));
     if (
       !canCommitListResult(resource, generation, revision, requestedCursor) ||
       page.authRevision !== revision
@@ -684,6 +685,23 @@ async function loadPagedList<T>(options: {
       return;
     }
     let data = mergeFirstSeen(previousData, page.items, keyOf);
+    if (autoLoadAll) {
+      while (
+        page.nextCursor !== null &&
+        canCommitListResult(resource, generation, revision, requestedCursor) &&
+        page.authRevision === revision &&
+        !page.stale
+      ) {
+        page = await request(page.nextCursor, runtimeSignal(provider));
+        if (
+          !canCommitListResult(resource, generation, revision, requestedCursor) ||
+          page.authRevision !== revision
+        ) {
+          return;
+        }
+        data = mergeFirstSeen(data, page.items, keyOf);
+      }
+    }
     if (resource === 'favorites') {
       data = reconcileConfirmedFavoriteSongs(data as Song[]) as T[];
     }
@@ -984,6 +1002,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       capability: 'playlistRead',
       request: (cursor, signal) => provider.getAccountPlaylists(cursor, 100, signal),
       keyOf: (playlist) => playlist.id,
+      autoLoadAll: true,
     }),
   loadRecent: (provider, reset = true) =>
     loadPagedList({

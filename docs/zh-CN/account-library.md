@@ -34,6 +34,17 @@ React generation 与 AbortSignal 防止旧路由、旧分页或旧会话覆盖�
 接口已有的元数据来填充标题、描述、所有者和更新时间；自建歌单的空创建者则回退到当前登录账号昵称，
 避免渲染出 “QQ 音乐” 和 1970 年份。
 
+## 歌单列表规范化
+
+自建歌单读取（`GetPlaylistByUin`）在单次响应中返回全部自建歌单，**不能**携带 `sin`/`ein` 分页参数，
+否则会截断结果。只有 `dirId 201` 表示收藏歌曲文件夹；`dirId 1` 是普通自建歌单，按 `Owned` 规范化
+（此前把 `dirId 1` 也当作收藏歌曲，会把真实歌单与收藏歌曲合并成同一 id 而丢失）。收藏歌曲与自建歌单
+都属于当前登录账号，因此 `creator`/`nick` 为空时回退到账号昵称。
+
+前端会自动翻完歌单列表的所有页（`autoLoadAll`），网格默认展开显示全部歌单，无需点击“加载更多”。
+某个歌单若规范化失败，会被单独丢弃并在 `qqmusic.playlist` 输出 warn（含脱敏的 `tid`/`dirId`/`name`
+与错误），而不是让整页静默失败。
+
 规范化失败会在 `qqmusic.playlist` 输出 warn，包含请求上下文、CGI `code`/`req_code`/`subcode`、脱敏后的
 响应预览，以及 `req.data` 对象的结构化 `shape` 摘要（键集合、`songlist`/`cdlist` 数量、`dirinfo` 字段），
 便于从日志判断 schema 漂移或路由变化。
