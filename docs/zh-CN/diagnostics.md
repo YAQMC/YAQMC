@@ -21,8 +21,9 @@
 - **`provider`**：QQ 音乐模式 (`guest`/`authenticated`)、连接状态、账号
   状态、会员等级——绝不包含 Cookie、Session Token、uin、QR 登录密钥。
 - **`playback`**：当前播放状态、已选音质代码、源分类
-  (`direct-http`/`qmc-encrypted`/`local-file`)、解码器类型、简短歌曲 ID
-  ——绝不包含签名后的媒体 URL。
+  (`direct-http`/`qmc-encrypted`/`local-file`)、解码器类型、简短歌曲 ID、
+  播放顺序、循环模式，以及播放栏主模式（`sequential` / `shuffle` /
+  `repeat-one`）——绝不包含签名后的媒体 URL。
 
 快照还携带：
 

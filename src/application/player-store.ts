@@ -5,6 +5,7 @@ import type {
   PlaybackSourceSelection,
   Song,
 } from '../domain/music';
+import { applyPrimaryPlaybackMode, type PrimaryPlaybackMode } from './playback-mode';
 import { dispatchPlayerCommand } from './player-command-adapter';
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -74,6 +75,8 @@ interface PlayerActions {
   setShuffle: (enabled: boolean) => void;
   setQuality: (quality: AudioQualityPreference) => void;
   cycleRepeat: () => void;
+  setRepeat: (mode: RepeatMode) => void;
+  setPrimaryPlaybackMode: (mode: PrimaryPlaybackMode) => void;
   toggleQueue: () => void;
   toggleLyrics: () => void;
   openLyrics: () => void;
@@ -597,6 +600,26 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set((state) => ({
       repeat: state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off',
     }));
+  },
+  setRepeat: (mode) => {
+    if (dispatchPlayerCommand({ type: 'setRepeat', mode })) return;
+    set({ repeat: mode });
+  },
+  setPrimaryPlaybackMode: (mode) => {
+    if (dispatchPlayerCommand({ type: 'setPrimaryPlaybackMode', mode })) return;
+    set((state) => {
+      if (mode === 'repeat-one') return { repeat: 'one' };
+      const applied = applyPrimaryPlaybackMode(state.playbackOrder, mode);
+      if (applied.playbackOrder === state.playbackOrder) return { repeat: 'off' };
+      const entries = localEntries(state);
+      const currentId = localCurrentId(state, entries);
+      return {
+        repeat: 'off',
+        queueEntries: entries,
+        currentQueueEntryId: currentId,
+        ...fallbackOrderState(entries, currentId, applied.playbackOrder),
+      };
+    });
   },
   toggleQueue: () => set((state) => ({ queueOpen: !state.queueOpen, lyricsOpen: false })),
   toggleLyrics: () => set((state) => ({ lyricsOpen: !state.lyricsOpen, queueOpen: false })),

@@ -26,7 +26,9 @@ sections:
   or QR-login secrets.
 - **`playback`** — current playback state, selected quality code, source
   classification (`direct-http`/`qmc-encrypted`/`local-file`), decoder type,
-  short song identifier — but never the raw signed media URL.
+  short song identifier, playback order, repeat mode, and the player-facing
+  primary mode (`sequential` / `shuffle` / `repeat-one`) — but never the raw
+  signed media URL.
 
 The snapshot also carries:
 

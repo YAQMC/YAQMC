@@ -51,6 +51,8 @@ const APP_COMMANDS: &[&str] = &[
     "player_toggle_shuffle",
     "player_set_shuffle",
     "player_cycle_repeat",
+    "player_set_repeat",
+    "player_set_primary_playback_mode",
     "player_add_to_queue",
     "player_add_tracks_to_queue",
     "player_remove_from_queue",

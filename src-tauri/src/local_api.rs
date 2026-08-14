@@ -924,6 +924,7 @@ mod tests {
         );
 
         let sequential = router
+            .clone()
             .oneshot(
                 authorization(Request::put("/v1/player/shuffle"))
                     .header(
@@ -941,6 +942,61 @@ mod tests {
         assert!(sequential["shuffleTraversal"]
             .as_array()
             .is_some_and(Vec::is_empty));
+        assert_eq!(sequential["primaryPlaybackMode"], "sequential");
+
+        let one = router
+            .clone()
+            .oneshot(
+                authorization(Request::put("/v1/player/repeat"))
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/json"),
+                    )
+                    .body(Body::from(r#"{"mode":"one"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let one = response_json(one).await;
+        assert_eq!(one["repeat"], "one");
+        assert_eq!(one["shuffle"], false);
+        assert_eq!(one["playbackOrder"], "sequential");
+        assert_eq!(one["primaryPlaybackMode"], "repeat-one");
+
+        let shuffled_again = router
+            .clone()
+            .oneshot(
+                authorization(Request::put("/v1/player/shuffle"))
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/json"),
+                    )
+                    .body(Body::from(r#"{"enabled":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let shuffled_again = response_json(shuffled_again).await;
+        assert_eq!(shuffled_again["shuffle"], true);
+        assert_eq!(shuffled_again["repeat"], "one");
+        assert_eq!(shuffled_again["primaryPlaybackMode"], "repeat-one");
+
+        let off = router
+            .oneshot(
+                authorization(Request::put("/v1/player/repeat"))
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/json"),
+                    )
+                    .body(Body::from(r#"{"mode":"off"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let off = response_json(off).await;
+        assert_eq!(off["repeat"], "off");
+        assert_eq!(off["shuffle"], true);
+        assert_eq!(off["primaryPlaybackMode"], "shuffle");
     }
 
     #[tokio::test]

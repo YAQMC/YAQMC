@@ -423,6 +423,9 @@ mod tests {
                 decoder_hint: Some("flac".into()),
                 queue_length: 0,
                 current_source_kind: None,
+                playback_order: "sequential",
+                repeat_mode: "off",
+                primary_playback_mode: "sequential",
             },
             vec![ErrorRecord::new(
                 "YAQMC-AUDIO-OUTPUT-001",
