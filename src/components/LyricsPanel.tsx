@@ -5,8 +5,6 @@ import {
   Heart,
   Image,
   LocateFixed,
-  Maximize2,
-  Minimize2,
   Music2,
   Pause,
   Play,
@@ -35,7 +33,14 @@ import { usePreferencesStore, type SecondaryLyricVisibility } from '../applicati
 import { shouldShowLyricSecondary } from '../application/lyrics-presentation';
 import { resolveLyricsAppearance } from '../application/lyrics-appearance';
 import { useSafeArtworkSource } from '../application/artwork-source';
+import { resolveArtworkSource } from '../application/artwork-resolver';
 import { useBlurredArtwork } from '../application/blurred-artwork';
+import {
+  lyricsArtworkFallback,
+  lyricsBlurredBackdropFallback,
+  rememberLyricsArtwork,
+  rememberLyricsBlurredBackdrop,
+} from '../application/lyrics-artwork-fallback';
 import {
   LyricsFullscreenTransport,
   type LyricsFullscreenTransportHandle,
@@ -257,14 +262,6 @@ function springScrollTo(
 }
 
 const LYRIC_ALIGN = 0.35;
-
-let lastKnownArtworkSource: string | null = null;
-let lastKnownBlurredBackdrop: string | null = null;
-
-export function resetLyricsArtworkFallbackForTests(): void {
-  lastKnownArtworkSource = null;
-  lastKnownBlurredBackdrop = null;
-}
 
 function centerLyricLine(
   scrollArea: HTMLDivElement | null,
@@ -518,20 +515,11 @@ function LyricsMessage({
 interface LyricsPanelProps {
   focus: boolean;
   fullscreen: boolean;
-  fullscreenPending: boolean;
   fullscreenError: string | null;
-  onToggleFullscreen: () => void;
   onClose: () => void;
 }
 
-export function LyricsPanel({
-  focus,
-  fullscreen,
-  fullscreenPending,
-  fullscreenError,
-  onToggleFullscreen,
-  onClose,
-}: LyricsPanelProps) {
+export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: LyricsPanelProps) {
   const { t } = useTranslation('lyrics');
   const { t: player } = useTranslation('player');
   const { t: common } = useTranslation('common');
@@ -544,8 +532,11 @@ export function LyricsPanel({
   const currentArtistLabel = usePlayerStore((state) =>
     joinArtistNames(state.queue[state.currentIndex]?.artists ?? []),
   );
-  const currentArtworkSrc = usePlayerStore(
+  const currentArtworkBaseSrc = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.artwork.src ?? '',
+  );
+  const currentArtworkVariants = usePlayerStore(
+    (state) => state.queue[state.currentIndex]?.artwork.variants,
   );
   const currentArtworkAlt = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.artwork.alt ?? '',
@@ -590,8 +581,19 @@ export function LyricsPanel({
   const backgroundColor = usePreferencesStore((state) => state.appearance.backgroundColor);
   const backgroundFit = usePreferencesStore((state) => state.appearance.backgroundFit);
   const backgroundImageSource = usePreferencesStore((state) => state.backgroundImageData);
+  const currentArtworkSrc = currentArtworkBaseSrc
+    ? resolveArtworkSource(
+        {
+          src: currentArtworkBaseSrc,
+          alt: currentArtworkAlt,
+          dominantColor: currentArtworkColor,
+          variants: currentArtworkVariants,
+        },
+        'fullscreen',
+      )
+    : '';
   const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null);
-  if (safeArtworkSource) lastKnownArtworkSource = safeArtworkSource;
+  useEffect(() => rememberLyricsArtwork(safeArtworkSource), [safeArtworkSource]);
   const appearance = resolveLyricsAppearance(
     {
       mode: backgroundMode,
@@ -606,13 +608,13 @@ export function LyricsPanel({
       ? null
       : appearance.mode === 'image'
         ? appearance.imageSource
-        : (safeArtworkSource ?? lastKnownArtworkSource);
+        : (safeArtworkSource ?? lyricsArtworkFallback());
   const blurredBackdrop = useBlurredArtwork(coverLayout === 'full' ? null : backdropImageSource);
-  if (blurredBackdrop) lastKnownBlurredBackdrop = blurredBackdrop;
+  useEffect(() => rememberLyricsBlurredBackdrop(blurredBackdrop), [blurredBackdrop]);
   const backdropSource =
     coverLayout === 'full'
       ? backdropImageSource
-      : (blurredBackdrop ?? lastKnownBlurredBackdrop ?? backdropImageSource);
+      : (blurredBackdrop ?? lyricsBlurredBackdropFallback() ?? backdropImageSource);
   const activeDocument = document?.songId === currentTrackId ? document : null;
   const {
     cursor,
@@ -672,7 +674,13 @@ export function LyricsPanel({
     timelineRevision,
   ]);
 
-  const [controlsHidden, setControlsHidden] = useState(false);
+  const presentationKey = `${fullscreen}:${lyricsOpen}`;
+  const [controlsPresentationKey, setControlsPresentationKey] = useState(presentationKey);
+  const [controlsHidden, setControlsHidden] = useState(fullscreen);
+  if (controlsPresentationKey !== presentationKey) {
+    setControlsPresentationKey(presentationKey);
+    setControlsHidden(fullscreen);
+  }
 
   useEffect(() => () => cancelScrollSpring(scrollArea.current), []);
 
@@ -685,13 +693,23 @@ export function LyricsPanel({
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => setControlsHidden(true), 2_400);
     };
-    reveal();
-    stageElement.addEventListener('pointermove', reveal);
+    const handlePointerMove = (event: PointerEvent) => {
+      transportRef.current?.reveal();
+      if (!fullscreen || event.clientY <= 56) reveal();
+    };
+    const handleKeyDown = () => {
+      if (fullscreen) reveal();
+    };
+
+    if (!fullscreen) timer = window.setTimeout(() => setControlsHidden(true), 2_400);
+    stageElement.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      stageElement.removeEventListener('pointermove', reveal);
+      stageElement.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('keydown', handleKeyDown);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [lyricsOpen]);
+  }, [fullscreen, lyricsOpen]);
 
   if (!lyricsOpen) return null;
 
@@ -721,7 +739,6 @@ export function LyricsPanel({
       data-background-mode={appearance.mode}
       data-image-fit={appearance.imageFit}
       data-song-id={currentTrackId ?? undefined}
-      onPointerMove={() => transportRef.current?.reveal()}
     >
       {backdropSource && (
         <div
@@ -871,14 +888,6 @@ export function LyricsPanel({
               }
             >
               <Image size={18} />
-            </IconButton>
-            <IconButton
-              label={fullscreen ? t('exitFullscreen') : t('enterFullscreen')}
-              size="large"
-              onClick={onToggleFullscreen}
-              disabled={fullscreenPending}
-            >
-              {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </IconButton>
           </div>
 

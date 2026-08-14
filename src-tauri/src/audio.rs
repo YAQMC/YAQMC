@@ -11,9 +11,8 @@ use rodio::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashMap,
     fs::File,
-    io::{BufWriter, Write},
+    io::{BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
     thread,
@@ -23,6 +22,55 @@ use thiserror::Error;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_OUTPUT_ID: &str = "system:default";
+const OUTPUT_RECOVERY_INTERVAL: Duration = Duration::from_secs(2);
+const MAX_OUTPUT_RECOVERY_ATTEMPTS: usize = 5;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum OutputSelection {
+    SystemDefault,
+    SpecificDevice(String),
+}
+
+impl OutputSelection {
+    fn parse(value: &str) -> Result<Self, AudioEngineError> {
+        if value == DEFAULT_OUTPUT_ID {
+            return Ok(Self::SystemDefault);
+        }
+        let Some(digest) = value.strip_prefix("device:") else {
+            return Err(AudioEngineError::InvalidOutputSelection);
+        };
+        if digest.len() != 24 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(AudioEngineError::InvalidOutputSelection);
+        }
+        Ok(Self::SpecificDevice(value.to_owned()))
+    }
+
+    fn id(&self) -> &str {
+        match self {
+            Self::SystemDefault => DEFAULT_OUTPUT_ID,
+            Self::SpecificDevice(device_id) => device_id,
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::SystemDefault => "system-default",
+            Self::SpecificDevice(_) => "specific-device",
+        }
+    }
+}
+
+fn recovery_selection(selection: &OutputSelection) -> OutputSelection {
+    selection.clone()
+}
+
+fn reset_playback_snapshot(snapshot: &mut AudioEngineSnapshot) {
+    let output_error = snapshot.output_error.clone();
+    *snapshot = AudioEngineSnapshot {
+        output_error,
+        ..AudioEngineSnapshot::default()
+    };
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AudioFormat {
@@ -103,23 +151,40 @@ pub struct AudioLoadMetadata {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AudioResolvedOutput {
+    pub name: String,
+    pub driver: String,
+    pub host: String,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub sample_format: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioOutputDevice {
     pub id: String,
     pub label: String,
     pub is_default: bool,
     pub is_selected: bool,
+    pub selection_kind: String,
+    pub resolved_output: Option<AudioResolvedOutput>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AudioEngineError {
     #[error("no audio output device is available")]
     OutputDeviceUnavailable,
+    #[error("the audio output selection is invalid")]
+    InvalidOutputSelection,
     #[error("the audio output device could not be opened")]
     OutputDeviceOpenFailed,
     #[error("the media file could not be opened")]
     MediaOpenFailed,
     #[error("the media format is unsupported or malformed")]
     DecoderUnsupported,
+    #[error("the encrypted media did not decrypt to a valid FLAC stream")]
+    DecryptionFailed,
     #[error("seeking is not supported by this media source")]
     SeekUnsupported,
     #[error("the progressive media stream failed")]
@@ -331,8 +396,9 @@ fn audio_worker(
     snapshot: Arc<Mutex<AudioEngineSnapshot>>,
     ready: mpsc::SyncSender<Result<(), AudioEngineError>>,
 ) {
-    let (mut device_sink, mut player, mut selected_output_id) =
-        match open_output(DEFAULT_OUTPUT_ID, &snapshot) {
+    let default_selection = OutputSelection::SystemDefault;
+    let (mut device_sink, mut player, mut selected_output, mut resolved_output) =
+        match open_output(&default_selection, &snapshot) {
             Ok(output) => output,
             Err(error) => {
                 let _ = ready.send(Err(error));
@@ -345,6 +411,7 @@ fn audio_worker(
     let mut last_recovery_attempt = Instant::now()
         .checked_sub(Duration::from_secs(5))
         .unwrap_or_else(Instant::now);
+    let mut recovery_attempts = 0_usize;
     let _ = ready.send(Ok(()));
 
     loop {
@@ -358,17 +425,19 @@ fn audio_worker(
                     Ok((metadata, monitor)) => {
                         progressive_monitor = monitor.clone();
                         loaded_source = Some(source);
+                        let output_error = current.output_error.clone();
                         *current = AudioEngineSnapshot {
                             loaded: true,
                             paused: true,
                             duration_ms: metadata.duration_ms,
+                            output_error,
                             ..AudioEngineSnapshot::default()
                         };
                     }
                     Err(_) => {
                         progressive_monitor = None;
                         loaded_source = None;
-                        *current = AudioEngineSnapshot::default();
+                        reset_playback_snapshot(&mut current);
                     }
                 }
                 let _ = reply.send(result.map(|(metadata, _)| metadata));
@@ -384,10 +453,11 @@ fn audio_worker(
                     player.clear();
                     progressive_monitor = None;
                     loaded_source = None;
-                    *snapshot
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                        AudioEngineSnapshot::default();
+                    reset_playback_snapshot(
+                        &mut snapshot
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                    );
                 }
                 let _ = reply.send(result);
             }
@@ -399,10 +469,11 @@ fn audio_worker(
                 player.clear();
                 progressive_monitor = None;
                 loaded_source = None;
-                *snapshot
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                    AudioEngineSnapshot::default();
+                reset_playback_snapshot(
+                    &mut snapshot
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                );
                 let _ = reply.send(Ok(()));
             }
             Ok(AudioCommand::Seek { position, reply }) => {
@@ -417,19 +488,24 @@ fn audio_worker(
                 let _ = reply.send(Ok(()));
             }
             Ok(AudioCommand::SetOutputDevice { device_id, reply }) => {
-                let result = replace_output(
-                    &device_id,
-                    &snapshot,
-                    &player,
-                    loaded_source.as_ref(),
-                    current_volume,
-                );
+                let selection = OutputSelection::parse(&device_id);
+                let result = selection.and_then(|selection| {
+                    replace_output(
+                        &selection,
+                        &snapshot,
+                        &player,
+                        loaded_source.as_ref(),
+                        current_volume,
+                    )
+                });
                 match result {
-                    Ok((next_sink, next_player, next_monitor, resolved_id)) => {
+                    Ok((next_sink, next_player, next_monitor, selection, resolved)) => {
                         device_sink = next_sink;
                         player = next_player;
                         progressive_monitor = next_monitor;
-                        selected_output_id = resolved_id;
+                        selected_output = selection;
+                        resolved_output = resolved;
+                        recovery_attempts = 0;
                         snapshot
                             .lock()
                             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -442,7 +518,7 @@ fn audio_worker(
                 }
             }
             Ok(AudioCommand::Devices(reply)) => {
-                let _ = reply.send(list_output_devices(&selected_output_id));
+                let _ = reply.send(list_output_devices(&selected_output, &resolved_output));
             }
             Ok(AudioCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -455,9 +531,11 @@ fn audio_worker(
             player.clear();
             progressive_monitor = None;
             loaded_source = None;
-            *snapshot
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = AudioEngineSnapshot::default();
+            reset_playback_snapshot(
+                &mut snapshot
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
+            );
         }
 
         let output_interrupted = snapshot
@@ -465,24 +543,61 @@ fn audio_worker(
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .output_error
             .is_some();
-        if output_interrupted && last_recovery_attempt.elapsed() >= Duration::from_secs(2) {
+        if output_interrupted
+            && recovery_attempts < MAX_OUTPUT_RECOVERY_ATTEMPTS
+            && last_recovery_attempt.elapsed() >= OUTPUT_RECOVERY_INTERVAL
+        {
             last_recovery_attempt = Instant::now();
-            if let Ok((next_sink, next_player, next_monitor, resolved_id)) = replace_output(
-                DEFAULT_OUTPUT_ID,
+            recovery_attempts += 1;
+            tracing::warn!(
+                target: "audio",
+                selection = selected_output.kind(),
+                attempt = recovery_attempts,
+                max_attempts = MAX_OUTPUT_RECOVERY_ATTEMPTS,
+                "attempting to rebuild an interrupted audio output"
+            );
+            match replace_output(
+                &recovery_selection(&selected_output),
                 &snapshot,
                 &player,
                 loaded_source.as_ref(),
                 current_volume,
             ) {
-                tracing::info!(target: "audio", "recovered playback on the system default output");
-                device_sink = next_sink;
-                player = next_player;
-                progressive_monitor = next_monitor;
-                selected_output_id = resolved_id;
-                snapshot
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .output_error = None;
+                Ok((next_sink, next_player, next_monitor, selection, resolved)) => {
+                    tracing::info!(
+                        target: "audio",
+                        selection = selection.kind(),
+                        resolved_device = resolved.name,
+                        "recovered playback on the selected audio output"
+                    );
+                    device_sink = next_sink;
+                    player = next_player;
+                    progressive_monitor = next_monitor;
+                    selected_output = selection;
+                    resolved_output = resolved;
+                    recovery_attempts = 0;
+                    snapshot
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .output_error = None;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        target: "audio",
+                        selection = selected_output.kind(),
+                        attempt = recovery_attempts,
+                        error = %error,
+                        "audio output rebuild failed"
+                    );
+                    if recovery_attempts == MAX_OUTPUT_RECOVERY_ATTEMPTS {
+                        snapshot
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .output_error = Some(format!(
+                            "The selected audio output could not be restored after {MAX_OUTPUT_RECOVERY_ATTEMPTS} attempts."
+                        ));
+                    }
+                }
             }
         }
 
@@ -517,24 +632,59 @@ fn audio_worker(
 }
 
 fn open_output(
-    device_id: &str,
+    selection: &OutputSelection,
     snapshot: &Arc<Mutex<AudioEngineSnapshot>>,
-) -> Result<(MixerDeviceSink, Player, String), AudioEngineError> {
-    let builder = if device_id == DEFAULT_OUTPUT_ID {
-        DeviceSinkBuilder::from_default_device()
-            .map_err(|_| AudioEngineError::OutputDeviceUnavailable)?
-    } else {
-        let device = enumerated_output_devices()?
+) -> Result<
+    (
+        MixerDeviceSink,
+        Player,
+        OutputSelection,
+        AudioResolvedOutput,
+    ),
+    AudioEngineError,
+> {
+    let host = rodio::cpal::default_host();
+    let host_name = host.id().to_string();
+    let (device, resolved_selection) = match selection {
+        OutputSelection::SystemDefault => (
+            host.default_output_device()
+                .ok_or(AudioEngineError::OutputDeviceUnavailable)?,
+            OutputSelection::SystemDefault,
+        ),
+        OutputSelection::SpecificDevice(device_id) => enumerated_output_devices()?
             .into_iter()
-            .find_map(|(device, info)| (info.id == device_id).then_some(device))
-            .ok_or(AudioEngineError::OutputDeviceUnavailable)?;
-        DeviceSinkBuilder::from_device(device)
-            .map_err(|_| AudioEngineError::OutputDeviceOpenFailed)?
+            .find_map(|(device, info, legacy_id)| {
+                (info.id == *device_id || legacy_id == *device_id)
+                    .then_some((device, OutputSelection::SpecificDevice(info.id)))
+            })
+            .ok_or(AudioEngineError::OutputDeviceUnavailable)?,
     };
+    let description = device
+        .description()
+        .map_err(|_| AudioEngineError::OutputDeviceUnavailable)?;
+    let (device_name, driver) = device_signature(&description);
+    let default_config = device.default_output_config().ok().map(|config| {
+        format!(
+            "{} Hz / {} channels / {}",
+            config.sample_rate(),
+            config.channels(),
+            config.sample_format()
+        )
+    });
+    let builder = DeviceSinkBuilder::from_device(device)
+        .map_err(|_| AudioEngineError::OutputDeviceOpenFailed)?;
     let output_snapshot = Arc::clone(snapshot);
+    let interrupted_device = device_name.clone();
+    let interrupted_selection = resolved_selection.kind();
     let mut sink = builder
         .with_error_callback(move |error| {
-            tracing::error!(target: "audio", error = %error, "audio output stream failed");
+            tracing::error!(
+                target: "audio",
+                error = %error,
+                selection = interrupted_selection,
+                resolved_device = interrupted_device,
+                "audio output stream failed"
+            );
             let mut current = output_snapshot
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -542,23 +692,65 @@ fn open_output(
             current.output_error = Some("The selected audio output device was interrupted.".into());
         })
         .open_sink_or_fallback()
-        .map_err(|_| AudioEngineError::OutputDeviceOpenFailed)?;
+        .map_err(|error| {
+            tracing::error!(
+                target: "audio",
+                selection = resolved_selection.kind(),
+                resolved_device = device_name,
+                driver,
+                host = host_name,
+                default_config = default_config.as_deref().unwrap_or("unavailable"),
+                error = %error,
+                "audio output stream creation failed"
+            );
+            AudioEngineError::OutputDeviceOpenFailed
+        })?;
     sink.log_on_drop(false);
+    let config = sink.config();
+    let resolved = AudioResolvedOutput {
+        name: device_name,
+        driver,
+        host: host_name,
+        sample_rate: config.sample_rate().into(),
+        channels: config.channel_count().into(),
+        sample_format: config.sample_format().to_string(),
+    };
+    tracing::info!(
+        target: "audio",
+        selection = resolved_selection.kind(),
+        resolved_device = resolved.name,
+        driver = resolved.driver,
+        host = resolved.host,
+        sample_rate = resolved.sample_rate,
+        channels = resolved.channels,
+        sample_format = resolved.sample_format,
+        default_config = default_config.as_deref().unwrap_or("unavailable"),
+        "audio output stream opened"
+    );
     let player = Player::connect_new(sink.mixer());
     player.pause();
-    Ok((sink, player, device_id.to_owned()))
+    Ok((sink, player, resolved_selection, resolved))
 }
 
 fn replace_output(
-    device_id: &str,
+    selection: &OutputSelection,
     snapshot: &Arc<Mutex<AudioEngineSnapshot>>,
     current_player: &Player,
     loaded_source: Option<&PreparedPlaybackSource>,
     volume: f32,
-) -> Result<(MixerDeviceSink, Player, Option<ProgressiveMonitor>, String), AudioEngineError> {
+) -> Result<
+    (
+        MixerDeviceSink,
+        Player,
+        Option<ProgressiveMonitor>,
+        OutputSelection,
+        AudioResolvedOutput,
+    ),
+    AudioEngineError,
+> {
     let was_paused = current_player.is_paused();
     let position = current_player.get_pos();
-    let (sink, player, resolved_id) = open_output(device_id, snapshot)?;
+    let (sink, player, selection, resolved) = open_output(selection, snapshot)?;
     let monitor = if let Some(source) = loaded_source {
         source
             .epoch_guard
@@ -579,7 +771,7 @@ fn replace_output(
     } else {
         None
     };
-    Ok((sink, player, monitor, resolved_id))
+    Ok((sink, player, monitor, selection, resolved))
 }
 
 fn load_source(
@@ -664,17 +856,26 @@ fn load_source_unchecked(
             content_length,
             decryptor,
         } => {
-            let reader = QmcReader::new(
+            let mut reader = QmcReader::new(
                 File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?,
                 decryptor.clone(),
             );
+            validate_decrypted_flac(&mut reader)?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(*content_length)
                 .with_seekable(true)
                 .with_hint(source.format.extension())
                 .build()
-                .map_err(|_| AudioEngineError::DecoderUnsupported)?;
+                .map_err(|error| {
+                    tracing::warn!(
+                        target: "audio",
+                        media_kind = "encrypted-flac",
+                        error = %error,
+                        "decoder rejected decrypted media"
+                    );
+                    AudioEngineError::DecoderUnsupported
+                })?;
             let duration = decoder.total_duration().map(duration_ms);
             player.clear();
             player.append(decoder);
@@ -688,19 +889,28 @@ fn load_source_unchecked(
             ))
         }
         PreparedPlaybackLocation::EncryptedProgressive { source, decryptor } => {
-            let reader = QmcReader::new(
+            let mut reader = QmcReader::new(
                 source
                     .open_reader()
                     .map_err(|_| AudioEngineError::StreamingFailed)?,
                 decryptor.clone(),
             );
+            validate_decrypted_flac(&mut reader)?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(source.content_length())
                 .with_seekable(true)
                 .with_hint("flac")
                 .build()
-                .map_err(|_| AudioEngineError::DecoderUnsupported)?;
+                .map_err(|error| {
+                    tracing::warn!(
+                        target: "audio",
+                        media_kind = "encrypted-progressive-flac",
+                        error = %error,
+                        "decoder rejected decrypted progressive media"
+                    );
+                    AudioEngineError::DecoderUnsupported
+                })?;
             let duration = decoder.total_duration().map(duration_ms);
             let monitor = source.monitor();
             player.clear();
@@ -717,49 +927,94 @@ fn load_source_unchecked(
     }
 }
 
-fn list_output_devices(selected_id: &str) -> Result<Vec<AudioOutputDevice>, AudioEngineError> {
+fn validate_decrypted_flac<Reader: Read + Seek>(
+    reader: &mut Reader,
+) -> Result<(), AudioEngineError> {
+    let mut magic = [0_u8; 4];
+    reader
+        .read_exact(&mut magic)
+        .map_err(|_| AudioEngineError::DecryptionFailed)?;
+    reader
+        .seek(SeekFrom::Start(0))
+        .map_err(|_| AudioEngineError::DecryptionFailed)?;
+    let valid = magic == *b"fLaC";
+    tracing::debug!(
+        target: "audio",
+        decrypted_magic = %format_args!("{:02x}{:02x}{:02x}{:02x}", magic[0], magic[1], magic[2], magic[3]),
+        valid_flac = valid,
+        "probed decrypted media signature"
+    );
+    valid
+        .then_some(())
+        .ok_or(AudioEngineError::DecryptionFailed)
+}
+
+fn list_output_devices(
+    selection: &OutputSelection,
+    resolved_output: &AudioResolvedOutput,
+) -> Result<Vec<AudioOutputDevice>, AudioEngineError> {
     let host = rodio::cpal::default_host();
-    let default_signature = host
+    let default_device_id = host
         .default_output_device()
-        .and_then(|device| device.description().ok())
-        .map(|description| device_signature(&description));
-    let default_label = default_signature
-        .as_ref()
-        .map(|(name, _)| name.as_str())
-        .unwrap_or("Unavailable");
+        .and_then(|device| device.id().ok())
+        .map(|device_id| stable_device_id(&device_id.to_string()));
     let mut result = vec![AudioOutputDevice {
         id: DEFAULT_OUTPUT_ID.to_owned(),
-        label: format!("System default — {default_label}"),
+        label: "System default".to_owned(),
         is_default: true,
-        is_selected: selected_id == DEFAULT_OUTPUT_ID,
+        is_selected: matches!(selection, OutputSelection::SystemDefault),
+        selection_kind: "system-default".to_owned(),
+        resolved_output: matches!(selection, OutputSelection::SystemDefault)
+            .then(|| resolved_output.clone()),
     }];
-    result.extend(
-        enumerated_output_devices()?
-            .into_iter()
-            .map(|(_, mut info)| {
-                info.is_default = default_signature
-                    .as_ref()
-                    .is_some_and(|signature| info.label == signature.0);
-                info.is_selected = info.id == selected_id;
-                info
-            }),
-    );
+    match enumerated_output_devices() {
+        Ok(devices) => result.extend(devices.into_iter().map(|(_, mut info, _)| {
+            info.is_default = default_device_id
+                .as_ref()
+                .is_some_and(|device_id| info.id == *device_id);
+            info.is_selected = info.id == selection.id();
+            if info.is_selected {
+                info.resolved_output = Some(resolved_output.clone());
+            }
+            info
+        })),
+        Err(error) => {
+            tracing::warn!(
+                target: "audio",
+                error = %error,
+                "audio device enumeration failed; reporting the active output only"
+            );
+            if let OutputSelection::SpecificDevice(device_id) = selection {
+                result.push(AudioOutputDevice {
+                    id: device_id.clone(),
+                    label: resolved_output.name.clone(),
+                    is_default: false,
+                    is_selected: true,
+                    selection_kind: "specific-device".to_owned(),
+                    resolved_output: Some(resolved_output.clone()),
+                });
+            }
+        }
+    }
     Ok(result)
 }
 
-fn enumerated_output_devices() -> Result<Vec<(Device, AudioOutputDevice)>, AudioEngineError> {
+fn enumerated_output_devices() -> Result<Vec<(Device, AudioOutputDevice, String)>, AudioEngineError>
+{
     let host = rodio::cpal::default_host();
     let devices = host
         .output_devices()
         .map_err(|_| AudioEngineError::OutputDeviceUnavailable)?;
-    let mut ordinals: HashMap<(String, String), usize> = HashMap::new();
+    let mut ordinals = std::collections::HashMap::<(String, String), usize>::new();
     Ok(devices
         .filter_map(|device| {
             let description = device.description().ok()?;
             let signature = device_signature(&description);
             let ordinal = ordinals.entry(signature.clone()).or_default();
-            let id = stable_device_id(&signature.0, &signature.1, *ordinal);
+            let legacy_id = legacy_device_id(&signature.0, &signature.1, *ordinal);
             *ordinal += 1;
+            let native_id = device.id().ok()?.to_string();
+            let id = stable_device_id(&native_id);
             Some((
                 device,
                 AudioOutputDevice {
@@ -767,7 +1022,10 @@ fn enumerated_output_devices() -> Result<Vec<(Device, AudioOutputDevice)>, Audio
                     label: signature.0,
                     is_default: false,
                     is_selected: false,
+                    selection_kind: "specific-device".to_owned(),
+                    resolved_output: None,
                 },
+                legacy_id,
             ))
         })
         .collect())
@@ -780,7 +1038,16 @@ fn device_signature(description: &rodio::cpal::DeviceDescription) -> (String, St
     )
 }
 
-fn stable_device_id(name: &str, driver: &str, ordinal: usize) -> String {
+fn stable_device_id(native_id: &str) -> String {
+    let digest = Sha256::digest(native_id.as_bytes());
+    let suffix = digest[..12]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("device:{suffix}")
+}
+
+fn legacy_device_id(name: &str, driver: &str, ordinal: usize) -> String {
     let digest = Sha256::digest(format!("{driver}\0{name}\0{ordinal}").as_bytes());
     let suffix = digest[..12]
         .iter()
@@ -978,6 +1245,8 @@ impl AudioEngine for TestAudioEngine {
             label: "Deterministic test output".to_owned(),
             is_default: true,
             is_selected: true,
+            selection_kind: "specific-device".to_owned(),
+            resolved_output: None,
         }])
     }
 }
@@ -1007,13 +1276,79 @@ mod tests {
     }
 
     #[test]
-    fn output_device_ids_are_stable_without_exposing_driver_names() {
-        let id = stable_device_id("Headphones", "WASAPI", 0);
-        assert_eq!(id, stable_device_id("Headphones", "WASAPI", 0));
-        assert_ne!(id, stable_device_id("Headphones", "WASAPI", 1));
+    fn output_device_ids_are_stable_without_exposing_native_ids() {
+        let id = stable_device_id("wasapi:{AUDIO-ENDPOINT-GUID}");
+        assert_eq!(id, stable_device_id("wasapi:{AUDIO-ENDPOINT-GUID}"));
+        assert_ne!(id, stable_device_id("wasapi:{OTHER-ENDPOINT-GUID}"));
         assert!(id.starts_with("device:"));
-        assert!(!id.contains("Headphones"));
-        assert!(!id.contains("WASAPI"));
+        assert!(!id.contains("AUDIO-ENDPOINT-GUID"));
+        assert!(!id.contains("wasapi"));
+    }
+
+    #[test]
+    fn legacy_output_ids_remain_recognizable_during_persistence_migration() {
+        let legacy = legacy_device_id("Headphones", "WASAPI", 0);
+        assert_eq!(legacy, legacy_device_id("Headphones", "WASAPI", 0));
+        assert_ne!(legacy, legacy_device_id("Headphones", "WASAPI", 1));
+        assert_eq!(
+            OutputSelection::parse(&legacy).map(|value| value.id().to_owned()),
+            Ok(legacy)
+        );
+    }
+
+    #[test]
+    fn output_selection_distinguishes_policy_from_device_identity() {
+        assert_eq!(
+            OutputSelection::parse(DEFAULT_OUTPUT_ID),
+            Ok(OutputSelection::SystemDefault)
+        );
+        let device_id = stable_device_id("alsa:pipewire");
+        assert_eq!(
+            OutputSelection::parse(&device_id),
+            Ok(OutputSelection::SpecificDevice(device_id))
+        );
+        assert_eq!(
+            OutputSelection::parse("Default Audio Device"),
+            Err(AudioEngineError::InvalidOutputSelection)
+        );
+    }
+
+    #[test]
+    fn output_recovery_keeps_the_selected_policy() {
+        let specific = OutputSelection::SpecificDevice(stable_device_id("alsa:pipewire"));
+        assert_eq!(recovery_selection(&specific), specific);
+        assert_eq!(
+            recovery_selection(&OutputSelection::SystemDefault),
+            OutputSelection::SystemDefault
+        );
+    }
+
+    #[test]
+    fn resetting_playback_does_not_hide_an_output_failure() {
+        let mut snapshot = AudioEngineSnapshot {
+            loaded: true,
+            playing: true,
+            output_error: Some("device lost".to_owned()),
+            ..AudioEngineSnapshot::default()
+        };
+        reset_playback_snapshot(&mut snapshot);
+        assert!(!snapshot.loaded);
+        assert!(!snapshot.playing);
+        assert_eq!(snapshot.output_error.as_deref(), Some("device lost"));
+    }
+
+    #[test]
+    fn decrypted_flac_probe_requires_magic_and_rewinds() {
+        let mut valid = std::io::Cursor::new(b"fLaCpayload".to_vec());
+        assert_eq!(validate_decrypted_flac(&mut valid), Ok(()));
+        assert_eq!(valid.position(), 0);
+
+        let mut invalid = std::io::Cursor::new(b"ID3 payload".to_vec());
+        assert_eq!(
+            validate_decrypted_flac(&mut invalid),
+            Err(AudioEngineError::DecryptionFailed)
+        );
+        assert_eq!(invalid.position(), 0);
     }
 
     #[test]
@@ -1035,6 +1370,7 @@ mod tests {
                 resolved_quality: AudioQuality::Standard,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock),
         };

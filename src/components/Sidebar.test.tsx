@@ -81,7 +81,7 @@ describe('Sidebar navigation', () => {
           maskedIdentity: '10******01',
         },
         entitlement: {
-          tier: 'music-vip',
+          tier: 'green-diamond',
           membership: 'active',
           expiresAtMs: 1_800_000_000_000,
           permittedQualities: ['standard', 'high', 'lossless'],
@@ -103,7 +103,7 @@ describe('Sidebar navigation', () => {
     renderSidebar();
 
     expect(screen.getByText('Synthetic Listener')).toBeInTheDocument();
-    expect(screen.getByText('Music VIP · Active')).toBeInTheDocument();
+    expect(screen.getByText('Green Diamond · Active')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Synthetic Listener account avatar' })).toHaveAttribute(
       'src',
       'https://q.qlogo.cn/synthetic-avatar.png',

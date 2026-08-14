@@ -37,6 +37,7 @@ use thiserror::Error;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 pub(crate) mod account;
+mod artwork;
 mod auth;
 mod cache;
 mod clock;
@@ -46,7 +47,9 @@ mod redaction;
 mod transport;
 
 pub(crate) use cache::AccountEpoch;
-pub use entitlement::{AudioQualityPreference, PlaybackSourceSelection};
+pub use entitlement::{AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection};
+
+use artwork::{artwork_for_album, artwork_from_provider_url, is_allowed_artwork_url};
 
 use account::{
     AccountEntitlement, AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
@@ -58,7 +61,8 @@ use account::{
 use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
 use entitlement::{
-    candidates_for_request, choose_source, PreviewRange, SourceCandidate, VkeyAvailability,
+    candidates_for_request, choose_source, ClientCapabilityState, PreviewRange, SourceCandidate,
+    VkeyAvailability,
 };
 use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, TransportRequest};
 use zeroize::Zeroize;
@@ -224,6 +228,10 @@ pub enum QQMusicError {
     MutationInProgress,
     #[error("the account is not entitled to this media")]
     EntitlementUnavailable,
+    #[error("the account entitlement could not be confirmed")]
+    EntitlementUnknown,
+    #[error("the native client does not support this media source")]
+    ClientUnsupported,
     #[error("local provider storage failed")]
     Storage,
 }
@@ -247,6 +255,8 @@ impl QQMusicError {
             Self::Cancelled => ProviderErrorCode::Cancelled,
             Self::MutationInProgress => ProviderErrorCode::MutationInProgress,
             Self::EntitlementUnavailable => ProviderErrorCode::EntitlementUnavailable,
+            Self::EntitlementUnknown => ProviderErrorCode::EntitlementUnknown,
+            Self::ClientUnsupported => ProviderErrorCode::ClientUnsupported,
             Self::Storage => ProviderErrorCode::StorageFailure,
         }
     }
@@ -997,6 +1007,7 @@ impl QQMusicService {
                     tier: EntitlementTier::Free,
                     membership: MembershipState::Inactive,
                     expires_at_ms: None,
+                    secondary_entitlements: Vec::new(),
                     permitted_qualities: vec![AudioQuality::Standard],
                     observed_maximum_quality: Some(AudioQuality::Standard),
                     restrictions: Vec::new(),
@@ -1102,9 +1113,69 @@ impl PlaybackSourceResolver for QQMusicService {
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::unrestricted(),
         })
+    }
+
+    async fn resolve_client_fallback(
+        &self,
+        song: &Song,
+        failed: &PlaybackSourceSelection,
+    ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
+        if failed.requested_quality != AudioQualityPreference::Automatic
+            || !matches!(
+                failed.resolved_quality,
+                AudioQuality::Lossless | AudioQuality::Master
+            )
+            || song
+                .provider
+                .as_ref()
+                .map(|provider| provider.provider_id.as_str())
+                != Some("qqmusic")
+        {
+            return Err(PlaybackSourceError::DecoderUnsupported);
+        }
+
+        let provider = song
+            .provider
+            .as_ref()
+            .ok_or(PlaybackSourceError::TrackUnavailable)?;
+        let (session, entitlement, epoch_guard) = self
+            .playback_context()
+            .await
+            .map_err(map_provider_source_error)?;
+        let source = self
+            .client
+            .resolve_source(
+                song,
+                AudioQualityPreference::High,
+                session.as_ref(),
+                &entitlement,
+                epoch_guard,
+                self.account_transport.as_ref(),
+            )
+            .await;
+        if matches!(&source, Err(QQMusicError::AuthenticationExpired)) {
+            self.session_invalid.store(true, Ordering::Release);
+        }
+        let mut source = source.map_err(map_provider_source_error)?;
+        source.selection.requested_quality = AudioQualityPreference::Automatic;
+        source.selection.fallback_reason = Some(PlaybackFallbackReason::ClientUnsupported);
+        if let Some(capability) = source
+            .selection
+            .quality_capabilities
+            .iter_mut()
+            .find(|capability| capability.quality == failed.resolved_quality)
+        {
+            capability.client = ClientCapabilityState::Unsupported;
+            capability.playable = false;
+        }
+        let _ =
+            self.storage
+                .record_playback_snapshot(&provider.provider_id, &provider.track_id, song);
+        Ok(source)
     }
 }
 
@@ -1117,6 +1188,8 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
             PlaybackSourceError::AuthenticationExpired
         }
         QQMusicError::EntitlementUnavailable => PlaybackSourceError::EntitlementInsufficient,
+        QQMusicError::EntitlementUnknown => PlaybackSourceError::EntitlementUnknown,
+        QQMusicError::ClientUnsupported => PlaybackSourceError::DecoderUnsupported,
         QQMusicError::NotFound => PlaybackSourceError::TrackUnavailable,
         QQMusicError::SchemaChanged
         | QQMusicError::MalformedResponse
@@ -1318,7 +1391,6 @@ impl QQMusicClient {
             .next()
             .ok_or(QQMusicError::NotFound)?;
         let title = clean_text(&data.name);
-        let artwork_url = upgrade_https(&data.logo);
         Ok(Playlist {
             id: playlist_id(diss_id),
             title: title.clone(),
@@ -1327,15 +1399,7 @@ impl QQMusicClient {
                 id: format!("qqmusic:user:{}", stable_component(&data.nickname)),
                 display_name: clean_text(&data.nickname),
             },
-            artwork: Artwork {
-                src: if artwork_url.is_empty() {
-                    fallback_artwork()
-                } else {
-                    artwork_url
-                },
-                alt: format!("Cover for {title}"),
-                dominant_color: color_for(diss_id),
-            },
+            artwork: artwork_from_provider_url(&data.logo, &title, color_for(diss_id)),
             updated_label: if data.modified_at > 0 {
                 "Updated on QQ Music".to_owned()
             } else {
@@ -1374,12 +1438,14 @@ impl QQMusicClient {
             .filter_map(normalize_new_song)
             .collect();
         let title = clean_text(&details.title);
-        let artwork_url = upgrade_https(
-            non_empty(details.artwork)
-                .or_else(|| non_empty(details.front_artwork))
-                .unwrap_or_default()
-                .as_str(),
-        );
+        let artwork_url = non_empty(details.head_artwork)
+            .or_else(|| non_empty(details.front_artwork))
+            .or_else(|| non_empty(details.artwork))
+            .unwrap_or_default();
+        let artwork_color = details
+            .magic_color
+            .map(|color| format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b))
+            .unwrap_or_else(|| color_for(&top_id.to_string()));
         Ok(Playlist {
             id: format!("qqmusic:toplist:{top_id}"),
             title: title.clone(),
@@ -1388,18 +1454,7 @@ impl QQMusicClient {
                 id: "qqmusic".to_owned(),
                 display_name: "QQ Music".to_owned(),
             },
-            artwork: Artwork {
-                src: if artwork_url.is_empty() {
-                    fallback_artwork()
-                } else {
-                    artwork_url
-                },
-                alt: format!("Cover for {title}"),
-                dominant_color: details
-                    .magic_color
-                    .map(|color| format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b))
-                    .unwrap_or_else(|| color_for(&top_id.to_string())),
-            },
+            artwork: artwork_from_provider_url(&artwork_url, &title, artwork_color),
             updated_label: non_empty(details.update_time)
                 .map(|value| format!("Updated {value}"))
                 .unwrap_or_else(|| "Updated daily".to_owned()),
@@ -1494,6 +1549,7 @@ impl QQMusicClient {
         let candidates = source_candidates(&provider.track_id, media_mid);
         let requested_candidates = candidates_for_request(preferred, entitlement, &candidates);
         let mut encrypted_results = HashMap::new();
+        let mut encrypted_lookup_known = true;
         if let Some(session) = session {
             let encrypted_candidates = requested_candidates
                 .iter()
@@ -1517,6 +1573,7 @@ impl QQMusicClient {
                         return Err(QQMusicError::AuthenticationExpired)
                     }
                     Err(error) => {
+                        encrypted_lookup_known = false;
                         tracing::warn!(
                             target: "qqmusic",
                             error = %error,
@@ -1584,6 +1641,7 @@ impl QQMusicClient {
                 VkeyAvailability {
                     filename: candidate.filename.clone(),
                     available,
+                    known: true,
                 }
             })
             .collect::<Vec<_>>();
@@ -1593,6 +1651,7 @@ impl QQMusicClient {
                 .map(|(filename, source)| VkeyAvailability {
                     filename: filename.clone(),
                     available: source.is_some(),
+                    known: encrypted_lookup_known,
                 }),
         );
         let preview = match &song.playback_capability {
@@ -1612,6 +1671,8 @@ impl QQMusicClient {
         )
         .map_err(|error| match error {
             PlaybackSourceError::EntitlementInsufficient => QQMusicError::EntitlementUnavailable,
+            PlaybackSourceError::EntitlementUnknown => QQMusicError::EntitlementUnknown,
+            PlaybackSourceError::DecoderUnsupported => QQMusicError::ClientUnsupported,
             PlaybackSourceError::Cancelled => QQMusicError::Cancelled,
             _ => QQMusicError::NotFound,
         })?;
@@ -1634,6 +1695,20 @@ impl QQMusicClient {
                 .ok_or(QQMusicError::MalformedResponse)?;
             (normalize_cdn_url(&sip, &path)?, None)
         };
+        tracing::info!(
+            target: "qqmusic.playback",
+            requested_quality = preferred.as_setting(),
+            resolved_quality = ?decision.candidate.quality,
+            provider_quality_code = decision.candidate.cache_label,
+            provider_file_type = decision.candidate.format.as_str(),
+            extension = decision.candidate.format.extension(),
+            encrypted = decision.candidate.encrypted,
+            resolution_path = if decision.candidate.encrypted { "evkey" } else { "vkey" },
+            ekey_present = encrypted_key.is_some(),
+            client_supported = decision.candidate.client_supported,
+            preview = decision.candidate.preview,
+            "resolved sanitized QQ Music playback source"
+        );
         let is_preview = decision.candidate.preview;
         let (timeline_offset_ms, timeline_end_ms) = if let Some(preview) = decision.preview {
             (preview.start_ms, preview.end_ms)
@@ -2204,6 +2279,8 @@ struct ToplistDetails {
     artwork: String,
     #[serde(default, rename = "frontPicUrl")]
     front_artwork: String,
+    #[serde(default, rename = "headPicUrl")]
+    head_artwork: String,
     #[serde(default, rename = "magicColor")]
     magic_color: Option<MagicColor>,
 }
@@ -2602,6 +2679,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Master,
         preview: false,
         encrypted: true,
+        client_supported: true,
     };
     let encrypted_lossless = SourceCandidate {
         filename: format!("F0M0{media_mid}.mflac"),
@@ -2613,6 +2691,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Lossless,
         preview: false,
         encrypted: true,
+        client_supported: true,
     };
     let lossless = SourceCandidate {
         filename: format!("F000{media_mid}.flac"),
@@ -2624,6 +2703,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Lossless,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let high = SourceCandidate {
         filename: format!("M800{media_mid}.mp3"),
@@ -2635,6 +2715,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::High,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let standard = SourceCandidate {
         filename: format!("M500{media_mid}.mp3"),
@@ -2646,6 +2727,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Standard,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let aac = SourceCandidate {
         filename: format!("C400{media_mid}.m4a"),
@@ -2657,6 +2739,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Standard,
         preview: false,
         encrypted: false,
+        client_supported: true,
     };
     let preview = SourceCandidate {
         filename: format!("RS02{media_mid}.mp3"),
@@ -2668,6 +2751,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         quality: AudioQuality::Standard,
         preview: true,
         encrypted: false,
+        client_supported: true,
     };
     vec![
         master,
@@ -2994,35 +3078,6 @@ fn album_from_songs(summary: &AlbumSummary, artists: &[ArtistSummary], songs: Ve
         description: "Live QQ Music catalog metadata.".to_owned(),
         tracks: songs,
     }
-}
-
-fn artwork_for_album(mid: &str, title: &str) -> Artwork {
-    Artwork {
-        src: if mid == "unknown" || mid.is_empty() {
-            fallback_artwork()
-        } else {
-            format!("https://y.gtimg.cn/music/photo_new/T002R300x300M000{mid}.jpg?max_age=2592000")
-        },
-        alt: format!("Cover for {}", clean_text(title)),
-        dominant_color: color_for(mid),
-    }
-}
-
-fn fallback_artwork() -> String {
-    "/artwork/stillness.svg".to_owned()
-}
-
-fn is_allowed_artwork_url(value: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(value) else {
-        return false;
-    };
-    url.scheme() == "https"
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.port_or_known_default() == Some(443)
-        && url
-            .host_str()
-            .is_some_and(|host| host == "y.gtimg.cn" || host == "qpic.y.qq.com")
 }
 
 fn normalize_cdn_base(value: &str) -> Option<String> {
@@ -3511,6 +3566,7 @@ mod tests {
                 src: "/cover.svg".to_owned(),
                 alt: "Fixture cover".to_owned(),
                 dominant_color: "#000000".to_owned(),
+                variants: Vec::new(),
             },
             release_year: 2026,
             genre: "Fixture".to_owned(),

@@ -77,6 +77,53 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(commands).toEqual([{ type: 'setQuality', quality: 'master' }]);
   });
 
+  it('maps the three quality capability axes and prevents unsupported selection', () => {
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    usePlayerStore.setState({
+      queue: [qqTrack()],
+      currentIndex: 0,
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'lossless',
+        preview: false,
+        qualityCapabilities: [
+          {
+            quality: 'standard',
+            entitlement: 'allowed',
+            resource: 'available',
+            client: 'supported',
+            playable: true,
+          },
+          {
+            quality: 'master',
+            entitlement: 'allowed',
+            resource: 'available',
+            client: 'unsupported',
+            playable: false,
+          },
+        ],
+      },
+    });
+    render(<PlayerBar />);
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Audio quality for the current track' }));
+    expect(screen.getByText('Automatic selection: currently Lossless')).toBeVisible();
+    const standard = screen.getByRole('option', { name: /Standard/ });
+    expect(standard).toHaveTextContent(
+      'Account: allowed · Resource: available · Client: supported',
+    );
+    const master = screen.getByRole('option', { name: /Master quality/ });
+    expect(master).toHaveAttribute('aria-disabled', 'true');
+    expect(master).toHaveTextContent(
+      'Account: allowed · Resource: available · Client: unsupported',
+    );
+    fireEvent.click(master);
+    expect(commands).toEqual([]);
+  });
+
   it('exposes authoritative shuffle as a reversible pressed toggle', () => {
     usePlayerStore.getState().playTracks([qqTrack(), { ...qqTrack(), id: 'second' }]);
     render(<PlayerBar />);
@@ -200,6 +247,8 @@ describe('PlayerBar lyrics presentation entry', () => {
   it.each([
     ['account-rights', 'Using the best quality available to this account'],
     ['source-unavailable', 'Requested quality is unavailable; using the next available source'],
+    ['entitlement-unknown', 'Premium entitlement could not be confirmed'],
+    ['client-unsupported', 'A higher-quality source exists but this client cannot decode it'],
     ['preview-only', 'Playing the official preview'],
   ] as const)(
     'renders the localized %s fallback without parsing provider labels',
@@ -220,7 +269,10 @@ describe('PlayerBar lyrics presentation entry', () => {
 
       render(<PlayerBar />);
 
-      expect(screen.getByText(copy)).toHaveAttribute('data-fallback-reason', reason);
+      expect(screen.getByText((content) => content.startsWith(copy))).toHaveAttribute(
+        'data-fallback-reason',
+        reason,
+      );
     },
   );
 

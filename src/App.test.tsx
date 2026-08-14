@@ -41,7 +41,11 @@ vi.mock('./application/preferences', async (importOriginal) => {
 vi.mock('./components/AppBackground', () => ({ AppBackground: () => null }));
 vi.mock('./components/PlayerBar', () => ({ PlayerBar: () => null }));
 vi.mock('./components/QueuePanel', () => ({ QueuePanel: () => null }));
-vi.mock('./components/LyricsPanel', () => ({ LyricsPanel: () => null }));
+vi.mock('./components/LyricsPanel', () => ({
+  LyricsPanel: ({ fullscreen }: { fullscreen: boolean }) => (
+    <output data-testid="lyrics-presentation-mode">{fullscreen ? 'fullscreen' : 'windowed'}</output>
+  ),
+}));
 vi.mock('./components/Sidebar', () => ({
   Sidebar: ({ route, onNavigate }: { route: AppRoute; onNavigate: (route: AppRoute) => void }) => (
     <aside>
@@ -100,7 +104,7 @@ function authenticatedSnapshot(): AccountSnapshot {
       maskedIdentity: '10******01',
     },
     entitlement: {
-      tier: 'music-vip',
+      tier: 'green-diamond',
       membership: 'active',
       expiresAtMs: null,
       permittedQualities: ['standard'],
@@ -257,6 +261,45 @@ describe('App TopBar history navigation', () => {
     port.failWrite = false;
     fireEvent.click(screen.getByTitle('Go forward'));
     await waitFor(() => expect(screen.getByTestId('active-route')).toHaveTextContent('search'));
+  });
+
+  it('enters and exits fullscreen through F11 and Escape without changing playback', async () => {
+    renderApp();
+    const song = allSongs[0]!;
+    act(() => {
+      usePlayerStore.setState({
+        queue: [song],
+        currentIndex: 0,
+        lyricsOpen: true,
+        isPlaying: true,
+        playbackState: 'playing',
+        positionMs: 24_000,
+      });
+    });
+
+    fireEvent.keyDown(window, { key: 'F11' });
+    await waitFor(() => expect(port.writes).toEqual([true]));
+    expect(screen.getByTestId('lyrics-presentation-mode')).toHaveTextContent('fullscreen');
+    expect(usePlayerStore.getState()).toMatchObject({
+      lyricsOpen: true,
+      isPlaying: true,
+      positionMs: 24_000,
+    });
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(port.writes).toEqual([true, false]));
+    expect(screen.getByTestId('lyrics-presentation-mode')).toHaveTextContent('windowed');
+    expect(usePlayerStore.getState()).toMatchObject({
+      lyricsOpen: true,
+      isPlaying: true,
+      positionMs: 24_000,
+    });
+
+    fireEvent.keyDown(window, { key: 'F11' });
+    await waitFor(() => expect(port.writes).toEqual([true, false, true]));
+    fireEvent.keyDown(window, { key: 'F11' });
+    await waitFor(() => expect(port.writes).toEqual([true, false, true, false]));
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
   });
 
   it('projects the active provider identity without hard-coding the acceptance marker', () => {

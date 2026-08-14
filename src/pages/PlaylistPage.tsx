@@ -117,7 +117,12 @@ export function PlaylistPage({
         className="detail-hero"
         style={{ '--detail-color': playlist.artwork.dominantColor } as CSSProperties}
       >
-        <Artwork artwork={playlist.artwork} className="detail-hero__art" loading="eager" />
+        <Artwork
+          artwork={playlist.artwork}
+          className="detail-hero__art"
+          loading="eager"
+          purpose="large"
+        />
         <div className="detail-hero__copy">
           <p className="eyebrow">{t('eyebrow')}</p>
           <h1>{playlist.title}</h1>

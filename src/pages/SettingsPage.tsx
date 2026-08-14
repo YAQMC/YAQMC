@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   Database,
+  ExternalLink,
   Eye,
   EyeOff,
   Globe2,
@@ -26,7 +27,7 @@ import {
   Unlock,
   Download,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocalApiSettings } from '../application/local-api';
 import { useAccountStore } from '../application/account-runtime';
@@ -37,9 +38,13 @@ import {
 } from '../application/lyrics-surface-runtime';
 import {
   defaultPreferences,
+  finishAppearancePreview,
   pickManagedBackgroundImage,
+  previewAppearance,
+  restoreCommittedAppearance,
   usePreferencesStore,
   validatedColorPatch,
+  type AppearanceSettings,
   type LyricSurfaceSettings,
   type SecondaryLyricVisibility,
   type SurfaceKind,
@@ -47,6 +52,13 @@ import {
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { useProviderSettings } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
+import { openProductLink } from '../application/external-links';
+import {
+  buildMetadata,
+  formatSafeDiagnostics,
+  productMetadata,
+  type ProductLink,
+} from '../application/product-metadata';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -178,33 +190,89 @@ function ColorControl({
   value,
   fallback,
   onChange,
+  previewPatch,
 }: {
   name: string;
   value: string;
   fallback: string;
   onChange: (value: string) => void;
+  previewPatch?: (value: string) => Partial<AppearanceSettings>;
 }) {
   const { t } = useTranslation('settings', { keyPrefix: 'appearance' });
   const { t: common } = useTranslation('common');
   const [draftState, setDraftState] = useState({ source: value, draft: value });
+  const commitTimer = useRef<number | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const commitPickerValue = useRef<(next: string) => void>(() => undefined);
+  const previewsAppearance = Boolean(previewPatch);
   const draft = draftState.source === value ? draftState.draft : value;
   const valid = validatedColorPatch(draft, fallback);
 
-  const updateDraft = (next: string) => {
+  const previewDraft = (next: string) => {
     setDraftState({ source: value, draft: next });
     const normalized = validatedColorPatch(next, fallback);
-    if (normalized) onChange(normalized);
+    if (normalized && previewPatch) previewAppearance(previewPatch(normalized));
   };
+  const commitDraft = (next: string) => {
+    const normalized = validatedColorPatch(next, fallback);
+    if (!normalized) {
+      if (previewsAppearance) restoreCommittedAppearance();
+      return;
+    }
+    if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+    commitTimer.current = null;
+    if (previewPatch) finishAppearancePreview();
+    setDraftState({ source: normalized, draft: normalized });
+    onChange(normalized);
+  };
+  const scheduleTextCommit = (next: string) => {
+    previewDraft(next);
+    if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+    if (!validatedColorPatch(next, fallback)) return;
+    commitTimer.current = window.setTimeout(() => commitDraft(next), 240);
+  };
+
+  useEffect(
+    () => () => {
+      if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+      if (previewsAppearance) restoreCommittedAppearance();
+    },
+    [previewsAppearance],
+  );
+
+  useEffect(() => {
+    commitPickerValue.current = (next: string) => {
+      const normalized = validatedColorPatch(next, fallback);
+      if (!normalized) {
+        if (previewsAppearance) restoreCommittedAppearance();
+        return;
+      }
+      if (commitTimer.current !== null) window.clearTimeout(commitTimer.current);
+      commitTimer.current = null;
+      if (previewsAppearance) finishAppearancePreview();
+      setDraftState({ source: normalized, draft: normalized });
+      onChange(normalized);
+    };
+  }, [fallback, onChange, previewsAppearance]);
+
+  useEffect(() => {
+    const input = picker.current;
+    if (!input) return;
+    const commit = () => commitPickerValue.current(input.value);
+    input.addEventListener('change', commit);
+    return () => input.removeEventListener('change', commit);
+  }, []);
 
   return (
     <div className="color-control" data-invalid={!valid || undefined}>
       <label className="color-control__picker" title={t('pickerLabel', { name })}>
-        <span style={{ background: value }} />
+        <span style={{ background: valid ?? value }} />
         <input
+          ref={picker}
           type="color"
-          value={value}
+          value={valid ?? value}
           aria-label={t('pickerLabel', { name })}
-          onChange={(event) => updateDraft(event.target.value)}
+          onInput={(event) => previewDraft(event.currentTarget.value)}
         />
       </label>
       <label className="color-control__hex">
@@ -215,14 +283,22 @@ function ColorControl({
           spellCheck={false}
           aria-label={t('hexLabel', { name })}
           aria-invalid={!valid}
-          onChange={(event) => updateDraft(`#${event.target.value}`)}
+          onChange={(event) => scheduleTextCommit(`#${event.target.value}`)}
+          onBlur={() => commitDraft(draft)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitDraft(draft);
+            if (event.key === 'Escape') {
+              setDraftState({ source: value, draft: value });
+              restoreCommittedAppearance();
+            }
+          }}
         />
       </label>
       <button
         type="button"
         className="settings-icon-button"
         aria-label={`${common('reset')} ${name}`}
-        onClick={() => onChange(fallback)}
+        onClick={() => commitDraft(fallback)}
       >
         <RotateCcw size={14} />
       </button>
@@ -546,6 +622,7 @@ export function SettingsPage() {
   const platform = usePlatformIntegration();
   const preferences = usePreferencesStore();
   const [copied, setCopied] = useState<'endpoint' | 'token' | null>(null);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
   const [unlockingAll, setUnlockingAll] = useState(false);
@@ -614,10 +691,15 @@ export function SettingsPage() {
   ];
   const selectedOutput =
     provider.devices.find((device) => device.isSelected)?.id ?? 'system:default';
+  const resolvedOutput = provider.devices.find((device) => device.isSelected)?.resolvedOutput;
   const outputOptions = useMemo(
     () =>
       provider.devices.length > 0
-        ? provider.devices.map((device) => ({ value: device.id, label: device.label }))
+        ? provider.devices.map((device) => ({
+            value: device.id,
+            label:
+              device.selectionKind === 'system-default' ? t('playback.systemOutput') : device.label,
+          }))
         : [{ value: 'system:default', label: t('playback.systemOutput') }],
     [provider.devices, t],
   );
@@ -763,7 +845,7 @@ export function SettingsPage() {
   const accountTierLabel = accountEntitlement
     ? {
         free: t('account.tierFree'),
-        'music-vip': t('account.tierMusicVip'),
+        'green-diamond': t('account.tierGreenDiamond'),
         'super-vip': t('account.tierSuperVip'),
         unknown: t('account.tierUnknown'),
       }[accountEntitlement.tier]
@@ -776,6 +858,11 @@ export function SettingsPage() {
         unknown: t('account.membershipUnknown'),
       }[accountEntitlement.membership]
     : null;
+  const accountSecondaryEntitlements = accountEntitlement
+    ? (accountEntitlement.secondaryEntitlements ?? []).map((entitlement) =>
+        t(`account.secondary.${entitlement}`),
+      )
+    : [];
   const accountExpiryLabel = (() => {
     if (!accountEntitlement) return null;
     if (accountEntitlement.expiresAtMs === null) return t('account.noExpiry');
@@ -787,6 +874,32 @@ export function SettingsPage() {
   const accountNeedsReauthentication =
     accountSnapshot.state === 'session-expired' ||
     accountSnapshot.state === 'reauthentication-required';
+  const rendererLabel = platform.diagnostics
+    ? platform.diagnostics.os === 'windows'
+      ? 'WebView2 / Tauri'
+      : platform.diagnostics.os === 'linux'
+        ? 'WebKitGTK / Tauri'
+        : 'Tauri WebView'
+    : t('about.browserPreview');
+  const aboutLinks: Array<{ id: ProductLink; label: string }> = [
+    { id: 'repository', label: t('about.repository') },
+    { id: 'releases', label: t('about.releases') },
+    { id: 'issues', label: t('about.issues') },
+    { id: 'documentation', label: t('about.documentation') },
+    { id: 'acknowledgements', label: t('about.acknowledgements') },
+    { id: 'thirdPartyNotices', label: t('about.thirdPartyNotices') },
+  ];
+  const copySafeDiagnostics = async () => {
+    await navigator.clipboard.writeText(
+      formatSafeDiagnostics({
+        platform: platform.diagnostics,
+        provider: provider.status,
+        accountState: accountSnapshot.state,
+      }),
+    );
+    setDiagnosticsCopied(true);
+    window.setTimeout(() => setDiagnosticsCopied(false), 1_500);
+  };
 
   return (
     <section className="page standard-page settings-page">
@@ -865,6 +978,7 @@ export function SettingsPage() {
                 onChange={(primaryColor) =>
                   preferences.updateAppearance({ primaryColor, palette: 'custom' })
                 }
+                previewPatch={(primaryColor) => ({ primaryColor, palette: 'custom' })}
               />
             }
           />
@@ -879,6 +993,7 @@ export function SettingsPage() {
                 onChange={(secondaryColor) =>
                   preferences.updateAppearance({ secondaryColor, palette: 'custom' })
                 }
+                previewPatch={(secondaryColor) => ({ secondaryColor, palette: 'custom' })}
               />
             }
           />
@@ -915,6 +1030,7 @@ export function SettingsPage() {
                   value={preferences.appearance.backgroundColor}
                   fallback={defaultPreferences.appearance.backgroundColor}
                   onChange={(backgroundColor) => preferences.updateAppearance({ backgroundColor })}
+                  previewPatch={(backgroundColor) => ({ backgroundColor })}
                 />
               }
             />
@@ -1082,7 +1198,15 @@ export function SettingsPage() {
         <div className="settings-card">
           <SettingRow
             title={t('playback.audioOutput')}
-            description={t('playback.audioOutputDescription')}
+            description={
+              resolvedOutput
+                ? `${t('playback.audioOutputDescription')} ${t('playback.resolvedOutput', {
+                    device: resolvedOutput.name,
+                    rate: resolvedOutput.sampleRate,
+                    channels: resolvedOutput.channels,
+                  })}`
+                : t('playback.audioOutputDescription')
+            }
             control={
               <Select
                 value={selectedOutput}
@@ -1293,6 +1417,12 @@ export function SettingsPage() {
                   <dt>{t('account.expires')}</dt>
                   <dd>{accountExpiryLabel}</dd>
                 </div>
+                {accountSecondaryEntitlements.length > 0 && (
+                  <div>
+                    <dt>{t('account.secondaryEntitlements')}</dt>
+                    <dd>{accountSecondaryEntitlements.join(' · ')}</dd>
+                  </div>
+                )}
               </>
             )}
           </dl>
@@ -1476,6 +1606,67 @@ export function SettingsPage() {
             <RefreshCw size={13} /> {t('api.refresh')}
           </button>
         )}
+      </SettingsSection>
+
+      <SettingsSection title={t('about.title')} description={t('about.description')}>
+        <div className="settings-about">
+          <div className="settings-about__identity">
+            <span className="settings-about__logo" aria-hidden="true" />
+            <div>
+              <strong>{productMetadata.name}</strong>
+              <span>{productMetadata.longName}</span>
+              <small>
+                {t('about.version', { version: productMetadata.version })} · {buildMetadata.channel}{' '}
+                · {buildMetadata.type}
+              </small>
+            </div>
+          </div>
+          <dl className="settings-about__runtime">
+            <div>
+              <dt>{t('about.commit')}</dt>
+              <dd>{buildMetadata.commit}</dd>
+            </div>
+            <div>
+              <dt>{t('about.platform')}</dt>
+              <dd>
+                {platform.diagnostics
+                  ? `${platform.diagnostics.os} / ${platform.diagnostics.architecture}`
+                  : t('about.browserPreview')}
+              </dd>
+            </div>
+            <div>
+              <dt>{t('about.renderer')}</dt>
+              <dd>{rendererLabel}</dd>
+            </div>
+            <div>
+              <dt>{t('about.audioBackend')}</dt>
+              <dd>{platform.diagnostics?.audio.implementation ?? common('unavailable')}</dd>
+            </div>
+          </dl>
+          <div className="settings-about__links" aria-label={t('about.links')}>
+            {aboutLinks.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                className="button button--quiet"
+                onClick={() => void openProductLink(id)}
+              >
+                {label} <ExternalLink size={13} />
+              </button>
+            ))}
+          </div>
+          <div className="settings-about__footer">
+            <p>{t('about.unofficial')}</p>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => void copySafeDiagnostics()}
+            >
+              <Copy size={14} />
+              {diagnosticsCopied ? common('copied') : t('about.copyDiagnostics')}
+            </button>
+          </div>
+        </div>
       </SettingsSection>
     </section>
   );

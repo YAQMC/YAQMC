@@ -19,3 +19,10 @@ vulnerabilities.
 
 The `0.1.x` beta line receives security fixes. Earlier development snapshots are not guaranteed backports. No fixed
 response SLA is promised, but valid reports will be triaged and addressed without unnecessarily widening exposure.
+
+## External URIs
+
+Every external URI is untrusted. Official-client interoperability inspection has not verified a public QQ Music
+entity scheme, so YAQMC does not register or take over a guessed protocol. Any future handler must be explicit,
+reversible, and allowlist entity types, identifier syntax, and length. URI content must never enter a shell,
+filesystem path, SQL, HTML, or arbitrary Tauri command. See [deep-link security](docs/deep-link.md).

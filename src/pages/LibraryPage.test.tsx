@@ -39,7 +39,7 @@ function authenticatedSnapshot(avatarUrl: string | null = null): AccountSnapshot
       maskedIdentity: '10******01',
     },
     entitlement: {
-      tier: 'music-vip',
+      tier: 'green-diamond',
       membership: 'active',
       expiresAtMs: 1_800_000_000_000,
       permittedQualities: ['standard'],

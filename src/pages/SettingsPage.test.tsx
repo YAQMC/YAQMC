@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
+import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import { ProviderContext } from '../application/provider-context';
 import type { AccountSnapshot } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
@@ -37,7 +38,7 @@ function authenticatedSnapshot(
       maskedIdentity: '10******01',
     },
     entitlement: {
-      tier: 'music-vip',
+      tier: 'green-diamond',
       membership: 'active',
       expiresAtMs: 1_800_000_000_000,
       permittedQualities: ['standard'],
@@ -102,7 +103,37 @@ function renderSettings(provider: MusicProvider) {
 describe('SettingsPage account section', () => {
   beforeEach(async () => {
     resetAccountRuntimeForTest();
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      appearance: { ...defaultPreferences.appearance },
+    });
     await i18n.changeLanguage('en-US');
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+  });
+
+  it('previews rapid color input without committing until the native change event', () => {
+    const account = accountProvider();
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    renderSettings(account.value);
+    const picker = screen.getByLabelText('Pick Primary color');
+
+    fireEvent.input(picker, { target: { value: '#112233' } });
+    fireEvent.input(picker, { target: { value: '#445566' } });
+
+    expect(window.requestAnimationFrame).toHaveBeenCalledOnce();
+    expect(usePreferencesStore.getState().appearance.primaryColor).toBe('#A8C95E');
+    frames[0]?.(16);
+    expect(document.documentElement.style.getPropertyValue('--accent-primary')).toBe('#445566');
+
+    fireEvent.change(picker, { target: { value: '#445566' } });
+    expect(usePreferencesStore.getState().appearance.primaryColor).toBe('#445566');
   });
 
   it('opens the sanitized account dialog without starting login from Settings', () => {
@@ -124,7 +155,7 @@ describe('SettingsPage account section', () => {
 
     expect(screen.getByText('Synthetic Listener')).toBeInTheDocument();
     expect(screen.getByText('10******01')).toBeInTheDocument();
-    expect(screen.getByText('Music VIP')).toBeInTheDocument();
+    expect(screen.getByText('Green Diamond')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Synthetic Listener account avatar' })).toHaveAttribute(
       'src',
@@ -135,6 +166,19 @@ describe('SettingsPage account section', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out locally' }));
     await waitFor(() => expect(account.signOut).toHaveBeenCalledOnce());
     await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('guest'));
+  });
+
+  it('renders verified secondary entitlements as understated account metadata', () => {
+    const account = accountProvider();
+    const snapshot = authenticatedSnapshot();
+    if (snapshot.state !== 'authenticated') throw new Error('authenticated fixture expected');
+    snapshot.entitlement.secondaryEntitlements = ['annual-green-diamond', 'family'];
+    useAccountStore.setState({ snapshot });
+
+    renderSettings(account.value);
+
+    expect(screen.getByText('Additional entitlements')).toBeInTheDocument();
+    expect(screen.getByText('Annual Green Diamond · Family entitlement')).toBeInTheDocument();
   });
 
   it('refuses an untrusted avatar origin', () => {
@@ -209,5 +253,24 @@ describe('SettingsPage account section', () => {
       expect(screen.getByLabelText('Account can currently access')).toHaveTextContent('Lossless'),
     );
     expect(screen.getByLabelText('Preferred playback quality')).toHaveTextContent('Automatic');
+  });
+
+  it('ends with localized product identity, live project links, and safe diagnostic copy', async () => {
+    const account = accountProvider();
+    useAccountStore.setState({ snapshot: authenticatedSnapshot() });
+    const { container } = renderSettings(account.value);
+
+    expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument();
+    expect(screen.getByText('Yet Another QMusicClient')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /GitHub repository/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Third-party licenses/ })).toBeInTheDocument();
+    expect(container.textContent).toContain('unofficial third-party QQ Music client');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledOnce());
+    const copied = vi.mocked(navigator.clipboard.writeText).mock.calls[0]?.[0];
+    expect(copied).toContain('YAQMC version: 0.1.0');
+    expect(copied).toContain('QQ provider mode: unavailable / authenticated');
+    expect(copied).not.toMatch(/cookie|oauth|token|qrsig|ekey|authorization|private/iu);
   });
 });

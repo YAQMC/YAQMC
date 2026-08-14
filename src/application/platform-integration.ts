@@ -49,6 +49,13 @@ export interface PlatformDiagnostics {
     route: string;
     available: boolean;
     selectedOutput: string | null;
+    selectedOutputKind: string | null;
+    resolvedOutput: string | null;
+    resolvedDriver: string | null;
+    resolvedHost: string | null;
+    resolvedSampleRate: number | null;
+    resolvedChannels: number | null;
+    resolvedSampleFormat: string | null;
   };
   systemMedia: {
     available: boolean;

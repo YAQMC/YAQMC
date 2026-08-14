@@ -166,6 +166,8 @@ pub enum PlaybackSourceError {
     DecoderUnsupported,
     #[error("the active account is not entitled to this track or quality")]
     EntitlementInsufficient,
+    #[error("the active account entitlement could not be confirmed")]
+    EntitlementUnknown,
     #[error("the provider session expired")]
     AuthenticationExpired,
     #[error("the track is unavailable")]
@@ -181,6 +183,14 @@ pub enum PlaybackSourceError {
 #[async_trait]
 pub trait PlaybackSourceResolver: Send + Sync {
     async fn resolve(&self, song: &Song) -> Result<ResolvedPlaybackSource, PlaybackSourceError>;
+
+    async fn resolve_client_fallback(
+        &self,
+        _song: &Song,
+        _failed: &PlaybackSourceSelection,
+    ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
+        Err(PlaybackSourceError::DecoderUnsupported)
+    }
 }
 
 #[async_trait]
@@ -498,6 +508,7 @@ impl PlaybackSourceResolver for TestPlaybackSourceResolver {
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::unrestricted(),
         })

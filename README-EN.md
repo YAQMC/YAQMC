@@ -179,6 +179,9 @@ in [CONTRIBUTING-EN.md](CONTRIBUTING-EN.md), [SUPPORT-EN.md](SUPPORT-EN.md),
 [SECURITY-EN.md](SECURITY-EN.md), and [CODE_OF_CONDUCT-EN.md](CODE_OF_CONDUCT-EN.md). Third-party copyright and
 license texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+The public engineering notes include [official-client interoperability evidence](docs/qqmusic-official-interoperability.md),
+[audio-quality classification](docs/audio-quality.md), and [external URI security](docs/deep-link.md).
+
 ## Acknowledgements and project policy
 
 Special thanks to Flechazo for public QMC/MFLAC, Master-quality, and seekable-decryption research ideas, and to

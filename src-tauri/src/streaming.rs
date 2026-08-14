@@ -335,6 +335,11 @@ pub async fn prepare_progressive(
     tracing::debug!(
         target: "stream.range",
         status = response.status().as_u16(),
+        content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("missing"),
         elapsed_ms = request_started.elapsed().as_millis() as u64,
         requested_start = 0,
         requested_end,

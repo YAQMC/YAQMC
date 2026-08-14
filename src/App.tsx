@@ -19,6 +19,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
 import { QueuePanel } from './components/QueuePanel';
+import { ApplicationContextMenu } from './components/ApplicationContextMenu';
 import { LyricsPanel } from './components/LyricsPanel';
 import { LoadingState } from './components/ui/LoadingState';
 import { HomePage } from './pages/HomePage';
@@ -226,8 +227,10 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const editing = target?.matches('input, textarea, select, [contenteditable="true"]') ?? false;
+      const target = event.target;
+      const editing =
+        target instanceof Element &&
+        target.matches('input, textarea, select, [contenteditable="true"]');
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'k') {
         event.preventDefault();
@@ -389,6 +392,7 @@ export default function App() {
   return (
     <div className="application-frame">
       <AppBackground />
+      <ApplicationContextMenu />
       {showFpsCounter && <FpsOverlay />}
       <div
         className="app-shell"
@@ -421,9 +425,7 @@ export default function App() {
         <LyricsPanel
           focus={focusSidebarCollapsed}
           fullscreen={fullscreen}
-          fullscreenPending={fullscreenPending}
           fullscreenError={fullscreenError}
-          onToggleFullscreen={toggleLyricsFullscreen}
           onClose={closeLyrics}
         />
       </div>

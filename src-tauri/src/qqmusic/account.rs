@@ -4,14 +4,14 @@
 )]
 
 use super::{
+    artwork::{artwork_from_provider_url, is_allowed_artwork_url},
     auth::{AuthenticatedAccountContext, QQMusicAuthService, SessionRecord},
     cache::{
         AccountCache, AccountEpoch, AccountLibraryProjection, CachedAccountPage,
         CompletedResultCache, OpaqueCursorRegistry, ProviderTrackRegistry, ACCOUNT_CACHE_KIND,
     },
     clock::Clock,
-    color_for, is_allowed_artwork_url, normalize_new_song, normalize_old_song, playlist_id,
-    stable_component,
+    color_for, normalize_new_song, normalize_old_song, playlist_id, stable_component,
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
@@ -200,9 +200,27 @@ pub struct RemotePlayHistoryItem {
 #[serde(rename_all = "kebab-case")]
 pub enum EntitlementTier {
     Free,
-    MusicVip,
+    #[serde(alias = "music-vip")]
+    GreenDiamond,
     SuperVip,
     Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SecondaryEntitlement {
+    LuxuryGreenDiamond,
+    AnnualGreenDiamond,
+    AnnualLuxuryGreenDiamond,
+    Star,
+    AnnualStar,
+    EightPlatform,
+    TwelvePlatform,
+    Family,
+    Child,
+    Trial,
+    Couple,
+    AdFree,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -247,6 +265,8 @@ pub struct AccountEntitlement {
     pub tier: EntitlementTier,
     pub membership: MembershipState,
     pub expires_at_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secondary_entitlements: Vec<SecondaryEntitlement>,
     pub permitted_qualities: Vec<AudioQuality>,
     pub observed_maximum_quality: Option<AudioQuality>,
     pub restrictions: Vec<EntitlementRestriction>,
@@ -448,6 +468,8 @@ pub enum ProviderErrorCode {
     AuthenticationExpired,
     AuthorizationRejected,
     EntitlementUnavailable,
+    EntitlementUnknown,
+    ClientUnsupported,
     RateLimited,
     SchemaChanged,
     SongUnavailable,
@@ -471,6 +493,8 @@ impl ProviderErrorCode {
             Self::AuthenticationExpired => "authentication-expired",
             Self::AuthorizationRejected => "authorization-rejected",
             Self::EntitlementUnavailable => "entitlement-unavailable",
+            Self::EntitlementUnknown => "entitlement-unknown",
+            Self::ClientUnsupported => "client-unsupported",
             Self::RateLimited => "rate-limited",
             Self::SchemaChanged => "schema-changed",
             Self::SongUnavailable => "song-unavailable",
@@ -3652,11 +3676,7 @@ fn normalize_playlist_value_with_ownership(
                 "QQ Music".to_owned()
             },
         },
-        artwork: Artwork {
-            src: artwork_src,
-            alt: format!("{title} cover"),
-            dominant_color: color_for(&stable_id),
-        },
+        artwork: artwork_from_provider_url(&artwork_src, &title, color_for(&stable_id)),
         ownership,
         capabilities,
         track_count: raw.track_count,
@@ -4215,9 +4235,10 @@ mod tests {
                 masked_identity: "10******01".to_owned(),
             },
             entitlement: AccountEntitlement {
-                tier: EntitlementTier::MusicVip,
+                tier: EntitlementTier::GreenDiamond,
                 membership: MembershipState::Active,
                 expires_at_ms: Some(1_800_000_000_000),
+                secondary_entitlements: Vec::new(),
                 permitted_qualities: vec![AudioQuality::Standard, AudioQuality::High],
                 observed_maximum_quality: Some(AudioQuality::High),
                 restrictions: Vec::new(),
@@ -4249,9 +4270,10 @@ mod tests {
                     masked_identity: "10******01".to_owned(),
                 },
                 entitlement: AccountEntitlement {
-                    tier: EntitlementTier::MusicVip,
+                    tier: EntitlementTier::GreenDiamond,
                     membership: MembershipState::Active,
                     expires_at_ms: Some(1_800_000_000_000),
+                    secondary_entitlements: Vec::new(),
                     permitted_qualities: vec![AudioQuality::Standard, AudioQuality::High],
                     observed_maximum_quality: Some(AudioQuality::High),
                     restrictions: Vec::new(),
@@ -4328,6 +4350,8 @@ mod tests {
                 ProviderErrorCode::EntitlementUnavailable,
                 "entitlement-unavailable",
             ),
+            (ProviderErrorCode::EntitlementUnknown, "entitlement-unknown"),
+            (ProviderErrorCode::ClientUnsupported, "client-unsupported"),
             (ProviderErrorCode::RateLimited, "rate-limited"),
             (ProviderErrorCode::SchemaChanged, "schema-changed"),
             (ProviderErrorCode::SongUnavailable, "song-unavailable"),
@@ -5158,6 +5182,7 @@ mod tests {
                 src: String::new(),
                 alt: String::new(),
                 dominant_color: String::new(),
+                variants: Vec::new(),
             },
             ownership: PlaylistOwnership::Collected,
             capabilities: PlaylistCapabilities::read_only(),
@@ -5186,6 +5211,7 @@ mod tests {
                 src: String::new(),
                 alt: String::new(),
                 dominant_color: String::new(),
+                variants: Vec::new(),
             },
             ownership: PlaylistOwnership::System,
             capabilities: PlaylistCapabilities::read_only(),

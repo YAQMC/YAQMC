@@ -1,9 +1,16 @@
 export type EntityId = string;
 
+export interface ArtworkVariant {
+  src: string;
+  width: number;
+  height: number;
+}
+
 export interface Artwork {
   src: string;
   alt: string;
   dominantColor: string;
+  variants?: ArtworkVariant[];
 }
 
 export interface ArtistSummary {
@@ -20,13 +27,31 @@ export type AudioQuality = 'standard' | 'high' | 'lossless' | 'master';
 
 export type AudioQualityPreference = 'automatic' | AudioQuality;
 
-export type PlaybackFallbackReason = 'source-unavailable' | 'account-rights' | 'preview-only';
+export type PlaybackFallbackReason =
+  | 'source-unavailable'
+  | 'account-rights'
+  | 'entitlement-unknown'
+  | 'client-unsupported'
+  | 'preview-only';
+
+export type EntitlementCapabilityState = 'allowed' | 'denied' | 'unknown';
+export type ResourceCapabilityState = 'available' | 'unavailable' | 'unknown';
+export type ClientCapabilityState = 'supported' | 'unsupported' | 'unknown';
+
+export interface QualityCapabilityState {
+  quality: AudioQuality;
+  entitlement: EntitlementCapabilityState;
+  resource: ResourceCapabilityState;
+  client: ClientCapabilityState;
+  playable: boolean;
+}
 
 export interface PlaybackSourceSelection {
   requestedQuality: AudioQualityPreference;
   resolvedQuality: AudioQuality;
   fallbackReason?: PlaybackFallbackReason;
   preview: boolean;
+  qualityCapabilities?: QualityCapabilityState[];
 }
 
 export type AudioCodec = 'mp3' | 'aac' | 'flac' | 'alac' | 'unknown';
@@ -181,6 +206,8 @@ export const PROVIDER_ERROR_CODES = [
   'authentication-expired',
   'authorization-rejected',
   'entitlement-unavailable',
+  'entitlement-unknown',
+  'client-unsupported',
   'rate-limited',
   'schema-changed',
   'song-unavailable',
@@ -247,8 +274,22 @@ export interface RemotePlayHistoryItem {
   source: 'qqmusic-account' | 'local-playback';
 }
 
-export type EntitlementTier = 'free' | 'music-vip' | 'super-vip' | 'unknown';
+export type EntitlementTier = 'free' | 'green-diamond' | 'super-vip' | 'unknown';
 export type MembershipState = 'active' | 'expired' | 'inactive' | 'unknown';
+
+export type SecondaryEntitlement =
+  | 'luxury-green-diamond'
+  | 'annual-green-diamond'
+  | 'annual-luxury-green-diamond'
+  | 'star'
+  | 'annual-star'
+  | 'eight-platform'
+  | 'twelve-platform'
+  | 'family'
+  | 'child'
+  | 'trial'
+  | 'couple'
+  | 'ad-free';
 
 export interface EntitlementRestriction {
   feature: 'playback' | 'favorite-write' | 'playlist-write' | 'quality';
@@ -260,6 +301,7 @@ export interface AccountEntitlement {
   tier: EntitlementTier;
   membership: MembershipState;
   expiresAtMs: number | null;
+  secondaryEntitlements?: SecondaryEntitlement[];
   permittedQualities: AudioQuality[];
   observedMaximumQuality: AudioQuality | null;
   restrictions: EntitlementRestriction[];

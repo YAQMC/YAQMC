@@ -22,7 +22,7 @@ const profile = {
   maskedIdentity: '10******01',
 };
 const entitlement = {
-  tier: 'music-vip' as const,
+  tier: 'green-diamond' as const,
   membership: 'active' as const,
   expiresAtMs: 1_800_000_000_000,
   permittedQualities: ['standard' as const],

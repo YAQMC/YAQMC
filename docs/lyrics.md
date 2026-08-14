@@ -73,6 +73,11 @@ The fullscreen transport reads the shared player store, not a duplicate timeline
 playing inactivity, reveals on pointer movement or track change, remains pinned while it owns focus, and exposes
 Previous, Play/Pause, and Next through the same player commands as PlayerBar.
 
+Fullscreen removes the redundant on-screen fullscreen icon: F11 enters/exits and Escape unwinds. Top chrome is
+shown only at entry, by keyboard interaction, or when the pointer reaches the top 56 px, then follows the same
+2400 ms grace. A track transition invalidates old document and cursor generations independently, so a slower
+initial auxiliary-window snapshot cannot overwrite the event for the automatically advanced song.
+
 Artwork entering an immersive lyric surface passes through the shared safe-artwork resolver. Local/same-origin
 sources and validated image data URIs may render directly. Only exact HTTPS hosts `y.gtimg.cn` and
 `qpic.y.qq.com` may cross the native cache boundary; redirects, credentials, non-443 ports, `music.tc.qq.com`

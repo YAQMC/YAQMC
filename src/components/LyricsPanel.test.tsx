@@ -2,6 +2,7 @@ import { Profiler } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearArtworkMemoryCache } from '../application/artwork-cache';
+import { resetLyricsArtworkFallbackForTests } from '../application/lyrics-artwork-fallback';
 import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
@@ -10,7 +11,7 @@ import type { LyricDocument } from '../domain/music';
 import { allSongs, lyricsBySong } from '../providers/fake/fixtures';
 import '../styles/components.css';
 import '../styles/platform.css';
-import { LyricsPanel, resetLyricsArtworkFallbackForTests } from './LyricsPanel';
+import { LyricsPanel } from './LyricsPanel';
 
 const nativeArtworkMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -37,9 +38,7 @@ function presentationProps(overrides: Partial<React.ComponentProps<typeof Lyrics
   return {
     focus: false,
     fullscreen: false,
-    fullscreenPending: false,
     fullscreenError: null,
-    onToggleFullscreen: vi.fn(),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -283,15 +282,36 @@ describe('LyricsPanel', () => {
     await waitFor(() => expect(lyricOffset(container)).toBeGreaterThan(settled));
   });
 
-  it('delegates the fullscreen control and updates its accessible labels', () => {
+  it('clears the previous cursor while an automatically advanced track loads its lyrics', () => {
+    usePlayerStore.setState({ positionMs: 19_000, observedAtMs: performance.now() });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    expect(container.querySelector('[data-active="true"]')).not.toBeNull();
+
+    const nextSong = allSongs.find((candidate) => candidate.id !== 'quiet-light');
+    if (!nextSong) throw new Error('second song fixture is missing');
+    act(() => {
+      usePlayerStore.setState((state) => ({
+        queue: [nextSong],
+        currentIndex: 0,
+        currentQueueEntryId: 'auto-next',
+        positionMs: 0,
+        observedAtMs: performance.now(),
+        timelineRevision: state.timelineRevision + 1,
+      }));
+      useLyricsStore.getState().startLoading(nextSong.id);
+    });
+
+    expect(container.querySelector('[data-active="true"]')).toBeNull();
+    expect(screen.getByText('Loading lyrics')).toBeVisible();
+  });
+
+  it('does not expose the redundant fullscreen button in either presentation state', () => {
     const props = presentationProps();
     const { rerender } = render(<LyricsPanel {...props} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen lyrics' }));
-    expect(props.onToggleFullscreen).toHaveBeenCalledOnce();
-
+    expect(screen.queryByRole('button', { name: 'Enter fullscreen lyrics' })).toBeNull();
     rerender(<LyricsPanel {...props} fullscreen />);
-    expect(screen.getByRole('button', { name: 'Exit fullscreen lyrics' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Exit fullscreen lyrics' })).toBeNull();
   });
 
   it('delegates the collapse button only and leaves visibility to the application callback', () => {
@@ -301,21 +321,37 @@ describe('LyricsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse lyrics page' }));
 
     expect(props.onClose).toHaveBeenCalledOnce();
-    expect(props.onToggleFullscreen).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().lyricsOpen).toBe(true);
   });
 
-  it('exposes semantic presentation state and disables fullscreen while pending', () => {
-    render(
-      <LyricsPanel
-        {...presentationProps({ focus: true, fullscreen: true, fullscreenPending: true })}
-      />,
-    );
+  it('exposes semantic presentation state', () => {
+    render(<LyricsPanel {...presentationProps({ focus: true, fullscreen: true })} />);
 
     const stage = screen.getByRole('region', { name: 'Synchronized lyrics' });
     expect(stage).toHaveAttribute('data-focus');
     expect(stage).toHaveAttribute('data-fullscreen');
-    expect(screen.getByRole('button', { name: 'Exit fullscreen lyrics' })).toBeDisabled();
+  });
+
+  it('reveals fullscreen top chrome only at the top edge or from keyboard interaction', () => {
+    vi.useFakeTimers();
+    render(<LyricsPanel {...presentationProps({ fullscreen: true })} />);
+
+    const stage = screen.getByRole('region', { name: 'Synchronized lyrics' });
+    const topbar = document.querySelector('.lyrics-stage__topbar');
+    expect(topbar).toHaveAttribute('data-hidden');
+
+    fireEvent.pointerMove(stage, { clientY: 320 });
+    expect(topbar).toHaveAttribute('data-hidden');
+
+    fireEvent.pointerMove(stage, { clientY: 20 });
+    expect(topbar).not.toHaveAttribute('data-hidden');
+    act(() => vi.advanceTimersByTime(2_400));
+    expect(topbar).toHaveAttribute('data-hidden');
+
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(topbar).not.toHaveAttribute('data-hidden');
+    act(() => vi.advanceTimersByTime(2_400));
+    expect(topbar).toHaveAttribute('data-hidden');
   });
 
   it('does not mount the compact transport outside fullscreen', () => {

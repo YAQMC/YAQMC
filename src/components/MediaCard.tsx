@@ -2,6 +2,8 @@ import { Play } from 'lucide-react';
 import type { Album, Playlist } from '../domain/music';
 import { Artwork } from './ui/Artwork';
 import { useTranslation } from 'react-i18next';
+import type { ContextMenuItem } from './ui/ContextMenu';
+import { useContextMenu } from './ui/use-context-menu';
 
 interface MediaCardProps {
   item: Album | Playlist;
@@ -22,8 +24,17 @@ function getSubtitle(item: Album | Playlist, type: 'album' | 'playlist'): string
 
 export function MediaCard({ item, type, onOpen, onPlay, size = 'regular' }: MediaCardProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'home' });
+  const items: readonly ContextMenuItem[] = [
+    { id: 'open', label: t('openItem', { title: item.title }), action: onOpen },
+    { id: 'play', label: t('playItem', { title: item.title }), action: onPlay },
+  ];
+  const contextMenu = useContextMenu(t('itemActions', { title: item.title }), items);
   return (
-    <article className={`media-card media-card--${size}`}>
+    <article
+      className={`media-card media-card--${size}`}
+      tabIndex={0}
+      {...contextMenu.triggerProps}
+    >
       <div className="media-card__art">
         <button
           type="button"
@@ -46,6 +57,7 @@ export function MediaCard({ item, type, onOpen, onPlay, size = 'regular' }: Medi
         <span className="media-card__title">{item.title}</span>
         <span className="media-card__subtitle">{getSubtitle(item, type)}</span>
       </button>
+      {contextMenu.menu}
     </article>
   );
 }

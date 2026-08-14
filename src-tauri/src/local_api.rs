@@ -684,6 +684,7 @@ mod tests {
                 src: "/cover.svg".to_owned(),
                 alt: "Cover".to_owned(),
                 dominant_color: "#123456".to_owned(),
+                variants: Vec::new(),
             },
             duration_ms,
             track_number: 1,

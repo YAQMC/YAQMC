@@ -218,6 +218,8 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 - [歌词窗口](docs/zh-CN/lyrics-surfaces.md)
 - [本地 API](docs/zh-CN/local-api.md)
 - [第三方许可证](THIRD_PARTY_NOTICES.md)与[鸣谢](ACKNOWLEDGEMENTS.md)
+- [官方客户端互操作证据](docs/zh-CN/qqmusic-official-interoperability.md)、
+  [音质分类](docs/zh-CN/audio-quality.md)与[外部 URI 安全](docs/zh-CN/deep-link.md)
 
 </details>
 

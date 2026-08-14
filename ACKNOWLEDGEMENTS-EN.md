@@ -17,8 +17,10 @@ does not imply endorsement, participation in a release, or support for YAQMC.
 
 ## Interoperability research
 
-Pinned versions of `L-1124/QQMusicApi`, `wxuyu/QQMusicApi`, `RethinkQAQ/allmusic-qqmusicapi`,
-`tlyanyu/multiPlatformMusicApi`, and `wangwalk/qqm` were consulted only for observable protocol behavior. Exact
+`L-1124/QQMusicApi` was pinned to corroborate account, membership, source, and interoperability behavior. It is a
+GPL-3.0-or-later research reference; YAQMC copied no GPL implementation and the project does not endorse YAQMC.
+Pinned versions of `wxuyu/QQMusicApi`, `RethinkQAQ/allmusic-qqmusicapi`, `tlyanyu/multiPlatformMusicApi`, and
+`wangwalk/qqm` were likewise consulted only for observable protocol behavior. Exact
 commits, detected licenses, and boundaries are recorded in the
 [QQ Music provider ledger](docs/qqmusic-provider.md). Those projects do not endorse YAQMC.
 

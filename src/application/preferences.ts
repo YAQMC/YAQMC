@@ -550,6 +550,43 @@ export function applyAppearance(
   root.style.setProperty('--artwork-influence', `${appearance.artworkInfluence / 100}`);
 }
 
+let appearancePreviewFrame: number | null = null;
+let pendingAppearancePreview: AppearanceSettings | null = null;
+
+function currentResolvedMode(appearance: AppearanceSettings): ResolvedColorMode {
+  if (appearance.colorMode !== 'system') return appearance.colorMode;
+  const current = document.documentElement.dataset.theme;
+  return current === 'light' || current === 'dark' ? current : resolveSystemMode();
+}
+
+export function previewAppearance(patch: Partial<AppearanceSettings>): void {
+  if (typeof window === 'undefined') return;
+  const current = usePreferencesStore.getState().appearance;
+  pendingAppearancePreview = normalizePreferences({
+    version: 2,
+    appearance: { ...current, ...patch },
+  }).appearance;
+  if (appearancePreviewFrame !== null) return;
+  appearancePreviewFrame = window.requestAnimationFrame(() => {
+    appearancePreviewFrame = null;
+    const appearance = pendingAppearancePreview;
+    pendingAppearancePreview = null;
+    if (appearance) applyAppearance(appearance, currentResolvedMode(appearance));
+  });
+}
+
+export function finishAppearancePreview(): void {
+  if (appearancePreviewFrame !== null) window.cancelAnimationFrame(appearancePreviewFrame);
+  appearancePreviewFrame = null;
+  pendingAppearancePreview = null;
+}
+
+export function restoreCommittedAppearance(): void {
+  finishAppearancePreview();
+  const appearance = usePreferencesStore.getState().appearance;
+  applyAppearance(appearance, currentResolvedMode(appearance));
+}
+
 const initialMode =
   initialPreferences.appearance.colorMode === 'system'
     ? resolveSystemMode()

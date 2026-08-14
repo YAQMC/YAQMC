@@ -17,10 +17,20 @@ use tokio::sync::{broadcast, RwLock};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ArtworkVariant {
+    pub src: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Artwork {
     pub src: String,
     pub alt: String,
     pub dominant_color: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variants: Vec<ArtworkVariant>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -1316,7 +1326,7 @@ impl PlayerService {
         };
         self.publish("player.playback", &buffering);
 
-        let prepared = match self.preparer.prepare(resolved).await {
+        let mut prepared = match self.preparer.prepare(resolved).await {
             Ok(source) => source,
             Err(PlaybackSourceError::UrlExpired) if allow_runtime_expiry_retry => {
                 let refreshed = match self.resolver.resolve(&song).await {
@@ -1341,6 +1351,60 @@ impl PlayerService {
         }
         let metadata = match self.audio.load(&prepared) {
             Ok(metadata) => metadata,
+            Err(error)
+                if matches!(
+                    error,
+                    AudioEngineError::DecryptionFailed | AudioEngineError::DecoderUnsupported
+                ) && prepared.selection.requested_quality
+                    == crate::qqmusic::AudioQualityPreference::Automatic
+                    && matches!(
+                        prepared.selection.resolved_quality,
+                        AudioQuality::Lossless | AudioQuality::Master
+                    ) =>
+            {
+                let failed_selection = prepared.selection.clone();
+                tracing::warn!(
+                    target: "player.source",
+                    failed_quality = ?failed_selection.resolved_quality,
+                    "automatic encrypted source failed the native probe; trying one clear fallback"
+                );
+                let _ = self.audio.stop();
+                let fallback = match self
+                    .resolver
+                    .resolve_client_fallback(&song, &failed_selection)
+                    .await
+                {
+                    Ok(source) => source,
+                    Err(fallback_error) => {
+                        return self.fail_load(generation, &fallback_error).await
+                    }
+                };
+                if generation != self.load_generation.load(Ordering::Acquire) {
+                    return Ok(self.snapshot().await);
+                }
+                let fallback = match self.preparer.prepare(fallback).await {
+                    Ok(source) => source,
+                    Err(fallback_error) => {
+                        return self.fail_load(generation, &fallback_error).await
+                    }
+                };
+                if fallback.epoch_guard.validate().is_err() {
+                    return self
+                        .fail_load(generation, &PlaybackSourceError::Cancelled)
+                        .await;
+                }
+                if generation != self.load_generation.load(Ordering::Acquire) {
+                    return Ok(self.snapshot().await);
+                }
+                let metadata = match self.audio.load(&fallback) {
+                    Ok(metadata) => metadata,
+                    Err(fallback_error) => {
+                        return Err(self.record_audio_failure(&fallback_error).await)
+                    }
+                };
+                prepared = fallback;
+                metadata
+            }
             Err(error) => return Err(self.record_audio_failure(&error).await),
         };
         if prepared.epoch_guard.validate().is_err() {
@@ -1443,6 +1507,12 @@ impl PlayerService {
             return Err(self.cancel_active_source().await);
         }
         let failure = source_failure(error);
+        tracing::warn!(
+            target: "player.source",
+            error_code = failure.code,
+            retryable = failure.retryable,
+            "playback source resolution failed"
+        );
         let snapshot = {
             let mut core = self.core.write().await;
             core.playback_state = if failure.retryable {
@@ -1464,6 +1534,12 @@ impl PlayerService {
             return self.cancel_active_source().await;
         }
         let failure = audio_failure(error);
+        tracing::warn!(
+            target: "player.audio",
+            error_code = failure.code,
+            retryable = failure.retryable,
+            "native audio probe or playback failed"
+        );
         let snapshot = {
             let mut core = self.core.write().await;
             core.playback_state = if failure.retryable {
@@ -1862,6 +1938,11 @@ fn source_failure(error: &PlaybackSourceError) -> PlaybackFailure {
             "The active QQ Music account is not entitled to this track or quality.",
             false,
         ),
+        PlaybackSourceError::EntitlementUnknown => (
+            "entitlement-unknown",
+            "The QQ Music account entitlement could not be confirmed.",
+            true,
+        ),
         PlaybackSourceError::AuthenticationExpired => (
             "authentication-expired",
             "The QQ Music session expired and must be authorized again.",
@@ -1897,6 +1978,11 @@ fn source_failure(error: &PlaybackSourceError) -> PlaybackFailure {
 
 fn audio_failure(error: &AudioEngineError) -> PlaybackFailure {
     let (code, message, retryable) = match error {
+        AudioEngineError::InvalidOutputSelection => (
+            "invalid-output-selection",
+            "The requested audio output selection is invalid.",
+            false,
+        ),
         AudioEngineError::OutputDeviceUnavailable | AudioEngineError::OutputDeviceOpenFailed => (
             "output-device-unavailable",
             "No usable audio output device is available.",
@@ -1911,6 +1997,11 @@ fn audio_failure(error: &AudioEngineError) -> PlaybackFailure {
             "decoder-unsupported",
             "The native decoder rejected this audio format.",
             false,
+        ),
+        AudioEngineError::DecryptionFailed => (
+            "media-decryption-failed",
+            "The encrypted QQ Music source did not decrypt to valid FLAC media.",
+            true,
         ),
         AudioEngineError::SeekUnsupported => (
             "seek-unsupported",
@@ -2054,6 +2145,7 @@ mod tests {
                 src: "/cover.svg".to_owned(),
                 alt: "Cover".to_owned(),
                 dominant_color: "#000000".to_owned(),
+                variants: Vec::new(),
             },
             duration_ms,
             track_number: 1,
@@ -2134,6 +2226,7 @@ mod tests {
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::unrestricted(),
         }
@@ -2141,6 +2234,75 @@ mod tests {
 
     struct CountingResolver {
         calls: Arc<AtomicUsize>,
+    }
+
+    struct ClientFallbackResolver {
+        requested_quality: AudioQualityPreference,
+        fallback_calls: Arc<AtomicUsize>,
+    }
+
+    struct FailFirstEncryptedLoadAudioEngine {
+        inner: crate::audio::TestAudioEngine,
+        remaining_failures: AtomicUsize,
+    }
+
+    impl FailFirstEncryptedLoadAudioEngine {
+        fn new() -> Self {
+            Self {
+                inner: crate::audio::TestAudioEngine::default(),
+                remaining_failures: AtomicUsize::new(1),
+            }
+        }
+    }
+
+    impl AudioEngine for FailFirstEncryptedLoadAudioEngine {
+        fn load(
+            &self,
+            source: &crate::audio::PreparedPlaybackSource,
+        ) -> Result<crate::audio::AudioLoadMetadata, AudioEngineError> {
+            if self
+                .remaining_failures
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |remaining| {
+                    remaining.checked_sub(1)
+                })
+                .is_ok()
+            {
+                return Err(AudioEngineError::DecryptionFailed);
+            }
+            self.inner.load(source)
+        }
+
+        fn play(&self) -> Result<(), AudioEngineError> {
+            self.inner.play()
+        }
+
+        fn pause(&self) -> Result<(), AudioEngineError> {
+            self.inner.pause()
+        }
+
+        fn stop(&self) -> Result<(), AudioEngineError> {
+            self.inner.stop()
+        }
+
+        fn seek(&self, position: Duration) -> Result<(), AudioEngineError> {
+            self.inner.seek(position)
+        }
+
+        fn set_volume(&self, volume: f32) -> Result<(), AudioEngineError> {
+            self.inner.set_volume(volume)
+        }
+
+        fn set_output_device(&self, device_id: &str) -> Result<(), AudioEngineError> {
+            self.inner.set_output_device(device_id)
+        }
+
+        fn snapshot(&self) -> crate::audio::AudioEngineSnapshot {
+            self.inner.snapshot()
+        }
+
+        fn output_devices(&self) -> Result<Vec<crate::audio::AudioOutputDevice>, AudioEngineError> {
+            self.inner.output_devices()
+        }
     }
 
     struct GuardedResolver {
@@ -2160,6 +2322,7 @@ mod tests {
                 resolved_quality: AudioQuality::Standard,
                 fallback_reason: None,
                 preview: false,
+                quality_capabilities: Vec::new(),
             };
             Ok(source)
         }
@@ -2173,6 +2336,33 @@ mod tests {
         ) -> Result<crate::media::ResolvedPlaybackSource, PlaybackSourceError> {
             self.calls.fetch_add(1, Ordering::AcqRel);
             Ok(resolved(song))
+        }
+    }
+
+    #[async_trait]
+    impl PlaybackSourceResolver for ClientFallbackResolver {
+        async fn resolve(
+            &self,
+            song: &Song,
+        ) -> Result<crate::media::ResolvedPlaybackSource, PlaybackSourceError> {
+            let mut source = resolved(song);
+            source.selection.requested_quality = self.requested_quality;
+            source.selection.resolved_quality = AudioQuality::Lossless;
+            Ok(source)
+        }
+
+        async fn resolve_client_fallback(
+            &self,
+            song: &Song,
+            _failed: &PlaybackSourceSelection,
+        ) -> Result<crate::media::ResolvedPlaybackSource, PlaybackSourceError> {
+            self.fallback_calls.fetch_add(1, Ordering::AcqRel);
+            let mut source = resolved(song);
+            source.selection.requested_quality = AudioQualityPreference::Automatic;
+            source.selection.resolved_quality = AudioQuality::High;
+            source.selection.fallback_reason =
+                Some(crate::qqmusic::PlaybackFallbackReason::ClientUnsupported);
+            Ok(source)
         }
     }
 
@@ -2256,6 +2446,78 @@ mod tests {
             .expect("the resolver, not queue admission, decides account rights");
 
         assert_eq!(resolver_calls.load(Ordering::Acquire), 1);
+    }
+
+    #[tokio::test]
+    async fn automatic_quality_falls_back_once_after_encrypted_probe_failure() {
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let player = PlayerService::with_runtime(
+            Arc::new(FailFirstEncryptedLoadAudioEngine::new()),
+            Arc::new(ClientFallbackResolver {
+                requested_quality: AudioQualityPreference::Automatic,
+                fallback_calls: Arc::clone(&fallback_calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+
+        let snapshot = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("automatic-encrypted", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("automatic playback uses its clear fallback");
+
+        assert!(snapshot.is_playing);
+        assert_eq!(fallback_calls.load(Ordering::Acquire), 1);
+        assert_eq!(
+            snapshot
+                .source_selection
+                .as_ref()
+                .map(|selection| selection.resolved_quality),
+            Some(AudioQuality::High)
+        );
+        assert_eq!(
+            snapshot
+                .source_selection
+                .as_ref()
+                .and_then(|selection| selection.fallback_reason),
+            Some(crate::qqmusic::PlaybackFallbackReason::ClientUnsupported)
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_lossless_does_not_hide_an_encrypted_probe_failure() {
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let player = PlayerService::with_runtime(
+            Arc::new(FailFirstEncryptedLoadAudioEngine::new()),
+            Arc::new(ClientFallbackResolver {
+                requested_quality: AudioQualityPreference::Lossless,
+                fallback_calls: Arc::clone(&fallback_calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+
+        let result = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("explicit-encrypted", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(fallback_calls.load(Ordering::Acquire), 0);
+        assert_eq!(
+            player
+                .snapshot()
+                .await
+                .playback_error
+                .as_ref()
+                .map(|failure| failure.code.as_str()),
+            Some("media-decryption-failed")
+        );
     }
 
     #[tokio::test]
@@ -3013,6 +3275,7 @@ mod tests {
                     resolved_quality: AudioQuality::Standard,
                     fallback_reason: None,
                     preview: false,
+                    quality_capabilities: Vec::new(),
                 },
                 epoch_guard: PlaybackEpochGuard::unrestricted(),
             })

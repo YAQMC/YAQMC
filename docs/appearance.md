@@ -26,6 +26,11 @@ Custom. Selecting a preset updates both theme colors. Direct picker and hex inpu
 immediately. Invalid input is rejected without replacing the last valid color; Reset Appearance restores only the
 appearance section.
 
+Color picker movement is a render-only preview: rapid native input is coalesced to at most one CSS-token update per
+animation frame and does not mutate Zustand, localStorage, SQLite, or native IPC. The native `change` event commits
+once. Hex typing uses the same preview path with a 240 ms commit debounce; blur/Enter commits and Escape restores the
+last committed theme.
+
 ## Background model
 
 The supported modes are:
@@ -44,6 +49,10 @@ invalid managed file produces a recoverable Settings notice and can be replaced 
 Background images are rendered once behind the application and fade on source changes. The foreground tint and
 tokenized panels prevent raw images from becoming the text surface. No synchronous color extraction or expensive
 per-render filtering is performed.
+
+The background layer is fixed to `100vw × 100vh`. Its image opts out of the global responsive-image `max-width`
+rule, which previously clamped an overscanned image and exposed a right-edge strip. Cover fills the visual viewport;
+Contain intentionally letterboxes within that same viewport.
 
 ## Immersive lyric appearance
 

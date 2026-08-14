@@ -33,7 +33,12 @@ export function AlbumPage({ album }: AlbumPageProps) {
         className="detail-hero"
         style={{ '--detail-color': album.artwork.dominantColor } as CSSProperties}
       >
-        <Artwork artwork={album.artwork} className="detail-hero__art" loading="eager" />
+        <Artwork
+          artwork={album.artwork}
+          className="detail-hero__art"
+          loading="eager"
+          purpose="large"
+        />
         <div className="detail-hero__copy">
           <p className="eyebrow">{t('eyebrow')}</p>
           <h1>{album.title}</h1>

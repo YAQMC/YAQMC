@@ -11,6 +11,13 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://github.com/YAQMC/YAQMC" },
+        { "url": "https://github.com/YAQMC/YAQMC/*" }
+      ]
+    },
     "main-application",
     "qqmusic-account"
   ]
