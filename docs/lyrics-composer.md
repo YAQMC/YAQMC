@@ -32,7 +32,9 @@ translation / romanization = primary × 0.42
 - Drag and resize commit **one** undo step on pointer up. Pointer-move does not write SQLite.
 - Snap to center axes, margins, and sibling edges. Alt or Ctrl bypasses snap.
 - Safe-area guides are editor-only.
-- Arrow keys nudge the selected widget. Inspector fields set precise values.
+- Arrow keys nudge the selected widget. Inspector fields set precise values: position, width,
+  height, anchor, align, follow anchor, title/artist scale, artwork renderer/opacity/radius,
+  background fit/color/blur/influence/opacity, plus translation and romanization visibility.
 - Layers can change z-order, lock, or hide a widget.
 - **Reset widget** / **Reset position** restore that widget from the factory graph for the preset layout.
 
