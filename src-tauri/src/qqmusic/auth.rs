@@ -388,6 +388,11 @@ impl TransportQQMusicAuthProtocol {
             })
             .await?;
         require_redirect(&check_sig)?;
+        tracing::debug!(
+            target: "qqmusic.auth",
+            location = check_sig.headers.get(header::LOCATION).and_then(|value| value.to_str().ok()).unwrap_or(""),
+            "QQ login check_sig redirect received"
+        );
         cookies.absorb_set_cookie(&check_sig.headers)?;
         let p_skey = cookies.get("p_skey").ok_or(QQMusicError::Protocol)?;
         let gtk = hash33(p_skey, 5_381);
@@ -567,12 +572,19 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         let body =
             std::str::from_utf8(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
         let args = parse_ptui_callback(body)?;
-        match args.first().map(String::as_str) {
-            Some("66") => Ok(AuthPollResult::WaitingForScan),
-            Some("67") => Ok(AuthPollResult::WaitingForConfirmation),
-            Some("65") => Ok(AuthPollResult::Expired),
-            Some("68") => Ok(AuthPollResult::Rejected),
-            Some("0") => {
+        let status = args.first().map(String::as_str).unwrap_or("<none>");
+        tracing::debug!(
+            target: "qqmusic.auth",
+            status,
+            message = args.get(4).map(String::as_str).unwrap_or(""),
+            "QR login poll returned a status"
+        );
+        match status {
+            "66" => Ok(AuthPollResult::WaitingForScan),
+            "67" => Ok(AuthPollResult::WaitingForConfirmation),
+            "65" => Ok(AuthPollResult::Expired),
+            "68" => Ok(AuthPollResult::Rejected),
+            "0" => {
                 let callback_url = args.get(2).ok_or(QQMusicError::MalformedResponse)?;
                 let session = self
                     .complete_qq_exchange(
@@ -584,7 +596,15 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
                     .await?;
                 Ok(AuthPollResult::Confirmed(session))
             }
-            _ => Err(QQMusicError::MalformedResponse),
+            other => {
+                tracing::warn!(
+                    target: "qqmusic.auth",
+                    status = other,
+                    message = args.get(4).map(String::as_str).unwrap_or(""),
+                    "QR login poll returned an unrecognized status; the account may require security verification"
+                );
+                Err(QQMusicError::MalformedResponse)
+            }
         }
     }
 

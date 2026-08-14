@@ -2524,11 +2524,7 @@ impl QQMusicAccountService {
                 &context.session,
                 "music.musicasset.PlaylistBaseRead",
                 "GetPlaylistByUin",
-                json!({
-                    "uin": context.session.uin,
-                    "sin": offset,
-                    "ein": offset.saturating_add(limit as u64).saturating_sub(1)
-                }),
+                json!({ "uin": context.session.uin }),
             )
         };
         let response = match self
@@ -2584,6 +2580,44 @@ impl QQMusicAccountService {
                 );
                 error
             })?;
+        if !collected_phase {
+            if let Ok(value) = serde_json::from_slice::<Value>(&response.body) {
+                if let Some(list) = response_data(&value)
+                    .ok()
+                    .and_then(|data| data.get("v_playlist"))
+                    .and_then(Value::as_array)
+                {
+                    let entries = list
+                        .iter()
+                        .map(|entry| {
+                            let tid = entry
+                                .get("tid")
+                                .or_else(|| entry.get("disstid"))
+                                .or_else(|| entry.get("id"))
+                                .map(|value| sanitize_field(&value.to_string()).into_owned())
+                                .unwrap_or_else(|| "<missing>".to_owned());
+                            let dir_id = entry
+                                .get("dirId")
+                                .or_else(|| entry.get("dirid"))
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "<missing>".to_owned());
+                            let name = entry
+                                .get("dirName")
+                                .or_else(|| entry.get("dissname"))
+                                .or_else(|| entry.get("title"))
+                                .map(|value| sanitize_field(&value.to_string()).into_owned())
+                                .unwrap_or_else(|| "<missing>".to_owned());
+                            format!("tid={tid} dirId={dir_id} name={name}")
+                        })
+                        .collect::<Vec<_>>();
+                    tracing::info!(
+                        target: "qqmusic.playlist",
+                        raw_entries = ?entries,
+                        "GetPlaylistByUin returned raw v_playlist entries"
+                    );
+                }
+            }
+        }
         if collected_phase {
             normalized.next_provider_cursor = normalized
                 .next_provider_cursor
@@ -2593,11 +2627,40 @@ impl QQMusicAccountService {
         {
             normalized.next_provider_cursor = Some("saved:0".to_owned());
         }
+        tracing::info!(
+            target: "qqmusic.playlist",
+            cursor = ?cursor,
+            offset,
+            collected_phase,
+            provider_items = normalized.items.len(),
+            total = ?normalized.total,
+            next_provider_cursor = ?normalized.next_provider_cursor,
+            ids = ?normalized.items.iter().map(|item| (item.id.as_str(), &item.ownership)).collect::<Vec<_>>(),
+            "account playlist list page normalized"
+        );
         validate_playlist_next_provider_cursor(
             collected_phase,
             offset,
             normalized.next_provider_cursor.as_deref(),
         )?;
+        if !collected_phase {
+            let account_nickname = context.profile.nickname.trim();
+            if !account_nickname.is_empty() {
+                for item in &mut normalized.items {
+                    let owned_by_account = matches!(
+                        item.reference,
+                        AccountPlaylistReference::Owned { .. }
+                            | AccountPlaylistReference::FavoriteSongs { .. }
+                    );
+                    if owned_by_account
+                        && (item.owner.display_name.is_empty()
+                            || item.owner.display_name == "QQ Music")
+                    {
+                        item.owner.display_name = account_nickname.to_owned();
+                    }
+                }
+            }
+        }
         self.auth.ensure_current(&context.epoch).await?;
         let now = self.clock.now_ms();
         let next_cursor = self
@@ -3695,10 +3758,12 @@ fn normalize_playlist_value_with_ownership(
         .as_deref()
         .is_some_and(|ownership| ownership.eq_ignore_ascii_case("owned"))
         || raw.is_owner == Some(true);
-    let reference = if matches!(raw.dir_id, Some(1 | 201)) {
+    let reference = if matches!(raw.dir_id, Some(201)) {
         // Structural collection identity wins over the list that happened to
         // return it. QQ Music can include the Favorite folder in a collected
-        // playlist response, but dirId 1/201 still denotes Favorite Songs.
+        // playlist response, but dirId 201 is the fixed Favorite Songs
+        // directory (dirId 1 is a regular self-created playlist, not the
+        // favorites folder).
         AccountPlaylistReference::FavoriteSongs { dir_id: 201 }
     } else if ownership_hint == Some(PlaylistOwnership::Collected) {
         AccountPlaylistReference::Collected {
@@ -4037,10 +4102,41 @@ fn normalize_playlist_page_response_inner(
         .and_then(Value::as_array)
         .ok_or(QQMusicError::SchemaChanged)?;
     let provider_count = list.len();
-    let items = list
-        .iter()
-        .filter_map(|value| normalize_playlist_value_with_ownership(value, ownership).ok())
-        .collect::<Vec<_>>();
+    let mut items = Vec::with_capacity(list.len());
+    for (index, value) in list.iter().enumerate() {
+        match normalize_playlist_value_with_ownership(value, ownership) {
+            Ok(summary) => items.push(summary),
+            Err(error) => {
+                let tid = value
+                    .get("tid")
+                    .or_else(|| value.get("disstid"))
+                    .or_else(|| value.get("id"))
+                    .map(|value| sanitize_field(&value.to_string()).into_owned())
+                    .unwrap_or_else(|| "<missing>".to_owned());
+                let dir_id = value
+                    .get("dirId")
+                    .or_else(|| value.get("dirid"))
+                    .map(|value| sanitize_field(&value.to_string()).into_owned())
+                    .unwrap_or_else(|| "<missing>".to_owned());
+                let name = value
+                    .get("dirName")
+                    .or_else(|| value.get("dissname"))
+                    .or_else(|| value.get("title"))
+                    .map(|value| sanitize_field(&value.to_string()).into_owned())
+                    .unwrap_or_else(|| "<missing>".to_owned());
+                tracing::warn!(
+                    target: "qqmusic.playlist",
+                    offset = fallback_offset,
+                    index,
+                    tid = %tid,
+                    dir_id = %dir_id,
+                    name = %name,
+                    error = %error,
+                    "dropped an account playlist that failed to normalize"
+                );
+            }
+        }
+    }
     let (offset, total) = page_numbers(data, fallback_offset);
     Ok(NormalizedProviderPage {
         next_provider_cursor: next_provider_cursor(offset, provider_count, total),
@@ -4744,7 +4840,7 @@ mod tests {
     fn account_playlist_reference_classifies_favorites_and_system_collections_structurally() {
         let favorite = normalize_playlist_value(&json!({
             "tid": "9412769971",
-            "dirId": 1,
+            "dirId": 201,
             "dirName": "Localized text is not used for classification"
         }))
         .expect("favorite collection");
@@ -4758,7 +4854,7 @@ mod tests {
         let favorite_from_collected_page = normalize_playlist_value_with_ownership(
             &json!({
                 "tid": "9412769971",
-                "dirId": 1,
+                "dirId": 201,
                 "dirName": "Favorite songs returned by collected page"
             }),
             Some(PlaylistOwnership::Collected),
@@ -4775,6 +4871,24 @@ mod tests {
         assert_eq!(
             favorite_from_collected_page.reference,
             AccountPlaylistReference::FavoriteSongs { dir_id: 201 }
+        );
+
+        let owned_dir_id_one = normalize_playlist_value_with_ownership(
+            &json!({
+                "tid": "8507018786",
+                "dirId": 1,
+                "dirName": "A self-created playlist can use dirId 1"
+            }),
+            Some(PlaylistOwnership::Owned),
+        )
+        .expect("self-created playlist with dirId 1");
+        assert_eq!(owned_dir_id_one.ownership, PlaylistOwnership::Owned);
+        assert_eq!(
+            owned_dir_id_one.reference,
+            AccountPlaylistReference::Owned {
+                tid: "8507018786".to_owned(),
+                dir_id: Some(1),
+            }
         );
 
         let system = normalize_playlist_value(&json!({
@@ -5367,7 +5481,7 @@ mod tests {
 
         let favorite = normalize_playlist_value(&json!({
             "tid": "9412769971",
-            "dirId": 1,
+            "dirId": 201,
             "dirName": "Synthetic account favorite songs"
         }))
         .expect("favorite summary");

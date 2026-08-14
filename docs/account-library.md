@@ -42,6 +42,19 @@ and timestamp. `playlist_tracks` therefore falls back to the metadata already he
 title, description, owner, and update time; for owned playlists the empty creator falls back to the signed-in
 account nickname. This prevents "QQ Music" and a 1970 year from being rendered.
 
+## Playlist list normalization
+
+The self-created playlist read (`GetPlaylistByUin`) returns every self-created playlist in a single response and
+must not receive `sin`/`ein` pagination parameters, which truncate the result. Only `dirId 201` denotes the
+Favorite Songs folder; `dirId 1` is a regular self-created playlist and is normalized as `Owned` (treating it as
+favorites previously collapsed real playlists into the favorites collection by id). Favorite Songs and owned
+playlists belong to the signed-in account, so an empty `creator`/`nick` falls back to the account nickname.
+
+The frontend loads playlist pages automatically (`autoLoadAll`) until the list is terminal, so the grid shows all
+playlists without requiring a "Load more" click. A playlist that fails normalization is dropped individually with a
+`qqmusic.playlist` warn carrying its `tid`/`dirId`/`name` (sanitized) and the error, instead of failing the whole
+page silently.
+
 Normalization failures emit a `qqmusic.playlist` warn with the request context, the CGI `code`/`req_code`/
 `subcode`, a redacted response preview, and a structural `shape` summary of the `req.data` object (key set,
 `songlist`/`cdlist` counts, `dirinfo` fields) so a schema drift or routing change is diagnosable from logs.
