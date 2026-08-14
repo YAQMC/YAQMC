@@ -658,6 +658,15 @@ input[type='range']:disabled {
   font-size: var(--text-2xs);
 }
 
+.queue-next__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
 .queue-next {
   min-height: 0;
   padding: 18px 10px 18px 19px;

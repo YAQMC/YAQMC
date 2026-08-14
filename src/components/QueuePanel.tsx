@@ -29,6 +29,7 @@ export function QueuePanel() {
   const currentQueueEntryId = usePlayerStore((state) => state.currentQueueEntryId);
   const upcomingQueueEntryIds = usePlayerStore((state) => state.upcomingQueueEntryIds);
   const playbackOrder = usePlayerStore((state) => state.playbackOrder);
+  const repeat = usePlayerStore((state) => state.repeat);
   const queueOpen = usePlayerStore((state) => state.queueOpen);
   const playQueueEntry = usePlayerStore((state) => state.playQueueEntry);
   const playNextQueueEntry = usePlayerStore((state) => state.playNextQueueEntry);
@@ -156,7 +157,10 @@ export function QueuePanel() {
         <section className="queue-next">
           <div className="queue-next__heading">
             <p className="context-panel__label">{t('upNext')}</p>
-            {playbackOrder === 'shuffle' && <span>{t('shuffleTraversal')}</span>}
+            <div className="queue-next__meta">
+              {repeat === 'one' && <span>{t('repeatOneActive')}</span>}
+              {playbackOrder === 'shuffle' && <span>{t('shuffleTraversal')}</span>}
+            </div>
           </div>
           {upNext.length === 0 ? (
             <p className="queue-empty">{t('empty')}</p>

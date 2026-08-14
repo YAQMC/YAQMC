@@ -166,6 +166,18 @@ describe('QueuePanel', () => {
     expect(screen.getByText('Shuffle order')).toBeVisible();
   });
 
+  it('shows a Repeat One indicator without duplicating the current track', () => {
+    usePlayerStore.setState({
+      repeat: 'one',
+      upcomingQueueEntryIds: ['entry-two', 'entry-three', 'entry-four'],
+    });
+    render(<QueuePanel />);
+
+    expect(screen.getByText('Repeating this track')).toBeVisible();
+    expect(screen.getByText('Now playing').parentElement).toHaveTextContent('current');
+    expect(screen.queryAllByText('current')).toHaveLength(1);
+  });
+
   it('does not invent sequential entries after authoritative shuffle traversal is exhausted', () => {
     usePlayerStore.setState({
       currentIndex: 1,

@@ -40,6 +40,9 @@ export interface PlaybackSection {
   decoderHint: string | null;
   queueLength: number;
   currentSourceKind: string | null;
+  playbackOrder: string;
+  repeatMode: string;
+  primaryPlaybackMode: string;
 }
 
 export interface ErrorRecord {

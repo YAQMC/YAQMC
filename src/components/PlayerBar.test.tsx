@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
@@ -61,7 +61,10 @@ describe('PlayerBar lyrics presentation entry', () => {
     setPlayerCommandAdapter(null);
   });
 
-  afterEach(() => setPlayerCommandAdapter(null));
+  afterEach(() => {
+    cleanup();
+    setPlayerCommandAdapter(null);
+  });
 
   it('changes QQ Music quality from the player bar through the native command adapter', () => {
     const commands: unknown[] = [];
@@ -128,18 +131,18 @@ describe('PlayerBar lyrics presentation entry', () => {
     usePlayerStore.getState().playTracks([qqTrack(), { ...qqTrack(), id: 'second' }]);
     render(<PlayerBar />);
 
-    const enable = screen.getByRole('button', { name: 'Enable shuffle' });
-    expect(enable).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(enable);
+    const trigger = screen.getByRole('button', { name: 'Playback mode: Sequential' });
+    expect(trigger).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Shuffle' }));
 
-    const disable = screen.getByRole('button', {
-      name: 'Disable shuffle and return to sequential playback',
-    });
-    expect(disable).toHaveAttribute('aria-pressed', 'true');
+    const shuffle = screen.getByRole('button', { name: 'Playback mode: Shuffle' });
+    expect(shuffle).toHaveAttribute('aria-pressed', 'true');
     expect(usePlayerStore.getState().playbackOrder).toBe('shuffle');
-    fireEvent.click(disable);
+    fireEvent.click(shuffle);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sequential' }));
 
-    expect(screen.getByRole('button', { name: 'Enable shuffle' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Playback mode: Sequential' })).toHaveAttribute(
       'aria-pressed',
       'false',
     );

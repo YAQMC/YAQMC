@@ -50,5 +50,7 @@ curl -H "Authorization: Bearer $YAQMC_API_TOKEN" http://127.0.0.1:19532/v1/playe
 | GET  | `/v1/events`                         | SSE 事件流                           |
 
 position 使用整数毫秒，volume 必须是 0.0–1.0 的有限数。越界返回 422，需要曲目但未选择时返回 409，
-认证失败 401。SSE 首先发送 `player.snapshot`，随后只在有意义变化时发送 player、queue 和 lyrics 事件；
+认证失败 401。快照还包含 `playbackOrder`（`sequential` | `shuffle`）和 `primaryPlaybackMode`
+（`sequential` | `shuffle` | `repeat-one`）。列表循环仍是 `repeat=all`，不是主模式。
+SSE 首先发送 `player.snapshot`，随后只在有意义变化时发送 player、queue 和 lyrics 事件；
 进度最多每秒四次。错误响应不包含堆栈或秘密。
