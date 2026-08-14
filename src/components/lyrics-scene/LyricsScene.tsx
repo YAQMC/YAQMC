@@ -30,7 +30,6 @@ type SceneStyle = CSSProperties & {
   '--lyrics-secondary-font-size': string;
   '--lyrics-line-height': string;
   '--lyrics-line-gap': string;
-  '--artwork-influence': string;
 };
 
 function cssPx(value: number): string {
@@ -155,7 +154,6 @@ export function LyricsScene({
     '--lyrics-secondary-font-size': cssPx(secondaryFontPx),
     '--lyrics-line-height': String(preset.typography.lineHeight),
     '--lyrics-line-gap': `${lineGapFromLineHeight(preset.typography.lineHeight)}cqh`,
-    '--artwork-influence': String(scene.background.influence),
     backgroundColor: appearance.baseColor ?? scene.background.fallbackColor,
   } as SceneStyle;
 
@@ -194,9 +192,7 @@ export function LyricsScene({
           style={{
             backgroundImage: `url("${appearance.imageSource}")`,
             backgroundSize: appearance.imageFit,
-            opacity: scene.background.opacity * scene.background.influence,
-            filter: scene.background.blur > 0 ? `blur(${scene.background.blur}px)` : undefined,
-            transform: scene.background.blur > 0 ? 'scale(1.5)' : undefined,
+            opacity: scene.background.opacity,
           }}
           aria-hidden="true"
         />

@@ -55,6 +55,10 @@ describe('LyricsPresetPicker', () => {
     expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1.25');
     expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
     expect(document.querySelector('.lyrics-line')).not.toBeNull();
+    const backdrop = document.querySelector('.lyrics-stage__backdrop') as HTMLElement | null;
+    expect(backdrop?.style.backgroundImage).toContain('/artwork/gem-together.svg');
+    expect(backdrop?.style.filter).toBe('');
+    expect(backdrop?.style.opacity).toBe('1');
 
     const lineSpacing = screen.getByRole('slider', { name: 'Lyrics line spacing' });
     fireEvent.input(lineSpacing, { target: { value: '1.4' } });
@@ -282,6 +286,10 @@ describe('LyricsPresetPicker', () => {
     expect(visualWidth / visualHeight).toBeCloseTo(1, 2);
     expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
     expect(document.querySelector('.lyrics-stage__disc')).not.toBeNull();
+    expect(document.querySelector('.lyrics-stage__backdrop')).toHaveStyle({
+      backgroundImage: 'url("/artwork/gem-together.svg")',
+      opacity: '1',
+    });
   });
 
   it('drags lyrics from the widget and keeps the selection', () => {

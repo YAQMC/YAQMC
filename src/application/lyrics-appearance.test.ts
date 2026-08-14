@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveLyricsAppearance, type LyricsAppearanceBackground } from './lyrics-appearance';
+import {
+  applySceneBackdrop,
+  resolveLyricsAppearance,
+  type LyricsAppearanceBackground,
+} from './lyrics-appearance';
 
 const managedImage = 'data:image/png;base64,AA==';
 const safeArtwork = 'data:image/webp;base64,AQ==';
@@ -98,6 +102,31 @@ describe('immersive lyrics appearance projection', () => {
     expect(resolveLyricsAppearance(background('color', { color: value }), null).baseColor).toBe(
       expected,
     );
+  });
+
+  it('keeps the raw cover when blur is still rendering', () => {
+    expect(
+      applySceneBackdrop(resolveLyricsAppearance(background('default'), safeArtwork), 22, null),
+    ).toEqual({
+      mode: 'default',
+      imageSource: safeArtwork,
+      imageFit: 'cover',
+      baseColor: null,
+    });
+    expect(
+      applySceneBackdrop(
+        resolveLyricsAppearance(background('default'), safeArtwork),
+        22,
+        managedImage,
+      ),
+    ).toMatchObject({ imageSource: managedImage });
+    expect(
+      applySceneBackdrop(
+        resolveLyricsAppearance(background('default'), safeArtwork),
+        0,
+        managedImage,
+      ),
+    ).toMatchObject({ imageSource: safeArtwork });
   });
 
   it('uses the scene fallback color for Contain letterboxing', () => {

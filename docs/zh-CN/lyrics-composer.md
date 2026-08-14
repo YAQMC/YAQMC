@@ -23,7 +23,7 @@ effectivePrimary = fontBase × fontScale
 ```
 
 `--lyrics-font-size` 按场景高度解析成像素写在场景根上，编排器拖动字号时预览立刻变。`.lyrics-line`
-不再二次 clamp。
+不再二次 clamp。经典 / 黑胶预览与运行时歌词页一样用封面铺满背景。
 
 ## 编辑
 

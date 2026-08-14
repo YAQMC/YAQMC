@@ -903,6 +903,15 @@ describe('LyricsPanel', () => {
     expect(stage).toHaveAttribute('data-song-id', 'paper-sun');
   });
 
+  it('fills built-in presets with the cover artwork behind lyrics', () => {
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const backdrop = container.querySelector('.lyrics-stage__backdrop') as HTMLElement | null;
+    expect(backdrop).not.toBeNull();
+    expect(backdrop?.style.backgroundImage).toMatch(/^url\(/);
+    expect(backdrop?.style.opacity).toBe('1');
+    expect(backdrop?.style.filter).toBe('');
+  });
+
   it('mounts the shared lyrics scene and applies font scale to computed line size', () => {
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
       configurable: true,

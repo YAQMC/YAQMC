@@ -8,6 +8,20 @@
   container-name: lyrics-scene;
 }
 
+.lyrics-scene .lyrics-stage__backdrop,
+.lyrics-scene .lyrics-stage__wash {
+  z-index: 0;
+}
+
+.lyrics-scene[data-cover-layout='full'] .lyrics-stage__backdrop {
+  inset: 0;
+  transform: none;
+}
+
+.lyrics-scene[data-cover-layout='full'] .lyrics-stage__wash {
+  background: rgba(0, 0, 0, 0.14);
+}
+
 .lyrics-scene.lyrics-preset-preview {
   position: relative;
   inset: auto;

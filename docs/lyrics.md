@@ -31,9 +31,11 @@ That only changes `selectedId`. Desktop Lyrics and Lyrics Island keep their own 
 
 Cover layouts persist through the lyric preferences and as the selected [lyrics preset](lyrics-presets.md).
 
-The blurred background for layouts with preset blur is produced once per artwork by an offscreen canvas render using
-`stackblur-canvas`, then served as a static image; the live CSS `filter: blur()` path is avoided because
-WebKitGTK can rasterize large blurred layers as black. Immersive factory blur is 0 so the raw cover is used.
+The blurred background for Classic and Vinyl is produced once per artwork by an offscreen canvas
+using `stackblur-canvas`, then shown at full opacity behind a dark wash—the same cover fill used
+before the composer. Live CSS `filter: blur()` is avoided because WebKitGTK can rasterize large
+blurred layers as black. Immersive factory blur is 0 so the raw cover fills the stage. Appearance
+color/image modes still override that fill.
 
 Line emphasis uses a cover-aware ink color: controls, progress, word fill, and sung text use pure ink, while
 the active line mixes the artwork color with ink so light covers stay readable. Non-active lines share one
