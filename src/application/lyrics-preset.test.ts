@@ -216,4 +216,76 @@ describe('lyrics preset foundation', () => {
     setPluginPresetCatalog([]);
     expect(resolveLyricsPreset(state).id).toBe(BUILTIN_CLASSIC_ID);
   });
+
+  it('normalizes color field emitters and extra text widgets', () => {
+    const migrated = normalizeLyricsPresetState({
+      selectedId: 'custom.field',
+      custom: [
+        {
+          id: 'custom.field',
+          layout: 'full',
+          scene: {
+            ...resolveLyricsPreset(defaultLyricsPresetState, BUILTIN_IMMERSIVE_ID).scene,
+            background: {
+              ...resolveLyricsPreset(defaultLyricsPresetState, BUILTIN_IMMERSIVE_ID).scene
+                .background,
+              source: 'colorField',
+              colorField: {
+                emitters: [
+                  {
+                    id: 'left',
+                    position: 'left',
+                    color: '#FF00AA',
+                    intensity: 0.8,
+                    falloff: 0.4,
+                    radius: 0.6,
+                    bind: 'artworkPrimary',
+                  },
+                ],
+              },
+            },
+            extras: [
+              {
+                id: 'title',
+                kind: 'text',
+                x: 0.5,
+                y: 0.1,
+                width: 0.4,
+                height: 0.1,
+                anchor: 'top-center',
+                zIndex: 9,
+                visible: true,
+                locked: false,
+                bind: 'track.title',
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const resolved = resolveLyricsPreset(migrated, 'custom.field');
+    expect(resolved.scene.background.source).toBe('colorField');
+    expect(resolved.scene.background.colorField?.emitters[0]?.bind).toBe('artworkPrimary');
+    expect(resolved.scene.extras?.[0]?.bind).toBe('track.title');
+  });
+
+  it('forks a plugin scene into a custom preset without remaining a plugin source', () => {
+    setPluginPresetCatalog([
+      {
+        ...builtinPresetCatalog[0]!,
+        id: 'plugin:dev.example.scene:vinyl',
+        name: 'Sakura vinyl',
+        source: 'plugin',
+        pluginId: 'dev.example.scene',
+        pluginName: 'Sakura',
+      },
+    ]);
+    const forked = saveAsNewPreset(defaultLyricsPresetState, 'plugin:dev.example.scene:vinyl', {
+      name: 'My vinyl',
+    });
+    const created = resolveLyricsPreset(forked.state, forked.id);
+    expect(created.source).toBe('custom');
+    expect(created.pluginId).toBeUndefined();
+    expect(created.forkedFromPluginId).toBe('dev.example.scene');
+  });
 });

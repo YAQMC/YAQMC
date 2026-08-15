@@ -60,6 +60,9 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const currentArtistLabel = usePlayerStore((state) =>
     joinArtistNames(state.queue[state.currentIndex]?.artists ?? []),
   );
+  const currentAlbumTitle = usePlayerStore(
+    (state) => state.queue[state.currentIndex]?.album.title ?? '',
+  );
   const currentArtworkBaseSrc = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.artwork.src ?? '',
   );
@@ -141,7 +144,9 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const appearanceMode =
     backgroundMode === 'image' || backgroundMode === 'color'
       ? backgroundMode
-      : sceneBackground.source === 'color'
+      : sceneBackground.source === 'color' ||
+          sceneBackground.source === 'gradient' ||
+          sceneBackground.source === 'colorField'
         ? 'color'
         : backgroundMode;
   const appearance = resolveLyricsAppearance(
@@ -263,6 +268,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     songId: currentTrackId,
     title: currentTitle,
     artistLabel: currentArtistLabel,
+    albumTitle: currentAlbumTitle,
     artworkSrc: safeArtworkSource,
     artworkAlt: currentArtworkAlt,
     artworkColor: currentArtworkColor,
