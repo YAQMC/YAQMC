@@ -148,6 +148,7 @@ jobs:
     timeout-minutes: 90
     env:
       YAQMC_PREBUILT_FRONTEND: '1'
+      APPIMAGE_EXTRACT_AND_RUN: '1'
       CARGO_PROFILE_RELEASE_LTO: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && 'true' || 'thin' }}
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && '1' || '8' }}
     steps:
@@ -204,12 +205,20 @@ jobs:
           release_dir="release/YAQMC-linux-${{ matrix.arch }}"
           expected='${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}'
           rpm_expected='${{ matrix.arch == 'x86_64' && 'x86_64' || 'aarch64' }}'
+          echo "Staged files in ${release_dir}:"
+          ls -la "$release_dir"
           deb="$(find "$release_dir" -maxdepth 1 -name '*.deb' -print -quit)"
           rpm="$(find "$release_dir" -maxdepth 1 -name '*.rpm' -print -quit)"
-          test -n "$deb"
-          test -n "$rpm"
-          test "$(dpkg-deb -f "$deb" Architecture)" = "$expected"
-          test "$(rpm -qp --qf '%{ARCH}' "$rpm")" = "$rpm_expected"
+          if [ -z "$deb" ] || [ -z "$rpm" ]; then
+            echo "missing .deb or .rpm in ${release_dir}" >&2
+            exit 1
+          fi
+          deb_arch="$(dpkg-deb -f "$deb" Architecture)"
+          rpm_arch="$(rpm -qp --qf '%{ARCH}' "$rpm")"
+          echo "deb=$(basename "$deb") arch=${deb_arch} expected=${expected}"
+          echo "rpm=$(basename "$rpm") arch=${rpm_arch} expected=${rpm_expected}"
+          test "$deb_arch" = "$expected"
+          test "$rpm_arch" = "$rpm_expected"
       - name: Job summary
         if: always()
         shell: bash
