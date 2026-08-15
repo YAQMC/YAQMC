@@ -30,6 +30,10 @@
 
 先启用 **Ink core** 再启用 **Ink accent**。Sakura 与 Night 不能同时启用。
 
-## v1 未包含
+v2 示例源码在 `examples/plugins/script-actions`（设置 + 右键/播放栏）和 `examples/plugins/script-network`
+（仅 `https://example.com` 的宿主代理请求）。用 `npm run plugin:pack` 打包。敌对探测夹具位于
+`tests/fixtures/plugins/hostile`，不要作为用户插件启用。
 
-网络、文件系统、凭据、原生模块、HTML 入口、插件市场。
+## 未包含
+
+插件市场、远程更新、Provider 插件、原生模块、HTML 入口、任意 `fetch`。

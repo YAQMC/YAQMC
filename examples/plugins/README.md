@@ -11,7 +11,9 @@ Packed downloads: [`packages/`](packages/) · docs: [English](../../docs/plugin-
 | `style-night`        | `dev.yaqmc.example.night`       | Cool-ink chrome. Conflicts with Sakura.                              |
 | `scene-pack`         | `dev.yaqmc.example.scenes`      | Aurora + Vinyl glow lyrics scenes and scene CSS.                     |
 | `script-now-playing` | `dev.yaqmc.example.now-playing` | Isolated script: all read APIs, events, storage, logs, seek restore. |
-| `studio`             | `dev.yaqmc.example.studio`      | Style + scenes + script + every v1 permission.                       |
+| `script-actions`     | `dev.yaqmc.example.actions`     | v2 settings, track context menu, player bar, notify.                 |
+| `script-network`     | `dev.yaqmc.example.network`     | Host-proxied HTTPS to example.com only.                              |
+| `studio`             | `dev.yaqmc.example.studio`      | Style + scenes + script + Color Field demo.                          |
 | `ink-core`           | `dev.yaqmc.example.ink-core`    | Shared `--yaqmc-*` tokens.                                           |
 | `ink-accent`         | `dev.yaqmc.example.ink-accent`  | Applies those tokens. Depends on Ink core.                           |
 

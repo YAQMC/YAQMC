@@ -5,8 +5,9 @@
 YAQMC **runtime plugins** are user-installed `*.yaqmc-plugin` packages loaded by `ExtensionHost`. They are **not**
 Tauri framework plugins, and they are not native `dll` / `so` modules.
 
-v1 is personalization-first: styles, lyrics scenes, and an isolated script host. The same loader, lifecycle,
-permissions, and recovery model are intended to stay stable when later versions add more application functionality.
+v1 is personalization-first: styles, lyrics scenes, and an isolated script host. Plugin API v2 adds declarative
+settings, read/control events, safe UI slots, optional scoped HTTPS via a host proxy, and Developer Mode. The same
+loader, lifecycle, permissions, and recovery model stay in place. v1 plugins keep working.
 
 ## Package
 
@@ -43,7 +44,7 @@ plugins/
 
 The active version is stored explicitly. Symlinks are not used for active-version semantics.
 
-## Limits (v1)
+## Limits
 
 | Bound              | Value  |
 | ------------------ | ------ |
@@ -53,10 +54,12 @@ The active version is stored explicitly. Symlinks are not used for active-versio
 | Individual file    | 4 MiB  |
 | Plugin storage     | 64 KiB |
 
+v1 and v2 share these package limits. Network v2 adds per-request body/response caps and origin allowlists.
+
 ## Future (not implemented)
 
-Marketplace, remote updates, `network:` permissions, Provider plugins, lyric-source plugins, arbitrary UI slots,
-native/WASM runtimes, publisher signing, and cloud sync are reserved. Architecture should not make them impossible.
+Marketplace, remote updates, Provider plugins, lyric-source plugins, native/WASM runtimes, publisher signing, and
+cloud sync remain reserved. `network:*` wildcards are rejected.
 
 Packed example plugins that actually restyle chrome, register lyrics scenes, and exercise the isolated script bridge
 are listed in [example plugins](plugin-examples.md).
