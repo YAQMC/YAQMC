@@ -94,6 +94,7 @@ const APP_COMMANDS: &[&str] = &[
     "issue_reporter_preview",
     "issue_reporter_validate_url",
     "plugin_list",
+    "plugin_pick_package",
     "plugin_inspect_path",
     "plugin_install",
     "plugin_set_enabled",

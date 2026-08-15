@@ -410,6 +410,7 @@ pub fn run() {
             commands::issue_reporter_preview,
             commands::issue_reporter_validate_url,
             plugin::commands::plugin_list,
+            plugin::commands::plugin_pick_package,
             plugin::commands::plugin_inspect_path,
             plugin::commands::plugin_install,
             plugin::commands::plugin_set_enabled,

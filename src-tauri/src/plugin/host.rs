@@ -1278,6 +1278,20 @@ mod tests {
     }
 
     #[test]
+    fn safe_mode_is_host_level_even_without_plugins() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");
+        assert!(host.list().is_empty());
+        assert!(!host.safe_mode());
+        host.set_safe_mode(true).expect("safe");
+        assert!(host.list().is_empty());
+        assert!(host.safe_mode());
+        assert!(host.active_resources().safe_mode);
+        host.set_safe_mode(false).expect("leave");
+        assert!(!host.safe_mode());
+    }
+
+    #[test]
     fn runtime_token_is_bound_and_cannot_be_spoofed() {
         let root = tempfile::tempdir().expect("root");
         let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");

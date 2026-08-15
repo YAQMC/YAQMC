@@ -654,6 +654,7 @@ export const enUS = {
       installDescription:
         'Accepts .yaqmc-plugin packages, or local .css / .js convenience imports.',
       installAction: 'Choose file',
+      desktopOnly: 'Plugin management is only available in the desktop app.',
       empty: 'No plugins are installed.',
       enable: 'Enable',
       disable: 'Disable',
@@ -671,6 +672,7 @@ export const enUS = {
         'Disables third-party styles, scenes, and scripts without deleting packages.',
       enterSafeMode: 'Enter Safe Mode',
       leaveSafeMode: 'Leave Safe Mode',
+      safeModeActive: 'Safe Mode is on. Third-party styles, scenes, and scripts are unloaded.',
       typescriptRequiresBuild:
         'TypeScript plugins must be built to dist/main.js with the Plugin SDK.',
       uninstallConfirm: 'Uninstall {{name}}?',
