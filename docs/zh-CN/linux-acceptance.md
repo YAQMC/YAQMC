@@ -44,3 +44,6 @@
 
 测试者需返回压缩包、SHA-256、发行版/内核、合成器、显示器、缩放/DPR、音频观测和可见缺陷。压缩包
 完成校验并记录 verdict 后，最终验收才关闭。
+
+Plugin API v2、Color Field、场景视频和插件 Worker 会随 Linux 编译，但在最终 AppImage 留下桌面记录之前，
+不算已关闭的 Linux GUI 账本。

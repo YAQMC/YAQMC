@@ -825,6 +825,16 @@ describe('LyricsPanel', () => {
     expect(lyricOffset(container)).toBe(unfollowed);
   });
 
+  it('does not apply live inactive-line blur on Linux auto graphics', async () => {
+    document.documentElement.setAttribute('data-platform', 'linux');
+    document.documentElement.removeAttribute('data-graphics-mode');
+    usePlayerStore.setState({ positionMs: 1_100, isPlaying: false, playbackState: 'paused' });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+    render(<LyricsPanel {...presentationProps()} />);
+    const inactive = await screen.findByRole('button', { name: 'Second line' });
+    expect(getComputedStyle(inactive).filter).toBe('none');
+  });
+
   it.each(['software', 'safe'])(
     'contains lyric lines and removes only active scale in Linux %s mode',
     async (graphicsMode) => {
@@ -840,6 +850,8 @@ describe('LyricsPanel', () => {
       expect(getComputedStyle(active).getPropertyValue('content-visibility')).toBe('visible');
       expect(getComputedStyle(inactive).getPropertyValue('content-visibility')).toBe('auto');
       expect(getComputedStyle(inactive).contain).toBe('layout paint style');
+      expect(getComputedStyle(inactive).filter).toBe('none');
+      expect(getComputedStyle(active).filter).toBe('none');
     },
   );
 

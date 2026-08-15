@@ -23,3 +23,6 @@ Composer 运行时，不会再做一套歌词渲染器。
 
 场景文档仍是 schema v2。额外控件（text / image / video）、Color Field、渐变/视频背景为增量能力。现有 Classic /
 Immersive / Vinyl / 用户自定义 / 插件 v1 场景继续加载。插件场景在编排器中只读，请使用「复制为我的场景」。
+
+Linux 上会关闭歌词行和场景控件的实时 `filter: blur()`。`software` / `safe` 图形模式不解码场景视频。`@scope`
+需要较新的 WebKitGTK；若引擎忽略该规则，样式不生效，也不会泄漏到设置页。

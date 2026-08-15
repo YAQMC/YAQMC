@@ -10,6 +10,7 @@ import {
   type LyricsPresetDefinition,
 } from './lyrics-preset';
 import { isNativeRuntime } from './native-player-runtime';
+import { isLinuxWebView } from './platform-integration';
 import { usePlayerStore } from './player-store';
 import { primaryPlaybackMode } from './playback-mode';
 import { usePreferencesStore } from './preferences';
@@ -490,6 +491,7 @@ function applyBridgeSideEffect(
     const widgetId = typeof source.widgetId === 'string' ? source.widgetId : '';
     const property = typeof source.property === 'string' ? source.property : '';
     if (!widgetId || !/^(opacity|scale|rotation|blur)$/.test(property)) return;
+    if (property === 'blur' && isLinuxWebView()) return;
     const raw = source.value;
     const text =
       typeof raw === 'number' && Number.isFinite(raw)
@@ -564,11 +566,10 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
       };
       workers.set(script.pluginId, worker);
     } catch (error) {
-      logger.error(
-        'plugin.runtime.error',
-        error instanceof Error ? error.message : 'plugin runtime failed to start',
-        { pluginId: script.pluginId },
-      );
+      const reason = error instanceof Error ? error.message : 'plugin runtime failed to start';
+      logger.error('plugin.runtime.error', reason, { pluginId: script.pluginId });
+      void invoke('plugin_mark_failed', { id: script.pluginId, reason }).catch(() => undefined);
+      clearPluginUi(script.pluginId);
     }
   }
 }

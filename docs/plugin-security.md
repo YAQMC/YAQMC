@@ -10,7 +10,8 @@ a permission-checked bridge, package jail, and host-proxied network. Raw `fetch`
 Third-party script does **not** run in the main YAQMC WebView. Each script plugin gets a dedicated worker built from
 YAQMC-owned bootstrap plus the plugin’s `dist/main.js`. The worker has no `document`, no `__TAURI__`, no `invoke`,
 and no raw `fetch`. All privileged work goes through `plugin_bridge` with a host-bound runtime token. Plugin-supplied
-`pluginId` is not authorization.
+`pluginId` is not authorization. The application CSP allows `worker-src 'self' blob:` so WebKitGTK can construct that
+blob worker; Worker construction failure marks the plugin Failed.
 
 CSS and Scene Schema never execute JavaScript. Scene CSS is scoped to `[data-yaqmc-plugin-scene]`. Global styles may
 only target the documented `data-yaqmc` / `--yaqmc-*` API.
