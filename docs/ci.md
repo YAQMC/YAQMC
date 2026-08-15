@@ -24,7 +24,7 @@ Superseded pull-request runs are cancelled. Pushes to `main` and manual packagin
 
 ## Frontend reuse
 
-Packaging jobs download `yaqmc-frontend-dist-<sha>`. `YAQMC_PREBUILT_FRONTEND=1` makes `scripts/ci/tauri-before-build.mjs` skip Vite after checking `dist/.yaqmc-frontend-build.json` against the current commit. Local `tauri build` still runs a normal frontend build.
+Packaging jobs download `yaqmc-frontend-dist-<sha>`. `YAQMC_PREBUILT_FRONTEND=1` makes `scripts/ci/tauri-before-build.mjs` skip Vite after checking `dist/yaqmc-frontend-build.json` against the current commit. Local `tauri build` still runs a normal frontend build.
 
 Do not upload `node_modules` between jobs.
 
