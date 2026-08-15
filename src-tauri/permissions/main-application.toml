@@ -92,4 +92,10 @@ permissions = [
   "allow-plugin-runtime-stop",
   "allow-plugin-mark-failed",
   "allow-plugin-bridge",
+  "allow-plugin-pick-directory",
+  "allow-plugin-install-unpacked",
+  "allow-plugin-reload",
+  "allow-plugin-read-asset",
+  "allow-plugin-settings-get",
+  "allow-plugin-settings-set",
 ]

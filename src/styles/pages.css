@@ -1622,6 +1622,55 @@
   font-size: var(--text-xs);
 }
 
+.plugin-capability-row,
+.plugin-settings {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.plugin-chip {
+  display: inline-flex;
+  margin-right: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-muted, var(--bg-subtle));
+  font-size: var(--text-xs);
+}
+
+.plugin-notice-host {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+.plugin-notice {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: inherit;
+  text-align: left;
+}
+
+.plugin-notice--warning {
+  border-color: color-mix(in srgb, #d97706 50%, var(--border));
+}
+
+.plugin-notice--error {
+  border-color: color-mix(in srgb, #dc2626 50%, var(--border));
+}
+
+.plugin-notice--success {
+  border-color: color-mix(in srgb, #16a34a 50%, var(--border));
+}
+
 .settings-empty {
   margin-top: 12px;
   color: var(--text-tertiary);
