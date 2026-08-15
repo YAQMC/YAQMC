@@ -1597,7 +1597,17 @@ impl QQMusicClient {
         limit: u32,
     ) -> Result<Vec<Playlist>, QQMusicError> {
         match session {
-            Some(session) => self.personalized_songlists(session, limit).await,
+            Some(session) => {
+                let personalized = self.personalized_songlists(session, limit).await?;
+                if !personalized.is_empty() {
+                    return Ok(personalized);
+                }
+                tracing::debug!(
+                    target: "qqmusic",
+                    "personalized recommend feed yielded no songlists; falling back to general songlists"
+                );
+                self.general_songlists(limit).await
+            }
             None => self.general_songlists(limit).await,
         }
     }
@@ -1661,7 +1671,6 @@ impl QQMusicClient {
                 collected = playlists.len(),
                 "recommend.songlists feed page scanned"
             );
-            let mut advanced = false;
             for shelf in shelves {
                 let shelf_id = shelf["id"].as_i64().map(|id| id.to_string());
                 if let Some(shelf_id) = &shelf_id {
@@ -1683,7 +1692,6 @@ impl QQMusicClient {
                         let Some((tid, title)) = tid.zip(title) else {
                             continue;
                         };
-                        advanced = true;
                         let artwork_url = card["cover"].as_str().unwrap_or_default();
                         playlists.push(Playlist {
                             id: playlist_id(tid),
@@ -1708,7 +1716,7 @@ impl QQMusicClient {
             }
             let before = seen_shelves.len();
             seen_shelves.extend(shelves.iter().filter_map(|s| s["id"].as_i64()));
-            if seen_shelves.len() == before || !advanced {
+            if seen_shelves.len() == before {
                 break;
             }
         }
