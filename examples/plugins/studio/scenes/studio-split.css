@@ -1,0 +1,24 @@
+[data-scene-widget='background'] {
+  filter: sepia(0.18) saturate(1.05);
+}
+
+[data-scene-widget='artwork'] {
+  outline: 2px solid rgba(232, 184, 109, 0.45);
+  outline-offset: 6px;
+}
+
+[data-scene-widget='metadata'] {
+  color: #f3e2c4;
+}
+
+[data-scene-widget='lyrics'] {
+  padding-left: 10px;
+}
+
+[data-scene-widget='transport'] {
+  filter: drop-shadow(0 0 12px rgba(232, 184, 109, 0.35));
+}
+
+[data-scene-state='active-line'] {
+  color: #e8b86d;
+}

@@ -11,8 +11,9 @@ use super::{
         CompletedResultCache, OpaqueCursorRegistry, ProviderTrackRegistry, ACCOUNT_CACHE_KIND,
     },
     clock::Clock,
-    color_for, normalize_new_song, normalize_old_song, playlist_id, stable_component,
+    color_for, normalize_new_song, normalize_old_song, playlist_id,
     redaction::redact_json,
+    stable_component,
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
@@ -2549,37 +2550,36 @@ impl QQMusicAccountService {
                 return self.stale_page_or_error(&context, cached, error).await;
             }
         };
-        let mut normalized =
-            normalize_playlist_page_response_with_ownership(
-                &response.body,
+        let mut normalized = normalize_playlist_page_response_with_ownership(
+            &response.body,
+            offset,
+            if collected_phase {
+                PlaylistOwnership::Collected
+            } else {
+                PlaylistOwnership::Owned
+            },
+            if collected_phase {
+                &["v_list", "v_playlist", "playlist"]
+            } else {
+                &["v_playlist", "playlist"]
+            },
+        )
+        .map_err(|error| {
+            let (top, req, subcode) = response_codes(&response.body);
+            tracing::warn!(
+                target: "qqmusic.playlist",
+                cursor = ?cursor,
                 offset,
-                if collected_phase {
-                    PlaylistOwnership::Collected
-                } else {
-                    PlaylistOwnership::Owned
-                },
-                if collected_phase {
-                    &["v_list", "v_playlist", "playlist"]
-                } else {
-                    &["v_playlist", "playlist"]
-                },
-            )
-            .map_err(|error| {
-                let (top, req, subcode) = response_codes(&response.body);
-                tracing::warn!(
-                    target: "qqmusic.playlist",
-                    cursor = ?cursor,
-                    offset,
-                    collected_phase,
-                    error = %error,
-                    code = ?top,
-                    req_code = ?req,
-                    subcode = ?subcode,
-                    response = %response_preview(&response.body),
-                    "account playlist list response failed to normalize"
-                );
-                error
-            })?;
+                collected_phase,
+                error = %error,
+                code = ?top,
+                req_code = ?req,
+                subcode = ?subcode,
+                response = %response_preview(&response.body),
+                "account playlist list response failed to normalize"
+            );
+            error
+        })?;
         if !collected_phase {
             if let Ok(value) = serde_json::from_slice::<Value>(&response.body) {
                 if let Some(list) = response_data(&value)
@@ -2860,24 +2860,26 @@ impl QQMusicAccountService {
             ),
             _ => {
                 let (mut summary, page) =
-                    normalize_playlist_detail_response(&response.body, offset).map_err(|error| {
-                    let (top, req, subcode) = response_codes(&response.body);
-                    tracing::warn!(
-                        target: "qqmusic.playlist",
-                        playlist_id = %playlist_id,
-                        reference = ?reference,
-                        cursor = ?cursor,
-                        offset,
-                        error = %error,
-                        code = ?top,
-                        req_code = ?req,
-                        subcode = ?subcode,
-                        shape = %response_shape(&response.body),
-                        response = %response_preview(&response.body),
-                        "account playlist detail response failed to normalize"
-                    );
-                        error
-                    })?;
+                    normalize_playlist_detail_response(&response.body, offset).map_err(
+                        |error| {
+                            let (top, req, subcode) = response_codes(&response.body);
+                            tracing::warn!(
+                                target: "qqmusic.playlist",
+                                playlist_id = %playlist_id,
+                                reference = ?reference,
+                                cursor = ?cursor,
+                                offset,
+                                error = %error,
+                                code = ?top,
+                                req_code = ?req,
+                                subcode = ?subcode,
+                                shape = %response_shape(&response.body),
+                                response = %response_preview(&response.body),
+                                "account playlist detail response failed to normalize"
+                            );
+                            error
+                        },
+                    )?;
                 if summary.reference.generic_tid()? != reference.generic_tid()? {
                     let (top, req, subcode) = response_codes(&response.body);
                     tracing::warn!(
@@ -2904,8 +2906,7 @@ impl QQMusicAccountService {
                 if summary.description.trim().is_empty() {
                     summary.description = requested_summary.description.clone();
                 }
-                if summary.owner.display_name.is_empty()
-                    || summary.owner.display_name == "QQ Music"
+                if summary.owner.display_name.is_empty() || summary.owner.display_name == "QQ Music"
                 {
                     let account_nickname = context.profile.nickname.trim();
                     if matches!(reference, AccountPlaylistReference::Owned { .. })
@@ -5466,10 +5467,7 @@ mod tests {
             owned_request.pointer("/req/param/disstid"),
             Some(&json!("SANITIZED_PLAYLIST_OWNED"))
         );
-        assert_eq!(
-            owned_request.pointer("/req/param/dirid"),
-            Some(&json!(0))
-        );
+        assert_eq!(owned_request.pointer("/req/param/dirid"), Some(&json!(0)));
         assert_eq!(
             owned_request.pointer("/req/param/orderlist"),
             Some(&json!(true))

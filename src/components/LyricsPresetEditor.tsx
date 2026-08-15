@@ -1665,6 +1665,9 @@ export function LyricsPresetPicker() {
             >
               <strong>{label}</strong>
               <span>{t(`layouts.${preset.layout}`)}</span>
+              {preset.source === 'plugin' && preset.pluginName && (
+                <em>{t('providedBy', { plugin: preset.pluginName })}</em>
+              )}
               {hasBuiltinOverride(lyricsPresets, preset.id) && <em>{t('customized')}</em>}
             </button>
           );
@@ -1674,6 +1677,7 @@ export function LyricsPresetPicker() {
         type="button"
         className="button button--secondary"
         onClick={() => setEditingId(lyricsPresets.selectedId)}
+        disabled={resolved.find((preset) => preset.id === lyricsPresets.selectedId)?.source === 'plugin'}
       >
         {t('customize')}
       </button>

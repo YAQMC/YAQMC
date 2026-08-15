@@ -73,6 +73,7 @@ import {
 import type { LogLevel } from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
+import { PluginManager } from '../components/PluginManager';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -1412,6 +1413,12 @@ export function SettingsPage() {
               </span>
             }
           />
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title={t('plugins.title')} description={t('plugins.description')}>
+        <div className="settings-card">
+          <PluginManager />
         </div>
       </SettingsSection>
 

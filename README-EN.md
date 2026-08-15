@@ -36,7 +36,7 @@
 - Desktop Lyrics and Lyrics Island with word timing, translation/romanization, click-through lock mode, and a
   dedicated on-surface unlock control.
 - English and Simplified Chinese UI, light/dark themes, configurable primary and secondary colors, custom
-  backgrounds, and native output-device selection.
+  backgrounds, native output-device selection, and optional local [example plugins](docs/plugin-examples.md).
 - Seekable HTTP Range streaming, bounded cache, queue persistence, one-time signed-URL recovery, and an optional
   authenticated loopback API bound to `127.0.0.1`.
 - A current-track quality menu in PlayerBar, with Settings remaining the default for later tracks. Account-entitled
@@ -176,6 +176,8 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [entitlement](docs/entitlement.md), [lyrics surfaces](docs/lyrics-surfaces.md),
 [lyrics presets](docs/lyrics-presets.md),
 [lyrics composer](docs/lyrics-composer.md),
+[plugin platform](docs/plugin-platform.md),
+[example plugins](docs/plugin-examples.md),
 [local API](docs/local-api.md), [logging](docs/logging.md),
 [diagnostics](docs/diagnostics.md), [Issue reporting](docs/issue-reporting.md), and
 [security & privacy](docs/security.md), or the complete

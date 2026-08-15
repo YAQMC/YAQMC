@@ -125,7 +125,7 @@ export function QueuePanel() {
   return (
     <>
       <button className="panel-scrim" type="button" onClick={closePanels} aria-label={t('close')} />
-      <aside className="context-panel" aria-label={t('region')}>
+      <aside className="context-panel" aria-label={t('region')} data-yaqmc="queue">
         <header className="context-panel__header">
           <div>
             <p>{t('playingNext')}</p>

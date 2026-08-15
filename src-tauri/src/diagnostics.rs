@@ -62,6 +62,14 @@ pub struct PlaybackSection {
     pub playback_order: &'static str,
     pub repeat_mode: &'static str,
     pub primary_playback_mode: &'static str,
+    #[serde(default)]
+    pub playback_session_id: u64,
+    #[serde(default)]
+    pub snapshot_revision: u64,
+    #[serde(default)]
+    pub source_generation: u64,
+    #[serde(default)]
+    pub last_seek_revision: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -100,6 +108,8 @@ pub struct DiagnosticsSnapshot {
     pub recent_errors: Vec<ErrorRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lyrics_preset: Option<LyricsPresetSection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugins: Vec<crate::plugin::PluginDiagnostic>,
 }
 
 impl DiagnosticsSnapshot {
@@ -135,6 +145,7 @@ impl DiagnosticsSnapshot {
             log_level,
             recent_errors,
             lyrics_preset: None,
+            plugins: Vec::new(),
         }
     }
 
@@ -178,7 +189,7 @@ impl DiagnosticsSnapshot {
             ));
         }
         out.push_str(&format!(
-            "Playback: state={} · quality={} · source={} · queue_len={} · order={} · repeat={} · mode={}\n",
+            "Playback: state={} · quality={} · source={} · queue_len={} · order={} · repeat={} · mode={} · player_session={} · revision={} · source_gen={} · seek={}\n",
             self.playback.state,
             self.playback
                 .selected_quality
@@ -188,7 +199,11 @@ impl DiagnosticsSnapshot {
             self.playback.queue_length,
             self.playback.playback_order,
             self.playback.repeat_mode,
-            self.playback.primary_playback_mode
+            self.playback.primary_playback_mode,
+            self.playback.playback_session_id,
+            self.playback.snapshot_revision,
+            self.playback.source_generation,
+            self.playback.last_seek_revision
         ));
         out.push_str(&format!("Log level: {}\n", self.log_level.as_str()));
         if let Some(preset) = &self.lyrics_preset {
@@ -202,6 +217,22 @@ impl DiagnosticsSnapshot {
                     .map(|version| format!(", renderer v{version}"))
                     .unwrap_or_default()
             ));
+        }
+        if !self.plugins.is_empty() {
+            out.push_str("Plugins:\n");
+            for plugin in &self.plugins {
+                out.push_str(&format!(
+                    "  - {} {} · enabled={} · status={:?} · api=v{} · sha256={} · perms={} · risk={}\n",
+                    plugin.id,
+                    plugin.version,
+                    plugin.enabled,
+                    plugin.status,
+                    plugin.api_version,
+                    plugin.package_sha256,
+                    plugin.permissions.join(","),
+                    plugin.risk_rating
+                ));
+            }
         }
         if !self.recent_errors.is_empty() {
             out.push_str("Recent errors:\n");
@@ -827,6 +858,10 @@ mod tests {
                 playback_order: "sequential",
                 repeat_mode: "off",
                 primary_playback_mode: "sequential",
+                playback_session_id: 0,
+                snapshot_revision: 0,
+                source_generation: 0,
+                last_seek_revision: 0,
             },
             vec![],
         )
@@ -1013,6 +1048,10 @@ mod tests {
                 playback_order: "sequential",
                 repeat_mode: "off",
                 primary_playback_mode: "sequential",
+                playback_session_id: 0,
+                snapshot_revision: 0,
+                source_generation: 0,
+                last_seek_revision: 0,
             },
             AppSection {
                 name: "YAQMC",

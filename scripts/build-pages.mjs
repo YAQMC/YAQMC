@@ -14,6 +14,9 @@ await cp(
   path.join(repositoryRoot, 'assets', 'yaqmc-logo.png'),
   path.join(output, 'assets', 'yaqmc-logo.png'),
 );
+const pluginPackages = path.join(repositoryRoot, 'examples', 'plugins', 'packages');
+await mkdir(path.join(output, 'plugins'), { recursive: true });
+await cp(pluginPackages, path.join(output, 'plugins'), { recursive: true });
 await writeFile(path.join(output, '.nojekyll'), '', 'utf8');
 
 process.stdout.write(`Built GitHub Pages artifact at ${path.relative(repositoryRoot, output)}\n`);

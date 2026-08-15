@@ -706,6 +706,10 @@ mod tests {
             playback_duration_ms: None,
             playback_error: None,
             source_selection: None,
+            session_id: 0,
+            snapshot_revision: 0,
+            source_generation: 0,
+            last_seek_revision: 0,
         };
         let projected = MediaProjection::from_snapshot(&snapshot, true);
         assert_eq!(projected.repeat, RepeatMode::One);

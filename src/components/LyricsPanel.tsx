@@ -91,6 +91,9 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
   const sourceSelection = usePlayerStore((state) => state.sourceSelection);
   const seek = usePlayerStore((state) => state.seek);
+  const beginScrub = usePlayerStore((state) => state.beginScrub);
+  const previewScrub = usePlayerStore((state) => state.previewScrub);
+  const commitScrub = usePlayerStore((state) => state.commitScrub);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const next = usePlayerStore((state) => state.next);
   const previous = usePlayerStore((state) => state.previous);
@@ -272,6 +275,9 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     presentationOffsetMs,
     getPositionMs: getEstimatedPositionMs,
     seek: (value) => seek(value + previewStartMs),
+    beginScrub,
+    previewScrub: (value) => previewScrub(value + previewStartMs),
+    commitScrub: (value) => commitScrub(value + previewStartMs),
     togglePlayback,
     next,
     previous,

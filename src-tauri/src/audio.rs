@@ -14,7 +14,10 @@ use std::{
     fs::File,
     io::{BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc, Arc, Mutex,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -125,6 +128,7 @@ pub struct PreparedPlaybackSource {
     pub cache_key: String,
     pub selection: PlaybackSourceSelection,
     pub epoch_guard: PlaybackEpochGuard,
+    pub load_generation: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -141,6 +145,7 @@ pub struct AudioEngineSnapshot {
     pub buffering: bool,
     pub progressive_downloaded_bytes: Option<u64>,
     pub progressive_total_bytes: Option<u64>,
+    pub source_generation: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -195,6 +200,8 @@ pub enum AudioEngineError {
     WorkerTimeout,
     #[error("the account-bound playback source was cancelled")]
     SourceCancelled,
+    #[error("the source load belonged to a superseded playback session")]
+    StaleCommand,
 }
 
 pub trait AudioEngine: Send + Sync {
@@ -265,10 +272,6 @@ enum AudioCommand {
     Play(mpsc::SyncSender<Result<(), AudioEngineError>>),
     Pause(mpsc::SyncSender<Result<(), AudioEngineError>>),
     Stop(mpsc::SyncSender<Result<(), AudioEngineError>>),
-    Seek {
-        position: Duration,
-        reply: mpsc::SyncSender<Result<(), AudioEngineError>>,
-    },
     SetVolume {
         volume: f32,
         reply: mpsc::SyncSender<Result<(), AudioEngineError>>,
@@ -281,8 +284,16 @@ enum AudioCommand {
     Shutdown,
 }
 
+struct PendingSeek {
+    position: Duration,
+    source_generation: u64,
+    reply: mpsc::SyncSender<Result<(), AudioEngineError>>,
+}
+
 pub struct RodioAudioEngine {
     commands: mpsc::Sender<AudioCommand>,
+    pending_seek: Arc<Mutex<Option<PendingSeek>>>,
+    source_generation: Arc<AtomicU64>,
     snapshot: Arc<Mutex<AudioEngineSnapshot>>,
     worker: Mutex<Option<thread::JoinHandle<()>>>,
 }
@@ -292,16 +303,30 @@ impl RodioAudioEngine {
         let (commands, receiver) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let snapshot = Arc::new(Mutex::new(AudioEngineSnapshot::default()));
+        let pending_seek = Arc::new(Mutex::new(None));
+        let source_generation = Arc::new(AtomicU64::new(0));
         let worker_snapshot = Arc::clone(&snapshot);
+        let worker_pending = Arc::clone(&pending_seek);
+        let worker_generation = Arc::clone(&source_generation);
 
         let worker = thread::Builder::new()
             .name("native-audio-engine".to_owned())
-            .spawn(move || audio_worker(receiver, worker_snapshot, ready_tx))
+            .spawn(move || {
+                audio_worker(
+                    receiver,
+                    worker_snapshot,
+                    worker_pending,
+                    worker_generation,
+                    ready_tx,
+                )
+            })
             .map_err(|_| AudioEngineError::WorkerUnavailable)?;
 
         match ready_rx.recv_timeout(COMMAND_TIMEOUT) {
             Ok(Ok(())) => Ok(Self {
                 commands,
+                pending_seek,
+                source_generation,
                 snapshot,
                 worker: Mutex::new(Some(worker)),
             }),
@@ -351,7 +376,30 @@ impl AudioEngine for RodioAudioEngine {
     }
 
     fn seek(&self, position: Duration) -> Result<(), AudioEngineError> {
-        self.request(|reply| AudioCommand::Seek { position, reply })
+        let (reply_tx, reply_rx) = mpsc::sync_channel(1);
+        let generation = self.source_generation.load(Ordering::Acquire);
+        {
+            let mut slot = self
+                .pending_seek
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(previous) = slot.take() {
+                tracing::debug!(
+                    target: "audio.seek",
+                    superseded_generation = previous.source_generation,
+                    "coalesced superseded seek"
+                );
+                let _ = previous.reply.send(Ok(()));
+            }
+            *slot = Some(PendingSeek {
+                position,
+                source_generation: generation,
+                reply: reply_tx,
+            });
+        }
+        reply_rx
+            .recv_timeout(COMMAND_TIMEOUT)
+            .map_err(|_| AudioEngineError::WorkerTimeout)?
     }
 
     fn set_volume(&self, volume: f32) -> Result<(), AudioEngineError> {
@@ -391,9 +439,49 @@ impl Drop for RodioAudioEngine {
     }
 }
 
+fn discard_pending_seeks(pending_seek: &Mutex<Option<PendingSeek>>) {
+    if let Some(pending) = pending_seek
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+    {
+        let _ = pending.reply.send(Ok(()));
+    }
+}
+
+fn apply_pending_seek(
+    player: &mut Player,
+    pending_seek: &Mutex<Option<PendingSeek>>,
+    current_generation: u64,
+) {
+    let Some(pending) = pending_seek
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+    else {
+        return;
+    };
+    if pending.source_generation != current_generation {
+        tracing::debug!(
+            target: "audio.seek",
+            pending_generation = pending.source_generation,
+            current_generation,
+            "discarded stale seek"
+        );
+        let _ = pending.reply.send(Ok(()));
+        return;
+    }
+    let result = player
+        .try_seek(pending.position)
+        .map_err(|_| AudioEngineError::SeekUnsupported);
+    let _ = pending.reply.send(result);
+}
+
 fn audio_worker(
     receiver: mpsc::Receiver<AudioCommand>,
     snapshot: Arc<Mutex<AudioEngineSnapshot>>,
+    pending_seek: Arc<Mutex<Option<PendingSeek>>>,
+    source_generation: Arc<AtomicU64>,
     ready: mpsc::SyncSender<Result<(), AudioEngineError>>,
 ) {
     let default_selection = OutputSelection::SystemDefault;
@@ -407,6 +495,7 @@ fn audio_worker(
         };
     let mut progressive_monitor: Option<ProgressiveMonitor> = None;
     let mut loaded_source: Option<PreparedPlaybackSource> = None;
+    let mut accepted_load_generation = 0_u64;
     let mut current_volume = 1.0_f32;
     let mut last_recovery_attempt = Instant::now()
         .checked_sub(Duration::from_secs(5))
@@ -417,30 +506,48 @@ fn audio_worker(
     loop {
         match receiver.recv_timeout(Duration::from_millis(20)) {
             Ok(AudioCommand::Load { source, reply }) => {
-                let result = load_source(&player, &source);
-                let mut current = snapshot
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                match &result {
-                    Ok((metadata, monitor)) => {
-                        progressive_monitor = monitor.clone();
-                        loaded_source = Some(source);
-                        let output_error = current.output_error.clone();
-                        *current = AudioEngineSnapshot {
-                            loaded: true,
-                            paused: true,
-                            duration_ms: metadata.duration_ms,
-                            output_error,
-                            ..AudioEngineSnapshot::default()
-                        };
+                if source.load_generation != 0 && source.load_generation < accepted_load_generation
+                {
+                    tracing::debug!(
+                        target: "audio.source",
+                        load_generation = source.load_generation,
+                        accepted_load_generation,
+                        "discarded stale source load"
+                    );
+                    let _ = reply.send(Err(AudioEngineError::StaleCommand));
+                } else {
+                    if source.load_generation != 0 {
+                        accepted_load_generation = source.load_generation;
                     }
-                    Err(_) => {
-                        progressive_monitor = None;
-                        loaded_source = None;
-                        reset_playback_snapshot(&mut current);
+                    let generation = source_generation.fetch_add(1, Ordering::AcqRel) + 1;
+                    discard_pending_seeks(&pending_seek);
+                    let result = load_source(&player, &source);
+                    let mut current = snapshot
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    match &result {
+                        Ok((metadata, monitor)) => {
+                            progressive_monitor = monitor.clone();
+                            loaded_source = Some(source);
+                            let output_error = current.output_error.clone();
+                            *current = AudioEngineSnapshot {
+                                loaded: true,
+                                paused: true,
+                                duration_ms: metadata.duration_ms,
+                                source_generation: generation,
+                                output_error,
+                                ..AudioEngineSnapshot::default()
+                            };
+                        }
+                        Err(_) => {
+                            progressive_monitor = None;
+                            loaded_source = None;
+                            reset_playback_snapshot(&mut current);
+                            current.source_generation = generation;
+                        }
                     }
+                    let _ = reply.send(result.map(|(metadata, _)| metadata));
                 }
-                let _ = reply.send(result.map(|(metadata, _)| metadata));
             }
             Ok(AudioCommand::Play(reply)) => {
                 let result = loaded_source.as_ref().map_or(Ok(()), |source| {
@@ -466,6 +573,8 @@ fn audio_worker(
                 let _ = reply.send(Ok(()));
             }
             Ok(AudioCommand::Stop(reply)) => {
+                source_generation.fetch_add(1, Ordering::AcqRel);
+                discard_pending_seeks(&pending_seek);
                 player.clear();
                 progressive_monitor = None;
                 loaded_source = None;
@@ -475,12 +584,6 @@ fn audio_worker(
                         .unwrap_or_else(|poisoned| poisoned.into_inner()),
                 );
                 let _ = reply.send(Ok(()));
-            }
-            Ok(AudioCommand::Seek { position, reply }) => {
-                let result = player
-                    .try_seek(position)
-                    .map_err(|_| AudioEngineError::SeekUnsupported);
-                let _ = reply.send(result);
             }
             Ok(AudioCommand::SetVolume { volume, reply }) => {
                 current_volume = volume.clamp(0.0, 1.0);
@@ -520,14 +623,25 @@ fn audio_worker(
             Ok(AudioCommand::Devices(reply)) => {
                 let _ = reply.send(list_output_devices(&selected_output, &resolved_output));
             }
-            Ok(AudioCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Ok(AudioCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                discard_pending_seeks(&pending_seek);
+                break;
+            }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
+
+        apply_pending_seek(
+            &mut player,
+            &pending_seek,
+            source_generation.load(Ordering::Acquire),
+        );
 
         if loaded_source
             .as_ref()
             .is_some_and(|source| source.epoch_guard.validate().is_err())
         {
+            source_generation.fetch_add(1, Ordering::AcqRel);
+            discard_pending_seeks(&pending_seek);
             player.clear();
             progressive_monitor = None;
             loaded_source = None;
@@ -932,21 +1046,22 @@ fn validate_decrypted_flac<Reader: Read + Seek>(
     decryptor: &QmcDecryptor,
 ) -> Result<(), AudioEngineError> {
     let mut magic = [0_u8; 4];
-    reader
-        .read_exact(&mut magic)
-        .map_err(|error| {
-            tracing::warn!(
-                target: "audio",
-                error = %error,
-                "failed to read the decrypted media signature"
-            );
-            AudioEngineError::DecryptionFailed
-        })?;
+    reader.read_exact(&mut magic).map_err(|error| {
+        tracing::warn!(
+            target: "audio",
+            error = %error,
+            "failed to read the decrypted media signature"
+        );
+        AudioEngineError::DecryptionFailed
+    })?;
     reader
         .seek(SeekFrom::Start(0))
         .map_err(|_| AudioEngineError::DecryptionFailed)?;
     let valid = magic == *b"fLaC";
-    let magic_hex = format_args!("{:02x}{:02x}{:02x}{:02x}", magic[0], magic[1], magic[2], magic[3]);
+    let magic_hex = format_args!(
+        "{:02x}{:02x}{:02x}{:02x}",
+        magic[0], magic[1], magic[2], magic[3]
+    );
     if valid {
         tracing::debug!(
             target: "audio",
@@ -1123,6 +1238,10 @@ pub struct TestAudioEngine {
     volume: Mutex<f32>,
     loaded_guard: Mutex<Option<PlaybackEpochGuard>>,
     cancel_after_play: Mutex<Option<tokio_util::sync::CancellationToken>>,
+    source_generation: AtomicU64,
+    loads: AtomicU64,
+    overlaps: AtomicU64,
+    accepted_load_generation: AtomicU64,
 }
 
 #[cfg(test)]
@@ -1133,6 +1252,10 @@ impl Default for TestAudioEngine {
             volume: Mutex::new(0.72),
             loaded_guard: Mutex::new(None),
             cancel_after_play: Mutex::new(None),
+            source_generation: AtomicU64::new(0),
+            loads: AtomicU64::new(0),
+            overlaps: AtomicU64::new(0),
+            accepted_load_generation: AtomicU64::new(0),
         }
     }
 }
@@ -1147,6 +1270,27 @@ impl TestAudioEngine {
         state.position_ms = state.duration_ms.unwrap_or(state.position_ms);
     }
 
+    #[allow(dead_code)]
+    pub fn unload(&self) {
+        let mut state = self.state.lock().expect("test engine lock");
+        state.loaded = false;
+        state.playing = false;
+        state.paused = false;
+        state.ended = false;
+    }
+
+    pub fn load_count(&self) -> u64 {
+        self.loads.load(Ordering::Acquire)
+    }
+
+    pub fn overlap_count(&self) -> u64 {
+        self.overlaps.load(Ordering::Acquire)
+    }
+
+    pub fn force_snapshot(&self, mutate: impl FnOnce(&mut AudioEngineSnapshot)) {
+        mutate(&mut self.state.lock().expect("test engine lock"));
+    }
+
     pub fn cancel_after_next_play(&self, cancellation: tokio_util::sync::CancellationToken) {
         *self
             .cancel_after_play
@@ -1158,19 +1302,34 @@ impl TestAudioEngine {
 #[cfg(test)]
 impl AudioEngine for TestAudioEngine {
     fn load(&self, source: &PreparedPlaybackSource) -> Result<AudioLoadMetadata, AudioEngineError> {
+        if source.load_generation != 0 {
+            let accepted = self.accepted_load_generation.load(Ordering::Acquire);
+            if source.load_generation < accepted {
+                return Err(AudioEngineError::StaleCommand);
+            }
+            self.accepted_load_generation
+                .store(source.load_generation, Ordering::Release);
+        }
         source
             .epoch_guard
             .validate_and_run(|| {
+                let already_loaded = self.state.lock().expect("test engine lock").loaded;
+                if already_loaded {
+                    self.overlaps.fetch_add(1, Ordering::AcqRel);
+                }
                 let metadata = AudioLoadMetadata {
                     duration_ms: source
                         .timeline_end_ms
                         .map(|end| end - source.timeline_offset_ms),
                     format: source.format,
                 };
+                let generation = self.source_generation.fetch_add(1, Ordering::AcqRel) + 1;
+                self.loads.fetch_add(1, Ordering::AcqRel);
                 *self.state.lock().expect("test engine lock") = AudioEngineSnapshot {
                     loaded: true,
                     paused: true,
                     duration_ms: metadata.duration_ms,
+                    source_generation: generation,
                     ..AudioEngineSnapshot::default()
                 };
                 *self.loaded_guard.lock().expect("test engine guard lock") =
@@ -1222,7 +1381,11 @@ impl AudioEngine for TestAudioEngine {
     }
 
     fn stop(&self) -> Result<(), AudioEngineError> {
-        *self.state.lock().expect("test engine lock") = AudioEngineSnapshot::default();
+        let generation = self.source_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        *self.state.lock().expect("test engine lock") = AudioEngineSnapshot {
+            source_generation: generation,
+            ..AudioEngineSnapshot::default()
+        };
         *self.loaded_guard.lock().expect("test engine guard lock") = None;
         *self
             .cancel_after_play
@@ -1395,6 +1558,7 @@ mod tests {
                 quality_capabilities: Vec::new(),
             },
             epoch_guard: PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock),
+            load_generation: 0,
         };
 
         engine.load(&source).expect("current source loads");
@@ -1402,5 +1566,32 @@ mod tests {
         cancellation.cancel();
         assert_eq!(engine.play(), Err(AudioEngineError::SourceCancelled));
         assert!(!engine.snapshot().loaded);
+    }
+
+    #[test]
+    fn older_load_generation_is_rejected_without_replacing_the_source() {
+        let engine = TestAudioEngine::default();
+        let source = |generation: u64| PreparedPlaybackSource {
+            location: PreparedPlaybackLocation::Local(PathBuf::from("unused-test.wav")),
+            format: AudioFormat::Wav,
+            timeline_offset_ms: 0,
+            timeline_end_ms: Some(1_000),
+            is_preview: false,
+            cache_key: "test:stale".to_owned(),
+            selection: PlaybackSourceSelection {
+                requested_quality: AudioQualityPreference::High,
+                resolved_quality: AudioQuality::Standard,
+                fallback_reason: None,
+                preview: false,
+                quality_capabilities: Vec::new(),
+            },
+            epoch_guard: PlaybackEpochGuard::unrestricted(),
+            load_generation: generation,
+        };
+        engine.load(&source(2)).expect("newer source loads");
+        let generation = engine.snapshot().source_generation;
+        assert_eq!(engine.load(&source(1)), Err(AudioEngineError::StaleCommand));
+        assert_eq!(engine.snapshot().source_generation, generation);
+        assert!(engine.snapshot().loaded);
     }
 }

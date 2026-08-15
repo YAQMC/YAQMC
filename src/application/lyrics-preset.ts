@@ -29,7 +29,7 @@ export const LYRICS_FONT_BASE_MAX_PX = 96;
 export const LYRICS_FONT_BASE_CQH = 0.056;
 export const SECONDARY_FONT_RATIO = 0.42;
 
-export type LyricsPresetSource = 'built-in' | 'custom';
+export type LyricsPresetSource = 'built-in' | 'custom' | 'plugin';
 export type LyricsArtworkStyle = 'square' | 'vinyl';
 export type LyricsArtworkRenderer = 'square' | 'rounded' | 'vinyl';
 export type LyricsBackgroundFit = 'cover' | 'contain';
@@ -153,6 +153,8 @@ export interface LyricsPresetDefinition {
   nameKey: string;
   name?: string;
   source: LyricsPresetSource;
+  pluginId?: string;
+  pluginName?: string;
   layout: LyricCoverLayout;
   typography: LyricsPresetTypography;
   artwork: LyricsPresetArtwork;
@@ -393,6 +395,20 @@ export function nextResolvedPreset(state: LyricsPresetState): LyricsPresetDefini
   const index = presets.findIndex((preset) => preset.id === state.selectedId);
   const nextIndex = index < 0 ? 0 : (index + 1) % Math.max(presets.length, 1);
   return presets[nextIndex] ?? presets[0]!;
+}
+
+export function isPluginPresetId(id: string): boolean {
+  return id.startsWith('plugin:');
+}
+
+let pluginPresetCatalog: LyricsPresetDefinition[] = [];
+
+export function setPluginPresetCatalog(presets: LyricsPresetDefinition[]): void {
+  pluginPresetCatalog = presets;
+}
+
+export function getPluginPresetCatalog(): LyricsPresetDefinition[] {
+  return pluginPresetCatalog;
 }
 
 export function isBuiltinPresetId(id: string): id is BuiltinLyricsPresetId {
@@ -693,6 +709,9 @@ export function resolveLyricsPreset(
 ): LyricsPresetDefinition {
   const custom = findCustomPreset(state, id);
   if (custom) return applyPatch(custom, undefined);
+  const plugin = pluginPresetCatalog.find((preset) => preset.id === id);
+  if (plugin) return applyPatch(plugin, undefined);
+  if (isPluginPresetId(id)) return applyPatch(builtinPresetCatalog[0]!, undefined);
   const builtin = builtinById(id) ?? builtinPresetCatalog[0]!;
   return applyPatch(builtin, state.overrides[id]);
 }
@@ -701,6 +720,7 @@ export function listResolvedPresets(state: LyricsPresetState): LyricsPresetDefin
   return [
     ...builtinPresetCatalog.map((preset) => applyPatch(preset, state.overrides[preset.id])),
     ...state.custom,
+    ...pluginPresetCatalog,
   ];
 }
 
@@ -912,7 +932,9 @@ export function normalizeLyricsPresetState(
   }
   const requested = typeof source.selectedId === 'string' ? source.selectedId : selectedFallback;
   const selectedId =
-    isBuiltinPresetId(requested) || customIds.has(requested) ? requested : selectedFallback;
+    isBuiltinPresetId(requested) || customIds.has(requested) || isPluginPresetId(requested)
+      ? requested
+      : selectedFallback;
   if (options.preserveContainFit && Object.keys(overrides).length === 0 && !source.selectedId) {
     overrides[selectedId] = {
       background: { fit: 'contain' },

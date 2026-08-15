@@ -282,6 +282,26 @@ h3 {
 .dot.pending {
   background: var(--coral);
 }
+.download-list {
+  display: grid;
+  gap: 0;
+}
+.download-list a {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+}
+.download-list a:hover,
+.download-list a:focus-visible {
+  color: var(--accent-strong);
+}
+.download-list span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
 .closing {
   padding: 120px 0 132px;
 }

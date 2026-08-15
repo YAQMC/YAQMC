@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 2,
+  "id": "studio-vinyl",
+  "name": "Studio vinyl",
+  "layout": "vinyl",
+  "typography": { "fontScale": 1.04, "lineHeight": 1.18 },
+  "artwork": { "style": "vinyl" },
+  "background": { "fit": "cover", "fallbackColor": "#1c1610" },
+  "scene": {
+    "background": {
+      "id": "background",
+      "kind": "background",
+      "zIndex": 0,
+      "visible": true,
+      "locked": false,
+      "source": "artwork",
+      "fit": "cover",
+      "fallbackColor": "#1c1610",
+      "opacity": 1,
+      "influence": 0.42,
+      "blur": 16
+    },
+    "artwork": {
+      "id": "artwork",
+      "kind": "artwork",
+      "x": 0.225,
+      "y": 0.4,
+      "width": 0.34,
+      "height": 0.48,
+      "anchor": "center",
+      "zIndex": 3,
+      "visible": true,
+      "locked": false,
+      "renderer": "vinyl",
+      "opacity": 1,
+      "radius": 0.5
+    },
+    "metadata": {
+      "id": "metadata",
+      "kind": "metadata",
+      "x": 0.225,
+      "y": 0.72,
+      "width": 0.36,
+      "height": 0.14,
+      "anchor": "center",
+      "zIndex": 4,
+      "visible": true,
+      "locked": false,
+      "align": "center",
+      "titleScale": 1.04,
+      "artistScale": 0.7
+    },
+    "lyrics": {
+      "id": "lyrics",
+      "kind": "lyrics",
+      "x": 0.73,
+      "y": 0.46,
+      "width": 0.5,
+      "height": 0.72,
+      "anchor": "center",
+      "zIndex": 5,
+      "visible": true,
+      "locked": false,
+      "align": "left",
+      "followAnchor": 0.38
+    },
+    "transport": {
+      "id": "transport",
+      "kind": "transport",
+      "x": 0.225,
+      "y": 0.94,
+      "width": 0.26,
+      "height": 0.13,
+      "anchor": "bottom-center",
+      "zIndex": 8,
+      "visible": true,
+      "locked": false,
+      "align": "center"
+    }
+  }
+}

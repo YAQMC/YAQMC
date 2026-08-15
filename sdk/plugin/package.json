@@ -1,0 +1,9 @@
+{
+  "name": "@yaqmc/plugin-sdk",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Compile-time types for YAQMC runtime plugins. The production runtime executes built JavaScript only.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}
