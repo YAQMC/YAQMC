@@ -18,7 +18,7 @@ CSS 与 Scene Schema 不执行 JavaScript。场景 CSS 限定在 `[data-yaqmc-pl
 明确拒绝：`network`、`network:*`、`filesystem`、`provider`、`account`、`native`、`shell`，以及 QQ cookie / `qm_keyst` / `qrsig` /
 OAuth 密钥 / ekey / 本地 HTTP bearer、任意 Tauri 命令、原生 `dll`/`so`。
 
-`player.control` 与 `network:https://…` 属于敏感权限。权限扩张必须重新批准。网络请求由宿主代理：仅 HTTPS、来源白名单、
+`player.control` 与 `network:https://…` 属于敏感权限。权限扩张必须重新批准。更新已安装插件时，审核界面会列出新增和移除的权限。网络请求由宿主代理：仅 HTTPS、来源白名单、
 拒绝解析到私网 IP、重定向逐跳校验、不附带 YAQMC 凭据，并限制体积/超时/速率。
 
 安装前会检查路径越狱、符号链接、体积与文件数、包 SHA-256，先解压到暂存目录再原子替换。ZIP 内的代码不会被执行。

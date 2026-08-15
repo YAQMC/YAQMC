@@ -697,6 +697,8 @@ export const enUS = {
       source: 'Source',
       risk: 'Risk',
       networkOrigins: 'Network origins',
+      permissionsAdded: 'New permissions',
+      permissionsRemoved: 'Removed permissions',
       permission: {
         track_read: 'Read current track',
         lyrics_read: 'Read lyrics',

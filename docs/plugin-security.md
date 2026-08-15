@@ -27,6 +27,7 @@ Hard-denied: `network`, `network:*`, `filesystem`, `provider`, `account`, `nativ
 `qrsig` / OAuth secrets / ekey / local HTTP bearer tokens, arbitrary Tauri commands, and native `dll`/`so` loading.
 
 `player.control` and `network:https://…` are sensitive. Updates that expand permissions require a new approval.
+The install review lists added and removed permissions when a package updates an already-installed plugin.
 Network requests are host-proxied: HTTPS only, origin allowlist, DNS private-IP rejection, redirect revalidation,
 no YAQMC credentials, body/response/timeout/rate limits.
 
