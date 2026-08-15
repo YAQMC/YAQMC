@@ -78,6 +78,7 @@ permissions = [
   "allow-issue-reporter-preview",
   "allow-issue-reporter-validate-url",
   "allow-plugin-list",
+  "allow-plugin-pick-package",
   "allow-plugin-inspect-path",
   "allow-plugin-install",
   "allow-plugin-set-enabled",

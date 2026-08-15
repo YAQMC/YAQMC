@@ -1,7 +1,7 @@
+import { invoke } from '@tauri-apps/api/core';
 import { describe, expect, it, vi } from 'vitest';
-import { pluginDiagnosticsText, pluginWorkerBootstrap } from './plugin-runtime';
+import { choosePluginFile, pluginDiagnosticsText, pluginWorkerBootstrap } from './plugin-runtime';
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), isTauri: () => false }));
 
@@ -43,5 +43,11 @@ describe('plugin runtime isolation', () => {
     expect(text).toContain('sha256=abc');
     expect(text).not.toContain('function');
     expect(text).not.toContain('stylesheet');
+  });
+
+  it('picks plugin files through the Rust dialog command', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce('C:\\plugin.yaqmc-plugin');
+    await expect(choosePluginFile()).resolves.toBe('C:\\plugin.yaqmc-plugin');
+    expect(invoke).toHaveBeenCalledWith('plugin_pick_package');
   });
 });

@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
 use tauri::{AppHandle, Emitter, State, WebviewWindow};
+use tauri_plugin_dialog::DialogExt;
 
 type CommandResult<T> = Result<T, String>;
 
@@ -86,6 +87,30 @@ pub fn plugin_list(
 ) -> CommandResult<Vec<PluginRecord>> {
     deny_if_not_main(&window)?;
     Ok(host.list())
+}
+
+#[tauri::command]
+pub async fn plugin_pick_package(
+    app: AppHandle,
+    window: WebviewWindow,
+) -> CommandResult<Option<String>> {
+    deny_if_not_main(&window)?;
+    let dialog_app = app.clone();
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app
+            .dialog()
+            .file()
+            .add_filter("YAQMC Plugin", &["yaqmc-plugin", "css", "js", "ts"])
+            .add_filter("All files", &["*"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|error| error.to_string())?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let path = selected.into_path().map_err(|error| error.to_string())?;
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -473,5 +498,14 @@ mod tests {
         assert!(source.contains("check_permission(&request.token"));
         assert!(!source.contains("payload[\"pluginId\"]"));
         assert!(!source.contains("payload.get(\"pluginId\")"));
+    }
+
+    #[test]
+    fn plugin_file_picker_uses_the_backend_dialog_like_background_images() {
+        let source = include_str!("commands.rs");
+        assert!(source.contains("plugin_pick_package"));
+        assert!(source.contains("blocking_pick_file"));
+        assert!(source.contains("yaqmc-plugin"));
+        assert!(source.contains("DialogExt"));
     }
 }

@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
 import { useEffect } from 'react';
 import {
   BUILTIN_CLASSIC_ID,
@@ -401,12 +400,14 @@ export async function setPluginSafeMode(enabled: boolean): Promise<boolean> {
   return next;
 }
 
+export async function pluginHostSafeMode(): Promise<boolean> {
+  if (!isNativeRuntime) return false;
+  const resources = await invoke<ActivePluginResources>('plugin_active_resources');
+  return resources.safeMode;
+}
+
 export async function choosePluginFile(): Promise<string | null> {
-  const selected = await open({
-    multiple: false,
-    filters: [{ name: 'YAQMC Plugin', extensions: ['yaqmc-plugin', 'css', 'js', 'ts'] }],
-  });
-  return typeof selected === 'string' ? selected : null;
+  return invoke<string | null>('plugin_pick_package');
 }
 
 export function pluginDiagnosticsText(record: PluginRecord): string {

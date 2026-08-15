@@ -8,6 +8,7 @@ import {
   installPlugin,
   listPlugins,
   pluginDiagnosticsText,
+  pluginHostSafeMode,
   setPluginEnabled,
   setPluginSafeMode,
   uninstallPlugin,
@@ -22,6 +23,7 @@ function permissionLabel(permission: string, t: (key: string) => string): string
 export function PluginManager() {
   const { t } = useTranslation('settings', { keyPrefix: 'plugins' });
   const [plugins, setPlugins] = useState<PluginRecord[]>([]);
+  const [safeMode, setSafeMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inspect, setInspect] = useState<PluginInspectResult | null>(null);
@@ -31,34 +33,32 @@ export function PluginManager() {
 
   const refresh = useCallback(async () => {
     if (!isNativeRuntime) return;
-    setPlugins(await listPlugins());
+    const [nextPlugins, nextSafeMode] = await Promise.all([listPlugins(), pluginHostSafeMode()]);
+    setPlugins(nextPlugins);
+    setSafeMode(nextSafeMode);
   }, []);
 
   useEffect(() => {
     if (!isNativeRuntime) return undefined;
     let active = true;
-    void listPlugins()
-      .then((next) => {
-        if (active) setPlugins(next);
-      })
-      .catch((caught: unknown) => {
-        if (active) setError(caught instanceof Error ? caught.message : String(caught));
-      });
+    void refresh().catch((caught: unknown) => {
+      if (active) setError(caught instanceof Error ? caught.message : String(caught));
+    });
     return () => {
       active = false;
     };
-  }, []);
+  }, [refresh]);
 
   const handleInstall = async () => {
     setError(null);
-    const path = await choosePluginFile();
-    if (!path) return;
-    if (path.toLowerCase().endsWith('.ts')) {
-      setError(t('typescriptRequiresBuild'));
-      return;
-    }
     setBusy(true);
     try {
+      const path = await choosePluginFile();
+      if (!path) return;
+      if (path.toLowerCase().endsWith('.ts')) {
+        setError(t('typescriptRequiresBuild'));
+        return;
+      }
       if (path.toLowerCase().endsWith('.css')) {
         await installPlugin(path, { enable: true, grant: [] });
         await refresh();
@@ -119,10 +119,27 @@ export function PluginManager() {
     }
   };
 
-  const safeMode = plugins.some((plugin) => plugin.statusReason?.includes('safe mode')) || false;
+  const handleSafeMode = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await setPluginSafeMode(!safeMode);
+      setSafeMode(next);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="plugin-manager">
+      {!isNativeRuntime && (
+        <p className="settings-empty" role="status">
+          {t('desktopOnly')}
+        </p>
+      )}
       {error && (
         <p className="settings-error" role="alert">
           {error}
@@ -149,13 +166,19 @@ export function PluginManager() {
         </div>
         <button
           type="button"
-          className="button button--quiet"
+          className={safeMode ? 'button button--secondary' : 'button button--quiet'}
+          aria-pressed={safeMode}
           disabled={!isNativeRuntime || busy}
-          onClick={() => void setPluginSafeMode(!safeMode).then(() => refresh())}
+          onClick={() => void handleSafeMode()}
         >
           <ShieldAlert size={14} /> {safeMode ? t('leaveSafeMode') : t('enterSafeMode')}
         </button>
       </div>
+      {safeMode && (
+        <p className="settings-empty" role="status">
+          {t('safeModeActive')}
+        </p>
+      )}
       {plugins.length === 0 && <p className="settings-empty">{t('empty')}</p>}
       <ul className="plugin-manager__list">
         {plugins.map((plugin) => (
