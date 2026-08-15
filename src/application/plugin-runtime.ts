@@ -172,7 +172,9 @@ function applySceneMutation(pluginId: string, payload: unknown): boolean {
   const source = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
   const instanceId = Number(source.instanceId ?? 0);
   if (sceneInstance.pluginId !== pluginId) return false;
-  if (instanceId !== 0 && instanceId !== sceneInstance.id) return false;
+  if (!Number.isFinite(instanceId) || instanceId <= 0 || instanceId !== sceneInstance.id) {
+    return false;
+  }
   return true;
 }
 
@@ -198,6 +200,7 @@ self.document = undefined;
 var __yaqmcListeners = {};
 var __yaqmcSeq = 1;
 var __yaqmcPending = {};
+var __yaqmcSceneInstance = 0;
 function __yaqmcCall(method, payload) {
   var id = String(__yaqmcSeq++);
   return new Promise(function (resolve, reject) {
@@ -215,6 +218,14 @@ self.onmessage = function (event) {
     return;
   }
   if (data.type === 'yaqmc/event') {
+    if (data.event === 'scene.changed' && data.payload) {
+      if (data.payload.phase === 'mount' && data.payload.pluginId === ${idLiteral}) {
+        __yaqmcSceneInstance = Number(data.payload.instanceId) || 0;
+      }
+      if (data.payload.phase === 'unmount' && Number(data.payload.instanceId) === __yaqmcSceneInstance) {
+        __yaqmcSceneInstance = 0;
+      }
+    }
     var list = __yaqmcListeners[data.event] || [];
     for (var i = 0; i < list.length; i++) {
       try { list[i](data.payload); } catch (error) { self.postMessage({ type: 'yaqmc/error', message: String(error) }); }
@@ -281,10 +292,10 @@ var ctx = {
         if (payload && payload.sceneId === sceneId && payload.phase === 'unmount') handler(payload);
       });
     },
-    setVariable: function (name, value) { return __yaqmcCall('scenes.setVariable', { name: name, value: value, instanceId: 0 }); },
-    setState: function (name, value) { return __yaqmcCall('scenes.setState', { name: name, value: value, instanceId: 0 }); },
-    setWidgetProperty: function (widgetId, property, value) { return __yaqmcCall('scenes.setWidgetProperty', { widgetId: widgetId, property: property, value: value, instanceId: 0 }); },
-    animate: function (widgetId, property, value) { return __yaqmcCall('scenes.animate', { widgetId: widgetId, property: property, value: value, instanceId: 0 }); }
+    setVariable: function (name, value) { return __yaqmcCall('scenes.setVariable', { name: name, value: value, instanceId: __yaqmcSceneInstance }); },
+    setState: function (name, value) { return __yaqmcCall('scenes.setState', { name: name, value: value, instanceId: __yaqmcSceneInstance }); },
+    setWidgetProperty: function (widgetId, property, value) { return __yaqmcCall('scenes.setWidgetProperty', { widgetId: widgetId, property: property, value: value, instanceId: __yaqmcSceneInstance }); },
+    animate: function (widgetId, property, value) { return __yaqmcCall('scenes.animate', { widgetId: widgetId, property: property, value: value, instanceId: __yaqmcSceneInstance }); }
   },
   log: {
     info: function (message) { return __yaqmcCall('log.info', { message: String(message || '') }); },
