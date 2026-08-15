@@ -65,6 +65,7 @@ jobs:
         with:
           name: yaqmc-frontend-dist-${{ github.sha }}
           path: dist
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 

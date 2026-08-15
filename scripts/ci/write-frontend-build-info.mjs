@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { gitSha, repositoryRoot } from './repo.mjs';
 
 const SCHEMA_VERSION = 1;
-const sidecarName = '.yaqmc-frontend-build.json';
+const sidecarName = 'yaqmc-frontend-build.json';
 
 export function frontendBuildInfoPath(distDir = path.join(repositoryRoot, 'dist')) {
   return path.join(distDir, sidecarName);

@@ -24,7 +24,7 @@ CI artifact **不是** GitHub Release，保留 **14 天**。打包成功不等�
 
 ## 前端复用
 
-打包任务下载 `yaqmc-frontend-dist-<sha>`。`YAQMC_PREBUILT_FRONTEND=1` 时，`scripts/ci/tauri-before-build.mjs` 在核对 `dist/.yaqmc-frontend-build.json` 与当前 commit 后跳过 Vite。本地 `tauri build` 仍会正常构建前端。
+打包任务下载 `yaqmc-frontend-dist-<sha>`。`YAQMC_PREBUILT_FRONTEND=1` 时，`scripts/ci/tauri-before-build.mjs` 在核对 `dist/yaqmc-frontend-build.json` 与当前 commit 后跳过 Vite。本地 `tauri build` 仍会正常构建前端。
 
 不要在操作系统之间上传 `node_modules`。
 
