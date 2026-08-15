@@ -228,6 +228,7 @@ cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
 - [歌词编排器](docs/zh-CN/lyrics-composer.md)
 - [本地 API](docs/zh-CN/local-api.md)
 - [日志系统](docs/zh-CN/logging.md)与[诊断快照与诊断包](docs/zh-CN/diagnostics.md)
+- [CI、缓存与可下载产物](docs/zh-CN/ci.md)
 - [GitHub Issue 报告](docs/zh-CN/issue-reporting.md)
 - [第三方许可证](THIRD_PARTY_NOTICES.md)与[鸣谢](ACKNOWLEDGEMENTS.md)
 - [官方客户端互操作证据](docs/zh-CN/qqmusic-official-interoperability.md)、

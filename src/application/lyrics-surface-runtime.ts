@@ -112,11 +112,7 @@ export function useLyricsSurfaceRuntime(): {
     void listen<LyricDocument | null>('lyrics://document', (event) => {
       if (active) {
         const payload = event.payload;
-        if (
-          payload &&
-          acceptedTrackId &&
-          payload.songId !== acceptedTrackId
-        ) {
+        if (payload && acceptedTrackId && payload.songId !== acceptedTrackId) {
           return;
         }
         receivedDocumentEvent = true;

@@ -23,6 +23,7 @@
 - [本地 HTTP API](local-api.md)及其 [OpenAPI 3.1 定义](../local-api.openapi.yaml)
 - [日志系统](logging.md)、[诊断快照与诊断包](diagnostics.md)、
   [GitHub Issue 报告](issue-reporting.md)与[安全与隐私](security.md)
+- [CI、缓存与可下载产物](ci.md)
 
 ## 验收记录
 

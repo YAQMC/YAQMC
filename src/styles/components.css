@@ -1592,7 +1592,9 @@ input[type='range']:disabled {
     color-mix(in srgb, currentColor 46%, transparent)
   );
   transform: translateY(calc(var(--char-progress, 0) * -0.08em));
-  transition: transform 160ms ease-out, color 200ms linear;
+  transition:
+    transform 160ms ease-out,
+    color 200ms linear;
   will-change: transform;
 }
 

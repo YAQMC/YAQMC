@@ -106,8 +106,12 @@
   aspect-ratio: 1;
 }
 
-.lyrics-scene[data-cover-layout='full'] .lyrics-scene__widget[data-widget='artwork'] .lyrics-stage__control-panel__artwork,
-.lyrics-scene[data-cover-layout='full'] .lyrics-scene__widget[data-widget='artwork'] .lyrics-stage__artwork-placeholder {
+.lyrics-scene[data-cover-layout='full']
+  .lyrics-scene__widget[data-widget='artwork']
+  .lyrics-stage__control-panel__artwork,
+.lyrics-scene[data-cover-layout='full']
+  .lyrics-scene__widget[data-widget='artwork']
+  .lyrics-stage__artwork-placeholder {
   width: 100%;
   height: 100%;
   max-width: none;
