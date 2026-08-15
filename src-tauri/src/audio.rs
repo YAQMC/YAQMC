@@ -1058,7 +1058,7 @@ fn validate_decrypted_flac<Reader: Read + Seek>(
         .seek(SeekFrom::Start(0))
         .map_err(|_| AudioEngineError::DecryptionFailed)?;
     let valid = magic == *b"fLaC";
-    let magic_hex = format_args!(
+    let magic_hex = format!(
         "{:02x}{:02x}{:02x}{:02x}",
         magic[0], magic[1], magic[2], magic[3]
     );
