@@ -25,6 +25,7 @@ describe('plugin runtime isolation', () => {
     expect(source).toContain('self.Worker = undefined');
     expect(source).toContain('network.request');
     expect(source).toContain('ui.contextMenu');
+    expect(source).toContain('__yaqmcSceneInstance');
     expect(source).toContain('"dev.example"');
     expect(source).not.toMatch(/window\.__TAURI__/);
     expect(source.includes('invoke(')).toBe(false);
@@ -66,8 +67,10 @@ describe('plugin runtime isolation', () => {
   it('ignores late scene mutations after a scene switch', () => {
     const first = setPluginSceneInstance('plugin.a', 'scene-a');
     expect(isPluginSceneMutationCurrent('plugin.a', first)).toBe(true);
+    expect(isPluginSceneMutationCurrent('plugin.a', 0)).toBe(false);
     const second = setPluginSceneInstance('plugin.b', 'scene-b');
     expect(isPluginSceneMutationCurrent('plugin.a', first)).toBe(false);
     expect(isPluginSceneMutationCurrent('plugin.b', second)).toBe(true);
+    expect(isPluginSceneMutationCurrent('plugin.b', 0)).toBe(false);
   });
 });
