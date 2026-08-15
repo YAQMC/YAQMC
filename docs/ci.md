@@ -32,6 +32,8 @@ Do not upload `node_modules` between jobs.
 
 Each packaging target runs `tauri build --no-bundle` once, verifies PE/ELF architecture, then `tauri bundle` for the requested formats. Windows publishes NSIS, MSI, and a portable ZIP of the executable. Linux publishes AppImage, `.deb`, `.rpm`, and a dynamically linked binary tarball (not a static portable). The x86_64 AppImage still receives the existing GDK session-aware repack.
 
+Staging copies installers from `src-tauri/target/<triple>/release/bundle` next to the release-root `yaqmc` / `yaqmc.exe`. It does not search nested payload copies of that binary. Linux packaging installs `xdg-utils` and sets `APPIMAGE_EXTRACT_AND_RUN=1` so linuxdeploy can run on ARM runners that lack `/usr/bin/xdg-open` or FUSE.
+
 ## Optimization profiles
 
 The Cargo `[profile.release]` in the repository remains Fat LTO (`lto = true`, `codegen-units = 1`) for local `tauri build` and tagged production builds.

@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repositoryRoot } from './repo.mjs';
@@ -31,6 +39,26 @@ function walkFiles(directory) {
     else found.push(full);
   }
   return found;
+}
+
+export function findReleaseBinary(os, targetRoot, hostRelease) {
+  const binaryName = os === 'windows' ? 'yaqmc.exe' : 'yaqmc';
+  const candidates = [path.join(targetRoot, binaryName), path.join(hostRelease, binaryName)];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    throw new Error(`native binary ${binaryName} was not found under ${targetRoot}`);
+  }
+  return found;
+}
+
+function requireStaged(label, staged, test, bundleRoot) {
+  if (staged.some(test)) return;
+  const found = walkFiles(bundleRoot)
+    .map((file) => path.relative(bundleRoot, file))
+    .join(', ');
+  throw new Error(
+    `${label} was not staged from ${bundleRoot}; found: ${found || '(empty bundle directory)'}`,
+  );
 }
 
 function shortSha() {
@@ -111,13 +139,7 @@ function main() {
 
   const targetRoot = path.join(repositoryRoot, 'src-tauri', 'target', target, 'release');
   const hostRelease = path.join(repositoryRoot, 'src-tauri', 'target', 'release');
-  const binaryName = os === 'windows' ? 'yaqmc.exe' : 'yaqmc';
-  const binaryPath = walkFiles(targetRoot)
-    .concat(walkFiles(hostRelease))
-    .find((file) => path.basename(file).toLowerCase() === binaryName.toLowerCase());
-  if (!binaryPath) {
-    throw new Error(`native binary ${binaryName} was not found under ${targetRoot}`);
-  }
+  const binaryPath = findReleaseBinary(os, targetRoot, hostRelease);
 
   const prefix = `YAQMC-${version}-${os}-${arch}-${sha}`;
   const staged = [];
@@ -141,8 +163,11 @@ function main() {
     const zipName = `${prefix}-portable.zip`;
     writePortableZip(binaryPath, path.join(releaseDir, zipName));
     staged.push(zipName);
-    if (!staged.some((name) => name.includes('-nsis-'))) {
-      throw new Error('NSIS installer was not staged');
+    if (bundles.includes('nsis')) {
+      requireStaged('NSIS installer', staged, (name) => name.includes('-nsis-'), bundleRoot);
+    }
+    if (bundles.includes('msi')) {
+      requireStaged('MSI installer', staged, (name) => name.endsWith('-msi.msi'), bundleRoot);
     }
   } else {
     staged.push(
@@ -178,6 +203,15 @@ function main() {
     );
     rmSync(stagingBinary);
     staged.push('README-binary.txt', archiveName);
+    if (bundles.includes('appimage')) {
+      requireStaged('AppImage', staged, (name) => name.endsWith('.AppImage'), bundleRoot);
+    }
+    if (bundles.includes('deb')) {
+      requireStaged('deb package', staged, (name) => name.endsWith('.deb'), bundleRoot);
+    }
+    if (bundles.includes('rpm')) {
+      requireStaged('rpm package', staged, (name) => name.endsWith('.rpm'), bundleRoot);
+    }
   }
 
   const unique = [...new Set(staged)];

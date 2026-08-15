@@ -32,6 +32,8 @@ CI artifact **不是** GitHub Release，保留 **14 天**。打包成功不等�
 
 每个目标先 `tauri build --no-bundle` 一次，校验 PE/ELF 架构，再 `tauri bundle`。Windows 产出 NSIS、MSI 和可执行文件的便携 ZIP。Linux 产出 AppImage、`.deb`、`.rpm` 以及动态链接的二进制 tar（不是静态便携包）。x86_64 AppImage 仍会做现有的 GDK 会话感知重打包。
 
+暂存时只使用 `src-tauri/target/<triple>/release` 根目录下的 `yaqmc` / `yaqmc.exe`，再从旁边的 `bundle` 目录复制安装包，不会误捡 payload 里的同名二进制。Linux 打包会安装 `xdg-utils`，并设置 `APPIMAGE_EXTRACT_AND_RUN=1`，以便在缺少 `/usr/bin/xdg-open` 或 FUSE 的 ARM runner 上运行 linuxdeploy。
+
 ## 优化配置
 
 仓库里的 `[profile.release]` 仍是 Fat LTO（`lto = true`，`codegen-units = 1`），供本地 `tauri build` 和带 tag 的生产构建使用。
