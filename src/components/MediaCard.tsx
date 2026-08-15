@@ -1,13 +1,14 @@
 import { Play } from 'lucide-react';
-import type { Album, Playlist } from '../domain/music';
+import type { Album, Playlist, Song } from '../domain/music';
 import { Artwork } from './ui/Artwork';
 import { useTranslation } from 'react-i18next';
 import type { ContextMenuItem } from './ui/ContextMenu';
 import { useContextMenu } from './ui/use-context-menu';
+import { joinArtistNames } from '../utils/format';
 
 interface MediaCardProps {
-  item: Album | Playlist;
-  type: 'album' | 'playlist';
+  item: Album | Playlist | Song;
+  type: 'album' | 'playlist' | 'song';
   onOpen: () => void;
   onPlay: () => void;
   size?: 'regular' | 'wide' | 'hero';
@@ -15,7 +16,11 @@ interface MediaCardProps {
   subtitle?: string;
 }
 
-function getSubtitle(item: Album | Playlist, type: 'album' | 'playlist'): string {
+function getSubtitle(item: Album | Playlist | Song, type: 'album' | 'playlist' | 'song'): string {
+  if (type === 'song') {
+    return joinArtistNames((item as Song).artists);
+  }
+
   if (type === 'playlist') {
     return (item as Playlist).owner.displayName;
   }

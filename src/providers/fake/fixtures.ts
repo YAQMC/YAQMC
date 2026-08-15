@@ -1,6 +1,8 @@
 import type {
   Album,
+  AreaFeed,
   ArtistSummary,
+  DiscoverFeed,
   HomeFeed,
   LibrarySnapshot,
   LyricDocument,
@@ -287,8 +289,47 @@ export const homeFeed: HomeFeed = {
   radarSongs: [...albums[2]!.tracks.slice(0, 4), ...albums[3]!.tracks.slice(0, 3)],
 };
 
-export const librarySnapshot: LibrarySnapshot = {
-  favoriteSongs: [...afterglowTracks, ...glasshouseTracks, ...sunroomTracks].filter(
+export const discoverFeed: DiscoverFeed = {
+  charts: [playlists[0]!, playlists[1]!, playlists[2]!, playlists[3]!],
+  newSongs: playlists[2]!,
+  newAlbums: [albums[0]!, albums[2]!, albums[1]!, albums[3]!],
+  popularSonglists: [playlists[0]!, playlists[2]!, playlists[3]!, playlists[4]!],
+  categories: [
+    { encArea: 'area-classic', title: '经典', cover: albums[0]!.artwork.src },
+    { encArea: 'area-ambient', title: '轻音乐', cover: albums[2]!.artwork.src },
+    { encArea: 'area-cnpop', title: '华语流行', cover: albums[1]!.artwork.src },
+  ],
+  podcasts: [
+    { id: 'podcast-1', title: '夜航电台', subtitle: '深夜陪伴', cover: albums[0]!.artwork.src },
+    { id: 'podcast-2', title: '音乐漫谈', subtitle: '每周更新', cover: albums[2]!.artwork.src },
+    { id: 'podcast-3', title: '拾光片场', subtitle: '影视原声', cover: albums[3]!.artwork.src },
+  ],
+  newMvs: [
+    { id: 'mv-1', title: '夜航 (Live)', cover: albums[0]!.artwork.src, durationMs: 240000, artist: 'Mira Vale' },
+    { id: 'mv-2', title: '余晖', cover: albums[2]!.artwork.src, durationMs: 210000, artist: 'Linnea' },
+    { id: 'mv-3', title: '无眠', cover: albums[3]!.artwork.src, durationMs: 195000, artist: 'Noa Sora' },
+  ],
+  featured: [
+    { id: 'focus-1', title: '春日特辑', subtitle: '编辑推荐', cover: albums[0]!.artwork.src },
+    { id: 'focus-2', title: '深夜书房', subtitle: '安静时光', cover: albums[1]!.artwork.src },
+    { id: 'focus-3', title: '新声集结', subtitle: '新人精选', cover: albums[2]!.artwork.src },
+  ],
+};
+
+export const areaFeeds: Record<string, AreaFeed> = {
+  'area-classic': {
+    title: '经典专区',
+    songlists: [playlists[1]!, playlists[2]!],
+    playlists: [playlists[0]!, playlists[3]!, playlists[4]!],
+    artists: [
+      { id: 'artist-1', name: 'Mira Vale', cover: albums[0]!.artwork.src },
+      { id: 'artist-2', name: 'Atlas Week', cover: albums[1]!.artwork.src },
+      { id: 'artist-3', name: 'Linnea', cover: albums[2]!.artwork.src },
+    ],
+  },
+};
+
+export const librarySnapshot: LibrarySnapshot = {  favoriteSongs: [...afterglowTracks, ...glasshouseTracks, ...sunroomTracks].filter(
     (song) => song.isFavorite,
   ),
   savedAlbums: [albums[0]!, albums[2]!, albums[3]!],

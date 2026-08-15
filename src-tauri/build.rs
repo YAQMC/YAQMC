@@ -7,6 +7,8 @@ const APP_COMMANDS: &[&str] = &[
     "audio_set_output_device",
     "qqmusic_status",
     "qqmusic_home",
+    "qqmusic_discover",
+    "qqmusic_area",
     "qqmusic_guess_next",
     "qqmusic_library",
     "qqmusic_search",

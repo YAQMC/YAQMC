@@ -16,6 +16,8 @@ describe('useCatalog', () => {
       id: 'catalog-with-disabled-account',
       displayName: 'Catalog fixture',
       getHome: vi.fn().mockResolvedValue(homeFeed),
+      getDiscover: vi.fn(),
+      getArea: vi.fn(),
       getAlbum: vi.fn(),
       getPlaylist: vi.fn(),
       getLibrary: vi.fn().mockResolvedValue(librarySnapshot),

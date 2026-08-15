@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AccountPlaylistDetail, Album, MediaCollection, Playlist } from './domain/music';
+import type { AccountPlaylistDetail, Album, AreaFeed, MediaCollection, Playlist } from './domain/music';
 import { useCatalog } from './application/use-catalog';
 import { useGuessContinuation } from './application/use-guess-continuation';
 import { useTheme } from './application/use-theme';
@@ -26,6 +26,7 @@ import { LoadingState } from './components/ui/LoadingState';
 import { RouteErrorBoundary } from './components/ui/RouteErrorBoundary';
 import { HomePage } from './pages/HomePage';
 import { AlbumPage } from './pages/AlbumPage';
+import { AreaPage } from './pages/AreaPage';
 import { PlaylistPage } from './pages/PlaylistPage';
 import { ExplorePage } from './pages/ExplorePage';
 import { LibraryPage } from './pages/LibraryPage';
@@ -392,7 +393,7 @@ export default function App() {
         );
         break;
       case 'explore':
-        pageContent = <ExplorePage feed={catalog.home} onNavigate={navigate} />;
+        pageContent = <ExplorePage onNavigate={navigate} />;
         break;
       case 'album': {
         const album = entities.albums.find((candidate) => candidate.id === route.id);
@@ -404,6 +405,9 @@ export default function App() {
         pageContent = <ProviderPlaylistPage key={route.id} id={route.id} initial={playlist} />;
         break;
       }
+      case 'area':
+        pageContent = <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={navigate} />;
+        break;
     }
   }
 
@@ -579,4 +583,38 @@ function ProviderPlaylistPage({ id, initial }: { id: string; initial?: Playlist 
   ) : (
     <LoadingState label={t('loadingPlaylist')} />
   );
+}
+
+function ProviderAreaPage({
+  encArea,
+  title,
+  onNavigate,
+}: {
+  encArea: string;
+  title: string;
+  onNavigate: (route: AppRoute) => void;
+}) {
+  const { t } = useTranslation('pages');
+  const provider = useMusicProvider();
+  const [feed, setFeed] = useState<AreaFeed | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void provider
+      .getArea(encArea, controller.signal)
+      .then(setFeed)
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) setFailed(true);
+      });
+    return () => controller.abort();
+  }, [encArea, provider]);
+
+  if (failed && !feed) {
+    return <MissingEntity message={t('areaLoadFailed')} />;
+  }
+  if (!feed) {
+    return <LoadingState label={t('loadingArea', { title })} />;
+  }
+  return <AreaPage feed={feed} onNavigate={onNavigate} />;
 }

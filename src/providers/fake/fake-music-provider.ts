@@ -1,6 +1,15 @@
 import { ProviderError, type Album, type EntityId, type Playlist } from '../../domain/music';
 import type { MusicProvider } from '../music-provider';
-import { albums, allSongs, homeFeed, librarySnapshot, lyricsBySong, playlists } from './fixtures';
+import {
+  albums,
+  allSongs,
+  areaFeeds,
+  discoverFeed,
+  homeFeed,
+  librarySnapshot,
+  lyricsBySong,
+  playlists,
+} from './fixtures';
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -24,6 +33,21 @@ export class FakeMusicProvider implements MusicProvider {
     throwIfAborted(signal);
     void refresh;
     return clone(homeFeed);
+  }
+
+  async getDiscover(signal?: AbortSignal, refresh = false) {
+    throwIfAborted(signal);
+    void refresh;
+    return clone(discoverFeed);
+  }
+
+  async getArea(encArea: string, signal?: AbortSignal) {
+    throwIfAborted(signal);
+    const area = areaFeeds[encArea];
+    if (!area) {
+      throw new ProviderError('malformed-response', `Unknown fixture area: ${encArea}`, false);
+    }
+    return clone(area);
   }
 
   async getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album> {

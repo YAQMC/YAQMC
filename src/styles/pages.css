@@ -796,6 +796,16 @@
   color: var(--danger);
 }
 
+.discover-status {
+  padding: 40px 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.discover-status--error {
+  color: var(--danger);
+}
+
 @media (max-width: 1120px) {
   .page {
     padding-inline: 28px;

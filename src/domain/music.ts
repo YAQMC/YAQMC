@@ -145,6 +145,58 @@ export interface HomeFeed {
   radarSongs: Song[];
 }
 
+export interface DiscoverFeed {
+  charts: Playlist[];
+  newSongs: Playlist | null;
+  newAlbums: Album[];
+  popularSonglists: Playlist[];
+  categories: Category[];
+  podcasts: Podcast[];
+  newMvs: NewMv[];
+  featured: FeaturedCard[];
+}
+
+export interface Category {
+  encArea: string;
+  title: string;
+  cover: string;
+}
+
+export interface Podcast {
+  id: string;
+  title: string;
+  subtitle: string;
+  cover: string;
+}
+
+export interface NewMv {
+  id: string;
+  title: string;
+  cover: string;
+  durationMs: number;
+  artist: string;
+}
+
+export interface FeaturedCard {
+  id: string;
+  title: string;
+  subtitle: string;
+  cover: string;
+}
+
+export interface AreaFeed {
+  title: string;
+  songlists: Playlist[];
+  playlists: Playlist[];
+  artists: AreaArtist[];
+}
+
+export interface AreaArtist {
+  id: string;
+  name: string;
+  cover: string;
+}
+
 export interface LibrarySnapshot {
   favoriteSongs: Song[];
   savedAlbums: Album[];

@@ -23,6 +23,8 @@ const provider: MusicProvider = {
   id: 'qqmusic',
   displayName: 'QQ Music',
   getHome: vi.fn(),
+  getDiscover: vi.fn(),
+  getArea: vi.fn(),
   getAlbum: vi.fn(),
   getPlaylist: vi.fn(),
   getLibrary: vi.fn(),
