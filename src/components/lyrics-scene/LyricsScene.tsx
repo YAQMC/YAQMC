@@ -23,6 +23,7 @@ import {
   type SceneWidgetId,
 } from '../../application/lyrics-preset';
 import { resolveSceneAssetUrl } from '../../application/plugin-asset';
+import { isLinuxWebView, linuxSkipsLiveVideo } from '../../application/platform-integration';
 import {
   currentPluginSceneInstance,
   pluginSceneCssVars,
@@ -260,6 +261,7 @@ export function LyricsScene({
   const instance = currentPluginSceneInstance();
   const reducedMotion =
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const skipVideo = reducedMotion || linuxSkipsLiveVideo();
   const extras = listExtraSceneWidgets(scene);
   const overrides = pluginSceneWidgetOverrides();
 
@@ -328,7 +330,7 @@ export function LyricsScene({
         scene.background.source === 'video' &&
         mediaUrl &&
         !videoFailed &&
-        !reducedMotion && (
+        !skipVideo && (
           <video
             className="lyrics-scene__video"
             src={mediaUrl}
@@ -542,6 +544,8 @@ export function LyricsScene({
           url={extraUrls[widget.id] ?? (widget.source === 'artwork' ? bindings.artworkSrc : null)}
           override={overrides.get(widget.id)}
           bindings={bindings}
+          skipVideo={skipVideo}
+          skipLiveBlur={isLinuxWebView()}
         />
       ))}
 
@@ -576,11 +580,15 @@ function ExtraWidget({
   url,
   override,
   bindings,
+  skipVideo,
+  skipLiveBlur,
 }: {
   widget: ExtraSceneWidget;
   url: string | null | undefined;
   override?: Record<string, string>;
   bindings: LyricsSceneProps['bindings'];
+  skipVideo: boolean;
+  skipLiveBlur: boolean;
 }) {
   const text =
     resolveSceneTextBinding(widget.bind, {
@@ -603,7 +611,7 @@ function ExtraWidget({
       ]
         .filter(Boolean)
         .join(' ') || undefined,
-    filter: override?.blur ? `blur(${override.blur}px)` : undefined,
+    filter: skipLiveBlur || !override?.blur ? undefined : `blur(${override.blur}px)`,
     textAlign: widget.align,
   };
   return (
@@ -619,7 +627,7 @@ function ExtraWidget({
       {widget.kind === 'image' && url && (
         <img src={url} alt="" draggable={false} style={{ objectFit: widget.fit ?? 'cover' }} />
       )}
-      {widget.kind === 'video' && url && (
+      {widget.kind === 'video' && url && !skipVideo && (
         <video src={url} muted loop playsInline autoPlay aria-hidden="true" />
       )}
     </div>

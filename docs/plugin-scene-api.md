@@ -42,3 +42,7 @@ Stable CSS variables: `--scene-progress`, `--scene-duration`, `--scene-artwork-p
 Schema v2 remains the scene document version. Extra widgets (`text`, `image`, `video`), Color Field backgrounds,
 and gradient/video sources are additive. Existing Classic / Immersive / Vinyl / custom / plugin v1 scenes still
 load. Plugin scenes are immutable in Composer; use **Fork to My Scene**.
+
+On Linux, live CSS `filter: blur()` is disabled for lyric lines and scene widget blur overrides. Scene video is not
+decoded in `software` / `safe` graphics modes. `@scope` requires a current WebKitGTK; if the engine ignores it, the
+sheet does not apply and does not leak into Settings.

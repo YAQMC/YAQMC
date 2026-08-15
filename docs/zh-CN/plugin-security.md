@@ -6,7 +6,8 @@
 
 第三方脚本**不会**在主 WebView 中执行。每个脚本插件使用 YAQMC 自有 bootstrap 加上 `dist/main.js` 的独立 worker。
 worker 没有 `document`、`__TAURI__`、`invoke` 或原始 `fetch`。特权操作必须经过绑定了运行时令牌的 `plugin_bridge`。插件自行声称的
-`pluginId` 不能作为授权依据。
+`pluginId` 不能作为授权依据。应用 CSP 允许 `worker-src 'self' blob:`，以便 WebKitGTK 创建该 blob worker；Worker
+创建失败时插件标为 Failed。
 
 CSS 与 Scene Schema 不执行 JavaScript。场景 CSS 限定在 `[data-yaqmc-plugin-scene]`。全局样式只能使用文档化的
 `data-yaqmc` / `--yaqmc-*` API。
