@@ -841,8 +841,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         state.isScrubbing &&
         state.scrubAwaitingAckFrom !== null &&
         lastSeekRevision > state.scrubAwaitingAckFrom;
-      const isScrubbing =
-        !sessionChanged && !queueIdentityChanged && state.isScrubbing && !ackSeek;
+      const isScrubbing = !sessionChanged && !queueIdentityChanged && state.isScrubbing && !ackSeek;
       const discontinuity =
         queueIdentityChanged ||
         sessionChanged ||

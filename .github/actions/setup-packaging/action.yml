@@ -1,0 +1,33 @@
+name: Setup Node, Rust, and Cargo cache restore
+
+inputs:
+  target:
+    description: Rust target triple, or host for native validation.
+    required: true
+  profile:
+    description: Cache profile class (dev, ci-release, or production).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: '1.88'
+        targets: ${{ inputs.target }}
+        components: clippy, rustfmt
+    - uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          src-tauri/target
+        key: cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ inputs.profile }}
+        restore-keys: |
+          cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-
+          cargo-${{ runner.os }}-${{ inputs.target }}-1.88-

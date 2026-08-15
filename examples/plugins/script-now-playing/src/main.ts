@@ -78,9 +78,9 @@ export default definePlugin({
         );
       }),
       ctx.events.on('lyrics.lineChanged', () => {
-        void ctx.lyrics.get().then((document) =>
-          ctx.storage.set('lastLineCount', String(document.lines.length)),
-        );
+        void ctx.lyrics
+          .get()
+          .then((document) => ctx.storage.set('lastLineCount', String(document.lines.length)));
       }),
       ctx.events.on('theme.changed', () => {
         void ctx.theme.get().then((theme) => ctx.log.info(`theme.changed ${theme.source}`));

@@ -85,6 +85,8 @@ export const zhCN = {
     loadingAlbum: '正在加载专辑',
     loadingPlaylist: '正在加载歌单',
     loadingMusic: '正在加载音乐',
+    loadingSettings: '正在加载设置',
+    pageLoadFailed: '无法加载此页面。',
     home: {
       guessEyebrow: '为你定制',
       guessYouLike: '猜你喜欢',

@@ -79,6 +79,8 @@ export const enUS = {
     loadingAlbum: 'Loading album',
     loadingPlaylist: 'Loading playlist',
     loadingMusic: 'Loading music',
+    loadingSettings: 'Loading settings',
+    pageLoadFailed: 'This page could not be loaded.',
     home: {
       guessEyebrow: 'TAILORED FOR YOU',
       guessYouLike: 'Guess you like',

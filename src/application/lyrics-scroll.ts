@@ -76,7 +76,8 @@ function buildLineWave(
     const distance = Math.abs(index - targetLineIndex);
     // Lines ahead of the scroll direction lead the shared motion; lines behind trail it,
     // so the gap between adjacent lines flexes as the wave passes instead of staying rigid.
-    const direction = delta > 0 ? (index < targetLineIndex ? -1 : 1) : index > targetLineIndex ? 1 : -1;
+    const direction =
+      delta > 0 ? (index < targetLineIndex ? -1 : 1) : index > targetLineIndex ? 1 : -1;
     const amplitude = Math.min(distance, 2) * (WAVE_MAX_PX / 2);
     springs.push({
       element: line,

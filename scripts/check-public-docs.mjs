@@ -13,6 +13,7 @@ const publicDocuments = [
   'audio-quality.md',
   'authentication.md',
   'caching.md',
+  'ci.md',
   'design-system.md',
   'deep-link.md',
   'diagnostics.md',

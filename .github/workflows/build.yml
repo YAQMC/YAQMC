@@ -66,11 +66,7 @@ jobs:
         with:
           toolchain: '1.88'
           targets: ${{ matrix.target }}
-      - name: Install Tauri, audio, and package dependencies
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-          libasound2-dev rpm
+      - uses: ./.github/actions/linux-tauri-deps
       - run: npm ci
       - name: Build AppImage, DEB, and RPM
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles appimage,deb,rpm

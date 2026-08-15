@@ -1,0 +1,12 @@
+name: Install Linux Tauri dependencies
+description: Install WebKitGTK 4.1, AppIndicator, ALSA, and packaging tools used by YAQMC.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Tauri, audio, and package dependencies
+      shell: bash
+      run: >-
+        sudo apt-get update && sudo apt-get install -y
+        libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+        libasound2-dev rpm

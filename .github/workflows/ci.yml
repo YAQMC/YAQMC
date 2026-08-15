@@ -5,16 +5,37 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      targets:
+        description: Packaging matrix to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows
+          - linux
+      optimization:
+        description: Native optimization profile
+        required: true
+        default: ci
+        type: choice
+        options:
+          - ci
+          - production
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
+env:
+  YAQMC_BUILD_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && 'production' || 'ci-release' }}
+
 jobs:
-  frontend:
+  frontend-quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -23,73 +44,234 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run check
+      - run: npm run format:check
+      - run: npm run docs:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run ci:test-scripts
 
-  rust:
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run ci:frontend-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: yaqmc-frontend-dist-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+  rust-quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      - name: Install Tauri system dependencies
-        run: >-
-          sudo apt-get update && sudo apt-get install -y
-          libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-          libasound2-dev
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('src-tauri/Cargo.lock') }}-dev
+          restore-keys: |
+            cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-
+      - uses: ./.github/actions/linux-tauri-deps
       - name: Prepare frontend stub for cargo-only builds
         run: mkdir -p dist && printf '<!doctype html><html><body></body></html>' > dist/index.html
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('src-tauri/Cargo.lock') }}-dev
 
-  windows-x86_64:
-    name: Windows x86_64 artifact
-    runs-on: windows-2025
-    timeout-minutes: 75
+  secret-scan:
+    name: Secret scan (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Scan tracked account artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/check-secrets.sh --self-test && bash scripts/check-secrets.sh
+      - name: Scan tracked account artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1 -SelfTest
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qqmusic-auth-preflight.ps1 -SelfTest
+
+  package-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.select.outputs.include }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - id: select
+        env:
+          YAQMC_EVENT_NAME: ${{ github.event_name }}
+          YAQMC_TARGETS: ${{ inputs.targets }}
+        run: node scripts/ci/select-package-matrix.mjs
+
+  package:
+    name: Package ${{ matrix.os }} ${{ matrix.arch }}
+    needs: [frontend-build, package-matrix]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.package-matrix.outputs.include) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      YAQMC_PREBUILT_FRONTEND: '1'
+      CARGO_PROFILE_RELEASE_LTO: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && 'true' || 'thin' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && '1' || '8' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require the requested runner architecture
+        run: echo "Packaging ${{ matrix.target }} on ${{ runner.os }} / ${{ matrix.runner }}"
+      - uses: ./.github/actions/setup-packaging
         with:
-          toolchain: '1.88'
-          targets: x86_64-pc-windows-msvc
+          target: ${{ matrix.target }}
+          profile: ${{ env.YAQMC_BUILD_PROFILE }}
+      - if: runner.os == 'Linux'
+        uses: ./.github/actions/linux-tauri-deps
       - run: npm ci
-      - name: Build NSIS installer
-        run: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
-      - name: Stage installer, portable zip, and checksums
-        shell: powershell
+      - uses: actions/download-artifact@v8
+        with:
+          name: yaqmc-frontend-dist-${{ github.sha }}
+          path: dist
+      - name: Compile once, then bundle
+        run: >-
+          node scripts/ci/package-native.mjs
+          --target ${{ matrix.target }}
+          --os ${{ matrix.os }}
+          --arch ${{ matrix.arch }}
+          --bundles ${{ matrix.bundles }}
+      - name: Repack x86_64 AppImage with session-aware GTK policy
+        if: matrix.os == 'linux' && matrix.arch == 'x86_64'
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Stop'
-          $releaseDir = 'release/YAQMC-windows-x86_64'
-          $targetRoot = 'src-tauri/target/x86_64-pc-windows-msvc/release'
-          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
-          Get-ChildItem -LiteralPath "$targetRoot/bundle" -Recurse -File |
-            Where-Object { $_.Extension -eq '.exe' } |
-            ForEach-Object {
-              $destination = Join-Path $releaseDir "YAQMC-windows-x86_64-$($_.Name)"
-              Copy-Item -LiteralPath $_.FullName -Destination $destination
-            }
-          $portableBinary = "$targetRoot/yaqmc.exe"
-          if (-not (Test-Path -LiteralPath $portableBinary -PathType Leaf)) {
-            throw "Portable binary is missing: $portableBinary"
-          }
-          Compress-Archive -LiteralPath $portableBinary -DestinationPath "$releaseDir/YAQMC-windows-x86_64-portable.zip"
-          $packages = Get-ChildItem -LiteralPath $releaseDir -File | Sort-Object Name
-          if (($packages | Measure-Object).Count -lt 2) {
-            throw 'Expected NSIS installer and portable zip'
-          }
-          $checksumLines = $packages | ForEach-Object {
-            '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant(), $_.Name
-          }
-          Set-Content -LiteralPath "$releaseDir/SHA256SUMS-windows-x86_64.txt" -Value $checksumLines -Encoding ascii
+          set -euo pipefail
+          source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$source_appimage"
+          curl --fail --location --retry 3 \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            --output /tmp/appimagetool-x86_64.AppImage
+          echo 'a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0  /tmp/appimagetool-x86_64.AppImage' | sha256sum --check
+          chmod +x /tmp/appimagetool-x86_64.AppImage scripts/repack-appimage-gdk-backend.sh
+          scripts/repack-appimage-gdk-backend.sh \
+            "$source_appimage" \
+            /tmp/appimagetool-x86_64.AppImage \
+            "$source_appimage"
+      - name: Stage named artifacts and checksums
+        run: >-
+          node scripts/ci/stage-artifacts.mjs
+          --target ${{ matrix.target }}
+          --os ${{ matrix.os }}
+          --arch ${{ matrix.arch }}
+          --profile ${{ env.YAQMC_BUILD_PROFILE }}
+          --bundles ${{ matrix.bundles }}
+      - name: Verify Linux package architecture
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="release/YAQMC-linux-${{ matrix.arch }}"
+          expected='${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}'
+          rpm_expected='${{ matrix.arch == 'x86_64' && 'x86_64' || 'aarch64' }}'
+          deb="$(find "$release_dir" -maxdepth 1 -name '*.deb' -print -quit)"
+          rpm="$(find "$release_dir" -maxdepth 1 -name '*.rpm' -print -quit)"
+          test -n "$deb"
+          test -n "$rpm"
+          test "$(dpkg-deb -f "$deb" Architecture)" = "$expected"
+          test "$(rpm -qp --qf '%{ARCH}' "$rpm")" = "$rpm_expected"
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## ${{ matrix.os }} ${{ matrix.arch }}"
+            echo "- target: \`${{ matrix.target }}\`"
+            echo "- profile: \`${{ env.YAQMC_BUILD_PROFILE }}\`"
+            echo "- lto: \`${{ env.CARGO_PROFILE_RELEASE_LTO }}\`"
+            echo "- codegen-units: \`${{ env.CARGO_PROFILE_RELEASE_CODEGEN_UNITS }}\`"
+            if [ -f "release/timings-${{ matrix.os }}-${{ matrix.arch }}.json" ]; then
+              echo "- timings:"
+              echo '```json'
+              cat "release/timings-${{ matrix.os }}-${{ matrix.arch }}.json"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
-          name: YAQMC-windows-x86_64
-          path: release/YAQMC-windows-x86_64
+          name: YAQMC-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
+          path: release/YAQMC-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
+
+  summarize:
+    name: CI summary
+    if: always()
+    needs: [frontend-quality, frontend-build, rust-quality, secret-scan, package-matrix, package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write workflow summary
+        shell: bash
+        run: |
+          {
+            echo "## Workflow"
+            echo "- commit: \`${{ github.sha }}\`"
+            echo "- event: \`${{ github.event_name }}\`"
+            echo "- profile: \`${{ env.YAQMC_BUILD_PROFILE }}\`"
+            echo "- frontend-quality: \`${{ needs.frontend-quality.result }}\`"
+            echo "- frontend-build: \`${{ needs.frontend-build.result }}\`"
+            echo "- rust-quality: \`${{ needs.rust-quality.result }}\`"
+            echo "- secret-scan: \`${{ needs.secret-scan.result }}\`"
+            echo "- package-matrix: \`${{ needs.package-matrix.result }}\`"
+            echo "- package: \`${{ needs.package.result }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail if a required job failed
+        if: >-
+          needs.frontend-quality.result != 'success' ||
+          needs.frontend-build.result != 'success' ||
+          needs.rust-quality.result != 'success' ||
+          needs.secret-scan.result != 'success' ||
+          needs.package-matrix.result != 'success' ||
+          needs.package.result == 'failure' ||
+          needs.package.result == 'cancelled'
+        run: exit 1
