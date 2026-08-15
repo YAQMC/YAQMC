@@ -282,6 +282,8 @@ export const homeFeed: HomeFeed = {
   guessSonglist: playlists[1]!,
   recommendedSonglists: [playlists[1]!, playlists[2]!, playlists[3]!, playlists[4]!],
   dailySonglist: playlists[0]!,
+  newSongSonglist: playlists[2]!,
+  radarBasedOnSong: albums[0]!.tracks[0]?.title ?? null,
   radarSongs: [...albums[2]!.tracks.slice(0, 4), ...albums[3]!.tracks.slice(0, 3)],
 };
 

@@ -8,6 +8,8 @@ export type CatalogState =
   | { status: 'ready'; home: HomeFeed; library: LibrarySnapshot; message: null }
   | { status: 'error'; home: null; library: null; message: string };
 
+const HOME_REFRESH_MS = 15 * 60 * 1_000;
+
 export function useCatalog(): CatalogState {
   const { t } = useTranslation('errors');
   const provider = useMusicProvider();
@@ -35,8 +37,33 @@ export function useCatalog(): CatalogState {
         });
       });
 
+    void provider
+      .getHome(controller.signal, true)
+      .then((home) => {
+        setState((current) => (current.status === 'ready' ? { ...current, home } : current));
+      })
+      .catch(() => {
+        // A startup refresh failure keeps the cached feed; the periodic
+        // refresh retries later.
+      });
+
     return () => controller.abort();
   }, [provider, t]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void provider.getHome().then((home) => {
+        setState((current) =>
+          current.status === 'ready' ? { ...current, home } : current,
+        );
+      }).catch(() => {
+        // A background refresh failure keeps the current feed; the next
+        // interval retries and the initial load already reported errors.
+      });
+    }, HOME_REFRESH_MS);
+
+    return () => window.clearInterval(interval);
+  }, [provider]);
 
   return state;
 }

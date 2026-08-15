@@ -80,8 +80,8 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
   readonly id = 'qqmusic';
   readonly displayName = 'QQ Music';
 
-  getHome(signal?: AbortSignal): Promise<HomeFeed> {
-    return nativeRequest('qqmusic_home', undefined, signal);
+  getHome(signal?: AbortSignal, refresh = false): Promise<HomeFeed> {
+    return nativeRequest('qqmusic_home', { refresh }, signal);
   }
 
   getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album> {

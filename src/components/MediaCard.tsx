@@ -10,7 +10,9 @@ interface MediaCardProps {
   type: 'album' | 'playlist';
   onOpen: () => void;
   onPlay: () => void;
-  size?: 'regular' | 'wide';
+  size?: 'regular' | 'wide' | 'hero';
+  title?: string;
+  subtitle?: string;
 }
 
 function getSubtitle(item: Album | Playlist, type: 'album' | 'playlist'): string {
@@ -22,7 +24,15 @@ function getSubtitle(item: Album | Playlist, type: 'album' | 'playlist'): string
   return album.releaseYear > 0 ? `${album.releaseYear} · ${album.artist.name}` : album.artist.name;
 }
 
-export function MediaCard({ item, type, onOpen, onPlay, size = 'regular' }: MediaCardProps) {
+export function MediaCard({
+  item,
+  type,
+  onOpen,
+  onPlay,
+  size = 'regular',
+  title,
+  subtitle,
+}: MediaCardProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'home' });
   const items: readonly ContextMenuItem[] = [
     { id: 'open', label: t('openItem', { title: item.title }), action: onOpen },
@@ -54,8 +64,8 @@ export function MediaCard({ item, type, onOpen, onPlay, size = 'regular' }: Medi
         </button>
       </div>
       <button type="button" className="media-card__meta" onClick={onOpen}>
-        <span className="media-card__title">{item.title}</span>
-        <span className="media-card__subtitle">{getSubtitle(item, type)}</span>
+        <span className="media-card__title">{title ?? item.title}</span>
+        <span className="media-card__subtitle">{subtitle ?? getSubtitle(item, type)}</span>
       </button>
       {contextMenu.menu}
     </article>

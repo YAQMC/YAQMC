@@ -27,7 +27,7 @@ export interface MusicProvider {
   readonly id: string;
   readonly displayName: string;
 
-  getHome(signal?: AbortSignal): Promise<HomeFeed>;
+  getHome(signal?: AbortSignal, refresh?: boolean): Promise<HomeFeed>;
   getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album>;
   getPlaylist(id: EntityId, signal?: AbortSignal): Promise<Playlist>;
   getLibrary(signal?: AbortSignal): Promise<LibrarySnapshot>;

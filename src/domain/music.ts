@@ -140,6 +140,8 @@ export interface HomeFeed {
   guessSonglist: Playlist | null;
   recommendedSonglists: Playlist[];
   dailySonglist: Playlist | null;
+  newSongSonglist: Playlist | null;
+  radarBasedOnSong: string | null;
   radarSongs: Song[];
 }
 
