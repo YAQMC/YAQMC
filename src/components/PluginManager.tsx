@@ -41,11 +41,14 @@ export function PluginManager() {
   useEffect(() => {
     if (!isNativeRuntime) return undefined;
     let active = true;
-    void refresh().catch((caught: unknown) => {
-      if (active) setError(caught instanceof Error ? caught.message : String(caught));
-    });
+    const timer = window.setTimeout(() => {
+      void refresh().catch((caught: unknown) => {
+        if (active) setError(caught instanceof Error ? caught.message : String(caught));
+      });
+    }, 0);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [refresh]);
 

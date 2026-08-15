@@ -179,8 +179,8 @@ Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
 [plugin platform](docs/plugin-platform.md),
 [example plugins](docs/plugin-examples.md),
 [local API](docs/local-api.md), [logging](docs/logging.md),
-[diagnostics](docs/diagnostics.md), [Issue reporting](docs/issue-reporting.md), and
-[security & privacy](docs/security.md), or the complete
+[diagnostics](docs/diagnostics.md), [Issue reporting](docs/issue-reporting.md),
+[security & privacy](docs/security.md), and [CI](docs/ci.md), or the complete
 [English documentation index](docs/README.md). Community guidance is
 in [CONTRIBUTING-EN.md](CONTRIBUTING-EN.md), [SUPPORT-EN.md](SUPPORT-EN.md),
 [SECURITY-EN.md](SECURITY-EN.md), and [CODE_OF_CONDUCT-EN.md](CODE_OF_CONDUCT-EN.md). Third-party copyright and

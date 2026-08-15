@@ -1677,7 +1677,9 @@ export function LyricsPresetPicker() {
         type="button"
         className="button button--secondary"
         onClick={() => setEditingId(lyricsPresets.selectedId)}
-        disabled={resolved.find((preset) => preset.id === lyricsPresets.selectedId)?.source === 'plugin'}
+        disabled={
+          resolved.find((preset) => preset.id === lyricsPresets.selectedId)?.source === 'plugin'
+        }
       >
         {t('customize')}
       </button>

@@ -30,7 +30,14 @@
     "fields": [
       { "id": "resume", "type": "boolean", "label": "Restore last position", "default": true },
       { "id": "label", "type": "text", "label": "Studio label", "default": "Studio" },
-      { "id": "radius", "type": "number", "label": "Corner radius", "min": 0, "max": 28, "default": 14 },
+      {
+        "id": "radius",
+        "type": "number",
+        "label": "Corner radius",
+        "min": 0,
+        "max": 28,
+        "default": 14
+      },
       {
         "id": "scene",
         "type": "select",

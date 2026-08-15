@@ -10,6 +10,8 @@ export default tseslint.config(
       'coverage',
       'node_modules',
       'src-tauri/target',
+      'src-tauri/target-bench-*/**',
+      'src-tauri/gen',
       'output/**',
       '.superpowers/**',
       '.playwright-cli/**',
@@ -34,6 +36,17 @@ export default tseslint.config(
         'error',
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
       ],
+    },
+  },
+  {
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        Buffer: 'readonly',
+        process: 'readonly',
+        URL: 'readonly',
+      },
     },
   },
 );

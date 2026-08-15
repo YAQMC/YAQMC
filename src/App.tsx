@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AccountPlaylistDetail, Album, MediaCollection, Playlist } from './domain/music';
 import { useCatalog } from './application/use-catalog';
@@ -23,13 +23,13 @@ import { QueuePanel } from './components/QueuePanel';
 import { ApplicationContextMenu } from './components/ApplicationContextMenu';
 import { LyricsPanel } from './components/LyricsPanel';
 import { LoadingState } from './components/ui/LoadingState';
+import { RouteErrorBoundary } from './components/ui/RouteErrorBoundary';
 import { HomePage } from './pages/HomePage';
 import { AlbumPage } from './pages/AlbumPage';
 import { PlaylistPage } from './pages/PlaylistPage';
 import { ExplorePage } from './pages/ExplorePage';
 import { LibraryPage } from './pages/LibraryPage';
 import { SearchPage } from './pages/SearchPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { AppBackground } from './components/AppBackground';
 import { FpsOverlay } from './components/FpsOverlay';
 import { usePreferencesRuntime, usePreferencesStore } from './application/preferences';
@@ -48,6 +48,11 @@ import { listen } from '@tauri-apps/api/event';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
 import { usePluginHost } from './application/plugin-runtime';
 import './styles/index.css';
+
+const SettingsPage = lazy(async () => {
+  const module = await import('./pages/SettingsPage');
+  return { default: module.SettingsPage };
+});
 
 interface NavigationHistory {
   entries: AppRoute[];
@@ -316,7 +321,19 @@ export default function App() {
 
   let pageContent;
   if (route.page === 'settings') {
-    pageContent = <SettingsPage />;
+    pageContent = (
+      <RouteErrorBoundary
+        fallback={
+          <p className="settings-error" role="alert">
+            {t('pageLoadFailed')}
+          </p>
+        }
+      >
+        <Suspense fallback={<LoadingState label={t('loadingSettings')} />}>
+          <SettingsPage />
+        </Suspense>
+      </RouteErrorBoundary>
+    );
   } else if (
     route.page === 'favorites' ||
     route.page === 'account-playlists' ||

@@ -218,9 +218,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             step={1_000}
             value={displayPosition}
             onPointerDown={() => beginScrub()}
-            onPointerUp={(event) =>
-              commitScrub(Number(event.currentTarget.value) + previewStartMs)
-            }
+            onPointerUp={(event) => commitScrub(Number(event.currentTarget.value) + previewStartMs)}
             onPointerCancel={(event) =>
               commitScrub(Number(event.currentTarget.value) + previewStartMs)
             }
