@@ -2,6 +2,7 @@ use crate::{
     audio::{AudioEngine, AudioEngineError, AudioOutputDevice},
     logging,
     media::{MediaPreparer, PlaybackEpochGuard, PlaybackSourceError, PlaybackSourceResolver},
+    playback_session::SeekMailbox,
     qqmusic::PlaybackSourceSelection,
 };
 use serde::{Deserialize, Serialize};
@@ -324,6 +325,14 @@ pub struct PlayerSnapshot {
     pub playback_error: Option<PlaybackFailure>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_selection: Option<PlaybackSourceSelection>,
+    #[serde(default)]
+    pub session_id: u64,
+    #[serde(default)]
+    pub snapshot_revision: u64,
+    #[serde(default)]
+    pub source_generation: u64,
+    #[serde(default)]
+    pub last_seek_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -365,6 +374,8 @@ pub struct QueueSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct CurrentLyricState {
     pub song_id: Option<String>,
+    #[serde(default)]
+    pub session_id: u64,
     pub position_ms: u64,
     pub line_index: Option<usize>,
     pub word_index: Option<usize>,
@@ -376,6 +387,8 @@ pub struct CurrentLyricState {
 #[serde(rename_all = "camelCase")]
 pub struct LyricSurfaceProjection {
     pub timestamp_ms: u64,
+    #[serde(default)]
+    pub session_id: u64,
     pub current_track: Option<Song>,
     pub position_ms: u64,
     pub is_playing: bool,
@@ -436,6 +449,9 @@ struct PlayerCore {
     lyrics: Option<LyricDocument>,
     source_selection: Option<PlaybackSourceSelection>,
     active_epoch_guard: Option<PlaybackEpochGuard>,
+    session_id: u64,
+    snapshot_revision: u64,
+    source_generation: u64,
 }
 
 impl PlayerCore {
@@ -579,6 +595,10 @@ impl PlayerCore {
             playback_duration_ms: self.playback_duration_ms,
             playback_error: self.playback_error.clone(),
             source_selection: self.source_selection.clone(),
+            session_id: self.session_id,
+            snapshot_revision: self.snapshot_revision,
+            source_generation: self.source_generation,
+            last_seek_revision: 0,
         }
     }
 
@@ -595,6 +615,8 @@ pub struct PlayerService {
     recovery_running: AtomicBool,
     runtime_expiry_retry_available: AtomicBool,
     load_generation: Arc<AtomicU64>,
+    session_id: AtomicU64,
+    seek_mailbox: SeekMailbox,
     audio: Arc<dyn AudioEngine>,
     resolver: Arc<dyn PlaybackSourceResolver>,
     preparer: Arc<dyn MediaPreparer>,
@@ -618,6 +640,8 @@ impl PlayerService {
             recovery_running: AtomicBool::new(false),
             runtime_expiry_retry_available: AtomicBool::new(true),
             load_generation: Arc::new(AtomicU64::new(0)),
+            session_id: AtomicU64::new(0),
+            seek_mailbox: SeekMailbox::default(),
             audio,
             resolver,
             preparer,
@@ -638,7 +662,12 @@ impl PlayerService {
     }
 
     pub async fn snapshot(&self) -> PlayerSnapshot {
-        self.core.read().await.snapshot()
+        self.stamped(self.core.read().await.snapshot())
+    }
+
+    fn stamped(&self, mut snapshot: PlayerSnapshot) -> PlayerSnapshot {
+        snapshot.last_seek_revision = self.seek_mailbox.current_revision();
+        snapshot
     }
 
     pub async fn current_track(&self) -> Option<Song> {
@@ -678,6 +707,7 @@ impl PlayerService {
         });
         LyricSurfaceProjection {
             timestamp_ms: unix_timestamp_ms(),
+            session_id: core.session_id,
             current_track: core.current_song().cloned(),
             position_ms: core.position_ms,
             is_playing: core.playback_state == PlaybackState::Playing,
@@ -698,7 +728,10 @@ impl PlayerService {
         let snapshot = {
             let mut core = self.core.write().await;
             mutation(&mut core)?;
-            core.snapshot()
+            core.snapshot_revision = core.snapshot_revision.saturating_add(1);
+            let mut snapshot = core.snapshot();
+            snapshot.last_seek_revision = self.seek_mailbox.current_revision();
+            snapshot
         };
         self.publish(event_type, &snapshot);
         Ok(snapshot)
@@ -899,7 +932,7 @@ impl PlayerService {
             return self.load_index(index, true, position).await;
         }
         if let Err(error) = self.audio.play() {
-            return Err(self.record_audio_failure(&error).await);
+            return Err(self.record_audio_failure(&error, None).await);
         }
         let Some(guard) = guard else {
             return self
@@ -941,7 +974,7 @@ impl PlayerService {
     pub async fn pause(&self) -> Result<PlayerSnapshot, PlayerError> {
         self.load_generation.fetch_add(1, Ordering::AcqRel);
         if let Err(error) = self.audio.pause() {
-            return Err(self.record_audio_failure(&error).await);
+            return Err(self.record_audio_failure(&error, None).await);
         }
         let engine_position = self.audio.snapshot().position_ms;
         self.mutate("player.playback", |core| {
@@ -955,7 +988,7 @@ impl PlayerService {
     pub async fn stop(&self) -> Result<PlayerSnapshot, PlayerError> {
         self.load_generation.fetch_add(1, Ordering::AcqRel);
         if let Err(error) = self.audio.stop() {
-            return Err(self.record_audio_failure(&error).await);
+            return Err(self.record_audio_failure(&error, None).await);
         }
         self.mutate("player.playback", |core| {
             core.position_ms = core.timeline_offset_ms;
@@ -1010,28 +1043,96 @@ impl PlayerService {
     }
 
     pub async fn seek(&self, position_ms: u64) -> Result<PlayerSnapshot, PlayerError> {
-        let (bounded, offset, index, loaded, was_ended) = {
+        let session_id = self.session_id.load(Ordering::Acquire);
+        if session_id == 0 {
+            let index = self
+                .core
+                .read()
+                .await
+                .current_index
+                .ok_or(PlayerError::EmptyQueue)?;
+            return self.load_index(index, false, position_ms).await;
+        }
+        let intent = self.seek_mailbox.publish(session_id, position_ms);
+        tracing::debug!(
+            target: "player.seek",
+            session = intent.session_id,
+            revision = intent.revision,
+            position_ms = intent.position_ms,
+            "seek intent published"
+        );
+        self.apply_latest_seek(intent).await
+    }
+
+    #[cfg(test)]
+    async fn apply_seek_intent_for_test(
+        &self,
+        intent: crate::playback_session::SeekIntent,
+    ) -> Result<PlayerSnapshot, PlayerError> {
+        self.apply_latest_seek(intent).await
+    }
+
+    async fn apply_latest_seek(
+        &self,
+        intent: crate::playback_session::SeekIntent,
+    ) -> Result<PlayerSnapshot, PlayerError> {
+        if !self
+            .seek_mailbox
+            .is_current(intent, self.session_id.load(Ordering::Acquire))
+        {
+            return Ok(self.snapshot().await);
+        }
+        let (bounded, offset, index, loaded, was_ended, session_now) = {
             let core = self.core.read().await;
             let song = core.current_song().ok_or(PlayerError::EmptyQueue)?;
             let duration = core.playback_duration_ms.unwrap_or(song.duration_ms);
             (
-                position_ms.clamp(core.timeline_offset_ms, duration),
+                intent.position_ms.clamp(core.timeline_offset_ms, duration),
                 core.timeline_offset_ms,
                 core.current_index.expect("current song has an index"),
                 self.audio.snapshot().loaded,
                 core.playback_state == PlaybackState::Ended,
+                core.session_id,
             )
         };
-        if !loaded || was_ended {
-            return self.load_index(index, false, bounded).await;
+        if !self.seek_mailbox.is_current(intent, session_now) {
+            return Ok(self.snapshot().await);
+        }
+        if was_ended {
+            return self.load_index(index, true, bounded).await;
+        }
+        if !loaded {
+            return self
+                .mutate("player.seeked", move |core| {
+                    if core.session_id != intent.session_id {
+                        return Ok(());
+                    }
+                    core.position_ms = bounded;
+                    Ok(())
+                })
+                .await;
         }
         if let Err(error) = self
             .audio
             .seek(Duration::from_millis(bounded.saturating_sub(offset)))
         {
-            return Err(self.record_audio_failure(&error).await);
+            if !self.seek_mailbox.is_current(intent, session_now) {
+                return Ok(self.snapshot().await);
+            }
+            return Err(self
+                .record_audio_failure(&error, Some(intent.session_id))
+                .await);
+        }
+        if !self
+            .seek_mailbox
+            .is_current(intent, self.session_id.load(Ordering::Acquire))
+        {
+            return Ok(self.snapshot().await);
         }
         self.mutate("player.seeked", move |core| {
+            if core.session_id != intent.session_id {
+                return Ok(());
+            }
             core.position_ms = bounded;
             Ok(())
         })
@@ -1043,7 +1144,7 @@ impl PlayerService {
             return Err(PlayerError::InvalidVolume);
         }
         if let Err(error) = self.audio.set_volume(volume as f32) {
-            return Err(self.record_audio_failure(&error).await);
+            return Err(self.record_audio_failure(&error, None).await);
         }
         self.mutate("player.volume", move |core| {
             core.volume = volume;
@@ -1062,7 +1163,7 @@ impl PlayerService {
             .audio
             .set_volume(if muted { 0.0 } else { volume as f32 })
         {
-            return Err(self.record_audio_failure(&error).await);
+            return Err(self.record_audio_failure(&error, None).await);
         }
         self.mutate("player.volume", |core| {
             core.is_muted = !core.is_muted;
@@ -1366,7 +1467,7 @@ impl PlayerService {
         autoplay: bool,
         resume_position_ms: u64,
     ) -> Result<PlayerSnapshot, PlayerError> {
-        self.load_index_with_policy(index, autoplay, resume_position_ms, true)
+        self.load_index_with_policy(index, autoplay, resume_position_ms, true, None)
             .await
     }
 
@@ -1376,15 +1477,29 @@ impl PlayerService {
         autoplay: bool,
         resume_position_ms: u64,
         allow_runtime_expiry_retry: bool,
+        required_session: Option<u64>,
     ) -> Result<PlayerSnapshot, PlayerError> {
         self.runtime_expiry_retry_available
             .store(allow_runtime_expiry_retry, Ordering::Release);
-        let generation = self.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
-        let (song, start_snapshot) = {
+        let (song, start_snapshot, generation, session) = {
             let mut core = self.core.write().await;
+            if let Some(required) = required_session {
+                if core.session_id != required {
+                    tracing::debug!(
+                        target: "player.session",
+                        required,
+                        current = core.session_id,
+                        "discarded stale load for a previous playback session"
+                    );
+                    return Ok(core.snapshot());
+                }
+            }
             if index >= core.queue.len() {
                 return Err(PlayerError::IndexOutOfRange(index));
             }
+            let generation = self.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
+            let session = self.session_id.fetch_add(1, Ordering::AcqRel) + 1;
+            self.seek_mailbox.invalidate();
             let previous_song_id = core.current_song().map(|song| song.id.clone());
             let entry_id = core.queue_entry_ids[index].clone();
             core.current_index = Some(index);
@@ -1396,10 +1511,20 @@ impl PlayerService {
             core.timeline_offset_ms = 0;
             core.source_selection = None;
             core.active_epoch_guard = None;
+            core.session_id = session;
+            core.source_generation = 0;
+            core.snapshot_revision = core.snapshot_revision.saturating_add(1);
             if previous_song_id.as_deref() != Some(core.queue[index].id.as_str()) {
                 core.lyrics = None;
             }
-            (core.queue[index].clone(), core.snapshot())
+            let mut start_snapshot = core.snapshot();
+            start_snapshot.last_seek_revision = self.seek_mailbox.current_revision();
+            (
+                core.queue[index].clone(),
+                start_snapshot,
+                generation,
+                session,
+            )
         };
         let _ = self.audio.stop();
         self.publish("player.track", &start_snapshot);
@@ -1441,8 +1566,10 @@ impl PlayerService {
                 .fail_load(generation, &PlaybackSourceError::Cancelled)
                 .await;
         }
+        prepared.load_generation = generation;
         let metadata = match self.audio.load(&prepared) {
             Ok(metadata) => metadata,
+            Err(AudioEngineError::StaleCommand) => return Ok(self.snapshot().await),
             Err(error)
                 if matches!(
                     error,
@@ -1488,16 +1615,21 @@ impl PlayerService {
                 if generation != self.load_generation.load(Ordering::Acquire) {
                     return Ok(self.snapshot().await);
                 }
+                let mut fallback = fallback;
+                fallback.load_generation = generation;
                 let metadata = match self.audio.load(&fallback) {
                     Ok(metadata) => metadata,
+                    Err(AudioEngineError::StaleCommand) => return Ok(self.snapshot().await),
                     Err(fallback_error) => {
-                        return Err(self.record_audio_failure(&fallback_error).await)
+                        return Err(self
+                            .record_audio_failure(&fallback_error, Some(session))
+                            .await)
                     }
                 };
                 prepared = fallback;
                 metadata
             }
-            Err(error) => return Err(self.record_audio_failure(&error).await),
+            Err(error) => return Err(self.record_audio_failure(&error, Some(session)).await),
         };
         if prepared.epoch_guard.validate().is_err() {
             let _ = self.audio.stop();
@@ -1506,7 +1638,6 @@ impl PlayerService {
                 .await;
         }
         if generation != self.load_generation.load(Ordering::Acquire) {
-            let _ = self.audio.stop();
             return Ok(self.snapshot().await);
         }
         let (volume, muted) = {
@@ -1517,12 +1648,12 @@ impl PlayerService {
             .audio
             .set_volume(if muted { 0.0 } else { volume as f32 })
         {
-            return Err(self.record_audio_failure(&error).await);
+            return Err(self.record_audio_failure(&error, Some(session)).await);
         }
         let local_resume = resume_position_ms.saturating_sub(prepared.timeline_offset_ms);
         if local_resume > 0 {
             if let Err(error) = self.audio.seek(Duration::from_millis(local_resume)) {
-                return Err(self.record_audio_failure(&error).await);
+                return Err(self.record_audio_failure(&error, Some(session)).await);
             }
         }
         if autoplay {
@@ -1533,7 +1664,7 @@ impl PlayerService {
                     .await;
             }
             if let Err(error) = self.audio.play() {
-                return Err(self.record_audio_failure(&error).await);
+                return Err(self.record_audio_failure(&error, Some(session)).await);
             }
             if prepared.epoch_guard.validate().is_err() {
                 let _ = self.audio.stop();
@@ -1543,12 +1674,12 @@ impl PlayerService {
             }
         }
 
+        let engine_generation = self.audio.snapshot().source_generation;
         let commit = {
             let mut core = self.core.write().await;
             if generation != self.load_generation.load(Ordering::Acquire) {
                 let snapshot = core.snapshot();
                 drop(core);
-                let _ = self.audio.stop();
                 return Ok(snapshot);
             }
             let playable_duration = metadata
@@ -1570,11 +1701,13 @@ impl PlayerService {
                 core.playback_error = None;
                 core.source_selection = Some(prepared.selection.clone());
                 core.active_epoch_guard = Some(prepared.epoch_guard.clone());
+                core.source_generation = engine_generation;
+                core.snapshot_revision = core.snapshot_revision.saturating_add(1);
                 core.snapshot()
             })
         };
         let snapshot = match commit {
-            Ok(snapshot) => snapshot,
+            Ok(snapshot) => self.stamped(snapshot),
             Err(_) => {
                 let _ = self.audio.stop();
                 return self
@@ -1615,25 +1748,40 @@ impl PlayerService {
             core.playback_error = Some(failure.clone());
             core.source_selection = None;
             core.active_epoch_guard = None;
+            core.snapshot_revision = core.snapshot_revision.saturating_add(1);
             core.snapshot()
         };
         self.publish("player.error", &snapshot);
         Err(PlayerError::Playback(failure.message))
     }
 
-    async fn record_audio_failure(&self, error: &AudioEngineError) -> PlayerError {
+    async fn record_audio_failure(
+        &self,
+        error: &AudioEngineError,
+        session: Option<u64>,
+    ) -> PlayerError {
         if matches!(error, AudioEngineError::SourceCancelled) {
             return self.cancel_active_source().await;
+        }
+        if matches!(error, AudioEngineError::StaleCommand) {
+            return PlayerError::Playback(audio_failure(error).message);
         }
         let failure = audio_failure(error);
         tracing::warn!(
             target: "player.audio",
             error_code = failure.code,
             retryable = failure.retryable,
+            session = session,
             "native audio probe or playback failed"
         );
+        if session.is_some_and(|session| session != self.session_id.load(Ordering::Acquire)) {
+            return PlayerError::Playback(failure.message);
+        }
         let snapshot = {
             let mut core = self.core.write().await;
+            if session.is_some_and(|session| session != core.session_id) {
+                return PlayerError::Playback(failure.message);
+            }
             core.playback_state = if failure.retryable {
                 PlaybackState::RecoverableError
             } else {
@@ -1642,6 +1790,7 @@ impl PlayerService {
             core.playback_error = Some(failure.clone());
             core.source_selection = None;
             core.active_epoch_guard = None;
+            core.snapshot_revision = core.snapshot_revision.saturating_add(1);
             core.snapshot()
         };
         self.publish("player.error", &snapshot);
@@ -1781,23 +1930,39 @@ impl PlayerService {
         snapshot
     }
 
-    async fn handle_end(self: Arc<Self>) {
+    async fn handle_end(self: Arc<Self>, session_id: u64) {
+        if session_id != self.session_id.load(Ordering::Acquire) {
+            self.transition_running.store(false, Ordering::Release);
+            return;
+        }
         let repeat = self.core.read().await.repeat;
         let result = if repeat == RepeatMode::One {
-            let index = self.core.read().await.current_index;
+            let index = {
+                let core = self.core.read().await;
+                if core.session_id != session_id {
+                    None
+                } else {
+                    core.current_index
+                }
+            };
             tracing::info!(
                 target: "player.eos",
+                session = session_id,
                 repeat = "one",
                 "repeating current queue entry"
             );
             match index {
                 Some(index) => self.load_index(index, true, 0).await,
-                None => Err(PlayerError::EmptyQueue),
+                None => Ok(self.snapshot().await),
             }
         } else {
-            match self.next_candidates().await {
-                Ok(candidates) => self.load_candidates(candidates).await,
-                Err(error) => Err(error),
+            if self.session_id.load(Ordering::Acquire) != session_id {
+                Ok(self.snapshot().await)
+            } else {
+                match self.next_candidates().await {
+                    Ok(candidates) => self.load_candidates(candidates).await,
+                    Err(error) => Err(error),
+                }
             }
         };
         if let Err(error) = result {
@@ -1841,7 +2006,14 @@ impl PlayerService {
                 interval.tick().await;
                 let now = Instant::now();
                 let engine = service.audio.snapshot();
-                let (snapshot, should_advance, playback_changed, lyric_state, recovery) = {
+                let (
+                    snapshot,
+                    should_advance,
+                    playback_changed,
+                    lyric_state,
+                    recovery,
+                    eos_session,
+                ) = {
                     let mut core = service.core.write().await;
                     let previous_state = core.playback_state;
                     let recovery = if engine.source_url_expired
@@ -1872,7 +2044,10 @@ impl PlayerService {
                     } else {
                         None
                     };
-                    if engine.loaded {
+                    let engine_matches = engine.loaded
+                        && core.source_generation != 0
+                        && engine.source_generation == core.source_generation;
+                    if engine_matches {
                         core.position_ms =
                             core.timeline_offset_ms.saturating_add(engine.position_ms);
                         if let Some(duration) = engine.duration_ms {
@@ -1915,7 +2090,8 @@ impl PlayerService {
                         core.playback_state = PlaybackState::Playing;
                         core.playback_error = None;
                     }
-                    let should_advance = engine.ended
+                    let should_advance = engine_matches
+                        && engine.ended
                         && engine.source_error.is_none()
                         && matches!(
                             previous_state,
@@ -1923,12 +2099,14 @@ impl PlayerService {
                         );
                     let snapshot = core.snapshot();
                     let lyrics = current_lyric_state(&core);
+                    let eos_session = core.session_id;
                     (
                         snapshot,
                         should_advance,
                         previous_state != core.playback_state,
                         lyrics,
                         recovery,
+                        eos_session,
                     )
                 };
 
@@ -1943,14 +2121,34 @@ impl PlayerService {
                 }
                 if should_advance && !service.transition_running.swap(true, Ordering::AcqRel) {
                     let transition = Arc::clone(&service);
-                    tauri::async_runtime::spawn(async move { transition.handle_end().await });
+                    tauri::async_runtime::spawn(
+                        async move { transition.handle_end(eos_session).await },
+                    );
                 }
                 if let Some((index, position_ms, autoplay)) = recovery {
+                    let recovery_session = snapshot.session_id;
                     let recovery_service = Arc::clone(&service);
                     tauri::async_runtime::spawn(async move {
-                        tracing::info!(target: "stream.range", position_ms, "re-resolving an expired progressive media URL once");
+                        if recovery_service.session_id.load(Ordering::Acquire) != recovery_session {
+                            tracing::debug!(
+                                target: "player.session",
+                                session = recovery_session,
+                                "discarded stale progressive URL recovery"
+                            );
+                            recovery_service
+                                .recovery_running
+                                .store(false, Ordering::Release);
+                            return;
+                        }
+                        tracing::info!(target: "stream.range", position_ms, session = recovery_session, "re-resolving an expired progressive media URL once");
                         if let Err(error) = recovery_service
-                            .load_index_with_policy(index, autoplay, position_ms, false)
+                            .load_index_with_policy(
+                                index,
+                                autoplay,
+                                position_ms,
+                                false,
+                                Some(recovery_session),
+                            )
                             .await
                         {
                             tracing::warn!(target: "stream.range", error = %error, "progressive URL recovery failed");
@@ -2120,6 +2318,11 @@ fn audio_failure(error: &AudioEngineError) -> PlaybackFailure {
             "The account-bound playback source was cancelled.",
             false,
         ),
+        AudioEngineError::StaleCommand => (
+            "stale-playback-command",
+            "A superseded playback command was ignored.",
+            false,
+        ),
     };
     PlaybackFailure {
         code: code.to_owned(),
@@ -2132,6 +2335,7 @@ fn current_lyric_state(core: &PlayerCore) -> CurrentLyricState {
     let song_id = core.current_song().map(|song| song.id.clone());
     let empty = || CurrentLyricState {
         song_id: song_id.clone(),
+        session_id: core.session_id,
         position_ms: core.position_ms,
         line_index: None,
         word_index: None,
@@ -2173,6 +2377,7 @@ fn current_lyric_state(core: &PlayerCore) -> CurrentLyricState {
     let word = word_index.and_then(|index| line.words.get(index).cloned());
     CurrentLyricState {
         song_id,
+        session_id: core.session_id,
         position_ms: core.position_ms,
         line_index: Some(line_index),
         word_index,
@@ -2485,6 +2690,7 @@ mod tests {
                 cache_key: source.cache_key,
                 selection: source.selection,
                 epoch_guard: source.epoch_guard,
+                load_generation: 0,
             })
         }
     }
@@ -2994,7 +3200,7 @@ mod tests {
                     .clone()
                     .expect("ending entry identity");
 
-                Arc::clone(&player).handle_end().await;
+                Arc::clone(&player).handle_end(ending.session_id).await;
                 let after = player.snapshot().await;
 
                 assert_eq!(after.playback_order, order);
@@ -3180,7 +3386,9 @@ mod tests {
             .expect("active identity");
         let history_len = player.snapshot().await.playback_history.len();
         for _ in 0..3 {
-            Arc::clone(&player).handle_end().await;
+            Arc::clone(&player)
+                .handle_end(player.snapshot().await.session_id)
+                .await;
             let after = player.snapshot().await;
             assert_eq!(
                 after.current_queue_entry_id.as_deref(),
@@ -3511,6 +3719,272 @@ mod tests {
         assert_eq!(snapshot.current_index, Some(1));
         assert_eq!(snapshot.queue[1].id, "fast");
         assert_eq!(snapshot.playback_state, PlaybackState::Playing);
+    }
+
+    #[tokio::test]
+    async fn rapid_alternating_seeks_keep_only_the_latest_intent() {
+        let player = PlayerService::new();
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play().await.expect("track A starts");
+        let session = player.snapshot().await.session_id;
+        let mut last = 0;
+        for index in 0..100 {
+            last = if index % 2 == 0 { 1_000 } else { 8_000 };
+            player.seek(last).await.expect("seek applies");
+        }
+        let snapshot = player.snapshot().await;
+        assert_eq!(snapshot.current_index, Some(0));
+        assert_eq!(snapshot.queue[0].id, "one");
+        assert_eq!(snapshot.session_id, session);
+        assert_eq!(snapshot.position_ms, last);
+        assert!(snapshot.last_seek_revision >= 100);
+    }
+
+    #[tokio::test]
+    async fn late_seeks_from_track_a_cannot_replace_track_b() {
+        let player = PlayerService::new();
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play_from_queue(0).await.expect("track A starts");
+        let a = player.snapshot().await;
+        player.seek(1_200).await.expect("A1");
+        player.seek(8_800).await.expect("A2");
+        let stale_a1 = crate::playback_session::SeekIntent {
+            session_id: a.session_id,
+            revision: 1,
+            position_ms: 1_200,
+        };
+        let stale_a2 = crate::playback_session::SeekIntent {
+            session_id: a.session_id,
+            revision: 2,
+            position_ms: 8_800,
+        };
+        player.play_from_queue(1).await.expect("track B starts");
+        let b = player.snapshot().await;
+        player
+            .apply_seek_intent_for_test(stale_a1)
+            .await
+            .expect("stale A1 ignored");
+        player
+            .apply_seek_intent_for_test(stale_a2)
+            .await
+            .expect("stale A2 ignored");
+        let after = player.snapshot().await;
+        assert_eq!(after.current_index, Some(1));
+        assert_eq!(after.queue[1].id, "two");
+        assert_eq!(after.current_queue_entry_id, b.current_queue_entry_id);
+        assert_eq!(after.session_id, b.session_id);
+        assert_ne!(after.position_ms, 1_200);
+        assert_ne!(after.position_ms, 8_800);
+    }
+
+    #[tokio::test]
+    async fn stale_eos_from_track_a_cannot_advance_or_repeat_after_track_b() {
+        let player = Arc::new(PlayerService::new());
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play_from_queue(0).await.expect("track A starts");
+        let session_a = player.snapshot().await.session_id;
+        player.play_from_queue(1).await.expect("track B starts");
+        let session_b = player.snapshot().await.session_id;
+        Arc::clone(&player).handle_end(session_a).await;
+        let after = player.snapshot().await;
+        assert_eq!(after.current_index, Some(1));
+        assert_eq!(after.queue[1].id, "two");
+        assert_eq!(after.session_id, session_b);
+    }
+
+    #[tokio::test]
+    async fn stale_engine_position_from_track_a_cannot_project_into_track_b() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = Arc::new(PlayerService::with_runtime(
+            Arc::clone(&engine) as Arc<dyn AudioEngine>,
+            Arc::new(crate::media::TestPlaybackSourceResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        ));
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play_from_queue(0).await.expect("track A starts");
+        let generation_a = engine.snapshot().source_generation;
+        player.play_from_queue(1).await.expect("track B starts");
+        player.start_clock();
+        engine.force_snapshot(|snapshot| {
+            snapshot.source_generation = generation_a;
+            snapshot.loaded = true;
+            snapshot.playing = true;
+            snapshot.ended = true;
+            snapshot.position_ms = 9_500;
+        });
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let after = player.snapshot().await;
+        player.stop_clock();
+        assert_eq!(after.current_index, Some(1));
+        assert_eq!(after.queue[1].id, "two");
+        assert_ne!(after.position_ms, 9_500);
+        assert_ne!(after.playback_state, PlaybackState::Ended);
+    }
+
+    #[tokio::test]
+    async fn stale_lyrics_from_track_a_cannot_replace_track_b() {
+        let player = PlayerService::new();
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play_from_queue(0).await.expect("track A starts");
+        player.set_lyrics(Some(lyric_document())).await;
+        player.play_from_queue(1).await.expect("track B starts");
+        player.set_lyrics(Some(lyric_document())).await;
+        let lyrics = player.lyrics().await;
+        assert!(lyrics.is_none());
+        let projection = player.lyric_surface_projection().await;
+        assert_eq!(
+            projection
+                .current_track
+                .as_ref()
+                .map(|song| song.id.as_str()),
+            Some("two")
+        );
+        assert_eq!(projection.session_id, player.snapshot().await.session_id);
+    }
+
+    #[tokio::test]
+    async fn track_change_replaces_the_active_source_instead_of_overlapping() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = PlayerService::with_runtime(
+            Arc::clone(&engine) as Arc<dyn AudioEngine>,
+            Arc::new(crate::media::TestPlaybackSourceResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play_from_queue(0).await.expect("track A starts");
+        player.play_from_queue(1).await.expect("track B starts");
+        assert!(engine.load_count() >= 2);
+        assert_eq!(engine.overlap_count(), 0);
+        assert!(engine.snapshot().loaded);
+    }
+
+    #[tokio::test]
+    async fn repeat_one_ignores_stale_eos_and_still_repeats_the_current_entry() {
+        let player = Arc::new(PlayerService::new());
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play().await.expect("track A starts");
+        player.set_repeat(RepeatMode::One).await;
+        for index in 0..20 {
+            player
+                .seek(if index % 2 == 0 { 500 } else { 9_000 })
+                .await
+                .expect("seek");
+        }
+        let before = player.snapshot().await;
+        Arc::clone(&player)
+            .handle_end(before.session_id.saturating_sub(1))
+            .await;
+        assert_eq!(
+            player.snapshot().await.current_queue_entry_id,
+            before.current_queue_entry_id
+        );
+        Arc::clone(&player).handle_end(before.session_id).await;
+        let after = player.snapshot().await;
+        assert_eq!(after.current_queue_entry_id, before.current_queue_entry_id);
+        assert_eq!(after.repeat, RepeatMode::One);
+        assert_eq!(after.position_ms, 0);
+    }
+
+    #[tokio::test]
+    async fn shuffle_rapid_seek_does_not_change_the_current_queue_entry() {
+        let player = PlayerService::new();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![
+                    song("one", 10_000),
+                    song("two", 10_000),
+                    song("three", 10_000),
+                ],
+                start_at_id: Some("one".to_owned()),
+                shuffle: Some(true),
+            })
+            .await
+            .expect("shuffle starts");
+        let before = player.snapshot().await;
+        for index in 0..40 {
+            player
+                .seek(if index % 2 == 0 { 250 } else { 4_000 })
+                .await
+                .expect("seek");
+        }
+        let after = player.snapshot().await;
+        assert_eq!(after.playback_order, PlaybackOrder::Shuffle);
+        assert_eq!(after.current_queue_entry_id, before.current_queue_entry_id);
+        assert_eq!(after.shuffle_traversal, before.shuffle_traversal);
+    }
+
+    #[tokio::test]
+    async fn rapid_seek_then_explicit_next_keeps_the_next_track() {
+        let player = PlayerService::new();
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play().await.expect("track A starts");
+        for index in 0..30 {
+            player
+                .seek(if index % 2 == 0 { 100 } else { 9_000 })
+                .await
+                .expect("seek");
+        }
+        player.next().await.expect("next");
+        let snapshot = player.snapshot().await;
+        assert_eq!(snapshot.current_index, Some(1));
+        assert_eq!(snapshot.queue[1].id, "two");
+    }
+
+    #[tokio::test]
+    async fn rapid_seek_then_album_selection_keeps_the_selected_track() {
+        let player = PlayerService::new();
+        player
+            .hydrate_queue(vec![
+                song("one", 10_000),
+                song("two", 10_000),
+                song("three", 10_000),
+            ])
+            .await;
+        player.play().await.expect("track A starts");
+        for index in 0..30 {
+            player
+                .seek(if index % 2 == 0 { 100 } else { 8_500 })
+                .await
+                .expect("seek");
+        }
+        player.play_from_queue(2).await.expect("album track C");
+        let snapshot = player.snapshot().await;
+        assert_eq!(snapshot.current_index, Some(2));
+        assert_eq!(snapshot.queue[2].id, "three");
+        assert_ne!(snapshot.playback_state, PlaybackState::Ended);
+    }
+
+    #[tokio::test]
+    async fn expired_url_recovery_cannot_restore_a_previous_track() {
+        let player = Arc::new(PlayerService::new());
+        player
+            .hydrate_queue(vec![song("one", 10_000), song("two", 10_000)])
+            .await;
+        player.play_from_queue(0).await.expect("track A starts");
+        let session_a = player.snapshot().await.session_id;
+        player.play_from_queue(1).await.expect("track B starts");
+        let recovered = player
+            .load_index_with_policy(0, true, 1_500, false, Some(session_a))
+            .await
+            .expect("stale recovery is ignored");
+        assert_eq!(recovered.current_index, Some(1));
+        assert_eq!(recovered.queue[1].id, "two");
     }
 
     #[tokio::test]

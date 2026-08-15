@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "docs:check": "node scripts/check-public-docs.mjs",
+    "plugins:pack": "node scripts/pack-example-plugins.mjs",
     "pages:build": "node scripts/build-pages.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

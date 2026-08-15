@@ -29,6 +29,9 @@ export interface LyricsSceneBindings {
   presentationOffsetMs: number;
   getPositionMs: () => number;
   seek: (positionMs: number) => void;
+  beginScrub?: () => void;
+  previewScrub?: (positionMs: number) => void;
+  commitScrub?: (positionMs: number) => void;
   togglePlayback: () => void;
   next?: () => void;
   previous?: () => void;

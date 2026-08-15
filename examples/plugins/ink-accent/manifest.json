@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.example.ink-accent",
+  "name": "Ink accent",
+  "description": "Applies Ink core tokens to sidebar, player bar, queue, and title. Requires Ink core.",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "authors": ["YAQMC examples"],
+  "homepage": "https://github.com/YAQMC/YAQMC",
+  "repository": "https://github.com/YAQMC/YAQMC",
+  "license": "MIT",
+  "engines": { "yaqmc": ">=0.1.0" },
+  "platforms": ["windows", "linux"],
+  "entrypoints": {
+    "styles": ["styles/main.css"]
+  },
+  "permissions": ["style.register"],
+  "dependencies": {
+    "dev.yaqmc.example.ink-core": "^1.0.0"
+  }
+}

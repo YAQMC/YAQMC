@@ -59,6 +59,12 @@
   --focus: #c5e478;
   --selection: rgba(197, 228, 120, 0.25);
 
+  --yaqmc-primary: var(--accent);
+  --yaqmc-secondary: var(--text-secondary);
+  --yaqmc-radius-card: var(--radius-md);
+  --yaqmc-player-height: 88px;
+  --yaqmc-surface-alpha: 1;
+
   --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.18);
   --shadow-md: 0 18px 48px rgba(0, 0, 0, 0.32);
   --shadow-art: 0 20px 45px rgba(0, 0, 0, 0.28);

@@ -94,6 +94,20 @@ const APP_COMMANDS: &[&str] = &[
     "diagnostics_log_frontend",
     "issue_reporter_preview",
     "issue_reporter_validate_url",
+    "plugin_list",
+    "plugin_pick_package",
+    "plugin_inspect_path",
+    "plugin_install",
+    "plugin_set_enabled",
+    "plugin_uninstall",
+    "plugin_set_safe_mode",
+    "plugin_set_developer_mode",
+    "plugin_active_resources",
+    "plugin_diagnostics",
+    "plugin_runtime_start",
+    "plugin_runtime_stop",
+    "plugin_mark_failed",
+    "plugin_bridge",
 ];
 
 fn embed_build_metadata() {

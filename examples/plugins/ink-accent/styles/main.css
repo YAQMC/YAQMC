@@ -1,0 +1,26 @@
+[data-yaqmc='sidebar'] {
+  background: color-mix(in srgb, #1c1812 65%, var(--sidebar, #1b1f18));
+  border-right: 1px solid color-mix(in srgb, var(--yaqmc-primary) 22%, transparent);
+}
+
+[data-yaqmc='player-bar'] {
+  min-height: var(--yaqmc-player-height);
+  border-radius: var(--yaqmc-radius-card);
+  border-top: 2px solid var(--yaqmc-primary);
+  background: color-mix(
+    in srgb,
+    #1a1610 calc(var(--yaqmc-surface-alpha) * 75%),
+    var(--player, #161a13)
+  );
+}
+
+[data-yaqmc='queue'] {
+  border-radius: var(--yaqmc-radius-card);
+  outline: 1px solid color-mix(in srgb, var(--yaqmc-primary) 28%, transparent);
+}
+
+[data-yaqmc='track-title'] {
+  color: var(--yaqmc-primary);
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+}

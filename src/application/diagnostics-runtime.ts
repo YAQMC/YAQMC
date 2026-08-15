@@ -21,7 +21,7 @@ export interface DiagnosticsRequest {
 
 export interface LyricsPresetDiagnostics {
   id: string;
-  kind: 'built-in' | 'custom';
+  kind: 'built-in' | 'custom' | 'plugin';
   schemaVersion: number;
   rendererVersion?: number;
 }
@@ -51,6 +51,10 @@ export interface PlaybackSection {
   playbackOrder: string;
   repeatMode: string;
   primaryPlaybackMode: string;
+  playbackSessionId?: number;
+  snapshotRevision?: number;
+  sourceGeneration?: number;
+  lastSeekRevision?: number;
 }
 
 export interface ErrorRecord {
@@ -72,6 +76,19 @@ export interface DiagnosticsSnapshot {
   logLevel: LogLevel;
   recentErrors: ErrorRecord[];
   lyricsPreset?: LyricsPresetDiagnostics | null;
+  plugins?: PluginDiagnostic[];
+}
+
+export interface PluginDiagnostic {
+  id: string;
+  version: string;
+  enabled: boolean;
+  status: string;
+  entrypointKinds: string[];
+  apiVersion: number;
+  packageSha256: string;
+  permissions: string[];
+  riskRating: string;
 }
 
 export interface RedactionReport {

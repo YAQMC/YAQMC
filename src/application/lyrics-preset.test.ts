@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   applyOverride,
   BUILTIN_CLASSIC_ID,
@@ -14,6 +14,7 @@ import {
   LINE_HEIGHT_MIN,
   LYRICS_PRESET_SCHEMA_VERSION,
   lineGapFromLineHeight,
+  listResolvedPresets,
   lyricsPresetDiagnostics,
   nextResolvedPreset,
   normalizeLyricsPresetState,
@@ -21,6 +22,7 @@ import {
   resolveLyricsPreset,
   resolvePrimaryFontSizePx,
   saveAsNewPreset,
+  setPluginPresetCatalog,
 } from './lyrics-preset';
 
 describe('lyrics preset foundation', () => {
@@ -188,5 +190,30 @@ describe('lyrics preset foundation', () => {
     expect(nextResolvedPreset({ ...created.state, selectedId: BUILTIN_VINYL_ID }).id).toBe(
       BUILTIN_CLASSIC_ID,
     );
+  });
+
+  afterEach(() => {
+    setPluginPresetCatalog([]);
+  });
+
+  it('keeps plugin scene references and falls back when the plugin is gone', () => {
+    setPluginPresetCatalog([
+      {
+        ...builtinPresetCatalog[0]!,
+        id: 'plugin:dev.example.scene:vinyl',
+        name: 'Sakura vinyl',
+        source: 'plugin',
+        pluginId: 'dev.example.scene',
+        pluginName: 'Sakura',
+      },
+    ]);
+    const state = normalizeLyricsPresetState({
+      selectedId: 'plugin:dev.example.scene:vinyl',
+    });
+    expect(state.selectedId).toBe('plugin:dev.example.scene:vinyl');
+    expect(resolveLyricsPreset(state).name).toBe('Sakura vinyl');
+    expect(listResolvedPresets(state).some((preset) => preset.source === 'plugin')).toBe(true);
+    setPluginPresetCatalog([]);
+    expect(resolveLyricsPreset(state).id).toBe(BUILTIN_CLASSIC_ID);
   });
 });

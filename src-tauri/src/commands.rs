@@ -121,6 +121,10 @@ fn build_playback_section(snapshot: &PlayerSnapshot) -> PlaybackSection {
             crate::player::RepeatMode::One => "one",
         },
         primary_playback_mode: snapshot.primary_playback_mode.as_str(),
+        playback_session_id: snapshot.session_id,
+        snapshot_revision: snapshot.snapshot_revision,
+        source_generation: snapshot.source_generation,
+        last_seek_revision: snapshot.last_seek_revision,
     }
 }
 
@@ -163,6 +167,10 @@ async fn assemble_snapshot(
         build_app_section(app),
     );
     snapshot.lyrics_preset = request.lyrics_preset;
+    snapshot.plugins = app
+        .try_state::<Arc<crate::plugin::ExtensionHost>>()
+        .map(|host| host.diagnostics())
+        .unwrap_or_default();
     snapshot
 }
 

@@ -34,6 +34,10 @@ interface NativePlayerSnapshot {
   playbackDurationMs: number | null;
   playbackError: PlaybackFailure | null;
   sourceSelection?: PlaybackSourceSelection | null;
+  sessionId?: number;
+  snapshotRevision?: number;
+  sourceGeneration?: number;
+  lastSeekRevision?: number;
 }
 
 export const isNativeRuntime = isTauri();

@@ -16,6 +16,9 @@
 - [歌词架构](lyrics.md)、[桌面歌词 / 歌词岛](lyrics-surfaces.md)、
   [歌词预设](lyrics-presets.md)与[歌词编排器](lyrics-composer.md)
 - [外观个性化](appearance.md)、[设计系统](design-system.md)与[国际化](i18n.md)
+- [插件平台](plugin-platform.md)、[清单](plugin-manifest.md)、[安全](plugin-security.md)、
+  [开发](plugin-development.md)、[示例插件](plugin-examples.md)、
+  [样式 API](plugin-style-api.md)与[场景 API](plugin-scene-api.md)
 - [Linux 运行与测试](linux.md)、[Linux 图形策略](linux-graphics.md)与[桌面平台集成](platform-integration.md)
 - [本地 HTTP API](local-api.md)及其 [OpenAPI 3.1 定义](../local-api.openapi.yaml)
 - [日志系统](logging.md)、[诊断快照与诊断包](diagnostics.md)、

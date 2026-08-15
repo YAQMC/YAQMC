@@ -46,6 +46,7 @@ import {
 } from './application/lyrics-presentation-actions';
 import { listen } from '@tauri-apps/api/event';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
+import { usePluginHost } from './application/plugin-runtime';
 import './styles/index.css';
 
 interface NavigationHistory {
@@ -81,6 +82,7 @@ export default function App() {
   usePreferencesRuntime(true);
   usePlatformDiagnosticsRuntime();
   useGuessContinuation(provider);
+  usePluginHost();
   const catalog = useCatalog();
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);

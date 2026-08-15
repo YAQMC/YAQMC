@@ -32,7 +32,7 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
     { label: t('explore'), page: 'explore' as const, icon: Compass },
   ];
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-yaqmc="sidebar">
       <div className="sidebar__brand" aria-label="YAQMC">
         <span className="sidebar__brand-mark" aria-hidden="true" />
         <span>YAQMC</span>

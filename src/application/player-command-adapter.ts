@@ -29,13 +29,41 @@ export type PlayerCommand =
 export type PlayerCommandAdapter = (command: PlayerCommand) => Promise<void>;
 
 let activeAdapter: PlayerCommandAdapter | null = null;
+let pendingSeekMs: number | null = null;
+let seekFlush: Promise<void> | null = null;
+
+async function flushSeekMailbox(): Promise<void> {
+  try {
+    while (pendingSeekMs !== null && activeAdapter) {
+      const positionMs = pendingSeekMs;
+      pendingSeekMs = null;
+      await activeAdapter({ type: 'seek', positionMs });
+    }
+  } finally {
+    seekFlush = null;
+    if (pendingSeekMs !== null && activeAdapter) {
+      seekFlush = flushSeekMailbox().catch((error: unknown) => {
+        console.error('Native player command failed', error);
+      });
+    }
+  }
+}
 
 export function setPlayerCommandAdapter(adapter: PlayerCommandAdapter | null): void {
   activeAdapter = adapter;
+  if (!adapter) pendingSeekMs = null;
 }
 
 export function dispatchPlayerCommand(command: PlayerCommand): boolean {
   if (!activeAdapter) return false;
+  if (command.type === 'seek') {
+    pendingSeekMs = command.positionMs;
+    seekFlush ??= flushSeekMailbox().catch((error: unknown) => {
+      console.error('Native player command failed', error);
+    });
+    return true;
+  }
+  pendingSeekMs = null;
   void activeAdapter(command).catch((error: unknown) => {
     console.error('Native player command failed', error);
   });
