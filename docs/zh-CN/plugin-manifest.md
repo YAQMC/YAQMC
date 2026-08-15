@@ -26,8 +26,9 @@
 可选：描述、作者、主页、仓库、许可证、engines、platforms、architectures、entrypoints、permissions、dependencies、
 conflicts、`settingsSchema`，以及预留的 `signatures`。
 
-插件 ID 使用反向域名，例如 `dev.example.plugin`。版本号为 semver。`apiVersion` 与包版本独立。v1 只理解 API 版本
-`1`。不兼容的包可以保持安装并停用，且附带原因；不会部分激活。
+插件 ID 使用反向域名，例如 `dev.example.plugin`。版本号为 semver。`apiVersion` 与包版本、`manifestVersion` 独立。宿主同时理解
+API 版本 `1` 和 `2`。不兼容的包可以保持安装并停用，且附带原因；不会部分激活。不要只因为 Plugin API 演进就提升
+`manifestVersion`。
 
 `dependencies` 不会自动从网络下载。依赖缺失、过旧或成环时阻止启用。`conflicts` 只说明原因，不做自动化解。
 

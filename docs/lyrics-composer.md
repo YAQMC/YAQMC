@@ -56,6 +56,8 @@ Save semantics match Settings:
 - Custom: Save, plus Save as New.
 - Duplicate is Save as New with a generated name.
 - Reset drops a built-in override. Factory definitions stay immutable.
+- Plugin scenes stay immutable. **Fork to My Scene** copies schema into a custom preset and records
+  `forkedFromPluginId`. Plugin assets remain linked to the source package.
 
 ## Preview data
 

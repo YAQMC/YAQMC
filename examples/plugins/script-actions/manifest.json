@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.example.actions",
+  "name": "Track actions",
+  "description": "v2 example: settings, track read, context menu, player bar, notifications.",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "authors": ["YAQMC examples"],
+  "homepage": "https://github.com/YAQMC/YAQMC",
+  "repository": "https://github.com/YAQMC/YAQMC",
+  "license": "MIT",
+  "engines": { "yaqmc": ">=0.1.0" },
+  "platforms": ["windows", "linux"],
+  "entrypoints": {
+    "script": "dist/main.js"
+  },
+  "permissions": [
+    "track.read",
+    "player.read",
+    "plugin.storage",
+    "ui.contextMenu",
+    "ui.playerBar",
+    "ui.notify"
+  ],
+  "settingsSchema": {
+    "fields": [
+      { "id": "prefix", "type": "text", "label": "Menu prefix", "default": "Copy title" },
+      { "id": "notify", "type": "boolean", "label": "Notify on action", "default": true }
+    ]
+  }
+}

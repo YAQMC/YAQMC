@@ -31,7 +31,12 @@ export default definePlugin({
 开发者模式面向插件作者，默认不对普通用户打开。示例位于 `examples/plugins/`，默认不启用。打包下载见
 [示例插件](plugin-examples.md)。
 
-可读事件：`track.changed`、`playback.stateChanged`、`playback.positionCommitted`、`lyrics.lineChanged`、
-`theme.changed`。进度事件会合并（约 4 Hz）。`player.control` 走 `PlayerService`，沿用会话安全的 seek 邮箱，并有速率限制。
+可读事件：`track.changed`、`playback.stateChanged`、`playback.position`、`playback.positionCommitted`、
+`playback.modeChanged`、`queue.changed`、`lyrics.documentChanged`、`lyrics.lineChanged`、`theme.changed`、
+`scene.changed`、`settings.changed`、`ui.action`。进度事件会合并（约 4 Hz）。`player.control` 走 `PlayerService`，
+沿用会话安全的 seek 邮箱，插件 seek 限制为每秒 4 次。
 
-v1 设置使用声明式 schema，由 YAQMC 渲染。插件不能向设置页注入 DOM。
+构建示例：`npm run plugin:build`；校验：`npm run plugin:validate`；打包：`npm run plugin:pack`。运行时仍然只执行
+`dist/main.js`。
+
+设置使用声明式 schema，由 YAQMC 渲染。插件不能向设置页注入 DOM。密码字段不会进入诊断。UI 插槽由 YAQMC 渲染。

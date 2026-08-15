@@ -33,6 +33,10 @@ PlayerService. The examples do **not** fire them automatically; that would steal
 
 Enable **Ink core** before **Ink accent**. Sakura and Night cannot be active together.
 
-## Not included (v1)
+v2 example sources: `examples/plugins/script-actions` (settings + context/player-bar actions) and
+`examples/plugins/script-network` (host-proxied `https://example.com` only). Pack with `npm run plugin:pack`.
+The hostile probe lives in `tests/fixtures/plugins/hostile` and must not be enabled as a user plugin.
 
-Network, filesystem, credentials, native modules, HTML entrypoints, and a plugin marketplace.
+## Not included
+
+Marketplace, remote updates, Provider plugins, native modules, HTML entrypoints, and raw `fetch`.
