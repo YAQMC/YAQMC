@@ -11,6 +11,8 @@ import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import type { ContextMenuItem } from './ui/ContextMenu';
 import { useContextMenu } from './ui/use-context-menu';
 import { useTranslation } from 'react-i18next';
+import { dispatchPluginUiAction } from '../application/plugin-runtime';
+import { usePluginUiSnapshot } from '../application/plugin-ui';
 
 interface TrackListProps {
   tracks: Song[];
@@ -22,6 +24,7 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
   const { t } = useTranslation('player');
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const pluginActions = usePluginUiSnapshot().track;
 
   return (
     <div className={`track-list ${compact ? 'track-list--compact' : ''}`} role="table">
@@ -47,6 +50,7 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
             active={track.id === currentId}
             isPlaying={isPlaying}
             showAlbum={showAlbum}
+            pluginActions={pluginActions}
           />
         ))}
       </div>
@@ -61,9 +65,18 @@ interface TrackRowProps {
   active: boolean;
   isPlaying: boolean;
   showAlbum: boolean;
+  pluginActions: readonly { pluginId: string; pluginName: string; id: string; label: string }[];
 }
 
-function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackRowProps) {
+function TrackRow({
+  track,
+  tracks,
+  index,
+  active,
+  isPlaying,
+  showAlbum,
+  pluginActions,
+}: TrackRowProps) {
   const { t } = useTranslation('player');
   const { t: common } = useTranslation('common');
   const provider = useContext(ProviderContext);
@@ -105,6 +118,11 @@ function TrackRow({ track, tracks, index, active, isPlaying, showAlbum }: TrackR
         if (accountProvider) return setFavorite(accountProvider, track, !favorite);
       },
     },
+    ...pluginActions.map((action) => ({
+      id: `plugin:${action.pluginId}:${action.id}`,
+      label: `${action.label}`,
+      action: () => dispatchPluginUiAction(action.pluginId, action.id, 'track'),
+    })),
   ];
   const contextMenu = useContextMenu(t('moreActions', { title: track.title }), contextItems);
 

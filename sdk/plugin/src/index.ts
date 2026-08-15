@@ -15,18 +15,30 @@ export type PluginPermission =
   | 'theme.read'
   | 'plugin.storage'
   | 'scene.register'
-  | 'style.register';
+  | 'style.register'
+  | 'ui.contextMenu'
+  | 'ui.playerBar'
+  | 'ui.sidebar'
+  | 'ui.notify'
+  | `network:https://${string}`;
 
-/** Reserved for future API versions. v1 does not implement these. */
+/** Reserved capabilities. Raw fetch, filesystem, and account credentials stay denied. */
 export type FuturePluginPermission =
   'network' | 'filesystem' | 'provider' | 'account' | 'native' | 'shell';
 
 export type PluginEventName =
   | 'track.changed'
   | 'playback.stateChanged'
+  | 'playback.position'
   | 'playback.positionCommitted'
+  | 'playback.modeChanged'
+  | 'queue.changed'
+  | 'lyrics.documentChanged'
   | 'lyrics.lineChanged'
-  | 'theme.changed';
+  | 'theme.changed'
+  | 'scene.changed'
+  | 'settings.changed'
+  | 'ui.action';
 
 export interface PluginTrack {
   id: string | null;
@@ -34,15 +46,41 @@ export interface PluginTrack {
   artists?: string[];
   album?: string | null;
   durationMs?: number;
+  quality?: string;
+  artwork?: { alt?: string; dominantColor?: string };
   queueEntryId?: string | null;
   sessionId?: number;
 }
 
 export interface PluginPlaybackSnapshot {
+  state?: string;
   isPlaying: boolean;
   positionMs: number;
+  durationMs?: number | null;
+  volume?: number;
+  muted?: boolean;
   sessionId: number;
   snapshotRevision?: number;
+  repeat?: string;
+  playbackOrder?: string;
+  primaryPlaybackMode?: string;
+  queueEntryId?: string | null;
+}
+
+export interface PluginLyricsSnapshot {
+  songId?: string;
+  syncMode?: string;
+  lines: string[];
+  timedLines?: Array<{
+    id: string;
+    text: string;
+    translation?: string | null;
+    romanization?: string | null;
+    startMs?: number | null;
+    endMs?: number | null;
+  }>;
+  currentLine?: number | null;
+  positionMs?: number;
 }
 
 export interface PluginStorage {
@@ -54,12 +92,32 @@ export interface PluginEvents {
   on(event: PluginEventName, handler: (payload: unknown) => void): () => void;
 }
 
+export interface PluginUiAction {
+  id: string;
+  label: string;
+  icon?: string;
+}
+
+export interface PluginNotifyOptions {
+  level?: 'info' | 'success' | 'warning' | 'error';
+  message: string;
+}
+
+export interface PluginNetworkRequest {
+  url: string;
+  method?: 'GET' | 'POST' | 'HEAD';
+  headers?: Record<string, string>;
+  body?: string;
+}
+
 export interface PluginContext {
+  plugin: { id: string };
   events: PluginEvents;
-  track: { get(): Promise<PluginTrack> };
-  lyrics: { get(): Promise<{ songId?: string; lines: string[] }> };
+  track: { get(): Promise<PluginTrack>; read(): Promise<PluginTrack> };
+  lyrics: { get(): Promise<PluginLyricsSnapshot>; read(): Promise<PluginLyricsSnapshot> };
   player: {
     get(): Promise<PluginPlaybackSnapshot>;
+    read(): Promise<PluginPlaybackSnapshot>;
     play(): Promise<{ ok: true }>;
     pause(): Promise<{ ok: true }>;
     toggle(): Promise<{ ok: true }>;
@@ -67,8 +125,33 @@ export interface PluginContext {
     previous(): Promise<{ ok: true }>;
     seek(positionMs: number): Promise<{ ok: true; positionMs: number }>;
   };
-  theme: { get(): Promise<{ source: string }> };
+  theme: { get(): Promise<{ source: string; colorMode?: string }> };
   storage: PluginStorage;
+  settings: {
+    get(): Promise<Record<string, unknown>>;
+    set(values: Record<string, unknown>): Promise<Record<string, unknown>>;
+  };
+  ui: {
+    contextMenu: { track: { register(action: PluginUiAction): Promise<{ ok: true }> } };
+    playerBar: { register(action: PluginUiAction): Promise<{ ok: true }> };
+    sidebar: { register(action: PluginUiAction): Promise<{ ok: true }> };
+    notify(options: PluginNotifyOptions | string): Promise<{ ok: true }>;
+  };
+  network: {
+    request(request: PluginNetworkRequest): Promise<{ ok: boolean; status: number; body: string }>;
+  };
+  scenes: {
+    onMount(sceneId: string, handler: (payload: unknown) => void): () => void;
+    onUnmount(sceneId: string, handler: (payload: unknown) => void): () => void;
+    setVariable(name: string, value: string | number | boolean): Promise<{ ok: true }>;
+    setState(name: string, value: string): Promise<{ ok: true }>;
+    setWidgetProperty(
+      widgetId: string,
+      property: string,
+      value: string | number | boolean,
+    ): Promise<{ ok: true }>;
+    animate(widgetId: string, property: string, value: string | number): Promise<{ ok: true }>;
+  };
   log: {
     info(message: string): Promise<{ ok: true }>;
     warn(message: string): Promise<{ ok: true }>;
@@ -84,5 +167,4 @@ export function definePlugin(definition: PluginDefinition): PluginDefinition {
   return definition;
 }
 
-/** Future UI slots. Not implemented in Plugin Platform v1. */
 export type ReservedUiSlot = 'sidebar' | 'playerBar' | 'contextMenu' | 'settings' | 'home';

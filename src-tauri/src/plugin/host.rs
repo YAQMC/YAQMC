@@ -56,6 +56,12 @@ pub struct PluginRecord {
     pub platforms: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings_schema: Option<serde_json::Value>,
+    #[serde(default)]
+    pub network_origins: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unpacked_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -79,6 +85,7 @@ pub struct ActiveSceneResource {
 #[serde(rename_all = "camelCase")]
 pub struct ActiveScriptResource {
     pub plugin_id: String,
+    pub plugin_name: String,
     pub source: String,
 }
 
@@ -128,6 +135,8 @@ struct PluginStateFile {
     source: String,
     style_scan: ScanReport,
     script_scan: ScanReport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unpacked_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -151,6 +160,9 @@ pub struct RuntimeToken {
     pub token: String,
     pub plugin_id: String,
     pub permissions: HashSet<PluginPermission>,
+    #[allow(dead_code)]
+    pub granted: Vec<String>,
+    pub network_origins: HashSet<String>,
 }
 
 #[derive(Debug, Error)]
@@ -182,6 +194,7 @@ struct HostInner {
     records: BTreeMap<String, (PluginStateFile, PluginManifest, PathBuf)>,
     runtimes: HashMap<String, RuntimeToken>,
     storage: HashMap<String, BTreeMap<String, String>>,
+    settings: HashMap<String, crate::plugin::settings::ValidatedSettings>,
     rates: HashMap<String, RateBucket>,
 }
 
@@ -239,17 +252,31 @@ impl ExtensionHost {
             write_json(&root.join("journal.json"), &journal)?;
         }
         let mut storage = HashMap::new();
+        let mut settings = HashMap::new();
         if let Ok(entries) = fs::read_dir(&root) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
                     continue;
                 };
-                let Some(plugin_id) = name.strip_suffix(".storage.json") else {
-                    continue;
-                };
-                if let Some(namespace) = read_json::<BTreeMap<String, String>>(&path) {
-                    storage.insert(plugin_id.to_owned(), namespace);
+                if let Some(plugin_id) = name.strip_suffix(".storage.json") {
+                    if let Some(namespace) = read_json::<BTreeMap<String, String>>(&path) {
+                        storage.insert(plugin_id.to_owned(), namespace);
+                    }
+                }
+                if let Some(plugin_id) = name.strip_suffix(".settings.json") {
+                    if let Some(values) = read_json::<BTreeMap<String, serde_json::Value>>(&path) {
+                        let mut validated = crate::plugin::settings::ValidatedSettings {
+                            values,
+                            ..Default::default()
+                        };
+                        if let Some(secrets) = read_json::<BTreeMap<String, String>>(
+                            &root.join(format!("{plugin_id}.secrets.json")),
+                        ) {
+                            validated.secrets = secrets;
+                        }
+                        settings.insert(plugin_id.to_owned(), validated);
+                    }
                 }
             }
         }
@@ -261,6 +288,7 @@ impl ExtensionHost {
                 records,
                 runtimes: HashMap::new(),
                 storage,
+                settings,
                 rates: HashMap::new(),
             }),
             runtime_seq: AtomicU64::new(1),
@@ -357,7 +385,7 @@ impl ExtensionHost {
         &self,
         path: &Path,
         enable: bool,
-        grant: &[PluginPermission],
+        grant: &[String],
     ) -> Result<PluginRecord, HostError> {
         let inspection =
             inspect_package(path).map_err(|error| HostError::from(error.to_string()))?;
@@ -444,11 +472,81 @@ impl ExtensionHost {
         self.install_inspection(inspection, true, &[], "loose-css")
     }
 
+    pub fn install_unpacked(
+        &self,
+        path: &Path,
+        enable: bool,
+        grant: &[String],
+    ) -> Result<PluginRecord, HostError> {
+        if !self.developer_mode() {
+            return Err(HostError::from(
+                "unpacked plugins can only be loaded in Developer Mode",
+            ));
+        }
+        let inspection =
+            inspect_package(path).map_err(|error| HostError::from(error.to_string()))?;
+        if let Some(message) = crate::plugin::package::stale_typescript_message(&inspection.files) {
+            return Err(HostError::from(message));
+        }
+        if css_is_blocked(&inspection.style_scan) {
+            return Err(HostError::from(
+                "the style entrypoint uses blocked remote or filesystem CSS",
+            ));
+        }
+        let mut record = self.install_inspection(inspection, enable, grant, "unpacked")?;
+        self.set_unpacked_path(&record.id, path)?;
+        record.unpacked_path = Some(path.display().to_string());
+        Ok(record)
+    }
+
+    fn set_unpacked_path(&self, id: &str, path: &Path) -> Result<(), HostError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some((state, manifest, dir)) = inner.records.get_mut(id) else {
+            return Err(HostError::from("the plugin is not installed"));
+        };
+        state.unpacked_path = Some(path.display().to_string());
+        persist_state(&self.root, state, manifest, dir.clone())
+    }
+
+    pub fn reload(&self, id: &str) -> Result<PluginRecord, HostError> {
+        if !self.developer_mode() {
+            return Err(HostError::from("reload requires Developer Mode"));
+        }
+        let (unpacked, enabled, grants) = {
+            let inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let (state, _, _) = inner
+                .records
+                .get(id)
+                .ok_or_else(|| HostError::from("the plugin is not installed"))?;
+            (
+                state.unpacked_path.clone(),
+                state.enabled,
+                state.granted_permissions.clone(),
+            )
+        };
+        let Some(unpacked) = unpacked else {
+            return Err(HostError::from(
+                "only unpacked Developer Mode plugins can be reloaded from disk",
+            ));
+        };
+        if enabled {
+            self.set_enabled_with_grants(id, false, &[])?;
+        }
+        let record = self.install_unpacked(Path::new(&unpacked), enabled, &grants)?;
+        Ok(record)
+    }
+
     fn install_inspection(
         &self,
         inspection: PackageInspection,
         enable: bool,
-        grant: &[PluginPermission],
+        grant: &[String],
         source: &str,
     ) -> Result<PluginRecord, HostError> {
         let mut inner = self
@@ -480,6 +578,7 @@ impl ExtensionHost {
                 source: source.to_owned(),
                 style_scan: inspection.style_scan.clone(),
                 script_scan: inspection.script_scan.clone(),
+                unpacked_path: None,
             };
             persist_state(
                 &self.root,
@@ -502,12 +601,13 @@ impl ExtensionHost {
             .get(&inspection.manifest.id)
             .map(|(state, _, _)| state.granted_permissions.iter().cloned().collect())
             .unwrap_or_default();
-        let requested = inspection.manifest.requested_permissions();
+        let requested = inspection.manifest.requested_permission_keys();
         if enable {
-            for permission in &requested {
-                let key = permission.as_str();
+            for key in &requested {
                 let is_expansion = !previous_granted.is_empty() && !previous_granted.contains(key);
-                if (permission.sensitive() || is_expansion) && !grant.contains(permission) {
+                if (permission_key_sensitive(key) || is_expansion)
+                    && !grant.iter().any(|value| value == key)
+                {
                     return Err(HostError::from(
                         "new or sensitive permissions must be explicitly accepted",
                     ));
@@ -519,14 +619,7 @@ impl ExtensionHost {
         let _ = fs::remove_dir_all(&staging);
         extract_to(&inspection, &staging).map_err(|error| HostError::from(error.to_string()))?;
         atomic_replace(&staging, &version_dir)?;
-        let granted: Vec<String> = if enable {
-            requested
-                .iter()
-                .map(|permission| permission.as_str().to_owned())
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let granted: Vec<String> = if enable { requested } else { Vec::new() };
         let state = PluginStateFile {
             id: inspection.manifest.id.clone(),
             active_version: inspection.manifest.version.clone(),
@@ -542,6 +635,7 @@ impl ExtensionHost {
             source: source.to_owned(),
             style_scan: inspection.style_scan.clone(),
             script_scan: inspection.script_scan.clone(),
+            unpacked_path: None,
         };
         persist_state(
             &self.root,
@@ -577,7 +671,7 @@ impl ExtensionHost {
         &self,
         id: &str,
         enabled: bool,
-        grants: &[PluginPermission],
+        grants: &[String],
     ) -> Result<PluginRecord, HostError> {
         let mut inner = self
             .inner
@@ -618,15 +712,20 @@ impl ExtensionHost {
             if dependency_cycle(id, &manifest, &inner.records) {
                 return Err(HostError::from("plugin dependency cycle detected"));
             }
-            for permission in manifest.requested_permissions() {
-                let already = granted.iter().any(|value| value == permission.as_str());
-                if permission.sensitive() && !already && !grants.contains(&permission) {
+            for key in manifest.requested_permission_keys() {
+                let already = granted.iter().any(|value| value == &key);
+                if permission_key_sensitive(&key)
+                    && !already
+                    && !grants.iter().any(|value| value == &key)
+                {
                     return Err(HostError::from(
                         "sensitive permissions must be explicitly accepted",
                     ));
                 }
-                if !already && (!permission.sensitive() || grants.contains(&permission)) {
-                    granted.push(permission.as_str().to_owned());
+                if !already
+                    && (!permission_key_sensitive(&key) || grants.iter().any(|value| value == &key))
+                {
+                    granted.push(key);
                 }
             }
             inner.journal.activation_started = true;
@@ -810,6 +909,7 @@ impl ExtensionHost {
                 if let Ok(source) = fs::read_to_string(dir.join(script)) {
                     scripts.push(ActiveScriptResource {
                         plugin_id: id.clone(),
+                        plugin_name: manifest.name.clone(),
                         source,
                     });
                 }
@@ -837,7 +937,10 @@ impl ExtensionHost {
         let _ = fs::remove_dir_all(&plugin_root);
         if remove_data {
             inner.storage.remove(id);
+            inner.settings.remove(id);
             let _ = fs::remove_file(self.root.join(format!("{id}.storage.json")));
+            let _ = fs::remove_file(self.root.join(format!("{id}.settings.json")));
+            let _ = fs::remove_file(self.root.join(format!("{id}.secrets.json")));
         }
         write_json(&self.root.join("host.json"), &inner.host)
     }
@@ -892,15 +995,22 @@ impl ExtensionHost {
             self.runtime_seq.fetch_add(1, Ordering::AcqRel),
             now_ms()
         );
-        let permissions = state
-            .granted_permissions
-            .iter()
-            .filter_map(|value| value.parse().ok())
-            .collect();
+        let mut permissions = HashSet::new();
+        let mut network_origins = HashSet::new();
+        for value in &state.granted_permissions {
+            if let Ok((permission, origin)) = crate::plugin::permissions::parse_permission(value) {
+                permissions.insert(permission);
+                if let Some(origin) = origin {
+                    network_origins.insert(origin);
+                }
+            }
+        }
         let runtime = RuntimeToken {
             token: token.clone(),
             plugin_id: plugin_id.to_owned(),
             permissions,
+            granted: state.granted_permissions.clone(),
+            network_origins,
         };
         inner.runtimes.insert(token, runtime.clone());
         Ok(runtime)
@@ -988,12 +1098,137 @@ impl ExtensionHost {
         )
     }
 
+    pub fn settings_get(
+        &self,
+        plugin_id: &str,
+        include_secrets: bool,
+    ) -> Result<serde_json::Value, HostError> {
+        let inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (_, manifest, _) = inner
+            .records
+            .get(plugin_id)
+            .ok_or_else(|| HostError::from("the plugin is not installed"))?;
+        let schema = manifest
+            .settings_schema
+            .clone()
+            .unwrap_or(serde_json::json!({ "fields": [] }));
+        let fields =
+            crate::plugin::settings::parse_settings_fields(&schema).map_err(HostError::from)?;
+        let stored = inner
+            .settings
+            .get(plugin_id)
+            .cloned()
+            .unwrap_or_else(|| crate::plugin::settings::defaults_from_schema(&schema));
+        if include_secrets {
+            let mut map = serde_json::Map::new();
+            for field in &fields {
+                if field.secret {
+                    if let Some(secret) = stored.secrets.get(&field.id) {
+                        map.insert(field.id.clone(), serde_json::Value::String(secret.clone()));
+                    }
+                } else if let Some(value) = stored.values.get(&field.id) {
+                    map.insert(field.id.clone(), value.clone());
+                }
+            }
+            Ok(serde_json::Value::Object(map))
+        } else {
+            Ok(crate::plugin::settings::public_settings(&fields, &stored))
+        }
+    }
+
+    pub fn settings_set(
+        &self,
+        plugin_id: &str,
+        patch: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<serde_json::Value, HostError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (_, manifest, _) = inner
+            .records
+            .get(plugin_id)
+            .ok_or_else(|| HostError::from("the plugin is not installed"))?;
+        let schema = manifest
+            .settings_schema
+            .clone()
+            .ok_or_else(|| HostError::from("this plugin has no settings schema"))?;
+        let current = inner
+            .settings
+            .get(plugin_id)
+            .cloned()
+            .unwrap_or_else(|| crate::plugin::settings::defaults_from_schema(&schema));
+        let next = crate::plugin::settings::validate_settings_write(&schema, &patch, &current)
+            .map_err(HostError::from)?;
+        write_json(
+            &self.root.join(format!("{plugin_id}.settings.json")),
+            &next.values,
+        )?;
+        write_json(
+            &self.root.join(format!("{plugin_id}.secrets.json")),
+            &next.secrets,
+        )?;
+        let fields =
+            crate::plugin::settings::parse_settings_fields(&schema).map_err(HostError::from)?;
+        let public = crate::plugin::settings::public_settings(&fields, &next);
+        inner.settings.insert(plugin_id.to_owned(), next);
+        Ok(public)
+    }
+
+    pub fn read_asset(
+        &self,
+        plugin_id: &str,
+        relative: &str,
+    ) -> Result<(String, Vec<u8>), HostError> {
+        if !relative.starts_with("assets/") {
+            return Err(HostError::from("plugin assets must live under assets/"));
+        }
+        crate::plugin::manifest::is_safe_package_path(relative)
+            .then_some(())
+            .ok_or_else(|| HostError::from("invalid plugin asset path"))?;
+        let inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (state, _, dir) = inner
+            .records
+            .get(plugin_id)
+            .ok_or_else(|| HostError::from("the plugin is not installed"))?;
+        if !state.enabled {
+            return Err(HostError::from("the plugin is disabled"));
+        }
+        let path = dir.join(relative);
+        if !path.starts_with(dir) {
+            return Err(HostError::from("invalid plugin asset path"));
+        }
+        let bytes = fs::read(&path).map_err(|_| HostError::from("plugin asset is missing"))?;
+        let mime = match path.extension().and_then(|value| value.to_str()) {
+            Some("png") => "image/png",
+            Some("jpg") | Some("jpeg") => "image/jpeg",
+            Some("webp") => "image/webp",
+            Some("gif") => "image/gif",
+            Some("svg") => "image/svg+xml",
+            Some("webm") => "video/webm",
+            Some("mp4") => "video/mp4",
+            Some("woff2") => "font/woff2",
+            _ => "application/octet-stream",
+        };
+        Ok((mime.to_owned(), bytes))
+    }
+
     fn version_dir(&self, manifest: &PluginManifest) -> PathBuf {
         self.root
             .join(&manifest.id)
             .join("versions")
             .join(&manifest.version)
     }
+}
+
+fn permission_key_sensitive(key: &str) -> bool {
+    key == "player.control" || key.starts_with("network:")
 }
 
 fn scene_css_path(scene_path: &str) -> String {
@@ -1123,11 +1358,7 @@ fn to_record(state: &PluginStateFile, manifest: &PluginManifest, safe_mode: bool
             scenes: manifest.entrypoints.scenes.len(),
             script: manifest.entrypoints.script.is_some(),
         },
-        permissions: manifest
-            .requested_permissions()
-            .into_iter()
-            .map(|permission| permission.as_str().to_owned())
-            .collect(),
+        permissions: manifest.requested_permission_keys(),
         granted_permissions: state.granted_permissions.clone(),
         risk_rating: if state.script_scan.severity.is_some() {
             state.script_scan.rating().to_owned()
@@ -1139,6 +1370,14 @@ fn to_record(state: &PluginStateFile, manifest: &PluginManifest, safe_mode: bool
         compatible: !matches!(state.status, PluginStatus::Incompatible),
         platforms: manifest.platforms.clone(),
         settings_schema: manifest.settings_schema.clone(),
+        network_origins: manifest
+            .requested_permission_keys()
+            .into_iter()
+            .filter(|key| key.starts_with("network:"))
+            .map(|key| key.trim_start_matches("network:").to_owned())
+            .collect(),
+        unpacked_path: state.unpacked_path.clone(),
+        last_error: state.status_reason.clone(),
     }
 }
 
@@ -1451,7 +1690,7 @@ mod tests {
             .install_inspection(next.clone(), true, &[], "test")
             .unwrap_err();
         assert!(error.to_string().contains("explicitly accepted"));
-        host.install_inspection(next, true, &[PluginPermission::PlayerControl], "test")
+        host.install_inspection(next, true, &["player.control".into()], "test")
             .expect("granted");
     }
 

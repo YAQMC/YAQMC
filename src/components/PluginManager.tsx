@@ -1,41 +1,88 @@
-import { Puzzle, ShieldAlert, Trash2, FilePlus, Copy, Power } from 'lucide-react';
+import {
+  Puzzle,
+  ShieldAlert,
+  Trash2,
+  FilePlus,
+  Copy,
+  Power,
+  FolderOpen,
+  RefreshCw,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isNativeRuntime } from '../application/native-player-runtime';
 import {
+  choosePluginDirectory,
   choosePluginFile,
   inspectPluginPath,
   installPlugin,
+  installUnpackedPlugin,
   listPlugins,
   pluginDiagnosticsText,
+  pluginHostDeveloperMode,
   pluginHostSafeMode,
+  reloadPlugin,
+  setPluginDeveloperMode,
   setPluginEnabled,
   setPluginSafeMode,
   uninstallPlugin,
   type PluginInspectResult,
   type PluginRecord,
 } from '../application/plugin-runtime';
+import { PluginSettingsForm } from './PluginSettingsForm';
 
-function permissionLabel(permission: string, t: (key: string) => string): string {
-  return t(`permission.${permission.replace('.', '_')}`);
+function permissionKey(permission: string): string {
+  if (permission.startsWith('network:')) return 'network_origin';
+  return permission.replaceAll('.', '_').replaceAll(':', '_');
+}
+
+function permissionLabel(
+  permission: string,
+  t: (key: string, options?: Record<string, string>) => string,
+): string {
+  if (permission.startsWith('network:')) {
+    return t('permission.network_origin', { origin: permission.slice('network:'.length) });
+  }
+  return t(`permission.${permissionKey(permission)}`);
+}
+
+function isSensitivePermission(permission: string): boolean {
+  return permission === 'player.control' || permission.startsWith('network:');
+}
+
+function capabilityChips(plugin: PluginRecord): string[] {
+  const chips: string[] = [];
+  if (plugin.entrypoints.styles) chips.push('Styles');
+  if (plugin.entrypoints.scenes) chips.push('Scenes');
+  if (plugin.entrypoints.script) chips.push('Script');
+  if (plugin.permissions.some((item) => item.startsWith('ui.'))) chips.push('UI');
+  if (plugin.permissions.some((item) => item.startsWith('network:'))) chips.push('Network');
+  return chips;
 }
 
 export function PluginManager() {
   const { t } = useTranslation('settings', { keyPrefix: 'plugins' });
   const [plugins, setPlugins] = useState<PluginRecord[]>([]);
   const [safeMode, setSafeMode] = useState(false);
+  const [developerMode, setDeveloperMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inspect, setInspect] = useState<PluginInspectResult | null>(null);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [pendingUnpacked, setPendingUnpacked] = useState(false);
   const [grant, setGrant] = useState<string[]>([]);
   const [details, setDetails] = useState<PluginRecord | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isNativeRuntime) return;
-    const [nextPlugins, nextSafeMode] = await Promise.all([listPlugins(), pluginHostSafeMode()]);
+    const [nextPlugins, nextSafeMode, nextDeveloperMode] = await Promise.all([
+      listPlugins(),
+      pluginHostSafeMode(),
+      pluginHostDeveloperMode(),
+    ]);
     setPlugins(nextPlugins);
     setSafeMode(nextSafeMode);
+    setDeveloperMode(nextDeveloperMode);
   }, []);
 
   useEffect(() => {
@@ -52,6 +99,14 @@ export function PluginManager() {
     };
   }, [refresh]);
 
+  const beginReview = async (path: string, unpacked: boolean) => {
+    const next = await inspectPluginPath(path);
+    setInspect(next);
+    setPendingPath(path);
+    setPendingUnpacked(unpacked);
+    setGrant(next.permissions.filter((permission) => !isSensitivePermission(permission)));
+  };
+
   const handleInstall = async () => {
     setError(null);
     setBusy(true);
@@ -67,10 +122,21 @@ export function PluginManager() {
         await refresh();
         return;
       }
-      const next = await inspectPluginPath(path);
-      setInspect(next);
-      setPendingPath(path);
-      setGrant(next.permissions.filter((permission) => permission !== 'player.control'));
+      await beginReview(path, false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleUnpacked = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const path = await choosePluginDirectory();
+      if (!path) return;
+      await beginReview(path, true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -83,7 +149,11 @@ export function PluginManager() {
     setBusy(true);
     setError(null);
     try {
-      await installPlugin(pendingPath, { enable: true, grant });
+      if (pendingUnpacked) {
+        await installUnpackedPlugin(pendingPath, { enable: true, grant });
+      } else {
+        await installPlugin(pendingPath, { enable: true, grant });
+      }
       setInspect(null);
       setPendingPath(null);
       await refresh();
@@ -136,6 +206,20 @@ export function PluginManager() {
     }
   };
 
+  const handleDeveloperMode = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await setPluginDeveloperMode(!developerMode);
+      setDeveloperMode(next);
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="plugin-manager">
       {!isNativeRuntime && (
@@ -162,6 +246,22 @@ export function PluginManager() {
           <FilePlus size={14} /> {t('installAction')}
         </button>
       </div>
+      {developerMode && (
+        <div className="settings-row">
+          <div>
+            <strong>{t('installUnpacked')}</strong>
+            <span>{t('installUnpackedDescription')}</span>
+          </div>
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={!isNativeRuntime || busy}
+            onClick={() => void handleUnpacked()}
+          >
+            <FolderOpen size={14} /> {t('installUnpackedAction')}
+          </button>
+        </div>
+      )}
       <div className="settings-row">
         <div>
           <strong>{t('safeMode')}</strong>
@@ -175,6 +275,21 @@ export function PluginManager() {
           onClick={() => void handleSafeMode()}
         >
           <ShieldAlert size={14} /> {safeMode ? t('leaveSafeMode') : t('enterSafeMode')}
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <strong>{t('developerMode')}</strong>
+          <span>{t('developerModeDescription')}</span>
+        </div>
+        <button
+          type="button"
+          className={developerMode ? 'button button--secondary' : 'button button--quiet'}
+          aria-pressed={developerMode}
+          disabled={!isNativeRuntime || busy}
+          onClick={() => void handleDeveloperMode()}
+        >
+          {developerMode ? t('leaveDeveloperMode') : t('enterDeveloperMode')}
         </button>
       </div>
       {safeMode && (
@@ -191,7 +306,8 @@ export function PluginManager() {
               <span>
                 <strong>{plugin.name}</strong>
                 <small>
-                  {plugin.version} · {plugin.status} · {t('unsigned')}
+                  {plugin.version} · API {plugin.apiVersion} · {plugin.status}
+                  {plugin.unsigned ? ` · ${t('unsigned')}` : ''}
                 </small>
               </span>
             </button>
@@ -211,7 +327,8 @@ export function PluginManager() {
         <div className="plugin-review" role="dialog" aria-label={t('reviewTitle')}>
           <h3>{t('reviewTitle')}</h3>
           <p>
-            {inspect.manifest.name} {inspect.manifest.version}
+            {inspect.manifest.name} {inspect.manifest.version} · API{' '}
+            {inspect.manifest.apiVersion ?? 1}
           </p>
           <p>
             SHA-256: <code>{inspect.sha256}</code>
@@ -224,7 +341,7 @@ export function PluginManager() {
                   <input
                     type="checkbox"
                     checked={grant.includes(permission)}
-                    disabled={permission !== 'player.control'}
+                    disabled={!isSensitivePermission(permission)}
                     onChange={(event) => {
                       setGrant((current) =>
                         event.target.checked
@@ -234,7 +351,7 @@ export function PluginManager() {
                     }}
                   />
                   {permissionLabel(permission, t)}
-                  {permission === 'player.control' ? ` (${t('sensitive')})` : ''}
+                  {isSensitivePermission(permission) ? ` (${t('sensitive')})` : ''}
                 </label>
               </li>
             ))}
@@ -269,11 +386,21 @@ export function PluginManager() {
           <h3>{details.name}</h3>
           <p>{details.description}</p>
           <p>
-            {details.id} · {details.version}
+            {details.id} · {details.version} · API {details.apiVersion}
           </p>
           <p>
             SHA-256: <code>{details.packageSha256}</code>
           </p>
+          <p>
+            {t('source')}: {details.source} · {t('risk')}: {details.riskRating}
+          </p>
+          <div className="plugin-capability-row">
+            {capabilityChips(details).map((chip) => (
+              <span key={chip} className="plugin-chip">
+                {chip}
+              </span>
+            ))}
+          </div>
           <p>
             {t('entrypoints')}: {t('stylesCount', { count: details.entrypoints.styles })} ·{' '}
             {t('scenesCount', { count: details.entrypoints.scenes })} ·{' '}
@@ -282,8 +409,29 @@ export function PluginManager() {
           <p>
             {t('permissions')}: {details.permissions.join(', ') || t('none')}
           </p>
-          {details.statusReason && <p>{details.statusReason}</p>}
+          {(details.networkOrigins ?? []).length > 0 && (
+            <p>
+              {t('networkOrigins')}: {details.networkOrigins?.join(', ')}
+            </p>
+          )}
+          {details.status === 'failed' && (details.lastError || details.statusReason) && (
+            <p role="status">
+              {t('failed')}: {details.lastError ?? details.statusReason}
+            </p>
+          )}
+          {details.settingsSchema ? (
+            <PluginSettingsForm pluginId={details.id} schema={details.settingsSchema} />
+          ) : null}
           <div className="plugin-review__actions">
+            {developerMode && details.unpackedPath && (
+              <button
+                type="button"
+                className="button button--quiet"
+                onClick={() => void reloadPlugin(details.id).then(refresh)}
+              >
+                <RefreshCw size={14} /> {t('reload')}
+              </button>
+            )}
             <button
               type="button"
               className="button button--quiet"

@@ -69,10 +69,14 @@ pub struct PluginInspectResult {
     pub files: Vec<String>,
 }
 
-fn parse_grants(values: &[String]) -> CommandResult<Vec<PluginPermission>> {
+fn parse_grants(values: &[String]) -> CommandResult<Vec<String>> {
     values
         .iter()
-        .map(|value| parse_permission(value).map_err(|error| error.to_string()))
+        .map(|value| {
+            parse_permission(value)
+                .map(|_| value.clone())
+                .map_err(|error| error.to_string())
+        })
         .collect()
 }
 
@@ -128,12 +132,7 @@ pub fn plugin_inspect_path(
         compressed_bytes: inspection.compressed_bytes,
         expanded_bytes: inspection.expanded_bytes,
         file_count: inspection.file_count,
-        permissions: inspection
-            .manifest
-            .requested_permissions()
-            .into_iter()
-            .map(|permission| permission.as_str().to_owned())
-            .collect(),
+        permissions: inspection.manifest.requested_permission_keys(),
         manifest: inspection.manifest,
         style_scan: inspection.style_scan,
         script_scan: inspection.script_scan,
@@ -167,6 +166,9 @@ pub fn plugin_install(
             return Err(
                 "TypeScript plugins must be built to dist/main.js with the Plugin SDK".into(),
             )
+        }
+        _ if path.is_dir() => {
+            return Err("unpacked plugin folders can only be installed from Developer Mode".into())
         }
         _ => host
             .install(&path, request.enable, &grants)
@@ -222,6 +224,7 @@ pub fn plugin_set_safe_mode(
 
 #[tauri::command]
 pub fn plugin_set_developer_mode(
+    app: AppHandle,
     window: WebviewWindow,
     host: State<'_, Arc<ExtensionHost>>,
     enabled: bool,
@@ -229,7 +232,107 @@ pub fn plugin_set_developer_mode(
     deny_if_not_main(&window)?;
     host.set_developer_mode(enabled)
         .map_err(|error| error.to_string())?;
+    emit_plugin_changed(&app);
     Ok(host.developer_mode())
+}
+
+#[tauri::command]
+pub async fn plugin_pick_directory(
+    app: AppHandle,
+    window: WebviewWindow,
+) -> CommandResult<Option<String>> {
+    deny_if_not_main(&window)?;
+    let dialog_app = app.clone();
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app.dialog().file().blocking_pick_folder()
+    })
+    .await
+    .map_err(|error| error.to_string())?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let path = selected.into_path().map_err(|error| error.to_string())?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+pub fn plugin_install_unpacked(
+    app: AppHandle,
+    window: WebviewWindow,
+    host: State<'_, Arc<ExtensionHost>>,
+    request: PluginInstallRequest,
+) -> CommandResult<PluginRecord> {
+    deny_if_not_main(&window)?;
+    let grants = parse_grants(&request.grant)?;
+    let record = host
+        .install_unpacked(&PathBuf::from(&request.path), request.enable, &grants)
+        .map_err(|error| error.to_string())?;
+    emit_plugin_changed(&app);
+    Ok(record)
+}
+
+#[tauri::command]
+pub fn plugin_reload(
+    app: AppHandle,
+    window: WebviewWindow,
+    host: State<'_, Arc<ExtensionHost>>,
+    id: String,
+) -> CommandResult<PluginRecord> {
+    deny_if_not_main(&window)?;
+    let record = host.reload(&id).map_err(|error| error.to_string())?;
+    emit_plugin_changed(&app);
+    Ok(record)
+}
+
+#[tauri::command]
+pub fn plugin_read_asset(
+    window: WebviewWindow,
+    host: State<'_, Arc<ExtensionHost>>,
+    plugin_id: String,
+    path: String,
+) -> CommandResult<Value> {
+    deny_if_not_main(&window)?;
+    let (mime, bytes) = host
+        .read_asset(&plugin_id, &path)
+        .map_err(|error| error.to_string())?;
+    use base64::Engine;
+    Ok(json!({
+        "mime": mime,
+        "dataBase64": base64::engine::general_purpose::STANDARD.encode(bytes),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginSettingsWrite {
+    pub id: String,
+    pub values: serde_json::Map<String, Value>,
+}
+
+#[tauri::command]
+pub fn plugin_settings_get(
+    window: WebviewWindow,
+    host: State<'_, Arc<ExtensionHost>>,
+    id: String,
+) -> CommandResult<Value> {
+    deny_if_not_main(&window)?;
+    host.settings_get(&id, false)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn plugin_settings_set(
+    app: AppHandle,
+    window: WebviewWindow,
+    host: State<'_, Arc<ExtensionHost>>,
+    request: PluginSettingsWrite,
+) -> CommandResult<Value> {
+    deny_if_not_main(&window)?;
+    let value = host
+        .settings_set(&request.id, request.values)
+        .map_err(|error| error.to_string())?;
+    emit_plugin_changed(&app);
+    Ok(value)
 }
 
 #[tauri::command]
@@ -303,20 +406,33 @@ pub async fn plugin_bridge(
 
 pub(crate) fn required_permission(method: &str) -> Result<Option<PluginPermission>, String> {
     match method {
-        "track.get" => Ok(Some(PluginPermission::TrackRead)),
-        "lyrics.get" => Ok(Some(PluginPermission::LyricsRead)),
-        "player.get" => Ok(Some(PluginPermission::PlayerRead)),
+        "track.get" | "track.read" => Ok(Some(PluginPermission::TrackRead)),
+        "lyrics.get" | "lyrics.read" => Ok(Some(PluginPermission::LyricsRead)),
+        "player.get" | "player.read" => Ok(Some(PluginPermission::PlayerRead)),
         "player.play" | "player.pause" | "player.toggle" | "player.next" | "player.previous"
         | "player.seek" => Ok(Some(PluginPermission::PlayerControl)),
         "theme.get" => Ok(Some(PluginPermission::ThemeRead)),
-        "storage.get" | "storage.set" => Ok(Some(PluginPermission::PluginStorage)),
+        "storage.get" | "storage.set" | "settings.get" | "settings.set" => {
+            Ok(Some(PluginPermission::PluginStorage))
+        }
+        "ui.contextMenu.track.register" => Ok(Some(PluginPermission::UiContextMenu)),
+        "ui.playerBar.register" => Ok(Some(PluginPermission::UiPlayerBar)),
+        "ui.sidebar.register" => Ok(Some(PluginPermission::UiSidebar)),
+        "ui.notify" => Ok(Some(PluginPermission::UiNotify)),
+        "network.request" => Ok(Some(PluginPermission::Network)),
+        "scenes.onMount"
+        | "scenes.onUnmount"
+        | "scenes.setVariable"
+        | "scenes.setState"
+        | "scenes.setWidgetProperty"
+        | "scenes.animate" => Ok(Some(PluginPermission::SceneRegister)),
         "log.info" | "log.warn" | "log.error" => Ok(None),
         "fs.read"
         | "fs.write"
         | "shell.open"
         | "account.credentials"
         | "invoke"
-        | "network.fetch" => Err("this capability is not available to plugins in v1".into()),
+        | "network.fetch" => Err("this capability is not available to plugins".into()),
         _ => Err("unknown plugin API method".into()),
     }
 }
@@ -337,25 +453,34 @@ async fn dispatch_bridge(
         host.runtime(&request.token)
             .ok_or_else(|| "unknown plugin runtime".to_owned())?
     };
-    let rate_key = if request.method.starts_with("player.") {
+    let rate_key = if request.method == "player.seek" {
+        "player.seek"
+    } else if request.method.starts_with("player.") {
         "player"
-    } else if request.method.starts_with("storage.") {
+    } else if request.method.starts_with("storage.") || request.method.starts_with("settings.") {
         "storage"
     } else if request.method.starts_with("log.") {
         "log"
+    } else if request.method.starts_with("network.") {
+        "network"
+    } else if request.method.starts_with("ui.notify") {
+        "notify"
     } else {
         "api"
     };
     let limit = match rate_key {
+        "player.seek" => 4,
         "player" => 8,
         "storage" => 20,
         "log" => 10,
+        "network" => 4,
+        "notify" => 4,
         _ => 30,
     };
     host.rate_limit(&runtime.plugin_id, rate_key, limit)
         .map_err(|error| error.to_string())?;
     match request.method.as_str() {
-        "track.get" => {
+        "track.get" | "track.read" => {
             let snapshot = player.snapshot().await;
             let current = snapshot
                 .current_index
@@ -366,27 +491,74 @@ async fn dispatch_bridge(
                 "artists": current.map(|song| song.artists.iter().map(|artist| artist.name.clone()).collect::<Vec<_>>()),
                 "album": current.map(|song| song.album.title.clone()),
                 "durationMs": current.map(|song| song.duration_ms),
+                "quality": current.map(|song| song.quality),
+                "artwork": current.map(|song| json!({
+                    "alt": song.artwork.alt,
+                    "dominantColor": song.artwork.dominant_color,
+                })),
                 "queueEntryId": snapshot.current_queue_entry_id,
                 "sessionId": snapshot.session_id,
             }))
         }
-        "lyrics.get" => {
+        "lyrics.get" | "lyrics.read" => {
+            let snapshot = player.snapshot().await;
             let document = player.lyrics().await;
+            let position = snapshot.position_ms;
+            let lines = document
+                .as_ref()
+                .map(|value| {
+                    value
+                        .lines
+                        .iter()
+                        .map(|line| {
+                            json!({
+                                "id": line.id,
+                                "text": line.text,
+                                "translation": line.translation,
+                                "romanization": line.romanization,
+                                "startMs": line.start_ms,
+                                "endMs": line.end_ms,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let current_index = document.as_ref().and_then(|value| {
+                value
+                    .lines
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find_map(|(index, line)| {
+                        line.start_ms
+                            .filter(|start| *start <= position)
+                            .map(|_| index)
+                    })
+            });
             Ok(json!({
                 "songId": document.as_ref().map(|value| value.song_id.clone()),
-                "syncMode": document.as_ref().map(|value| format!("{:?}", value.sync_mode)),
-                "lines": document.map(|value| value.lines.into_iter().map(|line| line.text).collect::<Vec<_>>()).unwrap_or_default(),
+                "syncMode": document.as_ref().map(|value| value.sync_mode),
+                "lines": document.as_ref().map(|value| value.lines.iter().map(|line| line.text.clone()).collect::<Vec<_>>()).unwrap_or_default(),
+                "timedLines": lines,
+                "currentLine": current_index,
+                "positionMs": position,
             }))
         }
-        "player.get" => {
+        "player.get" | "player.read" => {
             let snapshot = player.snapshot().await;
             Ok(json!({
+                "state": snapshot.playback_state,
                 "isPlaying": snapshot.is_playing,
                 "positionMs": snapshot.position_ms,
+                "durationMs": snapshot.playback_duration_ms,
+                "volume": snapshot.volume,
+                "muted": snapshot.is_muted,
                 "sessionId": snapshot.session_id,
                 "snapshotRevision": snapshot.snapshot_revision,
                 "repeat": snapshot.repeat,
                 "playbackOrder": snapshot.playback_order,
+                "primaryPlaybackMode": snapshot.primary_playback_mode,
+                "queueEntryId": snapshot.current_queue_entry_id,
             }))
         }
         "theme.get" => Ok(json!({ "source": "yaqmc" })),
@@ -464,6 +636,55 @@ async fn dispatch_bridge(
                 "{message}"
             );
             Ok(json!({ "ok": true }))
+        }
+        "settings.get" => host
+            .settings_get(&runtime.plugin_id, true)
+            .map_err(|error| error.to_string()),
+        "settings.set" => {
+            let patch = request
+                .payload
+                .get("values")
+                .and_then(Value::as_object)
+                .cloned()
+                .ok_or_else(|| "settings values must be an object".to_owned())?;
+            host.settings_set(&runtime.plugin_id, patch)
+                .map_err(|error| error.to_string())
+        }
+        "ui.contextMenu.track.register"
+        | "ui.playerBar.register"
+        | "ui.sidebar.register"
+        | "scenes.onMount"
+        | "scenes.onUnmount"
+        | "scenes.setVariable"
+        | "scenes.setState"
+        | "scenes.setWidgetProperty"
+        | "scenes.animate" => Ok(json!({ "ok": true, "pluginId": runtime.plugin_id })),
+        "ui.notify" => {
+            let message = request
+                .payload
+                .get("message")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "notification message is required".to_owned())?;
+            if message.len() > 180 {
+                return Err("notification message is too long".into());
+            }
+            let level = request
+                .payload
+                .get("level")
+                .and_then(Value::as_str)
+                .unwrap_or("info");
+            if !matches!(level, "info" | "success" | "warning" | "error") {
+                return Err("notification level is invalid".into());
+            }
+            Ok(json!({
+                "ok": true,
+                "pluginId": runtime.plugin_id,
+                "level": level,
+                "message": message,
+            }))
+        }
+        "network.request" => {
+            crate::plugin::network::proxy_request(&runtime.network_origins, &request.payload).await
         }
         _ => Err("unknown plugin API method".into()),
     }
