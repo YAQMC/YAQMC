@@ -505,8 +505,11 @@ pub async fn qqmusic_status(
 }
 
 #[tauri::command]
-pub async fn qqmusic_home(provider: State<'_, Arc<QQMusicService>>) -> ProviderResult<HomeFeed> {
-    provider.home().await.map_err(Into::into)
+pub async fn qqmusic_home(
+    provider: State<'_, Arc<QQMusicService>>,
+    refresh: bool,
+) -> ProviderResult<HomeFeed> {
+    provider.home(refresh).await.map_err(Into::into)
 }
 
 #[tauri::command]

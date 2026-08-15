@@ -20,8 +20,9 @@ export class FakeMusicProvider implements MusicProvider {
   readonly id = 'fake';
   readonly displayName = 'Offline fixtures';
 
-  async getHome(signal?: AbortSignal) {
+  async getHome(signal?: AbortSignal, refresh = false) {
     throwIfAborted(signal);
+    void refresh;
     return clone(homeFeed);
   }
 

@@ -176,6 +176,10 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.media-grid--hero {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .editorial-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1043,6 +1047,10 @@
 
 @media (max-width: 760px) {
   .settings-about__runtime {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .media-grid--hero {
     grid-template-columns: minmax(0, 1fr);
   }
 }

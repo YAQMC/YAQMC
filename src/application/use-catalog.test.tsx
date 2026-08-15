@@ -34,7 +34,7 @@ describe('useCatalog', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('catalog-status')).toHaveTextContent('ready'));
-    expect(provider.getHome).toHaveBeenCalledOnce();
+    expect(provider.getHome).toHaveBeenCalledTimes(2);
     expect(provider.getLibrary).toHaveBeenCalledOnce();
     expect(provider.getAccountSnapshot).not.toHaveBeenCalled();
   });

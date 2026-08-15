@@ -17,55 +17,66 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
 
   return (
     <div className="page home-page">
-      {feed.dailySonglist && (
-        <section className="content-section">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">{t('newSongsEyebrow')}</p>
-              <h2>{t('newSongs')}</h2>
-            </div>
+      <section className="content-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">{t('forYouEyebrow')}</p>
+            <h2>{t('forYou')}</h2>
           </div>
-          <div className="media-grid media-grid--daily">
-            <MediaCard
-              item={feed.dailySonglist}
-              type="playlist"
-              size="wide"
-              onOpen={() => onNavigate({ page: 'playlist', id: feed.dailySonglist!.id })}
-              onPlay={() => playTracks(feed.dailySonglist!.tracks)}
-            />
-          </div>
-        </section>
-      )}
-
-      {feed.guessSonglist && (
-        <section className="content-section">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">{t('guessEyebrow')}</p>
-              <h2>{t('guessYouLike')}</h2>
-            </div>
-          </div>
-          <div className="media-grid media-grid--daily">
+        </div>
+        <div className="media-grid media-grid--hero">
+          {feed.guessSonglist && (
             <MediaCard
               item={feed.guessSonglist}
               type="playlist"
-              size="wide"
-              onOpen={() => playTracks(feed.guessSonglist!.tracks)}
+              size="hero"
+              title={t('guessYouLike')}
+              subtitle={t('playImmediately')}
+              onOpen={() => {
+                playTracks(feed.guessSonglist!.tracks);
+                startGuessSession();
+              }}
               onPlay={() => {
                 playTracks(feed.guessSonglist!.tracks);
                 startGuessSession();
               }}
             />
-          </div>
-        </section>
-      )}
+          )}
+
+          {feed.dailySonglist && (
+            <MediaCard
+              item={feed.dailySonglist}
+              type="playlist"
+              title={t('newSongs')}
+              subtitle={t('trackCount', { count: feed.dailySonglist.tracks.length })}
+              onOpen={() => onNavigate({ page: 'playlist', id: feed.dailySonglist!.id })}
+              onPlay={() => playTracks(feed.dailySonglist!.tracks)}
+            />
+          )}
+
+          {feed.newSongSonglist && (
+            <MediaCard
+              item={feed.newSongSonglist}
+              type="playlist"
+              title={t('newSongRecommend')}
+              subtitle={t('trackCount', { count: feed.newSongSonglist.tracks.length })}
+              onOpen={() => onNavigate({ page: 'playlist', id: feed.newSongSonglist!.id })}
+              onPlay={() => playTracks(feed.newSongSonglist!.tracks)}
+            />
+          )}
+        </div>
+      </section>
 
       {feed.radarSongs.length > 0 && (
         <section className="content-section">
           <div className="section-heading">
             <div>
               <p className="eyebrow">{t('radarEyebrow')}</p>
-              <h2>{t('radarSongs')}</h2>
+              <h2>
+                {feed.radarBasedOnSong
+                  ? t('radarSongsWithSong', { title: feed.radarBasedOnSong })
+                  : t('radarSongs')}
+              </h2>
             </div>
           </div>
           <TrackList tracks={feed.radarSongs} showAlbum compact />
