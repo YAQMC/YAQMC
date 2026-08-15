@@ -10,8 +10,8 @@
 - [整体架构](architecture.md)
 - [播放系统](playback.md)与[渐进式流媒体](streaming.md)
 - [QQ 音乐提供器](qqmusic-provider.md)、[登录与安全存储](authentication.md)、
-  [首页推荐](home-recommendations.md)、[账号音乐库](account-library.md)、[会员模型](account-membership.md)
-  与[播放权益](entitlement.md)
+  [首页推荐](home-recommendations.md)、[发现页](discover.md)、[账号音乐库](account-library.md)、
+  [会员模型](account-membership.md)与[播放权益](entitlement.md)
 - [官方客户端互操作](qqmusic-official-interoperability.md)、[音质分类](audio-quality.md)、
   [封面选择](artwork.md)与[外部 URI 安全](deep-link.md)
 - [歌词架构](lyrics.md)、[桌面歌词 / 歌词岛](lyrics-surfaces.md)、

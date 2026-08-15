@@ -223,6 +223,8 @@ function accountProvider(
     id: 'account-test',
     displayName: 'Account Test',
     getHome: unsupported,
+    getDiscover: unsupported,
+    getArea: unsupported,
     getAlbum: unsupported,
     getPlaylist: unsupported,
     getLibrary: unsupported,

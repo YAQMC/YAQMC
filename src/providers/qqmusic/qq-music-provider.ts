@@ -7,9 +7,11 @@ import {
   type AccountPlaylistSummary,
   type AccountSnapshot,
   type Album,
+  type AreaFeed,
   type CollectPlaylistRequest,
   type CreatePlaylistRequest,
   type DeletePlaylistRequest,
+  type DiscoverFeed,
   type EntityId,
   type FavoriteMutationRequest,
   type FavoriteMutationResult,
@@ -82,6 +84,14 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
 
   getHome(signal?: AbortSignal, refresh = false): Promise<HomeFeed> {
     return nativeRequest('qqmusic_home', { refresh }, signal);
+  }
+
+  getDiscover(signal?: AbortSignal, refresh = false): Promise<DiscoverFeed> {
+    return nativeRequest('qqmusic_discover', { refresh }, signal);
+  }
+
+  getArea(encArea: string, signal?: AbortSignal): Promise<AreaFeed> {
+    return nativeRequest('qqmusic_area', { encArea }, signal);
   }
 
   getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album> {

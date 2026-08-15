@@ -26,7 +26,7 @@ use crate::{
             FavoriteMutationResult, Page, PlaylistMutationResult, PlaylistTrackMutationRequest,
             RemotePlayHistoryItem, RenamePlaylistRequest,
         },
-        oauth, Album, AudioQualityPreference, HomeFeed, LibrarySnapshot, OAuthLoginProvider,
+        oauth, Album, AreaFeed, AudioQualityPreference, DiscoverFeed, HomeFeed, LibrarySnapshot, OAuthLoginProvider,
         Playlist, ProviderCommandError, ProviderResult, ProviderStatus, QQMusicService,
         SearchResult,
     },
@@ -510,6 +510,22 @@ pub async fn qqmusic_home(
     refresh: bool,
 ) -> ProviderResult<HomeFeed> {
     provider.home(refresh).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_discover(
+    provider: State<'_, Arc<QQMusicService>>,
+    refresh: bool,
+) -> ProviderResult<DiscoverFeed> {
+    provider.discover(refresh).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn qqmusic_area(
+    provider: State<'_, Arc<QQMusicService>>,
+    enc_area: String,
+) -> ProviderResult<AreaFeed> {
+    provider.area(enc_area).await.map_err(Into::into)
 }
 
 #[tauri::command]

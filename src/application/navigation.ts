@@ -10,7 +10,8 @@ export type AppRoute =
   | { page: 'account-recent' }
   | { page: 'settings' }
   | { page: 'album'; id: EntityId }
-  | { page: 'playlist'; id: EntityId };
+  | { page: 'playlist'; id: EntityId }
+  | { page: 'area'; encArea: string; title: string };
 
 export function isPrimaryRoute(route: AppRoute, page: AppRoute['page']): boolean {
   return route.page === page;

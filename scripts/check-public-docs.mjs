@@ -17,6 +17,7 @@ const publicDocuments = [
   'design-system.md',
   'deep-link.md',
   'diagnostics.md',
+  'discover.md',
   'entitlement.md',
   'home-recommendations.md',
   'i18n.md',

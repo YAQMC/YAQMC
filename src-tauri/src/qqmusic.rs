@@ -77,10 +77,12 @@ const QQ_ALBUM_URL: &str = "https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.f
 const QQ_PLAYLIST_URL: &str = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg";
 const QQ_LRC_URL: &str = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
 const DEFAULT_TOPLIST_ID: u64 = 62;
+const DISCOVER_TOPLIST_IDS: [u64; 8] = [26, 27, 4, 3, 5, 6, 62, 57];
 const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
 const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
 const HOME_CACHE_KEY: &str = "qqmusic:home:v3";
+const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v1";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,6 +148,82 @@ pub struct HomeFeed {
     pub radar_based_on_song: Option<String>,
     #[serde(default)]
     pub radar_songs: Vec<Song>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoverFeed {
+    pub charts: Vec<Playlist>,
+    #[serde(default)]
+    pub new_songs: Option<Playlist>,
+    #[serde(default)]
+    pub new_albums: Vec<Album>,
+    #[serde(default)]
+    pub popular_songlists: Vec<Playlist>,
+    #[serde(default)]
+    pub categories: Vec<Category>,
+    #[serde(default)]
+    pub podcasts: Vec<Podcast>,
+    #[serde(default)]
+    pub new_mvs: Vec<NewMv>,
+    #[serde(default)]
+    pub featured: Vec<FeaturedCard>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Category {
+    pub enc_area: String,
+    pub title: String,
+    pub cover: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Podcast {
+    pub id: String,
+    pub title: String,
+    pub subtitle: String,
+    pub cover: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewMv {
+    pub id: String,
+    pub title: String,
+    pub cover: String,
+    pub duration_ms: u64,
+    pub artist: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeaturedCard {
+    pub id: String,
+    pub title: String,
+    pub subtitle: String,
+    pub cover: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AreaFeed {
+    pub title: String,
+    #[serde(default)]
+    pub songlists: Vec<Playlist>,
+    #[serde(default)]
+    pub playlists: Vec<Playlist>,
+    #[serde(default)]
+    pub artists: Vec<AreaArtist>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AreaArtist {
+    pub id: String,
+    pub name: String,
+    pub cover: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -885,8 +963,40 @@ impl QQMusicService {
         }
     }
 
-    async fn remember_home_songs(&self, feed: &HomeFeed) {
-        self.account
+    pub async fn discover(&self, refresh: bool) -> Result<DiscoverFeed, QQMusicError> {
+        if !refresh {
+            if let Some(feed) = self
+                .storage
+                .get_json::<DiscoverFeed>(DISCOVER_CACHE_KEY, false)
+                .map_err(|_| QQMusicError::Storage)?
+            {
+                tracing::info!(
+                    target: "qqmusic",
+                    charts = feed.charts.len(),
+                    "discover feed served from cache"
+                );
+                return Ok(feed);
+            }
+        }
+        match self.build_discover().await {
+            Ok(feed) => {
+                self.storage
+                    .put_json(DISCOVER_CACHE_KEY, "metadata", &feed, METADATA_TTL_MS)
+                    .map_err(|_| QQMusicError::Storage)?;
+                Ok(feed)
+            }
+            Err(error) => {
+                let feed = self
+                    .storage
+                    .get_json(DISCOVER_CACHE_KEY, true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .ok_or(error)?;
+                Ok(feed)
+            }
+        }
+    }
+
+    async fn remember_home_songs(&self, feed: &HomeFeed) {        self.account
             .remember_songs(
                 feed.featured
                     .album
@@ -1146,6 +1256,127 @@ impl QQMusicService {
             radar_based_on_song,
             radar_songs,
         })
+    }
+
+    async fn build_discover(&self) -> Result<DiscoverFeed, QQMusicError> {
+        let mut charts = Vec::with_capacity(DISCOVER_TOPLIST_IDS.len());
+        for top_id in DISCOVER_TOPLIST_IDS {
+            match self.client.toplist(top_id, 10).await {
+                Ok(chart) => charts.push(chart),
+                Err(error) => {
+                    tracing::warn!(target: "qqmusic", %error, top_id, "discover toplist failed; skipping chart");
+                }
+            }
+        }
+
+        let new_song_tracks = match self.client.general_newsongs().await {
+            Ok(tracks) => tracks,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "discover new songs failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+        let new_songs = (!new_song_tracks.is_empty()).then(|| {
+            let artwork = new_song_tracks
+                .first()
+                .map(|song| song.artwork.clone())
+                .unwrap_or_else(|| {
+                    artwork_from_provider_url("", "New songs", color_for("newsong"))
+                });
+            Playlist {
+                id: playlist_id("new-song-recommend"),
+                title: "New songs".to_owned(),
+                description: "Fresh releases from across QQ Music.".to_owned(),
+                owner: PlaylistOwner {
+                    id: "qqmusic".to_owned(),
+                    display_name: "QQ Music".to_owned(),
+                },
+                artwork,
+                updated_label: "Updated for you".to_owned(),
+                tracks: new_song_tracks,
+            }
+        });
+
+        let mut new_albums = Vec::new();
+        if let Some(new_song_chart) = charts.iter().find(|chart| chart.id == "qqmusic:toplist:27") {
+            let mut grouped: BTreeMap<String, (AlbumSummary, Vec<ArtistSummary>, Vec<Song>)> =
+                BTreeMap::new();
+            for song in &new_song_chart.tracks {
+                let entry = grouped
+                    .entry(song.album.id.clone())
+                    .or_insert_with(|| (song.album.clone(), song.artists.clone(), Vec::new()));
+                entry.2.push(song.clone());
+            }
+            new_albums = grouped
+                .into_values()
+                .take(8)
+                .map(|(summary, artists, songs)| album_from_songs(&summary, &artists, songs))
+                .collect();
+        }
+
+        let popular_songlists = match self.client.general_songlists(12).await {
+            Ok(songlists) => songlists,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "discover popular songlists failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+
+        let categories = match self.client.categories().await {
+            Ok(categories) => categories,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "discover categories failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+        let podcasts = match self.client.podcasts().await {
+            Ok(podcasts) => podcasts,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "discover podcasts failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+        let new_mvs = match self.client.new_mvs().await {
+            Ok(mvs) => mvs,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "discover new MVs failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+        let featured = match self.client.featured_cards().await {
+            Ok(cards) => cards,
+            Err(error) => {
+                tracing::warn!(target: "qqmusic", %error, "discover featured cards failed; leaving the section empty");
+                Vec::new()
+            }
+        };
+
+        tracing::info!(
+            target: "qqmusic",
+            charts = charts.len(),
+            new_songs = new_songs.as_ref().map(|p| p.tracks.len()).unwrap_or(0),
+            new_albums = new_albums.len(),
+            songlists = popular_songlists.len(),
+            categories = categories.len(),
+            podcasts = podcasts.len(),
+            new_mvs = new_mvs.len(),
+            featured = featured.len(),
+            "discover feed built"
+        );
+        Ok(DiscoverFeed {
+            charts,
+            new_songs,
+            new_albums,
+            popular_songlists,
+            categories,
+            podcasts,
+            new_mvs,
+            featured,
+        })
+    }
+
+    pub async fn area(&self, enc_area: String) -> Result<AreaFeed, QQMusicError> {
+        self.client.area_home(&enc_area).await
     }
 
     pub fn library(&self) -> LibrarySnapshot {
@@ -2064,6 +2295,292 @@ impl QQMusicClient {
             })
             .collect();
         Ok(songs)
+    }
+
+    async fn categories(&self) -> Result<Vec<Category>, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.area.CategoryArea",
+                "method": "getCategoryAreaInCategoryPlaylist",
+                "param": {}
+            }
+        });
+        let response: Value = self
+            .send_json("discover.categories", || self.musicu_request(&payload, None))
+            .await?;
+        let mut categories = Vec::new();
+        let Some(shelf) = response["req_1"]["data"]["shelf"].as_object() else {
+            return Ok(categories);
+        };
+        let visit = |value: &Value, out: &mut Vec<Category>| {
+            if let Some(cards) = value["v_card"].as_array() {
+                for card in cards {
+                    let Some(id) = card["id"].as_str() else {
+                        continue;
+                    };
+                    let Some(enc_area) = id.find("encArea=").map(|index| &id[index + 8..]) else {
+                        continue;
+                    };
+                    let title = card["title"].as_str().map(clean_text).unwrap_or_default();
+                    if title.is_empty() {
+                        continue;
+                    }
+                    let cover = card["cover"]
+                        .as_str()
+                        .or_else(|| card["picurl"].as_str())
+                        .unwrap_or_default()
+                        .to_owned();
+                    out.push(Category {
+                        enc_area: enc_area.split('&').next().unwrap_or(enc_area).to_owned(),
+                        title,
+                        cover,
+                    });
+                }
+            }
+        };
+        if let Some(niches) = shelf["v_niche"].as_array() {
+            for entry in niches {
+                visit(entry, &mut categories);
+            }
+        }
+        Ok(categories)
+    }
+
+    async fn podcasts(&self) -> Result<Vec<Podcast>, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.longRadio.recommend",
+                "method": "getRadioList",
+                "param": { "pos": 6 }
+            }
+        });
+        let response: Value = self
+            .send_json("discover.podcasts", || self.musicu_request(&payload, None))
+            .await?;
+        let mut podcasts = Vec::new();
+        let Some(list) = response["req_1"]["data"]["radioList"].as_array() else {
+            return Ok(podcasts);
+        };
+        for entry in list {
+            let id = entry["id"].as_str().unwrap_or_default().to_owned();
+            let title = entry["title"].as_str().map(clean_text).unwrap_or_default();
+            if id.is_empty() || title.is_empty() {
+                continue;
+            }
+            podcasts.push(Podcast {
+                id,
+                title,
+                subtitle: entry["subtitle"].as_str().map(clean_text).unwrap_or_default(),
+                cover: entry["cover"].as_str().unwrap_or_default().to_owned(),
+            });
+        }
+        Ok(podcasts)
+    }
+
+    async fn new_mvs(&self) -> Result<Vec<NewMv>, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "MvService.MvInfoProServer",
+                "method": "GetNewMv",
+                "param": { "style": 0, "tag": 0, "start": 0, "size": 8 }
+            }
+        });
+        let response: Value = self
+            .send_json("discover.new-mvs", || self.musicu_request(&payload, None))
+            .await?;
+        let mut mvs = Vec::new();
+        let Some(list) = response["req_1"]["data"]["list"].as_array() else {
+            return Ok(mvs);
+        };
+        for entry in list {
+            let id = entry["mvid"].as_u64().map(|value| value.to_string());
+            let Some(id) = id else {
+                continue;
+            };
+            let title = entry["title"].as_str().map(clean_text).unwrap_or_default();
+            if title.is_empty() {
+                continue;
+            }
+            let artist = entry["singers"]
+                .as_array()
+                .and_then(|singers| singers.first())
+                .and_then(|singer| singer["name"].as_str())
+                .map(clean_text)
+                .unwrap_or_default();
+            mvs.push(NewMv {
+                id,
+                title,
+                cover: entry["picurl"].as_str().unwrap_or_default().to_owned(),
+                duration_ms: entry["duration"].as_u64().map(|value| value * 1_000).unwrap_or(0),
+                artist,
+            });
+        }
+        Ok(mvs)
+    }
+
+    async fn featured_cards(&self) -> Result<Vec<FeaturedCard>, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.musicHall.MusicHallPlatformSvr",
+                "method": "GetFocus",
+                "param": { "Device": { "OS": "3", "AppName": "QQ音乐" } }
+            }
+        });
+        let response: Value = self
+            .send_json("discover.featured", || self.musicu_request(&payload, None))
+            .await?;
+        let mut cards = Vec::new();
+        let Some(shelf) = response["req_1"]["data"]["shelf"].as_object() else {
+            return Ok(cards);
+        };
+        let visit = |value: &Value, out: &mut Vec<FeaturedCard>| {
+            if let Some(cards) = value["v_card"].as_array() {
+                for card in cards {
+                    let id = card["id"].as_str().unwrap_or_default();
+                    let title = card["title"].as_str().map(clean_text).unwrap_or_default();
+                    if id.is_empty() || title.is_empty() {
+                        continue;
+                    }
+                    out.push(FeaturedCard {
+                        id: id.to_owned(),
+                        title,
+                        subtitle: card["subtitle"].as_str().map(clean_text).unwrap_or_default(),
+                        cover: card["cover"]
+                            .as_str()
+                            .or_else(|| card["picurl"].as_str())
+                            .unwrap_or_default()
+                            .to_owned(),
+                    });
+                }
+            }
+        };
+        if let Some(niches) = shelf["v_niche"].as_array() {
+            for entry in niches {
+                visit(entry, &mut cards);
+            }
+        }
+        Ok(cards)
+    }
+
+    async fn area_home(&self, enc_area: &str) -> Result<AreaFeed, QQMusicError> {
+        let payload = json!({
+            "comm": { "ct": 24, "cv": 0 },
+            "req_1": {
+                "module": "music.area.AreaHome",
+                "method": "getAreaHomePage",
+                "param": { "encArea": enc_area, "cmd": 0 }
+            }
+        });
+        let response: Value = self
+            .send_json("discover.area", || self.musicu_request(&payload, None))
+            .await?;
+        if response["req_1"]["code"].as_i64() != Some(0) {
+            return Err(QQMusicError::SchemaChanged);
+        }
+        let data = &response["req_1"]["data"];
+        let title = data["title"].as_str().map(clean_text).unwrap_or_default();
+        let mut songlists = Vec::new();
+        let mut playlists = Vec::new();
+        let mut artists = Vec::new();
+        let shelves = data["v_shelf"].as_array();
+        let Some(shelves) = shelves else {
+            return Ok(AreaFeed {
+                title,
+                songlists,
+                playlists,
+                artists,
+            });
+        };
+        for shelf in shelves {
+            let niches = shelf["v_niche"].as_array();
+            let Some(niches) = niches else {
+                continue;
+            };
+            for niche in niches {
+                let Some(cards) = niche["v_card"].as_array() else {
+                    continue;
+                };
+                for card in cards {
+                    match card["type"].as_i64().unwrap_or(-1) {
+                        700 => {
+                            let id = card["id"].as_str().unwrap_or_default();
+                            let title = card["title"].as_str().map(clean_text).unwrap_or_default();
+                            if id.is_empty() || title.is_empty() {
+                                continue;
+                            }
+                            songlists.push(Playlist {
+                                id: playlist_id(id),
+                                title: title.clone(),
+                                description: card["subtitle"]
+                                    .as_str()
+                                    .map(clean_text)
+                                    .unwrap_or_default(),
+                                owner: PlaylistOwner {
+                                    id: "qqmusic".to_owned(),
+                                    display_name: "QQ Music".to_owned(),
+                                },
+                                artwork: artwork_from_provider_url(
+                                    card["cover"].as_str().unwrap_or_default(),
+                                    &title,
+                                    color_for(id),
+                                ),
+                                updated_label: String::new(),
+                                tracks: Vec::new(),
+                            });
+                        }
+                        500 => {
+                            let id = card["id"].as_str().unwrap_or_default();
+                            let title = card["title"].as_str().map(clean_text).unwrap_or_default();
+                            if id.is_empty() || title.is_empty() {
+                                continue;
+                            }
+                            playlists.push(Playlist {
+                                id: playlist_id(id),
+                                title: title.clone(),
+                                description: card["subtitle"]
+                                    .as_str()
+                                    .map(clean_text)
+                                    .unwrap_or_default(),
+                                owner: PlaylistOwner {
+                                    id: "qqmusic".to_owned(),
+                                    display_name: "QQ Music".to_owned(),
+                                },
+                                artwork: artwork_from_provider_url(
+                                    card["cover"].as_str().unwrap_or_default(),
+                                    &title,
+                                    color_for(id),
+                                ),
+                                updated_label: String::new(),
+                                tracks: Vec::new(),
+                            });
+                        }
+                        600 => {
+                            let id = card["id"].as_str().unwrap_or_default();
+                            let name = card["title"].as_str().map(clean_text).unwrap_or_default();
+                            if id.is_empty() || name.is_empty() {
+                                continue;
+                            }
+                            artists.push(AreaArtist {
+                                id: id.to_owned(),
+                                name,
+                                cover: card["cover"].as_str().unwrap_or_default().to_owned(),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(AreaFeed {
+            title,
+            songlists,
+            playlists,
+            artists,
+        })
     }
 
     async fn guess_recommend(
@@ -4712,6 +5229,102 @@ mod tests {
             guess.iter().all(|song| !song.title.is_empty()),
             "guess songs carry titles"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "opt-in current QQ Music network contract check"]
+    async fn live_discover_sections_resolve() {
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let service = Arc::new(
+            QQMusicService::new(
+                Arc::clone(&storage),
+                Arc::new(MemoryCredentialStore::default()),
+                root.path().join("fixtures"),
+            )
+            .expect("service"),
+        );
+        let feed = service.discover(true).await.expect("live discover feed");
+        eprintln!(
+            "discover: charts={} new_songs={} new_albums={} songlists={} categories={} podcasts={} mvs={} featured={}",
+            feed.charts.len(),
+            feed.new_songs
+                .as_ref()
+                .map(|p| p.tracks.len())
+                .unwrap_or(0),
+            feed.new_albums.len(),
+            feed.popular_songlists.len(),
+            feed.categories.len(),
+            feed.podcasts.len(),
+            feed.new_mvs.len(),
+            feed.featured.len()
+        );
+        assert!(
+            feed.charts.len() >= 6,
+            "most toplists resolve (got {})",
+            feed.charts.len()
+        );
+        assert!(
+            feed.charts.iter().all(|chart| !chart.title.is_empty()),
+            "charts carry titles"
+        );
+        assert!(
+            feed.charts
+                .iter()
+                .all(|chart| chart.tracks.iter().all(|song| !song.title.is_empty())),
+            "chart songs carry titles"
+        );
+        assert!(!feed.popular_songlists.is_empty(), "popular songlists resolve");
+        assert!(
+            feed.popular_songlists
+                .iter()
+                .all(|playlist| !playlist.title.is_empty()),
+            "popular songlists carry titles"
+        );
+        assert!(
+            feed.categories.len() >= 8,
+            "category cards resolve (got {})",
+            feed.categories.len()
+        );
+        assert!(
+            feed.categories
+                .iter()
+                .all(|category| !category.title.is_empty() && !category.enc_area.is_empty()),
+            "categories carry titles and area codes"
+        );
+        assert!(
+            feed.podcasts.len() >= 3,
+            "podcast cards resolve (got {})",
+            feed.podcasts.len()
+        );
+        assert!(
+            feed.new_mvs.len() >= 3,
+            "new MV cards resolve (got {})",
+            feed.new_mvs.len()
+        );
+        assert!(
+            feed.featured.len() >= 3,
+            "featured cards resolve (got {})",
+            feed.featured.len()
+        );
+
+        if let Some(category) = feed.categories.first() {
+            let area = service.area(category.enc_area.clone()).await.expect("area feed");
+            eprintln!(
+                "area: title={:?} songlists={} playlists={} artists={}",
+                area.title,
+                area.songlists.len(),
+                area.playlists.len(),
+                area.artists.len()
+            );
+            assert!(
+                !area.songlists.is_empty() || !area.playlists.is_empty(),
+                "area resolves some playlist cards"
+            );
+        }
     }
 
     #[tokio::test]
