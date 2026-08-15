@@ -28,11 +28,7 @@ export type AccountRuntimeError =
   'network' | 'authorization' | 'secure-store' | 'protocol' | 'unknown';
 
 export type LibraryResourceError =
-  | 'network'
-  | 'protocol'
-  | 'unsupported'
-  | 'unavailable'
-  | 'unknown';
+  'network' | 'protocol' | 'unsupported' | 'unavailable' | 'unknown';
 
 interface LoadedLibraryResource<T> {
   data: T;

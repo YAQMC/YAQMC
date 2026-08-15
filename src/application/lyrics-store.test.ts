@@ -11,13 +11,17 @@ describe('lyrics store', () => {
       error: null,
     });
     useLyricsStore.getState().startLoading('song-b', 2);
-    useLyricsStore.getState().setDocument('song-a', {
-      songId: 'song-a',
-      syncMode: 'line',
-      metadata: { sourceLabel: 'stale', offsetMs: 0 },
-      vocalists: [],
-      lines: [],
-    }, 1);
+    useLyricsStore.getState().setDocument(
+      'song-a',
+      {
+        songId: 'song-a',
+        syncMode: 'line',
+        metadata: { sourceLabel: 'stale', offsetMs: 0 },
+        vocalists: [],
+        lines: [],
+      },
+      1,
+    );
     expect(useLyricsStore.getState().songId).toBe('song-b');
     expect(useLyricsStore.getState().document).toBeNull();
     expect(useLyricsStore.getState().status).toBe('loading');

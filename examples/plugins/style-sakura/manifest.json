@@ -6,7 +6,7 @@
   "version": "1.0.0",
   "apiVersion": 1,
   "authors": ["YAQMC examples"],
-    "homepage": "https://github.com/YAQMC/YAQMC",
+  "homepage": "https://github.com/YAQMC/YAQMC",
   "repository": "https://github.com/YAQMC/YAQMC",
   "license": "MIT",
   "engines": { "yaqmc": ">=0.1.0" },
