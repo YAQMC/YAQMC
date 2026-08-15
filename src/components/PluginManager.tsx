@@ -60,6 +60,17 @@ function capabilityChips(plugin: PluginRecord): string[] {
   return chips;
 }
 
+function permissionChanges(
+  previous: string[] | null,
+  next: string[],
+): { added: string[]; removed: string[] } {
+  if (!previous) return { added: [], removed: [] };
+  return {
+    added: next.filter((item) => !previous.includes(item)),
+    removed: previous.filter((item) => !next.includes(item)),
+  };
+}
+
 export function PluginManager() {
   const { t } = useTranslation('settings', { keyPrefix: 'plugins' });
   const [plugins, setPlugins] = useState<PluginRecord[]>([]);
@@ -72,6 +83,7 @@ export function PluginManager() {
   const [pendingUnpacked, setPendingUnpacked] = useState(false);
   const [grant, setGrant] = useState<string[]>([]);
   const [details, setDetails] = useState<PluginRecord | null>(null);
+  const [installedPermissions, setInstalledPermissions] = useState<string[] | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isNativeRuntime) return;
@@ -101,9 +113,11 @@ export function PluginManager() {
 
   const beginReview = async (path: string, unpacked: boolean) => {
     const next = await inspectPluginPath(path);
+    const existing = plugins.find((plugin) => plugin.id === next.manifest.id);
     setInspect(next);
     setPendingPath(path);
     setPendingUnpacked(unpacked);
+    setInstalledPermissions(existing ? existing.permissions : null);
     setGrant(next.permissions.filter((permission) => !isSensitivePermission(permission)));
   };
 
@@ -156,6 +170,7 @@ export function PluginManager() {
       }
       setInspect(null);
       setPendingPath(null);
+      setInstalledPermissions(null);
       await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -219,6 +234,10 @@ export function PluginManager() {
       setBusy(false);
     }
   };
+
+  const reviewDelta = inspect
+    ? permissionChanges(installedPermissions, inspect.permissions)
+    : { added: [], removed: [] };
 
   return (
     <div className="plugin-manager">
@@ -356,6 +375,16 @@ export function PluginManager() {
               </li>
             ))}
           </ul>
+          {reviewDelta.added.length > 0 && (
+            <p>
+              {t('permissionsAdded')}: {reviewDelta.added.join(', ')}
+            </p>
+          )}
+          {reviewDelta.removed.length > 0 && (
+            <p>
+              {t('permissionsRemoved')}: {reviewDelta.removed.join(', ')}
+            </p>
+          )}
           <p>
             {t('deniedCapabilities')}: {t('deniedList')}
           </p>
@@ -367,7 +396,14 @@ export function PluginManager() {
             </pre>
           )}
           <div className="plugin-review__actions">
-            <button type="button" className="button button--quiet" onClick={() => setInspect(null)}>
+            <button
+              type="button"
+              className="button button--quiet"
+              onClick={() => {
+                setInspect(null);
+                setInstalledPermissions(null);
+              }}
+            >
               {t('cancel')}
             </button>
             <button

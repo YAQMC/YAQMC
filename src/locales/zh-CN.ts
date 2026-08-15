@@ -689,6 +689,8 @@ export const zhCN = {
       source: '来源',
       risk: '风险',
       networkOrigins: '网络来源',
+      permissionsAdded: '新增权限',
+      permissionsRemoved: '已移除权限',
       permission: {
         track_read: '读取当前曲目',
         lyrics_read: '读取歌词',
