@@ -14,6 +14,7 @@ pub mod playback_types;
 pub mod player;
 pub mod plugin;
 pub mod qmc;
+pub mod qqmusic;
 pub mod storage;
 pub mod streaming;
 

@@ -1305,7 +1305,7 @@ impl QQMusicAuthService {
             })
     }
 
-    pub(crate) fn cancel_login_owner(self: &Arc<Self>, reason: &'static str) -> bool {
+    fn release_login_owner(&self) -> Option<(OwnerSignal, u64)> {
         let (owner, generation) = {
             let mut generation_token = self
                 .generation_token
@@ -1316,12 +1316,10 @@ impl QQMusicAuthService {
                 .owner_signal
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let Some(owner) = owner_signal.take() else {
-                return false;
-            };
+            let owner = owner_signal.take()?;
             owner.cancellation.cancel();
             if owner.generation != current_generation {
-                return false;
+                return None;
             }
             let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
             generation_token.cancel();
@@ -1329,9 +1327,20 @@ impl QQMusicAuthService {
             (owner, generation)
         };
 
+        Some((owner, generation))
+    }
+
+    pub(crate) fn cancel_login_owner_on_runtime(
+        self: &Arc<Self>,
+        reason: &'static str,
+        handle: &tokio::runtime::Handle,
+    ) -> bool {
+        let Some((owner, generation)) = self.release_login_owner() else {
+            return false;
+        };
         tracing::info!(target: "qqmusic.auth", reason, "login owner was released");
         let service = Arc::clone(self);
-        tauri::async_runtime::spawn(async move {
+        handle.spawn(async move {
             service
                 .cleanup_owner_loss(generation, owner.attempt_id)
                 .await;
@@ -1981,7 +1990,13 @@ impl QQMusicAuthService {
             return false;
         }
         drop(active);
-        self.cancel_login_owner("owner-lease-expired") || !self.is_current(generation)
+        let Some((owner, cleanup_generation)) = self.release_login_owner() else {
+            return !self.is_current(generation);
+        };
+        tracing::info!(target: "qqmusic.auth", reason = "owner-lease-expired", "login owner was released");
+        self.cleanup_owner_loss(cleanup_generation, owner.attempt_id)
+            .await;
+        true
     }
 
     async fn take_attempt(&self, generation: u64, attempt_id: &str, cancel: bool) -> bool {
@@ -3227,7 +3242,10 @@ mod tests {
         let before = service.generation();
 
         assert!(service.has_active_owner());
-        assert!(service.cancel_login_owner("navigation-started"));
+        assert!(service.cancel_login_owner_on_runtime(
+            "navigation-started",
+            &tokio::runtime::Handle::current(),
+        ));
         assert!(service.generation() > before);
         assert!(!service.has_active_owner());
         protocol.poll_release.notify_waiters();
@@ -3250,7 +3268,10 @@ mod tests {
         wait_for_notification(&barrier.entered).await;
 
         assert!(service.has_active_owner());
-        assert!(service.cancel_login_owner("main-window-destroyed"));
+        assert!(service.cancel_login_owner_on_runtime(
+            "main-window-destroyed",
+            &tokio::runtime::Handle::current(),
+        ));
         barrier.release.notify_one();
 
         wait_for_state(&service, "cancelled").await;

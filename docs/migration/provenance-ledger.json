@@ -204,7 +204,7 @@
       "status": "blocked",
       "mappings": [
         {
-          "target": "src-tauri/src/qqmusic.rs and related provider interoperability",
+          "target": "crates/yaqmc-core/src/qqmusic.rs and related provider interoperability",
           "relation": "historical source revision and file/range mapping are unknown; current MIT upper-bound is not a source pin"
         }
       ],

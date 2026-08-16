@@ -1,12 +1,12 @@
 use super::account::{AccountEntitlement, EntitlementTier, MembershipState, SecondaryEntitlement};
-use crate::{audio::AudioFormat, media::PlaybackSourceError};
-use serde_json::Value;
-use yaqmc_core::playback_types::{AudioCodec, AudioFormatInfo, AudioQuality};
-pub(crate) use yaqmc_core::playback_types::{
+use crate::playback_types::{AudioCodec, AudioFormatInfo, AudioQuality};
+pub(crate) use crate::playback_types::{
     AudioQualityPreference, ClientCapabilityState, EntitlementCapabilityState,
     PlaybackFallbackReason, PlaybackSourceSelection, QualityCapabilityState,
     ResourceCapabilityState,
 };
+use crate::{audio::AudioFormat, media::PlaybackSourceError};
+use serde_json::Value;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PreviewRange {

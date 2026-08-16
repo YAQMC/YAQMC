@@ -36,17 +36,17 @@ use std::{
 use thiserror::Error;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
-pub(crate) mod account;
+pub mod account;
 mod artwork;
 mod auth;
 mod cache;
 mod clock;
 mod entitlement;
-pub(crate) mod oauth;
+mod oauth;
 mod redaction;
 mod transport;
 
-pub use yaqmc_core::playback_types::{
+pub use crate::playback_types::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
 };
 
@@ -68,7 +68,7 @@ use entitlement::{
 use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, TransportRequest};
 use zeroize::Zeroize;
 
-pub(crate) use oauth::OAuthLoginProvider;
+pub use oauth::{OAuthLaunch, OAuthLoginProvider};
 
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_MUSICS_URL: &str = "https://u.y.qq.com/cgi-bin/musics.fcg";
@@ -650,7 +650,8 @@ impl QQMusicService {
         self.account.set_favorite(request).await
     }
 
-    pub(crate) async fn remember_songs<'a>(&self, songs: impl IntoIterator<Item = &'a Song>) {
+    #[doc(hidden)]
+    pub async fn remember_songs<'a>(&self, songs: impl IntoIterator<Item = &'a Song>) {
         self.account.remember_songs(songs).await;
     }
 
@@ -700,14 +701,16 @@ impl QQMusicService {
         self.auth.start().await
     }
 
-    pub(crate) async fn start_oauth_login(
+    #[doc(hidden)]
+    pub async fn start_oauth_login(
         self: &Arc<Self>,
         provider: OAuthLoginProvider,
-    ) -> Result<oauth::OAuthLaunch, QQMusicError> {
+    ) -> Result<OAuthLaunch, QQMusicError> {
         self.auth.start_oauth(provider).await
     }
 
-    pub(crate) async fn complete_oauth_login(
+    #[doc(hidden)]
+    pub async fn complete_oauth_login(
         &self,
         attempt_id: &str,
         provider: OAuthLoginProvider,
@@ -718,7 +721,8 @@ impl QQMusicService {
             .await
     }
 
-    pub(crate) async fn cancel_oauth_login(
+    #[doc(hidden)]
+    pub async fn cancel_oauth_login(
         &self,
         attempt_id: &str,
     ) -> Result<AccountSnapshot, QQMusicError> {
@@ -733,7 +737,8 @@ impl QQMusicService {
         self.auth.heartbeat(&attempt_id, &owner_lease_id).await
     }
 
-    pub(crate) async fn is_oauth_login(&self, attempt_id: &str) -> bool {
+    #[doc(hidden)]
+    pub async fn is_oauth_login(&self, attempt_id: &str) -> bool {
         self.auth.is_oauth_attempt(attempt_id).await
     }
 
@@ -755,8 +760,13 @@ impl QQMusicService {
         let _ = self.auth.restore().await;
     }
 
-    pub fn cancel_login_owner(&self, reason: &'static str) -> bool {
-        self.auth.cancel_login_owner(reason)
+    #[doc(hidden)]
+    pub fn cancel_login_owner_on_runtime(
+        &self,
+        reason: &'static str,
+        handle: &tokio::runtime::Handle,
+    ) -> bool {
+        self.auth.cancel_login_owner_on_runtime(reason, handle)
     }
 
     pub async fn sign_out(&self) -> Result<AccountSnapshot, QQMusicError> {
@@ -4535,6 +4545,45 @@ mod tests {
             qq_request_signature(body),
             "zzb226c4cd6u6x73owgk9ltzzy8yktygb3187a9d"
         );
+    }
+
+    #[test]
+    fn owner_loss_from_sync_host_context_uses_the_supplied_runtime_handle() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("current-thread runtime");
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let service = Arc::new(
+            QQMusicService::new(
+                storage,
+                Arc::new(MemoryCredentialStore::default()),
+                root.path().join("fixtures"),
+            )
+            .expect("service"),
+        );
+        let launch = runtime
+            .block_on(service.start_oauth_login(OAuthLoginProvider::Qq))
+            .expect("OAuth launch");
+
+        assert!(service.cancel_login_owner_on_runtime("sync-host-test", runtime.handle()));
+
+        let snapshot = runtime.block_on(async {
+            for _ in 0..8 {
+                let snapshot = service.account_snapshot().await;
+                if snapshot.state_name() == "cancelled" {
+                    return snapshot;
+                }
+                tokio::task::yield_now().await;
+            }
+            panic!("owner-loss cleanup was not scheduled on the supplied runtime");
+        });
+        assert_eq!(snapshot.state_name(), "cancelled");
+        assert!(!runtime.block_on(service.is_oauth_login(&launch.attempt_id)));
     }
 
     #[test]

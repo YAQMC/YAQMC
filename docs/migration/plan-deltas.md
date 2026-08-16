@@ -166,3 +166,12 @@ the enforced provenance ledger.
   closure needed by the service. The locked dependency graph changed only to record that existing packages are direct
   Core dependencies; it introduces no version upgrade. P0 live measurements remain `PENDING` and the provenance
   release gate remains **BLOCKED**.
+
+## Task 8A: QQ service and OAuth host split
+
+- The in-tree QQ service, account/auth/cache/transport closure, QRC/QMC handling, and portable OAuth policy are
+  Core-owned by history-preserving moves. Tauri retains only an inline compatibility re-export and the new
+  `qqmusic_oauth_host` window adapter; system media remains Task 8B.
+- OAuth window construction, navigation callbacks, close/focus cleanup, and the atomic window completion fence stay
+  Tauri-owned. Synchronous owner loss supplies Tauri's Tokio runtime handle to Core; Core contains no Tauri runtime
+  API or window import. P0 remains `PENDING`, and the provenance release gate remains **BLOCKED**.

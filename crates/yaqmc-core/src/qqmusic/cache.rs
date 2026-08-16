@@ -1,8 +1,8 @@
 use super::account::{AccountEntitlement, AccountPlaylistSummary, AccountProfile};
+use crate::playback_types::PlaybackEpoch;
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
-use yaqmc_core::playback_types::PlaybackEpoch;
 
 pub(crate) const ACCOUNT_CACHE_KIND: &str = "qqmusic-account";
 const CURSOR_PREFIX: &str = "cursor:";

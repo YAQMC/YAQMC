@@ -29,7 +29,7 @@ use crate::{
             FavoriteMutationResult, Page, PlaylistMutationResult, PlaylistTrackMutationRequest,
             RemotePlayHistoryItem, RenamePlaylistRequest,
         },
-        oauth, Album, AreaFeed, AudioQualityPreference, DiscoverFeed, HomeFeed, LibrarySnapshot,
+        Album, AreaFeed, AudioQualityPreference, DiscoverFeed, HomeFeed, LibrarySnapshot,
         OAuthLoginProvider, Playlist, ProviderCommandError, ProviderResult, ProviderStatus,
         QQMusicService, SearchResult,
     },
@@ -851,9 +851,14 @@ pub async fn qqmusic_auth_oauth_start(
     login_provider: OAuthLoginProvider,
 ) -> ProviderResult<AccountSnapshot> {
     require_main_window(&window)?;
-    oauth::open_window(&app, &window, Arc::clone(provider.inner()), login_provider)
-        .await
-        .map_err(Into::into)
+    crate::qqmusic_oauth_host::open_window(
+        &app,
+        &window,
+        Arc::clone(provider.inner()),
+        login_provider,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -865,7 +870,9 @@ pub async fn qqmusic_auth_heartbeat(
     owner_lease_id: String,
 ) -> ProviderResult<AccountSnapshot> {
     require_main_window(&window)?;
-    if provider.is_oauth_login(&attempt_id).await && !oauth::window_is_live(&app, &attempt_id) {
+    if provider.is_oauth_login(&attempt_id).await
+        && !crate::qqmusic_oauth_host::window_is_live(&app, &attempt_id)
+    {
         return provider
             .cancel_qr_login(attempt_id)
             .await
@@ -886,7 +893,7 @@ pub async fn qqmusic_auth_cancel(
 ) -> ProviderResult<AccountSnapshot> {
     require_main_window(&window)?;
     let result = provider.cancel_qr_login(attempt_id.clone()).await;
-    oauth::close_window_for_attempt(&app, &attempt_id);
+    crate::qqmusic_oauth_host::close_window_for_attempt(&app, &attempt_id);
     let snapshot = match result {
         Ok(snapshot) => snapshot,
         Err(error) => return Err(error.into()),
