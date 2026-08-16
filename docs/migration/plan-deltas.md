@@ -65,3 +65,34 @@ the enforced provenance ledger.
 - Task 5 does not clear pending live performance measurements or the blocked provenance release gate, and it does not
   implement the P2 registry/framing/caps, Electron host, provider transport/qm-api-rs work, P12/P14 human/live-account
   gates, or Git cutover/rollback actions.
+
+## Task 6A: storage, credentials, and portable plugin host extraction
+
+- The SQLite v5 schema's actual application tables are `provider_cache`, `cache_files`, `app_settings`,
+  `recent_searches`, `playback_history`, and `queue_state`. The retained source plan's tracks/albums/playlists table
+  list is stale; this checkpoint preserves the existing v1-v5 migrator, `PRAGMA user_version = 5`, the queue singleton,
+  and all existing cache limits/policies without adding a storage migration.
+- `StorageService` now receives its data and cache roots from the Tauri composition point and derives neither with
+  `dirs` nor any host path API. Local API configuration remains a distinct injected config path resolved by Tauri as
+  `app_config_dir()/local-api.json`.
+- The current credential service is `org.yaqmc.desktop`; legacy read migration is
+  `dev.music-client.desktop`. The persisted accounts are `qqmusic-session`, `qqmusic-session-staging`, and
+  `local-api-bearer-token`. The current-service-first, legacy-on-`NoEntry`, write-forward, and best-effort legacy
+  deletion behavior remains unchanged. `MemoryCredentialStore` and `StorageService::temporary()` are exposed only by
+  Core's `test-support` feature for Tauri tests.
+- Portable Rust plugin host modules (`host`, `manifest`, `network`, `package`, `permissions`, `scanner`, and
+  `settings`) are Core-owned. Tauri retains only `plugin::commands` and its Tauri/window/dialog/event/player adapter;
+  shutdown still invokes `mark_clean_exit()`. Host journal, safe-mode, runtime-token, permission, quota, package, and
+  settings/secrets file contracts are unchanged.
+- `local_api.rs` remains in Tauri for now. Its `Arc<PlayerService>` and Player DTO/error/broadcast dependency requires
+  the Player/QQ compile closure first; the execution-summary Task 6/7 ordering therefore conflicts with the source
+  plan's Core dependency order. Task 6A moves storage/credentials/plugin only, and full Task 6 remains open until
+  Local API moves after Task 7. `local_api_reveal_token` returns the token; regeneration returns status.
+- Core's dependency verifier now permits portable `reqwest` for storage and the plugin proxy, while retaining recursive
+  rejection of Tauri/Tauri plugins, WebKitGTK, raw-window-handle, Electron/Node/N-API, `qqmusic-api`, provider crates,
+  and the `yaqmc` host package.
+- Existing plugin hardening debts (DNS-rebinding TOCTOU, response allocation, ZIP declared-size allocation, and
+  quota-overwrite rollback) remain open. The future P2 resource-reference/payload-cap conflict remains open; no P2
+  registry/caps, Electron, provider/qm-api-rs, HUMAN/LIVE_ACCOUNT gate, or Git-cutover work is implemented here.
+- P0 live measurements remain `PENDING`; the provenance release gate remains `BLOCKED`. This ownership-only
+  checkpoint does not clear, measure, or claim either gate.

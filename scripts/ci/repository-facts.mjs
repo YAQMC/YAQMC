@@ -231,7 +231,7 @@ function constant(source, name) {
 }
 
 function collectPersistence(repositoryRoot) {
-  const storage = read(repositoryRoot, 'src-tauri/src/storage.rs');
+  const storage = read(repositoryRoot, 'crates/yaqmc-core/src/storage.rs');
   if (
     !storage.includes('data_root.join("library.sqlite3")') ||
     !/pragma_update\([^\n]*"journal_mode",\s*"WAL"\)/.test(storage)
@@ -326,7 +326,7 @@ function collectPersistence(repositoryRoot) {
 }
 
 function collectKeyring(repositoryRoot) {
-  const credentials = read(repositoryRoot, 'src-tauri/src/credentials.rs');
+  const credentials = read(repositoryRoot, 'crates/yaqmc-core/src/credentials.rs');
   const auth = read(repositoryRoot, 'src-tauri/src/qqmusic/auth.rs');
   const localApi = read(repositoryRoot, 'src-tauri/src/local_api.rs');
   return {

@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn example_studio_package_inspects() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../examples/plugins/packages/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin");
+            .join("../../examples/plugins/packages/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin");
         let inspection = inspect_package(&path).expect("studio example package");
         assert_eq!(inspection.manifest.id, "dev.yaqmc.example.studio");
         assert_eq!(inspection.manifest.entrypoints.styles.len(), 1);

@@ -13,7 +13,8 @@ const expectedMembers = [
 ];
 const forbiddenCoreDependencyPatterns = [
   /^tauri(?:-.+)?$/,
-  /^reqwest$/,
+  /^webkit2gtk(?:-.+)?$/,
+  /^raw-window-handle$/,
   /^qqmusic-api$/,
   /^napi(?:-.+)?$/,
   /^(?:electron|node)(?:-.+)?$/,
@@ -66,9 +67,10 @@ export function validateCoreDependencyClosure(metadata) {
 
     const pkg = packagesById.get(packageId);
     if (!pkg) throw new Error(`Cargo resolve graph references an unknown package: ${packageId}`);
+    const normalizedPackageName = pkg.name.toLowerCase().replaceAll('_', '-');
     if (
       packageId !== core.id &&
-      forbiddenCoreDependencyPatterns.some((pattern) => pattern.test(pkg.name))
+      forbiddenCoreDependencyPatterns.some((pattern) => pattern.test(normalizedPackageName))
     ) {
       forbidden.add(pkg.name);
     }
