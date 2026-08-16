@@ -31,6 +31,17 @@ Electron Main must retain the current 1280 x 800 / 1000 x 680 minimum main-windo
 | Dialog splits | Diagnostics export, background-image selection, and plugin install-from-file become host path selection plus Core pure IO (`*_to` / `*_from`); old dialog-shaped methods retire only at P13. |
 | qm-api-rs | The repository is private; audited revision is `a7430a831a256bb15212291f11a055d801e31648`. Its crate is `qqmusic-api` (lib `qqmusic_api`), version `0.1.0`, GPL-3.0-or-later. CI needs authenticated dependency access and the licensing decision remains a P14 gate. Its SHA1 `zzc_sign` differs from the in-tree MD5 `zzb` signer, so provider replacement remains separate from host migration and needs live verification. |
 
+### qm-api-rs superseding correction
+
+The source plan's qm-api-rs integration facts are historical input only. The following verified facts supersede any conflicting statements there and are prerequisites for P14:
+
+- `qqmusic-api` declares no `rust-version` / MSRV. Its Rust 1.88 `check` and `--all-features` test pass, but upstream metadata must still declare and test an MSRV before the dependency is pinned.
+- The upstream dependency is `reqwest ^0.12`, while YAQMC uses `reqwest 0.13.4`. Upstream leaks `reqwest` public types, so this is a real public compatibility boundary rather than a resolver-only detail. Align upstream to `reqwest 0.13` before integration.
+- Upstream has no `tracing` dependency; do not assume YAQMC's tracing/redaction behavior is inherited by the library.
+- The relevant context type is `ApiContext`, not `ClientContext`; upstream has no `radio` module.
+- The rate limiter is global per `ApiContext`: 10 requests per second with a burst of 50, not a per-endpoint limiter.
+- Its internally constructed transport lacks injection, timeout, allowlist, cancellation, retry, and redirect controls. Upstream transport hardening and reqwest 0.13 alignment are mandatory before pinning or integrating qm-api-rs. YAQMC must not compensate only with a conditional logging wrapper.
+
 ## Electron and electron-builder observations
 
 - This baseline has no Electron or electron-builder dependency in `package.json` or lockfile; version pinning happens only when the Electron host is introduced.
