@@ -11,6 +11,15 @@ const expectedMembers = [
   ['yaqmc-provider-api', 'crates/yaqmc-provider-api/Cargo.toml'],
   ['yaqmc-provider-qqmusic', 'crates/yaqmc-provider-qqmusic/Cargo.toml'],
 ];
+const forbiddenCoreDependencyPatterns = [
+  /^tauri(?:-.+)?$/,
+  /^reqwest$/,
+  /^qqmusic-api$/,
+  /^napi(?:-.+)?$/,
+  /^(?:electron|node)(?:-.+)?$/,
+  /^yaqmc$/,
+  /^yaqmc-provider(?:-.+)?$/,
+];
 
 export function validateWorkspaceMetadata(metadata) {
   const workspacePackages = metadata.packages
@@ -36,14 +45,52 @@ export function validateWorkspaceMetadata(metadata) {
   }
 }
 
+export function validateCoreDependencyClosure(metadata) {
+  const core = metadata.packages.find((pkg) => pkg.name === 'yaqmc-core');
+  if (!core) {
+    throw new Error('yaqmc-core package is missing from Cargo metadata');
+  }
+  const packagesById = new Map(metadata.packages.map((pkg) => [pkg.id, pkg]));
+  const nodesById = new Map((metadata.resolve?.nodes ?? []).map((node) => [node.id, node]));
+  if (!nodesById.has(core.id)) {
+    throw new Error('yaqmc-core is missing from the Cargo resolve graph');
+  }
+
+  const pending = [core.id];
+  const visited = new Set();
+  const forbidden = new Set();
+  while (pending.length > 0) {
+    const packageId = pending.pop();
+    if (visited.has(packageId)) continue;
+    visited.add(packageId);
+
+    const pkg = packagesById.get(packageId);
+    if (!pkg) throw new Error(`Cargo resolve graph references an unknown package: ${packageId}`);
+    if (
+      packageId !== core.id &&
+      forbiddenCoreDependencyPatterns.some((pattern) => pattern.test(pkg.name))
+    ) {
+      forbidden.add(pkg.name);
+    }
+    for (const dependencyId of nodesById.get(packageId)?.dependencies ?? []) {
+      pending.push(dependencyId);
+    }
+  }
+  if (forbidden.size > 0) {
+    throw new Error(`forbidden yaqmc-core dependency closure: ${[...forbidden].sort().join(', ')}`);
+  }
+}
+
 function main() {
   const metadata = JSON.parse(
-    execFileSync('cargo', ['metadata', '--format-version', '1', '--no-deps', '--locked'], {
+    execFileSync('cargo', ['metadata', '--format-version', '1', '--locked'], {
       cwd: repositoryRoot,
       encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
     }),
   );
   validateWorkspaceMetadata(metadata);
+  validateCoreDependencyClosure(metadata);
   process.stdout.write('Cargo workspace contract verified.\n');
 }
 
