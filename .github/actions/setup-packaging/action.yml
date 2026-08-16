@@ -13,11 +13,11 @@ runs:
   steps:
     - uses: actions/setup-node@v7
       with:
-        node-version: 24
+        node-version: 24.19.0
         cache: npm
     - uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: '1.88'
+        toolchain: '1.88.0'
         targets: ${{ inputs.target }}
         components: clippy, rustfmt
     - uses: actions/cache/restore@v4

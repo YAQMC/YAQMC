@@ -62,11 +62,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 24.19.0
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.88'
+          toolchain: '1.88.0'
           targets: ${{ matrix.target }}
       - uses: ./.github/actions/linux-tauri-deps
       - run: npm ci
@@ -233,11 +233,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 24.19.0
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.88'
+          toolchain: '1.88.0'
           targets: ${{ matrix.target }}
       - run: npm ci
       - name: Build NSIS and MSI installers
