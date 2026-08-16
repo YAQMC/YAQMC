@@ -1,86 +1,258 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "capturedAt": "2026-08-16",
   "toolchains": [
-    {
-      "name": "Node.js",
-      "required": "24.19.0",
-      "observed": "24.14.1",
-      "state": "mismatch"
-    },
-    {
-      "name": "Rust",
-      "required": "1.88.0",
-      "observed": "1.97.1",
-      "state": "mismatch"
-    }
+    { "id": "node", "name": "Node.js", "required": "24.19.0" },
+    { "id": "npm", "name": "npm", "required": null },
+    { "id": "rustc", "name": "rustc", "required": "1.88.0" },
+    { "id": "cargo", "name": "Cargo", "required": "1.88.0" }
   ],
   "runtimeFacts": {
     "registeredTauriCommands": 117,
     "mainWindow": "1280×800 (minimum 1000×680)"
   },
-  "releaseAssets": [
+  "releaseArtifacts": [
     {
+      "id": "ci-windows-nsis",
+      "source": "stage-artifacts.mjs",
       "platform": "Windows",
-      "architectures": "x64, i686, arm64",
-      "formats": "NSIS installer, MSI installer, portable ZIP"
+      "kind": "NSIS installer",
+      "pattern": "YAQMC-{version}-windows-{arch}-{shortSha}-nsis-setup.exe"
     },
     {
+      "id": "ci-windows-msi",
+      "source": "stage-artifacts.mjs",
+      "platform": "Windows",
+      "kind": "MSI installer",
+      "pattern": "YAQMC-{version}-windows-{arch}-{shortSha}-msi.msi"
+    },
+    {
+      "id": "ci-windows-portable",
+      "source": "stage-artifacts.mjs",
+      "platform": "Windows",
+      "kind": "Portable archive",
+      "pattern": "YAQMC-{version}-windows-{arch}-{shortSha}-portable.zip"
+    },
+    {
+      "id": "ci-linux-appimage",
+      "source": "stage-artifacts.mjs",
       "platform": "Linux",
-      "architectures": "x64, arm64",
-      "formats": "AppImage, deb, rpm, portable tar.gz"
+      "kind": "AppImage",
+      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}.AppImage"
+    },
+    {
+      "id": "ci-linux-deb",
+      "source": "stage-artifacts.mjs",
+      "platform": "Linux",
+      "kind": "deb",
+      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}.deb"
+    },
+    {
+      "id": "ci-linux-rpm",
+      "source": "stage-artifacts.mjs",
+      "platform": "Linux",
+      "kind": "rpm",
+      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}.rpm"
+    },
+    {
+      "id": "ci-linux-binary",
+      "source": "stage-artifacts.mjs",
+      "platform": "Linux",
+      "kind": "Binary archive",
+      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}-binary.tar.gz"
+    },
+    {
+      "id": "ci-linux-readme",
+      "source": "stage-artifacts.mjs",
+      "platform": "Linux",
+      "kind": "Binary archive readme",
+      "pattern": "README-binary.txt"
+    },
+    {
+      "id": "ci-build-info",
+      "source": "stage-artifacts.mjs",
+      "platform": "Windows/Linux",
+      "kind": "Build metadata",
+      "pattern": "build-info.json"
+    },
+    {
+      "id": "ci-checksum",
+      "source": "stage-artifacts.mjs",
+      "platform": "Windows/Linux",
+      "kind": "Checksums",
+      "pattern": "SHA256SUMS-{os}-{arch}.txt"
+    },
+    {
+      "id": "release-windows-nsis",
+      "source": "build.yml",
+      "platform": "Windows",
+      "kind": "NSIS installer",
+      "pattern": "YAQMC-windows-{arch}-{tauri-bundle-filename}"
+    },
+    {
+      "id": "release-windows-msi",
+      "source": "build.yml",
+      "platform": "Windows",
+      "kind": "MSI installer",
+      "pattern": "YAQMC-windows-{arch}-{tauri-bundle-filename}"
+    },
+    {
+      "id": "release-windows-portable",
+      "source": "build.yml",
+      "platform": "Windows",
+      "kind": "Portable archive",
+      "pattern": "YAQMC-windows-{arch}-portable.zip"
+    },
+    {
+      "id": "release-windows-checksum",
+      "source": "build.yml",
+      "platform": "Windows",
+      "kind": "Checksums",
+      "pattern": "SHA256SUMS-windows-{arch}.txt"
+    },
+    {
+      "id": "release-linux-appimage",
+      "source": "build.yml",
+      "platform": "Linux",
+      "kind": "AppImage",
+      "pattern": "{tauri-bundle-filename}"
+    },
+    {
+      "id": "release-linux-deb",
+      "source": "build.yml",
+      "platform": "Linux",
+      "kind": "deb",
+      "pattern": "{tauri-bundle-filename}"
+    },
+    {
+      "id": "release-linux-rpm",
+      "source": "build.yml",
+      "platform": "Linux",
+      "kind": "rpm",
+      "pattern": "{tauri-bundle-filename}"
+    },
+    {
+      "id": "release-linux-portable",
+      "source": "build.yml",
+      "platform": "Linux",
+      "kind": "Portable archive",
+      "pattern": "YAQMC-linux-{arch}-portable.tar.gz"
+    },
+    {
+      "id": "release-linux-tester",
+      "source": "build.yml",
+      "platform": "Linux x86_64",
+      "kind": "Tester archive",
+      "pattern": "YAQMC-linux-x86_64-tester.tar.gz"
+    },
+    {
+      "id": "release-linux-checksum",
+      "source": "build.yml",
+      "platform": "Linux",
+      "kind": "Checksums",
+      "pattern": "SHA256SUMS-linux-{arch}.txt"
     }
   ],
   "dataPaths": [
     {
+      "id": "windows-app-data",
       "platform": "Windows",
       "purpose": "App data",
       "path": "%APPDATA%\\org.yaqmc.desktop",
       "state": "source-verified"
     },
     {
+      "id": "windows-cache",
       "platform": "Windows",
       "purpose": "Cache",
       "path": "%LOCALAPPDATA%\\org.yaqmc.desktop",
       "state": "source-verified"
     },
     {
+      "id": "windows-logs",
       "platform": "Windows",
       "purpose": "Logs",
       "path": "%LOCALAPPDATA%\\org.yaqmc.desktop\\logs",
       "state": "source-verified"
     },
     {
+      "id": "windows-local-api-config",
+      "platform": "Windows",
+      "purpose": "Local API config",
+      "path": "Tauri app_config_dir()/local-api.json",
+      "state": "source-verified"
+    },
+    {
+      "id": "linux-app-data",
       "platform": "Linux",
       "purpose": "App data",
       "path": "~/.local/share/org.yaqmc.desktop",
       "state": "source-verified"
     },
     {
+      "id": "linux-cache",
       "platform": "Linux",
       "purpose": "Cache",
       "path": "~/.cache/org.yaqmc.desktop",
       "state": "source-verified"
     },
     {
+      "id": "linux-logs",
       "platform": "Linux",
       "purpose": "Logs",
       "path": "~/.local/share/org.yaqmc.desktop/logs",
       "state": "source-verified"
+    },
+    {
+      "id": "linux-local-api-config",
+      "platform": "Linux",
+      "purpose": "Local API config",
+      "path": "Tauri app_config_dir()/local-api.json",
+      "state": "source-verified"
     }
   ],
-  "settingKeys": [
-    "ui-preferences-v1",
-    "lyrics-surface-geometry:desktop",
-    "lyrics-surface-geometry:island"
+  "persistenceEntries": [
+    {
+      "id": "sqlite-library",
+      "store": "SQLite",
+      "key": "library.sqlite3 (WAL)",
+      "target": "Keep in place"
+    },
+    {
+      "id": "queue-state",
+      "store": "SQLite table",
+      "key": "queue_state singleton row (value_json)",
+      "target": "Keep in place"
+    },
+    {
+      "id": "preferences-schema-version",
+      "store": "app_settings",
+      "key": "preferences-schema-version",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "ui-preferences",
+      "store": "app_settings",
+      "key": "ui-preferences-v1",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "lyrics-geometry-desktop",
+      "store": "app_settings",
+      "key": "lyrics-surface-geometry:desktop",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "lyrics-geometry-island",
+      "store": "app_settings",
+      "key": "lyrics-surface-geometry:island",
+      "target": "Keep exact key"
+    }
   ],
   "keyring": {
     "service": "org.yaqmc.desktop",
-    "entries": [
-      "qqmusic-session",
-      "qqmusic-session-staging",
-      "local-api-bearer-token"
-    ]
+    "legacyService": "dev.music-client.desktop",
+    "entries": ["qqmusic-session", "qqmusic-session-staging", "local-api-bearer-token"]
   },
   "measurements": {
     "Windows:coldStartInteractiveMs": { "state": "pending" },
