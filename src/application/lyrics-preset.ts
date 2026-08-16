@@ -33,7 +33,8 @@ export type LyricsPresetSource = 'built-in' | 'custom' | 'plugin';
 export type LyricsArtworkStyle = 'square' | 'vinyl';
 export type LyricsArtworkRenderer = 'square' | 'rounded' | 'vinyl';
 export type LyricsBackgroundFit = 'cover' | 'contain';
-export type LyricsBackgroundKind = 'color' | 'artwork' | 'image';
+export type LyricsBackgroundKind =
+  'color' | 'artwork' | 'image' | 'gradient' | 'video' | 'colorField';
 export type LyricsPreviewFrame = 'desktop' | 'window' | 'ultrawide';
 export type WidgetAnchor =
   | 'top-left'
@@ -47,6 +48,39 @@ export type WidgetAnchor =
   | 'bottom-right';
 export type LyricsAlign = 'left' | 'center' | 'right';
 export type SceneWidgetId = 'background' | 'artwork' | 'metadata' | 'lyrics' | 'transport';
+export type ExtraSceneWidgetKind = 'text' | 'image' | 'video';
+export type SceneTextBinding =
+  'track.title' | 'track.artist' | 'track.album' | 'playback.position' | 'playback.duration';
+export type ColorFieldPosition = 'left' | 'right' | 'top' | 'bottom' | 'center';
+export type ArtworkColorBind = 'artworkPrimary' | 'artworkSecondary';
+
+export const COLOR_FIELD_POSITIONS: readonly ColorFieldPosition[] = [
+  'left',
+  'right',
+  'top',
+  'bottom',
+  'center',
+];
+
+export interface SceneAssetRef {
+  kind: 'plugin' | 'managed';
+  pluginId?: string;
+  path: string;
+}
+
+export interface ColorFieldEmitter {
+  id: string;
+  position: ColorFieldPosition;
+  color: string;
+  intensity: number;
+  falloff: number;
+  radius: number;
+  bind?: ArtworkColorBind | null;
+}
+
+export interface ColorFieldConfig {
+  emitters: ColorFieldEmitter[];
+}
 
 export const SCENE_WIDGET_IDS: readonly SceneWidgetId[] = [
   'background',
@@ -105,6 +139,9 @@ export interface BackgroundWidget {
   opacity: number;
   influence: number;
   blur: number;
+  colorField?: ColorFieldConfig;
+  gradient?: { from: string; to: string; angle: number };
+  media?: SceneAssetRef;
 }
 
 export interface ArtworkWidget extends WidgetTransform {
@@ -136,12 +173,25 @@ export interface TransportWidget extends WidgetTransform {
   align: LyricsAlign;
 }
 
+export interface ExtraSceneWidget extends WidgetTransform {
+  id: string;
+  kind: ExtraSceneWidgetKind;
+  text?: string;
+  bind?: SceneTextBinding | null;
+  align?: LyricsAlign;
+  opacity?: number;
+  asset?: SceneAssetRef;
+  source?: 'artwork';
+  fit?: LyricsBackgroundFit;
+}
+
 export interface LyricsSceneLayout {
   background: BackgroundWidget;
   artwork: ArtworkWidget;
   metadata: MetadataWidget;
   lyrics: LyricsWidget;
   transport: TransportWidget;
+  extras?: ExtraSceneWidget[];
 }
 
 export type SceneWidget =
@@ -155,6 +205,7 @@ export interface LyricsPresetDefinition {
   source: LyricsPresetSource;
   pluginId?: string;
   pluginName?: string;
+  forkedFromPluginId?: string;
   layout: LyricCoverLayout;
   typography: LyricsPresetTypography;
   artwork: LyricsPresetArtwork;
@@ -174,6 +225,7 @@ export type LyricsPresetPatch = {
     metadata: Partial<MetadataWidget>;
     lyrics: Partial<LyricsWidget>;
     transport: Partial<TransportWidget>;
+    extras: ExtraSceneWidget[];
   }>;
 };
 
@@ -470,13 +522,135 @@ function isRenderer(value: unknown): value is LyricsArtworkRenderer {
   return value === 'square' || value === 'rounded' || value === 'vinyl';
 }
 
+function isBackgroundKind(value: unknown): value is LyricsBackgroundKind {
+  return (
+    value === 'color' ||
+    value === 'artwork' ||
+    value === 'image' ||
+    value === 'gradient' ||
+    value === 'video' ||
+    value === 'colorField'
+  );
+}
+
+function isHexColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value);
+}
+
+function normalizeAsset(value: unknown): SceneAssetRef | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const source = value as Partial<SceneAssetRef>;
+  if (typeof source.path !== 'string' || source.path.length === 0 || source.path.length > 180) {
+    return undefined;
+  }
+  if (source.path.includes('..') || source.path.includes(':') || source.path.startsWith('/')) {
+    return undefined;
+  }
+  const kind = source.kind === 'managed' ? 'managed' : 'plugin';
+  const pluginId =
+    typeof source.pluginId === 'string' && source.pluginId.length < 80
+      ? source.pluginId
+      : undefined;
+  return { kind, pluginId, path: source.path.replaceAll('\\', '/') };
+}
+
+function normalizeColorField(value: unknown): ColorFieldConfig | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const emitters = (value as ColorFieldConfig).emitters;
+  if (!Array.isArray(emitters)) return undefined;
+  const next = emitters.slice(0, 5).flatMap((emitter, index) => {
+    if (!emitter || typeof emitter !== 'object') return [];
+    const position = COLOR_FIELD_POSITIONS.includes(emitter.position as ColorFieldPosition)
+      ? (emitter.position as ColorFieldPosition)
+      : 'center';
+    const color = isHexColor(emitter.color) ? emitter.color : '#FFFFFF';
+    const bind =
+      emitter.bind === 'artworkPrimary' || emitter.bind === 'artworkSecondary'
+        ? emitter.bind
+        : null;
+    return [
+      {
+        id:
+          typeof emitter.id === 'string' && emitter.id.length > 0
+            ? emitter.id.slice(0, 24)
+            : `emitter-${index}`,
+        position,
+        color,
+        intensity: clamp01(typeof emitter.intensity === 'number' ? emitter.intensity : 0.6, 0.6),
+        falloff: clamp01(typeof emitter.falloff === 'number' ? emitter.falloff : 0.45, 0.45),
+        radius: clamp01(typeof emitter.radius === 'number' ? emitter.radius : 0.55, 0.55),
+        bind,
+      },
+    ];
+  });
+  return next.length > 0 ? { emitters: next } : undefined;
+}
+
+const TEXT_BINDINGS: readonly SceneTextBinding[] = [
+  'track.title',
+  'track.artist',
+  'track.album',
+  'playback.position',
+  'playback.duration',
+];
+
+function normalizeExtraWidget(value: unknown, index: number): ExtraSceneWidget | null {
+  if (!value || typeof value !== 'object') return null;
+  const source = value as Partial<ExtraSceneWidget>;
+  const kind =
+    source.kind === 'image' || source.kind === 'video' || source.kind === 'text'
+      ? source.kind
+      : null;
+  if (!kind) return null;
+  const id =
+    typeof source.id === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(source.id)
+      ? source.id
+      : `extra-${index}`;
+  const box = normalizeTransform(source, {
+    x: 0.5,
+    y: 0.2 + index * 0.12,
+    width: 0.28,
+    height: 0.1,
+    anchor: 'center',
+    zIndex: 6 + index,
+    visible: true,
+    locked: false,
+  });
+  const bind = TEXT_BINDINGS.includes(source.bind as SceneTextBinding)
+    ? (source.bind as SceneTextBinding)
+    : null;
+  return {
+    ...box,
+    id,
+    kind,
+    text: typeof source.text === 'string' ? source.text.slice(0, 80) : undefined,
+    bind,
+    align: isAlign(source.align) ? source.align : 'center',
+    opacity: clamp01(typeof source.opacity === 'number' ? source.opacity : 1, 1),
+    asset: normalizeAsset(source.asset),
+    source: source.source === 'artwork' ? 'artwork' : undefined,
+    fit: source.fit === 'contain' ? 'contain' : 'cover',
+  };
+}
+
 function cloneScene(scene: LyricsSceneLayout): LyricsSceneLayout {
   return {
-    background: { ...scene.background },
+    background: {
+      ...scene.background,
+      colorField: scene.background.colorField
+        ? { emitters: scene.background.colorField.emitters.map((emitter) => ({ ...emitter })) }
+        : undefined,
+      gradient: scene.background.gradient ? { ...scene.background.gradient } : undefined,
+      media: scene.background.media ? { ...scene.background.media } : undefined,
+    },
     artwork: { ...scene.artwork },
     metadata: { ...scene.metadata },
     lyrics: { ...scene.lyrics },
     transport: { ...scene.transport },
+    extras: (scene.extras ?? []).map((widget) => ({
+      ...widget,
+      asset: widget.asset ? { ...widget.asset } : undefined,
+    })),
   };
 }
 
@@ -552,10 +726,7 @@ export function normalizeScene(
           typeof backgroundSource.zIndex === 'number' ? Math.round(backgroundSource.zIndex) : 0,
         visible: backgroundSource.visible !== false,
         locked: backgroundSource.locked === true,
-        source:
-          backgroundSource.source === 'color' || backgroundSource.source === 'image'
-            ? backgroundSource.source
-            : 'artwork',
+        source: isBackgroundKind(backgroundSource.source) ? backgroundSource.source : 'artwork',
         fit: backgroundSource.fit === 'contain' ? 'contain' : 'cover',
         fallbackColor:
           typeof backgroundSource.fallbackColor === 'string' &&
@@ -579,6 +750,21 @@ export function normalizeScene(
               : factory.background.blur,
           ),
         ),
+        colorField: normalizeColorField(backgroundSource.colorField),
+        gradient:
+          backgroundSource.gradient &&
+          isHexColor(backgroundSource.gradient.from) &&
+          isHexColor(backgroundSource.gradient.to)
+            ? {
+                from: backgroundSource.gradient.from,
+                to: backgroundSource.gradient.to,
+                angle:
+                  typeof backgroundSource.gradient.angle === 'number'
+                    ? Math.min(360, Math.max(0, backgroundSource.gradient.angle))
+                    : 160,
+              }
+            : undefined,
+        media: normalizeAsset(backgroundSource.media),
       },
       artwork: {
         ...normalizeTransform(artworkSource, factory.artwork),
@@ -626,6 +812,12 @@ export function normalizeScene(
         kind: 'transport',
         align: isAlign(transportSource.align) ? transportSource.align : 'center',
       },
+      extras: Array.isArray(source.extras)
+        ? source.extras
+            .slice(0, 8)
+            .map((widget, index) => normalizeExtraWidget(widget, index))
+            .filter((widget): widget is ExtraSceneWidget => widget !== null)
+        : [],
     },
   };
 }
@@ -649,6 +841,7 @@ export function mergeScene(
     metadata: mergeWidget(base.metadata, patch.metadata),
     lyrics: mergeWidget(base.lyrics, patch.lyrics),
     transport: mergeWidget(base.transport, patch.transport),
+    extras: patch.extras ?? cloneScene(base).extras,
   };
 }
 
@@ -736,6 +929,7 @@ export function mergePresetPatch(
           metadata: { ...current?.scene?.metadata, ...patch.scene?.metadata },
           lyrics: { ...current?.scene?.lyrics, ...patch.scene?.lyrics },
           transport: { ...current?.scene?.transport, ...patch.scene?.transport },
+          extras: patch.scene?.extras ?? current?.scene?.extras,
         }
       : undefined;
   return {
@@ -796,6 +990,9 @@ export function saveAsNewPreset(
     nameKey: 'custom',
     name: options.name ?? `Custom ${state.custom.length + 1}`,
     source: 'custom',
+    pluginId: undefined,
+    pluginName: undefined,
+    forkedFromPluginId: resolved.pluginId ?? resolved.forkedFromPluginId,
   };
   return {
     id,
@@ -1002,4 +1199,41 @@ export function resetSceneWidgetPosition(
 
 export function listSceneWidgets(scene: LyricsSceneLayout): SceneWidget[] {
   return SCENE_WIDGET_IDS.map((id) => scene[id]).sort((left, right) => left.zIndex - right.zIndex);
+}
+
+export function listExtraSceneWidgets(scene: LyricsSceneLayout): ExtraSceneWidget[] {
+  return [...(scene.extras ?? [])].sort((left, right) => left.zIndex - right.zIndex);
+}
+
+export function resolveSceneTextBinding(
+  bind: SceneTextBinding | null | undefined,
+  values: {
+    title: string;
+    artist: string;
+    album: string;
+    positionMs: number;
+    durationMs: number;
+  },
+): string | null {
+  switch (bind) {
+    case 'track.title':
+      return values.title;
+    case 'track.artist':
+      return values.artist;
+    case 'track.album':
+      return values.album;
+    case 'playback.position':
+      return formatBoundTime(values.positionMs);
+    case 'playback.duration':
+      return formatBoundTime(values.durationMs);
+    default:
+      return null;
+  }
+}
+
+function formatBoundTime(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }

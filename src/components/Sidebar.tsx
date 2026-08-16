@@ -1,7 +1,9 @@
-import { Clock3, Compass, Heart, Home, ListMusic, Search, Settings } from 'lucide-react';
+import { Clock3, Compass, Heart, Home, ListMusic, Puzzle, Search, Settings } from 'lucide-react';
 import { useAccountStore } from '../application/account-runtime';
 import { isPrimaryRoute, type AppRoute } from '../application/navigation';
 import { useMusicProvider } from '../application/provider-context';
+import { dispatchPluginUiAction } from '../application/plugin-runtime';
+import { usePluginUiSnapshot } from '../application/plugin-ui';
 import { useTranslation } from 'react-i18next';
 
 interface SidebarProps {
@@ -11,6 +13,7 @@ interface SidebarProps {
 
 export function Sidebar({ route, onNavigate }: SidebarProps) {
   const { t } = useTranslation('navigation');
+  const pluginSidebar = usePluginUiSnapshot().sidebar;
   const provider = useMusicProvider();
   const accountSnapshot = useAccountStore((state) => state.snapshot);
   const authenticated = accountSnapshot.state === 'authenticated';
@@ -95,6 +98,18 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
           <Settings size={18} />
           <span>{t('settings')}</span>
         </button>
+        {pluginSidebar.length > 0 && <p className="sidebar__section-label">Plugins</p>}
+        {pluginSidebar.map((action) => (
+          <button
+            type="button"
+            key={`${action.pluginId}:${action.id}`}
+            className="sidebar__item"
+            onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'sidebar')}
+          >
+            <Puzzle size={18} />
+            <span>{action.label}</span>
+          </button>
+        ))}
       </nav>
 
       <button

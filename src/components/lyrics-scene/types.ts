@@ -17,6 +17,7 @@ export interface LyricsSceneBindings {
   songId: string | null;
   title: string;
   artistLabel: string;
+  albumTitle?: string;
   artworkSrc: string | null;
   artworkAlt: string;
   artworkColor: string;

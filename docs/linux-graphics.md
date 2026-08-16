@@ -28,7 +28,9 @@ pre-fix build reported XWayland; it is historical comparison evidence, not the c
 
 The Linux main window remains opaque. Platform CSS preserves layout, transforms, palette, and lyric interaction
 while reducing high-cost live backdrop blur, artwork blur, large shadows, and uncontained lyric-line paint. These
-source-level reductions are risk controls, not proof of a compositor performance fix.
+source-level reductions are risk controls, not proof of a compositor performance fix. Plugin API v2 keeps that
+policy: inactive-line `filter: blur()` and scene widget blur are disabled on Linux; scene video is not decoded in
+`software` / `safe` modes. The WebKitGTK renderer strategy itself is unchanged.
 
 ## Acceptance modes
 

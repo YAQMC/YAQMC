@@ -426,6 +426,12 @@ pub fn run() {
             plugin::commands::plugin_runtime_stop,
             plugin::commands::plugin_mark_failed,
             plugin::commands::plugin_bridge,
+            plugin::commands::plugin_pick_directory,
+            plugin::commands::plugin_install_unpacked,
+            plugin::commands::plugin_reload,
+            plugin::commands::plugin_read_asset,
+            plugin::commands::plugin_settings_get,
+            plugin::commands::plugin_settings_set,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build desktop application");

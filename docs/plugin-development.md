@@ -39,10 +39,15 @@ Examples live in `examples/plugins/` and are **not** enabled by default. Packed 
 
 ## Events and control
 
-Read events: `track.changed`, `playback.stateChanged`, `playback.positionCommitted`, `lyrics.lineChanged`,
-`theme.changed`. Position is coalesced (~4 Hz). `player.control` operations go through `PlayerService` and inherit
-the session-safe seek mailbox. Plugin seeks are rate-limited.
+Read events: `track.changed`, `playback.stateChanged`, `playback.position`, `playback.positionCommitted`,
+`playback.modeChanged`, `queue.changed`, `lyrics.documentChanged`, `lyrics.lineChanged`, `theme.changed`,
+`scene.changed`, `settings.changed`, `ui.action`. Position is coalesced (~4 Hz). `player.control` operations go
+through `PlayerService` and inherit the session-safe seek mailbox. Plugin seeks are rate-limited (4/s).
+
+Build examples with `npm run plugin:build`, validate with `npm run plugin:validate`, and pack with
+`npm run plugin:pack` (or `npm run plugins:pack` after a build). Runtime still executes `dist/main.js` only.
 
 ## Settings
 
-v1 settings are a declarative schema rendered by YAQMC. Plugins cannot inject DOM into Settings.
+Settings are a declarative schema rendered by YAQMC. Plugins cannot inject DOM into Settings. Password fields stay
+out of diagnostics. UI slots (`ui.contextMenu.track`, Player Bar, sidebar) are declarative; YAQMC renders them.

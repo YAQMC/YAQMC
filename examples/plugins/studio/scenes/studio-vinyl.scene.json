@@ -13,12 +13,34 @@
       "zIndex": 0,
       "visible": true,
       "locked": false,
-      "source": "artwork",
+      "source": "colorField",
       "fit": "cover",
       "fallbackColor": "#1c1610",
       "opacity": 1,
       "influence": 0.42,
-      "blur": 16
+      "blur": 16,
+      "colorField": {
+        "emitters": [
+          {
+            "id": "left",
+            "position": "left",
+            "color": "#E8B86D",
+            "intensity": 0.55,
+            "falloff": 0.5,
+            "radius": 0.7,
+            "bind": "artworkPrimary"
+          },
+          {
+            "id": "right",
+            "position": "right",
+            "color": "#8C6B4A",
+            "intensity": 0.4,
+            "falloff": 0.45,
+            "radius": 0.6,
+            "bind": "artworkSecondary"
+          }
+        ]
+      }
     },
     "artwork": {
       "id": "artwork",

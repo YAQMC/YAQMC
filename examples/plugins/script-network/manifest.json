@@ -1,0 +1,18 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.example.network",
+  "name": "Scoped network",
+  "description": "v2 example: host-proxied HTTPS to example.com only. Raw fetch remains denied.",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "authors": ["YAQMC examples"],
+  "homepage": "https://github.com/YAQMC/YAQMC",
+  "repository": "https://github.com/YAQMC/YAQMC",
+  "license": "MIT",
+  "engines": { "yaqmc": ">=0.1.0" },
+  "platforms": ["windows", "linux"],
+  "entrypoints": {
+    "script": "dist/main.js"
+  },
+  "permissions": ["ui.notify", "network:https://example.com"]
+}

@@ -40,6 +40,19 @@
   contain: layout paint style;
 }
 
+/* Apple-like inactive-line blur is Windows-only. WebKitGTK can rasterize live filter:blur as black. */
+:root[data-platform='linux'] .lyrics-line:not([data-active]),
+:root[data-platform='linux'] .lyrics-line[data-active] {
+  filter: none;
+}
+
+:root[data-platform='linux'][data-graphics-mode='software'] .lyrics-scene__video,
+:root[data-platform='linux'][data-graphics-mode='safe'] .lyrics-scene__video,
+:root[data-platform='linux'][data-graphics-mode='software'] .lyrics-scene__extra video,
+:root[data-platform='linux'][data-graphics-mode='safe'] .lyrics-scene__extra video {
+  display: none;
+}
+
 :root[data-platform='linux'][data-display-backend='wayland-native']
   .lyrics-surface--desktop::before,
 :root[data-platform='linux'][data-display-backend='wayland-native'] .island-card {

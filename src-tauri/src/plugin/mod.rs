@@ -6,9 +6,11 @@
 pub mod commands;
 pub mod host;
 pub mod manifest;
+pub mod network;
 pub mod package;
 pub mod permissions;
 pub mod scanner;
+pub mod settings;
 
 pub use host::{ExtensionHost, PluginDiagnostic};
 pub use manifest::PluginManifest;

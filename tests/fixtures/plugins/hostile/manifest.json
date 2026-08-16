@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.yaqmc.test.hostile",
+  "name": "Hostile probe",
+  "description": "Local negative-test fixture. Do not enable as a user plugin.",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "authors": ["YAQMC tests"],
+  "entrypoints": { "script": "dist/main.js" },
+  "permissions": ["track.read"]
+}

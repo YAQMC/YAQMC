@@ -110,6 +110,12 @@ const APP_COMMANDS: &[&str] = &[
     "plugin_runtime_stop",
     "plugin_mark_failed",
     "plugin_bridge",
+    "plugin_pick_directory",
+    "plugin_install_unpacked",
+    "plugin_reload",
+    "plugin_read_asset",
+    "plugin_settings_get",
+    "plugin_settings_set",
 ];
 
 fn embed_build_metadata() {

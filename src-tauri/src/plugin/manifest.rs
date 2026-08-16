@@ -5,8 +5,13 @@ use thiserror::Error;
 use crate::plugin::permissions::{parse_permission, PluginPermission};
 
 pub const CURRENT_MANIFEST_VERSION: u32 = 1;
-pub const CURRENT_API_VERSION: u32 = 1;
+pub const CURRENT_API_VERSION: u32 = 2;
+pub const MIN_API_VERSION: u32 = 1;
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub fn api_supported(version: u32) -> bool {
+    (MIN_API_VERSION..=CURRENT_API_VERSION).contains(&version)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,7 +131,7 @@ impl PluginManifest {
     /// Structural parse succeeds for incompatible engines/API so the package can
     /// stay installed-but-disabled with an explanation. Activation still refuses.
     pub fn compatibility_issue(&self) -> Option<String> {
-        if self.api_version != CURRENT_API_VERSION {
+        if !api_supported(self.api_version) {
             return Some("this plugin API version is not supported".into());
         }
         if let Some(engine) = &self.engines.yaqmc {
@@ -147,20 +152,36 @@ impl PluginManifest {
         None
     }
 
+    #[allow(dead_code)]
     pub fn requested_permissions(&self) -> BTreeSet<PluginPermission> {
-        let mut set = BTreeSet::new();
+        self.requested_permission_keys()
+            .into_iter()
+            .filter_map(|key| {
+                parse_permission(&key)
+                    .ok()
+                    .map(|(permission, _)| permission)
+            })
+            .collect()
+    }
+
+    pub fn requested_permission_keys(&self) -> Vec<String> {
+        let mut keys = BTreeSet::new();
         for permission in &self.permissions {
-            if let Ok(parsed) = parse_permission(permission) {
-                set.insert(parsed);
+            if let Ok((parsed, origin)) = parse_permission(permission) {
+                if let Some(origin) = origin {
+                    keys.insert(format!("network:{origin}"));
+                } else {
+                    keys.insert(parsed.as_str().to_owned());
+                }
             }
         }
         if !self.entrypoints.styles.is_empty() {
-            set.insert(PluginPermission::StyleRegister);
+            keys.insert(PluginPermission::StyleRegister.as_str().to_owned());
         }
         if !self.entrypoints.scenes.is_empty() {
-            set.insert(PluginPermission::SceneRegister);
+            keys.insert(PluginPermission::SceneRegister.as_str().to_owned());
         }
-        set
+        keys.into_iter().collect()
     }
 }
 
@@ -338,6 +359,11 @@ mod tests {
             manifest.compatibility_issue().as_deref(),
             Some("this plugin API version is not supported")
         );
+        let v2 = valid_json().replace("\"apiVersion\": 1", "\"apiVersion\": 2");
+        assert!(PluginManifest::parse(v2.as_bytes())
+            .expect("v2")
+            .compatibility_issue()
+            .is_none());
         let json = valid_json().replace("styles/main.css", "../main.css");
         assert_eq!(
             PluginManifest::parse(json.as_bytes()).unwrap_err(),

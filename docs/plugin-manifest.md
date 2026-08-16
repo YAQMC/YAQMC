@@ -31,8 +31,9 @@ permissions, dependencies, conflicts, `settingsSchema`, reserved `signatures`.
 
 Plugin IDs are reverse-DNS, for example `dev.example.plugin`. Versions are semver (`1.0.0` or `0.0.0-local`).
 
-`apiVersion` is independent from the package version. v1 understands API version `1` only. Incompatible packages may
-remain installed and disabled with an explanation; they are never partially activated.
+`apiVersion` is independent from the package version and from `manifestVersion`. The host understands API versions
+`1` and `2`. Incompatible packages may remain installed and disabled with an explanation; they are never partially
+activated. Do not bump `manifestVersion` merely because Plugin API evolved.
 
 ## Dependencies and conflicts
 

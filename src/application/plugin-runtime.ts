@@ -10,9 +10,20 @@ import {
   type LyricsPresetDefinition,
 } from './lyrics-preset';
 import { isNativeRuntime } from './native-player-runtime';
+import { isLinuxWebView } from './platform-integration';
 import { usePlayerStore } from './player-store';
+import { primaryPlaybackMode } from './playback-mode';
 import { usePreferencesStore } from './preferences';
+import { useLyricsStore } from './lyrics-store';
+import { selectLyricCursor } from './lyrics-timing';
 import { logger } from './logger';
+import { pushPluginNotice } from './plugin-notifications';
+import {
+  clearPluginUi,
+  registerPluginPlayerBarAction,
+  registerPluginSidebarAction,
+  registerPluginTrackAction,
+} from './plugin-ui';
 
 export type PluginStatus =
   'installed' | 'disabled' | 'enabling' | 'active' | 'disabling' | 'failed' | 'incompatible';
@@ -44,6 +55,9 @@ export interface PluginRecord {
   compatible: boolean;
   platforms: string[];
   settingsSchema?: unknown;
+  networkOrigins?: string[];
+  unpackedPath?: string | null;
+  lastError?: string | null;
 }
 
 export interface ActiveStyleSheet {
@@ -61,6 +75,7 @@ export interface ActiveSceneResource {
 
 export interface ActiveScriptResource {
   pluginId: string;
+  pluginName?: string;
   source: string;
 }
 
@@ -78,7 +93,15 @@ export interface PluginInspectResult {
   compressedBytes: number;
   expandedBytes: number;
   fileCount: number;
-  manifest: { id: string; name: string; version: string; authors?: string[] };
+  manifest: {
+    id: string;
+    name: string;
+    version: string;
+    authors?: string[];
+    apiVersion?: number;
+    manifestVersion?: number;
+    description?: string;
+  };
   permissions: string[];
   styleScan: PluginScanReport;
   scriptScan: PluginScanReport;
@@ -92,20 +115,93 @@ let workers = new Map<string, Worker>();
 let runtimeTokens = new Map<string, string>();
 let lastPositionEmit = 0;
 let lastTrackKey = '';
+let lastLineKey = '';
+let lastQueueKey = '';
+let lastModeKey = '';
 let applying = false;
+const sceneInstance = { id: 0, sceneId: '', pluginId: '' };
+const sceneVariables = new Map<string, string>();
+const sceneStates = new Map<string, string>();
 
-export function pluginWorkerBootstrap(source: string): string {
+export function currentPluginSceneInstance(): {
+  id: number;
+  sceneId: string;
+  pluginId: string;
+} {
+  return { ...sceneInstance };
+}
+
+export function setPluginSceneInstance(pluginId: string, sceneId: string): number {
+  sceneInstance.id += 1;
+  sceneInstance.pluginId = pluginId;
+  sceneInstance.sceneId = sceneId;
+  return sceneInstance.id;
+}
+
+export function pluginSceneCssVars(): Record<string, string> {
+  return Object.fromEntries(sceneVariables);
+}
+
+export function pluginSceneDataState(): string {
+  return [...sceneStates.entries()].map(([key, value]) => `${key}:${value}`).join(' ');
+}
+
+const sceneListeners = new Set<() => void>();
+const widgetOverrides = new Map<string, Record<string, string>>();
+
+function emitSceneState(): void {
+  sceneListeners.forEach((listener) => listener());
+}
+
+export function subscribePluginSceneState(listener: () => void): () => void {
+  sceneListeners.add(listener);
+  return () => sceneListeners.delete(listener);
+}
+
+export function pluginSceneWidgetOverrides(): ReadonlyMap<string, Record<string, string>> {
+  return widgetOverrides;
+}
+
+function resetSceneBehavior(): void {
+  sceneVariables.clear();
+  sceneStates.clear();
+  widgetOverrides.clear();
+  emitSceneState();
+}
+
+function applySceneMutation(pluginId: string, payload: unknown): boolean {
+  const source = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const instanceId = Number(source.instanceId ?? 0);
+  if (sceneInstance.pluginId !== pluginId) return false;
+  if (!Number.isFinite(instanceId) || instanceId <= 0 || instanceId !== sceneInstance.id) {
+    return false;
+  }
+  return true;
+}
+
+export function isPluginSceneMutationCurrent(pluginId: string, instanceId: number): boolean {
+  return applySceneMutation(pluginId, { instanceId });
+}
+
+export function pluginWorkerBootstrap(source: string, pluginId = ''): string {
+  const idLiteral = JSON.stringify(pluginId);
   return `'use strict';
 self.fetch = function () { return Promise.reject(new Error('network denied')); };
 self.XMLHttpRequest = undefined;
 self.WebSocket = undefined;
 self.EventSource = undefined;
+self.Worker = undefined;
+self.SharedWorker = undefined;
+self.WebAssembly = undefined;
 self.importScripts = function () { throw new Error('importScripts denied'); };
+self.eval = function () { throw new Error('eval denied'); };
+self.Function = function () { throw new Error('Function denied'); };
 self.__TAURI__ = undefined;
 self.document = undefined;
 var __yaqmcListeners = {};
 var __yaqmcSeq = 1;
 var __yaqmcPending = {};
+var __yaqmcSceneInstance = 0;
 function __yaqmcCall(method, payload) {
   var id = String(__yaqmcSeq++);
   return new Promise(function (resolve, reject) {
@@ -123,6 +219,14 @@ self.onmessage = function (event) {
     return;
   }
   if (data.type === 'yaqmc/event') {
+    if (data.event === 'scene.changed' && data.payload) {
+      if (data.payload.phase === 'mount' && data.payload.pluginId === ${idLiteral}) {
+        __yaqmcSceneInstance = Number(data.payload.instanceId) || 0;
+      }
+      if (data.payload.phase === 'unmount' && Number(data.payload.instanceId) === __yaqmcSceneInstance) {
+        __yaqmcSceneInstance = 0;
+      }
+    }
     var list = __yaqmcListeners[data.event] || [];
     for (var i = 0; i < list.length; i++) {
       try { list[i](data.payload); } catch (error) { self.postMessage({ type: 'yaqmc/error', message: String(error) }); }
@@ -130,6 +234,7 @@ self.onmessage = function (event) {
   }
 };
 var ctx = {
+  plugin: { id: ${idLiteral} },
   events: {
     on: function (event, handler) {
       (__yaqmcListeners[event] || (__yaqmcListeners[event] = [])).push(handler);
@@ -138,10 +243,17 @@ var ctx = {
       };
     }
   },
-  track: { get: function () { return __yaqmcCall('track.get'); } },
-  lyrics: { get: function () { return __yaqmcCall('lyrics.get'); } },
+  track: {
+    get: function () { return __yaqmcCall('track.get'); },
+    read: function () { return __yaqmcCall('track.read'); }
+  },
+  lyrics: {
+    get: function () { return __yaqmcCall('lyrics.get'); },
+    read: function () { return __yaqmcCall('lyrics.read'); }
+  },
   player: {
     get: function () { return __yaqmcCall('player.get'); },
+    read: function () { return __yaqmcCall('player.read'); },
     play: function () { return __yaqmcCall('player.play'); },
     pause: function () { return __yaqmcCall('player.pause'); },
     toggle: function () { return __yaqmcCall('player.toggle'); },
@@ -153,6 +265,38 @@ var ctx = {
   storage: {
     get: function (key) { return __yaqmcCall('storage.get', { key: String(key || '') }); },
     set: function (key, value) { return __yaqmcCall('storage.set', { key: String(key || ''), value: String(value || '') }); }
+  },
+  settings: {
+    get: function () { return __yaqmcCall('settings.get'); },
+    set: function (values) { return __yaqmcCall('settings.set', { values: values || {} }); }
+  },
+  ui: {
+    contextMenu: { track: { register: function (action) { return __yaqmcCall('ui.contextMenu.track.register', action || {}); } } },
+    playerBar: { register: function (action) { return __yaqmcCall('ui.playerBar.register', action || {}); } },
+    sidebar: { register: function (action) { return __yaqmcCall('ui.sidebar.register', action || {}); } },
+    notify: function (options) {
+      var payload = typeof options === 'string' ? { message: options, level: 'info' } : (options || {});
+      return __yaqmcCall('ui.notify', payload);
+    }
+  },
+  network: {
+    request: function (request) { return __yaqmcCall('network.request', request || {}); }
+  },
+  scenes: {
+    onMount: function (sceneId, handler) {
+      return ctx.events.on('scene.changed', function (payload) {
+        if (payload && payload.sceneId === sceneId && payload.phase === 'mount') handler(payload);
+      });
+    },
+    onUnmount: function (sceneId, handler) {
+      return ctx.events.on('scene.changed', function (payload) {
+        if (payload && payload.sceneId === sceneId && payload.phase === 'unmount') handler(payload);
+      });
+    },
+    setVariable: function (name, value) { return __yaqmcCall('scenes.setVariable', { name: name, value: value, instanceId: __yaqmcSceneInstance }); },
+    setState: function (name, value) { return __yaqmcCall('scenes.setState', { name: name, value: value, instanceId: __yaqmcSceneInstance }); },
+    setWidgetProperty: function (widgetId, property, value) { return __yaqmcCall('scenes.setWidgetProperty', { widgetId: widgetId, property: property, value: value, instanceId: __yaqmcSceneInstance }); },
+    animate: function (widgetId, property, value) { return __yaqmcCall('scenes.animate', { widgetId: widgetId, property: property, value: value, instanceId: __yaqmcSceneInstance }); }
   },
   log: {
     info: function (message) { return __yaqmcCall('log.info', { message: String(message || '') }); },
@@ -201,7 +345,7 @@ function applySceneSheets(scenes: ActiveSceneResource[]): void {
     if (!scene.css) continue;
     const style = document.createElement('style');
     style.setAttribute(SCENE_STYLE_ATTR, scene.pluginId);
-    style.textContent = `@scope ([data-yaqmc-plugin-scene="${scene.pluginId}"]) {\n${scene.css}\n}`;
+    style.textContent = `@scope ([data-yaqmc-plugin-scene="${scene.pluginId}/${scene.sceneId}"]) {\n${scene.css}\n}`;
     document.head.appendChild(style);
   }
 }
@@ -260,6 +404,105 @@ function stopScripts(): void {
     ),
   );
   runtimeTokens = new Map();
+  clearPluginUi();
+}
+
+function asUiAction(
+  pluginId: string,
+  pluginName: string,
+  payload: unknown,
+): { pluginId: string; pluginName: string; id: string; label: string; icon?: string } | null {
+  const source = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const id = typeof source.id === 'string' ? source.id.trim() : '';
+  const label = typeof source.label === 'string' ? source.label.trim() : '';
+  if (!id || id.length > 40 || !label || label.length > 40) return null;
+  const icon = typeof source.icon === 'string' ? source.icon.slice(0, 40) : undefined;
+  return { pluginId, pluginName, id, label, icon };
+}
+
+function applyBridgeSideEffect(
+  script: ActiveScriptResource,
+  method: string,
+  payload: unknown,
+  value: unknown,
+): void {
+  const result = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  if (result.ok !== true) return;
+  const pluginName = script.pluginName ?? script.pluginId;
+  if (method === 'ui.contextMenu.track.register') {
+    const action = asUiAction(script.pluginId, pluginName, payload);
+    if (action) registerPluginTrackAction(action);
+    return;
+  }
+  if (method === 'ui.playerBar.register') {
+    const action = asUiAction(script.pluginId, pluginName, payload);
+    if (action) registerPluginPlayerBarAction(action);
+    return;
+  }
+  if (method === 'ui.sidebar.register') {
+    const action = asUiAction(script.pluginId, pluginName, payload);
+    if (action) registerPluginSidebarAction(action);
+    return;
+  }
+  if (method === 'ui.notify') {
+    const level =
+      result.level === 'success' || result.level === 'warning' || result.level === 'error'
+        ? result.level
+        : 'info';
+    const message = typeof result.message === 'string' ? result.message : '';
+    if (message) {
+      pushPluginNotice({
+        pluginId: script.pluginId,
+        pluginName,
+        level,
+        message,
+      });
+    }
+    return;
+  }
+  if (method === 'settings.set') {
+    emitToPlugin(script.pluginId, 'settings.changed', value);
+    return;
+  }
+  if (!applySceneMutation(script.pluginId, payload)) return;
+  const source = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const name = typeof source.name === 'string' ? source.name.trim() : '';
+  if (method === 'scenes.setVariable' && /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name)) {
+    const raw = source.value;
+    const text =
+      typeof raw === 'string'
+        ? raw.slice(0, 64)
+        : typeof raw === 'number' && Number.isFinite(raw)
+          ? String(raw)
+          : typeof raw === 'boolean'
+            ? String(raw)
+            : '';
+    if (text) sceneVariables.set(name, text);
+    emitSceneState();
+    return;
+  }
+  if (method === 'scenes.setState' && /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name)) {
+    const valueText = typeof source.value === 'string' ? source.value.slice(0, 32) : '';
+    if (valueText) sceneStates.set(name, valueText);
+    emitSceneState();
+    return;
+  }
+  if (method === 'scenes.setWidgetProperty' || method === 'scenes.animate') {
+    const widgetId = typeof source.widgetId === 'string' ? source.widgetId : '';
+    const property = typeof source.property === 'string' ? source.property : '';
+    if (!widgetId || !/^(opacity|scale|rotation|blur)$/.test(property)) return;
+    if (property === 'blur' && isLinuxWebView()) return;
+    const raw = source.value;
+    const text =
+      typeof raw === 'number' && Number.isFinite(raw)
+        ? String(Math.min(360, Math.max(0, raw)))
+        : typeof raw === 'string'
+          ? raw.slice(0, 16)
+          : '';
+    if (!text) return;
+    widgetOverrides.set(widgetId, { ...(widgetOverrides.get(widgetId) ?? {}), [property]: text });
+    emitSceneState();
+  }
 }
 
 async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
@@ -268,7 +511,7 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
     try {
       const token = await invoke<string>('plugin_runtime_start', { pluginId: script.pluginId });
       runtimeTokens.set(script.pluginId, token);
-      const blob = new Blob([pluginWorkerBootstrap(script.source)], {
+      const blob = new Blob([pluginWorkerBootstrap(script.source, script.pluginId)], {
         type: 'text/javascript',
       });
       const url = URL.createObjectURL(blob);
@@ -292,6 +535,7 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
           }).catch(() => undefined);
           worker.terminate();
           workers.delete(script.pluginId);
+          clearPluginUi(script.pluginId);
           return;
         }
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
@@ -300,6 +544,7 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
           request: { token: boundToken, method: data.method, payload: data.payload ?? {} },
         })
           .then((value) => {
+            applyBridgeSideEffect(script, data.method ?? '', data.payload, value);
             worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: true, value });
           })
           .catch((error: unknown) => {
@@ -317,14 +562,14 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
           id: script.pluginId,
           reason: event.message || 'plugin runtime error',
         }).catch(() => undefined);
+        clearPluginUi(script.pluginId);
       };
       workers.set(script.pluginId, worker);
     } catch (error) {
-      logger.error(
-        'plugin.runtime.error',
-        error instanceof Error ? error.message : 'plugin runtime failed to start',
-        { pluginId: script.pluginId },
-      );
+      const reason = error instanceof Error ? error.message : 'plugin runtime failed to start';
+      logger.error('plugin.runtime.error', reason, { pluginId: script.pluginId });
+      void invoke('plugin_mark_failed', { id: script.pluginId, reason }).catch(() => undefined);
+      clearPluginUi(script.pluginId);
     }
   }
 }
@@ -332,6 +577,103 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
 function emitToPlugins(event: string, payload: unknown): void {
   for (const worker of workers.values()) {
     worker.postMessage({ type: 'yaqmc/event', event, payload });
+  }
+}
+
+function emitToPlugin(pluginId: string, event: string, payload: unknown): void {
+  workers.get(pluginId)?.postMessage({ type: 'yaqmc/event', event, payload });
+}
+
+export function dispatchPluginUiAction(pluginId: string, actionId: string, slot: string): void {
+  emitToPlugin(pluginId, 'ui.action', { id: actionId, slot });
+}
+
+function emitSceneLifecycle(selectedId: string): void {
+  const pluginMatch = /^plugin:([^:]+):(.+)$/.exec(selectedId);
+  const nextPluginId = pluginMatch?.[1] ?? '';
+  const nextSceneId = pluginMatch?.[2] ?? selectedId;
+  if (sceneInstance.pluginId && sceneInstance.pluginId !== nextPluginId) {
+    emitToPlugins('scene.changed', {
+      phase: 'unmount',
+      pluginId: sceneInstance.pluginId,
+      sceneId: sceneInstance.sceneId,
+      instanceId: sceneInstance.id,
+    });
+    resetSceneBehavior();
+  }
+  if (nextPluginId) {
+    const instanceId = setPluginSceneInstance(nextPluginId, nextSceneId);
+    emitToPlugin(nextPluginId, 'scene.changed', {
+      phase: 'mount',
+      pluginId: nextPluginId,
+      sceneId: nextSceneId,
+      instanceId,
+    });
+  } else {
+    sceneInstance.pluginId = '';
+    sceneInstance.sceneId = nextSceneId;
+  }
+}
+
+export async function setPluginDeveloperMode(enabled: boolean): Promise<boolean> {
+  const next = await invoke<boolean>('plugin_set_developer_mode', { enabled });
+  await applyPluginResources();
+  return next;
+}
+
+export async function pluginHostDeveloperMode(): Promise<boolean> {
+  if (!isNativeRuntime) return false;
+  const resources = await invoke<ActivePluginResources>('plugin_active_resources');
+  return resources.developerMode;
+}
+
+export async function choosePluginDirectory(): Promise<string | null> {
+  return invoke<string | null>('plugin_pick_directory');
+}
+
+export async function installUnpackedPlugin(
+  path: string,
+  options: { enable?: boolean; grant?: string[] } = {},
+): Promise<PluginRecord> {
+  const record = await invoke<PluginRecord>('plugin_install_unpacked', {
+    request: { path, enable: options.enable ?? false, grant: options.grant ?? [] },
+  });
+  await applyPluginResources();
+  return record;
+}
+
+export async function reloadPlugin(id: string): Promise<PluginRecord> {
+  const record = await invoke<PluginRecord>('plugin_reload', { id });
+  await applyPluginResources();
+  return record;
+}
+
+export async function pluginSettingsGet(id: string): Promise<Record<string, unknown>> {
+  return invoke<Record<string, unknown>>('plugin_settings_get', { id });
+}
+
+export async function pluginSettingsSet(
+  id: string,
+  values: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const next = await invoke<Record<string, unknown>>('plugin_settings_set', {
+    request: { id, values },
+  });
+  emitToPlugin(id, 'settings.changed', next);
+  return next;
+}
+
+export async function readPluginAsset(
+  pluginId: string,
+  path: string,
+): Promise<{ mime: string; dataBase64: string } | null> {
+  try {
+    return await invoke<{ mime: string; dataBase64: string }>('plugin_read_asset', {
+      pluginId,
+      path,
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -351,6 +693,9 @@ export async function applyPluginResources(): Promise<ActivePluginResources | nu
       usePreferencesStore.getState().selectLyricsPreset(BUILTIN_CLASSIC_ID);
     }
     await startScripts(resources.safeMode ? [] : resources.scripts);
+    if (resources.safeMode) resetSceneBehavior();
+    const selected = usePreferencesStore.getState().lyricsPresets.selectedId;
+    emitSceneLifecycle(selected);
     return resources;
   } finally {
     applying = false;
@@ -414,14 +759,19 @@ export function pluginDiagnosticsText(record: PluginRecord): string {
   return [
     `id=${record.id}`,
     `version=${record.version}`,
+    `apiVersion=${record.apiVersion}`,
     `status=${record.status}`,
     `enabled=${record.enabled}`,
     `sha256=${record.packageSha256}`,
     `permissions=${record.grantedPermissions.join(',')}`,
+    `network=${(record.networkOrigins ?? []).join(',')}`,
     `risk=${record.riskRating}`,
     `source=${record.source}`,
     `unsigned=${record.unsigned}`,
-  ].join('\n');
+    record.lastError ? `error=${record.lastError}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function usePluginHost(): void {
@@ -434,7 +784,7 @@ export function usePluginHost(): void {
     }).then((fn) => {
       unlisten = fn;
     });
-    const unsubscribe = usePlayerStore.subscribe((state, previous) => {
+    const unsubscribePlayer = usePlayerStore.subscribe((state, previous) => {
       const track = state.queue[state.currentIndex ?? -1];
       const previousTrack = previous.queue[previous.currentIndex ?? -1];
       const trackKey = `${state.sessionId}:${state.currentQueueEntryId}:${track?.id ?? ''}`;
@@ -443,8 +793,11 @@ export function usePluginHost(): void {
         emitToPlugins('track.changed', {
           id: track?.id ?? null,
           title: track?.title ?? null,
+          artists: track?.artists.map((artist) => artist.name) ?? [],
+          album: track?.album.title ?? null,
           sessionId: state.sessionId,
         });
+        lastLineKey = '';
       }
       if (state.isPlaying !== previous.isPlaying || track?.id !== previousTrack?.id) {
         emitToPlugins('playback.stateChanged', {
@@ -452,18 +805,73 @@ export function usePluginHost(): void {
           sessionId: state.sessionId,
         });
       }
+      const modeKey = `${state.repeat}:${state.playbackOrder}`;
+      if (modeKey !== lastModeKey) {
+        lastModeKey = modeKey;
+        emitToPlugins('playback.modeChanged', {
+          repeat: state.repeat,
+          playbackOrder: state.playbackOrder,
+          primaryPlaybackMode: primaryPlaybackMode(state.playbackOrder, state.repeat),
+          sessionId: state.sessionId,
+        });
+      }
+      const queueKey = `${state.sessionId}:${state.queue.map((item) => item.id).join(',')}`;
+      if (queueKey !== lastQueueKey) {
+        lastQueueKey = queueKey;
+        emitToPlugins('queue.changed', {
+          length: state.queue.length,
+          currentQueueEntryId: state.currentQueueEntryId,
+          sessionId: state.sessionId,
+        });
+      }
       const now = Date.now();
       if (now - lastPositionEmit >= 250) {
         lastPositionEmit = now;
-        emitToPlugins('playback.positionCommitted', {
+        const positionPayload = {
           positionMs: state.positionMs,
+          durationMs: state.playbackDurationMs,
           sessionId: state.sessionId,
+        };
+        emitToPlugins('playback.position', positionPayload);
+        emitToPlugins('playback.positionCommitted', positionPayload);
+        const document = useLyricsStore.getState().document;
+        const cursor = selectLyricCursor(document, state.positionMs);
+        const lineKey = `${track?.id ?? ''}:${cursor.lineIndex}:${cursor.wordIndex}`;
+        if (lineKey !== lastLineKey) {
+          lastLineKey = lineKey;
+          emitToPlugins('lyrics.lineChanged', {
+            lineIndex: cursor.lineIndex,
+            wordIndex: cursor.wordIndex,
+            text: cursor.line?.text ?? null,
+            sessionId: state.sessionId,
+          });
+        }
+      }
+    });
+    const unsubscribeLyrics = useLyricsStore.subscribe((state, previous) => {
+      if (state.songId !== previous.songId || state.document !== previous.document) {
+        emitToPlugins('lyrics.documentChanged', {
+          songId: state.songId,
+          status: state.status,
+          lineCount: state.document?.lines.length ?? 0,
         });
+      }
+    });
+    const unsubscribePrefs = usePreferencesStore.subscribe((state, previous) => {
+      const themeKey = state.appearance.colorMode;
+      if (themeKey !== previous.appearance.colorMode) {
+        emitToPlugins('theme.changed', { colorMode: themeKey });
+      }
+      const sceneKey = state.lyricsPresets.selectedId;
+      if (sceneKey !== previous.lyricsPresets.selectedId) {
+        emitSceneLifecycle(sceneKey);
       }
     });
     return () => {
       unlisten?.();
-      unsubscribe();
+      unsubscribePlayer();
+      unsubscribeLyrics();
+      unsubscribePrefs();
       stopScripts();
     };
   }, []);
