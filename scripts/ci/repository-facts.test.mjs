@@ -21,7 +21,8 @@ const FACT_FILES = [
   'src-tauri/src/lib.rs',
   'src-tauri/src/storage.rs',
   'src-tauri/src/commands.rs',
-  'src-tauri/src/app_preferences.rs',
+  'crates/yaqmc-core/src/app_preferences.rs',
+  'crates/yaqmc-core/src/logging.rs',
   'src-tauri/src/lyrics_surface/mod.rs',
   'src-tauri/src/qqmusic.rs',
   'src-tauri/src/credentials.rs',
@@ -117,5 +118,20 @@ test('rejects a temporary repository whose command sources disagree', () => {
   assert.throws(
     () => collectRepositoryFacts(root),
     /command contract.*APP_COMMANDS.*generate_handler/,
+  );
+});
+
+test('collects migrated persistence keys from their Core-owned canonical sources', () => {
+  const root = copyFactRepository();
+  const loggingPath = path.join(root, 'crates', 'yaqmc-core', 'src', 'logging.rs');
+  writeFileSync(
+    loggingPath,
+    readFileSync(loggingPath, 'utf8').replace('"logging.level"', '"logging.level.drifted"'),
+  );
+
+  const facts = collectRepositoryFacts(root);
+  assert.equal(
+    facts.persistenceEntries.find(({ id }) => id === 'logging-level')?.key,
+    'logging.level.drifted',
   );
 });

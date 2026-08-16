@@ -12,7 +12,7 @@ pub mod permissions;
 pub mod scanner;
 pub mod settings;
 
-pub use host::{ExtensionHost, PluginDiagnostic};
+pub use host::{ExtensionHost, PluginDiagnostic, PluginStatus};
 pub use manifest::PluginManifest;
 
 pub const MAX_COMPRESSED_BYTES: u64 = 8 * 1024 * 1024;

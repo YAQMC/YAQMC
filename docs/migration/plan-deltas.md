@@ -34,3 +34,34 @@ code, Git cutover, backup branch, tag, merge, push, or default-branch action.
 The full copyright/contributor/source provenance audit is currently **BLOCKED**. This scaffold does not clear a
 license, source, authorization, contributor, asset, or release blocker; release and P14 integration remain subject to
 the enforced provenance ledger.
+
+## Task 5: preferences, diagnostics, logging, issue reporting, and platform DTO split
+
+- `logging.rs`, `diagnostics.rs`, and `issue_reporter.rs` are history-preserving `git mv` extractions into
+  `yaqmc-core`; Tauri now retains narrow compatibility adapters/re-exports. The logger's process-global subscriber
+  and `WorkerGuard` ownership remain one-time, process-long state. A pure root-injection sanitizer supports
+  deterministic tests without mutating `HOME` or `USERPROFILE`.
+- `app_preferences.rs` is a verified mixed-file split, not a verbatim move. Core owns versioned document validation,
+  default derivation, atomic repository-transform semantics, surface document merge/patching, and managed-background
+  validation/IO with explicit source/data-root paths. Tauri retains SQLite `StorageService` adaptation (whose
+  callback remains inside `update_setting`'s mutex), the best-effort `preferences://changed` event, dialog selection,
+  `app_data_dir` discovery, and lyrics-surface native coordination/rollback.
+- `platform.rs` is likewise a verified mixed-file split. Core owns platform/system-media/desktop-integration DTOs,
+  deterministic capability derivation and assembly from injected facts, startup diagnostic logging, and diagnostic
+  file writing with an explicit destination. Tauri retains package/path discovery, player/audio queries, WebKitGTK,
+  Linux environment/GPU, raw-window-handle backend detection, graphics-policy mutation, and download-directory
+  selection. Native Wayland and XWayland capability semantics remain distinct.
+- Core diagnostic snapshots use provider-independent `ProviderSection` and plugin diagnostic DTOs. `commands.rs`
+  exhaustively maps host QQ provider/plugin statuses to them; JSON fixtures check provider field casing and the
+  plugin `active` enum casing without making Core depend on provider/plugin runtime types.
+- The diagnostic ZIP's 8 MiB limit is now a total uncompressed-entry limit: manifest, JSON snapshot, plaintext,
+  optional description, every retained log, and redaction report are accounted before writing. Optional logs are
+  metadata-checked against remaining budget before allocation, read through a bounded growth-detecting reader, and
+  skipped with sanitized warnings when necessary. Mandatory over-budget output fails without leaving a ZIP; secret
+  redaction/refusal remains fail-closed.
+- The existing Tauri `24 MiB` managed-background Data-URI command route is unchanged. Base64 plus JSON framing still
+  conflicts with the binding future `32 MiB` protocol hard cap, so P2/P11 must use a controlled resource reference,
+  chunking, or an explicitly reviewed compatibility delta; this task does not raise the cap or claim resolution.
+- Task 5 does not clear pending live performance measurements or the blocked provenance release gate, and it does not
+  implement the P2 registry/framing/caps, Electron host, provider transport/qm-api-rs work, P12/P14 human/live-account
+  gates, or Git cutover/rollback actions.

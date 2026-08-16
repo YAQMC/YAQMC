@@ -250,7 +250,10 @@ function collectPersistence(repositoryRoot) {
 
   const commands = read(repositoryRoot, 'src-tauri/src/commands.rs');
   const audioOutput = constant(commands, 'AUDIO_OUTPUT_SETTING');
-  const loggingLevel = constant(commands, 'LOGGING_LEVEL_SETTING');
+  const loggingLevel = constant(
+    read(repositoryRoot, 'crates/yaqmc-core/src/logging.rs'),
+    'LOG_LEVEL_SETTING_KEY',
+  );
   const qqmusic = read(repositoryRoot, 'src-tauri/src/qqmusic.rs');
   const qualityKeys = [...qqmusic.matchAll(/\.(?:get|set)_setting\(\s*"([^"]+)"/g)].map(
     (match) => match[1],
@@ -259,7 +262,7 @@ function collectPersistence(repositoryRoot) {
     throw new Error(`preferred quality setting contract is invalid: ${qualityKeys.join(', ')}`);
   }
   const preferences = constant(
-    read(repositoryRoot, 'src-tauri/src/app_preferences.rs'),
+    read(repositoryRoot, 'crates/yaqmc-core/src/app_preferences.rs'),
     'PREFERENCES_KEY',
   );
   if (!storage.includes("VALUES ('preferences-schema-version', '2'")) {

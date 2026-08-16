@@ -1,5 +1,4 @@
 use crate::player::{PlaybackState, PlayerService, PlayerSnapshot, RepeatMode};
-use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
@@ -10,14 +9,7 @@ use souvlaki::{
     SeekDirection,
 };
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SystemMediaStatus {
-    pub available: bool,
-    pub backend: &'static str,
-    pub specification: &'static str,
-    pub error: Option<String>,
-}
+pub use yaqmc_core::platform::SystemMediaStatus;
 
 #[derive(Clone, Debug, PartialEq)]
 struct ProjectedMetadata {

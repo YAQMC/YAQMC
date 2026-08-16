@@ -1,5 +1,11 @@
 //! Host-neutral ownership seams for the YAQMC application core.
 
+pub mod app_preferences;
+pub mod diagnostics;
+pub mod issue_reporter;
+pub mod logging;
+pub mod platform;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{error::Error, fmt, path::PathBuf};
 
