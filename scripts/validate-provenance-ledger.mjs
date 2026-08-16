@@ -76,14 +76,37 @@ function isTypedImmutableEvidenceReference(reference) {
   return githubCommentReference.test(reference);
 }
 
-function isRevisionBoundSourceEvidence(reference, revision) {
+function normalizedRepositoryPath(url) {
+  return url.pathname
+    .replace(/\/+$/u, '')
+    .replace(/\.git$/iu, '')
+    .split('/')
+    .filter(Boolean);
+}
+
+function isRevisionBoundSourceEvidence(reference, source) {
+  const { revision } = source;
   if (reference === `git-object:${revision}` || reference === `signed-commit:${revision}`)
     return true;
   if (typeof reference !== 'string' || !reference.startsWith('git-revision-url:')) return false;
 
   try {
-    const url = new URL(reference.slice('git-revision-url:'.length));
-    return url.protocol === 'https:' && url.pathname.split('/').includes(revision);
+    const sourceUrl = new URL(source.origin);
+    const evidenceUrl = new URL(reference.slice('git-revision-url:'.length));
+    const sourceRepositoryPath = normalizedRepositoryPath(sourceUrl);
+    const evidencePath = evidenceUrl.pathname.split('/').filter(Boolean);
+
+    if (
+      sourceUrl.protocol !== 'https:' ||
+      evidenceUrl.protocol !== 'https:' ||
+      sourceUrl.host.toLowerCase() !== evidenceUrl.host.toLowerCase() ||
+      sourceRepositoryPath.length === 0 ||
+      sourceRepositoryPath.some((segment, index) => evidencePath[index] !== segment)
+    ) {
+      return false;
+    }
+
+    return evidencePath.slice(sourceRepositoryPath.length).includes(revision);
   } catch {
     return false;
   }
@@ -112,7 +135,7 @@ function collectBlockers(ledger) {
       blockers.push(`source:${source.id} status=${source.status ?? 'unknown'}`);
     } else if (
       !Array.isArray(source.evidence) ||
-      !source.evidence.some((evidence) => isRevisionBoundSourceEvidence(evidence, source.revision))
+      !source.evidence.some((evidence) => isRevisionBoundSourceEvidence(evidence, source))
     ) {
       blockers.push(`source:${source.id} verified status lacks revision-bound immutable evidence`);
     }

@@ -116,6 +116,47 @@ test('rejects fabricated or ordinary evidence strings as immutable proof', () =>
   assert.match(enforced.stdout, /verified status lacks typed immutable evidence/);
 });
 
+test('rejects a revision URL with the right SHA but an unrelated source origin', () => {
+  const ledger = passingLedger();
+  ledger.sources[0].origin = 'https://github.com/legitimate-owner/repo';
+  ledger.sources[0].evidence = [
+    `git-revision-url:https://example.invalid/arbitrary/${revision}/LICENSE`,
+  ];
+
+  const enforced = runLedger(writeFixture(ledger), true);
+
+  assert.notEqual(enforced.status, 0);
+  assert.match(enforced.stdout, /PROVENANCE STATUS: BLOCKED/);
+  assert.match(enforced.stdout, /revision-bound immutable evidence/);
+});
+
+test('rejects a revision URL on the same host but from another repository', () => {
+  const ledger = passingLedger();
+  ledger.sources[0].origin = 'https://github.com/legitimate-owner/repo';
+  ledger.sources[0].evidence = [
+    `git-revision-url:https://github.com/arbitrary-owner/other-repo/blob/${revision}/LICENSE`,
+  ];
+
+  const enforced = runLedger(writeFixture(ledger), true);
+
+  assert.notEqual(enforced.status, 0);
+  assert.match(enforced.stdout, /PROVENANCE STATUS: BLOCKED/);
+  assert.match(enforced.stdout, /revision-bound immutable evidence/);
+});
+
+test('accepts a revision URL from a normalized source repository origin', () => {
+  const ledger = passingLedger();
+  ledger.sources[0].origin = 'https://github.com/legitimate-owner/repo.git/';
+  ledger.sources[0].evidence = [
+    `git-revision-url:https://github.com/legitimate-owner/repo/blob/${revision}/LICENSE`,
+  ];
+
+  const enforced = runLedger(writeFixture(ledger), true);
+
+  assert.equal(enforced.status, 0, enforced.stderr);
+  assert.match(enforced.stdout, /PROVENANCE STATUS: PASS/);
+});
+
 test('license, revision, mapping, proprietary authorization, and contributor consent failures cannot pass', () => {
   const cases = [
     {
