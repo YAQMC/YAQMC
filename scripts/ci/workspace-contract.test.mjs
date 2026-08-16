@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { validateWorkspaceMetadata } from './verify-workspace-contract.mjs';
+import {
+  validateCoreDependencyClosure,
+  validateWorkspaceMetadata,
+} from './verify-workspace-contract.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -25,6 +28,34 @@ function metadataWithTargetDirectory(targetDirectory) {
   };
 }
 
+function metadataWithCoreClosure(packages) {
+  const metadata = metadataWithTargetDirectory(path.join(repositoryRoot, 'target'));
+  const core = metadata.packages.find((pkg) => pkg.name === 'yaqmc-core');
+  const resolvedPackages = packages.map(([name]) => ({
+    id: `registry+https://example.invalid/index#${name}`,
+    name,
+  }));
+  const packageByName = new Map(resolvedPackages.map((pkg) => [pkg.name, pkg]));
+  const dependencyIdsFor = (name) =>
+    (packages.find(([candidate]) => candidate === name)?.[1] ?? []).map(
+      (dependencyName) => packageByName.get(dependencyName).id,
+    );
+  metadata.packages.push(...resolvedPackages);
+  metadata.resolve = {
+    nodes: [
+      {
+        id: core.id,
+        dependencies: dependencyIdsFor('yaqmc-core'),
+      },
+      ...resolvedPackages.map((pkg) => ({
+        id: pkg.id,
+        dependencies: dependencyIdsFor(pkg.name),
+      })),
+    ],
+  };
+  return metadata;
+}
+
 test('accepts exactly the root workspace metadata contract', () => {
   assert.doesNotThrow(() =>
     validateWorkspaceMetadata(metadataWithTargetDirectory(path.join(repositoryRoot, 'target'))),
@@ -38,5 +69,30 @@ test('rejects metadata that points Cargo output back under the Tauri member', ()
         metadataWithTargetDirectory(path.join(repositoryRoot, 'src-tauri', 'target')),
       ),
     /Cargo target directory/,
+  );
+});
+
+test('accepts a host-neutral Core dependency closure', () => {
+  assert.doesNotThrow(() =>
+    validateCoreDependencyClosure(
+      metadataWithCoreClosure([
+        ['yaqmc-core', ['tokio']],
+        ['tokio', []],
+      ]),
+    ),
+  );
+});
+
+test('rejects a forbidden host dependency reached transitively from Core', () => {
+  assert.throws(
+    () =>
+      validateCoreDependencyClosure(
+        metadataWithCoreClosure([
+          ['yaqmc-core', ['portable-layer']],
+          ['portable-layer', ['tauri']],
+          ['tauri', []],
+        ]),
+      ),
+    /forbidden yaqmc-core dependency closure: tauri/,
   );
 });
