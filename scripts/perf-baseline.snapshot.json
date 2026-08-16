@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-16",
+  "toolchains": [
+    {
+      "name": "Node.js",
+      "required": "24.19.0",
+      "observed": "24.14.1",
+      "state": "mismatch"
+    },
+    {
+      "name": "Rust",
+      "required": "1.88.0",
+      "observed": "1.97.1",
+      "state": "mismatch"
+    }
+  ],
+  "runtimeFacts": {
+    "registeredTauriCommands": 117,
+    "mainWindow": "1280×800 (minimum 1000×680)"
+  },
+  "releaseAssets": [
+    {
+      "platform": "Windows",
+      "architectures": "x64, i686, arm64",
+      "formats": "NSIS installer, MSI installer, portable ZIP"
+    },
+    {
+      "platform": "Linux",
+      "architectures": "x64, arm64",
+      "formats": "AppImage, deb, rpm, portable tar.gz"
+    }
+  ],
+  "dataPaths": [
+    {
+      "platform": "Windows",
+      "purpose": "App data",
+      "path": "%APPDATA%\\org.yaqmc.desktop",
+      "state": "source-verified"
+    },
+    {
+      "platform": "Windows",
+      "purpose": "Cache",
+      "path": "%LOCALAPPDATA%\\org.yaqmc.desktop",
+      "state": "source-verified"
+    },
+    {
+      "platform": "Windows",
+      "purpose": "Logs",
+      "path": "%LOCALAPPDATA%\\org.yaqmc.desktop\\logs",
+      "state": "source-verified"
+    },
+    {
+      "platform": "Linux",
+      "purpose": "App data",
+      "path": "~/.local/share/org.yaqmc.desktop",
+      "state": "source-verified"
+    },
+    {
+      "platform": "Linux",
+      "purpose": "Cache",
+      "path": "~/.cache/org.yaqmc.desktop",
+      "state": "source-verified"
+    },
+    {
+      "platform": "Linux",
+      "purpose": "Logs",
+      "path": "~/.local/share/org.yaqmc.desktop/logs",
+      "state": "source-verified"
+    }
+  ],
+  "settingKeys": [
+    "ui-preferences-v1",
+    "lyrics-surface-geometry:desktop",
+    "lyrics-surface-geometry:island"
+  ],
+  "keyring": {
+    "service": "org.yaqmc.desktop",
+    "entries": [
+      "qqmusic-session",
+      "qqmusic-session-staging",
+      "local-api-bearer-token"
+    ]
+  },
+  "measurements": {
+    "Windows:coldStartInteractiveMs": { "state": "pending" },
+    "Windows:warmStartInteractiveMs": { "state": "pending" },
+    "Windows:rssBootIdle60sMiB": { "state": "pending" },
+    "Windows:rssPlayback30mMiB": { "state": "pending" },
+    "Windows:cpuPausedPercent": { "state": "pending" },
+    "Windows:cpuPlayingPercent": { "state": "pending" },
+    "Windows:cpuSeekStormPercent": { "state": "pending" },
+    "Windows:seekRoundTripP95Ms": { "state": "pending" },
+    "Windows:installerSizeMiB": { "state": "pending" },
+    "Windows:installedSizeMiB": { "state": "pending" },
+    "Linux:coldStartInteractiveMs": { "state": "pending" },
+    "Linux:warmStartInteractiveMs": { "state": "pending" },
+    "Linux:rssBootIdle60sMiB": { "state": "pending" },
+    "Linux:rssPlayback30mMiB": { "state": "pending" },
+    "Linux:cpuPausedPercent": { "state": "pending" },
+    "Linux:cpuPlayingPercent": { "state": "pending" },
+    "Linux:cpuSeekStormPercent": { "state": "pending" },
+    "Linux:seekRoundTripP95Ms": { "state": "pending" },
+    "Linux:installerSizeMiB": { "state": "pending" },
+    "Linux:installedSizeMiB": { "state": "pending" }
+  }
+}
