@@ -2,7 +2,6 @@ use crate::{
     audio::{AudioFormat, PreparedPlaybackLocation, PreparedPlaybackSource},
     player::Song,
     qmc::{EncryptedMediaKey, QmcDecryptor, QmcError},
-    qqmusic::{AccountEpoch, PlaybackSourceSelection},
     storage::{StorageError, StorageService},
     streaming::{prepare_progressive, ProgressiveError, ProgressivePreparation},
 };
@@ -15,14 +14,15 @@ use std::{
 };
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
+use yaqmc_core::playback_types::{PlaybackEpoch, PlaybackSourceSelection};
 
 #[derive(Default)]
 pub struct PlaybackEpochClock {
-    current: StdRwLock<Option<AccountEpoch>>,
+    current: StdRwLock<Option<PlaybackEpoch>>,
 }
 
 impl PlaybackEpochClock {
-    pub(crate) fn replace(&self, epoch: Option<AccountEpoch>) {
+    pub(crate) fn replace(&self, epoch: Option<PlaybackEpoch>) {
         *self
             .current
             .write()
@@ -32,7 +32,7 @@ impl PlaybackEpochClock {
 
 #[derive(Clone)]
 pub struct PlaybackEpochGuard {
-    expected: Option<AccountEpoch>,
+    expected: Option<PlaybackEpoch>,
     cancellation: CancellationToken,
     clock: Arc<PlaybackEpochClock>,
     identity: Arc<()>,
@@ -49,7 +49,7 @@ impl PlaybackEpochGuard {
     }
 
     pub(crate) fn account_bound(
-        expected: AccountEpoch,
+        expected: PlaybackEpoch,
         cancellation: CancellationToken,
         clock: Arc<PlaybackEpochClock>,
     ) -> Self {
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn account_bound_guard_is_atomic_and_debug_output_is_sanitized() {
         let clock = Arc::new(PlaybackEpochClock::default());
-        let epoch = AccountEpoch::for_test(7);
+        let epoch = PlaybackEpoch::new(7, "test-account-7");
         clock.replace(Some(epoch.clone()));
         let cancellation = CancellationToken::new();
         let guard = PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock.clone());
@@ -595,11 +595,11 @@ mod tests {
     fn epoch_mismatch_rejects_even_without_token_delivery() {
         let clock = Arc::new(PlaybackEpochClock::default());
         let guard = PlaybackEpochGuard::account_bound(
-            AccountEpoch::for_test(1),
+            PlaybackEpoch::new(1, "test-account-1"),
             CancellationToken::new(),
             clock.clone(),
         );
-        clock.replace(Some(AccountEpoch::for_test(2)));
+        clock.replace(Some(PlaybackEpoch::new(2, "test-account-2")));
         assert_eq!(guard.validate(), Err(PlaybackSourceError::Cancelled));
     }
 }

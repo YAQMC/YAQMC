@@ -96,3 +96,20 @@ the enforced provenance ledger.
   registry/caps, Electron, provider/qm-api-rs, HUMAN/LIVE_ACCOUNT gate, or Git-cutover work is implemented here.
 - P0 live measurements remain `PENDING`; the provenance release gate remains `BLOCKED`. This ownership-only
   checkpoint does not clear, measure, or claim either gate.
+
+## Task 7A: provider-neutral playback value seam
+
+- `AudioQuality`, `AudioCodec`, `AudioFormatInfo`, quality preference/capability/selection DTOs, and their exact
+  serde contracts are Core-owned in `yaqmc_core::playback_types`. `player` and `qqmusic` retain public compatibility
+  re-exports, so existing Tauri callers and frontend-facing DTO paths keep their source and JSON shapes.
+- `AudioQualityPreference::{from_setting, as_setting}` remains behaviorally identical: `automatic`, `standard`,
+  `high`, `lossless`, and `master` round-trip; absent or unknown settings resolve to `automatic`.
+- `PlaybackEpoch` is a provider-neutral Core value with generation plus a private opaque scope. It intentionally
+  implements neither serde nor `Debug`; equality still fences both generation and scope. QQ retains its private
+  `AccountEpoch` for account/cache authority and converts it to `PlaybackEpoch` only at the auth/cache-to-media
+  boundary. Clock replacement, cancellation, and guard validation ordering are unchanged.
+- No playback, audio, media, streaming, QMC, QQ/OAuth, provider registry, qm-api-rs, or Electron extraction occurs
+  in this slice. Task 7B retains the Player/Audio/Media/QQ compile-closure move; Task 8 retains the OAuth/system
+  media split.
+- P0 live measurements remain `PENDING`; the provenance release gate remains `BLOCKED`. This ownership-only
+  checkpoint does not clear either gate or implement P2 registry/framing/caps, P12/P14 human gates, or cutover work.

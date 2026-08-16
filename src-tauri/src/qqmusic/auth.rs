@@ -1474,7 +1474,8 @@ impl QQMusicAuthService {
                 generation,
                 scope: session.account_cache_scope.clone(),
             });
-        self.playback_epoch.replace(epoch);
+        self.playback_epoch
+            .replace(epoch.as_ref().map(AccountEpoch::playback_epoch));
         if !self
             .publish_authenticated_if_current(generation, validated)
             .await
@@ -1828,7 +1829,8 @@ impl QQMusicAuthService {
                 generation,
                 scope: session.account_cache_scope.clone(),
             });
-        self.playback_epoch.replace(epoch);
+        self.playback_epoch
+            .replace(epoch.as_ref().map(AccountEpoch::playback_epoch));
         if !self
             .publish_authenticated_if_current(generation, validated)
             .await
@@ -3406,7 +3408,7 @@ mod tests {
             .await
             .expect("first context");
         let first_guard = PlaybackEpochGuard::account_bound(
-            first.epoch,
+            first.epoch.playback_epoch(),
             first.cancellation,
             service.playback_epoch_clock(),
         );
@@ -3422,7 +3424,7 @@ mod tests {
             .await
             .expect("second context");
         let second_guard = PlaybackEpochGuard::account_bound(
-            second.epoch,
+            second.epoch.playback_epoch(),
             second.cancellation,
             service.playback_epoch_clock(),
         );

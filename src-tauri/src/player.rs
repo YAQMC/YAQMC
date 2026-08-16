@@ -16,6 +16,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::{broadcast, RwLock};
+pub use yaqmc_core::playback_types::{AudioCodec, AudioFormatInfo, AudioQuality};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,39 +46,6 @@ pub struct ArtistSummary {
 pub struct AlbumSummary {
     pub id: String,
     pub title: String,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum AudioQuality {
-    Standard,
-    High,
-    Lossless,
-    Master,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum AudioCodec {
-    Mp3,
-    Aac,
-    Flac,
-    Alac,
-    Unknown,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioFormatInfo {
-    pub quality: AudioQuality,
-    pub codec: AudioCodec,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bitrate_kbps: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sample_rate_hz: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bit_depth: Option<u16>,
-    pub lossless: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -2421,7 +2389,7 @@ mod tests {
         credentials::MemoryCredentialStore,
         media::CachedMediaPreparer,
         media::PlaybackEpochClock,
-        qqmusic::{AccountEpoch, AudioQualityPreference, QQMusicService},
+        qqmusic::{AudioQualityPreference, QQMusicService},
         storage::StorageService,
     };
     use async_trait::async_trait;
@@ -3530,7 +3498,7 @@ mod tests {
     #[tokio::test]
     async fn account_epoch_cancellation_stops_audio_and_clears_sanitized_selection() {
         let clock = Arc::new(PlaybackEpochClock::default());
-        let epoch = AccountEpoch::for_test(23);
+        let epoch = yaqmc_core::playback_types::PlaybackEpoch::new(23, "test-account-23");
         clock.replace(Some(epoch.clone()));
         let cancellation = CancellationToken::new();
         let guard = PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock);
@@ -3578,7 +3546,7 @@ mod tests {
     #[tokio::test]
     async fn cancellation_between_guarded_resume_and_core_commit_cannot_publish_playing() {
         let clock = Arc::new(PlaybackEpochClock::default());
-        let epoch = AccountEpoch::for_test(29);
+        let epoch = yaqmc_core::playback_types::PlaybackEpoch::new(29, "test-account-29");
         clock.replace(Some(epoch.clone()));
         let cancellation = CancellationToken::new();
         let guard =

@@ -46,8 +46,9 @@ pub(crate) mod oauth;
 mod redaction;
 mod transport;
 
-pub(crate) use cache::AccountEpoch;
-pub use entitlement::{AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection};
+pub use yaqmc_core::playback_types::{
+    AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
+};
 
 use artwork::{artwork_for_album, artwork_from_provider_url, is_allowed_artwork_url};
 
@@ -1455,7 +1456,7 @@ impl QQMusicService {
         }
         let context = self.auth.capture_account_context().await?;
         let guard = PlaybackEpochGuard::account_bound(
-            context.epoch,
+            context.epoch.playback_epoch(),
             context.cancellation,
             self.auth.playback_epoch_clock(),
         );
