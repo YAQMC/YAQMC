@@ -35,5 +35,7 @@ manually on the current branch from the Actions tab.
 
 Security reports belong in the private channel described by [SECURITY.md](SECURITY.md), not a public issue.
 
-The repository currently has no project license; public source visibility alone grants no general permission to
-copy, modify, or redistribute it.
+Contributions must be made by someone entitled to contribute them and are submitted under
+[GPL-3.0-or-later](LICENSE). The dual-maintainer approval required before this licensing change is merged or
+released is tracked in [LICENSING_CONSENT.md](LICENSING_CONSENT.md). See the
+[corresponding-source policy](CORRESPONDING_SOURCE_POLICY.md) for binary-release obligations.

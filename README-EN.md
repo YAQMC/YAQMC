@@ -199,5 +199,5 @@ complete, carefully scoped credits—including the no-source-reuse boundary for 
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 > [!NOTE]
-> The repository currently has no project license. Public source visibility does not itself grant permission to copy,
-> modify, or redistribute the project.
+> YAQMC is licensed under [GPL-3.0-or-later](LICENSE). Binary releases include corresponding source as described in
+> the [corresponding-source policy](CORRESPONDING_SOURCE_POLICY.md).
