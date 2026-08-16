@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod issue_reporter;
 pub mod logging;
 pub mod platform;
+pub mod playback_types;
 pub mod plugin;
 pub mod storage;
 

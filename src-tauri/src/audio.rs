@@ -1440,7 +1440,7 @@ mod tests {
     use crate::{
         media::{PlaybackEpochClock, PlaybackEpochGuard},
         player::AudioQuality,
-        qqmusic::{AccountEpoch, AudioQualityPreference, PlaybackSourceSelection},
+        qqmusic::{AudioQualityPreference, PlaybackSourceSelection},
     };
     use tokio_util::sync::CancellationToken;
 
@@ -1539,7 +1539,7 @@ mod tests {
     #[test]
     fn retained_guard_rejects_resume_after_account_epoch_changes() {
         let clock = Arc::new(PlaybackEpochClock::default());
-        let epoch = AccountEpoch::for_test(11);
+        let epoch = yaqmc_core::playback_types::PlaybackEpoch::new(11, "test-account-11");
         clock.replace(Some(epoch.clone()));
         let cancellation = CancellationToken::new();
         let engine = TestAudioEngine::default();

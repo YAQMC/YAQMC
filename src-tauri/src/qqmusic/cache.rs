@@ -2,6 +2,7 @@ use super::account::{AccountEntitlement, AccountPlaylistSummary, AccountProfile}
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
+use yaqmc_core::playback_types::PlaybackEpoch;
 
 pub(crate) const ACCOUNT_CACHE_KIND: &str = "qqmusic-account";
 const CURSOR_PREFIX: &str = "cursor:";
@@ -60,14 +61,9 @@ pub(crate) struct AccountEpoch {
     pub(crate) scope: OpaqueAccountScope,
 }
 
-#[cfg(test)]
 impl AccountEpoch {
-    pub(crate) fn for_test(generation: u64) -> Self {
-        Self {
-            generation,
-            scope: OpaqueAccountScope::parse(format!("{generation:032x}"))
-                .expect("test account scope"),
-        }
+    pub(crate) fn playback_epoch(&self) -> PlaybackEpoch {
+        PlaybackEpoch::new(self.generation, self.scope.as_str())
     }
 }
 
