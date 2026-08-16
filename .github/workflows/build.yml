@@ -70,27 +70,35 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: ./.github/actions/linux-tauri-deps
       - run: npm ci
+      - name: Resolve tagged artifact names
+        id: artifact_contract
+        run: node scripts/ci/artifact-contract.mjs --mode tagged --platform linux --arch ${{ matrix.arch }}
       - name: Build AppImage, DEB, and RPM
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles appimage,deb,rpm
       - name: Stage packages and portable binary
         shell: bash
+        env:
+          RELEASE_DIRECTORY: ${{ steps.artifact_contract.outputs.releaseDirectory }}
+          PORTABLE_NAME: ${{ steps.artifact_contract.outputs.portable }}
         run: |
           set -euo pipefail
-          release_dir="release/YAQMC-linux-${{ matrix.arch }}"
+          release_dir="release/$RELEASE_DIRECTORY"
           bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
           mkdir -p "$release_dir"
           find "$bundle_root/deb" -maxdepth 1 -type f -name '*.deb' -exec cp {} "$release_dir/" \;
           find "$bundle_root/rpm" -maxdepth 1 -type f -name '*.rpm' -exec cp {} "$release_dir/" \;
           test -f "src-tauri/target/${{ matrix.target }}/release/yaqmc"
           cp "src-tauri/target/${{ matrix.target }}/release/yaqmc" "$release_dir/yaqmc"
-          tar -C "$release_dir" -czf "$release_dir/YAQMC-linux-${{ matrix.arch }}-portable.tar.gz" yaqmc
+          tar -C "$release_dir" -czf "$release_dir/$PORTABLE_NAME" yaqmc
           rm "$release_dir/yaqmc"
       - name: Repack x86_64 AppImage with session-aware GTK policy
         if: matrix.arch == 'x86_64'
         shell: bash
+        env:
+          RELEASE_DIRECTORY: ${{ steps.artifact_contract.outputs.releaseDirectory }}
         run: |
           set -euo pipefail
-          release_dir="release/YAQMC-linux-x86_64"
+          release_dir="release/$RELEASE_DIRECTORY"
           curl --fail --location --retry 3 \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
             --output /tmp/appimagetool-x86_64.AppImage
@@ -145,26 +153,31 @@ jobs:
             },
           };
           writeFileSync(
-            'release/YAQMC-linux-x86_64/BUILD-IDENTITY.json',
+            `release/${process.env.RELEASE_DIRECTORY}/BUILD-IDENTITY.json`,
             `${JSON.stringify(identity, null, 2)}\n`,
           );
           NODE
       - name: Stage native ARM64 AppImage
         if: matrix.arch == 'aarch64'
         shell: bash
+        env:
+          RELEASE_DIRECTORY: ${{ steps.artifact_contract.outputs.releaseDirectory }}
         run: |
           set -euo pipefail
           source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$source_appimage"
-          cp "$source_appimage" "release/YAQMC-linux-${{ matrix.arch }}/"
+          cp "$source_appimage" "release/$RELEASE_DIRECTORY/"
       - name: Build and verify x86_64 tester bundle
         if: matrix.arch == 'x86_64'
         shell: bash
+        env:
+          RELEASE_DIRECTORY: ${{ steps.artifact_contract.outputs.releaseDirectory }}
+          TESTER_NAME: ${{ steps.artifact_contract.outputs.tester }}
         run: |
           set -euo pipefail
-          release_dir="release/YAQMC-linux-x86_64"
+          release_dir="release/$RELEASE_DIRECTORY"
           tester_dir="$RUNNER_TEMP/YAQMC-linux-x86_64-tester"
-          tester_archive="$GITHUB_WORKSPACE/$release_dir/YAQMC-linux-x86_64-tester.tar.gz"
+          tester_archive="$GITHUB_WORKSPACE/$release_dir/$TESTER_NAME"
           mkdir -p "$tester_dir"
           cp "$release_dir"/*.AppImage "$tester_dir/"
           cp "$release_dir/BUILD-IDENTITY.json" "$tester_dir/"
@@ -192,20 +205,25 @@ jobs:
             "$release_dir/verify-lyrics-acceptance.mjs"
       - name: Write and verify release SHA-256 checksums
         shell: bash
+        env:
+          CHECKSUM_NAME: ${{ steps.artifact_contract.outputs.checksum }}
+          RELEASE_DIRECTORY: ${{ steps.artifact_contract.outputs.releaseDirectory }}
         run: |
           set -euo pipefail
-          release_dir="release/YAQMC-linux-${{ matrix.arch }}"
+          release_dir="release/$RELEASE_DIRECTORY"
           (
             cd "$release_dir"
             find . -maxdepth 1 -type f ! -name 'SHA256SUMS-*' -printf '%P\0' \
               | sort -z \
-              | xargs -0 sha256sum >"SHA256SUMS-linux-${{ matrix.arch }}.txt"
-            sha256sum -c "SHA256SUMS-linux-${{ matrix.arch }}.txt"
+              | xargs -0 sha256sum >"$CHECKSUM_NAME"
+            sha256sum -c "$CHECKSUM_NAME"
           )
+      - name: Verify tagged artifact contract
+        run: node scripts/ci/artifact-contract.mjs --mode tagged --platform linux --arch ${{ matrix.arch }} --verify-directory "release/${{ steps.artifact_contract.outputs.releaseDirectory }}"
       - uses: actions/upload-artifact@v7
         with:
-          name: YAQMC-linux-${{ matrix.arch }}
-          path: release/YAQMC-linux-${{ matrix.arch }}
+          name: ${{ steps.artifact_contract.outputs.releaseDirectory }}
+          path: release/${{ steps.artifact_contract.outputs.releaseDirectory }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -240,26 +258,34 @@ jobs:
           toolchain: '1.88.0'
           targets: ${{ matrix.target }}
       - run: npm ci
+      - name: Resolve tagged artifact names
+        id: artifact_contract
+        run: node scripts/ci/artifact-contract.mjs --mode tagged --platform windows --arch ${{ matrix.arch }}
       - name: Build NSIS and MSI installers
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles nsis,msi
       - name: Stage installers, portable binary, and checksums
         shell: powershell
+        env:
+          BUNDLE_PREFIX: ${{ steps.artifact_contract.outputs.bundlePrefix }}
+          CHECKSUM_NAME: ${{ steps.artifact_contract.outputs.checksum }}
+          PORTABLE_NAME: ${{ steps.artifact_contract.outputs.portable }}
+          RELEASE_DIRECTORY: ${{ steps.artifact_contract.outputs.releaseDirectory }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $releaseDir = 'release/YAQMC-windows-${{ matrix.arch }}'
+          $releaseDir = "release/$env:RELEASE_DIRECTORY"
           $targetRoot = 'src-tauri/target/${{ matrix.target }}/release'
           New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
           Get-ChildItem -LiteralPath "$targetRoot/bundle" -Recurse -File |
             Where-Object { $_.Extension -in @('.exe', '.msi') } |
             ForEach-Object {
-              $destination = Join-Path $releaseDir "YAQMC-windows-${{ matrix.arch }}-$($_.Name)"
+              $destination = Join-Path $releaseDir "$env:BUNDLE_PREFIX$($_.Name)"
               Copy-Item -LiteralPath $_.FullName -Destination $destination
             }
           $portableBinary = "$targetRoot/yaqmc.exe"
           if (-not (Test-Path -LiteralPath $portableBinary -PathType Leaf)) {
             throw "Portable binary is missing: $portableBinary"
           }
-          Compress-Archive -LiteralPath $portableBinary -DestinationPath "$releaseDir/YAQMC-windows-${{ matrix.arch }}-portable.zip"
+          Compress-Archive -LiteralPath $portableBinary -DestinationPath "$releaseDir/$env:PORTABLE_NAME"
           $packages = Get-ChildItem -LiteralPath $releaseDir -File | Sort-Object Name
           if (($packages | Measure-Object).Count -lt 3) {
             throw 'Expected NSIS, MSI, and portable packages'
@@ -267,11 +293,13 @@ jobs:
           $checksumLines = $packages | ForEach-Object {
             '{0}  {1}' -f (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant(), $_.Name
           }
-          Set-Content -LiteralPath "$releaseDir/SHA256SUMS-windows-${{ matrix.arch }}.txt" -Value $checksumLines -Encoding ascii
+          Set-Content -LiteralPath "$releaseDir/$env:CHECKSUM_NAME" -Value $checksumLines -Encoding ascii
+      - name: Verify tagged artifact contract
+        run: node scripts/ci/artifact-contract.mjs --mode tagged --platform windows --arch ${{ matrix.arch }} --verify-directory "release/${{ steps.artifact_contract.outputs.releaseDirectory }}"
       - uses: actions/upload-artifact@v7
         with:
-          name: YAQMC-windows-${{ matrix.arch }}
-          path: release/YAQMC-windows-${{ matrix.arch }}
+          name: ${{ steps.artifact_contract.outputs.releaseDirectory }}
+          path: release/${{ steps.artifact_contract.outputs.releaseDirectory }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

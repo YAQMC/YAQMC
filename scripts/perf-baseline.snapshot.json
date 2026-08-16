@@ -179,35 +179,35 @@
       "id": "windows-local-api-config",
       "platform": "Windows",
       "purpose": "Local API config",
-      "path": "Tauri app_config_dir()/local-api.json",
+      "path": "%APPDATA%\\org.yaqmc.desktop\\local-api.json",
       "state": "source-verified"
     },
     {
       "id": "linux-app-data",
       "platform": "Linux",
       "purpose": "App data",
-      "path": "~/.local/share/org.yaqmc.desktop",
+      "path": "$XDG_DATA_HOME/org.yaqmc.desktop (fallback ~/.local/share/org.yaqmc.desktop)",
       "state": "source-verified"
     },
     {
       "id": "linux-cache",
       "platform": "Linux",
       "purpose": "Cache",
-      "path": "~/.cache/org.yaqmc.desktop",
+      "path": "$XDG_CACHE_HOME/org.yaqmc.desktop (fallback ~/.cache/org.yaqmc.desktop)",
       "state": "source-verified"
     },
     {
       "id": "linux-logs",
       "platform": "Linux",
       "purpose": "Logs",
-      "path": "~/.local/share/org.yaqmc.desktop/logs",
+      "path": "$XDG_DATA_HOME/org.yaqmc.desktop/logs (fallback ~/.local/share/org.yaqmc.desktop/logs)",
       "state": "source-verified"
     },
     {
       "id": "linux-local-api-config",
       "platform": "Linux",
       "purpose": "Local API config",
-      "path": "Tauri app_config_dir()/local-api.json",
+      "path": "$XDG_CONFIG_HOME/org.yaqmc.desktop/local-api.json (fallback ~/.config/org.yaqmc.desktop/local-api.json)",
       "state": "source-verified"
     }
   ],
@@ -223,6 +223,24 @@
       "store": "SQLite table",
       "key": "queue_state singleton row (value_json)",
       "target": "Keep in place"
+    },
+    {
+      "id": "audio-output-device",
+      "store": "app_settings",
+      "key": "audio-output-device",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "logging-level",
+      "store": "app_settings",
+      "key": "logging.level",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "preferred-quality",
+      "store": "app_settings",
+      "key": "preferred-quality",
+      "target": "Keep exact key"
     },
     {
       "id": "preferences-schema-version",

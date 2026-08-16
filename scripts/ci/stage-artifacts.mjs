@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ciArtifactNames } from './artifact-contract.mjs';
 import { repositoryRoot } from './repo.mjs';
 import { currentGitSha } from './write-frontend-build-info.mjs';
 import { writeBuildInfo, writeSha256Sums } from './write-build-info.mjs';
@@ -105,9 +106,9 @@ function writePortableZip(binaryPath, zipPath) {
   void directory;
 }
 
-function writeLinuxReadme(destDir) {
+function writeLinuxReadme(destDir, filename) {
   writeFileSync(
-    path.join(destDir, 'README-binary.txt'),
+    path.join(destDir, filename),
     [
       'YAQMC Linux binary archive',
       '',
@@ -133,7 +134,8 @@ function main() {
 
   const version = appVersion();
   const sha = shortSha();
-  const releaseDir = path.join(repositoryRoot, 'release', `YAQMC-${os}-${arch}`);
+  const names = ciArtifactNames({ platform: os, arch, version, shortSha: sha });
+  const releaseDir = path.join(repositoryRoot, 'release', names.releaseDirectory);
   rmSync(releaseDir, { recursive: true, force: true });
   mkdirSync(releaseDir, { recursive: true });
 
@@ -141,7 +143,6 @@ function main() {
   const hostRelease = path.join(repositoryRoot, 'src-tauri', 'target', 'release');
   const binaryPath = findReleaseBinary(os, targetRoot, hostRelease);
 
-  const prefix = `YAQMC-${version}-${os}-${arch}-${sha}`;
   const staged = [];
   const bundleRoot = path.join(path.dirname(binaryPath), 'bundle');
 
@@ -151,16 +152,16 @@ function main() {
         bundleRoot,
         releaseDir,
         (name) => name.endsWith('.exe') && /setup/i.test(name),
-        () => `${prefix}-nsis-setup.exe`,
+        () => names.nsis,
       ),
       ...copyMatching(
         bundleRoot,
         releaseDir,
         (name) => name.endsWith('.msi'),
-        () => `${prefix}-msi.msi`,
+        () => names.msi,
       ),
     );
-    const zipName = `${prefix}-portable.zip`;
+    const zipName = names.portable;
     writePortableZip(binaryPath, path.join(releaseDir, zipName));
     staged.push(zipName);
     if (bundles.includes('nsis')) {
@@ -175,34 +176,34 @@ function main() {
         bundleRoot,
         releaseDir,
         (name) => name.endsWith('.AppImage'),
-        () => `${prefix}.AppImage`,
+        () => names.appImage,
       ),
       ...copyMatching(
         bundleRoot,
         releaseDir,
         (name) => name.endsWith('.deb'),
-        () => `${prefix}.deb`,
+        () => names.deb,
       ),
       ...copyMatching(
         bundleRoot,
         releaseDir,
         (name) => name.endsWith('.rpm'),
-        () => `${prefix}.rpm`,
+        () => names.rpm,
       ),
     );
-    writeLinuxReadme(releaseDir);
-    const archiveName = `${prefix}-binary.tar.gz`;
+    writeLinuxReadme(releaseDir, names.readme);
+    const archiveName = names.binary;
     const stagingBinary = path.join(releaseDir, 'yaqmc');
     copyFileSync(binaryPath, stagingBinary);
     execFileSync(
       'tar',
-      ['-C', releaseDir, '-czf', path.join(releaseDir, archiveName), 'yaqmc', 'README-binary.txt'],
+      ['-C', releaseDir, '-czf', path.join(releaseDir, archiveName), 'yaqmc', names.readme],
       {
         stdio: 'inherit',
       },
     );
     rmSync(stagingBinary);
-    staged.push('README-binary.txt', archiveName);
+    staged.push(names.readme, archiveName);
     if (bundles.includes('appimage')) {
       requireStaged('AppImage', staged, (name) => name.endsWith('.AppImage'), bundleRoot);
     }
@@ -220,7 +221,7 @@ function main() {
   }
 
   writeBuildInfo({
-    outputPath: path.join(releaseDir, 'build-info.json'),
+    outputPath: path.join(releaseDir, names.buildInfo),
     target,
     arch,
     os,
@@ -232,8 +233,8 @@ function main() {
     bundles,
     files: unique,
   });
-  unique.push('build-info.json');
-  writeSha256Sums(releaseDir, unique.sort(), `SHA256SUMS-${os}-${arch}.txt`);
+  unique.push(names.buildInfo);
+  writeSha256Sums(releaseDir, unique.sort(), names.checksum);
   process.stdout.write(`Staged ${unique.length} files in ${releaseDir}\n`);
 }
 
