@@ -28,7 +28,7 @@ function passingLedger() {
         license: 'MIT',
         status: 'verified',
         mappings: [{ target: 'src/example.rs', relation: 'implemented' }],
-        evidence: ['https://example.invalid/source-evidence'],
+        evidence: [`git-object:${revision}`],
         authorization: { status: 'not-required' },
       },
     ],
@@ -38,7 +38,7 @@ function passingLedger() {
         name: 'Fixture Author',
         consentStatus: 'verified',
         rightsScope: 'fixture content',
-        evidence: 'https://example.invalid/contributor',
+        evidence: `signed-commit:${revision}`,
       },
     ],
     assets: [
@@ -47,7 +47,7 @@ function passingLedger() {
         path: 'assets/example.txt',
         sourceId: 'fixture-source',
         status: 'verified',
-        evidence: 'https://example.invalid/asset',
+        evidence: `sha256:${'a'.repeat(64)}`,
       },
     ],
     release: { decision: 'pass', blockers: [] },
@@ -88,6 +88,34 @@ test('enforcement rejects the committed ledger while its audit remains blocked',
   assert.match(enforced.stderr, /enforcement failed/i);
 });
 
+test('clean fixture passes enforcement only with typed immutable evidence references', () => {
+  const enforced = runLedger(writeFixture(passingLedger()), true);
+
+  assert.equal(enforced.status, 0, enforced.stderr);
+  assert.match(enforced.stdout, /PROVENANCE STATUS: PASS/);
+});
+
+test('rejects fabricated or ordinary evidence strings as immutable proof', () => {
+  const ledger = passingLedger();
+  ledger.sources[0].evidence = ['fake'];
+  ledger.sources[0].kind = 'proprietary-client-extraction';
+  ledger.sources[0].authorization = {
+    status: 'verified',
+    evidence: 'https://example.invalid/plain-url',
+  };
+  ledger.contributors[0].evidence = 'arbitrary evidence';
+  ledger.assets[0].evidence = 'fake';
+
+  const enforced = runLedger(writeFixture(ledger), true);
+
+  assert.notEqual(enforced.status, 0);
+  assert.match(enforced.stdout, /PROVENANCE STATUS: BLOCKED/);
+  assert.match(enforced.stdout, /revision-bound immutable evidence/);
+  assert.match(enforced.stdout, /typed immutable authorization evidence/);
+  assert.match(enforced.stdout, /verified consent lacks typed immutable evidence/);
+  assert.match(enforced.stdout, /verified status lacks typed immutable evidence/);
+});
+
 test('license, revision, mapping, proprietary authorization, and contributor consent failures cannot pass', () => {
   const cases = [
     {
@@ -116,7 +144,7 @@ test('license, revision, mapping, proprietary authorization, and contributor con
       mutate: (ledger) => {
         ledger.sources[0].evidence = [];
       },
-      expected: /verified status lacks immutable evidence/,
+      expected: /verified status lacks revision-bound immutable evidence/,
     },
     {
       label: 'proprietary extraction without authorization',
@@ -124,7 +152,7 @@ test('license, revision, mapping, proprietary authorization, and contributor con
         ledger.sources[0].kind = 'proprietary-client-extraction';
         ledger.sources[0].authorization = { status: 'missing' };
       },
-      expected: /proprietary-client-extraction lacks verified authorization/,
+      expected: /proprietary-client-extraction lacks typed immutable authorization evidence/,
     },
     {
       label: 'pending contributor consent',
@@ -138,14 +166,14 @@ test('license, revision, mapping, proprietary authorization, and contributor con
       mutate: (ledger) => {
         ledger.contributors[0].evidence = null;
       },
-      expected: /contributor:fixture-author verified consent lacks immutable evidence/,
+      expected: /contributor:fixture-author verified consent lacks typed immutable evidence/,
     },
     {
       label: 'verified asset without evidence',
       mutate: (ledger) => {
         ledger.assets[0].evidence = '';
       },
-      expected: /asset:fixture-asset verified status lacks immutable evidence/,
+      expected: /asset:fixture-asset verified status lacks typed immutable evidence/,
     },
   ];
 
