@@ -123,3 +123,21 @@ record that deviation. Windows software/safe runs do not satisfy Linux acceptanc
 
 Auxiliary lyric WebViews exist only while enabled and close when disabled, avoiding their steady-state WebKitGTK
 cost when unused.
+
+## Plugin Platform v2 and Advanced Scene
+
+Linux stays on WebKitGTK 4.1. This branch does **not** change the renderer strategy. Plugin workers, Scene CSS, and
+video backgrounds follow the same host as Windows, with these WebKitGTK-specific guards:
+
+- Inactive lyric `filter: blur()` from apple-like styling is disabled on Linux. Live CSS blur can rasterize as a
+  black slab.
+- Plugin scene `blur` widget overrides are ignored on Linux.
+- Scene and extra-widget video do not decode in Linux `software` / `safe` graphics modes, and they still honor
+  reduced motion.
+- Script plugins run in a blob Worker. The CSP allowlist includes `worker-src 'self' blob:` so WebKitGTK can start
+  that worker. If Worker construction fails, the plugin is marked Failed and built-in Lyrics remain.
+- Scene CSS stays `@scope`d. Unsupported `@scope` fails closed (the sheet does not apply) rather than restyling
+  Settings or the sidebar.
+
+Plugin Manager, declarative settings, and host-proxied HTTPS are compiled for Linux. They are **not** Linux GUI
+accepted until a tester records them on a real desktop. Color Field uses radial gradients, not live backdrop-filter.

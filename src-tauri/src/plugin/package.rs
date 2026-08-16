@@ -52,6 +52,9 @@ pub struct PackageInspection {
 
 pub fn inspect_package(path: &Path) -> Result<PackageInspection, PackageError> {
     let metadata = fs::metadata(path).map_err(|_| PackageError::Unreadable)?;
+    if metadata.is_dir() {
+        return inspect_directory(path);
+    }
     if metadata.len() > MAX_COMPRESSED_BYTES {
         return Err(PackageError::Oversize);
     }
@@ -142,6 +145,134 @@ pub fn inspect_package(path: &Path) -> Result<PackageInspection, PackageError> {
     Ok(PackageInspection {
         sha256,
         compressed_bytes: metadata.len(),
+        expanded_bytes: expanded,
+        file_count: files.len(),
+        manifest,
+        files,
+        style_scan,
+        script_scan,
+    })
+}
+
+pub fn inspect_directory(root: &Path) -> Result<PackageInspection, PackageError> {
+    let mut files = Vec::new();
+    let mut expanded = 0_u64;
+    collect_directory(root, root, &mut files, &mut expanded)?;
+    if files.len() > MAX_FILE_COUNT {
+        return Err(PackageError::Oversize);
+    }
+    finish_inspection(files, sha256_directory(root)?, expanded)
+}
+
+pub fn stale_typescript_message(files: &[PackageFile]) -> Option<String> {
+    let has_ts = files.iter().any(|file| file.path == "src/main.ts");
+    let has_js = files.iter().any(|file| file.path == "dist/main.js");
+    if has_ts && !has_js {
+        return Some("Developer Mode found src/main.ts but dist/main.js is missing. Build the plugin before loading it.".into());
+    }
+    None
+}
+
+fn collect_directory(
+    root: &Path,
+    current: &Path,
+    files: &mut Vec<PackageFile>,
+    expanded: &mut u64,
+) -> Result<(), PackageError> {
+    let entries = fs::read_dir(current).map_err(|_| PackageError::Unreadable)?;
+    for entry in entries {
+        let entry = entry.map_err(|_| PackageError::Unreadable)?;
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|_| PackageError::Unreadable)?;
+        if file_type.is_symlink() {
+            return Err(PackageError::Symlink);
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == "node_modules" || name == ".git" || name == "target" {
+            continue;
+        }
+        if file_type.is_dir() {
+            collect_directory(root, &path, files, expanded)?;
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|_| PackageError::UnsafePath)?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if !is_safe_package_path(&relative) || !is_jail_path(Path::new(&relative)) {
+            continue;
+        }
+        let bytes = fs::read(&path).map_err(|_| PackageError::Unreadable)?;
+        if bytes.len() as u64 > MAX_FILE_BYTES {
+            return Err(PackageError::Oversize);
+        }
+        *expanded = expanded.saturating_add(bytes.len() as u64);
+        if *expanded > MAX_EXPANDED_BYTES {
+            return Err(PackageError::Oversize);
+        }
+        files.push(PackageFile {
+            path: relative,
+            bytes,
+        });
+    }
+    Ok(())
+}
+
+fn sha256_directory(root: &Path) -> Result<String, PackageError> {
+    let mut hasher = Sha256::new();
+    hasher.update(root.to_string_lossy().as_bytes());
+    let metadata = fs::metadata(root).map_err(|_| PackageError::Unreadable)?;
+    if let Ok(modified) = metadata.modified() {
+        if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+            hasher.update(duration.as_secs().to_le_bytes());
+        }
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn finish_inspection(
+    files: Vec<PackageFile>,
+    sha256: String,
+    expanded: u64,
+) -> Result<PackageInspection, PackageError> {
+    let manifest_file = files
+        .iter()
+        .find(|file| file.path == "manifest.json")
+        .ok_or(PackageError::MissingManifest)?;
+    let manifest = PluginManifest::parse(&manifest_file.bytes)
+        .map_err(|error| PackageError::Manifest(error.to_string()))?;
+    for path in manifest
+        .entrypoints
+        .styles
+        .iter()
+        .chain(manifest.entrypoints.scenes.iter())
+        .chain(manifest.entrypoints.script.iter())
+    {
+        if !files.iter().any(|file| file.path == *path) {
+            return Err(PackageError::MissingEntrypoint);
+        }
+    }
+    let mut style_scan = ScanReport::default();
+    for style in &manifest.entrypoints.styles {
+        if let Some(file) = files.iter().find(|file| file.path == *style) {
+            if let Ok(source) = std::str::from_utf8(&file.bytes) {
+                merge_scan(&mut style_scan, scan_css(source));
+            }
+        }
+    }
+    let mut script_scan = ScanReport::default();
+    if let Some(script) = &manifest.entrypoints.script {
+        if let Some(file) = files.iter().find(|file| file.path == *script) {
+            if let Ok(source) = std::str::from_utf8(&file.bytes) {
+                script_scan = scan_script(source);
+            }
+        }
+    }
+    Ok(PackageInspection {
+        sha256,
+        compressed_bytes: expanded,
         expanded_bytes: expanded,
         file_count: files.len(),
         manifest,

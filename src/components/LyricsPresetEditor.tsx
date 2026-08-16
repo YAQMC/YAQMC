@@ -45,8 +45,12 @@ import {
   resolvePrimaryFontSizePx,
   saveAsNewPreset,
   SCENE_WIDGET_IDS,
+  COLOR_FIELD_POSITIONS,
+  listExtraSceneWidgets,
   updateSceneWidget,
   WIDGET_ANCHORS,
+  type ColorFieldPosition,
+  type ExtraSceneWidget,
   type LyricsAlign,
   type LyricsArtworkRenderer,
   type LyricsBackgroundFit,
@@ -520,7 +524,9 @@ export function LyricsPresetEditor({
     resolveLyricsAppearance(
       {
         mode:
-          draft.scene.background.source === 'color'
+          draft.scene.background.source === 'color' ||
+          draft.scene.background.source === 'gradient' ||
+          draft.scene.background.source === 'colorField'
             ? 'color'
             : draft.scene.background.source === 'image'
               ? 'image'
@@ -540,6 +546,7 @@ export function LyricsPresetEditor({
       songId: preview.songId,
       title: preview.song.title,
       artistLabel: joinArtistNames(preview.song.artists),
+      albumTitle: preview.song.album.title,
       artworkSrc,
       artworkAlt: preview.song.artwork.alt,
       artworkColor: preview.song.artwork.dominantColor,
@@ -786,6 +793,11 @@ export function LyricsPresetEditor({
         <header className="lyrics-preset-editor__header">
           <div>
             <h2 id="lyrics-preset-editor-title">{t('editorTitle', { name: presetLabel })}</h2>
+            {draft.forkedFromPluginId && (
+              <p className="settings-empty">
+                {t('forkedFromPlugin', { plugin: draft.forkedFromPluginId })}
+              </p>
+            )}
             <p>
               {preview.song.title} — {joinArtistNames(preview.song.artists)}
             </p>
@@ -986,6 +998,13 @@ export function LyricsPresetEditor({
                   >
                     {draft.scene[id].locked ? <Lock size={14} /> : <LockOpen size={14} />}
                   </button>
+                </div>
+              ))}
+              {listExtraSceneWidgets(draft.scene).map((widget: ExtraSceneWidget) => (
+                <div key={widget.id} className="lyrics-composer-layer-row">
+                  <span className="lyrics-composer-layer">
+                    {widget.kind}: {widget.id}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1449,8 +1468,132 @@ export function LyricsPresetEditor({
                       <option value="artwork">artwork</option>
                       <option value="color">color</option>
                       <option value="image">image</option>
+                      <option value="gradient">gradient</option>
+                      <option value="video">video</option>
+                      <option value="colorField">color field</option>
                     </select>
                   </label>
+                  {draft.scene.background.source === 'gradient' && (
+                    <label className="lyrics-preset-editor__select">
+                      <span>Gradient</span>
+                      <input
+                        type="color"
+                        value={draft.scene.background.gradient?.from ?? '#20231C'}
+                        onChange={(event) =>
+                          commit(
+                            updateSceneWidget(draftRef.current, 'background', {
+                              gradient: {
+                                from: event.target.value.toUpperCase(),
+                                to: draftRef.current.scene.background.gradient?.to ?? '#000000',
+                                angle: draftRef.current.scene.background.gradient?.angle ?? 160,
+                              },
+                            }),
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                  {(draft.scene.background.source === 'colorField' ||
+                    draft.scene.background.colorField) && (
+                    <div className="plugin-settings">
+                      {(draft.scene.background.colorField?.emitters ?? []).map((emitter, index) => (
+                        <label key={emitter.id} className="lyrics-preset-editor__select">
+                          <span>{emitter.position}</span>
+                          <select
+                            value={emitter.position}
+                            onChange={(event) => {
+                              const emitters = [
+                                ...(draftRef.current.scene.background.colorField?.emitters ?? []),
+                              ];
+                              emitters[index] = {
+                                ...emitter,
+                                position: event.target.value as ColorFieldPosition,
+                              };
+                              commit(
+                                updateSceneWidget(draftRef.current, 'background', {
+                                  colorField: { emitters },
+                                }),
+                              );
+                            }}
+                          >
+                            {COLOR_FIELD_POSITIONS.map((position) => (
+                              <option key={position} value={position}>
+                                {position}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="color"
+                            value={emitter.color}
+                            onChange={(event) => {
+                              const emitters = [
+                                ...(draftRef.current.scene.background.colorField?.emitters ?? []),
+                              ];
+                              emitters[index] = {
+                                ...emitter,
+                                color: event.target.value.toUpperCase(),
+                              };
+                              commit(
+                                updateSceneWidget(draftRef.current, 'background', {
+                                  colorField: { emitters },
+                                }),
+                              );
+                            }}
+                          />
+                          <select
+                            value={emitter.bind ?? ''}
+                            onChange={(event) => {
+                              const emitters = [
+                                ...(draftRef.current.scene.background.colorField?.emitters ?? []),
+                              ];
+                              emitters[index] = {
+                                ...emitter,
+                                bind:
+                                  event.target.value === 'artworkPrimary' ||
+                                  event.target.value === 'artworkSecondary'
+                                    ? event.target.value
+                                    : null,
+                              };
+                              commit(
+                                updateSceneWidget(draftRef.current, 'background', {
+                                  colorField: { emitters },
+                                }),
+                              );
+                            }}
+                          >
+                            <option value="">static</option>
+                            <option value="artworkPrimary">artwork primary</option>
+                            <option value="artworkSecondary">artwork secondary</option>
+                          </select>
+                        </label>
+                      ))}
+                      <button
+                        type="button"
+                        className="button button--quiet"
+                        onClick={() => {
+                          const emitters = [
+                            ...(draftRef.current.scene.background.colorField?.emitters ?? []),
+                            {
+                              id: `emitter-${Date.now()}`,
+                              position: 'center' as const,
+                              color: '#FFFFFF',
+                              intensity: 0.55,
+                              falloff: 0.45,
+                              radius: 0.5,
+                              bind: 'artworkPrimary' as const,
+                            },
+                          ].slice(0, 5);
+                          commit(
+                            updateSceneWidget(draftRef.current, 'background', {
+                              colorField: { emitters },
+                            }),
+                          );
+                        }}
+                      >
+                        Add emitter
+                      </button>
+                    </div>
+                  )}
                   <label className="lyrics-preset-editor__select">
                     <span>{t('fallbackColor')}</span>
                     <input
@@ -1642,8 +1785,16 @@ export function LyricsPresetPicker() {
   const { t } = useTranslation('settings', { keyPrefix: 'lyricsPresets' });
   const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
   const selectLyricsPreset = usePreferencesStore((state) => state.selectLyricsPreset);
+  const updateLyricsPresets = usePreferencesStore((state) => state.updateLyricsPresets);
   const [editingId, setEditingId] = useState<string | null>(null);
   const resolved = listResolvedPresets(lyricsPresets);
+  const selected = resolved.find((preset) => preset.id === lyricsPresets.selectedId);
+  const pluginSelected = selected?.source === 'plugin';
+
+  const forkSelected = () => {
+    if (!selected) return;
+    updateLyricsPresets((current) => saveAsNewPreset(current, selected.id).state);
+  };
 
   return (
     <div className="lyrics-preset-picker">
@@ -1677,12 +1828,15 @@ export function LyricsPresetPicker() {
         type="button"
         className="button button--secondary"
         onClick={() => setEditingId(lyricsPresets.selectedId)}
-        disabled={
-          resolved.find((preset) => preset.id === lyricsPresets.selectedId)?.source === 'plugin'
-        }
+        disabled={pluginSelected}
       >
         {t('customize')}
       </button>
+      {pluginSelected && (
+        <button type="button" className="button button--secondary" onClick={forkSelected}>
+          {t('forkToMyScene')}
+        </button>
+      )}
       {editingId && <LyricsPresetEditor presetId={editingId} onClose={() => setEditingId(null)} />}
     </div>
   );

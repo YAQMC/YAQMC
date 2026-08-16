@@ -15,11 +15,16 @@ vi.mock('../application/native-player-runtime', () => ({
 vi.mock('../application/plugin-runtime', () => ({
   listPlugins: vi.fn(async () => []),
   pluginHostSafeMode: vi.fn(async () => false),
+  pluginHostDeveloperMode: vi.fn(async () => false),
   choosePluginFile: vi.fn(),
+  choosePluginDirectory: vi.fn(),
   inspectPluginPath: vi.fn(),
   installPlugin: vi.fn(),
+  installUnpackedPlugin: vi.fn(),
+  reloadPlugin: vi.fn(),
   setPluginEnabled: vi.fn(),
   setPluginSafeMode: vi.fn(),
+  setPluginDeveloperMode: vi.fn(),
   uninstallPlugin: vi.fn(),
   pluginDiagnosticsText: () => '',
 }));

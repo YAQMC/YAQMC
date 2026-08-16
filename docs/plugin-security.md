@@ -3,29 +3,34 @@
 > [简体中文](zh-CN/plugin-security.md) | **English**
 
 Runtime plugins are untrusted. The static scanner is **supplemental**. The security boundary is isolated execution,
-a permission-checked bridge, package jail, and v1 network/filesystem/credential denial.
+a permission-checked bridge, package jail, and host-proxied network. Raw `fetch` stays denied.
 
 ## Isolation
 
 Third-party script does **not** run in the main YAQMC WebView. Each script plugin gets a dedicated worker built from
-YAQMC-owned bootstrap plus the plugin’s `dist/main.js`. The worker has no `document`, no `__TAURI__`, and no
-`invoke`. All privileged work goes through `plugin_bridge` with a host-bound runtime token. Plugin-supplied
-`pluginId` is not authorization.
+YAQMC-owned bootstrap plus the plugin’s `dist/main.js`. The worker has no `document`, no `__TAURI__`, no `invoke`,
+and no raw `fetch`. All privileged work goes through `plugin_bridge` with a host-bound runtime token. Plugin-supplied
+`pluginId` is not authorization. The application CSP allows `worker-src 'self' blob:` so WebKitGTK can construct that
+blob worker; Worker construction failure marks the plugin Failed.
 
 CSS and Scene Schema never execute JavaScript. Scene CSS is scoped to `[data-yaqmc-plugin-scene]`. Global styles may
 only target the documented `data-yaqmc` / `--yaqmc-*` API.
 
-## Permissions (v1)
+## Permissions
 
 Granted only after review:
 
 `track.read`, `lyrics.read`, `player.read`, `player.control`, `theme.read`, `plugin.storage`, `scene.register`,
-`style.register`.
+`style.register`, plus v2 `ui.contextMenu`, `ui.playerBar`, `ui.sidebar`, `ui.notify`, and scoped
+`network:https://host`.
 
-Hard-denied in v1: `network`, `filesystem`, `provider`, `account`, `native`, `shell`, QQ cookies / `qm_keyst` /
+Hard-denied: `network`, `network:*`, `filesystem`, `provider`, `account`, `native`, `shell`, QQ cookies / `qm_keyst` /
 `qrsig` / OAuth secrets / ekey / local HTTP bearer tokens, arbitrary Tauri commands, and native `dll`/`so` loading.
 
-`player.control` is sensitive. Updates that expand permissions require a new approval.
+`player.control` and `network:https://…` are sensitive. Updates that expand permissions require a new approval.
+The install review lists added and removed permissions when a package updates an already-installed plugin.
+Network requests are host-proxied: HTTPS only, origin allowlist, DNS private-IP rejection, redirect revalidation,
+no YAQMC credentials, body/response/timeout/rate limits.
 
 ## Package extraction
 

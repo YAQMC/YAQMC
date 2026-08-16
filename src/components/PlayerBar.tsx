@@ -5,6 +5,7 @@ import {
   Mic2,
   Pause,
   Play,
+  Puzzle,
   SkipBack,
   SkipForward,
   Volume1,
@@ -23,6 +24,8 @@ import { IconButton } from './ui/IconButton';
 import { Select, type SelectOption } from './ui/Select';
 import { PlaybackModeControl } from './PlaybackModeControl';
 import { useTranslation } from 'react-i18next';
+import { dispatchPluginUiAction } from '../application/plugin-runtime';
+import { usePluginUiSnapshot } from '../application/plugin-ui';
 import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } from '../domain/music';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
@@ -39,6 +42,7 @@ interface PlayerBarProps {
 export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
   const { t } = useTranslation('player');
   const { t: common } = useTranslation('common');
+  const pluginBar = usePluginUiSnapshot().playerBar;
   const current = useCurrentSong();
   const provider = useContext(ProviderContext);
   const accountProvider = provider && isAccountMusicProvider(provider) ? provider : null;
@@ -261,6 +265,16 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
         >
           <ListMusic size={16} />
         </IconButton>
+        {pluginBar.map((action) => (
+          <IconButton
+            key={`${action.pluginId}:${action.id}`}
+            label={`${action.pluginName}: ${action.label}`}
+            size="small"
+            onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'playerBar')}
+          >
+            <Puzzle size={16} />
+          </IconButton>
+        ))}
         <div className="volume-control">
           <IconButton label={isMuted ? t('unmute') : t('mute')} size="small" onClick={toggleMuted}>
             <VolumeIcon muted={isMuted} volume={volume} />

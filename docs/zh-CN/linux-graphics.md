@@ -24,7 +24,8 @@ Tauri 在 Linux 使用 WebKitGTK。React 调度、WebKitGTK/合成器、窗口�
 
 2026-08-10 Arch/Hyprland 基线报告 `wayland-native`。Linux 主窗口保持 opaque；平台 CSS 保留布局、transform、
 颜色和歌词交互，同时减少高成本实时 backdrop blur、封面模糊、大阴影和未 contain 的歌词绘制。这是风险
-控制，不是性能根因证明。
+控制，不是性能根因证明。Plugin API v2 延续该策略：Linux 关闭未激活歌词行和场景控件的实时 `filter: blur()`，
+`software` / `safe` 模式不解码场景视频。WebKitGTK 渲染器策略本身不变。
 
 ## 验收模式
 

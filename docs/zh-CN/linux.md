@@ -74,3 +74,17 @@ sha256sum YAQMC-linux-acceptance.tar.gz
 
 AppImage 缺 FUSE 时可安装 `fuse2` 或用 `--appimage-extract-and-run`，并记录偏差。详细证据见
 [Linux 验收账本](linux-acceptance.md)，图形原理见 [Linux 图形策略](linux-graphics.md)。
+
+## Plugin Platform v2 与高级场景
+
+Linux 继续使用 WebKitGTK 4.1，本分支不改渲染器策略。插件 Worker、场景 CSS 和视频背景与 Windows 共用宿主，并加了
+WebKitGTK 防护：
+
+- 未激活歌词行的实时 `filter: blur()` 在 Linux 上关闭，避免大面积模糊被栅格化成黑块；
+- 插件场景的 `blur` 控件覆盖在 Linux 上被忽略；
+- `software` / `safe` 图形模式不解码场景视频，并仍尊重减弱动态效果；
+- 脚本插件使用 blob Worker。CSP 包含 `worker-src 'self' blob:`；Worker 创建失败时插件标为 Failed，内置歌词保留；
+- 场景 CSS 仍用 `@scope`。不支持时失败关闭（样式不生效），不会去改 Settings 或侧栏。
+
+插件管理、声明式设置和宿主代理 HTTPS 会随 Linux 矩阵编译。在真实桌面留下记录之前，不宣称 Linux GUI 验收。
+Color Field 使用径向渐变，而不是实时 backdrop-filter。

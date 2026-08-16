@@ -76,6 +76,23 @@
       "visible": true,
       "locked": false,
       "align": "center"
-    }
+    },
+    "extras": [
+      {
+        "id": "now-playing-label",
+        "kind": "text",
+        "x": 0.5,
+        "y": 0.08,
+        "width": 0.4,
+        "height": 0.08,
+        "anchor": "top-center",
+        "zIndex": 9,
+        "visible": true,
+        "locked": false,
+        "bind": "track.title",
+        "align": "center",
+        "opacity": 0.86
+      }
+    ]
   }
 }

@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -8,11 +9,28 @@ import {
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
+  colorFieldEmitterColor,
+  resolveArtworkPalette,
+  type ArtworkPalette,
+} from '../../application/artwork-color';
+import {
   lineGapFromLineHeight,
+  listExtraSceneWidgets,
   resolvePrimaryFontSizePx,
+  resolveSceneTextBinding,
   resolveSecondaryFontSizePx,
+  type ExtraSceneWidget,
   type SceneWidgetId,
 } from '../../application/lyrics-preset';
+import { resolveSceneAssetUrl } from '../../application/plugin-asset';
+import { isLinuxWebView, linuxSkipsLiveVideo } from '../../application/platform-integration';
+import {
+  currentPluginSceneInstance,
+  pluginSceneCssVars,
+  pluginSceneDataState,
+  pluginSceneWidgetOverrides,
+  subscribePluginSceneState,
+} from '../../application/plugin-runtime';
 import { widgetBoxStyle } from '../../application/lyrics-scene-geometry';
 import { formatDuration } from '../../utils/format';
 import { IconButton } from '../ui/IconButton';
@@ -30,6 +48,12 @@ type SceneStyle = CSSProperties & {
   '--lyrics-secondary-font-size': string;
   '--lyrics-line-height': string;
   '--lyrics-line-gap': string;
+  '--scene-progress': string;
+  '--scene-duration': string;
+  '--scene-artwork-primary': string;
+  '--scene-artwork-secondary': string;
+  '--scene-accent': string;
+  '--scene-font-scale': string;
 };
 
 function cssPx(value: number): string {
@@ -62,6 +86,9 @@ function SceneWidget({
       className="lyrics-scene__widget"
       data-widget={id}
       data-scene-widget={id}
+      data-scene-widget-id={id}
+      data-scene-widget-type={id}
+      data-scene-state={selected ? 'active' : 'inactive'}
       data-selected={selected || undefined}
       data-editor={editor || undefined}
       onPointerDown={(event) => {
@@ -124,6 +151,12 @@ export function LyricsScene({
   const root = useRef<HTMLDivElement>(null);
   const transportScrubbing = useRef(false);
   const [sceneHeight, setSceneHeight] = useState(0);
+  const [palette, setPalette] = useState<ArtworkPalette | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [extraUrls, setExtraUrls] = useState<Record<string, string>>({});
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [pluginVars, setPluginVars] = useState(pluginSceneCssVars());
+  const [pluginState, setPluginState] = useState(pluginSceneDataState());
   const ink = coverInk(bindings.artworkColor);
   const editor = mode === 'editor';
   const scene = preset.scene;
@@ -146,6 +179,60 @@ export function LyricsScene({
     return () => observer.disconnect();
   }, [previewFrame, layoutKey]);
 
+  useEffect(
+    () =>
+      subscribePluginSceneState(() => {
+        setPluginVars({ ...pluginSceneCssVars() });
+        setPluginState(pluginSceneDataState());
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    const identity = bindings.songId ?? bindings.artworkSrc ?? 'none';
+    const generation = Date.now();
+    let cancelled = false;
+    void resolveArtworkPalette(
+      identity,
+      bindings.artworkSrc,
+      bindings.artworkColor,
+      generation,
+    ).then((next) => {
+      if (!cancelled) setPalette(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bindings.songId, bindings.artworkSrc, bindings.artworkColor]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pluginId = preset.pluginId;
+    void resolveSceneAssetUrl(scene.background.media, pluginId).then((url) => {
+      if (!cancelled) {
+        setMediaUrl(url);
+        setVideoFailed(false);
+      }
+    });
+    const extras = listExtraSceneWidgets(scene);
+    void Promise.all(
+      extras.map(async (widget) => {
+        const url = await resolveSceneAssetUrl(widget.asset, pluginId);
+        return [widget.id, url] as const;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const [id, url] of entries) {
+        if (url) next[id] = url;
+      }
+      setExtraUrls(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [preset.pluginId, scene]);
+
   const style = {
     '--lyrics-color': bindings.artworkColor,
     '--lyrics-ink': ink.ink,
@@ -156,8 +243,27 @@ export function LyricsScene({
     '--lyrics-secondary-font-size': cssPx(secondaryFontPx),
     '--lyrics-line-height': String(preset.typography.lineHeight),
     '--lyrics-line-gap': `${lineGapFromLineHeight(preset.typography.lineHeight)}cqh`,
+    '--scene-progress': String(Math.max(0, Math.min(1, progress / 100))),
+    '--scene-duration': String(bindings.durationMs),
+    '--scene-artwork-primary': palette?.primary ?? bindings.artworkColor,
+    '--scene-artwork-secondary': palette?.secondary ?? bindings.artworkColor,
+    '--scene-accent': palette?.secondary ?? bindings.artworkColor,
+    '--scene-font-scale': String(preset.typography.fontScale),
+    ...Object.fromEntries(
+      Object.entries(pluginVars).map(([name, value]) => [`--scene-${name}`, value]),
+    ),
     backgroundColor: appearance.baseColor ?? scene.background.fallbackColor,
   } as SceneStyle;
+
+  const pluginSceneKey = preset.pluginId
+    ? `${preset.pluginId}/${preset.id.replace(`plugin:${preset.pluginId}:`, '')}`
+    : undefined;
+  const instance = currentPluginSceneInstance();
+  const reducedMotion =
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const skipVideo = reducedMotion || linuxSkipsLiveVideo();
+  const extras = listExtraSceneWidgets(scene);
+  const overrides = pluginSceneWidgetOverrides();
 
   const artworkRadius =
     scene.artwork.renderer === 'rounded'
@@ -173,7 +279,10 @@ export function LyricsScene({
         .filter(Boolean)
         .join(' ')}
       data-lyrics-scene="v1"
-      data-yaqmc-plugin-scene={preset.pluginId}
+      data-yaqmc-plugin-scene={pluginSceneKey ?? preset.pluginId}
+      data-scene-instance={instance.id || undefined}
+      data-scene-plugin-state={pluginState || undefined}
+      data-playback-state={bindings.isPlaying ? 'playing' : 'paused'}
       data-mode={mode}
       data-cover-layout={preset.layout}
       data-background-mode={appearance.mode}
@@ -187,20 +296,74 @@ export function LyricsScene({
         if (!widget) onSelectWidget(null);
       }}
     >
-      {scene.background.visible && appearance.imageSource && (
-        <div
-          className="lyrics-stage__backdrop"
-          data-widget="background"
-          data-scene-widget="background"
-          data-selected={selectedWidgetId === 'background' || undefined}
-          style={{
-            backgroundImage: `url("${appearance.imageSource}")`,
-            backgroundSize: appearance.imageFit,
-            opacity: scene.background.opacity,
-          }}
-          aria-hidden="true"
-        />
-      )}
+      {scene.background.visible &&
+        appearance.imageSource &&
+        scene.background.source !== 'video' && (
+          <div
+            className="lyrics-stage__backdrop"
+            data-widget="background"
+            data-scene-widget="background"
+            data-scene-widget-id="background"
+            data-scene-widget-type="background"
+            data-selected={selectedWidgetId === 'background' || undefined}
+            style={{
+              backgroundImage: `url("${appearance.imageSource}")`,
+              backgroundSize: appearance.imageFit,
+              opacity: scene.background.opacity,
+            }}
+            aria-hidden="true"
+          />
+        )}
+      {scene.background.visible &&
+        scene.background.source === 'gradient' &&
+        scene.background.gradient && (
+          <div
+            className="lyrics-scene__gradient"
+            aria-hidden="true"
+            style={{
+              background: `linear-gradient(${scene.background.gradient.angle}deg, ${scene.background.gradient.from}, ${scene.background.gradient.to})`,
+              opacity: scene.background.opacity,
+            }}
+          />
+        )}
+      {scene.background.visible &&
+        scene.background.source === 'video' &&
+        mediaUrl &&
+        !videoFailed &&
+        !skipVideo && (
+          <video
+            className="lyrics-scene__video"
+            src={mediaUrl}
+            muted
+            loop
+            playsInline
+            autoPlay
+            aria-hidden="true"
+            onError={() => setVideoFailed(true)}
+            style={{
+              objectFit: scene.background.fit,
+              opacity: scene.background.opacity,
+            }}
+          />
+        )}
+      {scene.background.visible &&
+        (scene.background.source === 'colorField' || scene.background.colorField) && (
+          <div className="lyrics-scene__color-field" aria-hidden="true">
+            {(scene.background.colorField?.emitters ?? []).map((emitter) => (
+              <span
+                key={emitter.id}
+                className="lyrics-scene__color-emitter"
+                data-position={emitter.position}
+                style={{
+                  background: `radial-gradient(circle at center, ${colorFieldEmitterColor(emitter, palette)} 0%, transparent ${Math.round(emitter.falloff * 100)}%)`,
+                  opacity: emitter.intensity,
+                  width: `${Math.round(emitter.radius * 140)}%`,
+                  height: `${Math.round(emitter.radius * 140)}%`,
+                }}
+              />
+            ))}
+          </div>
+        )}
       {scene.background.visible && <div className="lyrics-stage__wash" aria-hidden="true" />}
 
       {scene.artwork.visible && (
@@ -374,6 +537,18 @@ export function LyricsScene({
         </SceneWidget>
       )}
 
+      {extras.map((widget) => (
+        <ExtraWidget
+          key={widget.id}
+          widget={widget}
+          url={extraUrls[widget.id] ?? (widget.source === 'artwork' ? bindings.artworkSrc : null)}
+          override={overrides.get(widget.id)}
+          bindings={bindings}
+          skipVideo={skipVideo}
+          skipLiveBlur={isLinuxWebView()}
+        />
+      ))}
+
       {editor && <div className="lyrics-scene__safe" aria-hidden="true" />}
       {editor &&
         guides.map((guide) => (
@@ -399,3 +574,62 @@ export function LyricsScene({
 }
 
 export type { LyricsSceneProps } from './types';
+
+function ExtraWidget({
+  widget,
+  url,
+  override,
+  bindings,
+  skipVideo,
+  skipLiveBlur,
+}: {
+  widget: ExtraSceneWidget;
+  url: string | null | undefined;
+  override?: Record<string, string>;
+  bindings: LyricsSceneProps['bindings'];
+  skipVideo: boolean;
+  skipLiveBlur: boolean;
+}) {
+  const text =
+    resolveSceneTextBinding(widget.bind, {
+      title: bindings.title,
+      artist: bindings.artistLabel,
+      album: bindings.albumTitle ?? '',
+      positionMs: bindings.positionMs,
+      durationMs: bindings.durationMs,
+    }) ??
+    widget.text ??
+    '';
+  const opacity = override?.opacity ? Number(override.opacity) : (widget.opacity ?? 1);
+  const style: CSSProperties = {
+    ...widgetBoxStyle(widget),
+    opacity: Number.isFinite(opacity) ? opacity : 1,
+    transform:
+      [
+        override?.scale ? `scale(${override.scale})` : '',
+        override?.rotation ? `rotate(${override.rotation}deg)` : '',
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined,
+    filter: skipLiveBlur || !override?.blur ? undefined : `blur(${override.blur}px)`,
+    textAlign: widget.align,
+  };
+  return (
+    <div
+      className="lyrics-scene__widget lyrics-scene__extra"
+      data-scene-widget={widget.kind}
+      data-scene-widget-id={widget.id}
+      data-scene-widget-type={widget.kind}
+      data-scene-state="inactive"
+      style={style}
+    >
+      {widget.kind === 'text' && <span className="lyrics-scene__text">{text}</span>}
+      {widget.kind === 'image' && url && (
+        <img src={url} alt="" draggable={false} style={{ objectFit: widget.fit ?? 'cover' }} />
+      )}
+      {widget.kind === 'video' && url && !skipVideo && (
+        <video src={url} muted loop playsInline autoPlay aria-hidden="true" />
+      )}
+    </div>
+  );
+}

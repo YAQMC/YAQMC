@@ -17,6 +17,7 @@ export default tseslint.config(
       '.playwright-cli/**',
       'examples/plugins/**',
       'sdk/plugin/**',
+      'tests/fixtures/**',
     ],
   },
   js.configs.recommended,

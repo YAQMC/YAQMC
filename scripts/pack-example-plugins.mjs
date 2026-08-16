@@ -112,6 +112,8 @@ const pluginDirs = [
   'style-night',
   'scene-pack',
   'script-now-playing',
+  'script-actions',
+  'script-network',
   'studio',
   'ink-core',
   'ink-accent',

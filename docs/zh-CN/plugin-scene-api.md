@@ -13,7 +13,16 @@ Composer 运行时，不会再做一套歌词渲染器。
 场景 JSON 使用共享歌词场景定义（`schemaVersion` 2）：`id`、`name`、`layout`，以及可选控件图。缺失字段按该 layout 的
 工厂值补齐。v1 不允许用编排器编辑插件场景，但仍可选择它们。
 
-场景 CSS 使用 `@scope ([data-yaqmc-plugin-scene="<pluginId>"])` 限定范围。不要用场景入口改整个应用；那需要样式入口。
+场景 CSS 使用 `@scope ([data-yaqmc-plugin-scene="<pluginId>/<sceneId>"])` 限定范围。不要用场景入口改整个应用；那需要样式入口。
 
-稳定选择器：`[data-scene-widget="lyrics"]`、`artwork`、`transport`，以及 `[data-scene-state="active-line"]`。
+稳定选择器：`[data-scene-widget]`、`[data-scene-widget-id]`、`[data-scene-widget-type]`、`[data-scene-state]`、
+`[data-playback-state]`。稳定变量：`--scene-progress`、`--scene-duration`、`--scene-artwork-primary`、
+`--scene-artwork-secondary`、`--scene-accent`、`--scene-font-scale`。
+
 `data-widget` 仍是编辑器内部钩子，插件应优先使用 `data-scene-widget`。
+
+场景文档仍是 schema v2。额外控件（text / image / video）、Color Field、渐变/视频背景为增量能力。现有 Classic /
+Immersive / Vinyl / 用户自定义 / 插件 v1 场景继续加载。插件场景在编排器中只读，请使用「复制为我的场景」。
+
+Linux 上会关闭歌词行和场景控件的实时 `filter: blur()`。`software` / `safe` 图形模式不解码场景视频。`@scope`
+需要较新的 WebKitGTK；若引擎忽略该规则，样式不生效，也不会泄漏到设置页。

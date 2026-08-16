@@ -88,6 +88,16 @@ export async function readPlatformDiagnostics(): Promise<PlatformDiagnostics | n
   return diagnostics;
 }
 
+export function isLinuxWebView(): boolean {
+  return typeof document !== 'undefined' && document.documentElement.dataset.platform === 'linux';
+}
+
+export function linuxSkipsLiveVideo(): boolean {
+  if (!isLinuxWebView()) return false;
+  const mode = document.documentElement.dataset.graphicsMode;
+  return mode === 'software' || mode === 'safe';
+}
+
 export function usePlatformDiagnosticsRuntime(): void {
   useEffect(() => {
     void readPlatformDiagnostics().catch(() => undefined);

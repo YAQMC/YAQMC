@@ -100,3 +100,6 @@ sha256sum YAQMC-linux-acceptance.tar.gz
 
 Return the archive and digest with distribution/kernel, compositor, monitor, scale/DPR, audio observations, and any
 visible defect. Final acceptance closes only after the archive is verified and a verdict is recorded.
+
+Plugin API v2, Color Field, scene video, and plugin Worker isolation are compiled for Linux. They are not part of
+the closed Linux GUI ledger until a tester records them on a final AppImage.
