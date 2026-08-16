@@ -328,7 +328,7 @@ function collectPersistence(repositoryRoot) {
 function collectKeyring(repositoryRoot) {
   const credentials = read(repositoryRoot, 'crates/yaqmc-core/src/credentials.rs');
   const auth = read(repositoryRoot, 'src-tauri/src/qqmusic/auth.rs');
-  const localApi = read(repositoryRoot, 'src-tauri/src/local_api.rs');
+  const localApi = read(repositoryRoot, 'crates/yaqmc-core/src/local_api.rs');
   return {
     service: constant(credentials, 'SERVICE_NAME'),
     legacyService: constant(credentials, 'LEGACY_SERVICE_NAME'),
