@@ -54,8 +54,24 @@
           "relation": "initial-import"
         }
       ],
-      "evidence": ["git show --root --numstat a4d1ee31708a55cf6f933778e5653b88ba74ed03"],
+      "evidence": ["git-object:a4d1ee31708a55cf6f933778e5653b88ba74ed03"],
       "requiredResolution": "Establish per-file/source provenance and permissions, or rewrite/remove unproven material."
+    },
+    {
+      "id": "yaqmc-branding-logo-import",
+      "kind": "binary-asset-introduction",
+      "origin": "https://github.com/YAQMC/YAQMC.git",
+      "revision": "c77f63df9b38990e8171d3f28bd992332d9c7922",
+      "license": "NOASSERTION",
+      "status": "blocked",
+      "mappings": [
+        {
+          "target": "assets/yaqmc-logo.png",
+          "relation": "first added as a 609661-byte binary; creator, source chain, license, and rights remain unknown"
+        }
+      ],
+      "evidence": ["git-object:c77f63df9b38990e8171d3f28bd992332d9c7922"],
+      "requiredResolution": "Establish the logo creator, source/commission chain, license, and distribution authority, or replace/remove the asset."
     },
     {
       "id": "qm-api-rs",
@@ -95,8 +111,8 @@
         }
       ],
       "evidence": [
-        "https://github.com/L-1124/QQMusicApi/blob/108617ffe80abefec6358717b9f4d3677550db10/LICENSE",
-        "https://github.com/L-1124/QQMusicApi/blob/0b808a5537643f2c3bd0ef94e5c72263ec378bb8/algorithms/tripledes.py"
+        "git-revision-url:https://github.com/L-1124/QQMusicApi/blob/108617ffe80abefec6358717b9f4d3677550db10/LICENSE",
+        "git-revision-url:https://github.com/L-1124/QQMusicApi/blob/0b808a5537643f2c3bd0ef94e5c72263ec378bb8/algorithms/tripledes.py"
       ]
     },
     {
@@ -114,7 +130,7 @@
       ],
       "copyright": "Copyright 2023 WXRIW",
       "evidence": [
-        "https://github.com/WXRIW/QQMusicDecoder/blob/0837a3a1281e58f6db3e3e1dcb1d5441fb0ac268/LICENSE"
+        "git-revision-url:https://github.com/WXRIW/QQMusicDecoder/blob/0837a3a1281e58f6db3e3e1dcb1d5441fb0ac268/LICENSE"
       ]
     },
     {
@@ -151,7 +167,8 @@
           "relation": "QMC key derivation and segmented stream cipher; file/range/transformation record still required"
         }
       ],
-      "copyright": "Copyright 2019 gongjiehong",
+      "copyright": "Copyright (c) 2019 程序猿老龚 gjh.me",
+      "repositoryAccount": "gongjiehong",
       "evidence": [
         "https://github.com/gongjiehong/QMCDecode/blob/aea76301a08678100ec677cb61a8458bc75662ec/LICENSE",
         "THIRD_PARTY_NOTICES.md"
@@ -297,9 +314,9 @@
     {
       "id": "application-branding-logo",
       "path": "assets/yaqmc-logo.png",
-      "sourceId": "yaqmc-root-import",
+      "sourceId": "yaqmc-branding-logo-import",
       "status": "blocked",
-      "evidence": "No creator, commission, license, or source record is present in this audit."
+      "evidence": "The first-addition commit is known, but creator, commission, source, license, and rights records are absent."
     },
     {
       "id": "application-icons",
@@ -320,6 +337,7 @@
     "decision": "block",
     "blockers": [
       "Full history/root-import/source audit is incomplete; 87 binary paths and imported material lack complete provenance.",
+      "The branding logo was first added by c77f63df9b38990e8171d3f28bd992332d9c7922, but its creator/source/license/rights chain is unresolved.",
       "Maintainer entries are Pending and only cover rights each maintainer actually controls.",
       "mzj3920/qqmusic-decrypt has NOASSERTION licensing at the audited source/file revisions.",
       "Unlock Music exact revision license evidence is not independently retrievable.",

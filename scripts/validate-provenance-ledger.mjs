@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const immutableRevision = /^[0-9a-f]{40}$/u;
+const immutableSha256 = /^[0-9a-f]{64}$/u;
+const githubCommentReference =
+  /^github-comment:https:\/\/github\.com\/[^/]+\/[^/]+\/(?:issues|pull)\/\d+#issuecomment-\d+$/u;
 
 function usage() {
   return [
@@ -63,6 +66,29 @@ function requireCoverage(errors, ledger, field) {
   return true;
 }
 
+function isTypedImmutableEvidenceReference(reference) {
+  if (typeof reference !== 'string') return false;
+  if (reference.startsWith('git-object:') || reference.startsWith('signed-commit:')) {
+    return immutableRevision.test(reference.slice(reference.indexOf(':') + 1));
+  }
+  if (reference.startsWith('sha256:'))
+    return immutableSha256.test(reference.slice('sha256:'.length));
+  return githubCommentReference.test(reference);
+}
+
+function isRevisionBoundSourceEvidence(reference, revision) {
+  if (reference === `git-object:${revision}` || reference === `signed-commit:${revision}`)
+    return true;
+  if (typeof reference !== 'string' || !reference.startsWith('git-revision-url:')) return false;
+
+  try {
+    const url = new URL(reference.slice('git-revision-url:'.length));
+    return url.protocol === 'https:' && url.pathname.split('/').includes(revision);
+  } catch {
+    return false;
+  }
+}
+
 function collectBlockers(ledger) {
   const blockers = [];
   const sourceIds = new Set();
@@ -86,9 +112,9 @@ function collectBlockers(ledger) {
       blockers.push(`source:${source.id} status=${source.status ?? 'unknown'}`);
     } else if (
       !Array.isArray(source.evidence) ||
-      !source.evidence.some((evidence) => typeof evidence === 'string' && evidence.trim() !== '')
+      !source.evidence.some((evidence) => isRevisionBoundSourceEvidence(evidence, source.revision))
     ) {
-      blockers.push(`source:${source.id} verified status lacks immutable evidence`);
+      blockers.push(`source:${source.id} verified status lacks revision-bound immutable evidence`);
     }
     if (source.noticeStatus === 'incomplete' || source.noticeStatus === 'missing') {
       blockers.push(`source:${source.id} noticeStatus=${source.noticeStatus}`);
@@ -98,11 +124,10 @@ function collectBlockers(ledger) {
       if (
         !isObject(authorization) ||
         authorization.status !== 'verified' ||
-        typeof authorization.evidence !== 'string' ||
-        authorization.evidence.trim() === ''
+        !isTypedImmutableEvidenceReference(authorization.evidence)
       ) {
         blockers.push(
-          `source:${source.id} proprietary-client-extraction lacks verified authorization`,
+          `source:${source.id} proprietary-client-extraction lacks typed immutable authorization evidence`,
         );
       }
     }
@@ -113,8 +138,10 @@ function collectBlockers(ledger) {
       blockers.push(
         `contributor:${contributor.id} consentStatus=${contributor.consentStatus ?? 'unknown'}`,
       );
-    } else if (typeof contributor.evidence !== 'string' || contributor.evidence.trim() === '') {
-      blockers.push(`contributor:${contributor.id} verified consent lacks immutable evidence`);
+    } else if (!isTypedImmutableEvidenceReference(contributor.evidence)) {
+      blockers.push(
+        `contributor:${contributor.id} verified consent lacks typed immutable evidence`,
+      );
     }
   }
 
@@ -126,8 +153,8 @@ function collectBlockers(ledger) {
     }
     if (asset.status !== 'verified') {
       blockers.push(`asset:${asset.id} status=${asset.status ?? 'unknown'}`);
-    } else if (typeof asset.evidence !== 'string' || asset.evidence.trim() === '') {
-      blockers.push(`asset:${asset.id} verified status lacks immutable evidence`);
+    } else if (!isTypedImmutableEvidenceReference(asset.evidence)) {
+      blockers.push(`asset:${asset.id} verified status lacks typed immutable evidence`);
     }
   }
 
