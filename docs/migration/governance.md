@@ -10,37 +10,43 @@
 
 ## Current desktop facts
 
-| Item | Verified current value |
-|---|---|
-| Application identifier | `org.yaqmc.desktop` |
-| Main window | 1280 x 800; minimum 1000 x 680; frameless; transparent on Windows and opaque on Linux |
-| Registered commands | 117 unique functions and 117 unique `generate_handler!` registrations |
-| Textual command attributes | 118 textual `#[tauri::command]` matches; the apparent extra match is the test string in `src-tauri/src/commands.rs:906`, not a command definition |
+| Item                        | Verified current value                                                                                                                                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application identifier      | `org.yaqmc.desktop`                                                                                                                                                                    |
+| Main window                 | 1280 x 800; minimum 1000 x 680; frameless; transparent on Windows and opaque on Linux                                                                                                  |
+| Registered commands         | 117 unique functions and 117 unique `generate_handler!` registrations                                                                                                                  |
+| Textual command attributes  | 118 textual `#[tauri::command]` matches; the apparent extra match is the test string in `src-tauri/src/commands.rs:906`, not a command definition                                      |
 | Frontend command references | 112 of 117 command-name string literals; the five unreferenced names are `system_integration_status`, `player_play`, `player_pause`, `lyrics_surface_status`, and `plugin_diagnostics` |
 
 Electron Main must retain the current 1280 x 800 / 1000 x 680 minimum main-window dimensions. The `1180 x 760` construction-table value in the source plan is superseded by this baseline fact and must not be adopted.
 
 ## Corrections that govern migration work
 
-| Topic | Fact and required consequence |
-|---|---|
-| Runtime coupling | Current host coupling is Tauri transport/window integration, not core business logic. The frontend has 22 host-coupled files (17 bridge-only + 5 deeply coupled); plugin JavaScript runs in blob-URL Web Workers in the renderer, while Rust remains the filesystem/permission/bridge service. Do not move plugin execution into Rust. |
-| Updater and platform features | There is no Tauri updater, single-instance plugin, deep-link handler, or OS notification API. Electron updater and single-instance support are new functionality, not ports; deep links and notifications remain out of scope for parity. |
-| Protocol ACL | Electron Main derives the renderer origin from `webContents.id`; renderer input never controls origin. Main enforces the per-window ACL, and Core independently rechecks method ACL metadata before dispatch. |
-| Command identity | Preserve all 117 registered names and serde payloads in protocol v1, except the three approved dialog splits. Window/surface/dialog host methods are intercepted in Main under the preserved public method name until their approved split/retirement point. |
-| Dialog splits | Diagnostics export, background-image selection, and plugin install-from-file become host path selection plus Core pure IO (`*_to` / `*_from`); old dialog-shaped methods retire only at P13. |
-| qm-api-rs | The repository is private; audited revision is `a7430a831a256bb15212291f11a055d801e31648`. Its crate is `qqmusic-api` (lib `qqmusic_api`), version `0.1.0`, GPL-3.0-or-later. CI needs authenticated dependency access and the licensing decision remains a P14 gate. Its SHA1 `zzc_sign` differs from the in-tree MD5 `zzb` signer, so provider replacement remains separate from host migration and needs live verification. |
+| Topic                         | Fact and required consequence                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime coupling              | Current host coupling is Tauri transport/window integration, not core business logic. The frontend has 22 host-coupled files (17 bridge-only + 5 deeply coupled); plugin JavaScript runs in blob-URL Web Workers in the renderer, while Rust remains the filesystem/permission/bridge service. Do not move plugin execution into Rust.                                                                                                    |
+| Updater and platform features | There is no Tauri updater, single-instance plugin, deep-link handler, or OS notification API. Electron updater and single-instance support are new functionality, not ports; deep links and notifications remain out of scope for parity.                                                                                                                                                                                                 |
+| Protocol ACL                  | Electron Main derives the renderer origin from `webContents.id`; renderer input never controls origin. Main enforces the per-window ACL, and Core independently rechecks method ACL metadata before dispatch.                                                                                                                                                                                                                             |
+| Command identity              | Preserve all 117 registered names and serde payloads in protocol v1, except the three approved dialog splits. Window/surface/dialog host methods are intercepted in Main under the preserved public method name until their approved split/retirement point.                                                                                                                                                                              |
+| Dialog splits                 | Diagnostics export, background-image selection, and plugin install-from-file become host path selection plus Core pure IO (`*_to` / `*_from`); old dialog-shaped methods retire only at P13.                                                                                                                                                                                                                                              |
+| qm-api-rs                     | The repository is private; audited revision is `a7430a831a256bb15212291f11a055d801e31648`. Its crate is `qqmusic-api` (lib `qqmusic_api`), version `0.1.0`, GPL-3.0-or-later. CI needs authenticated dependency access and the full provenance audit remains a P14/release gate. Its SHA1 `zzc_sign` differs from the in-tree MD5 `zzb` signer, so provider replacement remains separate from host migration and needs live verification. |
 
 ### qm-api-rs superseding correction
 
 The source plan's qm-api-rs integration facts are historical input only. The following verified facts supersede any conflicting statements there and are prerequisites for P14:
 
 - `qqmusic-api` declares no `rust-version` / MSRV. Its Rust 1.88 `check` and `--all-features` test pass, but upstream metadata must still declare and test an MSRV before the dependency is pinned.
-- The upstream dependency is `reqwest ^0.12`, while YAQMC uses `reqwest 0.13.4`. Upstream leaks `reqwest` public types, so this is a real public compatibility boundary rather than a resolver-only detail. Align upstream to `reqwest 0.13` before integration.
+- The upstream dependency is `reqwest ^0.12`, while YAQMC uses `reqwest 0.13.4`. Upstream leaks `reqwest` public types, so this is a real public compatibility boundary rather than a resolver-only detail. `ApiTransport` decoupling is mandatory; a reqwest 0.13 upgrade is conditional on full regression success and must not introduce a protocol regression merely for version uniformity.
 - Upstream has no `tracing` dependency; do not assume YAQMC's tracing/redaction behavior is inherited by the library.
 - The relevant context type is `ApiContext`, not `ClientContext`; upstream has no `radio` module.
 - The rate limiter is global per `ApiContext`: 10 requests per second with a burst of 50, not a per-endpoint limiter.
-- Its internally constructed transport lacks injection, timeout, allowlist, cancellation, retry, and redirect controls. Upstream transport hardening and reqwest 0.13 alignment are mandatory before pinning or integrating qm-api-rs. YAQMC must not compensate only with a conditional logging wrapper.
+- Its internally constructed transport lacks injection, timeout, allowlist, cancellation, retry, and redirect controls. Upstream transport hardening through `ApiTransport` is mandatory before pinning or integrating qm-api-rs. YAQMC must not compensate only with a conditional logging wrapper.
+
+### Binding amendment requirements
+
+[The 2026-08-16 binding amendment](plan-amendment-2026-08-16.md) governs the protocol registry and payload caps,
+HUMAN/LIVE_ACCOUNT gates, production Electron Fuses, conditional reqwest upgrade, subagent policy, and cutover/rollback
+rules. Its requirements supersede conflicting source-plan text without reopening completed P0–P2 work.
 
 ## Electron and electron-builder observations
 

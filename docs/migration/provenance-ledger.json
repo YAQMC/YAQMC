@@ -1,0 +1,331 @@
+{
+  "schemaVersion": 1,
+  "audit": {
+    "capturedAt": "2026-08-16",
+    "repository": {
+      "name": "YAQMC",
+      "origin": "https://github.com/YAQMC/YAQMC.git",
+      "auditHead": "67bcc81265a70a9c23d3d1e09ecce5a814ee4d95",
+      "auditCommitCount": 171,
+      "historicalBase": {
+        "commit": "11ab586e8450356eb67e3fb6a6cee58b43641449",
+        "commitCount": 167,
+        "authors": {
+          "Mai-xiyu": 136,
+          "Osilvfe": 31
+        },
+        "cursorCoAuthorTrailers": 23,
+        "unsignedCommitCount": 167
+      },
+      "migrationCommitsBeforeCapture": 4,
+      "rootImport": {
+        "commit": "a4d1ee31708a55cf6f933778e5653b88ba74ed03",
+        "fileCount": 239,
+        "addedLineCount": 42769,
+        "binaryPathCount": 87,
+        "status": "unattributed-source-review-required"
+      }
+    },
+    "qmApiRs": {
+      "origin": "https://github.com/YAQMC/qm-api-rs",
+      "revision": "a7430a831a256bb15212291f11a055d801e31648",
+      "commitCount": 6,
+      "authors": {
+        "Osilvfe": 5,
+        "Mai-xiyu": 1
+      },
+      "unsignedCommitCount": 6,
+      "trackedCargoLock": false,
+      "localObservation": "The local clone may contain an ignored Cargo.lock build artifact; it is not part of the audited a7430a tree.",
+      "declaredSources": ["L-1124/QQMusicApi", "qqmusic_1.1.8-1.asar"]
+    }
+  },
+  "sources": [
+    {
+      "id": "yaqmc-root-import",
+      "kind": "repository-import",
+      "origin": "https://github.com/YAQMC/YAQMC.git",
+      "revision": "a4d1ee31708a55cf6f933778e5653b88ba74ed03",
+      "license": "NOASSERTION",
+      "status": "blocked",
+      "mappings": [
+        {
+          "target": "YAQMC root import (239 files, 42769 added lines, 87 binary paths)",
+          "relation": "initial-import"
+        }
+      ],
+      "evidence": ["git show --root --numstat a4d1ee31708a55cf6f933778e5653b88ba74ed03"],
+      "requiredResolution": "Establish per-file/source provenance and permissions, or rewrite/remove unproven material."
+    },
+    {
+      "id": "qm-api-rs",
+      "kind": "planned-dependency",
+      "origin": "https://github.com/YAQMC/qm-api-rs",
+      "revision": "a7430a831a256bb15212291f11a055d801e31648",
+      "license": "GPL-3.0-or-later",
+      "status": "blocked",
+      "noticeStatus": "incomplete",
+      "mappings": [
+        {
+          "target": "P14 provider dependency (not yet linked)",
+          "relation": "planned-integration"
+        }
+      ],
+      "evidence": [
+        "D:/qqmsc/qm-api-rs/Cargo.toml at a7430a831a256bb15212291f11a055d801e31648",
+        "D:/qqmsc/qm-api-rs README/source provenance declarations at a7430a831a256bb15212291f11a055d801e31648"
+      ],
+      "requiredResolution": "Resolve every inherited/upstream blocker, record complete notices, and pass P14 technical and live-account gates before distribution."
+    },
+    {
+      "id": "l1124-qqmusicapi",
+      "kind": "upstream-port",
+      "origin": "https://github.com/L-1124/QQMusicApi",
+      "revision": "108617ffe80abefec6358717b9f4d3677550db10",
+      "license": "GPL-3.0-only",
+      "status": "verified",
+      "mappings": [
+        {
+          "target": "qm-api-rs/src/tripledes.rs",
+          "relation": "ported; file source revision 0b808a5537643f2c3bd0ef94e5c72263ec378bb8; SPDX GPL-3.0-only"
+        },
+        {
+          "target": "qm-api-rs/src/modules/{album,comment,helper,helper_utils,login,login_utils,lyric,mv,private_message,recommend,search,singer,song,songlist,top,user}.rs",
+          "relation": "declared 16-module upstream port mapping"
+        }
+      ],
+      "evidence": [
+        "https://github.com/L-1124/QQMusicApi/blob/108617ffe80abefec6358717b9f4d3677550db10/LICENSE",
+        "https://github.com/L-1124/QQMusicApi/blob/0b808a5537643f2c3bd0ef94e5c72263ec378bb8/algorithms/tripledes.py"
+      ]
+    },
+    {
+      "id": "wxriw-qqmusicdecoder",
+      "kind": "transitive-notice-chain",
+      "origin": "https://github.com/WXRIW/QQMusicDecoder",
+      "revision": "0837a3a1281e58f6db3e3e1dcb1d5441fb0ac268",
+      "license": "MIT",
+      "status": "verified",
+      "mappings": [
+        {
+          "target": "l1124-qqmusicapi: algorithms/tripledes.py",
+          "relation": "L-1124 source comment notice chain for DESHelper/Decrypter"
+        }
+      ],
+      "copyright": "Copyright 2023 WXRIW",
+      "evidence": [
+        "https://github.com/WXRIW/QQMusicDecoder/blob/0837a3a1281e58f6db3e3e1dcb1d5441fb0ac268/LICENSE"
+      ]
+    },
+    {
+      "id": "mzj3920-qqmusic-decrypt",
+      "kind": "upstream-port",
+      "origin": "https://github.com/mzj3920/qqmusic-decrypt",
+      "revision": "a5755c7cb26c8e9a53d39435e85ab034ca8d358c",
+      "fileRevision": "fbeb3a1eca4ffb49b67f80ade5a40678bdbd3de3",
+      "license": "NOASSERTION",
+      "status": "blocked",
+      "mappings": [
+        {
+          "target": "qm-api-rs/src/qmc.rs",
+          "relation": "declared upstream port"
+        }
+      ],
+      "evidence": [
+        "https://github.com/mzj3920/qqmusic-decrypt/tree/a5755c7cb26c8e9a53d39435e85ab034ca8d358c",
+        "https://github.com/mzj3920/qqmusic-decrypt/commit/fbeb3a1eca4ffb49b67f80ade5a40678bdbd3de3"
+      ],
+      "requiredResolution": "Obtain immutable licensing authorization, or independently rewrite/remove the affected port."
+    },
+    {
+      "id": "gongjiehong-qmcdecode",
+      "kind": "behavioral-adaptation",
+      "origin": "https://github.com/gongjiehong/QMCDecode",
+      "revision": "aea76301a08678100ec677cb61a8458bc75662ec",
+      "license": "MIT",
+      "status": "blocked",
+      "noticeStatus": "incomplete",
+      "mappings": [
+        {
+          "target": "src-tauri/src/qmc.rs",
+          "relation": "QMC key derivation and segmented stream cipher; file/range/transformation record still required"
+        }
+      ],
+      "copyright": "Copyright 2019 gongjiehong",
+      "evidence": [
+        "https://github.com/gongjiehong/QMCDecode/blob/aea76301a08678100ec677cb61a8458bc75662ec/LICENSE",
+        "THIRD_PARTY_NOTICES.md"
+      ],
+      "requiredResolution": "Record exact source file/range/transformation and reconcile the notice before release."
+    },
+    {
+      "id": "unlock-music",
+      "kind": "upstream-port",
+      "origin": "https://git.dov.moe/Mirror/unlock-music/src/commit/986e02f182c1f8f30101568a8246cd5f30785378",
+      "revision": "986e02f182c1f8f30101568a8246cd5f30785378",
+      "license": "NOASSERTION",
+      "status": "blocked",
+      "mappings": [
+        {
+          "target": "src-tauri/src/qmc.rs",
+          "relation": "EncV2 wrapper declaration; exact-source license was not independently retrievable"
+        }
+      ],
+      "evidence": [
+        "THIRD_PARTY_NOTICES.md claims MIT but is not independent immutable evidence for this exact revision",
+        "DovGit target Cloudflare and historical GitHub retrieval failures recorded in the audit"
+      ],
+      "requiredResolution": "Archive immutable license evidence for this exact revision, obtain authorization, or rewrite/remove the affected material."
+    },
+    {
+      "id": "aynaliveplayer-miaosic",
+      "kind": "unmapped-upstream",
+      "origin": "https://github.com/AynaLivePlayer/miaosic",
+      "revision": null,
+      "observedUpperBound": "c509534bd7bbc9c4094ec6c2663901cb67fec342",
+      "license": "NOASSERTION",
+      "status": "blocked",
+      "mappings": [
+        {
+          "target": "src-tauri/src/qqmusic.rs and related provider interoperability",
+          "relation": "historical source revision and file/range mapping are unknown; current MIT upper-bound is not a source pin"
+        }
+      ],
+      "evidence": [
+        "https://github.com/AynaLivePlayer/miaosic/tree/c509534bd7bbc9c4094ec6c2663901cb67fec342",
+        "THIRD_PARTY_NOTICES.md"
+      ],
+      "requiredResolution": "Establish the historical source revision and mapped material with immutable license evidence, or rewrite/remove it."
+    },
+    {
+      "id": "qqmusic-electron-asar",
+      "kind": "proprietary-client-extraction",
+      "origin": "QQ Music official desktop client qqmusic_1.1.8-1.asar",
+      "revision": null,
+      "license": "NOASSERTION",
+      "status": "blocked",
+      "authorization": {
+        "status": "missing",
+        "evidence": null
+      },
+      "mappings": [
+        {
+          "target": "qm-api-rs/src/lib.rs",
+          "relation": "explicit text says Electron ASAR supplemented signing/platform details"
+        },
+        {
+          "target": "qm-api-rs/src/modules/{album,comment,song,songlist,user}.rs",
+          "relation": "explicit ASAR/common.js annotations; raw API counts comment=2, song=3, songlist=5, user=4"
+        },
+        {
+          "target": "qm-api-rs/src/modules/helper.rs",
+          "relation": "raw API documentation count helper=1"
+        },
+        {
+          "target": "qm-api-rs/src/modules/private_message.rs",
+          "relation": "raw API documentation count private_message=1; exact extraction evidence remains to be supplied"
+        },
+        {
+          "target": "qm-api-rs/src/{sign,context}.rs",
+          "relation": "musics.fcg signing/context usage requires acquisition-to-file evidence; no direct extracted-file proof recorded"
+        }
+      ],
+      "evidence": [
+        "qm-api-rs Cargo.toml, README.md, src/lib.rs, docs/modules.md, and module comments at a7430a831a256bb15212291f11a055d801e31648",
+        "No acquisition record, package hash, extracted-file manifest, copyright license, or distribution authorization is recorded."
+      ],
+      "requiredResolution": "Obtain authorization and immutable acquisition/license/extraction evidence, or independently rewrite/remove all affected content before distribution."
+    }
+  ],
+  "contributors": [
+    {
+      "id": "mai-xiyu-yaqmc-history",
+      "name": "Mai-xiyu",
+      "commitCount": 136,
+      "consentStatus": "pending",
+      "rightsScope": "Can only confirm rights actually controlled in the 167-commit YAQMC historical base; cannot clear third-party or unattributed material.",
+      "evidence": null
+    },
+    {
+      "id": "osilvfe-yaqmc-history",
+      "name": "Osilvfe",
+      "commitCount": 31,
+      "consentStatus": "pending",
+      "rightsScope": "Can only confirm rights actually controlled in the 167-commit YAQMC historical base; cannot clear third-party or unattributed material.",
+      "evidence": null
+    },
+    {
+      "id": "cursor-coauthor-trailers",
+      "name": "Cursor co-author trailers",
+      "trailerCount": 23,
+      "consentStatus": "unknown",
+      "rightsScope": "Trailer attribution does not establish copyright ownership, assignment, or relicensing authority.",
+      "evidence": "git log --format=%B 11ab586e8450356eb67e3fb6a6cee58b43641449"
+    },
+    {
+      "id": "root-import-unattributed-contributors",
+      "name": "Unattributed root-import contributors",
+      "consentStatus": "unknown",
+      "rightsScope": "Initial import includes code, generated outputs, and binary assets with unresolved origin.",
+      "evidence": "a4d1ee31708a55cf6f933778e5653b88ba74ed03 root import statistics"
+    },
+    {
+      "id": "qm-api-rs-osilvfe",
+      "name": "Osilvfe",
+      "commitCount": 5,
+      "consentStatus": "pending",
+      "rightsScope": "qm-api-rs commits at a7430a; does not establish clearance for its stated upstream ports or ASAR-derived material.",
+      "evidence": null
+    },
+    {
+      "id": "qm-api-rs-mai-xiyu",
+      "name": "Mai-xiyu",
+      "commitCount": 1,
+      "consentStatus": "pending",
+      "rightsScope": "qm-api-rs commit at a7430a; does not establish clearance for its stated upstream ports or ASAR-derived material.",
+      "evidence": null
+    }
+  ],
+  "assets": [
+    {
+      "id": "root-import-binary-paths",
+      "path": "Initial root import binary/generated paths (87 git numstat binary matches)",
+      "sourceId": "yaqmc-root-import",
+      "status": "blocked",
+      "evidence": "git show --format= --numstat a4d1ee31708a55cf6f933778e5653b88ba74ed03"
+    },
+    {
+      "id": "application-branding-logo",
+      "path": "assets/yaqmc-logo.png",
+      "sourceId": "yaqmc-root-import",
+      "status": "blocked",
+      "evidence": "No creator, commission, license, or source record is present in this audit."
+    },
+    {
+      "id": "application-icons",
+      "path": "src-tauri/icons/**",
+      "sourceId": "yaqmc-root-import",
+      "status": "blocked",
+      "evidence": "Icon raster/vector derivatives require source and creator provenance."
+    },
+    {
+      "id": "qmc-implementation-notice",
+      "path": "src-tauri/src/qmc.rs and THIRD_PARTY_NOTICES.md",
+      "sourceId": "gongjiehong-qmcdecode",
+      "status": "blocked",
+      "evidence": "Current notice exists but does not contain the required file/range/transformation audit mapping."
+    }
+  ],
+  "release": {
+    "decision": "block",
+    "blockers": [
+      "Full history/root-import/source audit is incomplete; 87 binary paths and imported material lack complete provenance.",
+      "Maintainer entries are Pending and only cover rights each maintainer actually controls.",
+      "mzj3920/qqmusic-decrypt has NOASSERTION licensing at the audited source/file revisions.",
+      "Unlock Music exact revision license evidence is not independently retrievable.",
+      "miaosic historical source revision and mapping are unknown; current MIT upper-bound is not a source pin.",
+      "Official QQ Music ASAR has no recorded acquisition hash, license, extraction evidence, or authorization.",
+      "THIRD_PARTY_NOTICES.md does not yet supply a complete source-file/range/transformation mapping."
+    ]
+  }
+}
