@@ -83,6 +83,18 @@ test('accepts a host-neutral Core dependency closure', () => {
   );
 });
 
+test('accepts portable reqwest in the Core dependency closure', () => {
+  assert.doesNotThrow(() =>
+    validateCoreDependencyClosure(
+      metadataWithCoreClosure([
+        ['yaqmc-core', ['reqwest']],
+        ['reqwest', ['hyper']],
+        ['hyper', []],
+      ]),
+    ),
+  );
+});
+
 test('rejects a forbidden host dependency reached transitively from Core', () => {
   assert.throws(
     () =>
@@ -95,4 +107,40 @@ test('rejects a forbidden host dependency reached transitively from Core', () =>
       ),
     /forbidden yaqmc-core dependency closure: tauri/,
   );
+});
+
+test('rejects a transitive provider dependency reached from Core', () => {
+  assert.throws(
+    () =>
+      validateCoreDependencyClosure(
+        metadataWithCoreClosure([
+          ['yaqmc-core', ['portable-layer']],
+          ['portable-layer', ['yaqmc-provider-qqmusic']],
+          ['yaqmc-provider-qqmusic', []],
+        ]),
+      ),
+    /forbidden yaqmc-core dependency closure: yaqmc-provider-qqmusic/,
+  );
+});
+
+test('rejects underscore-form forbidden dependencies reached transitively from Core', () => {
+  for (const forbidden of [
+    'tauri_plugin_dialog',
+    'raw_window_handle',
+    'qqmusic_api',
+    'napi_build',
+    'yaqmc_provider_qqmusic',
+  ]) {
+    assert.throws(
+      () =>
+        validateCoreDependencyClosure(
+          metadataWithCoreClosure([
+            ['yaqmc-core', ['portable-layer']],
+            ['portable-layer', [forbidden]],
+            [forbidden, []],
+          ]),
+        ),
+      new RegExp(`forbidden yaqmc-core dependency closure: ${forbidden}`),
+    );
+  }
 });

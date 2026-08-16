@@ -19,13 +19,13 @@ const FACT_FILES = [
   'src-tauri/tauri.conf.json',
   'src-tauri/build.rs',
   'src-tauri/src/lib.rs',
-  'src-tauri/src/storage.rs',
+  'crates/yaqmc-core/src/storage.rs',
   'src-tauri/src/commands.rs',
   'crates/yaqmc-core/src/app_preferences.rs',
   'crates/yaqmc-core/src/logging.rs',
   'src-tauri/src/lyrics_surface/mod.rs',
   'src-tauri/src/qqmusic.rs',
-  'src-tauri/src/credentials.rs',
+  'crates/yaqmc-core/src/credentials.rs',
   'src-tauri/src/qqmusic/auth.rs',
   'src-tauri/src/local_api.rs',
   'docs/migration/command-inventory.md',
@@ -134,4 +134,15 @@ test('collects migrated persistence keys from their Core-owned canonical sources
     facts.persistenceEntries.find(({ id }) => id === 'logging-level')?.key,
     'logging.level.drifted',
   );
+});
+
+test('rejects a temporary repository whose Core-owned storage source drifts', () => {
+  const root = copyFactRepository();
+  const storagePath = path.join(root, 'crates', 'yaqmc-core', 'src', 'storage.rs');
+  writeFileSync(
+    storagePath,
+    readFileSync(storagePath, 'utf8').replaceAll('library.sqlite3', 'drifted.sqlite3'),
+  );
+
+  assert.throws(() => collectRepositoryFacts(root), /SQLite library\.sqlite3 WAL contract is missing/);
 });

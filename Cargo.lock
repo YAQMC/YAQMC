@@ -6680,7 +6680,6 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "http-body-util",
- "keyring",
  "lyrics-crypto",
  "md-5",
  "mpris-server",
@@ -6689,7 +6688,6 @@ dependencies = [
  "raw-window-handle",
  "reqwest",
  "rodio",
- "rusqlite",
  "serde",
  "serde_json",
  "sha2",
@@ -6720,8 +6718,13 @@ dependencies = [
 name = "yaqmc-core"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "base64 0.22.1",
+ "futures-util",
+ "keyring",
  "rand 0.9.5",
+ "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
