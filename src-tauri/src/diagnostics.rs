@@ -459,8 +459,7 @@ pub fn export_bundle(
             total_bytes = total_bytes.saturating_add(scrubbed.len() as u64);
             if total_bytes > BUNDLE_MAX_BYTES {
                 warnings.push(format!(
-                    "log {name} skipped because bundle exceeded {} bytes",
-                    BUNDLE_MAX_BYTES
+                    "log {name} skipped because bundle exceeded {BUNDLE_MAX_BYTES} bytes"
                 ));
                 continue;
             }

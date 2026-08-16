@@ -32,7 +32,7 @@ CI artifact **不是** GitHub Release，保留 **14 天**。打包成功不等�
 
 每个目标先 `tauri build --no-bundle` 一次，校验 PE/ELF 架构，再 `tauri bundle`。Windows 产出 NSIS、MSI 和可执行文件的便携 ZIP。Linux 产出 AppImage、`.deb`、`.rpm` 以及动态链接的二进制 tar（不是静态便携包）。x86_64 AppImage 仍会做现有的 GDK 会话感知重打包。
 
-暂存时只使用 `src-tauri/target/<triple>/release` 根目录下的 `yaqmc` / `yaqmc.exe`，再从旁边的 `bundle` 目录复制安装包，不会误捡 payload 里的同名二进制。Linux 打包会安装 `xdg-utils`，并设置 `APPIMAGE_EXTRACT_AND_RUN=1`，以便在缺少 `/usr/bin/xdg-open` 或 FUSE 的 ARM runner 上运行 linuxdeploy。
+暂存时只使用 `target/<triple>/release` 根目录下的 `yaqmc` / `yaqmc.exe`，再从旁边的 `bundle` 目录复制安装包，不会误捡 payload 里的同名二进制。Linux 打包会安装 `xdg-utils`，并设置 `APPIMAGE_EXTRACT_AND_RUN=1`，以便在缺少 `/usr/bin/xdg-open` 或 FUSE 的 ARM runner 上运行 linuxdeploy。
 
 ## 优化配置
 
@@ -55,7 +55,7 @@ CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8
 
 ## 缓存
 
-Cargo 缓存按操作系统、目标三元组、工具链类别（打包用 `1.88`，质量检查用 `stable`）、`Cargo.lock` 和配置类别（`dev` / `ci-release` / `production`）分键。路径是 crates.io registry、git checkout 和 `src-tauri/target`。
+Cargo 缓存按操作系统、目标三元组、工具链类别（打包用 `1.88`，质量检查用 `stable`）、`Cargo.lock` 和配置类别（`dev` / `ci-release` / `production`）分键。路径是 crates.io registry、git checkout 和根 workspace 的 `target`。
 
 打包安装 Rust **1.88**。质量检查使用当前 stable 的 `rustfmt`/`clippy`，以便与本地 `cargo fmt` / `cargo clippy` 一致。
 

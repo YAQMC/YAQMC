@@ -16,6 +16,7 @@ GPT-Read-me.md
 # Rust / Tauri
 src-tauri/target/
 src-tauri/target-bench-*/
+/target/
 
 # Editors
 .idea/

@@ -14,6 +14,7 @@ const FACT_FILES = [
   '.node-version',
   'package.json',
   'package-lock.json',
+  'Cargo.toml',
   '.github/actions/setup-packaging/action.yml',
   '.github/workflows/build.yml',
   '.github/workflows/ci.yml',

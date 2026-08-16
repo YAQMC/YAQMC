@@ -74,7 +74,7 @@ writing frontend presentation state directly.
 npm run check
 npm run tauri -- build --no-bundle
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capture-windows-lyrics-acceptance.ps1 `
-  -Binary "$PWD/src-tauri/target/release/yaqmc.exe" `
+  -Binary "$PWD/target/release/yaqmc.exe" `
   -Output "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/windows" `
   -BuildKind tauri-no-bundle
 node scripts/verify-lyrics-acceptance.mjs `

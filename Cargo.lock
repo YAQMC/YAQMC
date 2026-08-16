@@ -6711,9 +6711,29 @@ dependencies = [
  "tracing-subscriber",
  "webkit2gtk-sys",
  "windows-sys 0.61.2",
+ "yaqmc-core",
  "zeroize",
  "zip",
 ]
+
+[[package]]
+name = "yaqmc-core"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
+name = "yaqmc-protocol"
+version = "0.1.0"
+
+[[package]]
+name = "yaqmc-provider-api"
+version = "0.1.0"
+
+[[package]]
+name = "yaqmc-provider-qqmusic"
+version = "0.1.0"
 
 [[package]]
 name = "yoke"

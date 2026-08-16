@@ -83,12 +83,12 @@ jobs:
         run: |
           set -euo pipefail
           release_dir="release/$RELEASE_DIRECTORY"
-          bundle_root="src-tauri/target/${{ matrix.target }}/release/bundle"
+          bundle_root="target/${{ matrix.target }}/release/bundle"
           mkdir -p "$release_dir"
           find "$bundle_root/deb" -maxdepth 1 -type f -name '*.deb' -exec cp {} "$release_dir/" \;
           find "$bundle_root/rpm" -maxdepth 1 -type f -name '*.rpm' -exec cp {} "$release_dir/" \;
-          test -f "src-tauri/target/${{ matrix.target }}/release/yaqmc"
-          cp "src-tauri/target/${{ matrix.target }}/release/yaqmc" "$release_dir/yaqmc"
+          test -f "target/${{ matrix.target }}/release/yaqmc"
+          cp "target/${{ matrix.target }}/release/yaqmc" "$release_dir/yaqmc"
           tar -C "$release_dir" -czf "$release_dir/$PORTABLE_NAME" yaqmc
           rm "$release_dir/yaqmc"
       - name: Repack x86_64 AppImage with session-aware GTK policy
@@ -104,7 +104,7 @@ jobs:
             --output /tmp/appimagetool-x86_64.AppImage
           echo 'a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0  /tmp/appimagetool-x86_64.AppImage' | sha256sum --check
           chmod +x /tmp/appimagetool-x86_64.AppImage scripts/repack-appimage-gdk-backend.sh
-          source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          source_appimage="$(find target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$source_appimage"
           scripts/repack-appimage-gdk-backend.sh \
             "$source_appimage" \
@@ -164,7 +164,7 @@ jobs:
           RELEASE_DIRECTORY: ${{ steps.artifact_contract.outputs.releaseDirectory }}
         run: |
           set -euo pipefail
-          source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          source_appimage="$(find target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$source_appimage"
           cp "$source_appimage" "release/$RELEASE_DIRECTORY/"
       - name: Build and verify x86_64 tester bundle
@@ -273,7 +273,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $releaseDir = "release/$env:RELEASE_DIRECTORY"
-          $targetRoot = 'src-tauri/target/${{ matrix.target }}/release'
+          $targetRoot = 'target/${{ matrix.target }}/release'
           New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
           Get-ChildItem -LiteralPath "$targetRoot/bundle" -Recurse -File |
             Where-Object { $_.Extension -in @('.exe', '.msi') } |

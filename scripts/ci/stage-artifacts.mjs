@@ -52,6 +52,13 @@ export function findReleaseBinary(os, targetRoot, hostRelease) {
   return found;
 }
 
+export function workspaceReleaseRoots(target) {
+  return {
+    targetRoot: path.join(repositoryRoot, 'target', target, 'release'),
+    hostRelease: path.join(repositoryRoot, 'target', 'release'),
+  };
+}
+
 function requireStaged(label, staged, test, bundleRoot) {
   if (staged.some(test)) return;
   const found = walkFiles(bundleRoot)
@@ -139,8 +146,7 @@ function main() {
   rmSync(releaseDir, { recursive: true, force: true });
   mkdirSync(releaseDir, { recursive: true });
 
-  const targetRoot = path.join(repositoryRoot, 'src-tauri', 'target', target, 'release');
-  const hostRelease = path.join(repositoryRoot, 'src-tauri', 'target', 'release');
+  const { targetRoot, hostRelease } = workspaceReleaseRoots(target);
   const binaryPath = findReleaseBinary(os, targetRoot, hostRelease);
 
   const staged = [];
