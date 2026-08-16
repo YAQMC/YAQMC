@@ -5,11 +5,14 @@ use crate::{
     desktop_integration::{DesktopIntegration, DesktopIntegrationStatus},
     diagnostics::{
         self, AppSection, BundleExportResult, BundleOptions, DiagnosticsSnapshot,
-        LyricsPresetSection, PlaybackSection,
+        LyricsPresetSection, PlaybackSection, PluginDiagnostic as CorePluginDiagnostic,
+        PluginStatus as CorePluginStatus, ProviderSection,
     },
     issue_reporter::{self, IssueDraft, IssuePreview},
     local_api::{LocalApiService, LocalApiStatus},
-    logging::{self, ErrorRecord, LogLevel, LoggingHandle},
+    logging::{
+        self, ErrorRecord, LogLevel, LoggingHandle, LOG_LEVEL_SETTING_KEY as LOGGING_LEVEL_SETTING,
+    },
     lyrics_surface::{
         close_surface, surface_statuses, LyricsSurfaceManager, SurfaceCapabilities,
         SurfaceInteraction, SurfaceKind, SurfaceRuntimeMap,
@@ -26,9 +29,9 @@ use crate::{
             FavoriteMutationResult, Page, PlaylistMutationResult, PlaylistTrackMutationRequest,
             RemotePlayHistoryItem, RenamePlaylistRequest,
         },
-        oauth, Album, AreaFeed, AudioQualityPreference, DiscoverFeed, HomeFeed, LibrarySnapshot, OAuthLoginProvider,
-        Playlist, ProviderCommandError, ProviderResult, ProviderStatus, QQMusicService,
-        SearchResult,
+        oauth, Album, AreaFeed, AudioQualityPreference, DiscoverFeed, HomeFeed, LibrarySnapshot,
+        OAuthLoginProvider, Playlist, ProviderCommandError, ProviderResult, ProviderStatus,
+        QQMusicService, SearchResult,
     },
     storage::{CacheStats, StorageService},
     system_media::SystemMediaIntegration,
@@ -39,17 +42,17 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 type CommandResult<T> = Result<T, String>;
 pub const AUDIO_OUTPUT_SETTING: &str = "audio-output-device";
-pub const LOGGING_LEVEL_SETTING: &str = "logging.level";
 
 /// Load the configured log level from persistent storage. Falls back to the debug
 /// default (Debug) if the setting is absent or malformed.
 pub fn load_persisted_log_level(storage: &Arc<StorageService>) -> LogLevel {
-    storage
-        .get_setting(LOGGING_LEVEL_SETTING)
-        .ok()
-        .flatten()
-        .and_then(|value| LogLevel::parse(&value))
-        .unwrap_or_default()
+    logging::persisted_log_level(
+        storage
+            .get_setting(LOGGING_LEVEL_SETTING)
+            .ok()
+            .flatten()
+            .as_deref(),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,6 +131,49 @@ fn build_playback_section(snapshot: &PlayerSnapshot) -> PlaybackSection {
     }
 }
 
+fn map_provider_section(status: ProviderStatus, request: &DiagnosticsRequest) -> ProviderSection {
+    let membership_tier = request.membership_tier.clone();
+    let membership_status = membership_tier.as_ref().map(|_| {
+        request
+            .membership_status
+            .clone()
+            .unwrap_or_else(|| "unknown".into())
+    });
+    ProviderSection {
+        id: status.provider_id,
+        connection: status.connection,
+        account_state: request
+            .account_state
+            .clone()
+            .unwrap_or_else(|| "unknown".into()),
+        membership_tier,
+        membership_status,
+    }
+}
+
+fn map_plugin_diagnostic(diagnostic: crate::plugin::PluginDiagnostic) -> CorePluginDiagnostic {
+    let status = match diagnostic.status {
+        crate::plugin::PluginStatus::Installed => CorePluginStatus::Installed,
+        crate::plugin::PluginStatus::Disabled => CorePluginStatus::Disabled,
+        crate::plugin::PluginStatus::Enabling => CorePluginStatus::Enabling,
+        crate::plugin::PluginStatus::Active => CorePluginStatus::Active,
+        crate::plugin::PluginStatus::Disabling => CorePluginStatus::Disabling,
+        crate::plugin::PluginStatus::Failed => CorePluginStatus::Failed,
+        crate::plugin::PluginStatus::Incompatible => CorePluginStatus::Incompatible,
+    };
+    CorePluginDiagnostic {
+        id: diagnostic.id,
+        version: diagnostic.version,
+        enabled: diagnostic.enabled,
+        status,
+        entrypoint_kinds: diagnostic.entrypoint_kinds,
+        api_version: diagnostic.api_version,
+        package_sha256: diagnostic.package_sha256,
+        permissions: diagnostic.permissions,
+        risk_rating: diagnostic.risk_rating,
+    }
+}
+
 fn build_app_section(app: &AppHandle) -> AppSection {
     AppSection {
         name: "YAQMC",
@@ -158,18 +204,19 @@ async fn assemble_snapshot(
     let mut snapshot = diagnostics::snapshot_from_handle(
         logging,
         platform_diagnostics,
-        Some(provider_status),
-        request.account_state,
-        request
-            .membership_tier
-            .zip(request.membership_status.or(Some("unknown".into()))),
+        Some(map_provider_section(provider_status, &request)),
         build_playback_section(&player_snapshot),
         build_app_section(app),
     );
     snapshot.lyrics_preset = request.lyrics_preset;
     snapshot.plugins = app
         .try_state::<Arc<crate::plugin::ExtensionHost>>()
-        .map(|host| host.diagnostics())
+        .map(|host| {
+            host.diagnostics()
+                .into_iter()
+                .map(map_plugin_diagnostic)
+                .collect()
+        })
         .unwrap_or_default();
     snapshot
 }
@@ -1475,5 +1522,74 @@ mod debug_perf_sample_tests {
         let columns = line.split(',').count();
         assert_eq!(perf_sample_header().split(',').count(), columns);
         assert!(line.contains("60,16.70,17.00,40.00,2"));
+    }
+}
+
+#[cfg(test)]
+mod diagnostics_dto_mapping_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn host_provider_and_plugin_diagnostics_map_to_the_core_wire_fixture() {
+        let provider = ProviderStatus {
+            provider_id: "qqmusic".into(),
+            display_name: "QQ Music".into(),
+            connection: "online".into(),
+            message: "ready".into(),
+            preferred_quality: AudioQualityPreference::Automatic,
+            capabilities: crate::qqmusic::CatalogProviderCapabilities {
+                search: true,
+                album: true,
+                artist: true,
+                playlist: true,
+                lyrics: true,
+                word_timed_lyrics: true,
+                streaming: true,
+                quality_selection: true,
+            },
+        };
+        let request = DiagnosticsRequest {
+            account_state: Some("authenticated".into()),
+            membership_tier: Some("green-diamond".into()),
+            membership_status: Some("active".into()),
+            lyrics_preset: None,
+        };
+        assert_eq!(
+            serde_json::to_value(map_provider_section(provider, &request)).expect("provider JSON"),
+            json!({
+                "id": "qqmusic",
+                "connection": "online",
+                "accountState": "authenticated",
+                "membershipTier": "green-diamond",
+                "membershipStatus": "active"
+            })
+        );
+
+        let plugin = crate::plugin::PluginDiagnostic {
+            id: "visualizer".into(),
+            version: "1.2.3".into(),
+            enabled: true,
+            status: crate::plugin::PluginStatus::Active,
+            entrypoint_kinds: vec!["scene".into()],
+            api_version: 1,
+            package_sha256: "a".repeat(64),
+            permissions: vec!["ui.scene".into()],
+            risk_rating: "low".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(map_plugin_diagnostic(plugin)).expect("plugin JSON"),
+            json!({
+                "id": "visualizer",
+                "version": "1.2.3",
+                "enabled": true,
+                "status": "active",
+                "entrypointKinds": ["scene"],
+                "apiVersion": 1,
+                "packageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissions": ["ui.scene"],
+                "riskRating": "low"
+            })
+        );
     }
 }

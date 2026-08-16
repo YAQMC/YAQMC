@@ -2,14 +2,26 @@ use crate::{
     desktop_integration::DesktopIntegrationStatus, player::PlayerService,
     system_media::SystemMediaStatus,
 };
-use serde::Serialize;
 use std::{
-    collections::BTreeMap,
-    fs,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager};
+
+#[cfg(target_os = "linux")]
+use std::{collections::BTreeMap, fs};
+
+use yaqmc_core::platform::{
+    assemble_platform_diagnostics, export_bundle as export_core_bundle,
+    log_startup as log_core_startup, PlatformDiagnosticAssets, PlatformFacts,
+};
+pub use yaqmc_core::platform::{AudioDiagnostics, LinuxDiagnostics, PlatformDiagnostics};
+
+#[cfg(target_os = "linux")]
+use yaqmc_core::platform::GpuDevice;
+
+#[cfg(test)]
+use yaqmc_core::platform::capabilities_for_backend;
 
 #[cfg(target_os = "linux")]
 use std::path::Path;
@@ -51,72 +63,6 @@ Verify and archive after auto, native-wayland and x11 are all present:
 Return the archive, its SHA-256, distribution/kernel/compositor/monitor/scale details, and concise visual/audio notes
 to the maintainer. Collection is evidence, not a pass claim; the maintainer records the final verdict.
 "#;
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlatformCapabilities {
-    pub reliable_always_on_top: bool,
-    pub click_through: bool,
-    pub transparent_window: bool,
-    pub global_positioning: bool,
-    pub absolute_window_placement: bool,
-    pub fullscreen_detection: bool,
-    pub global_shortcuts: bool,
-    pub notes: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GpuDevice {
-    pub card: String,
-    pub vendor_id: Option<String>,
-    pub device_id: Option<String>,
-    pub driver: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LinuxDiagnostics {
-    pub session_type: Option<String>,
-    pub display_backend: String,
-    pub desktop_environment: Option<String>,
-    pub compositor_hint: Option<String>,
-    pub webkitgtk_version: Option<String>,
-    pub graphics_mode: String,
-    pub environment: BTreeMap<String, Option<String>>,
-    pub gpu_devices: Vec<GpuDevice>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AudioDiagnostics {
-    pub implementation: String,
-    pub route: String,
-    pub available: bool,
-    pub selected_output: Option<String>,
-    pub selected_output_kind: Option<String>,
-    pub resolved_output: Option<String>,
-    pub resolved_driver: Option<String>,
-    pub resolved_host: Option<String>,
-    pub resolved_sample_rate: Option<u32>,
-    pub resolved_channels: Option<u16>,
-    pub resolved_sample_format: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlatformDiagnostics {
-    pub generated_at_unix_ms: u128,
-    pub app_name: &'static str,
-    pub app_version: String,
-    pub os: &'static str,
-    pub architecture: &'static str,
-    pub linux: Option<LinuxDiagnostics>,
-    pub capabilities: PlatformCapabilities,
-    pub audio: AudioDiagnostics,
-    pub system_media: SystemMediaStatus,
-    pub desktop_integration: DesktopIntegrationStatus,
-}
 
 /// Applies only an explicitly requested compatibility mode. Auto mode leaves GTK/WebKitGTK's
 /// backend decisions untouched and applies only targeted workarounds for known-broken
@@ -184,29 +130,20 @@ pub fn collect(
     desktop_integration: DesktopIntegrationStatus,
 ) -> PlatformDiagnostics {
     let linux = linux_diagnostics(app);
-    let capabilities = capabilities_for_backend(
-        linux
-            .as_ref()
-            .map(|value| value.display_backend.as_str())
-            .unwrap_or(std::env::consts::OS),
-        desktop_integration.global_shortcuts_supported,
-    );
     let devices = player.output_devices().unwrap_or_default();
     let selected_device = devices.iter().find(|device| device.is_selected);
     let selected_output = selected_device.map(|device| device.label.clone());
     let selected_output_kind = selected_device.map(|device| device.selection_kind.clone());
     let resolved_output = selected_device.and_then(|device| device.resolved_output.as_ref());
-    PlatformDiagnostics {
+    assemble_platform_diagnostics(PlatformFacts {
         generated_at_unix_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis(),
-        app_name: "YAQMC",
         app_version: app.package_info().version.to_string(),
         os: std::env::consts::OS,
         architecture: std::env::consts::ARCH,
         linux,
-        capabilities,
         audio: AudioDiagnostics {
             implementation: if cfg!(target_os = "linux") {
                 "Rodio 0.22 / CPAL 0.17".to_owned()
@@ -235,36 +172,11 @@ pub fn collect(
         },
         system_media,
         desktop_integration,
-    }
+    })
 }
 
 pub fn log_startup(diagnostics: &PlatformDiagnostics) {
-    if let Some(linux) = &diagnostics.linux {
-        tracing::info!(
-            target: "linux.window",
-            session_type = linux.session_type.as_deref().unwrap_or("unknown"),
-            display_backend = linux.display_backend,
-            desktop = linux.desktop_environment.as_deref().unwrap_or("unknown"),
-            "Linux window backend detected"
-        );
-        tracing::info!(
-            target: "linux.graphics",
-            webkitgtk = linux.webkitgtk_version.as_deref().unwrap_or("unknown"),
-            graphics_mode = linux.graphics_mode,
-            gpu_count = linux.gpu_devices.len(),
-            "Linux graphics environment detected"
-        );
-    }
-    tracing::info!(
-        target: "audio.backend",
-        implementation = diagnostics.audio.implementation,
-        route = diagnostics.audio.route,
-        selection = diagnostics.audio.selected_output_kind.as_deref().unwrap_or("unavailable"),
-        output = diagnostics.audio.resolved_output.as_deref().unwrap_or("unavailable"),
-        driver = diagnostics.audio.resolved_driver.as_deref().unwrap_or("unavailable"),
-        host = diagnostics.audio.resolved_host.as_deref().unwrap_or("unavailable"),
-        "audio backend detected"
-    );
+    log_core_startup(diagnostics);
 }
 
 pub fn export_bundle(
@@ -275,19 +187,14 @@ pub fn export_bundle(
         .path()
         .download_dir()
         .map_err(|error| error.to_string())?;
-    let stamp = diagnostics.generated_at_unix_ms;
-    let directory = downloads.join(format!("YAQMC-linux-diagnostics-{stamp}"));
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let json = serde_json::to_vec_pretty(diagnostics).map_err(|error| error.to_string())?;
-    fs::write(directory.join("yaqmc-diagnostics.json"), json).map_err(|error| error.to_string())?;
-    fs::write(
-        directory.join("collect-linux-diagnostics.sh"),
-        DIAGNOSTIC_SCRIPT,
+    export_core_bundle(
+        &downloads,
+        diagnostics,
+        PlatformDiagnosticAssets {
+            collector_script: DIAGNOSTIC_SCRIPT,
+            readme: LINUX_TESTER_README,
+        },
     )
-    .map_err(|error| error.to_string())?;
-    fs::write(directory.join("README.txt"), LINUX_TESTER_README)
-        .map_err(|error| error.to_string())?;
-    Ok(directory)
 }
 
 #[cfg(target_os = "linux")]
@@ -307,42 +214,6 @@ pub fn display_backend(app: &AppHandle) -> String {
         }
         Some(_) => "linux-unknown".to_owned(),
         None => "unavailable".to_owned(),
-    }
-}
-
-fn capabilities_for_backend(
-    backend: &str,
-    global_shortcuts_supported: bool,
-) -> PlatformCapabilities {
-    if backend == "wayland-native" {
-        PlatformCapabilities {
-            reliable_always_on_top: false,
-            click_through: false,
-            transparent_window: false,
-            global_positioning: false,
-            absolute_window_placement: false,
-            fullscreen_detection: false,
-            global_shortcuts: false,
-            notes: vec![
-                "Native Wayland intentionally does not promise X11-style overlay placement, click-through or always-on-top semantics.".to_owned(),
-                "Media keys remain available through MPRIS; configurable global shortcuts use an X11 backend and are disabled for native Wayland.".to_owned(),
-            ],
-        }
-    } else {
-        PlatformCapabilities {
-            reliable_always_on_top: true,
-            click_through: true,
-            transparent_window: true,
-            global_positioning: true,
-            absolute_window_placement: true,
-            fullscreen_detection: cfg!(target_os = "windows"),
-            global_shortcuts: global_shortcuts_supported,
-            notes: if backend == "xwayland" {
-                vec!["The desktop session is Wayland, but YAQMC is using an X11/XWayland window backend.".to_owned()]
-            } else {
-                Vec::new()
-            },
-        }
     }
 }
 

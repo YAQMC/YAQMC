@@ -1,5 +1,4 @@
 use crate::player::PlayerService;
-use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use tauri::{
     menu::MenuBuilder,
@@ -14,22 +13,13 @@ const SHORTCUTS: [&str; 3] = [
     "control+alt+ArrowRight",
 ];
 
+pub use yaqmc_core::platform::DesktopIntegrationStatus;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ShortcutAction {
     Toggle,
     Previous,
     Next,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopIntegrationStatus {
-    pub tray_available: bool,
-    pub tray_error: Option<String>,
-    pub global_shortcuts_supported: bool,
-    pub global_shortcuts_enabled: bool,
-    pub global_shortcuts: Vec<&'static str>,
-    pub shortcut_error: Option<String>,
 }
 
 pub struct DesktopIntegration {
