@@ -21,6 +21,13 @@ const forbiddenCoreDependencyPatterns = [
   /^yaqmc$/,
   /^yaqmc-provider(?:-.+)?$/,
 ];
+export const SUPPORTED_CORE_TARGETS = Object.freeze([
+  'x86_64-unknown-linux-gnu',
+  'aarch64-unknown-linux-gnu',
+  'x86_64-pc-windows-msvc',
+  'i686-pc-windows-msvc',
+  'aarch64-pc-windows-msvc',
+]);
 
 export function validateWorkspaceMetadata(metadata) {
   const workspacePackages = metadata.packages
@@ -83,16 +90,35 @@ export function validateCoreDependencyClosure(metadata) {
   }
 }
 
-function main() {
-  const metadata = JSON.parse(
-    execFileSync('cargo', ['metadata', '--format-version', '1', '--locked'], {
+export function validateDesktopCoreDependencyClosures(metadataByTarget) {
+  for (const target of SUPPORTED_CORE_TARGETS) {
+    const metadata = metadataByTarget.get(target);
+    if (!metadata) throw new Error(`missing Cargo metadata for supported target: ${target}`);
+    try {
+      validateCoreDependencyClosure(metadata);
+    } catch (error) {
+      throw new Error(`${target}: ${error.message}`, { cause: error });
+    }
+  }
+}
+
+function cargoMetadata(target) {
+  const args = ['metadata', '--format-version', '1', '--locked'];
+  if (target) args.push('--filter-platform', target);
+  return JSON.parse(
+    execFileSync('cargo', args, {
       cwd: repositoryRoot,
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
     }),
   );
-  validateWorkspaceMetadata(metadata);
-  validateCoreDependencyClosure(metadata);
+}
+
+function main() {
+  validateWorkspaceMetadata(cargoMetadata());
+  validateDesktopCoreDependencyClosures(
+    new Map(SUPPORTED_CORE_TARGETS.map((target) => [target, cargoMetadata(target)])),
+  );
   process.stdout.write('Cargo workspace contract verified.\n');
 }
 

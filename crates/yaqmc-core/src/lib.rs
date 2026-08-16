@@ -1,14 +1,20 @@
 //! Host-neutral ownership seams for the YAQMC application core.
 
 pub mod app_preferences;
+pub mod audio;
 pub mod credentials;
 pub mod diagnostics;
 pub mod issue_reporter;
 pub mod logging;
+pub mod media;
 pub mod platform;
+pub mod playback_session;
 pub mod playback_types;
+pub mod player;
 pub mod plugin;
+pub mod qmc;
 pub mod storage;
+pub mod streaming;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{error::Error, fmt, path::PathBuf};

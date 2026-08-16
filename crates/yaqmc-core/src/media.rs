@@ -1,5 +1,6 @@
 use crate::{
     audio::{AudioFormat, PreparedPlaybackLocation, PreparedPlaybackSource},
+    playback_types::{PlaybackEpoch, PlaybackSourceSelection},
     player::Song,
     qmc::{EncryptedMediaKey, QmcDecryptor, QmcError},
     storage::{StorageError, StorageService},
@@ -14,7 +15,6 @@ use std::{
 };
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
-use yaqmc_core::playback_types::{PlaybackEpoch, PlaybackSourceSelection};
 
 #[derive(Default)]
 pub struct PlaybackEpochClock {
@@ -22,7 +22,8 @@ pub struct PlaybackEpochClock {
 }
 
 impl PlaybackEpochClock {
-    pub(crate) fn replace(&self, epoch: Option<PlaybackEpoch>) {
+    #[doc(hidden)]
+    pub fn replace(&self, epoch: Option<PlaybackEpoch>) {
         *self
             .current
             .write()
@@ -48,7 +49,8 @@ impl PlaybackEpochGuard {
         }
     }
 
-    pub(crate) fn account_bound(
+    #[doc(hidden)]
+    pub fn account_bound(
         expected: PlaybackEpoch,
         cancellation: CancellationToken,
         clock: Arc<PlaybackEpochClock>,
@@ -495,13 +497,13 @@ fn map_storage_error(error: StorageError) -> PlaybackSourceError {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub struct PassthroughMediaPreparer;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub struct TestPlaybackSourceResolver;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[async_trait]
 impl PlaybackSourceResolver for TestPlaybackSourceResolver {
     async fn resolve(&self, song: &Song) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
@@ -521,7 +523,7 @@ impl PlaybackSourceResolver for TestPlaybackSourceResolver {
             timeline_end_ms: Some(song.duration_ms),
             is_preview: false,
             selection: PlaybackSourceSelection {
-                requested_quality: crate::qqmusic::AudioQualityPreference::Automatic,
+                requested_quality: crate::playback_types::AudioQualityPreference::Automatic,
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
@@ -532,7 +534,7 @@ impl PlaybackSourceResolver for TestPlaybackSourceResolver {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[async_trait]
 impl MediaPreparer for PassthroughMediaPreparer {
     async fn prepare(

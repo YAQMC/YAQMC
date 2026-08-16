@@ -1,9 +1,10 @@
+pub use crate::playback_types::{AudioCodec, AudioFormatInfo, AudioQuality};
 use crate::{
     audio::{AudioEngine, AudioEngineError, AudioOutputDevice},
     logging,
     media::{MediaPreparer, PlaybackEpochGuard, PlaybackSourceError, PlaybackSourceResolver},
     playback_session::SeekMailbox,
-    qqmusic::PlaybackSourceSelection,
+    playback_types::{AudioQualityPreference, PlaybackSourceSelection},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -16,7 +17,6 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::{broadcast, RwLock};
-pub use yaqmc_core::playback_types::{AudioCodec, AudioFormatInfo, AudioQuality};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -616,7 +616,8 @@ impl PlayerService {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self::with_runtime(
             Arc::new(crate::audio::TestAudioEngine::default()),
@@ -1543,7 +1544,7 @@ impl PlayerService {
                     error,
                     AudioEngineError::DecryptionFailed | AudioEngineError::DecoderUnsupported
                 ) && prepared.selection.requested_quality
-                    == crate::qqmusic::AudioQualityPreference::Automatic
+                    == AudioQualityPreference::Automatic
                     && matches!(
                         prepared.selection.resolved_quality,
                         AudioQuality::Lossless | AudioQuality::Master
@@ -1793,7 +1794,7 @@ impl PlayerService {
         let audio = Arc::clone(&self.audio);
         let events = self.events.clone();
         let load_generation = Arc::clone(&self.load_generation);
-        tauri::async_runtime::spawn(async move {
+        tokio::spawn(async move {
             cancellation.cancelled().await;
             let snapshot = {
                 let mut core = core.write().await;
@@ -1956,11 +1957,20 @@ impl PlayerService {
     }
 
     pub fn start_clock(self: &Arc<Self>) {
+        let handle = tokio::runtime::Handle::try_current()
+            .expect("PlayerService::start_clock requires an entered Tokio runtime");
+        self.start_clock_on_runtime(&handle);
+    }
+
+    /// Starts the clock from a synchronous host composition point.
+    ///
+    /// The host owns runtime construction; Core only schedules its existing task on that runtime.
+    pub fn start_clock_on_runtime(self: &Arc<Self>, handle: &tokio::runtime::Handle) {
         if self.clock_running.swap(true, Ordering::AcqRel) {
             return;
         }
         let service = Arc::clone(self);
-        tauri::async_runtime::spawn(async move {
+        handle.spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(50));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut last_position_event = Instant::now();
@@ -2087,14 +2097,12 @@ impl PlayerService {
                 }
                 if should_advance && !service.transition_running.swap(true, Ordering::AcqRel) {
                     let transition = Arc::clone(&service);
-                    tauri::async_runtime::spawn(
-                        async move { transition.handle_end(eos_session).await },
-                    );
+                    tokio::spawn(async move { transition.handle_end(eos_session).await });
                 }
                 if let Some((index, position_ms, autoplay)) = recovery {
                     let recovery_session = snapshot.session_id;
                     let recovery_service = Arc::clone(&service);
-                    tauri::async_runtime::spawn(async move {
+                    tokio::spawn(async move {
                         if recovery_service.session_id.load(Ordering::Acquire) != recovery_session {
                             tracing::debug!(
                                 target: "player.session",
@@ -2385,15 +2393,10 @@ fn deterministic_shuffle(values: &mut [String], generation: u64) {
 mod tests {
     use super::*;
     use crate::{
-        audio::RodioAudioEngine,
-        credentials::MemoryCredentialStore,
-        media::CachedMediaPreparer,
         media::PlaybackEpochClock,
-        qqmusic::{AudioQualityPreference, QQMusicService},
-        storage::StorageService,
+        playback_types::{AudioQualityPreference, PlaybackEpoch, PlaybackFallbackReason},
     };
     use async_trait::async_trait;
-    use axum::{http::header, routing::get, Router};
     use std::sync::atomic::AtomicUsize;
     use tokio_util::sync::CancellationToken;
 
@@ -2490,7 +2493,7 @@ mod tests {
             timeline_end_ms: Some(song.duration_ms),
             is_preview: false,
             selection: PlaybackSourceSelection {
-                requested_quality: crate::qqmusic::AudioQualityPreference::Automatic,
+                requested_quality: AudioQualityPreference::Automatic,
                 resolved_quality: song.quality,
                 fallback_reason: None,
                 preview: false,
@@ -2628,8 +2631,7 @@ mod tests {
             let mut source = resolved(song);
             source.selection.requested_quality = AudioQualityPreference::Automatic;
             source.selection.resolved_quality = AudioQuality::High;
-            source.selection.fallback_reason =
-                Some(crate::qqmusic::PlaybackFallbackReason::ClientUnsupported);
+            source.selection.fallback_reason = Some(PlaybackFallbackReason::ClientUnsupported);
             Ok(source)
         }
     }
@@ -2752,7 +2754,7 @@ mod tests {
                 .source_selection
                 .as_ref()
                 .and_then(|selection| selection.fallback_reason),
-            Some(crate::qqmusic::PlaybackFallbackReason::ClientUnsupported)
+            Some(PlaybackFallbackReason::ClientUnsupported)
         );
     }
 
@@ -3498,7 +3500,7 @@ mod tests {
     #[tokio::test]
     async fn account_epoch_cancellation_stops_audio_and_clears_sanitized_selection() {
         let clock = Arc::new(PlaybackEpochClock::default());
-        let epoch = yaqmc_core::playback_types::PlaybackEpoch::new(23, "test-account-23");
+        let epoch = PlaybackEpoch::new(23, "test-account-23");
         clock.replace(Some(epoch.clone()));
         let cancellation = CancellationToken::new();
         let guard = PlaybackEpochGuard::account_bound(epoch, cancellation.clone(), clock);
@@ -3546,7 +3548,7 @@ mod tests {
     #[tokio::test]
     async fn cancellation_between_guarded_resume_and_core_commit_cannot_publish_playing() {
         let clock = Arc::new(PlaybackEpochClock::default());
-        let epoch = yaqmc_core::playback_types::PlaybackEpoch::new(29, "test-account-29");
+        let epoch = PlaybackEpoch::new(29, "test-account-29");
         clock.replace(Some(epoch.clone()));
         let cancellation = CancellationToken::new();
         let guard =
@@ -3575,93 +3577,6 @@ mod tests {
         assert!(snapshot.playback_error.is_none());
         assert!(snapshot.source_selection.is_none());
         assert!(!engine.snapshot().loaded);
-    }
-
-    #[tokio::test]
-    async fn qqmusic_http_client_still_prepares_media() {
-        let root = tempfile::tempdir().expect("temp root");
-        let fixture_path = root.path().join("served.wav");
-        crate::audio::write_fixture_wav(&fixture_path, Duration::from_millis(250), 7)
-            .expect("write fixture WAV");
-        let fixture_bytes = tokio::fs::read(&fixture_path)
-            .await
-            .expect("read fixture WAV");
-        let content_length = fixture_bytes.len() as u64;
-        let hits = Arc::new(AtomicUsize::new(0));
-        let server_hits = Arc::clone(&hits);
-        let app = Router::new().route(
-            "/fixture.wav",
-            get(move || {
-                let fixture_bytes = fixture_bytes.clone();
-                let server_hits = Arc::clone(&server_hits);
-                async move {
-                    server_hits.fetch_add(1, Ordering::AcqRel);
-                    ([(header::CONTENT_TYPE, "audio/wav")], fixture_bytes)
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("media listener");
-        let address = listener.local_addr().expect("media address");
-        let server = tokio::spawn(async move {
-            axum::serve(listener, app).await.expect("media server");
-        });
-        let storage = Arc::new(
-            StorageService::open(root.path().join("data"), root.path().join("cache"))
-                .expect("storage"),
-        );
-        let service = QQMusicService::new(
-            Arc::clone(&storage),
-            Arc::new(MemoryCredentialStore::default()),
-            root.path().join("fixtures"),
-        )
-        .expect("QQ Music service");
-        let preparer = CachedMediaPreparer::new(service.http_client(), storage);
-
-        let prepared = preparer
-            .prepare(crate::media::ResolvedPlaybackSource {
-                cache_key: "qqmusic:fixture:ordinary-http".to_owned(),
-                location: crate::media::PlaybackLocation::Http {
-                    url: format!("http://{address}/fixture.wav"),
-                    headers: Vec::new(),
-                },
-                format: crate::audio::AudioFormat::Wav,
-                mime_type: Some("audio/wav".to_owned()),
-                quality_label: "fixture".to_owned(),
-                bitrate_kbps: None,
-                sample_rate_hz: Some(16_000),
-                bit_depth: Some(16),
-                content_length: Some(content_length),
-                supports_range: false,
-                expires_at_ms: None,
-                timeline_offset_ms: 0,
-                timeline_end_ms: Some(250),
-                is_preview: false,
-                selection: PlaybackSourceSelection {
-                    requested_quality: crate::qqmusic::AudioQualityPreference::Automatic,
-                    resolved_quality: AudioQuality::Standard,
-                    fallback_reason: None,
-                    preview: false,
-                    quality_capabilities: Vec::new(),
-                },
-                epoch_guard: PlaybackEpochGuard::unrestricted(),
-            })
-            .await
-            .expect("ordinary client downloads fixture media");
-
-        match prepared.location {
-            crate::audio::PreparedPlaybackLocation::Local(path) => assert!(path.is_file()),
-            crate::audio::PreparedPlaybackLocation::Progressive(_) => {
-                panic!("non-range fixture must be fully cached")
-            }
-            crate::audio::PreparedPlaybackLocation::EncryptedLocal { .. }
-            | crate::audio::PreparedPlaybackLocation::EncryptedProgressive { .. } => {
-                panic!("ordinary fixture must not use an encrypted location")
-            }
-        }
-        assert_eq!(hits.load(Ordering::Acquire), 1);
-        server.abort();
     }
 
     #[tokio::test]
@@ -4010,59 +3925,43 @@ mod tests {
         assert_eq!(value["timestampMs"], 42);
     }
 
-    #[tokio::test]
-    #[ignore = "opt-in audible native output acceptance"]
-    async fn local_fixture_drives_real_position_pause_seek_lyrics_and_queue_end() {
-        let root = tempfile::tempdir().expect("temp root");
-        let storage = Arc::new(
-            StorageService::open(root.path().join("data"), root.path().join("cache"))
-                .expect("storage"),
-        );
-        let resolver = Arc::new(
-            QQMusicService::new(
-                Arc::clone(&storage),
-                Arc::new(MemoryCredentialStore::default()),
-                root.path().join("fixture-media"),
-            )
-            .expect("fixture resolver"),
-        );
-        let preparer = Arc::new(CachedMediaPreparer::new(
-            resolver.http_client(),
-            Arc::clone(&storage),
-        ));
-        let audio = Arc::new(RodioAudioEngine::open_default().expect("default output"));
-        let player = Arc::new(PlayerService::with_runtime(audio, resolver, preparer));
-        player.start_clock();
-        player
-            .set_volume(0.06)
-            .await
-            .expect("quiet acceptance volume");
-        player
-            .play_tracks(PlayTracksRequest {
-                tracks: vec![song("one", 1_600), song("two", 1_600)],
-                start_at_id: Some("one".to_owned()),
-                shuffle: None,
+    #[test]
+    fn clock_can_start_from_sync_host_context_on_the_supplied_runtime() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .expect("runtime");
+        let player = Arc::new(PlayerService::new());
+        let mut events = player.subscribe();
+
+        player.start_clock_on_runtime(runtime.handle());
+        runtime.block_on(async {
+            player
+                .play_tracks(PlayTracksRequest {
+                    tracks: vec![song("clock-runtime", 10_000)],
+                    start_at_id: None,
+                    shuffle: None,
+                })
+                .await
+                .expect("test source starts");
+            tokio::time::sleep(Duration::from_millis(300)).await;
+
+            let position_event = tokio::time::timeout(Duration::from_millis(300), async {
+                loop {
+                    let event = events
+                        .recv()
+                        .await
+                        .expect("clock event channel remains open");
+                    if event.event_type == "player.position" {
+                        return event;
+                    }
+                }
             })
             .await
-            .expect("local playback starts");
-        player.set_lyrics(Some(lyric_document())).await;
-        tokio::time::sleep(Duration::from_millis(550)).await;
-        let playing = player.snapshot().await;
-        assert_eq!(playing.playback_state, PlaybackState::Playing);
-        assert!(playing.position_ms >= 350);
-
-        player.pause().await.expect("pause");
-        let paused_at = player.snapshot().await.position_ms;
-        tokio::time::sleep(Duration::from_millis(350)).await;
-        assert!(player.snapshot().await.position_ms.abs_diff(paused_at) < 100);
-
-        player.seek(1_000).await.expect("seek");
-        assert_eq!(player.current_lyric_state().await.line_index, Some(0));
-        player.play().await.expect("resume");
-        tokio::time::sleep(Duration::from_millis(850)).await;
-        let transitioned = player.snapshot().await;
-        assert_eq!(transitioned.current_index, Some(1));
-        assert_eq!(transitioned.playback_state, PlaybackState::Playing);
+            .expect("the supplied runtime polls the clock task");
+            assert_eq!(position_event.event_type, "player.position");
+        });
         player.stop_clock();
+        runtime.block_on(async { tokio::task::yield_now().await });
     }
 }

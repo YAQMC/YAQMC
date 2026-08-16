@@ -161,9 +161,9 @@ single-command capability and cannot access account or player state.
 - `src/providers` — provider contract, QQ Music adapter, and fake provider
 - `src/application` — native-state projections and application coordination
 - `src/components`, `src/pages`, `src/surfaces` — desktop UI and lyric windows
-- `src-tauri/src/player.rs` — authoritative queue/playback state machine
-- `src-tauri/src/audio.rs` — native decoding/output and device switching
-- `src-tauri/src/streaming.rs` — seekable HTTP Range source
+- `crates/yaqmc-core/src/player.rs` — authoritative queue/playback state machine
+- `crates/yaqmc-core/src/audio.rs` — native decoding/output and device switching
+- `crates/yaqmc-core/src/streaming.rs` — seekable HTTP Range source
 - `src-tauri/src/system_media.rs` — MPRIS/SMTC adapters
 - `src-tauri/src/desktop_integration.rs` — tray, close behavior, and shortcuts
 - `src-tauri/src/platform.rs` — backend/capability diagnostics and export
