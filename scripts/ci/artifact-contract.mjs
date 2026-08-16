@@ -198,13 +198,28 @@ export function taggedArtifactNames({ platform, arch, bundleFilenames = [] }) {
   return result;
 }
 
+function windowsBundlePrefix(arch) {
+  const marker = '__TAURI_BUNDLE_FILENAME__';
+  const prefixes = ['release-windows-nsis', 'release-windows-msi'].map((id) => {
+    const rendered = expand(id, { arch, 'tauri-bundle-filename': marker });
+    if (!rendered.endsWith(marker)) {
+      throw new Error(`${id} must end with {tauri-bundle-filename}`);
+    }
+    return rendered.slice(0, -marker.length);
+  });
+  if (prefixes[0] !== prefixes[1]) {
+    throw new Error('tagged Windows installer patterns must use the same bundle prefix');
+  }
+  return prefixes[0];
+}
+
 export function taggedWorkflowOutputs({ platform, arch }) {
   const names = taggedArtifactNames({ platform, arch });
   return {
     releaseDirectory: names.releaseDirectory,
     portable: names.portable,
     checksum: names.checksum,
-    bundlePrefix: platform === 'windows' ? `YAQMC-windows-${arch}-` : '',
+    bundlePrefix: platform === 'windows' ? windowsBundlePrefix(arch) : '',
     tester: names.tester ?? '',
   };
 }
@@ -228,7 +243,7 @@ export function verifyTaggedArtifactDirectory({ platform, arch, directory }) {
 
   let packages;
   if (platform === 'windows') {
-    const prefix = `YAQMC-windows-${arch}-`;
+    const prefix = windowsBundlePrefix(arch);
     packages = [
       ...requireFiles(
         filenames,

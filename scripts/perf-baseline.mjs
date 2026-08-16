@@ -218,15 +218,11 @@ function validateSnapshot(snapshot, repositoryFacts) {
     );
   }
   for (const artifact of releaseArtifacts) {
-    const contract = ARTIFACT_CONTRACT_BY_ID.get(artifact.id);
-    if (!contract) throw new Error(`releaseArtifacts ${artifact.id} is not in artifact contract`);
-    for (const field of ['source', 'platform', 'kind', 'pattern']) {
-      requireString(artifact[field], `releaseArtifacts ${artifact.id} ${field}`);
-      requireRepositoryValue(
-        artifact[field],
-        contract[field],
-        `releaseArtifacts ${artifact.id} ${field}`,
-      );
+    if (!ARTIFACT_CONTRACT_BY_ID.has(artifact.id)) {
+      throw new Error(`releaseArtifacts ${artifact.id} is not in artifact contract`);
+    }
+    if (Object.keys(artifact).length !== 1) {
+      throw new Error(`releaseArtifacts ${artifact.id} must contain only id`);
     }
   }
 
