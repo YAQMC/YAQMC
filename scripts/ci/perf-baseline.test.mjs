@@ -270,6 +270,27 @@ function copyFactRepository() {
   return root;
 }
 
+function checkedInSnapshot() {
+  return JSON.parse(
+    readFileSync(path.join(repositoryRoot, 'scripts', 'perf-baseline.snapshot.json'), 'utf8'),
+  );
+}
+
+function replaceFactSource(root, relativePath, currentValue, driftedValue) {
+  const sourcePath = path.join(root, relativePath);
+  const source = readFileSync(sourcePath, 'utf8');
+  const drifted = source.replace(currentValue, driftedValue);
+  assert.notEqual(drifted, source, `${relativePath} fixture mutation must change the source`);
+  writeFileSync(sourcePath, drifted);
+}
+
+function mutateTauriConfig(root, mutate) {
+  const configPath = path.join(root, 'src-tauri', 'tauri.conf.json');
+  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  mutate(config);
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
 test('renders injected toolchain observations separately from project requirements', () => {
   const result = runBaseline(fixture());
 
@@ -351,7 +372,7 @@ test('labels default toolchain collection as local-command provenance', () => {
   assert.match(readFileSync(result.outputPath, 'utf8'), /Observation provenance: `local-command`/);
 });
 
-test('rejects canonical fact mutations against an injected temporary repository', async (t) => {
+test('rejects snapshot drift against an injected unchanged repository', async (t) => {
   const factRoot = copyFactRepository();
   const cases = [
     [
@@ -399,11 +420,79 @@ test('rejects canonical fact mutations against an injected temporary repository'
     ],
   ];
 
-  for (const [name, mutate, expectedError] of cases) {
+  for (const [name, mutateSnapshot, expectedError] of cases) {
     await t.test(name, () => {
       const snapshot = fixture();
-      mutate(snapshot);
+      mutateSnapshot(snapshot);
       const result = runBaseline(snapshot, observations(), factRoot);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, expectedError);
+    });
+  }
+});
+
+test('rejects production source drift in an injected repository with the canonical snapshot unchanged', async (t) => {
+  const cases = [
+    [
+      'main window dimensions',
+      (root) =>
+        mutateTauriConfig(root, (config) => {
+          const main = config.app.windows.find(({ label }) => label === 'main');
+          Object.assign(main, { width: 1, height: 1, minWidth: 1, minHeight: 1 });
+        }),
+      /runtimeFacts mainWindow.*repository fact/,
+    ],
+    [
+      'identifier-derived paths',
+      (root) =>
+        mutateTauriConfig(root, (config) => {
+          config.identifier = 'org.yaqmc.drifted';
+        }),
+      /dataPaths windows-app-data path.*repository fact/,
+    ],
+    [
+      'app_settings key constant',
+      (root) =>
+        replaceFactSource(
+          root,
+          'src-tauri/src/commands.rs',
+          '"audio-output-device"',
+          '"audio-output-device-drifted"',
+        ),
+      /persistenceEntries audio-output-device key.*repository fact/,
+    ],
+    [
+      'keyring service constant',
+      (root) =>
+        replaceFactSource(
+          root,
+          'src-tauri/src/credentials.rs',
+          '"org.yaqmc.desktop"',
+          '"org.yaqmc.drifted"',
+        ),
+      /keyring service.*repository fact/,
+    ],
+    [
+      'keyring account constant',
+      (root) =>
+        replaceFactSource(
+          root,
+          'src-tauri/src/local_api.rs',
+          '"local-api-bearer-token"',
+          '"local-api-bearer-token-drifted"',
+        ),
+      /keyring entries.*repository fact/,
+    ],
+  ];
+
+  for (const [name, mutateSource, expectedError] of cases) {
+    await t.test(name, () => {
+      const factRoot = copyFactRepository();
+      const snapshot = checkedInSnapshot();
+      mutateSource(factRoot);
+
+      const result = runBaseline(snapshot, observations(), factRoot);
+
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, expectedError);
     });
