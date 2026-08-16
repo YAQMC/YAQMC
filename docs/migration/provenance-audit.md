@@ -15,8 +15,10 @@ copyright permission.
 
 The validator checks evidence-reference structure only; it does not perform network, Git-signature, hash-content, or
 authorization verification. A verified source needs a revision-bound `git-object:<40-hex>`,
-`signed-commit:<40-hex>`, or `git-revision-url:https://.../<40-hex>/...` record. Verified contributor consent, asset
-proof, and proprietary authorization need a typed `git-object:<40-hex>`, `signed-commit:<40-hex>`,
+`signed-commit:<40-hex>`, or `git-revision-url:https://.../<40-hex>/...` record. For a revision URL, the validator
+requires HTTPS, the same host as `source.origin`, the same normalized repository path prefix (trailing slash and an
+optional `.git` suffix are normalized), and the exact source revision as a later URL-path segment. Verified contributor
+consent, asset proof, and proprietary authorization need a typed `git-object:<40-hex>`, `signed-commit:<40-hex>`,
 `sha256:<64-hex>`, or `github-comment:https://github.com/<owner>/<repo>/(issues|pull)/<number>#issuecomment-<id>`
 reference. Arbitrary strings and ordinary URLs are not evidence. Human review must still establish that each
 well-formed reference exists and proves the claimed rights.
