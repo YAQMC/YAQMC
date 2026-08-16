@@ -705,6 +705,105 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn openapi_advertises_every_serialized_player_and_queue_snapshot_field() {
+        let player = PlayerService::new();
+        player.hydrate_queue(vec![song("one", 10_000)]).await;
+
+        let snapshot = serde_json::to_value(player.snapshot().await)
+            .expect("player snapshot serializes")
+            .as_object()
+            .cloned()
+            .expect("player snapshot is an object");
+        let queue = serde_json::to_value(player.queue_snapshot().await)
+            .expect("queue snapshot serializes")
+            .as_object()
+            .cloned()
+            .expect("queue snapshot is an object");
+        let current_lyric = serde_json::to_value(player.current_lyric_state().await)
+            .expect("current lyric state serializes")
+            .as_object()
+            .cloned()
+            .expect("current lyric state is an object");
+        let openapi = include_str!("../../../docs/local-api.openapi.yaml");
+
+        for field in snapshot.keys() {
+            assert!(
+                openapi_schema(openapi, "PlayerSnapshot").contains(&format!("\n        {field}:")),
+                "OpenAPI PlayerSnapshot omits serialized field {field}"
+            );
+        }
+        assert!(!snapshot.contains_key("playbackError"));
+        assert!(!snapshot.contains_key("sourceSelection"));
+        let player_schema = openapi_schema(openapi, "PlayerSnapshot");
+        assert!(!player_schema.contains("\n          playbackError,"));
+        assert!(!player_schema.contains("\n          sourceSelection,"));
+        for field in queue.keys() {
+            assert!(
+                openapi_schema(openapi, "QueueSnapshot").contains(&format!("\n        {field}:")),
+                "OpenAPI QueueSnapshot omits serialized field {field}"
+            );
+        }
+        for field in current_lyric.keys() {
+            assert!(
+                openapi_schema(openapi, "CurrentLyricState")
+                    .contains(&format!("\n        {field}:")),
+                "OpenAPI CurrentLyricState omits serialized field {field}"
+            );
+        }
+
+        for (schema, fields) in [
+            ("Artwork", &["variants"][..]),
+            ("ArtworkVariant", &["src", "width", "height"][..]),
+            ("QueueEntry", &["id", "track"][..]),
+            (
+                "PlaybackSourceSelection",
+                &[
+                    "requestedQuality",
+                    "resolvedQuality",
+                    "fallbackReason",
+                    "preview",
+                    "qualityCapabilities",
+                ][..],
+            ),
+            (
+                "QualityCapabilityState",
+                &["quality", "entitlement", "resource", "client", "playable"][..],
+            ),
+        ] {
+            let schema_text = openapi_schema(openapi, schema);
+            for field in fields {
+                assert!(
+                    schema_text.contains(&format!("\n        {field}:")),
+                    "OpenAPI {schema} omits serialized field {field}"
+                );
+            }
+        }
+        assert!(openapi_schema(openapi, "Song").contains("master"));
+        assert!(openapi_schema(openapi, "AudioFormatInfo").contains("master"));
+    }
+
+    fn openapi_schema(openapi: &str, name: &str) -> String {
+        let marker = format!("    {name}:");
+        let mut schema = String::new();
+        let mut in_schemas = false;
+        let mut found = false;
+        for line in openapi.lines() {
+            if line == "  schemas:" {
+                in_schemas = true;
+            } else if in_schemas && line == marker {
+                found = true;
+            } else if found && line.starts_with("    ") && !line.starts_with("     ") {
+                break;
+            } else if found {
+                schema.push('\n');
+                schema.push_str(line);
+            }
+        }
+        assert!(found, "OpenAPI schema {name} is present");
+        schema
+    }
+
+    #[tokio::test]
     async fn health_is_public_but_v1_requires_a_bearer_token() {
         let router = build_router(Arc::new(PlayerService::new()), "secret".to_owned());
 
@@ -819,6 +918,176 @@ mod tests {
         let persisted = std::fs::read_to_string(config_path).expect("config reads");
         assert!(!persisted.contains("token"));
         assert!(!persisted.contains("legacy-secret"));
+    }
+
+    #[tokio::test]
+    async fn token_rotation_replaces_the_credential_and_rejects_the_previous_bearer_value() {
+        let directory = tempdir().expect("temp directory");
+        let credentials = Arc::new(MemoryCredentialStore::default());
+        let service = LocalApiService::new(
+            directory.path().join("local-api.json"),
+            Arc::new(PlayerService::new()),
+            credentials.clone(),
+        )
+        .expect("service loads");
+
+        service
+            .regenerate_token()
+            .await
+            .expect("first token generates");
+        let previous = service.reveal_token().await;
+        service.regenerate_token().await.expect("token rotates");
+        let current = service.reveal_token().await;
+
+        assert_ne!(previous, current);
+        assert_eq!(
+            credentials
+                .load(LOCAL_API_TOKEN_ACCOUNT)
+                .expect("secure token loads"),
+            Some(current.clone())
+        );
+
+        let router = build_router(Arc::new(PlayerService::new()), current);
+        let denied = router
+            .clone()
+            .oneshot(
+                Request::get("/v1/player")
+                    .header(header::AUTHORIZATION, format!("Bearer {previous}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn events_stream_emits_the_initial_snapshot_and_subsequent_player_events() {
+        let player = Arc::new(PlayerService::new());
+        let router = build_router(Arc::clone(&player), "secret".to_owned());
+        let response = router
+            .oneshot(
+                authorization(Request::get("/v1/events"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let mut body = response.into_body();
+        let initial = tokio::time::timeout(Duration::from_secs(1), body.frame())
+            .await
+            .expect("initial SSE event arrives")
+            .expect("SSE body remains open")
+            .expect("initial SSE frame is valid")
+            .into_data()
+            .expect("initial SSE frame carries data");
+        assert!(std::str::from_utf8(&initial)
+            .expect("SSE data is UTF-8")
+            .contains("event: player.snapshot"));
+
+        player.hydrate_queue(vec![song("one", 10_000)]).await;
+        let live = tokio::time::timeout(Duration::from_secs(1), body.frame())
+            .await
+            .expect("player event arrives")
+            .expect("SSE body remains open")
+            .expect("live SSE frame is valid")
+            .into_data()
+            .expect("live SSE frame carries data");
+        assert!(std::str::from_utf8(&live)
+            .expect("SSE data is UTF-8")
+            .contains("event: queue.changed"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn events_stream_keeps_alive_when_idle_and_drops_lagged_events_without_stalling() {
+        let player = Arc::new(PlayerService::new());
+        let router = build_router(Arc::clone(&player), "secret".to_owned());
+        let response = router
+            .oneshot(
+                authorization(Request::get("/v1/events"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let mut body = response.into_body();
+
+        let initial = body
+            .frame()
+            .await
+            .expect("SSE body remains open")
+            .expect("initial SSE frame is valid")
+            .into_data()
+            .expect("initial SSE frame carries data");
+        assert!(std::str::from_utf8(&initial)
+            .expect("SSE data is UTF-8")
+            .contains("event: player.snapshot"));
+
+        tokio::time::advance(Duration::from_secs(15)).await;
+        let keepalive = body
+            .frame()
+            .await
+            .expect("SSE body remains open")
+            .expect("keepalive SSE frame is valid")
+            .into_data()
+            .expect("keepalive SSE frame carries data");
+        assert!(std::str::from_utf8(&keepalive)
+            .expect("SSE data is UTF-8")
+            .contains(": keep-alive"));
+
+        for index in 0..257 {
+            player
+                .set_volume((index % 100) as f64 / 100.0)
+                .await
+                .expect("fixture volume is valid");
+        }
+        let post_lag = body
+            .frame()
+            .await
+            .expect("lagged SSE stream remains open")
+            .expect("post-lag SSE frame is valid")
+            .into_data()
+            .expect("post-lag SSE frame carries data");
+        let post_lag = std::str::from_utf8(&post_lag).expect("SSE data is UTF-8");
+        assert!(post_lag.contains("event: player.volume"));
+        // PlayerService retains 256 broadcast events. Sending 257 events must make this
+        // receiver lag past index 0, so its first delivered event is index 1 (volume 0.01).
+        let post_lag_event: serde_json::Value = serde_json::from_str(
+            post_lag
+                .lines()
+                .find_map(|line| line.strip_prefix("data: "))
+                .expect("SSE event contains a JSON data line"),
+        )
+        .expect("SSE event data is valid JSON");
+        assert!(
+            post_lag_event["data"]["volume"] == serde_json::json!(0.01),
+            "first retained event after broadcast lag: {post_lag}"
+        );
+        assert_ne!(post_lag_event["data"]["volume"], serde_json::json!(0.0));
+        assert!(!post_lag.contains("resync"));
+
+        player
+            .set_volume(0.731)
+            .await
+            .expect("fixture volume is valid");
+        let mut saw_sentinel = false;
+        for _ in 0..257 {
+            let following = body
+                .frame()
+                .await
+                .expect("lagged SSE stream remains open")
+                .expect("following SSE frame is valid")
+                .into_data()
+                .expect("following SSE frame carries data");
+            let following = std::str::from_utf8(&following).expect("SSE data is UTF-8");
+            if following.contains(r#""volume":0.731"#) {
+                saw_sentinel = true;
+                break;
+            }
+        }
+        assert!(saw_sentinel, "the post-lag sentinel event is delivered");
     }
 
     #[tokio::test]

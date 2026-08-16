@@ -10,7 +10,10 @@ mod desktop_integration;
 mod diagnostics;
 mod error_codes;
 mod issue_reporter;
-mod local_api;
+mod local_api {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::local_api::*;
+}
 mod logging;
 mod lyrics_surface;
 mod media {

@@ -148,3 +148,21 @@ the enforced provenance ledger.
 - Active playback documentation and the provenance qmc target paths now point to Core without changing the existing
   evidence, license, authorization, or **BLOCKED** release decision. P0 live measurements remain `PENDING`; no P2,
   Electron, qm-api-rs, HUMAN/LIVE_ACCOUNT gate, or cutover behavior is implemented by this ownership checkpoint.
+
+## Task 7C: Local API ownership extraction
+
+- `local_api.rs` is Core-owned by a history-preserving move. Tauri retains the existing composition responsibilities:
+  it injects `app_config_dir()/local-api.json`, constructs the service with the existing Player and credential store,
+  schedules `start_if_enabled()` before `app.manage(local_api)` as in the existing setup order, stops it on exit, and
+  exposes the same five command wrappers through an
+  inline `yaqmc_core::local_api` compatibility re-export in `src-tauri/src/lib.rs`. No old-path implementation file
+  remains.
+- The Local API retains its persisted config shape, `local-api-bearer-token` credential account, loopback-only
+  binding, public `/health`, exact bearer authorization, 16 KiB protected-body limit, route/DTO behavior, and SSE
+  initial-snapshot, player-event, lag-drop, and keepalive semantics. This checkpoint deliberately preserves existing
+  lifecycle ordering and non-atomic config/start-stop behavior; it does not introduce a registry, IPC framing,
+  credential migration, listener exposure, or host-path discovery in Core.
+- Core now owns the portable Axum, constant-time comparison, Tokio networking, and broadcast-stream dependency
+  closure needed by the service. The locked dependency graph changed only to record that existing packages are direct
+  Core dependencies; it introduces no version upgrade. P0 live measurements remain `PENDING` and the provenance
+  release gate remains **BLOCKED**.

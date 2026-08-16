@@ -31,7 +31,7 @@ const FACT_FILES = [
   'src-tauri/src/qqmusic.rs',
   'crates/yaqmc-core/src/credentials.rs',
   'src-tauri/src/qqmusic/auth.rs',
-  'src-tauri/src/local_api.rs',
+  'crates/yaqmc-core/src/local_api.rs',
   'docs/migration/command-inventory.md',
 ];
 
@@ -479,7 +479,7 @@ test('rejects production source drift in an injected repository with the canonic
       (root) =>
         replaceFactSource(
           root,
-          'src-tauri/src/local_api.rs',
+          'crates/yaqmc-core/src/local_api.rs',
           '"local-api-bearer-token"',
           '"local-api-bearer-token-drifted"',
         ),

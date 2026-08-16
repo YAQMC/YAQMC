@@ -5,6 +5,7 @@ pub mod audio;
 pub mod credentials;
 pub mod diagnostics;
 pub mod issue_reporter;
+pub mod local_api;
 pub mod logging;
 pub mod media;
 pub mod platform;
