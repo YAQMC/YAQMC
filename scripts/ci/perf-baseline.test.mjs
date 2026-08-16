@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { format as formatWithPrettier } from 'prettier';
 import { captureToolchainObservations } from '../perf-baseline.mjs';
+import { artifactContractEntries } from './artifact-contract.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
 const baselineScript = path.join(repositoryRoot, 'scripts', 'perf-baseline.mjs');
@@ -45,29 +46,6 @@ const REQUIRED_METRICS = [
   'installedSizeMiB',
 ];
 
-const EXPECTED_ARTIFACT_PATTERNS = {
-  'ci-windows-nsis': 'YAQMC-{version}-windows-{arch}-{shortSha}-nsis-setup.exe',
-  'ci-windows-msi': 'YAQMC-{version}-windows-{arch}-{shortSha}-msi.msi',
-  'ci-windows-portable': 'YAQMC-{version}-windows-{arch}-{shortSha}-portable.zip',
-  'ci-linux-appimage': 'YAQMC-{version}-linux-{arch}-{shortSha}.AppImage',
-  'ci-linux-deb': 'YAQMC-{version}-linux-{arch}-{shortSha}.deb',
-  'ci-linux-rpm': 'YAQMC-{version}-linux-{arch}-{shortSha}.rpm',
-  'ci-linux-binary': 'YAQMC-{version}-linux-{arch}-{shortSha}-binary.tar.gz',
-  'ci-linux-readme': 'README-binary.txt',
-  'ci-build-info': 'build-info.json',
-  'ci-checksum': 'SHA256SUMS-{os}-{arch}.txt',
-  'release-windows-nsis': 'YAQMC-windows-{arch}-{tauri-bundle-filename}',
-  'release-windows-msi': 'YAQMC-windows-{arch}-{tauri-bundle-filename}',
-  'release-windows-portable': 'YAQMC-windows-{arch}-portable.zip',
-  'release-windows-checksum': 'SHA256SUMS-windows-{arch}.txt',
-  'release-linux-appimage': '{tauri-bundle-filename}',
-  'release-linux-deb': '{tauri-bundle-filename}',
-  'release-linux-rpm': '{tauri-bundle-filename}',
-  'release-linux-portable': 'YAQMC-linux-{arch}-portable.tar.gz',
-  'release-linux-tester': 'YAQMC-linux-x86_64-tester.tar.gz',
-  'release-linux-checksum': 'SHA256SUMS-linux-{arch}.txt',
-};
-
 function pendingMeasurements() {
   return Object.fromEntries(
     ['Windows', 'Linux'].flatMap((platform) =>
@@ -86,148 +64,7 @@ function fixture() {
       { id: 'rustc', name: 'rustc', required: '1.88.0' },
       { id: 'cargo', name: 'Cargo', required: '1.88.0' },
     ],
-    releaseArtifacts: [
-      {
-        id: 'ci-windows-nsis',
-        source: 'stage-artifacts.mjs',
-        platform: 'Windows',
-        kind: 'NSIS installer',
-        pattern: 'YAQMC-{version}-windows-{arch}-{shortSha}-nsis-setup.exe',
-      },
-      {
-        id: 'ci-windows-msi',
-        source: 'stage-artifacts.mjs',
-        platform: 'Windows',
-        kind: 'MSI installer',
-        pattern: 'YAQMC-{version}-windows-{arch}-{shortSha}-msi.msi',
-      },
-      {
-        id: 'ci-windows-portable',
-        source: 'stage-artifacts.mjs',
-        platform: 'Windows',
-        kind: 'Portable archive',
-        pattern: 'YAQMC-{version}-windows-{arch}-{shortSha}-portable.zip',
-      },
-      {
-        id: 'ci-linux-appimage',
-        source: 'stage-artifacts.mjs',
-        platform: 'Linux',
-        kind: 'AppImage',
-        pattern: 'YAQMC-{version}-linux-{arch}-{shortSha}.AppImage',
-      },
-      {
-        id: 'ci-linux-deb',
-        source: 'stage-artifacts.mjs',
-        platform: 'Linux',
-        kind: 'deb',
-        pattern: 'YAQMC-{version}-linux-{arch}-{shortSha}.deb',
-      },
-      {
-        id: 'ci-linux-rpm',
-        source: 'stage-artifacts.mjs',
-        platform: 'Linux',
-        kind: 'rpm',
-        pattern: 'YAQMC-{version}-linux-{arch}-{shortSha}.rpm',
-      },
-      {
-        id: 'ci-linux-binary',
-        source: 'stage-artifacts.mjs',
-        platform: 'Linux',
-        kind: 'Binary archive',
-        pattern: 'YAQMC-{version}-linux-{arch}-{shortSha}-binary.tar.gz',
-      },
-      {
-        id: 'ci-linux-readme',
-        source: 'stage-artifacts.mjs',
-        platform: 'Linux',
-        kind: 'Binary archive readme',
-        pattern: 'README-binary.txt',
-      },
-      {
-        id: 'ci-build-info',
-        source: 'stage-artifacts.mjs',
-        platform: 'Windows/Linux',
-        kind: 'Build metadata',
-        pattern: 'build-info.json',
-      },
-      {
-        id: 'ci-checksum',
-        source: 'stage-artifacts.mjs',
-        platform: 'Windows/Linux',
-        kind: 'Checksums',
-        pattern: 'SHA256SUMS-{os}-{arch}.txt',
-      },
-      {
-        id: 'release-windows-nsis',
-        source: 'build.yml',
-        platform: 'Windows',
-        kind: 'NSIS installer',
-        pattern: 'YAQMC-windows-{arch}-{tauri-bundle-filename}',
-      },
-      {
-        id: 'release-windows-msi',
-        source: 'build.yml',
-        platform: 'Windows',
-        kind: 'MSI installer',
-        pattern: 'YAQMC-windows-{arch}-{tauri-bundle-filename}',
-      },
-      {
-        id: 'release-windows-portable',
-        source: 'build.yml',
-        platform: 'Windows',
-        kind: 'Portable archive',
-        pattern: 'YAQMC-windows-{arch}-portable.zip',
-      },
-      {
-        id: 'release-windows-checksum',
-        source: 'build.yml',
-        platform: 'Windows',
-        kind: 'Checksums',
-        pattern: 'SHA256SUMS-windows-{arch}.txt',
-      },
-      {
-        id: 'release-linux-appimage',
-        source: 'build.yml',
-        platform: 'Linux',
-        kind: 'AppImage',
-        pattern: '{tauri-bundle-filename}',
-      },
-      {
-        id: 'release-linux-deb',
-        source: 'build.yml',
-        platform: 'Linux',
-        kind: 'deb',
-        pattern: '{tauri-bundle-filename}',
-      },
-      {
-        id: 'release-linux-rpm',
-        source: 'build.yml',
-        platform: 'Linux',
-        kind: 'rpm',
-        pattern: '{tauri-bundle-filename}',
-      },
-      {
-        id: 'release-linux-portable',
-        source: 'build.yml',
-        platform: 'Linux',
-        kind: 'Portable archive',
-        pattern: 'YAQMC-linux-{arch}-portable.tar.gz',
-      },
-      {
-        id: 'release-linux-tester',
-        source: 'build.yml',
-        platform: 'Linux x86_64',
-        kind: 'Tester archive',
-        pattern: 'YAQMC-linux-x86_64-tester.tar.gz',
-      },
-      {
-        id: 'release-linux-checksum',
-        source: 'build.yml',
-        platform: 'Linux',
-        kind: 'Checksums',
-        pattern: 'SHA256SUMS-linux-{arch}.txt',
-      },
-    ],
+    releaseArtifacts: artifactContractEntries().map(({ id }) => ({ id })),
     dataPaths: [
       {
         id: 'windows-app-data',
@@ -573,21 +410,23 @@ test('rejects canonical fact mutations against an injected temporary repository'
   }
 });
 
-test('validates the complete checked-in artifact pattern contract and rejects drift', () => {
+test('keeps only artifact IDs in the snapshot and delegates names to the executable contract', () => {
   const snapshot = JSON.parse(
     readFileSync(path.join(repositoryRoot, 'scripts', 'perf-baseline.snapshot.json'), 'utf8'),
   );
   assert.deepEqual(
-    Object.fromEntries(snapshot.releaseArtifacts.map(({ id, pattern }) => [id, pattern])),
-    EXPECTED_ARTIFACT_PATTERNS,
+    snapshot.releaseArtifacts,
+    artifactContractEntries().map(({ id }) => ({ id })),
   );
+});
 
-  snapshot.releaseArtifacts.find(({ id }) => id === 'release-windows-portable').pattern =
-    'YAQMC-windows-{arch}-renamed.zip';
+test('rejects copied artifact metadata in the snapshot', () => {
+  const snapshot = fixture();
+  snapshot.releaseArtifacts[0].pattern = 'copied-pattern';
   const result = runBaseline(snapshot);
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /releaseArtifacts release-windows-portable pattern/);
+  assert.match(result.stderr, /releaseArtifacts.*only id/);
 });
 
 test('rejects snapshots that omit a required measurement instead of substituting a value', () => {

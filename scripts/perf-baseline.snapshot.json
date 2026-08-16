@@ -13,144 +13,64 @@
   },
   "releaseArtifacts": [
     {
-      "id": "ci-windows-nsis",
-      "source": "stage-artifacts.mjs",
-      "platform": "Windows",
-      "kind": "NSIS installer",
-      "pattern": "YAQMC-{version}-windows-{arch}-{shortSha}-nsis-setup.exe"
+      "id": "ci-windows-nsis"
     },
     {
-      "id": "ci-windows-msi",
-      "source": "stage-artifacts.mjs",
-      "platform": "Windows",
-      "kind": "MSI installer",
-      "pattern": "YAQMC-{version}-windows-{arch}-{shortSha}-msi.msi"
+      "id": "ci-windows-msi"
     },
     {
-      "id": "ci-windows-portable",
-      "source": "stage-artifacts.mjs",
-      "platform": "Windows",
-      "kind": "Portable archive",
-      "pattern": "YAQMC-{version}-windows-{arch}-{shortSha}-portable.zip"
+      "id": "ci-windows-portable"
     },
     {
-      "id": "ci-linux-appimage",
-      "source": "stage-artifacts.mjs",
-      "platform": "Linux",
-      "kind": "AppImage",
-      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}.AppImage"
+      "id": "ci-linux-appimage"
     },
     {
-      "id": "ci-linux-deb",
-      "source": "stage-artifacts.mjs",
-      "platform": "Linux",
-      "kind": "deb",
-      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}.deb"
+      "id": "ci-linux-deb"
     },
     {
-      "id": "ci-linux-rpm",
-      "source": "stage-artifacts.mjs",
-      "platform": "Linux",
-      "kind": "rpm",
-      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}.rpm"
+      "id": "ci-linux-rpm"
     },
     {
-      "id": "ci-linux-binary",
-      "source": "stage-artifacts.mjs",
-      "platform": "Linux",
-      "kind": "Binary archive",
-      "pattern": "YAQMC-{version}-linux-{arch}-{shortSha}-binary.tar.gz"
+      "id": "ci-linux-binary"
     },
     {
-      "id": "ci-linux-readme",
-      "source": "stage-artifacts.mjs",
-      "platform": "Linux",
-      "kind": "Binary archive readme",
-      "pattern": "README-binary.txt"
+      "id": "ci-linux-readme"
     },
     {
-      "id": "ci-build-info",
-      "source": "stage-artifacts.mjs",
-      "platform": "Windows/Linux",
-      "kind": "Build metadata",
-      "pattern": "build-info.json"
+      "id": "ci-build-info"
     },
     {
-      "id": "ci-checksum",
-      "source": "stage-artifacts.mjs",
-      "platform": "Windows/Linux",
-      "kind": "Checksums",
-      "pattern": "SHA256SUMS-{os}-{arch}.txt"
+      "id": "ci-checksum"
     },
     {
-      "id": "release-windows-nsis",
-      "source": "build.yml",
-      "platform": "Windows",
-      "kind": "NSIS installer",
-      "pattern": "YAQMC-windows-{arch}-{tauri-bundle-filename}"
+      "id": "release-windows-nsis"
     },
     {
-      "id": "release-windows-msi",
-      "source": "build.yml",
-      "platform": "Windows",
-      "kind": "MSI installer",
-      "pattern": "YAQMC-windows-{arch}-{tauri-bundle-filename}"
+      "id": "release-windows-msi"
     },
     {
-      "id": "release-windows-portable",
-      "source": "build.yml",
-      "platform": "Windows",
-      "kind": "Portable archive",
-      "pattern": "YAQMC-windows-{arch}-portable.zip"
+      "id": "release-windows-portable"
     },
     {
-      "id": "release-windows-checksum",
-      "source": "build.yml",
-      "platform": "Windows",
-      "kind": "Checksums",
-      "pattern": "SHA256SUMS-windows-{arch}.txt"
+      "id": "release-windows-checksum"
     },
     {
-      "id": "release-linux-appimage",
-      "source": "build.yml",
-      "platform": "Linux",
-      "kind": "AppImage",
-      "pattern": "{tauri-bundle-filename}"
+      "id": "release-linux-appimage"
     },
     {
-      "id": "release-linux-deb",
-      "source": "build.yml",
-      "platform": "Linux",
-      "kind": "deb",
-      "pattern": "{tauri-bundle-filename}"
+      "id": "release-linux-deb"
     },
     {
-      "id": "release-linux-rpm",
-      "source": "build.yml",
-      "platform": "Linux",
-      "kind": "rpm",
-      "pattern": "{tauri-bundle-filename}"
+      "id": "release-linux-rpm"
     },
     {
-      "id": "release-linux-portable",
-      "source": "build.yml",
-      "platform": "Linux",
-      "kind": "Portable archive",
-      "pattern": "YAQMC-linux-{arch}-portable.tar.gz"
+      "id": "release-linux-portable"
     },
     {
-      "id": "release-linux-tester",
-      "source": "build.yml",
-      "platform": "Linux x86_64",
-      "kind": "Tester archive",
-      "pattern": "YAQMC-linux-x86_64-tester.tar.gz"
+      "id": "release-linux-tester"
     },
     {
-      "id": "release-linux-checksum",
-      "source": "build.yml",
-      "platform": "Linux",
-      "kind": "Checksums",
-      "pattern": "SHA256SUMS-linux-{arch}.txt"
+      "id": "release-linux-checksum"
     }
   ],
   "dataPaths": [
