@@ -3,6 +3,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { format as formatWithPrettier } from 'prettier';
+import { artifactContractEntries } from './ci/artifact-contract.mjs';
+import { collectRepositoryFacts } from './ci/repository-facts.mjs';
+import { repositoryRoot as defaultRepositoryRoot } from './ci/repo.mjs';
 
 const REQUIRED_METRICS = [
   ['coldStartInteractiveMs', 'Cold start to interactive (3 runs, median)', 'ms'],
@@ -18,28 +21,8 @@ const REQUIRED_METRICS = [
 ];
 
 const PLATFORMS = ['Windows', 'Linux'];
-const REQUIRED_ARTIFACT_PATTERNS = {
-  'ci-windows-nsis': 'YAQMC-{version}-windows-{arch}-{shortSha}-nsis-setup.exe',
-  'ci-windows-msi': 'YAQMC-{version}-windows-{arch}-{shortSha}-msi.msi',
-  'ci-windows-portable': 'YAQMC-{version}-windows-{arch}-{shortSha}-portable.zip',
-  'ci-linux-appimage': 'YAQMC-{version}-linux-{arch}-{shortSha}.AppImage',
-  'ci-linux-deb': 'YAQMC-{version}-linux-{arch}-{shortSha}.deb',
-  'ci-linux-rpm': 'YAQMC-{version}-linux-{arch}-{shortSha}.rpm',
-  'ci-linux-binary': 'YAQMC-{version}-linux-{arch}-{shortSha}-binary.tar.gz',
-  'ci-linux-readme': 'README-binary.txt',
-  'ci-build-info': 'build-info.json',
-  'ci-checksum': 'SHA256SUMS-{os}-{arch}.txt',
-  'release-windows-nsis': 'YAQMC-windows-{arch}-{tauri-bundle-filename}',
-  'release-windows-msi': 'YAQMC-windows-{arch}-{tauri-bundle-filename}',
-  'release-windows-portable': 'YAQMC-windows-{arch}-portable.zip',
-  'release-windows-checksum': 'SHA256SUMS-windows-{arch}.txt',
-  'release-linux-appimage': '{tauri-bundle-filename}',
-  'release-linux-deb': '{tauri-bundle-filename}',
-  'release-linux-rpm': '{tauri-bundle-filename}',
-  'release-linux-portable': 'YAQMC-linux-{arch}-portable.tar.gz',
-  'release-linux-tester': 'YAQMC-linux-x86_64-tester.tar.gz',
-  'release-linux-checksum': 'SHA256SUMS-linux-{arch}.txt',
-};
+const ARTIFACT_CONTRACT = artifactContractEntries();
+const ARTIFACT_CONTRACT_BY_ID = new Map(ARTIFACT_CONTRACT.map((entry) => [entry.id, entry]));
 const REQUIRED_IDS = {
   toolchains: ['node', 'npm', 'rustc', 'cargo'],
   dataPaths: [
@@ -55,12 +38,15 @@ const REQUIRED_IDS = {
   persistenceEntries: [
     'sqlite-library',
     'queue-state',
+    'audio-output-device',
+    'logging-level',
+    'preferred-quality',
     'preferences-schema-version',
     'ui-preferences',
     'lyrics-geometry-desktop',
     'lyrics-geometry-island',
   ],
-  releaseArtifacts: Object.keys(REQUIRED_ARTIFACT_PATTERNS),
+  releaseArtifacts: ARTIFACT_CONTRACT.map(({ id }) => id),
 };
 const REQUIRED_KEYRING_ENTRIES = [
   'qqmusic-session',
@@ -76,6 +62,7 @@ function usage() {
     '  --input <snapshot.json>',
     '  --output <perf-baseline.md>',
     '  --toolchain-observations <observations.json>  Use controlled observations instead of local commands',
+    '  --repository-root <repository>  Validate facts from an injected repository root',
     '  --help',
   ].join('\n');
 }
@@ -85,12 +72,14 @@ function options(argv) {
     input: 'scripts/perf-baseline.snapshot.json',
     output: 'docs/migration/perf-baseline.md',
     toolchainObservations: null,
+    repositoryRoot: defaultRepositoryRoot,
     help: false,
   };
   const valueOptions = new Map([
     ['--input', 'input'],
     ['--output', 'output'],
     ['--toolchain-observations', 'toolchainObservations'],
+    ['--repository-root', 'repositoryRoot'],
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -130,7 +119,29 @@ function requireCollection(snapshot, name) {
   return collection;
 }
 
-function validateSnapshot(snapshot) {
+function requireRepositoryValue(actual, expected, label) {
+  if (actual !== expected) {
+    throw new Error(
+      `${label} must match repository fact ${JSON.stringify(expected)} (received ${JSON.stringify(actual)})`,
+    );
+  }
+}
+
+function requireRepositoryCollection(collection, facts, name, fields) {
+  if (collection.length !== facts.length) {
+    throw new Error(`${name} must contain exactly ${facts.length} repository fact entries`);
+  }
+  const factsById = new Map(facts.map((entry) => [entry.id, entry]));
+  for (const entry of collection) {
+    const fact = factsById.get(entry.id);
+    if (!fact) throw new Error(`${name} ${entry.id} is not a repository fact`);
+    for (const field of fields) {
+      requireRepositoryValue(entry[field], fact[field], `${name} ${entry.id} ${field}`);
+    }
+  }
+}
+
+function validateSnapshot(snapshot, repositoryFacts) {
   if (!snapshot || snapshot.schemaVersion !== 2) {
     throw new Error('snapshot must use schemaVersion 2');
   }
@@ -156,10 +167,21 @@ function validateSnapshot(snapshot) {
   }
 
   const toolchains = requireCollection(snapshot, 'toolchains');
+  if (toolchains.length !== Object.keys(repositoryFacts.toolchains).length) {
+    throw new Error('toolchains must contain exactly the repository fact entries');
+  }
   for (const toolchain of toolchains) {
     requireString(toolchain.name, `toolchains ${toolchain.id} name`);
     if (toolchain.required !== null)
       requireString(toolchain.required, `toolchains ${toolchain.id} required`);
+    if (!Object.hasOwn(repositoryFacts.toolchains, toolchain.id)) {
+      throw new Error(`toolchains ${toolchain.id} is not a repository fact`);
+    }
+    requireRepositoryValue(
+      toolchain.required,
+      repositoryFacts.toolchains[toolchain.id],
+      `toolchains ${toolchain.id} required`,
+    );
   }
 
   const dataPaths = requireCollection(snapshot, 'dataPaths');
@@ -169,6 +191,12 @@ function validateSnapshot(snapshot) {
     requireString(dataPath.path, `dataPaths ${dataPath.id} path`);
     requireString(dataPath.state, `dataPaths ${dataPath.id} state`);
   }
+  requireRepositoryCollection(dataPaths, repositoryFacts.dataPaths, 'dataPaths', [
+    'platform',
+    'purpose',
+    'path',
+    'state',
+  ]);
 
   const persistenceEntries = requireCollection(snapshot, 'persistenceEntries');
   for (const entry of persistenceEntries) {
@@ -176,16 +204,28 @@ function validateSnapshot(snapshot) {
     requireString(entry.key, `persistenceEntries ${entry.id} key`);
     requireString(entry.target, `persistenceEntries ${entry.id} target`);
   }
+  requireRepositoryCollection(
+    persistenceEntries,
+    repositoryFacts.persistenceEntries,
+    'persistenceEntries',
+    ['store', 'key', 'target'],
+  );
 
   const releaseArtifacts = requireCollection(snapshot, 'releaseArtifacts');
+  if (releaseArtifacts.length !== ARTIFACT_CONTRACT.length) {
+    throw new Error(
+      `releaseArtifacts must contain exactly ${ARTIFACT_CONTRACT.length} artifact contract entries`,
+    );
+  }
   for (const artifact of releaseArtifacts) {
-    requireString(artifact.source, `releaseArtifacts ${artifact.id} source`);
-    requireString(artifact.platform, `releaseArtifacts ${artifact.id} platform`);
-    requireString(artifact.kind, `releaseArtifacts ${artifact.id} kind`);
-    requireString(artifact.pattern, `releaseArtifacts ${artifact.id} pattern`);
-    if (artifact.pattern !== REQUIRED_ARTIFACT_PATTERNS[artifact.id]) {
-      throw new Error(
-        `releaseArtifacts ${artifact.id} pattern must be ${REQUIRED_ARTIFACT_PATTERNS[artifact.id]}`,
+    const contract = ARTIFACT_CONTRACT_BY_ID.get(artifact.id);
+    if (!contract) throw new Error(`releaseArtifacts ${artifact.id} is not in artifact contract`);
+    for (const field of ['source', 'platform', 'kind', 'pattern']) {
+      requireString(artifact[field], `releaseArtifacts ${artifact.id} ${field}`);
+      requireRepositoryValue(
+        artifact[field],
+        contract[field],
+        `releaseArtifacts ${artifact.id} ${field}`,
       );
     }
   }
@@ -205,6 +245,22 @@ function validateSnapshot(snapshot) {
     }
   }
   for (const entry of snapshot.keyring.entries) requireString(entry, 'keyring entry');
+  requireRepositoryValue(
+    snapshot.keyring.service,
+    repositoryFacts.keyring.service,
+    'keyring service',
+  );
+  requireRepositoryValue(
+    snapshot.keyring.legacyService,
+    repositoryFacts.keyring.legacyService,
+    'keyring legacyService',
+  );
+  if (
+    snapshot.keyring.entries.length !== repositoryFacts.keyring.entries.length ||
+    !snapshot.keyring.entries.every((entry) => repositoryFacts.keyring.entries.includes(entry))
+  ) {
+    throw new Error('keyring entries must match repository fact entries');
+  }
 
   if (
     !Number.isInteger(snapshot.runtimeFacts?.registeredTauriCommands) ||
@@ -213,6 +269,16 @@ function validateSnapshot(snapshot) {
     throw new Error('runtimeFacts registeredTauriCommands must be a non-negative integer');
   }
   requireString(snapshot.runtimeFacts.mainWindow, 'runtimeFacts mainWindow');
+  requireRepositoryValue(
+    snapshot.runtimeFacts.registeredTauriCommands,
+    repositoryFacts.runtimeFacts.registeredTauriCommands,
+    'runtimeFacts registeredTauriCommands',
+  );
+  requireRepositoryValue(
+    snapshot.runtimeFacts.mainWindow,
+    repositoryFacts.runtimeFacts.mainWindow,
+    'runtimeFacts mainWindow',
+  );
 }
 
 function commandOutput(command, args) {
@@ -267,23 +333,36 @@ function formatMeasurement(measurement, unit) {
   return `${measurement.value} ${unit}`;
 }
 
-function table(rows) {
-  return rows.map((row) => `| ${row.join(' | ')} |`).join('\n');
+function markdownCell(value) {
+  return String(value).replace(/\r\n?/g, '\n').replace(/\n/g, '<br>').replace(/\|/g, '\\|');
 }
 
-export function renderBaseline(snapshot, observations) {
-  validateSnapshot(snapshot);
+function table(rows) {
+  return rows.map((row) => `| ${row.map(markdownCell).join(' | ')} |`).join('\n');
+}
+
+export function renderBaseline(
+  snapshot,
+  observations,
+  {
+    repositoryFacts = collectRepositoryFacts(defaultRepositoryRoot),
+    observationProvenance = 'controlled-input',
+  } = {},
+) {
+  validateSnapshot(snapshot, repositoryFacts);
   validateObservations(snapshot.toolchains, observations);
   const lines = [
     '# Performance and artifact baseline',
     '',
-    `Baseline facts captured: ${snapshot.capturedAt}. This document is generated by \`npm run perf:baseline\` from \`scripts/perf-baseline.snapshot.json\`. Toolchain observations are captured when the command runs; they are not stored as source facts in the snapshot.`,
+    `Baseline facts captured: ${snapshot.capturedAt}. This document is generated by \`npm run perf:baseline\` from \`scripts/perf-baseline.snapshot.json\`. Toolchain observations are supplied at generation time with their provenance labeled below; they are not stored as source facts in the snapshot.`,
     '',
     '**P0 performance gate: NOT COMPLETE.** Windows and Linux live performance, installed-size, and diagnostics measurements remain pending.',
     '',
     'No pending item is an estimate or zero. It requires the documented manual protocol on a current Tauri build.',
     '',
     '## Toolchain requirements and capture observations',
+    '',
+    `Observation provenance: \`${observationProvenance}\`. \`local-command\` means this generator executed version commands on the current host; \`controlled-input\` means the caller supplied an isolated observations JSON file.`,
     '',
     '| Toolchain | Project required | Observed by this capture | State |',
     '|---|---|---|---|',
@@ -322,7 +401,7 @@ export function renderBaseline(snapshot, observations) {
     '| Source | Platform | Artifact | Checked-in name/pattern |',
     '|---|---|---|---|',
     table(
-      snapshot.releaseArtifacts.map((artifact) => [
+      ARTIFACT_CONTRACT.map((artifact) => [
         `\`${artifact.source}\``,
         artifact.platform,
         artifact.kind,
@@ -380,9 +459,18 @@ if (invokedDirectly()) {
       const observations = parsed.toolchainObservations
         ? JSON.parse(readFileSync(parsed.toolchainObservations, 'utf8'))
         : captureToolchainObservations();
+      const repositoryFacts = collectRepositoryFacts(path.resolve(parsed.repositoryRoot));
       writeFileSync(
         parsed.output,
-        await formatWithPrettier(renderBaseline(snapshot, observations), { parser: 'markdown' }),
+        await formatWithPrettier(
+          renderBaseline(snapshot, observations, {
+            repositoryFacts,
+            observationProvenance: parsed.toolchainObservations
+              ? 'controlled-input'
+              : 'local-command',
+          }),
+          { parser: 'markdown' },
+        ),
       );
     }
   } catch (error) {
