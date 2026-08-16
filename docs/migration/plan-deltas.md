@@ -113,3 +113,38 @@ the enforced provenance ledger.
   media split.
 - P0 live measurements remain `PENDING`; the provenance release gate remains `BLOCKED`. This ownership-only
   checkpoint does not clear either gate or implement P2 registry/framing/caps, P12/P14 human gates, or cutover work.
+
+## Task 7B: playback/media compile-closure extraction
+
+- `playback_session.rs`, `qmc.rs`, `streaming.rs`, `audio.rs`, `media.rs`, and `player.rs` are Core-owned by
+  history-preserving moves. Tauri retains its source namespace solely through inline `yaqmc_core` re-export modules in
+  `src-tauri/src/lib.rs`; no old-path source files are recreated. `local_api.rs`, QQ/OAuth, system media, commands,
+  and Tauri bootstrap/event fan-out remain host-owned and retain their existing composition order.
+- The four actual Player runtime tasks retain their task bodies, cancellation checks, 50 ms clock tick,
+  at-most-250 ms position cadence, and seek/session/load/source-generation fencing are unchanged. Playback quality
+  values are imported from `crate::playback_types`; Core has no Tauri or QQ import in this closure.
+- The retained plan's assumption that every Player spawn site already runs inside a runtime was false at the Tauri
+  `setup` composition point. Only `start_clock` needs an injected host runtime handle: synchronous setup now supplies
+  Tauri's existing `async_runtime::handle().inner()` to `start_clock_on_runtime`, which uses `Handle::spawn`; the
+  three remaining Player tasks stay inside async/Core clock execution and use `tokio::spawn`. No Core-owned runtime
+  is created and startup
+  ordering remains synchronous at the spawn boundary.
+- Remaining QQ code needs only the deliberately narrow compatibility visibility on
+  `PlaybackEpochClock::replace` and `PlaybackEpochGuard::account_bound`, both marked `#[doc(hidden)]`. `QmcDecryptor`
+  is likewise `#[doc(hidden)] pub` because it appears in the public prepared-audio enum; its construction remains
+  Core-internal. These temporary surfaces are Task 8/provider-boundary debt, not a provider registry.
+- The two QQ-coupled Player tests now live in the Tauri-only `player_host_tests` module, preserving their names,
+  assertions, and opt-in audible ignore state. Core's `test-support` feature now includes the deterministic Player,
+  Audio, and Media test doubles needed by pre-existing Tauri Local API tests; default Core builds do not expose that
+  constructor path.
+- The pinned reqwest release remains 0.13.4. Core enables its already-used `blocking` feature for streaming; no
+  reqwest, protocol, decoder, or provider dependency is upgraded. Rodio 0.22.2 moves to Core; Tauri retains the
+  dependencies still imported by QQ/OAuth and platform code.
+- The workspace closure verifier now evaluates the exact supported desktop target graphs (Linux x86_64/aarch64 and
+  Windows x86_64/i686/aarch64) through Cargo `metadata --filter-platform`, while checking workspace shape once from
+  the unfiltered metadata. This fixes Cargo's all-target resolve false positive from Rodio/CPAL's Android-only
+  `ndk -> raw-window-handle` edge; the denylist is unchanged and any real supported-desktop Tauri, WebKit,
+  raw-window-handle, provider, QQ API, Electron, Node, or N-API closure remains a target-labelled failure.
+- Active playback documentation and the provenance qmc target paths now point to Core without changing the existing
+  evidence, license, authorization, or **BLOCKED** release decision. P0 live measurements remain `PENDING`; no P2,
+  Electron, qm-api-rs, HUMAN/LIVE_ACCOUNT gate, or cutover behavior is implemented by this ownership checkpoint.

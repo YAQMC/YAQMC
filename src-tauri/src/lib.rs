@@ -1,5 +1,8 @@
 mod app_preferences;
-mod audio;
+mod audio {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::audio::*;
+}
 mod command_guard;
 mod commands;
 mod credentials;
@@ -10,15 +13,32 @@ mod issue_reporter;
 mod local_api;
 mod logging;
 mod lyrics_surface;
-mod media;
+mod media {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::media::*;
+}
 mod platform;
-mod playback_session;
-mod player;
+mod playback_session {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::playback_session::*;
+}
+mod player {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::player::*;
+}
+#[cfg(test)]
+mod player_host_tests;
 mod plugin;
-mod qmc;
+mod qmc {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::qmc::*;
+}
 mod qqmusic;
 mod storage;
-mod streaming;
+mod streaming {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::streaming::*;
+}
 mod system_media;
 
 use audio::{AudioEngine, RodioAudioEngine, UnavailableAudioEngine};
@@ -203,7 +223,7 @@ pub fn run() {
                 "desktop setup complete"
             );
 
-            player.start_clock();
+            player.start_clock_on_runtime(tauri::async_runtime::handle().inner());
 
             let app_handle = app.handle().clone();
             let mut event_receiver = player.subscribe();

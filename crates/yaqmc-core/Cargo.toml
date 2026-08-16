@@ -10,22 +10,26 @@ default = []
 test-support = ["dep:tempfile"]
 
 [dependencies]
+async-trait = "0.1"
 base64 = "0.22"
 futures-util = "0.3"
 keyring = "4.1.6"
 rand = "0.9"
-reqwest = { version = "0.13.4", default-features = false, features = ["json", "query", "rustls", "stream", "system-proxy"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "query", "rustls", "stream", "system-proxy"] }
+rodio = { version = "0.22.2", default-features = false, features = ["flac", "mp3", "mp4", "playback", "tracing", "wav"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 tempfile = { version = "3", optional = true }
 thiserror = "2"
-tokio = { version = "1", features = ["fs", "io-util", "rt", "sync"] }
+tokio = { version = "1", features = ["fs", "io-util", "rt", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+zeroize = "1"
 
 [dev-dependencies]
 axum = { version = "0.8", features = ["http1", "json", "tokio"] }

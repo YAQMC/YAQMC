@@ -3,7 +3,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  SUPPORTED_CORE_TARGETS,
   validateCoreDependencyClosure,
+  validateDesktopCoreDependencyClosures,
   validateWorkspaceMetadata,
 } from './verify-workspace-contract.mjs';
 
@@ -92,6 +94,45 @@ test('accepts portable reqwest in the Core dependency closure', () => {
         ['hyper', []],
       ]),
     ),
+  );
+});
+
+test('checks the Core closure on exactly the five supported desktop targets', () => {
+  assert.deepEqual(SUPPORTED_CORE_TARGETS, [
+    'x86_64-unknown-linux-gnu',
+    'aarch64-unknown-linux-gnu',
+    'x86_64-pc-windows-msvc',
+    'i686-pc-windows-msvc',
+    'aarch64-pc-windows-msvc',
+  ]);
+
+  const portable = metadataWithCoreClosure([
+    ['yaqmc-core', ['rodio']],
+    ['rodio', ['cpal']],
+    ['cpal', []],
+    ['raw-window-handle', []],
+  ]);
+  const metadataByTarget = new Map(SUPPORTED_CORE_TARGETS.map((target) => [target, portable]));
+  assert.doesNotThrow(() => validateDesktopCoreDependencyClosures(metadataByTarget));
+});
+
+test('labels a forbidden desktop closure with the target that resolves it', () => {
+  const portable = metadataWithCoreClosure([
+    ['yaqmc-core', ['rodio']],
+    ['rodio', ['cpal']],
+    ['cpal', []],
+  ]);
+  const forbidden = metadataWithCoreClosure([
+    ['yaqmc-core', ['portable-layer']],
+    ['portable-layer', ['raw-window-handle']],
+    ['raw-window-handle', []],
+  ]);
+  const metadataByTarget = new Map(SUPPORTED_CORE_TARGETS.map((target) => [target, portable]));
+  metadataByTarget.set('aarch64-pc-windows-msvc', forbidden);
+
+  assert.throws(
+    () => validateDesktopCoreDependencyClosures(metadataByTarget),
+    /aarch64-pc-windows-msvc: forbidden yaqmc-core dependency closure: raw-window-handle/,
   );
 });
 

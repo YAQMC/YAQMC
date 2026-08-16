@@ -22,9 +22,9 @@ React 主界面 / 歌词窗口 / 本地 API / 托盘 / 系统媒体面板
 - `src/providers`：公开目录接口、QQ 音乐 Tauri 适配器和永久保留的假数据提供器。
 - `src/application`：React 状态投影、偏好设置、播放与登录运行时协调。
 - `src/components`、`src/pages`、`src/surfaces`：主窗口和歌词窗口。
-- `src-tauri/src/player.rs`：队列、当前曲目、进度、循环/随机、音量、错误与歌词时钟的唯一事实源。
-- `src-tauri/src/audio.rs`：解码、输出设备和 seek。
-- `src-tauri/src/streaming.rs`：HTTP Range、稀疏缓存和授权 mflac 读取。
+- `crates/yaqmc-core/src/player.rs`：队列、当前曲目、进度、循环/随机、音量、错误与歌词时钟的唯一事实源。
+- `crates/yaqmc-core/src/audio.rs`：解码、输出设备和 seek。
+- `crates/yaqmc-core/src/streaming.rs`：HTTP Range、稀疏缓存和授权 mflac 读取。
 - `src-tauri/src/qqmusic.rs`：兼容协议、OAuth、账号资料与音源解析。
 - `src-tauri/src/storage.rs`：SQLite 与文件缓存索引。
 

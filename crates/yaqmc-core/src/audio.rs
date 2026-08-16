@@ -1,7 +1,7 @@
 use crate::{
     media::PlaybackEpochGuard,
+    playback_types::PlaybackSourceSelection,
     qmc::{QmcDecryptor, QmcReader},
-    qqmusic::PlaybackSourceSelection,
     streaming::{ProgressiveMonitor, ProgressiveSource},
 };
 use rodio::{
@@ -1232,7 +1232,7 @@ pub fn write_fixture_wav(path: &Path, duration: Duration, seed: u32) -> std::io:
     writer.flush()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub struct TestAudioEngine {
     state: Mutex<AudioEngineSnapshot>,
     volume: Mutex<f32>,
@@ -1244,7 +1244,7 @@ pub struct TestAudioEngine {
     accepted_load_generation: AtomicU64,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Default for TestAudioEngine {
     fn default() -> Self {
         Self {
@@ -1260,7 +1260,7 @@ impl Default for TestAudioEngine {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl TestAudioEngine {
     pub fn finish(&self) {
         let mut state = self.state.lock().expect("test engine lock");
@@ -1299,7 +1299,7 @@ impl TestAudioEngine {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl AudioEngine for TestAudioEngine {
     fn load(&self, source: &PreparedPlaybackSource) -> Result<AudioLoadMetadata, AudioEngineError> {
         if source.load_generation != 0 {
@@ -1439,8 +1439,8 @@ mod tests {
     use super::*;
     use crate::{
         media::{PlaybackEpochClock, PlaybackEpochGuard},
+        playback_types::{AudioQualityPreference, PlaybackEpoch, PlaybackSourceSelection},
         player::AudioQuality,
-        qqmusic::{AudioQualityPreference, PlaybackSourceSelection},
     };
     use tokio_util::sync::CancellationToken;
 
@@ -1539,7 +1539,7 @@ mod tests {
     #[test]
     fn retained_guard_rejects_resume_after_account_epoch_changes() {
         let clock = Arc::new(PlaybackEpochClock::default());
-        let epoch = yaqmc_core::playback_types::PlaybackEpoch::new(11, "test-account-11");
+        let epoch = PlaybackEpoch::new(11, "test-account-11");
         clock.replace(Some(epoch.clone()));
         let cancellation = CancellationToken::new();
         let engine = TestAudioEngine::default();

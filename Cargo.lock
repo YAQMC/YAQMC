@@ -6687,7 +6687,6 @@ dependencies = [
  "rand 0.9.5",
  "raw-window-handle",
  "reqwest",
- "rodio",
  "serde",
  "serde_json",
  "sha2",
@@ -6718,12 +6717,14 @@ dependencies = [
 name = "yaqmc-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "base64 0.22.1",
  "futures-util",
  "keyring",
  "rand 0.9.5",
  "reqwest",
+ "rodio",
  "rusqlite",
  "serde",
  "serde_json",
@@ -6731,9 +6732,11 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "zeroize",
  "zip",
 ]
 

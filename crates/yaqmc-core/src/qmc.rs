@@ -40,6 +40,10 @@ impl EncryptedMediaKey {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn is_v2(&self) -> bool {
         self.0.as_str().starts_with("QQMusic EncV2,Key:")
     }
@@ -73,7 +77,8 @@ enum QmcCipher {
 }
 
 #[derive(Clone)]
-pub(crate) struct QmcDecryptor(Arc<QmcCipher>);
+#[doc(hidden)]
+pub struct QmcDecryptor(Arc<QmcCipher>);
 
 impl QmcDecryptor {
     pub(crate) fn new(ekey: &EncryptedMediaKey) -> Result<Self, QmcError> {
