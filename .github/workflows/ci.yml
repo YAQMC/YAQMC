@@ -73,6 +73,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.88.0'
@@ -83,11 +86,12 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            src-tauri/target
-          key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('src-tauri/Cargo.lock') }}-dev
+            target
+          key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('Cargo.lock') }}-dev
           restore-keys: |
             cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-
       - uses: ./.github/actions/linux-tauri-deps
+      - run: npm run ci:verify-workspace
       - name: Prepare frontend stub for cargo-only builds
         run: mkdir -p dist && printf '<!doctype html><html><body></body></html>' > dist/index.html
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
@@ -100,8 +104,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            src-tauri/target
-          key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('src-tauri/Cargo.lock') }}-dev
+            target
+          key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('Cargo.lock') }}-dev
 
   secret-scan:
     name: Secret scan (${{ matrix.os }})
@@ -179,7 +183,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_appimage="$(find src-tauri/target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          source_appimage="$(find target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$source_appimage"
           curl --fail --location --retry 3 \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
@@ -252,8 +256,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            src-tauri/target
-          key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
+            target
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
 
   summarize:
     name: CI summary

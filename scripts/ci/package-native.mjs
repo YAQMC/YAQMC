@@ -37,12 +37,16 @@ function runTauri(args) {
   };
 }
 
-function findBinary(target, os) {
+export function workspaceBinaryCandidates(target, os) {
   const name = os === 'windows' ? 'yaqmc.exe' : 'yaqmc';
-  const candidates = [
-    path.join(repositoryRoot, 'src-tauri', 'target', target, 'release', name),
-    path.join(repositoryRoot, 'src-tauri', 'target', 'release', name),
+  return [
+    path.join(repositoryRoot, 'target', target, 'release', name),
+    path.join(repositoryRoot, 'target', 'release', name),
   ];
+}
+
+function findBinary(target, os) {
+  const candidates = workspaceBinaryCandidates(target, os);
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) throw new Error(`built binary not found for ${target}`);
   return found;

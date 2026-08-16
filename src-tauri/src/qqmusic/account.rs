@@ -1501,10 +1501,10 @@ impl QQMusicAccountService {
         }
         let mut state = self.mutations.lock().await;
         if state.epoch.as_ref() != Some(&context.epoch)
-            || !state
+            || state
                 .playlist_in_flight
                 .get(mutation_key)
-                .is_some_and(|owner| owner == operation_id)
+                .is_none_or(|owner| owner != operation_id)
         {
             return Err(QQMusicError::Cancelled);
         }

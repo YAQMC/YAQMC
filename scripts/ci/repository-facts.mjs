@@ -35,6 +35,13 @@ function normalizeRustVersion(version) {
   return /^\d+\.\d+$/.test(version) ? `${version}.0` : version;
 }
 
+function workspacePackageValue(source, key) {
+  const packageSection = /^\[workspace\.package\]\s*$([\s\S]*?)(?=^\[|(?![\s\S]))/m.exec(
+    source,
+  )?.[1];
+  return new RegExp(`(?:^|\\n)${key}\\s*=\\s*"([^"]+)"`).exec(packageSection ?? '')?.[1];
+}
+
 function collectToolchains(repositoryRoot) {
   const node = read(repositoryRoot, '.node-version').trim();
   const packageNode = JSON.parse(read(repositoryRoot, 'package.json')).engines?.node;
@@ -58,9 +65,13 @@ function collectToolchains(repositoryRoot) {
     );
   }
 
+  const workspaceCargoToml = read(repositoryRoot, 'Cargo.toml');
+  const workspaceMsrv = workspacePackageValue(workspaceCargoToml, 'rust-version');
   const cargoToml = read(repositoryRoot, 'src-tauri/Cargo.toml');
-  const cargoMsrv = /(?:^|\n)rust-version\s*=\s*"([^"]+)"/.exec(cargoToml)?.[1];
-  const normalizedMsrv = cargoMsrv ? normalizeRustVersion(cargoMsrv) : null;
+  if (!/(?:^|\n)rust-version\.workspace\s*=\s*true\s*(?:\n|$)/.test(cargoToml)) {
+    throw new Error('src-tauri Cargo MSRV must inherit the workspace requirement');
+  }
+  const normalizedMsrv = workspaceMsrv ? normalizeRustVersion(workspaceMsrv) : null;
   const rustActionCount = (workflows.match(/uses:\s*dtolnay\/rust-toolchain@[^\s#]+/g) ?? [])
     .length;
   const rustPins = exactPins(workflows, /^\s*toolchain:\s*['"]?([^\s'"#]+)['"]?\s*(?:#.*)?$/gm);

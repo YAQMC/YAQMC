@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { findReleaseBinary } from './stage-artifacts.mjs';
+import { findReleaseBinary, workspaceReleaseRoots } from './stage-artifacts.mjs';
 
 test('uses the release-root binary instead of a nested bundle copy', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-stage-'));
@@ -21,4 +21,11 @@ test('falls back to the host release directory', () => {
   const hostBinary = path.join(host, 'yaqmc');
   writeFileSync(hostBinary, 'host');
   assert.equal(findReleaseBinary('linux', target, host), hostBinary);
+});
+
+test('derives stage roots from the root workspace target directory', () => {
+  assert.deepEqual(workspaceReleaseRoots('x86_64-unknown-linux-gnu'), {
+    targetRoot: path.join(process.cwd(), 'target', 'x86_64-unknown-linux-gnu', 'release'),
+    hostRelease: path.join(process.cwd(), 'target', 'release'),
+  });
 });

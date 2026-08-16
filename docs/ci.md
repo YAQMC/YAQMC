@@ -32,7 +32,7 @@ Do not upload `node_modules` between jobs.
 
 Each packaging target runs `tauri build --no-bundle` once, verifies PE/ELF architecture, then `tauri bundle` for the requested formats. Windows publishes NSIS, MSI, and a portable ZIP of the executable. Linux publishes AppImage, `.deb`, `.rpm`, and a dynamically linked binary tarball (not a static portable). The x86_64 AppImage still receives the existing GDK session-aware repack.
 
-Staging copies installers from `src-tauri/target/<triple>/release/bundle` next to the release-root `yaqmc` / `yaqmc.exe`. It does not search nested payload copies of that binary. Linux packaging installs `xdg-utils` and sets `APPIMAGE_EXTRACT_AND_RUN=1` so linuxdeploy can run on ARM runners that lack `/usr/bin/xdg-open` or FUSE.
+Staging copies installers from `target/<triple>/release/bundle` next to the release-root `yaqmc` / `yaqmc.exe`. It does not search nested payload copies of that binary. Linux packaging installs `xdg-utils` and sets `APPIMAGE_EXTRACT_AND_RUN=1` so linuxdeploy can run on ARM runners that lack `/usr/bin/xdg-open` or FUSE.
 
 ## Optimization profiles
 
@@ -55,7 +55,7 @@ Measured local Windows x86_64 `--release` compile (same machine; ThinLTO used an
 
 ## Caches
 
-Cargo caches are keyed by OS, target triple, toolchain class (`1.88` for packaging, `stable` for rust-quality), `Cargo.lock`, and profile class (`dev`, `ci-release`, `production`). Paths are the crates.io registry, git checkouts, and `src-tauri/target`.
+Cargo caches are keyed by OS, target triple, toolchain class (`1.88` for packaging, `stable` for rust-quality), `Cargo.lock`, and profile class (`dev`, `ci-release`, `production`). Paths are the crates.io registry, git checkouts, and root-workspace `target`.
 
 Packaging installs Rust **1.88**. Quality jobs use the current stable `rustfmt`/`clippy` so they match local `cargo fmt` / `cargo clippy`.
 

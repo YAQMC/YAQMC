@@ -10,6 +10,7 @@ const FACT_FILES = [
   '.node-version',
   'package.json',
   'package-lock.json',
+  'Cargo.toml',
   '.github/actions/setup-packaging/action.yml',
   '.github/workflows/build.yml',
   '.github/workflows/ci.yml',
@@ -78,6 +79,33 @@ test('rejects a temporary repository whose Node pins disagree', () => {
   writeFileSync(path.join(root, '.node-version'), '0.0.0\n');
 
   assert.throws(() => collectRepositoryFacts(root), /Node requirement.*0\.0\.0.*24\.19\.0/);
+});
+
+test('rejects a temporary repository whose workspace MSRV disagrees with Rust toolchain pins', () => {
+  const root = copyFactRepository();
+  const manifestPath = path.join(root, 'Cargo.toml');
+  const manifest = readFileSync(manifestPath, 'utf8').replace(
+    'rust-version = "1.88"',
+    'rust-version = "1.89"',
+  );
+  writeFileSync(manifestPath, manifest);
+
+  assert.throws(() => collectRepositoryFacts(root), /Rust requirement.*1\.89\.0.*1\.88\.0/);
+});
+
+test('rejects a member manifest that no longer inherits the workspace MSRV', () => {
+  const root = copyFactRepository();
+  const manifestPath = path.join(root, 'src-tauri', 'Cargo.toml');
+  const manifest = readFileSync(manifestPath, 'utf8').replace(
+    'rust-version.workspace = true',
+    '# rust-version inheritance removed',
+  );
+  writeFileSync(manifestPath, manifest);
+
+  assert.throws(
+    () => collectRepositoryFacts(root),
+    /src-tauri Cargo MSRV must inherit the workspace requirement/,
+  );
 });
 
 test('rejects a temporary repository whose command sources disagree', () => {

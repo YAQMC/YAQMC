@@ -26,8 +26,8 @@ runs:
           ~/.cargo/registry/index
           ~/.cargo/registry/cache
           ~/.cargo/git/db
-          src-tauri/target
-        key: cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ inputs.profile }}
+          target
+        key: cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ inputs.profile }}
         restore-keys: |
-          cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-
+          cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('Cargo.lock') }}-
           cargo-${{ runner.os }}-${{ inputs.target }}-1.88-

@@ -1955,14 +1955,12 @@ impl PlayerService {
                 Some(index) => self.load_index(index, true, 0).await,
                 None => Ok(self.snapshot().await),
             }
+        } else if self.session_id.load(Ordering::Acquire) != session_id {
+            Ok(self.snapshot().await)
         } else {
-            if self.session_id.load(Ordering::Acquire) != session_id {
-                Ok(self.snapshot().await)
-            } else {
-                match self.next_candidates().await {
-                    Ok(candidates) => self.load_candidates(candidates).await,
-                    Err(error) => Err(error),
-                }
+            match self.next_candidates().await {
+                Ok(candidates) => self.load_candidates(candidates).await,
+                Err(error) => Err(error),
             }
         };
         if let Err(error) = result {
