@@ -28,9 +28,9 @@ const FACT_FILES = [
   'crates/yaqmc-core/src/app_preferences.rs',
   'crates/yaqmc-core/src/logging.rs',
   'src-tauri/src/lyrics_surface/mod.rs',
-  'src-tauri/src/qqmusic.rs',
+  'crates/yaqmc-core/src/qqmusic.rs',
   'crates/yaqmc-core/src/credentials.rs',
-  'src-tauri/src/qqmusic/auth.rs',
+  'crates/yaqmc-core/src/qqmusic/auth.rs',
   'crates/yaqmc-core/src/local_api.rs',
   'docs/migration/command-inventory.md',
 ];

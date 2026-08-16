@@ -36,7 +36,11 @@ mod qmc {
     #[allow(unused_imports)]
     pub use yaqmc_core::qmc::*;
 }
-mod qqmusic;
+mod qqmusic {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::qqmusic::*;
+}
+mod qqmusic_oauth_host;
 mod storage;
 mod streaming {
     #[allow(unused_imports)]
@@ -79,9 +83,9 @@ fn cancel_login_owner(app: &tauri::AppHandle, event: MainOwnerLifecycleEvent) {
         return;
     };
     if let Some(provider) = app.try_state::<Arc<QQMusicService>>() {
-        provider.cancel_login_owner(reason);
+        provider.cancel_login_owner_on_runtime(reason, tauri::async_runtime::handle().inner());
     }
-    qqmusic::oauth::close_all_windows(app);
+    qqmusic_oauth_host::close_all_windows(app);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
