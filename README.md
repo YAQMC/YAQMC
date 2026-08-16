@@ -251,4 +251,5 @@ OpenAI Codex / GPT-5.6 Sol 在工程实现、测试、审查、文档和发布�
 [QQ 音乐提供器文档](docs/zh-CN/qqmusic-provider.md)。
 
 > [!NOTE]
-> 仓库当前未附带项目许可证。公开可见不等于自动授予复制、修改或再分发权。
+> YAQMC 采用 [GPL-3.0-or-later](LICENSE) 许可证；二进制发布的对应源码按
+> [对应源代码交付政策](CORRESPONDING_SOURCE_POLICY.md)提供。

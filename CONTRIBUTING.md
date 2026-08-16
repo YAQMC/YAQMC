@@ -61,4 +61,6 @@ CI（`.github/workflows/ci.yml`）会在 pull request 上构建 Windows x86_64 �
 建议使用简短命令式前缀，如 `fix:`、`feat:`、`docs:`、`test:`、`refactor:`。一个提交应能独立解释，
 且不破坏编译或测试。
 
-当前仓库未附带项目许可证；公开可见不等于自动授予复制、修改或分发权。
+贡献者必须有权提交其贡献，并按 [GPL-3.0-or-later](LICENSE) 提交。该许可证变更在合并或发布前所需的
+双维护者明确批准记录见 [LICENSING_CONSENT.md](LICENSING_CONSENT.md)；二进制发布的义务见
+[对应源代码交付政策](CORRESPONDING_SOURCE_POLICY.md)。
