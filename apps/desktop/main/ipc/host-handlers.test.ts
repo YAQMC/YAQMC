@@ -33,6 +33,7 @@ function mockLyrics(): LyricsSurfaces & {
   hide: ReturnType<typeof vi.fn>;
   lock: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
+  isVisible: ReturnType<typeof vi.fn>;
   restoreGeometry: ReturnType<typeof vi.fn>;
   resetPosition: ReturnType<typeof vi.fn>;
 } {
@@ -49,6 +50,7 @@ function mockLyrics(): LyricsSurfaces & {
     hide: vi.fn(),
     lock: vi.fn(),
     get: vi.fn((kind) => windows.get(kind) as never),
+    isVisible: vi.fn((kind) => windows.has(kind)),
     restoreGeometry: vi.fn(async () => undefined),
     resetPosition: vi.fn(async () => undefined),
   };

@@ -1080,3 +1080,25 @@ the enforced provenance ledger.
   `_from`/`_to`; Tauri keeps the old combined commands). No `qm-api-rs`. P0 remains
   `PENDING`; provenance remains **BLOCKED**. No Playwright. Electron stays
   **43.4.0**. Host `index.ts` / `host-handlers.ts` / `lyrics-surfaces.ts` untouched.
+
+## P9 SURF-04: host surfaceAutoHide consumer (core poller later)
+
+- Main consumes `host://command` payloads `{ surfaceAutoHide: boolean }` (plan
+  §22.2) and the existing protocol shapes `{ command: "raise" }` /
+  `{ command: "quit" }`. Raise/quit are parsed and ignored here (ACCT-01 owns
+  those). `apps/desktop/main/windows/surface-auto-hide.ts` exports
+  `parseHostCommandPayload`, `applySurfaceAutoHide`, a `host://command` listener
+  helper, and `subscribeSurfaceAutoHide(client, surfaces)` for later `index.ts`
+  wiring. `index.ts` is not edited.
+- `applySurfaceAutoHide` show/hides desktop+island **without destroying**
+  windows. Per-surface `enabled` / `hideInFullscreen` (`hide_in_fullscreen`) are
+  honored when those readers exist on the helper; SURF-01/03 do not store them,
+  so the default is hide both when `surfaceAutoHide === true` and restore the
+  previous visibility snapshot when false. `lyrics-surfaces.ts` gained
+  `isVisible` only; SURF-03 geometry persist stays 350 ms, BASE-04 keys, and
+  FACT **940×190** / **520×156**.
+- The Win32 800 ms fullscreen poller and `HostCommand` enum stay with DIAG-03
+  / core crates. Linux fullscreen detection remains NotSupported (TD-5); this
+  task does not add a Linux poller. Electron stays **43.4.0**. The 32 MiB hard
+  cap is unchanged. Provenance remains **BLOCKED**. No SMTC claims. No
+  Playwright.

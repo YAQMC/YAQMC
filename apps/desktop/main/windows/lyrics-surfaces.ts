@@ -339,12 +339,14 @@ export type LyricsSurfaces = {
   hide(kind: LyricsSurfaceKind): void;
   lock(kind: LyricsSurfaceKind, locked: boolean): void;
   get(kind: LyricsSurfaceKind): LyricsSurfaceWindow | undefined;
+  isVisible(kind: LyricsSurfaceKind): boolean;
   restoreGeometry(kind?: LyricsSurfaceKind): Promise<void>;
   resetPosition(kind: LyricsSurfaceKind): Promise<void>;
 };
 
 export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
   const windows = new Map<LyricsSurfaceKind, LyricsSurfaceWindow>();
+  const visible = new Set<LyricsSurfaceKind>();
   const persistGeneration = new Map<LyricsSurfaceKind, number>();
   const persistTimers = new Map<LyricsSurfaceKind, unknown>();
   const clock = deps.clock ?? {
@@ -484,9 +486,11 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
   return {
     create,
     show(kind) {
+      visible.add(kind);
       showLyricsSurface(create(kind));
     },
     hide(kind) {
+      visible.delete(kind);
       const window = live(kind);
       if (!window) {
         return;
@@ -502,6 +506,9 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     },
     get(kind) {
       return live(kind);
+    },
+    isVisible(kind) {
+      return visible.has(kind) && live(kind) !== undefined;
     },
     async restoreGeometry(kind) {
       const kinds = kind ? [kind] : SURFACE_KINDS;
