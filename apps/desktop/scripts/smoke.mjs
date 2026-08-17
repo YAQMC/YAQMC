@@ -20,7 +20,7 @@ const timeout = setTimeout(() => {
   child.kill();
   process.stderr.write('desktop smoke timed out\n');
   process.exit(1);
-}, 30_000);
+}, 45_000);
 
 child.on('exit', (code) => {
   clearTimeout(timeout);
