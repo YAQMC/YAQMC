@@ -10,6 +10,7 @@ import {
   createHostHandlers,
   DIALOG_PICK_SAVE,
   isNativeWaylandSession,
+  loginProviderFromParams,
   lyricsKindFromParams,
   lyricsRoleFromCreateOptions,
   lyricsSurfaceCapabilities,
@@ -120,6 +121,9 @@ describe('host handler helpers', () => {
     expect(urlFromOpenExternalParams({ href: 'https://y.qq.com/' })).toBe('');
     expect(lyricsKindFromParams({ kind: 'island' })).toBe('island');
     expect(lyricsKindFromParams({ kind: 'unlock' })).toBeUndefined();
+    expect(loginProviderFromParams({ loginProvider: 'qq' })).toBe('qq');
+    expect(loginProviderFromParams({ loginProvider: 'wechat' })).toBe('wechat');
+    expect(loginProviderFromParams({ loginProvider: 'phone' })).toBeUndefined();
   });
 
   it('maps lyrics create geometry onto window roles', () => {
@@ -325,6 +329,121 @@ describe('IpcRouter host intercepts', () => {
     await expect(router.invoke(1, { method: DIALOG_PICK_SAVE })).resolves.toEqual({
       ok: true,
       result: null,
+    });
+  });
+
+  it('intercepts qqmusic_auth_oauth_start with an injected OAuth popup', async () => {
+    const prepared = {
+      attemptId: 'attempt-0',
+      url: 'https://graph.qq.com/oauth2.0/show?client_id=1',
+      navigationAllowlist: ['https://graph.qq.com/**'],
+      callbackMatcher: { urlPrefix: 'https://y.qq.com/portal/wx_redirect.html' },
+    };
+    const snapshot = {
+      state: 'waiting-for-confirmation',
+      attemptId: 'attempt-0',
+      ownerLeaseId: 'lease-0',
+      expiresAtMs: 1,
+      pollAfterMs: 1000,
+      profile: null,
+      entitlement: null,
+      revision: 1,
+      capabilities: {
+        favoritesRead: true,
+        favoritesWrite: true,
+        playlistRead: true,
+        playlistWrite: true,
+        recentHistoryRead: true,
+      },
+    };
+    const oauthWindow = {
+      webContents: {
+        on: vi.fn(),
+        setWindowOpenHandler: vi.fn(),
+      },
+      loadURL: vi.fn(),
+      close: vi.fn(),
+      on: vi.fn(),
+    };
+    const createWindow = vi.fn(() => oauthWindow);
+    const fromPartition = vi.fn(() => ({ partition: 'oauth-session' }));
+    const invoke = vi.fn(async (method) => {
+      if (method === 'auth_oauth_prepare') {
+        return prepared;
+      }
+      if (method === 'qqmusic_account_snapshot') {
+        return snapshot;
+      }
+      return { ok: true };
+    });
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      oauth: {
+        createWindow,
+        fromPartition,
+        isPackaged: true,
+        invoke,
+      },
+    });
+    expect(createWindow).not.toHaveBeenCalled();
+    expect(fromPartition).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(
+      router.invoke(1, { method: 'qqmusic_auth_oauth_start', params: { loginProvider: 'qq' } }),
+    ).resolves.toEqual({ ok: true, result: snapshot });
+    expect(invoke).toHaveBeenCalledWith('auth_oauth_prepare', { providerKind: 'qq' });
+    expect(fromPartition).toHaveBeenCalledWith('oauth:attempt-0', { cache: false });
+    expect(String(fromPartition.mock.calls[0]?.[0]).startsWith('persist:')).toBe(false);
+    expect(createWindow).toHaveBeenCalledOnce();
+    expect(createWindow.mock.calls[0]?.[0]).toMatchObject({
+      width: 480,
+      height: 640,
+      show: true,
+    });
+    expect(createWindow.mock.calls[0]?.[0].webPreferences).not.toHaveProperty('preload');
+    expect(oauthWindow.loadURL).toHaveBeenCalledWith(prepared.url);
+    expect(invoke).toHaveBeenCalledWith('qqmusic_account_snapshot');
+
+    invoke.mockClear();
+    createWindow.mockClear();
+    await expect(
+      router.invoke(2, { method: 'qqmusic_auth_oauth_start', params: { loginProvider: 'qq' } }),
+    ).resolves.toEqual({
+      ok: false,
+      error: hostDenied('qqmusic_auth_oauth_start', 'lyrics-desktop'),
+    });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(createWindow).not.toHaveBeenCalled();
+  });
+
+  it('leaves qqmusic_auth_oauth_start unimplemented until OAuth deps are injected', async () => {
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    await expect(
+      router.invoke(1, { method: 'qqmusic_auth_oauth_start', params: { loginProvider: 'qq' } }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'host.denied',
+        message: 'qqmusic_auth_oauth_start is implemented by the host',
+        retryable: false,
+      },
     });
   });
 

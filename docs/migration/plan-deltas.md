@@ -1270,3 +1270,20 @@ the enforced provenance ledger.
   (`qqmusic_auth_oauth_start`) is not implemented here (ACCT-01). Electron
   stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No Playwright.
+
+## P8 ACCT-01: wire oauth-window (no auto-open)
+
+- `qqmusic_auth_oauth_start` is intercepted in `createHostHandlers`. The
+  renderer invoke (user clicked QQ/WX login) calls `openOAuthWindow` with
+  injected `BrowserWindow` + `session.fromPartition`. Partition is ephemeral
+  `oauth:{attemptId}` (not `persist:`). No preload. No auto-open at boot.
+- `auth_oauth_prepare` / `complete` / `cancel` go through `CoreClient.invoke`
+  (tests inject fakes). After the popup opens, Main returns
+  `qqmusic_account_snapshot` so the renderer gets the waiting-for-confirmation
+  snapshot (prepare's snapshot is serde-skipped on the protocol).
+- `YAQMC_DESKTOP_SMOKE=1` still registers the handler but refuses to construct
+  a real BrowserWindow. Unit tests never open a display.
+- Tray/shortcuts/unlock/geometry restore/linux-graphics wiring is unchanged.
+  QQ/WX live login remains maintainer LIVE VERIFY — not claimed green.
+- No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
+  P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.

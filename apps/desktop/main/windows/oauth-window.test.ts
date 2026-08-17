@@ -304,10 +304,15 @@ describe('oauth navigation and lifecycle', () => {
   });
 });
 
-describe('unwired status', () => {
-  it('is not imported from Main index.ts', () => {
-    const index = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../index.ts'), 'utf8');
-    expect(index).not.toContain('oauth-window');
+describe('wired status', () => {
+  it('is not auto-opened from Main index.ts', () => {
+    const index = readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../index.ts'),
+      'utf8',
+    );
+    expect(index).toContain('session.fromPartition');
+    expect(index).toContain('createOAuthBrowserWindow');
+    expect(index).not.toContain('openOAuthWindow');
   });
 });
 
