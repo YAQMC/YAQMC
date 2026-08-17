@@ -444,6 +444,14 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs, no HWND/SMTC.
 
+## P4 SEC-01: CSP directive mapping audit
+
+- The `app://` response header is the FACT `tauri.conf.json` CSP with scheme mapping only.
+  §28.3's `img-src … https:` wildcard and extra `media-src` are not applied (they loosen
+  FACT; renderer audio is unused). Exact header is locked in `protocol.test.ts`.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,

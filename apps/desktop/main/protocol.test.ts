@@ -18,19 +18,16 @@ function tempRoot(): string {
 
 describe('app:// protocol', () => {
   it('maps FACT Tauri asset/ipc schemes without loosening img-src', () => {
-    expect(APP_CSP).toContain("default-src 'self'");
-    expect(APP_CSP).toContain('img-src ');
-    expect(APP_CSP).toContain('app:');
-    expect(APP_CSP).toContain('https://y.gtimg.cn');
-    expect(APP_CSP).toContain('https://qpic.y.qq.com');
-    expect(APP_CSP).toContain("worker-src 'self' blob:");
-    expect(APP_CSP).toContain('connect-src app: http://127.0.0.1:19532');
+    expect(APP_CSP).toBe(
+      "default-src 'self'; img-src 'self' data: app: https://y.gtimg.cn https://qpic.y.qq.com https://q.qlogo.cn https://thirdwx.qlogo.cn https://thirdqq.qlogo.cn https://y.qq.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src app: http://127.0.0.1:19532; worker-src 'self' blob:",
+    );
     expect(APP_CSP).not.toContain('asset:');
     expect(APP_CSP).not.toContain('ipc:');
     expect(APP_CSP).not.toContain('asset.localhost');
     expect(APP_CSP).not.toContain('ipc.localhost');
     expect(APP_CSP).not.toMatch(/(?:^|[; ])https:(?:;|$)/);
     expect(APP_CSP).not.toContain('unsafe-eval');
+    expect(APP_CSP).not.toContain('media-src');
   });
 
   it('resolves index.html under the app host and rejects traversal', () => {
