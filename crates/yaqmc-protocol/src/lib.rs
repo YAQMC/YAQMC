@@ -4,6 +4,7 @@ mod envelope;
 mod error;
 mod framing;
 mod handshake;
+mod registry;
 mod transport;
 
 pub use envelope::{
@@ -15,6 +16,9 @@ pub use framing::{read_frame, write_frame, DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_H
 pub use handshake::{
     core_handshake, core_handshake_with_timeout, host_handshake, host_handshake_with_timeout,
     HANDSHAKE_TIMEOUT, SHUTDOWN_TIMEOUT,
+};
+pub use registry::{
+    authorize, method, methods, AclDenied, MethodOwner, MethodSpec, TimeoutClass, WindowOrigin,
 };
 pub use transport::{duplex_pair, CoreTransport, DuplexTransport, StdioTransport};
 

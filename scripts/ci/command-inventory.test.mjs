@@ -55,3 +55,48 @@ test('committed command inventory is generated from the live handler scan', () =
   );
   assert.equal(committed, commandInventoryMarkdown(repositoryRoot));
 });
+
+test('protocol registry names and owners match the inventory and capability origin classes', () => {
+  const inventory = collectCommandInventory(repositoryRoot);
+  const registry = readFileSync(
+    path.join(repositoryRoot, 'crates/yaqmc-protocol/src/registry.rs'),
+    'utf8',
+  );
+  const specs = [
+    ...registry.matchAll(
+      /spec\(\s*"([a-z][a-z0-9_]*)"\s*,\s*MethodOwner::(Core|Host)\s*,\s*OriginClass::(Main|Surfaces|Unlock)\s*,?\s*\)/g,
+    ),
+  ].map((match) => ({
+    name: match[1],
+    owner: match[2] === 'Host' ? 'Electron Main' : 'Core',
+    origins: match[3],
+  }));
+  assert.deepEqual(
+    specs.map((spec) => spec.name),
+    inventory.rows.map((row) => row.name),
+  );
+  assert.deepEqual(
+    specs.map((spec) => spec.owner),
+    inventory.rows.map((row) => row.after),
+  );
+
+  function allows(relative) {
+    return new Set(
+      [
+        ...readFileSync(path.join(repositoryRoot, relative), 'utf8').matchAll(
+          /"allow-([a-z0-9-]+)"/g,
+        ),
+      ].map((match) => match[1].replaceAll('-', '_')),
+    );
+  }
+  const surfaces = allows('src-tauri/permissions/lyrics-surface-application.toml');
+  const unlock = allows('src-tauri/permissions/lyrics-surface-unlock-control.toml');
+  for (const spec of specs) {
+    const expected = unlock.has(spec.name)
+      ? 'Unlock'
+      : surfaces.has(spec.name)
+        ? 'Surfaces'
+        : 'Main';
+    assert.equal(spec.origins, expected, spec.name);
+  }
+});
