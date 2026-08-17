@@ -5,18 +5,23 @@
 Tauri 命令、本地 HTTP、托盘、快捷键、MPRIS 和 SMTC 都只是 Rust `PlayerService` 的适配器，不持有
 独立队列或播放状态。
 
+原生 MPRIS/SMTC 由 Core 持有。Tauri 在启用任何原生回调前订阅封闭的 Core `HostCommand` 总线，并注入不透明的
+可选 Win32 HWND 与 Tokio runtime handle。Core 不依赖 Tauri、WebKit、`raw-window-handle`、provider、Node、Electron
+或 N-API；`Raise`/`Quit` 只能发布 host command，显示/聚焦窗口和退出进程仍由 Tauri 执行。
+
 ## Linux MPRIS 2.2
 
 通过 `mpris-server`/zbus 在 `/org/mpris/MediaPlayer2` 提供标准 Root 与 Player 接口，支持播放、暂停、
 停止、上下首、seek、音量、循环和随机。元数据只含稳定哈希 TrackId、标题、艺人、专辑、时长和安全
-封面 URL，绝不导出签名播放地址。`Raise` 显示主窗口，`Quit` 退出。
+封面 URL，绝不导出签名播放地址。`Raise`/`Quit` 发布 host command，由 Tauri 显示主窗口或退出。
 
-Arch 基线只证明服务成功启动，尚未记录 `playerctl` 或桌面 shell 的真实控制结果。
+Arch 基线只证明服务成功启动，尚未记录 `playerctl` 或桌面 shell 的真实控制结果；这仍是 HUMAN/platform gate。
 
 ## Windows SMTC
 
-SMTC 绑定真实主窗口 HWND。系统的播放、暂停、上下首、停止、相对/绝对 seek 与音量回调都进入同一
-`PlayerService`；曲目、时长、封面和状态再投影给 Windows。进度更新会节流。
+SMTC 通过 Tauri 注入的、不透明的主窗口 HWND 绑定。系统的播放、暂停、上下首、停止、相对/绝对 seek 与音量回调
+使用注入的 runtime handle 进入同一 `PlayerService`；`Raise`/`Quit` 发布 host command。曲目、时长、封面和状态
+再投影给 Windows。进度更新会节流；真实 SMTC 硬件交互仍是 HUMAN/platform gate。
 
 ## 托盘、关闭与歌词恢复
 

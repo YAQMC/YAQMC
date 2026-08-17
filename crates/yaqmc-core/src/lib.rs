@@ -17,6 +17,10 @@ pub mod qmc;
 pub mod qqmusic;
 pub mod storage;
 pub mod streaming;
+pub mod system_media;
+
+#[cfg(test)]
+mod system_media_runtime_tests;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{error::Error, fmt, path::PathBuf};
@@ -44,6 +48,40 @@ pub struct CoreConfig {
 pub enum HostCommand {
     RaiseMainWindow,
     Quit,
+}
+
+/// Closed, non-blocking sender for the host-control commands Core may request.
+///
+/// The host subscribes before enabling any native callback source. A missing
+/// subscriber is deliberately logged and ignored: losing a raise/quit delivery
+/// must not turn a player or native-media callback into an application error.
+#[derive(Clone)]
+pub struct HostCommandPublisher {
+    sender: broadcast::Sender<HostCommand>,
+}
+
+impl Default for HostCommandPublisher {
+    fn default() -> Self {
+        let (sender, _) = broadcast::channel(HOST_COMMAND_CHANNEL_CAPACITY);
+        Self { sender }
+    }
+}
+
+impl HostCommandPublisher {
+    pub fn subscribe(&self) -> broadcast::Receiver<HostCommand> {
+        self.sender.subscribe()
+    }
+
+    /// Returns whether at least one host subscriber accepted the command.
+    pub fn publish(&self, command: HostCommand) -> bool {
+        match self.sender.send(command) {
+            Ok(_) => true,
+            Err(_) => {
+                tracing::debug!(target: "host.command", ?command, "host command had no active subscriber");
+                false
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,7 +112,7 @@ impl Error for HostCommandRequestError {}
 
 pub struct CoreHandle {
     config: CoreConfig,
-    host_command_sender: broadcast::Sender<HostCommand>,
+    host_command_publisher: HostCommandPublisher,
     shutdown_state: watch::Sender<bool>,
     is_shutdown: AtomicBool,
 }
@@ -85,7 +123,11 @@ impl CoreHandle {
     }
 
     pub fn subscribe_host_commands(&self) -> broadcast::Receiver<HostCommand> {
-        self.host_command_sender.subscribe()
+        self.host_command_publisher.subscribe()
+    }
+
+    pub fn host_command_publisher(&self) -> HostCommandPublisher {
+        self.host_command_publisher.clone()
     }
 
     pub fn subscribe_shutdown(&self) -> watch::Receiver<bool> {
@@ -96,10 +138,10 @@ impl CoreHandle {
         &self,
         command: HostCommand,
     ) -> Result<(), HostCommandRequestError> {
-        self.host_command_sender
-            .send(command)
-            .map(|_| ())
-            .map_err(|_| HostCommandRequestError::NoSubscribers)
+        self.host_command_publisher
+            .publish(command)
+            .then_some(())
+            .ok_or(HostCommandRequestError::NoSubscribers)
     }
 
     pub fn is_shutdown(&self) -> bool {
@@ -114,12 +156,11 @@ impl CoreHandle {
 }
 
 pub fn bootstrap(config: CoreConfig) -> Result<CoreHandle, CoreBootstrapError> {
-    let (host_command_sender, _) = broadcast::channel(HOST_COMMAND_CHANNEL_CAPACITY);
     let (shutdown_state, _) = watch::channel(false);
 
     Ok(CoreHandle {
         config,
-        host_command_sender,
+        host_command_publisher: HostCommandPublisher::default(),
         shutdown_state,
         is_shutdown: AtomicBool::new(false),
     })

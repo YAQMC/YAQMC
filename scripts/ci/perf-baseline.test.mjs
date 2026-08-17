@@ -32,6 +32,7 @@ const FACT_FILES = [
   'crates/yaqmc-core/src/credentials.rs',
   'crates/yaqmc-core/src/qqmusic/auth.rs',
   'crates/yaqmc-core/src/local_api.rs',
+  'crates/yaqmc-core/src/system_media.rs',
   'docs/migration/command-inventory.md',
 ];
 

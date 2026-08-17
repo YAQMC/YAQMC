@@ -340,8 +340,40 @@ function collectKeyring(repositoryRoot) {
   };
 }
 
+function assertSystemMediaCoreOwnership(repositoryRoot) {
+  const core = read(repositoryRoot, 'crates/yaqmc-core/src/system_media.rs');
+  const tauri = read(repositoryRoot, 'src-tauri/src/lib.rs');
+  for (const marker of [
+    'pub struct SystemMediaStartConfig',
+    'pub windows_hwnd: Option<isize>',
+    'pub windows_start_error: Option<String>',
+    'pub runtime: tokio::runtime::Handle',
+    'pub host_commands: HostCommandPublisher',
+    'HostCommand::RaiseMainWindow',
+    'HostCommand::Quit',
+  ]) {
+    if (!core.includes(marker)) {
+      throw new Error(`Core system-media ownership contract is missing ${marker}`);
+    }
+  }
+  if (/tauri::|\bAppHandle\b|\bWebviewWindow\b|\braw_window_handle\b/.test(core)) {
+    throw new Error('Core system-media source must not depend on a Tauri or raw-window host type');
+  }
+  if (!tauri.includes('pub use yaqmc_core::system_media::*;')) {
+    throw new Error('Tauri system-media compatibility re-export is missing');
+  }
+  const subscription = tauri.indexOf(
+    'subscribe_host_commands(app.handle().clone(), host_commands.subscribe());',
+  );
+  const initialization = tauri.indexOf('SystemMediaIntegration::start(');
+  if (subscription < 0 || initialization < 0 || subscription > initialization) {
+    throw new Error('Tauri must subscribe to host commands before system-media initialization');
+  }
+}
+
 export function collectRepositoryFacts(repositoryRoot) {
   const { runtimeFacts, dataPaths } = collectRuntimeAndPaths(repositoryRoot);
+  assertSystemMediaCoreOwnership(repositoryRoot);
   return {
     toolchains: collectToolchains(repositoryRoot),
     runtimeFacts,
