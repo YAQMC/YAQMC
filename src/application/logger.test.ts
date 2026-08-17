@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as TauriCore from '@tauri-apps/api/core';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
-  ...(await importOriginal<typeof TauriCore>()),
-  invoke: invokeMock,
-  isTauri: () => true,
+vi.mock('./yaqmc-runtime', () => ({
+  getYaqmcClient: () => ({
+    invoke: invokeMock,
+  }),
 }));
 
 vi.mock('./native-player-runtime', () => ({
