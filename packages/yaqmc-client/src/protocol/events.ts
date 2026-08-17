@@ -1,6 +1,86 @@
-/** Filled in CLIENT-02 from ADR-004 channel names. */
-export const CORE_EVENT_CHANNELS = [] as const;
-export const HOST_EVENT_CHANNELS = [] as const;
+import type { LyricDocument, LyricSurfaceProjection, PlayerSnapshot } from './dto';
 
-export type ChannelName =
-  (typeof CORE_EVENT_CHANNELS)[number] | (typeof HOST_EVENT_CHANNELS)[number];
+export const CHANNEL_API_EVENT = 'api://event';
+export const CHANNEL_PLAYER_SNAPSHOT = 'player://snapshot';
+export const CHANNEL_LYRICS_PROJECTION = 'lyrics://projection';
+export const CHANNEL_LYRICS_DOCUMENT = 'lyrics://document';
+export const CHANNEL_PLUGIN_CHANGED = 'plugin://changed';
+export const CHANNEL_PREFERENCES_CHANGED = 'preferences://changed';
+export const CHANNEL_HOST_COMMAND = 'host://command';
+export const CHANNEL_CORE_LOG = 'core://log';
+export const CHANNEL_ACCOUNT_CHANGED = 'account://changed';
+export const CHANNEL_LYRICS_SURFACE_CLOSED = 'lyrics://surface-closed';
+export const CHANNEL_APP_OPEN_SETTINGS = 'app://open-settings';
+
+export const CORE_EVENT_CHANNELS = [
+  CHANNEL_API_EVENT,
+  CHANNEL_PLAYER_SNAPSHOT,
+  CHANNEL_LYRICS_PROJECTION,
+  CHANNEL_LYRICS_DOCUMENT,
+  CHANNEL_PLUGIN_CHANGED,
+  CHANNEL_PREFERENCES_CHANGED,
+  CHANNEL_HOST_COMMAND,
+  CHANNEL_CORE_LOG,
+  CHANNEL_ACCOUNT_CHANGED,
+] as const;
+
+export const HOST_EVENT_CHANNELS = [
+  CHANNEL_LYRICS_SURFACE_CLOSED,
+  CHANNEL_APP_OPEN_SETTINGS,
+] as const;
+
+export type CoreChannelName = (typeof CORE_EVENT_CHANNELS)[number];
+export type HostChannelName = (typeof HOST_EVENT_CHANNELS)[number];
+export type ChannelName = CoreChannelName | HostChannelName;
+
+export interface ApiEventPayload {
+  version: number;
+  type: string;
+  timestampMs: number;
+  data: unknown;
+}
+
+export interface PluginChangedPayload {
+  pluginId: string;
+  enabled: boolean;
+}
+
+export interface PreferencesChangedPayload {
+  key: string;
+}
+
+export interface HostCommandPayload {
+  command: 'raise' | 'quit';
+}
+
+export interface CoreLogPayload {
+  level: string;
+  target: string;
+  message: string;
+}
+
+export interface AccountChangedPayload {
+  signedIn: boolean;
+}
+
+export interface LyricsSurfaceClosedPayload {
+  surface: string;
+}
+
+export interface OpenSettingsPayload {
+  section: string;
+}
+
+export interface ChannelPayload {
+  [CHANNEL_API_EVENT]: ApiEventPayload;
+  [CHANNEL_PLAYER_SNAPSHOT]: PlayerSnapshot;
+  [CHANNEL_LYRICS_PROJECTION]: LyricSurfaceProjection;
+  [CHANNEL_LYRICS_DOCUMENT]: LyricDocument;
+  [CHANNEL_PLUGIN_CHANGED]: PluginChangedPayload;
+  [CHANNEL_PREFERENCES_CHANGED]: PreferencesChangedPayload;
+  [CHANNEL_HOST_COMMAND]: HostCommandPayload;
+  [CHANNEL_CORE_LOG]: CoreLogPayload;
+  [CHANNEL_ACCOUNT_CHANGED]: AccountChangedPayload;
+  [CHANNEL_LYRICS_SURFACE_CLOSED]: LyricsSurfaceClosedPayload;
+  [CHANNEL_APP_OPEN_SETTINGS]: OpenSettingsPayload;
+}
