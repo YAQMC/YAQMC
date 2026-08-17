@@ -46,6 +46,22 @@ export type SupervisorOptions = SupervisorPaths & {
   spawn?: SpawnCore;
   processProbe?: ProcessProbe;
   integrity?: CoreIntegrityPolicy;
+  autoRestart?: boolean;
+  pingIntervalMs?: number;
+  pingMissLimit?: number;
+  watchdogPing?: () => Promise<void>;
+};
+
+export const CORE_PING_INTERVAL_MS = 5_000;
+export const CORE_PING_MISS_LIMIT = 3;
+export const CORE_RESTART_BACKOFF_MS = [500, 2_000, 8_000] as const;
+export const CORE_RESTART_WINDOW_MS = 60_000;
+export const CORE_MAX_RESTARTS_PER_WINDOW = 3;
+
+export type CoreRuntimeStatus = 'down' | 'restarting' | 'ready' | 'safe-mode';
+
+export type CoreStatusPayload = {
+  status: CoreRuntimeStatus;
 };
 
 export type CoreBinaryLookup = {
@@ -166,6 +182,14 @@ export class CoreSupervisor extends EventEmitter {
   private identity: CoreIdentity | undefined;
   private stderrChunks: Buffer[] = [];
   private stderrBytes = 0;
+  private stopping = false;
+  private allowRestart = false;
+  private restartInFlight = false;
+  private crashAt: number[] = [];
+  private lastPongAt = 0;
+  private pingTimer: ReturnType<typeof setInterval> | undefined;
+  private pingInFlight = false;
+  private runtimeStatus: CoreRuntimeStatus = 'down';
 
   constructor(private readonly options: SupervisorOptions) {
     super();
@@ -182,11 +206,17 @@ export class CoreSupervisor extends EventEmitter {
     return this.identity;
   }
 
+  get status(): CoreRuntimeStatus {
+    return this.runtimeStatus;
+  }
+
   stderrSnapshot(): Buffer {
     return Buffer.concat(this.stderrChunks);
   }
 
   async start(): Promise<CoreIdentity> {
+    this.stopping = false;
+    this.crashAt = [];
     for (const dir of [
       this.options.dataDir,
       this.options.cacheDir,
@@ -195,51 +225,18 @@ export class CoreSupervisor extends EventEmitter {
     ]) {
       mkdirSync(dir, { recursive: true });
     }
-    reapStaleCorePid(this.options.dataDir, this.options.processProbe ?? defaultProcessProbe());
-    verifyCoreBinary(this.options.binary, this.options.integrity ?? 'optional');
-    const spawnCore = this.options.spawn ?? spawn;
-    const child = spawnCore(this.options.binary, [], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      env: buildCoreSpawnEnv({
-        parentEnv: this.options.parentEnv,
-        extraEnv: this.options.extraEnv,
-        dataDir: this.options.dataDir,
-        cacheDir: this.options.cacheDir,
-        logDir: this.options.logDir,
-        configDir: this.options.configDir,
-        channel: this.options.channel,
-      }),
-    });
-    this.child = child;
-    if (!child.stdin || !child.stdout || !child.stderr) {
-      child.kill();
-      throw new Error('yaqmc-core spawn did not provide stdio pipes');
-    }
-    child.stderr.on('data', (chunk: Buffer) => {
-      this.pushStderr(chunk);
-    });
-    child.on('exit', (code, signal) => {
-      this.emit('exit', { code, signal });
-    });
-    const client = new CoreClient({
-      readable: child.stdout as Readable,
-      writable: child.stdin as Writable,
-    });
-    this.clientInstance = client;
-    try {
-      this.identity = await hostHandshake(client, createAttachMessage(this.options.hostVersion), {
-        timeoutMs: this.options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS,
-        expectedCoreVersion: this.options.expectedCoreVersion,
-      });
-      return this.identity;
-    } catch (error) {
-      child.kill();
-      throw error;
-    }
+    this.identity = await this.spawnAndHandshake();
+    this.allowRestart = this.options.autoRestart !== false;
+    this.emitStatus('ready');
+    this.emit('ready', { restart: false });
+    this.startWatchdog();
+    return this.identity;
   }
 
   async stop(reason: ShutdownReason = 'quit'): Promise<void> {
+    this.stopping = true;
+    this.allowRestart = false;
+    this.stopWatchdog();
     const child = this.child;
     const client = this.clientInstance;
     if (!child || !client) {
@@ -266,6 +263,150 @@ export class CoreSupervisor extends EventEmitter {
     client.close();
   }
 
+  private async spawnAndHandshake(): Promise<CoreIdentity> {
+    reapStaleCorePid(this.options.dataDir, this.options.processProbe ?? defaultProcessProbe());
+    verifyCoreBinary(this.options.binary, this.options.integrity ?? 'optional');
+    const spawnCore = this.options.spawn ?? spawn;
+    const child = spawnCore(this.options.binary, [], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: buildCoreSpawnEnv({
+        parentEnv: this.options.parentEnv,
+        extraEnv: this.options.extraEnv,
+        dataDir: this.options.dataDir,
+        cacheDir: this.options.cacheDir,
+        logDir: this.options.logDir,
+        configDir: this.options.configDir,
+        channel: this.options.channel,
+      }),
+    });
+    this.child = child;
+    if (!child.stdin || !child.stdout || !child.stderr) {
+      child.kill();
+      throw new Error('yaqmc-core spawn did not provide stdio pipes');
+    }
+    child.stderr.on('data', (chunk: Buffer) => {
+      this.pushStderr(chunk);
+    });
+    child.on('exit', (code, signal) => {
+      this.emit('exit', { code, signal });
+      this.onChildExit();
+    });
+    const client = new CoreClient({
+      readable: child.stdout as Readable,
+      writable: child.stdin as Writable,
+    });
+    this.clientInstance = client;
+    try {
+      this.identity = await hostHandshake(client, createAttachMessage(this.options.hostVersion), {
+        timeoutMs: this.options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS,
+        expectedCoreVersion: this.options.expectedCoreVersion,
+      });
+      return this.identity;
+    } catch (error) {
+      child.kill();
+      throw error;
+    }
+  }
+
+  private onChildExit(): void {
+    this.stopWatchdog();
+    this.clientInstance = undefined;
+    if (this.stopping || !this.allowRestart || this.restartInFlight) {
+      return;
+    }
+    void this.restartAfterCrash();
+  }
+
+  private async restartAfterCrash(): Promise<void> {
+    this.restartInFlight = true;
+    try {
+      while (!this.stopping && this.allowRestart) {
+        this.emitStatus('down');
+        const now = Date.now();
+        this.crashAt = this.crashAt.filter((stamp) => now - stamp < CORE_RESTART_WINDOW_MS);
+        this.crashAt.push(now);
+        if (this.crashAt.length > CORE_MAX_RESTARTS_PER_WINDOW) {
+          this.allowRestart = false;
+          this.emitStatus('safe-mode');
+          return;
+        }
+        const delay =
+          CORE_RESTART_BACKOFF_MS[
+            Math.min(this.crashAt.length - 1, CORE_RESTART_BACKOFF_MS.length - 1)
+          ] ?? CORE_RESTART_BACKOFF_MS[0];
+        this.emitStatus('restarting');
+        await sleep(delay);
+        if (this.stopping) {
+          return;
+        }
+        try {
+          await this.spawnAndHandshake();
+          this.emitStatus('ready');
+          this.emit('ready', { restart: true });
+          this.startWatchdog();
+          return;
+        } catch {
+          // Handshake failed; loop counts another crash.
+        }
+      }
+    } finally {
+      this.restartInFlight = false;
+    }
+  }
+
+  private startWatchdog(): void {
+    this.stopWatchdog();
+    if (this.options.autoRestart === false) {
+      return;
+    }
+    this.lastPongAt = Date.now();
+    const interval = this.options.pingIntervalMs ?? CORE_PING_INTERVAL_MS;
+    this.pingTimer = setInterval(() => {
+      void this.tickPing();
+    }, interval);
+  }
+
+  private async tickPing(): Promise<void> {
+    if (this.stopping) {
+      return;
+    }
+    const interval = this.options.pingIntervalMs ?? CORE_PING_INTERVAL_MS;
+    const missLimit = this.options.pingMissLimit ?? CORE_PING_MISS_LIMIT;
+    if (Date.now() - this.lastPongAt >= interval * missLimit) {
+      this.child?.kill();
+      return;
+    }
+    if (this.pingInFlight || !this.clientInstance) {
+      return;
+    }
+    this.pingInFlight = true;
+    try {
+      const ping =
+        this.options.watchdogPing ??
+        (() => this.clientInstance?.invoke('core_ping').then(() => undefined) ?? Promise.resolve());
+      await ping();
+      this.lastPongAt = Date.now();
+    } catch {
+      // Missed ping; lastPongAt stays so three 5s gaps fail closed.
+    } finally {
+      this.pingInFlight = false;
+    }
+  }
+
+  private stopWatchdog(): void {
+    if (this.pingTimer !== undefined) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = undefined;
+    }
+    this.pingInFlight = false;
+  }
+
+  private emitStatus(status: CoreRuntimeStatus): void {
+    this.runtimeStatus = status;
+    this.emit('status', { status } satisfies CoreStatusPayload);
+  }
+
   private pushStderr(chunk: Buffer): void {
     this.stderrChunks.push(chunk);
     this.stderrBytes += chunk.length;
@@ -284,6 +425,12 @@ export class CoreSupervisor extends EventEmitter {
       }
     }
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function nextMessage(

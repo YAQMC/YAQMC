@@ -2,7 +2,14 @@ import { app, BrowserWindow, ipcMain, protocol, session, webContents } from 'ele
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CoreSupervisor, resolveCoreLaunch } from './core/supervisor';
+import {
+  CHANNEL_HOST_CORE_STATUS,
+  CHANNEL_LYRICS_DOCUMENT,
+  CHANNEL_LYRICS_PROJECTION,
+  CHANNEL_PLAYER_SNAPSHOT,
+} from '@yaqmc/client';
+import { resyncAfterCoreRestart } from './core/resync';
+import { CoreSupervisor, resolveCoreLaunch, type CoreStatusPayload } from './core/supervisor';
 import { resolveCorePaths } from './core/paths';
 import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
 import { loadMethodAclFromFile } from './ipc/channels';
@@ -106,10 +113,34 @@ function createMainWindow(root: string): BrowserWindow {
   return window;
 }
 
+function fanoutEvent(channel: string, payload: unknown): void {
+  router.fanout(channel, payload, (id, eventFrame) => {
+    webContents.fromId(id)?.send(EVENT_CHANNEL, eventFrame);
+  });
+}
+
 function bindCoreEvents(): void {
   supervisor?.client.on('event', (frame: { channel: string; payload: unknown }) => {
-    router.fanout(frame.channel, frame.payload, (id, eventFrame) => {
-      webContents.fromId(id)?.send(EVENT_CHANNEL, eventFrame);
+    fanoutEvent(frame.channel, frame.payload);
+  });
+}
+
+function attachSupervisor(instance: CoreSupervisor): void {
+  instance.on('status', (payload: CoreStatusPayload) => {
+    fanoutEvent(CHANNEL_HOST_CORE_STATUS, payload);
+  });
+  instance.on('ready', (info: { restart: boolean }) => {
+    router.setClient(instance.client);
+    bindCoreEvents();
+    if (!info.restart) {
+      return;
+    }
+    void resyncAfterCoreRestart(instance.client).then((pulled) => {
+      fanoutEvent(CHANNEL_PLAYER_SNAPSHOT, pulled.snapshot);
+      fanoutEvent(CHANNEL_LYRICS_PROJECTION, pulled.projection);
+      if (pulled.document) {
+        fanoutEvent(CHANNEL_LYRICS_DOCUMENT, pulled.document);
+      }
     });
   });
 }
@@ -146,10 +177,8 @@ function startSupervisor(): Promise<void> {
     hostVersion: app.getVersion(),
     expectedCoreVersion: app.getVersion(),
   });
-  return supervisor.start().then(() => {
-    router.setClient(supervisor?.client);
-    bindCoreEvents();
-  });
+  attachSupervisor(supervisor);
+  return supervisor.start().then(() => undefined);
 }
 
 ipcMain.handle(INVOKE_CHANNEL, async (event, request: InvokeRequest) => {

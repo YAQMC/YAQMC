@@ -21,6 +21,7 @@ export {
   CHANNEL_APP_OPEN_SETTINGS,
   CHANNEL_CORE_LOG,
   CHANNEL_HOST_COMMAND,
+  CHANNEL_HOST_CORE_STATUS,
   CHANNEL_LYRICS_DOCUMENT,
   CHANNEL_LYRICS_PROJECTION,
   CHANNEL_LYRICS_SURFACE_CLOSED,
@@ -32,6 +33,8 @@ export {
   type ChannelName,
   type ChannelPayload,
   type CoreChannelName,
+  type CoreStatus,
+  type CoreStatusPayload,
   type HostChannelName,
 } from './protocol/events';
 export {

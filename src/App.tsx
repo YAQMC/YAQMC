@@ -34,6 +34,7 @@ import { SearchPage } from './pages/SearchPage';
 import { AppBackground } from './components/AppBackground';
 import { FpsOverlay } from './components/FpsOverlay';
 import { PluginNoticeHost } from './components/PluginNoticeHost';
+import { CoreStatusBanner } from './components/CoreStatusBanner';
 import { usePreferencesRuntime, usePreferencesStore } from './application/preferences';
 import {
   lyricsEscapeAction,
@@ -445,6 +446,7 @@ export default function App() {
         </div>
         <PlayerBar onCloseLyrics={closeLyrics} onToggleQueue={toggleQueue} />
         <PluginNoticeHost />
+        <CoreStatusBanner />
         <QueuePanel />
         <LyricsPanel
           focus={focusSidebarCollapsed}

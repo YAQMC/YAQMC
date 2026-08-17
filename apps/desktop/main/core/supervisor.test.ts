@@ -19,6 +19,9 @@ import {
 import { corePidPath } from './pid';
 import {
   CoreSupervisor,
+  CORE_PING_INTERVAL_MS,
+  CORE_PING_MISS_LIMIT,
+  CORE_RESTART_BACKOFF_MS,
   STDERR_RING_BYTES,
   coreBinaryName,
   createAttachMessage,
@@ -26,6 +29,7 @@ import {
   hostPlatformKind,
   resolveCoreLaunch,
   tryResolveCoreBinary,
+  type CoreStatusPayload,
   type SpawnCore,
 } from './supervisor';
 
@@ -92,6 +96,16 @@ function mockChild() {
     return true;
   };
   return { child, stdout, stdin, stderr };
+}
+
+async function handshakeChild(mock: ReturnType<typeof mockChild> | undefined) {
+  if (!mock) {
+    throw new Error('missing mock core child');
+  }
+  const nextFrame = collectFrames(mock.stdin);
+  pushMessage(mock.stdout, hello);
+  await expect(nextFrame()).resolves.toMatchObject({ kind: 'attach' });
+  pushMessage(mock.stdout, { kind: 'ready' });
 }
 
 describe('hostHandshake', () => {
@@ -310,6 +324,7 @@ describe('CoreSupervisor', () => {
       binary: coreBinaryName(),
       hostVersion: '0.1.0',
       expectedCoreVersion: '0.1.0',
+      autoRestart: false,
       ...tempDirs(),
       spawn: spawnCore,
     });
@@ -346,6 +361,7 @@ describe('CoreSupervisor', () => {
       binary: coreBinaryName(),
       hostVersion: '0.1.0',
       expectedCoreVersion: '0.1.0',
+      autoRestart: false,
       ...dirs,
       parentEnv: {
         USERPROFILE: 'C:\\Users\\test',
@@ -389,6 +405,7 @@ describe('CoreSupervisor', () => {
       binary: coreBinaryName(),
       hostVersion: '0.1.0',
       expectedCoreVersion: '0.1.0',
+      autoRestart: false,
       ...dirs,
       spawn: () => child as unknown as ChildProcess,
       processProbe: {
@@ -413,6 +430,7 @@ describe('CoreSupervisor', () => {
       binary: coreBinaryName(),
       hostVersion: '0.1.0',
       expectedCoreVersion: '0.1.0',
+      autoRestart: false,
       ...dirs,
       spawn: () => {
         throw new Error('must not spawn after ignored pid');
@@ -446,6 +464,7 @@ describe('CoreSupervisor', () => {
       binary,
       integrity: 'required',
       hostVersion: '0.1.0',
+      autoRestart: false,
       ...dirs,
       spawn: () => {
         spawned = true;
@@ -457,6 +476,128 @@ describe('CoreSupervisor', () => {
       message: expect.stringContaining('sha256 mismatch'),
     });
     expect(spawned).toBe(false);
+  });
+
+  it('restarts on unexpected exit with 0.5s backoff and emits ready-after-restart', async () => {
+    vi.useFakeTimers();
+    const children: ReturnType<typeof mockChild>[] = [];
+    const spawnCore: SpawnCore = () => {
+      const mock = mockChild();
+      children.push(mock);
+      return mock.child as unknown as ChildProcess;
+    };
+    const statuses: CoreStatusPayload['status'][] = [];
+    const supervisor = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      ...tempDirs(),
+      spawn: spawnCore,
+    });
+    supervisor.on('status', (payload: CoreStatusPayload) => {
+      statuses.push(payload.status);
+    });
+
+    const started = supervisor.start();
+    await handshakeChild(children.at(-1));
+    await expect(started).resolves.toEqual(hello.core);
+    expect(statuses).toEqual(['ready']);
+
+    const restarted = new Promise<{ restart: boolean }>((resolve) => {
+      supervisor.once('ready', resolve);
+    });
+    children[0]?.child.kill();
+    await Promise.resolve();
+    expect(statuses.slice(1, 3)).toEqual(['down', 'restarting']);
+    await vi.advanceTimersByTimeAsync(CORE_RESTART_BACKOFF_MS[0]);
+    await handshakeChild(children.at(-1));
+    await expect(restarted).resolves.toEqual({ restart: true });
+    expect(supervisor.status).toBe('ready');
+    expect(children).toHaveLength(2);
+    const stopping = supervisor.stop();
+    await vi.advanceTimersByTimeAsync(SHUTDOWN_TIMEOUT_MS);
+    await stopping;
+  });
+
+  it('enters core-safe-mode after more than three restarts in 60s', async () => {
+    vi.useFakeTimers();
+    const children: ReturnType<typeof mockChild>[] = [];
+    const spawnCore: SpawnCore = () => {
+      const mock = mockChild();
+      children.push(mock);
+      return mock.child as unknown as ChildProcess;
+    };
+    const supervisor = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      ...tempDirs(),
+      spawn: spawnCore,
+    });
+    const started = supervisor.start();
+    await handshakeChild(children.at(-1));
+    await expect(started).resolves.toEqual(hello.core);
+
+    for (const delay of CORE_RESTART_BACKOFF_MS) {
+      const ready = new Promise<{ restart: boolean }>((resolve) => {
+        supervisor.once('ready', resolve);
+      });
+      children.at(-1)?.child.kill();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(delay);
+      await handshakeChild(children.at(-1));
+      await expect(ready).resolves.toEqual({ restart: true });
+    }
+
+    children.at(-1)?.child.kill();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(supervisor.status).toBe('safe-mode');
+    expect(children).toHaveLength(4);
+    const stopping = supervisor.stop();
+    await vi.advanceTimersByTimeAsync(SHUTDOWN_TIMEOUT_MS);
+    await stopping;
+  });
+
+  it('kills a hung core after three missed 5s pings and follows the restart path', async () => {
+    vi.useFakeTimers();
+    const children: ReturnType<typeof mockChild>[] = [];
+    const spawnCore: SpawnCore = () => {
+      const mock = mockChild();
+      children.push(mock);
+      return mock.child as unknown as ChildProcess;
+    };
+    const supervisor = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      pingIntervalMs: CORE_PING_INTERVAL_MS,
+      pingMissLimit: CORE_PING_MISS_LIMIT,
+      watchdogPing: () => new Promise(() => undefined),
+      ...tempDirs(),
+      spawn: spawnCore,
+    });
+    const restarted = new Promise<{ restart: boolean }>((resolve) => {
+      supervisor.on('ready', (info: { restart: boolean }) => {
+        if (info.restart) {
+          resolve(info);
+        }
+      });
+    });
+    const started = supervisor.start();
+    await handshakeChild(children.at(-1));
+    await expect(started).resolves.toEqual(hello.core);
+
+    await vi.advanceTimersByTimeAsync(CORE_PING_INTERVAL_MS * CORE_PING_MISS_LIMIT);
+    await Promise.resolve();
+    expect(children[0]?.child.exitCode).toBe(1);
+    await vi.advanceTimersByTimeAsync(CORE_RESTART_BACKOFF_MS[0]);
+    await handshakeChild(children.at(-1));
+    await expect(restarted).resolves.toEqual({ restart: true });
+    expect(children).toHaveLength(2);
+    const stopping = supervisor.stop();
+    await vi.advanceTimersByTimeAsync(SHUTDOWN_TIMEOUT_MS);
+    await stopping;
   });
 });
 
@@ -473,6 +614,7 @@ describe.skipIf(!liveBinary)('live yaqmc-core', () => {
         binary: liveBinary as string,
         hostVersion: '0.1.0',
         expectedCoreVersion: '0.1.0',
+        autoRestart: false,
         handshakeTimeoutMs: HANDSHAKE_TIMEOUT_MS,
         shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
         ...tempDirs(),

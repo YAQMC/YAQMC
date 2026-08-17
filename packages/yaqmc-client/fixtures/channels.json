@@ -12,6 +12,7 @@
   ],
   "host": [
     "lyrics://surface-closed",
-    "app://open-settings"
+    "app://open-settings",
+    "host://core-status"
   ]
 }

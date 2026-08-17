@@ -1992,6 +1992,20 @@ input[type='range']:disabled {
   }
 }
 
+.core-status-banner {
+  position: fixed;
+  z-index: 45;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
 .fps-overlay {
   position: fixed;
   z-index: 60;

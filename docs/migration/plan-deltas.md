@@ -583,3 +583,19 @@ the enforced provenance ledger.
   happens. `ci:test-scripts` still covers staging. No Playwright. The 32 MiB
   hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
+
+## P5 SUP-04: backoff, safe-mode, core-status, resync
+
+- Unexpected core exit restarts with backoff `0.5s → 2s → 8s`, max 3 restarts per
+  60s, then `core-safe-mode`. Three missed 5s `core_ping`s kill the child and
+  follow the same path. After `ready` on a restart the Electron host calls
+  `player_pause` then `YaqmcClient.resync()` (§14.5) and fans the snapshot set
+  out; it never auto-resumes playback. `host://core-status`
+  `{down|restarting|ready|safe-mode}` is a new host channel (TS +
+  `yaqmc-protocol`, additive, 117 methods unchanged).
+- `src/components/CoreStatusBanner.tsx` is host-agnostic: it listens for
+  `host://core-status` and stays inert on Tauri (channel never fires,
+  `window.yaqmc` absent). Mounted from `App.tsx` with one import. Playwright
+  kill-core E2E is deferred (repo has no Playwright). The 32 MiB hard cap is
+  unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
+
