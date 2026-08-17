@@ -163,8 +163,14 @@ const router = new IpcRouter({
     oauth: {
       createWindow: (options) =>
         createOAuthBrowserWindow(options as ConstructorParameters<typeof BrowserWindow>[0]),
-      fromPartition: (partition, options) =>
-        smoke ? {} : session.fromPartition(partition, options),
+      fromPartition: (partition, options) => {
+        if (smoke) {
+          return {};
+        }
+        const oauthSession = session.fromPartition(partition, options);
+        applySessionSecurity(oauthSession);
+        return oauthSession;
+      },
       isPackaged: app.isPackaged,
       invoke: invokeOAuthCore,
     },

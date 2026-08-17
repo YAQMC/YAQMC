@@ -99,6 +99,17 @@ describe('host boot wiring', () => {
     expect(source).toContain('oauth BrowserWindow is disabled during YAQMC_DESKTOP_SMOKE');
     expect(source).not.toContain("from './dialogs'");
     expect(source).not.toContain("from './services/updater'");
+    const oauthFromPartition = source.slice(
+      source.indexOf('fromPartition:'),
+      source.indexOf('isPackaged:'),
+    );
+    expect(oauthFromPartition).toContain('session.fromPartition');
+    expect(oauthFromPartition).toContain('applySessionSecurity');
+    const oauthWindow = source.slice(
+      source.indexOf('function createOAuthBrowserWindow'),
+      source.indexOf('function quitFromHostCommand'),
+    );
+    expect(oauthWindow).not.toContain('applyAppWindowGuards');
   });
 
   it('leaves the 32 MiB hard cap unchanged', () => {
