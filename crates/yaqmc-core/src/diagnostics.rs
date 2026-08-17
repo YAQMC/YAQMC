@@ -325,12 +325,27 @@ impl RedactionReport {
     }
 }
 
+/// Host-collected blob written into the diagnostic ZIP as `host.json`.
+///
+/// Core treats the JSON object as opaque besides peeling off optional `log`,
+/// which is written to `host.log` when present. Omit the payload entirely for
+/// the pre-DIAG-01 bundle layout.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsHostPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log: Option<String>,
+    #[serde(flatten)]
+    pub json: serde_json::Map<String, serde_json::Value>,
+}
+
 /// Parameters controlling how the bundle is produced.
 pub struct BundleOptions<'a> {
     pub include_logs: bool,
     pub override_unresolved: bool,
     pub description: Option<&'a str>,
     pub issue_category: Option<&'a str>,
+    pub host_payload: Option<DiagnosticsHostPayload>,
 }
 
 impl<'a> Default for BundleOptions<'a> {
@@ -340,6 +355,7 @@ impl<'a> Default for BundleOptions<'a> {
             override_unresolved: false,
             description: None,
             issue_category: None,
+            host_payload: None,
         }
     }
 }
@@ -445,6 +461,18 @@ fn write_bundle_zip(
         let (scrubbed, stats) = scrub_bytes(payload.as_bytes());
         absorb_scrub_stats(&mut base_redaction, stats);
         mandatory_entries.push(BundleEntry::new("user-description.txt", scrubbed));
+    }
+
+    if let Some(host) = options.host_payload.as_ref() {
+        let host_json = serde_json::to_vec_pretty(&host.json).map_err(BundleError::from_serde)?;
+        let (scrubbed, stats) = scrub_bytes(&host_json);
+        absorb_scrub_stats(&mut base_redaction, stats);
+        mandatory_entries.push(BundleEntry::new("host.json", scrubbed));
+        if let Some(log) = host.log.as_deref().filter(|value| !value.is_empty()) {
+            let (scrubbed, stats) = scrub_bytes(log.as_bytes());
+            absorb_scrub_stats(&mut base_redaction, stats);
+            mandatory_entries.push(BundleEntry::new("host.log", scrubbed));
+        }
     }
 
     if total_entry_bytes(&mandatory_entries) > BUNDLE_MAX_BYTES {
@@ -1041,6 +1069,7 @@ mod tests {
                 override_unresolved: false,
                 description: Some("Playback stalls"),
                 issue_category: Some("bug-report"),
+                host_payload: None,
             },
         )
         .expect("bundle");
@@ -1074,6 +1103,11 @@ mod tests {
             .read_to_string(&mut report)
             .unwrap();
         assert!(report.contains("Redaction scanner: v1"));
+        assert!(
+            !names.iter().any(|name| name == "host.json"),
+            "omitting hostPayload must keep the pre-DIAG-01 ZIP layout"
+        );
+        assert!(!names.iter().any(|name| name == "host.log"));
     }
 
     #[test]
@@ -1091,6 +1125,7 @@ mod tests {
                 override_unresolved: false,
                 description: None,
                 issue_category: None,
+                host_payload: None,
             },
         )
         .expect("bundle to path");
@@ -1234,6 +1269,175 @@ mod tests {
         assert!(!cleaned.contains("SECRET"));
         assert!(!cleaned.contains("/home/tester/"));
         assert!(cleaned.contains("<USER_HOME>/Music/"));
+    }
+
+
+    fn stub_host_payload() -> DiagnosticsHostPayload {
+        serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "electron": "43.4.0",
+            "chrome": "140.0.7339.241",
+            "node": "24.11.1",
+            "windows": [{ "id": 1, "role": "main", "visible": true, "focused": true }],
+            "display": {
+                "backend": "win32",
+                "capabilities": {
+                    "alwaysOnTop": true,
+                    "clickThrough": true,
+                    "globalShortcuts": true,
+                    "transparency": true
+                }
+            },
+            "updater": {
+                "state": "idle",
+                "canInstall": true,
+                "allowPrerelease": false,
+                "channel": "stable"
+            },
+            "restartCounter": 2,
+            "log": "core stderr tail\n"
+        }))
+        .expect("host payload")
+    }
+
+    #[test]
+    fn bundle_export_omits_host_files_when_payload_is_absent() {
+        let request: crate::server::DiagnosticsBundleRequest =
+            serde_json::from_value(serde_json::json!({ "includeLogs": false }))
+                .expect("bundle request without hostPayload");
+        assert!(request.host_payload.is_none());
+        let temp = tempdir().unwrap();
+        let log_dir = temp.path().join("logs");
+        fs::create_dir_all(&log_dir).unwrap();
+        let dest = temp.path().join("out");
+        let result = export_bundle(
+            &dest,
+            &stub_diagnostics("no-host"),
+            &log_dir,
+            BundleOptions {
+                include_logs: false,
+                override_unresolved: false,
+                description: None,
+                issue_category: None,
+                host_payload: request.host_payload,
+            },
+        )
+        .expect("bundle");
+        let zip = zip::ZipArchive::new(fs::File::open(&result.path).unwrap()).unwrap();
+        let names: Vec<String> = zip.file_names().map(String::from).collect();
+        assert!(!names.iter().any(|name| name == "host.json"));
+        assert!(!names.iter().any(|name| name == "host.log"));
+    }
+
+    #[test]
+    fn bundle_export_writes_host_json_and_log_from_optional_payload() {
+        let temp = tempdir().unwrap();
+        let log_dir = temp.path().join("logs");
+        fs::create_dir_all(&log_dir).unwrap();
+        let dest = temp.path().join("chosen").join("report.zip");
+        let request: crate::server::DiagnosticsBundleRequest = serde_json::from_value(
+            serde_json::json!({
+                "includeLogs": false,
+                "hostPayload": {
+                    "schemaVersion": 1,
+                    "electron": "43.4.0",
+                    "chrome": "140.0.7339.241",
+                    "node": "24.11.1",
+                    "windows": [{ "id": 1, "role": "main", "visible": true }],
+                    "display": {
+                        "backend": "win32",
+                        "capabilities": {
+                            "alwaysOnTop": true,
+                            "clickThrough": true,
+                            "globalShortcuts": true,
+                            "transparency": true
+                        }
+                    },
+                    "updater": { "state": "idle", "canInstall": true, "channel": "stable" },
+                    "restartCounter": 2,
+                    "log": "core stderr tail\n"
+                }
+            }),
+        )
+        .expect("bundle request with hostPayload");
+        let result = export_bundle_to_path(
+            &dest,
+            &stub_diagnostics("session-host"),
+            &log_dir,
+            BundleOptions {
+                include_logs: false,
+                override_unresolved: false,
+                description: None,
+                issue_category: None,
+                host_payload: request.host_payload,
+            },
+        )
+        .expect("bundle with host payload");
+        assert_eq!(result.path, dest);
+        let mut zip = zip::ZipArchive::new(fs::File::open(&dest).unwrap()).unwrap();
+        let names: Vec<String> = zip.file_names().map(String::from).collect();
+        assert!(names.iter().any(|name| name == "host.json"));
+        assert!(names.iter().any(|name| name == "host.log"));
+        let mut host_json = String::new();
+        zip.by_name("host.json")
+            .unwrap()
+            .read_to_string(&mut host_json)
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&host_json).unwrap();
+        assert_eq!(parsed["electron"], "43.4.0");
+        assert_eq!(parsed["chrome"], "140.0.7339.241");
+        assert_eq!(parsed["node"], "24.11.1");
+        assert_eq!(parsed["restartCounter"], 2);
+        assert_eq!(parsed["display"]["backend"], "win32");
+        assert!(parsed.get("log").is_none());
+        let mut host_log = String::new();
+        zip.by_name("host.log")
+            .unwrap()
+            .read_to_string(&mut host_log)
+            .unwrap();
+        assert_eq!(host_log, "core stderr tail\n");
+    }
+
+    #[test]
+    fn bundle_export_scrubs_host_json_and_host_log() {
+        let temp = tempdir().unwrap();
+        let log_dir = temp.path().join("logs");
+        fs::create_dir_all(&log_dir).unwrap();
+        let dest = temp.path().join("out");
+        let mut payload = stub_host_payload();
+        payload.json.insert(
+            "note".to_owned(),
+            serde_json::Value::String("cookie=uin=1; qm_keyst=SECRETVAL".to_owned()),
+        );
+        payload.log = Some("req authorization=Bearer TOKENVALUE\n".to_owned());
+        let result = export_bundle(
+            &dest,
+            &stub_diagnostics("host-scrub"),
+            &log_dir,
+            BundleOptions {
+                include_logs: false,
+                override_unresolved: false,
+                description: None,
+                issue_category: None,
+                host_payload: Some(payload),
+            },
+        )
+        .expect("bundle");
+        let mut zip = zip::ZipArchive::new(fs::File::open(&result.path).unwrap()).unwrap();
+        let mut host_json = String::new();
+        zip.by_name("host.json")
+            .unwrap()
+            .read_to_string(&mut host_json)
+            .unwrap();
+        assert!(!host_json.contains("SECRETVAL"));
+        assert!(host_json.contains("[REDACTED]"));
+        let mut host_log = String::new();
+        zip.by_name("host.log")
+            .unwrap()
+            .read_to_string(&mut host_log)
+            .unwrap();
+        assert!(!host_log.contains("TOKENVALUE"));
+        assert!(host_log.contains("[REDACTED]"));
     }
 
     #[test]

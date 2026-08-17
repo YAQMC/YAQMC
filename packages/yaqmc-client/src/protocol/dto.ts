@@ -702,11 +702,61 @@ export interface DiagnosticsRequest {
   lyricsPreset?: LyricsPresetDiagnostics;
 }
 
+export interface DiagnosticsHostWindowState {
+  id: number;
+  role: string;
+  visible: boolean;
+  focused?: boolean;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  alwaysOnTop?: boolean;
+}
+
+export interface DiagnosticsHostCapabilities {
+  alwaysOnTop: boolean;
+  clickThrough: boolean;
+  globalShortcuts: boolean;
+  transparency: boolean;
+}
+
+export interface DiagnosticsHostDisplay {
+  backend: string;
+  capabilities: DiagnosticsHostCapabilities;
+}
+
+export interface DiagnosticsHostUpdater {
+  state: string;
+  canInstall?: boolean;
+  allowPrerelease?: boolean;
+  channel?: string;
+  version?: string;
+  releaseUrl?: string;
+  error?: string;
+}
+
+/** Host-collected blob for `host.json` (+ optional `host.log` via `log`). */
+export interface DiagnosticsHostPayload {
+  schemaVersion: number;
+  electron: string;
+  chrome: string;
+  node: string;
+  windows: DiagnosticsHostWindowState[];
+  display: DiagnosticsHostDisplay;
+  updater: DiagnosticsHostUpdater;
+  restartCounter: number;
+  log?: string;
+}
+
 export interface DiagnosticsBundleRequest extends DiagnosticsRequest {
   includeLogs?: boolean;
   overrideUnresolved?: boolean;
   description?: string;
   issueCategory?: string;
+  hostPayload?: DiagnosticsHostPayload;
 }
 
 export interface AppSection {

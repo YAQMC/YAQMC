@@ -144,6 +144,7 @@ pub async fn diagnostics_export_bundle(
         override_unresolved: request.override_unresolved.unwrap_or(false),
         description: request.description.as_deref(),
         issue_category: request.issue_category.as_deref(),
+        host_payload: request.host_payload,
     };
     diagnostics::export_bundle(&dest, &snapshot, logging.log_dir(), options)
         .map_err(|error| error.to_string())
