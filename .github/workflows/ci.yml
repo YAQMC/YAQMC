@@ -49,6 +49,10 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test -w @yaqmc/client
+      - run: npm run test -w @yaqmc/desktop
+      - run: node scripts/ci/tauri-imports.mjs
+      - run: node scripts/ci/electron-security-lint.mjs
       - run: npm run ci:test-scripts
 
   frontend-build:
