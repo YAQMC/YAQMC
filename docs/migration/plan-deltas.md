@@ -216,3 +216,12 @@ the enforced provenance ledger.
   background-image / Base64 hard-cap conflict is unchanged and is not resolved by raising the cap.
 - This checkpoint does not add a Core stdio binary, method registry, dispatch, Electron, or qm-api-rs. P0 remains
   `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-02: mechanical 117-method inventory
+
+- `docs/migration/command-inventory.md` is regenerated from `generate_handler!` plus command-function signatures and
+  a frontend single-quoted name scan. It has 117 rows, 112 renderer refs, and the five unreferenced methods plus the
+  118th textual `#[tauri::command]` test string are dispositioned. Params omit Tauri injection arguments; results
+  unwrap `CommandResult<T>`. Owner-after mapping is unchanged.
+- `scripts/ci/command-inventory.mjs` is the generator; CI fails if the committed inventory drifts. No registry,
+  dispatch, Electron, or qm-api-rs work is included. P0 remains `PENDING`; provenance remains **BLOCKED**.
