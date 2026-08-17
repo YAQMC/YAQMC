@@ -7,6 +7,12 @@ export {
   type WindowRole,
 } from './bridge';
 export { CoreUnavailableError, READY_QUEUE_TIMEOUT_MS, YaqmcClient } from './client';
+export {
+  dispatchPlayerCommand,
+  setPlayerCommandAdapter,
+  type PlayerCommand,
+  type PlayerCommandAdapter,
+} from './player-command-adapter';
 export { createElectronBridge } from './bridges/electron';
 export { createFakeBridge } from './bridges/fake';
 export {

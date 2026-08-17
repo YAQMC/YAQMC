@@ -4,13 +4,14 @@
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "Host-agnostic YAQMC client SDK. Dead code until P5/P6; no frontend imports yet.",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "description": "Host-agnostic YAQMC client SDK. Frontend consumption starts in P6 except the seek-adapter re-export.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": [
