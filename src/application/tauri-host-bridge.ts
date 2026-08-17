@@ -6,6 +6,7 @@ import {
   createFakeBridge,
   type ChannelPayload,
   type HostBridge,
+  type HostDialogBridge,
   type HostShellBridge,
   type HostWindowBridge,
   type InvokeArgs,
@@ -50,6 +51,12 @@ function noopShell(): HostShellBridge {
   };
 }
 
+function unusedDialog(): HostDialogBridge {
+  return {
+    pickSave: async () => null,
+  };
+}
+
 function readRendererYaqmc(): RendererYaqmc | undefined {
   const candidate = Reflect.get(window, 'yaqmc');
   if (
@@ -80,6 +87,10 @@ function createElectronRendererBridge(yaqmc: RendererYaqmc, windowRole: WindowRo
     windowRole,
     window: yaqmc.window ?? noopWindow(),
     shell: yaqmc.shell ?? noopShell(),
+    dialog: {
+      pickSave: (opts) =>
+        yaqmc.invoke('dialog.pickSave', { defaultPath: opts?.defaultPath }) as Promise<string | null>,
+    },
     invoke: (method, ...params) => invokeThrough(yaqmc.invoke.bind(yaqmc), method, params),
     listen: (channel, handler) => yaqmc.on(channel, handler as (payload: unknown) => void),
   };
@@ -98,6 +109,7 @@ export function createTauriHostBridge(windowRole: WindowRole = windowRoleFromSea
     shell: {
       openExternal: (url) => openUrl(url),
     },
+    dialog: unusedDialog(),
     invoke: (method, ...params) =>
       invokeThrough(
         (name, args) =>

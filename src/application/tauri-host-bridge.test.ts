@@ -148,6 +148,12 @@ describe('createTauriHostBridge', () => {
     expect(tauriMocks.openUrl).toHaveBeenCalledWith('https://example.invalid/docs');
   });
 
+  it('leaves dialog.pickSave unused (returns null without Tauri invoke)', async () => {
+    const bridge = createTauriHostBridge();
+    await expect(bridge.dialog?.pickSave({ defaultPath: 'YAQMC-diagnostics.zip' })).resolves.toBe(null);
+    expect(tauriMocks.invoke).not.toHaveBeenCalled();
+  });
+
   it('constructs YaqmcClient over the Tauri adapter', async () => {
     tauriMocks.invoke.mockResolvedValue({ ok: true });
     const bridge = createTauriHostBridge();
@@ -213,6 +219,18 @@ describe('selectHostBridge', () => {
     expect(on).toHaveBeenCalledWith('plugin://changed', expect.any(Function));
   });
 
+  it('routes dialog.pickSave through window.yaqmc.invoke, not inventory MethodName', async () => {
+    const invoke = vi.fn().mockResolvedValue('D:\\exports\\YAQMC-diagnostics.zip');
+    Reflect.set(window, 'yaqmc', { invoke, on: vi.fn(() => () => undefined) });
+
+    const bridge = selectHostBridge('');
+    expect(bridge.kind).toBe('electron');
+    await expect(
+      bridge.dialog?.pickSave({ defaultPath: 'YAQMC-diagnostics.zip' }),
+    ).resolves.toBe('D:\\exports\\YAQMC-diagnostics.zip');
+    expect(invoke).toHaveBeenCalledWith('dialog.pickSave', { defaultPath: 'YAQMC-diagnostics.zip' });
+  });
+
   it('selects TauriHostBridge when isTauri() and window.yaqmc is absent', () => {
     tauriMocks.isTauri.mockReturnValue(true);
     const bridge = selectHostBridge('?unlockSurface=island');
@@ -220,9 +238,10 @@ describe('selectHostBridge', () => {
     expect(bridge.windowRole).toBe('unlock-island');
   });
 
-  it('falls back to createFakeBridge outside Tauri and Electron', () => {
+  it('falls back to createFakeBridge outside Tauri and Electron', async () => {
     const bridge = selectHostBridge('');
     expect(bridge.kind).toBe('fake');
     expect(bridge.windowRole).toBe('main');
+    await expect(bridge.dialog?.pickSave()).resolves.toBe(null);
   });
 });

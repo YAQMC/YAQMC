@@ -1081,6 +1081,20 @@ the enforced provenance ledger.
   `PENDING`; provenance remains **BLOCKED**. No Playwright. Electron stays
   **43.4.0**. Host `index.ts` / `host-handlers.ts` / `lyrics-surfaces.ts` untouched.
 
+## P11 DIAG-03: Electron export pickSave then _to
+
+- On Electron, `exportDiagnosticsBundle` with no `destPath` calls
+  `HostBridge.dialog.pickSave` (`defaultPath` `YAQMC-diagnostics.zip`) then
+  `diagnostics_export_bundle_to`. Cancel throws `DiagnosticsExportAbortedError`
+  and does not export. Tauri still uses combined `diagnostics_export_bundle`
+  (`download_dir`). `dialog.pickSave` is extra host IPC, not inventory
+  `YaqmcClient.invoke`.
+- Electron renderer `createElectronRendererBridge` maps
+  `yaqmc.invoke('dialog.pickSave', { defaultPath })`. Tauri/fake `pickSave`
+  returns `null` / unused. Settings is unchanged (the runtime picks the path).
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No Playwright. No qm-api-rs.
+
 ## P9 SURF-04: host surfaceAutoHide consumer (core poller later)
 
 - Main consumes `host://command` payloads `{ surfaceAutoHide: boolean }` (plan

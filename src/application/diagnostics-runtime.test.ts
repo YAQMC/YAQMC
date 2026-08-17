@@ -1,0 +1,157 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HostBridge } from '@yaqmc/client';
+import type { BundleExportResult } from './diagnostics-runtime';
+
+const hostMocks = vi.hoisted(() => {
+  const invoke = vi.fn();
+  const pickSave = vi.fn();
+  const bridge = {
+    kind: 'tauri' as HostBridge['kind'],
+    windowRole: 'main' as const,
+    window: {
+      minimize: async () => undefined,
+      toggleMaximize: async () => undefined,
+      close: async () => undefined,
+      setFullscreen: async () => undefined,
+    },
+    shell: {
+      openExternal: async () => undefined,
+    },
+    dialog: { pickSave },
+    invoke,
+    listen: () => () => undefined,
+  };
+  return { invoke, pickSave, bridge };
+});
+
+vi.mock('./yaqmc-runtime', async () => {
+  const { YaqmcClient } = await import('@yaqmc/client');
+  const client = new YaqmcClient(hostMocks.bridge as HostBridge);
+  client.markReady();
+  return {
+    getHostBridge: () => hostMocks.bridge,
+    getYaqmcClient: () => client,
+  };
+});
+
+vi.mock('./native-player-runtime', () => ({
+  isNativeRuntime: true,
+}));
+
+import {
+  DIAGNOSTICS_ZIP_DEFAULT_NAME,
+  DiagnosticsExportAbortedError,
+  exportDiagnosticsBundle,
+} from './diagnostics-runtime';
+
+function sampleBundle(path: string): BundleExportResult {
+  return {
+    path,
+    bytes: 32,
+    sha256: 'abc',
+    redaction: {
+      scannerVersion: 1,
+      filesScanned: 0,
+      valuesRedacted: 0,
+      unresolvedPatterns: [],
+    },
+    warnings: [],
+    manifest: {
+      schemaVersion: 1,
+      scannerVersion: 1,
+      appName: 'YAQMC',
+      appVersion: '0.1.0',
+      platform: 'windows',
+      architecture: 'x64',
+      generatedAtUnixMs: 1,
+      sessionId: 'session',
+      logFiles: [],
+      includeSnapshot: true,
+      includeLogs: true,
+    },
+  };
+}
+
+describe('exportDiagnosticsBundle', () => {
+  beforeEach(() => {
+    hostMocks.bridge.kind = 'tauri';
+    hostMocks.invoke.mockReset();
+    hostMocks.pickSave.mockReset();
+    hostMocks.invoke.mockResolvedValue(sampleBundle('/tmp/YAQMC-diagnostics.zip'));
+    hostMocks.pickSave.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    hostMocks.bridge.kind = 'tauri';
+    hostMocks.invoke.mockReset();
+    hostMocks.pickSave.mockReset();
+  });
+
+  it('keeps the Tauri combined command when destPath is omitted', async () => {
+    await exportDiagnosticsBundle({ includeLogs: true });
+    expect(hostMocks.pickSave).not.toHaveBeenCalled();
+    expect(hostMocks.invoke).toHaveBeenCalledWith('diagnostics_export_bundle', {
+      request: {
+        includeLogs: true,
+        overrideUnresolved: false,
+        description: undefined,
+        issueCategory: undefined,
+      },
+    });
+  });
+
+  it('writes to destPath via _to without opening pickSave', async () => {
+    const bundle = sampleBundle('D:\\exports\\given.zip');
+    hostMocks.invoke.mockResolvedValue(bundle);
+    hostMocks.bridge.kind = 'electron';
+
+    await expect(
+      exportDiagnosticsBundle({ includeLogs: false }, 'D:\\exports\\given.zip'),
+    ).resolves.toEqual(bundle);
+    expect(hostMocks.pickSave).not.toHaveBeenCalled();
+    expect(hostMocks.invoke).toHaveBeenCalledWith('diagnostics_export_bundle_to', {
+      path: 'D:\\exports\\given.zip',
+      request: {
+        includeLogs: false,
+        overrideUnresolved: false,
+        description: undefined,
+        issueCategory: undefined,
+      },
+    });
+  });
+
+  it('picks a save path then calls _to on Electron', async () => {
+    const dest = 'D:\\exports\\YAQMC-diagnostics.zip';
+    const bundle = sampleBundle(dest);
+    hostMocks.bridge.kind = 'electron';
+    hostMocks.pickSave.mockResolvedValue(dest);
+    hostMocks.invoke.mockResolvedValue(bundle);
+
+    await expect(exportDiagnosticsBundle({ includeLogs: true })).resolves.toEqual(bundle);
+    expect(hostMocks.pickSave).toHaveBeenCalledWith({ defaultPath: DIAGNOSTICS_ZIP_DEFAULT_NAME });
+    expect(DIAGNOSTICS_ZIP_DEFAULT_NAME).toBe('YAQMC-diagnostics.zip');
+    expect(hostMocks.invoke).toHaveBeenCalledWith('diagnostics_export_bundle_to', {
+      path: dest,
+      request: {
+        includeLogs: true,
+        overrideUnresolved: false,
+        description: undefined,
+        issueCategory: undefined,
+      },
+    });
+    expect(hostMocks.invoke).not.toHaveBeenCalledWith(
+      'diagnostics_export_bundle',
+      expect.anything(),
+    );
+  });
+
+  it('throws DiagnosticsExportAbortedError when Electron pickSave is cancelled', async () => {
+    hostMocks.bridge.kind = 'electron';
+    hostMocks.pickSave.mockResolvedValue(null);
+
+    await expect(exportDiagnosticsBundle({ includeLogs: true })).rejects.toBeInstanceOf(
+      DiagnosticsExportAbortedError,
+    );
+    expect(hostMocks.invoke).not.toHaveBeenCalled();
+  });
+});
