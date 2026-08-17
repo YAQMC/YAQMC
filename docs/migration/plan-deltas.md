@@ -599,3 +599,13 @@ the enforced provenance ledger.
   kill-core E2E is deferred (repo has no Playwright). The 32 MiB hard cap is
   unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
 
+## P5 SUP-05: single instance
+
+- `app.requestSingleInstanceLock()` runs before `whenReady`. A second process
+  quits without spawning core and focuses/shows/restores the existing main
+  window. Coverage is a unit test against mocked Electron `app` APIs (no
+  display, no Playwright E2E). Linux MPRIS is still not claimed green. The
+  32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No qm-api-rs.
+
+

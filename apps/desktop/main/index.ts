@@ -16,6 +16,7 @@ import { loadMethodAclFromFile } from './ipc/channels';
 import { IpcRouter } from './ipc/router';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
+import { acquireSingleInstanceLock } from './single-instance';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -46,6 +47,7 @@ const router = new IpcRouter({
 let supervisor: CoreSupervisor | undefined;
 let stopping = false;
 let exitCode = 0;
+let mainWindow: BrowserWindow | undefined;
 
 function rendererRoot(): string {
   if (smoke) {
@@ -103,8 +105,12 @@ function createMainWindow(root: string): BrowserWindow {
   });
   const contentsId = window.webContents.id;
   router.registerWindow(contentsId, 'main');
+  mainWindow = window;
   window.on('closed', () => {
     router.unregisterWindow(contentsId);
+    if (mainWindow === window) {
+      mainWindow = undefined;
+    }
   });
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
@@ -185,56 +191,58 @@ ipcMain.handle(INVOKE_CHANNEL, async (event, request: InvokeRequest) => {
   return router.invoke(event.sender.id, request);
 });
 
-app.whenReady().then(async () => {
-  applySessionSecurity(session.defaultSession);
-  const root = rendererRoot();
-  protocol.handle(APP_SCHEME, async (request) => {
-    const served = await serveAppUrl(root, request.url);
-    return new Response(served.body, {
-      status: served.status,
-      headers: served.headers,
+if (acquireSingleInstanceLock(app, () => mainWindow)) {
+  app.whenReady().then(async () => {
+    applySessionSecurity(session.defaultSession);
+    const root = rendererRoot();
+    protocol.handle(APP_SCHEME, async (request) => {
+      const served = await serveAppUrl(root, request.url);
+      return new Response(served.body, {
+        status: served.status,
+        headers: served.headers,
+      });
     });
-  });
-  try {
-    await startSupervisor();
-  } catch (error) {
-    console.error(error);
-    quitWith(1);
-    return;
-  }
-  const window = createMainWindow(root);
-  if (smoke) {
-    window.webContents.on('did-fail-load', (_event, code, description) => {
-      console.error(`harness failed to load: ${code} ${description}`);
+    try {
+      await startSupervisor();
+    } catch (error) {
+      console.error(error);
       quitWith(1);
-    });
-    window.webContents.on('render-process-gone', (_event, details) => {
-      console.error(`harness renderer gone: ${details.reason}`);
-      quitWith(1);
-    });
-    window.webContents.on('page-title-updated', (_event, title) => {
-      if (title === 'yaqmc-smoke-ok') {
-        quitWith(0);
-      } else if (title === 'yaqmc-smoke-fail') {
+      return;
+    }
+    createMainWindow(root);
+    if (smoke && mainWindow) {
+      mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
+        console.error(`harness failed to load: ${code} ${description}`);
         quitWith(1);
-      }
-    });
-  }
-});
-
-app.on('before-quit', (event) => {
-  if (stopping || !supervisor) {
-    return;
-  }
-  event.preventDefault();
-  stopping = true;
-  void supervisor.stop().finally(() => {
-    supervisor = undefined;
-    router.setClient(undefined);
-    app.exit(exitCode);
+      });
+      mainWindow.webContents.on('render-process-gone', (_event, details) => {
+        console.error(`harness renderer gone: ${details.reason}`);
+        quitWith(1);
+      });
+      mainWindow.webContents.on('page-title-updated', (_event, title) => {
+        if (title === 'yaqmc-smoke-ok') {
+          quitWith(0);
+        } else if (title === 'yaqmc-smoke-fail') {
+          quitWith(1);
+        }
+      });
+    }
   });
-});
 
-app.on('window-all-closed', () => {
-  app.quit();
-});
+  app.on('before-quit', (event) => {
+    if (stopping || !supervisor) {
+      return;
+    }
+    event.preventDefault();
+    stopping = true;
+    void supervisor.stop().finally(() => {
+      supervisor = undefined;
+      router.setClient(undefined);
+      app.exit(exitCode);
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    app.quit();
+  });
+}
