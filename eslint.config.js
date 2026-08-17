@@ -44,6 +44,37 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/application/tauri-host-bridge.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tauri-apps/plugin-opener',
+              message:
+                'Use HostBridge.shell.openExternal via YaqmcClient instead of @tauri-apps/plugin-opener.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@tauri-apps', '@tauri-apps/*', '@tauri-apps/**'],
+              message:
+                'Import @tauri-apps only from src/application/tauri-host-bridge.ts until P13.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/application/tauri-host-bridge.test.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
+  {
     files: ['apps/desktop/**/*.ts'],
     rules: {
       'react-refresh/only-export-components': 'off',

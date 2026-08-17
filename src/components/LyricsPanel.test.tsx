@@ -26,9 +26,22 @@ const nativeArtworkMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: nativeArtworkMocks.invoke,
-  isTauri: () => true,
+vi.mock('../application/yaqmc-runtime', () => ({
+  getHostBridge: () => ({ kind: 'tauri' }),
+  getYaqmcClient: () => ({
+    invoke: nativeArtworkMocks.invoke,
+    on: () => () => undefined,
+    bridge: { kind: 'tauri' },
+    host: {
+      window: {
+        minimize: async () => undefined,
+        toggleMaximize: async () => undefined,
+        close: async () => undefined,
+        setFullscreen: async () => undefined,
+      },
+      shell: { openExternal: async () => undefined },
+    },
+  }),
 }));
 
 const safeArtwork = 'data:image/png;base64,AA==';
