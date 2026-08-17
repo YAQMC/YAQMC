@@ -8,6 +8,9 @@ mod handshake;
 mod registry;
 mod transport;
 
+#[cfg(feature = "fixtures")]
+mod fixtures;
+
 pub use channels::{
     CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS, CHANNEL_CORE_LOG,
     CHANNEL_HOST_COMMAND, CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION,
@@ -29,5 +32,8 @@ pub use registry::{
     PROTOCOL_ONLY_METHODS,
 };
 pub use transport::{duplex_pair, CoreTransport, DuplexTransport, PipeTransport, StdioTransport};
+
+#[cfg(feature = "fixtures")]
+pub use fixtures::{contract_fixtures_dir, emit_contract_fixtures};
 
 pub const PROTOCOL_VERSION: u32 = ProtocolVersion::V1 as u32;
