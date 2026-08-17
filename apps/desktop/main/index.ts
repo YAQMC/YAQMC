@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CoreSupervisor, tryResolveCoreBinary } from './core/supervisor';
+import { resolveCorePaths } from './core/paths';
 import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
 import { loadMethodAclFromFile } from './ipc/channels';
 import { IpcRouter } from './ipc/router';
@@ -121,13 +122,18 @@ function startSupervisor(): Promise<void> {
     }
     return Promise.resolve();
   }
-  const coreRoot = path.join(app.getPath('temp'), 'yaqmc-core');
+  const tempRoot = path.join(app.getPath('temp'), 'yaqmc-core');
+  const paths = smoke
+    ? {
+        dataDir: path.join(tempRoot, 'data'),
+        cacheDir: path.join(tempRoot, 'cache'),
+        logDir: path.join(tempRoot, 'logs'),
+        configDir: path.join(tempRoot, 'config'),
+      }
+    : resolveCorePaths();
   supervisor = new CoreSupervisor({
     binary,
-    dataDir: path.join(coreRoot, 'data'),
-    cacheDir: path.join(coreRoot, 'cache'),
-    logDir: path.join(coreRoot, 'logs'),
-    configDir: path.join(coreRoot, 'config'),
+    ...paths,
     hostVersion: app.getVersion(),
     expectedCoreVersion: app.getVersion(),
   });

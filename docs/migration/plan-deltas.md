@@ -483,6 +483,17 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
 
+## P4 ELEC-06: first-boot path-parity vs BASE-04
+
+- `apps/desktop/main/core/paths.ts` resolves Tauri-parity dirs from identifier
+  `org.yaqmc.desktop` (Windows `%APPDATA%`/`%LOCALAPPDATA%`, Linux XDG + home fallbacks).
+  Non-smoke Electron boot injects those dirs; smoke still uses a temp tree. Supervisor
+  spawn is unchanged (SUP-01 allowlist). A live Windows scratch-profile test asserts
+  `library.sqlite3` under `%APPDATA%\org.yaqmc.desktop`. Linux is unit-tested only
+  (no Linux host here). Live Tauri diagnostics remain PENDING. Electron stays **43.4.0**.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,

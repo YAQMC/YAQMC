@@ -6,6 +6,8 @@ This is the P0 continuity baseline for the current Tauri host. The rows marked *
 
 The identifier is `org.yaqmc.desktop` (`src-tauri/tauri.conf.json`). Startup obtains app data, cache, and log directories from Tauri's path resolver (`src-tauri/src/lib.rs`). The paths below are the expected Tauri resolution recorded in the migration plan; target Electron core resolution must remain byte-identical after P4.
 
+Electron Main (`apps/desktop/main/core/paths.ts`, ELEC-06) injects these same directories into yaqmc-core via `YAQMC_*` on a scratch profile. Windows first-boot is asserted in `paths.test.ts` (creates `library.sqlite3` under `%APPDATA%\org.yaqmc.desktop`). Linux formulas are unit-tested with XDG env; this worktree has no Linux runner, so a live Linux first-boot remains pending. Live Tauri diagnostics snapshots are still **PENDING — manual measurement required** and are not inferred from the scratch-profile test.
+
 | Platform | Purpose                           | Expected current/target path                                                                                | Evidence        | Live result                           |
 | -------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------- |
 | Windows  | App data (SQLite, plugins, queue) | `%APPDATA%\org.yaqmc.desktop`                                                                               | SOURCE-VERIFIED | PENDING — manual measurement required |
