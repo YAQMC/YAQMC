@@ -13,6 +13,7 @@ import path from 'node:path';
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import { CoreClient } from './client';
+import { buildCoreSpawnEnv } from './env';
 import { ProtocolError } from './frames';
 
 export const STDERR_RING_BYTES = 64 * 1024;
@@ -39,6 +40,7 @@ export type SupervisorOptions = SupervisorPaths & {
   handshakeTimeoutMs?: number;
   shutdownTimeoutMs?: number;
   extraEnv?: NodeJS.ProcessEnv;
+  parentEnv?: NodeJS.ProcessEnv;
   spawn?: SpawnCore;
 };
 
@@ -175,15 +177,15 @@ export class CoreSupervisor extends EventEmitter {
     const child = spawnCore(this.options.binary, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
-      env: {
-        ...process.env,
-        ...this.options.extraEnv,
-        YAQMC_DATA_DIR: this.options.dataDir,
-        YAQMC_CACHE_DIR: this.options.cacheDir,
-        YAQMC_LOG_DIR: this.options.logDir,
-        YAQMC_CONFIG_DIR: this.options.configDir,
-        YAQMC_CHANNEL: this.options.channel ?? 'desktop',
-      },
+      env: buildCoreSpawnEnv({
+        parentEnv: this.options.parentEnv,
+        extraEnv: this.options.extraEnv,
+        dataDir: this.options.dataDir,
+        cacheDir: this.options.cacheDir,
+        logDir: this.options.logDir,
+        configDir: this.options.configDir,
+        channel: this.options.channel,
+      }),
     });
     this.child = child;
     if (!child.stdin || !child.stdout || !child.stderr) {
