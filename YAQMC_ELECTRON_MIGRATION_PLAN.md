@@ -3,8 +3,10 @@
 **Document status:** Implementation-Ready Migration Specification
 **Prepared:** 2026-08-16 (all live-web facts verified on this date)
 **Prepared against:** `YAQMC/YAQMC` @ `bc55b7ddd2a57cde8987c96c7c20f0b7d4a2e742` (`main`)
-**Executor:** GPT-5.6 Sol Ultra (multi-subagent capable)
+**Executor:** GPT-5.6 Sol Ultra (multi-subagent capable), with a 2026-08-18 overlay in §49
 **Scope:** Migrate the YAQMC desktop host from Tauri 2 to Electron with a host-independent Rust Core, on Windows + Linux. Android is an architectural constraint, not a deliverable.
+
+**Execution overlay (2026-08-18):** PLAY-01, SMTC flyout, MPRIS applets, clean-VM, 4-hour soak, and provenance are **not green**. GitHub Actions is frozen (YAQMC org quota 2000 exhausted; 2026-08-17 GitHub global outage). Do not dispatch workflows. Details in §49 and `docs/migration/parked-live-verify.md`.
 
 This document is self-contained. The executor is expected to have only (a) this repository at the SHA above and (b) this document. Every fact in this plan is tagged where it matters:
 
@@ -65,6 +67,7 @@ This document is self-contained. The executor is expected to have only (a) this 
 46. Final Acceptance Matrix
 47. Definition of Done
 48. GPT-5.6 Sol Ultra Execution Handoff
+49. Execution overlay (2026-08-18)
 
 ---
 
@@ -2200,6 +2203,52 @@ git checkout -b feat/electron-migration bc55b7ddd2a57cde8987c96c7c20f0b7d4a2e742
 
 Replace the host, not the soul: YAQMC's playback authority, provider behavior, plugin contract, data, and users' logged-in sessions must pass through this migration untouched, while WebKitGTK, env-var magic, and Tauri coupling leave the codebase. Every phase ships a working app; every claim has a test; every risk has a named fallback. Execute §41 in §42 order, and when in doubt, re-read §15.
 
+### 48.6 Later-pass parked work
+
+See **§49**. Do not mark PLAY-01, SMTC flyout, MPRIS applets, clean-VM, 4-hour soak, or provenance green from this overlay. Do not dispatch GitHub Actions while the freeze in §49 holds.
+
 ---
 
-*End of plan. 48 sections, 16 phases, 115 tasks, 16 checkpoints, 15 risks. Source SHA `bc55b7d`; plan date 2026-08-16.*
+## 49. Execution overlay (2026-08-18)
+
+This section is an **execution snapshot**, not a rewrite of §41. Catalog IDs, ADRs, and verification columns stay as written. Code facts live in `docs/migration/plan-deltas.md`. Operational handoff: `docs/migration/parked-live-verify.md`.
+
+**Branch:** `feat/electron-migration` (do not cut a new branch; `main` is frozen).
+**Do not start:** P12 ACC, P13 Tauri removal, P14 `qm-api-rs`.
+**Pins:** Electron **43.4.0**, electron-builder **26.15.7**, electron-updater **6.8.6**. Protocol hard cap **32 MiB**.
+
+### 49.1 GitHub Actions freeze
+
+YAQMC org Actions quota (**2000** minutes) is exhausted. 2026-08-17 GitHub had a global outage.
+
+- Do **not** dispatch `ci.yml`, `build.yml`, `electron-release.yml`, or `pages.yml`.
+- CI-02 / CI-04 YAML is landed (`03da7d3`, `7619bc0`) and is **not** live-green.
+- Local unit/typecheck/`node --test scripts/ci/*.test.mjs` is allowed. Do not run a 4-hour soak in an agent. Do not invent PLAY-02 p95.
+
+### 49.2 Parked for a later higher-capability pass (not green)
+
+| Headline | Catalog | Landed | Still not green |
+|---|---|---|---|
+| PLAY-01 | P7 PLAY-01 ⛔ | Checklist + fake-mode assist | Win/Linux boxes empty; **L** rows LIVE VERIFY pending |
+| SMTC flyout / media keys / artwork | P9 PLAT-04 ⛔ | HWND `platform_attach` from Electron Main | Flyout, keys, artwork, timeline seek. Do not claim SMTC green. R-3 fallback only after flyout rejects the HWND. |
+| MPRIS playerctl / applets | P9 PLAT-05 ⛔ | Dry-run `plat05-mpris-playerctl.mjs`; Core Raise/Quit | `--execute`, GNOME/KDE applets. Do not claim MPRIS green. |
+| Clean-VM install/upgrade/uninstall | P11 PACK-02/03 ⛔ | Pack scripts + empty matrices | Every clean-VM cell. Unsigned (R-9). No silent install. |
+| 4-hour soak | P7 SOAK-01 ⛔ | `soak-electron.mjs` default 10 s | 4-h report uncommitted. `YAQMC_SOAK_SECONDS=14400`. Fake + one real-account run. |
+| Provenance | P0 / CLEAN | Audit + ledger | **BLOCKED**. `provenance:enforce` stays non-zero. |
+
+Related parked (same later pass): PLAY-02 p95, PLAY-03 occluded cadence, ACCT-02/03 live QQ/WX + R-10, SURF-04 real fullscreen, UPD-01 A→B (needs GitHub), CI-03 arm64 boot-test.
+
+### 49.3 Code-landed vs live-green (P11 infra)
+
+| ID | YAML / code | Live GitHub / VM |
+|---|---|---|
+| CI-02 Electron package matrix | landed | not run (Actions freeze) |
+| CI-04 Electron draft release | landed (`electron-v*` / `electron-draft-*`, `--draft`) | not run (Actions freeze). Tauri `build.yml` untouched. |
+| UPD-01 notify-only updater | landed (`autoDownload: false`) | A→B rehearsal pending |
+| DIAG-01 `host.json` + host log | `host.json` inject + stderr ring + rotating Main `host.log` in the Core log dir | Not a soak/provenance claim |
+
+P12 does **not** exit until the §49.2 rows are actually green. Do not skip them.
+
+---
+
+*End of plan. 49 sections (48 original + 2026-08-18 overlay), 16 phases, 115 tasks, 16 checkpoints, 15 risks. Source SHA `bc55b7d`; plan date 2026-08-16; overlay 2026-08-18.*

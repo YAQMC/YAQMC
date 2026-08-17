@@ -103,6 +103,8 @@ describe('host boot wiring', () => {
     expect(source).toContain("from './services/electron-updater-port'");
     expect(source).toContain('createUpdater');
     expect(source).toContain('collectLiveHostPayload');
+    expect(source).toContain('createHostLog');
+    expect(source).toContain('host.log');
     expect(source).toContain('scheduleLaunchCheck');
     expect(source).toContain('app.isPackaged');
     const oauthFromPartition = source.slice(
