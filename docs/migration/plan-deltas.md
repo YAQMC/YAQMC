@@ -1232,3 +1232,27 @@ the enforced provenance ledger.
   `lyrics-surfaces.ts`, `index.ts`, tray, crates, or plugin-runtime.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No Playwright.
+
+## P9 SURF-04/PLAT-04: subscribe host://command and platform_attach HWND
+
+- After core `ready` in `attachSupervisor`, Main calls
+  `subscribeSurfaceAutoHide(client, lyricsSurfaces)` so `{ surfaceAutoHide }`
+  hides/shows desktop+island without destroying windows. The same
+  `host://command` stream is subscribed via `subscribeHostCommands`:
+  `{ command: "raise" }` show/focus/restore the **main** window (no OAuth
+  auto-open); `{ command: "quit" }` sets `stopping` and `app.quit()`, so
+  existing `before-quit` supervisor shutdown still runs. Helpers live in
+  `apps/desktop/main/host-commands.ts` so unit tests inject a fake window
+  instead of a real `BrowserWindow`.
+- PLAT-04 host half: once the main window exists and core is ready,
+  `client.invoke('platform_attach', PlatformAttach)`. Windows
+  `mainWindowHandle` is hex from injected `getNativeWindowHandle()`;
+  Linux omits the handle (optional `displayBackend` x11/wayland). Smoke
+  skips the native-handle read, matching tray skip. Core may still stub
+  `{ok:true}` — the attach is still sent. This does **not** claim SMTC or
+  MPRIS green.
+- Tray/shortcuts/unlock/geometry/linux-graphics wiring is unchanged.
+  `tray.ts`, locales, and crates are not edited. OAuth
+  (`qqmusic_auth_oauth_start`) is not implemented here (ACCT-01). Electron
+  stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No Playwright.

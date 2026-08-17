@@ -16,6 +16,8 @@ describe('host boot wiring', () => {
     expect(source).toContain("from './ipc/host-handlers'");
     expect(source).toContain("from './windows/lyrics-surfaces'");
     expect(source).toContain("from './windows/lyrics-unlock'");
+    expect(source).toContain("from './windows/surface-auto-hide'");
+    expect(source).toContain("from './host-commands'");
     expect(source).toContain("from './linux-graphics'");
     expect(source).toContain('lyrics-surface.cjs');
     expect(source).toContain('unlock-overlay.cjs');
@@ -70,6 +72,23 @@ describe('host boot wiring', () => {
     expect(source.indexOf('void lyricsSurfaces.restoreGeometry();')).toBeGreaterThan(
       source.indexOf("instance.on('ready'"),
     );
+  });
+
+  it('subscribes host://command and sends platform_attach after ready', () => {
+    expect(source).toContain('subscribeSurfaceAutoHide');
+    expect(source).toContain('subscribeHostCommands');
+    expect(source).toContain('quitFromHostCommand');
+    expect(source).toContain('sendPlatformAttach');
+    expect(source).toContain("invoke('platform_attach'");
+    expect(source).toContain('getNativeWindowHandle');
+    expect(source).toContain('buildPlatformAttach');
+    expect(source.indexOf('subscribeSurfaceAutoHide(instance.client, lyricsSurfaces);')).toBeGreaterThan(
+      source.indexOf("instance.on('ready'"),
+    );
+    expect(source.indexOf('sendPlatformAttach();')).toBeGreaterThan(
+      source.indexOf("instance.on('ready'"),
+    );
+    expect(source).not.toContain('qqmusic_auth_oauth_start');
   });
 
   it('does not auto-open OAuth or import the updater stub', () => {

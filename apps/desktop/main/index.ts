@@ -39,12 +39,18 @@ import {
   rememberCloseToTray,
 } from './ipc/host-handlers';
 import { IpcRouter } from './ipc/router';
+import {
+  buildPlatformAttach,
+  raiseMainWindow as raiseHostMainWindow,
+  subscribeHostCommands,
+} from './host-commands';
 import { linuxGraphicsSwitches } from './linux-graphics';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './services/shortcuts';
 import { createTray, shouldHideInsteadOfClose, type TrayHandle } from './services/tray';
 import { acquireSingleInstanceLock } from './single-instance';
+import { subscribeSurfaceAutoHide } from './windows/surface-auto-hide';
 import {
   createLyricsSurfaces,
   lyricsSurfaceSettingsFromCore,
@@ -195,15 +201,34 @@ function invokePlayer(method: 'toggle' | 'next' | 'previous'): Promise<void> | u
   return client.invoke(playerInvokeMethod(method)).then(() => undefined);
 }
 
-function emitOpenSettings(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
-    mainWindow.show();
-    mainWindow.focus();
+function quitFromHostCommand(): void {
+  if (stopping) {
+    return;
   }
+  stopping = true;
+  app.quit();
+}
+
+function emitOpenSettings(): void {
+  raiseHostMainWindow(mainWindow);
   fanoutEvent(CHANNEL_APP_OPEN_SETTINGS, null);
+}
+
+function sendPlatformAttach(): void {
+  const client = supervisor?.client;
+  const window = mainWindow;
+  if (!client || !window || window.isDestroyed()) {
+    return;
+  }
+  const attach = buildPlatformAttach({
+    platform: process.platform,
+    smoke,
+    nativeWayland,
+    getNativeWindowHandle: () => window.getNativeWindowHandle(),
+  });
+  void client.invoke('platform_attach', attach).catch(() => {
+    // Core may stub {ok:true}; SMTC/MPRIS stay unverified.
+  });
 }
 
 function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
@@ -334,6 +359,12 @@ function attachSupervisor(instance: CoreSupervisor): void {
     bindCoreEvents();
     cacheCloseToTrayPreference();
     void lyricsSurfaces.restoreGeometry();
+    subscribeSurfaceAutoHide(instance.client, lyricsSurfaces);
+    subscribeHostCommands(instance.client, {
+      raiseMainWindow: () => raiseHostMainWindow(mainWindow),
+      quit: quitFromHostCommand,
+    });
+    sendPlatformAttach();
     if (!info.restart) {
       return;
     }
@@ -446,6 +477,7 @@ if (acquireSingleInstanceLock(app, () => mainWindow)) {
       return;
     }
     createMainWindow(root);
+    sendPlatformAttach();
     installTrayAndShortcuts();
     if (smoke && mainWindow) {
       mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
