@@ -1375,3 +1375,25 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
 - CI covers the pending JSON matrix and builder flags
   (`scripts/ci/pack02-windows.test.mjs`). The 32 MiB hard cap is unchanged.
   Provenance remains **BLOCKED**. No qm-api-rs.
+
+## P11 CI-03: arm64 cross-build notes (hardware pending)
+
+- `docs/migration/ci03-arm64.md` plus `scripts/migration/ci03-arm64.mjs` print
+  the dry cargo / electron-builder commands. They do **not** run cargo,
+  rustup, or electron-builder, and they do not edit `.github/workflows/ci.yml`
+  (FE-06 / CI-02). This host may be x64 Windows; CI-03 is not a live arm
+  runner and is **not** green.
+- Windows: cross-build `yaqmc-core` for `aarch64-pc-windows-msvc` (`rustup
+  target add` + `cargo build -p yaqmc-core --release --target
+  aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
+  ARM64 `link.exe`. `scripts/stage-core.mjs` still only looks at
+  `target/{release,debug}/`; copy
+  `target/aarch64-pc-windows-msvc/release/yaqmc-core.exe` into
+  `apps/desktop/resources/core/` after a cross-build.
+- Linux: native `ubuntu-24.04-arm` when hardware/CI allows (`aarch64-unknown-linux-gnu`,
+  or plain `--release` on that runner), then `electron-builder --linux --arm64`.
+  Do not substitute a Windows-hosted GNU cross for that runner.
+- PACK-01 already declares win/linux arm64 in `electron-builder.yml`.
+  `pack:win` stays `--win --x64`. Arm artifact **boot-test pending**. Electron
+  stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.
