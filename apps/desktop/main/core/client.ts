@@ -14,9 +14,11 @@ export const LONG_TIMEOUT_MS = 120_000;
 
 const LONG_METHODS = new Set([
   'plugin_install',
+  'plugin_install_from',
   'plugin_install_unpacked',
   'plugin_reload',
   'diagnostics_export_bundle',
+  'diagnostics_export_bundle_to',
   'platform_export_diagnostics',
 ]);
 

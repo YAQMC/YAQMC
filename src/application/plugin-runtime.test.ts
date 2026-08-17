@@ -3,6 +3,7 @@ import { Worker as NodeWorker } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   choosePluginFile,
+  installPlugin,
   isPluginSceneMutationCurrent,
   pluginDiagnosticsText,
   pluginWorkerBootstrap,
@@ -10,11 +11,17 @@ import {
 } from './plugin-runtime';
 
 const invokeMock = vi.hoisted(() => vi.fn());
+const hostKind = vi.hoisted(() => ({ value: 'tauri' as 'electron' | 'tauri' | 'fake' }));
 
 vi.mock('./yaqmc-runtime', () => ({
   getYaqmcClient: () => ({
     invoke: invokeMock,
     on: vi.fn(() => () => undefined),
+    bridge: {
+      get kind() {
+        return hostKind.value;
+      },
+    },
   }),
 }));
 
@@ -86,6 +93,8 @@ function runPluginWorkerBootstrap(source: string, pluginId: string): Promise<Iso
 describe('plugin runtime isolation', () => {
   afterEach(() => {
     Reflect.deleteProperty(window, 'yaqmc');
+    hostKind.value = 'tauri';
+    invokeMock.mockReset();
   });
 
   it('bootstraps workers without Tauri, DOM, or network APIs', () => {
@@ -177,6 +186,55 @@ describe('plugin runtime isolation', () => {
     invokeMock.mockResolvedValueOnce('C:\\plugin.yaqmc-plugin');
     await expect(choosePluginFile()).resolves.toBe('C:\\plugin.yaqmc-plugin');
     expect(invokeMock).toHaveBeenCalledWith('plugin_pick_package');
+  });
+
+  it('installs from an explicit path with plugin_install on Tauri', async () => {
+    const record = { id: 'dev.example.sakura' };
+    invokeMock.mockImplementation(async (method: string) => {
+      if (method === 'plugin_install' || method === 'plugin_install_from') return record;
+      if (method === 'plugin_active_resources') {
+        return {
+          safeMode: false,
+          developerMode: false,
+          styleOrder: [],
+          styles: [],
+          scenes: [],
+          scripts: [],
+        };
+      }
+      throw new Error(method);
+    });
+    await expect(installPlugin('C:\\plugin.yaqmc-plugin', { enable: true, grant: [] })).resolves.toEqual(
+      record,
+    );
+    expect(invokeMock).toHaveBeenCalledWith('plugin_install', {
+      request: { path: 'C:\\plugin.yaqmc-plugin', enable: true, grant: [] },
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith('plugin_install_from', expect.anything());
+  });
+
+  it('installs from an explicit path with plugin_install_from on Electron', async () => {
+    hostKind.value = 'electron';
+    const record = { id: 'dev.example.sakura' };
+    invokeMock.mockImplementation(async (method: string) => {
+      if (method === 'plugin_install' || method === 'plugin_install_from') return record;
+      if (method === 'plugin_active_resources') {
+        return {
+          safeMode: false,
+          developerMode: false,
+          styleOrder: [],
+          styles: [],
+          scenes: [],
+          scripts: [],
+        };
+      }
+      throw new Error(method);
+    });
+    await expect(installPlugin('C:\\plugin.yaqmc-plugin')).resolves.toEqual(record);
+    expect(invokeMock).toHaveBeenCalledWith('plugin_install_from', {
+      request: { path: 'C:\\plugin.yaqmc-plugin', enable: false, grant: [] },
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith('plugin_install', expect.anything());
   });
 
   it('ignores late scene mutations after a scene switch', () => {

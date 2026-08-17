@@ -15,7 +15,13 @@
     "core_shutdown_prepare",
     "auth_oauth_prepare",
     "auth_oauth_complete",
-    "auth_oauth_cancel"
+    "auth_oauth_cancel",
+    "app_settings_get",
+    "app_settings_set",
+    "app_settings_remove",
+    "diagnostics_export_bundle_to",
+    "preferences_set_background_from",
+    "plugin_install_from"
   ],
   "protocolVersion": 1,
   "shutdownTimeoutMs": 5000

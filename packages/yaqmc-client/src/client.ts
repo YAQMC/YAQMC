@@ -138,6 +138,8 @@ export class YaqmcClient {
     inspectPath: (path: string) => this.invoke('plugin_inspect_path', { path }),
     install: (request: MethodParams['plugin_install']['request']) =>
       this.invoke('plugin_install', { request }),
+    installFrom: (request: MethodParams['plugin_install_from']['request']) =>
+      this.invoke('plugin_install_from', { request }),
     setEnabled: (request: MethodParams['plugin_set_enabled']['request']) =>
       this.invoke('plugin_set_enabled', { request }),
     uninstall: (request: MethodParams['plugin_uninstall']['request']) =>

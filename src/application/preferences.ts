@@ -568,7 +568,11 @@ export interface ManagedBackgroundImage {
 
 export async function pickManagedBackgroundImage(): Promise<ManagedBackgroundImage | null> {
   if (!isNativeRuntime) return null;
-  return getYaqmcClient().invoke('appearance_pick_background');
+  const client = getYaqmcClient();
+  const picked = await client.invoke('appearance_pick_background');
+  if (picked === null) return null;
+  if (client.bridge.kind !== 'electron') return picked;
+  return client.invoke('preferences_set_background_from', { path: picked.reference });
 }
 
 function resolveSystemMode(): ResolvedColorMode {

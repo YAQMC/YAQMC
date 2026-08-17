@@ -145,6 +145,7 @@ export async function readDiagnosticsSnapshot(
 
 export async function exportDiagnosticsBundle(
   options: BundleExportOptions,
+  destPath?: string,
 ): Promise<BundleExportResult> {
   const { includeLogs, overrideUnresolved, description, issueCategory, ...base } = options;
   const request = {
@@ -154,6 +155,9 @@ export async function exportDiagnosticsBundle(
     issueCategory,
     ...base,
   };
+  if (destPath) {
+    return client.invoke('diagnostics_export_bundle_to', { path: destPath, request });
+  }
   return client.invoke('diagnostics_export_bundle', { request });
 }
 

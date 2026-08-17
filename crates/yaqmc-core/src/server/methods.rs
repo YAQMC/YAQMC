@@ -18,15 +18,15 @@ use crate::CoreHandle;
 
 use super::ops;
 use super::types::{
-    AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams, EnabledParams,
-    EncAreaParams, EntryIdParams, FrontendLogParams, IdParams, IndexParams,
-    IssueReporterPreviewParams, LevelParams, LimitParams, LyricsDocumentParams, NamedRequest,
-    OAuthCompleteParams, OAuthPrepareParams, OptionalAttemptParams, PathParams,
-    PlaylistTracksParams, PluginIdParams,
+    AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams,
+    DiagnosticsExportToParams, EnabledParams, EncAreaParams, EntryIdParams, FrontendLogParams,
+    IdParams, IndexParams, IssueReporterPreviewParams, LevelParams, LimitParams,
+    LyricsDocumentParams, NamedRequest, OAuthCompleteParams, OAuthPrepareParams,
+    OptionalAttemptParams, PathParams, PlaylistTracksParams, PluginIdParams,
     PluginMarkFailedParams, PluginReadAssetParams, PortParams, PrimaryModeParams, QualityParams,
     RecordErrorRequest, ReferenceParams, ReorderParams, RepeatParams, SampleParams, SearchParams,
-    SeekParams, SongIdParams, TokenParams, TrackParams, TracksParams, UrlParams, ValueParams,
-    VolumeParams,
+    SeekParams, SettingKeyParams, SettingWriteParams, SongIdParams, TokenParams, TrackParams,
+    TracksParams, UrlParams, ValueParams, VolumeParams,
 };
 use super::HostDispatchHooks;
 
@@ -137,6 +137,12 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "auth_oauth_prepare",
     "auth_oauth_complete",
     "auth_oauth_cancel",
+    "app_settings_get",
+    "app_settings_set",
+    "app_settings_remove",
+    "diagnostics_export_bundle_to",
+    "preferences_set_background_from",
+    "plugin_install_from",
 ];
 
 #[derive(Debug)]
@@ -844,6 +850,34 @@ async fn invoke_core(
         "auth_oauth_cancel" => {
             let AttemptIdParams { attempt_id } = parse(&params)?;
             provider(ops::auth_oauth_cancel(&core.qq_music(), &attempt_id).await)
+        }
+        "app_settings_get" => {
+            let SettingKeyParams { key } = parse(&params)?;
+            cmd(ops::app_settings_get(&core.storage(), &key))
+        }
+        "app_settings_set" => {
+            let SettingWriteParams { key, value } = parse(&params)?;
+            cmd(ops::app_settings_set(&core.storage(), &key, &value))
+        }
+        "app_settings_remove" => {
+            let SettingKeyParams { key } = parse(&params)?;
+            cmd(ops::app_settings_remove(&core.storage(), &key))
+        }
+        "diagnostics_export_bundle_to" => {
+            let DiagnosticsExportToParams { path, request } = parse(&params)?;
+            cmd(ops::diagnostics_export_bundle_to(core, host, path, request).await)
+        }
+        "preferences_set_background_from" => {
+            let PathParams { path } = parse(&params)?;
+            cmd(ops::preferences_set_background_from(&core.config().paths.data_dir, path).await)
+        }
+        "plugin_install_from" => {
+            let NamedRequest::<PluginInstallRequest> { request } = parse(&params)?;
+            cmd(ops::plugin_install_from(
+                &core.plugins(),
+                request,
+                notify_plugin,
+            ))
         }
         other => {
             debug_assert!(

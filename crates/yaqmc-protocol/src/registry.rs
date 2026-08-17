@@ -495,6 +495,20 @@ const METHODS: &[MethodSpec] = &[
     spec("auth_oauth_prepare", MethodOwner::Core, OriginClass::Main),
     spec("auth_oauth_complete", MethodOwner::Core, OriginClass::Main),
     spec("auth_oauth_cancel", MethodOwner::Core, OriginClass::Main),
+    spec("app_settings_get", MethodOwner::Core, OriginClass::Main),
+    spec("app_settings_set", MethodOwner::Core, OriginClass::Main),
+    spec("app_settings_remove", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "diagnostics_export_bundle_to",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "preferences_set_background_from",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec("plugin_install_from", MethodOwner::Core, OriginClass::Main),
 ];
 
 pub const PROTOCOL_ONLY_METHODS: &[&str] = &[
@@ -504,6 +518,12 @@ pub const PROTOCOL_ONLY_METHODS: &[&str] = &[
     "auth_oauth_prepare",
     "auth_oauth_complete",
     "auth_oauth_cancel",
+    "app_settings_get",
+    "app_settings_set",
+    "app_settings_remove",
+    "diagnostics_export_bundle_to",
+    "preferences_set_background_from",
+    "plugin_install_from",
 ];
 
 const fn spec(name: &'static str, owner: MethodOwner, origins: OriginClass) -> MethodSpec {
@@ -530,9 +550,11 @@ const fn timeout_class(name: &str) -> TimeoutClass {
     if const_starts_with(name, "player_") || const_eq(name, "core_ping") {
         TimeoutClass::Control
     } else if const_eq(name, "plugin_install")
+        || const_eq(name, "plugin_install_from")
         || const_eq(name, "plugin_install_unpacked")
         || const_eq(name, "plugin_reload")
         || const_eq(name, "diagnostics_export_bundle")
+        || const_eq(name, "diagnostics_export_bundle_to")
         || const_eq(name, "platform_export_diagnostics")
     {
         TimeoutClass::Long

@@ -717,9 +717,11 @@ export async function installPlugin(
   path: string,
   options: { enable?: boolean; grant?: string[] } = {},
 ): Promise<PluginRecord> {
-  const record = await client.invoke('plugin_install', {
-    request: { path, enable: options.enable ?? false, grant: options.grant ?? [] },
-  });
+  const request = { path, enable: options.enable ?? false, grant: options.grant ?? [] };
+  const record =
+    client.bridge?.kind === 'electron'
+      ? await client.invoke('plugin_install_from', { request })
+      : await client.invoke('plugin_install', { request });
   await applyPluginResources();
   return record;
 }
