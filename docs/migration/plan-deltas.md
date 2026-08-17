@@ -1288,6 +1288,17 @@ the enforced provenance ledger.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
 
+## P8 ACCT-01 follow-up: OAuth partition permission deny
+
+- `oauth.fromPartition` in `apps/desktop/main/index.ts` calls
+  `applySessionSecurity` on the ephemeral `oauth:{attemptId}` session after
+  `session.fromPartition` (permission deny + empty display-capture). Smoke
+  still returns a dummy `{}` and skips those handlers. `applyAppWindowGuards`
+  is not applied to OAuth windows — those block non-`app://` URLs and would
+  break QQ/WX. No preload. No auto-open at boot.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No live OAuth claim. No Playwright. No qm-api-rs.
+
 ## P8 ACCT-02: QR/session re-verify checklist (LIVE VERIFY pending)
 
 - docs/migration/acct02-qr-session.md is the §36 P8 QR login + session
