@@ -19,6 +19,8 @@ export default tseslint.config(
       'examples/plugins/**',
       'sdk/plugin/**',
       'tests/fixtures/**',
+      'packages/*/dist',
+      'apps/*/dist',
     ],
   },
   js.configs.recommended,
