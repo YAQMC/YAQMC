@@ -1,7 +1,7 @@
 use crate::player::{PlaybackState, PlayerService, PlayerSnapshot, RepeatMode};
+use crate::HostCommand;
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager};
 
 #[cfg(target_os = "windows")]
 use souvlaki::{
@@ -9,7 +9,23 @@ use souvlaki::{
     SeekDirection,
 };
 
-pub use yaqmc_core::platform::SystemMediaStatus;
+pub use crate::platform::SystemMediaStatus;
+pub use crate::HostCommandPublisher;
+
+/// Host-supplied values required by the platform-native system-media adapters.
+///
+/// The numeric HWND is intentionally opaque to Core. `None` is expected outside
+/// Windows and retains the existing unavailable status when Windows has no main
+/// window. Native callbacks use the supplied runtime because they can arrive on
+/// an OS thread with no Tokio context.
+#[derive(Clone)]
+pub struct SystemMediaStartConfig {
+    pub windows_hwnd: Option<isize>,
+    /// Tauri's original HWND lookup error, if resolving the host window failed.
+    pub windows_start_error: Option<String>,
+    pub runtime: tokio::runtime::Handle,
+    pub host_commands: HostCommandPublisher,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 struct ProjectedMetadata {
@@ -81,7 +97,7 @@ pub struct SystemMediaIntegration {
 }
 
 impl SystemMediaIntegration {
-    pub fn start(app: &AppHandle, player: Arc<PlayerService>) -> Arc<Self> {
+    pub fn start(config: SystemMediaStartConfig, player: Arc<PlayerService>) -> Arc<Self> {
         let integration = Arc::new(Self {
             status: Mutex::new(SystemMediaStatus {
                 available: false,
@@ -98,12 +114,12 @@ impl SystemMediaIntegration {
         });
 
         #[cfg(target_os = "linux")]
-        integration.initialize_linux(app, player);
+        integration.initialize_linux(config, player);
         #[cfg(target_os = "windows")]
-        integration.initialize_windows(app, player);
+        integration.initialize_windows(config, player);
         #[cfg(not(any(target_os = "linux", target_os = "windows")))]
         {
-            let _ = (app, player);
+            let _ = (config, player);
             integration.set_error("system media controls are not implemented on this platform");
         }
         integration
@@ -154,14 +170,20 @@ impl SystemMediaIntegration {
     }
 
     #[cfg(target_os = "linux")]
-    fn initialize_linux(&self, app: &AppHandle, player: Arc<PlayerService>) {
+    fn initialize_linux(&self, config: SystemMediaStartConfig, player: Arc<PlayerService>) {
         let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
         let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
-        let event_app = app.clone();
         match std::thread::Builder::new()
             .name("yaqmc-mpris".to_owned())
-            .spawn(move || run_mpris_worker(event_app, player, receiver, ready_sender))
-        {
+            .spawn(move || {
+                run_mpris_worker(
+                    config.runtime,
+                    config.host_commands,
+                    player,
+                    receiver,
+                    ready_sender,
+                )
+            }) {
             Ok(_) => {}
             Err(error) => {
                 self.set_error(error.to_string());
@@ -183,26 +205,19 @@ impl SystemMediaIntegration {
     }
 
     #[cfg(target_os = "windows")]
-    fn initialize_windows(&self, app: &AppHandle, player: Arc<PlayerService>) {
-        let hwnd = match app
-            .get_webview_window("main")
-            .ok_or_else(|| "main window is unavailable".to_owned())
-            .and_then(|window| {
-                window
-                    .hwnd()
-                    .map(|handle| handle.0)
-                    .map_err(|error| error.to_string())
-            }) {
-            Ok(hwnd) => Some(hwnd),
-            Err(error) => {
-                self.set_error(error);
-                return;
-            }
+    fn initialize_windows(&self, config: SystemMediaStartConfig, player: Arc<PlayerService>) {
+        let Some(hwnd) = config.windows_hwnd else {
+            self.set_error(
+                config
+                    .windows_start_error
+                    .unwrap_or_else(|| "main window is unavailable".to_owned()),
+            );
+            return;
         };
         let mut controls = match MediaControls::new(PlatformConfig {
             dbus_name: "yaqmc",
             display_name: "YAQMC",
-            hwnd,
+            hwnd: Some(hwnd as *mut std::ffi::c_void),
         }) {
             Ok(controls) => controls,
             Err(error) => {
@@ -210,10 +225,16 @@ impl SystemMediaIntegration {
                 return;
             }
         };
-        let event_app = app.clone();
-        if let Err(error) = controls
-            .attach(move |event| dispatch_windows_event(&event_app, Arc::clone(&player), event))
-        {
+        let runtime = config.runtime;
+        let host_commands = config.host_commands;
+        if let Err(error) = controls.attach(move |event| {
+            let _ = dispatch_windows_event(
+                host_commands.clone(),
+                runtime.clone(),
+                Arc::clone(&player),
+                event,
+            );
+        }) {
             self.set_error(error.to_string());
             return;
         }
@@ -284,7 +305,8 @@ impl SystemMediaIntegration {
 
 #[cfg(target_os = "linux")]
 fn run_mpris_worker(
-    app: AppHandle,
+    callback_runtime: tokio::runtime::Handle,
+    host_commands: HostCommandPublisher,
     player_service: Arc<PlayerService>,
     mut receiver: tokio::sync::mpsc::UnboundedReceiver<MediaProjection>,
     ready: std::sync::mpsc::SyncSender<Result<(), String>>,
@@ -320,7 +342,7 @@ fn run_mpris_worker(
             }
         };
 
-        connect_linux_callbacks(&player, app, player_service);
+        connect_linux_callbacks(&player, host_commands, callback_runtime, player_service);
         tokio::task::spawn_local(player.run());
         let _ = ready.send(Ok(()));
         let mut previous: Option<MediaProjection> = None;
@@ -410,87 +432,102 @@ fn run_mpris_worker(
 #[cfg(target_os = "linux")]
 fn connect_linux_callbacks(
     player: &mpris_server::Player,
-    app: AppHandle,
+    host_commands: HostCommandPublisher,
+    runtime: tokio::runtime::Handle,
     player_service: Arc<PlayerService>,
 ) {
-    let raise_app = app.clone();
-    player.connect_raise(move |_| show_main_window(&raise_app));
-    player.connect_quit(move |_| app.exit(0));
+    let raise_commands = host_commands.clone();
+    player.connect_raise(move |_| raise_commands.publish(HostCommand::RaiseMainWindow));
+    player.connect_quit(move |_| host_commands.publish(HostCommand::Quit));
 
     let service = Arc::clone(&player_service);
-    player.connect_play(move |_| spawn_command(Arc::clone(&service), LinuxCommand::Play));
+    let command_runtime = runtime.clone();
+    player.connect_play(move |_| {
+        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Play);
+    });
     let service = Arc::clone(&player_service);
-    player.connect_pause(move |_| spawn_command(Arc::clone(&service), LinuxCommand::Pause));
+    let command_runtime = runtime.clone();
+    player.connect_pause(move |_| {
+        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Pause);
+    });
     let service = Arc::clone(&player_service);
-    player.connect_play_pause(move |_| spawn_command(Arc::clone(&service), LinuxCommand::Toggle));
+    let command_runtime = runtime.clone();
+    player.connect_play_pause(move |_| {
+        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Toggle);
+    });
     let service = Arc::clone(&player_service);
-    player.connect_stop(move |_| spawn_command(Arc::clone(&service), LinuxCommand::Stop));
+    let command_runtime = runtime.clone();
+    player.connect_stop(move |_| {
+        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Stop);
+    });
     let service = Arc::clone(&player_service);
-    player.connect_next(move |_| spawn_command(Arc::clone(&service), LinuxCommand::Next));
+    let command_runtime = runtime.clone();
+    player.connect_next(move |_| {
+        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Next);
+    });
     let service = Arc::clone(&player_service);
-    player.connect_previous(move |_| spawn_command(Arc::clone(&service), LinuxCommand::Previous));
+    let command_runtime = runtime.clone();
+    player.connect_previous(move |_| {
+        let _ = spawn_command(
+            &command_runtime,
+            Arc::clone(&service),
+            LinuxCommand::Previous,
+        );
+    });
 
     let service = Arc::clone(&player_service);
+    let callback_runtime = runtime.clone();
     player.connect_seek(move |_, offset| {
-        let offset_ms = offset.as_millis();
-        let service = Arc::clone(&service);
-        tauri::async_runtime::spawn(async move {
-            let current = service.snapshot().await.position_ms;
-            let next = if offset_ms >= 0 {
-                current.saturating_add(offset_ms as u64)
-            } else {
-                current.saturating_sub(offset_ms.unsigned_abs())
-            };
-            let _ = service.seek(next).await;
-        });
+        let _ = dispatch_mpris_callback(
+            &callback_runtime,
+            Arc::clone(&service),
+            SystemMediaPlayerCommand::SeekRelative(offset.as_millis()),
+        );
     });
     let service = Arc::clone(&player_service);
+    let callback_runtime = runtime.clone();
     player.connect_set_position(move |_, track_id, position| {
-        let requested_track = track_id.to_string();
-        let position_ms = position.as_millis().max(0) as u64;
-        let service = Arc::clone(&service);
-        tauri::async_runtime::spawn(async move {
-            let snapshot = service.snapshot().await;
-            let current_track = snapshot
-                .current_index
-                .and_then(|index| snapshot.queue.get(index))
-                .map(|track| mpris_track_id(&track.id));
-            if current_track.as_deref() == Some(requested_track.as_str()) {
-                let _ = service.seek(position_ms).await;
-            }
-        });
+        let _ = dispatch_mpris_callback(
+            &callback_runtime,
+            Arc::clone(&service),
+            SystemMediaPlayerCommand::SetPosition {
+                position_ms: position.as_millis().max(0) as u64,
+                expected_mpris_track_id: Some(track_id.to_string()),
+            },
+        );
     });
     let service = Arc::clone(&player_service);
+    let callback_runtime = runtime.clone();
     player.connect_set_shuffle(move |_, shuffle| {
-        let service = Arc::clone(&service);
-        tauri::async_runtime::spawn(async move {
-            service.set_shuffle(shuffle).await;
-        });
+        let _ = dispatch_mpris_callback(
+            &callback_runtime,
+            Arc::clone(&service),
+            SystemMediaPlayerCommand::SetShuffle(shuffle),
+        );
     });
     let service = Arc::clone(&player_service);
+    let callback_runtime = runtime.clone();
     player.connect_set_loop_status(move |_, status| {
-        use mpris_server::LoopStatus;
-        let repeat = match status {
-            LoopStatus::None => RepeatMode::Off,
-            LoopStatus::Track => RepeatMode::One,
-            LoopStatus::Playlist => RepeatMode::All,
-        };
-        let service = Arc::clone(&service);
-        tauri::async_runtime::spawn(async move {
-            service.set_repeat(repeat).await;
-        });
+        let repeat = repeat_mode_for_mpris(status);
+        let _ = dispatch_mpris_callback(
+            &callback_runtime,
+            Arc::clone(&service),
+            SystemMediaPlayerCommand::SetRepeat(repeat),
+        );
     });
+    let callback_runtime = runtime;
     player.connect_set_volume(move |_, volume| {
-        let service = Arc::clone(&player_service);
-        tauri::async_runtime::spawn(async move {
-            let _ = service.set_volume(volume.clamp(0.0, 1.0)).await;
-        });
+        let _ = dispatch_mpris_callback(
+            &callback_runtime,
+            Arc::clone(&player_service),
+            SystemMediaPlayerCommand::SetVolume(volume),
+        );
     });
 }
 
 #[cfg(target_os = "linux")]
 #[derive(Clone, Copy)]
-enum LinuxCommand {
+pub(crate) enum LinuxCommand {
     Play,
     Pause,
     Toggle,
@@ -500,20 +537,29 @@ enum LinuxCommand {
 }
 
 #[cfg(target_os = "linux")]
-fn spawn_command(player: Arc<PlayerService>, command: LinuxCommand) {
-    tauri::async_runtime::spawn(async move {
-        let result = match command {
-            LinuxCommand::Play => player.play().await,
-            LinuxCommand::Pause => player.pause().await,
-            LinuxCommand::Toggle => player.toggle().await,
-            LinuxCommand::Stop => player.stop().await,
-            LinuxCommand::Next => player.next().await,
-            LinuxCommand::Previous => player.previous().await,
-        };
-        if let Err(error) = result {
-            tracing::debug!(target: "mpris", error = %error, "MPRIS command rejected");
-        }
-    });
+pub(crate) fn spawn_command(
+    runtime: &tokio::runtime::Handle,
+    player: Arc<PlayerService>,
+    command: LinuxCommand,
+) -> tokio::task::JoinHandle<()> {
+    let command = match command {
+        LinuxCommand::Play => SystemMediaPlayerCommand::Play,
+        LinuxCommand::Pause => SystemMediaPlayerCommand::Pause,
+        LinuxCommand::Toggle => SystemMediaPlayerCommand::Toggle,
+        LinuxCommand::Stop => SystemMediaPlayerCommand::Stop,
+        LinuxCommand::Next => SystemMediaPlayerCommand::Next,
+        LinuxCommand::Previous => SystemMediaPlayerCommand::Previous,
+    };
+    dispatch_player_command_on_runtime(runtime, player, command, SystemMediaCallbackOrigin::Mpris)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn dispatch_mpris_callback(
+    runtime: &tokio::runtime::Handle,
+    player: Arc<PlayerService>,
+    command: SystemMediaPlayerCommand,
+) -> tokio::task::JoinHandle<()> {
+    dispatch_player_command_on_runtime(runtime, player, command, SystemMediaCallbackOrigin::Mpris)
 }
 
 #[cfg(target_os = "linux")]
@@ -534,6 +580,97 @@ fn mpris_metadata(metadata: &ProjectedMetadata) -> mpris_server::Metadata {
     builder.build()
 }
 
+#[derive(Clone)]
+#[allow(dead_code)] // Some commands are only emitted by the Linux MPRIS adapter.
+pub(crate) enum SystemMediaPlayerCommand {
+    Play,
+    Pause,
+    Toggle,
+    Stop,
+    Next,
+    Previous,
+    SeekRelative(i64),
+    SetPosition {
+        position_ms: u64,
+        expected_mpris_track_id: Option<String>,
+    },
+    SetShuffle(bool),
+    SetRepeat(RepeatMode),
+    SetVolume(f64),
+}
+
+#[derive(Clone, Copy)]
+#[allow(dead_code)] // Each variant is used only by its platform-native callback adapter.
+pub(crate) enum SystemMediaCallbackOrigin {
+    Mpris,
+    Smtc,
+}
+
+pub(crate) fn dispatch_player_command_on_runtime(
+    runtime: &tokio::runtime::Handle,
+    player: Arc<PlayerService>,
+    command: SystemMediaPlayerCommand,
+    origin: SystemMediaCallbackOrigin,
+) -> tokio::task::JoinHandle<()> {
+    runtime.spawn(async move {
+        let result = match command {
+            SystemMediaPlayerCommand::Play => player.play().await,
+            SystemMediaPlayerCommand::Pause => player.pause().await,
+            SystemMediaPlayerCommand::Toggle => player.toggle().await,
+            SystemMediaPlayerCommand::Stop => player.stop().await,
+            SystemMediaPlayerCommand::Next => player.next().await,
+            SystemMediaPlayerCommand::Previous => player.previous().await,
+            SystemMediaPlayerCommand::SeekRelative(offset_ms) => {
+                let position_ms = player.snapshot().await.position_ms;
+                player
+                    .seek(relative_seek_target(position_ms, offset_ms))
+                    .await
+            }
+            SystemMediaPlayerCommand::SetPosition {
+                position_ms,
+                expected_mpris_track_id,
+            } => {
+                let snapshot = player.snapshot().await;
+                let current_track = snapshot
+                    .current_index
+                    .and_then(|index| snapshot.queue.get(index))
+                    .map(|track| mpris_track_id(&track.id));
+                if expected_mpris_track_id.as_deref().is_none_or(|requested| {
+                    mpris_position_request_is_current(current_track.as_deref(), requested)
+                }) {
+                    player.seek(position_ms).await
+                } else {
+                    Ok(snapshot)
+                }
+            }
+            SystemMediaPlayerCommand::SetShuffle(shuffle) => Ok(player.set_shuffle(shuffle).await),
+            SystemMediaPlayerCommand::SetRepeat(repeat) => Ok(player.set_repeat(repeat).await),
+            SystemMediaPlayerCommand::SetVolume(volume) => {
+                player.set_volume(clamp_system_media_volume(volume)).await
+            }
+        };
+        if let Err(error) = result {
+            match origin {
+                SystemMediaCallbackOrigin::Mpris => {
+                    tracing::debug!(target: "mpris", error = %error, "MPRIS command rejected");
+                }
+                SystemMediaCallbackOrigin::Smtc => {
+                    tracing::debug!(target: "smtc", error = %error, "SMTC command rejected");
+                }
+            }
+        }
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn repeat_mode_for_mpris(status: mpris_server::LoopStatus) -> RepeatMode {
+    match status {
+        mpris_server::LoopStatus::None => RepeatMode::Off,
+        mpris_server::LoopStatus::Track => RepeatMode::One,
+        mpris_server::LoopStatus::Playlist => RepeatMode::All,
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn log_mpris_result(label: &str, result: mpris_server::zbus::Result<()>) {
     if let Err(error) = result {
@@ -542,64 +679,56 @@ fn log_mpris_result(label: &str, result: mpris_server::zbus::Result<()>) {
 }
 
 #[cfg(target_os = "windows")]
-fn dispatch_windows_event(app: &AppHandle, player: Arc<PlayerService>, event: MediaControlEvent) {
+pub(crate) fn dispatch_windows_event(
+    host_commands: HostCommandPublisher,
+    runtime: tokio::runtime::Handle,
+    player: Arc<PlayerService>,
+    event: MediaControlEvent,
+) -> Option<tokio::task::JoinHandle<()>> {
     match event {
-        MediaControlEvent::Raise => show_main_window(app),
-        MediaControlEvent::Quit => app.exit(0),
-        MediaControlEvent::OpenUri(_) => {}
-        event => {
-            tauri::async_runtime::spawn(async move {
-                let result = match event {
-                    MediaControlEvent::Play => player.play().await,
-                    MediaControlEvent::Pause => player.pause().await,
-                    MediaControlEvent::Toggle => player.toggle().await,
-                    MediaControlEvent::Next => player.next().await,
-                    MediaControlEvent::Previous => player.previous().await,
-                    MediaControlEvent::Stop => player.stop().await,
-                    MediaControlEvent::Seek(direction) => {
-                        seek_relative(&player, direction, std::time::Duration::from_secs(10)).await
-                    }
-                    MediaControlEvent::SeekBy(direction, duration) => {
-                        seek_relative(&player, direction, duration).await
-                    }
-                    MediaControlEvent::SetPosition(position) => {
-                        player.seek(duration_ms(position.0)).await
-                    }
-                    MediaControlEvent::SetVolume(volume) => {
-                        player.set_volume(volume.clamp(0.0, 1.0)).await
-                    }
-                    MediaControlEvent::OpenUri(_)
-                    | MediaControlEvent::Raise
-                    | MediaControlEvent::Quit => return,
-                };
-                if let Err(error) = result {
-                    tracing::debug!(target: "smtc", error = %error, "SMTC command rejected");
-                }
-            });
+        MediaControlEvent::Raise => {
+            host_commands.publish(HostCommand::RaiseMainWindow);
+            None
         }
+        MediaControlEvent::Quit => {
+            host_commands.publish(HostCommand::Quit);
+            None
+        }
+        MediaControlEvent::OpenUri(_) => None,
+        MediaControlEvent::Play => Some(SystemMediaPlayerCommand::Play),
+        MediaControlEvent::Pause => Some(SystemMediaPlayerCommand::Pause),
+        MediaControlEvent::Toggle => Some(SystemMediaPlayerCommand::Toggle),
+        MediaControlEvent::Next => Some(SystemMediaPlayerCommand::Next),
+        MediaControlEvent::Previous => Some(SystemMediaPlayerCommand::Previous),
+        MediaControlEvent::Stop => Some(SystemMediaPlayerCommand::Stop),
+        MediaControlEvent::Seek(direction) => Some(SystemMediaPlayerCommand::SeekRelative(
+            smtc_seek_offset(direction, std::time::Duration::from_secs(10)),
+        )),
+        MediaControlEvent::SeekBy(direction, duration) => Some(
+            SystemMediaPlayerCommand::SeekRelative(smtc_seek_offset(direction, duration)),
+        ),
+        MediaControlEvent::SetPosition(position) => Some(SystemMediaPlayerCommand::SetPosition {
+            position_ms: duration_ms(position.0),
+            expected_mpris_track_id: None,
+        }),
+        MediaControlEvent::SetVolume(volume) => Some(SystemMediaPlayerCommand::SetVolume(volume)),
     }
+    .map(|command| {
+        dispatch_player_command_on_runtime(
+            &runtime,
+            player,
+            command,
+            SystemMediaCallbackOrigin::Smtc,
+        )
+    })
 }
 
 #[cfg(target_os = "windows")]
-async fn seek_relative(
-    player: &PlayerService,
-    direction: SeekDirection,
-    amount: std::time::Duration,
-) -> Result<PlayerSnapshot, crate::player::PlayerError> {
-    let current = player.snapshot().await.position_ms;
-    let amount = duration_ms(amount);
-    let next = match direction {
-        SeekDirection::Forward => current.saturating_add(amount),
-        SeekDirection::Backward => current.saturating_sub(amount),
-    };
-    player.seek(next).await
-}
-
-fn show_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+fn smtc_seek_offset(direction: SeekDirection, amount: std::time::Duration) -> i64 {
+    let amount = duration_ms(amount).min(i64::MAX as u64) as i64;
+    match direction {
+        SeekDirection::Forward => amount,
+        SeekDirection::Backward => -amount,
     }
 }
 
@@ -607,13 +736,29 @@ fn valid_cover_url(value: &str) -> Option<&str> {
     (value.starts_with("https://") || value.starts_with("file://")).then_some(value)
 }
 
-fn mpris_track_id(track_id: &str) -> String {
+pub(crate) fn mpris_track_id(track_id: &str) -> String {
     let digest = Sha256::digest(track_id.as_bytes());
     let suffix = digest[..12]
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     format!("/org/yaqmc/track/{suffix}")
+}
+
+fn relative_seek_target(current_position_ms: u64, offset_ms: i64) -> u64 {
+    if offset_ms >= 0 {
+        current_position_ms.saturating_add(offset_ms as u64)
+    } else {
+        current_position_ms.saturating_sub(offset_ms.unsigned_abs())
+    }
+}
+
+fn mpris_position_request_is_current(current_track: Option<&str>, requested_track: &str) -> bool {
+    current_track == Some(requested_track)
+}
+
+fn clamp_system_media_volume(volume: f64) -> f64 {
+    volume.clamp(0.0, 1.0)
 }
 
 #[cfg(target_os = "linux")]

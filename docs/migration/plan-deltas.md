@@ -118,8 +118,9 @@ the enforced provenance ledger.
 
 - `playback_session.rs`, `qmc.rs`, `streaming.rs`, `audio.rs`, `media.rs`, and `player.rs` are Core-owned by
   history-preserving moves. Tauri retains its source namespace solely through inline `yaqmc_core` re-export modules in
-  `src-tauri/src/lib.rs`; no old-path source files are recreated. `local_api.rs`, QQ/OAuth, system media, commands,
-  and Tauri bootstrap/event fan-out remain host-owned and retain their existing composition order.
+  `src-tauri/src/lib.rs`; no old-path source files are recreated. `local_api.rs`, QQ/OAuth, commands, and Tauri
+  bootstrap/event fan-out remain host-owned and retain their existing composition order; system media moves in Task
+  8B below.
 - The four actual Player runtime tasks retain their task bodies, cancellation checks, 50 ms clock tick,
   at-most-250 ms position cadence, and seek/session/load/source-generation fencing are unchanged. Playback quality
   values are imported from `crate::playback_types`; Core has no Tauri or QQ import in this closure.
@@ -175,3 +176,20 @@ the enforced provenance ledger.
 - OAuth window construction, navigation callbacks, close/focus cleanup, and the atomic window completion fence stay
   Tauri-owned. Synchronous owner loss supplies Tauri's Tokio runtime handle to Core; Core contains no Tauri runtime
   API or window import. P0 remains `PENDING`, and the provenance release gate remains **BLOCKED**.
+
+## Task 8B: system-media Core extraction and host-command bridge
+
+- `system_media.rs` is Core-owned by a history-preserving move. It retains the native MPRIS worker, SMTC adapter,
+  projection, metadata filtering, track IDs, player-command mapping, ready/error behavior, and the 1.5 s Windows
+  position-update threshold. Tauri retains only an inline compatibility re-export and startup composition.
+- Tauri subscribes to a closed Core `HostCommandPublisher` before enabling any native callback, resolves the main
+  HWND as an opaque `Option<isize>`, preserves any original HWND lookup error in `SystemMediaStartConfig`, and
+  injects that value plus Tauri's Tokio runtime handle. Core publishes `RaiseMainWindow`/`Quit` best-effort
+  commands; Tauri alone performs the show/unminimize/focus or normal exit behavior. A normal synchronous regression
+  drives the supplied current-thread runtime through the private native-command dispatch route and observes Player
+  events, playback state, seek fencing, shuffle/repeat, and clamped volume.
+- `mpris-server 0.10.0` and `souvlaki 0.8.3` are direct target dependencies of Core at their locked versions. The
+  five supported desktop target closure checks pass without an exception; the recursive denylist remains unchanged.
+  Native MPRIS desktop and Windows SMTC hardware/controller interactions remain HUMAN/platform evidence and are not
+  claimed as agent-passed. P0 remains `PENDING`; provenance remains **BLOCKED**; no P2, Electron, provider/qm-api-rs,
+  reqwest, HUMAN/LIVE_ACCOUNT, or cutover work is implemented by this ownership checkpoint.

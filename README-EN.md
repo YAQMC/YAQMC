@@ -164,7 +164,7 @@ single-command capability and cannot access account or player state.
 - `crates/yaqmc-core/src/player.rs` — authoritative queue/playback state machine
 - `crates/yaqmc-core/src/audio.rs` — native decoding/output and device switching
 - `crates/yaqmc-core/src/streaming.rs` — seekable HTTP Range source
-- `src-tauri/src/system_media.rs` — MPRIS/SMTC adapters
+- `crates/yaqmc-core/src/system_media.rs` — Core-owned MPRIS/SMTC adapters; Tauri injects the HWND/runtime and handles closed host commands
 - `src-tauri/src/desktop_integration.rs` — tray, close behavior, and shortcuts
 - `src-tauri/src/platform.rs` — backend/capability diagnostics and export
 - `scripts/collect-linux-diagnostics.sh` — privacy-bounded tester capture

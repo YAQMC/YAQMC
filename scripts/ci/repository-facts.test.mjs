@@ -28,6 +28,7 @@ const FACT_FILES = [
   'crates/yaqmc-core/src/credentials.rs',
   'crates/yaqmc-core/src/qqmusic/auth.rs',
   'crates/yaqmc-core/src/local_api.rs',
+  'crates/yaqmc-core/src/system_media.rs',
   'docs/migration/command-inventory.md',
 ];
 
@@ -145,4 +146,21 @@ test('rejects a temporary repository whose Core-owned storage source drifts', ()
   );
 
   assert.throws(() => collectRepositoryFacts(root), /SQLite library\.sqlite3 WAL contract is missing/);
+});
+
+test('rejects a temporary repository whose system-media host boundary drifts', () => {
+  const root = copyFactRepository();
+  const mediaPath = path.join(root, 'crates', 'yaqmc-core', 'src', 'system_media.rs');
+  writeFileSync(
+    mediaPath,
+    readFileSync(mediaPath, 'utf8').replace(
+      'pub runtime: tokio::runtime::Handle',
+      'pub runtime: ()',
+    ),
+  );
+
+  assert.throws(
+    () => collectRepositoryFacts(root),
+    /Core system-media ownership contract is missing pub runtime: tokio::runtime::Handle/,
+  );
 });

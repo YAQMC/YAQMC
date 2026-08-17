@@ -24,7 +24,7 @@ QQ compatibility endpoints              HTTP Range source + bounded file cache
 
 StorageService: SQLite metadata, settings, history, queue state, and file-cache index
 CredentialStore: OS keychain/credential vault for provider sessions and the local API token
-Platform adapters: MPRIS 2.2 / SMTC / tray / shortcuts -> PlayerService
+Platform adapters: Core-owned MPRIS 2.2 / SMTC, plus Tauri tray / shortcuts -> PlayerService
 ```
 
 ## Ownership rules
@@ -41,6 +41,9 @@ Platform adapters: MPRIS 2.2 / SMTC / tray / shortcuts -> PlayerService
 - `StorageService` owns all SQLite connections and cache file bookkeeping. Signed URLs are never database keys.
 - `LocalApiService` owns only listener configuration/lifecycle and authentication. HTTP and Tauri commands invoke
   the same `PlayerService`; there is no second playback clock. The loopback API has no account or credential route.
+- `SystemMediaIntegration` is Core-owned. Tauri injects an opaque optional Win32 HWND and its Tokio runtime handle,
+  then subscribes to the closed Core `HostCommand` bus before native callbacks are enabled. MPRIS/SMTC can request
+  raise or quit, but only the Tauri host shows/focuses the window or exits the process.
 
 ## Data and event flow
 

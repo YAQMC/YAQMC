@@ -46,7 +46,10 @@ mod streaming {
     #[allow(unused_imports)]
     pub use yaqmc_core::streaming::*;
 }
-mod system_media;
+mod system_media {
+    #[allow(unused_imports)]
+    pub use yaqmc_core::system_media::*;
+}
 
 use audio::{AudioEngine, RodioAudioEngine, UnavailableAudioEngine};
 use credentials::{CredentialStore, PlatformCredentialStore};
@@ -58,8 +61,9 @@ use player::{PlayerService, PlayerSnapshot};
 use qqmusic::QQMusicService;
 use std::sync::Arc;
 use storage::StorageService;
-use system_media::SystemMediaIntegration;
+use system_media::{SystemMediaIntegration, SystemMediaStartConfig};
 use tauri::{Emitter, Manager};
+use yaqmc_core::{HostCommand, HostCommandPublisher};
 
 #[derive(Clone, Copy)]
 enum MainOwnerLifecycleEvent {
@@ -86,6 +90,74 @@ fn cancel_login_owner(app: &tauri::AppHandle, event: MainOwnerLifecycleEvent) {
         provider.cancel_login_owner_on_runtime(reason, tauri::async_runtime::handle().inner());
     }
     qqmusic_oauth_host::close_all_windows(app);
+}
+
+fn subscribe_host_commands(
+    app: tauri::AppHandle,
+    mut commands: tokio::sync::broadcast::Receiver<HostCommand>,
+) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match commands.recv().await {
+                Ok(HostCommand::RaiseMainWindow) => show_main_window(&app),
+                Ok(HostCommand::Quit) => app.exit(0),
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    tracing::warn!(
+                        target: "host.command",
+                        skipped,
+                        "host command receiver lagged; dropping stale command"
+                    );
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn main_window_hwnd(app: &tauri::AppHandle) -> (Option<isize>, Option<String>) {
+    let Some(window) = app.get_webview_window("main") else {
+        return (None, None);
+    };
+    match window.hwnd() {
+        Ok(handle) => (Some(handle.0 as isize), None),
+        Err(error) => {
+            tracing::warn!(target: "smtc", error = %error, "main window HWND is unavailable");
+            (None, Some(error.to_string()))
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn main_window_hwnd(_app: &tauri::AppHandle) -> (Option<isize>, Option<String>) {
+    (None, None)
+}
+
+#[cfg(test)]
+mod system_media_host_wiring_tests {
+    #[test]
+    fn host_command_receiver_exists_before_system_media_can_enable_native_callbacks() {
+        let source = include_str!("lib.rs");
+        let subscription = source
+            .find("subscribe_host_commands(app.handle().clone(), host_commands.subscribe());")
+            .expect("host command receiver setup");
+        let initialization = source
+            .find("SystemMediaIntegration::start(")
+            .expect("system-media initialization");
+
+        assert!(
+            subscription < initialization,
+            "host command receiver must be subscribed before system-media initialization"
+        );
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -206,7 +278,18 @@ pub fn run() {
             let local_api =
                 LocalApiService::new(config_path, Arc::clone(&player), credentials)?;
             let lyrics_surfaces = Arc::new(LyricsSurfaceManager::new());
-            let system_media = SystemMediaIntegration::start(app.handle(), Arc::clone(&player));
+            let host_commands = HostCommandPublisher::default();
+            subscribe_host_commands(app.handle().clone(), host_commands.subscribe());
+            let (windows_hwnd, windows_start_error) = main_window_hwnd(app.handle());
+            let system_media = SystemMediaIntegration::start(
+                SystemMediaStartConfig {
+                    windows_hwnd,
+                    windows_start_error,
+                    runtime: tauri::async_runtime::handle().inner().clone(),
+                    host_commands,
+                },
+                Arc::clone(&player),
+            );
             let desktop_integration =
                 DesktopIntegration::start(app.handle(), Arc::clone(&player));
             if app_preferences::global_shortcuts_enabled(&storage) {
