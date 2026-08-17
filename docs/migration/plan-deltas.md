@@ -431,6 +431,19 @@ the enforced provenance ledger.
 - `tsc -b` also required a missing `ChannelPayload` type import in
   `src/application/tauri-host-bridge.ts` (SUP-06). No behavior change.
 
+## P4 ELEC-05: IpcRouter and renderer ACL
+
+- `apps/desktop/main/ipc/channels.ts` + `router.ts` enforce the live protocol method ACL
+  (`packages/yaqmc-client/fixtures/methods.json`), not the stale §11.3 surface-subset row.
+  Renderer origin is taken from a Main-owned webContents registry, never from the page.
+  Denied methods return `host.denied` (`{method} is not allowed from {origin}`). Host-owned
+  methods are intercepted and never forwarded to core; unimplemented host handlers return
+  `host.denied` (`{method} is implemented by the host`). Event fan-out still follows §11.3
+  (main: all; surfaces: `lyrics://*`, `player://snapshot`, `preferences://changed`; unlock:
+  `lyrics://surface-closed`).
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs, no HWND/SMTC.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,

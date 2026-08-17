@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, webContents } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CoreClient } from './core/client';
 import { CoreSupervisor, tryResolveCoreBinary } from './core/supervisor';
-import { EVENT_CHANNEL, INVOKE_CHANNEL, handleRendererInvoke, type InvokeRequest } from './ipc';
+import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
+import { loadMethodAclFromFile } from './ipc/channels';
+import { IpcRouter } from './ipc/router';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 
 protocol.registerSchemesAsPrivileged([
@@ -27,8 +28,13 @@ const repoRoot = path.resolve(desktopRoot, '../..');
 const harnessRoot = path.join(desktopRoot, 'harness');
 const viteDist = path.join(repoRoot, 'dist');
 
+const router = new IpcRouter({
+  methods: loadMethodAclFromFile(
+    path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
+  ),
+});
+
 let supervisor: CoreSupervisor | undefined;
-let coreClient: CoreClient | undefined;
 let stopping = false;
 let exitCode = 0;
 
@@ -78,18 +84,20 @@ function createMainWindow(root: string): BrowserWindow {
       backgroundThrottling: false,
     },
   });
+  const contentsId = window.webContents.id;
+  router.registerWindow(contentsId, 'main');
+  window.on('closed', () => {
+    router.unregisterWindow(contentsId);
+  });
   void window.loadURL(mainWindowUrl(root));
   return window;
 }
 
-function bindCoreEvents(client: CoreClient): void {
-  client.on('event', (frame: { channel: string; payload: unknown }) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send(EVENT_CHANNEL, {
-        channel: frame.channel,
-        payload: frame.payload,
-      });
-    }
+function bindCoreEvents(): void {
+  supervisor?.client.on('event', (frame: { channel: string; payload: unknown }) => {
+    router.fanout(frame.channel, frame.payload, (id, eventFrame) => {
+      webContents.fromId(id)?.send(EVENT_CHANNEL, eventFrame);
+    });
   });
 }
 
@@ -118,15 +126,13 @@ function startSupervisor(): Promise<void> {
     expectedCoreVersion: app.getVersion(),
   });
   return supervisor.start().then(() => {
-    coreClient = supervisor?.client;
-    if (coreClient) {
-      bindCoreEvents(coreClient);
-    }
+    router.setClient(supervisor?.client);
+    bindCoreEvents();
   });
 }
 
-ipcMain.handle(INVOKE_CHANNEL, async (_event, request: InvokeRequest) => {
-  return handleRendererInvoke(coreClient, request);
+ipcMain.handle(INVOKE_CHANNEL, async (event, request: InvokeRequest) => {
+  return router.invoke(event.sender.id, request);
 });
 
 app.whenReady().then(async () => {
@@ -173,7 +179,7 @@ app.on('before-quit', (event) => {
   stopping = true;
   void supervisor.stop().finally(() => {
     supervisor = undefined;
-    coreClient = undefined;
+    router.setClient(undefined);
     app.exit(exitCode);
   });
 });
