@@ -711,6 +711,17 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs.
 
+## P6 FE-03: plugins and diagnostics on YaqmcClient
+
+- `plugin-runtime.ts`, `local-api.ts`, `diagnostics-runtime.ts`, `logger.ts`,
+  `FpsOverlay.tsx`, and `platform-integration.ts` no longer import `@tauri-apps`.
+  Commands go through `getYaqmcClient()` / `client.invoke` keeping existing NamedRequest
+  `{ request: … }` shapes. Plugin change subscription is `client.on('plugin://changed')`.
+  `isNativeRuntime` imports stay (FE-05). FE-02/FE-04 and ESLint `no-restricted-imports`
+  are not in this checkpoint.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No qm-api-rs.
+
 ## P9 §29.2: linux-graphics policy (unwired)
 
 - `apps/desktop/main/linux-graphics.ts` is a pure policy table:
@@ -805,6 +816,21 @@ the enforced provenance ledger.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
 
+## P6 FE-04: window chrome, external links, lyrics surfaces
+
+- TopBar window buttons call `getYaqmcClient().host.window.minimize` /
+  `toggleMaximize` / `close`. Drag keeps `data-tauri-drag-region` and adds
+  `.yaqmc-drag` (`-webkit-app-region: drag`) plus `.yaqmc-no-drag` on chrome
+  controls so Tauri and Electron coexist (attr removed in P13).
+- `lyrics-presentation.ts` fullscreen writes go through
+  `client.host.window.setFullscreen`. `external-links.ts` and
+  `issue-reporter.ts` open URLs with `client.host.shell.openExternal`.
+- Lyrics surface runtime/UI and Settings `lyrics_surface_capabilities` use
+  `client.invoke` / `client.player.*` / `client.on`. App tray settings is
+  `client.on('app://open-settings')`. CoreStatusBanner is unchanged.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No FE-05 eslint gate. No qm-api-rs.
+
 ## P11-prep: host://update channel
 
 - `host://update` is a new host-originated channel (TS + `yaqmc-protocol`,
@@ -837,3 +863,39 @@ the enforced provenance ledger.
   `no-restricted-imports` are not in this checkpoint.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## host boot: wire tray, shortcuts, openExternal, lyrics surfaces
+
+- `apps/desktop/main/index.ts` now creates the tray (non-fatal on icon/init
+  failure) and registers the three FACT global shortcuts after the main
+  window exists. Left-click toggles visibility. Menu play/pause/next/prev
+  call `CoreClient.invoke` (`player_toggle` / `player_next` /
+  `player_previous`). Settings emits `app://open-settings` to the main
+  renderer. Quit uses the existing `before-quit` supervisor shutdown path.
+  `YAQMC_DESKTOP_SMOKE=1` skips tray and shortcuts (no display/appindicator).
+- Native Wayland skip uses `shouldRegisterGlobalShortcuts` with an env
+  heuristic (`WAYLAND_DISPLAY` set and `DISPLAY` unset). `linux-graphics.ts`
+  exists but stays unwired so Chromium flags are unchanged (ADR-008 default
+  X11/XWayland; no `--no-sandbox`).
+- Close-to-tray: hide the main window when `shouldHideInsteadOfClose` is
+  true (`trayActive` and `closeToTray`). Default `closeToTray` is hide
+  (FACT `closeBehavior !== "quit"`). After core `ready`, Main caches
+  `app_preferences_get` and `preferences://changed` JSON documents; a failed
+  or missing read keeps the hide default. Extra user-typed `openExternal`
+  settings URLs are not read yet (allowlist extras stay `[]`).
+- `IpcRouter` intercepts inventory lyrics host methods that map onto the
+  SURF-01 helpers: `lyrics_surfaces_reconcile` (show/hide/lock from
+  `enabled` / `passive-locked`), `lyrics_surface_close` (hide + emit
+  `lyrics://surface-closed` as the FACT kind string),
+  `lyrics_surface_set_interaction` (lock), `lyrics_surface_show_settings`,
+  `lyrics_surface_capabilities`, `lyrics_surface_status`. Unlock overlays
+  (`lyrics_surface_unlock`, `lyrics_surfaces_unlock_all`) and
+  `lyrics_surface_reset_position` stay `host.denied` unimplemented
+  (SURF-02 / geometry later). There is no opener method in the 117-command
+  inventory; Main registers extra host method `shell.openExternal` (main
+  origin only) → `openExternalIfAllowed`. Denied origins still `host.denied`.
+- Unwired this checkpoint: `oauth-window.ts` (no auto-open; ACCT-01),
+  `dialogs.ts` (DIAG-03 pick-path stub), `linux-graphics.ts` (policy table
+  only), `services/updater.ts` (UPD-01 stub). Electron stays **43.4.0**.
+  Main window FACT **1280×800**. The 32 MiB hard cap is unchanged. P0 remains
+  `PENDING`; provenance remains **BLOCKED**. No qm-api-rs. No SMTC claims.

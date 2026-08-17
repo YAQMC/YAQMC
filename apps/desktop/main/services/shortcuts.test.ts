@@ -146,11 +146,10 @@ describe('registerGlobalShortcuts', () => {
   });
 });
 
-describe('unwired status', () => {
-  it('is not imported from main/index.ts', () => {
+describe('host boot wiring', () => {
+  it('is imported from main/index.ts', () => {
     const source = readFileSync(path.join(desktopRoot, 'main/index.ts'), 'utf8');
-    expect(source).not.toContain("from './services/shortcuts'");
-    expect(source).not.toContain('registerGlobalShortcuts');
-    expect(source).not.toContain('shouldRegisterGlobalShortcuts');
+    expect(source).toContain("from './services/shortcuts'");
+    expect(source).toContain('registerGlobalShortcuts');
   });
 });

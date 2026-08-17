@@ -16,9 +16,9 @@ export type LyricsSurfaceWindow = {
 
 /**
  * Construction table for lyrics-desktop / lyrics-island (§11.2 + live Tauri FACT).
- * `alwaysOnTop: 'screen-saver'` is the intended Electron level; the later wire-up
- * maps this custom field onto `BrowserWindow({ alwaysOnTop: true })` plus
- * `setAlwaysOnTop(true, 'screen-saver')`. This module stays unwired from `index.ts`.
+ * `alwaysOnTop: 'screen-saver'` is the intended Electron level; host boot maps
+ * this custom field onto `BrowserWindow({ alwaysOnTop: true })` plus
+ * `setAlwaysOnTop(true, 'screen-saver')`.
  */
 export type LyricsSurfaceCreateOptions = {
   title: string;

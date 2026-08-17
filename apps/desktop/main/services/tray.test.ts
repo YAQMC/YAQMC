@@ -218,11 +218,11 @@ describe('toggleMainWindow', () => {
   });
 });
 
-describe('unwired status', () => {
-  it('is not imported from main/index.ts', () => {
+describe('host boot wiring', () => {
+  it('is imported from main/index.ts', () => {
     const source = readFileSync(mainIndex, 'utf8');
-    expect(source).not.toContain("from './services/tray'");
-    expect(source).not.toContain('createTray');
-    expect(source).not.toContain('shouldHideInsteadOfClose');
+    expect(source).toContain("from './services/tray'");
+    expect(source).toContain('createTray');
+    expect(source).toContain('shouldHideInsteadOfClose');
   });
 });

@@ -1,22 +1,51 @@
-import { app, BrowserWindow, ipcMain, protocol, session, webContents } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  protocol,
+  session,
+  shell,
+  Tray,
+  webContents,
+} from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  CHANNEL_APP_OPEN_SETTINGS,
   CHANNEL_HOST_CORE_STATUS,
   CHANNEL_LYRICS_DOCUMENT,
   CHANNEL_LYRICS_PROJECTION,
+  CHANNEL_LYRICS_SURFACE_CLOSED,
   CHANNEL_PLAYER_SNAPSHOT,
+  CHANNEL_PREFERENCES_CHANGED,
 } from '@yaqmc/client';
 import { resyncAfterCoreRestart } from './core/resync';
 import { CoreSupervisor, resolveCoreLaunch, type CoreStatusPayload } from './core/supervisor';
 import { resolveCorePaths } from './core/paths';
 import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
 import { loadMethodAclFromFile } from './ipc/channels';
+import {
+  createHostHandlers,
+  isNativeWaylandSession,
+  lyricsRoleFromCreateOptions,
+  lyricsSurfaceCapabilities,
+  playerInvokeMethod,
+  rememberCloseToTray,
+} from './ipc/host-handlers';
 import { IpcRouter } from './ipc/router';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
+import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './services/shortcuts';
+import { createTray, shouldHideInsteadOfClose, type TrayHandle } from './services/tray';
 import { acquireSingleInstanceLock } from './single-instance';
+import {
+  createLyricsSurfaces,
+  type LyricsSurfaceCreateOptions,
+  type LyricsSurfaceKind,
+} from './windows/lyrics-surfaces';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -37,17 +66,39 @@ const desktopRoot = path.resolve(here, '../..');
 const repoRoot = path.resolve(desktopRoot, '../..');
 const harnessRoot = path.join(desktopRoot, 'harness');
 const viteDist = path.join(repoRoot, 'dist');
-
-const router = new IpcRouter({
-  methods: loadMethodAclFromFile(
-    path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
-  ),
-});
+const preloadPath = path.join(here, '../preload/main.cjs');
+const lyricsPreloadPath = path.join(here, '../preload/lyrics-surface.cjs');
+const resourcesDir = path.join(desktopRoot, 'resources');
+const nativeWayland = isNativeWaylandSession();
 
 let supervisor: CoreSupervisor | undefined;
 let stopping = false;
 let exitCode = 0;
 let mainWindow: BrowserWindow | undefined;
+let trayHandle: TrayHandle | undefined;
+/** FACT default: hide-to-tray. Preference read is cached; missing prefs stay hide. */
+let closeToTray = true;
+
+const lyricsSurfaces = createLyricsSurfaces({
+  preloadPath: lyricsPreloadPath,
+  createWindow: createLyricsBrowserWindow,
+});
+
+const router = new IpcRouter({
+  methods: loadMethodAclFromFile(
+    path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
+  ),
+  hostHandlers: createHostHandlers({
+    openExternal: (url) => shell.openExternal(url),
+    lyrics: lyricsSurfaces,
+    capabilities: () =>
+      lyricsSurfaceCapabilities({ platform: process.platform, nativeWayland }),
+    showMainAndOpenSettings: emitOpenSettings,
+    emitSurfaceClosed: (kind: LyricsSurfaceKind) => {
+      fanoutEvent(CHANNEL_LYRICS_SURFACE_CLOSED, kind);
+    },
+  }),
+});
 
 function rendererRoot(): string {
   if (smoke) {
@@ -71,11 +122,49 @@ function mainWindowUrl(root: string): string {
 
 function quitWith(code: number): void {
   exitCode = code;
+  stopping = true;
   if (!supervisor) {
     app.exit(code);
     return;
   }
   app.quit();
+}
+
+function invokePlayer(method: 'toggle' | 'next' | 'previous'): Promise<void> | undefined {
+  const client = supervisor?.client;
+  if (!client) {
+    return undefined;
+  }
+  return client.invoke(playerInvokeMethod(method)).then(() => undefined);
+}
+
+function emitOpenSettings(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  fanoutEvent(CHANNEL_APP_OPEN_SETTINGS, null);
+}
+
+function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
+  const { alwaysOnTop, ...rest } = options;
+  void alwaysOnTop;
+  const window = new BrowserWindow({
+    ...rest,
+    alwaysOnTop: true,
+  });
+  const contentsId = window.webContents.id;
+  router.registerWindow(contentsId, lyricsRoleFromCreateOptions(options));
+  applyAppWindowGuards(window, {
+    allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
+  });
+  window.on('closed', () => {
+    router.unregisterWindow(contentsId);
+  });
+  return window;
 }
 
 function createMainWindow(root: string): BrowserWindow {
@@ -92,7 +181,7 @@ function createMainWindow(root: string): BrowserWindow {
       process.platform === 'win32' ? 'icon.ico' : 'icon.png',
     ),
     webPreferences: {
-      preload: path.join(here, '../preload/main.cjs'),
+      preload: preloadPath,
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -106,10 +195,22 @@ function createMainWindow(root: string): BrowserWindow {
   const contentsId = window.webContents.id;
   router.registerWindow(contentsId, 'main');
   mainWindow = window;
+  window.on('close', (event) => {
+    if (smoke || stopping) {
+      return;
+    }
+    if (shouldHideInsteadOfClose({ closeToTray, trayActive: trayHandle !== undefined })) {
+      event.preventDefault();
+      window.hide();
+    }
+  });
   window.on('closed', () => {
     router.unregisterWindow(contentsId);
     if (mainWindow === window) {
       mainWindow = undefined;
+    }
+    if (!stopping) {
+      app.quit();
     }
   });
   applyAppWindowGuards(window, {
@@ -120,6 +221,9 @@ function createMainWindow(root: string): BrowserWindow {
 }
 
 function fanoutEvent(channel: string, payload: unknown): void {
+  if (channel === CHANNEL_PREFERENCES_CHANGED) {
+    closeToTray = rememberCloseToTray(payload, closeToTray);
+  }
   router.fanout(channel, payload, (id, eventFrame) => {
     webContents.fromId(id)?.send(EVENT_CHANNEL, eventFrame);
   });
@@ -131,6 +235,21 @@ function bindCoreEvents(): void {
   });
 }
 
+function cacheCloseToTrayPreference(): void {
+  const client = supervisor?.client;
+  if (!client) {
+    return;
+  }
+  void client
+    .invoke('app_preferences_get')
+    .then((raw) => {
+      closeToTray = rememberCloseToTray(raw, closeToTray);
+    })
+    .catch(() => {
+      // FACT: preference read deferred / failed → keep default hide-to-tray.
+    });
+}
+
 function attachSupervisor(instance: CoreSupervisor): void {
   instance.on('status', (payload: CoreStatusPayload) => {
     fanoutEvent(CHANNEL_HOST_CORE_STATUS, payload);
@@ -138,6 +257,7 @@ function attachSupervisor(instance: CoreSupervisor): void {
   instance.on('ready', (info: { restart: boolean }) => {
     router.setClient(instance.client);
     bindCoreEvents();
+    cacheCloseToTrayPreference();
     if (!info.restart) {
       return;
     }
@@ -187,6 +307,46 @@ function startSupervisor(): Promise<void> {
   return supervisor.start().then(() => undefined);
 }
 
+function installTrayAndShortcuts(): void {
+  if (smoke) {
+    return;
+  }
+  try {
+    trayHandle = createTray({
+      apis: { Tray, Menu },
+      resourcesDir,
+      getMainWindow: () => mainWindow,
+      invokePlayer,
+      openSettings: emitOpenSettings,
+      quit: () => {
+        stopping = true;
+        app.quit();
+      },
+    });
+  } catch (error) {
+    console.warn('tray unavailable', error);
+    trayHandle = undefined;
+  }
+
+  registerGlobalShortcuts({
+    globalShortcut,
+    invokePlayer,
+    platform: process.platform,
+    wayland: nativeWayland,
+    log: {
+      warn(message, extra) {
+        console.warn(message, extra);
+      },
+    },
+  });
+}
+
+function teardownHostChrome(): void {
+  unregisterGlobalShortcuts(globalShortcut);
+  trayHandle?.destroy();
+  trayHandle = undefined;
+}
+
 ipcMain.handle(INVOKE_CHANNEL, async (event, request: InvokeRequest) => {
   return router.invoke(event.sender.id, request);
 });
@@ -210,6 +370,7 @@ if (acquireSingleInstanceLock(app, () => mainWindow)) {
       return;
     }
     createMainWindow(root);
+    installTrayAndShortcuts();
     if (smoke && mainWindow) {
       mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
         console.error(`harness failed to load: ${code} ${description}`);
@@ -230,11 +391,12 @@ if (acquireSingleInstanceLock(app, () => mainWindow)) {
   });
 
   app.on('before-quit', (event) => {
-    if (stopping || !supervisor) {
+    stopping = true;
+    teardownHostChrome();
+    if (!supervisor) {
       return;
     }
     event.preventDefault();
-    stopping = true;
     void supervisor.stop().finally(() => {
       supervisor = undefined;
       router.setClient(undefined);

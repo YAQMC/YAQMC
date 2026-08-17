@@ -81,6 +81,19 @@ describe('IpcRouter', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('runs a registered host handler and still denies missing ones', async () => {
+    const hostHandlers = {
+      system_integration_status: vi.fn(async () => ({ trayAvailable: true })),
+    };
+    const { router, invoke } = routerWith('main', vi.fn(), hostHandlers);
+    await expect(router.invoke(1, { method: 'system_integration_status' })).resolves.toEqual({
+      ok: true,
+      result: { trayAvailable: true },
+    });
+    expect(hostHandlers.system_integration_status).toHaveBeenCalledOnce();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('does not send denied events to lyrics surfaces', () => {
     const router = new IpcRouter({ methods });
     router.registerWindow(1, 'main');
