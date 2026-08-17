@@ -1,4 +1,5 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { isNativeRuntime } from './native-player-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
 
 const memoryCache = new Map<string, string>();
 const pendingCache = new Map<string, Promise<string>>();
@@ -34,13 +35,14 @@ export function isCachedArtworkDataUri(value: unknown): value is string {
 }
 
 export function cachedArtworkSource(url: string): Promise<string> | null {
-  if (!isTauri() || !isCacheableArtworkSource(url)) return null;
+  if (!isNativeRuntime || !isCacheableArtworkSource(url)) return null;
   const existing = memoryCache.get(url);
   if (existing) return Promise.resolve(existing);
   const pending = pendingCache.get(url);
   if (pending) return pending;
   const requestGeneration = cacheGeneration;
-  const request = invoke<unknown>('qqmusic_cache_artwork', { url })
+  const request = getYaqmcClient()
+    .invoke('qqmusic_cache_artwork', { url })
     .then((value) => {
       if (!isCachedArtworkDataUri(value)) {
         throw new Error('The native artwork cache returned an invalid image payload');

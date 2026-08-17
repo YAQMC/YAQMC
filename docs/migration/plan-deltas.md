@@ -816,3 +816,24 @@ the enforced provenance ledger.
   `@yaqmc/client`. No `electron-updater` dependency. The 32 MiB hard cap is
   unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No
   qm-api-rs.
+
+## P6 FE-02: catalog, account, preferences, and lyrics data on YaqmcClient
+
+- Catalog/account/prefs/lyrics-data files no longer call `@tauri-apps` `invoke` /
+  `listen`. They use `getYaqmcClient()` from `yaqmc-runtime.ts` (import only; that
+  file is unchanged). NamedRequest `{ request: ... }` shapes are unchanged.
+  `isNativeRuntime` stays imported from `native-player-runtime` where it already
+  was (`provider-settings`, `use-lyrics-coordinator`) and replaces `isTauri()` in
+  `preferences.ts`, `artwork-cache.ts`, and `artwork-source.ts`. Zustand preference
+  persist/hydrate semantics are unchanged. `client.on` delivers the unwrapped
+  payload (Tauri `event.payload`).
+- FACT: live Tauri still emits `preferences://changed` as the full JSON document
+  string and `lyrics://surface-closed` as the kind string (`desktop`/`island`).
+  The TS channel mirror types `{ key: string }` / `{ surface: string }` are not
+  rewritten here; the renderer still JSON.parse's the live string document and
+  treats surface-closed as a string so store behavior stays the same.
+- Tests mock `getYaqmcClient` / `isNativeRuntime` instead of `@tauri-apps`.
+  `player-store.test.ts` is not edited. FE-03/FE-04 and ESLint
+  `no-restricted-imports` are not in this checkpoint.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No qm-api-rs.
