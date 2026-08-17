@@ -26,6 +26,7 @@ pub use handshake::{
 };
 pub use registry::{
     authorize, method, methods, AclDenied, MethodOwner, MethodSpec, TimeoutClass, WindowOrigin,
+    PROTOCOL_ONLY_METHODS,
 };
 pub use transport::{duplex_pair, CoreTransport, DuplexTransport, StdioTransport};
 

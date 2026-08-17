@@ -9,6 +9,7 @@ import {
 } from './command-inventory.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
+const PROTOCOL_ONLY_METHODS = ['core_ping', 'platform_attach', 'core_shutdown_prepare'];
 
 test('PROTO-02 inventory covers 117 registered methods and the frontend checksum', () => {
   const inventory = collectCommandInventory(repositoryRoot);
@@ -72,12 +73,22 @@ test('protocol registry names and owners match the inventory and capability orig
     origins: match[3],
   }));
   assert.deepEqual(
-    specs.map((spec) => spec.name),
+    specs
+      .map((spec) => spec.name)
+      .filter((name) => !PROTOCOL_ONLY_METHODS.includes(name)),
     inventory.rows.map((row) => row.name),
   );
   assert.deepEqual(
-    specs.map((spec) => spec.owner),
+    specs
+      .filter((spec) => !PROTOCOL_ONLY_METHODS.includes(spec.name))
+      .map((spec) => spec.owner),
     inventory.rows.map((row) => row.after),
+  );
+  assert.deepEqual(
+    specs
+      .filter((spec) => PROTOCOL_ONLY_METHODS.includes(spec.name))
+      .map((spec) => spec.name),
+    PROTOCOL_ONLY_METHODS,
   );
 
   function allows(relative) {

@@ -3,6 +3,7 @@
 mod events;
 mod methods;
 pub mod ops;
+mod serve;
 mod types;
 
 pub use events::{
@@ -14,6 +15,7 @@ pub use ops::{
     map_plugin_diagnostic_for_test, map_provider_section_for_test, perf_sample_header,
     perf_sample_line, write_perf_sample,
 };
+pub use serve::serve_protocol;
 pub use types::{
     DebugPerfSample, DiagnosticsBundleRequest, DiagnosticsRequest, FrontendLogEntry,
     RecordErrorRequest,

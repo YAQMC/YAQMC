@@ -28,7 +28,7 @@ sha2 = "0.10"
 subtle = "2"
 tempfile = { version = "3", optional = true }
 thiserror = "2"
-tokio = { version = "1", features = ["fs", "io-util", "net", "rt", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
@@ -49,6 +49,10 @@ http-body-util = "0.1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "test-util", "time"] }
 tower = { version = "0.5", features = ["util"] }
+
+[[bin]]
+name = "yaqmc-core"
+path = "src/bin/yaqmc-core.rs"
 
 [[test]]
 name = "task7_local_api_boundary"

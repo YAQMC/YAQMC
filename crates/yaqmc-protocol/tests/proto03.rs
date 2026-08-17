@@ -3,18 +3,22 @@ use std::time::Duration;
 
 use yaqmc_protocol::{
     authorize, method, methods, AclDenied, ErrorCode, MethodOwner, TimeoutClass, WindowOrigin,
-    DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES,
+    DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, PROTOCOL_ONLY_METHODS,
 };
 
 #[test]
 fn registry_is_the_117_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 117);
+    assert_eq!(registry.len(), 117 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
-    assert_eq!(names.len(), 117);
+    assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
     assert!(method("lyrics_surface_unlock").is_some());
     assert!(method("not_a_method").is_none());
+    for name in PROTOCOL_ONLY_METHODS {
+        assert!(method(name).is_some(), "{name}");
+        assert_eq!(method(name).expect(name).owner, MethodOwner::Core);
+    }
 }
 
 #[test]
@@ -43,7 +47,7 @@ fn timeout_classes_match_the_client_budget_table() {
     assert_eq!(TimeoutClass::Long.duration(), Duration::from_secs(120));
 
     assert_eq!(
-        method("player_seek").expect("player_seek").timeout_class,
+        method("core_ping").expect("core_ping").timeout_class,
         TimeoutClass::Control
     );
     assert_eq!(
@@ -104,9 +108,11 @@ fn account_and_plugin_methods_are_main_window_only() {
 
     let surface = method("player_toggle").expect("toggle");
     assert!(!surface.main_window_only);
-    assert!(surface
-        .allowed_origins
-        .contains(&WindowOrigin::LyricsDesktop));
+    assert!(
+        surface
+            .allowed_origins
+            .contains(&WindowOrigin::LyricsDesktop)
+    );
 
     let host_owned = method("system_shortcuts_set_enabled").expect("shortcuts");
     assert_eq!(host_owned.owner, MethodOwner::Host);
