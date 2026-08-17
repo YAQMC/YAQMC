@@ -1692,3 +1692,20 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 - This is not PLAY-01 / SMTC / soak / provenance green. Actions stay frozen.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P2 PROTO-02 follow-up: post-bridge frontend usage graph
+
+- The inventory CI still treats 112 renderer-referenced commands as the immutable
+  PROTO-02 checksum (117 registered minus the original five unreferenced names).
+  Live `src/` now quotes 88 of those 112 because P6 moved 24 player/lyrics calls
+  behind `YaqmcClient.player.*`. Those 24 remain Core protocol methods in the
+  117-name registry and `packages/yaqmc-client`; they are not host-owned,
+  dialog-split, renamed, or retired.
+- `scripts/ci/command-inventory.mjs` now distinguishes the frozen 112/5 column
+  from the post-bridge usage graph. A baseline method missing from both `src/`
+  and `YaqmcClient.invoke` still fails the gate. Timeout and payload-cap
+  constants are unchanged: 1 MiB default, 6 MiB `plugin_read_asset` response,
+  32 MiB hard cap, `player_*` / `core_ping` Control.
+- PROTO-02 is not re-opened or marked green. No production method names or
+  behavior changed. Actions stay frozen. Provenance remains **BLOCKED**.
+  No qm-api-rs.

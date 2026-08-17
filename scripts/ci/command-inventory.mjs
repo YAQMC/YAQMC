@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { format as formatWithPrettier, resolveConfig } from 'prettier';
 
 const HOST_INJECTION = /^(?:tauri::)?(?:AppHandle|WebviewWindow|Window|State)\b/;
 const COMMAND_DEFINITION =
@@ -25,12 +26,48 @@ export const HOST_OWNED_METHODS = new Set([
   'plugin_pick_directory',
 ]);
 
+/** PROTO-02 baseline: these five were unreferenced by `src/` at inventory time. */
 export const UNREFERENCED_METHODS = [
   'system_integration_status',
   'player_play',
   'player_pause',
   'lyrics_surface_status',
   'plugin_diagnostics',
+];
+
+/** Immutable PROTO-02 frontend checksum: 117 registered minus the five above. */
+export const PROTO02_BASELINE_REFERENCED_COUNT = 112;
+
+/**
+ * Baseline-112 names that left `src/` string literals after P6 wrapped player/lyrics
+ * calls in `YaqmcClient`. Still live protocol methods; not retired, renamed, or host-replaced.
+ * Order matches `generate_handler!`.
+ */
+export const POST_BRIDGE_CLIENT_MAPPED_METHODS = [
+  'player_snapshot',
+  'player_hydrate_queue',
+  'player_play_tracks',
+  'player_play_from_queue',
+  'player_play_queue_entry',
+  'player_toggle',
+  'player_next',
+  'player_previous',
+  'player_seek',
+  'player_set_volume',
+  'player_toggle_muted',
+  'player_toggle_shuffle',
+  'player_set_shuffle',
+  'player_cycle_repeat',
+  'player_set_repeat',
+  'player_set_primary_playback_mode',
+  'player_add_to_queue',
+  'player_add_tracks_to_queue',
+  'player_remove_from_queue',
+  'player_remove_queue_entry',
+  'player_reorder_queue_entry',
+  'player_play_next_queue_entry',
+  'player_lyrics',
+  'lyrics_surface_projection',
 ];
 
 export const DIALOG_SPLITS = [
@@ -123,10 +160,7 @@ export function collectRegisteredCommands(repositoryRoot) {
     (match) => {
       const name = match[1];
       const index = match.index ?? 0;
-      const prefix = registrationSource.slice(
-        0,
-        registrationSource.indexOf(handlerBlock) + index,
-      );
+      const prefix = registrationSource.slice(0, registrationSource.indexOf(handlerBlock) + index);
       return {
         name,
         registration: `src-tauri/src/lib.rs:${prefix.split(/\r?\n/).length}`,
@@ -146,20 +180,22 @@ export function collectTauriCommandAttributeCount(repositoryRoot) {
   const commands = read(repositoryRoot, 'src-tauri/src/commands.rs');
   const plugin = read(repositoryRoot, 'src-tauri/src/plugin/commands.rs');
   return {
-    textual: (commands.match(/#\[tauri::command\]/g) ?? []).length
-      + (plugin.match(/#\[tauri::command\]/g) ?? []).length,
+    textual:
+      (commands.match(/#\[tauri::command\]/g) ?? []).length +
+      (plugin.match(/#\[tauri::command\]/g) ?? []).length,
     definitions: collectCommandDefinitions(repositoryRoot).length,
-    testStringInCommands: commands.includes('.split_once("\\n#[tauri::command]")')
-      || commands.includes('.split_once("\n#[tauri::command]")'),
+    testStringInCommands:
+      commands.includes('.split_once("\\n#[tauri::command]")') ||
+      commands.includes('.split_once("\n#[tauri::command]")'),
   };
 }
 
-export function collectFrontendCommandReferences(repositoryRoot) {
-  const sourceRoot = path.join(repositoryRoot, 'src');
+function collectQuotedSnakeNames(directory, { skipTests = true } = {}) {
   const names = new Set();
-  for (const file of walk(sourceRoot)) {
-    const relative = path.relative(sourceRoot, file).replaceAll('\\', '/');
-    if (!/\.tsx?$/.test(relative) || /\.test\.tsx?$/.test(relative)) continue;
+  for (const file of walk(directory)) {
+    const relative = path.relative(directory, file).replaceAll('\\', '/');
+    if (!/\.tsx?$/.test(relative)) continue;
+    if (skipTests && /\.test\.tsx?$/.test(relative)) continue;
     const source = readFileSync(file, 'utf8');
     for (const match of source.matchAll(/'([a-z][a-z0-9_]*)'/g)) {
       names.add(match[1]);
@@ -168,10 +204,81 @@ export function collectFrontendCommandReferences(repositoryRoot) {
   return names;
 }
 
+/** Live `src/` quote scan. This is the post-bridge usage graph, not the PROTO-02 baseline. */
+export function collectFrontendCommandReferences(repositoryRoot) {
+  return collectQuotedSnakeNames(path.join(repositoryRoot, 'src'));
+}
+
+/** Protocol names `YaqmcClient` still invokes. Not the full `TAURI_METHOD_NAMES` list. */
+export function collectClientCommandReferences(repositoryRoot) {
+  const source = read(repositoryRoot, 'packages/yaqmc-client/src/client.ts');
+  return new Set(
+    [...source.matchAll(/this\.invoke\('([a-z][a-z0-9_]*)'/g)].map((match) => match[1]),
+  );
+}
+
+export function classifyFrontendUsage({
+  registeredNames,
+  baselineUnreferenced = UNREFERENCED_METHODS,
+  clientMapped = POST_BRIDGE_CLIENT_MAPPED_METHODS,
+  directRefs,
+  clientRefs,
+}) {
+  const unreferenced = new Set(baselineUnreferenced);
+  const classifiedClient = new Set(clientMapped);
+  const baselineReferenced = registeredNames.filter((name) => !unreferenced.has(name));
+  const missingFromDirect = baselineReferenced.filter((name) => !directRefs.has(name));
+  const unexpectedDirectGap = missingFromDirect.filter((name) => !classifiedClient.has(name));
+  const staleClientMapped = clientMapped.filter((name) => !missingFromDirect.includes(name));
+  const unmapped = missingFromDirect.filter((name) => !clientRefs.has(name));
+  const clientMappedMissingFromClient = clientMapped.filter((name) => !clientRefs.has(name));
+  return {
+    baselineReferencedCount: baselineReferenced.length,
+    directReferencedCount: baselineReferenced.length - missingFromDirect.length,
+    missingFromDirect,
+    unexpectedDirectGap,
+    staleClientMapped,
+    unmapped,
+    clientMappedMissingFromClient,
+  };
+}
+
+export function assertBridgeUsageComplete(usage) {
+  const problems = [];
+  if (usage.baselineReferencedCount !== PROTO02_BASELINE_REFERENCED_COUNT) {
+    problems.push(
+      `baseline referenced ${usage.baselineReferencedCount}, expected ${PROTO02_BASELINE_REFERENCED_COUNT}`,
+    );
+  }
+  if (usage.unmapped.length > 0) {
+    problems.push(`unmapped baseline methods: ${usage.unmapped.join(', ')}`);
+  }
+  if (usage.unexpectedDirectGap.length > 0) {
+    problems.push(
+      `src gap not classified as client-mapped: ${usage.unexpectedDirectGap.join(', ')}`,
+    );
+  }
+  if (usage.staleClientMapped.length > 0) {
+    problems.push(
+      `client-mapped class still quoted in src/: ${usage.staleClientMapped.join(', ')}`,
+    );
+  }
+  if (usage.clientMappedMissingFromClient.length > 0) {
+    problems.push(
+      `client-mapped class missing from yaqmc-client: ${usage.clientMappedMissingFromClient.join(', ')}`,
+    );
+  }
+  if (problems.length > 0) {
+    throw new Error(`frontend usage graph incomplete: ${problems.join('; ')}`);
+  }
+}
+
 function notesFor(name, referenced) {
   const notes = [];
   if (!referenced) {
-    notes.push('Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid.');
+    notes.push(
+      'Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid.',
+    );
   }
   const split = DIALOG_SPLITS.find(([current]) => current === name);
   if (split) {
@@ -185,15 +292,22 @@ export function collectCommandInventory(repositoryRoot) {
   const definitions = new Map(
     collectCommandDefinitions(repositoryRoot).map((command) => [command.name, command]),
   );
-  const frontend = collectFrontendCommandReferences(repositoryRoot);
+  const directFrontend = collectFrontendCommandReferences(repositoryRoot);
+  const clientRefs = collectClientCommandReferences(repositoryRoot);
   const attributes = collectTauriCommandAttributeCount(repositoryRoot);
+  const usage = classifyFrontendUsage({
+    registeredNames: registered.map((entry) => entry.name),
+    directRefs: directFrontend,
+    clientRefs,
+  });
+  assertBridgeUsageComplete(usage);
 
   const rows = registered.map((entry, index) => {
     const definition = definitions.get(entry.name);
     if (!definition) {
       throw new Error(`registered command has no #[tauri::command] definition: ${entry.name}`);
     }
-    const referenced = frontend.has(entry.name);
+    const referenced = !UNREFERENCED_METHODS.includes(entry.name);
     return {
       index: index + 1,
       name: entry.name,
@@ -212,9 +326,11 @@ export function collectCommandInventory(repositoryRoot) {
     rows,
     unreferenced,
     attributes,
+    usage,
     registeredCount: registered.length,
     definitionCount: definitions.size,
     referencedCount: rows.filter((row) => row.rendererRef === 'yes').length,
+    directReferencedCount: usage.directReferencedCount,
   };
 }
 
@@ -232,8 +348,9 @@ This is the authoritative P2 inventory of the 117 commands registered by \`tauri
 The inventory is generated mechanically from the handler block in \`src-tauri/src/lib.rs\`, joined to each
 \`#[tauri::command] pub fn\` declaration in \`src-tauri/src/commands.rs\` or \`src-tauri/src/plugin/commands.rs\`.
 \`Params\` omits Tauri injection arguments (\`AppHandle\`, \`State\`, \`WebviewWindow\`, \`Window\`). \`Result\` unwraps
-\`CommandResult<T>\` to the serde payload type \`T\`. \`Renderer ref\` is a literal single-quoted method-name scan over
-non-test \`src/**/*.ts(x)\` files.
+\`CommandResult<T>\` to the serde payload type \`T\`. \`Renderer ref\` is the immutable PROTO-02 frontend checksum
+(112 yes / 5 no), not the live \`src/\` quote scan. After P6, player/lyrics calls moved behind \`YaqmcClient\`;
+those names still exist in \`packages/yaqmc-client\` and the 117-method registry.
 
 - Handler entries: ${inventory.registeredCount}; unique handler names: ${inventory.registeredCount}.
 - Function attributes: ${inventory.definitionCount} unique command functions. Textual \`#[tauri::command]\` matches:
@@ -242,6 +359,9 @@ non-test \`src/**/*.ts(x)\` files.
 - Renderer refs: ${inventory.referencedCount} yes, ${inventory.unreferenced.length} no — ${inventory.unreferenced
     .map((name) => `\`${name}\``)
     .join(', ')}.
+- Post-bridge usage: live \`src/\` still quotes ${PROTO02_BASELINE_REFERENCED_COUNT - POST_BRIDGE_CLIENT_MAPPED_METHODS.length} of the 112. The other ${POST_BRIDGE_CLIENT_MAPPED_METHODS.length} are client-mapped, not retired: ${POST_BRIDGE_CLIENT_MAPPED_METHODS.map(
+    (name) => `\`${name}\``,
+  ).join(', ')}.
 - \`After\` is the planned v1 owner. Electron Main entries retain the public method during coexistence; the three
   dialog paths are the approved future split described below.
 
@@ -266,12 +386,20 @@ The three approved dialog splits are \`diagnostics_export_bundle\` → \`diagnos
 
 The five renderer-unreferenced methods stay in the v1 registry. \`player_play\` and \`player_pause\` remain Core playback methods; \`plugin_diagnostics\` remains a Core plugin method; \`system_integration_status\` and \`lyrics_surface_status\` remain Electron Main host methods. They are not retired because host-side callers and the 117-name identity contract still require them.
 
+The 24 post-bridge client-mapped methods remain Core protocol names on \`YaqmcClient.player.*\`. They are not host-owned replacements, dialog splits, or retirements.
+
 The 118th textual \`#[tauri::command]\` occurrence is a test string inside \`every_account_command_uses_the_main_window_guard_contract\`, not an unregistered command function, and must not be added to the protocol registry.
 `;
 
   return `${header}${rows}${footer}`;
 }
 
-export function commandInventoryMarkdown(repositoryRoot) {
-  return renderCommandInventory(collectCommandInventory(repositoryRoot));
+export async function commandInventoryMarkdown(repositoryRoot) {
+  const filepath = path.join(repositoryRoot, 'docs/migration/command-inventory.md');
+  const config = await resolveConfig(filepath);
+  return formatWithPrettier(renderCommandInventory(collectCommandInventory(repositoryRoot)), {
+    ...config,
+    filepath,
+    parser: 'markdown',
+  });
 }
