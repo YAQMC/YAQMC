@@ -492,10 +492,19 @@ const METHODS: &[MethodSpec] = &[
         MethodOwner::Core,
         OriginClass::Main,
     ),
+    spec("auth_oauth_prepare", MethodOwner::Core, OriginClass::Main),
+    spec("auth_oauth_complete", MethodOwner::Core, OriginClass::Main),
+    spec("auth_oauth_cancel", MethodOwner::Core, OriginClass::Main),
 ];
 
-pub const PROTOCOL_ONLY_METHODS: &[&str] =
-    &["core_ping", "platform_attach", "core_shutdown_prepare"];
+pub const PROTOCOL_ONLY_METHODS: &[&str] = &[
+    "core_ping",
+    "platform_attach",
+    "core_shutdown_prepare",
+    "auth_oauth_prepare",
+    "auth_oauth_complete",
+    "auth_oauth_cancel",
+];
 
 const fn spec(name: &'static str, owner: MethodOwner, origins: OriginClass) -> MethodSpec {
     MethodSpec {

@@ -68,7 +68,9 @@ use entitlement::{
 use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, TransportRequest};
 use zeroize::Zeroize;
 
-pub use oauth::{OAuthLaunch, OAuthLoginProvider};
+pub use oauth::{
+    url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult,
+};
 
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_MUSICS_URL: &str = "https://u.y.qq.com/cgi-bin/musics.fcg";
@@ -718,6 +720,21 @@ impl QQMusicService {
     ) -> Result<AccountSnapshot, QQMusicError> {
         self.auth
             .complete_oauth_callback(attempt_id, provider, callback_url)
+            .await
+    }
+
+    #[doc(hidden)]
+    pub async fn complete_oauth_login_callback(
+        &self,
+        attempt_id: &str,
+        callback_url: reqwest::Url,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        let provider = self
+            .auth
+            .oauth_provider(attempt_id)
+            .await
+            .ok_or(QQMusicError::Cancelled)?;
+        self.complete_oauth_login(attempt_id, provider, callback_url)
             .await
     }
 

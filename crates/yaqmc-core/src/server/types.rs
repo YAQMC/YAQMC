@@ -133,6 +133,19 @@ pub struct AttemptIdParams {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OAuthPrepareParams {
+    pub provider_kind: crate::qqmusic::OAuthLoginProvider,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthCompleteParams {
+    pub attempt_id: String,
+    pub callback_url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OptionalAttemptParams {
     pub attempt_id: Option<String>,
 }

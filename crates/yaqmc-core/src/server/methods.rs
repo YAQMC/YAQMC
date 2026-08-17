@@ -21,7 +21,8 @@ use super::types::{
     AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams, EnabledParams,
     EncAreaParams, EntryIdParams, FrontendLogParams, IdParams, IndexParams,
     IssueReporterPreviewParams, LevelParams, LimitParams, LyricsDocumentParams, NamedRequest,
-    OptionalAttemptParams, PathParams, PlaylistTracksParams, PluginIdParams,
+    OAuthCompleteParams, OAuthPrepareParams, OptionalAttemptParams, PathParams,
+    PlaylistTracksParams, PluginIdParams,
     PluginMarkFailedParams, PluginReadAssetParams, PortParams, PrimaryModeParams, QualityParams,
     RecordErrorRequest, ReferenceParams, ReorderParams, RepeatParams, SampleParams, SearchParams,
     SeekParams, SongIdParams, TokenParams, TrackParams, TracksParams, UrlParams, ValueParams,
@@ -133,6 +134,9 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "core_ping",
     "platform_attach",
     "core_shutdown_prepare",
+    "auth_oauth_prepare",
+    "auth_oauth_complete",
+    "auth_oauth_cancel",
 ];
 
 #[derive(Debug)]
@@ -823,6 +827,23 @@ async fn invoke_core(
                     details: None,
                 })?;
             ok(json!({ "ok": true }))
+        }
+        "auth_oauth_prepare" => {
+            let OAuthPrepareParams { provider_kind } = parse(&params)?;
+            provider(ops::auth_oauth_prepare(&core.qq_music(), provider_kind).await)
+        }
+        "auth_oauth_complete" => {
+            let OAuthCompleteParams {
+                attempt_id,
+                callback_url,
+            } = parse(&params)?;
+            let callback_url = reqwest::Url::parse(&callback_url)
+                .map_err(|error| DispatchError::InvalidParams(error.to_string()))?;
+            provider(ops::auth_oauth_complete(&core.qq_music(), &attempt_id, callback_url).await)
+        }
+        "auth_oauth_cancel" => {
+            let AttemptIdParams { attempt_id } = parse(&params)?;
+            provider(ops::auth_oauth_cancel(&core.qq_music(), &attempt_id).await)
         }
         other => {
             debug_assert!(

@@ -53,58 +53,58 @@ non-test `src/**/*.ts(x)` files.
 | 31 | `qqmusic_set_playlist_collected` | `request: CollectPlaylistRequest` | `ProviderResult<PlaylistMutationResult>` | `commands.rs:591`; `lib.rs:367` | yes | Core | — |
 | 32 | `qqmusic_auth_start` | — | `ProviderResult<AccountSnapshot>` | `commands.rs:604`; `lib.rs:368` | yes | Core | — |
 | 33 | `qqmusic_auth_oauth_start` | `login_provider: OAuthLoginProvider` | `ProviderResult<AccountSnapshot>` | `commands.rs:613`; `lib.rs:369` | yes | Electron Main | — |
-| 34 | `qqmusic_auth_heartbeat` | `attempt_id: String, owner_lease_id: String` | `ProviderResult<AccountSnapshot>` | `commands.rs:631`; `lib.rs:370` | yes | Core | — |
-| 35 | `qqmusic_auth_cancel` | `attempt_id: String` | `ProviderResult<AccountSnapshot>` | `commands.rs:649`; `lib.rs:371` | yes | Core | — |
-| 36 | `qqmusic_auth_refresh` | `attempt_id: Option<String>` | `ProviderResult<AccountSnapshot>` | `commands.rs:666`; `lib.rs:372` | yes | Core | — |
-| 37 | `qqmusic_sign_out` | — | `ProviderResult<AccountSnapshot>` | `commands.rs:679`; `lib.rs:373` | yes | Core | — |
-| 38 | `qqmusic_cache_stats` | — | `ProviderResult<CacheStats>` | `commands.rs:769`; `lib.rs:374` | yes | Core | — |
-| 39 | `qqmusic_clear_cache` | — | `ProviderResult<CacheStats>` | `commands.rs:776`; `lib.rs:375` | yes | Core | — |
-| 40 | `player_snapshot` | — | `PlayerSnapshot` | `commands.rs:783`; `lib.rs:376` | yes | Core | — |
-| 41 | `player_hydrate_queue` | `tracks: Vec<Song>` | `PlayerSnapshot` | `commands.rs:790`; `lib.rs:377` | yes | Core | — |
-| 42 | `player_play_tracks` | `request: PlayTracksRequest` | `PlayerSnapshot` | `commands.rs:798`; `lib.rs:378` | yes | Core | — |
-| 43 | `player_play_from_queue` | `index: usize` | `PlayerSnapshot` | `commands.rs:809`; `lib.rs:379` | yes | Core | — |
-| 44 | `player_play_queue_entry` | `entry_id: String` | `PlayerSnapshot` | `commands.rs:820`; `lib.rs:380` | yes | Core | — |
-| 45 | `player_play` | — | `PlayerSnapshot` | `commands.rs:831`; `lib.rs:381` | no | Core | Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid. |
-| 46 | `player_pause` | — | `PlayerSnapshot` | `commands.rs:836`; `lib.rs:382` | no | Core | Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid. |
-| 47 | `player_toggle` | — | `PlayerSnapshot` | `commands.rs:841`; `lib.rs:383` | yes | Core | — |
-| 48 | `player_next` | — | `PlayerSnapshot` | `commands.rs:846`; `lib.rs:384` | yes | Core | — |
-| 49 | `player_previous` | — | `PlayerSnapshot` | `commands.rs:851`; `lib.rs:385` | yes | Core | — |
-| 50 | `player_seek` | `position_ms: u64` | `PlayerSnapshot` | `commands.rs:858`; `lib.rs:386` | yes | Core | — |
-| 51 | `player_set_volume` | `volume: f64` | `PlayerSnapshot` | `commands.rs:869`; `lib.rs:387` | yes | Core | — |
-| 52 | `player_toggle_muted` | — | `PlayerSnapshot` | `commands.rs:880`; `lib.rs:388` | yes | Core | — |
-| 53 | `player_toggle_shuffle` | — | `PlayerSnapshot` | `commands.rs:890`; `lib.rs:389` | yes | Core | — |
-| 54 | `player_set_shuffle` | `enabled: bool` | `PlayerSnapshot` | `commands.rs:897`; `lib.rs:390` | yes | Core | — |
-| 55 | `player_cycle_repeat` | — | `PlayerSnapshot` | `commands.rs:905`; `lib.rs:391` | yes | Core | — |
-| 56 | `player_set_repeat` | `mode: RepeatMode` | `PlayerSnapshot` | `commands.rs:912`; `lib.rs:392` | yes | Core | — |
-| 57 | `player_set_primary_playback_mode` | `mode: PrimaryPlaybackMode` | `PlayerSnapshot` | `commands.rs:920`; `lib.rs:393` | yes | Core | — |
-| 58 | `player_add_to_queue` | `track: Song` | `PlayerSnapshot` | `commands.rs:928`; `lib.rs:394` | yes | Core | — |
-| 59 | `player_add_tracks_to_queue` | `tracks: Vec<Song>` | `PlayerSnapshot` | `commands.rs:936`; `lib.rs:395` | yes | Core | — |
-| 60 | `player_remove_from_queue` | `index: usize` | `PlayerSnapshot` | `commands.rs:944`; `lib.rs:396` | yes | Core | — |
-| 61 | `player_remove_queue_entry` | `entry_id: String` | `PlayerSnapshot` | `commands.rs:955`; `lib.rs:397` | yes | Core | — |
-| 62 | `player_reorder_queue_entry` | `entry_id: String, target_index: usize` | `PlayerSnapshot` | `commands.rs:966`; `lib.rs:398` | yes | Core | — |
-| 63 | `player_play_next_queue_entry` | `entry_id: String` | `PlayerSnapshot` | `commands.rs:978`; `lib.rs:399` | yes | Core | — |
-| 64 | `player_set_lyrics` | `document: Option<LyricDocument>` | `()` | `commands.rs:989`; `lib.rs:400` | yes | Core | — |
-| 65 | `player_lyrics` | — | `Option<LyricDocument>` | `commands.rs:998`; `lib.rs:401` | yes | Core | — |
-| 66 | `lyrics_surface_projection` | — | `LyricSurfaceProjection` | `commands.rs:1005`; `lib.rs:402` | yes | Core | — |
-| 67 | `app_preferences_get` | — | `Option<String>` | `commands.rs:1012`; `lib.rs:403` | yes | Core | — |
-| 68 | `app_preferences_set` | `value: String` | `()` | `commands.rs:1019`; `lib.rs:404` | yes | Core | — |
-| 69 | `appearance_pick_background` | — | `Option<ManagedBackgroundImage>` | `commands.rs:1028`; `lib.rs:405` | yes | Electron Main | Approved P13 split: host picks path, Core IO becomes `preferences_set_background_from`. |
-| 70 | `appearance_background_load` | `reference: String` | `Option<ManagedBackgroundImage>` | `commands.rs:1035`; `lib.rs:406` | yes | Core | — |
-| 71 | `lyrics_surfaces_reconcile` | `surfaces: SurfaceRuntimeMap` | `SurfaceCapabilities` | `commands.rs:1043`; `lib.rs:407` | yes | Electron Main | — |
-| 72 | `lyrics_surface_capabilities` | — | `SurfaceCapabilities` | `commands.rs:1053`; `lib.rs:408` | yes | Electron Main | — |
-| 73 | `lyrics_surface_status` | — | `std::collections::HashMap<&'static str, bool>` | `commands.rs:1058`; `lib.rs:409` | no | Electron Main | Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid. |
-| 74 | `lyrics_surfaces_unlock_all` | — | `usize` | `commands.rs:1063`; `lib.rs:410` | yes | Electron Main | — |
-| 75 | `lyrics_surface_unlock` | `kind: String` | `()` | `commands.rs:1072`; `lib.rs:411` | yes | Electron Main | — |
-| 76 | `lyrics_surface_close` | `kind: String` | `()` | `commands.rs:1087`; `lib.rs:412` | yes | Electron Main | — |
-| 77 | `lyrics_surface_set_interaction` | `kind: String, interaction: SurfaceInteraction, value: String` | `String` | `commands.rs:1096`; `lib.rs:413` | yes | Electron Main | — |
-| 78 | `lyrics_surface_reset_position` | `kind: String` | `()` | `commands.rs:1123`; `lib.rs:414` | yes | Electron Main | — |
-| 79 | `lyrics_surface_show_settings` | — | `()` | `commands.rs:1133`; `lib.rs:415` | yes | Electron Main | — |
-| 80 | `local_api_status` | — | `LocalApiStatus` | `commands.rs:1145`; `lib.rs:416` | yes | Core | — |
-| 81 | `local_api_set_enabled` | `enabled: bool` | `LocalApiStatus` | `commands.rs:1152`; `lib.rs:417` | yes | Core | — |
-| 82 | `local_api_set_port` | `port: u16` | `LocalApiStatus` | `commands.rs:1162`; `lib.rs:418` | yes | Core | — |
-| 83 | `local_api_reveal_token` | — | `String` | `commands.rs:1170`; `lib.rs:419` | yes | Core | — |
-| 84 | `local_api_regenerate_token` | — | `LocalApiStatus` | `commands.rs:1175`; `lib.rs:420` | yes | Core | — |
-| 85 | `debug_perf_sample` | `sample: DebugPerfSample` | `()` | `commands.rs:1184`; `lib.rs:421` | yes | Core | — |
+| 34 | `qqmusic_auth_heartbeat` | `attempt_id: String, owner_lease_id: String` | `ProviderResult<AccountSnapshot>` | `commands.rs:630`; `lib.rs:370` | yes | Core | — |
+| 35 | `qqmusic_auth_cancel` | `attempt_id: String` | `ProviderResult<AccountSnapshot>` | `commands.rs:648`; `lib.rs:371` | yes | Core | — |
+| 36 | `qqmusic_auth_refresh` | `attempt_id: Option<String>` | `ProviderResult<AccountSnapshot>` | `commands.rs:665`; `lib.rs:372` | yes | Core | — |
+| 37 | `qqmusic_sign_out` | — | `ProviderResult<AccountSnapshot>` | `commands.rs:678`; `lib.rs:373` | yes | Core | — |
+| 38 | `qqmusic_cache_stats` | — | `ProviderResult<CacheStats>` | `commands.rs:768`; `lib.rs:374` | yes | Core | — |
+| 39 | `qqmusic_clear_cache` | — | `ProviderResult<CacheStats>` | `commands.rs:775`; `lib.rs:375` | yes | Core | — |
+| 40 | `player_snapshot` | — | `PlayerSnapshot` | `commands.rs:782`; `lib.rs:376` | yes | Core | — |
+| 41 | `player_hydrate_queue` | `tracks: Vec<Song>` | `PlayerSnapshot` | `commands.rs:789`; `lib.rs:377` | yes | Core | — |
+| 42 | `player_play_tracks` | `request: PlayTracksRequest` | `PlayerSnapshot` | `commands.rs:797`; `lib.rs:378` | yes | Core | — |
+| 43 | `player_play_from_queue` | `index: usize` | `PlayerSnapshot` | `commands.rs:808`; `lib.rs:379` | yes | Core | — |
+| 44 | `player_play_queue_entry` | `entry_id: String` | `PlayerSnapshot` | `commands.rs:819`; `lib.rs:380` | yes | Core | — |
+| 45 | `player_play` | — | `PlayerSnapshot` | `commands.rs:830`; `lib.rs:381` | no | Core | Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid. |
+| 46 | `player_pause` | — | `PlayerSnapshot` | `commands.rs:835`; `lib.rs:382` | no | Core | Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid. |
+| 47 | `player_toggle` | — | `PlayerSnapshot` | `commands.rs:840`; `lib.rs:383` | yes | Core | — |
+| 48 | `player_next` | — | `PlayerSnapshot` | `commands.rs:845`; `lib.rs:384` | yes | Core | — |
+| 49 | `player_previous` | — | `PlayerSnapshot` | `commands.rs:850`; `lib.rs:385` | yes | Core | — |
+| 50 | `player_seek` | `position_ms: u64` | `PlayerSnapshot` | `commands.rs:857`; `lib.rs:386` | yes | Core | — |
+| 51 | `player_set_volume` | `volume: f64` | `PlayerSnapshot` | `commands.rs:868`; `lib.rs:387` | yes | Core | — |
+| 52 | `player_toggle_muted` | — | `PlayerSnapshot` | `commands.rs:879`; `lib.rs:388` | yes | Core | — |
+| 53 | `player_toggle_shuffle` | — | `PlayerSnapshot` | `commands.rs:889`; `lib.rs:389` | yes | Core | — |
+| 54 | `player_set_shuffle` | `enabled: bool` | `PlayerSnapshot` | `commands.rs:896`; `lib.rs:390` | yes | Core | — |
+| 55 | `player_cycle_repeat` | — | `PlayerSnapshot` | `commands.rs:904`; `lib.rs:391` | yes | Core | — |
+| 56 | `player_set_repeat` | `mode: RepeatMode` | `PlayerSnapshot` | `commands.rs:911`; `lib.rs:392` | yes | Core | — |
+| 57 | `player_set_primary_playback_mode` | `mode: PrimaryPlaybackMode` | `PlayerSnapshot` | `commands.rs:919`; `lib.rs:393` | yes | Core | — |
+| 58 | `player_add_to_queue` | `track: Song` | `PlayerSnapshot` | `commands.rs:927`; `lib.rs:394` | yes | Core | — |
+| 59 | `player_add_tracks_to_queue` | `tracks: Vec<Song>` | `PlayerSnapshot` | `commands.rs:935`; `lib.rs:395` | yes | Core | — |
+| 60 | `player_remove_from_queue` | `index: usize` | `PlayerSnapshot` | `commands.rs:943`; `lib.rs:396` | yes | Core | — |
+| 61 | `player_remove_queue_entry` | `entry_id: String` | `PlayerSnapshot` | `commands.rs:954`; `lib.rs:397` | yes | Core | — |
+| 62 | `player_reorder_queue_entry` | `entry_id: String, target_index: usize` | `PlayerSnapshot` | `commands.rs:965`; `lib.rs:398` | yes | Core | — |
+| 63 | `player_play_next_queue_entry` | `entry_id: String` | `PlayerSnapshot` | `commands.rs:977`; `lib.rs:399` | yes | Core | — |
+| 64 | `player_set_lyrics` | `document: Option<LyricDocument>` | `()` | `commands.rs:988`; `lib.rs:400` | yes | Core | — |
+| 65 | `player_lyrics` | — | `Option<LyricDocument>` | `commands.rs:997`; `lib.rs:401` | yes | Core | — |
+| 66 | `lyrics_surface_projection` | — | `LyricSurfaceProjection` | `commands.rs:1004`; `lib.rs:402` | yes | Core | — |
+| 67 | `app_preferences_get` | — | `Option<String>` | `commands.rs:1011`; `lib.rs:403` | yes | Core | — |
+| 68 | `app_preferences_set` | `value: String` | `()` | `commands.rs:1018`; `lib.rs:404` | yes | Core | — |
+| 69 | `appearance_pick_background` | — | `Option<ManagedBackgroundImage>` | `commands.rs:1027`; `lib.rs:405` | yes | Electron Main | Approved P13 split: host picks path, Core IO becomes `preferences_set_background_from`. |
+| 70 | `appearance_background_load` | `reference: String` | `Option<ManagedBackgroundImage>` | `commands.rs:1034`; `lib.rs:406` | yes | Core | — |
+| 71 | `lyrics_surfaces_reconcile` | `surfaces: SurfaceRuntimeMap` | `SurfaceCapabilities` | `commands.rs:1042`; `lib.rs:407` | yes | Electron Main | — |
+| 72 | `lyrics_surface_capabilities` | — | `SurfaceCapabilities` | `commands.rs:1052`; `lib.rs:408` | yes | Electron Main | — |
+| 73 | `lyrics_surface_status` | — | `std::collections::HashMap<&'static str, bool>` | `commands.rs:1057`; `lib.rs:409` | no | Electron Main | Keep; renderer source strings do not invoke it. Host/tray/plugin/local-API callers remain valid. |
+| 74 | `lyrics_surfaces_unlock_all` | — | `usize` | `commands.rs:1062`; `lib.rs:410` | yes | Electron Main | — |
+| 75 | `lyrics_surface_unlock` | `kind: String` | `()` | `commands.rs:1071`; `lib.rs:411` | yes | Electron Main | — |
+| 76 | `lyrics_surface_close` | `kind: String` | `()` | `commands.rs:1086`; `lib.rs:412` | yes | Electron Main | — |
+| 77 | `lyrics_surface_set_interaction` | `kind: String, interaction: SurfaceInteraction, value: String` | `String` | `commands.rs:1095`; `lib.rs:413` | yes | Electron Main | — |
+| 78 | `lyrics_surface_reset_position` | `kind: String` | `()` | `commands.rs:1122`; `lib.rs:414` | yes | Electron Main | — |
+| 79 | `lyrics_surface_show_settings` | — | `()` | `commands.rs:1132`; `lib.rs:415` | yes | Electron Main | — |
+| 80 | `local_api_status` | — | `LocalApiStatus` | `commands.rs:1144`; `lib.rs:416` | yes | Core | — |
+| 81 | `local_api_set_enabled` | `enabled: bool` | `LocalApiStatus` | `commands.rs:1151`; `lib.rs:417` | yes | Core | — |
+| 82 | `local_api_set_port` | `port: u16` | `LocalApiStatus` | `commands.rs:1161`; `lib.rs:418` | yes | Core | — |
+| 83 | `local_api_reveal_token` | — | `String` | `commands.rs:1169`; `lib.rs:419` | yes | Core | — |
+| 84 | `local_api_regenerate_token` | — | `LocalApiStatus` | `commands.rs:1174`; `lib.rs:420` | yes | Core | — |
+| 85 | `debug_perf_sample` | `sample: DebugPerfSample` | `()` | `commands.rs:1183`; `lib.rs:421` | yes | Core | — |
 | 86 | `diagnostics_snapshot` | `request: DiagnosticsRequest` | `DiagnosticsSnapshot` | `commands.rs:96`; `lib.rs:422` | yes | Core | — |
 | 87 | `diagnostics_export_bundle` | `request: DiagnosticsBundleRequest` | `BundleExportResult` | `commands.rs:118`; `lib.rs:423` | yes | Core | Approved P13 split: host picks path, Core IO becomes `diagnostics_export_bundle_to`. |
 | 88 | `diagnostics_reveal_bundle` | `path: String` | `()` | `commands.rs:152`; `lib.rs:424` | yes | Electron Main | — |

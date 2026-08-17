@@ -625,7 +625,6 @@ pub async fn qqmusic_auth_oauth_start(
         login_provider,
     )
     .await
-    .map_err(Into::into)
 }
 
 #[tauri::command]

@@ -9,7 +9,14 @@ import {
 } from './command-inventory.mjs';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
-const PROTOCOL_ONLY_METHODS = ['core_ping', 'platform_attach', 'core_shutdown_prepare'];
+const PROTOCOL_ONLY_METHODS = [
+  'core_ping',
+  'platform_attach',
+  'core_shutdown_prepare',
+  'auth_oauth_prepare',
+  'auth_oauth_complete',
+  'auth_oauth_cancel',
+];
 
 test('PROTO-02 inventory covers 117 registered methods and the frontend checksum', () => {
   const inventory = collectCommandInventory(repositoryRoot);
