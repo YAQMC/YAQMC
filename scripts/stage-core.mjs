@@ -34,6 +34,7 @@ export function stageCore(options) {
   copyFileSync(source, destination);
   const bytes = statSync(destination).size;
   const sha256 = createHash('sha256').update(readFileSync(destination)).digest('hex');
+  // Spawn-time verify (SUP-03) reads manifest.json next to the staged binary.
   writeFileSync(path.join(destDir, 'core.sha256'), `${sha256}  ${name}\n`);
   writeFileSync(
     path.join(destDir, 'manifest.json'),

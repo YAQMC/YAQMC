@@ -15,6 +15,7 @@ import type { Readable, Writable } from 'node:stream';
 import { CoreClient } from './client';
 import { buildCoreSpawnEnv } from './env';
 import { ProtocolError } from './frames';
+import { verifyCoreBinary, type CoreIntegrityPolicy } from './integrity';
 import { defaultProcessProbe, reapStaleCorePid, type ProcessProbe } from './pid';
 
 export const STDERR_RING_BYTES = 64 * 1024;
@@ -44,6 +45,7 @@ export type SupervisorOptions = SupervisorPaths & {
   parentEnv?: NodeJS.ProcessEnv;
   spawn?: SpawnCore;
   processProbe?: ProcessProbe;
+  integrity?: CoreIntegrityPolicy;
 };
 
 export type CoreBinaryLookup = {
@@ -58,30 +60,48 @@ export function coreBinaryName(platform = process.platform): string {
   return platform === 'win32' ? 'yaqmc-core.exe' : 'yaqmc-core';
 }
 
+export type CoreLaunch = {
+  binary: string;
+  integrity: CoreIntegrityPolicy;
+};
+
 export function tryResolveCoreBinary(lookup: CoreBinaryLookup = {}): string | undefined {
+  return resolveCoreLaunch(lookup)?.binary;
+}
+
+export function resolveCoreLaunch(lookup: CoreBinaryLookup = {}): CoreLaunch | undefined {
   const env = lookup.env ?? process.env;
   const name = coreBinaryName();
-  const candidates: string[] = [];
-  if (env.YAQMC_CORE_BIN) {
-    candidates.push(env.YAQMC_CORE_BIN);
+  if (env.YAQMC_CORE_BIN && existsSync(env.YAQMC_CORE_BIN)) {
+    return { binary: env.YAQMC_CORE_BIN, integrity: 'optional' };
   }
   if (lookup.resourcesPath) {
-    candidates.push(path.join(lookup.resourcesPath, 'core', name));
+    const packaged = path.join(lookup.resourcesPath, 'core', name);
+    if (existsSync(packaged)) {
+      return { binary: packaged, integrity: 'required' };
+    }
   }
   if (lookup.stagedDir) {
-    candidates.push(path.join(lookup.stagedDir, name));
+    const staged = path.join(lookup.stagedDir, name);
+    if (existsSync(staged)) {
+      return { binary: staged, integrity: 'required' };
+    }
   }
   const cargoTarget = lookup.cargoTargetDir ?? env.CARGO_TARGET_DIR;
-  if (cargoTarget) {
-    candidates.push(path.join(cargoTarget, 'debug', name), path.join(cargoTarget, 'release', name));
+  const cargoCandidates = cargoTarget
+    ? [path.join(cargoTarget, 'debug', name), path.join(cargoTarget, 'release', name)]
+    : [];
+  const repoCandidates = lookup.repoRoot
+    ? [
+        path.join(lookup.repoRoot, 'target', 'debug', name),
+        path.join(lookup.repoRoot, 'target', 'release', name),
+      ]
+    : [];
+  const found = [...cargoCandidates, ...repoCandidates].find((candidate) => existsSync(candidate));
+  if (!found) {
+    return undefined;
   }
-  if (lookup.repoRoot) {
-    candidates.push(
-      path.join(lookup.repoRoot, 'target', 'debug', name),
-      path.join(lookup.repoRoot, 'target', 'release', name),
-    );
-  }
-  return candidates.find((candidate) => existsSync(candidate));
+  return { binary: found, integrity: 'optional' };
 }
 
 export function resolveCoreBinary(lookup: CoreBinaryLookup = {}): string {
@@ -176,6 +196,7 @@ export class CoreSupervisor extends EventEmitter {
       mkdirSync(dir, { recursive: true });
     }
     reapStaleCorePid(this.options.dataDir, this.options.processProbe ?? defaultProcessProbe());
+    verifyCoreBinary(this.options.binary, this.options.integrity ?? 'optional');
     const spawnCore = this.options.spawn ?? spawn;
     const child = spawnCore(this.options.binary, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
