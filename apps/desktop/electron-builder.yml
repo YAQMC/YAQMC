@@ -1,0 +1,25 @@
+# ELEC-07 skeleton only. PACK-01 owns targets, fuses, signing, and extraResources hash verify.
+appId: org.yaqmc.desktop
+productName: YAQMC
+copyright: GPL-3.0-or-later
+directories:
+  output: ../../release-electron
+  buildResources: resources
+files:
+  - dist/main/**
+  - dist/preload/**
+extraMetadata:
+  main: dist/main/index.js
+extraResources:
+  - from: resources/core
+    to: core
+    filter:
+      - '!**/*.md'
+win:
+  icon: resources/icon.ico
+linux:
+  icon: resources
+  category: AudioVideo
+mac:
+  icon: resources/icon.icns
+electronVersion: 43.4.0
