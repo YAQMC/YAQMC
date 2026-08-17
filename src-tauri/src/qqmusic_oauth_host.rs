@@ -1,15 +1,17 @@
 use std::sync::{
-    atomic::{AtomicU8, Ordering},
     Arc,
+    atomic::{AtomicU8, Ordering},
 };
 
 use tauri::{
-    webview::NewWindowResponse, AppHandle, Manager, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    webview::NewWindowResponse,
 };
 use yaqmc_core::qqmusic::{
-    account::AccountSnapshot, OAuthLoginProvider, QQMusicError, QQMusicService,
+    OAuthLoginProvider, ProviderResult, QQMusicError, QQMusicService, account::AccountSnapshot,
+    url_matches_oauth_allowlist,
 };
+use yaqmc_core::server::ops;
 
 const OAUTH_WINDOW_PREFIX: &str = "qqmusic-oauth-";
 const WINDOW_OPEN: u8 = 0;
@@ -21,91 +23,94 @@ pub(crate) async fn open_window(
     main_window: &WebviewWindow,
     service: Arc<QQMusicService>,
     login_provider: OAuthLoginProvider,
-) -> Result<AccountSnapshot, QQMusicError> {
+) -> ProviderResult<AccountSnapshot> {
     close_all_windows(app);
-    let launch = service.start_oauth_login(login_provider).await?;
-    let label = window_label(&launch.attempt_id);
+    let prepared = ops::auth_oauth_prepare(&service, login_provider).await?;
+    let label = window_label(&prepared.attempt_id);
     let phase = Arc::new(AtomicU8::new(WINDOW_OPEN));
+    let authorization_url =
+        reqwest::Url::parse(&prepared.url).map_err(|_| QQMusicError::Protocol)?;
 
     let navigation_phase = Arc::clone(&phase);
     let navigation_service = Arc::clone(&service);
     let navigation_app = app.clone();
     let navigation_label = label.clone();
-    let navigation_attempt = launch.attempt_id.clone();
+    let navigation_attempt = prepared.attempt_id.clone();
+    let allowlist = prepared.navigation_allowlist.clone();
+    let callback_prefix = prepared.callback_matcher.url_prefix.clone();
     let (width, height, min_width, min_height) = window_dimensions(login_provider);
-    let builder = WebviewWindowBuilder::new(
-        app,
-        &label,
-        WebviewUrl::External(launch.authorization_url.clone()),
-    )
-    .title(window_title(login_provider))
-    .inner_size(width, height)
-    .min_inner_size(min_width, min_height)
-    .resizable(true)
-    .decorations(true)
-    .incognito(true)
-    .general_autofill_enabled(false)
-    .devtools(false)
-    .visible(false)
-    .center()
-    .on_new_window(|_, _| NewWindowResponse::Deny)
-    .on_navigation(move |url| {
-        if login_provider.is_callback_url(url) {
-            if navigation_phase
-                .compare_exchange(
-                    WINDOW_OPEN,
-                    WINDOW_COMPLETING,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                )
-                .is_ok()
-            {
-                let callback_url = url.clone();
-                let callback_service = Arc::clone(&navigation_service);
-                let callback_app = navigation_app.clone();
-                let callback_label = navigation_label.clone();
-                let callback_attempt = navigation_attempt.clone();
-                let callback_phase = Arc::clone(&navigation_phase);
-                tauri::async_runtime::spawn(async move {
-                    if let Err(error) = callback_service
-                        .complete_oauth_login(&callback_attempt, login_provider, callback_url)
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(authorization_url))
+        .title(window_title(login_provider))
+        .inner_size(width, height)
+        .min_inner_size(min_width, min_height)
+        .resizable(true)
+        .decorations(true)
+        .incognito(true)
+        .general_autofill_enabled(false)
+        .devtools(false)
+        .visible(false)
+        .center()
+        .on_new_window(|_, _| NewWindowResponse::Deny)
+        .on_navigation(move |url| {
+            if url.as_str().starts_with(&callback_prefix) {
+                if navigation_phase
+                    .compare_exchange(
+                        WINDOW_OPEN,
+                        WINDOW_COMPLETING,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
+                    .is_ok()
+                {
+                    let callback_url = url.clone();
+                    let callback_service = Arc::clone(&navigation_service);
+                    let callback_app = navigation_app.clone();
+                    let callback_label = navigation_label.clone();
+                    let callback_attempt = navigation_attempt.clone();
+                    let callback_phase = Arc::clone(&navigation_phase);
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(error) = ops::auth_oauth_complete(
+                            &callback_service,
+                            &callback_attempt,
+                            callback_url,
+                        )
                         .await
-                    {
-                        tracing::warn!(
-                            target: "qqmusic.auth",
-                            provider = login_provider.as_str(),
-                            error_code = error.error_code().as_str(),
-                            "official OAuth callback did not complete"
-                        );
-                    }
-                    callback_phase.store(WINDOW_FINISHED, Ordering::Release);
-                    if let Some(window) = callback_app.get_webview_window(&callback_label) {
-                        let _ = window.close();
-                    }
-                });
+                        {
+                            tracing::warn!(
+                                target: "qqmusic.auth",
+                                provider = login_provider.as_str(),
+                                error_code = error.code.as_str(),
+                                "official OAuth callback did not complete"
+                            );
+                        }
+                        callback_phase.store(WINDOW_FINISHED, Ordering::Release);
+                        if let Some(window) = callback_app.get_webview_window(&callback_label) {
+                            let _ = window.close();
+                        }
+                    });
+                }
+                return false;
             }
-            return false;
-        }
-        login_provider.allows_navigation(url)
-    });
+            url_matches_oauth_allowlist(url, &allowlist)
+        });
     let builder = match builder.parent(main_window) {
         Ok(builder) => builder,
         Err(_) => {
-            let _ = service.cancel_oauth_login(&launch.attempt_id).await;
-            return Err(QQMusicError::Protocol);
+            let _ = ops::auth_oauth_cancel(&service, &prepared.attempt_id).await;
+            return Err(QQMusicError::Protocol.into());
         }
     };
     let oauth_window = match builder.build() {
         Ok(window) => window,
         Err(_) => {
-            let _ = service.cancel_oauth_login(&launch.attempt_id).await;
-            return Err(QQMusicError::Protocol);
+            let _ = ops::auth_oauth_cancel(&service, &prepared.attempt_id).await;
+            return Err(QQMusicError::Protocol.into());
         }
     };
 
     let close_phase = Arc::clone(&phase);
     let close_service = Arc::clone(&service);
-    let close_attempt = launch.attempt_id.clone();
+    let close_attempt = prepared.attempt_id.clone();
     oauth_window.on_window_event(move |event| {
         if matches!(
             event,
@@ -122,17 +127,17 @@ pub(crate) async fn open_window(
             let service = Arc::clone(&close_service);
             let attempt_id = close_attempt.clone();
             tauri::async_runtime::spawn(async move {
-                let _ = service.cancel_oauth_login(&attempt_id).await;
+                let _ = ops::auth_oauth_cancel(&service, &attempt_id).await;
             });
         }
     });
     if oauth_window.show().is_err() || oauth_window.set_focus().is_err() {
         phase.store(WINDOW_FINISHED, Ordering::Release);
         let _ = oauth_window.close();
-        let _ = service.cancel_oauth_login(&launch.attempt_id).await;
-        return Err(QQMusicError::Protocol);
+        let _ = ops::auth_oauth_cancel(&service, &prepared.attempt_id).await;
+        return Err(QQMusicError::Protocol.into());
     }
-    Ok(launch.snapshot)
+    Ok(prepared.snapshot)
 }
 
 pub(crate) fn close_window_for_attempt(app: &AppHandle, attempt_id: &str) {
@@ -175,6 +180,7 @@ fn window_dimensions(provider: OAuthLoginProvider) -> (f64, f64, f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::Url;
 
     #[test]
     fn official_login_windows_use_provider_specific_geometry() {
@@ -187,5 +193,22 @@ mod tests {
             window_title(OAuthLoginProvider::Wechat),
             "微信官方登录 — YAQMC"
         );
+    }
+
+    #[test]
+    fn window_code_consumes_prepare_allowlist_and_callback_prefix() {
+        let source = include_str!("qqmusic_oauth_host.rs");
+        assert!(source.contains("ops::auth_oauth_prepare"));
+        assert!(source.contains("ops::auth_oauth_complete"));
+        assert!(source.contains("ops::auth_oauth_cancel"));
+        let allowlist = OAuthLoginProvider::Qq.navigation_allowlist();
+        assert!(url_matches_oauth_allowlist(
+            &Url::parse("https://graph.qq.com/oauth2.0/show").unwrap(),
+            &allowlist
+        ));
+        assert!(!url_matches_oauth_allowlist(
+            &Url::parse("https://graph.qq.com.evil.example/oauth2.0/show").unwrap(),
+            &allowlist
+        ));
     }
 }

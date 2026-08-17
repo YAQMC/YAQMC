@@ -25,7 +25,8 @@ use crate::plugin::permissions::parse_permission;
 use crate::plugin::{PluginDiagnostic, PluginStatus};
 use crate::qqmusic::account::AccountSnapshot;
 use crate::qqmusic::{
-    AudioQualityPreference, ProviderCommandError, ProviderResult, ProviderStatus, QQMusicService,
+    AudioQualityPreference, OAuthLoginProvider, OAuthPrepareResult, ProviderCommandError,
+    ProviderResult, ProviderStatus, QQMusicService,
 };
 use crate::storage::StorageService;
 use crate::CoreHandle;
@@ -345,6 +346,38 @@ pub async fn qqmusic_auth_heartbeat(
     }
     provider
         .heartbeat_qr_login(attempt_id, owner_lease_id)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn auth_oauth_prepare(
+    provider: &Arc<QQMusicService>,
+    kind: OAuthLoginProvider,
+) -> ProviderResult<OAuthPrepareResult> {
+    let launch = provider
+        .start_oauth_login(kind)
+        .await
+        .map_err(ProviderCommandError::from)?;
+    Ok(OAuthPrepareResult::from_launch(kind, launch))
+}
+
+pub async fn auth_oauth_complete(
+    provider: &QQMusicService,
+    attempt_id: &str,
+    callback_url: reqwest::Url,
+) -> ProviderResult<AccountSnapshot> {
+    provider
+        .complete_oauth_login_callback(attempt_id, callback_url)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn auth_oauth_cancel(
+    provider: &QQMusicService,
+    attempt_id: &str,
+) -> ProviderResult<AccountSnapshot> {
+    provider
+        .cancel_oauth_login(attempt_id)
         .await
         .map_err(Into::into)
 }

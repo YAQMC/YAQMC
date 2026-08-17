@@ -1,6 +1,6 @@
-use super::{account::AccountSnapshot, QQMusicError};
+use super::{QQMusicError, account::AccountSnapshot};
 use reqwest::Url;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const QQ_CLIENT_ID: &str = "100497308";
 const WECHAT_APP_ID: &str = "wx48db31d50e334801";
@@ -102,6 +102,44 @@ impl OAuthLoginProvider {
             Self::Wechat => matches!(host, Some("open.weixin.qq.com" | "lp.open.weixin.qq.com")),
         }
     }
+
+    pub fn callback_url_prefix(self) -> &'static str {
+        "https://y.qq.com/portal/wx_redirect.html"
+    }
+
+    pub fn navigation_allowlist(self) -> Vec<String> {
+        let hosts: &[&str] = match self {
+            Self::Qq => &[
+                "graph.qq.com",
+                "xui.ptlogin2.qq.com",
+                "ssl.ptlogin2.qq.com",
+                "ssl.ptlogin2.graph.qq.com",
+                "ui.ptlogin2.qq.com",
+            ],
+            Self::Wechat => &["open.weixin.qq.com", "lp.open.weixin.qq.com"],
+        };
+        let mut allowlist: Vec<String> = hosts
+            .iter()
+            .map(|host| format!("https://{host}/**"))
+            .collect();
+        allowlist.push(format!("{}**", self.callback_url_prefix()));
+        allowlist
+    }
+}
+
+pub fn url_matches_oauth_allowlist(url: &Url, allowlist: &[String]) -> bool {
+    allowlist.iter().any(|glob| {
+        if let Some(prefix) = glob.strip_suffix("/**") {
+            return Url::parse(prefix).is_ok_and(|base| {
+                url.scheme() == base.scheme()
+                    && url.host_str() == base.host_str()
+                    && url.port() == base.port()
+            });
+        }
+        glob.strip_suffix("**")
+            .map(|prefix| url.as_str().starts_with(prefix))
+            .unwrap_or_else(|| url.as_str() == glob)
+    })
 }
 
 pub(crate) enum OAuthCallback {
@@ -140,6 +178,37 @@ pub struct OAuthLaunch {
     pub attempt_id: String,
     pub authorization_url: Url,
     pub snapshot: AccountSnapshot,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthCallbackMatcher {
+    pub url_prefix: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthPrepareResult {
+    pub attempt_id: String,
+    pub url: String,
+    pub navigation_allowlist: Vec<String>,
+    pub callback_matcher: OAuthCallbackMatcher,
+    #[serde(skip)]
+    pub snapshot: AccountSnapshot,
+}
+
+impl OAuthPrepareResult {
+    pub fn from_launch(kind: OAuthLoginProvider, launch: OAuthLaunch) -> Self {
+        Self {
+            attempt_id: launch.attempt_id,
+            url: launch.authorization_url.to_string(),
+            navigation_allowlist: kind.navigation_allowlist(),
+            callback_matcher: OAuthCallbackMatcher {
+                url_prefix: kind.callback_url_prefix().to_owned(),
+            },
+            snapshot: launch.snapshot,
+        }
+    }
 }
 
 fn secure_https_url(url: &Url) -> bool {
@@ -197,9 +266,11 @@ mod tests {
             Some(WECHAT_REDIRECT_URI)
         );
         assert_eq!(wechat.fragment(), Some("wechat_redirect"));
-        assert!(OAuthLoginProvider::Qq
-            .authorization_url("predictable")
-            .is_err());
+        assert!(
+            OAuthLoginProvider::Qq
+                .authorization_url("predictable")
+                .is_err()
+        );
     }
 
     #[test]
@@ -224,8 +295,19 @@ mod tests {
         assert!(OAuthLoginProvider::Wechat.allows_navigation(
             &Url::parse("https://open.weixin.qq.com/connect/qrconnect").unwrap()
         ));
-        assert!(!OAuthLoginProvider::Wechat
-            .allows_navigation(&Url::parse("https://graph.qq.com/oauth2.0/show").unwrap()));
+        assert!(
+            !OAuthLoginProvider::Wechat
+                .allows_navigation(&Url::parse("https://graph.qq.com/oauth2.0/show").unwrap())
+        );
+        let allowlist = OAuthLoginProvider::Qq.navigation_allowlist();
+        assert!(url_matches_oauth_allowlist(
+            &Url::parse("https://graph.qq.com/oauth2.0/show").unwrap(),
+            &allowlist
+        ));
+        assert!(!url_matches_oauth_allowlist(
+            &Url::parse("https://graph.qq.com.evil.example/oauth2.0/show").unwrap(),
+            &allowlist
+        ));
     }
 
     #[test]

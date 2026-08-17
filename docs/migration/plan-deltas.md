@@ -269,3 +269,12 @@ the enforced provenance ledger.
   for SMTC remains PLAT-04. No Electron, no qm-api-rs.
 - Handshake + EOF tests cover ping, attach, shutdown-prepare, and shutdown-ack. The 32 MiB hard cap is unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-07: OAuth prepare/complete/cancel split
+
+- Core owns `auth_oauth_prepare` / `auth_oauth_complete` / `auth_oauth_cancel` as protocol-only methods
+  (`qqmusic_auth_oauth_start` stays the Host-owned Tauri command). Prepare returns the authorization URL,
+  navigation allowlist globs, and callback URL prefix from §16.4. The Tauri window host consumes those
+  methods for launch, callback capture, and cancel-on-close. No Electron, no qm-api-rs.
+- Dispatch + host-source tests cover prepare/cancel and the shim consumption. The 32 MiB hard cap is unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.
