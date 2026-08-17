@@ -1397,3 +1397,9 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   `pack:win` stays `--win --x64`. Arm artifact **boot-test pending**. Electron
   stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P8 ACCT-03: session continuity checklist (LIVE VERIFY pending)
+
+- `docs/migration/acct03-session-continuity.md` is the P8 upgrade test (Tauri-login to Electron boot, no re-login). Win / GNOME / KDE boxes empty. ACCT-03 is not green. Do not claim R-10 closed.
+- Must not happen: re-login prompt; a new keyring service name. Service stays `org.yaqmc.desktop`. Recorded stay-logged-in demo is maintainer **PENDING**.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
