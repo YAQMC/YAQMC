@@ -6,13 +6,15 @@ import { defineConfig, devices } from '@playwright/test';
  * `YAQMC_DESKTOP_SMOKE=1` boots a hidden ELEC-04 harness window and quits on
  * title `yaqmc-smoke-ok` — it does not load the renderer UI, so it is not a
  * Playwright target. This suite drives Vite `http://127.0.0.1:1420?provider=fake`.
- * Full Electron `_electron` window E2E (tray, core kill, geometry) is a follow-up.
+ * Electron `_electron` window E2E is `npm run test:e2e:electron` (not this
+ * config; tray / kill-core / geometry persist remain follow-ups).
  *
  * Browsers are not downloaded by `npm ci` (CI sets PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD).
  * Maintainers: `npx playwright install chromium` then `npm run test:e2e`.
  */
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['electron/**'],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

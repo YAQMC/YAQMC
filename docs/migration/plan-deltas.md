@@ -1637,3 +1637,15 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   provenance green.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P6 FE-06 follow-up: Electron _electron fake-mode
+
+- Local `npm run test:e2e:electron` launches Playwright `_electron` against
+  `apps/desktop` with `YAQMC_ELECTRON_E2E=1`, `--lang=en-US`, and Vite
+  `/?provider=fake`. Isolated userData + Core temp dirs. Core spawn stays off
+  unless `YAQMC_E2E_CORE=1`. Not the `YAQMC_DESKTOP_SMOKE` harness. Chromium
+  fake-mode (`npm run test:e2e`) is unchanged and ignores `e2e/electron/**`.
+- Not wired to GitHub Actions (quota freeze / 2026-08-17 outage). Tray,
+  kill-core, and geometry persist remain follow-ups. PLAY-01 is not green.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.

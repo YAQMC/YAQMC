@@ -16,6 +16,7 @@
   "include": [
     "vite.config.ts",
     "playwright.config.ts",
+    "playwright.electron.config.ts",
     "e2e/**/*.ts",
     "eslint.config.js",
     "scripts/**/*.ts",

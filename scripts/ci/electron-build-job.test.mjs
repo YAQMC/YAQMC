@@ -47,4 +47,6 @@ test('frontend-quality runs desktop tests and Electron security greps', () => {
   assert.doesNotMatch(frontendJob, /npm run typecheck -w @yaqmc/);
   assert.doesNotMatch(frontendJob, /command-inventory\.mjs/);
   assert.doesNotMatch(frontendJob, /playwright/i);
+  assert.doesNotMatch(workflow, /test:e2e:electron/);
+  assert.doesNotMatch(workflow, /playwright\.electron/);
 });
