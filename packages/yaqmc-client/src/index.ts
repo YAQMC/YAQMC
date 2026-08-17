@@ -1,11 +1,53 @@
-export { type HostBridge, type HostKind, type WindowRole } from './bridge';
+export { type HostBridge, type HostKind, type InvokeArgs, type WindowRole } from './bridge';
 export { YaqmcClient } from './client';
 export { createElectronBridge } from './bridges/electron';
 export { createFakeBridge } from './bridges/fake';
-export { CORE_EVENT_CHANNELS, HOST_EVENT_CHANNELS, type ChannelName } from './protocol/events';
-export { METHOD_NAMES, type MethodName } from './protocol/methods';
+export {
+  CHANNEL_ACCOUNT_CHANGED,
+  CHANNEL_API_EVENT,
+  CHANNEL_APP_OPEN_SETTINGS,
+  CHANNEL_CORE_LOG,
+  CHANNEL_HOST_COMMAND,
+  CHANNEL_LYRICS_DOCUMENT,
+  CHANNEL_LYRICS_PROJECTION,
+  CHANNEL_LYRICS_SURFACE_CLOSED,
+  CHANNEL_PLAYER_SNAPSHOT,
+  CHANNEL_PLUGIN_CHANGED,
+  CHANNEL_PREFERENCES_CHANGED,
+  CORE_EVENT_CHANNELS,
+  HOST_EVENT_CHANNELS,
+  type ChannelName,
+  type ChannelPayload,
+  type CoreChannelName,
+  type HostChannelName,
+} from './protocol/events';
+export {
+  METHOD_NAMES,
+  PROTOCOL_ONLY_METHODS,
+  TAURI_METHOD_NAMES,
+  type MethodName,
+  type MethodParams,
+  type MethodResult,
+  type ParamsOf,
+  type ProtocolOnlyMethodName,
+  type ResultOf,
+  type TauriMethodName,
+} from './protocol/methods';
 export {
   DEFAULT_METHOD_PAYLOAD_BYTES,
+  ERROR_CODES,
   FRAME_HARD_CAP_BYTES,
+  HANDSHAKE_TIMEOUT_MS,
   PROTOCOL_VERSION,
+  SHUTDOWN_TIMEOUT_MS,
+  type CoreError,
+  type CoreIdentity,
+  type CoreMessage,
+  type ErrorCode,
+  type HostIdentity,
+  type PlatformAttach,
+  type PlatformKind,
+  type ResponseBody,
+  type ShutdownReason,
 } from './protocol/types';
+export type * from './protocol/dto';

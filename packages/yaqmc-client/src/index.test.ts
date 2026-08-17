@@ -1,20 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { FRAME_HARD_CAP_BYTES, PROTOCOL_VERSION, YaqmcClient } from './index';
+import {
+  CORE_EVENT_CHANNELS,
+  FRAME_HARD_CAP_BYTES,
+  HOST_EVENT_CHANNELS,
+  METHOD_NAMES,
+  PROTOCOL_ONLY_METHODS,
+  PROTOCOL_VERSION,
+  TAURI_METHOD_NAMES,
+  YaqmcClient,
+} from './index';
 import type { HostBridge } from './bridge';
 
 function unusedBridge(): HostBridge {
   return {
     kind: 'fake',
     windowRole: 'main',
-    invoke: async () => undefined,
+    invoke: async () => {
+      throw new Error('unused');
+    },
     listen: () => () => undefined,
   };
 }
 
-describe('@yaqmc/client scaffold', () => {
+describe('@yaqmc/client protocol mirror', () => {
   it('exports protocol v1 and the 32 MiB hard cap', () => {
     expect(PROTOCOL_VERSION).toBe(1);
     expect(FRAME_HARD_CAP_BYTES).toBe(32 * 1024 * 1024);
+  });
+
+  it('mirrors 117 Tauri methods plus 6 protocol-only methods', () => {
+    expect(TAURI_METHOD_NAMES).toHaveLength(117);
+    expect(PROTOCOL_ONLY_METHODS).toHaveLength(6);
+    expect(METHOD_NAMES).toHaveLength(123);
+    expect(new Set(METHOD_NAMES).size).toBe(123);
+  });
+
+  it('mirrors ADR-004 core and host event channels', () => {
+    expect([...CORE_EVENT_CHANNELS]).toEqual([
+      'api://event',
+      'player://snapshot',
+      'lyrics://projection',
+      'lyrics://document',
+      'plugin://changed',
+      'preferences://changed',
+      'host://command',
+      'core://log',
+      'account://changed',
+    ]);
+    expect([...HOST_EVENT_CHANNELS]).toEqual(['lyrics://surface-closed', 'app://open-settings']);
   });
 
   it('constructs YaqmcClient over a HostBridge', () => {

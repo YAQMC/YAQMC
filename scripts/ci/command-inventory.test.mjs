@@ -80,21 +80,15 @@ test('protocol registry names and owners match the inventory and capability orig
     origins: match[3],
   }));
   assert.deepEqual(
-    specs
-      .map((spec) => spec.name)
-      .filter((name) => !PROTOCOL_ONLY_METHODS.includes(name)),
+    specs.map((spec) => spec.name).filter((name) => !PROTOCOL_ONLY_METHODS.includes(name)),
     inventory.rows.map((row) => row.name),
   );
   assert.deepEqual(
-    specs
-      .filter((spec) => !PROTOCOL_ONLY_METHODS.includes(spec.name))
-      .map((spec) => spec.owner),
+    specs.filter((spec) => !PROTOCOL_ONLY_METHODS.includes(spec.name)).map((spec) => spec.owner),
     inventory.rows.map((row) => row.after),
   );
   assert.deepEqual(
-    specs
-      .filter((spec) => PROTOCOL_ONLY_METHODS.includes(spec.name))
-      .map((spec) => spec.name),
+    specs.filter((spec) => PROTOCOL_ONLY_METHODS.includes(spec.name)).map((spec) => spec.name),
     PROTOCOL_ONLY_METHODS,
   );
 
@@ -117,4 +111,24 @@ test('protocol registry names and owners match the inventory and capability orig
         : 'Main';
     assert.equal(spec.origins, expected, spec.name);
   }
+});
+
+test('CLIENT-02 TypeScript method names match the inventory plus protocol-only methods', () => {
+  const inventory = collectCommandInventory(repositoryRoot);
+  const source = readFileSync(
+    path.join(repositoryRoot, 'packages/yaqmc-client/src/protocol/methods.ts'),
+    'utf8',
+  );
+  const block = (name) => {
+    const match = source.match(new RegExp(`export const ${name} = \\[([\\s\\S]*?)\\] as const;`));
+    assert.ok(match, name);
+    return [...match[1].matchAll(/'([a-z][a-z0-9_]*)'/g)].map((entry) => entry[1]);
+  };
+  const tauri = block('TAURI_METHOD_NAMES');
+  const protocolOnly = block('PROTOCOL_ONLY_METHODS');
+  assert.deepEqual(
+    tauri,
+    inventory.rows.map((row) => row.name),
+  );
+  assert.deepEqual(protocolOnly, PROTOCOL_ONLY_METHODS);
 });

@@ -307,3 +307,13 @@ the enforced provenance ledger.
 - `npm run build -w @yaqmc/client` emits `packages/yaqmc-client/dist`. The 32 MiB hard cap
   constant is exported and unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P3 CLIENT-02: protocol TypeScript mirror
+
+- `@yaqmc/client` now mirrors protocol v1 envelopes, ADR-004 channels, the 117 Tauri
+  methods plus six protocol-only methods, and command DTOs seeded from existing
+  frontend types. `HostBridge.invoke`/`listen` are typed against that mirror.
+  The frontend still does not import the package. No Electron, no qm-api-rs.
+- Inventory CI asserts the TS method-name list matches `command-inventory.md`.
+  The 32 MiB hard cap is unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.
