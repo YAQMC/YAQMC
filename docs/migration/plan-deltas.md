@@ -623,4 +623,30 @@ the enforced provenance ledger.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No ACCT-01 OAuth, no
   qm-api-rs.
 
+## P9 PLAT-01/02: tray and shortcuts modules (unwired)
 
+- apps/desktop/main/services/tray.ts and shortcuts.ts exist as injectable
+  helpers. apps/desktop/main/index.ts does not import them. Tray, Menu,
+  globalShortcut, and the main-window getter are constructor/API seams so
+  unit tests run without a display. No Playwright. This checkpoint does not
+  claim SMTC or MPRIS.
+- Tray menu is show/hide, play/pause, next, previous, settings, quit. Settings
+  is an openSettings callback reserved for app://open-settings; the module
+  does not send IPC. Play/pause/next/prev call injected invokePlayer(method)
+  (toggle / next / previous), not CoreClient. Left-click toggles the
+  main window through the getter. shouldHideInsteadOfClose({ closeToTray,
+  trayActive }) is true only when both are true, matching lib.rs hide-on-
+  close (closeBehavior != "quit") plus an Electron tray-liveness guard.
+- FACT: plan §26.1 names the tray icon yaqmc-tray. ELEC-07 staged
+  apps/desktop/resources/icon.ico and icon.png (plus 32/64/128); no
+  yaqmc-tray.* file exists. resolveTrayIconPath prefers yaqmc-tray when
+  present and otherwise uses icon.ico on Windows and icon.png elsewhere.
+- FACT accelerators from desktop_integration.rs SHORTCUTS:
+  control+alt+Space, control+alt+ArrowLeft, control+alt+ArrowRight.
+  Electron registration uses Control+Alt+Space / Left / Right.
+  Registration failure is logged and not thrown.
+  shouldRegisterGlobalShortcuts({ platform, wayland }) is false on native
+  Wayland (parity with wayland-native). The module does not register
+  Chromium switches.
+- The 32 MiB hard cap is unchanged. P0 remains PENDING; provenance remains
+  **BLOCKED**. No qm-api-rs.
