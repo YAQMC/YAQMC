@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { FRAME_HARD_CAP_BYTES } from '@yaqmc/client';
 import {
   LINUX_GRAPHICS_SWITCH_ALLOWLIST,
+  linuxGraphicsDiagnostics,
   linuxGraphicsSwitches,
   type LinuxGraphicsOptions,
 } from './linux-graphics';
@@ -129,6 +130,49 @@ describe('linux graphics Chromium switch policy', () => {
     for (const forbidden of FORBIDDEN_SWITCHES) {
       expect(policySource.includes(forbidden)).toBe(false);
     }
+  });
+});
+
+describe('linuxGraphicsDiagnostics', () => {
+  it('marks deprecatedEnv only for non-auto YAQMC_LINUX_RENDERER modes', () => {
+    expect(
+      linuxGraphicsDiagnostics({
+        platform: 'linux',
+        wayland: false,
+        nvidia: false,
+        mode: 'gpu-off',
+        fromDeprecatedEnv: true,
+      }),
+    ).toEqual({
+      platform: 'linux',
+      mode: 'gpu-off',
+      canonicalMode: 'gpu-off',
+      switches: ['--disable-gpu'],
+      deprecatedEnv: true,
+    });
+    expect(
+      linuxGraphicsDiagnostics({
+        platform: 'linux',
+        wayland: false,
+        nvidia: false,
+        mode: 'auto',
+        fromDeprecatedEnv: true,
+      }).deprecatedEnv,
+    ).toBe(false);
+    expect(
+      linuxGraphicsDiagnostics({
+        platform: 'win32',
+        wayland: false,
+        nvidia: false,
+        mode: 'Native-Wayland',
+      }),
+    ).toEqual({
+      platform: 'win32',
+      mode: 'Native-Wayland',
+      canonicalMode: 'native-wayland',
+      switches: [],
+      deprecatedEnv: false,
+    });
   });
 });
 
