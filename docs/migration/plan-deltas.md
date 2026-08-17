@@ -1371,3 +1371,42 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   updates the template. Electron stays **43.4.0**. The 32 MiB hard cap is
   unchanged. Provenance remains **BLOCKED**. No Playwright. No qm-api-rs. No
   SMTC claims.
+
+## P10 PLUG-04: scene API v2 demo automated coverage
+
+- Automated coverage for unpacked `examples/plugins/scene-pack` (Aurora /
+  Vinyl glow): `PluginManifest` parse, Scene API v2 JSON fields the lyrics
+  runtime expects (`schemaVersion` 2, layout, typography, artwork,
+  background, and the background/artwork/metadata/lyrics/transport widget
+  graph), and Core `ExtensionHost` install_unpacked / list /
+  `active_resources` / disable / uninstall against a temp plugin root
+  (`crates/yaqmc-core/tests/plug04.rs`). Renderer
+  `plugin-runtime.plug04.test.ts` normalizes those scene documents into the
+  lyrics preset catalog. Hostile fixtures are not enabled.
+- This is not a full lyrics GUI E2E. The Electron scene picker / Settings →
+  Plugins install path remains **manual / LIVE VERIFY pending**.
+  `examples/plugins/script-actions` is a plugin-API v2 script demo, not
+  claimed green here. No Playwright.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No qm-api-rs.
+## P11 CI-03: arm64 cross-build notes (hardware pending)
+
+- `docs/migration/ci03-arm64.md` plus `scripts/migration/ci03-arm64.mjs` print
+  the dry cargo / electron-builder commands. They do **not** run cargo,
+  rustup, or electron-builder, and they do not edit `.github/workflows/ci.yml`
+  (FE-06 / CI-02). This host may be x64 Windows; CI-03 is not a live arm
+  runner and is **not** green.
+- Windows: cross-build `yaqmc-core` for `aarch64-pc-windows-msvc` (`rustup
+  target add` + `cargo build -p yaqmc-core --release --target
+  aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
+  ARM64 `link.exe`. `scripts/stage-core.mjs` still only looks at
+  `target/{release,debug}/`; copy
+  `target/aarch64-pc-windows-msvc/release/yaqmc-core.exe` into
+  `apps/desktop/resources/core/` after a cross-build.
+- Linux: native `ubuntu-24.04-arm` when hardware/CI allows (`aarch64-unknown-linux-gnu`,
+  or plain `--release` on that runner), then `electron-builder --linux --arm64`.
+  Do not substitute a Windows-hosted GNU cross for that runner.
+- PACK-01 already declares win/linux arm64 in `electron-builder.yml`.
+  `pack:win` stays `--win --x64`. Arm artifact **boot-test pending**. Electron
+  stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.
