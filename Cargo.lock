@@ -6740,6 +6740,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "yaqmc-protocol",
  "zeroize",
  "zip",
 ]

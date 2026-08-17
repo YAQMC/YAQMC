@@ -1,5 +1,7 @@
 //! Host-neutral YAQMC runtime plugin services.
 
+pub mod api;
+pub mod bridge;
 pub mod host;
 pub mod manifest;
 pub mod network;
@@ -8,6 +10,10 @@ pub mod permissions;
 pub mod scanner;
 pub mod settings;
 
+pub use api::{
+    PluginBridgeRequest, PluginEnableRequest, PluginInspectResult, PluginInstallRequest,
+    PluginSettingsWrite, PluginUninstallRequest,
+};
 pub use host::{ExtensionHost, PluginDiagnostic, PluginStatus};
 pub use manifest::PluginManifest;
 
