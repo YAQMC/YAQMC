@@ -4,10 +4,13 @@ import App from './App';
 import { MusicProviderRoot } from './application/provider-root';
 import { fakeMusicProvider } from './providers/fake/fake-music-provider';
 import { qqMusicProvider } from './providers/qqmusic/qq-music-provider';
+import { installPackagedConsoleForward } from './application/logger';
 import { getHostBridge } from './application/yaqmc-runtime';
 import { LyricsSurfaceApp, LyricsUnlockControl } from './surfaces/LyricsSurfaceApp';
 import type { SurfaceKind } from './application/preferences';
 import './i18n';
+
+installPackagedConsoleForward();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root element is missing.');

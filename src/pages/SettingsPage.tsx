@@ -64,14 +64,20 @@ import { buildMetadata, productMetadata, type ProductLink } from '../application
 import {
   clearOldLogs,
   currentLogLevel,
+  currentConsoleForwardMode,
   DiagnosticsExportAbortedError,
   exportDiagnosticsBundle,
   openLogFolder,
   revealDiagnosticBundle,
+  setConsoleForwardPreference,
   setLogLevel,
   type BundleExportResult,
 } from '../application/diagnostics-runtime';
-import type { LogLevel } from '../application/logger';
+import {
+  isPackagedElectronMainRenderer,
+  type ConsoleForwardMode,
+  type LogLevel,
+} from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
 import { PluginManager } from '../components/PluginManager';
@@ -644,6 +650,8 @@ export function SettingsPage() {
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
   const [unlockingAll, setUnlockingAll] = useState(false);
   const [logLevel, setLogLevelState] = useState<LogLevel>('info');
+  const packagedConsoleForward = isPackagedElectronMainRenderer();
+  const [consoleForward, setConsoleForwardState] = useState<ConsoleForwardMode>('error');
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [diagnosticsMessage, setDiagnosticsMessage] = useState<string | null>(null);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
@@ -665,6 +673,13 @@ export function SettingsPage() {
       .catch(() => setLogLevelState('info'));
   }, []);
 
+  useEffect(() => {
+    if (!isNativeRuntime || !packagedConsoleForward) return;
+    void currentConsoleForwardMode()
+      .then(setConsoleForwardState)
+      .catch(() => setConsoleForwardState('error'));
+  }, [packagedConsoleForward]);
+
   const changeLogLevel = async (next: LogLevel) => {
     setDiagnosticsBusy(true);
     setDiagnosticsError(null);
@@ -672,6 +687,19 @@ export function SettingsPage() {
       const applied = await setLogLevel(next);
       setLogLevelState(applied);
       setDiagnosticsMessage(t('diagnostics.levelChangeHint'));
+    } catch (caught) {
+      setDiagnosticsError(String(caught));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const changeConsoleForward = async (next: ConsoleForwardMode) => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsError(null);
+    try {
+      const applied = await setConsoleForwardPreference(next);
+      setConsoleForwardState(applied);
     } catch (caught) {
       setDiagnosticsError(String(caught));
     } finally {
@@ -1444,6 +1472,25 @@ export function SettingsPage() {
               />
             }
           />
+          {packagedConsoleForward ? (
+            <SettingRow
+              title={t('diagnostics.consoleForward')}
+              description={t('diagnostics.consoleForwardDescription')}
+              control={
+                <Select<ConsoleForwardMode>
+                  value={consoleForward}
+                  options={[
+                    { value: 'error', label: t('diagnostics.consoleForwardError') },
+                    { value: 'warn', label: t('diagnostics.consoleForwardWarn') },
+                    { value: 'off', label: t('diagnostics.consoleForwardOff') },
+                  ]}
+                  onChange={(value) => void changeConsoleForward(value)}
+                  disabled={!isNativeRuntime || diagnosticsBusy}
+                  ariaLabel={t('diagnostics.consoleForward')}
+                />
+              }
+            />
+          ) : null}
           <SettingRow
             title={t('diagnostics.openFolder')}
             description={t('diagnostics.openFolderDescription')}

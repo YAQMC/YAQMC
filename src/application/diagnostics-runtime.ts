@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { DiagnosticsHostPayload } from '@yaqmc/client';
 import { isNativeRuntime } from './native-player-runtime';
-import type { LogLevel } from './logger';
+import {
+  CONSOLE_FORWARD_SETTING_KEY,
+  parseConsoleForwardMode,
+  setConsoleForwardMode,
+  type ConsoleForwardMode,
+  type LogLevel,
+} from './logger';
 import type { PlatformDiagnostics } from './platform-integration';
 import { getYaqmcClient } from './yaqmc-runtime';
 
@@ -200,6 +206,20 @@ export async function currentLogLevel(): Promise<LogLevel> {
 
 export async function setLogLevel(level: LogLevel): Promise<LogLevel> {
   return client.invoke('diagnostics_set_log_level', { level });
+}
+
+export async function currentConsoleForwardMode(): Promise<ConsoleForwardMode> {
+  if (!isNativeRuntime) return 'error';
+  const value = await client.invoke('app_settings_get', { key: CONSOLE_FORWARD_SETTING_KEY });
+  return parseConsoleForwardMode(value);
+}
+
+export async function setConsoleForwardPreference(
+  mode: ConsoleForwardMode,
+): Promise<ConsoleForwardMode> {
+  await client.invoke('app_settings_set', { key: CONSOLE_FORWARD_SETTING_KEY, value: mode });
+  setConsoleForwardMode(mode);
+  return mode;
 }
 
 export async function readRecentErrors(): Promise<ErrorRecord[]> {

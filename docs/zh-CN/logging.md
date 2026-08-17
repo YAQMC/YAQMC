@@ -26,7 +26,9 @@ Provider / audio / player  ─┘        ▼
 - **前端**：`src/application/logger.ts` 会本地批处理事件（最多 128 条，
   最长约 400 ms 刷新一次），通过 `diagnostics_log_frontend` 命令发送。Rust
   端命令再把每一条重放到同一批 `tracing` target，前端与 Rust 事件在最终
-  日志中一致。
+  日志中一致。打包后的 Electron **主窗口**还会把 `console.error`（默认）
+  以及可选的 `console.warn` 接到同一条路径（`logging.consoleForward`；
+  歌词 / 解锁 / OAuth 窗口不挂钩）。
 - **Provider / 音频 / 播放器**：这些模块使用 `tracing::info!` / `warn!` /
   `debug!` 与结构化字段（`tracing` 的 key/value）。刻意避免 `{:?}` 打印
   庞大结构体，每一行日志都能在一屏内看完。

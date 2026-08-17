@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { createPreloadHostInfo } from './packaged';
 
 type InvokeReply =
   | { ok: true; result: unknown }
@@ -35,9 +36,5 @@ contextBridge.exposeInMainWorld('yaqmc', {
     };
   },
   windowRole: 'main',
-  hostInfo: {
-    electron: process.versions.electron ?? '',
-    platform: process.platform === 'linux' ? 'linux' : 'win32',
-    coreProtocol: 1,
-  },
+  hostInfo: createPreloadHostInfo(process.versions.electron, process.platform, process.execPath),
 });

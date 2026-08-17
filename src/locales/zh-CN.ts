@@ -920,6 +920,12 @@ export const zhCN = {
       logLevelInfo: 'Info',
       logLevelDebug: 'Debug',
       logLevelTrace: 'Trace',
+      consoleForward: '渲染进程控制台',
+      consoleForwardDescription:
+        '打包构建可将 console.error（以及可选的 console.warn）写入已脱敏的前端日志。关闭后仅留在 DevTools。',
+      consoleForwardError: '仅错误',
+      consoleForwardWarn: '错误和警告',
+      consoleForwardOff: '关闭',
       levelChangeHint: '新级别将在下次启动 YAQMC 时生效。',
       openFolder: '打开日志文件夹',
       openFolderDescription: '在系统文件管理器中打开平台应用日志目录。',

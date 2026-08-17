@@ -1676,3 +1676,19 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   Not wired to GitHub Actions. PLAY-01 is not green.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P11 DIAG leftover: packaged renderer console forward
+
+- Packaged Electron **main** renderer wraps `console.error` / `console.warn` and
+  feeds them through existing `logger.ts` → `diagnostics_log_frontend` (size
+  caps, queue, flush, Rust `sanitize_field` / `RedactingWriter`). Preference
+  `logging.consoleForward`: `error` (default on), `warn`, or `off`. Recursion
+  guard avoids logger→console re-entry. Lyrics/unlock windows are not hooked
+  (`diagnostics_log_frontend` stays main-origin). OAuth windows have no app
+  preload and are not scraped via `webContents` `console-message`.
+- `hostInfo.packaged` is derived from `process.execPath` in sandbox preload
+  (Electron's `app.isPackaged` equivalent; no `process.env`). Unpackaged Vite /
+  `?provider=fake` do not install the hook.
+- This is not PLAY-01 / SMTC / soak / provenance green. Actions stay frozen.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.

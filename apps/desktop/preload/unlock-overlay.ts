@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { createPreloadHostInfo } from './packaged';
 import { searchFromLocation, unlockWindowRoleFromSearch } from './window-role';
 
 type InvokeReply =
@@ -38,9 +39,5 @@ contextBridge.exposeInMainWorld('yaqmc', {
   windowRole: unlockWindowRoleFromSearch(
     searchFromLocation((globalThis as { location?: { search?: string } }).location),
   ),
-  hostInfo: {
-    electron: process.versions.electron ?? '',
-    platform: process.platform === 'linux' ? 'linux' : 'win32',
-    coreProtocol: 1,
-  },
+  hostInfo: createPreloadHostInfo(process.versions.electron, process.platform, process.execPath),
 });

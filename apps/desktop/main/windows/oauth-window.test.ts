@@ -37,11 +37,13 @@ type MockOAuthWindow = OAuthWindowLike & {
 };
 
 function mockWindow(): MockOAuthWindow {
-  const contentsListeners: Record<'will-navigate' | 'will-redirect', Array<(event: OAuthNavigationEvent, url: string) => void>> =
-    {
-      'will-navigate': [],
-      'will-redirect': [],
-    };
+  const contentsListeners: Record<
+    'will-navigate' | 'will-redirect',
+    Array<(event: OAuthNavigationEvent, url: string) => void>
+  > = {
+    'will-navigate': [],
+    'will-redirect': [],
+  };
   const closedListeners: Array<() => void> = [];
 
   const emit = (
@@ -188,9 +190,9 @@ describe('oauth allowlist globs', () => {
     expect(urlMatchesOAuthAllowlist('https://xui.ptlogin2.qq.com/cgi-bin/xlogin', allowlist)).toBe(
       true,
     );
-    expect(urlMatchesOAuthAllowlist('https://graph.qq.com.evil.example/oauth2.0/show', allowlist)).toBe(
-      false,
-    );
+    expect(
+      urlMatchesOAuthAllowlist('https://graph.qq.com.evil.example/oauth2.0/show', allowlist),
+    ).toBe(false);
     expect(urlMatchesOAuthAllowlist('http://graph.qq.com/oauth2.0/show', allowlist)).toBe(false);
     expect(urlMatchesOAuthAllowlist('https://evil.test/', allowlist)).toBe(false);
     expect(urlMatchesOAuthAllowlist('file:///etc/passwd', allowlist)).toBe(false);
@@ -313,6 +315,16 @@ describe('wired status', () => {
     expect(index).toContain('session.fromPartition');
     expect(index).toContain('createOAuthBrowserWindow');
     expect(index).not.toContain('openOAuthWindow');
+  });
+
+  it('does not attach a preload or scrape console-message', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./oauth-window.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain('No preload');
+    expect(source).not.toContain('preload:');
+    expect(source).not.toContain('console-message');
   });
 });
 
