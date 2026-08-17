@@ -78,6 +78,12 @@ impl HostDispatchHooks for NoopHost {
             build_type: "debug".to_owned(),
         }
     }
+
+    /// Stdio Electron host: issue-reporter Environment block uses this as
+    /// `host: electron/<version>`. Tauri adapters keep their own WebView labels.
+    fn renderer_label(&self, _platform: &PlatformDiagnostics) -> String {
+        "electron/43.4.0".to_owned()
+    }
 }
 
 pub fn empty_platform_diagnostics() -> PlatformDiagnostics {

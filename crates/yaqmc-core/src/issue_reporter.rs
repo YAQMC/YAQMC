@@ -234,6 +234,9 @@ fn compose_body(
     )
     .ok();
     writeln!(&mut body, "- Renderer: {renderer_label}").ok();
+    if let Some(host) = environment_host_line(renderer_label) {
+        writeln!(&mut body, "- host: {host}").ok();
+    }
     writeln!(
         &mut body,
         "- Audio backend: {} · policy={} · host={}",
@@ -325,6 +328,35 @@ fn compose_body(
         return truncated;
     }
     body
+}
+
+
+/// Environment `host:` identity derived from the renderer label.
+///
+/// Electron stdio passes `electron/<version>` (e.g. `electron/43.4.0`). Tauri
+/// adapters keep WebView labels such as `WebView2 / Tauri` and emit `tauri`
+/// without inventing a toolkit version. Unrecognized labels keep the renderer
+/// line only.
+fn environment_host_line(renderer_label: &str) -> Option<String> {
+    let trimmed = renderer_label.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if let Some(version) = lower.strip_prefix("electron/") {
+        let version = trimmed[trimmed.len() - version.len()..].trim();
+        if version.is_empty() {
+            return Some("electron".to_owned());
+        }
+        return Some(format!("electron/{version}"));
+    }
+    if lower.contains("electron") {
+        return Some(format!("electron/{trimmed}"));
+    }
+    if lower.contains("tauri") {
+        return Some("tauri".to_owned());
+    }
+    None
 }
 
 fn compose_url(category: IssueCategory, title: &str, body: &str) -> (String, bool) {
@@ -572,5 +604,36 @@ mod tests {
         };
         let preview = prepare_preview(&draft, &snapshot(), "WebView2 / Tauri");
         assert_eq!(preview.title, "[Bug] issue");
+    }
+
+    fn minimal_draft() -> IssueDraft {
+        IssueDraft {
+            category: IssueCategory::Bug,
+            summary: "crash on open".into(),
+            description: "".into(),
+            bundle_file_name: None,
+            linked_error_code: None,
+            linked_op_id: None,
+        }
+    }
+
+    #[test]
+    fn preview_emits_electron_host_line_in_body_and_url() {
+        let preview = prepare_preview(&minimal_draft(), &snapshot(), "electron/43.4.0");
+        assert!(preview.body.contains("- host: electron/43.4.0"));
+        assert!(preview.body.contains("electron/"));
+        assert!(preview.body.contains("Renderer: electron/43.4.0"));
+        // '/' is percent-encoded in the GitHub issue URL body.
+        assert!(preview.url.contains("electron%2F43.4.0"));
+    }
+
+    #[test]
+    fn preview_keeps_tauri_webview_path_without_electron_host() {
+        let preview = prepare_preview(&minimal_draft(), &snapshot(), "WebView2 / Tauri");
+        assert!(preview.body.contains("Renderer: WebView2 / Tauri"));
+        assert!(preview.body.contains("- host: tauri"));
+        assert!(!preview.body.contains("host: electron/"));
+        assert!(!preview.url.contains("electron%2F"));
+        assert!(!preview.url.contains("electron/"));
     }
 }
