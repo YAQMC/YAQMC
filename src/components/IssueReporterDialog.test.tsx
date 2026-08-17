@@ -1,22 +1,44 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as TauriCore from '@tauri-apps/api/core';
+import type { HostBridge } from '@yaqmc/client';
 
 const invokeMock = vi.hoisted(() => vi.fn());
-const openUrlMock = vi.hoisted(() => vi.fn());
+const openExternalMock = vi.hoisted(() => vi.fn());
+const exportBundleMock = vi.hoisted(() => vi.fn());
+const revealBundleMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
-  ...(await importOriginal<typeof TauriCore>()),
-  invoke: invokeMock,
-  isTauri: () => true,
-}));
-
-vi.mock('@tauri-apps/plugin-opener', () => ({
-  openUrl: openUrlMock,
-}));
+vi.mock('../application/yaqmc-runtime', async () => {
+  const { YaqmcClient } = await import('@yaqmc/client');
+  const bridge = {
+    kind: 'tauri' as const,
+    windowRole: 'main' as const,
+    window: {
+      minimize: async () => undefined,
+      toggleMaximize: async () => undefined,
+      close: async () => undefined,
+      setFullscreen: async () => undefined,
+    },
+    shell: {
+      openExternal: openExternalMock,
+    },
+    invoke: invokeMock,
+    listen: () => () => undefined,
+  };
+  const client = new YaqmcClient(bridge as HostBridge);
+  client.markReady();
+  return {
+    getHostBridge: () => bridge,
+    getYaqmcClient: () => client,
+  };
+});
 
 vi.mock('../application/native-player-runtime', () => ({
   isNativeRuntime: true,
+}));
+
+vi.mock('../application/diagnostics-runtime', () => ({
+  exportDiagnosticsBundle: exportBundleMock,
+  revealDiagnosticBundle: revealBundleMock,
 }));
 
 import '../i18n';
@@ -44,7 +66,6 @@ const sampleBundle = {
   manifestPath: 'manifest.json',
 };
 
-// jsdom does not implement showModal.
 beforeEach(() => {
   const proto = HTMLDialogElement.prototype as unknown as {
     showModal?: () => void;
@@ -59,8 +80,12 @@ beforeEach(() => {
   };
 
   invokeMock.mockReset();
-  openUrlMock.mockReset();
-  openUrlMock.mockResolvedValue(undefined);
+  openExternalMock.mockReset();
+  exportBundleMock.mockReset();
+  revealBundleMock.mockReset();
+  openExternalMock.mockResolvedValue(undefined);
+  exportBundleMock.mockResolvedValue(sampleBundle);
+  revealBundleMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -73,13 +98,6 @@ function configureDefaultInvokes() {
       case 'issue_reporter_preview':
         return samplePreview;
       case 'issue_reporter_validate_url':
-        return undefined;
-      case 'diagnostics_export_bundle':
-        return sampleBundle;
-      case 'diagnostics_reveal_bundle':
-        return undefined;
-      case 'diagnostics_log_frontend':
-      case 'diagnostics_record_error':
         return undefined;
       default:
         throw new Error(`unexpected command ${command} args=${JSON.stringify(args)}`);
@@ -123,9 +141,11 @@ describe('IssueReporterDialog', () => {
       fireEvent.click(generate);
     });
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        'diagnostics_export_bundle',
-        expect.objectContaining({ request: expect.any(Object) }),
+      expect(exportBundleMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          includeLogs: true,
+          overrideUnresolved: false,
+        }),
       );
     });
     const matches = await screen.findAllByText(/YAQMC-diagnostics-20260814-133000\.zip/);
@@ -154,7 +174,6 @@ describe('IssueReporterDialog', () => {
     configureDefaultInvokes();
     render(<IssueReporterDialog open onClose={vi.fn()} initialSummary="broken audio" />);
     await screen.findByText(samplePreview.title);
-    // Turn off "include bundle" so the open flow does not first block on the bundle export.
     const toggle = screen.getByRole('checkbox');
     fireEvent.click(toggle);
     const openButton = screen.getByRole('button', { name: /open github|打开 github/i });
@@ -166,7 +185,7 @@ describe('IssueReporterDialog', () => {
         'issue_reporter_validate_url',
         expect.objectContaining({ url: samplePreview.url }),
       );
-      expect(openUrlMock).toHaveBeenCalledWith(samplePreview.url);
+      expect(openExternalMock).toHaveBeenCalledWith(samplePreview.url);
     });
   });
 
@@ -184,12 +203,8 @@ describe('IssueReporterDialog', () => {
   });
 
   it('surfaces a bundle failure without crashing', async () => {
-    invokeMock.mockImplementation(async (command: string) => {
-      if (command === 'issue_reporter_preview') return samplePreview;
-      if (command === 'issue_reporter_validate_url') return undefined;
-      if (command === 'diagnostics_export_bundle') throw new Error('bundle boom');
-      return undefined;
-    });
+    configureDefaultInvokes();
+    exportBundleMock.mockRejectedValue(new Error('bundle boom'));
     render(<IssueReporterDialog open onClose={vi.fn()} />);
     const generate = await screen.findByRole('button', { name: /generate bundle|生成诊断/i });
     await act(async () => {

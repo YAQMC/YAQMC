@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as TauriCore from '@tauri-apps/api/core';
+import type { HostBridge } from '@yaqmc/client';
 import type { LyricDocument, Song } from '../domain/music';
 import { defaultPreferences, usePreferencesStore } from './preferences';
 import {
@@ -16,19 +16,37 @@ import {
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const eventMocks = vi.hoisted(() => ({
-  listen: vi.fn(),
   unlisten: vi.fn(),
-  handlers: new Map<string, (event: { payload: unknown }) => void>(),
+  handlers: new Map<string, (payload: unknown) => void>(),
 }));
 
-vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
-  ...(await importOriginal<typeof TauriCore>()),
-  invoke: invokeMock,
-}));
-
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: eventMocks.listen,
-}));
+vi.mock('./yaqmc-runtime', async () => {
+  const { YaqmcClient } = await import('@yaqmc/client');
+  const bridge = {
+    kind: 'tauri' as const,
+    windowRole: 'lyrics-desktop' as const,
+    window: {
+      minimize: async () => undefined,
+      toggleMaximize: async () => undefined,
+      close: async () => undefined,
+      setFullscreen: async () => undefined,
+    },
+    shell: {
+      openExternal: async () => undefined,
+    },
+    invoke: invokeMock,
+    listen: (channel: string, handler: (payload: unknown) => void) => {
+      eventMocks.handlers.set(channel, handler);
+      return eventMocks.unlisten;
+    },
+  };
+  const client = new YaqmcClient(bridge as HostBridge);
+  client.markReady();
+  return {
+    getHostBridge: () => bridge,
+    getYaqmcClient: () => client,
+  };
+});
 
 const document: LyricDocument = {
   songId: 'song-one',
@@ -73,15 +91,7 @@ function projection(overrides: Partial<LyricSurfaceProjection> = {}): TimedProje
 describe('lyrics surface projection', () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    eventMocks.listen.mockReset();
     eventMocks.unlisten.mockReset();
-    eventMocks.handlers.clear();
-    eventMocks.listen.mockImplementation(
-      async (event: string, handler: (event: { payload: unknown }) => void) => {
-        eventMocks.handlers.set(event, handler);
-        return eventMocks.unlisten;
-      },
-    );
     usePreferencesStore.setState({
       ...defaultPreferences,
       surfaces: {
@@ -134,10 +144,10 @@ describe('lyrics surface projection', () => {
 
     const nextDocument: LyricDocument = { ...document, songId: 'song-two' };
     act(() => {
-      eventMocks.handlers.get('lyrics://projection')?.({
-        payload: projection({ currentTrack: { id: 'song-two' } as Song }).value,
-      });
-      eventMocks.handlers.get('lyrics://document')?.({ payload: nextDocument });
+      eventMocks.handlers.get('lyrics://projection')?.(
+        projection({ currentTrack: { id: 'song-two' } as Song }).value,
+      );
+      eventMocks.handlers.get('lyrics://document')?.(nextDocument);
     });
     await waitFor(() => expect(result.current.document?.songId).toBe('song-two'));
 

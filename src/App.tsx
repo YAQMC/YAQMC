@@ -47,8 +47,8 @@ import {
   runAfterLyricsClose,
   toggleQueueAfterLyricsClose,
 } from './application/lyrics-presentation-actions';
-import { listen } from '@tauri-apps/api/event';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
+import { getYaqmcClient } from './application/yaqmc-runtime';
 import { usePluginHost } from './application/plugin-runtime';
 import './styles/index.css';
 
@@ -147,16 +147,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isNativeRuntime) return;
-    let active = true;
-    let unlisten: (() => void) | null = null;
-    void listen('app://open-settings', () => navigate({ page: 'settings' })).then((stop) => {
-      if (active) unlisten = stop;
-      else stop();
-    });
-    return () => {
-      active = false;
-      unlisten?.();
-    };
+    return getYaqmcClient().on('app://open-settings', () => navigate({ page: 'settings' }));
   }, [navigate]);
 
   const goBack = useCallback(() => {

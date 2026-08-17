@@ -229,6 +229,14 @@
   inset: 0;
 }
 
+.yaqmc-drag {
+  -webkit-app-region: drag;
+}
+
+.yaqmc-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 .topbar__history,
 .topbar__tools {
   position: relative;

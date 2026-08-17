@@ -1,7 +1,6 @@
-import { isTauri } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { create } from 'zustand';
 import type { SecondaryLyricVisibility } from './preferences';
+import { getYaqmcClient } from './yaqmc-runtime';
 
 export interface FullscreenPort {
   read(): Promise<boolean>;
@@ -36,6 +35,7 @@ function errorMessage(error: unknown): string {
 }
 
 let browserFullscreen = false;
+let nativeFullscreen = false;
 
 const browserPort: FullscreenPort = {
   async read() {
@@ -52,12 +52,20 @@ const browserPort: FullscreenPort = {
 };
 
 const nativePort: FullscreenPort = {
-  read: () => getCurrentWindow().isFullscreen(),
-  write: (value) => getCurrentWindow().setFullscreen(value),
-  subscribe: async (listener) => getCurrentWindow().onResized(() => listener()),
+  read: async () => nativeFullscreen,
+  write: async (value) => {
+    await getYaqmcClient().host.window.setFullscreen(value);
+    nativeFullscreen = value;
+  },
+  subscribe: async (listener) => {
+    if (typeof window === 'undefined') return () => undefined;
+    window.addEventListener('resize', listener);
+    return () => window.removeEventListener('resize', listener);
+  },
 };
 
-let fullscreenPort: FullscreenPort = isTauri() ? nativePort : browserPort;
+let fullscreenPort: FullscreenPort =
+  getYaqmcClient().bridge.kind === 'fake' ? browserPort : nativePort;
 let generation = 0;
 let nextSynchronizationSequence = 0;
 let lastCommittedSynchronizationSequence = 0;

@@ -1,15 +1,14 @@
-import { invoke } from '@tauri-apps/api/core';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { logger } from './logger';
 import { isNativeRuntime } from './native-player-runtime';
 import type { DiagnosticsRequest } from './diagnostics-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
 
 /**
  * TypeScript surface for the pure Rust issue-reporter core. The frontend never
  * assembles GitHub URLs directly: it always asks the native runtime for a
  * validated preview and then hands the returned URL back through the scoped
- * `openUrl` capability. This preserves the invariant that only URLs matching
- * the YAQMC issue prefix ever escape into the default browser.
+ * `host.shell.openExternal` capability. This preserves the invariant that only
+ * URLs matching the YAQMC issue prefix ever escape into the default browser.
  */
 
 export type IssueCategory = 'bug' | 'linux' | 'playback' | 'provider' | 'lyrics' | 'ui' | 'other';
@@ -46,11 +45,11 @@ export async function previewIssue(
   draft: IssueDraft,
   request: DiagnosticsRequest = {},
 ): Promise<IssuePreview> {
-  return invoke<IssuePreview>('issue_reporter_preview', { draft, request });
+  return getYaqmcClient().invoke('issue_reporter_preview', { draft, request });
 }
 
 export async function validateIssueUrl(url: string): Promise<void> {
-  await invoke('issue_reporter_validate_url', { url });
+  await getYaqmcClient().invoke('issue_reporter_validate_url', { url });
 }
 
 export async function openIssueUrl(url: string): Promise<void> {
@@ -60,10 +59,10 @@ export async function openIssueUrl(url: string): Promise<void> {
     window.open(url, '_blank', 'noopener,noreferrer');
     return;
   }
-  // The scoped opener allowlist (`main-window.json`) restricts openUrl to the
-  // https://github.com/YAQMC/YAQMC/* origin+path prefix, matching the Rust
+  // The scoped opener allowlist (`main-window.json`) restricts openExternal to
+  // the https://github.com/YAQMC/YAQMC/* origin+path prefix, matching the Rust
   // `validate_open_url` check above.
-  await openUrl(url);
+  await getYaqmcClient().host.shell.openExternal(url);
 }
 
 export async function copyIssueText(preview: IssuePreview): Promise<void> {

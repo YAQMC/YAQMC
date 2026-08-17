@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import {
   GripHorizontal,
   Lock,
@@ -35,6 +34,7 @@ import { joinArtistNames } from '../utils/format';
 import { IconButton } from '../components/ui/IconButton';
 import { resolveArtworkSource } from '../application/artwork-resolver';
 import { useSafeArtworkSource } from '../application/artwork-source';
+import { getYaqmcClient } from '../application/yaqmc-runtime';
 
 export interface SurfaceProps {
   kind: SurfaceKind;
@@ -56,7 +56,7 @@ export function LyricsUnlockControl({ kind }: { kind: SurfaceKind }) {
     setPending(true);
     setFailed(false);
     try {
-      await invoke('lyrics_surface_unlock', { kind });
+      await getYaqmcClient().invoke('lyrics_surface_unlock', { kind });
     } catch {
       setFailed(true);
     } finally {
@@ -239,21 +239,29 @@ function SurfaceControls({
   const { t: common } = useTranslation('common');
   const { t: surfaces } = useTranslation('settings', { keyPrefix: 'surfaces' });
   return (
-    <div className="lyrics-surface__controls">
-      <span className="lyrics-surface__drag" data-tauri-drag-region>
+    <div className="lyrics-surface__controls yaqmc-no-drag">
+      <span className="lyrics-surface__drag yaqmc-drag" data-tauri-drag-region>
         <GripHorizontal size={15} />
       </span>
-      <IconButton label={t('previous')} size="small" onClick={() => void invoke('player_previous')}>
+      <IconButton
+        label={t('previous')}
+        size="small"
+        onClick={() => void getYaqmcClient().player.previous()}
+      >
         <SkipBack size={14} fill="currentColor" />
       </IconButton>
       <IconButton
         label={projection?.value.isPlaying ? common('pause') : common('play')}
         size="small"
-        onClick={() => void invoke('player_toggle')}
+        onClick={() => void getYaqmcClient().player.toggle()}
       >
         {projection?.value.isPlaying ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
       </IconButton>
-      <IconButton label={t('next')} size="small" onClick={() => void invoke('player_next')}>
+      <IconButton
+        label={t('next')}
+        size="small"
+        onClick={() => void getYaqmcClient().player.next()}
+      >
         <SkipForward size={14} fill="currentColor" />
       </IconButton>
       <IconButton
@@ -302,11 +310,13 @@ export function DesktopSurface(props: SurfaceProps) {
     >
       {interactive && <SurfaceControls kind="desktop" projection={projection} />}
       <div
-        className="lyrics-surface__drag-region"
+        className={
+          interactive ? 'lyrics-surface__drag-region yaqmc-drag' : 'lyrics-surface__drag-region'
+        }
         data-tauri-drag-region={interactive ? true : undefined}
       />
       <div
-        className="desktop-lyrics__content"
+        className={interactive ? 'desktop-lyrics__content yaqmc-drag' : 'desktop-lyrics__content'}
         data-tauri-drag-region={interactive ? true : undefined}
       >
         {current ? (
@@ -356,13 +366,19 @@ export function IslandSurface(props: SurfaceProps) {
       onPointerMove={hover.onPointerMove}
       onPointerLeave={hover.onPointerLeave}
     >
-      <div className="island-card" data-tauri-drag-region={interactive ? true : undefined}>
+      <div
+        className={interactive ? 'island-card yaqmc-drag' : 'island-card'}
+        data-tauri-drag-region={interactive ? true : undefined}
+      >
         {artworkSource && <img src={artworkSource} alt="" draggable={false} />}
         <span
           className="island-card__state"
           data-playing={projection?.value.isPlaying || undefined}
         />
-        <div className="island-card__copy" data-tauri-drag-region={interactive ? true : undefined}>
+        <div
+          className={interactive ? 'island-card__copy yaqmc-drag' : 'island-card__copy'}
+          data-tauri-drag-region={interactive ? true : undefined}
+        >
           {current ? (
             <SurfaceLine
               line={current}

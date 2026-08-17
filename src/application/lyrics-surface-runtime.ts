@@ -1,5 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useEffect, useMemo, useState } from 'react';
 import type { LyricDocument, LyricLine, LyricSyncMode, Song } from '../domain/music';
 import { selectLyricCursor } from './lyrics-timing';
@@ -10,6 +8,7 @@ import {
   type SurfaceInteraction,
   type SurfaceKind,
 } from './preferences';
+import { getYaqmcClient } from './yaqmc-runtime';
 
 export interface LyricSurfaceProjection {
   timestampMs: number;
@@ -92,7 +91,7 @@ export function useLyricsSurfaceRuntime(): {
     let receivedDocumentEvent = false;
     let acceptedSession = 0;
     let acceptedTrackId: string | null = null;
-    const listeners: UnlistenFn[] = [];
+    const client = getYaqmcClient();
     const updateProjection = (value: LyricSurfaceProjection) => {
       const session = value.sessionId ?? 0;
       if (session !== 0 && session < acceptedSession) return;
@@ -101,32 +100,29 @@ export function useLyricsSurfaceRuntime(): {
       if (active) setProjection({ value, receivedAt: performance.now() });
     };
 
-    void listen<LyricSurfaceProjection>('lyrics://projection', (event) => {
+    const stopProjection = client.on('lyrics://projection', (payload) => {
       if (active) {
         receivedProjectionEvent = true;
-        updateProjection(event.payload);
+        updateProjection(payload);
       }
-    })
-      .then((unlisten) => (active ? listeners.push(unlisten) : unlisten()))
-      .catch(() => undefined);
-    void listen<LyricDocument | null>('lyrics://document', (event) => {
+    });
+    const stopDocument = client.on('lyrics://document', (payload) => {
       if (active) {
-        const payload = event.payload;
         if (payload && acceptedTrackId && payload.songId !== acceptedTrackId) {
           return;
         }
         receivedDocumentEvent = true;
         setDocument(payload);
       }
-    })
-      .then((unlisten) => (active ? listeners.push(unlisten) : unlisten()))
-      .catch(() => undefined);
-    void invoke<LyricSurfaceProjection>('lyrics_surface_projection')
+    });
+    void client.player
+      .projection()
       .then((value) => {
         if (active && !receivedProjectionEvent) updateProjection(value);
       })
       .catch(() => undefined);
-    void invoke<LyricDocument | null>('player_lyrics')
+    void client.player
+      .lyrics()
       .then((value) => {
         if (active && !receivedDocumentEvent) setDocument(value);
       })
@@ -134,7 +130,8 @@ export function useLyricsSurfaceRuntime(): {
 
     return () => {
       active = false;
-      listeners.forEach((unlisten) => unlisten());
+      stopProjection();
+      stopDocument();
     };
   }, []);
 
@@ -155,11 +152,11 @@ export function useProjectedLyrics(
 export async function closeLyricsSurface(kind: SurfaceKind): Promise<void> {
   const store = usePreferencesStore.getState();
   store.updateSurface(kind, { enabled: false });
-  await invoke('lyrics_surface_close', { kind });
+  await getYaqmcClient().invoke('lyrics_surface_close', { kind });
 }
 
 export async function unlockAllLyricsSurfaces(): Promise<number> {
-  const unlocked = await invoke<number>('lyrics_surfaces_unlock_all');
+  const unlocked = await getYaqmcClient().invoke('lyrics_surfaces_unlock_all');
   const store = usePreferencesStore.getState();
   for (const kind of ['desktop', 'island'] as const) {
     if (store.surfaces[kind].interaction === 'passive-locked') {
@@ -198,7 +195,7 @@ async function applyLyricsSurfaceInteraction(
 
   store.setSurfaceInteractionLocal(kind, interaction);
   try {
-    const value = await invoke<string>('lyrics_surface_set_interaction', {
+    const value = await getYaqmcClient().invoke('lyrics_surface_set_interaction', {
       kind,
       interaction,
       value: JSON.stringify(currentPreferenceDocument()),
@@ -223,9 +220,9 @@ export function setLyricsSurfaceInteraction(
 }
 
 export async function resetLyricsSurfacePosition(kind: SurfaceKind): Promise<void> {
-  await invoke('lyrics_surface_reset_position', { kind });
+  await getYaqmcClient().invoke('lyrics_surface_reset_position', { kind });
 }
 
 export async function showLyricsSettings(): Promise<void> {
-  await invoke('lyrics_surface_show_settings');
+  await getYaqmcClient().invoke('lyrics_surface_show_settings');
 }
