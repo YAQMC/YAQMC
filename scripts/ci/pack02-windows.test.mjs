@@ -24,7 +24,7 @@ test('PACK-02 assist prints a pending clean-VM matrix and does not invent green'
   assert.equal(payload.appId, APP_ID);
   assert.equal(payload.nsis.oneClick, false);
   assert.equal(payload.nsis.perMachine, false);
-  assert.equal(payload.electronUpdater, false);
+  assert.equal(payload.electronUpdater, true);
   for (const key of ['nsisPerUserInstall', 'portableExe', 'upgradeAB', 'uninstall', 'x64', 'arm64']) {
     assert.equal(payload.Windows[key].state, CLEAN_VM_STATE);
     assert.equal(payload.Windows[key].checked, false);
@@ -40,8 +40,7 @@ test('pack:win is --win --x64 and NSIS stays per-user', () => {
   assert.match(pkg.scripts['pack:win'], /--x64/);
   assert.doesNotMatch(pkg.scripts['pack:win'], /--arm64/);
   assert.equal(pkg.devDependencies.electron, ELECTRON_VERSION);
-  assert.equal(pkg.dependencies?.['electron-updater'], undefined);
-  assert.equal(pkg.devDependencies?.['electron-updater'], undefined);
+  assert.equal(pkg.dependencies?.['electron-updater'], '6.8.6');
   const yaml = readFileSync(path.join(repositoryRoot, 'apps', 'desktop', 'electron-builder.yml'), 'utf8');
   const flags = parseBuilderNsis(yaml);
   assert.equal(flags.appId, true);

@@ -206,7 +206,7 @@ export function pack03Report({
     },
     steps: [
       'On a Linux builder (not this Windows host): run electron-builder --linux AppImage deb rpm tar.gz --x64 from apps/desktop. arm64 is a separate --arm64 invocation (CI-03).',
-      'AppImage is the updater-bearing target (plan §32). Do not add an updater dependency here; replace the AppImage for the A→B rehearsal.',
+      'AppImage is the updater-bearing target (plan §32). UPD-01 wires notify-only electron-updater; this script still does not run an A→B upgrade.',
       'On a scratch Linux user or clean VM (not the daily-driver profile): install A. Write a marker under $XDG_DATA_HOME/org.yaqmc.desktop (library.sqlite3 or pack03-upgrade-marker.txt).',
       'Install B over A (same appId). Confirm the marker and library.sqlite3 survive.',
       'Tray libayatana-appindicator is Recommends, not Depends. Missing indicator must not fail install; tray init failure is non-fatal.',
@@ -217,7 +217,7 @@ export function pack03Report({
     notes: [
       'LIVE VERIFY / clean-VM pending. This script does not install, upgrade, or uninstall.',
       'Dry-run parse/print only on non-Linux hosts. Missing artifacts are not a failure.',
-      'Unsigned (R-9). Do not bump Electron. Do not add an updater dependency.',
+      'Unsigned (R-9). Do not bump Electron. electron-updater is notify-only (UPD-01); A→B rehearsal still pending.',
       'Do not start qm-api-rs. Provenance remains BLOCKED. 32 MiB protocol hard cap unchanged.',
     ],
   };

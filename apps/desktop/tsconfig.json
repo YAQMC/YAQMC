@@ -22,6 +22,6 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["main/**/*.ts", "preload/**/*.ts"],
+  "include": ["main/**/*.ts", "main/**/*.d.ts", "preload/**/*.ts"],
   "exclude": ["main/**/*.test.ts"]
 }

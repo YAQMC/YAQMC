@@ -11,6 +11,7 @@ This directory is the execution record for the Electron migration. Facts in thes
 - [PLAY-01 playback checklist](p7-playback-checklist.md)
 - [SOAK-01 / PLAY-03 soak notes](soak-p7.md)
 - [PLAT-06 local API SSE smoke](plat06-local-api.md)
+- [PLAT-05 MPRIS playerctl smoke](plat05-mpris.md)
 - [PACK-02 Windows NSIS / portable script](pack02-windows.md)
 - [PACK-03 Linux AppImage/deb/rpm/tar.gz script](pack03-linux.md)
 - [CI-03 arm64 core / Electron pack commands](ci03-arm64.md)

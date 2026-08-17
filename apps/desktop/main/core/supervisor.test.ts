@@ -513,6 +513,7 @@ describe('CoreSupervisor', () => {
     await handshakeChild(children.at(-1));
     await expect(restarted).resolves.toEqual({ restart: true });
     expect(supervisor.status).toBe('ready');
+    expect(supervisor.restartCount()).toBe(1);
     expect(children).toHaveLength(2);
     const stopping = supervisor.stop();
     await vi.advanceTimersByTimeAsync(SHUTDOWN_TIMEOUT_MS);

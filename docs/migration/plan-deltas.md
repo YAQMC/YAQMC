@@ -1540,3 +1540,48 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   renderer locale trees). Smoke still skips the tray.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**.
+
+## P11 DIAG-01 follow-up: Main injects host.json on export
+
+- `diagnostics_export_bundle` and `diagnostics_export_bundle_to` are intercepted
+  in Main: `collectLiveHostPayload` builds the DIAG-01 blob (Electron/Chrome/Node
+  versions, window list, display backend + capability flags, updater state,
+  supervisor restart counter, core stderr tail, and the §29.2 linux-graphics
+  diagnostics object) and overwrites any renderer `hostPayload` before forwarding
+  to Core. Omit-on-throw keeps the pre-DIAG-01 ZIP if collection fails.
+- `host.log` is the supervisor 64 KiB stderr ring (same cap as SUP-04). A
+  separate rotating Main `host.log` file is still not added.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**.
+
+## P11 UPD-01: electron-updater notify-only
+
+- `electron-updater` **6.8.6** is a desktop runtime dependency. Main keeps it
+  external to esbuild and loads it with `createRequire`. Flags:
+  `autoDownload: false`, `autoInstallOnAppQuit: false`,
+  `verifyUpdateCodeSignature: false` (unsigned Windows, R-9). Nightly maps
+  `allowPrerelease`. Launch check is deferred 30 s and skipped for smoke and
+  unpackaged dev. `YAQMC_DESKTOP_SMOKE` uses a no-op port (no feed traffic).
+- Host methods `host_updater_check` / `host_updater_download` /
+  `host_updater_install` are Main-only (not in the 117-command inventory).
+  Settings shows Download when `canInstall`, Restart to install when ready,
+  and a release-page link for deb/rpm/tar.gz. Nothing installs unless the
+  user clicks. Local pack scripts pass `--publish never`.
+- GitHub Releases provider is declared in `electron-builder.yml` (owner
+  `YAQMC`, repo `YAQMC`) so packaged builds can read `latest.yml`. A→B
+  upgrade rehearsal and CI-04 draft-release remain **pending**. PACK-02/03
+  clean-VM rows stay unchecked.
+- Electron stays **43.4.0**. Builder stays **26.15.7**. The 32 MiB hard cap is
+  unchanged. Provenance remains **BLOCKED**. No qm-api-rs.
+
+## P9 PLAT-05: MPRIS playerctl smoke script (LIVE VERIFY pending)
+
+- `scripts/migration/plat05-mpris-playerctl.mjs` prints FACT bus
+  `org.mpris.MediaPlayer2.yaqmc` playerctl commands plus dbus-send Raise/Quit.
+  Default is dry-run. `--execute` is Linux-only and still does not tick applet
+  rows. Core already publishes Raise/Quit on `host://command`; Electron already
+  subscribes. This checkpoint does not claim playerctl, GNOME/KDE applets, or
+  SMTC flyout green.
+- CI covers the dry-run (`scripts/ci/plat05-mpris-playerctl.test.mjs`).
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**.

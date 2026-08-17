@@ -3,15 +3,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { YaqmcClient, createFakeBridge, type UpdatePayload } from '@yaqmc/client';
 import {
   HOST_UPDATER_CHECK_METHOD,
+  HOST_UPDATER_DOWNLOAD_METHOD,
+  HOST_UPDATER_INSTALL_METHOD,
   IDLE_UPDATE_PAYLOAD,
   NOT_WIRED_ERROR,
   SettingsUpdateSection,
   isUpdateCheckBusy,
   notWiredUpdatePayload,
   requestHostUpdateCheck,
+  requestHostUpdateDownload,
+  requestHostUpdateInstall,
 } from './SettingsUpdateSection';
 
 const invokeMock = vi.hoisted(() => vi.fn());
+const openExternalMock = vi.hoisted(() => vi.fn());
 const updateListeners = vi.hoisted(() => ({
   handler: undefined as ((payload: UpdatePayload) => void) | undefined,
 }));
@@ -25,6 +30,7 @@ vi.mock('../application/yaqmc-runtime', () => ({
       };
     },
     invoke: invokeMock,
+    host: { shell: { openExternal: openExternalMock } },
   }),
 }));
 
@@ -53,12 +59,18 @@ describe('updater settings helpers', () => {
     const invoke = vi.fn().mockResolvedValue(undefined);
     await requestHostUpdateCheck({ invoke });
     expect(invoke).toHaveBeenCalledWith(HOST_UPDATER_CHECK_METHOD);
+    await requestHostUpdateDownload({ invoke });
+    expect(invoke).toHaveBeenCalledWith(HOST_UPDATER_DOWNLOAD_METHOD);
+    await requestHostUpdateInstall({ invoke });
+    expect(invoke).toHaveBeenCalledWith(HOST_UPDATER_INSTALL_METHOD);
   });
 });
 
 describe('SettingsUpdateSection', () => {
   beforeEach(() => {
     invokeMock.mockReset();
+    openExternalMock.mockReset();
+    openExternalMock.mockResolvedValue(undefined);
     invokeMock.mockRejectedValue(
       new Error('host_updater_check is not implemented on the fake bridge'),
     );
@@ -79,8 +91,9 @@ describe('SettingsUpdateSection', () => {
     expect(screen.getByRole('status')).toHaveAttribute('data-update-state', 'checking');
     expect(screen.getByRole('button', { name: 'Check for updates' })).toBeDisabled();
 
-    act(() => emitUpdate(payload('available', { version: '1.2.3' })));
+    act(() => emitUpdate(payload('available', { version: '1.2.3', canInstall: true })));
     expect(screen.getByRole('status')).toHaveTextContent('Version 1.2.3 is available.');
+    expect(screen.getByRole('button', { name: 'Download update' })).toBeInTheDocument();
 
     act(() => emitUpdate(payload('not-available')));
     expect(screen.getByRole('status')).toHaveTextContent('You are on the latest version.');
@@ -94,6 +107,7 @@ describe('SettingsUpdateSection', () => {
       'Update downloaded. Restart YAQMC to install.',
     );
     expect(screen.getByRole('button', { name: 'Check for updates' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Restart to install' })).toBeInTheDocument();
     expect(invokeMock).not.toHaveBeenCalled();
 
     act(() => emitUpdate(payload('error', { error: 'feed 404' })));
@@ -113,11 +127,32 @@ describe('SettingsUpdateSection', () => {
     expect(notWiredUpdatePayload().error).toBe(NOT_WIRED_ERROR);
   });
 
-  it('does not install when an update is ready', () => {
+  it('does not auto-install when an update is ready', () => {
     render(<SettingsUpdateSection />);
     act(() => emitUpdate(payload('ready-to-install', { canInstall: true })));
-    expect(screen.queryByRole('button', { name: /install/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Restart to install' })).toBeInTheDocument();
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('downloads only after a click and opens the release page for notify-only packages', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    render(<SettingsUpdateSection />);
+    act(() =>
+      emitUpdate(
+        payload('available', {
+          canInstall: true,
+          version: '1.2.3',
+          releaseUrl: 'https://github.com/YAQMC/YAQMC/releases',
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Download update' }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(HOST_UPDATER_DOWNLOAD_METHOD));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open release page' }));
+    await waitFor(() =>
+      expect(openExternalMock).toHaveBeenCalledWith('https://github.com/YAQMC/YAQMC/releases'),
+    );
   });
 });
 

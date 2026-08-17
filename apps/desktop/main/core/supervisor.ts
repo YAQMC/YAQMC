@@ -128,7 +128,7 @@ export function resolveCoreBinary(lookup: CoreBinaryLookup = {}): string {
   return found;
 }
 
-export function hostPlatformKind(platform = process.platform): PlatformKind {
+export function hostPlatformKind(platform: string = process.platform): PlatformKind {
   return platform === 'win32' ? 'windows' : 'linux';
 }
 
@@ -186,6 +186,7 @@ export class CoreSupervisor extends EventEmitter {
   private allowRestart = false;
   private restartInFlight = false;
   private crashAt: number[] = [];
+  private restartTotal = 0;
   private lastPongAt = 0;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private pingInFlight = false;
@@ -212,6 +213,10 @@ export class CoreSupervisor extends EventEmitter {
 
   stderrSnapshot(): Buffer {
     return Buffer.concat(this.stderrChunks);
+  }
+
+  restartCount(): number {
+    return this.restartTotal;
   }
 
   async start(): Promise<CoreIdentity> {
@@ -342,6 +347,7 @@ export class CoreSupervisor extends EventEmitter {
         }
         try {
           await this.spawnAndHandshake();
+          this.restartTotal += 1;
           this.emitStatus('ready');
           this.emit('ready', { restart: true });
           this.startWatchdog();

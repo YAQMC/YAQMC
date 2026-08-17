@@ -44,7 +44,14 @@ import {
   raiseMainWindow as raiseHostMainWindow,
   subscribeHostCommands,
 } from './host-commands';
-import { linuxGraphicsSwitches } from './linux-graphics';
+import {
+  collectDiagnosticsHostPayload,
+  diagnosticsDisplayBackend,
+  diagnosticsDisplayCapabilities,
+} from './diagnostics-host-payload';
+import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphics';
+import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-updater-port';
+import { createUpdater, type UpdaterHandle } from './services/updater';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './services/shortcuts';
@@ -77,13 +84,17 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+const linuxRendererEnv = process.env.YAQMC_LINUX_RENDERER;
+const linuxGraphicsFacts = {
+  platform: process.platform,
+  wayland: Boolean(process.env.WAYLAND_DISPLAY),
+  nvidia: false,
+  mode: linuxRendererEnv ?? 'auto',
+  fromDeprecatedEnv: Boolean(linuxRendererEnv),
+};
+
 function applyLinuxGraphicsSwitches(): void {
-  const flags = linuxGraphicsSwitches({
-    platform: process.platform,
-    wayland: Boolean(process.env.WAYLAND_DISPLAY),
-    nvidia: false,
-    mode: process.env.YAQMC_LINUX_RENDERER ?? 'auto',
-  });
+  const flags = linuxGraphicsSwitches(linuxGraphicsFacts);
   for (const flag of flags) {
     const body = flag.startsWith('--') ? flag.slice(2) : flag;
     const separator = body.indexOf('=');
@@ -116,6 +127,7 @@ let mainWindow: BrowserWindow | undefined;
 let trayHandle: TrayHandle | undefined;
 /** FACT default: hide-to-tray. Preference read is cached; missing prefs stay hide. */
 let closeToTray = true;
+let updaterHandle: UpdaterHandle | undefined;
 
 const lyricsSurfaces = createLyricsSurfaces({
   preloadPath: lyricsPreloadPath,
@@ -137,7 +149,8 @@ const lyricsUnlock = createLyricsUnlockOverlays({
   createWindow: createUnlockBrowserWindow,
 });
 
-const router = new IpcRouter({
+let router: IpcRouter;
+router = new IpcRouter({
   methods: loadMethodAclFromFile(
     path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
   ),
@@ -175,7 +188,24 @@ const router = new IpcRouter({
       isPackaged: app.isPackaged,
       invoke: invokeOAuthCore,
     },
+    coreInvoke: invokeOAuthCore,
+    collectHostPayload: collectLiveHostPayload,
+    updater: {
+      check: () => requireUpdater().check(),
+      download: () => requireUpdater().download(),
+      install: () => requireUpdater().install(),
+    },
   }),
+});
+
+updaterHandle = createUpdater({
+  port: smoke ? noopUpdaterPort() : createElectronUpdaterPort(updaterReleaseChannel()),
+  emit: (channel, payload) => {
+    fanoutEvent(channel, payload);
+  },
+  channel: updaterReleaseChannel(),
+  platform: process.platform,
+  scheduleCheck: (callback, delayMs) => setTimeout(callback, delayMs),
 });
 
 function rendererRoot(): string {
@@ -196,6 +226,57 @@ function mainWindowUrl(root: string): string {
     return appIndexUrl('?provider=fake');
   }
   return appIndexUrl();
+}
+
+function requireUpdater(): UpdaterHandle {
+  if (!updaterHandle) {
+    throw new Error('updater is not wired');
+  }
+  return updaterHandle;
+}
+
+function updaterReleaseChannel(): string {
+  return __YAQMC_RELEASE_CHANNEL__ === 'nightly' ? 'nightly' : 'latest';
+}
+
+function collectLiveHostPayload(): ReturnType<typeof collectDiagnosticsHostPayload> {
+  const capabilities = diagnosticsDisplayCapabilities(nativeWayland);
+  const windows = router.listWindows().map(({ webContentsId, role }) => {
+    const contents = webContents.fromId(webContentsId);
+    const window = contents ? BrowserWindow.fromWebContents(contents) : null;
+    if (!window || window.isDestroyed()) {
+      return { id: webContentsId, role, visible: false };
+    }
+    return {
+      id: webContentsId,
+      role,
+      visible: window.isVisible(),
+      focused: window.isFocused(),
+      alwaysOnTop: window.isAlwaysOnTop(),
+      bounds: window.getBounds(),
+    };
+  });
+  const versions = process.versions as { electron?: string; chrome?: string; node?: string };
+  const log = supervisor?.stderrSnapshot().toString('utf8');
+  return collectDiagnosticsHostPayload({
+    versions: {
+      electron: versions.electron,
+      chrome: versions.chrome,
+      node: versions.node,
+    },
+    windows,
+    display: {
+      backend: diagnosticsDisplayBackend({
+        platform: process.platform,
+        nativeWayland,
+      }),
+      capabilities,
+    },
+    updater: updaterHandle?.payload() ?? { state: 'idle', canInstall: false, channel: updaterReleaseChannel() },
+    restartCounter: supervisor?.restartCount() ?? 0,
+    log,
+    linuxGraphics: linuxGraphicsDiagnostics(linuxGraphicsFacts),
+  });
 }
 
 function quitWith(code: number): void {
@@ -517,6 +598,9 @@ if (acquireSingleInstanceLock(app, () => mainWindow)) {
     createMainWindow(root);
     sendPlatformAttach();
     installTrayAndShortcuts();
+    if (!smoke && app.isPackaged) {
+      updaterHandle?.scheduleLaunchCheck();
+    }
     if (smoke && mainWindow) {
       mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
         console.error(`harness failed to load: ${code} ${description}`);

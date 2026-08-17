@@ -67,6 +67,7 @@ export {
   type HostIdentity,
   type PlatformAttach,
   type PlatformKind,
+  type DisplayBackend,
   type ResponseBody,
   type ShutdownReason,
 } from './protocol/types';

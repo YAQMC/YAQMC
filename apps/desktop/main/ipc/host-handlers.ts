@@ -1,4 +1,10 @@
-import type { AccountLoginMethod, OAuthPrepareResult, WindowRole } from '@yaqmc/client';
+import type {
+  AccountLoginMethod,
+  DiagnosticsHostPayload,
+  OAuthPrepareResult,
+  WindowRole,
+} from '@yaqmc/client';
+import { attachHostPayloadToExportParams } from '../diagnostics-host-payload';
 import {
   BACKGROUND_IMAGE_FILTERS,
   DIAGNOSTICS_ZIP_DEFAULT_NAME,
@@ -33,6 +39,11 @@ export const SHELL_OPEN_EXTERNAL = 'shell.openExternal';
 
 /** Not in the 117-command inventory; diagnostics ZIP save-picker for FE later. */
 export const DIALOG_PICK_SAVE = 'dialog.pickSave';
+
+/** Host-only; not in METHOD_NAMES. Settings Check for updates. */
+export const HOST_UPDATER_CHECK_METHOD = 'host_updater_check';
+export const HOST_UPDATER_DOWNLOAD_METHOD = 'host_updater_download';
+export const HOST_UPDATER_INSTALL_METHOD = 'host_updater_install';
 
 export const PLAYER_INVOKE_METHODS = {
   toggle: 'player_toggle',
@@ -226,6 +237,14 @@ function asSurfaceRuntimeMap(
   return surfaces as { desktop?: SurfaceRuntimeLike; island?: SurfaceRuntimeLike };
 }
 
+export type CoreInvoke = (method: string, params?: unknown) => Promise<unknown>;
+
+export type HostUpdaterDeps = {
+  check: () => Promise<unknown>;
+  download: () => Promise<unknown>;
+  install: () => Promise<unknown>;
+};
+
 export type HostHandlerDeps = {
   openExternal: ExternalOpener;
   extraHttpsUrls?: () => readonly string[];
@@ -236,6 +255,9 @@ export type HostHandlerDeps = {
   emitSurfaceClosed?: (kind: LyricsSurfaceKind) => void;
   dialogs?: PathPickerDialogs;
   oauth?: OAuthHostDeps;
+  coreInvoke?: CoreInvoke;
+  collectHostPayload?: () => DiagnosticsHostPayload;
+  updater?: HostUpdaterDeps;
 };
 
 export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHandler> {
@@ -347,6 +369,32 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         filters: DIAGNOSTICS_ZIP_FILTERS,
         defaultPath: defaultPathFromParams(params, DIAGNOSTICS_ZIP_DEFAULT_NAME),
       });
+  }
+
+  if (deps.coreInvoke && deps.collectHostPayload) {
+    const invokeWithHostPayload = async (method: string, params: unknown): Promise<unknown> => {
+      let hostPayload: DiagnosticsHostPayload | undefined;
+      try {
+        hostPayload = deps.collectHostPayload?.();
+      } catch {
+        hostPayload = undefined;
+      }
+      const next = hostPayload
+        ? attachHostPayloadToExportParams(params, hostPayload)
+        : params;
+      return deps.coreInvoke!(method, next);
+    };
+    handlers.diagnostics_export_bundle = async (params) =>
+      invokeWithHostPayload('diagnostics_export_bundle', params);
+    handlers.diagnostics_export_bundle_to = async (params) =>
+      invokeWithHostPayload('diagnostics_export_bundle_to', params);
+  }
+
+  if (deps.updater) {
+    const updater = deps.updater;
+    handlers[HOST_UPDATER_CHECK_METHOD] = async () => updater.check();
+    handlers[HOST_UPDATER_DOWNLOAD_METHOD] = async () => updater.download();
+    handlers[HOST_UPDATER_INSTALL_METHOD] = async () => updater.install();
   }
 
   if (deps.oauth) {

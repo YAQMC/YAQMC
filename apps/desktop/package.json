@@ -14,11 +14,12 @@
     "smoke": "npm run build && node ./scripts/smoke.mjs",
     "test": "vitest run --config ./vitest.config.ts",
     "package": "electron-builder --projectDir . --config electron-builder.yml",
-    "pack:dir": "electron-builder --projectDir . --config electron-builder.yml --dir --x64",
-    "pack:win": "electron-builder --projectDir . --config electron-builder.yml --win --x64"
+    "pack:dir": "electron-builder --projectDir . --config electron-builder.yml --dir --x64 --publish never",
+    "pack:win": "electron-builder --projectDir . --config electron-builder.yml --win --x64 --publish never"
   },
   "dependencies": {
-    "@yaqmc/client": "*"
+    "@yaqmc/client": "*",
+    "electron-updater": "6.8.6"
   },
   "devDependencies": {
     "electron": "43.4.0",

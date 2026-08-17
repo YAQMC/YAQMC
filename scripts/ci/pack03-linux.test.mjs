@@ -42,7 +42,7 @@ test('PACK-03 assist prints a pending clean-VM matrix and does not invent green'
   assert.equal(payload.trayRecommends.hardDepends, false);
   assert.equal(payload.trayRecommends.deb, TRAY_RECOMMENDS_DEB);
   assert.equal(payload.trayRecommends.rpm, TRAY_RECOMMENDS_RPM);
-  assert.equal(payload.electronUpdater, false);
+  assert.equal(payload.electronUpdater, true);
   assert.equal(payload.canProduceLinuxArtifacts, process.platform === 'linux');
   for (const key of [
     'appImageInstall',
@@ -90,8 +90,7 @@ test('yml declares AppImage deb rpm tar.gz for x64 and arm64 without an updater 
   );
   assert.equal(pkg.devDependencies.electron, ELECTRON_VERSION);
   assert.equal(pkg.devDependencies['electron-builder'], BUILDER_VERSION);
-  assert.equal(pkg.dependencies?.['electron-updater'], undefined);
-  assert.equal(pkg.devDependencies?.['electron-updater'], undefined);
+  assert.equal(pkg.dependencies?.['electron-updater'], '6.8.6');
 });
 
 test('prints electron-builder --linux flags from the yml and POSIX install commands', () => {

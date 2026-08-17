@@ -5,7 +5,9 @@
  */
 
 import type {
+  DiagnosticsHostCapabilities,
   DiagnosticsHostDisplay,
+  DiagnosticsHostLinuxGraphics,
   DiagnosticsHostPayload,
   DiagnosticsHostUpdater,
   DiagnosticsHostWindowState,
@@ -28,6 +30,7 @@ export type CollectDiagnosticsHostPayloadInput = {
   updater: DiagnosticsHostUpdater;
   restartCounter: number;
   log?: string;
+  linuxGraphics?: DiagnosticsHostLinuxGraphics;
 };
 
 export function collectDiagnosticsHostPayload(
@@ -51,10 +54,54 @@ export function collectDiagnosticsHostPayload(
     updater: copyUpdater(input.updater),
     restartCounter: input.restartCounter,
   };
+  if (input.linuxGraphics) {
+    payload.linuxGraphics = copyLinuxGraphics(input.linuxGraphics);
+  }
   if (typeof input.log === 'string' && input.log.length > 0) {
     payload.log = tailUtf8(input.log, HOST_LOG_TAIL_MAX_BYTES);
   }
   return payload;
+}
+
+export function diagnosticsDisplayBackend(options: {
+  platform: NodeJS.Platform | string;
+  nativeWayland: boolean;
+}): string {
+  if (options.platform === 'linux') {
+    return options.nativeWayland ? 'wayland' : 'x11';
+  }
+  return String(options.platform);
+}
+
+export function diagnosticsDisplayCapabilities(
+  nativeWayland: boolean,
+): DiagnosticsHostCapabilities {
+  return {
+    alwaysOnTop: !nativeWayland,
+    clickThrough: !nativeWayland,
+    globalShortcuts: !nativeWayland,
+    transparency: true,
+  };
+}
+
+/**
+ * Inject `hostPayload` into `diagnostics_export_bundle[_to]` params.
+ * `{ path, request }` keeps `path`; Main overwrites any renderer-supplied blob.
+ */
+export function attachHostPayloadToExportParams(
+  params: unknown,
+  hostPayload: DiagnosticsHostPayload,
+): { request: Record<string, unknown>; path?: string } {
+  const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
+  const base =
+    record.request && typeof record.request === 'object' && !Array.isArray(record.request)
+      ? { ...(record.request as Record<string, unknown>) }
+      : {};
+  const request = { ...base, hostPayload };
+  if (typeof record.path === 'string') {
+    return { path: record.path, request };
+  }
+  return { request };
 }
 
 function copyWindow(window: DiagnosticsHostWindowState): DiagnosticsHostWindowState {
@@ -78,6 +125,18 @@ function copyWindow(window: DiagnosticsHostWindowState): DiagnosticsHostWindowSt
     next.alwaysOnTop = window.alwaysOnTop;
   }
   return next;
+}
+
+function copyLinuxGraphics(
+  graphics: DiagnosticsHostLinuxGraphics,
+): DiagnosticsHostLinuxGraphics {
+  return {
+    platform: graphics.platform,
+    mode: graphics.mode,
+    canonicalMode: graphics.canonicalMode,
+    switches: [...graphics.switches],
+    deprecatedEnv: graphics.deprecatedEnv,
+  };
 }
 
 function copyUpdater(updater: DiagnosticsHostUpdater): DiagnosticsHostUpdater {
