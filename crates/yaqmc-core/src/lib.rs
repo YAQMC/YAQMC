@@ -8,6 +8,7 @@ pub mod issue_reporter;
 pub mod local_api;
 pub mod logging;
 pub mod media;
+pub mod pidfile;
 pub mod platform;
 pub mod playback_session;
 pub mod playback_types;

@@ -15,6 +15,7 @@ import type { Readable, Writable } from 'node:stream';
 import { CoreClient } from './client';
 import { buildCoreSpawnEnv } from './env';
 import { ProtocolError } from './frames';
+import { defaultProcessProbe, reapStaleCorePid, type ProcessProbe } from './pid';
 
 export const STDERR_RING_BYTES = 64 * 1024;
 export const CORE_BINARY_NAME = process.platform === 'win32' ? 'yaqmc-core.exe' : 'yaqmc-core';
@@ -42,6 +43,7 @@ export type SupervisorOptions = SupervisorPaths & {
   extraEnv?: NodeJS.ProcessEnv;
   parentEnv?: NodeJS.ProcessEnv;
   spawn?: SpawnCore;
+  processProbe?: ProcessProbe;
 };
 
 export type CoreBinaryLookup = {
@@ -173,6 +175,7 @@ export class CoreSupervisor extends EventEmitter {
     ]) {
       mkdirSync(dir, { recursive: true });
     }
+    reapStaleCorePid(this.options.dataDir, this.options.processProbe ?? defaultProcessProbe());
     const spawnCore = this.options.spawn ?? spawn;
     const child = spawnCore(this.options.binary, [], {
       stdio: ['pipe', 'pipe', 'pipe'],

@@ -557,3 +557,16 @@ the enforced provenance ledger.
 - SUP-02 PID file, SUP-03 checksum, SUP-04 backoff, and SUP-05 single-instance
   are not implemented. ELEC-03 handshake tests remain green. The 32 MiB hard cap
   is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
+
+## P5 SUP-02: PID-file guard
+
+- Core writes `{data}/core.pid` (`crates/yaqmc-core/src/pidfile.rs`, held for the
+  process lifetime of `yaqmc-core`). The Electron supervisor reaps that PID
+  before spawn only when the process image name is `yaqmc-core` / `yaqmc-core.exe`.
+  Unrelated images (PID reuse) are not killed. A dead PID is treated as stale and
+  the file is removed. Port 19532 is documented on the local API pages; the
+  supervisor does not scan TCP listeners.
+- Zombie-core coverage is a unit test with a mock process probe and a fake pid
+  file — no Playwright, no live kill of unrelated processes. ELEC-03 handshake
+  tests remain green. The 32 MiB hard cap is unchanged. P0 remains `PENDING`;
+  provenance remains **BLOCKED**. No qm-api-rs.
