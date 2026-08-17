@@ -2,7 +2,7 @@
 
 Source: `YAQMC_ELECTRON_MIGRATION_PLAN.md` §36 rows whose **Phase proven** is P7. Verification method key: **A** = automated, **M** = manual, **L** = LIVE VERIFY (real QQ account, maintainer-only).
 
-This document is a checklist only. **PLAY-01 is not green.** Fake-mode assist covers in-memory **A** ops that do not need an account (`packages/yaqmc-client/src/bridges/p7-fake-playback.test.ts`). Windows and Linux boxes stay empty until a maintainer runs the row on that host. **L** rows stay `LIVE VERIFY pending`.
+This document is a checklist only. **PLAY-01 is not green.** Fake-mode assist covers in-memory **A** ops that do not need an account (`node scripts/migration/p7-fake-playback.mjs`, `packages/yaqmc-client/src/bridges/p7-fake-playback.test.ts`). Windows and Linux boxes stay empty until a maintainer runs the row on that host. **L** rows stay `LIVE VERIFY pending`.
 
 Do not start `qm-api-rs`. Provenance remains **BLOCKED**. First 4-h soak report stays uncommitted (`PENDING`).
 
