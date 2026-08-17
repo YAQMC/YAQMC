@@ -48,7 +48,9 @@ import {
   collectDiagnosticsHostPayload,
   diagnosticsDisplayBackend,
   diagnosticsDisplayCapabilities,
+  HOST_LOG_TAIL_MAX_BYTES,
 } from './diagnostics-host-payload';
+import { createHostLog, type HostLog } from './host-log';
 import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphics';
 import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-updater-port';
 import { createUpdater, type UpdaterHandle } from './services/updater';
@@ -128,6 +130,15 @@ let trayHandle: TrayHandle | undefined;
 /** FACT default: hide-to-tray. Preference read is cached; missing prefs stay hide. */
 let closeToTray = true;
 let updaterHandle: UpdaterHandle | undefined;
+let hostLog: HostLog | undefined;
+
+function writeHostLog(message: string): void {
+  try {
+    hostLog?.append(message);
+  } catch {
+    // Host logging must not take down the process.
+  }
+}
 
 const lyricsSurfaces = createLyricsSurfaces({
   preloadPath: lyricsPreloadPath,
@@ -154,6 +165,9 @@ router = new IpcRouter({
   methods: loadMethodAclFromFile(
     path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
   ),
+  onDenied: ({ method, role }) => {
+    writeHostLog(`acl denied method=${method} role=${role}`);
+  },
   hostHandlers: createHostHandlers({
     openExternal: (url) => shell.openExternal(url),
     lyrics: lyricsSurfaces,
@@ -200,6 +214,7 @@ router = new IpcRouter({
 updaterHandle = createUpdater({
   port: smoke ? noopUpdaterPort() : createElectronUpdaterPort(updaterReleaseChannel()),
   emit: (channel, payload) => {
+    writeHostLog(`updater ${payload.state}`);
     fanoutEvent(channel, payload);
   },
   channel: updaterReleaseChannel(),
@@ -271,7 +286,12 @@ function collectLiveHostPayload(): ReturnType<typeof collectDiagnosticsHostPaylo
     };
   });
   const versions = process.versions as { electron?: string; chrome?: string; node?: string };
-  const log = supervisor?.stderrSnapshot().toString('utf8');
+  const fileTail = hostLog?.tail(HOST_LOG_TAIL_MAX_BYTES);
+  const stderr = supervisor?.stderrSnapshot().toString('utf8');
+  const parts = [fileTail, stderr].filter((part): part is string =>
+    Boolean(part && part.length > 0),
+  );
+  const log = parts.join('\n--- core stderr ---\n');
   return collectDiagnosticsHostPayload({
     versions: {
       electron: versions.electron,
@@ -368,11 +388,14 @@ function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
     alwaysOnTop: true,
   });
   const contentsId = window.webContents.id;
-  router.registerWindow(contentsId, lyricsRoleFromCreateOptions(options));
+  const role = lyricsRoleFromCreateOptions(options);
+  router.registerWindow(contentsId, role);
+  writeHostLog(`window lyrics created role=${role}`);
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });
   window.on('closed', () => {
+    writeHostLog('window lyrics closed');
     router.unregisterWindow(contentsId);
   });
   return window;
@@ -387,10 +410,12 @@ function createUnlockBrowserWindow(options: LyricsUnlockCreateOptions, kind: Lyr
   });
   const contentsId = window.webContents.id;
   router.registerWindow(contentsId, lyricsUnlockRoleFromKind(kind));
+  writeHostLog(`window unlock created kind=${kind}`);
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });
   window.on('closed', () => {
+    writeHostLog(`window unlock closed kind=${kind}`);
     router.unregisterWindow(contentsId);
   });
   return window;
@@ -424,6 +449,7 @@ function createMainWindow(root: string): BrowserWindow {
   const contentsId = window.webContents.id;
   router.registerWindow(contentsId, 'main');
   mainWindow = window;
+  writeHostLog('window main created');
   window.on('close', (event) => {
     if (smoke || stopping) {
       return;
@@ -434,6 +460,7 @@ function createMainWindow(root: string): BrowserWindow {
     }
   });
   window.on('closed', () => {
+    writeHostLog('window main closed');
     router.unregisterWindow(contentsId);
     if (mainWindow === window) {
       mainWindow = undefined;
@@ -483,9 +510,11 @@ function cacheCloseToTrayPreference(): void {
 
 function attachSupervisor(instance: CoreSupervisor): void {
   instance.on('status', (payload: CoreStatusPayload) => {
+    writeHostLog(`core-status ${payload.status}`);
     fanoutEvent(CHANNEL_HOST_CORE_STATUS, payload);
   });
   instance.on('ready', (info: { restart: boolean }) => {
+    writeHostLog(`core ready restart=${info.restart}`);
     router.setClient(instance.client);
     bindCoreEvents();
     cacheCloseToTrayPreference();
@@ -509,7 +538,23 @@ function attachSupervisor(instance: CoreSupervisor): void {
   });
 }
 
+function coreDataPaths() {
+  if (smoke) {
+    const tempRoot = path.join(app.getPath('temp'), 'yaqmc-core');
+    return {
+      dataDir: path.join(tempRoot, 'data'),
+      cacheDir: path.join(tempRoot, 'cache'),
+      logDir: path.join(tempRoot, 'logs'),
+      configDir: path.join(tempRoot, 'config'),
+    };
+  }
+  return resolveCorePaths();
+}
+
 function startSupervisor(): Promise<void> {
+  const paths = coreDataPaths();
+  // Rotating host.log lives in the Core log dir (DIAG leftover, §27.1).
+  hostLog = createHostLog({ logDir: paths.logDir });
   const launch = resolveCoreLaunch({
     env: process.env,
     stagedDir: path.join(desktopRoot, 'resources', 'core'),
@@ -518,6 +563,7 @@ function startSupervisor(): Promise<void> {
     repoRoot,
   });
   if (!launch) {
+    writeHostLog('supervisor skip: yaqmc-core binary not found');
     if (smoke) {
       throw new Error(
         'yaqmc-core binary was not found (set YAQMC_CORE_BIN or stage resources/core)',
@@ -525,15 +571,7 @@ function startSupervisor(): Promise<void> {
     }
     return Promise.resolve();
   }
-  const tempRoot = path.join(app.getPath('temp'), 'yaqmc-core');
-  const paths = smoke
-    ? {
-        dataDir: path.join(tempRoot, 'data'),
-        cacheDir: path.join(tempRoot, 'cache'),
-        logDir: path.join(tempRoot, 'logs'),
-        configDir: path.join(tempRoot, 'config'),
-      }
-    : resolveCorePaths();
+  writeHostLog(`supervisor start binary=${path.basename(launch.binary)}`);
   supervisor = new CoreSupervisor({
     binary: launch.binary,
     integrity: launch.integrity,

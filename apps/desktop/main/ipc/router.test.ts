@@ -38,7 +38,9 @@ function routerWith(
 
 describe('method ACL table', () => {
   it('matches the live protocol fixture owners and renderer origins', () => {
-    const raw = JSON.parse(readFileSync(path.join(fixturesRoot, 'methods.json'), 'utf8')) as unknown;
+    const raw = JSON.parse(
+      readFileSync(path.join(fixturesRoot, 'methods.json'), 'utf8'),
+    ) as unknown;
     const parsed = parseMethodAcl(raw);
     expect(parsed.map((row) => row.name)).toEqual(methods.map((row) => row.name));
     expect(methods.some((row) => row.owner === 'host')).toBe(true);
@@ -61,8 +63,23 @@ describe('IpcRouter', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('notifies onDenied for ACL rejects without calling core', async () => {
+    const onDenied = vi.fn();
+    const router = new IpcRouter({
+      methods,
+      client: { invoke: vi.fn(async () => ({ ok: true })) },
+      onDenied,
+    });
+    router.registerWindow(1, 'lyrics-desktop');
+    await router.invoke(1, { method: 'player_snapshot' });
+    expect(onDenied).toHaveBeenCalledWith({ method: 'player_snapshot', role: 'lyrics-desktop' });
+  });
+
   it('proxies an allowed core method and intercepts host methods', async () => {
-    const { router, invoke } = routerWith('main', vi.fn(async () => ({ playbackState: 'paused' })));
+    const { router, invoke } = routerWith(
+      'main',
+      vi.fn(async () => ({ playbackState: 'paused' })),
+    );
     await expect(router.invoke(1, { method: 'player_snapshot' })).resolves.toEqual({
       ok: true,
       result: { playbackState: 'paused' },

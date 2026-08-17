@@ -1621,3 +1621,19 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   are not merged into the updater yml. This is not an A→B rehearsal.
 - Electron stays **43.4.0**. Builder stays **26.15.7**. The 32 MiB hard cap is
   unchanged. Provenance remains **BLOCKED**. No qm-api-rs.
+
+## P11 overlay: parked LIVE VERIFY and Actions freeze
+
+- Plan book §49 + `docs/migration/parked-live-verify.md` park PLAY-01, SMTC
+  flyout, MPRIS applets, clean-VM, 4-hour soak, and provenance as **not green**
+  for a later higher-capability pass. Do not tick those rows from YAML or
+  checklists. P12/P13/P14 and `qm-api-rs` stay off.
+- GitHub Actions freeze: YAQMC org quota (2000) exhausted; 2026-08-17 GitHub
+  global outage. Do not dispatch `ci.yml` / `build.yml` / `electron-release.yml`.
+  CI-02/CI-04 remain YAML-only.
+- DIAG leftover: rotating Main `host.log` in the Core log dir (§27.1), 256 KiB
+  rotate to `host.log.1`, no `electron-log`. Export still caps the tail at 64
+  KiB and keeps the supervisor stderr ring. This is not PLAY-01 / SMTC / soak /
+  provenance green.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.
