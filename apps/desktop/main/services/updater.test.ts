@@ -272,15 +272,17 @@ describe('notify state machine', () => {
   });
 });
 
-describe('unwired status', () => {
-  it('is not imported from main/index.ts', () => {
+describe('wired status', () => {
+  it('is imported from main/index.ts without silent install', () => {
     const source = readFileSync(mainIndex, 'utf8');
-    expect(source).not.toContain("from './services/updater'");
-    expect(source).not.toContain('createUpdater');
-    expect(source).not.toContain('CHANNEL_HOST_UPDATE');
+    expect(source).toContain("from './services/updater'");
+    expect(source).toContain('createUpdater');
+    expect(source).toContain('createElectronUpdaterPort');
+    expect(source).toContain('scheduleLaunchCheck');
+    expect(source).not.toContain('quitAndInstall');
   });
 
-  it('does not import electron-updater and documents unsigned Windows (R-9)', () => {
+  it('does not import electron-updater in the state machine and documents unsigned Windows (R-9)', () => {
     const source = readFileSync(updaterSourcePath, 'utf8');
     expect(source).not.toMatch(/from ['"]electron-updater['"]/);
     expect(source).not.toMatch(/require\(['"]electron-updater['"]\)/);

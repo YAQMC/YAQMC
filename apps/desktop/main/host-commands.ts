@@ -99,7 +99,7 @@ export function nativeWindowHandleHex(handle: Buffer): string {
  */
 export function buildPlatformAttach(options: PlatformAttachOptions = {}): PlatformAttach {
   const platform = options.platform ?? process.platform;
-  const platformKind: PlatformKind = hostPlatformKind(platform);
+  const platformKind: PlatformKind = hostPlatformKind(String(platform));
   const attach: PlatformAttach = { platformKind };
   if (platformKind === 'linux') {
     const displayBackend: DisplayBackend = options.nativeWayland ? 'wayland' : 'x11';

@@ -12,8 +12,9 @@ matrix sign-off.
 Do **not** run the installer against the daily-driver profile: `appId`
 `org.yaqmc.desktop` shares `%APPDATA%\org.yaqmc.desktop` with the Tauri build.
 
-Unsigned (**R-9**). SmartScreen / Defender warnings are expected. No
-`electron-updater` (UPD-01). Electron stays **43.4.0**. Builder stays
+Unsigned (**R-9**). SmartScreen / Defender warnings are expected.
+Notify-only `electron-updater` **6.8.6** (UPD-01) is wired; the A→B upgrade
+rehearsal is still **pending**. Electron stays **43.4.0**. Builder stays
 **26.15.7**. Do not start `qm-api-rs`. Provenance remains **BLOCKED**. The
 32 MiB protocol hard cap is unchanged.
 
@@ -73,7 +74,7 @@ Core paths still `%APPDATA%\org.yaqmc.desktop`. Not a zip.
 1. Install A (`/S`).
 2. Marker `%APPDATA%\org.yaqmc.desktop\pack02-upgrade-marker.txt`.
 3. Install B over A.
-4. Marker/SQLite survive. No electron-updater.
+4. Marker/SQLite survive. Notify-only updater; A→B rehearsal pending.
 
 ## Uninstall
 

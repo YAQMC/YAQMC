@@ -738,6 +738,15 @@ export interface DiagnosticsHostUpdater {
   error?: string;
 }
 
+/** Optional §29.2 graphics facts nested in `host.json`. */
+export interface DiagnosticsHostLinuxGraphics {
+  platform: string;
+  mode: string;
+  canonicalMode: string;
+  switches: string[];
+  deprecatedEnv: boolean;
+}
+
 /** Host-collected blob for `host.json` (+ optional `host.log` via `log`). */
 export interface DiagnosticsHostPayload {
   schemaVersion: number;
@@ -749,6 +758,7 @@ export interface DiagnosticsHostPayload {
   updater: DiagnosticsHostUpdater;
   restartCounter: number;
   log?: string;
+  linuxGraphics?: DiagnosticsHostLinuxGraphics;
 }
 
 export interface DiagnosticsBundleRequest extends DiagnosticsRequest {

@@ -23,7 +23,7 @@ export function portableArtifactName(arch = 'x64') {
   return `YAQMC-windows-${arch}-portable.exe`;
 }
 export function packWinScript() {
-  return 'electron-builder --projectDir . --config electron-builder.yml --win --x64';
+  return 'electron-builder --projectDir . --config electron-builder.yml --win --x64 --publish never';
 }
 export function packWinArm64Note() {
   return 'electron-builder --projectDir . --config electron-builder.yml --win --arm64';
@@ -88,7 +88,7 @@ export function pack02Report({ repoRoot, env = process.env, now = () => new Date
       upgradeAB: { state: CLEAN_VM_STATE, checked: false }, uninstall: { state: CLEAN_VM_STATE, checked: false },
       x64: { state: CLEAN_VM_STATE, checked: false }, arm64: { state: CLEAN_VM_STATE, checked: false },
     },
-    notes: ['LIVE VERIFY / clean-VM pending. This script does not install, upgrade, or uninstall.', 'Unsigned (R-9).', 'Do not bump Electron. Do not add electron-updater.', 'Do not start qm-api-rs. Provenance remains BLOCKED. 32 MiB protocol hard cap unchanged.'],
+    notes: ['LIVE VERIFY / clean-VM pending. This script does not install, upgrade, or uninstall.', 'Unsigned (R-9).', 'Do not bump Electron. electron-updater is notify-only (UPD-01); A→B rehearsal still pending.', 'Do not start qm-api-rs. Provenance remains BLOCKED. 32 MiB protocol hard cap unchanged.'],
   };
 }
 const invokedDirectly = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

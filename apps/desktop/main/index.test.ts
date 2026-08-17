@@ -28,6 +28,8 @@ describe('host boot wiring', () => {
     expect(source).toContain('createLyricsSurfaces');
     expect(source).toContain('createLyricsUnlockOverlays');
     expect(source).toContain('linuxGraphicsSwitches');
+    expect(source).toContain('linuxGraphicsDiagnostics');
+    expect(source).toContain('collectDiagnosticsHostPayload');
     expect(source).toContain('shell.openExternal');
     expect(source).toContain('dialog.showSaveDialog');
     expect(source).toContain('dialog.showOpenDialog');
@@ -100,7 +102,12 @@ describe('host boot wiring', () => {
     expect(source).not.toContain('openOAuthWindow');
     expect(source).toContain('oauth BrowserWindow is disabled during YAQMC_DESKTOP_SMOKE');
     expect(source).not.toContain("from './dialogs'");
-    expect(source).not.toContain("from './services/updater'");
+    expect(source).toContain("from './services/updater'");
+    expect(source).toContain("from './services/electron-updater-port'");
+    expect(source).toContain('createUpdater');
+    expect(source).toContain('collectLiveHostPayload');
+    expect(source).toContain('scheduleLaunchCheck');
+    expect(source).toContain('app.isPackaged');
     const oauthFromPartition = source.slice(
       source.indexOf('fromPartition:'),
       source.indexOf('isPackaged:'),

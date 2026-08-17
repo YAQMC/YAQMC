@@ -94,6 +94,18 @@ describe('IpcRouter', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('lists registered windows for diagnostics collection', () => {
+    const router = new IpcRouter({ methods });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+    expect(router.listWindows()).toEqual([
+      { webContentsId: 1, role: 'main' },
+      { webContentsId: 2, role: 'lyrics-desktop' },
+    ]);
+    router.unregisterWindow(2);
+    expect(router.listWindows()).toEqual([{ webContentsId: 1, role: 'main' }]);
+  });
+
   it('does not send denied events to lyrics surfaces', () => {
     const router = new IpcRouter({ methods });
     router.registerWindow(1, 'main');

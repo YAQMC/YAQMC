@@ -1,5 +1,6 @@
 # PACK-01: NSIS/portable + Linux AppImage/deb/rpm/tar.gz. Unsigned builds are expected (R-9).
-# Updater metadata is out of scope here; publish is disabled.
+# UPD-01: GitHub Releases provider for electron-updater metadata. Local packs must
+# pass --publish never (do not draft a release from a maintainer laptop).
 appId: org.yaqmc.desktop
 productName: YAQMC
 copyright: GPL-3.0-or-later
@@ -8,7 +9,10 @@ electronVersion: 43.4.0
 # Use the workspace-pinned Electron 43.4.0 dist (no GitHub re-download).
 electronDist: ../../node_modules/electron/dist
 forceCodeSigning: false
-publish: null
+publish:
+  provider: github
+  owner: YAQMC
+  repo: YAQMC
 directories:
   output: ../../release-electron
   buildResources: resources

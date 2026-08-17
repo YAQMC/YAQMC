@@ -34,7 +34,7 @@ const mainOptions = {
   platform: 'node',
   format: 'esm',
   outfile: 'dist/main/index.js',
-  external: ['electron'],
+  external: ['electron', 'electron-updater'],
   sourcemap: true,
   logLevel: 'info',
   define: buildDefines(),

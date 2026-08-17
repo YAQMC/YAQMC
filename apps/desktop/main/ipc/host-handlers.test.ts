@@ -9,6 +9,7 @@ import {
   closeToTrayFromPreferences,
   createHostHandlers,
   DIALOG_PICK_SAVE,
+  HOST_UPDATER_CHECK_METHOD,
   isNativeWaylandSession,
   loginProviderFromParams,
   lyricsKindFromParams,
@@ -444,6 +445,70 @@ describe('IpcRouter host intercepts', () => {
         message: 'qqmusic_auth_oauth_start is implemented by the host',
         retryable: false,
       },
+    });
+  });
+
+  it('injects hostPayload into diagnostics export before forwarding to core', async () => {
+    const hostPayload = {
+      schemaVersion: 1,
+      electron: '43.4.0',
+      chrome: '',
+      node: '',
+      windows: [],
+      display: {
+        backend: 'win32',
+        capabilities: {
+          alwaysOnTop: true,
+          clickThrough: true,
+          globalShortcuts: true,
+          transparency: true,
+        },
+      },
+      updater: { state: 'idle' },
+      restartCounter: 0,
+    };
+    const coreInvoke = vi.fn(async () => ({ path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 }));
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      coreInvoke,
+      collectHostPayload: () => hostPayload,
+      updater: {
+        check: vi.fn(async () => ({ state: 'not-available' })),
+        download: vi.fn(async () => ({ state: 'idle' })),
+        install: vi.fn(async () => ({ state: 'idle' })),
+      },
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(
+      router.invoke(1, {
+        method: 'diagnostics_export_bundle_to',
+        params: { path: 'D:\\out\\YAQMC-diagnostics.zip', request: { includeLogs: true } },
+      }),
+    ).resolves.toEqual({ ok: true, result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 } });
+    expect(coreInvoke).toHaveBeenCalledWith('diagnostics_export_bundle_to', {
+      path: 'D:\\out\\YAQMC-diagnostics.zip',
+      request: { includeLogs: true, hostPayload },
+    });
+
+    coreInvoke.mockClear();
+    await expect(
+      router.invoke(2, { method: 'diagnostics_export_bundle_to', params: { path: 'x' } }),
+    ).resolves.toEqual({
+      ok: false,
+      error: hostDenied('diagnostics_export_bundle_to', 'lyrics-desktop'),
+    });
+    expect(coreInvoke).not.toHaveBeenCalled();
+
+    await expect(router.invoke(1, { method: HOST_UPDATER_CHECK_METHOD })).resolves.toEqual({
+      ok: true,
+      result: { state: 'not-available' },
     });
   });
 

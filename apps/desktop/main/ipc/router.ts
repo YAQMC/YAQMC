@@ -51,6 +51,13 @@ export class IpcRouter {
     this.windows.delete(webContentsId);
   }
 
+  listWindows(): Array<{ webContentsId: number; role: WindowRole }> {
+    return [...this.windows.entries()].map(([webContentsId, role]) => ({
+      webContentsId,
+      role,
+    }));
+  }
+
   async invoke(webContentsId: number, request: InvokeRequest | undefined): Promise<InvokeReply> {
     const method = request?.method;
     if (typeof method !== 'string' || method.length === 0) {

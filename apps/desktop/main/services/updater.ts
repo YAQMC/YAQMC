@@ -1,18 +1,17 @@
 /**
- * UPD-01 prep: notify-flow state machine for `host://update`.
+ * UPD-01 notify-flow state machine for `host://update`.
  *
- * Unwired from `main/index.ts`. PACK-01 / UPD-01 will add `electron-updater`;
- * this module takes an injected `updaterPort` so unit tests never load that
- * dependency. Future AutoUpdater flags (do not silent-install):
+ * Wired from `main/index.ts` with `createElectronUpdaterPort` (or a no-op
+ * port during `YAQMC_DESKTOP_SMOKE`). This module stays free of
+ * `electron-updater` so unit tests inject a fake port.
+ *
+ * AutoUpdater flags (do not silent-install):
  *
  * - `autoDownload: false`
  * - `autoInstallOnAppQuit: false`
  * - `allowPrerelease` bound to `__YAQMC_RELEASE_CHANNEL__` (`nightly` → true)
- * - Windows unsigned (R-9): `verifyUpdateCodeSignature: false` — CI artifacts
- *   are unsigned; electron-updater cannot verify a code signature until
- *   signing is a follow-up. NSIS is the Windows install target.
- * - Linux: AppImage can in-place install; deb / rpm / tar.gz only notify and
- *   link the GitHub Releases URL (electron-updater cannot replace those).
+ * - Windows unsigned (R-9): `verifyUpdateCodeSignature: false`
+ * - Linux: AppImage can in-place install; deb / rpm / tar.gz only notify
  *
  * Launch check is deferred `CHECK_DELAY_MS` (30 s). Callers inject
  * `scheduleCheck`; this file does not start a timer by default.

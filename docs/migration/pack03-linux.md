@@ -15,7 +15,8 @@ even when `release-electron/` is empty. Do **not** install against the
 daily-driver profile: `appId` `org.yaqmc.desktop` shares
 `$XDG_DATA_HOME/org.yaqmc.desktop` with the Tauri build.
 
-Unsigned (**R-9**). No `electron-updater` (UPD-01). Electron stays **43.4.0**.
+Unsigned (**R-9**). Notify-only `electron-updater` (UPD-01) is wired; the
+A→B upgrade rehearsal is still pending. Electron stays **43.4.0**.
 Builder stays **26.15.7**. Do not start `qm-api-rs`. Provenance remains
 **BLOCKED**. The 32 MiB protocol hard cap is unchanged.
 
@@ -42,7 +43,7 @@ in gitignored `release-electron/`:
 
 | Target   | Artifact                         | Notes                                      |
 | -------- | -------------------------------- | ------------------------------------------ |
-| AppImage | `YAQMC-linux-{arch}.AppImage`    | Updater-bearing target (§32). No updater wired here. |
+| AppImage | `YAQMC-linux-{arch}.AppImage`    | Updater-bearing target (§32). Notify-only; A→B pending. |
 | deb      | `YAQMC-linux-{arch}.deb`         | `libayatana-appindicator3-1` as Recommends |
 | rpm      | `YAQMC-linux-{arch}.rpm`         | weak `Recommends: libayatana-appindicator-gtk3` |
 | tar.gz   | `YAQMC-linux-{arch}.tar.gz`      | Portable tree; not an in-place updater     |
@@ -66,9 +67,10 @@ plan-delta; this table is **not** a clean-VM matrix.
 
 ## AppImage
 
-Updater-bearing target (plan §32): a future updater can replace the file in
-place. This checkpoint does **not** add that dependency. Upgrade here is
-replace-the-AppImage, not notify-flow.
+Updater-bearing target (plan §32): a future in-place update can replace the
+file. UPD-01 wires notify-only `electron-updater`; this checklist still does
+**not** run that A→B rehearsal. Upgrade here is still replace-the-AppImage
+until a maintainer ticks the LIVE VERIFY row.
 
 ```bash
 chmod +x release-electron/YAQMC-linux-x64.AppImage
