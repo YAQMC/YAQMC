@@ -16,23 +16,25 @@ CI artifact **不是** GitHub Release，保留 **14 天**。打包成功不等�
 
 ## 事件与矩阵
 
-- **Pull request：** Prettier、ESLint、TypeScript、Vitest、文档、密钥扫描、Rust fmt/clippy/测试、一次前端生产构建、Ubuntu 与 Windows 上的 Electron 宿主仅构建任务，以及 Windows x86_64 与 Linux x86_64 安装包。
-- **推送 `main`：** 同样的质量门禁，外加完整 Windows/Linux 矩阵：Windows `x86_64` / `i686` / `aarch64`，Linux `x86_64` / `aarch64`。
-- **手动 `workflow_dispatch`：** 可选 `windows`、`linux` 或 `all`，以及 `ci` 或 `production` 优化配置。
+- **Pull request：** Prettier、ESLint、TypeScript、Vitest、文档、密钥扫描、Rust fmt/clippy/测试、一次前端生产构建、Ubuntu 与 Windows 上的 Electron 宿主仅构建任务、Windows x86_64 与 Linux x86_64 的 Tauri 安装包，以及 Windows x64 与 Linux x64 的 Electron NSIS/便携版和 AppImage/deb/rpm/tar.gz。
+- **推送 `main`：** 同样的质量门禁，外加完整 Tauri Windows/Linux 矩阵（Windows `x86_64` / `i686` / `aarch64`，Linux `x86_64` / `aarch64`），以及 Electron 矩阵（Windows x64、在 `windows-2025` 上交叉编译的 Windows arm64、Linux x64、`ubuntu-22.04-arm` 上的 Linux arm64）。Electron 不打包 Windows i686。
+- **手动 `workflow_dispatch`：** 可选 `windows`、`linux` 或 `all`，以及 `ci` 或 `production` 优化配置。Tauri 与 Electron 打包任务都遵守操作系统筛选。
 
 过时的 pull request 运行会被取消。`main` 推送和手动打包中途不会被取消。
 
 ## 前端复用
 
-打包任务下载 `yaqmc-frontend-dist-<sha>`。`YAQMC_PREBUILT_FRONTEND=1` 时，`scripts/ci/tauri-before-build.mjs` 在核对 `dist/yaqmc-frontend-build.json` 与当前 commit 后跳过 Vite。本地 `tauri build` 仍会正常构建前端。
+打包任务下载 `yaqmc-frontend-dist-<sha>`。`YAQMC_PREBUILT_FRONTEND=1` 时，`scripts/ci/tauri-before-build.mjs` 在核对 `dist/yaqmc-frontend-build.json` 与当前 commit 后跳过 Vite，`scripts/ci/package-electron.mjs` 复用同一份 dist（不再跑第二次 Vite）。本地 `tauri build` 仍会正常构建前端。Electron 打包需要已有 `dist/`（CI 会下载；本地先跑 `npm run ci:frontend-build`）。
 
 不要在操作系统之间上传 `node_modules`。
 
 ## 原生编译
 
-每个目标先 `tauri build --no-bundle` 一次，校验 PE/ELF 架构，再 `tauri bundle`。Windows 产出 NSIS、MSI 和可执行文件的便携 ZIP。Linux 产出 AppImage、`.deb`、`.rpm` 以及动态链接的二进制 tar（不是静态便携包）。x86_64 AppImage 仍会做现有的 GDK 会话感知重打包。
+每个 Tauri 目标先 `tauri build --no-bundle` 一次，校验 PE/ELF 架构，再 `tauri bundle`。Windows 产出 NSIS、MSI 和可执行文件的便携 ZIP。Linux 产出 AppImage、`.deb`、`.rpm` 以及动态链接的二进制 tar（不是静态便携包）。x86_64 AppImage 仍会做现有的 GDK 会话感知重打包。
 
-暂存时只使用 `target/<triple>/release` 根目录下的 `yaqmc` / `yaqmc.exe`，再从旁边的 `bundle` 目录复制安装包，不会误捡 payload 里的同名二进制。Linux 打包会安装 `xdg-utils`，并设置 `APPIMAGE_EXTRACT_AND_RUN=1`，以便在缺少 `/usr/bin/xdg-open` 或 FUSE 的 ARM runner 上运行 linuxdeploy。
+每个 Electron 目标按 rust 三元组编译 `yaqmc-core`，用 `scripts/stage-core.mjs --rust-target` 暂存，构建 `@yaqmc/desktop`，再以 `--publish never` 跑 electron-builder。Windows 产出 NSIS 和便携 exe。Linux 产出 AppImage、`.deb`、`.rpm` 和 `.tar.gz`。Electron 任务在 Linux 上只安装 `rpm`/`fakeroot`，不安装 WebKitGTK。
+
+对 Tauri，暂存时只使用 `target/<triple>/release` 根目录下的 `yaqmc` / `yaqmc.exe`，再从旁边的 `bundle` 目录复制安装包，不会误捡 payload 里的同名二进制。Linux 打包会安装 `xdg-utils`，并设置 `APPIMAGE_EXTRACT_AND_RUN=1`，以便在缺少 `/usr/bin/xdg-open` 或 FUSE 的 ARM runner 上运行 linuxdeploy。
 
 ## 优化配置
 
@@ -67,10 +69,13 @@ Cargo 缓存按操作系统、目标三元组、工具链类别（打包用 `1.8
 
 每个目标上传 `YAQMC-<os>-<arch>-<sha>`，内含带版本的文件、`build-info.json` 和 `SHA256SUMS-<os>-<arch>.txt`。架构名与现有发布约定一致：`x86_64`、`i686`、`aarch64`。
 
+Electron 目标上传 `YAQMC-electron-<os>-<arch>-<sha>`，来自 `release-electron/YAQMC-electron-<os>-<arch>/`。架构名跟随 electron-builder：`x64`、`arm64`。这些是未签名的 Actions 产物，不是 GitHub Release。
+
 ## Runner
 
 - Windows x86_64 / i686：`windows-2025`
-- Windows aarch64：`windows-11-arm`（原生；不得把 x64 二进制标成 ARM）
+- Windows aarch64（Tauri）：`windows-11-arm`（原生；不得把 x64 二进制标成 ARM）
+- Windows arm64（Electron）：`windows-2025`，`cargo --target aarch64-pc-windows-msvc`（交叉编译；CI-03 启动测试仍 pending）
 - Linux x86_64：`ubuntu-22.04`
 - Linux aarch64：`ubuntu-22.04-arm`
 

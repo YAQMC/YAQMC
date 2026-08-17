@@ -37,6 +37,8 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).toContain('electronVersion: 43.4.0');
     expect(yaml).toContain('from: resources/core');
     expect(yaml).toContain('to: core');
+    expect(yaml).toContain('from: ../../dist');
+    expect(yaml).toContain('to: renderer');
     expect(yaml).toContain('oneClick: false');
     expect(yaml).toContain('perMachine: false');
     expect(yaml).toMatch(/target:\s*nsis|target: nsis/);

@@ -158,8 +158,7 @@ router = new IpcRouter({
     openExternal: (url) => shell.openExternal(url),
     lyrics: lyricsSurfaces,
     unlock: lyricsUnlock,
-    capabilities: () =>
-      lyricsSurfaceCapabilities({ platform: process.platform, nativeWayland }),
+    capabilities: () => lyricsSurfaceCapabilities({ platform: process.platform, nativeWayland }),
     showMainAndOpenSettings: emitOpenSettings,
     emitSurfaceClosed: (kind: LyricsSurfaceKind) => {
       fanoutEvent(CHANNEL_LYRICS_SURFACE_CLOSED, kind);
@@ -208,9 +207,24 @@ updaterHandle = createUpdater({
   scheduleCheck: (callback, delayMs) => setTimeout(callback, delayMs),
 });
 
+function packagedRendererRoot(): string | undefined {
+  if (!app.isPackaged) {
+    return undefined;
+  }
+  const candidate = path.join(process.resourcesPath, 'renderer');
+  if (existsSync(path.join(candidate, 'index.html'))) {
+    return candidate;
+  }
+  return undefined;
+}
+
 function rendererRoot(): string {
   if (smoke) {
     return harnessRoot;
+  }
+  const packaged = packagedRendererRoot();
+  if (packaged) {
+    return packaged;
   }
   if (existsSync(path.join(viteDist, 'index.html'))) {
     return viteDist;
@@ -222,7 +236,7 @@ function mainWindowUrl(root: string): string {
   if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
     return `${VITE_DEV_ORIGIN}/`;
   }
-  if (root === viteDist) {
+  if (!app.isPackaged && root === viteDist) {
     return appIndexUrl('?provider=fake');
   }
   return appIndexUrl();
@@ -272,7 +286,11 @@ function collectLiveHostPayload(): ReturnType<typeof collectDiagnosticsHostPaylo
       }),
       capabilities,
     },
-    updater: updaterHandle?.payload() ?? { state: 'idle', canInstall: false, channel: updaterReleaseChannel() },
+    updater: updaterHandle?.payload() ?? {
+      state: 'idle',
+      canInstall: false,
+      channel: updaterReleaseChannel(),
+    },
     restartCounter: supervisor?.restartCount() ?? 0,
     log,
     linuxGraphics: linuxGraphicsDiagnostics(linuxGraphicsFacts),

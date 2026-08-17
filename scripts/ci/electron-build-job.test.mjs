@@ -11,10 +11,21 @@ test('CI runs an Electron build-only job on Ubuntu and Windows', () => {
   assert.match(workflow, /^ {2}electron-build:/m);
   assert.match(workflow, /os: \[ubuntu-22\.04, windows-2025\]/);
   assert.match(workflow, /npm run build -w @yaqmc\/desktop/);
-  assert.match(
-    workflow,
-    /needs: \[frontend-quality, frontend-build, rust-quality, secret-scan, package-matrix, package, electron-build\]/,
-  );
+  const summarize = workflow.split(/^ {2}summarize:/m)[1] ?? '';
+  const needs = summarize.match(/needs:\s*\[[\s\S]*?\]/)?.[0] ?? '';
+  for (const job of [
+    'frontend-quality',
+    'frontend-build',
+    'rust-quality',
+    'secret-scan',
+    'package-matrix',
+    'electron-build',
+    'electron-package-matrix',
+  ]) {
+    assert.match(needs, new RegExp(`^\\s+${job},\\s*$`, 'm'));
+  }
+  assert.match(needs, /^\s+package,\s*$/m);
+  assert.match(needs, /^\s+electron-package,\s*$/m);
 });
 
 test('rust-quality stays independent of the Electron build job', () => {

@@ -283,10 +283,101 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
 
+  electron-package-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.select.outputs.include }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+      - id: select
+        env:
+          YAQMC_EVENT_NAME: ${{ github.event_name }}
+          YAQMC_TARGETS: ${{ inputs.targets }}
+        run: node scripts/ci/select-electron-package-matrix.mjs
+
+  electron-package:
+    name: Electron package ${{ matrix.os }} ${{ matrix.arch }}
+    needs: [frontend-build, electron-package-matrix]
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.electron-package-matrix.outputs.include) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      YAQMC_PREBUILT_FRONTEND: '1'
+      CARGO_PROFILE_RELEASE_LTO: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && 'true' || 'thin' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && '1' || '8' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require the requested runner architecture
+        run: echo "Electron packaging ${{ matrix.target }} on ${{ runner.os }} / ${{ matrix.runner }} cross=${{ matrix.cross }}"
+      - uses: ./.github/actions/setup-packaging
+        with:
+          target: ${{ matrix.target }}
+          profile: ${{ env.YAQMC_BUILD_PROFILE }}
+      - name: Linux electron-builder packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm fakeroot
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: yaqmc-frontend-dist-${{ github.sha }}
+          path: dist
+      - name: Compile core, then pack Electron
+        run: >-
+          node scripts/ci/package-electron.mjs
+          --target ${{ matrix.target }}
+          --os ${{ matrix.os }}
+          --arch ${{ matrix.arch }}
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Electron ${{ matrix.os }} ${{ matrix.arch }}"
+            echo "- rust target: \`${{ matrix.target }}\`"
+            echo "- cross: \`${{ matrix.cross }}\`"
+            echo "- profile: \`${{ env.YAQMC_BUILD_PROFILE }}\`"
+            echo "- publish: never"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
+          path: release-electron/YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
+
   summarize:
     name: CI summary
     if: always()
-    needs: [frontend-quality, frontend-build, rust-quality, secret-scan, package-matrix, package, electron-build]
+    needs:
+      [
+        frontend-quality,
+        frontend-build,
+        rust-quality,
+        secret-scan,
+        package-matrix,
+        package,
+        electron-build,
+        electron-package-matrix,
+        electron-package,
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Write workflow summary
@@ -304,6 +395,8 @@ jobs:
             echo "- secret-scan: \`${{ needs.secret-scan.result }}\`"
             echo "- package-matrix: \`${{ needs.package-matrix.result }}\`"
             echo "- package: \`${{ needs.package.result }}\`"
+            echo "- electron-package-matrix: \`${{ needs.electron-package-matrix.result }}\`"
+            echo "- electron-package: \`${{ needs.electron-package.result }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Fail if a required job failed
         if: >-
@@ -314,5 +407,8 @@ jobs:
           needs.secret-scan.result != 'success' ||
           needs.package-matrix.result != 'success' ||
           needs.package.result == 'failure' ||
-          needs.package.result == 'cancelled'
+          needs.package.result == 'cancelled' ||
+          needs.electron-package-matrix.result != 'success' ||
+          needs.electron-package.result == 'failure' ||
+          needs.electron-package.result == 'cancelled'
         run: exit 1

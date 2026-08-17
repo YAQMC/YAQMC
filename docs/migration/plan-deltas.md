@@ -935,7 +935,7 @@ the enforced provenance ledger.
 ## host boot: linux-graphics, unlock overlays, dialogs
 
 - `apps/desktop/main/index.ts` calls `linuxGraphicsSwitches({ platform, wayland,
-  nvidia, mode })` and `app.commandLine.appendSwitch` **before** `app.whenReady()`.
+nvidia, mode })` and `app.commandLine.appendSwitch` **before** `app.whenReady()`.
   `mode` is `YAQMC_LINUX_RENDERER` (default `auto`). Windows and every other
   non-Linux platform still get `[]` so no switches are appended. Smoke still
   skips tray/shortcuts; graphics flags are applied. SEC-03: never
@@ -992,9 +992,9 @@ the enforced provenance ledger.
   in `apps/desktop/package.json` (workspace-hoisted via the lockfile) and does
   **not** take the v27 alpha. Electron stays exact **43.4.0** (not 44).
 - `appId: org.yaqmc.desktop` equals the live Tauri `identifier`. `productName:
-  YAQMC`, `asar: true` with no `asarUnpack` (core stays in `extraResources`
+YAQMC`, `asar: true` with no `asarUnpack` (core stays in `extraResources`
   `{from: resources/core, to: core}`). NSIS is `oneClick: false`, `perMachine:
-  false` (per-user, directory chooser on). Targets: Windows NSIS + portable;
+false` (per-user, directory chooser on). Targets: Windows NSIS + portable;
   Linux AppImage + deb + rpm + tar.gz; x64 and arm64 are declared. Signing is
   not required (`forceCodeSigning: false`, Windows `signAndEditExecutable: false`
   so local pack does not fetch winCodeSign from GitHub). `electronDist` is the
@@ -1016,7 +1016,7 @@ the enforced provenance ledger.
   Chromium sandbox. `apps/desktop/resources/core/.gitkeep` keeps the extraResources
   source directory in git; staged `yaqmc-core.exe` remains gitignored.
 - `npm run pack:dir -w @yaqmc/desktop` **ran** on this Windows host (`--dir
-  --x64`): `release-electron/win-unpacked/YAQMC.exe`, `resources/app.asar`, and
+--x64`): `release-electron/win-unpacked/YAQMC.exe`, `resources/app.asar`, and
   `resources/core/yaqmc-core.exe` (staged binary was present locally; gitignored).
   `@electron/fuses read` confirmed RunAsNode / NodeOptions / NodeCliInspect off,
   OnlyLoadAppFromAsar and EnableEmbeddedAsarIntegrityValidation on,
@@ -1207,7 +1207,7 @@ the enforced provenance ledger.
   `LIBGL_ALWAYS_SOFTWARE`, `__NV_DISABLE_EXPLICIT_SYNC`, NVIDIA/Hyprland
   sniffing, or `YAQMC_LINUX_RENDERER`). `apply_startup_graphics_policy` is a
   no-op so the Tauri shim still compiles. Distro/session/compositor/GPU
-  diagnostic probes remain; `YAQMC_LINUX_RENDERER` is still *read* into
+  diagnostic probes remain; `YAQMC_LINUX_RENDERER` is still _read_ into
   diagnostics.
 - Electron already maps that env as a host compat read in
   `apps/desktop/main/linux-graphics.ts` (policy table unchanged except a
@@ -1319,11 +1319,11 @@ the enforced provenance ledger.
 - docs/migration/acct02-qr-session.md is the §36 P8 QR login + session
   persist/staging/refresh checklist. Fake (?provider=fake) vs real-account
   columns; Windows/Linux boxes empty. ACCT-02 is not green.
-- How to run: 
-pm run dev:desktop with the real provider (Vite /, not
+- How to run:
+  pm run dev:desktop with the real provider (Vite /, not
   ?provider=fake). Core QR methods are qqmusic_auth_start / heartbeat /
-  cancel / 
-efresh. OAuth popup remains ACCT-01 — this checkpoint does not
+  cancel /
+  efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   edit oauth-window.ts and does not open OAuth at boot.
 - Keyring FACT is unchanged: service org.yaqmc.desktop, entries
   qqmusic-session, qqmusic-session-staging, local-api-bearer-token.
@@ -1362,6 +1362,7 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   index.ts is not edited for graphics. No WebKitGTK set_var. No --no-sandbox.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No SMTC claims.
+
 ## P11 PACK-02: Windows NSIS/portable maintainer script
 
 - `docs/migration/pack02-windows.md` plus `scripts/migration/pack02-windows.mjs`
@@ -1398,8 +1399,8 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   (FE-06 / CI-02). This host may be x64 Windows; CI-03 is not a live arm
   runner and is **not** green.
 - Windows: cross-build `yaqmc-core` for `aarch64-pc-windows-msvc` (`rustup
-  target add` + `cargo build -p yaqmc-core --release --target
-  aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
+target add` + `cargo build -p yaqmc-core --release --target
+aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   ARM64 `link.exe`. `scripts/stage-core.mjs` still only looks at
   `target/{release,debug}/`; copy
   `target/aarch64-pc-windows-msvc/release/yaqmc-core.exe` into
@@ -1585,3 +1586,23 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
 - CI covers the dry-run (`scripts/ci/plat05-mpris-playerctl.test.mjs`).
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**.
+
+## P11 CI-02: Electron package matrix jobs
+
+- Additive `electron-package-matrix` / `electron-package` jobs in `ci.yml`. The
+  Tauri `package` job is unchanged (§33.2 coexistence). Electron pack jobs set
+  continue-on-error to false. PR smoke is Windows x64 + Linux x64; full matrix
+  adds Windows arm64 cross on `windows-2025` and Linux arm64 on FACT
+  `ubuntu-22.04-arm`. No i686. Dist-reuse keeps `YAQMC_PREBUILT_FRONTEND=1`.
+  Cargo cache keys match Tauri packaging. Linux Electron pack installs
+  `rpm`/`fakeroot` only (no WebKitGTK).
+- `scripts/stage-core.mjs --rust-target` reads `target/<triple>/release/`.
+  `package-electron.mjs` builds `yaqmc-core`, stages it, packs with
+  `--publish never`, and uploads `YAQMC-electron-<os>-<arch>-<sha>` without
+  unpacked trees. Windows arm64 clears `electronDist` so builder downloads
+  Electron **43.4.0** for that arch. Packaged Main serves Vite extraResources
+  `renderer/` (not fake-mode, not the ELEC-04 harness).
+- This does not claim clean-VM, A→B updater, tagged Electron releases (CI-04),
+  PLAY-01, SMTC/MPRIS flyout, or provenance green.
+- Electron stays **43.4.0**. Builder stays **26.15.7**. The 32 MiB hard cap is
+  unchanged. Provenance remains **BLOCKED**. No qm-api-rs.

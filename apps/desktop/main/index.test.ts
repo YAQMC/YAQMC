@@ -42,10 +42,7 @@ describe('host boot wiring', () => {
   });
 
   it('applies Linux graphics switches before ready and never sandbox/web-security flags', () => {
-    const forbidden = [
-      ['--', 'no-sandbox'].join(''),
-      ['--', 'disable-web-security'].join(''),
-    ];
+    const forbidden = [['--', 'no-sandbox'].join(''), ['--', 'disable-web-security'].join('')];
     expect(source).toContain('app.commandLine.appendSwitch');
     expect(source.indexOf('applyLinuxGraphicsSwitches();')).toBeGreaterThan(-1);
     expect(source.indexOf('applyLinuxGraphicsSwitches();')).toBeLessThan(
@@ -86,9 +83,9 @@ describe('host boot wiring', () => {
     expect(source).toContain("invoke('platform_attach'");
     expect(source).toContain('getNativeWindowHandle');
     expect(source).toContain('buildPlatformAttach');
-    expect(source.indexOf('subscribeSurfaceAutoHide(instance.client, lyricsSurfaces);')).toBeGreaterThan(
-      source.indexOf("instance.on('ready'"),
-    );
+    expect(
+      source.indexOf('subscribeSurfaceAutoHide(instance.client, lyricsSurfaces);'),
+    ).toBeGreaterThan(source.indexOf("instance.on('ready'"));
     expect(source.indexOf('sendPlatformAttach();')).toBeGreaterThan(
       source.indexOf("instance.on('ready'"),
     );
@@ -123,5 +120,14 @@ describe('host boot wiring', () => {
 
   it('leaves the 32 MiB hard cap unchanged', () => {
     expect(FRAME_HARD_CAP_BYTES).toBe(32 * 1024 * 1024);
+  });
+
+  it('serves the packaged Vite renderer from extraResources, not fake-mode', () => {
+    expect(source).toContain("process.resourcesPath, 'renderer'");
+    expect(source).toContain('packagedRendererRoot');
+    expect(source).toContain('!app.isPackaged && root === viteDist');
+    expect(source).not.toContain(
+      "if (root === viteDist) {\n    return appIndexUrl('?provider=fake');",
+    );
   });
 });

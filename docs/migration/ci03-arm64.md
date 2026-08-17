@@ -39,12 +39,12 @@ Binary path:
 
 `target/aarch64-pc-windows-msvc/release/yaqmc-core.exe`
 
-`scripts/stage-core.mjs` looks at `target/{release,debug}/`, not
-`target/<triple>/release/`. After a cross-build, copy into extraResources:
+`scripts/stage-core.mjs` accepts `--rust-target <triple>` and looks at
+`target/<triple>/{release,debug}/` first, then `target/{release,debug}/`. After a
+cross-build:
 
 ```powershell
-Copy-Item target\aarch64-pc-windows-msvc\release\yaqmc-core.exe `
-  apps\desktop\resources\core\yaqmc-core.exe
+node scripts/stage-core.mjs --profile release --rust-target aarch64-pc-windows-msvc
 ```
 
 Then pack (PACK-01 yml already lists `win.target` nsis/portable `arch: arm64`):
@@ -58,10 +58,10 @@ npx electron-builder --projectDir apps/desktop --config electron-builder.yml --w
 
 Artifacts (gitignored `release-electron/`):
 
-| Target   | Name                                  |
-| -------- | ------------------------------------- |
-| NSIS     | `YAQMC-windows-arm64-setup.exe`       |
-| Portable | `YAQMC-windows-arm64-portable.exe`    |
+| Target   | Name                               |
+| -------- | ---------------------------------- |
+| NSIS     | `YAQMC-windows-arm64-setup.exe`    |
+| Portable | `YAQMC-windows-arm64-portable.exe` |
 
 Unsigned (**R-9**). No `electron-updater`.
 
@@ -99,19 +99,21 @@ a substitute for the native runner.
 
 ## Boot-test pending
 
-| Check                                      | Windows arm64        | Linux arm64 (`ubuntu-24.04-arm`) |
-| ------------------------------------------ | -------------------- | -------------------------------- |
-| `yaqmc-core` builds for the triple         | [ ] hardware pending | [ ] hardware pending             |
-| Staged into `apps/desktop/resources/core`  | [ ] hardware pending | [ ] hardware pending             |
-| electron-builder arm64 artifacts exist     | [ ] hardware pending | [ ] hardware pending             |
-| Packaged app boots; core handshake `ready` | [ ] boot-test pending | [ ] boot-test pending           |
+| Check                                      | Windows arm64         | Linux arm64 (`ubuntu-24.04-arm`) |
+| ------------------------------------------ | --------------------- | -------------------------------- |
+| `yaqmc-core` builds for the triple         | [ ] hardware pending  | [ ] hardware pending             |
+| Staged into `apps/desktop/resources/core`  | [ ] hardware pending  | [ ] hardware pending             |
+| electron-builder arm64 artifacts exist     | [ ] hardware pending  | [ ] hardware pending             |
+| Packaged app boots; core handshake `ready` | [ ] boot-test pending | [ ] boot-test pending            |
 
-Leave the boxes empty. This machine is not an arm64 proof host. CI-02 owns
-wiring these commands into a package matrix. PACK-02/PACK-03 own the clean-VM
-install matrices once artifacts exist.
+Leave the boxes empty. This machine is not an arm64 proof host. CI-02 wires these
+commands into the Electron package matrix on `ubuntu-22.04-arm` / `windows-2025`
+cross. PACK-02/PACK-03 own the clean-VM install matrices once artifacts exist.
+CI-03 remains **not green**.
 
 ## Related
 
 - [PACK-01 builder pin](plan-deltas.md) (`apps/desktop/electron-builder.yml`)
 - [PACK-02 Windows NSIS / portable](pack02-windows.md) (x64 `pack:win`; arm64 is this file)
+- [CI-02 Electron package matrix](ci02-electron-package.md)
 - Plan §33.1 / P11 CI-03 in `YAQMC_ELECTRON_MIGRATION_PLAN.md`
