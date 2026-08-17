@@ -18,6 +18,12 @@ src-tauri/target/
 src-tauri/target-bench-*/
 /target/
 
+# Staged Electron core binary (scripts/stage-core.mjs)
+apps/desktop/resources/core/yaqmc-core
+apps/desktop/resources/core/yaqmc-core.exe
+apps/desktop/resources/core/core.sha256
+apps/desktop/resources/core/manifest.json
+
 # Editors
 .idea/
 .vscode/*
