@@ -730,3 +730,20 @@ the enforced provenance ledger.
   tests assert they never appear. No Playwright. Electron stays **43.4.0**.
   The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P11-prep UPD-01: updater notify stub (unwired, no electron-updater dep)
+
+- `apps/desktop/main/services/updater.ts` is a notify-flow state machine:
+  idle → checking → available | not-available | error, then user-driven
+  downloading → ready-to-install. No silent auto-install (`autoDownload` /
+  `autoInstallOnAppQuit` stay false). `CHECK_DELAY_MS = 30_000` documents the
+  launch-check deferral; tests inject the scheduler and do not start a
+  real timer. `allowPrerelease` is true only for channel `nightly` (`latest` is
+  false). Windows unsigned: `verifyUpdateCodeSignature: false` (R-9) is
+  documented for UPD-01. Linux AppImage can in-place install; deb/rpm/tar.gz
+  only notify with the GitHub releases URL.
+- Payloads are shaped for future `host://update`. The `updaterPort` is injected
+  so unit tests never load electron-updater (PACK-01/UPD-01 add the dep).
+  `main/index.ts` does not import this module.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No qm-api-rs.
