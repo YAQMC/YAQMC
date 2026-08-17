@@ -3,6 +3,7 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" },
-    { "path": "./packages/yaqmc-client" }
+    { "path": "./packages/yaqmc-client" },
+    { "path": "./apps/desktop" }
   ]
 }

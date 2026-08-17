@@ -21,6 +21,7 @@ export default tseslint.config(
       'tests/fixtures/**',
       'packages/*/dist',
       'apps/*/dist',
+      'apps/*/dist/**',
     ],
   },
   js.configs.recommended,
@@ -43,13 +44,21 @@ export default tseslint.config(
     },
   },
   {
-    files: ['scripts/**/*.{js,mjs,cjs}'],
+    files: ['apps/desktop/**/*.ts'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    files: ['scripts/**/*.{js,mjs,cjs}', 'apps/desktop/scripts/**/*.{js,mjs,cjs}'],
     languageOptions: {
       sourceType: 'module',
       globals: {
         Buffer: 'readonly',
         process: 'readonly',
         URL: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
       },
     },
   },
