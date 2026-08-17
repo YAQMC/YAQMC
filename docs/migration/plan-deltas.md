@@ -225,3 +225,15 @@ the enforced provenance ledger.
   unwrap `CommandResult<T>`. Owner-after mapping is unchanged.
 - `scripts/ci/command-inventory.mjs` is the generator; CI fails if the committed inventory drifts. No registry,
   dispatch, Electron, or qm-api-rs work is included. P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-03: method registry SSoT, ACL, timeout, and payload caps
+
+- `yaqmc-protocol/src/registry.rs` is the 117-row `MethodSpec` table: name, owner, `main_window_only`, timeout class,
+  allowed origins, and request/response byte caps. Caps default to 1 MiB and never exceed the 32 MiB hard cap.
+  `plugin_read_asset` has a 6 MiB response cap so a 4 MiB asset can survive Base64 JSON; background images still cannot
+  fit and the hard cap is not raised.
+- Allowed origins are taken from the live Tauri capability sets, not the stale §11.3 surface-subset row. Host origin
+  is always trusted; renderer origin is never taken from the renderer. Core `authorize()` rechecks ACL and returns
+  `host.denied` on spoof/unknown methods. Timeout classes are Control 10 s (`player_*`), Long 120 s (install/export),
+  and Standard 30 s. Dispatch arms remain PROTO-04.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.
