@@ -265,6 +265,8 @@ describe('createLyricsSurfaces controller', () => {
     expect(island.setFocusable).toHaveBeenCalledWith(false);
     expect(surfaces.get('desktop')).toBe(desktop);
     expect(surfaces.get('island')).toBe(island);
+    expect(surfaces.isVisible('desktop')).toBe(false);
+    expect(surfaces.isVisible('island')).toBe(true);
   });
 
   it('hide and lock are no-ops until create, and skip destroyed windows', () => {
