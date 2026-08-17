@@ -45,6 +45,7 @@ pub const AUDIO_OUTPUT_SETTING: &str = "audio-output-device";
 
 /// Load the configured log level from persistent storage. Falls back to the debug
 /// default (Debug) if the setting is absent or malformed.
+#[allow(dead_code)]
 pub fn load_persisted_log_level(storage: &Arc<StorageService>) -> LogLevel {
     logging::persisted_log_level(
         storage
