@@ -464,6 +464,16 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
 
+## P4 SEC-03: forbidden Chromium switches and preload purity
+
+- `scripts/ci/electron-security-lint.mjs` greps packaging + source for `--disable-web-security`
+  and `--no-sandbox`, and checks `apps/desktop/preload` for `require(`, `process.env`, and
+  electron imports other than `contextBridge` + `ipcRenderer`. Seeded violations fail
+  `scripts/ci/electron-security-lint.test.mjs`; the live tree must scan clean. Linux graphics
+  switches remain §29.2 / later. Electron stays **43.4.0**.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,
