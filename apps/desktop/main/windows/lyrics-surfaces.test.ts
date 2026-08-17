@@ -382,6 +382,26 @@ describe('geometry persist, restore, and reset', () => {
     );
   });
 
+  it('flushGeometry writes current bounds without waiting for the debounce', async () => {
+    const desktop = mockWindow({ x: 88, y: 66, width: 780, height: 190 });
+    const settings = memorySettings();
+    const clock = fakeClock();
+    const surfaces = createLyricsSurfaces({
+      preloadPath: PRELOAD,
+      createWindow: () => desktop,
+      settings,
+      clock,
+      getDisplayBounds: () => [PRIMARY],
+    });
+
+    surfaces.create('desktop');
+    desktop.bounds = { x: 88, y: 66, width: 780, height: 190 };
+    await surfaces.flushGeometry('desktop');
+    expect(settings.store.get('lyrics-surface-geometry:desktop')).toBe(
+      '{"x":88,"y":66,"width":780,"height":190}',
+    );
+  });
+
   it('resetPosition clears the key, applies defaults, and persists', async () => {
     const desktop = mockWindow({ x: 120, y: 80, width: 800, height: 190 });
     const settings = memorySettings({

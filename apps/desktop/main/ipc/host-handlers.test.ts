@@ -38,6 +38,7 @@ function mockLyrics(): LyricsSurfaces & {
   isVisible: ReturnType<typeof vi.fn>;
   restoreGeometry: ReturnType<typeof vi.fn>;
   resetPosition: ReturnType<typeof vi.fn>;
+  flushGeometry: ReturnType<typeof vi.fn>;
 } {
   const windows = new Map<string, object>();
   return {
@@ -55,6 +56,7 @@ function mockLyrics(): LyricsSurfaces & {
     isVisible: vi.fn((kind) => windows.has(kind)),
     restoreGeometry: vi.fn(async () => undefined),
     resetPosition: vi.fn(async () => undefined),
+    flushGeometry: vi.fn(async () => undefined),
   };
 }
 
@@ -99,9 +101,9 @@ describe('host handler helpers', () => {
   it('treats native Wayland as linux + WAYLAND_DISPLAY without DISPLAY', () => {
     expect(isNativeWaylandSession('win32', { WAYLAND_DISPLAY: 'wayland-0' })).toBe(false);
     expect(isNativeWaylandSession('linux', { WAYLAND_DISPLAY: 'wayland-0' })).toBe(true);
-    expect(
-      isNativeWaylandSession('linux', { WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' }),
-    ).toBe(false);
+    expect(isNativeWaylandSession('linux', { WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0' })).toBe(
+      false,
+    );
     expect(isNativeWaylandSession('linux', { DISPLAY: ':0' })).toBe(false);
   });
 

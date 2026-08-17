@@ -185,7 +185,7 @@ describe('host boot wiring', () => {
       index.indexOf('app.whenReady()'),
     );
     expect(index).toContain("process.env.YAQMC_DESKTOP_SMOKE === '1'");
-    expect(index).toMatch(/if \(smoke \|\| e2e\) \{\s*return;/);
+    expect(index).toContain("YAQMC_E2E_TRAY !== '1'");
     for (const forbidden of FORBIDDEN_SWITCHES) {
       expect(index.includes(forbidden)).toBe(false);
     }

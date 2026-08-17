@@ -212,7 +212,9 @@ export function lockLyricsSurface(
   window.setResizable(LYRICS_SURFACE_GEOMETRY[kind].resizableWhenUnlocked);
 }
 
-export function parseLyricsSurfaceGeometry(raw: unknown): LyricsSurfacePersistedGeometry | undefined {
+export function parseLyricsSurfaceGeometry(
+  raw: unknown,
+): LyricsSurfacePersistedGeometry | undefined {
   const value = typeof raw === 'string' ? parseJson(raw) : raw;
   if (!value || typeof value !== 'object') {
     return undefined;
@@ -285,10 +287,7 @@ export function defaultLyricsSurfaceGeometry(
   const availableX = Math.max(0, area.width - width);
   const normalizedX = 0.5;
   const x = area.x + Math.round(availableX * normalizedX);
-  const y =
-    kind === 'island'
-      ? area.y + 24
-      : area.y + Math.max(0, area.height - height) - 72;
+  const y = kind === 'island' ? area.y + 24 : area.y + Math.max(0, area.height - height) - 72;
   return clampToWorkArea({ x, y, width, height }, area, kind);
 }
 
@@ -342,6 +341,8 @@ export type LyricsSurfaces = {
   isVisible(kind: LyricsSurfaceKind): boolean;
   restoreGeometry(kind?: LyricsSurfaceKind): Promise<void>;
   resetPosition(kind: LyricsSurfaceKind): Promise<void>;
+  /** Write current bounds now (skips the 350 ms debounce). Used by E2E. */
+  flushGeometry(kind: LyricsSurfaceKind): Promise<void>;
 };
 
 export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
@@ -371,7 +372,10 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     persistGeneration.set(kind, (persistGeneration.get(kind) ?? 0) + 1);
   }
 
-  function currentBounds(kind: LyricsSurfaceKind, window: LyricsSurfaceWindow): LyricsSurfacePersistedGeometry {
+  function currentBounds(
+    kind: LyricsSurfaceKind,
+    window: LyricsSurfaceWindow,
+  ): LyricsSurfacePersistedGeometry {
     const bounds = window.getBounds?.();
     if (bounds) {
       return clampToMinimums(bounds, kind);
@@ -380,7 +384,10 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     return { x: 0, y: 0, width: spec.width, height: spec.height };
   }
 
-  function applyBounds(window: LyricsSurfaceWindow, geometry: LyricsSurfacePersistedGeometry): void {
+  function applyBounds(
+    window: LyricsSurfaceWindow,
+    geometry: LyricsSurfacePersistedGeometry,
+  ): void {
     window.setBounds?.(geometry);
   }
 
@@ -388,7 +395,9 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     return deps.getDisplayBounds?.() ?? [];
   }
 
-  async function loadGeometry(kind: LyricsSurfaceKind): Promise<LyricsSurfacePersistedGeometry | undefined> {
+  async function loadGeometry(
+    kind: LyricsSurfaceKind,
+  ): Promise<LyricsSurfacePersistedGeometry | undefined> {
     if (!deps.settings) {
       return undefined;
     }
@@ -396,11 +405,17 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     return parseLyricsSurfaceGeometry(raw);
   }
 
-  async function persistGeometry(kind: LyricsSurfaceKind, geometry: LyricsSurfacePersistedGeometry): Promise<void> {
+  async function persistGeometry(
+    kind: LyricsSurfaceKind,
+    geometry: LyricsSurfacePersistedGeometry,
+  ): Promise<void> {
     if (!deps.settings) {
       return;
     }
-    await deps.settings.set(lyricsSurfaceGeometryKey(kind), serializeLyricsSurfaceGeometry(geometry));
+    await deps.settings.set(
+      lyricsSurfaceGeometryKey(kind),
+      serializeLyricsSurfaceGeometry(geometry),
+    );
   }
 
   function resolvedGeometry(
@@ -533,6 +548,14 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
         applyBounds(window, geometry);
       }
       await persistGeometry(kind, geometry);
+    },
+    async flushGeometry(kind) {
+      cancelPersist(kind);
+      const window = live(kind);
+      if (!window) {
+        return;
+      }
+      await persistGeometry(kind, currentBounds(kind, window));
     },
   };
 }
