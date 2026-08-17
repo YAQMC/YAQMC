@@ -1062,3 +1062,21 @@ the enforced provenance ledger.
 - `format:check` is unchanged (no mass-format). No Playwright (FE-06). Electron
   stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**.
+
+## P11 DIAG-03: core _to/_from dialog-split methods
+
+- Core IO methods `diagnostics_export_bundle_to`, `preferences_set_background_from`,
+  and `plugin_install_from` are protocol-only (owner Core, `OriginClass::Main`,
+  default 1 MiB caps). Old public names stay until P13: `diagnostics_export_bundle`
+  still writes under `download_dir`; host `appearance_pick_background` and
+  `plugin_pick_package` remain the pickers. The 32 MiB protocol hard cap is
+  unchanged.
+- `diagnostics_export_bundle_to` takes `{ path, request }` and writes the ZIP to
+  that explicit file path. `preferences_set_background_from` takes `{ path }` and
+  copies via `ManagedBackgroundImage` / `persist_background`. `plugin_install_from`
+  wraps `plugin_install` with the same `{ request: PluginInstallRequest }` shape
+  (already a path). Long timeout matches install/export.
+- Frontend calls the new methods only after a path is chosen (Electron pick then
+  `_from`/`_to`; Tauri keeps the old combined commands). No `qm-api-rs`. P0 remains
+  `PENDING`; provenance remains **BLOCKED**. No Playwright. Electron stays
+  **43.4.0**. Host `index.ts` / `host-handlers.ts` / `lyrics-surfaces.ts` untouched.
