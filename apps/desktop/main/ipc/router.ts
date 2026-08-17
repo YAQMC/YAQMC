@@ -64,19 +64,22 @@ export class IpcRouter {
       return { ok: false, error: hostDenied(method, 'main') };
     }
     const spec = this.methods.get(method);
-    if (!spec || !methodAllowed(spec, role)) {
-      return { ok: false, error: hostDenied(method, role) };
-    }
-    if (spec.owner === 'host') {
-      const handler = this.hostHandlers[method];
-      if (!handler) {
-        return { ok: false, error: hostOwnedUnimplemented(method) };
+    const handler = this.hostHandlers[method];
+    if (handler) {
+      if (spec ? !methodAllowed(spec, role) : role !== 'main') {
+        return { ok: false, error: hostDenied(method, role) };
       }
       try {
         return { ok: true, result: await handler(request?.params) };
       } catch (error) {
         return { ok: false, error: toCoreError(error) };
       }
+    }
+    if (!spec || !methodAllowed(spec, role)) {
+      return { ok: false, error: hostDenied(method, role) };
+    }
+    if (spec.owner === 'host') {
+      return { ok: false, error: hostOwnedUnimplemented(method) };
     }
     return handleRendererInvoke(this.client, request);
   }

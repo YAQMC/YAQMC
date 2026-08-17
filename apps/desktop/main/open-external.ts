@@ -1,6 +1,6 @@
 /**
  * §28.6 `shell.openExternal` allowlist. Main is the chokepoint; this module is
- * not wired into `index.ts` yet (P5 owns boot). Callers inject the opener so
+ * wired from `index.ts` through `IpcRouter` as `shell.openExternal`. Callers inject the opener so
  * unit tests can use a mock instead of Electron `shell`.
  *
  * FACT sources:
