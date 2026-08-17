@@ -1,0 +1,153 @@
+{
+  "attach": {
+    "host": {
+      "app": "yaqmc",
+      "version": "0.1.0"
+    },
+    "kind": "attach",
+    "platform": {
+      "mainWindowHandle": "0000000000123456",
+      "platformKind": "windows"
+    },
+    "protocol": 1
+  },
+  "event": {
+    "channel": "player://snapshot",
+    "kind": "event",
+    "payload": {
+      "currentIndex": 0,
+      "currentQueueEntryId": "entry-0",
+      "historyCursor": 0,
+      "isMuted": false,
+      "isPlaying": false,
+      "lastSeekRevision": 2,
+      "playbackDurationMs": 10000,
+      "playbackHistory": [],
+      "playbackOrder": "sequential",
+      "playbackState": "paused",
+      "positionMs": 1200,
+      "primaryPlaybackMode": "sequential",
+      "queue": [
+        {
+          "album": {
+            "id": "album",
+            "title": "Album"
+          },
+          "artists": [
+            {
+              "id": "artist",
+              "name": "Artist"
+            }
+          ],
+          "artwork": {
+            "alt": "Cover",
+            "dominantColor": "#000000",
+            "src": "/cover.svg"
+          },
+          "availability": {
+            "status": "available"
+          },
+          "durationMs": 10000,
+          "id": "track-0",
+          "isFavorite": false,
+          "quality": "lossless",
+          "title": "track-0",
+          "trackNumber": 1
+        }
+      ],
+      "queueEntries": [
+        {
+          "id": "entry-0",
+          "track": {
+            "album": {
+              "id": "album",
+              "title": "Album"
+            },
+            "artists": [
+              {
+                "id": "artist",
+                "name": "Artist"
+              }
+            ],
+            "artwork": {
+              "alt": "Cover",
+              "dominantColor": "#000000",
+              "src": "/cover.svg"
+            },
+            "availability": {
+              "status": "available"
+            },
+            "durationMs": 10000,
+            "id": "track-0",
+            "isFavorite": false,
+            "quality": "lossless",
+            "title": "track-0",
+            "trackNumber": 1
+          }
+        }
+      ],
+      "repeat": "off",
+      "sessionId": 1,
+      "shuffle": false,
+      "shuffleCursor": 0,
+      "shuffleTraversal": [],
+      "snapshotRevision": 4,
+      "sourceGeneration": 1,
+      "upcomingQueueEntryIds": [
+        "entry-0"
+      ],
+      "volume": 0.72
+    },
+    "seq": 1
+  },
+  "hello": {
+    "core": {
+      "channel": "stable",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "version": "0.1.0"
+    },
+    "kind": "hello",
+    "protocol": 1
+  },
+  "ready": {
+    "kind": "ready"
+  },
+  "request": {
+    "id": 7,
+    "kind": "request",
+    "method": "player_snapshot"
+  },
+  "requestWithParams": {
+    "id": 8,
+    "kind": "request",
+    "method": "player_seek",
+    "params": {
+      "positionMs": 1000
+    }
+  },
+  "responseFailure": {
+    "error": {
+      "code": "core.command_error",
+      "message": "queue is empty",
+      "retryable": false
+    },
+    "id": 7,
+    "kind": "response",
+    "ok": false
+  },
+  "responseSuccess": {
+    "id": 7,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "ok": true
+    }
+  },
+  "shutdown": {
+    "kind": "shutdown",
+    "reason": "quit"
+  },
+  "shutdownAck": {
+    "kind": "shutdown-ack"
+  }
+}

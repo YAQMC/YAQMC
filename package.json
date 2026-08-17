@@ -35,6 +35,8 @@
     "provenance:report": "node scripts/validate-provenance-ledger.mjs",
     "provenance:enforce": "node scripts/validate-provenance-ledger.mjs --enforce",
     "perf:baseline": "node scripts/perf-baseline.mjs",
+    "contracts:update": "node scripts/update-contract-fixtures.mjs",
+    "contracts:check": "node scripts/update-contract-fixtures.mjs --check",
     "tauri": "tauri"
   },
   "dependencies": {

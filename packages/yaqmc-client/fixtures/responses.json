@@ -1,0 +1,124 @@
+{
+  "auth_oauth_prepare": {
+    "id": 12,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "attemptId": "attempt-0",
+      "callbackMatcher": {
+        "urlPrefix": "https://example.invalid/callback"
+      },
+      "navigationAllowlist": [
+        "https://example.invalid/*"
+      ],
+      "url": "https://example.invalid/authorize"
+    }
+  },
+  "core_ping": {
+    "id": 9,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "ok": true
+    }
+  },
+  "hostDenied": {
+    "error": {
+      "code": "host.denied",
+      "message": "player_snapshot is not allowed from lyrics-desktop",
+      "retryable": false
+    },
+    "id": 99,
+    "kind": "response",
+    "ok": false
+  },
+  "player_snapshot": {
+    "id": 1,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "currentIndex": 0,
+      "currentQueueEntryId": "entry-0",
+      "historyCursor": 0,
+      "isMuted": false,
+      "isPlaying": false,
+      "lastSeekRevision": 2,
+      "playbackDurationMs": 10000,
+      "playbackHistory": [],
+      "playbackOrder": "sequential",
+      "playbackState": "paused",
+      "positionMs": 1200,
+      "primaryPlaybackMode": "sequential",
+      "queue": [
+        {
+          "album": {
+            "id": "album",
+            "title": "Album"
+          },
+          "artists": [
+            {
+              "id": "artist",
+              "name": "Artist"
+            }
+          ],
+          "artwork": {
+            "alt": "Cover",
+            "dominantColor": "#000000",
+            "src": "/cover.svg"
+          },
+          "availability": {
+            "status": "available"
+          },
+          "durationMs": 10000,
+          "id": "track-0",
+          "isFavorite": false,
+          "quality": "lossless",
+          "title": "track-0",
+          "trackNumber": 1
+        }
+      ],
+      "queueEntries": [
+        {
+          "id": "entry-0",
+          "track": {
+            "album": {
+              "id": "album",
+              "title": "Album"
+            },
+            "artists": [
+              {
+                "id": "artist",
+                "name": "Artist"
+              }
+            ],
+            "artwork": {
+              "alt": "Cover",
+              "dominantColor": "#000000",
+              "src": "/cover.svg"
+            },
+            "availability": {
+              "status": "available"
+            },
+            "durationMs": 10000,
+            "id": "track-0",
+            "isFavorite": false,
+            "quality": "lossless",
+            "title": "track-0",
+            "trackNumber": 1
+          }
+        }
+      ],
+      "repeat": "off",
+      "sessionId": 1,
+      "shuffle": false,
+      "shuffleCursor": 0,
+      "shuffleTraversal": [],
+      "snapshotRevision": 4,
+      "sourceGeneration": 1,
+      "upcomingQueueEntryIds": [
+        "entry-0"
+      ],
+      "volume": 0.72
+    }
+  }
+}
