@@ -297,3 +297,13 @@ the enforced provenance ledger.
   event frames, and representative request/response examples from the protocol serde types. The TS
   consumer and `contracts:update` script remain P3. No Electron, no qm-api-rs.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P3 CLIENT-01: npm workspaces and client scaffold
+
+- Root `package.json` now declares `"workspaces": ["packages/*", "apps/*"]`. `@yaqmc/client`
+  lives at `packages/yaqmc-client` with a composite tsconfig referenced from the root solution.
+  `apps/desktop` is not created. The package is dead code until P5/P6; the frontend does not
+  import it. No Electron, no qm-api-rs.
+- `npm run build -w @yaqmc/client` emits `packages/yaqmc-client/dist`. The 32 MiB hard cap
+  constant is exported and unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.

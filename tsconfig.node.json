@@ -13,5 +13,10 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "eslint.config.js", "scripts/**/*.ts"]
+  "include": [
+    "vite.config.ts",
+    "eslint.config.js",
+    "scripts/**/*.ts",
+    "packages/yaqmc-client/src/**/*.test.ts"
+  ]
 }

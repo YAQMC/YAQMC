@@ -1,0 +1,3 @@
+export const PROTOCOL_VERSION = 1;
+export const FRAME_HARD_CAP_BYTES = 32 * 1024 * 1024;
+export const DEFAULT_METHOD_PAYLOAD_BYTES = 1024 * 1024;
