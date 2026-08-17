@@ -6,11 +6,12 @@
 
 ## 工作流
 
-| 工作流   | 文件                          | 何时运行                            | 产出                                        |
-| -------- | ----------------------------- | ----------------------------------- | ------------------------------------------- |
-| CI       | `.github/workflows/ci.yml`    | pull request、推送 `main`、手动触发 | 质量门禁与未签名 Actions artifact           |
-| 桌面包   | `.github/workflows/build.yml` | `v*` tag 与手动触发                 | 生产配置安装包；仅 `v*` 会写 GitHub Release |
-| 项目网站 | `.github/workflows/pages.yml` | `main` 上文档/站点变更              | 仓库公开时的 GitHub Pages                   |
+| 工作流        | 文件                                     | 何时运行                            | 产出                                                                                    |
+| ------------- | ---------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| CI            | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名 Actions artifact                                                       |
+| 桌面包        | `.github/workflows/build.yml`            | `v*` tag 与手动触发                 | 生产配置 Tauri 安装包；仅 `v*` 会写 GitHub Release                                      |
+| Electron 发布 | `.github/workflows/electron-release.yml` | `v*` tag 与手动触发                 | 生产配置 Electron 安装包；**草稿** GitHub Release（`electron-v*` / `electron-draft-*`） |
+| 项目网站      | `.github/workflows/pages.yml`            | `main` 上文档/站点变更              | 仓库公开时的 GitHub Pages                                                               |
 
 CI artifact **不是** GitHub Release，保留 **14 天**。打包成功不等于该架构已经在真机上跑过。
 
@@ -93,4 +94,4 @@ npm run ci:test-scripts
 npm run ci:package-metadata
 ```
 
-未签名的 CI 产物不使用发行签名密钥。正式 tag 仍走 `.github/workflows/build.yml`。
+未签名的 CI 产物不使用发行签名密钥。正式 Tauri tag 仍走 `.github/workflows/build.yml`。Electron 草稿走 `.github/workflows/electron-release.yml` 的 `electron-v*` / `electron-draft-*`，在维护者提升之前保持未发布。

@@ -6,11 +6,12 @@ This page describes GitHub Actions for YAQMC. It is not a substitute for a tagge
 
 ## Workflows
 
-| Workflow              | File                          | When it runs                                     | What it produces                                                   |
-| --------------------- | ----------------------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
-| CI                    | `.github/workflows/ci.yml`    | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned Actions artifacts                      |
-| Build desktop bundles | `.github/workflows/build.yml` | `v*` tags and manual dispatch                    | production-profile installers; tagged GitHub Releases only on `v*` |
-| Project website       | `.github/workflows/pages.yml` | documentation/site changes on `main`             | GitHub Pages when the repository is public                         |
+| Workflow              | File                                     | When it runs                                     | What it produces                                                                                       |
+| --------------------- | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| CI                    | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned Actions artifacts                                                          |
+| Build desktop bundles | `.github/workflows/build.yml`            | `v*` tags and manual dispatch                    | production-profile Tauri installers; tagged GitHub Releases only on `v*`                               |
+| Electron release      | `.github/workflows/electron-release.yml` | `v*` tags and manual dispatch                    | production-profile Electron installers; **draft** GitHub Release on `electron-v*` / `electron-draft-*` |
+| Project website       | `.github/workflows/pages.yml`            | documentation/site changes on `main`             | GitHub Pages when the repository is public                                                             |
 
 CI artifacts are **not** GitHub Releases. Retention is **14 days**. Do not treat a green packaging job as native runtime proof for every architecture.
 
@@ -93,4 +94,4 @@ npm run ci:test-scripts
 npm run ci:package-metadata
 ```
 
-Unsigned CI artifacts do not use release signing secrets. Formal tags still go through `.github/workflows/build.yml`.
+Unsigned CI artifacts do not use release signing secrets. Formal Tauri tags still go through `.github/workflows/build.yml`. Electron drafts go through `.github/workflows/electron-release.yml` on `electron-v*` / `electron-draft-*` and stay unpublished until a maintainer promotes them.

@@ -16,6 +16,7 @@ This directory is the execution record for the Electron migration. Facts in thes
 - [PACK-03 Linux AppImage/deb/rpm/tar.gz script](pack03-linux.md)
 - [CI-03 arm64 core / Electron pack commands](ci03-arm64.md)
 - [CI-02 Electron package matrix](ci02-electron-package.md)
+- [CI-04 Electron release draft](ci04-electron-release.md)
 - [ACCT-02 QR login / session checklist](acct02-qr-session.md)
 - [ACCT-03 session continuity checklist](acct03-session-continuity.md)
 - [Copyright, contributor, and source provenance audit](provenance-audit.md)
