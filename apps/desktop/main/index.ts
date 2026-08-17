@@ -74,6 +74,11 @@ function createMainWindow(root: string): BrowserWindow {
     minHeight: 680,
     show: !smoke,
     frame: false,
+    icon: path.join(
+      desktopRoot,
+      'resources',
+      process.platform === 'win32' ? 'icon.ico' : 'icon.png',
+    ),
     webPreferences: {
       preload: path.join(here, '../preload/main.cjs'),
       sandbox: true,

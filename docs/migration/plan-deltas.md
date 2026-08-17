@@ -494,6 +494,17 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
 
+## P4 ELEC-07: desktop icons and electron-builder skeleton
+
+- Desktop icons (`icon.png` / `.ico` / `.icns`, 32/64/128) are copied to
+  `apps/desktop/resources/`. `src-tauri/icons` stays in place so Tauri packaging
+  still works until P13. Main window `icon` points at those files.
+  `apps/desktop/electron-builder.yml` is a skeleton (`appId` `org.yaqmc.desktop`,
+  Electron 43.4.0) without NSIS/AppImage targets, fuses, or a builder dependency
+  (PACK-01). Electron stays **43.4.0**.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,

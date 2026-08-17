@@ -3,6 +3,7 @@ dist/
 coverage/
 output/
 release/
+release-electron/
 .playwright-cli/
 .DS_Store
 *.log
