@@ -12,7 +12,9 @@ This directory is the execution record for the Electron migration. Facts in thes
 - [SOAK-01 / PLAY-03 soak notes](soak-p7.md)
 - [PLAT-06 local API SSE smoke](plat06-local-api.md)
 - [PACK-02 Windows NSIS / portable script](pack02-windows.md)
+- [CI-03 arm64 core / Electron pack commands](ci03-arm64.md)
 - [ACCT-02 QR login / session checklist](acct02-qr-session.md)
+- [ACCT-03 session continuity checklist](acct03-session-continuity.md)
 - [Copyright, contributor, and source provenance audit](provenance-audit.md)
 
 The source specification is retained verbatim at repository root as `YAQMC_ELECTRON_MIGRATION_PLAN.md`.
