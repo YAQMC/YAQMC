@@ -64,64 +64,13 @@ Return the archive, its SHA-256, distribution/kernel/compositor/monitor/scale de
 to the maintainer. Collection is evidence, not a pass claim; the maintainer records the final verdict.
 "#;
 
-/// Applies only an explicitly requested compatibility mode. Auto mode leaves GTK/WebKitGTK's
-/// backend decisions untouched and applies only targeted workarounds for known-broken
-/// WebKitGTK combinations (NVIDIA explicit sync, Hyprland DMA-BUF).
-pub fn apply_startup_graphics_policy() {
-    #[cfg(target_os = "linux")]
-    match std::env::var(GRAPHICS_MODE_ENV)
-        .unwrap_or_else(|_| "auto".to_owned())
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "dmabuf" | "native" => {
-            std::env::remove_var("WEBKIT_DISABLE_DMABUF_RENDERER");
-        }
-        "disable-dmabuf" | "compatibility" => {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
-        "compositing-off" => {
-            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        }
-        "software" | "safe" => {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-            std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
-        }
-        _ => {
-            if nvidia_gpu_present() && std::env::var_os("__NV_DISABLE_EXPLICIT_SYNC").is_none() {
-                std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
-            } else if should_apply_hyprland_dmabuf_workaround(
-                compositor_hint().as_deref(),
-                std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some(),
-            ) {
-                std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-            }
-        }
-    }
-}
-
-/// NVIDIA's EGL advertises explicit-sync support that WebKitGTK 2.5x consumes without setting
-/// the required acquire point (WebKit bug 317089), so strict compositors such as Hyprland and
-/// KWin disconnect the client. Disabling the driver-level explicit sync makes WebKitGTK fall
-/// back to implicit-sync DMA-BUF, keeping hardware acceleration instead of dropping to the
-/// 60 Hz CPU compositing path.
-#[cfg(target_os = "linux")]
-fn nvidia_gpu_present() -> bool {
-    std::path::Path::new("/proc/driver/nvidia/version").exists()
-        || std::path::Path::new("/sys/module/nvidia").exists()
-}
-
-/// WebKitGTK's DMA-BUF renderer trips a Wayland protocol error on Hyprland, which kills the
-/// process while the webview is being created. Auto mode applies the known-safe renderer
-/// fallback only for Hyprland and only when the user has not configured the renderer variable
-/// themselves.
-#[cfg(target_os = "linux")]
-fn should_apply_hyprland_dmabuf_workaround(
-    compositor: Option<&str>,
-    dmabuf_renderer_configured: bool,
-) -> bool {
-    compositor == Some("HYPRLAND_INSTANCE_SIGNATURE") && !dmabuf_renderer_configured
-}
+/// WebKitGTK env mutation used to live here (`WEBKIT_DISABLE_DMABUF_RENDERER`,
+/// NVIDIA/Hyprland sniffing, `YAQMC_LINUX_RENDERER` modes). That stack is gone
+/// from this shim: Electron maps `YAQMC_LINUX_RENDERER` as a host compat *read*
+/// in `apps/desktop/main/linux-graphics.ts`. Core/shim must not set it.
+/// Kept as a no-op so the Tauri composition point still compiles; diagnostics
+/// below still probe distro/session/compositor/GPU and *read* env.
+pub fn apply_startup_graphics_policy() {}
 
 pub fn collect(
     app: &AppHandle,
@@ -345,22 +294,24 @@ mod tests {
             .any(|note| note.contains("XWayland")));
     }
 
-    #[cfg(target_os = "linux")]
     #[test]
-    fn auto_mode_applies_dmabuf_workaround_only_for_hyprland_without_user_override() {
-        assert!(should_apply_hyprland_dmabuf_workaround(
-            Some("HYPRLAND_INSTANCE_SIGNATURE"),
-            false
-        ));
-        assert!(!should_apply_hyprland_dmabuf_workaround(
-            Some("HYPRLAND_INSTANCE_SIGNATURE"),
-            true
-        ));
-        assert!(!should_apply_hyprland_dmabuf_workaround(
-            Some("SWAYSOCK"),
-            false
-        ));
-        assert!(!should_apply_hyprland_dmabuf_workaround(None, false));
+    fn startup_graphics_policy_does_not_mutate_webkitgtk_env() {
+        let keys = [
+            "WEBKIT_DISABLE_DMABUF_RENDERER",
+            "WEBKIT_DISABLE_COMPOSITING_MODE",
+            "LIBGL_ALWAYS_SOFTWARE",
+            "__NV_DISABLE_EXPLICIT_SYNC",
+            "YAQMC_LINUX_RENDERER",
+        ];
+        let before: Vec<Option<std::ffi::OsString>> =
+            keys.iter().map(|key| std::env::var_os(key)).collect();
+        apply_startup_graphics_policy();
+        let after: Vec<Option<std::ffi::OsString>> =
+            keys.iter().map(|key| std::env::var_os(key)).collect();
+        assert_eq!(
+            before, after,
+            "core/shim must not set or clear WebKitGTK renderer env vars"
+        );
     }
 
     #[test]

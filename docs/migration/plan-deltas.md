@@ -1164,3 +1164,19 @@ the enforced provenance ledger.
   the first 4-h soak report stays uncommitted; provenance remains **BLOCKED**.
 - No new PLAY claims. This checkpoint does not run a 4-hour soak, invent a p95
   number, or clear provenance.
+
+## P9 PLAT-07: delete WebKitGTK env mutation from platform.rs
+
+- `src-tauri/src/platform.rs` no longer mutates process env
+  (`WEBKIT_DISABLE_DMABUF_RENDERER`, `WEBKIT_DISABLE_COMPOSITING_MODE`,
+  `LIBGL_ALWAYS_SOFTWARE`, `__NV_DISABLE_EXPLICIT_SYNC`, NVIDIA/Hyprland
+  sniffing, or `YAQMC_LINUX_RENDERER`). `apply_startup_graphics_policy` is a
+  no-op so the Tauri shim still compiles. Distro/session/compositor/GPU
+  diagnostic probes remain; `YAQMC_LINUX_RENDERER` is still *read* into
+  diagnostics.
+- Electron already maps that env as a host compat read in
+  `apps/desktop/main/linux-graphics.ts` (policy table unchanged except a
+  comment). Core does not set it. Tests no longer expect WebKitGTK env
+  mutations.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No SMTC claims. No qm-api-rs.
