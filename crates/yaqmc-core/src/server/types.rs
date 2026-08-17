@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::diagnostics::LyricsPresetSection;
+use crate::diagnostics::{DiagnosticsHostPayload, LyricsPresetSection};
 use crate::logging::LogLevel;
 
 #[derive(Deserialize)]
@@ -20,6 +20,8 @@ pub struct DiagnosticsBundleRequest {
     pub override_unresolved: Option<bool>,
     pub description: Option<String>,
     pub issue_category: Option<String>,
+    #[serde(default)]
+    pub host_payload: Option<DiagnosticsHostPayload>,
     #[serde(flatten)]
     pub base: DiagnosticsRequest,
 }

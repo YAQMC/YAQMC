@@ -1271,6 +1271,21 @@ the enforced provenance ledger.
   stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No Playwright.
 
+## P9 PLAT-04: platform_attach applies HWND to SMTC
+
+- Core `platform_attach` parses FACT `PlatformAttach` (`mainWindowHandle`
+  optional hex, `platformKind`, `displayBackend`). On Windows a present
+  handle is parsed to `isize` and `SystemMediaIntegration::attach_hwnd`
+  (re)initializes SMTC so a late Electron HWND recovers the start-with-no-HWND
+  error state. Linux ignores a missing handle (MPRIS needs none).
+- Fallback R-3: Windows with no HWND keeps the existing unavailable status.
+  A core-owned hidden message window is **not** implemented. This does
+  **not** claim SMTC flyout/media keys or MPRIS manual-green.
+- Tests parse hex and proto06 `platform_attach` with a handle still returns
+  `{ok:true}` without requiring a real SMTC session. Electron stays
+  **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.
+
 ## P8 ACCT-01: wire oauth-window (no auto-open)
 
 - `qqmusic_auth_oauth_start` is intercepted in `createHostHandlers`. The
@@ -1453,3 +1468,33 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   claimed green here. No Playwright.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No qm-api-rs.
+
+## P9 SURF-04: core Win32 fullscreen poller emits surfaceAutoHide
+
+- `crates/yaqmc-core/src/fullscreen_watch.rs` 800 ms Win32 poller from
+  `bootstrap()` on Windows only; cargo-test `deps` binaries skip unless a
+  probe is injected. `HostCommand::SurfaceAutoHide` serializes on
+  `host://command` as `{"surfaceAutoHide":true}` /
+  `{"surfaceAutoHide":false}`; raise/quit stay `{"command":"raise"}` /
+  `{"command":"quit"}`.
+- Linux: no poller (TD-5 NotSupported). Host `subscribeSurfaceAutoHide`
+  already wired; this checkpoint does not claim live fullscreen-hide green
+  (LIVE VERIFY pending).
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No SMTC/MPRIS claims.
+
+## P11 DIAG-01: host.json payload in diagnostics bundle
+
+- Core ZIP stays the 8 MiB-capped, scrubbed bundle. Optional `hostPayload` /
+  `host_payload` on `DiagnosticsBundleRequest` is backward compatible (omit =
+  pre-DIAG-01 layout). When present, Core writes `host.json` from the JSON
+  object and optional `host.log` from the `log` field. Both
+  `diagnostics_export_bundle` and `diagnostics_export_bundle_to` accept it.
+  Tests write a temp ZIP; no save dialog.
+- Host collector `apps/desktop/main/diagnostics-host-payload.ts` is a pure
+  function over injected version strings, window list, display backend +
+  capability flags, updater state, and restart counter. Not wired from
+  `index.ts` / `host-handlers.ts`. Frontend `diagnostics-runtime.ts` passes
+  `hostPayload` through when supplied.
+- No Playwright. No qm-api-rs. Electron stays **43.4.0**. The 32 MiB protocol
+  hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
