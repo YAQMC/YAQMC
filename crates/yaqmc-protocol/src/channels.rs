@@ -12,6 +12,7 @@ pub const CHANNEL_LYRICS_SURFACE_CLOSED: &str = "lyrics://surface-closed";
 pub const CHANNEL_APP_OPEN_SETTINGS: &str = "app://open-settings";
 pub const CHANNEL_HOST_COMMAND: &str = "host://command";
 pub const CHANNEL_HOST_CORE_STATUS: &str = "host://core-status";
+pub const CHANNEL_HOST_UPDATE: &str = "host://update";
 pub const CHANNEL_CORE_LOG: &str = "core://log";
 pub const CHANNEL_ACCOUNT_CHANGED: &str = "account://changed";
 
@@ -33,4 +34,5 @@ pub const HOST_EVENT_CHANNELS: &[&str] = &[
     CHANNEL_LYRICS_SURFACE_CLOSED,
     CHANNEL_APP_OPEN_SETTINGS,
     CHANNEL_HOST_CORE_STATUS,
+    CHANNEL_HOST_UPDATE,
 ];

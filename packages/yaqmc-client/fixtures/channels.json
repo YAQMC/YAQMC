@@ -13,6 +13,7 @@
   "host": [
     "lyrics://surface-closed",
     "app://open-settings",
-    "host://core-status"
+    "host://core-status",
+    "host://update"
   ]
 }

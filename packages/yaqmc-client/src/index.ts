@@ -22,6 +22,7 @@ export {
   CHANNEL_CORE_LOG,
   CHANNEL_HOST_COMMAND,
   CHANNEL_HOST_CORE_STATUS,
+  CHANNEL_HOST_UPDATE,
   CHANNEL_LYRICS_DOCUMENT,
   CHANNEL_LYRICS_PROJECTION,
   CHANNEL_LYRICS_SURFACE_CLOSED,
@@ -36,6 +37,8 @@ export {
   type CoreStatus,
   type CoreStatusPayload,
   type HostChannelName,
+  type UpdatePayload,
+  type UpdateState,
 } from './protocol/events';
 export {
   METHOD_NAMES,

@@ -8,6 +8,7 @@ export const CHANNEL_PLUGIN_CHANGED = 'plugin://changed';
 export const CHANNEL_PREFERENCES_CHANGED = 'preferences://changed';
 export const CHANNEL_HOST_COMMAND = 'host://command';
 export const CHANNEL_HOST_CORE_STATUS = 'host://core-status';
+export const CHANNEL_HOST_UPDATE = 'host://update';
 export const CHANNEL_CORE_LOG = 'core://log';
 export const CHANNEL_ACCOUNT_CHANGED = 'account://changed';
 export const CHANNEL_LYRICS_SURFACE_CLOSED = 'lyrics://surface-closed';
@@ -29,6 +30,7 @@ export const HOST_EVENT_CHANNELS = [
   CHANNEL_LYRICS_SURFACE_CLOSED,
   CHANNEL_APP_OPEN_SETTINGS,
   CHANNEL_HOST_CORE_STATUS,
+  CHANNEL_HOST_UPDATE,
 ] as const;
 
 export type CoreChannelName = (typeof CORE_EVENT_CHANNELS)[number];
@@ -79,6 +81,25 @@ export interface CoreStatusPayload {
   status: CoreStatus;
 }
 
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'error'
+  | 'downloading'
+  | 'ready-to-install';
+
+export interface UpdatePayload {
+  state: UpdateState;
+  canInstall: boolean;
+  allowPrerelease: boolean;
+  channel: string;
+  version?: string;
+  releaseUrl?: string;
+  error?: string;
+}
+
 export interface ChannelPayload {
   [CHANNEL_API_EVENT]: ApiEventPayload;
   [CHANNEL_PLAYER_SNAPSHOT]: PlayerSnapshot;
@@ -92,4 +113,5 @@ export interface ChannelPayload {
   [CHANNEL_LYRICS_SURFACE_CLOSED]: LyricsSurfaceClosedPayload;
   [CHANNEL_APP_OPEN_SETTINGS]: OpenSettingsPayload;
   [CHANNEL_HOST_CORE_STATUS]: CoreStatusPayload;
+  [CHANNEL_HOST_UPDATE]: UpdatePayload;
 }
