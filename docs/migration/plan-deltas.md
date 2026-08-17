@@ -747,3 +747,25 @@ the enforced provenance ledger.
   `main/index.ts` does not import this module.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P9 SURF-02: unlock overlay helpers (unwired)
+
+- `apps/desktop/main/windows/lyrics-unlock.ts` exports create/show/hide helpers
+  for the two unlock overlay windows (`lyrics-desktop-unlock` /
+  `lyrics-island-unlock`). Main lyric-surface click-through/lock stays in
+  `lyrics-surfaces.ts` (SURF-01) and is not rewritten here.
+- A `createWindow` factory is injected so unit tests never construct a real
+  Electron `BrowserWindow` or need a display. This module is not imported from
+  `main/index.ts` and does not register IPC (later wire-up; avoids racing P5).
+- Construction traits follow §11.2: `?unlockSurface=desktop|island`,
+  `frame: false`, `transparent: true`, `alwaysOnTop: 'screen-saver'`,
+  `skipTaskbar: true`, `resizable: false`, `focusable: false`, `show: false`,
+  plus the §11.2 security webPreferences. Preload is a path string only;
+  default `unlock-overlay.cjs` (relative filename). SURF-05 owns
+  `preload/unlock-overlay.ts` and this task does not create it.
+- FACT sizes from live Tauri `lyrics_surface/mod.rs` `build_unlock_window`:
+  inner/min/max **42×42** for both desktop and island pills. Title is
+  `Unlock YAQMC Lyrics`. Overlay positioning against the parent surface,
+  surface ACL preloads, and index.ts wire-up remain later SURF tasks.
+  No Playwright. No qm-api-rs. The 32 MiB hard cap is unchanged.
+  P0 remains `PENDING`; provenance remains **BLOCKED**.
