@@ -1102,3 +1102,24 @@ the enforced provenance ledger.
   task does not add a Linux poller. Electron stays **43.4.0**. The 32 MiB hard
   cap is unchanged. Provenance remains **BLOCKED**. No SMTC claims. No
   Playwright.
+
+## P7 PLAY-01/SOAK-01: checklists and soak script (LIVE VERIFY pending)
+
+- `docs/migration/p7-playback-checklist.md` lists §36 P7 rows (playback, seek,
+  queue, media/local, cache, search/home (L), favorites (L), lyrics, in-app
+  lyrics, preferences) with method A/M/L, Windows/Linux checkboxes, and expected
+  results. L-rows are marked `LIVE VERIFY pending`. PLAY-01 is not green.
+- Fake-mode assist `packages/yaqmc-client/src/bridges/p7-fake-playback.test.ts`
+  uses `createFakeBridge()` + `YaqmcClient` for play/pause/toggle/seek/queue
+  hydrate and play-tracks. No real QQ account. `player-store.test.ts` untouched.
+- `scripts/soak-electron.mjs` defaults to `YAQMC_SOAK_SECONDS=10` (CI/dev).
+  Maintainer 4-h run is `14400`. Fake-provider loop records RSS and writes
+  gitignored `docs/migration/soak-last.json`. The 4-h report stays uncommitted
+  (`PENDING`). See `docs/migration/soak-p7.md`.
+- PLAY-02 assist `scripts/migration/play02-seek-p95.mjs` documents seek
+  round-trip p95 vs §15.4; measured cells stay `PENDING`. No invented number.
+- PLAY-03: `backgroundThrottling: false` already on the main window
+  (`apps/desktop/main/index.ts`) and lyrics surfaces (`lyrics-surfaces.ts`).
+  Those files were not edited. Occluded-window cadence is not verified.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains
+  `PENDING`; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.

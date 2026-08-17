@@ -39,7 +39,8 @@
     "contracts:check": "node scripts/update-contract-fixtures.mjs --check",
     "tauri": "tauri",
     "dev:desktop": "node scripts/dev-desktop.mjs",
-    "stage-core": "node scripts/stage-core.mjs"
+    "stage-core": "node scripts/stage-core.mjs",
+    "sync-version": "node scripts/sync-version.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
