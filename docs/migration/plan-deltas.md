@@ -387,3 +387,33 @@ the enforced provenance ledger.
   write `.d.ts` for them. They are included in root `tsconfig.node.json` (noEmit) so ESLint
   `projectService` still type-checks them, matching `@yaqmc/client` tests. No qm-api-rs.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P4 ELEC-03: supervisor v1 and stage-core
+
+- `CoreSupervisor` spawns `yaqmc-core` with piped stdio, runs hello→attach→ready (10 s,
+  `HANDSHAKE_TIMEOUT_MS`), and emits `exit` when the child dies. Attach is sent without a
+  window handle (main window is still `about:blank`; `platform_attach` / SMTC remain later).
+  Shutdown waits 5 s for `shutdown-ack` then kills. stderr is a 64 KiB ring. Backoff,
+  safe-mode, and PID-file guards are not in this v1 (SUP-02/SUP-04).
+- `scripts/stage-core.mjs` copies `yaqmc-core[.exe]` from `CARGO_TARGET_DIR` (release then
+  debug, or `--profile`) into `apps/desktop/resources/core/` and writes `core.sha256` plus
+  `manifest.json`. Spawn-time hash verify is SUP-03. Staged binaries are gitignored.
+- Binary resolution: `YAQMC_CORE_BIN`, packaged `resources/core`, staged dir, then cargo
+  `debug`/`release`. Headless smoke (`YAQMC_DESKTOP_SMOKE=1`) does not spawn core. Non-smoke
+  boot spawns when a binary is found. v1 injects temp dirs, not BASE-04 path-parity (ELEC-06).
+- Unit tests cover handshake, protocol mismatch, 10 s timeout, exit detection, and the
+  stderr ring with mock stdio. A live test (when `CARGO_TARGET_DIR`/`YAQMC_CORE_BIN` resolves)
+  reaches `ready` and `core_ping`. No qm-api-rs. The 32 MiB hard cap is unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
+
+- `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,
+  `event.listen`, `getCurrentWindow()` window controls, and `@tauri-apps/plugin-opener` `openUrl`.
+  `selectHostBridge()` prefers `?provider=fake` → `createFakeBridge()`, then a renderer-local
+  `window.yaqmc.invoke/on` adapter in `src/` (not `packages/yaqmc-client`), then `isTauri()` →
+  TauriHostBridge, else fake. `windowRole` follows `src/main.tsx` surface/unlock query params.
+  `src/main.tsx` is unchanged; frontend `@tauri-apps` invoke sites are unchanged. P6 still owns
+  the 22-file swap. SUP-01 remains blocked on ELEC-03.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
