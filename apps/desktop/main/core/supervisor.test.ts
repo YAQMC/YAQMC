@@ -13,6 +13,10 @@ import type { ChildProcess } from 'node:child_process';
 import { CoreClient } from './client';
 import { FrameDecoder, encodeFrame } from './frames';
 import {
+  CORE_SPAWN_ENV_ALLOWLIST,
+  buildCoreSpawnEnv,
+} from './env';
+import {
   CoreSupervisor,
   STDERR_RING_BYTES,
   coreBinaryName,
@@ -63,6 +67,29 @@ function tempDirs() {
     logDir: path.join(root, 'logs'),
     configDir: path.join(root, 'config'),
   };
+}
+
+function mockChild() {
+  const stdout = new PassThrough();
+  const stdin = new PassThrough();
+  const stderr = new PassThrough();
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough;
+    stdout: PassThrough;
+    stderr: PassThrough;
+    kill: () => boolean;
+    exitCode: number | null;
+  };
+  child.stdin = stdin;
+  child.stdout = stdout;
+  child.stderr = stderr;
+  child.exitCode = null;
+  child.kill = () => {
+    child.exitCode = 1;
+    child.emit('exit', 1, null);
+    return true;
+  };
+  return { child, stdout, stdin, stderr };
 }
 
 describe('hostHandshake', () => {
@@ -144,31 +171,124 @@ describe('tryResolveCoreBinary', () => {
   });
 });
 
+describe('core spawn env allowlist', () => {
+  const paths = {
+    dataDir: '/tmp/yaqmc/data',
+    cacheDir: '/tmp/yaqmc/cache',
+    logDir: '/tmp/yaqmc/logs',
+    configDir: '/tmp/yaqmc/config',
+  };
+
+  const parentEnv: NodeJS.ProcessEnv = {
+    Path: 'C:\\Windows\\system32',
+    SystemRoot: 'C:\\Windows',
+    USERPROFILE: 'C:\\Users\\test',
+    APPDATA: 'C:\\Users\\test\\AppData\\Roaming',
+    LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+    TEMP: 'C:\\Users\\test\\AppData\\Local\\Temp',
+    HOME: '/home/test',
+    USER: 'test',
+    LANG: 'en_US.UTF-8',
+    LC_ALL: 'en_US.UTF-8',
+    LC_TIME: 'C',
+    LC_MESSAGES: 'en_US.UTF-8',
+    TZ: 'UTC',
+    DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus',
+    XDG_RUNTIME_DIR: '/run/user/1000',
+    DISPLAY: ':0',
+    WAYLAND_DISPLAY: 'wayland-0',
+    XAUTHORITY: '/home/test/.Xauthority',
+    YAQMC_LOG_LEVEL: 'debug',
+    YAQMC_CORE_BIN: 'C:\\secret\\yaqmc-core.exe',
+    YAQMC_DESKTOP_SMOKE: '1',
+    WEBKIT_DISABLE_COMPOSITING_MODE: '1',
+    WEBKITGTK_DISABLE_DMA_BUF_RENDERER: '1',
+    ELECTRON_RUN_AS_NODE: '1',
+    NODE_OPTIONS: '--inspect',
+    AWS_SECRET_ACCESS_KEY: 'wJalrXUtnFEMI/K7MDENG',
+    GITHUB_TOKEN: 'ghp_notarealtoken',
+    RANDOM_USER_VAR: 'nope',
+  };
+
+  it('commits the session, locale, and profile keys required for spawn', () => {
+    expect(CORE_SPAWN_ENV_ALLOWLIST).toEqual(
+      expect.arrayContaining([
+        'PATH',
+        'SYSTEMROOT',
+        'HOME',
+        'USERPROFILE',
+        'APPDATA',
+        'LOCALAPPDATA',
+        'LANG',
+        'LC_ALL',
+        'DBUS_SESSION_BUS_ADDRESS',
+        'XDG_RUNTIME_DIR',
+        'DISPLAY',
+        'WAYLAND_DISPLAY',
+      ]),
+    );
+  });
+
+  it('copies allowlisted parent vars and strips the rest', () => {
+    const env = buildCoreSpawnEnv({ ...paths, parentEnv, channel: 'desktop' });
+    expect(env).toMatchObject({
+      Path: 'C:\\Windows\\system32',
+      SystemRoot: 'C:\\Windows',
+      USERPROFILE: 'C:\\Users\\test',
+      APPDATA: 'C:\\Users\\test\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+      HOME: '/home/test',
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8',
+      LC_TIME: 'C',
+      LC_MESSAGES: 'en_US.UTF-8',
+      DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus',
+      XDG_RUNTIME_DIR: '/run/user/1000',
+      DISPLAY: ':0',
+      WAYLAND_DISPLAY: 'wayland-0',
+      YAQMC_LOG_LEVEL: 'debug',
+      YAQMC_DATA_DIR: paths.dataDir,
+      YAQMC_CACHE_DIR: paths.cacheDir,
+      YAQMC_LOG_DIR: paths.logDir,
+      YAQMC_CONFIG_DIR: paths.configDir,
+      YAQMC_CHANNEL: 'desktop',
+    });
+    expect(env).not.toHaveProperty('WEBKIT_DISABLE_COMPOSITING_MODE');
+    expect(env).not.toHaveProperty('WEBKITGTK_DISABLE_DMA_BUF_RENDERER');
+    expect(env).not.toHaveProperty('ELECTRON_RUN_AS_NODE');
+    expect(env).not.toHaveProperty('NODE_OPTIONS');
+    expect(env).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+    expect(env).not.toHaveProperty('GITHUB_TOKEN');
+    expect(env).not.toHaveProperty('RANDOM_USER_VAR');
+    expect(env).not.toHaveProperty('YAQMC_CORE_BIN');
+    expect(env).not.toHaveProperty('YAQMC_DESKTOP_SMOKE');
+  });
+
+  it('lets extraEnv overlay allowlisted and YAQMC_* keys only', () => {
+    const env = buildCoreSpawnEnv({
+      ...paths,
+      parentEnv,
+      extraEnv: {
+        YAQMC_LOG_LEVEL: 'trace',
+        YAQMC_CHANNEL: 'ignored-until-forced',
+        WEBKIT_DISABLE_COMPOSITING_MODE: '1',
+        GITHUB_TOKEN: 'should-not-pass',
+      },
+    });
+    expect(env.YAQMC_LOG_LEVEL).toBe('trace');
+    expect(env.YAQMC_CHANNEL).toBe('desktop');
+    expect(env).not.toHaveProperty('WEBKIT_DISABLE_COMPOSITING_MODE');
+    expect(env).not.toHaveProperty('GITHUB_TOKEN');
+  });
+});
+
 describe('CoreSupervisor', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
   it('spawns, handshakes, detects exit, and keeps a 64 KiB stderr ring', async () => {
-    const stdout = new PassThrough();
-    const stdin = new PassThrough();
-    const stderr = new PassThrough();
-    const child = new EventEmitter() as EventEmitter & {
-      stdin: PassThrough;
-      stdout: PassThrough;
-      stderr: PassThrough;
-      kill: () => boolean;
-      exitCode: number | null;
-    };
-    child.stdin = stdin;
-    child.stdout = stdout;
-    child.stderr = stderr;
-    child.exitCode = null;
-    child.kill = () => {
-      child.exitCode = 1;
-      child.emit('exit', 1, null);
-      return true;
-    };
+    const { child, stdout, stdin, stderr } = mockChild();
 
     const spawnCore: SpawnCore = () => child as unknown as ChildProcess;
     const supervisor = new CoreSupervisor({
@@ -196,6 +316,51 @@ describe('CoreSupervisor', () => {
     );
     child.kill();
     await expect(exited).resolves.toEqual({ code: 1, signal: null });
+    await supervisor.stop();
+  });
+
+  it('spawns core with the allowlisted env, not the parent process.env dump', async () => {
+    const { child, stdout, stdin } = mockChild();
+    let spawnedEnv: NodeJS.ProcessEnv | undefined;
+    const spawnCore: SpawnCore = (_command, _args, options) => {
+      spawnedEnv = options.env;
+      return child as unknown as ChildProcess;
+    };
+    const dirs = tempDirs();
+    const supervisor = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      ...dirs,
+      parentEnv: {
+        USERPROFILE: 'C:\\Users\\test',
+        APPDATA: 'C:\\Users\\test\\AppData\\Roaming',
+        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+        DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus',
+        WEBKIT_DISABLE_COMPOSITING_MODE: '1',
+        AWS_SECRET_ACCESS_KEY: 'secret',
+      },
+      spawn: spawnCore,
+    });
+
+    const started = supervisor.start();
+    const nextFrame = collectFrames(stdin);
+    pushMessage(stdout, hello);
+    await expect(nextFrame()).resolves.toMatchObject({ kind: 'attach' });
+    pushMessage(stdout, { kind: 'ready' });
+    await expect(started).resolves.toEqual(hello.core);
+
+    expect(spawnedEnv).toMatchObject({
+      USERPROFILE: 'C:\\Users\\test',
+      APPDATA: 'C:\\Users\\test\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+      DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus',
+      YAQMC_DATA_DIR: dirs.dataDir,
+      YAQMC_CHANNEL: 'desktop',
+    });
+    expect(spawnedEnv).not.toHaveProperty('WEBKIT_DISABLE_COMPOSITING_MODE');
+    expect(spawnedEnv).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+    child.kill();
     await supervisor.stop();
   });
 });
