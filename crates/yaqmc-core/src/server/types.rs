@@ -212,6 +212,13 @@ pub struct PathParams {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DiagnosticsExportToParams {
+    pub path: String,
+    pub request: DiagnosticsBundleRequest,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginIdParams {
     pub plugin_id: String,
 }
@@ -220,6 +227,19 @@ pub struct PluginIdParams {
 #[serde(rename_all = "camelCase")]
 pub struct TokenParams {
     pub token: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingKeyParams {
+    pub key: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingWriteParams {
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(Deserialize)]

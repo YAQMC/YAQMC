@@ -394,11 +394,47 @@ pub fn app_preferences_set(
     app_preferences::set_preferences(&StoragePreferences { storage }, &FnSink(notify), value)
 }
 
+const LYRICS_SURFACE_GEOMETRY_PREFIX: &str = "lyrics-surface-geometry:";
+
+fn lyrics_surface_geometry_key(key: &str) -> Result<&str, String> {
+    match key {
+        "lyrics-surface-geometry:desktop" | "lyrics-surface-geometry:island" => Ok(key),
+        _ => Err(format!(
+            "unsupported app setting key (expected {LYRICS_SURFACE_GEOMETRY_PREFIX}desktop|island)"
+        )),
+    }
+}
+
+pub fn app_settings_get(storage: &StorageService, key: &str) -> Result<Option<String>, String> {
+    storage
+        .get_setting(lyrics_surface_geometry_key(key)?)
+        .map_err(stringify)
+}
+
+pub fn app_settings_set(storage: &StorageService, key: &str, value: &str) -> Result<(), String> {
+    storage
+        .set_setting(lyrics_surface_geometry_key(key)?, value)
+        .map_err(stringify)
+}
+
+pub fn app_settings_remove(storage: &StorageService, key: &str) -> Result<(), String> {
+    storage
+        .remove_setting(lyrics_surface_geometry_key(key)?)
+        .map_err(stringify)
+}
+
 pub async fn appearance_background_load(
     data_root: &Path,
     reference: String,
 ) -> Result<Option<ManagedBackgroundImage>, String> {
     app_preferences::load_background(data_root, &reference).await
+}
+
+pub async fn preferences_set_background_from(
+    data_root: &Path,
+    path: String,
+) -> Result<ManagedBackgroundImage, String> {
+    app_preferences::persist_background(Path::new(&path), data_root).await
 }
 
 pub async fn local_api_set_port(
@@ -516,6 +552,37 @@ pub async fn diagnostics_export_bundle(
     .map_err(stringify)
 }
 
+pub async fn diagnostics_export_bundle_to(
+    core: &CoreHandle,
+    host: &dyn HostDispatchHooks,
+    path: String,
+    request: DiagnosticsBundleRequest,
+) -> Result<BundleExportResult, String> {
+    let snapshot = assemble_diagnostics_snapshot(
+        &core.player(),
+        &core.qq_music(),
+        &core.logging(),
+        Some(&core.plugins()),
+        host.platform_diagnostics(),
+        host.app_section(),
+        request.base,
+    )
+    .await;
+    let options = BundleOptions {
+        include_logs: request.include_logs.unwrap_or(true),
+        override_unresolved: request.override_unresolved.unwrap_or(false),
+        description: request.description.as_deref(),
+        issue_category: request.issue_category.as_deref(),
+    };
+    diagnostics::export_bundle_to_path(
+        Path::new(&path),
+        &snapshot,
+        core.logging().log_dir(),
+        options,
+    )
+    .map_err(stringify)
+}
+
 pub async fn issue_reporter_preview(
     core: &CoreHandle,
     host: &dyn HostDispatchHooks,
@@ -583,6 +650,14 @@ pub fn plugin_install(
     };
     notify();
     Ok(record)
+}
+
+pub fn plugin_install_from(
+    host: &ExtensionHost,
+    request: PluginInstallRequest,
+    notify: impl FnOnce(),
+) -> Result<PluginRecord, String> {
+    plugin_install(host, request, notify)
 }
 
 pub fn plugin_set_enabled(

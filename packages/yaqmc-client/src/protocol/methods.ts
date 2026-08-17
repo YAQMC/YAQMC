@@ -192,6 +192,12 @@ export const PROTOCOL_ONLY_METHODS = [
   'auth_oauth_prepare',
   'auth_oauth_complete',
   'auth_oauth_cancel',
+  'app_settings_get',
+  'app_settings_set',
+  'app_settings_remove',
+  'diagnostics_export_bundle_to',
+  'preferences_set_background_from',
+  'plugin_install_from',
 ] as const;
 
 export const METHOD_NAMES = [...TAURI_METHOD_NAMES, ...PROTOCOL_ONLY_METHODS] as const;
@@ -334,6 +340,12 @@ export type MethodParams = Exhaustive<{
   auth_oauth_prepare: { providerKind: AccountLoginMethod };
   auth_oauth_complete: { attemptId: string; callbackUrl: string };
   auth_oauth_cancel: { attemptId: string };
+  app_settings_get: { key: string };
+  app_settings_set: { key: string; value: string };
+  app_settings_remove: { key: string };
+  diagnostics_export_bundle_to: { path: string; request: DiagnosticsBundleRequest };
+  preferences_set_background_from: { path: string };
+  plugin_install_from: NamedRequest<PluginInstallRequest>;
 }>;
 
 export type MethodResult = Exhaustive<{
@@ -460,6 +472,12 @@ export type MethodResult = Exhaustive<{
   auth_oauth_prepare: OAuthPrepareResult;
   auth_oauth_complete: AccountSnapshot;
   auth_oauth_cancel: AccountSnapshot;
+  app_settings_get: string | null;
+  app_settings_set: void;
+  app_settings_remove: void;
+  diagnostics_export_bundle_to: BundleExportResult;
+  preferences_set_background_from: ManagedBackgroundImage;
+  plugin_install_from: PluginRecord;
 }>;
 
 export type ParamsOf<M extends MethodName> = MethodParams[M];

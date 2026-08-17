@@ -108,14 +108,70 @@ fn account_and_plugin_methods_are_main_window_only() {
 
     let surface = method("player_toggle").expect("toggle");
     assert!(!surface.main_window_only);
-    assert!(
-        surface
-            .allowed_origins
-            .contains(&WindowOrigin::LyricsDesktop)
-    );
+    assert!(surface
+        .allowed_origins
+        .contains(&WindowOrigin::LyricsDesktop));
 
     let host_owned = method("system_shortcuts_set_enabled").expect("shortcuts");
     assert_eq!(host_owned.owner, MethodOwner::Host);
+}
+
+#[test]
+fn dialog_split_io_methods_are_core_owned_main_only_with_default_caps() {
+    for name in [
+        "diagnostics_export_bundle_to",
+        "preferences_set_background_from",
+        "plugin_install_from",
+    ] {
+        assert!(PROTOCOL_ONLY_METHODS.contains(&name), "{name}");
+        let spec = method(name).expect(name);
+        assert_eq!(spec.owner, MethodOwner::Core);
+        assert!(spec.main_window_only);
+        assert_eq!(
+            spec.allowed_origins,
+            [WindowOrigin::Host, WindowOrigin::Main].as_slice()
+        );
+        assert_eq!(spec.request_cap, DEFAULT_METHOD_PAYLOAD_BYTES);
+        assert_eq!(spec.response_cap, DEFAULT_METHOD_PAYLOAD_BYTES);
+        assert!(spec.request_cap <= FRAME_HARD_CAP_BYTES);
+        assert!(spec.response_cap <= FRAME_HARD_CAP_BYTES);
+    }
+
+    assert_eq!(
+        method("diagnostics_export_bundle_to")
+            .expect("export to")
+            .timeout_class,
+        TimeoutClass::Long
+    );
+    assert_eq!(
+        method("plugin_install_from")
+            .expect("install from")
+            .timeout_class,
+        TimeoutClass::Long
+    );
+    assert_eq!(
+        method("preferences_set_background_from")
+            .expect("background from")
+            .timeout_class,
+        TimeoutClass::Standard
+    );
+
+    assert_eq!(
+        method("diagnostics_export_bundle")
+            .expect("old export")
+            .owner,
+        MethodOwner::Core
+    );
+    assert_eq!(
+        method("appearance_pick_background")
+            .expect("pick background")
+            .owner,
+        MethodOwner::Host
+    );
+    assert_eq!(
+        method("plugin_pick_package").expect("pick package").owner,
+        MethodOwner::Host
+    );
 }
 
 #[test]

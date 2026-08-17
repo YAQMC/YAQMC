@@ -441,6 +441,26 @@ fn requests() -> Value {
             method: "auth_oauth_cancel".to_owned(),
             params: Some(json!({ "attemptId": "attempt-0" })),
         }),
+        "diagnostics_export_bundle_to": to_value(&CoreMessage::Request {
+            id: 15,
+            method: "diagnostics_export_bundle_to".to_owned(),
+            params: Some(json!({
+                "path": "/tmp/YAQMC-diagnostics.zip",
+                "request": { "includeLogs": true }
+            })),
+        }),
+        "preferences_set_background_from": to_value(&CoreMessage::Request {
+            id: 16,
+            method: "preferences_set_background_from".to_owned(),
+            params: Some(json!({ "path": "/tmp/background.png" })),
+        }),
+        "plugin_install_from": to_value(&CoreMessage::Request {
+            id: 17,
+            method: "plugin_install_from".to_owned(),
+            params: Some(json!({
+                "request": { "path": "/tmp/plugin.yaqmc-plugin", "enable": false, "grant": [] }
+            })),
+        }),
     })
 }
 

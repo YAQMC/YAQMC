@@ -358,7 +358,33 @@ pub fn export_bundle(
     fs::create_dir_all(dest_dir).map_err(|error| BundleError::Io(error.to_string()))?;
     let stamp = format_stamp(snapshot.generated_at_unix_ms);
     let path = dest_dir.join(format!("YAQMC-diagnostics-{stamp}.zip"));
+    write_bundle_zip(path, snapshot, log_dir, options)
+}
 
+/// Write a diagnostic ZIP to an explicit file path (dialog-split `_to` method).
+pub fn export_bundle_to_path(
+    dest: &Path,
+    snapshot: &DiagnosticsSnapshot,
+    log_dir: &Path,
+    options: BundleOptions<'_>,
+) -> Result<BundleExportResult, BundleError> {
+    if dest.as_os_str().is_empty() {
+        return Err(BundleError::Io("destination path is empty".to_owned()));
+    }
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|error| BundleError::Io(error.to_string()))?;
+        }
+    }
+    write_bundle_zip(dest.to_path_buf(), snapshot, log_dir, options)
+}
+
+fn write_bundle_zip(
+    path: PathBuf,
+    snapshot: &DiagnosticsSnapshot,
+    log_dir: &Path,
+    options: BundleOptions<'_>,
+) -> Result<BundleExportResult, BundleError> {
     let log_files = if options.include_logs {
         collect_log_files(log_dir)
     } else {
@@ -1048,6 +1074,29 @@ mod tests {
             .read_to_string(&mut report)
             .unwrap();
         assert!(report.contains("Redaction scanner: v1"));
+    }
+
+    #[test]
+    fn bundle_export_to_path_writes_the_explicit_zip() {
+        let temp = tempdir().unwrap();
+        let log_dir = temp.path().join("logs");
+        fs::create_dir_all(&log_dir).unwrap();
+        let dest = temp.path().join("chosen").join("report.zip");
+        let result = export_bundle_to_path(
+            &dest,
+            &stub_diagnostics("session-to"),
+            &log_dir,
+            BundleOptions {
+                include_logs: false,
+                override_unresolved: false,
+                description: None,
+                issue_category: None,
+            },
+        )
+        .expect("bundle to path");
+        assert_eq!(result.path, dest);
+        assert!(dest.exists());
+        assert!(result.bytes > 0);
     }
 
     #[test]

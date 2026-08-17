@@ -34,6 +34,17 @@
     "kind": "request",
     "method": "core_shutdown_prepare"
   },
+  "diagnostics_export_bundle_to": {
+    "id": 15,
+    "kind": "request",
+    "method": "diagnostics_export_bundle_to",
+    "params": {
+      "path": "/tmp/YAQMC-diagnostics.zip",
+      "request": {
+        "includeLogs": true
+      }
+    }
+  },
   "platform_attach": {
     "id": 10,
     "kind": "request",
@@ -128,5 +139,25 @@
     "id": 1,
     "kind": "request",
     "method": "player_snapshot"
+  },
+  "plugin_install_from": {
+    "id": 17,
+    "kind": "request",
+    "method": "plugin_install_from",
+    "params": {
+      "request": {
+        "enable": false,
+        "grant": [],
+        "path": "/tmp/plugin.yaqmc-plugin"
+      }
+    }
+  },
+  "preferences_set_background_from": {
+    "id": 16,
+    "kind": "request",
+    "method": "preferences_set_background_from",
+    "params": {
+      "path": "/tmp/background.png"
+    }
   }
 }

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  DIALOG_SPLITS,
   UNREFERENCED_METHODS,
   collectCommandInventory,
   commandInventoryMarkdown,
@@ -16,6 +17,12 @@ const PROTOCOL_ONLY_METHODS = [
   'auth_oauth_prepare',
   'auth_oauth_complete',
   'auth_oauth_cancel',
+  'app_settings_get',
+  'app_settings_set',
+  'app_settings_remove',
+  'diagnostics_export_bundle_to',
+  'preferences_set_background_from',
+  'plugin_install_from',
 ];
 
 test('PROTO-02 inventory covers 117 registered methods and the frontend checksum', () => {
@@ -131,4 +138,10 @@ test('CLIENT-02 TypeScript method names match the inventory plus protocol-only m
     inventory.rows.map((row) => row.name),
   );
   assert.deepEqual(protocolOnly, PROTOCOL_ONLY_METHODS);
+});
+
+test('dialog-split Core IO methods are registered as protocol-only Core methods', () => {
+  for (const [, next] of DIALOG_SPLITS) {
+    assert.ok(PROTOCOL_ONLY_METHODS.includes(next), next);
+  }
 });
