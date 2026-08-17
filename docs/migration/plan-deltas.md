@@ -1165,6 +1165,27 @@ the enforced provenance ledger.
 - No new PLAY claims. This checkpoint does not run a 4-hour soak, invent a p95
   number, or clear provenance.
 
+## P6 FE-06: Playwright fake-mode suite
+
+- `@playwright/test` **1.62.1** is a root `devDependency` (pinned stable; not
+  Electron 44). Electron stays **43.4.0**. Scripts: `npm run test:e2e` /
+  `test:playwright`. Maintainer browsers: `npx playwright install chromium`
+  (do not use `--with-deps` on `frontend-quality`).
+- `YAQMC_DESKTOP_SMOKE=1` is **not** the Playwright target: it loads the
+  ELEC-04 harness, keeps the window hidden (`show: !smoke`), and quits on
+  title `yaqmc-smoke-ok`. The suite drives Vite
+  `http://127.0.0.1:1420?provider=fake` (renderer fake bridge). Full Electron
+  `_electron` window E2E (tray, core kill, geometry persist) is a follow-up —
+  not claimed green here. PLAY-01 live is not claimed.
+- ~16 role/text scenarios: fake home boot, sidebar, search trigger, search
+  page + fake catalog query, play/pause, queue open/add/remove, settings +
+  back, lyrics panel, external GitHub control does not navigate the app shell,
+  `?surface=desktop` lyrics window (not app shell), explore, Ctrl+K. No LIVE
+  VERIFY account flows. No production `data-testid` edits.
+- CI: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` on the workflow so `npm ci` stays
+  fast. No Playwright job on `frontend-quality`. The 32 MiB hard cap is
+  unchanged. Provenance remains **BLOCKED**. No qm-api-rs.
+
 ## P9 PLAT-07: delete WebKitGTK env mutation from platform.rs
 
 - `src-tauri/src/platform.rs` no longer mutates process env
@@ -1180,3 +1201,18 @@ the enforced provenance ledger.
   mutations.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No SMTC claims. No qm-api-rs.
+
+## P11 DIAG-02: issue reporter host electron line
+
+- Issue reporter Environment block gains `- host: electron/<version>` when the
+  renderer label identifies Electron (prefix `electron/` or the word
+  `electron`). The stdio `NoopHost` stub passes `electron/43.4.0` through
+  `HostDispatchHooks::renderer_label`. Tauri adapters keep WebView labels
+  (`WebView2 / Tauri`, WebKitGTK, WKWebView) and emit `- host: tauri`; the
+  existing Renderer line is unchanged. Unrecognized labels stay renderer-only.
+- `compose_body` remains pure. The GitHub issue URL body contains `electron/`
+  on the Electron path (unit test in `issue_reporter.rs`). Frontend
+  `issue-reporter.ts` stays a pass-through. DIAG-01 ZIP / `host.json` and
+  `events.rs` / `HostCommand` are untouched.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No Playwright. No qm-api-rs.
