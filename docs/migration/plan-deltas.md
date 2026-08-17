@@ -1415,3 +1415,41 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
 - **LIVE VERIFY pending:** in-app plugin journal check. Electron stays **43.4.0**.
   The 32 MiB hard cap is unchanged. Provenance remains **BLOCKED**. No Playwright.
   No qm-api-rs.
+
+## P10 PLUG-01: example plugin lifecycle battery (automated)
+
+- Automated battery installs unpacked `examples/plugins/style-sakura` into a
+  temp `ExtensionHost` root (`crates/yaqmc-core/tests/plug01.rs`): install /
+  enable / disable / uninstall. Packed `examples/plugins/packages/` is not
+  rebuilt or committed (prefer the unpacked fixture).
+- Permissions: deny vs grant on `examples/plugins/script-network`
+  (`network:https://example.com` is sensitive). Storage quota (64 KiB) and
+  isolated store on `script-actions`. Scene-pack `manifest.json` parses
+  (PLUG-04 owns a full lyrics-scene E2E). The hostile probe
+  (`tests/fixtures/plugins/hostile`) is never enabled as a user plugin.
+- Renderer `plugin-runtime.plug01.test.ts` drives Electron
+  `plugin_install_from` / unpacked install / enable-grant / uninstall via a
+  mocked `YaqmcClient`. No live Electron GUI. Remaining §20.3 rows stay
+  **LIVE VERIFY pending**: in-app permission prompt UI, network proxy
+  allow/deny + safe-mode crash-loop (PLUG-02), scene API v2 demo (PLUG-04).
+  The Electron GUI example-plugin battery is **not** green.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No Playwright. No qm-api-rs.
+
+## P10 PLUG-04: scene API v2 demo automated coverage
+
+- Automated coverage for unpacked `examples/plugins/scene-pack` (Aurora /
+  Vinyl glow): `PluginManifest` parse, Scene API v2 JSON fields the lyrics
+  runtime expects (`schemaVersion` 2, layout, typography, artwork,
+  background, and the background/artwork/metadata/lyrics/transport widget
+  graph), and Core `ExtensionHost` install_unpacked / list /
+  `active_resources` / disable / uninstall against a temp plugin root
+  (`crates/yaqmc-core/tests/plug04.rs`). Renderer
+  `plugin-runtime.plug04.test.ts` normalizes those scene documents into the
+  lyrics preset catalog. Hostile fixtures are not enabled.
+- This is not a full lyrics GUI E2E. The Electron scene picker / Settings →
+  Plugins install path remains **manual / LIVE VERIFY pending**.
+  `examples/plugins/script-actions` is a plugin-API v2 script demo, not
+  claimed green here. No Playwright.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No qm-api-rs.
