@@ -11,6 +11,7 @@ This directory is the execution record for the Electron migration. Facts in thes
 - [PLAY-01 playback checklist](p7-playback-checklist.md)
 - [SOAK-01 / PLAY-03 soak notes](soak-p7.md)
 - [PLAT-06 local API SSE smoke](plat06-local-api.md)
+- [PACK-02 Windows NSIS / portable script](pack02-windows.md)
 - [ACCT-02 QR login / session checklist](acct02-qr-session.md)
 - [Copyright, contributor, and source provenance audit](provenance-audit.md)
 
