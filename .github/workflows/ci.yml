@@ -69,6 +69,24 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  electron-build:
+    name: Electron build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w @yaqmc/client
+      - run: npm run typecheck -w @yaqmc/desktop
+      - run: npm run build -w @yaqmc/desktop
+
   rust-quality:
     runs-on: ubuntu-latest
     steps:
@@ -263,7 +281,7 @@ jobs:
   summarize:
     name: CI summary
     if: always()
-    needs: [frontend-quality, frontend-build, rust-quality, secret-scan, package-matrix, package]
+    needs: [frontend-quality, frontend-build, rust-quality, secret-scan, package-matrix, package, electron-build]
     runs-on: ubuntu-latest
     steps:
       - name: Write workflow summary
@@ -277,6 +295,7 @@ jobs:
             echo "- frontend-quality: \`${{ needs.frontend-quality.result }}\`"
             echo "- frontend-build: \`${{ needs.frontend-build.result }}\`"
             echo "- rust-quality: \`${{ needs.rust-quality.result }}\`"
+            echo "- electron-build: \`${{ needs.electron-build.result }}\`"
             echo "- secret-scan: \`${{ needs.secret-scan.result }}\`"
             echo "- package-matrix: \`${{ needs.package-matrix.result }}\`"
             echo "- package: \`${{ needs.package.result }}\`"
@@ -286,6 +305,7 @@ jobs:
           needs.frontend-quality.result != 'success' ||
           needs.frontend-build.result != 'success' ||
           needs.rust-quality.result != 'success' ||
+          needs.electron-build.result != 'success' ||
           needs.secret-scan.result != 'success' ||
           needs.package-matrix.result != 'success' ||
           needs.package.result == 'failure' ||

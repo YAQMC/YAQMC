@@ -505,6 +505,15 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
 
+## P4 ELEC-08: CI Electron build-only job
+
+- `.github/workflows/ci.yml` adds `electron-build` on `ubuntu-22.04` and `windows-2025`
+  (`npm ci`, client+desktop typecheck, `npm run build -w @yaqmc/desktop`). It does not
+  run cargo, electron-builder, or change `rust-quality`. The summary job requires it.
+  Electron stays **43.4.0**.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,

@@ -16,7 +16,7 @@ CI artifacts are **not** GitHub Releases. Retention is **14 days**. Do not treat
 
 ## Events and matrix
 
-- **Pull request:** Prettier, ESLint, TypeScript, Vitest, docs, secret scan, Rust fmt/clippy/tests, one frontend production build, then Windows x86_64 and Linux x86_64 packages.
+- **Pull request:** Prettier, ESLint, TypeScript, Vitest, docs, secret scan, Rust fmt/clippy/tests, one frontend production build, an Electron host build-only job on Ubuntu and Windows, then Windows x86_64 and Linux x86_64 packages.
 - **Push to `main`:** the same quality gates plus the full Windows/Linux matrix: `x86_64`, `i686`, `aarch64` on Windows; `x86_64` and `aarch64` on Linux.
 - **Manual `workflow_dispatch`:** choose `windows`, `linux`, or `all`, and `ci` or `production` optimization.
 

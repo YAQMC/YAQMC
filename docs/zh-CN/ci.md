@@ -16,7 +16,7 @@ CI artifact **不是** GitHub Release，保留 **14 天**。打包成功不等�
 
 ## 事件与矩阵
 
-- **Pull request：** Prettier、ESLint、TypeScript、Vitest、文档、密钥扫描、Rust fmt/clippy/测试、一次前端生产构建，以及 Windows x86_64 与 Linux x86_64 安装包。
+- **Pull request：** Prettier、ESLint、TypeScript、Vitest、文档、密钥扫描、Rust fmt/clippy/测试、一次前端生产构建、Ubuntu 与 Windows 上的 Electron 宿主仅构建任务，以及 Windows x86_64 与 Linux x86_64 安装包。
 - **推送 `main`：** 同样的质量门禁，外加完整 Windows/Linux 矩阵：Windows `x86_64` / `i686` / `aarch64`，Linux `x86_64` / `aarch64`。
 - **手动 `workflow_dispatch`：** 可选 `windows`、`linux` 或 `all`，以及 `ci` 或 `production` 优化配置。
 
