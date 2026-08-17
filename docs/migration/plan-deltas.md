@@ -1355,12 +1355,11 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
 - linuxGraphicsDiagnostics({ platform, wayland, nvidia, mode, fromDeprecatedEnv })
   returns a JSON-serializable { platform, mode, canonicalMode, switches,
   deprecatedEnv } for host.json / diagnostics. deprecatedEnv is true only
-  when the raw mode came from YAQMC_LINUX_RENDERER and is not uto.
+  when the raw mode came from YAQMC_LINUX_RENDERER and is not auto.
   Unknown names still canonicalize to the trimmed lowercase string; switches
   stay empty (same as auto). The helper does not read process.env.
-- diagnostics-host-payload.ts is mid-rewrite (DIAG-01); this checkpoint does
-  not create that module or wire linuxGraphics into host.json. index.ts is
-  not edited (SURF-04/ACCT-01). No WebKitGTK set_var. No --no-sandbox.
+- diagnostics-host-payload.ts exists (DIAG-01) but is not wired to this blob yet.
+  index.ts is not edited for graphics. No WebKitGTK set_var. No --no-sandbox.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No SMTC claims.
 ## P11 PACK-02: Windows NSIS/portable maintainer script
@@ -1524,3 +1523,20 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   not-wired error. There is no Install button and no silent auto-install.
 - electron-updater is not added (UPD-01). Electron stays **43.4.0**. The 32 MiB
   hard cap is unchanged. Provenance remains **BLOCKED**.
+
+## P11 DIAG-03 follow-up: ignore cancelled pickSave
+
+- Cancelling Electron pickSave still throws DiagnosticsExportAbortedError
+  from exportDiagnosticsBundle and does not write a ZIP. Settings
+  handleExportBundle and Issue Reporter handleGenerateBundle return without
+  an error toast or logging abort as a bundle failure.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**.
+
+## P9 PLAT-03 follow-up: apply tray labels from preferences locale
+
+- Main applies tray labels from app_preferences_get and host://preferences
+  via trayLabelsForLocale. zh-CN strings live in tray-i18n.ts (not the full
+  renderer locale trees). Smoke still skips the tray.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**.

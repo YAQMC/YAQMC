@@ -23,6 +23,11 @@ export type LinuxGraphicsOptions = {
   mode: string;
 };
 
+export type LinuxGraphicsDiagnosticsOptions = LinuxGraphicsOptions & {
+  /** True when `mode` was read from `YAQMC_LINUX_RENDERER` rather than settings. */
+  fromDeprecatedEnv?: boolean;
+};
+
 /**
  * `--ozone-platform=wayland` — user opt-in `native-wayland` only.
  * ADR-008 keeps the default backend on X11/XWayland so always-on-top and
@@ -85,4 +90,30 @@ export function linuxGraphicsSwitches(
       // auto, baseline, x11, and WebKitGTK-only names (dmabuf, compositing-off, …)
       return [];
   }
+}
+
+/**
+ * JSON-serializable graphics facts for host.json / diagnostics. Does not
+ * read the process environment; the caller passes mode and whether it came
+ * from the deprecated env.
+ */
+export type LinuxGraphicsDiagnostics = {
+  platform: string;
+  mode: string;
+  canonicalMode: string;
+  switches: LinuxGraphicsSwitch[];
+  deprecatedEnv: boolean;
+};
+
+export function linuxGraphicsDiagnostics(
+  options: LinuxGraphicsDiagnosticsOptions,
+): LinuxGraphicsDiagnostics {
+  const canonical = canonicalMode(options.mode);
+  return {
+    platform: String(options.platform),
+    mode: options.mode,
+    canonicalMode: canonical,
+    switches: [...linuxGraphicsSwitches(options)],
+    deprecatedEnv: Boolean(options.fromDeprecatedEnv) && canonical !== 'auto',
+  };
 }
