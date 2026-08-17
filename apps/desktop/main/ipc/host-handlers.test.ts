@@ -2,8 +2,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FRAME_HARD_CAP_BYTES } from '@yaqmc/client';
 import { describe, expect, it, vi } from 'vitest';
-import { lyricsSurfaceCreateOptions, type LyricsSurfaces } from '../windows/lyrics-surfaces';
-import type { LyricsUnlockOverlays } from '../windows/lyrics-unlock';
+import {
+  lyricsSurfaceCreateOptions,
+  type LyricsSurfaceKind,
+  type LyricsSurfaceWindow,
+  type LyricsSurfaces,
+} from '../windows/lyrics-surfaces';
+import type {
+  LyricsUnlockKind,
+  LyricsUnlockOverlays,
+  LyricsUnlockWindow,
+} from '../windows/lyrics-unlock';
 import { hostDenied, loadMethodAclFromFile } from './channels';
 import {
   closeToTrayFromPreferences,
@@ -20,6 +29,7 @@ import {
   rememberCloseToTray,
   SHELL_OPEN_EXTERNAL,
   urlFromOpenExternalParams,
+  type OAuthHostDeps,
 } from './host-handlers';
 import { IpcRouter } from './router';
 
@@ -30,54 +40,88 @@ const fixturesRoot = path.resolve(
 
 const methods = loadMethodAclFromFile(path.join(fixturesRoot, 'methods.json'));
 
-function mockLyrics(): LyricsSurfaces & {
-  show: ReturnType<typeof vi.fn>;
-  hide: ReturnType<typeof vi.fn>;
-  lock: ReturnType<typeof vi.fn>;
-  get: ReturnType<typeof vi.fn>;
-  isVisible: ReturnType<typeof vi.fn>;
-  restoreGeometry: ReturnType<typeof vi.fn>;
-  resetPosition: ReturnType<typeof vi.fn>;
-  flushGeometry: ReturnType<typeof vi.fn>;
-} {
-  const windows = new Map<string, object>();
+function stubLyricsWindow(): LyricsSurfaceWindow {
   return {
-    create: vi.fn((kind) => {
-      const window = { kind };
-      windows.set(kind, window);
-      return window as never;
-    }),
-    show: vi.fn((kind) => {
-      windows.set(kind, { kind });
-    }),
+    loadURL: vi.fn(),
+    show: vi.fn(),
     hide: vi.fn(),
-    lock: vi.fn(),
-    get: vi.fn((kind) => windows.get(kind) as never),
-    isVisible: vi.fn((kind) => windows.has(kind)),
-    restoreGeometry: vi.fn(async () => undefined),
-    resetPosition: vi.fn(async () => undefined),
-    flushGeometry: vi.fn(async () => undefined),
+    setIgnoreMouseEvents: vi.fn(),
+    setFocusable: vi.fn(),
+    setAlwaysOnTop: vi.fn(),
+    setResizable: vi.fn(),
+  };
+}
+
+function stubUnlockWindow(): LyricsUnlockWindow {
+  return {
+    loadURL: vi.fn(),
+    show: vi.fn(),
+    hide: vi.fn(),
+    setAlwaysOnTop: vi.fn(),
+  };
+}
+
+function mockLyrics(): LyricsSurfaces & {
+  create: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind) => LyricsSurfaceWindow>>;
+  show: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind) => void>>;
+  hide: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind) => void>>;
+  lock: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind, locked: boolean) => void>>;
+  get: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind) => LyricsSurfaceWindow | undefined>>;
+  isVisible: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind) => boolean>>;
+  restoreGeometry: ReturnType<typeof vi.fn<(kind?: LyricsSurfaceKind) => Promise<void>>>;
+  resetPosition: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind) => Promise<void>>>;
+  flushGeometry: ReturnType<typeof vi.fn<(kind: LyricsSurfaceKind) => Promise<void>>>;
+} {
+  const windows = new Map<LyricsSurfaceKind, LyricsSurfaceWindow>();
+  return {
+    create: vi.fn((kind: LyricsSurfaceKind) => {
+      const existing = windows.get(kind);
+      if (existing) {
+        return existing;
+      }
+      const window = stubLyricsWindow();
+      windows.set(kind, window);
+      return window;
+    }),
+    show: vi.fn((kind: LyricsSurfaceKind) => {
+      if (!windows.has(kind)) {
+        windows.set(kind, stubLyricsWindow());
+      }
+    }),
+    hide: vi.fn<(kind: LyricsSurfaceKind) => void>(),
+    lock: vi.fn<(kind: LyricsSurfaceKind, locked: boolean) => void>(),
+    get: vi.fn((kind: LyricsSurfaceKind) => windows.get(kind)),
+    isVisible: vi.fn((kind: LyricsSurfaceKind) => windows.has(kind)),
+    restoreGeometry: vi.fn<(kind?: LyricsSurfaceKind) => Promise<void>>(async () => undefined),
+    resetPosition: vi.fn<(kind: LyricsSurfaceKind) => Promise<void>>(async () => undefined),
+    flushGeometry: vi.fn<(kind: LyricsSurfaceKind) => Promise<void>>(async () => undefined),
   };
 }
 
 function mockUnlock(): LyricsUnlockOverlays & {
-  show: ReturnType<typeof vi.fn>;
-  hide: ReturnType<typeof vi.fn>;
-  get: ReturnType<typeof vi.fn>;
-  create: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => LyricsUnlockWindow>>;
+  show: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => void>>;
+  hide: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => void>>;
+  get: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => LyricsUnlockWindow | undefined>>;
 } {
-  const windows = new Map<string, object>();
+  const windows = new Map<LyricsUnlockKind, LyricsUnlockWindow>();
   return {
-    create: vi.fn((kind) => {
-      const window = { kind };
+    create: vi.fn((kind: LyricsUnlockKind) => {
+      const existing = windows.get(kind);
+      if (existing) {
+        return existing;
+      }
+      const window = stubUnlockWindow();
       windows.set(kind, window);
-      return window as never;
+      return window;
     }),
-    show: vi.fn((kind) => {
-      windows.set(kind, { kind });
+    show: vi.fn((kind: LyricsUnlockKind) => {
+      if (!windows.has(kind)) {
+        windows.set(kind, stubUnlockWindow());
+      }
     }),
-    hide: vi.fn(),
-    get: vi.fn((kind) => windows.get(kind) as never),
+    hide: vi.fn<(kind: LyricsUnlockKind) => void>(),
+    get: vi.fn((kind: LyricsUnlockKind) => windows.get(kind)),
   };
 }
 
@@ -368,9 +412,11 @@ describe('IpcRouter host intercepts', () => {
       close: vi.fn(),
       on: vi.fn(),
     };
-    const createWindow = vi.fn(() => oauthWindow);
-    const fromPartition = vi.fn(() => ({ partition: 'oauth-session' }));
-    const invoke = vi.fn(async (method) => {
+    const createWindow = vi.fn<OAuthHostDeps['createWindow']>(() => oauthWindow);
+    const fromPartition = vi.fn<OAuthHostDeps['fromPartition']>(() => ({
+      partition: 'oauth-session',
+    }));
+    const invoke = vi.fn<OAuthHostDeps['invoke']>(async (method) => {
       if (method === 'auth_oauth_prepare') {
         return prepared;
       }
@@ -407,12 +453,13 @@ describe('IpcRouter host intercepts', () => {
     expect(fromPartition).toHaveBeenCalledWith('oauth:attempt-0', { cache: false });
     expect(String(fromPartition.mock.calls[0]?.[0]).startsWith('persist:')).toBe(false);
     expect(createWindow).toHaveBeenCalledOnce();
-    expect(createWindow.mock.calls[0]?.[0]).toMatchObject({
+    const createdOptions = createWindow.mock.calls[0]?.[0];
+    expect(createdOptions).toMatchObject({
       width: 480,
       height: 640,
       show: true,
     });
-    expect(createWindow.mock.calls[0]?.[0].webPreferences).not.toHaveProperty('preload');
+    expect(createdOptions?.webPreferences).not.toHaveProperty('preload');
     expect(oauthWindow.loadURL).toHaveBeenCalledWith(prepared.url);
     expect(invoke).toHaveBeenCalledWith('qqmusic_account_snapshot');
 

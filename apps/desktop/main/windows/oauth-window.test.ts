@@ -59,16 +59,21 @@ function mockWindow(): MockOAuthWindow {
 
   const window: MockOAuthWindow = {
     webContents: {
-      on: vi.fn((event, listener) => {
-        contentsListeners[event].push(listener);
-      }),
+      on: vi.fn(
+        (
+          event: 'will-navigate' | 'will-redirect',
+          listener: (navigationEvent: OAuthNavigationEvent, url: string) => void,
+        ) => {
+          contentsListeners[event].push(listener);
+        },
+      ),
       setWindowOpenHandler: vi.fn(),
     },
     loadURL: vi.fn(),
     close: vi.fn(() => {
       window.emitClosed();
     }),
-    on: vi.fn((event, listener) => {
+    on: vi.fn((event: 'closed', listener: () => void) => {
       if (event === 'closed') {
         closedListeners.push(listener);
       }
@@ -102,7 +107,7 @@ function depsFor(
     captured = options;
     return window;
   });
-  const fromPartition = vi.fn(() => session);
+  const fromPartition = vi.fn<OAuthWindowDeps['fromPartition']>(() => session);
   const prepare = vi.fn(async () => PREPARED);
   const complete = vi.fn(async () => ({ ok: true }));
   const cancel = vi.fn(async () => ({ ok: true }));

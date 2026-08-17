@@ -1709,3 +1709,18 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 - PROTO-02 is not re-opened or marked green. No production method names or
   behavior changed. Actions stay frozen. Provenance remains **BLOCKED**.
   No qm-api-rs.
+
+## P4/P9 follow-up: desktop test-mock Host API types
+
+- `host-handlers.test.ts`, `lyrics-surfaces.test.ts`, and `oauth-window.test.ts`
+  mocks now match the current `LyricsSurfaces`, `LyricsUnlockOverlays`,
+  `OAuthHostDeps.createWindow`, and `OAuthWindowLike.webContents.on` signatures.
+  Production window-role, OAuth partition, surface ACL, and host-handler
+  behavior is unchanged. `as never` window stubs are replaced with
+  `LyricsSurfaceWindow` / `LyricsUnlockWindow` seams.
+- Lyrics `createWindow` is typed as `LyricsSurfaceCreateOptions`, not persisted
+  geometry; the destroyed-window test now asserts the factory receives create
+  options (no `x`/`y`) rather than a bounds blob.
+- This is not PLAY-01 / SMTC / soak / provenance green. Actions stay frozen.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.
