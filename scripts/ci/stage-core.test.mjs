@@ -43,3 +43,22 @@ test('prefers release over debug when staging without a profile', () => {
     path.join(root, 'release', name),
   );
 });
+
+test('prefers target/<triple>/release when rustTarget is set', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-stage-core-triple-'));
+  const name = coreBinaryName();
+  const triple = 'aarch64-pc-windows-msvc';
+  mkdirSync(path.join(root, 'release'), { recursive: true });
+  mkdirSync(path.join(root, triple, 'release'), { recursive: true });
+  writeFileSync(path.join(root, 'release', name), 'host');
+  writeFileSync(path.join(root, triple, 'release', name), 'cross');
+  assert.equal(
+    findCoreBinary({
+      repoRoot: repositoryRoot,
+      env: { CARGO_TARGET_DIR: root },
+      profile: 'release',
+      rustTarget: triple,
+    }),
+    path.join(root, triple, 'release', name),
+  );
+});

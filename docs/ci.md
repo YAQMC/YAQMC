@@ -16,23 +16,25 @@ CI artifacts are **not** GitHub Releases. Retention is **14 days**. Do not treat
 
 ## Events and matrix
 
-- **Pull request:** Prettier, ESLint, TypeScript, Vitest, docs, secret scan, Rust fmt/clippy/tests, one frontend production build, an Electron host build-only job on Ubuntu and Windows, then Windows x86_64 and Linux x86_64 packages.
-- **Push to `main`:** the same quality gates plus the full Windows/Linux matrix: `x86_64`, `i686`, `aarch64` on Windows; `x86_64` and `aarch64` on Linux.
-- **Manual `workflow_dispatch`:** choose `windows`, `linux`, or `all`, and `ci` or `production` optimization.
+- **Pull request:** Prettier, ESLint, TypeScript, Vitest, docs, secret scan, Rust fmt/clippy/tests, one frontend production build, an Electron host build-only job on Ubuntu and Windows, Windows x86_64 and Linux x86_64 Tauri packages, and Electron NSIS/portable plus AppImage/deb/rpm/tar.gz for Windows x64 and Linux x64.
+- **Push to `main`:** the same quality gates plus the full Tauri Windows/Linux matrix (`x86_64`, `i686`, `aarch64` on Windows; `x86_64` and `aarch64` on Linux) and the Electron matrix (Windows x64, Windows arm64 cross on `windows-2025`, Linux x64, Linux arm64 on `ubuntu-22.04-arm`). Electron does not pack Windows i686.
+- **Manual `workflow_dispatch`:** choose `windows`, `linux`, or `all`, and `ci` or `production` optimization. Both Tauri and Electron package jobs honor the OS filter.
 
 Superseded pull-request runs are cancelled. Pushes to `main` and manual packaging runs are not cancelled mid-flight.
 
 ## Frontend reuse
 
-Packaging jobs download `yaqmc-frontend-dist-<sha>`. `YAQMC_PREBUILT_FRONTEND=1` makes `scripts/ci/tauri-before-build.mjs` skip Vite after checking `dist/yaqmc-frontend-build.json` against the current commit. Local `tauri build` still runs a normal frontend build.
+Packaging jobs download `yaqmc-frontend-dist-<sha>`. `YAQMC_PREBUILT_FRONTEND=1` makes `scripts/ci/tauri-before-build.mjs` skip Vite after checking `dist/yaqmc-frontend-build.json` against the current commit, and makes `scripts/ci/package-electron.mjs` reuse that same dist (no second Vite build). Local `tauri build` still runs a normal frontend build. Electron packs need a populated `dist/` (CI downloads it; locally run `npm run ci:frontend-build` first).
 
 Do not upload `node_modules` between jobs.
 
 ## Native compile
 
-Each packaging target runs `tauri build --no-bundle` once, verifies PE/ELF architecture, then `tauri bundle` for the requested formats. Windows publishes NSIS, MSI, and a portable ZIP of the executable. Linux publishes AppImage, `.deb`, `.rpm`, and a dynamically linked binary tarball (not a static portable). The x86_64 AppImage still receives the existing GDK session-aware repack.
+Each Tauri packaging target runs `tauri build --no-bundle` once, verifies PE/ELF architecture, then `tauri bundle` for the requested formats. Windows publishes NSIS, MSI, and a portable ZIP of the executable. Linux publishes AppImage, `.deb`, `.rpm`, and a dynamically linked binary tarball (not a static portable). The x86_64 AppImage still receives the existing GDK session-aware repack.
 
-Staging copies installers from `target/<triple>/release/bundle` next to the release-root `yaqmc` / `yaqmc.exe`. It does not search nested payload copies of that binary. Linux packaging installs `xdg-utils` and sets `APPIMAGE_EXTRACT_AND_RUN=1` so linuxdeploy can run on ARM runners that lack `/usr/bin/xdg-open` or FUSE.
+Each Electron packaging target compiles `yaqmc-core` for the rust triple, stages it with `scripts/stage-core.mjs --rust-target`, builds `@yaqmc/desktop`, then runs electron-builder with `--publish never`. Windows publishes NSIS and a portable exe. Linux publishes AppImage, `.deb`, `.rpm`, and `.tar.gz`. Electron jobs install `rpm`/`fakeroot` on Linux and do not install WebKitGTK.
+
+For Tauri, staging copies installers from `target/<triple>/release/bundle` next to the release-root `yaqmc` / `yaqmc.exe`. It does not search nested payload copies of that binary. Linux packaging installs `xdg-utils` and sets `APPIMAGE_EXTRACT_AND_RUN=1` so linuxdeploy can run on ARM runners that lack `/usr/bin/xdg-open` or FUSE.
 
 ## Optimization profiles
 
@@ -67,10 +69,13 @@ To invalidate a cache, change `Cargo.lock` or the key prefix in `.github/actions
 
 Each target uploads `YAQMC-<os>-<arch>-<sha>` containing versioned files plus `build-info.json` and `SHA256SUMS-<os>-<arch>.txt`. Architecture labels follow existing release naming: `x86_64`, `i686`, `aarch64`.
 
+Electron targets upload `YAQMC-electron-<os>-<arch>-<sha>` from `release-electron/YAQMC-electron-<os>-<arch>/`. Architecture labels follow electron-builder: `x64`, `arm64`. Those artifacts are unsigned Actions blobs, not GitHub Releases.
+
 ## Runners
 
 - Windows x86_64 / i686: `windows-2025`
-- Windows aarch64: `windows-11-arm` (native; never cross-label an x64 binary)
+- Windows aarch64 (Tauri): `windows-11-arm` (native; never cross-label an x64 binary)
+- Windows arm64 (Electron): `windows-2025` with `cargo --target aarch64-pc-windows-msvc` (cross; CI-03 boot-test pending)
 - Linux x86_64: `ubuntu-22.04`
 - Linux aarch64: `ubuntu-22.04-arm`
 

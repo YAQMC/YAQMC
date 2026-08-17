@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,11 +19,17 @@ export function cargoTargetDir(env = process.env, repoRoot) {
 }
 
 export function findCoreBinary(options) {
-  const { repoRoot, env = process.env, profile } = options;
+  const { repoRoot, env = process.env, profile, rustTarget } = options;
   const name = coreBinaryName();
   const target = cargoTargetDir(env, repoRoot);
   const profiles = profile ? [profile] : ['release', 'debug'];
-  const candidates = profiles.map((entry) => path.join(target, entry, name));
+  const candidates = [];
+  for (const entry of profiles) {
+    if (rustTarget) {
+      candidates.push(path.join(target, rustTarget, entry, name));
+    }
+    candidates.push(path.join(target, entry, name));
+  }
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) {
     throw new Error(`yaqmc-core binary was not found under ${target}`);
@@ -25,8 +38,8 @@ export function findCoreBinary(options) {
 }
 
 export function stageCore(options) {
-  const { repoRoot, env = process.env, destinationDir, profile } = options;
-  const source = findCoreBinary({ repoRoot, env, profile });
+  const { repoRoot, env = process.env, destinationDir, profile, rustTarget } = options;
+  const source = findCoreBinary({ repoRoot, env, profile, rustTarget });
   const destDir = destinationDir ?? path.join(repoRoot, 'apps', 'desktop', 'resources', 'core');
   mkdirSync(destDir, { recursive: true });
   const name = path.basename(source);
@@ -50,6 +63,8 @@ if (invokedDirectly) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const profileFlag = process.argv.indexOf('--profile');
   const profile = profileFlag >= 0 ? process.argv[profileFlag + 1] : undefined;
-  const staged = stageCore({ repoRoot, profile });
+  const rustTargetFlag = process.argv.indexOf('--rust-target');
+  const rustTarget = rustTargetFlag >= 0 ? process.argv[rustTargetFlag + 1] : undefined;
+  const staged = stageCore({ repoRoot, profile, rustTarget });
   process.stdout.write(`staged ${staged.destination} sha256=${staged.sha256}\n`);
 }
