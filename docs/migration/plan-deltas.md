@@ -247,3 +247,15 @@ the enforced provenance ledger.
 - A registry-vs-dispatch drift test locks the Core-owned name set. OAuth window create/close remains host-owned
   (PROTO-07). Event fan-out remains PROTO-05. No Electron, no qm-api-rs, no Core stdio binary.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-05: Core event fan-out
+
+- `yaqmc-core/src/server/events.rs` owns the §3.2 player fan-out: same channel map, lagged-resync of
+  snapshot/projection/document, SMTC `update`, and queue persist. Protocol `seq` is assigned per sink.
+  Tauri is a thin `EventSink` that still `emit`s the existing channel names. `host://command` is mapped from
+  `HostCommand` (`raise`/`quit`); the Tauri host-command subscriber is unchanged. `plugin://changed` and
+  `preferences://changed` stay on existing host notify callbacks. `account://changed` and `core://log` are
+  declared and unused. No Electron, no qm-api-rs, no Core stdio binary.
+- A recorded fixture compares Core mapping to the previous Tauri channel sequence. The 32 MiB hard cap is
+  unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.
