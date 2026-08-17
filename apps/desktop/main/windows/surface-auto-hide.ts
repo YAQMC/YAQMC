@@ -110,7 +110,7 @@ export function applySurfaceAutoHide(surfaces: SurfaceAutoHideTarget, hidden: bo
 /**
  * Subscribe to CoreClient `host://command` and to `event` frames with that
  * channel (current CoreClient demuxes as `event`, not per-channel names).
- * Returns an unsubscribe function. Index wiring is ACCT-01.
+ * Returns an unsubscribe function. Index subscribes after core ready.
  */
 export function subscribeSurfaceAutoHide(
   client: SurfaceAutoHideClient,
