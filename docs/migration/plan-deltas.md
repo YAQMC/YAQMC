@@ -289,3 +289,11 @@ the enforced provenance ledger.
   `Framed::recv` keeps partial-frame state so `serve_protocol`'s `select!` can cancel an in-flight read when an
   event is ready without treating the next JSON bytes as a length prefix. The 32 MiB hard cap is unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-09: contract fixture emitter
+
+- `cargo test -p yaqmc-protocol --features fixtures` writes deterministic JSON under
+  `{CARGO_TARGET_DIR or workspace target}/contract-fixtures/`: envelopes, method registry, channels,
+  event frames, and representative request/response examples from the protocol serde types. The TS
+  consumer and `contracts:update` script remain P3. No Electron, no qm-api-rs.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
