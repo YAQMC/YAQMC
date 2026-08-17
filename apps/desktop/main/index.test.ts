@@ -146,4 +146,8 @@ describe('host boot wiring', () => {
       "if (root === viteDist) {\n    return appIndexUrl('?provider=fake');",
     );
   });
+
+  it('does not scrape every WebContents console-message', () => {
+    expect(source).not.toContain('console-message');
+  });
 });

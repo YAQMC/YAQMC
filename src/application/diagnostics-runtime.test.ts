@@ -41,8 +41,11 @@ vi.mock('./native-player-runtime', () => ({
 import {
   DIAGNOSTICS_ZIP_DEFAULT_NAME,
   DiagnosticsExportAbortedError,
+  currentConsoleForwardMode,
   exportDiagnosticsBundle,
+  setConsoleForwardPreference,
 } from './diagnostics-runtime';
+import { CONSOLE_FORWARD_SETTING_KEY, __testing as loggerTesting } from './logger';
 
 function sampleBundle(path: string): BundleExportResult {
   return {
@@ -153,5 +156,32 @@ describe('exportDiagnosticsBundle', () => {
       DiagnosticsExportAbortedError,
     );
     expect(hostMocks.invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('console forward preference', () => {
+  afterEach(() => {
+    loggerTesting.reset();
+  });
+
+  it('reads logging.consoleForward and defaults unknown values to error', async () => {
+    hostMocks.invoke.mockResolvedValueOnce('warn');
+    await expect(currentConsoleForwardMode()).resolves.toBe('warn');
+    expect(hostMocks.invoke).toHaveBeenCalledWith('app_settings_get', {
+      key: CONSOLE_FORWARD_SETTING_KEY,
+    });
+
+    hostMocks.invoke.mockResolvedValueOnce('nope');
+    await expect(currentConsoleForwardMode()).resolves.toBe('error');
+  });
+
+  it('writes the preference and applies it live', async () => {
+    hostMocks.invoke.mockResolvedValueOnce(undefined);
+    await expect(setConsoleForwardPreference('off')).resolves.toBe('off');
+    expect(hostMocks.invoke).toHaveBeenCalledWith('app_settings_set', {
+      key: CONSOLE_FORWARD_SETTING_KEY,
+      value: 'off',
+    });
+    expect(loggerTesting.consoleForwardMode()).toBe('off');
   });
 });

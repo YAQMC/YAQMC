@@ -940,6 +940,12 @@ export const enUS = {
       logLevelInfo: 'Info',
       logLevelDebug: 'Debug',
       logLevelTrace: 'Trace',
+      consoleForward: 'Renderer console',
+      consoleForwardDescription:
+        'Packaged builds can copy console.error (and optionally console.warn) into the redacted frontend log. Off leaves them in DevTools only.',
+      consoleForwardError: 'Errors',
+      consoleForwardWarn: 'Errors and warnings',
+      consoleForwardOff: 'Off',
       levelChangeHint: 'The new level takes effect at the next application launch.',
       openFolder: 'Open log folder',
       openFolderDescription: 'Opens the platform application log directory in your file manager.',

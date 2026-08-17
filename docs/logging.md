@@ -30,7 +30,9 @@ Provider / audio / player  ─┘        ▼
   queue, flushed every ~400 ms) and forwards them through the
   `diagnostics_log_frontend` command. The Rust command replays each entry into
   the same `tracing` targets so frontend events are indistinguishable from Rust
-  events in the final log file.
+  events in the final log file. Packaged Electron **main** windows also wrap
+  `console.error` (default) and optionally `console.warn` onto that same path
+  (`logging.consoleForward`; lyrics/unlock/OAuth windows are not hooked).
 - **Platform / provider / audio.** These modules use `tracing::info!` /
   `warn!` / `debug!` with structured fields (`tracing`'s key/value pairs). We
   deliberately avoid `{:?}` on large structs; every log line stays on a single
