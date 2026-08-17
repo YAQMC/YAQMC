@@ -21,6 +21,11 @@ export interface HostShellBridge {
   openExternal(url: string): Promise<void>;
 }
 
+/** Extra host IPC (`dialog.pickSave`); not an inventory MethodName. */
+export interface HostDialogBridge {
+  pickSave(opts?: { defaultPath?: string }): Promise<string | null>;
+}
+
 export interface HostBridge {
   invoke<M extends MethodName>(method: M, ...params: InvokeArgs<M>): Promise<MethodResult[M]>;
   listen<C extends ChannelName>(
@@ -31,4 +36,5 @@ export interface HostBridge {
   readonly windowRole: WindowRole;
   readonly window: HostWindowBridge;
   readonly shell: HostShellBridge;
+  readonly dialog?: HostDialogBridge;
 }

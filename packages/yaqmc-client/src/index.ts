@@ -1,5 +1,6 @@
 export {
   type HostBridge,
+  type HostDialogBridge,
   type HostKind,
   type HostShellBridge,
   type HostWindowBridge,

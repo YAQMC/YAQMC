@@ -1,4 +1,10 @@
-import type { HostBridge, HostShellBridge, HostWindowBridge, WindowRole } from '../bridge';
+import type {
+  HostBridge,
+  HostDialogBridge,
+  HostShellBridge,
+  HostWindowBridge,
+  WindowRole,
+} from '../bridge';
 import { CHANNEL_PLAYER_SNAPSHOT, type ChannelName, type ChannelPayload } from '../protocol/events';
 import type { HomeFeed, PlayerSnapshot, PlayTracksRequest, Song } from '../protocol/dto';
 import type { MethodName, MethodParams, MethodResult } from '../protocol/methods';
@@ -40,6 +46,12 @@ function noopWindow(): HostWindowBridge {
 function noopShell(): HostShellBridge {
   return {
     openExternal: async () => undefined,
+  };
+}
+
+function unusedDialog(): HostDialogBridge {
+  return {
+    pickSave: async () => null,
   };
 }
 
@@ -132,6 +144,7 @@ export function createFakeBridge(options?: {
     windowRole: options?.windowRole ?? 'main',
     window: noopWindow(),
     shell: noopShell(),
+    dialog: unusedDialog(),
     invoke,
     listen: (channel, handler) => {
       const bucket = listeners.get(channel) ?? new Set();

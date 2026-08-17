@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { DiagnosticsHostPayload } from '@yaqmc/client';
 import { isNativeRuntime } from './native-player-runtime';
 import type { LogLevel } from './logger';
 import type { PlatformDiagnostics } from './platform-integration';
@@ -128,6 +129,7 @@ export interface BundleExportOptions extends DiagnosticsRequest {
   overrideUnresolved?: boolean;
   description?: string;
   issueCategory?: string;
+  hostPayload?: DiagnosticsHostPayload;
 }
 
 const LOG_LEVELS: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace'];
@@ -141,6 +143,15 @@ export async function readDiagnosticsSnapshot(
 ): Promise<DiagnosticsSnapshot | null> {
   if (!isNativeRuntime) return null;
   return client.invoke('diagnostics_snapshot', { request }) as Promise<DiagnosticsSnapshot>;
+}
+
+export const DIAGNOSTICS_ZIP_DEFAULT_NAME = 'YAQMC-diagnostics.zip';
+
+export class DiagnosticsExportAbortedError extends Error {
+  constructor(message = 'Diagnostics export was cancelled') {
+    super(message);
+    this.name = 'DiagnosticsExportAbortedError';
+  }
 }
 
 export async function exportDiagnosticsBundle(
@@ -157,6 +168,15 @@ export async function exportDiagnosticsBundle(
   };
   if (destPath) {
     return client.invoke('diagnostics_export_bundle_to', { path: destPath, request });
+  }
+  if (client.bridge.kind === 'electron') {
+    const chosen = await client.bridge.dialog?.pickSave({
+      defaultPath: DIAGNOSTICS_ZIP_DEFAULT_NAME,
+    });
+    if (chosen == null) {
+      throw new DiagnosticsExportAbortedError();
+    }
+    return client.invoke('diagnostics_export_bundle_to', { path: chosen, request });
   }
   return client.invoke('diagnostics_export_bundle', { request });
 }
