@@ -5,20 +5,20 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::envelope::{
     AttachMessage, CoreError, CoreIdentity, CoreMessage, HostIdentity, PlatformAttach,
     PlatformKind, ResponseBody, ShutdownReason,
 };
-use crate::registry::{MethodOwner, PROTOCOL_ONLY_METHODS, TimeoutClass, methods};
+use crate::registry::{methods, MethodOwner, TimeoutClass, PROTOCOL_ONLY_METHODS};
 use crate::{
-    CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS, CHANNEL_CORE_LOG,
-    CHANNEL_HOST_COMMAND, CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION,
-    CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PLUGIN_CHANGED,
-    CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS, DEFAULT_METHOD_PAYLOAD_BYTES, ErrorCode,
-    FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT, HOST_EVENT_CHANNELS, PROTOCOL_VERSION,
-    SHUTDOWN_TIMEOUT,
+    ErrorCode, CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS,
+    CHANNEL_CORE_LOG, CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS, CHANNEL_LYRICS_DOCUMENT,
+    CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_PLAYER_SNAPSHOT,
+    CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS,
+    DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT, HOST_EVENT_CHANNELS,
+    PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
 };
 
 pub fn contract_fixtures_dir() -> PathBuf {
@@ -248,6 +248,11 @@ fn events() -> Value {
             seq: 11,
             channel: CHANNEL_APP_OPEN_SETTINGS.to_owned(),
             payload: json!({ "section": "playback" }),
+        }),
+        CHANNEL_HOST_CORE_STATUS: to_value(&CoreMessage::Event {
+            seq: 12,
+            channel: CHANNEL_HOST_CORE_STATUS.to_owned(),
+            payload: json!({ "status": "ready" }),
         }),
     })
 }

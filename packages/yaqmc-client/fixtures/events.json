@@ -127,6 +127,14 @@
     },
     "seq": 7
   },
+  "host://core-status": {
+    "channel": "host://core-status",
+    "kind": "event",
+    "payload": {
+      "status": "ready"
+    },
+    "seq": 12
+  },
   "lyrics://document": {
     "channel": "lyrics://document",
     "kind": "event",

@@ -56,7 +56,11 @@ describe('@yaqmc/client protocol mirror', () => {
       'core://log',
       'account://changed',
     ]);
-    expect([...HOST_EVENT_CHANNELS]).toEqual(['lyrics://surface-closed', 'app://open-settings']);
+    expect([...HOST_EVENT_CHANNELS]).toEqual([
+      'lyrics://surface-closed',
+      'app://open-settings',
+      'host://core-status',
+    ]);
   });
 
   it('constructs YaqmcClient over a HostBridge', () => {

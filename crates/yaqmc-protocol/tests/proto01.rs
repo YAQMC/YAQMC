@@ -1,13 +1,13 @@
 use std::time::Duration;
 
-use tokio::io::{AsyncWriteExt, duplex, split};
+use tokio::io::{duplex, split, AsyncWriteExt};
 use yaqmc_protocol::{
-    AttachMessage, CoreError, CoreIdentity, CoreMessage, CoreTransport,
-    DEFAULT_METHOD_PAYLOAD_BYTES, DisplayBackend, DuplexTransport, ErrorCode, FRAME_HARD_CAP_BYTES,
-    FrameError, HANDSHAKE_TIMEOUT, HostIdentity, PROTOCOL_VERSION, PipeTransport, PlatformAttach,
-    PlatformKind, ProtocolError, ProtocolVersion, ResponseBody, SHUTDOWN_TIMEOUT, ShutdownReason,
-    StdioTransport, core_handshake, duplex_pair, host_handshake, host_handshake_with_timeout,
-    read_frame, write_frame,
+    core_handshake, duplex_pair, host_handshake, host_handshake_with_timeout, read_frame,
+    write_frame, AttachMessage, CoreError, CoreIdentity, CoreMessage, CoreTransport,
+    DisplayBackend, DuplexTransport, ErrorCode, FrameError, HostIdentity, PipeTransport,
+    PlatformAttach, PlatformKind, ProtocolError, ProtocolVersion, ResponseBody, ShutdownReason,
+    StdioTransport, DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT,
+    PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
 };
 
 fn hello_message() -> CoreMessage {
@@ -50,9 +50,10 @@ fn protocol_constants_match_the_binding_plan() {
 fn event_channel_names_match_adr004() {
     use yaqmc_protocol::{
         CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS, CHANNEL_CORE_LOG,
-        CHANNEL_HOST_COMMAND, CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION,
-        CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PLUGIN_CHANGED,
-        CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS, HOST_EVENT_CHANNELS,
+        CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS, CHANNEL_LYRICS_DOCUMENT,
+        CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_PLAYER_SNAPSHOT,
+        CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS,
+        HOST_EVENT_CHANNELS,
     };
     assert_eq!(CHANNEL_API_EVENT, "api://event");
     assert_eq!(CHANNEL_PLAYER_SNAPSHOT, "player://snapshot");
@@ -63,10 +64,11 @@ fn event_channel_names_match_adr004() {
     assert_eq!(CHANNEL_LYRICS_SURFACE_CLOSED, "lyrics://surface-closed");
     assert_eq!(CHANNEL_APP_OPEN_SETTINGS, "app://open-settings");
     assert_eq!(CHANNEL_HOST_COMMAND, "host://command");
+    assert_eq!(CHANNEL_HOST_CORE_STATUS, "host://core-status");
     assert_eq!(CHANNEL_CORE_LOG, "core://log");
     assert_eq!(CHANNEL_ACCOUNT_CHANGED, "account://changed");
     assert_eq!(CORE_EVENT_CHANNELS.len(), 9);
-    assert_eq!(HOST_EVENT_CHANNELS.len(), 2);
+    assert_eq!(HOST_EVENT_CHANNELS.len(), 3);
 }
 
 #[test]
