@@ -38,7 +38,10 @@ describe('host boot wiring', () => {
   it('skips tray and shortcuts during YAQMC_DESKTOP_SMOKE', () => {
     expect(source).toContain("process.env.YAQMC_DESKTOP_SMOKE === '1'");
     expect(source).toContain('installTrayAndShortcuts');
-    expect(source).toMatch(/if \(smoke \|\| e2e\) \{\s*return;/);
+    expect(source).toContain("YAQMC_E2E_TRAY !== '1'");
+    expect(source).toMatch(
+      /if \(smoke \|\| \(e2e && process\.env\.YAQMC_E2E_TRAY !== '1'\)\) \{\s*return;/,
+    );
   });
 
   it('isolates Playwright _electron from the smoke harness and live profile', () => {
@@ -48,6 +51,8 @@ describe('host boot wiring', () => {
     expect(source).toContain("YAQMC_E2E_CORE !== '1'");
     expect(source).toContain('__YAQMC_E2E__');
     expect(source).toContain('killRunningChild');
+    expect(source).toContain('trayClick');
+    expect(source).toContain('flushGeometry');
   });
 
   it('applies Linux graphics switches before ready and never sandbox/web-security flags', () => {

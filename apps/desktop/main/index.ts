@@ -58,7 +58,12 @@ import { createUpdater, type UpdaterHandle } from './services/updater';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './services/shortcuts';
-import { createTray, shouldHideInsteadOfClose, type TrayHandle } from './services/tray';
+import {
+  createTray,
+  shouldHideInsteadOfClose,
+  type TrayHandle,
+  type TrayMenuId,
+} from './services/tray';
 import { localeFromPreferences, trayLabelsForLocale } from './services/tray-i18n';
 import { acquireSingleInstanceLock } from './single-instance';
 import { subscribeSurfaceAutoHide } from './windows/surface-auto-hide';
@@ -67,6 +72,7 @@ import {
   lyricsSurfaceSettingsFromCore,
   type LyricsSurfaceCreateOptions,
   type LyricsSurfaceKind,
+  type LyricsSurfacePersistedGeometry,
 } from './windows/lyrics-surfaces';
 import {
   createLyricsUnlockOverlays,
@@ -129,14 +135,6 @@ const resourcesDir = path.join(desktopRoot, 'resources');
 const nativeWayland = isNativeWaylandSession();
 
 let supervisor: CoreSupervisor | undefined;
-if (e2e) {
-  (
-    globalThis as { __YAQMC_E2E__?: { coreStatus: () => string; killCore: () => boolean } }
-  ).__YAQMC_E2E__ = {
-    coreStatus: () => supervisor?.status ?? 'absent',
-    killCore: () => supervisor?.killRunningChild() ?? false,
-  };
-}
 let stopping = false;
 let exitCode = 0;
 let mainWindow: BrowserWindow | undefined;
@@ -173,6 +171,56 @@ const lyricsUnlock = createLyricsUnlockOverlays({
   preloadPath: unlockPreloadPath,
   createWindow: createUnlockBrowserWindow,
 });
+
+if (e2e) {
+  (
+    globalThis as {
+      __YAQMC_E2E__?: {
+        coreStatus: () => string;
+        killCore: () => boolean;
+        trayClick: (id: string) => boolean;
+        trayActive: () => boolean;
+        mainVisible: () => boolean;
+        lyricsShow: (kind: LyricsSurfaceKind) => void;
+        lyricsHide: (kind: LyricsSurfaceKind) => void;
+        lyricsBounds: (kind: LyricsSurfaceKind) => LyricsSurfacePersistedGeometry | null;
+        lyricsSetBounds: (
+          kind: LyricsSurfaceKind,
+          bounds: LyricsSurfacePersistedGeometry,
+        ) => boolean;
+        lyricsFlushGeometry: (kind: LyricsSurfaceKind) => Promise<void>;
+      };
+    }
+  ).__YAQMC_E2E__ = {
+    coreStatus: () => supervisor?.status ?? 'absent',
+    killCore: () => supervisor?.killRunningChild() ?? false,
+    trayClick: (id) => trayHandle?.click(id as TrayMenuId) ?? false,
+    trayActive: () => trayHandle !== undefined,
+    mainVisible: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+    lyricsShow: (kind) => {
+      lyricsSurfaces.show(kind);
+    },
+    lyricsHide: (kind) => {
+      lyricsSurfaces.hide(kind);
+    },
+    lyricsBounds: (kind) => {
+      const bounds = lyricsSurfaces.get(kind)?.getBounds?.();
+      if (!bounds) {
+        return null;
+      }
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    },
+    lyricsSetBounds: (kind, bounds) => {
+      const window = lyricsSurfaces.get(kind);
+      if (!window?.setBounds) {
+        return false;
+      }
+      window.setBounds(bounds);
+      return true;
+    },
+    lyricsFlushGeometry: (kind) => lyricsSurfaces.flushGeometry(kind),
+  };
+}
 
 let router: IpcRouter;
 router = new IpcRouter({
@@ -608,7 +656,7 @@ function applyTrayLabelsFromPreferences(raw: unknown): void {
 }
 
 function installTrayAndShortcuts(): void {
-  if (smoke || e2e) {
+  if (smoke || (e2e && process.env.YAQMC_E2E_TRAY !== '1')) {
     return;
   }
   try {
@@ -626,6 +674,10 @@ function installTrayAndShortcuts(): void {
   } catch (error) {
     console.warn('tray unavailable', error);
     trayHandle = undefined;
+  }
+
+  if (e2e) {
+    return;
   }
 
   registerGlobalShortcuts({

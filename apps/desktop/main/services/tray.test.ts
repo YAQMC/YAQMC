@@ -205,6 +205,25 @@ describe('createTray', () => {
     expect(window.focus).toHaveBeenCalledTimes(1);
   });
 
+  it('exposes programmatic click(id) for E2E', () => {
+    const { apis } = createApis();
+    const window = mockWindow();
+    const openSettings = vi.fn();
+    const handle = createTray({
+      apis,
+      resourcesDir,
+      platform: 'win32',
+      getMainWindow: () => window,
+      invokePlayer: vi.fn(),
+      openSettings,
+      quit: vi.fn(),
+    });
+    expect(handle.click('settings')).toBe(true);
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(handle.click('missing' as 'quit')).toBe(false);
+    handle.destroy();
+  });
+
   it('does not send IPC itself', () => {
     const source = readFileSync(path.join(desktopRoot, 'main/services/tray.ts'), 'utf8');
     expect(source).not.toMatch(/webContents\.send|ipcMain|ipcRenderer/);

@@ -11,6 +11,7 @@ const electronBinary = createRequire(path.join(desktopRoot, 'package.json'))('el
 
 export type LaunchElectronOptions = {
   spawnCore?: boolean;
+  tray?: boolean;
 };
 
 function electronEnv(options: LaunchElectronOptions = {}): Record<string, string> {
@@ -30,6 +31,9 @@ function electronEnv(options: LaunchElectronOptions = {}): Record<string, string
     }
     env.YAQMC_E2E_CORE = '1';
     env.YAQMC_CORE_BIN = bin;
+  }
+  if (options.tray) {
+    env.YAQMC_E2E_TRAY = '1';
   }
   return env;
 }
@@ -61,6 +65,91 @@ export async function e2eKillCore(app: ElectronApplication): Promise<boolean> {
     const hooks = (globalThis as { __YAQMC_E2E__?: { killCore?: () => boolean } }).__YAQMC_E2E__;
     return hooks?.killCore?.() ?? false;
   });
+}
+
+export async function e2eTrayClick(app: ElectronApplication, id: string): Promise<boolean> {
+  return app.evaluate((_electron, menuId) => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { trayClick?: (id: string) => boolean } })
+      .__YAQMC_E2E__;
+    return hooks?.trayClick?.(menuId) ?? false;
+  }, id);
+}
+
+export async function e2eTrayActive(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { trayActive?: () => boolean } }).__YAQMC_E2E__;
+    return hooks?.trayActive?.() ?? false;
+  });
+}
+
+export async function e2eMainVisible(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { mainVisible?: () => boolean } }).__YAQMC_E2E__;
+    return hooks?.mainVisible?.() ?? false;
+  });
+}
+
+export type E2eLyricsBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export async function e2eLyricsShow(app: ElectronApplication, kind: string): Promise<void> {
+  await app.evaluate((_electron, surface) => {
+    (
+      globalThis as { __YAQMC_E2E__?: { lyricsShow?: (kind: string) => void } }
+    ).__YAQMC_E2E__?.lyricsShow?.(surface);
+  }, kind);
+}
+
+export async function e2eLyricsBounds(
+  app: ElectronApplication,
+  kind: string,
+): Promise<E2eLyricsBounds | null> {
+  const raw = await app.evaluate((_electron, surface) => {
+    const hooks = (
+      globalThis as { __YAQMC_E2E__?: { lyricsBounds?: (kind: string) => E2eLyricsBounds | null } }
+    ).__YAQMC_E2E__;
+    const bounds = hooks?.lyricsBounds?.(surface) ?? null;
+    return bounds === null ? '' : JSON.stringify(bounds);
+  }, kind);
+  if (!raw) {
+    return null;
+  }
+  return JSON.parse(raw) as E2eLyricsBounds;
+}
+
+export async function e2eLyricsSetBounds(
+  app: ElectronApplication,
+  kind: string,
+  bounds: E2eLyricsBounds,
+): Promise<boolean> {
+  return app.evaluate(
+    (_electron, payload) => {
+      const hooks = (
+        globalThis as {
+          __YAQMC_E2E__?: {
+            lyricsSetBounds?: (kind: string, bounds: E2eLyricsBounds) => boolean;
+          };
+        }
+      ).__YAQMC_E2E__;
+      return hooks?.lyricsSetBounds?.(payload.kind, payload.bounds) ?? false;
+    },
+    { kind, bounds },
+  );
+}
+
+export async function e2eLyricsFlushGeometry(
+  app: ElectronApplication,
+  kind: string,
+): Promise<void> {
+  await app.evaluate((_electron, surface) => {
+    return (
+      globalThis as { __YAQMC_E2E__?: { lyricsFlushGeometry?: (kind: string) => Promise<void> } }
+    ).__YAQMC_E2E__?.lyricsFlushGeometry?.(surface);
+  }, kind);
 }
 
 export async function launchElectronFakeWindow(options: LaunchElectronOptions = {}): Promise<{

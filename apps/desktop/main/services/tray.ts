@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { resolveTrayLabels, type TrayLabels } from './tray-i18n';
+import { resolveTrayLabels, TRAY_MENU_IDS, type TrayLabels, type TrayMenuId } from './tray-i18n';
 
 export {
   DEFAULT_TRAY_LABELS,
@@ -76,6 +76,8 @@ export type TrayHandle = {
   applyLabels(labels: Partial<TrayLabels>): void;
   /** Alias of `applyLabels` for host injection. */
   setLabels(labels: Partial<TrayLabels>): void;
+  /** Programmatic menu click (Playwright / unit tests). */
+  click(id: TrayMenuId): boolean;
 };
 
 /**
@@ -134,6 +136,7 @@ export function createTray(options: CreateTrayOptions): TrayHandle {
   const iconPath = resolveTrayIconPath(options.resourcesDir, platform, exists);
   const tray = new options.apis.Tray(iconPath);
   let labels = resolveTrayLabels(options.labels);
+  const clicks = new Map<TrayMenuId, () => void>();
 
   const runPlayer = (method: PlayerInvokeMethod): void => {
     void Promise.resolve(options.invokePlayer(method)).catch((error: unknown) => {
@@ -157,6 +160,12 @@ export function createTray(options: CreateTrayOptions): TrayHandle {
       { type: 'separator' },
       { id: 'quit', label: labels.quit, click: () => options.quit() },
     ];
+    clicks.clear();
+    for (const item of template) {
+      if (item.id && item.click && (TRAY_MENU_IDS as readonly string[]).includes(item.id)) {
+        clicks.set(item.id as TrayMenuId, item.click);
+      }
+    }
     tray.setContextMenu(options.apis.Menu.buildFromTemplate(template));
   };
 
@@ -174,5 +183,13 @@ export function createTray(options: CreateTrayOptions): TrayHandle {
     destroy: () => tray.destroy(),
     applyLabels,
     setLabels: applyLabels,
+    click(id) {
+      const run = clicks.get(id);
+      if (!run) {
+        return false;
+      }
+      run();
+      return true;
+    },
   };
 }

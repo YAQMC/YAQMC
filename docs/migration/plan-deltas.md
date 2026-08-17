@@ -1662,3 +1662,17 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   persist remain follow-ups.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P9 follow-up: tray click and lyrics geometry E2E
+
+- `YAQMC_E2E_TRAY=1` creates the tray in Playwright `_electron` (still skips
+  global shortcuts). `TrayHandle.click(id)` drives show/hide without clicking
+  the OS icon. `e2e/electron/tray.spec.ts` asserts the main window hides and
+  shows. Not a live-SMTC claim.
+- `LyricsSurfaces.flushGeometry` writes BASE-04
+  `lyrics-surface-geometry:desktop` immediately. `geometry.spec.ts` sets bounds,
+  flushes, relaunches with the same e2e temp Core dirs, shows the surface, and
+  expects the saved bounds. Needs a local `yaqmc-core` (same skip as kill-core).
+  Not wired to GitHub Actions. PLAY-01 is not green.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.
