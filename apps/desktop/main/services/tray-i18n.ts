@@ -40,6 +40,16 @@ export const DEFAULT_TRAY_LABELS: TrayLabels = {
   quit: 'Quit',
 };
 
+/** Must match `src/locales/zh-CN.ts` `tray.*`. Not the full locale tree. */
+export const ZH_CN_TRAY_LABELS: TrayLabels = {
+  'show-hide': '显示 / 隐藏',
+  'play-pause': '播放 / 暂停',
+  previous: '上一首',
+  next: '下一首',
+  settings: '设置',
+  quit: '退出',
+};
+
 export function trayLabelsFromLocale(tray: TrayLabels): TrayLabels {
   return {
     'show-hide': tray['show-hide'],
@@ -49,6 +59,38 @@ export function trayLabelsFromLocale(tray: TrayLabels): TrayLabels {
     settings: tray.settings,
     quit: tray.quit,
   };
+}
+
+export function localeFromPreferences(raw: unknown): string | undefined {
+  const document = preferencesObject(raw);
+  return typeof document?.locale === 'string' ? document.locale : undefined;
+}
+
+export function trayLabelsForLocale(locale: string, systemLang?: string): TrayLabels {
+  if (locale === 'zh-CN') {
+    return { ...ZH_CN_TRAY_LABELS };
+  }
+  if (locale === 'en-US') {
+    return { ...DEFAULT_TRAY_LABELS };
+  }
+  if (locale === 'system' && (systemLang ?? '').toLowerCase().startsWith('zh')) {
+    return { ...ZH_CN_TRAY_LABELS };
+  }
+  return { ...DEFAULT_TRAY_LABELS };
+}
+
+function preferencesObject(raw: unknown): { locale?: unknown } | undefined {
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as { locale?: unknown };
+    } catch {
+      return undefined;
+    }
+  }
+  if (raw && typeof raw === 'object') {
+    return raw as { locale?: unknown };
+  }
+  return undefined;
 }
 
 export function resolveTrayLabels(labels?: Partial<TrayLabels>): TrayLabels {

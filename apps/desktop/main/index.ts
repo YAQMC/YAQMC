@@ -49,6 +49,7 @@ import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './services/shortcuts';
 import { createTray, shouldHideInsteadOfClose, type TrayHandle } from './services/tray';
+import { localeFromPreferences, trayLabelsForLocale } from './services/tray-i18n';
 import { acquireSingleInstanceLock } from './single-instance';
 import { subscribeSurfaceAutoHide } from './windows/surface-auto-hide';
 import {
@@ -352,6 +353,7 @@ function createMainWindow(root: string): BrowserWindow {
 function fanoutEvent(channel: string, payload: unknown): void {
   if (channel === CHANNEL_PREFERENCES_CHANGED) {
     closeToTray = rememberCloseToTray(payload, closeToTray);
+    applyTrayLabelsFromPreferences(payload);
   }
   router.fanout(channel, payload, (id, eventFrame) => {
     webContents.fromId(id)?.send(EVENT_CHANNEL, eventFrame);
@@ -373,6 +375,7 @@ function cacheCloseToTrayPreference(): void {
     .invoke('app_preferences_get')
     .then((raw) => {
       closeToTray = rememberCloseToTray(raw, closeToTray);
+      applyTrayLabelsFromPreferences(raw);
     })
     .catch(() => {
       // FACT: preference read deferred / failed → keep default hide-to-tray.
@@ -441,6 +444,12 @@ function startSupervisor(): Promise<void> {
   });
   attachSupervisor(supervisor);
   return supervisor.start().then(() => undefined);
+}
+
+function applyTrayLabelsFromPreferences(raw: unknown): void {
+  trayHandle?.applyLabels(
+    trayLabelsForLocale(localeFromPreferences(raw) ?? 'system', app.getLocale()),
+  );
 }
 
 function installTrayAndShortcuts(): void {

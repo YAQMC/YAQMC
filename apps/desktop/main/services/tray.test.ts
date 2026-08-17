@@ -11,6 +11,9 @@ import {
   toggleMainWindow,
   TRAY_I18N_KEYS,
   TRAY_MENU_IDS,
+  ZH_CN_TRAY_LABELS,
+  localeFromPreferences,
+  trayLabelsForLocale,
   trayLabelsFromLocale,
   type TrayApis,
   type TrayInstance,
@@ -232,6 +235,16 @@ describe('tray i18n dictionary', () => {
     for (const id of TRAY_MENU_IDS) {
       expect(zh[id]).not.toBe(en[id]);
     }
+  });
+
+  it('picks zh-CN or English from preferences locale without importing locale trees', () => {
+    expect(trayLabelsForLocale('zh-CN')).toEqual(ZH_CN_TRAY_LABELS);
+    expect(trayLabelsForLocale('zh-CN')).toEqual(zhCN.tray);
+    expect(trayLabelsForLocale('en-US')).toEqual(DEFAULT_TRAY_LABELS);
+    expect(trayLabelsForLocale('system', 'zh-CN')).toEqual(ZH_CN_TRAY_LABELS);
+    expect(trayLabelsForLocale('system', 'en-US')).toEqual(DEFAULT_TRAY_LABELS);
+    expect(localeFromPreferences({ locale: 'zh-CN' })).toBe('zh-CN');
+    expect(localeFromPreferences('{"locale":"en-US"}')).toBe('en-US');
   });
 
   it('rebuilds the context menu when applyLabels or setLabels is called', () => {
