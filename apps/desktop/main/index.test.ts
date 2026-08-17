@@ -22,6 +22,8 @@ describe('host boot wiring', () => {
     expect(source).toContain('lyrics-surface.cjs');
     expect(source).toContain('unlock-overlay.cjs');
     expect(source).toContain('createTray');
+    expect(source).toContain('trayLabelsForLocale');
+    expect(source).toContain('applyTrayLabelsFromPreferences');
     expect(source).toContain('registerGlobalShortcuts');
     expect(source).toContain('createLyricsSurfaces');
     expect(source).toContain('createLyricsUnlockOverlays');
