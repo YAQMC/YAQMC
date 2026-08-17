@@ -1,13 +1,13 @@
 use std::time::Duration;
 
-use tokio::io::{duplex, AsyncWriteExt};
+use tokio::io::{AsyncWriteExt, duplex, split};
 use yaqmc_protocol::{
-    core_handshake, duplex_pair, host_handshake, host_handshake_with_timeout, read_frame,
-    write_frame, AttachMessage, CoreError, CoreIdentity, CoreMessage, CoreTransport,
-    DisplayBackend, DuplexTransport, ErrorCode, FrameError, HostIdentity, PlatformAttach,
-    PlatformKind, ProtocolError, ProtocolVersion, ResponseBody, ShutdownReason, StdioTransport,
-    DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT, PROTOCOL_VERSION,
-    SHUTDOWN_TIMEOUT,
+    AttachMessage, CoreError, CoreIdentity, CoreMessage, CoreTransport,
+    DEFAULT_METHOD_PAYLOAD_BYTES, DisplayBackend, DuplexTransport, ErrorCode, FRAME_HARD_CAP_BYTES,
+    FrameError, HANDSHAKE_TIMEOUT, HostIdentity, PROTOCOL_VERSION, PipeTransport, PlatformAttach,
+    PlatformKind, ProtocolError, ProtocolVersion, ResponseBody, SHUTDOWN_TIMEOUT, ShutdownReason,
+    StdioTransport, core_handshake, duplex_pair, host_handshake, host_handshake_with_timeout,
+    read_frame, write_frame,
 };
 
 fn hello_message() -> CoreMessage {
@@ -378,4 +378,33 @@ fn attach_message_inner() -> AttachMessage {
         CoreMessage::Attach(attach) => attach,
         _ => panic!("attach fixture"),
     }
+}
+
+#[tokio::test]
+async fn transport_recv_resumes_after_select_timeout_mid_frame() {
+    let (client, server) = duplex(1024);
+    let (client_reader, client_writer) = split(client);
+    let (_server_reader, mut server_writer) = split(server);
+    let mut transport = PipeTransport::new(client_reader, client_writer);
+    let payload = serde_json::to_vec(&CoreMessage::Ready).expect("ready json");
+    let mut frame = Vec::new();
+    frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    frame.extend_from_slice(&payload);
+
+    server_writer
+        .write_all(&frame[..2])
+        .await
+        .expect("partial prefix");
+    server_writer.flush().await.expect("flush partial");
+    tokio::time::timeout(Duration::from_millis(30), transport.recv())
+        .await
+        .expect_err("recv must wait for the rest of the frame");
+
+    server_writer
+        .write_all(&frame[2..])
+        .await
+        .expect("remaining frame");
+    server_writer.flush().await.expect("flush remaining");
+    let message = transport.recv().await.expect("resumed recv");
+    assert_eq!(message, CoreMessage::Ready);
 }

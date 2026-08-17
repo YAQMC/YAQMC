@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use yaqmc_core::audio::{RodioAudioEngine, UnavailableAudioEngine};
 use yaqmc_core::credentials::PlatformCredentialStore;
 use yaqmc_core::server::{NoopHost, serve_protocol};
 use yaqmc_core::{CoreBootstrapInputs, CoreConfig, CorePaths, bootstrap};
 use yaqmc_protocol::StdioTransport;
+
+#[cfg(not(feature = "test-provider"))]
+use yaqmc_core::audio::{RodioAudioEngine, UnavailableAudioEngine};
 
 fn env_path(key: &str, fallback: &str) -> PathBuf {
     std::env::var_os(key).map(PathBuf::from).unwrap_or_else(|| {
@@ -22,15 +24,23 @@ async fn main() {
     let log_dir = env_path("YAQMC_LOG_DIR", "logs");
     let config_dir = env_path("YAQMC_CONFIG_DIR", "config");
     let _ = std::fs::create_dir_all(&config_dir);
-    let audio = match RodioAudioEngine::open_default() {
-        Ok(engine) => Arc::new(engine) as Arc<dyn yaqmc_core::audio::AudioEngine>,
-        Err(error) => {
-            tracing::warn!(
-                target: "player.audio",
-                error = %error,
-                "falling back to unavailable audio"
-            );
-            Arc::new(UnavailableAudioEngine)
+    let audio = {
+        #[cfg(feature = "test-provider")]
+        {
+            Arc::new(yaqmc_core::audio::TestAudioEngine::default())
+                as Arc<dyn yaqmc_core::audio::AudioEngine>
+        }
+        #[cfg(not(feature = "test-provider"))]
+        match RodioAudioEngine::open_default() {
+            Ok(engine) => Arc::new(engine) as Arc<dyn yaqmc_core::audio::AudioEngine>,
+            Err(error) => {
+                tracing::warn!(
+                    target: "player.audio",
+                    error = %error,
+                    "falling back to unavailable audio"
+                );
+                Arc::new(UnavailableAudioEngine)
+            }
         }
     };
     let runtime = tokio::runtime::Handle::current();
