@@ -13,6 +13,7 @@ import {
   webContents,
 } from 'electron';
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -112,6 +113,11 @@ applyLinuxGraphicsSwitches();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const smoke = process.env.YAQMC_DESKTOP_SMOKE === '1';
+/** Local Playwright `_electron` (FE-06 follow-up). Not the smoke harness; not CI. */
+const e2e = process.env.YAQMC_ELECTRON_E2E === '1';
+if (e2e) {
+  app.setPath('userData', path.join(os.tmpdir(), 'yaqmc-electron-e2e', 'userData'));
+}
 const desktopRoot = path.resolve(here, '../..');
 const repoRoot = path.resolve(desktopRoot, '../..');
 const harnessRoot = path.join(desktopRoot, 'harness');
@@ -249,7 +255,7 @@ function rendererRoot(): string {
 
 function mainWindowUrl(root: string): string {
   if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
-    return `${VITE_DEV_ORIGIN}/`;
+    return e2e ? `${VITE_DEV_ORIGIN}/?provider=fake` : `${VITE_DEV_ORIGIN}/`;
   }
   if (!app.isPackaged && root === viteDist) {
     return appIndexUrl('?provider=fake');
@@ -539,8 +545,8 @@ function attachSupervisor(instance: CoreSupervisor): void {
 }
 
 function coreDataPaths() {
-  if (smoke) {
-    const tempRoot = path.join(app.getPath('temp'), 'yaqmc-core');
+  if (smoke || e2e) {
+    const tempRoot = path.join(app.getPath('temp'), e2e ? 'yaqmc-electron-e2e' : 'yaqmc-core');
     return {
       dataDir: path.join(tempRoot, 'data'),
       cacheDir: path.join(tempRoot, 'cache'),
@@ -555,6 +561,10 @@ function startSupervisor(): Promise<void> {
   const paths = coreDataPaths();
   // Rotating host.log lives in the Core log dir (DIAG leftover, §27.1).
   hostLog = createHostLog({ logDir: paths.logDir });
+  if (e2e && process.env.YAQMC_E2E_CORE !== '1') {
+    writeHostLog('supervisor skip: YAQMC_ELECTRON_E2E (set YAQMC_E2E_CORE=1 to spawn)');
+    return Promise.resolve();
+  }
   const launch = resolveCoreLaunch({
     env: process.env,
     stagedDir: path.join(desktopRoot, 'resources', 'core'),
@@ -590,7 +600,7 @@ function applyTrayLabelsFromPreferences(raw: unknown): void {
 }
 
 function installTrayAndShortcuts(): void {
-  if (smoke) {
+  if (smoke || e2e) {
     return;
   }
   try {

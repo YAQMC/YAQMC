@@ -1,21 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-
-const FAKE_HOME = '/?provider=fake';
-
-async function openFakeHome(page: Page) {
-  await page.goto(FAKE_HOME);
-  await expect(page.locator('.app-shell')).toHaveAttribute('data-provider-id', 'fake');
-}
-
-function playerBar(page: Page) {
-  return page.getByRole('contentinfo', { name: 'Music player' });
-}
-
-async function waitForHydratedPlayer(page: Page) {
-  await expect(page.getByRole('heading', { name: 'For you' })).toBeVisible();
-  await expect(page.locator('[data-yaqmc="track-title"]')).toHaveText('Quiet Light');
-  await expect(playerBar(page).getByRole('button', { name: 'Play', exact: true })).toBeEnabled();
-}
+import { expect, test } from '@playwright/test';
+import { openFakeHome, playerBar, waitForHydratedPlayer } from './fake-ui';
 
 test.describe('FE-06 fake-mode UI', () => {
   test('boots fake home with the offline provider', async ({ page }) => {

@@ -178,15 +178,14 @@ describe('linuxGraphicsDiagnostics', () => {
 
 describe('host boot wiring', () => {
   it('applies policy switches from Main before ready', () => {
-    const index = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), 'index.ts'),
-      'utf8',
-    );
+    const index = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.ts'), 'utf8');
     expect(index).toContain('linuxGraphicsSwitches');
     expect(index).toContain('app.commandLine.appendSwitch');
-    expect(index.indexOf('applyLinuxGraphicsSwitches();')).toBeLessThan(index.indexOf('app.whenReady()'));
+    expect(index.indexOf('applyLinuxGraphicsSwitches();')).toBeLessThan(
+      index.indexOf('app.whenReady()'),
+    );
     expect(index).toContain("process.env.YAQMC_DESKTOP_SMOKE === '1'");
-    expect(index).toMatch(/if \(smoke\) \{\s*return;/);
+    expect(index).toMatch(/if \(smoke \|\| e2e\) \{\s*return;/);
     for (const forbidden of FORBIDDEN_SWITCHES) {
       expect(index.includes(forbidden)).toBe(false);
     }

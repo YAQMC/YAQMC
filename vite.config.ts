@@ -46,6 +46,7 @@ export default defineConfig(({ command }) => ({
       'apps/**',
       'e2e/**',
       'playwright.config.ts',
+      'playwright.electron.config.ts',
     ],
   },
 }));
