@@ -1288,8 +1288,6 @@ the enforced provenance ledger.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
 
-<<<<<<< Updated upstream
-=======
 ## P10 PLUG-01: example plugin lifecycle battery (automated)
 
 - Automated battery installs unpacked `examples/plugins/style-sakura` into a
@@ -1330,31 +1328,23 @@ the enforced provenance ledger.
   edited.
 
 
->>>>>>> Stashed changes
 ## P8 ACCT-02: QR/session re-verify checklist (LIVE VERIFY pending)
 
-- docs/migration/acct02-qr-session.md is the §36 P8 QR login + session
-  persist/staging/refresh checklist. Fake (?provider=fake) vs real-account
+- `docs/migration/acct02-qr-session.md` is the §36 P8 QR login + session
+  persist/staging/refresh checklist. Fake (`?provider=fake`) vs real-account
   columns; Windows/Linux boxes empty. ACCT-02 is not green.
-<<<<<<< Updated upstream
-- How to run: 
-pm run dev:desktop with the real provider (Vite /, not
-  ?provider=fake). Core QR methods are qqmusic_auth_start / heartbeat /
-  cancel / 
-efresh. OAuth popup remains ACCT-01 — this checkpoint does not
-=======
-- How to run: npm run dev:desktop with the real provider (Vite /, not
-  ?provider=fake). Core QR methods are qqmusic_auth_start / heartbeat /
-  cancel / refresh. OAuth popup remains ACCT-01 — this checkpoint does not
->>>>>>> Stashed changes
-  edit oauth-window.ts and does not open OAuth at boot.
-- Keyring FACT is unchanged: service org.yaqmc.desktop, entries
-  qqmusic-session, qqmusic-session-staging, local-api-bearer-token.
+- How to run: `npm run dev:desktop` with the real provider (Vite `/`, not
+  `?provider=fake`). Core QR methods are `qqmusic_auth_start` / `heartbeat` /
+  `cancel` / `refresh`. OAuth popup remains ACCT-01 — this checkpoint does not
+  edit `oauth-window.ts` and does not open OAuth at boot.
+- Keyring FACT is unchanged: service `org.yaqmc.desktop`, entries
+  `qqmusic-session`, `qqmusic-session-staging`, `local-api-bearer-token`.
   Expected after host swap: user stays logged in (ACCT-03 is the recorded
   demo). No session-probe script: no in-repo existence-only probe without new
   native deps or reading secrets.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains
-  PENDING; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
+  `PENDING`; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
+
 ## P9 PLAT-03: tray i18n dictionary
 
 - Tray menu labels come from renderer i18next dictionaries: `tray.*` keys in
