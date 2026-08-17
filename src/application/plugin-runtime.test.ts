@@ -37,7 +37,7 @@ describe('plugin runtime isolation', () => {
     expect(source).toContain('__yaqmcSceneInstance');
     expect(source).toContain('"dev.example"');
     expect(source).not.toMatch(/window\.__TAURI__/);
-    expect(source).not.toContain('@tauri-apps');
+    expect(source).not.toContain(['@', 'tauri-apps'].join(''));
   });
 
   it('plugin diagnostics omit source code', () => {

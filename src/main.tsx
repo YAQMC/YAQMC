@@ -4,7 +4,7 @@ import App from './App';
 import { MusicProviderRoot } from './application/provider-root';
 import { fakeMusicProvider } from './providers/fake/fake-music-provider';
 import { qqMusicProvider } from './providers/qqmusic/qq-music-provider';
-import { isTauri } from '@tauri-apps/api/core';
+import { getHostBridge } from './application/yaqmc-runtime';
 import { LyricsSurfaceApp, LyricsUnlockControl } from './surfaces/LyricsSurfaceApp';
 import type { SurfaceKind } from './application/preferences';
 import './i18n';
@@ -25,7 +25,10 @@ const unlockSurface = ['desktop', 'island'].includes(requestedUnlockSurface ?? '
 if (unlockSurface) document.documentElement.dataset.surfaceUnlock = unlockSurface;
 
 const requestedProvider = parameters.get('provider');
-const provider = isTauri() && requestedProvider !== 'fake' ? qqMusicProvider : fakeMusicProvider;
+const provider =
+  getHostBridge().kind !== 'fake' && requestedProvider !== 'fake'
+    ? qqMusicProvider
+    : fakeMusicProvider;
 
 createRoot(root).render(
   <StrictMode>

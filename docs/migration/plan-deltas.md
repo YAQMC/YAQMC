@@ -899,3 +899,21 @@ the enforced provenance ledger.
   only), `services/updater.ts` (UPD-01 stub). Electron stays **43.4.0**.
   Main window FACT **1280×800**. The 32 MiB hard cap is unchanged. P0 remains
   `PENDING`; provenance remains **BLOCKED**. No qm-api-rs. No SMTC claims.
+
+## P6 FE-05: forbid @tauri-apps imports outside TauriHostBridge
+
+- ESLint `no-restricted-imports` blocks `@tauri-apps/*` and
+  `@tauri-apps/plugin-opener` on `src/**/*.{ts,tsx}` except
+  `src/application/tauri-host-bridge.ts`. `tauri-host-bridge.test.ts` is an
+  eslint override so its mocks may still import those modules.
+- `src/main.tsx` picks the music provider with
+  `getHostBridge().kind !== 'fake' && requestedProvider !== 'fake'` instead of
+  `isTauri()`. Query-param surface/unlock routing is unchanged.
+- `scripts/ci/tauri-imports.mjs` greps `src/` for `@tauri-apps` except the
+  bridge and its test; a seeded comment outside those files fails
+  (`scripts/ci/tauri-imports.test.mjs`). The live tree must scan clean.
+- `isNativeRuntime` stays a boolean (`bridge.kind !== 'fake'` from FE-01).
+  Leftover `isTauri()` is gone from `src/` outside the bridge. Call sites are
+  not mass-renamed.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No Playwright. No qm-api-rs.
