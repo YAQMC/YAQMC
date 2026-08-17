@@ -2,7 +2,9 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use yaqmc_protocol::{authorize, AclDenied, CoreError, ErrorCode, MethodOwner, WindowOrigin};
+use yaqmc_protocol::{
+    authorize, AclDenied, CoreError, ErrorCode, MethodOwner, PlatformAttach, WindowOrigin,
+};
 
 use crate::player::PlayTracksRequest;
 use crate::plugin::api::{
@@ -261,6 +263,34 @@ fn payload_len(value: &Value) -> u32 {
     serde_json::to_vec(value)
         .map(|bytes| u32::try_from(bytes.len()).unwrap_or(u32::MAX))
         .unwrap_or(u32::MAX)
+}
+
+fn apply_platform_attach(
+    core: &CoreHandle,
+    attach: PlatformAttach,
+) -> Result<Value, DispatchError> {
+    if let Some(handle) = attach
+        .main_window_handle
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let hwnd = crate::system_media::parse_window_handle_hex(handle)
+            .map_err(DispatchError::InvalidParams)?;
+        core.start_system_media().attach_hwnd(
+            hwnd,
+            core.player(),
+            core.host_command_publisher(),
+            tokio::runtime::Handle::current(),
+        );
+    } else {
+        // Linux: MPRIS needs no HWND. Windows with no handle keeps the
+        // current unavailable SMTC status. A hidden message-window fallback
+        // is not implemented (plan R-3, NEEDS ACCEPTANCE TEST).
+        let _ = attach.platform_kind;
+        let _ = attach.display_backend;
+    }
+    ok(json!({ "ok": true }))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -822,7 +852,7 @@ async fn invoke_core(
             ))
         }
         "core_ping" => ok(json!({})),
-        "platform_attach" => ok(json!({ "ok": true })),
+        "platform_attach" => apply_platform_attach(core, parse(&params)?),
         "core_shutdown_prepare" => {
             let snapshot = core.player().snapshot().await;
             core.storage()

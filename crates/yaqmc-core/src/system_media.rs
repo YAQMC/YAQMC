@@ -125,6 +125,45 @@ impl SystemMediaIntegration {
         integration
     }
 
+    /// (Re)bind Windows SMTC to a host HWND delivered after Core start.
+    ///
+    /// Electron creates the BrowserWindow after spawning Core, so `start()`
+    /// often runs with `windows_hwnd: None` and records unavailable. A later
+    /// `platform_attach` handle recovers that error state. Linux MPRIS needs
+    /// no HWND; this is a no-op there.
+    pub fn attach_hwnd(
+        &self,
+        hwnd: isize,
+        player: Arc<PlayerService>,
+        host_commands: HostCommandPublisher,
+        runtime: tokio::runtime::Handle,
+    ) {
+        #[cfg(target_os = "windows")]
+        {
+            *self
+                .controls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+            *self
+                .last_projection
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+            self.initialize_windows(
+                SystemMediaStartConfig {
+                    windows_hwnd: Some(hwnd),
+                    windows_start_error: None,
+                    runtime,
+                    host_commands,
+                },
+                player,
+            );
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (hwnd, player, host_commands, runtime);
+        }
+    }
+
     pub fn status(&self) -> SystemMediaStatus {
         self.status
             .lock()
@@ -207,6 +246,8 @@ impl SystemMediaIntegration {
     #[cfg(target_os = "windows")]
     fn initialize_windows(&self, config: SystemMediaStartConfig, player: Arc<PlayerService>) {
         let Some(hwnd) = config.windows_hwnd else {
+            // Missing HWND: keep unavailable. Do not create a hidden
+            // message window (plan R-3 is NEEDS ACCEPTANCE TEST).
             self.set_error(
                 config
                     .windows_start_error
@@ -732,6 +773,21 @@ fn smtc_seek_offset(direction: SeekDirection, amount: std::time::Duration) -> i6
     }
 }
 
+/// Parse `PlatformAttach.mainWindowHandle` (Electron hex, optional `0x`).
+pub fn parse_window_handle_hex(value: &str) -> Result<isize, String> {
+    let trimmed = value.trim();
+    let hex = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+    if hex.is_empty() || hex.len() > 16 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!("invalid window handle hex: {value}"));
+    }
+    u64::from_str_radix(hex, 16)
+        .map(|parsed| parsed as isize)
+        .map_err(|error| error.to_string())
+}
+
 fn valid_cover_url(value: &str) -> Option<&str> {
     (value.starts_with("https://") || value.starts_with("file://")).then_some(value)
 }
@@ -804,6 +860,23 @@ const fn specification_name() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_electron_hex_window_handles() {
+        assert_eq!(
+            parse_window_handle_hex("0000000000123456").unwrap(),
+            0x0012_3456
+        );
+        assert_eq!(parse_window_handle_hex("0x123456").unwrap(), 0x123456);
+        assert_eq!(
+            parse_window_handle_hex("DEADBEEF").unwrap(),
+            0xDEAD_BEEF_u64 as isize
+        );
+        assert!(parse_window_handle_hex("not-hex").is_err());
+        assert!(parse_window_handle_hex("").is_err());
+        assert!(parse_window_handle_hex("0x").is_err());
+        assert!(parse_window_handle_hex("1234567890abcdef0").is_err());
+    }
 
     #[test]
     fn mpris_track_ids_are_stable_valid_object_paths() {

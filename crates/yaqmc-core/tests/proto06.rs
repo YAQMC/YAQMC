@@ -123,7 +123,10 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
         .send(&CoreMessage::Request {
             id: 2,
             method: "platform_attach".to_owned(),
-            params: Some(json!({ "mainWindowHandle": "0000000000123456" })),
+            params: Some(json!({
+                "mainWindowHandle": "0000000000123456",
+                "platformKind": "windows",
+            })),
         })
         .await
         .expect("platform_attach");
