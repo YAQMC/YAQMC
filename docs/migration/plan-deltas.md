@@ -608,4 +608,19 @@ the enforced provenance ledger.
   32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs.
 
+## P4/P5 openExternal allowlist
+
+- Standalone `apps/desktop/main/open-external.ts` implements §28.6 without wiring
+  `shell.openExternal` into `index.ts` (P5 owns Main boot). Exports
+  `isAllowedExternalUrl` and `openExternalIfAllowed(openFn, url)` so unit tests
+  inject a mock opener.
+- Allowlist: `https://github.com/YAQMC/*` (product links + issue reporter; FACT
+  Tauri opener was `YAQMC/YAQMC` only — plan widens to the org), `https://y.qq.com/*`
+  (QQ Music provider help pages), plus exact extra https URLs from settings.
+  Non-https, credentials, non-default ports, and every other host: log + return
+  false; never throw. Not bound to IPC yet.
+- No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
+  P0 remains `PENDING`; provenance remains **BLOCKED**. No ACCT-01 OAuth, no
+  qm-api-rs.
+
 
