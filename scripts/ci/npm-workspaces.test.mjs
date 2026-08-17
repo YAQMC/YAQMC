@@ -29,6 +29,7 @@ test('@yaqmc/client is a composite workspace package', () => {
   assert.equal(pkg.name, '@yaqmc/client');
   assert.equal(pkg.private, true);
   assert.equal(pkg.scripts.build, 'tsc -b');
+  assert.equal(pkg.scripts.test, 'vitest run --config ./vitest.config.ts');
   const tsconfig = readJson('packages/yaqmc-client/tsconfig.json');
   assert.equal(tsconfig.compilerOptions.composite, true);
   assert.equal(tsconfig.compilerOptions.strict, true);
@@ -38,6 +39,7 @@ test('@yaqmc/desktop pins Electron 43.4.0 and is referenced from the root tsconf
   const pkg = readJson('apps/desktop/package.json');
   assert.equal(pkg.name, '@yaqmc/desktop');
   assert.equal(pkg.devDependencies.electron, '43.4.0');
+  assert.equal(pkg.scripts.test, 'vitest run --config ./vitest.config.ts');
   assert.equal(pkg.main, './dist/main/index.js');
   const tsconfig = readJson('tsconfig.json');
   assert.ok(

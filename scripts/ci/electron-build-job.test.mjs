@@ -23,3 +23,17 @@ test('rust-quality stays independent of the Electron build job', () => {
   assert.doesNotMatch(rustJob, /electron-build/);
   assert.doesNotMatch(rustJob, /@yaqmc\/desktop/);
 });
+
+test('frontend-quality runs desktop tests and Electron security greps', () => {
+  const frontendJob = workflow.split(/^ {2}frontend-quality:/m)[1]?.split(/^ {2}[a-z]/m)[0] ?? '';
+  assert.match(frontendJob, /npm run test -w @yaqmc\/client/);
+  assert.match(frontendJob, /npm run test -w @yaqmc\/desktop/);
+  assert.match(frontendJob, /node scripts\/ci\/tauri-imports\.mjs/);
+  assert.match(frontendJob, /node scripts\/ci\/electron-security-lint\.mjs/);
+  assert.match(frontendJob, /npm run typecheck(?! -w)/);
+  assert.match(frontendJob, /npm run format:check/);
+  assert.match(frontendJob, /npm run ci:test-scripts/);
+  assert.doesNotMatch(frontendJob, /npm run typecheck -w @yaqmc/);
+  assert.doesNotMatch(frontendJob, /command-inventory\.mjs/);
+  assert.doesNotMatch(frontendJob, /playwright/i);
+});

@@ -20,6 +20,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run --config ./vitest.config.ts"
   }
 }
