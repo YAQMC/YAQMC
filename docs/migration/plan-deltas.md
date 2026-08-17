@@ -335,3 +335,12 @@ the enforced provenance ledger.
   re-exports the package so existing frontend imports stay put. Behavior is unchanged.
   No Electron, no qm-api-rs.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P3 CLIENT-05: contract fixtures and contracts:update
+
+- `npm run contracts:update` re-emits PROTO-09 JSON into `packages/yaqmc-client/fixtures`.
+  Vitest and `scripts/ci/contract-fixtures.test.mjs` validate the committed fixtures against
+  the TS mirror (method names, channels, 32 MiB cap, hot player payloads).
+  `npm run contracts:check` is the CI red-on-drift gate after `cargo test`. No Electron,
+  no qm-api-rs.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.

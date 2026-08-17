@@ -1,0 +1,17 @@
+{
+  "core": [
+    "api://event",
+    "player://snapshot",
+    "lyrics://projection",
+    "lyrics://document",
+    "plugin://changed",
+    "preferences://changed",
+    "host://command",
+    "core://log",
+    "account://changed"
+  ],
+  "host": [
+    "lyrics://surface-closed",
+    "app://open-settings"
+  ]
+}

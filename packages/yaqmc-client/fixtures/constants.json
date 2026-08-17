@@ -1,0 +1,22 @@
+{
+  "defaultMethodPayloadBytes": 1048576,
+  "errorCodes": [
+    "core.command_error",
+    "core.unavailable",
+    "core.timeout",
+    "core.protocol",
+    "host.denied"
+  ],
+  "frameHardCapBytes": 33554432,
+  "handshakeTimeoutMs": 10000,
+  "protocolOnlyMethods": [
+    "core_ping",
+    "platform_attach",
+    "core_shutdown_prepare",
+    "auth_oauth_prepare",
+    "auth_oauth_complete",
+    "auth_oauth_cancel"
+  ],
+  "protocolVersion": 1,
+  "shutdownTimeoutMs": 5000
+}

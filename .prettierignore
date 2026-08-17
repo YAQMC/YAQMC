@@ -4,3 +4,4 @@ src-tauri/target
 src-tauri/gen/schemas
 package-lock.json
 GPT-Read-me.md
+packages/yaqmc-client/fixtures
