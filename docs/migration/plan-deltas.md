@@ -692,3 +692,21 @@ the enforced provenance ledger.
   SURF tasks. No Playwright. No qm-api-rs. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**.
 
+## P6 FE-01: native player runtime on YaqmcClient
+
+- `src/application/native-player-runtime.ts` no longer calls `@tauri-apps` `invoke` /
+  `listen`. Player commands go through `YaqmcClient` (`client.player.*`, plus
+  `client.invoke` for `qqmusic_set_current_quality`) keeping the existing NamedRequest
+  `{ request: … }` shapes. Snapshot subscription is `client.on('player://snapshot')`;
+  the initial pull is `client.player.snapshot()`. Zustand `applyExternalSnapshot`
+  behavior is unchanged; `player-store` tests are not edited.
+- `src/application/yaqmc-runtime.ts` owns the `getHostBridge()` / `getYaqmcClient()`
+  singleton over existing `selectHostBridge()`. `isNativeRuntime` stays a boolean
+  export from `native-player-runtime.ts` (name unchanged for FE-05) and now means
+  `bridge.kind !== 'fake'`. Non-electron bridges `markReady()` immediately so the
+  Tauri daily driver does not stall on the 15 s queue; electron leaves ready to
+  core-status (P5). TopBar/Settings/plugin-runtime still import `isNativeRuntime`
+  from this file. FE-02..05 and ESLint `no-restricted-imports` are not in this
+  checkpoint.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No qm-api-rs.
