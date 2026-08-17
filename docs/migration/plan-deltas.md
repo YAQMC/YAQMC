@@ -1288,16 +1288,65 @@ the enforced provenance ledger.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
 
+<<<<<<< Updated upstream
+=======
+## P10 PLUG-01: example plugin lifecycle battery (automated)
+
+- Automated battery installs unpacked `examples/plugins/style-sakura` into a
+  temp `ExtensionHost` root (`crates/yaqmc-core/tests/plug01.rs`): install /
+  enable / disable / uninstall. Packed `examples/plugins/packages/` is not
+  rebuilt or committed (prefer the unpacked fixture).
+- Permissions: deny vs grant on `examples/plugins/script-network`
+  (`network:https://example.com` is sensitive). Storage quota (64 KiB) and
+  isolated store on `script-actions`. Scene-pack `manifest.json` parses
+  (PLUG-04 owns a full lyrics-scene E2E). The hostile probe
+  (`tests/fixtures/plugins/hostile`) is never enabled as a user plugin.
+- Renderer `plugin-runtime.plug01.test.ts` drives Electron
+  `plugin_install_from` / unpacked install / enable-grant / uninstall via a
+  mocked `YaqmcClient`. No live Electron GUI. Remaining §20.3 rows stay
+  **LIVE VERIFY pending**: in-app permission prompt UI, network proxy
+  allow/deny + safe-mode crash-loop (PLUG-02), scene API v2 demo (PLUG-04).
+  The Electron GUI example-plugin battery is **not** green.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No Playwright. No qm-api-rs.
+
+## P11 PACK-03: Linux package maintainer script
+
+- `docs/migration/pack03-linux.md` plus `scripts/migration/pack03-linux.mjs`
+  document AppImage (updater-bearing per plan §32), deb, rpm, and tar.gz for
+  **x64 and arm64** already declared in `apps/desktop/electron-builder.yml`.
+  The script dry-run parses that yml and prints `electron-builder --linux`
+  flags. It does not require a Linux builder on this Windows host and does
+  not fail when `release-electron/` has no Linux artifacts.
+- Install / upgrade / uninstall checkboxes stay empty. **LIVE VERIFY /
+  clean-VM pending.** PACK-03 is not green. Tray `libayatana-appindicator`
+  is a deb `recommends` / rpm weak `Recommends` tag, not a hard Depends;
+  tray init failure stays non-fatal. deb/rpm Depends remain
+  electron-builder computed (libgtk-3, libnss3). No WebKitGTK.
+- AppImage is the future in-place update target; this checkpoint does **not**
+  add `electron-updater` (UPD-01). Unsigned (R-9). Electron stays **43.4.0**.
+  Builder stays **26.15.7**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. `apps/desktop/package.json` / PACK-02 files were not
+  edited.
+
+
+>>>>>>> Stashed changes
 ## P8 ACCT-02: QR/session re-verify checklist (LIVE VERIFY pending)
 
 - docs/migration/acct02-qr-session.md is the §36 P8 QR login + session
   persist/staging/refresh checklist. Fake (?provider=fake) vs real-account
   columns; Windows/Linux boxes empty. ACCT-02 is not green.
+<<<<<<< Updated upstream
 - How to run: 
 pm run dev:desktop with the real provider (Vite /, not
   ?provider=fake). Core QR methods are qqmusic_auth_start / heartbeat /
   cancel / 
 efresh. OAuth popup remains ACCT-01 — this checkpoint does not
+=======
+- How to run: npm run dev:desktop with the real provider (Vite /, not
+  ?provider=fake). Core QR methods are qqmusic_auth_start / heartbeat /
+  cancel / refresh. OAuth popup remains ACCT-01 — this checkpoint does not
+>>>>>>> Stashed changes
   edit oauth-window.ts and does not open OAuth at boot.
 - Keyring FACT is unchanged: service org.yaqmc.desktop, entries
   qqmusic-session, qqmusic-session-staging, local-api-bearer-token.
@@ -1306,3 +1355,19 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   native deps or reading secrets.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains
   PENDING; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
+## P9 PLAT-03: tray i18n dictionary
+
+- Tray menu labels come from renderer i18next dictionaries: `tray.*` keys in
+  `src/locales/en-US.ts` and `zh-CN.ts` match every Electron tray item id
+  (`show-hide`, `play-pause`, `previous`, `next`, `settings`, `quit`). Menu
+  ids and structure are unchanged (Show/Hide + Settings extra vs Tauri FACT).
+  Tooltip stays `YAQMC` (`common.projectName` is already that string).
+- `apps/desktop/main/services/tray-i18n.ts` maps those key names into
+  `TrayLabels`. `createTray` accepts `labels` (default English matching the
+  previous hardcoded strings) and exposes `applyLabels` / `setLabels` on the
+  handle to rebuild the context menu. `apps/desktop/main/index.ts` is not
+  edited (SURF-03 owns host boot wiring).
+- Unit tests prove zh-CN strings differ from en-US and that `applyLabels`
+  updates the template. Electron stays **43.4.0**. The 32 MiB hard cap is
+  unchanged. Provenance remains **BLOCKED**. No Playwright. No qm-api-rs. No
+  SMTC claims.

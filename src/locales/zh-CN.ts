@@ -991,4 +991,12 @@ export const zhCN = {
     imageFailed: '无法处理所选背景图片。',
     settingsFailed: '桌面运行时无法完成此设置操作。',
   },
+  tray: {
+    'show-hide': '显示 / 隐藏',
+    'play-pause': '播放 / 暂停',
+    previous: '上一首',
+    next: '下一首',
+    settings: '设置',
+    quit: '退出',
+  },
 } satisfies TranslationShape<typeof enUS>;

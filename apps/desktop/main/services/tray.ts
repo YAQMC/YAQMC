@@ -1,5 +1,16 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { resolveTrayLabels, type TrayLabels } from './tray-i18n';
+
+export {
+  DEFAULT_TRAY_LABELS,
+  TRAY_I18N_KEYS,
+  TRAY_MENU_IDS,
+  resolveTrayLabels,
+  trayLabelsFromLocale,
+  type TrayLabels,
+  type TrayMenuId,
+} from './tray-i18n';
 
 /**
  * Preserved renderer channel. Host wiring (not this module) emits it;
@@ -48,6 +59,8 @@ export type CreateTrayOptions = {
   /** Host wires this to emit `app://open-settings`. Do not send IPC here. */
   openSettings: () => void;
   quit: () => void;
+  /** Menu labels; omitted keys fall back to English matching the current strings. */
+  labels?: Partial<TrayLabels>;
   platform?: NodeJS.Platform;
   existsSync?: (filePath: string) => boolean;
   log?: (message: string, extra?: Record<string, unknown>) => void;
@@ -56,6 +69,10 @@ export type CreateTrayOptions = {
 export type TrayHandle = {
   iconPath: string;
   destroy(): void;
+  /** Rebuild the context menu with merged labels (locale switch). */
+  applyLabels(labels: Partial<TrayLabels>): void;
+  /** Alias of `applyLabels` for host injection. */
+  setLabels(labels: Partial<TrayLabels>): void;
 };
 
 /**
@@ -113,6 +130,7 @@ export function createTray(options: CreateTrayOptions): TrayHandle {
   const exists = options.existsSync ?? existsSync;
   const iconPath = resolveTrayIconPath(options.resourcesDir, platform, exists);
   const tray = new options.apis.Tray(iconPath);
+  let labels = resolveTrayLabels(options.labels);
 
   const runPlayer = (method: PlayerInvokeMethod): void => {
     void Promise.resolve(options.invokePlayer(method)).catch((error: unknown) => {
@@ -120,28 +138,38 @@ export function createTray(options: CreateTrayOptions): TrayHandle {
     });
   };
 
-  const template: TrayMenuItem[] = [
-    {
-      id: 'show-hide',
-      label: 'Show / Hide',
-      click: () => toggleMainWindow(options.getMainWindow),
-    },
-    { type: 'separator' },
-    { id: 'play-pause', label: 'Play / Pause', click: () => runPlayer('toggle') },
-    { id: 'previous', label: 'Previous', click: () => runPlayer('previous') },
-    { id: 'next', label: 'Next', click: () => runPlayer('next') },
-    { type: 'separator' },
-    { id: 'settings', label: 'Settings', click: () => options.openSettings() },
-    { type: 'separator' },
-    { id: 'quit', label: 'Quit', click: () => options.quit() },
-  ];
+  const rebuildMenu = (): void => {
+    const template: TrayMenuItem[] = [
+      {
+        id: 'show-hide',
+        label: labels['show-hide'],
+        click: () => toggleMainWindow(options.getMainWindow),
+      },
+      { type: 'separator' },
+      { id: 'play-pause', label: labels['play-pause'], click: () => runPlayer('toggle') },
+      { id: 'previous', label: labels.previous, click: () => runPlayer('previous') },
+      { id: 'next', label: labels.next, click: () => runPlayer('next') },
+      { type: 'separator' },
+      { id: 'settings', label: labels.settings, click: () => options.openSettings() },
+      { type: 'separator' },
+      { id: 'quit', label: labels.quit, click: () => options.quit() },
+    ];
+    tray.setContextMenu(options.apis.Menu.buildFromTemplate(template));
+  };
 
-  tray.setContextMenu(options.apis.Menu.buildFromTemplate(template));
+  const applyLabels = (next: Partial<TrayLabels>): void => {
+    labels = resolveTrayLabels({ ...labels, ...next });
+    rebuildMenu();
+  };
+
+  rebuildMenu();
   tray.setToolTip('YAQMC');
   tray.on('click', () => toggleMainWindow(options.getMainWindow));
 
   return {
     iconPath,
     destroy: () => tray.destroy(),
+    applyLabels,
+    setLabels: applyLabels,
   };
 }
