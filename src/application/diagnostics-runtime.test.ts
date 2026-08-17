@@ -148,6 +148,16 @@ describe('exportDiagnosticsBundle', () => {
     );
   });
 
+  it('surfaces a real error when Electron pickSave returns a non-string path', async () => {
+    hostMocks.bridge.kind = 'electron';
+    hostMocks.pickSave.mockResolvedValue({ filePath: 'D:\\exports\\YAQMC-diagnostics.zip' });
+
+    await expect(exportDiagnosticsBundle({ includeLogs: true })).rejects.toThrow(
+      'Diagnostics save dialog returned an invalid path',
+    );
+    expect(hostMocks.invoke).not.toHaveBeenCalled();
+  });
+
   it('throws DiagnosticsExportAbortedError when Electron pickSave is cancelled', async () => {
     hostMocks.bridge.kind = 'electron';
     hostMocks.pickSave.mockResolvedValue(null);

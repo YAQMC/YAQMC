@@ -13,20 +13,19 @@ import {
   pickFile,
   pickSave,
   PLUGIN_PACKAGE_FILTERS,
-  type OpenDialogOptions,
+  resolveDiagnosticsSavePath,
   type OpenDialogResult,
-  type SaveDialogOptions,
   type SaveDialogResult,
 } from './dialogs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 function saveDialog(result: SaveDialogResult) {
-  return vi.fn(async (_options: SaveDialogOptions): Promise<SaveDialogResult> => result);
+  return vi.fn(async (): Promise<SaveDialogResult> => result);
 }
 
 function openDialog(result: OpenDialogResult) {
-  return vi.fn(async (_options: OpenDialogOptions): Promise<OpenDialogResult> => result);
+  return vi.fn(async (): Promise<OpenDialogResult> => result);
 }
 
 describe('typed filters for the three §27.4 flows', () => {
@@ -46,6 +45,21 @@ describe('typed filters for the three §27.4 flows', () => {
       { name: 'YAQMC Plugin', extensions: ['yaqmc-plugin', 'css', 'js', 'ts'] },
       { name: 'All files', extensions: ['*'] },
     ]);
+  });
+});
+
+describe('resolveDiagnosticsSavePath', () => {
+  it('keeps an absolute zip path and joins a relative name under Downloads', () => {
+    expect(resolveDiagnosticsSavePath('D:\\exports\\YAQMC-diagnostics.zip', 'D:\\Downloads')).toBe(
+      'D:\\exports\\YAQMC-diagnostics.zip',
+    );
+    expect(resolveDiagnosticsSavePath('YAQMC-diagnostics.zip', 'D:\\Downloads')).toBe(
+      path.join('D:\\Downloads', 'YAQMC-diagnostics.zip'),
+    );
+    expect(resolveDiagnosticsSavePath('report', 'D:\\Downloads')).toBe(
+      path.join('D:\\Downloads', 'report.zip'),
+    );
+    expect(resolveDiagnosticsSavePath('YAQMC-diagnostics.zip', '')).toBe('YAQMC-diagnostics.zip');
   });
 });
 

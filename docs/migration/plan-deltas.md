@@ -1812,3 +1812,48 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   PLAY/ACCT/SMTC/HUMAN rows are not marked green. §41 / §49 are unchanged.
   Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No P12–P15. No qm-api-rs.
+
+## P6 FE-04: diagnostics ZIP save path and open-log-folder host methods
+
+- Windows HUMAN after `19dec97`: window chrome / GitHub opener / catalog stall
+  were fixed; Diagnostics Export Save still created no ZIP, and Settings
+  “Open logs folder” did nothing. Those are remaining native-host defects,
+  not QQ API failures and not the Chromium `net_error -100` handshake log.
+- `diagnostics_open_log_folder` and `diagnostics_reveal_bundle` are
+  inventory **host-owned** methods (command inventory #88/#89). Electron
+  Main had no handlers, so IpcRouter returned `host.denied` / unimplemented.
+  They now call `shell.openPath(logDir)` and `shell.showItemInFolder(zip)`
+  — not `shell.openExternal`. Reveal allows the Core log dir or an existing
+  absolute `.zip`. Lyrics roles stay denied.
+- Diagnostics Save: `dialog.pickSave` now resolves a relative default/result
+  against `app.getPath('downloads')` and appends `.zip` when missing so the
+  path handed to `diagnostics_export_bundle_to` is the exact filesystem
+  destination. The `_to` host interceptor applies the same resolution before
+  Core writes. A non-string pickSave result is a surfaced error, not a
+  silent `DiagnosticsExportAbortedError`. Cancel still returns `null`.
+- Native E2E: `diagnostics_open_log_folder` returns an existing log dir;
+  with Core, `_to` writes a ZIP at the given path (`overrideUnresolved`).
+  FE-04 / HUMAN acceptance stays **BLOCKED**. §41 / §49 unchanged.
+  Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No P12–P15. No qm-api-rs.
+
+## Chromium net_error -100 handshake (unrelated to ZIP / open-folder)
+
+- Same Windows Electron session logged
+  `ssl_client_socket_impl.cc:963 handshake failed; returned -1, SSL error
+  code 1, net_error -100`. Chromium `-100` is `ERR_CONNECTION_CLOSED`
+  (TCP FIN during the handshake), not `ERR_SSL_PROTOCOL_ERROR`.
+- PID **47128** was already gone when re-checked; it is an Electron/Chromium
+  child (browser, network utility, or renderer), not `yaqmc-core`. No
+  `--log-net-log` capture was taken (would risk cookies / auth). Production
+  TLS verification, CSP, and certificate policy were not changed.
+- Likely destinations, none of which are the local ZIP/open-folder path:
+  Chromium variations / component updater (`clients2.google.com`,
+  `update.googleapis.com`) commonly closed in CN/proxy environments;
+  optional QQ artwork `img-src` hosts (`qpic.y.qq.com`, `y.gtimg.cn`,
+  qlogo); updater GitHub releases only when Check for updates runs.
+  Vite `http://127.0.0.1:1420/` is not TLS. Renderer `connect-src` is
+  `app:` + `127.0.0.1:19532` only.
+- Treat as benign/retried Chromium or remote-asset noise until a
+  metadata-only net log names a host. Do not disable TLS to silence it.
+  Not attributed to Diagnostics Export or Open logs folder.

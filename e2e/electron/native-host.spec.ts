@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, unlinkSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { e2eCoreStatus, launchElectronNativeWindow, resolveE2eCoreBin } from './launch';
 
@@ -70,6 +73,22 @@ test.describe('FE-04 native host', () => {
     });
   });
 
+  test('diagnostics_open_log_folder is a host method and returns an existing directory', async () => {
+    const { page } = session;
+    const logDir = await page.evaluate(() => {
+      const yaqmc = Reflect.get(globalThis, 'yaqmc');
+      const invoke =
+        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      if (typeof invoke !== 'function') {
+        throw new Error('window.yaqmc.invoke is missing');
+      }
+      return invoke('diagnostics_open_log_folder');
+    });
+    expect(typeof logDir).toBe('string');
+    expect(logDir).toMatch(/logs$/i);
+    expect(existsSync(String(logDir))).toBe(true);
+  });
+
   test('host.coreStatus is registered on the main window', async () => {
     const { page } = session;
     const status = await page.evaluate(() => {
@@ -131,5 +150,27 @@ test.describe('FE-04 native host with Core', () => {
       return invoke('player_snapshot');
     });
     expect(snapshot).toMatchObject({ queue: expect.any(Array) });
+  });
+
+  test('diagnostics_export_bundle_to writes a ZIP at the exact selected path', async () => {
+    const { app, page } = session;
+    await expect.poll(() => e2eCoreStatus(app), { timeout: 60_000 }).toBe('ready');
+    const dest = path.join(mkdtempSync(path.join(os.tmpdir(), 'yaqmc-diag-')), 'YAQMC-diagnostics.zip');
+    const result = (await page.evaluate((filePath) => {
+      const yaqmc = Reflect.get(globalThis, 'yaqmc');
+      const invoke =
+        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      if (typeof invoke !== 'function') {
+        throw new Error('window.yaqmc.invoke is missing');
+      }
+      return invoke('diagnostics_export_bundle_to', {
+        path: filePath,
+        request: { includeLogs: true, overrideUnresolved: true },
+      });
+    }, dest)) as { path?: string; bytes?: number };
+    expect(result.path).toBe(dest);
+    expect(result.bytes).toBeGreaterThan(0);
+    expect(existsSync(dest)).toBe(true);
+    unlinkSync(dest);
   });
 });

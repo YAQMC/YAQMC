@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 /**
  * §27.4 host half: Main path pickers. Host IPC intercepts inventory pick
  * methods and extra `dialog.pickSave`. Core `_to`/`_from` methods
@@ -96,6 +98,19 @@ const FILTERS_BY_KIND: Record<PathPickerKind, DialogFileFilter[]> = {
   'background-image': BACKGROUND_IMAGE_FILTERS,
   'plugin-package': PLUGIN_PACKAGE_FILTERS,
 };
+
+/** Resolve a diagnostics save/default path to an absolute `.zip` under Downloads when relative. */
+export function resolveDiagnosticsSavePath(filePath: string, downloadsDir: string): string {
+  const trimmed = filePath.trim();
+  const withZip = /\.zip$/i.test(trimmed) ? trimmed : `${trimmed}.zip`;
+  if (path.isAbsolute(withZip)) {
+    return withZip;
+  }
+  if (downloadsDir.length === 0) {
+    return withZip;
+  }
+  return path.join(downloadsDir, withZip);
+}
 
 export function filtersFor(kind: PathPickerKind): DialogFileFilter[] {
   return FILTERS_BY_KIND[kind].map((filter) => ({

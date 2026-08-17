@@ -31,6 +31,9 @@ describe('host boot wiring', () => {
     expect(source).toContain('linuxGraphicsDiagnostics');
     expect(source).toContain('collectDiagnosticsHostPayload');
     expect(source).toContain('shell.openExternal');
+    expect(source).toContain('shell.openPath');
+    expect(source).toContain('showItemInFolder');
+    expect(source).toContain('diagnostics_open_log_folder');
     expect(source).toContain('dialog.showSaveDialog');
     expect(source).toContain('dialog.showOpenDialog');
     expect(source).toContain('window.minimize');

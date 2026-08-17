@@ -314,6 +314,16 @@ const router = new IpcRouter({
           ? dialog.showOpenDialog(mainWindow, options)
           : dialog.showOpenDialog(options),
     },
+    downloadsDir: () => app.getPath('downloads'),
+    // diagnostics_open_log_folder / diagnostics_reveal_bundle: host-owned OS folder APIs.
+    folders: {
+      logDir: () => coreDataPaths().logDir,
+      openPath: (target) => shell.openPath(target),
+      showItemInFolder: (target) => {
+        shell.showItemInFolder(target);
+      },
+      exists: (target) => existsSync(target),
+    },
     oauth: {
       createWindow: (options) =>
         createOAuthBrowserWindow(options as ConstructorParameters<typeof BrowserWindow>[0]),
