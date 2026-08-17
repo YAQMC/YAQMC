@@ -24,6 +24,8 @@ async fn main() {
     let log_dir = env_path("YAQMC_LOG_DIR", "logs");
     let config_dir = env_path("YAQMC_CONFIG_DIR", "config");
     let _ = std::fs::create_dir_all(&config_dir);
+    let _core_pid =
+        yaqmc_core::pidfile::CorePidFile::write(&data_dir).expect("core pid file");
     let audio = {
         #[cfg(feature = "test-provider")]
         {

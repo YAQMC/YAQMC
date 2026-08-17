@@ -14,6 +14,7 @@
 - 不启用 CORS，请求体上限 16 KiB，JSON 拒绝未知字段；
 - 不存在通用命令、shell、文件路径、插件执行或 Tauri invoke 端点；
 - 停止使用 Axum graceful shutdown，退出应用也会释放端口。
+- 宿主崩溃后，残留的 `yaqmc-core` 可能继续占用端口 `19532`。Core 会写入 `{data}/core.pid`；Electron 监督器仅在进程映像名为 `yaqmc-core` / `yaqmc-core.exe` 时结束该 PID，不会扫描全部 TCP 监听。PID 被其他进程复用时不会误杀。
 
 token 防止普通网页或普通本机调用者误用，不抵御以同一 OS 用户权限运行且能读进程内存的恶意软件。
 规范 HTTP 形状以 [OpenAPI 3.1](../local-api.openapi.yaml) 为准。

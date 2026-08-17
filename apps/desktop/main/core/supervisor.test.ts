@@ -16,6 +16,7 @@ import {
   CORE_SPAWN_ENV_ALLOWLIST,
   buildCoreSpawnEnv,
 } from './env';
+import { corePidPath } from './pid';
 import {
   CoreSupervisor,
   STDERR_RING_BYTES,
@@ -360,6 +361,57 @@ describe('CoreSupervisor', () => {
     });
     expect(spawnedEnv).not.toHaveProperty('WEBKIT_DISABLE_COMPOSITING_MODE');
     expect(spawnedEnv).not.toHaveProperty('AWS_SECRET_ACCESS_KEY');
+    child.kill();
+    await supervisor.stop();
+  });
+
+  it('kills a leftover yaqmc-core pid before spawn and ignores unrelated images', async () => {
+    const { child, stdout, stdin } = mockChild();
+    const dirs = tempDirs();
+    mkdirSync(dirs.dataDir, { recursive: true });
+    writeFileSync(corePidPath(dirs.dataDir), '4242\n');
+    const killed: number[] = [];
+    const supervisor = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      ...dirs,
+      spawn: () => child as unknown as ChildProcess,
+      processProbe: {
+        imageName: (pid) => (pid === 4242 ? 'yaqmc-core.exe' : undefined),
+        kill: (pid) => {
+          killed.push(pid);
+        },
+      },
+    });
+
+    const started = supervisor.start();
+    const nextFrame = collectFrames(stdin);
+    pushMessage(stdout, hello);
+    await expect(nextFrame()).resolves.toMatchObject({ kind: 'attach' });
+    pushMessage(stdout, { kind: 'ready' });
+    await expect(started).resolves.toEqual(hello.core);
+    expect(killed).toEqual([4242]);
+
+    writeFileSync(corePidPath(dirs.dataDir), '7\n');
+    const ignored: number[] = [];
+    const second = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      ...dirs,
+      spawn: () => {
+        throw new Error('must not spawn after ignored pid');
+      },
+      processProbe: {
+        imageName: () => 'notepad.exe',
+        kill: (pid) => {
+          ignored.push(pid);
+        },
+      },
+    });
+    await expect(second.start()).rejects.toThrow('must not spawn after ignored pid');
+    expect(ignored).toEqual([]);
     child.kill();
     await supervisor.stop();
   });

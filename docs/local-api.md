@@ -19,6 +19,9 @@ integrations, and future companion applications. It is not a public or LAN serve
 - There is no generic command, shell, filesystem-path, plugin-execution, or Tauri-invoke endpoint.
 - Duplicate starts are idempotent. Stop uses Axum graceful shutdown, releases the port, and is also called on
   application exit. Bind failures are retained as status for the Settings UI.
+- A leftover `yaqmc-core` can keep port `19532` bound after a host crash. Core writes `{data}/core.pid`; the
+  Electron supervisor kills that PID only when the process image name is `yaqmc-core` / `yaqmc-core.exe`. It
+  does not scan every TCP listener. Unrelated processes that reused the PID are left alone.
 
 The token protects the API from accidental browser access and ordinary local callers. It does not create a
 security boundary against malware already running as the same operating-system user and able to read that
