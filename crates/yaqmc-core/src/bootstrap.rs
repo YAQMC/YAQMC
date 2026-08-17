@@ -2,11 +2,13 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::audio::{AudioEngine, AUDIO_OUTPUT_DEVICE_SETTING};
+use crate::audio::{AUDIO_OUTPUT_DEVICE_SETTING, AudioEngine};
 use crate::credentials::CredentialStore;
 use crate::local_api::LocalApiService;
-use crate::logging::{self, persisted_log_level, LoggingHandle, LOG_LEVEL_SETTING_KEY};
-use crate::media::{CachedMediaPreparer, MediaPreparer, PlaybackSourceResolver};
+use crate::logging::{self, LOG_LEVEL_SETTING_KEY, LoggingHandle, persisted_log_level};
+#[cfg(not(feature = "test-provider"))]
+use crate::media::CachedMediaPreparer;
+use crate::media::{MediaPreparer, PlaybackSourceResolver};
 use crate::player::{PlayerService, PlayerSnapshot};
 use crate::plugin::ExtensionHost;
 use crate::qqmusic::QQMusicService;
@@ -93,7 +95,14 @@ impl CoreServices {
                 tracing::warn!(target: "audio", error = %error, "saved output device is unavailable; using the system default");
             }
         }
+        #[cfg(feature = "test-provider")]
+        let resolver: Arc<dyn PlaybackSourceResolver> =
+            Arc::new(crate::media::TestPlaybackSourceResolver);
+        #[cfg(not(feature = "test-provider"))]
         let resolver: Arc<dyn PlaybackSourceResolver> = qq_music.clone();
+        #[cfg(feature = "test-provider")]
+        let preparer: Arc<dyn MediaPreparer> = Arc::new(crate::media::PassthroughMediaPreparer);
+        #[cfg(not(feature = "test-provider"))]
         let preparer: Arc<dyn MediaPreparer> = Arc::new(CachedMediaPreparer::new(
             qq_music.http_client(),
             Arc::clone(&storage),
@@ -104,10 +113,15 @@ impl CoreServices {
             preparer,
         ));
         if let Ok(Some(snapshot)) = storage.load_queue::<PlayerSnapshot>() {
-            inputs
-                .runtime
-                .block_on(qq_music.remember_songs(&snapshot.queue));
-            inputs.runtime.block_on(player.restore(snapshot));
+            let qq_music = Arc::clone(&qq_music);
+            let player = Arc::clone(&player);
+            let runtime = inputs.runtime.clone();
+            std::thread::spawn(move || {
+                runtime.block_on(qq_music.remember_songs(&snapshot.queue));
+                runtime.block_on(player.restore(snapshot));
+            })
+            .join()
+            .expect("queue restore");
         }
         let local_api = LocalApiService::new(
             config.paths.local_api_config_path.clone(),

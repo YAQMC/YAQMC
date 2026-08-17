@@ -278,3 +278,14 @@ the enforced provenance ledger.
   methods for launch, callback capture, and cancel-on-close. No Electron, no qm-api-rs.
 - Dispatch + host-source tests cover prepare/cancel and the shim consumption. The 32 MiB hard cap is unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-08: protocol e2e harness
+
+- `crates/yaqmc-core/tests/protocol_e2e.rs` spawns the `yaqmc-core` stdio binary with `--features test-provider`.
+  The feature swaps in the in-process test audio engine and fixture source resolver so the harness can enqueue
+  fake-resolvable tracks without a display or network. Scenarios 1–4 of §15.6 run over handshake → snapshot →
+  play/seek/next/queue storms → shutdown-ack, plus kill-during-playback restore. No Electron, no qm-api-rs.
+- Queue restore in the stdio binary cannot `Handle::block_on` on the current runtime; it joins a worker thread.
+  `Framed::recv` keeps partial-frame state so `serve_protocol`'s `select!` can cancel an in-flight read when an
+  event is ready without treating the next JSON bytes as a length prefix. The 32 MiB hard cap is unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.

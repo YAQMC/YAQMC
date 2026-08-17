@@ -8,6 +8,7 @@ rust-version.workspace = true
 [features]
 default = []
 test-support = ["dep:tempfile"]
+test-provider = ["test-support"]
 
 [dependencies]
 async-trait = "0.1"
@@ -47,12 +48,16 @@ souvlaki = { version = "0.8.3", default-features = false }
 [dev-dependencies]
 http-body-util = "0.1"
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "test-util", "time"] }
+tokio = { version = "1", features = ["macros", "net", "process", "rt-multi-thread", "test-util", "time"] }
 tower = { version = "0.5", features = ["util"] }
 
 [[bin]]
 name = "yaqmc-core"
 path = "src/bin/yaqmc-core.rs"
+
+[[test]]
+name = "protocol_e2e"
+required-features = ["test-provider"]
 
 [[test]]
 name = "task7_local_api_boundary"

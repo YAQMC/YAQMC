@@ -28,6 +28,6 @@ pub use registry::{
     authorize, method, methods, AclDenied, MethodOwner, MethodSpec, TimeoutClass, WindowOrigin,
     PROTOCOL_ONLY_METHODS,
 };
-pub use transport::{duplex_pair, CoreTransport, DuplexTransport, StdioTransport};
+pub use transport::{duplex_pair, CoreTransport, DuplexTransport, PipeTransport, StdioTransport};
 
 pub const PROTOCOL_VERSION: u32 = ProtocolVersion::V1 as u32;
