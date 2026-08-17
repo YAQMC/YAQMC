@@ -328,3 +328,10 @@ the enforced provenance ledger.
 - Unit tests cover queue-until-ready, the 15 s timeout, event fan-in, and resync.
   The 32 MiB hard cap is unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P3 CLIENT-04: seek-coalescing adapter move
+
+- Seek-coalescing now lives in `packages/yaqmc-client`. `src/application/player-command-adapter.ts`
+  re-exports the package so existing frontend imports stay put. Behavior is unchanged.
+  No Electron, no qm-api-rs.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
