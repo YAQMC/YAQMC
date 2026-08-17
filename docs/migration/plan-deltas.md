@@ -317,3 +317,14 @@ the enforced provenance ledger.
 - Inventory CI asserts the TS method-name list matches `command-inventory.md`.
   The 32 MiB hard cap is unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P3 CLIENT-03: HostBridge and YaqmcClient
+
+- `YaqmcClient` now exposes typed `player` / `catalog` / `account` / `plugins` /
+  `host` groups, queues `invoke` until `markReady()` (15 s → `core.unavailable`),
+  subscribes to ADR-004 channels, and implements the §14.5 resync pull.
+  Seek-coalescing still lives in the frontend adapter until CLIENT-04. No Electron,
+  no qm-api-rs, no frontend import.
+- Unit tests cover queue-until-ready, the 15 s timeout, event fan-in, and resync.
+  The 32 MiB hard cap is unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.

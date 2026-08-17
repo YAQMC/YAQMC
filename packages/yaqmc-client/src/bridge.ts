@@ -10,6 +10,17 @@ export type InvokeArgs<M extends MethodName> = MethodParams[M] extends void
   ? []
   : [MethodParams[M]];
 
+export interface HostWindowBridge {
+  minimize(): Promise<void>;
+  toggleMaximize(): Promise<void>;
+  close(): Promise<void>;
+  setFullscreen(enabled: boolean): Promise<void>;
+}
+
+export interface HostShellBridge {
+  openExternal(url: string): Promise<void>;
+}
+
 export interface HostBridge {
   invoke<M extends MethodName>(method: M, ...params: InvokeArgs<M>): Promise<MethodResult[M]>;
   listen<C extends ChannelName>(
@@ -18,4 +29,6 @@ export interface HostBridge {
   ): () => void;
   readonly kind: HostKind;
   readonly windowRole: WindowRole;
+  readonly window: HostWindowBridge;
+  readonly shell: HostShellBridge;
 }

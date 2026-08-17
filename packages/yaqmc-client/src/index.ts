@@ -1,5 +1,12 @@
-export { type HostBridge, type HostKind, type InvokeArgs, type WindowRole } from './bridge';
-export { YaqmcClient } from './client';
+export {
+  type HostBridge,
+  type HostKind,
+  type HostShellBridge,
+  type HostWindowBridge,
+  type InvokeArgs,
+  type WindowRole,
+} from './bridge';
+export { CoreUnavailableError, READY_QUEUE_TIMEOUT_MS, YaqmcClient } from './client';
 export { createElectronBridge } from './bridges/electron';
 export { createFakeBridge } from './bridges/fake';
 export {
