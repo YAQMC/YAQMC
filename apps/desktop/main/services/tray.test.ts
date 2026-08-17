@@ -4,15 +4,21 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createTray,
+  DEFAULT_TRAY_LABELS,
   OPEN_SETTINGS_CHANNEL,
   resolveTrayIconPath,
   shouldHideInsteadOfClose,
   toggleMainWindow,
+  TRAY_I18N_KEYS,
+  TRAY_MENU_IDS,
+  trayLabelsFromLocale,
   type TrayApis,
   type TrayInstance,
   type TrayMenuItem,
   type TrayWindow,
 } from './tray';
+import { enUS } from '../../../../src/locales/en-US';
+import { zhCN } from '../../../../src/locales/zh-CN';
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const resourcesDir = path.join(desktopRoot, 'resources');
@@ -142,6 +148,12 @@ describe('createTray', () => {
       'separator',
       'quit',
     ]);
+    expect(template.find((item) => item.id === 'show-hide')?.label).toBe('Show / Hide');
+    expect(template.find((item) => item.id === 'play-pause')?.label).toBe('Play / Pause');
+    expect(template.find((item) => item.id === 'previous')?.label).toBe('Previous');
+    expect(template.find((item) => item.id === 'next')?.label).toBe('Next');
+    expect(template.find((item) => item.id === 'settings')?.label).toBe('Settings');
+    expect(template.find((item) => item.id === 'quit')?.label).toBe('Quit');
 
     clickMenu(template, 'play-pause');
     clickMenu(template, 'next');
@@ -162,14 +174,14 @@ describe('createTray', () => {
   it('toggles the main window from the menu and left-click', () => {
     const trays: FakeTray[] = [];
     const { apis, template } = createApis(trays);
-    const visible = { value: true };
+    const vis = { value: true };
     const window = mockWindow({
-      isVisible: () => visible.value,
+      isVisible: () => vis.value,
       hide: vi.fn(() => {
-        visible.value = false;
+        vis.value = false;
       }),
       show: vi.fn(() => {
-        visible.value = true;
+        vis.value = true;
       }),
     });
 
@@ -193,6 +205,71 @@ describe('createTray', () => {
   it('does not send IPC itself', () => {
     const source = readFileSync(path.join(desktopRoot, 'main/services/tray.ts'), 'utf8');
     expect(source).not.toMatch(/webContents\.send|ipcMain|ipcRenderer/);
+  });
+});
+
+describe('tray i18n dictionary', () => {
+  it('maps every Electron tray menu id onto tray.* locale keys', () => {
+    expect(TRAY_MENU_IDS).toEqual([
+      'show-hide',
+      'play-pause',
+      'previous',
+      'next',
+      'settings',
+      'quit',
+    ]);
+    for (const id of TRAY_MENU_IDS) {
+      expect(TRAY_I18N_KEYS[id]).toBe(`tray.${id}`);
+    }
+    expect(trayLabelsFromLocale(enUS.tray)).toEqual(DEFAULT_TRAY_LABELS);
+    expect(trayLabelsFromLocale(enUS.tray)).toEqual(enUS.tray);
+  });
+
+  it('uses zh-CN strings that differ from en-US', () => {
+    const en = trayLabelsFromLocale(enUS.tray);
+    const zh = trayLabelsFromLocale(zhCN.tray);
+    expect(zh).toEqual(zhCN.tray);
+    for (const id of TRAY_MENU_IDS) {
+      expect(zh[id]).not.toBe(en[id]);
+    }
+  });
+
+  it('rebuilds the context menu when applyLabels or setLabels is called', () => {
+    const trays: FakeTray[] = [];
+    const { apis, template } = createApis(trays);
+    const handle = createTray({
+      apis,
+      resourcesDir,
+      platform: 'win32',
+      getMainWindow: () => mockWindow(),
+      invokePlayer: vi.fn(),
+      openSettings: vi.fn(),
+      quit: vi.fn(),
+    });
+
+    expect(handle.applyLabels).toBe(handle.setLabels);
+    handle.applyLabels(trayLabelsFromLocale(zhCN.tray));
+    expect(template.find((item) => item.id === 'show-hide')?.label).toBe(zhCN.tray['show-hide']);
+    expect(template.find((item) => item.id === 'play-pause')?.label).toBe(zhCN.tray['play-pause']);
+    expect(template.find((item) => item.id === 'previous')?.label).toBe(zhCN.tray.previous);
+    expect(template.find((item) => item.id === 'next')?.label).toBe(zhCN.tray.next);
+    expect(template.find((item) => item.id === 'settings')?.label).toBe(zhCN.tray.settings);
+    expect(template.find((item) => item.id === 'quit')?.label).toBe(zhCN.tray.quit);
+    expect(trays[0]?.tooltip).toBe('YAQMC');
+
+    handle.setLabels(trayLabelsFromLocale(enUS.tray));
+    expect(template.find((item) => item.id === 'quit')?.label).toBe(enUS.tray.quit);
+    expect(template.map((item) => item.id ?? item.type)).toEqual([
+      'show-hide',
+      'separator',
+      'play-pause',
+      'previous',
+      'next',
+      'separator',
+      'settings',
+      'separator',
+      'quit',
+    ]);
   });
 });
 

@@ -1015,4 +1015,12 @@ export const enUS = {
     imageFailed: 'The selected background image could not be prepared.',
     settingsFailed: 'The desktop runtime could not complete this settings operation.',
   },
+  tray: {
+    'show-hide': 'Show / Hide',
+    'play-pause': 'Play / Pause',
+    previous: 'Previous',
+    next: 'Next',
+    settings: 'Settings',
+    quit: 'Quit',
+  },
 } as const;
