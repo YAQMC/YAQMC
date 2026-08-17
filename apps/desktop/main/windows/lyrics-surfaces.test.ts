@@ -270,7 +270,9 @@ describe('createLyricsSurfaces controller', () => {
   });
 
   it('hide and lock are no-ops until create, and skip destroyed windows', () => {
-    const createWindow = vi.fn(mockWindow);
+    const createWindow = vi.fn<(options: LyricsSurfaceCreateOptions) => LyricsSurfaceWindow>(() =>
+      mockWindow(),
+    );
     const surfaces = createLyricsSurfaces({ createWindow, preloadPath: PRELOAD });
     surfaces.hide('desktop');
     surfaces.lock('island', true);
@@ -280,6 +282,18 @@ describe('createLyricsSurfaces controller', () => {
     window.isDestroyed = () => true;
     createWindow.mockReturnValueOnce(window);
     surfaces.create('desktop');
+    expect(createWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: 940,
+        height: 190,
+        show: false,
+        webPreferences: expect.objectContaining({ preload: PRELOAD, sandbox: true }),
+      }),
+    );
+    const created = createWindow.mock.calls[0]?.[0];
+    expect(created).toBeDefined();
+    expect(created).not.toHaveProperty('x');
+    expect(created).not.toHaveProperty('y');
     expect(surfaces.get('desktop')).toBeUndefined();
     surfaces.hide('desktop');
     surfaces.lock('desktop', true);
