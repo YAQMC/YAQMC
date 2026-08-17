@@ -769,3 +769,39 @@ the enforced provenance ledger.
   surface ACL preloads, and index.ts wire-up remain later SURF tasks.
   No Playwright. No qm-api-rs. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P9 SURF-05: lyrics and unlock preloads
+
+- `apps/desktop/preload/lyrics-surface.ts` and `unlock-overlay.ts` expose the
+  same `window.yaqmc = { invoke, on, windowRole, hostInfo }` shape as
+  `preload/main.ts` (contextBridge + `ipcRenderer.invoke`/`on` only).
+  `hostInfo.coreProtocol` is **1**. Sandbox stays on; no `--no-sandbox`.
+- `windowRole` is parsed from the page query, not from the renderer: lyrics
+  `?surface=desktop|island` → `lyrics-desktop` | `lyrics-island`; unlock
+  `?unlockSurface=desktop|island` → `unlock-desktop` | `unlock-island`.
+  Parsing lives in `preload/window-role.ts` (pure; no Electron/Node APIs).
+  Main ACL already restricts methods/events per §11.3; unlock still has
+  invoke/on and Main denies core methods.
+- esbuild emits `dist/preload/lyrics-surface.cjs` and `unlock-overlay.cjs`
+  (CJS, `external: ['electron']`, same as main preload). BrowserWindow
+  `.preload` wiring stays with SURF-01/SURF-02 (`lyrics-surfaces.ts` /
+  `index.ts` untouched). No FE-01 files. No Playwright. Electron stays
+  **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains `PENDING`;
+  provenance remains **BLOCKED**. No qm-api-rs.
+
+## P11-prep DIAG-03: dialogs.ts pick-path (unwired)
+
+- `apps/desktop/main/dialogs.ts` (not `services/dialogs.ts`) is the §27.4 host
+  half: `pickSave` / `pickFile` / `pickDirectory` return `string | null` on
+  cancel. `dialog.showSaveDialog` / `showOpenDialog` are injected so unit tests
+  never need a display. `index.ts` and IPC are untouched.
+- Typed filters cover the three flows from live Tauri FACT: diagnostics export
+  zip (`ZIP archive` / `zip`, suggested `YAQMC-diagnostics.zip`), background
+  image (`Images` png/jpg/jpeg/webp/bmp/gif), plugin package (`YAQMC Plugin`
+  yaqmc-plugin/css/js/ts plus `All files`) and unpacked dir (`openDirectory`,
+  no file filter). Core `_to`/`_from` methods
+  (`diagnostics_export_bundle_to`, `preferences_set_background_from`,
+  `plugin_install_from`) remain TODO; this checkpoint does not edit Rust.
+- No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
+  P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
+

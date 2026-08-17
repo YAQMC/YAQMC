@@ -17,24 +17,36 @@ const mainOptions = {
   logLevel: 'info',
 };
 
-const preloadOptions = {
-  absWorkingDir: root,
-  entryPoints: ['preload/main.ts'],
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  outfile: 'dist/preload/main.cjs',
-  external: ['electron'],
-  sourcemap: true,
-  logLevel: 'info',
-};
+const preloadEntries = [
+  ['preload/main.ts', 'dist/preload/main.cjs'],
+  ['preload/lyrics-surface.ts', 'dist/preload/lyrics-surface.cjs'],
+  ['preload/unlock-overlay.ts', 'dist/preload/unlock-overlay.cjs'],
+];
+
+function preloadOptions(entryPoint, outfile) {
+  return {
+    absWorkingDir: root,
+    entryPoints: [entryPoint],
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    outfile,
+    external: ['electron'],
+    sourcemap: true,
+    logLevel: 'info',
+  };
+}
 
 if (watch) {
   const mainCtx = await esbuild.context(mainOptions);
-  const preloadCtx = await esbuild.context(preloadOptions);
   await mainCtx.watch();
-  await preloadCtx.watch();
+  for (const [entryPoint, outfile] of preloadEntries) {
+    const preloadCtx = await esbuild.context(preloadOptions(entryPoint, outfile));
+    await preloadCtx.watch();
+  }
 } else {
   await esbuild.build(mainOptions);
-  await esbuild.build(preloadOptions);
+  for (const [entryPoint, outfile] of preloadEntries) {
+    await esbuild.build(preloadOptions(entryPoint, outfile));
+  }
 }
