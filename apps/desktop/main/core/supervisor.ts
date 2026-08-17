@@ -211,6 +211,15 @@ export class CoreSupervisor extends EventEmitter {
     return this.runtimeStatus;
   }
 
+  /** E2E/test: SIGTERM the live child so the crash-restart path runs. Does not `stop()`. */
+  killRunningChild(): boolean {
+    const child = this.child;
+    if (!child || child.exitCode !== null) {
+      return false;
+    }
+    return child.kill();
+  }
+
   stderrSnapshot(): Buffer {
     return Buffer.concat(this.stderrChunks);
   }
