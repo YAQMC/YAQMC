@@ -11,6 +11,7 @@ import {
   type IssuePreview,
 } from '../application/issue-reporter';
 import {
+  DiagnosticsExportAbortedError,
   exportDiagnosticsBundle,
   revealDiagnosticBundle,
   type BundleExportResult,
@@ -145,6 +146,9 @@ export function IssueReporterDialog({
         redactedValues: result.redaction.valuesRedacted,
       });
     } catch (caught) {
+      if (caught instanceof DiagnosticsExportAbortedError) {
+        return;
+      }
       const message = String(caught);
       setError(message);
       logger.warn('issue.bundle', 'bundle export failed', { error: message });

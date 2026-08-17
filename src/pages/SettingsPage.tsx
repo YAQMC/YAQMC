@@ -64,6 +64,7 @@ import { buildMetadata, productMetadata, type ProductLink } from '../application
 import {
   clearOldLogs,
   currentLogLevel,
+  DiagnosticsExportAbortedError,
   exportDiagnosticsBundle,
   openLogFolder,
   revealDiagnosticBundle,
@@ -719,6 +720,9 @@ export function SettingsPage() {
       setLastBundle(bundle);
       setDiagnosticsMessage(t('diagnostics.bundleExported', { path: bundle.path }));
     } catch (caught) {
+      if (caught instanceof DiagnosticsExportAbortedError) {
+        return;
+      }
       setDiagnosticsError(t('diagnostics.bundleFailed', { error: String(caught) }));
     } finally {
       setDiagnosticsBusy(false);

@@ -36,12 +36,18 @@ vi.mock('../application/native-player-runtime', () => ({
   isNativeRuntime: true,
 }));
 
-vi.mock('../application/diagnostics-runtime', () => ({
-  exportDiagnosticsBundle: exportBundleMock,
-  revealDiagnosticBundle: revealBundleMock,
-}));
+vi.mock('../application/diagnostics-runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../application/diagnostics-runtime')>();
+  return {
+    ...actual,
+    exportDiagnosticsBundle: exportBundleMock,
+    revealDiagnosticBundle: revealBundleMock,
+  };
+});
 
 import '../i18n';
+import { DiagnosticsExportAbortedError } from '../application/diagnostics-runtime';
+import { logger } from '../application/logger';
 import { IssueReporterDialog } from './IssueReporterDialog';
 
 const samplePreview = {
@@ -213,5 +219,26 @@ describe('IssueReporterDialog', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toMatch(/bundle boom/);
     });
+  });
+
+  it('does not treat a cancelled save dialog as a bundle failure', async () => {
+    configureDefaultInvokes();
+    const warn = vi.spyOn(logger, 'warn');
+    exportBundleMock.mockRejectedValue(new DiagnosticsExportAbortedError());
+    render(<IssueReporterDialog open onClose={vi.fn()} />);
+    const generate = await screen.findByRole('button', { name: /generate bundle|生成诊断/i });
+    await act(async () => {
+      fireEvent.click(generate);
+    });
+    await waitFor(() => {
+      expect(exportBundleMock).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(warn).not.toHaveBeenCalledWith(
+      'issue.bundle',
+      'bundle export failed',
+      expect.anything(),
+    );
+    warn.mockRestore();
   });
 });
