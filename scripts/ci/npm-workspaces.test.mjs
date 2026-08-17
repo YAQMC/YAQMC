@@ -13,6 +13,7 @@ function readJson(relativePath) {
 test('root package.json declares npm workspaces for packages and apps', () => {
   const pkg = readJson('package.json');
   assert.deepEqual(pkg.workspaces, ['packages/*', 'apps/*']);
+  assert.equal(pkg.scripts['dev:desktop'], 'node scripts/dev-desktop.mjs');
 });
 
 test('root tsconfig references the @yaqmc/client project', () => {

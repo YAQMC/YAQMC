@@ -17,6 +17,12 @@ npm ci
 npm run tauri dev
 ```
 
+Electron 宿主（P13 前并行）：
+
+```powershell
+npm run dev:desktop
+```
+
 浏览器开发使用确定性 fake provider：
 
 ```powershell

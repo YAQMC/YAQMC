@@ -8,6 +8,7 @@
   "main": "./dist/main/index.js",
   "scripts": {
     "build": "node ./scripts/build.mjs",
+    "watch": "node ./scripts/build.mjs --watch",
     "typecheck": "tsc -b --pretty false",
     "start": "npm run build && electron .",
     "smoke": "npm run build && node ./scripts/smoke.mjs",
