@@ -485,7 +485,17 @@ const METHODS: &[MethodSpec] = &[
     spec("plugin_read_asset", MethodOwner::Core, OriginClass::Main),
     spec("plugin_settings_get", MethodOwner::Core, OriginClass::Main),
     spec("plugin_settings_set", MethodOwner::Core, OriginClass::Main),
+    spec("core_ping", MethodOwner::Core, OriginClass::Main),
+    spec("platform_attach", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "core_shutdown_prepare",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
 ];
+
+pub const PROTOCOL_ONLY_METHODS: &[&str] =
+    &["core_ping", "platform_attach", "core_shutdown_prepare"];
 
 const fn spec(name: &'static str, owner: MethodOwner, origins: OriginClass) -> MethodSpec {
     MethodSpec {
@@ -508,7 +518,7 @@ const fn origin_slice(origins: OriginClass) -> &'static [WindowOrigin] {
 }
 
 const fn timeout_class(name: &str) -> TimeoutClass {
-    if const_starts_with(name, "player_") {
+    if const_starts_with(name, "player_") || const_eq(name, "core_ping") {
         TimeoutClass::Control
     } else if const_eq(name, "plugin_install")
         || const_eq(name, "plugin_install_unpacked")

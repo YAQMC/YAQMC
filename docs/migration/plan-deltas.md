@@ -259,3 +259,13 @@ the enforced provenance ledger.
 - A recorded fixture compares Core mapping to the previous Tauri channel sequence. The 32 MiB hard cap is
   unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-06: Core stdio server
+
+- `yaqmc-core` ships a `yaqmc-core` stdio binary. `serve_protocol()` runs hello/attach/ready, dispatches
+  requests from the host origin, forwards player fan-out as sequenced `event` frames, and shuts down on a
+  `shutdown` frame or stdin EOF. `core_ping`, `platform_attach`, and `core_shutdown_prepare` are protocol-only
+  Core methods (not Tauri `generate_handler!` entries); the 117-command inventory is unchanged. HWND re-bind
+  for SMTC remains PLAT-04. No Electron, no qm-api-rs.
+- Handshake + EOF tests cover ping, attach, shutdown-prepare, and shutdown-ack. The 32 MiB hard cap is unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.

@@ -130,6 +130,9 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "plugin_read_asset",
     "plugin_settings_get",
     "plugin_settings_set",
+    "core_ping",
+    "platform_attach",
+    "core_shutdown_prepare",
 ];
 
 #[derive(Debug)]
@@ -807,6 +810,19 @@ async fn invoke_core(
                 request,
                 notify_plugin,
             ))
+        }
+        "core_ping" => ok(json!({})),
+        "platform_attach" => ok(json!({ "ok": true })),
+        "core_shutdown_prepare" => {
+            let snapshot = core.player().snapshot().await;
+            core.storage()
+                .save_queue(&snapshot)
+                .map_err(|error| DispatchError::Command {
+                    message: error.to_string(),
+                    retryable: false,
+                    details: None,
+                })?;
+            ok(json!({ "ok": true }))
         }
         other => {
             debug_assert!(
