@@ -89,6 +89,8 @@ export async function e2eMainVisible(app: ElectronApplication): Promise<boolean>
   });
 }
 
+export type E2eLyricsKind = 'desktop' | 'island';
+
 export type E2eLyricsBounds = {
   x: number;
   y: number;
@@ -96,21 +98,23 @@ export type E2eLyricsBounds = {
   height: number;
 };
 
-export async function e2eLyricsShow(app: ElectronApplication, kind: string): Promise<void> {
+export async function e2eLyricsShow(app: ElectronApplication, kind: E2eLyricsKind): Promise<void> {
   await app.evaluate((_electron, surface) => {
     (
-      globalThis as { __YAQMC_E2E__?: { lyricsShow?: (kind: string) => void } }
+      globalThis as { __YAQMC_E2E__?: { lyricsShow?: (kind: E2eLyricsKind) => void } }
     ).__YAQMC_E2E__?.lyricsShow?.(surface);
   }, kind);
 }
 
 export async function e2eLyricsBounds(
   app: ElectronApplication,
-  kind: string,
+  kind: E2eLyricsKind,
 ): Promise<E2eLyricsBounds | null> {
   const raw = await app.evaluate((_electron, surface) => {
     const hooks = (
-      globalThis as { __YAQMC_E2E__?: { lyricsBounds?: (kind: string) => E2eLyricsBounds | null } }
+      globalThis as {
+        __YAQMC_E2E__?: { lyricsBounds?: (kind: E2eLyricsKind) => E2eLyricsBounds | null };
+      }
     ).__YAQMC_E2E__;
     const bounds = hooks?.lyricsBounds?.(surface) ?? null;
     return bounds === null ? '' : JSON.stringify(bounds);
@@ -123,7 +127,7 @@ export async function e2eLyricsBounds(
 
 export async function e2eLyricsSetBounds(
   app: ElectronApplication,
-  kind: string,
+  kind: E2eLyricsKind,
   bounds: E2eLyricsBounds,
 ): Promise<boolean> {
   return app.evaluate(
@@ -131,7 +135,7 @@ export async function e2eLyricsSetBounds(
       const hooks = (
         globalThis as {
           __YAQMC_E2E__?: {
-            lyricsSetBounds?: (kind: string, bounds: E2eLyricsBounds) => boolean;
+            lyricsSetBounds?: (kind: E2eLyricsKind, bounds: E2eLyricsBounds) => boolean;
           };
         }
       ).__YAQMC_E2E__;
@@ -143,13 +147,20 @@ export async function e2eLyricsSetBounds(
 
 export async function e2eLyricsFlushGeometry(
   app: ElectronApplication,
-  kind: string,
+  kind: E2eLyricsKind,
 ): Promise<void> {
   await app.evaluate((_electron, surface) => {
     return (
-      globalThis as { __YAQMC_E2E__?: { lyricsFlushGeometry?: (kind: string) => Promise<void> } }
+      globalThis as {
+        __YAQMC_E2E__?: { lyricsFlushGeometry?: (kind: E2eLyricsKind) => Promise<void> };
+      }
     ).__YAQMC_E2E__?.lyricsFlushGeometry?.(surface);
   }, kind);
+}
+
+/** Live Electron window URLs via Playwright's host seam — not an in-memory map. */
+export function e2eBrowserWindowUrls(app: ElectronApplication): string[] {
+  return app.windows().map((page) => page.url());
 }
 
 export async function launchElectronFakeWindow(options: LaunchElectronOptions = {}): Promise<{

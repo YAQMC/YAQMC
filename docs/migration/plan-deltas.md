@@ -1724,3 +1724,19 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 - This is not PLAY-01 / SMTC / soak / provenance green. Actions stay frozen.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P9 SURF-03 follow-up: Lyrics Island geometry E2E
+
+- `geometry.spec.ts` now covers Lyrics Island through the same
+  `__YAQMC_E2E__` / `LyricsSurfaces` / `BrowserWindow` seam as desktop. First
+  show asserts FACT Regular **520×156**. Bounds persist via
+  `flushGeometry` → BASE-04 `lyrics-surface-geometry:island`, then a relaunch
+  with the shared e2e Core dirs restores them. Desktop and island keys stay
+  isolated (different persisted bounds after restore). Live window URLs must
+  include `?surface=island` / `?surface=desktop` and must not create unlock
+  overlays. Needs a local `yaqmc-core` (same skip as kill-core).
+- This is not PLAY-01 / SMTC / soak / compositor / Wayland / provenance green.
+  Actions stay frozen. Always-on-top, click-through, and fullscreen auto-hide
+  remain HUMAN/PLATFORM gates.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.

@@ -4,7 +4,8 @@
  * `YAQMC_DESKTOP_SMOKE=1` is still not the target (harness + hidden window).
  * This suite launches the real Electron host with `YAQMC_ELECTRON_E2E=1` and
  * Vite `/?provider=fake`. Kill-core runs when a local `yaqmc-core` binary is
- * present. Tray click uses `YAQMC_E2E_TRAY=1`. Geometry persist needs Core.
+ * present. Tray click uses `YAQMC_E2E_TRAY=1`. Geometry persist (desktop +
+ * island) needs Core.
  *
  * Maintainers: `npx playwright install chromium` is not required for this
  * driver. `npm run test:e2e:electron`.
