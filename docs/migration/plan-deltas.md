@@ -650,3 +650,19 @@ the enforced provenance ledger.
   Chromium switches.
 - The 32 MiB hard cap is unchanged. P0 remains PENDING; provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P8 ACCT-01: oauth-window module (unwired)
+
+- `apps/desktop/main/windows/oauth-window.ts` is the §16.4 Electron host half:
+  `auth_oauth_prepare` → ephemeral `fromPartition('oauth:'+attemptId, { cache: false })`
+  (not `persist:`), **no preload**, 480×640, `will-navigate` + `will-redirect`.
+  Allowlist globs match Core `url_matches_oauth_allowlist` (`https://host/**` =
+  scheme+host+port; trailing `**` = string prefix). Callback URL prefix from
+  `callbackMatcher.urlPrefix` captures and calls injected `auth_oauth_complete`;
+  user close calls `auth_oauth_cancel`. Packaged OAuth windows set `devTools: false`.
+- `createWindow` / `fromPartition` / the three auth methods are injected so tests
+  never open a display or talk to Core. `index.ts` and `security.ts` are untouched
+  (`isOAuthNavigationAllowed` stays the SEC-02 prefix stub). QQ/WX live login
+  remains a maintainer manual gate.
+- No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
+  P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs. No SMTC.
