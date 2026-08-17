@@ -1,0 +1,1 @@
+# Keep extraResources `from: resources/core` in git. Staged yaqmc-core[.exe] stays gitignored.

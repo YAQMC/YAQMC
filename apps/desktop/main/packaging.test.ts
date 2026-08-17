@@ -6,18 +6,49 @@ import { describe, expect, it } from 'vitest';
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const resources = path.join(desktopRoot, 'resources');
 
-describe('ELEC-07 packaging skeleton', () => {
+describe('PACK-01 electron-builder', () => {
   it('keeps desktop icons in apps/desktop/resources', () => {
     for (const name of ['icon.png', 'icon.ico', 'icon.icns', '32x32.png', '128x128.png']) {
       expect(existsSync(path.join(resources, name)), name).toBe(true);
     }
   });
 
-  it('declares an electron-builder skeleton without packaging targets', () => {
+  it('pins electron-builder exactly and does not add electron-updater', () => {
+    const pkg = JSON.parse(readFileSync(path.join(desktopRoot, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
+    };
+    expect(pkg.devDependencies?.electron).toBe('43.4.0');
+    expect(pkg.devDependencies?.['electron-builder']).toBe('26.15.7');
+    expect(pkg.dependencies?.['electron-updater']).toBeUndefined();
+    expect(pkg.devDependencies?.['electron-updater']).toBeUndefined();
+    expect(pkg.scripts?.['pack:dir']).toContain('--dir');
+  });
+
+  it('finalizes appId parity, targets, NSIS, extraResources, and sandbox fuses', () => {
     const yaml = readFileSync(path.join(desktopRoot, 'electron-builder.yml'), 'utf8');
     expect(yaml).toContain('appId: org.yaqmc.desktop');
+    expect(yaml).toContain('productName: YAQMC');
+    expect(yaml).toContain('asar: true');
     expect(yaml).toContain('electronVersion: 43.4.0');
-    expect(yaml).toContain('icon: resources/icon.ico');
-    expect(yaml).not.toMatch(/nsis:|appImage:|deb:|rpm:/);
+    expect(yaml).toContain('from: resources/core');
+    expect(yaml).toContain('to: core');
+    expect(yaml).toContain('oneClick: false');
+    expect(yaml).toContain('perMachine: false');
+    expect(yaml).toMatch(/target:\s*nsis|target: nsis/);
+    expect(yaml).toMatch(/target:\s*portable|target: portable/);
+    expect(yaml).toContain('AppImage');
+    expect(yaml).toContain('deb');
+    expect(yaml).toContain('rpm');
+    expect(yaml).toContain('tar.gz');
+    expect(yaml).toContain('runAsNode: false');
+    expect(yaml).toContain('enableNodeOptionsEnvironmentVariable: false');
+    expect(yaml).toContain('enableNodeCliInspectArguments: false');
+    expect(yaml).toContain('onlyLoadAppFromAsar: true');
+    expect(yaml).toContain('grantFileProtocolExtraPrivileges: false');
+    expect(yaml).not.toContain(['--', 'no-sandbox'].join(''));
+    expect(yaml).not.toContain(['--', 'disable-web-security'].join(''));
+    expect(yaml).not.toContain('electron-updater');
   });
 });

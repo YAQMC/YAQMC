@@ -12,13 +12,16 @@
     "typecheck": "tsc -b --pretty false",
     "start": "npm run build && electron .",
     "smoke": "npm run build && node ./scripts/smoke.mjs",
-    "test": "vitest run --config ./vitest.config.ts"
+    "test": "vitest run --config ./vitest.config.ts",
+    "package": "electron-builder --projectDir . --config electron-builder.yml",
+    "pack:dir": "electron-builder --projectDir . --config electron-builder.yml --dir --x64"
   },
   "dependencies": {
     "@yaqmc/client": "*"
   },
   "devDependencies": {
     "electron": "43.4.0",
+    "electron-builder": "26.15.7",
     "esbuild": "^0.25.12"
   }
 }
