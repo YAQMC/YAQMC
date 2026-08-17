@@ -1515,3 +1515,12 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   add electron-updater (UPD-01). Unsigned (R-9). Electron stays **43.4.0**.
   Builder stays **26.15.7**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**.
+
+## P11 UPD-02: settings update section (stub, no electron-updater)
+
+- Settings shows an Updates section bound to host://update states (idle,
+  checking, available, downloading, ready, error). Check for updates invokes
+  host_updater_check; when that host method is missing the UI shows a local
+  not-wired error. There is no Install button and no silent auto-install.
+- electron-updater is not added (UPD-01). Electron stays **43.4.0**. The 32 MiB
+  hard cap is unchanged. Provenance remains **BLOCKED**.
