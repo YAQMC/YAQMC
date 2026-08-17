@@ -1,10 +1,15 @@
 //! Protocol method dispatch over the P1 Core service graph.
 
+mod events;
 mod methods;
 pub mod ops;
 mod types;
 
-pub use methods::{core_dispatch_methods, dispatch, DispatchError};
+pub use events::{
+    EventSink, FanoutActions, actions_for_player_event, host_command_event, lagged_resync_channels,
+    spawn_player_fanout,
+};
+pub use methods::{DispatchError, core_dispatch_methods, dispatch};
 pub use ops::{
     map_plugin_diagnostic_for_test, map_provider_section_for_test, perf_sample_header,
     perf_sample_line, write_perf_sample,

@@ -61,6 +61,7 @@ use qqmusic::QQMusicService;
 use std::sync::Arc;
 use storage::StorageService;
 use tauri::{Emitter, Manager};
+use yaqmc_core::server::{spawn_player_fanout, EventSink};
 use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CorePaths, HostCommand};
 
 #[derive(Clone, Copy)]
@@ -110,6 +111,16 @@ fn subscribe_host_commands(
             }
         }
     });
+}
+
+struct TauriEventSink {
+    app: tauri::AppHandle,
+}
+
+impl EventSink for TauriEventSink {
+    fn emit(&self, _seq: u64, channel: &str, payload: &serde_json::Value) {
+        let _ = self.app.emit(channel, payload);
+    }
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -292,94 +303,15 @@ pub fn run() {
 
             player.start_clock_on_runtime(tauri::async_runtime::handle().inner());
 
-            let app_handle = app.handle().clone();
-            let mut event_receiver = player.subscribe();
-            let persistence = Arc::clone(&storage);
-            let snapshot_source = Arc::clone(&player);
-            let media_projection = Arc::clone(&system_media);
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    let event = match event_receiver.recv().await {
-                        Ok(event) => event,
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                            tracing::warn!(
-                                target: "player.session",
-                                skipped,
-                                "player event subscriber lagged; resyncing authoritative snapshot"
-                            );
-                            let snapshot = snapshot_source.snapshot().await;
-                            let _ = app_handle.emit("player://snapshot", &snapshot);
-                            let projection = snapshot_source.lyric_surface_projection().await;
-                            let _ = app_handle.emit("lyrics://projection", &projection);
-                            let document = snapshot_source.lyrics().await;
-                            let _ = app_handle.emit("lyrics://document", &document);
-                            media_projection.update(&snapshot, false);
-                            continue;
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                    };
-                    let _ = app_handle.emit("api://event", &event);
-                    if matches!(
-                        event.event_type.as_str(),
-                        "queue.changed"
-                            | "player.track"
-                            | "player.playback"
-                            | "player.position"
-                            | "player.seeked"
-                            | "player.volume"
-                            | "player.mode"
-                            | "player.error"
-                    ) {
-                        let _ = app_handle.emit("player://snapshot", &event.data);
-                    }
-                    if matches!(
-                        event.event_type.as_str(),
-                        "player.position"
-                            | "player.seeked"
-                            | "player.track"
-                            | "player.playback"
-                            | "player.error"
-                            | "lyrics.changed"
-                            | "lyrics.line"
-                            | "lyrics.word"
-                    ) {
-                        let projection = snapshot_source.lyric_surface_projection().await;
-                        let _ = app_handle.emit("lyrics://projection", &projection);
-                    }
-                    if event.event_type == "lyrics.changed" {
-                        let document = snapshot_source.lyrics().await;
-                        let _ = app_handle.emit("lyrics://document", &document);
-                    }
-                    if matches!(
-                        event.event_type.as_str(),
-                        "queue.changed"
-                            | "player.track"
-                            | "player.playback"
-                            | "player.position"
-                            | "player.seeked"
-                            | "player.volume"
-                            | "player.mode"
-                            | "player.error"
-                    ) {
-                        let snapshot = snapshot_source.snapshot().await;
-                        media_projection.update(&snapshot, event.event_type == "player.seeked");
-                    }
-                    if matches!(
-                        event.event_type.as_str(),
-                        "queue.changed"
-                            | "player.track"
-                            | "player.playback"
-                            | "player.volume"
-                            | "player.mode"
-                            | "player.error"
-                    ) {
-                        let snapshot = snapshot_source.snapshot().await;
-                        if let Err(error) = persistence.save_queue(&snapshot) {
-                            tracing::warn!(target: "storage", error = %error, "queue persistence failed");
-                        }
-                    }
-                }
-            });
+            spawn_player_fanout(
+                tauri::async_runtime::handle().inner(),
+                Arc::clone(&player),
+                Arc::clone(&storage),
+                Arc::clone(&system_media),
+                Arc::new(TauriEventSink {
+                    app: app.handle().clone(),
+                }),
+            );
 
             let api_to_start = Arc::clone(&local_api);
             tauri::async_runtime::spawn(async move {

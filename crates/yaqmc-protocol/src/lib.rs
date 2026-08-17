@@ -1,5 +1,6 @@
 //! Versioned Core protocol: JSON envelopes, length-prefixed stdio frames, and handshake.
 
+mod channels;
 mod envelope;
 mod error;
 mod framing;
@@ -7,6 +8,12 @@ mod handshake;
 mod registry;
 mod transport;
 
+pub use channels::{
+    CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS, CHANNEL_CORE_LOG,
+    CHANNEL_HOST_COMMAND, CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION,
+    CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PLUGIN_CHANGED,
+    CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS, HOST_EVENT_CHANNELS,
+};
 pub use envelope::{
     AttachMessage, CoreError, CoreIdentity, CoreMessage, DisplayBackend, HostIdentity,
     PlatformAttach, PlatformKind, ResponseBody, ShutdownReason,
