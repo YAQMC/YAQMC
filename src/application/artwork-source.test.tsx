@@ -1,14 +1,22 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const tauriMocks = vi.hoisted(() => ({
+const clientMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   native: true,
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: tauriMocks.invoke,
-  isTauri: () => tauriMocks.native,
+vi.mock('./native-player-runtime', () => ({
+  get isNativeRuntime() {
+    return clientMocks.native;
+  },
+}));
+
+vi.mock('./yaqmc-runtime', () => ({
+  getYaqmcClient: () => ({
+    invoke: clientMocks.invoke,
+    on: () => () => undefined,
+  }),
 }));
 
 import {
@@ -35,8 +43,8 @@ function deferred<T>() {
 
 describe('artwork source policy', () => {
   beforeEach(() => {
-    tauriMocks.native = true;
-    tauriMocks.invoke.mockReset();
+    clientMocks.native = true;
+    clientMocks.invoke.mockReset();
     clearArtworkMemoryCache();
   });
 
@@ -106,33 +114,33 @@ describe('artwork source policy', () => {
 
   it('returns null while native cache resolution is pending, then exposes only validated data', async () => {
     const pending = deferred<unknown>();
-    tauriMocks.invoke.mockReturnValue(pending.promise);
+    clientMocks.invoke.mockReturnValue(pending.promise);
     const remote = 'https://qpic.y.qq.com/pending.jpg';
 
     const { result } = renderHook(() => useSafeArtworkSource(remote));
 
     expect(result.current).toBeNull();
-    expect(tauriMocks.invoke).toHaveBeenCalledWith('qqmusic_cache_artwork', { url: remote });
+    expect(clientMocks.invoke).toHaveBeenCalledWith('qqmusic_cache_artwork', { url: remote });
     await act(async () => pending.resolve(pngA));
     await waitFor(() => expect(result.current).toBe(pngA));
   });
 
   it('keeps browser development artwork direct without invoking native caching', () => {
-    tauriMocks.native = false;
+    clientMocks.native = false;
     const remote = 'https://example.com/browser-only.jpg';
 
     const { result } = renderHook(() => useSafeArtworkSource(remote));
 
     expect(result.current).toBe(remote);
-    expect(tauriMocks.invoke).not.toHaveBeenCalled();
+    expect(clientMocks.invoke).not.toHaveBeenCalled();
   });
 
   it('turns a rejected native cache request into null', async () => {
-    tauriMocks.invoke.mockRejectedValue(new Error('cache unavailable'));
+    clientMocks.invoke.mockRejectedValue(new Error('cache unavailable'));
 
     const { result } = renderHook(() => useSafeArtworkSource('https://y.gtimg.cn/rejected.jpg'));
 
-    await waitFor(() => expect(tauriMocks.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(clientMocks.invoke).toHaveBeenCalledTimes(1));
     expect(result.current).toBeNull();
   });
 
@@ -145,12 +153,12 @@ describe('artwork source policy', () => {
     { source: 'object' },
     null,
   ])('never exposes malformed native IPC result %#', async (ipcValue) => {
-    tauriMocks.invoke.mockResolvedValue(ipcValue);
+    clientMocks.invoke.mockResolvedValue(ipcValue);
     const remote = `https://qpic.y.qq.com/malformed-${String(ipcValue)}.jpg`;
 
     const { result } = renderHook(() => useSafeArtworkSource(remote));
 
-    await waitFor(() => expect(tauriMocks.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(clientMocks.invoke).toHaveBeenCalledTimes(1));
     await act(async () => Promise.resolve());
     expect(result.current).toBeNull();
     expect(result.current).not.toBe(remote);
@@ -161,7 +169,7 @@ describe('artwork source policy', () => {
     const latestRequest = deferred<unknown>();
     const oldSource = 'https://qpic.y.qq.com/old.jpg';
     const latestSource = 'https://qpic.y.qq.com/latest.jpg';
-    tauriMocks.invoke.mockImplementation((_command: string, args: { url: string }) =>
+    clientMocks.invoke.mockImplementation((_command: string, args: { url: string }) =>
       args.url === oldSource ? oldRequest.promise : latestRequest.promise,
     );
     const { rerender, result } = renderHook(
@@ -178,7 +186,7 @@ describe('artwork source policy', () => {
 
   it('does not publish a cache result after unmount', async () => {
     const pending = deferred<unknown>();
-    tauriMocks.invoke.mockReturnValue(pending.promise);
+    clientMocks.invoke.mockReturnValue(pending.promise);
     const { result, unmount } = renderHook(() =>
       useSafeArtworkSource('https://y.gtimg.cn/unmounted.jpg'),
     );
@@ -193,7 +201,7 @@ describe('artwork source policy', () => {
     const older = deferred<unknown>();
     const current = deferred<unknown>();
     const remote = 'https://qpic.y.qq.com/cache-generation.jpg';
-    tauriMocks.invoke.mockReturnValueOnce(older.promise).mockReturnValueOnce(current.promise);
+    clientMocks.invoke.mockReturnValueOnce(older.promise).mockReturnValueOnce(current.promise);
 
     const olderResult = cachedArtworkSource(remote);
     clearArtworkMemoryCache();
@@ -205,17 +213,17 @@ describe('artwork source policy', () => {
     await act(async () => current.resolve(pngB));
     await expect(currentResult).resolves.toBe(pngB);
     await expect(cachedArtworkSource(remote)).resolves.toBe(pngB);
-    expect(tauriMocks.invoke).toHaveBeenCalledTimes(2);
+    expect(clientMocks.invoke).toHaveBeenCalledTimes(2);
   });
 
   it('does not cache a malformed IPC value for later callers', async () => {
     const remote = 'https://qpic.y.qq.com/retry-malformed.jpg';
-    tauriMocks.invoke
+    clientMocks.invoke
       .mockResolvedValueOnce('https://qpic.y.qq.com/raw-result.jpg')
       .mockResolvedValueOnce(pngB);
 
     await expect(cachedArtworkSource(remote)).rejects.toThrow();
     await expect(cachedArtworkSource(remote)).resolves.toBe(pngB);
-    expect(tauriMocks.invoke).toHaveBeenCalledTimes(2);
+    expect(clientMocks.invoke).toHaveBeenCalledTimes(2);
   });
 });

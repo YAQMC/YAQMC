@@ -1,5 +1,5 @@
-import { isTauri } from '@tauri-apps/api/core';
 import { useEffect, useRef, useState } from 'react';
+import { isNativeRuntime } from './native-player-runtime';
 import {
   cachedArtworkSource,
   isCacheableArtworkSource,
@@ -50,7 +50,7 @@ interface ResolvedArtwork {
 }
 
 export function useSafeArtworkSource(source: string | null | undefined): string | null {
-  const native = isTauri();
+  const native = isNativeRuntime;
   const candidate = source?.trim() || null;
   const currentOrigin = globalThis.location?.origin ?? '';
   const classification = candidate ? classifyArtworkSource(candidate, currentOrigin) : null;
