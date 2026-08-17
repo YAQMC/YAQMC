@@ -80,6 +80,37 @@ import {
   type LyricsUnlockKind,
 } from './windows/lyrics-unlock';
 
+type E2ePlayerSnapshotView = {
+  queueLength: number;
+  currentIndex: number | null;
+  currentId: string | null;
+  isPlaying: boolean;
+  playbackState: string;
+  snapshotRevision: number;
+  errorCode: string | null;
+};
+
+function e2eViewFromPlayerPayload(payload: unknown): E2ePlayerSnapshotView | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const rec = payload as Record<string, unknown>;
+  const queue = rec.queue;
+  const err = rec.playbackError;
+  return {
+    queueLength: Array.isArray(queue) ? queue.length : 0,
+    currentIndex: typeof rec.currentIndex === 'number' ? rec.currentIndex : null,
+    currentId: typeof rec.currentQueueEntryId === 'string' ? rec.currentQueueEntryId : null,
+    isPlaying: rec.isPlaying === true,
+    playbackState: typeof rec.playbackState === 'string' ? rec.playbackState : '',
+    snapshotRevision: typeof rec.snapshotRevision === 'number' ? rec.snapshotRevision : 0,
+    errorCode:
+      err && typeof err === 'object' && typeof (err as { code?: unknown }).code === 'string'
+        ? (err as { code: string }).code
+        : null,
+  };
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: APP_SCHEME,
@@ -139,6 +170,9 @@ let stopping = false;
 let exitCode = 0;
 let mainWindow: BrowserWindow | undefined;
 let e2eSecondInstanceHits = 0;
+let e2eOpenSettingsHits = 0;
+let e2ePlayerSnapshotHits = 0;
+let e2eLastPlayerSnapshot: E2ePlayerSnapshotView | null = null;
 let trayHandle: TrayHandle | undefined;
 /** FACT default: hide-to-tray. Preference read is cached; missing prefs stay hide. */
 let closeToTray = true;
@@ -186,6 +220,10 @@ if (e2e) {
         mainVisible: () => boolean;
         mainHide: () => boolean;
         secondInstanceHits: () => number;
+        openSettingsHits: () => number;
+        lastPlayerSnapshot: () => E2ePlayerSnapshotView | null;
+        playerSnapshotHits: () => number;
+        coreInvoke: (method: string, params?: unknown) => Promise<unknown>;
         lyricsShow: (kind: LyricsSurfaceKind) => void;
         lyricsHide: (kind: LyricsSurfaceKind) => void;
         lyricsBounds: (kind: LyricsSurfaceKind) => LyricsSurfacePersistedGeometry | null;
@@ -213,6 +251,16 @@ if (e2e) {
       return true;
     },
     secondInstanceHits: () => e2eSecondInstanceHits,
+    openSettingsHits: () => e2eOpenSettingsHits,
+    lastPlayerSnapshot: () => e2eLastPlayerSnapshot,
+    playerSnapshotHits: () => e2ePlayerSnapshotHits,
+    coreInvoke: (method, params) => {
+      const client = supervisor?.client;
+      if (!client) {
+        return Promise.reject(new Error('core supervisor is not running'));
+      }
+      return params === undefined ? client.invoke(method) : client.invoke(method, params);
+    },
     lyricsShow: (kind) => {
       lyricsSurfaces.show(kind);
     },
@@ -436,6 +484,9 @@ function quitFromHostCommand(): void {
 }
 
 function emitOpenSettings(): void {
+  if (e2e) {
+    e2eOpenSettingsHits += 1;
+  }
   raiseHostMainWindow(mainWindow);
   fanoutEvent(CHANNEL_APP_OPEN_SETTINGS, null);
 }
@@ -554,6 +605,13 @@ function createMainWindow(root: string): BrowserWindow {
 }
 
 function fanoutEvent(channel: string, payload: unknown): void {
+  if (e2e && channel === CHANNEL_PLAYER_SNAPSHOT) {
+    const view = e2eViewFromPlayerPayload(payload);
+    if (view) {
+      e2eLastPlayerSnapshot = view;
+      e2ePlayerSnapshotHits += 1;
+    }
+  }
   if (channel === CHANNEL_PREFERENCES_CHANGED) {
     closeToTray = rememberCloseToTray(payload, closeToTray);
     applyTrayLabelsFromPreferences(payload);
