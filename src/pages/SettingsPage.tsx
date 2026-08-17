@@ -74,6 +74,7 @@ import type { LogLevel } from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
 import { PluginManager } from '../components/PluginManager';
+import { SettingsUpdateSection } from '../components/SettingsUpdateSection';
 import { SurfaceCapabilityBanner } from '../components/SurfaceCapabilityBanner';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
@@ -1816,6 +1817,8 @@ export function SettingsPage() {
           </button>
         )}
       </SettingsSection>
+
+      <SettingsUpdateSection />
 
       <SettingsSection title={t('about.title')} description={t('about.description')}>
         <div className="settings-about">
