@@ -1740,3 +1740,19 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   remain HUMAN/PLATFORM gates.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P5 SUP-05 follow-up: second-launch Electron E2E
+
+- Local Playwright now launches a first `_electron` host with Core, then
+  `spawn`s a second Electron process against the same `YAQMC_ELECTRON_E2E=1`
+  userData and Core dirs (not a second Playwright CDP session). The loser must
+  exit without `whenReady` / a second Core. The first host stays alive,
+  `second-instance` increments via the real lock listener, and `mainHide` is
+  undone by the production restore/show/focus path. Cleanup kills only the
+  spawned child PID (Windows `/T` tree of that PID) and, last-resort, the
+  recorded Core PID when the image is still `yaqmc-core` — never `taskkill /IM`.
+- Unit coverage of `acquireSingleInstanceLock` is unchanged. The lock, PID /
+  image-name reap, and CoreSupervisor ownership are not relaxed for the test.
+- This is not PLAY-01 / SMTC / soak / provenance / packaged-installer green.
+  Actions stay frozen. Electron stays **43.4.0**. The 32 MiB hard cap is
+  unchanged. Provenance remains **BLOCKED**. No qm-api-rs.

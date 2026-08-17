@@ -5,7 +5,7 @@
  * This suite launches the real Electron host with `YAQMC_ELECTRON_E2E=1` and
  * Vite `/?provider=fake`. Kill-core runs when a local `yaqmc-core` binary is
  * present. Tray click uses `YAQMC_E2E_TRAY=1`. Geometry persist (desktop +
- * island) needs Core.
+ * island) and SUP-05 second-launch need Core plus the shared e2e userData.
  *
  * Maintainers: `npx playwright install chromium` is not required for this
  * driver. `npm run test:e2e:electron`.
