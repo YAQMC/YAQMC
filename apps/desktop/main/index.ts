@@ -8,7 +8,7 @@ import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
 import { loadMethodAclFromFile } from './ipc/channels';
 import { IpcRouter } from './ipc/router';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
-import { applyAppWindowGuards, applySessionSecurity } from './security';
+import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -51,6 +51,9 @@ function rendererRoot(): string {
 }
 
 function mainWindowUrl(root: string): string {
+  if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
+    return `${VITE_DEV_ORIGIN}/`;
+  }
   if (root === viteDist) {
     return appIndexUrl('?provider=fake');
   }

@@ -12,6 +12,8 @@ npm ci
 npm run tauri dev
 ```
 
+Electron host (parallel until P13): `npm run dev:desktop`.
+
 Before a pull request, run:
 
 ```powershell

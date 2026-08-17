@@ -514,6 +514,16 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
 
+## P4 ELEC-09: one-command Electron dev loop
+
+- `npm run dev:desktop` runs `scripts/dev-desktop.mjs`: `cargo build -p yaqmc-core`
+  (skip with `YAQMC_SKIP_CORE_BUILD=1`; cargo-watch is optional and not required),
+  Vite on `127.0.0.1:1420`, esbuild `--watch` for main/preload, then `electron .`
+  with `YAQMC_VITE_DEV=1` so the main window loads the Vite origin. `?provider=fake`
+  browser mode is unchanged. Electron stays **43.4.0**.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,
