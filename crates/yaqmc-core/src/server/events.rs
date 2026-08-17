@@ -95,6 +95,7 @@ pub fn host_command_event(command: HostCommand) -> (&'static str, Value) {
     let payload = match command {
         HostCommand::RaiseMainWindow => json!({ "command": "raise" }),
         HostCommand::Quit => json!({ "command": "quit" }),
+        HostCommand::SurfaceAutoHide(hidden) => json!({ "surfaceAutoHide": hidden }),
     };
     (CHANNEL_HOST_COMMAND, payload)
 }
@@ -170,6 +171,33 @@ async fn resync_after_lag(
     let document = player.lyrics().await;
     sink.emit_channel(CHANNEL_LYRICS_DOCUMENT, json_value(&document));
     system_media.update(&snapshot, false);
+}
+
+/// Subscribe to the closed `HostCommand` bus and emit `host://command` frames.
+pub fn spawn_host_command_fanout(
+    runtime: &tokio::runtime::Handle,
+    mut commands: tokio::sync::broadcast::Receiver<HostCommand>,
+    sink: Arc<dyn EventSink>,
+) {
+    let sink = SequencedSink::new(sink);
+    runtime.spawn(async move {
+        loop {
+            match commands.recv().await {
+                Ok(command) => {
+                    let (channel, payload) = host_command_event(command);
+                    sink.emit_channel(channel, payload);
+                }
+                Err(RecvError::Lagged(skipped)) => {
+                    tracing::warn!(
+                        target: "host.command",
+                        skipped,
+                        "host command subscriber lagged; dropping stale command"
+                    );
+                }
+                Err(RecvError::Closed) => break,
+            }
+        }
+    });
 }
 
 /// Subscribe to `PlayerService` and emit protocol events with the §3.2 map.
