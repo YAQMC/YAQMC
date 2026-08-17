@@ -1498,3 +1498,20 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   `hostPayload` through when supplied.
 - No Playwright. No qm-api-rs. Electron stays **43.4.0**. The 32 MiB protocol
   hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P11 PACK-03: Linux package maintainer script
+
+- docs/migration/pack03-linux.md plus scripts/migration/pack03-linux.mjs
+  document AppImage (updater-bearing per plan section 32), deb, rpm, and tar.gz
+  for x64 and arm64 already declared in apps/desktop/electron-builder.yml.
+  The script dry-run parses that yml and prints electron-builder --linux
+  flags. It does not require a Linux builder on this Windows host and does not
+  fail when release-electron/ has no Linux artifacts.
+- Install / upgrade / uninstall checkboxes stay empty. LIVE VERIFY /
+  clean-VM pending. PACK-03 is not green. Tray libayatana-appindicator
+  is a deb Recommends / rpm weak Recommends tag in the checklist, not a hard
+  Depends; tray init failure stays non-fatal. No WebKitGTK.
+- AppImage is the future in-place update target; this checkpoint does not
+  add electron-updater (UPD-01). Unsigned (R-9). Electron stays **43.4.0**.
+  Builder stays **26.15.7**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**.
