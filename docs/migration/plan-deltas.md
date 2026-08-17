@@ -1288,62 +1288,24 @@ the enforced provenance ledger.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
 
-## P10 PLUG-01: example plugin lifecycle battery (automated)
-
-- Automated battery installs unpacked `examples/plugins/style-sakura` into a
-  temp `ExtensionHost` root (`crates/yaqmc-core/tests/plug01.rs`): install /
-  enable / disable / uninstall. Packed `examples/plugins/packages/` is not
-  rebuilt or committed (prefer the unpacked fixture).
-- Permissions: deny vs grant on `examples/plugins/script-network`
-  (`network:https://example.com` is sensitive). Storage quota (64 KiB) and
-  isolated store on `script-actions`. Scene-pack `manifest.json` parses
-  (PLUG-04 owns a full lyrics-scene E2E). The hostile probe
-  (`tests/fixtures/plugins/hostile`) is never enabled as a user plugin.
-- Renderer `plugin-runtime.plug01.test.ts` drives Electron
-  `plugin_install_from` / unpacked install / enable-grant / uninstall via a
-  mocked `YaqmcClient`. No live Electron GUI. Remaining §20.3 rows stay
-  **LIVE VERIFY pending**: in-app permission prompt UI, network proxy
-  allow/deny + safe-mode crash-loop (PLUG-02), scene API v2 demo (PLUG-04).
-  The Electron GUI example-plugin battery is **not** green.
-- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
-  remains **BLOCKED**. No Playwright. No qm-api-rs.
-
-## P11 PACK-03: Linux package maintainer script
-
-- `docs/migration/pack03-linux.md` plus `scripts/migration/pack03-linux.mjs`
-  document AppImage (updater-bearing per plan §32), deb, rpm, and tar.gz for
-  **x64 and arm64** already declared in `apps/desktop/electron-builder.yml`.
-  The script dry-run parses that yml and prints `electron-builder --linux`
-  flags. It does not require a Linux builder on this Windows host and does
-  not fail when `release-electron/` has no Linux artifacts.
-- Install / upgrade / uninstall checkboxes stay empty. **LIVE VERIFY /
-  clean-VM pending.** PACK-03 is not green. Tray `libayatana-appindicator`
-  is a deb `recommends` / rpm weak `Recommends` tag, not a hard Depends;
-  tray init failure stays non-fatal. deb/rpm Depends remain
-  electron-builder computed (libgtk-3, libnss3). No WebKitGTK.
-- AppImage is the future in-place update target; this checkpoint does **not**
-  add `electron-updater` (UPD-01). Unsigned (R-9). Electron stays **43.4.0**.
-  Builder stays **26.15.7**. The 32 MiB hard cap is unchanged. Provenance
-  remains **BLOCKED**. `apps/desktop/package.json` / PACK-02 files were not
-  edited.
-
-
 ## P8 ACCT-02: QR/session re-verify checklist (LIVE VERIFY pending)
 
-- `docs/migration/acct02-qr-session.md` is the §36 P8 QR login + session
-  persist/staging/refresh checklist. Fake (`?provider=fake`) vs real-account
+- docs/migration/acct02-qr-session.md is the §36 P8 QR login + session
+  persist/staging/refresh checklist. Fake (?provider=fake) vs real-account
   columns; Windows/Linux boxes empty. ACCT-02 is not green.
-- How to run: `npm run dev:desktop` with the real provider (Vite `/`, not
-  `?provider=fake`). Core QR methods are `qqmusic_auth_start` / `heartbeat` /
-  `cancel` / `refresh`. OAuth popup remains ACCT-01 — this checkpoint does not
-  edit `oauth-window.ts` and does not open OAuth at boot.
-- Keyring FACT is unchanged: service `org.yaqmc.desktop`, entries
-  `qqmusic-session`, `qqmusic-session-staging`, `local-api-bearer-token`.
+- How to run: 
+pm run dev:desktop with the real provider (Vite /, not
+  ?provider=fake). Core QR methods are qqmusic_auth_start / heartbeat /
+  cancel / 
+efresh. OAuth popup remains ACCT-01 — this checkpoint does not
+  edit oauth-window.ts and does not open OAuth at boot.
+- Keyring FACT is unchanged: service org.yaqmc.desktop, entries
+  qqmusic-session, qqmusic-session-staging, local-api-bearer-token.
   Expected after host swap: user stays logged in (ACCT-03 is the recorded
   demo). No session-probe script: no in-repo existence-only probe without new
   native deps or reading secrets.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains
-  `PENDING`; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
+  PENDING; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
 
 ## P9 PLAT-03: tray i18n dictionary
 
@@ -1361,42 +1323,3 @@ the enforced provenance ledger.
   updates the template. Electron stays **43.4.0**. The 32 MiB hard cap is
   unchanged. Provenance remains **BLOCKED**. No Playwright. No qm-api-rs. No
   SMTC claims.
-
-## P10 PLUG-04: scene API v2 demo automated coverage
-
-- Automated coverage for unpacked `examples/plugins/scene-pack` (Aurora /
-  Vinyl glow): `PluginManifest` parse, Scene API v2 JSON fields the lyrics
-  runtime expects (`schemaVersion` 2, layout, typography, artwork,
-  background, and the background/artwork/metadata/lyrics/transport widget
-  graph), and Core `ExtensionHost` install_unpacked / list /
-  `active_resources` / disable / uninstall against a temp plugin root
-  (`crates/yaqmc-core/tests/plug04.rs`). Renderer
-  `plugin-runtime.plug04.test.ts` normalizes those scene documents into the
-  lyrics preset catalog. Hostile fixtures are not enabled.
-- This is not a full lyrics GUI E2E. The Electron scene picker / Settings →
-  Plugins install path remains **manual / LIVE VERIFY pending**.
-  `examples/plugins/script-actions` is a plugin-API v2 script demo, not
-  claimed green here. No Playwright.
-- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
-  remains **BLOCKED**. No qm-api-rs.
-## P11 CI-03: arm64 cross-build notes (hardware pending)
-
-- `docs/migration/ci03-arm64.md` plus `scripts/migration/ci03-arm64.mjs` print
-  the dry cargo / electron-builder commands. They do **not** run cargo,
-  rustup, or electron-builder, and they do not edit `.github/workflows/ci.yml`
-  (FE-06 / CI-02). This host may be x64 Windows; CI-03 is not a live arm
-  runner and is **not** green.
-- Windows: cross-build `yaqmc-core` for `aarch64-pc-windows-msvc` (`rustup
-  target add` + `cargo build -p yaqmc-core --release --target
-  aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
-  ARM64 `link.exe`. `scripts/stage-core.mjs` still only looks at
-  `target/{release,debug}/`; copy
-  `target/aarch64-pc-windows-msvc/release/yaqmc-core.exe` into
-  `apps/desktop/resources/core/` after a cross-build.
-- Linux: native `ubuntu-24.04-arm` when hardware/CI allows (`aarch64-unknown-linux-gnu`,
-  or plain `--release` on that runner), then `electron-builder --linux --arm64`.
-  Do not substitute a Windows-hosted GNU cross for that runner.
-- PACK-01 already declares win/linux arm64 in `electron-builder.yml`.
-  `pack:win` stays `--win --x64`. Arm artifact **boot-test pending**. Electron
-  stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
-  **BLOCKED**. No qm-api-rs.
