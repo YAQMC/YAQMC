@@ -1123,3 +1123,17 @@ the enforced provenance ledger.
   Those files were not edited. Occluded-window cadence is not verified.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains
   `PENDING`; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
+
+## P9 PLAT-06: local API SSE smoke script
+
+- Maintainer script `scripts/migration/plat06-local-api-sse.mjs` hits FACT
+  `127.0.0.1:19532`: public `GET /health` (no token), `GET /v1/player` with
+  `Authorization: Bearer`, and `GET /v1/events` SSE (read a few events, then
+  exit). Token comes from Settings reveal or `YAQMC_API_TOKEN`.
+- Port-conflict note is already in `docs/local-api.md` (`core.pid` / image-name);
+  this checkpoint cross-links it and does not rewrite the security model.
+- CI unit-tests the script against a tiny local mock HTTP+SSE server
+  (`scripts/ci/plat06-local-api-sse.test.mjs`). LIVE VERIFY against a running
+  core is pending; this checkpoint does not start yaqmc-core or enable the API.
+- No Playwright. The 32 MiB hard cap is unchanged. P0 remains `PENDING`;
+  provenance remains **BLOCKED**. No qm-api-rs.
