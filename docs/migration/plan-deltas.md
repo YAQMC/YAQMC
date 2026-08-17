@@ -917,3 +917,31 @@ the enforced provenance ledger.
   not mass-renamed.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No Playwright. No qm-api-rs.
+
+## host boot: linux-graphics, unlock overlays, dialogs
+
+- `apps/desktop/main/index.ts` calls `linuxGraphicsSwitches({ platform, wayland,
+  nvidia, mode })` and `app.commandLine.appendSwitch` **before** `app.whenReady()`.
+  `mode` is `YAQMC_LINUX_RENDERER` (default `auto`). Windows and every other
+  non-Linux platform still get `[]` so no switches are appended. Smoke still
+  skips tray/shortcuts; graphics flags are applied. SEC-03: never
+  `--no-sandbox` or `--disable-web-security`. `linux-graphics.ts` remains a
+  policy table (no Electron import, no `appendSwitch`).
+- Unlock overlays use `windows/lyrics-unlock.ts` with preload
+  `dist/preload/unlock-overlay.cjs`. `IpcRouter` now host-handles
+  `lyrics_surface_unlock` (hide overlay + `lock(kind, false)`) and
+  `lyrics_surfaces_unlock_all` (same for both kinds, returns the unlocked
+  count). Reconcile / set-interaction / close show or hide the 42×42 pills
+  when a surface is `passive-locked`. Overlay positioning against the parent
+  stays later. `lyrics_surface_reset_position` stays `host.denied`.
+- Inventory path pickers are intercepted with injected Electron
+  `dialog.showSaveDialog` / `showOpenDialog` (unit tests never need a display):
+  `appearance_pick_background` (image filters; `{ reference, dataUri: '' }`
+  until core persist exists), `plugin_pick_package`, `plugin_pick_directory`.
+  Diagnostics has no host pick method in the 117-command inventory, so Main
+  registers extra `dialog.pickSave` (zip filter, `YAQMC-diagnostics.zip`).
+  No Rust `_to`/`_from` methods.
+- Unwired: `oauth-window.ts` (no auto-open), `services/updater.ts` (no
+  electron-updater). Electron stays **43.4.0**. Main window FACT **1280×800**.
+  The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No qm-api-rs. No SMTC claims.

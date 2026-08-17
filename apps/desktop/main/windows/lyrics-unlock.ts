@@ -13,9 +13,9 @@ export type LyricsUnlockWindow = {
 
 /**
  * Construction table for lyrics-desktop-unlock / lyrics-island-unlock (§11.2 + live Tauri FACT).
- * `alwaysOnTop: 'screen-saver'` is the intended Electron level; the later wire-up
- * maps this custom field onto `BrowserWindow({ alwaysOnTop: true })` plus
- * `setAlwaysOnTop(true, 'screen-saver')`. This module stays unwired from `index.ts`.
+ * `alwaysOnTop: 'screen-saver'` is the intended Electron level; host boot maps
+ * this custom field onto `BrowserWindow({ alwaysOnTop: true })` plus
+ * `setAlwaysOnTop(true, 'screen-saver')`.
  *
  * Preload is a path string only. SURF-05 owns `preload/unlock-overlay.ts`; the
  * default here is a relative `unlock-overlay.cjs` filename, not a file we create.
@@ -50,7 +50,10 @@ export type LyricsUnlockCreateOptions = {
 };
 
 export type LyricsUnlockDeps = {
-  createWindow: (options: LyricsUnlockCreateOptions) => LyricsUnlockWindow;
+  createWindow: (
+    options: LyricsUnlockCreateOptions,
+    kind: LyricsUnlockKind,
+  ) => LyricsUnlockWindow;
   preloadPath?: string;
 };
 
@@ -131,6 +134,7 @@ export function createLyricsUnlockWindow(
 ): LyricsUnlockWindow {
   const window = deps.createWindow(
     lyricsUnlockCreateOptions(lyricsUnlockPreloadPath(deps.preloadPath)),
+    kind,
   );
   window.setAlwaysOnTop(true, LYRICS_UNLOCK_ALWAYS_ON_TOP_LEVEL);
   void window.loadURL(lyricsUnlockUrl(kind));
