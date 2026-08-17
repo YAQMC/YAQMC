@@ -10,16 +10,23 @@ const source = readFileSync(
 );
 
 describe('host boot wiring', () => {
-  it('imports tray, shortcuts, opener, and lyrics surfaces', () => {
+  it('imports tray, shortcuts, opener, lyrics surfaces, unlock overlays, and graphics policy', () => {
     expect(source).toContain("from './services/tray'");
     expect(source).toContain("from './services/shortcuts'");
     expect(source).toContain("from './ipc/host-handlers'");
     expect(source).toContain("from './windows/lyrics-surfaces'");
+    expect(source).toContain("from './windows/lyrics-unlock'");
+    expect(source).toContain("from './linux-graphics'");
     expect(source).toContain('lyrics-surface.cjs');
+    expect(source).toContain('unlock-overlay.cjs');
     expect(source).toContain('createTray');
     expect(source).toContain('registerGlobalShortcuts');
     expect(source).toContain('createLyricsSurfaces');
+    expect(source).toContain('createLyricsUnlockOverlays');
+    expect(source).toContain('linuxGraphicsSwitches');
     expect(source).toContain('shell.openExternal');
+    expect(source).toContain('dialog.showSaveDialog');
+    expect(source).toContain('dialog.showOpenDialog');
   });
 
   it('skips tray and shortcuts during YAQMC_DESKTOP_SMOKE', () => {
@@ -28,21 +35,35 @@ describe('host boot wiring', () => {
     expect(source).toMatch(/if \(smoke\) \{\s*return;/);
   });
 
+  it('applies Linux graphics switches before ready and never sandbox/web-security flags', () => {
+    const forbidden = [
+      ['--', 'no-sandbox'].join(''),
+      ['--', 'disable-web-security'].join(''),
+    ];
+    expect(source).toContain('app.commandLine.appendSwitch');
+    expect(source.indexOf('applyLinuxGraphicsSwitches();')).toBeGreaterThan(-1);
+    expect(source.indexOf('applyLinuxGraphicsSwitches();')).toBeLessThan(
+      source.indexOf('app.whenReady()'),
+    );
+    expect(source).toContain('process.platform');
+    for (const flag of forbidden) {
+      expect(source).not.toContain(flag);
+    }
+  });
+
   it('keeps the main window FACT size and sandbox flags', () => {
     expect(source).toContain('width: 1280');
     expect(source).toContain('height: 800');
     expect(source).toContain('sandbox: true');
     expect(source).toContain('contextIsolation: true');
     expect(source).toContain('nodeIntegration: false');
-    expect(source).not.toContain('--no-sandbox');
+    expect(source).not.toContain(['--', 'no-sandbox'].join(''));
   });
 
-  it('does not auto-open OAuth or import mid-flight host modules', () => {
+  it('does not auto-open OAuth or import the updater stub', () => {
     expect(source).not.toContain('oauth-window');
-    expect(source).not.toContain('linux-graphics');
     expect(source).not.toContain("from './dialogs'");
     expect(source).not.toContain("from './services/updater'");
-    expect(source).not.toContain('lyrics-unlock');
   });
 
   it('leaves the 32 MiB hard cap unchanged', () => {

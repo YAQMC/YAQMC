@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
@@ -32,10 +33,12 @@ import {
   isNativeWaylandSession,
   lyricsRoleFromCreateOptions,
   lyricsSurfaceCapabilities,
+  lyricsUnlockRoleFromKind,
   playerInvokeMethod,
   rememberCloseToTray,
 } from './ipc/host-handlers';
 import { IpcRouter } from './ipc/router';
+import { linuxGraphicsSwitches } from './linux-graphics';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
 import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './services/shortcuts';
@@ -46,6 +49,11 @@ import {
   type LyricsSurfaceCreateOptions,
   type LyricsSurfaceKind,
 } from './windows/lyrics-surfaces';
+import {
+  createLyricsUnlockOverlays,
+  type LyricsUnlockCreateOptions,
+  type LyricsUnlockKind,
+} from './windows/lyrics-unlock';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -60,6 +68,26 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+function applyLinuxGraphicsSwitches(): void {
+  const flags = linuxGraphicsSwitches({
+    platform: process.platform,
+    wayland: Boolean(process.env.WAYLAND_DISPLAY),
+    nvidia: false,
+    mode: process.env.YAQMC_LINUX_RENDERER ?? 'auto',
+  });
+  for (const flag of flags) {
+    const body = flag.startsWith('--') ? flag.slice(2) : flag;
+    const separator = body.indexOf('=');
+    if (separator === -1) {
+      app.commandLine.appendSwitch(body);
+    } else {
+      app.commandLine.appendSwitch(body.slice(0, separator), body.slice(separator + 1));
+    }
+  }
+}
+
+applyLinuxGraphicsSwitches();
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const smoke = process.env.YAQMC_DESKTOP_SMOKE === '1';
 const desktopRoot = path.resolve(here, '../..');
@@ -68,6 +96,7 @@ const harnessRoot = path.join(desktopRoot, 'harness');
 const viteDist = path.join(repoRoot, 'dist');
 const preloadPath = path.join(here, '../preload/main.cjs');
 const lyricsPreloadPath = path.join(here, '../preload/lyrics-surface.cjs');
+const unlockPreloadPath = path.join(here, '../preload/unlock-overlay.cjs');
 const resourcesDir = path.join(desktopRoot, 'resources');
 const nativeWayland = isNativeWaylandSession();
 
@@ -84,6 +113,11 @@ const lyricsSurfaces = createLyricsSurfaces({
   createWindow: createLyricsBrowserWindow,
 });
 
+const lyricsUnlock = createLyricsUnlockOverlays({
+  preloadPath: unlockPreloadPath,
+  createWindow: createUnlockBrowserWindow,
+});
+
 const router = new IpcRouter({
   methods: loadMethodAclFromFile(
     path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
@@ -91,11 +125,22 @@ const router = new IpcRouter({
   hostHandlers: createHostHandlers({
     openExternal: (url) => shell.openExternal(url),
     lyrics: lyricsSurfaces,
+    unlock: lyricsUnlock,
     capabilities: () =>
       lyricsSurfaceCapabilities({ platform: process.platform, nativeWayland }),
     showMainAndOpenSettings: emitOpenSettings,
     emitSurfaceClosed: (kind: LyricsSurfaceKind) => {
       fanoutEvent(CHANNEL_LYRICS_SURFACE_CLOSED, kind);
+    },
+    dialogs: {
+      showSaveDialog: (options) =>
+        mainWindow && !mainWindow.isDestroyed()
+          ? dialog.showSaveDialog(mainWindow, options)
+          : dialog.showSaveDialog(options),
+      showOpenDialog: (options) =>
+        mainWindow && !mainWindow.isDestroyed()
+          ? dialog.showOpenDialog(mainWindow, options)
+          : dialog.showOpenDialog(options),
     },
   }),
 });
@@ -158,6 +203,24 @@ function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   });
   const contentsId = window.webContents.id;
   router.registerWindow(contentsId, lyricsRoleFromCreateOptions(options));
+  applyAppWindowGuards(window, {
+    allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
+  });
+  window.on('closed', () => {
+    router.unregisterWindow(contentsId);
+  });
+  return window;
+}
+
+function createUnlockBrowserWindow(options: LyricsUnlockCreateOptions, kind: LyricsUnlockKind) {
+  const { alwaysOnTop, ...rest } = options;
+  void alwaysOnTop;
+  const window = new BrowserWindow({
+    ...rest,
+    alwaysOnTop: true,
+  });
+  const contentsId = window.webContents.id;
+  router.registerWindow(contentsId, lyricsUnlockRoleFromKind(kind));
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });

@@ -142,10 +142,14 @@ describe('pickDirectory', () => {
   });
 });
 
-describe('unwired status', () => {
-  it('is not imported from Main index.ts and is not under services/', () => {
+describe('host wiring', () => {
+  it('is used by host-handlers, not imported from Main index.ts, and is not under services/', () => {
     const index = readFileSync(path.join(here, 'index.ts'), 'utf8');
+    const handlers = readFileSync(path.join(here, 'ipc/host-handlers.ts'), 'utf8');
     expect(index).not.toMatch(/from ['"]\.\/dialogs['"]/);
+    expect(index).toContain('dialog.showSaveDialog');
+    expect(index).toContain('dialog.showOpenDialog');
+    expect(handlers).toMatch(/from ['"]\.\.\/dialogs['"]/);
     expect(here.replaceAll('\\', '/')).toMatch(/apps\/desktop\/main$/);
     expect(here.replaceAll('\\', '/')).not.toMatch(/\/services$/);
   });

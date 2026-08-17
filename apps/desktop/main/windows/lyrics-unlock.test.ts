@@ -170,12 +170,14 @@ describe('createLyricsUnlockOverlays controller', () => {
 });
 
 describe('unwired status', () => {
-  it('is not imported from Main index.ts', () => {
+  it('is imported from Main index.ts', () => {
     const index = readFileSync(
       path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../index.ts'),
       'utf8',
     );
-    expect(index).not.toContain('lyrics-unlock');
+    expect(index).toContain('lyrics-unlock');
+    expect(index).toContain('unlock-overlay.cjs');
+    expect(index).toContain('createLyricsUnlockOverlays');
   });
 });
 

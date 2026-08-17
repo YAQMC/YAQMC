@@ -1,7 +1,8 @@
 /**
- * §27.4 host half: Main path pickers. This module is not wired into `index.ts`
- * or IPC yet. Core `_to`/`_from` methods (`diagnostics_export_bundle_to`,
- * `preferences_set_background_from`, `plugin_install_from`) remain TODO.
+ * §27.4 host half: Main path pickers. Host IPC intercepts inventory pick
+ * methods and extra `dialog.pickSave`. Core `_to`/`_from` methods
+ * (`diagnostics_export_bundle_to`, `preferences_set_background_from`,
+ * `plugin_install_from`) remain TODO — this module does not add Rust.
  *
  * Callers inject Electron `dialog.showSaveDialog` / `showOpenDialog` so unit
  * tests never need a display. Cancel and missing paths return `null`.

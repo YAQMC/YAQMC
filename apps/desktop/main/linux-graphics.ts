@@ -1,6 +1,6 @@
 /**
- * §29.2 Linux Chromium graphics switch policy (ADR-008). Unwired: this module
- * never calls `app.commandLine.appendSwitch`. Main must apply the returned
+ * §29.2 Linux Chromium graphics switch policy (ADR-008). This module
+ * never calls `app.commandLine.appendSwitch`. Main applies the returned
  * switches before `ready`.
  *
  * Electron must not copy today's WebKitGTK env mutation in `platform.rs`
