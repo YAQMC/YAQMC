@@ -183,11 +183,16 @@ fn host_command_is_an_exhaustive_typed_surface() {
         match command {
             HostCommand::RaiseMainWindow => "raise",
             HostCommand::Quit => "quit",
+            HostCommand::SurfaceAutoHide(_) => "surfaceAutoHide",
         }
     }
 
     assert_eq!(describe(HostCommand::RaiseMainWindow), "raise");
     assert_eq!(describe(HostCommand::Quit), "quit");
+    assert_eq!(
+        describe(HostCommand::SurfaceAutoHide(true)),
+        "surfaceAutoHide"
+    );
 }
 
 #[test]

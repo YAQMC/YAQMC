@@ -4,6 +4,7 @@ pub mod app_preferences;
 pub mod audio;
 pub mod credentials;
 pub mod diagnostics;
+pub mod fullscreen_watch;
 pub mod issue_reporter;
 pub mod local_api;
 pub mod logging;
@@ -53,6 +54,9 @@ pub struct CoreConfig {
 pub enum HostCommand {
     RaiseMainWindow,
     Quit,
+    /// Lyric surfaces should hide (`true`) or restore (`false`) for a
+    /// foreground-fullscreen app. Serialized as `{ "surfaceAutoHide": bool }`.
+    SurfaceAutoHide(bool),
 }
 
 /// Closed, non-blocking sender for the host-control commands Core may request.
@@ -225,13 +229,20 @@ pub fn bootstrap(
 ) -> Result<CoreHandle, CoreBootstrapError> {
     let (shutdown_state, _) = watch::channel(false);
     let host_command_publisher = HostCommandPublisher::default();
+    let runtime = inputs.runtime.clone();
     let services = bootstrap::CoreServices::construct(&config, inputs)?;
 
-    Ok(CoreHandle {
+    let handle = CoreHandle {
         config,
         host_command_publisher,
         shutdown_state,
         is_shutdown: AtomicBool::new(false),
         services: Arc::new(services),
-    })
+    };
+    fullscreen_watch::maybe_spawn_platform_watch(
+        &runtime,
+        handle.host_command_publisher.clone(),
+        handle.subscribe_shutdown(),
+    );
+    Ok(handle)
 }

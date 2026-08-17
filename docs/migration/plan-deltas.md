@@ -1323,3 +1323,17 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
   updates the template. Electron stays **43.4.0**. The 32 MiB hard cap is
   unchanged. Provenance remains **BLOCKED**. No Playwright. No qm-api-rs. No
   SMTC claims.
+
+## P9 PLAT-07 follow-up: linux graphics diagnostics blob
+
+- linuxGraphicsDiagnostics({ platform, wayland, nvidia, mode, fromDeprecatedEnv })
+  returns a JSON-serializable { platform, mode, canonicalMode, switches,
+  deprecatedEnv } for host.json / diagnostics. deprecatedEnv is true only
+  when the raw mode came from YAQMC_LINUX_RENDERER and is not uto.
+  Unknown names still canonicalize to the trimmed lowercase string; switches
+  stay empty (same as auto). The helper does not read process.env.
+- diagnostics-host-payload.ts is mid-rewrite (DIAG-01); this checkpoint does
+  not create that module or wire linuxGraphics into host.json. index.ts is
+  not edited (SURF-04/ACCT-01). No WebKitGTK set_var. No --no-sandbox.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No SMTC claims.

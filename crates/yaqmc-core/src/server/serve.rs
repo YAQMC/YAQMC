@@ -10,7 +10,7 @@ use yaqmc_protocol::{
     WindowOrigin, core_handshake,
 };
 
-use super::{EventSink, HostDispatchHooks, dispatch, spawn_player_fanout};
+use super::{EventSink, HostDispatchHooks, dispatch, spawn_host_command_fanout, spawn_player_fanout};
 use crate::CoreHandle;
 
 struct ChannelSink {
@@ -41,7 +41,7 @@ pub async fn serve_protocol<T: CoreTransport>(
     host: &dyn HostDispatchHooks,
     mut transport: T,
 ) -> Result<(), ProtocolError> {
-    let _host_commands = core.subscribe_host_commands();
+    let host_commands = core.subscribe_host_commands();
     let system_media = core.start_system_media();
     let attach = core_handshake(&mut transport, identity_from_core(&core)).await?;
     tracing::info!(
@@ -51,12 +51,18 @@ pub async fn serve_protocol<T: CoreTransport>(
     );
 
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+    let sink: Arc<dyn EventSink> = Arc::new(ChannelSink { sender: events_tx });
     spawn_player_fanout(
         &tokio::runtime::Handle::current(),
         core.player(),
         core.storage(),
         system_media,
-        Arc::new(ChannelSink { sender: events_tx }),
+        Arc::clone(&sink),
+    );
+    spawn_host_command_fanout(
+        &tokio::runtime::Handle::current(),
+        host_commands,
+        sink,
     );
 
     let mut events_open = true;

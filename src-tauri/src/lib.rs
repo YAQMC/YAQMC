@@ -100,6 +100,7 @@ fn subscribe_host_commands(
             match commands.recv().await {
                 Ok(HostCommand::RaiseMainWindow) => show_main_window(&app),
                 Ok(HostCommand::Quit) => app.exit(0),
+                Ok(HostCommand::SurfaceAutoHide(_)) => {}
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     tracing::warn!(
                         target: "host.command",

@@ -253,10 +253,16 @@ fn lagged_resync_reemits_authoritative_snapshot_projection_and_document() {
 fn host_commands_map_to_the_protocol_host_channel() {
     let (raise_channel, raise_payload) = host_command_event(HostCommand::RaiseMainWindow);
     let (quit_channel, quit_payload) = host_command_event(HostCommand::Quit);
+    let (hide_channel, hide_payload) = host_command_event(HostCommand::SurfaceAutoHide(true));
+    let (show_channel, show_payload) = host_command_event(HostCommand::SurfaceAutoHide(false));
     assert_eq!(raise_channel, CHANNEL_HOST_COMMAND);
     assert_eq!(quit_channel, CHANNEL_HOST_COMMAND);
+    assert_eq!(hide_channel, CHANNEL_HOST_COMMAND);
+    assert_eq!(show_channel, CHANNEL_HOST_COMMAND);
     assert_eq!(raise_payload, serde_json::json!({"command": "raise"}));
     assert_eq!(quit_payload, serde_json::json!({"command": "quit"}));
+    assert_eq!(hide_payload, serde_json::json!({"surfaceAutoHide": true}));
+    assert_eq!(show_payload, serde_json::json!({"surfaceAutoHide": false}));
 }
 
 #[test]

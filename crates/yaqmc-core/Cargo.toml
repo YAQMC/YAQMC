@@ -44,6 +44,7 @@ mpris-server = "0.10.0"
 
 [target.'cfg(windows)'.dependencies]
 souvlaki = { version = "0.8.3", default-features = false }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
