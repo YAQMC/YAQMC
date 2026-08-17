@@ -570,3 +570,16 @@ the enforced provenance ledger.
   file — no Playwright, no live kill of unrelated processes. ELEC-03 handshake
   tests remain green. The 32 MiB hard cap is unchanged. P0 remains `PENDING`;
   provenance remains **BLOCKED**. No qm-api-rs.
+
+## P5 SUP-03: spawn-time sha256 verify
+
+- `scripts/stage-core.mjs` already writes `manifest.json` + `core.sha256` next to
+  the staged binary. `CoreSupervisor` hashes the file at spawn and fails closed
+  on mismatch or a missing manifest for staged/packaged `resources/core`.
+  FACT: unsigned cargo `debug`/`release` (and `YAQMC_CORE_BIN`) may run without
+  a manifest; if a manifest is present it is still checked. Staged binaries stay
+  gitignored and are not committed.
+- Tamper coverage flips a byte / records a wrong hash and asserts spawn never
+  happens. `ci:test-scripts` still covers staging. No Playwright. The 32 MiB
+  hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.

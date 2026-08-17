@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, session, webContents } from 'ele
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CoreSupervisor, tryResolveCoreBinary } from './core/supervisor';
+import { CoreSupervisor, resolveCoreLaunch } from './core/supervisor';
 import { resolveCorePaths } from './core/paths';
 import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
 import { loadMethodAclFromFile } from './ipc/channels';
@@ -115,14 +115,14 @@ function bindCoreEvents(): void {
 }
 
 function startSupervisor(): Promise<void> {
-  const binary = tryResolveCoreBinary({
+  const launch = resolveCoreLaunch({
     env: process.env,
     stagedDir: path.join(desktopRoot, 'resources', 'core'),
     resourcesPath: process.resourcesPath,
     cargoTargetDir: process.env.CARGO_TARGET_DIR,
     repoRoot,
   });
-  if (!binary) {
+  if (!launch) {
     if (smoke) {
       throw new Error(
         'yaqmc-core binary was not found (set YAQMC_CORE_BIN or stage resources/core)',
@@ -140,7 +140,8 @@ function startSupervisor(): Promise<void> {
       }
     : resolveCorePaths();
   supervisor = new CoreSupervisor({
-    binary,
+    binary: launch.binary,
+    integrity: launch.integrity,
     ...paths,
     hostVersion: app.getVersion(),
     expectedCoreVersion: app.getVersion(),

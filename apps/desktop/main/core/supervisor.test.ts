@@ -24,6 +24,7 @@ import {
   createAttachMessage,
   hostHandshake,
   hostPlatformKind,
+  resolveCoreLaunch,
   tryResolveCoreBinary,
   type SpawnCore,
 } from './supervisor';
@@ -169,6 +170,19 @@ describe('tryResolveCoreBinary', () => {
         cargoTargetDir: path.join(root, 'cargo'),
       }),
     ).toBe(path.join(cargoDebug, name));
+    expect(
+      resolveCoreLaunch({
+        env: {},
+        stagedDir,
+        cargoTargetDir: path.join(root, 'cargo'),
+      }),
+    ).toEqual({ binary: path.join(stagedDir, name), integrity: 'required' });
+    expect(
+      resolveCoreLaunch({
+        env: {},
+        cargoTargetDir: path.join(root, 'cargo'),
+      }),
+    ).toEqual({ binary: path.join(cargoDebug, name), integrity: 'optional' });
   });
 });
 
@@ -414,6 +428,35 @@ describe('CoreSupervisor', () => {
     expect(ignored).toEqual([]);
     child.kill();
     await supervisor.stop();
+  });
+
+  it('does not spawn when a staged binary fails sha256 verify', async () => {
+    const dirs = tempDirs();
+    const name = coreBinaryName();
+    const stagedDir = path.join(dirs.dataDir, 'staged');
+    mkdirSync(stagedDir, { recursive: true });
+    const binary = path.join(stagedDir, name);
+    writeFileSync(binary, 'core-bytes');
+    writeFileSync(
+      path.join(stagedDir, 'manifest.json'),
+      `${JSON.stringify({ name, sha256: '0'.repeat(64), bytes: 10 }, null, 2)}\n`,
+    );
+    let spawned = false;
+    const supervisor = new CoreSupervisor({
+      binary,
+      integrity: 'required',
+      hostVersion: '0.1.0',
+      ...dirs,
+      spawn: () => {
+        spawned = true;
+        throw new Error('must not spawn a tampered core');
+      },
+    });
+    await expect(supervisor.start()).rejects.toMatchObject({
+      name: 'CoreIntegrityError',
+      message: expect.stringContaining('sha256 mismatch'),
+    });
+    expect(spawned).toBe(false);
   });
 });
 
