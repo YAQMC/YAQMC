@@ -204,3 +204,15 @@ the enforced provenance ledger.
 - `start_if_enabled()` stays scheduled by Tauri immediately before `app.manage(local_api)`. Event fan-out, lyrics
   surfaces, tray/shortcuts, OAuth windows, and the 117 command registrations remain host-owned. P0 remains
   `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-01: framing, envelope, transport, hello/attach/ready
+
+- `yaqmc-protocol` now owns the versioned JSON envelope, u32 little-endian length-prefixed frames, and the
+  `CoreTransport` / `StdioTransport` / `DuplexTransport` seams. Every read validates the 4-byte length against the
+  32 MiB hard cap before allocating or reading the body. Ordinary method payloads still default to 1 MiB; method
+  registry caps remain PROTO-03.
+- Handshake is `hello` → `attach` → `ready` with a 10 s ready timeout and a 5 s graceful-shutdown constant. Framing
+  errors (oversize, non-JSON, unknown `kind`) poison the connection. Protocol version stays `1`. The 24 MiB
+  background-image / Base64 hard-cap conflict is unchanged and is not resolved by raising the cap.
+- This checkpoint does not add a Core stdio binary, method registry, dispatch, Electron, or qm-api-rs. P0 remains
+  `PENDING`; provenance remains **BLOCKED**.
