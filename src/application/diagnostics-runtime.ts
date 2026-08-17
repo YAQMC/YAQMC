@@ -182,6 +182,9 @@ export async function exportDiagnosticsBundle(
     if (chosen == null) {
       throw new DiagnosticsExportAbortedError();
     }
+    if (typeof chosen !== 'string' || chosen.trim().length === 0) {
+      throw new Error('Diagnostics save dialog returned an invalid path');
+    }
     return client.invoke('diagnostics_export_bundle_to', { path: chosen, request });
   }
   return client.invoke('diagnostics_export_bundle', { request });

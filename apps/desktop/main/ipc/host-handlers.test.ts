@@ -1,3 +1,5 @@
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FRAME_HARD_CAP_BYTES } from '@yaqmc/client';
@@ -18,6 +20,8 @@ import {
   closeToTrayFromPreferences,
   createHostHandlers,
   DIALOG_PICK_SAVE,
+  DIAGNOSTICS_OPEN_LOG_FOLDER,
+  DIAGNOSTICS_REVEAL_BUNDLE,
   HOST_CORE_STATUS,
   HOST_UPDATER_CHECK_METHOD,
   isNativeWaylandSession,
@@ -446,6 +450,117 @@ describe('IpcRouter host intercepts', () => {
     });
   });
 
+  it('resolves relative diagnostics save paths under Downloads and appends .zip', async () => {
+    const dialogs = mockDialogs({
+      save: { canceled: false, filePath: 'report' },
+      open: { canceled: true, filePaths: [] },
+    });
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      dialogs,
+      downloadsDir: () => 'D:\\Downloads',
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+
+    await expect(router.invoke(1, { method: DIALOG_PICK_SAVE })).resolves.toEqual({
+      ok: true,
+      result: path.join('D:\\Downloads', 'report.zip'),
+    });
+    expect(dialogs.showSaveDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: path.join('D:\\Downloads', 'YAQMC-diagnostics.zip'),
+      }),
+    );
+  });
+
+  it('opens the Core log folder via shell.openPath and reveals existing zips', async () => {
+    const logDir = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-logs-'));
+    const openPath = vi.fn(async () => '');
+    const showItemInFolder = vi.fn();
+    const exists = vi.fn((target: string) => target.endsWith('YAQMC-diagnostics.zip'));
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      folders: {
+        logDir: () => logDir,
+        openPath,
+        showItemInFolder,
+        exists,
+      },
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(router.invoke(1, { method: DIAGNOSTICS_OPEN_LOG_FOLDER })).resolves.toEqual({
+      ok: true,
+      result: logDir,
+    });
+    expect(openPath).toHaveBeenCalledWith(logDir);
+
+    const zip = 'D:\\exports\\YAQMC-diagnostics.zip';
+    await expect(
+      router.invoke(1, { method: DIAGNOSTICS_REVEAL_BUNDLE, params: { path: zip } }),
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(showItemInFolder).toHaveBeenCalledWith(path.resolve(zip));
+
+    openPath.mockClear();
+    showItemInFolder.mockClear();
+    await expect(router.invoke(2, { method: DIAGNOSTICS_OPEN_LOG_FOLDER })).resolves.toEqual({
+      ok: false,
+      error: hostDenied(DIAGNOSTICS_OPEN_LOG_FOLDER, 'lyrics-desktop'),
+    });
+    expect(openPath).not.toHaveBeenCalled();
+    await expect(
+      router.invoke(2, { method: DIAGNOSTICS_REVEAL_BUNDLE, params: { path: zip } }),
+    ).resolves.toEqual({
+      ok: false,
+      error: hostDenied(DIAGNOSTICS_REVEAL_BUNDLE, 'lyrics-desktop'),
+    });
+    expect(showItemInFolder).not.toHaveBeenCalled();
+  });
+
+  it('surfaces openPath failures and rejects non-zip reveal targets', async () => {
+    const logDir = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-logs-fail-'));
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      folders: {
+        logDir: () => logDir,
+        openPath: async () => 'Failed to open',
+        showItemInFolder: vi.fn(),
+        exists: () => true,
+      },
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+
+    await expect(router.invoke(1, { method: DIAGNOSTICS_OPEN_LOG_FOLDER })).resolves.toMatchObject({
+      ok: false,
+      error: { message: 'Failed to open' },
+    });
+    await expect(
+      router.invoke(1, {
+        method: DIAGNOSTICS_REVEAL_BUNDLE,
+        params: { path: 'D:\\Windows\\notepad.exe' },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { message: 'path is outside the log directory and is not an existing zip' },
+    });
+  });
+
   it('intercepts qqmusic_auth_oauth_start with an injected OAuth popup', async () => {
     const prepared = {
       attemptId: 'attempt-0',
@@ -590,6 +705,7 @@ describe('IpcRouter host intercepts', () => {
       unlock: mockUnlock(),
       capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
       showMainAndOpenSettings: vi.fn(),
+      downloadsDir: () => 'D:\\Downloads',
       coreInvoke,
       collectHostPayload: () => hostPayload,
       updater: {
@@ -610,6 +726,18 @@ describe('IpcRouter host intercepts', () => {
     ).resolves.toEqual({ ok: true, result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 } });
     expect(coreInvoke).toHaveBeenCalledWith('diagnostics_export_bundle_to', {
       path: 'D:\\out\\YAQMC-diagnostics.zip',
+      request: { includeLogs: true, hostPayload },
+    });
+
+    coreInvoke.mockClear();
+    await expect(
+      router.invoke(1, {
+        method: 'diagnostics_export_bundle_to',
+        params: { path: 'report', request: { includeLogs: true } },
+      }),
+    ).resolves.toEqual({ ok: true, result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 } });
+    expect(coreInvoke).toHaveBeenCalledWith('diagnostics_export_bundle_to', {
+      path: path.join('D:\\Downloads', 'report.zip'),
       request: { includeLogs: true, hostPayload },
     });
 

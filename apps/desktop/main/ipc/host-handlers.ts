@@ -6,6 +6,8 @@ import type {
   WindowRole,
 } from '@yaqmc/client';
 import { attachHostPayloadToExportParams } from '../diagnostics-host-payload';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 import {
   BACKGROUND_IMAGE_FILTERS,
   DIAGNOSTICS_ZIP_DEFAULT_NAME,
@@ -14,6 +16,7 @@ import {
   pickFile,
   pickSave,
   PLUGIN_PACKAGE_FILTERS,
+  resolveDiagnosticsSavePath,
   type ShowOpenDialog,
   type ShowSaveDialog,
 } from '../dialogs';
@@ -49,6 +52,10 @@ export const HOST_CORE_STATUS = 'host.coreStatus';
 
 /** Not in the 117-command inventory; diagnostics ZIP save-picker for FE later. */
 export const DIALOG_PICK_SAVE = 'dialog.pickSave';
+
+/** Inventory host-owned methods. Not `shell.openExternal`. */
+export const DIAGNOSTICS_OPEN_LOG_FOLDER = 'diagnostics_open_log_folder';
+export const DIAGNOSTICS_REVEAL_BUNDLE = 'diagnostics_reveal_bundle';
 
 /** Host-only; not in METHOD_NAMES. Settings Check for updates. */
 export const HOST_UPDATER_CHECK_METHOD = 'host_updater_check';
@@ -264,6 +271,31 @@ export type HostWindowChrome = {
 
 export type HostWindowChromeLookup = (webContentsId: number) => HostWindowChrome | undefined;
 
+export type HostFolderOpener = {
+  logDir: () => string;
+  openPath: (target: string) => Promise<string>;
+  showItemInFolder: (target: string) => void;
+  exists: (target: string) => boolean;
+};
+
+export function isPathInside(root: string, candidate: string): boolean {
+  const rel = path.relative(path.resolve(root), path.resolve(candidate));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+export function pathFromParams(params: unknown): string {
+  if (typeof params === 'string') {
+    return params;
+  }
+  if (params && typeof params === 'object' && 'path' in params) {
+    const value = (params as { path?: unknown }).path;
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+  return '';
+}
+
 export type HostHandlerDeps = {
   openExternal: ExternalOpener;
   extraHttpsUrls?: () => readonly string[];
@@ -273,6 +305,8 @@ export type HostHandlerDeps = {
   showMainAndOpenSettings: () => void;
   emitSurfaceClosed?: (kind: LyricsSurfaceKind) => void;
   dialogs?: PathPickerDialogs;
+  downloadsDir?: () => string;
+  folders?: HostFolderOpener;
   oauth?: OAuthHostDeps;
   coreInvoke?: CoreInvoke;
   collectHostPayload?: () => DiagnosticsHostPayload;
@@ -385,11 +419,51 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     handlers.plugin_pick_package = async () =>
       pickFile(showOpenDialog, { filters: PLUGIN_PACKAGE_FILTERS });
     handlers.plugin_pick_directory = async () => pickDirectory(showOpenDialog);
-    handlers[DIALOG_PICK_SAVE] = async (params) =>
-      pickSave(showSaveDialog, {
+    handlers[DIALOG_PICK_SAVE] = async (params) => {
+      const downloads = deps.downloadsDir?.() ?? '';
+      const chosen = await pickSave(showSaveDialog, {
         filters: DIAGNOSTICS_ZIP_FILTERS,
-        defaultPath: defaultPathFromParams(params, DIAGNOSTICS_ZIP_DEFAULT_NAME),
+        defaultPath: resolveDiagnosticsSavePath(
+          defaultPathFromParams(params, DIAGNOSTICS_ZIP_DEFAULT_NAME),
+          downloads,
+        ),
       });
+      if (chosen === null) {
+        return null;
+      }
+      return resolveDiagnosticsSavePath(chosen, downloads);
+    };
+  }
+
+  if (deps.folders) {
+    const folders = deps.folders;
+    handlers[DIAGNOSTICS_OPEN_LOG_FOLDER] = async () => {
+      const logDir = folders.logDir();
+      if (logDir.length === 0) {
+        throw new Error('log directory is not configured');
+      }
+      mkdirSync(logDir, { recursive: true });
+      const opened = await folders.openPath(logDir);
+      if (opened.length > 0) {
+        throw new Error(opened);
+      }
+      return logDir;
+    };
+    handlers[DIAGNOSTICS_REVEAL_BUNDLE] = async (params) => {
+      const target = pathFromParams(params);
+      if (target.length === 0 || !path.isAbsolute(target)) {
+        throw new Error('diagnostics_reveal_bundle requires an absolute path');
+      }
+      const resolved = path.resolve(target);
+      const logDir = folders.logDir();
+      const allowed =
+        (logDir.length > 0 && isPathInside(logDir, resolved)) ||
+        (resolved.toLowerCase().endsWith('.zip') && folders.exists(resolved));
+      if (!allowed) {
+        throw new Error('path is outside the log directory and is not an existing zip');
+      }
+      folders.showItemInFolder(resolved);
+    };
   }
 
   if (deps.coreInvoke && deps.collectHostPayload) {
@@ -407,8 +481,18 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     };
     handlers.diagnostics_export_bundle = async (params) =>
       invokeWithHostPayload('diagnostics_export_bundle', params);
-    handlers.diagnostics_export_bundle_to = async (params) =>
-      invokeWithHostPayload('diagnostics_export_bundle_to', params);
+    handlers.diagnostics_export_bundle_to = async (params) => {
+      const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
+      const rawPath = typeof record.path === 'string' ? record.path : '';
+      const next =
+        rawPath.length > 0
+          ? {
+              ...record,
+              path: resolveDiagnosticsSavePath(rawPath, deps.downloadsDir?.() ?? ''),
+            }
+          : params;
+      return invokeWithHostPayload('diagnostics_export_bundle_to', next);
+    };
   }
 
   if (deps.updater) {
