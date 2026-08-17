@@ -74,6 +74,7 @@ import type { LogLevel } from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
 import { PluginManager } from '../components/PluginManager';
+import { SurfaceCapabilityBanner } from '../components/SurfaceCapabilityBanner';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -1292,11 +1293,7 @@ export function SettingsPage() {
           ) : undefined
         }
       >
-        {capabilities?.limitations.map((limitation) => (
-          <p className="settings-capability-note" key={limitation}>
-            {limitation}
-          </p>
-        ))}
+        <SurfaceCapabilityBanner capabilities={capabilities} />
         <div className="settings-card settings-card--surfaces">
           <SurfaceSettingsPanel
             kind="desktop"

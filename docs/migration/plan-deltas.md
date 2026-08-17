@@ -1216,3 +1216,19 @@ the enforced provenance ledger.
   `events.rs` / `HostCommand` are untouched.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No Playwright. No qm-api-rs.
+
+## P9 SURF-06: settings surface capability banner
+
+- Settings surfaces section shows a `role="status"` banner when lyric surface
+  capabilities are degraded: native-Wayland backend (`wayland-native` /
+  `native-wayland`), `reliableAlwaysOnTop === false`,
+  `reliableClickThrough === false`, or a nonempty `limitations` list.
+  `src/components/SurfaceCapabilityBanner.tsx` reuses existing limitation
+  strings as the banner body (no new locale keys; PLAT-03 owns `src/locales/*`).
+- Quiet per-limitation `<p class="settings-capability-note">` notes are replaced
+  by one banner using that existing note class (no visual redesign). Host
+  `lyricsSurfaceCapabilities` still emits `wayland-native` plus the Wayland
+  limitation string; this task does not edit `host-handlers.ts`,
+  `lyrics-surfaces.ts`, `index.ts`, tray, crates, or plugin-runtime.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No Playwright.
