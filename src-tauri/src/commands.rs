@@ -3,11 +3,7 @@ use crate::{
     audio::AudioOutputDevice,
     command_guard::require_main_window,
     desktop_integration::{DesktopIntegration, DesktopIntegrationStatus},
-    diagnostics::{
-        self, AppSection, BundleExportResult, BundleOptions, DiagnosticsSnapshot,
-        LyricsPresetSection, PlaybackSection, PluginDiagnostic as CorePluginDiagnostic,
-        PluginStatus as CorePluginStatus, ProviderSection,
-    },
+    diagnostics::{self, AppSection, BundleExportResult, BundleOptions, DiagnosticsSnapshot},
     issue_reporter::{self, IssueDraft, IssuePreview},
     local_api::{LocalApiService, LocalApiStatus},
     logging::{
@@ -30,18 +26,22 @@ use crate::{
             RemotePlayHistoryItem, RenamePlaylistRequest,
         },
         Album, AreaFeed, AudioQualityPreference, DiscoverFeed, HomeFeed, LibrarySnapshot,
-        OAuthLoginProvider, Playlist, ProviderCommandError, ProviderResult, ProviderStatus,
-        QQMusicService, SearchResult,
+        OAuthLoginProvider, Playlist, ProviderResult, ProviderStatus, QQMusicService, SearchResult,
     },
     storage::{CacheStats, StorageService},
     system_media::SystemMediaIntegration,
 };
-use serde::Deserialize;
 use std::{path::PathBuf, sync::Arc};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 type CommandResult<T> = Result<T, String>;
+#[allow(dead_code)]
 pub const AUDIO_OUTPUT_SETTING: &str = "audio-output-device";
+
+pub use yaqmc_core::server::{
+    DebugPerfSample, DiagnosticsBundleRequest, DiagnosticsRequest, FrontendLogEntry,
+    RecordErrorRequest,
+};
 
 /// Load the configured log level from persistent storage. Falls back to the debug
 /// default (Debug) if the setting is absent or malformed.
@@ -54,125 +54,6 @@ pub fn load_persisted_log_level(storage: &Arc<StorageService>) -> LogLevel {
             .flatten()
             .as_deref(),
     )
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiagnosticsRequest {
-    pub account_state: Option<String>,
-    pub membership_tier: Option<String>,
-    pub membership_status: Option<String>,
-    #[serde(default)]
-    pub lyrics_preset: Option<LyricsPresetSection>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiagnosticsBundleRequest {
-    pub include_logs: Option<bool>,
-    pub override_unresolved: Option<bool>,
-    pub description: Option<String>,
-    pub issue_category: Option<String>,
-    #[serde(flatten)]
-    pub base: DiagnosticsRequest,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FrontendLogEntry {
-    pub level: LogLevel,
-    pub target: String,
-    pub message: String,
-    pub op_id: Option<String>,
-    pub fields: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordErrorRequest {
-    pub code: String,
-    pub domain: String,
-    pub message: String,
-    pub op_id: Option<String>,
-}
-
-fn build_playback_section(snapshot: &PlayerSnapshot) -> PlaybackSection {
-    let current = snapshot
-        .current_index
-        .and_then(|index| snapshot.queue.get(index));
-    let quality_label = current.map(|song| match song.quality {
-        crate::player::AudioQuality::Standard => "standard".to_owned(),
-        crate::player::AudioQuality::High => "high".to_owned(),
-        crate::player::AudioQuality::Lossless => "lossless".to_owned(),
-        crate::player::AudioQuality::Master => "master".to_owned(),
-    });
-    PlaybackSection {
-        state: if snapshot.is_playing {
-            "playing"
-        } else if current.is_some() {
-            "paused"
-        } else {
-            "idle"
-        },
-        selected_quality: quality_label,
-        decoder_hint: None,
-        queue_length: snapshot.queue.len(),
-        current_source_kind: current.map(|_| "qqmusic"),
-        playback_order: snapshot.playback_order.as_str(),
-        repeat_mode: match snapshot.repeat {
-            crate::player::RepeatMode::Off => "off",
-            crate::player::RepeatMode::All => "all",
-            crate::player::RepeatMode::One => "one",
-        },
-        primary_playback_mode: snapshot.primary_playback_mode.as_str(),
-        playback_session_id: snapshot.session_id,
-        snapshot_revision: snapshot.snapshot_revision,
-        source_generation: snapshot.source_generation,
-        last_seek_revision: snapshot.last_seek_revision,
-    }
-}
-
-fn map_provider_section(status: ProviderStatus, request: &DiagnosticsRequest) -> ProviderSection {
-    let membership_tier = request.membership_tier.clone();
-    let membership_status = membership_tier.as_ref().map(|_| {
-        request
-            .membership_status
-            .clone()
-            .unwrap_or_else(|| "unknown".into())
-    });
-    ProviderSection {
-        id: status.provider_id,
-        connection: status.connection,
-        account_state: request
-            .account_state
-            .clone()
-            .unwrap_or_else(|| "unknown".into()),
-        membership_tier,
-        membership_status,
-    }
-}
-
-fn map_plugin_diagnostic(diagnostic: crate::plugin::PluginDiagnostic) -> CorePluginDiagnostic {
-    let status = match diagnostic.status {
-        crate::plugin::PluginStatus::Installed => CorePluginStatus::Installed,
-        crate::plugin::PluginStatus::Disabled => CorePluginStatus::Disabled,
-        crate::plugin::PluginStatus::Enabling => CorePluginStatus::Enabling,
-        crate::plugin::PluginStatus::Active => CorePluginStatus::Active,
-        crate::plugin::PluginStatus::Disabling => CorePluginStatus::Disabling,
-        crate::plugin::PluginStatus::Failed => CorePluginStatus::Failed,
-        crate::plugin::PluginStatus::Incompatible => CorePluginStatus::Incompatible,
-    };
-    CorePluginDiagnostic {
-        id: diagnostic.id,
-        version: diagnostic.version,
-        enabled: diagnostic.enabled,
-        status,
-        entrypoint_kinds: diagnostic.entrypoint_kinds,
-        api_version: diagnostic.api_version,
-        package_sha256: diagnostic.package_sha256,
-        permissions: diagnostic.permissions,
-        risk_rating: diagnostic.risk_rating,
-    }
 }
 
 fn build_app_section(app: &AppHandle) -> AppSection {
@@ -198,28 +79,18 @@ async fn assemble_snapshot(
     provider: &Arc<QQMusicService>,
     request: DiagnosticsRequest,
 ) -> DiagnosticsSnapshot {
-    let platform_diagnostics =
-        platform::collect(app, player, system_media.status(), desktop.status());
-    let player_snapshot = player.snapshot().await;
-    let provider_status = provider.status().await;
-    let mut snapshot = diagnostics::snapshot_from_handle(
+    yaqmc_core::server::ops::assemble_diagnostics_snapshot(
+        player,
+        provider,
         logging,
-        platform_diagnostics,
-        Some(map_provider_section(provider_status, &request)),
-        build_playback_section(&player_snapshot),
+        app.try_state::<Arc<crate::plugin::ExtensionHost>>()
+            .as_deref()
+            .map(std::ops::Deref::deref),
+        platform::collect(app, player, system_media.status(), desktop.status()),
         build_app_section(app),
-    );
-    snapshot.lyrics_preset = request.lyrics_preset;
-    snapshot.plugins = app
-        .try_state::<Arc<crate::plugin::ExtensionHost>>()
-        .map(|host| {
-            host.diagnostics()
-                .into_iter()
-                .map(map_plugin_diagnostic)
-                .collect()
-        })
-        .unwrap_or_default();
-    snapshot
+        request,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -308,23 +179,7 @@ pub fn diagnostics_open_log_folder(
 
 #[tauri::command]
 pub fn diagnostics_clear_logs(logging: State<'_, Arc<LoggingHandle>>) -> CommandResult<usize> {
-    let mut removed = 0usize;
-    let entries = match std::fs::read_dir(logging.log_dir()) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(0),
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let is_log = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(|name| name.starts_with(logging::LOG_FILE_PREFIX))
-            .unwrap_or(false);
-        if is_log && std::fs::remove_file(&path).is_ok() {
-            removed += 1;
-        }
-    }
-    Ok(removed)
+    Ok(yaqmc_core::server::ops::diagnostics_clear_logs(&logging))
 }
 
 #[tauri::command]
@@ -332,10 +187,7 @@ pub fn diagnostics_set_log_level(
     storage: State<'_, Arc<StorageService>>,
     level: LogLevel,
 ) -> CommandResult<LogLevel> {
-    storage
-        .set_setting(LOGGING_LEVEL_SETTING, level.as_str())
-        .map_err(|error| error.to_string())?;
-    Ok(level)
+    yaqmc_core::server::ops::diagnostics_set_log_level(&storage, level)
 }
 
 #[tauri::command]
@@ -353,11 +205,7 @@ pub fn diagnostics_record_error(
     logging: State<'_, Arc<LoggingHandle>>,
     request: RecordErrorRequest,
 ) -> CommandResult<()> {
-    let mut record = ErrorRecord::new(request.code, request.domain, request.message);
-    if let Some(op_id) = request.op_id {
-        record = record.with_op_id(op_id);
-    }
-    logging.record_error(record);
+    yaqmc_core::server::ops::diagnostics_record_error(&logging, request);
     Ok(())
 }
 
@@ -366,40 +214,7 @@ pub fn diagnostics_log_frontend(
     logging: State<'_, Arc<LoggingHandle>>,
     entries: Vec<FrontendLogEntry>,
 ) -> CommandResult<()> {
-    for entry in entries {
-        let target = if entry.target.is_empty() {
-            "frontend".to_owned()
-        } else {
-            format!("frontend.{}", entry.target)
-        };
-        let message = logging::sanitize_field(&entry.message).into_owned();
-        let fields_repr = entry
-            .fields
-            .as_ref()
-            .map(|value| logging::sanitize_field(&value.to_string()).into_owned())
-            .unwrap_or_default();
-        let op = entry.op_id.unwrap_or_default();
-        match entry.level {
-            LogLevel::Error => {
-                tracing::error!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
-            }
-            LogLevel::Warn => {
-                tracing::warn!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
-            }
-            LogLevel::Info => {
-                tracing::info!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
-            }
-            LogLevel::Debug => {
-                tracing::debug!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
-            }
-            LogLevel::Trace => {
-                tracing::trace!(target: "frontend", %target, op = %op, fields = %fields_repr, "{message}")
-            }
-        }
-        if matches!(entry.level, LogLevel::Error | LogLevel::Warn) {
-            logging.record_error(ErrorRecord::new("YAQMC-UI-EVENT", target, &message));
-        }
-    }
+    yaqmc_core::server::ops::diagnostics_log_frontend(&logging, entries);
     Ok(())
 }
 
@@ -529,20 +344,7 @@ pub async fn audio_set_output_device(
     storage: State<'_, Arc<StorageService>>,
     device_id: String,
 ) -> CommandResult<Vec<AudioOutputDevice>> {
-    let devices = player
-        .set_output_device(&device_id)
-        .map_err(|error| error.to_string())?;
-    let selected_id = devices
-        .iter()
-        .find(|device| device.is_selected)
-        .map(|device| device.id.as_str())
-        .ok_or_else(|| {
-            "the selected audio output was not reported by the audio engine".to_owned()
-        })?;
-    storage
-        .set_setting(AUDIO_OUTPUT_SETTING, selected_id)
-        .map_err(|error| error.to_string())?;
-    Ok(devices)
+    yaqmc_core::server::ops::audio_set_output_device(&player, &storage, &device_id)
 }
 
 #[tauri::command]
@@ -642,25 +444,7 @@ pub async fn qqmusic_set_preferred_quality(
     player: State<'_, Arc<PlayerService>>,
     quality: AudioQualityPreference,
 ) -> ProviderResult<ProviderStatus> {
-    let current = player.current_track().await;
-    let current_reference = current.as_ref().and_then(|song| song.provider.as_ref());
-    let current_is_qqmusic =
-        current_reference.is_some_and(|reference| reference.provider_id == "qqmusic");
-    let status = provider
-        .set_preferred_quality(quality)
-        .await
-        .map_err(ProviderCommandError::from)?;
-    if current_is_qqmusic {
-        player
-            .reload_current()
-            .await
-            .map_err(|error| ProviderCommandError {
-                code: "player-reload-failed".to_owned(),
-                message: error.to_string(),
-                retryable: true,
-            })?;
-    }
-    Ok(status)
+    yaqmc_core::server::ops::qqmusic_set_preferred_quality(&provider, &player, quality).await
 }
 
 #[tauri::command]
@@ -669,25 +453,7 @@ pub async fn qqmusic_set_current_quality(
     player: State<'_, Arc<PlayerService>>,
     quality: AudioQualityPreference,
 ) -> ProviderResult<PlayerSnapshot> {
-    let track_id = player
-        .current_track()
-        .await
-        .and_then(|song| song.provider)
-        .filter(|reference| reference.provider_id == "qqmusic")
-        .map(|reference| reference.track_id)
-        .ok_or_else(|| ProviderCommandError::from(crate::qqmusic::QQMusicError::InvalidRequest))?;
-    provider
-        .set_current_quality(track_id, quality)
-        .await
-        .map_err(ProviderCommandError::from)?;
-    player
-        .reload_current()
-        .await
-        .map_err(|error| ProviderCommandError {
-            code: "player-reload-failed".to_owned(),
-            message: error.to_string(),
-            retryable: true,
-        })
+    yaqmc_core::server::ops::qqmusic_set_current_quality(&provider, &player, quality).await
 }
 
 #[tauri::command]
@@ -871,18 +637,13 @@ pub async fn qqmusic_auth_heartbeat(
     owner_lease_id: String,
 ) -> ProviderResult<AccountSnapshot> {
     require_main_window(&window)?;
-    if provider.is_oauth_login(&attempt_id).await
-        && !crate::qqmusic_oauth_host::window_is_live(&app, &attempt_id)
-    {
-        return provider
-            .cancel_qr_login(attempt_id)
-            .await
-            .map_err(Into::into);
-    }
-    provider
-        .heartbeat_qr_login(attempt_id, owner_lease_id)
-        .await
-        .map_err(Into::into)
+    yaqmc_core::server::ops::qqmusic_auth_heartbeat(
+        &provider,
+        attempt_id.clone(),
+        owner_lease_id,
+        crate::qqmusic_oauth_host::window_is_live(&app, &attempt_id),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1403,10 +1164,7 @@ pub async fn local_api_set_port(
     api: State<'_, Arc<LocalApiService>>,
     port: u16,
 ) -> CommandResult<LocalApiStatus> {
-    if port < 1_024 {
-        return Err("port must be between 1024 and 65535".to_owned());
-    }
-    api.set_port(port).await.map_err(|error| error.to_string())
+    yaqmc_core::server::ops::local_api_set_port(&api, port).await
 }
 
 #[tauri::command]
@@ -1423,79 +1181,19 @@ pub async fn local_api_regenerate_token(
         .map_err(|error| error.to_string())
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DebugPerfSample {
-    pub fps: u32,
-    pub average_ms: f64,
-    pub p95_ms: f64,
-    pub max_ms: f64,
-    pub long_tasks: u32,
-}
-
-const PERF_LOG_MAX_BYTES: u64 = 1 << 20;
-
-fn perf_sample_header() -> String {
-    "unix_ms,fps,average_ms,p95_ms,max_ms,long_tasks\n".to_owned()
-}
-
-fn perf_sample_line(sample: &DebugPerfSample) -> Option<String> {
-    if sample.fps > 10_000
-        || !sample.average_ms.is_finite()
-        || !sample.p95_ms.is_finite()
-        || !sample.max_ms.is_finite()
-    {
-        return None;
-    }
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_millis();
-    Some(format!(
-        "{now},{},{:.2},{:.2},{:.2},{}",
-        sample.fps, sample.average_ms, sample.p95_ms, sample.max_ms, sample.long_tasks
-    ))
-}
-
 #[tauri::command]
 pub fn debug_perf_sample(app: AppHandle, sample: DebugPerfSample) -> CommandResult<()> {
-    tracing::info!(
-        target: "perf",
-        fps = sample.fps,
-        average_ms = format_args!("{:.2}", sample.average_ms),
-        p95_ms = format_args!("{:.2}", sample.p95_ms),
-        max_ms = format_args!("{:.2}", sample.max_ms),
-        long_tasks = sample.long_tasks,
-        "render sample received"
-    );
-    let Some(line) = perf_sample_line(&sample) else {
-        return Err("invalid performance sample".to_owned());
-    };
     let dir = app
         .path()
         .app_log_dir()
         .map_err(|error| error.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let path = dir.join("performance-samples.csv");
-    let rotated = std::fs::metadata(&path)
-        .map(|meta| meta.len() > PERF_LOG_MAX_BYTES)
-        .unwrap_or(true);
-    if rotated {
-        std::fs::write(&path, perf_sample_header()).map_err(|error| error.to_string())?;
-    }
-    use std::io::Write;
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|error| error.to_string())?;
-    writeln!(file, "{line}").map_err(|error| error.to_string())?;
-    Ok(())
+    yaqmc_core::server::write_perf_sample(&dir, &sample)
 }
 
 #[cfg(test)]
 mod debug_perf_sample_tests {
     use super::*;
+    use yaqmc_core::server::{perf_sample_header, perf_sample_line};
 
     #[test]
     fn perf_log_line_rejects_invalid_samples() {
@@ -1564,7 +1262,10 @@ mod diagnostics_dto_mapping_tests {
             lyrics_preset: None,
         };
         assert_eq!(
-            serde_json::to_value(map_provider_section(provider, &request)).expect("provider JSON"),
+            serde_json::to_value(yaqmc_core::server::map_provider_section_for_test(
+                provider, &request
+            ))
+            .expect("provider JSON"),
             json!({
                 "id": "qqmusic",
                 "connection": "online",
@@ -1586,7 +1287,8 @@ mod diagnostics_dto_mapping_tests {
             risk_rating: "low".into(),
         };
         assert_eq!(
-            serde_json::to_value(map_plugin_diagnostic(plugin)).expect("plugin JSON"),
+            serde_json::to_value(yaqmc_core::server::map_plugin_diagnostic_for_test(plugin))
+                .expect("plugin JSON"),
             json!({
                 "id": "visualizer",
                 "version": "1.2.3",

@@ -34,6 +34,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+yaqmc-protocol = { path = "../yaqmc-protocol" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 zeroize = "1"
 

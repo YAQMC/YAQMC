@@ -237,3 +237,13 @@ the enforced provenance ledger.
   `host.denied` on spoof/unknown methods. Timeout classes are Control 10 s (`player_*`), Long 120 s (install/export),
   and Standard 30 s. Dispatch arms remain PROTO-04.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P2 PROTO-04: Core method dispatch and shared command bodies
+
+- `yaqmc-core/src/server/methods.rs` dispatches all 100 Core-owned registry methods. Host-owned methods are
+  refused with `host.denied`. Core `authorize()` runs before every arm. Default request/response caps stay 1 MiB
+  and never exceed the 32 MiB hard cap. Tauri wrappers for diagnostics, plugin, quality, audio output, local API
+  port, and perf samples now call the same `server::ops` functions.
+- A registry-vs-dispatch drift test locks the Core-owned name set. OAuth window create/close remains host-owned
+  (PROTO-07). Event fan-out remains PROTO-05. No Electron, no qm-api-rs, no Core stdio binary.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.
