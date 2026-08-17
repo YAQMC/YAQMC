@@ -19,6 +19,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:playwright": "playwright test",
     "docs:check": "node scripts/check-public-docs.mjs",
     "plugins:pack": "node scripts/pack-example-plugins.mjs",
     "plugin:build": "node scripts/build-plugin-examples.mjs",
@@ -59,6 +61,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.62.1",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",

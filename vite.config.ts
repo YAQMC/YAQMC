@@ -44,6 +44,8 @@ export default defineConfig(({ command }) => ({
       'scripts/**',
       'packages/**/dist/**',
       'apps/**',
+      'e2e/**',
+      'playwright.config.ts',
     ],
   },
 }));

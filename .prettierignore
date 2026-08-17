@@ -1,5 +1,8 @@
 dist
 node_modules
+playwright-report
+test-results
+blob-report
 src-tauri/target
 src-tauri/gen/schemas
 package-lock.json
