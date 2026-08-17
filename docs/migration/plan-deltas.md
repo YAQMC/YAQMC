@@ -452,6 +452,18 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
 
+## P4 SEC-02: permission handlers and navigation containment
+
+- `apps/desktop/main/security.ts` denies every `setPermissionRequestHandler` request and
+  every `setDisplayMediaRequestHandler` (no geo/camera/mic/notifications; renderer audio
+  unused). App-window `will-navigate` / `will-redirect` allow `app://` and, when unpackaged
+  `YAQMC_VITE_DEV=1`, Vite `http://127.0.0.1:1420`. `setWindowOpenHandler` always denies;
+  http(s) is recorded for later §28.6. OAuth allowlist is a stub (`isOAuthNavigationAllowed`);
+  `oauth-window.ts` remains ACCT-01. No Playwright; policy is unit-tested. Sandbox /
+  contextIsolation / `nodeIntegration: false` / `webSecurity` unchanged.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,
@@ -463,3 +475,25 @@ the enforced provenance ledger.
   the 22-file swap. SUP-01 remains blocked on ELEC-03.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
+
+## P5 SUP-01: core spawn env allowlist
+
+- `CoreSupervisor` no longer spreads `process.env` into the yaqmc-core child.
+  `apps/desktop/main/core/env.ts` copies a committed allowlist from the parent:
+  process-start (`PATH`, `SYSTEMROOT`/`WINDIR`/`COMSPEC`, temp dirs), locale
+  (`LANG`, `LANGUAGE`, `LC_*`, `TZ`), identity (`HOME`/`USER`/`USERPROFILE`),
+  Windows profile (`APPDATA`, `LOCALAPPDATA`) so the ELEC-03 handshake still
+  starts, and Linux session vars for Secret Service + MPRIS
+  (`DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, `XDG_SESSION_*`, `DISPLAY`,
+  `WAYLAND_DISPLAY`, `XAUTHORITY`). Matching is case-insensitive. Non-allowlisted
+  parent vars are dropped, including `WEBKIT_*`, Electron/Node injectors, random
+  user env, and secret-shaped extras (`AWS_*`, `GITHUB_TOKEN`). Parent `YAQMC_*`
+  lookup vars (`YAQMC_CORE_BIN`, `YAQMC_DESKTOP_SMOKE`) are not forwarded;
+  `YAQMC_LOG_LEVEL` is. Host-owned data/cache/log/config/channel are set after
+  the allowlist. `extraEnv` may overlay allowlisted keys and `YAQMC_*` only.
+- Live keyring + MPRIS verification remains pending on Linux (this machine is
+  Windows). Unit tests are the gate here: they prove the env those adapters
+  need is passed through. This checkpoint does not claim MPRIS or SMTC green.
+- SUP-02 PID file, SUP-03 checksum, SUP-04 backoff, and SUP-05 single-instance
+  are not implemented. ELEC-03 handshake tests remain green. The 32 MiB hard cap
+  is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.

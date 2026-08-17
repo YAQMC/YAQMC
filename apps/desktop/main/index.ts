@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, webContents } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, session, webContents } from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,7 @@ import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
 import { loadMethodAclFromFile } from './ipc/channels';
 import { IpcRouter } from './ipc/router';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
+import { applyAppWindowGuards, applySessionSecurity } from './security';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -89,6 +90,9 @@ function createMainWindow(root: string): BrowserWindow {
   window.on('closed', () => {
     router.unregisterWindow(contentsId);
   });
+  applyAppWindowGuards(window, {
+    allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
+  });
   void window.loadURL(mainWindowUrl(root));
   return window;
 }
@@ -111,7 +115,9 @@ function startSupervisor(): Promise<void> {
   });
   if (!binary) {
     if (smoke) {
-      throw new Error('yaqmc-core binary was not found (set YAQMC_CORE_BIN or stage resources/core)');
+      throw new Error(
+        'yaqmc-core binary was not found (set YAQMC_CORE_BIN or stage resources/core)',
+      );
     }
     return Promise.resolve();
   }
@@ -136,6 +142,7 @@ ipcMain.handle(INVOKE_CHANNEL, async (event, request: InvokeRequest) => {
 });
 
 app.whenReady().then(async () => {
+  applySessionSecurity(session.defaultSession);
   const root = rendererRoot();
   protocol.handle(APP_SCHEME, async (request) => {
     const served = await serveAppUrl(root, request.url);
