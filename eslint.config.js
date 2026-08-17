@@ -50,6 +50,16 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/desktop/harness/**/*.js'],
+    languageOptions: {
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        console: 'readonly',
+      },
+    },
+  },
+  {
     files: ['scripts/**/*.{js,mjs,cjs}', 'apps/desktop/scripts/**/*.{js,mjs,cjs}'],
     languageOptions: {
       sourceType: 'module',

@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   createFakeBridge,
+  type ChannelPayload,
   type HostBridge,
   type HostShellBridge,
   type HostWindowBridge,

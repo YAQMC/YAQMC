@@ -406,6 +406,31 @@ the enforced provenance ledger.
   reaches `ready` and `core_ping`. No qm-api-rs. The 32 MiB hard cap is unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
 
+## P4 ELEC-04: app:// protocol, CSP header, preload, player_snapshot round-trip
+
+- `protocol.registerSchemesAsPrivileged` + `protocol.handle` serve `app://yaqmc/` from
+  `apps/desktop/harness` (this checkpoint) or the Vite `dist/` when `dist/index.html` exists.
+  Every response sets `Content-Security-Policy` as a header (not a meta tag). FACT CSP from
+  `src-tauri/tauri.conf.json` is mapped, not loosened: `asset:` / `http://asset.localhost` →
+  `app:`; `ipc:` / `http://ipc.localhost` → `app:` / `http://127.0.0.1:19532`. QQ image hosts,
+  `worker-src 'self' blob:`, `style-src 'self' 'unsafe-inline'`, and `font-src 'self'` stay.
+  Directive-by-directive comment audit remains SEC-01.
+- Main window keeps live FACT size **1280×800 min 1000×680** (`frame: false`), not plan
+  §11.2's 1180×760. Security baseline: `sandbox`, `contextIsolation`, `nodeIntegration: false`,
+  `webSecurity: true`. No forbidden Chromium switches. Electron stays **43.4.0**.
+- Preload exposes `window.yaqmc = { invoke, on, windowRole, hostInfo }` via contextBridge.
+  Main routes `yaqmc:invoke` to `CoreClient.invoke`. Host-owned methods are not intercepted
+  yet (ELEC-05); unknown/host methods return a structured `{ ok: false, error }` instead of
+  crashing. `player_snapshot` round-trips a real core.
+- Headless gate (`YAQMC_DESKTOP_SMOKE=1`) now **starts the supervisor** (unlike ELEC-01/03
+  smoke) and loads the `app://` harness, which calls `window.yaqmc.invoke('player_snapshot')`
+  and quits 0 on success. Vite `?provider=fake` UI load remains ELEC-09/VITE-01; this
+  checkpoint proves preload+core, not the full renderer.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs, no HWND/SMTC.
+- `tsc -b` also required a missing `ChannelPayload` type import in
+  `src/application/tauri-host-bridge.ts` (SUP-06). No behavior change.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,
