@@ -666,3 +666,29 @@ the enforced provenance ledger.
   remains a maintainer manual gate.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs. No SMTC.
+
+## P9 SURF-01: lyrics surface window helpers (unwired)
+
+- `apps/desktop/main/windows/lyrics-surfaces.ts` exports create/show/hide/lock
+  helpers for `lyrics-desktop` and `lyrics-island` only. Unlock overlay windows
+  (`lyrics-*-unlock`, `?unlockSurface=`) are not implemented (SURF-02).
+- A `createWindow` factory is injected so unit tests never construct a real
+  Electron `BrowserWindow` or need a display. This module is not imported from
+  `main/index.ts` and does not register IPC (later wire-up; avoids racing P5).
+- Construction traits follow §11.2: `frame: false`, `transparent: true`,
+  `alwaysOnTop: 'screen-saver'`, `skipTaskbar: true`, plus the §11.2 security
+  webPreferences. URLs are `app://yaqmc/index.html?surface=desktop|island`
+  via `appIndexUrl` (ELEC-04 host `yaqmc`, not the shorthand `app://index.html`).
+- FACT sizes from live Tauri `lyrics_surface/mod.rs` `logical_dimensions` and
+  `SurfaceRuntimeConfig::disabled`: desktop Wide **940×190** min **460×190**
+  (resizable when unlocked); island Regular **520×156** (not independently
+  resizable). Plan §11.2's "compact default geometry" for island would be
+  Compact 420×156; the live default is Regular. These are not the main window
+  FACT **1280×800**.
+- Lock calls `setIgnoreMouseEvents(true, { forward: true })` and
+  `setFocusable(false)` (plus `setResizable(false)`); unlock reverses cursor
+  first, matching Tauri `apply_window_interaction`. Geometry persistence,
+  boot restore, fullscreen auto-hide, and surface ACL preloads remain later
+  SURF tasks. No Playwright. No qm-api-rs. The 32 MiB hard cap is unchanged.
+  P0 remains `PENDING`; provenance remains **BLOCKED**.
+
