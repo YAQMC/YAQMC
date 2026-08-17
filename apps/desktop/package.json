@@ -10,7 +10,11 @@
     "build": "node ./scripts/build.mjs",
     "typecheck": "tsc -b --pretty false",
     "start": "npm run build && electron .",
-    "smoke": "npm run build && node ./scripts/smoke.mjs"
+    "smoke": "npm run build && node ./scripts/smoke.mjs",
+    "test": "vitest run --config ./vitest.config.ts"
+  },
+  "dependencies": {
+    "@yaqmc/client": "*"
   },
   "devDependencies": {
     "electron": "43.4.0",

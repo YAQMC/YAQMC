@@ -368,3 +368,22 @@ the enforced provenance ledger.
   works (composite + `noEmit` is invalid). Root `dist/` gitignore already covers
   `apps/desktop/dist`. The 32 MiB hard cap is unchanged.
 - P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P4 ELEC-02: framed CoreClient transport
+
+- `apps/desktop/main/core/frames.ts` encodes and decodes u32 little-endian length-prefixed
+  frames. The 32 MiB `FRAME_HARD_CAP_BYTES` from `@yaqmc/client` is a hard ceiling:
+  `frameLimit` never raises it, and an oversize prefix poisons the decoder before a body is
+  required. No spawn or hello→attach→ready handshake yet (ELEC-03).
+- `CoreClient` owns the request promise map, per-method timeouts matching
+  `packages/yaqmc-client/fixtures/methods.json` (`player_*` and `core_ping` 10 s, long ops
+  120 s, otherwise 30 s), event demux, and seq-gap `resync`. Timeouts are not a second
+  protocol; they follow the committed contract fixtures.
+- Desktop unit tests use mock `PassThrough` streams under `apps/desktop/vitest.config.ts`
+  (`environment: 'node'`). Root `vite.config.ts` excludes `apps/**` so those tests are not
+  pulled into the frontend jsdom Vitest run.
+- `apps/desktop/tsconfig.json` uses Bundler resolution so main can import `@yaqmc/client`.
+  Tests and `vitest.config.ts` are excluded from that composite emit so `tsc -b` does not
+  write `.d.ts` for them. They are included in root `tsconfig.node.json` (noEmit) so ESLint
+  `projectService` still type-checks them, matching `@yaqmc/client` tests. No qm-api-rs.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.

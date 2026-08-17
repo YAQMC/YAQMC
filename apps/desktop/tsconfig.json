@@ -7,8 +7,8 @@
     "emitDeclarationOnly": true,
     "target": "ES2022",
     "lib": ["ES2022"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "types": ["node"],
     "strict": true,
     "skipLibCheck": true,
@@ -22,5 +22,6 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["main/**/*.ts", "preload/**/*.ts"]
+  "include": ["main/**/*.ts", "preload/**/*.ts"],
+  "exclude": ["main/**/*.test.ts"]
 }
