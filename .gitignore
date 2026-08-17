@@ -25,6 +25,9 @@ apps/desktop/resources/core/yaqmc-core.exe
 apps/desktop/resources/core/core.sha256
 apps/desktop/resources/core/manifest.json
 
+# P7 soak report (noisy; first 4-h capture stays uncommitted)
+docs/migration/soak-last.json
+
 # Editors
 .idea/
 .vscode/*

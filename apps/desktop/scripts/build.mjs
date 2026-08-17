@@ -1,9 +1,31 @@
+import { execFileSync } from 'node:child_process';
 import * as esbuild from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
+
+function currentCommit() {
+  const environmentCommit = process.env.GITHUB_SHA ?? process.env.VITE_GIT_COMMIT;
+  if (environmentCommit) return environmentCommit;
+  try {
+    return execFileSync('git', ['rev-parse', '--verify', 'HEAD'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+function buildDefines() {
+  return {
+    __YAQMC_BUILD_COMMIT__: JSON.stringify(currentCommit()),
+    __YAQMC_RELEASE_CHANNEL__: JSON.stringify(process.env.YAQMC_RELEASE_CHANNEL ?? 'development'),
+    __YAQMC_BUILD_TYPE__: JSON.stringify(watch ? 'development' : 'release'),
+  };
+}
 
 const mainOptions = {
   absWorkingDir: root,
@@ -15,6 +37,7 @@ const mainOptions = {
   external: ['electron'],
   sourcemap: true,
   logLevel: 'info',
+  define: buildDefines(),
 };
 
 const preloadEntries = [
@@ -34,6 +57,7 @@ function preloadOptions(entryPoint, outfile) {
     external: ['electron'],
     sourcemap: true,
     logLevel: 'info',
+    define: buildDefines(),
   };
 }
 
