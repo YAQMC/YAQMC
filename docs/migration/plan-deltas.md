@@ -1025,3 +1025,40 @@ the enforced provenance ledger.
   from the unpackaged repo layout (untouched this checkpoint). The 32 MiB hard
   cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No
   qm-api-rs.
+
+## P8 ACCT-04: auth ACL negatives from surfaces
+
+- `apps/desktop/main/ipc/acct04-acl.test.ts` locks the existing Main-only ACL:
+  `qqmusic_auth_*`, `auth_oauth_*`, `qqmusic_sign_out`, and `qqmusic_account_*`
+  from the protocol fixture have `allowedOrigins` of `host`+`main`
+  (`OriginClass::Main`). Invokes from `lyrics-desktop`, `lyrics-island`,
+  `lyrics-desktop-unlock`, and `lyrics-island-unlock` return `host.denied` and
+  do not call Core or host handlers. ACL is not loosened; the protocol
+  registry is unchanged.
+- Methods asserted: `qqmusic_auth_start`, `qqmusic_auth_oauth_start`,
+  `qqmusic_auth_heartbeat`, `qqmusic_auth_cancel`, `qqmusic_auth_refresh`,
+  `auth_oauth_prepare`, `auth_oauth_complete`, `auth_oauth_cancel`,
+  `qqmusic_sign_out`, `qqmusic_account_snapshot`, `qqmusic_account_playlists`,
+  `qqmusic_account_playlist_tracks`, `qqmusic_account_recently_played`.
+- No Playwright. No live OAuth. Electron stays **43.4.0**. The 32 MiB hard
+  cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P11 CI-01: desktop and security gates in quality job
+
+- `frontend-quality` now runs `npm run test -w @yaqmc/client` and
+  `npm run test -w @yaqmc/desktop`. Root `npm test` still excludes `apps/**`, so
+  desktop Vitest was missing from CI; `@yaqmc/client` now has a workspace
+  `test` script and `vitest.config.ts` so the explicit `-w` gate is not the
+  root Vite suite. Root `npm run typecheck` (`tsc -b`) already covers both
+  workspaces via tsconfig references, so the quality job does not duplicate
+  `typecheck -w`. `electron-build` keeps its client/desktop typecheck plus
+  desktop build. Workspace clippy/test and `contracts:check` stay in
+  `rust-quality`.
+- FE-05 `node scripts/ci/tauri-imports.mjs` and SEC-02
+  `node scripts/ci/electron-security-lint.mjs` run as named quality steps.
+  Command inventory stays under `ci:test-scripts` (`command-inventory.test.mjs`);
+  `command-inventory.mjs` is a generator library, not a CLI gate, and does not
+  need a built tree.
+- `format:check` is unchanged (no mass-format). No Playwright (FE-06). Electron
+  stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**.
