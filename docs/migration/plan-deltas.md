@@ -710,3 +710,23 @@ the enforced provenance ledger.
   checkpoint.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P9 §29.2: linux-graphics policy (unwired)
+
+- `apps/desktop/main/linux-graphics.ts` is a pure policy table:
+  `linuxGraphicsSwitches({ platform, wayland, nvidia, mode })` returns
+  allowlisted Chromium switches and does not call `app.commandLine.appendSwitch`
+  (`index.ts` wires this before `ready` later). Windows and every other
+  non-Linux platform always get `[]`.
+- Defaults stay empty (Chromium's most-tested path). ADR-008: do not set
+  `--ozone-platform-hint=auto`. `wayland` / `nvidia` facts are accepted so Main
+  can pass diagnostics without this module sniffing `/proc` or copying
+  WebKitGTK env (`WEBKIT_DISABLE_DMABUF_RENDERER`, `YAQMC_LINUX_RENDERER`
+  mutation in `platform.rs`). Auto + NVIDIA + Wayland is still `[]`.
+- Opt-in modes: `native-wayland` → `--ozone-platform=wayland`; `gpu-off`
+  (and deprecated `YAQMC_LINUX_RENDERER=software|safe`) → `--disable-gpu`;
+  `vaapi-on` → `--enable-features=VaapiVideoDecodeLinuxGL` (default off;
+  needs per-distro acceptance). SEC-03 forbids sandbox/web-security switches;
+  tests assert they never appear. No Playwright. Electron stays **43.4.0**.
+  The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
+  **BLOCKED**. No qm-api-rs.
