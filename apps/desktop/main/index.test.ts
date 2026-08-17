@@ -57,6 +57,9 @@ describe('host boot wiring', () => {
     expect(source).toContain('coreDataDir');
     expect(source).toContain('secondInstanceHits');
     expect(source).toContain('trayClick');
+    expect(source).toContain('openSettingsHits');
+    expect(source).toContain('lastPlayerSnapshot');
+    expect(source).toContain('coreInvoke');
     expect(source).toContain('flushGeometry');
     expect(source.indexOf('acquireSingleInstanceLock')).toBeGreaterThan(-1);
     expect(source.indexOf('acquireSingleInstanceLock')).toBeLessThan(
@@ -103,6 +106,9 @@ describe('host boot wiring', () => {
     expect(source).toContain('subscribeHostCommands');
     expect(source).toContain('quitFromHostCommand');
     expect(source).toContain('sendPlatformAttach');
+    expect(source).toContain('emitOpenSettings');
+    expect(source).toContain('openSettings: emitOpenSettings');
+    expect(source).toContain('invokePlayer');
     expect(source).toContain("invoke('platform_attach'");
     expect(source).toContain('getNativeWindowHandle');
     expect(source).toContain('buildPlatformAttach');

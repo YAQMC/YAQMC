@@ -83,6 +83,116 @@ export async function e2eTrayActive(app: ElectronApplication): Promise<boolean> 
   });
 }
 
+export type E2ePlayerSnapshotView = {
+  queueLength: number;
+  currentIndex: number | null;
+  currentId: string | null;
+  isPlaying: boolean;
+  playbackState: string;
+  snapshotRevision: number;
+  errorCode: string | null;
+};
+
+export async function e2eOpenSettingsHits(app: ElectronApplication): Promise<number> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { openSettingsHits?: () => number } })
+      .__YAQMC_E2E__;
+    return hooks?.openSettingsHits?.() ?? 0;
+  });
+}
+
+export async function e2eLastPlayerSnapshot(
+  app: ElectronApplication,
+): Promise<E2ePlayerSnapshotView | null> {
+  const raw = await app.evaluate(() => {
+    const hooks = (
+      globalThis as {
+        __YAQMC_E2E__?: { lastPlayerSnapshot?: () => E2ePlayerSnapshotView | null };
+      }
+    ).__YAQMC_E2E__;
+    const view = hooks?.lastPlayerSnapshot?.() ?? null;
+    return view === null ? '' : JSON.stringify(view);
+  });
+  if (!raw) {
+    return null;
+  }
+  return JSON.parse(raw) as E2ePlayerSnapshotView;
+}
+
+export async function e2ePlayerSnapshotHits(app: ElectronApplication): Promise<number> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { playerSnapshotHits?: () => number } })
+      .__YAQMC_E2E__;
+    return hooks?.playerSnapshotHits?.() ?? 0;
+  });
+}
+
+export async function e2eCoreInvoke(
+  app: ElectronApplication,
+  method: string,
+  params?: unknown,
+): Promise<unknown> {
+  return app.evaluate(
+    async (_electron, payload) => {
+      const hooks = (
+        globalThis as {
+          __YAQMC_E2E__?: {
+            coreInvoke?: (method: string, params?: unknown) => Promise<unknown>;
+          };
+        }
+      ).__YAQMC_E2E__;
+      if (!hooks?.coreInvoke) {
+        throw new Error('coreInvoke hook missing');
+      }
+      const result = await hooks.coreInvoke(payload.method, payload.params);
+      return result ?? null;
+    },
+    { method, params },
+  );
+}
+
+/** Arm `window.yaqmc.on` in the renderer — the production preload IPC seam. */
+export async function e2eArmOpenSettingsListener(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const yaqmc = Reflect.get(globalThis, 'yaqmc') as
+      { on?: (channel: string, cb: (payload: unknown) => void) => void } | undefined;
+    if (typeof yaqmc?.on !== 'function') {
+      throw new Error('window.yaqmc.on is missing');
+    }
+    Reflect.set(globalThis, '__YAQMC_E2E_OPEN_SETTINGS__', false);
+    yaqmc.on('app://open-settings', () => {
+      Reflect.set(globalThis, '__YAQMC_E2E_OPEN_SETTINGS__', true);
+    });
+  });
+}
+
+export async function e2eOpenSettingsEventSeen(page: Page): Promise<boolean> {
+  return page.evaluate(() => Reflect.get(globalThis, '__YAQMC_E2E_OPEN_SETTINGS__') === true);
+}
+
+export async function e2eWaitForHostExit(
+  app: ElectronApplication,
+  timeoutMs: number,
+): Promise<void> {
+  const child = app.process();
+  if (child.exitCode !== null) {
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `Electron host pid ${String(child.pid)} did not exit within ${String(timeoutMs)}ms`,
+        ),
+      );
+    }, timeoutMs);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 export async function e2eMainVisible(app: ElectronApplication): Promise<boolean> {
   return app.evaluate(() => {
     const hooks = (globalThis as { __YAQMC_E2E__?: { mainVisible?: () => boolean } }).__YAQMC_E2E__;

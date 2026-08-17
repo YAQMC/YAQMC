@@ -1756,3 +1756,19 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 - This is not PLAY-01 / SMTC / soak / provenance / packaged-installer green.
   Actions stay frozen. Electron stays **43.4.0**. The 32 MiB hard cap is
   unchanged. Provenance remains **BLOCKED**. No qm-api-rs.
+
+## P9 PLAT-01 follow-up: tray menu Electron E2E
+
+- `tray.spec.ts` now drives Settings, next/previous, play/pause, and Quit
+  through `TrayHandle.click` (the same production menu handlers as show/hide).
+  Settings hides the main window, then asserts `emitOpenSettings` →
+  `raiseMainWindow` plus `app://open-settings` on the preload `window.yaqmc.on`
+  seam. Player actions seed Core via `player_hydrate_queue` (setup only), then
+  require `player://snapshot` events from the authoritative Core (index change
+  for next/previous; non-idle / error / revision bump for toggle). Quit calls
+  the host `app.quit()` path; the test waits for that Electron PID and the
+  recorded Core PID, with last-resort image-name-guarded kill of that PID only.
+- This is programmatic tray-menu coverage, not OS icon / native menu /
+  compositor / SMTC / shortcut / PLAY-01 acceptance. Actions stay frozen.
+  Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No qm-api-rs.
