@@ -33,6 +33,8 @@ function mockLyrics(): LyricsSurfaces & {
   hide: ReturnType<typeof vi.fn>;
   lock: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
+  restoreGeometry: ReturnType<typeof vi.fn>;
+  resetPosition: ReturnType<typeof vi.fn>;
 } {
   const windows = new Map<string, object>();
   return {
@@ -47,6 +49,8 @@ function mockLyrics(): LyricsSurfaces & {
     hide: vi.fn(),
     lock: vi.fn(),
     get: vi.fn((kind) => windows.get(kind) as never),
+    restoreGeometry: vi.fn(async () => undefined),
+    resetPosition: vi.fn(async () => undefined),
   };
 }
 
@@ -252,7 +256,8 @@ describe('IpcRouter host intercepts', () => {
 
     await expect(
       router.invoke(1, { method: 'lyrics_surface_reset_position', params: { kind: 'desktop' } }),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'host.denied' } });
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(lyrics.resetPosition).toHaveBeenCalledWith('desktop');
   });
 
   it('injects Electron dialogs for inventory path pickers and dialog.pickSave', async () => {

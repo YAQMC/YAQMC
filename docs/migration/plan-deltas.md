@@ -960,6 +960,28 @@ the enforced provenance ledger.
   The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs. No SMTC claims.
 
+## P9 SURF-03: geometry persist and boot restore
+
+- `lyrics-surfaces.ts` persists desktop/island bounds on `moved`/`resized`
+  (350 ms debounce, live Tauri `attach_geometry_persistence`) and on close.
+  Keys are BASE-04 `app_settings['lyrics-surface-geometry:desktop']` and
+  `lyrics-surface-geometry:island` (prefix `lyrics-surface-geometry:`). The
+  JSON blob matches live Tauri `SurfaceGeometry`:
+  `{"x":<i32>,"y":<i32>,"width":<u32>,"height":<u32>}`. Create options stay
+  FACT **940×190** / **520×156**.
+- Restore runs on create/show and again after core `ready` in `index.ts`.
+  Saved geometry that overlaps a work area (≥80×40, including negative
+  secondary-monitor coords) is clamped into that display; off-all-displays
+  uses Tauri default placement on the primary work area. `getDisplayBounds`,
+  clock, and settings IO are injected so tests never need a display.
+- `lyrics_surface_reset_position` is host-handled: clear the key, apply
+  defaults, persist the default blob. Settings IO is injected (`get`/`set`/`remove`)
+  and Main wires `lyricsSurfaceSettingsFromCore(() => supervisor?.client)` after
+  core `ready`. SQLite schema is unchanged. Tray/unlock/linux-graphics wiring stays.
+- Unwired: `oauth-window.ts` (no auto-open), electron-updater, Rust `_to`/`_from`.
+  Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains
+  `PENDING`; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
+
 ## P11 PACK-01: electron-builder finalize and pin
 
 - Re-verified on 2026-08-17 against npm (`registry.npmjs.org`) and GitHub Releases:

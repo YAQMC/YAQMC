@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   protocol,
+  screen,
   session,
   shell,
   Tray,
@@ -46,6 +47,7 @@ import { createTray, shouldHideInsteadOfClose, type TrayHandle } from './service
 import { acquireSingleInstanceLock } from './single-instance';
 import {
   createLyricsSurfaces,
+  lyricsSurfaceSettingsFromCore,
   type LyricsSurfaceCreateOptions,
   type LyricsSurfaceKind,
 } from './windows/lyrics-surfaces';
@@ -111,6 +113,16 @@ let closeToTray = true;
 const lyricsSurfaces = createLyricsSurfaces({
   preloadPath: lyricsPreloadPath,
   createWindow: createLyricsBrowserWindow,
+  getDisplayBounds: () =>
+    screen.getAllDisplays().map((display) => ({
+      x: display.workArea.x,
+      y: display.workArea.y,
+      width: display.workArea.width,
+      height: display.workArea.height,
+    })),
+  // BASE-04 keys: app_settings['lyrics-surface-geometry:desktop'] and
+  // app_settings['lyrics-surface-geometry:island'] via CoreClient.
+  settings: lyricsSurfaceSettingsFromCore(() => supervisor?.client),
 });
 
 const lyricsUnlock = createLyricsUnlockOverlays({
@@ -321,6 +333,7 @@ function attachSupervisor(instance: CoreSupervisor): void {
     router.setClient(instance.client);
     bindCoreEvents();
     cacheCloseToTrayPreference();
+    void lyricsSurfaces.restoreGeometry();
     if (!info.restart) {
       return;
     }

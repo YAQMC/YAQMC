@@ -60,6 +60,18 @@ describe('host boot wiring', () => {
     expect(source).not.toContain(['--', 'no-sandbox'].join(''));
   });
 
+  it('restores lyric surface geometry after core ready using BASE-04 keys', () => {
+    expect(source).toContain('lyricsSurfaceSettingsFromCore');
+    expect(source).toContain('restoreGeometry');
+    expect(source).toContain('getDisplayBounds');
+    expect(source).toContain('screen.getAllDisplays');
+    expect(source).toContain('lyrics-surface-geometry:desktop');
+    expect(source).toContain('lyrics-surface-geometry:island');
+    expect(source.indexOf('void lyricsSurfaces.restoreGeometry();')).toBeGreaterThan(
+      source.indexOf("instance.on('ready'"),
+    );
+  });
+
   it('does not auto-open OAuth or import the updater stub', () => {
     expect(source).not.toContain('oauth-window');
     expect(source).not.toContain("from './dialogs'");

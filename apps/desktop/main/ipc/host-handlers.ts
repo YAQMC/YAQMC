@@ -300,6 +300,13 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       }
       return unlocked;
     },
+    lyrics_surface_reset_position: async (params) => {
+      const kind = lyricsKindFromParams(params);
+      if (!kind) {
+        return;
+      }
+      await deps.lyrics.resetPosition(kind);
+    },
   };
 
   if (deps.dialogs) {
