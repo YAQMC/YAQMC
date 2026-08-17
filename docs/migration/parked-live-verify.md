@@ -27,7 +27,25 @@ agent. Do not invent PLAY-02 p95.
 | MPRIS playerctl / applets              | PLAT-05          | `scripts/migration/plat05-mpris-playerctl.mjs` dry-run; Core Raise/Quit on `host://command`     | `playerctl --execute`, GNOME/KDE applets                  | Linux only. Default stays dry-run. `--execute` still does not tick applet rows by itself.                               |
 | Clean-VM install / upgrade / uninstall | PACK-02, PACK-03 | NSIS/portable + AppImage/deb/rpm/tar.gz scripts and empty matrices                              | Every clean-VM cell                                       | Unsigned (R-9). Do not silent-install. Data must survive under `org.yaqmc.desktop`.                                     |
 | 4-hour soak                            | SOAK-01          | `scripts/soak-electron.mjs` default **10 s**; `docs/migration/soak-p7.md`                       | 4-h report uncommitted                                    | `YAQMC_SOAK_SECONDS=14400`. Fake + one real-account run on Win+Linux. Leave `soak-last.json` gitignored until accepted. |
-| Provenance release gate                | P0 / CLEAN       | `docs/migration/provenance-audit.md`, `provenance-ledger.json`                                  | **BLOCKED**                                               | `npm run provenance:enforce` stays non-zero until every blocker has typed evidence. Do not claim green.                 |
+| Provenance release / P14 gate          | P0 / CLEAN       | `docs/migration/provenance-audit.md`, `provenance-ledger.json`                                  | **BLOCKED**                                               | Release and P14 PROV-01 (§17.6, R-6). Not a P12-entry prerequisite. `npm run provenance:enforce` stays non-zero until every blocker has typed evidence. Do not claim green. |
+
+## P12 entry vs provenance
+
+Provenance / CLEAN stays **BLOCKED**. It gates public distribution and P14
+**PROV-01** (plan §17.6 license gate; R-6: before P14 only; P0–P13 unaffected).
+It is **not** a prerequisite to **begin** P12.
+
+Authoritative P12+ edges from §41:
+
+- ACC-01 / ACC-02 depend on the required P8–P11 ⛔ acceptance tasks
+- ACC-03 depends on PLAY-02 + SOAK-01
+- ACC-04 depends on ACC-01, ACC-02
+- ACC-05 depends on ACC-01..04
+- P13 depends on ACC-05
+- P14 PROV-01 depends on the §17.6 license/provenance gate
+
+Do not start P12, P13, P14, or `qm-api-rs` from this documentation correction.
+Do not tick §41 or §49.
 
 Related parked (same later pass, not this overlay's headline list):
 
@@ -41,4 +59,4 @@ Related parked (same later pass, not this overlay's headline list):
 ## Plan book
 
 Canonical overlay: `YAQMC_ELECTRON_MIGRATION_PLAN.md` §49.
-Deltas: `docs/migration/plan-deltas.md` heading `P11 overlay: parked LIVE VERIFY and Actions freeze`.
+Deltas: `docs/migration/plan-deltas.md` headings `P11 overlay: parked LIVE VERIFY and Actions freeze` and `P12-entry vs provenance CLEAN (checklist correction)`. §41 / §49 acceptance cells are unchanged.

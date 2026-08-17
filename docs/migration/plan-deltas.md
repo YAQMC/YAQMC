@@ -1772,3 +1772,17 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   compositor / SMTC / shortcut / PLAY-01 acceptance. Actions stay frozen.
   Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No qm-api-rs.
+
+## P12-entry vs provenance CLEAN (checklist correction)
+
+- HUMAN ACTION CHECKLIST wording: provenance / CLEAN stays **BLOCKED** and
+  visible as a public-distribution / P14 **PROV-01** gate (§17.6, R-6: license
+  gate before P14 only; P0–P13 unaffected). It is **not** required merely to
+  **begin** P12. ACC-01/02 depend on the required P8–P11 ⛔ tasks; ACC-03 on
+  PLAY-02 + SOAK-01; ACC-04 on ACC-01/02; ACC-05 on ACC-01..04; P13 on ACC-05;
+  PROV-01 on the license/provenance gate.
+- `docs/migration/parked-live-verify.md` now states that split. §41 and §49
+  acceptance cells are unchanged. Provenance is not claimed green. P12–P15 and
+  `qm-api-rs` are not started. Actions stay frozen.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No qm-api-rs.
