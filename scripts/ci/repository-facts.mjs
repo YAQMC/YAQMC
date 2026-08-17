@@ -342,6 +342,7 @@ function collectKeyring(repositoryRoot) {
 
 function assertSystemMediaCoreOwnership(repositoryRoot) {
   const core = read(repositoryRoot, 'crates/yaqmc-core/src/system_media.rs');
+  const coreBootstrap = read(repositoryRoot, 'crates/yaqmc-core/src/bootstrap.rs');
   const tauri = read(repositoryRoot, 'src-tauri/src/lib.rs');
   for (const marker of [
     'pub struct SystemMediaStartConfig',
@@ -362,10 +363,13 @@ function assertSystemMediaCoreOwnership(repositoryRoot) {
   if (!tauri.includes('pub use yaqmc_core::system_media::*;')) {
     throw new Error('Tauri system-media compatibility re-export is missing');
   }
+  if (!coreBootstrap.includes('SystemMediaIntegration::start(')) {
+    throw new Error('Core bootstrap must start native system media');
+  }
   const subscription = tauri.indexOf(
-    'subscribe_host_commands(app.handle().clone(), host_commands.subscribe());',
+    'subscribe_host_commands(app.handle().clone(), core.subscribe_host_commands());',
   );
-  const initialization = tauri.indexOf('SystemMediaIntegration::start(');
+  const initialization = tauri.indexOf('core.start_system_media()');
   if (subscription < 0 || initialization < 0 || subscription > initialization) {
     throw new Error('Tauri must subscribe to host commands before system-media initialization');
   }

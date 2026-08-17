@@ -23,6 +23,8 @@ use std::{
 };
 use thiserror::Error;
 
+pub const AUDIO_OUTPUT_DEVICE_SETTING: &str = "audio-output-device";
+
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_OUTPUT_ID: &str = "system:default";
 const OUTPUT_RECOVERY_INTERVAL: Duration = Duration::from_secs(2);

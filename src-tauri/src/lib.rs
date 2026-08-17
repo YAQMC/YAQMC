@@ -56,14 +56,12 @@ use credentials::{CredentialStore, PlatformCredentialStore};
 use desktop_integration::DesktopIntegration;
 use local_api::LocalApiService;
 use lyrics_surface::LyricsSurfaceManager;
-use media::{CachedMediaPreparer, MediaPreparer, PlaybackSourceResolver};
-use player::{PlayerService, PlayerSnapshot};
+use player::PlayerService;
 use qqmusic::QQMusicService;
 use std::sync::Arc;
 use storage::StorageService;
-use system_media::{SystemMediaIntegration, SystemMediaStartConfig};
 use tauri::{Emitter, Manager};
-use yaqmc_core::{HostCommand, HostCommandPublisher};
+use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CorePaths, HostCommand};
 
 #[derive(Clone, Copy)]
 enum MainOwnerLifecycleEvent {
@@ -147,10 +145,10 @@ mod system_media_host_wiring_tests {
     fn host_command_receiver_exists_before_system_media_can_enable_native_callbacks() {
         let source = include_str!("lib.rs");
         let subscription = source
-            .find("subscribe_host_commands(app.handle().clone(), host_commands.subscribe());")
+            .find("subscribe_host_commands(app.handle().clone(), core.subscribe_host_commands());")
             .expect("host command receiver setup");
         let initialization = source
-            .find("SystemMediaIntegration::start(")
+            .find("core.start_system_media()")
             .expect("system-media initialization");
 
         assert!(
@@ -227,31 +225,8 @@ pub fn run() {
 
             let data_root = app.path().app_data_dir()?;
             let cache_root = app.path().app_cache_dir()?;
-            let storage = Arc::new(StorageService::open(data_root.clone(), cache_root.clone())?);
-            let plugins = match plugin::ExtensionHost::open(data_root.join("plugins")) {
-                Ok(host) => Arc::new(host),
-                Err(error) => {
-                    tracing::error!(target: "plugin.host", error = %error, "plugin host could not open");
-                    Arc::new(
-                        plugin::ExtensionHost::open(std::env::temp_dir().join("YAQMC/plugins"))
-                            .map_err(|error| std::io::Error::other(error.to_string()))?,
-                    )
-                }
-            };
-            let level = std::env::var("YAQMC_LOG_LEVEL")
-                .ok()
-                .and_then(|value| logging::LogLevel::parse(&value))
-                .unwrap_or_else(|| commands::load_persisted_log_level(&storage));
-            let logging_handle = Arc::new(logging::init(log_dir, level).unwrap_or_else(|_| {
-                logging::init(std::env::temp_dir().join("YAQMC/logs"), level)
-                    .expect("secondary log directory")
-            }));
+            let config_path = app.path().app_config_dir()?.join("local-api.json");
             let credentials: Arc<dyn CredentialStore> = Arc::new(PlatformCredentialStore::new());
-            let qq_music = Arc::new(QQMusicService::new(
-                Arc::clone(&storage),
-                Arc::clone(&credentials),
-                cache_root.join("fixture-media"),
-            )?);
             let audio: Arc<dyn AudioEngine> = match RodioAudioEngine::open_default() {
                 Ok(engine) => Arc::new(engine),
                 Err(error) => {
@@ -259,37 +234,39 @@ pub fn run() {
                     Arc::new(UnavailableAudioEngine)
                 }
             };
-            if let Ok(Some(device_id)) = storage.get_setting(commands::AUDIO_OUTPUT_SETTING) {
-                if let Err(error) = audio.set_output_device(&device_id) {
-                    tracing::warn!(target: "audio", error = %error, "saved output device is unavailable; using the system default");
-                }
-            }
-            let resolver: Arc<dyn PlaybackSourceResolver> = qq_music.clone();
-            let preparer: Arc<dyn MediaPreparer> = Arc::new(CachedMediaPreparer::new(
-                qq_music.http_client(),
-                Arc::clone(&storage),
-            ));
-            let player = Arc::new(PlayerService::with_runtime(audio, resolver, preparer));
-            if let Ok(Some(snapshot)) = storage.load_queue::<PlayerSnapshot>() {
-                tauri::async_runtime::block_on(qq_music.remember_songs(&snapshot.queue));
-                tauri::async_runtime::block_on(player.restore(snapshot));
-            }
-            let config_path = app.path().app_config_dir()?.join("local-api.json");
-            let local_api =
-                LocalApiService::new(config_path, Arc::clone(&player), credentials)?;
-            let lyrics_surfaces = Arc::new(LyricsSurfaceManager::new());
-            let host_commands = HostCommandPublisher::default();
-            subscribe_host_commands(app.handle().clone(), host_commands.subscribe());
             let (windows_hwnd, windows_start_error) = main_window_hwnd(app.handle());
-            let system_media = SystemMediaIntegration::start(
-                SystemMediaStartConfig {
+            let core = bootstrap(
+                CoreConfig {
+                    paths: CorePaths {
+                        data_dir: data_root.clone(),
+                        cache_dir: cache_root.clone(),
+                        log_dir,
+                        local_api_config_path: config_path,
+                    },
+                    release_channel: "desktop".to_owned(),
+                    build_commit: option_env!("YAQMC_BUILD_COMMIT")
+                        .unwrap_or("unknown")
+                        .to_owned(),
+                },
+                CoreBootstrapInputs {
+                    credentials,
+                    audio,
+                    runtime: tauri::async_runtime::handle().inner().clone(),
                     windows_hwnd,
                     windows_start_error,
-                    runtime: tauri::async_runtime::handle().inner().clone(),
-                    host_commands,
+                    plugin_fallback_dir: std::env::temp_dir().join("YAQMC/plugins"),
+                    log_fallback_dir: std::env::temp_dir().join("YAQMC/logs"),
                 },
-                Arc::clone(&player),
-            );
+            )?;
+            subscribe_host_commands(app.handle().clone(), core.subscribe_host_commands());
+            let storage = core.storage();
+            let plugins = core.plugins();
+            let logging_handle = core.logging();
+            let qq_music = core.qq_music();
+            let player = core.player();
+            let local_api = core.local_api();
+            let lyrics_surfaces = Arc::new(LyricsSurfaceManager::new());
+            let system_media = core.start_system_media();
             let desktop_integration =
                 DesktopIntegration::start(app.handle(), Arc::clone(&player));
             if app_preferences::global_shortcuts_enabled(&storage) {
@@ -588,7 +565,7 @@ mod account_owner_lifecycle_tests {
 mod handler_registration_tests {
     #[test]
     fn restored_queue_rehydrates_provider_track_references_before_player_restore() {
-        let source = include_str!("lib.rs");
+        let source = include_str!("../../crates/yaqmc-core/src/bootstrap.rs");
         let remember = source
             .find("qq_music.remember_songs(&snapshot.queue)")
             .expect("restored queue provider-reference hydration");
@@ -596,6 +573,29 @@ mod handler_registration_tests {
             .find("player.restore(snapshot)")
             .expect("player queue restoration");
         assert!(remember < restore);
+    }
+
+    #[test]
+    fn core_bootstrap_is_composed_before_managed_state_and_local_api_start() {
+        let source = include_str!("lib.rs");
+        let bootstrap_call = source
+            .find("let core = bootstrap(")
+            .expect("core bootstrap");
+        let rest = &source[bootstrap_call..];
+        let subscribe = rest
+            .find("subscribe_host_commands(app.handle().clone(), core.subscribe_host_commands());")
+            .expect("host command subscription");
+        let start_media = rest
+            .find("core.start_system_media()")
+            .expect("system-media start");
+        let start_api = rest
+            .find("api_to_start.start_if_enabled()")
+            .expect("local API start");
+        let manage_api = rest
+            .find("app.manage(local_api);")
+            .expect("local API manage");
+        assert!(subscribe < start_media);
+        assert!(start_api < manage_api);
     }
 
     #[test]

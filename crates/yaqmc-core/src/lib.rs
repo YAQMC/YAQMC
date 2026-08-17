@@ -19,10 +19,13 @@ pub mod storage;
 pub mod streaming;
 pub mod system_media;
 
+mod bootstrap;
+
 #[cfg(test)]
 mod system_media_runtime_tests;
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::{error::Error, fmt, path::PathBuf};
 
 use tokio::sync::{broadcast, watch};
@@ -84,16 +87,28 @@ impl HostCommandPublisher {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CoreBootstrapError {}
+#[derive(Debug)]
+pub enum CoreBootstrapError {
+    Failed(String),
+}
+
+impl CoreBootstrapError {
+    pub(crate) fn from_error(error: impl fmt::Display) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
 
 impl fmt::Display for CoreBootstrapError {
-    fn fmt(&self, _formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Failed(message) => formatter.write_str(message),
+        }
     }
 }
 
 impl Error for CoreBootstrapError {}
+
+pub use bootstrap::CoreBootstrapInputs;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HostCommandRequestError {
@@ -115,6 +130,7 @@ pub struct CoreHandle {
     host_command_publisher: HostCommandPublisher,
     shutdown_state: watch::Sender<bool>,
     is_shutdown: AtomicBool,
+    services: Arc<bootstrap::CoreServices>,
 }
 
 impl CoreHandle {
@@ -153,15 +169,67 @@ impl CoreHandle {
             self.shutdown_state.send_replace(true);
         }
     }
+
+    pub fn storage(&self) -> Arc<crate::storage::StorageService> {
+        Arc::clone(&self.services.storage)
+    }
+
+    pub fn plugins(&self) -> Arc<crate::plugin::ExtensionHost> {
+        Arc::clone(&self.services.plugins)
+    }
+
+    pub fn logging(&self) -> Arc<crate::logging::LoggingHandle> {
+        Arc::clone(&self.services.logging)
+    }
+
+    pub fn credentials(&self) -> Arc<dyn crate::credentials::CredentialStore> {
+        Arc::clone(&self.services.credentials)
+    }
+
+    pub fn qq_music(&self) -> Arc<crate::qqmusic::QQMusicService> {
+        Arc::clone(&self.services.qq_music)
+    }
+
+    pub fn audio(&self) -> Arc<dyn crate::audio::AudioEngine> {
+        Arc::clone(&self.services.audio)
+    }
+
+    pub fn player(&self) -> Arc<crate::player::PlayerService> {
+        Arc::clone(&self.services.player)
+    }
+
+    pub fn local_api(&self) -> Arc<crate::local_api::LocalApiService> {
+        Arc::clone(&self.services.local_api)
+    }
+
+    pub fn system_media(&self) -> Arc<crate::system_media::SystemMediaIntegration> {
+        self.services
+            .system_media
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+            .expect("start_system_media must run after the host subscribes to host commands")
+    }
+
+    pub fn start_system_media(&self) -> Arc<crate::system_media::SystemMediaIntegration> {
+        self.services
+            .start_system_media(self.host_command_publisher.clone())
+    }
 }
 
-pub fn bootstrap(config: CoreConfig) -> Result<CoreHandle, CoreBootstrapError> {
+pub fn bootstrap(
+    config: CoreConfig,
+    inputs: CoreBootstrapInputs,
+) -> Result<CoreHandle, CoreBootstrapError> {
     let (shutdown_state, _) = watch::channel(false);
+    let host_command_publisher = HostCommandPublisher::default();
+    let services = bootstrap::CoreServices::construct(&config, inputs)?;
 
     Ok(CoreHandle {
         config,
-        host_command_publisher: HostCommandPublisher::default(),
+        host_command_publisher,
         shutdown_state,
         is_shutdown: AtomicBool::new(false),
+        services: Arc::new(services),
     })
 }

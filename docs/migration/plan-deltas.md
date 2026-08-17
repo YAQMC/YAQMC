@@ -193,3 +193,14 @@ the enforced provenance ledger.
   Native MPRIS desktop and Windows SMTC hardware/controller interactions remain HUMAN/platform evidence and are not
   claimed as agent-passed. P0 remains `PENDING`; provenance remains **BLOCKED**; no P2, Electron, provider/qm-api-rs,
   reqwest, HUMAN/LIVE_ACCOUNT, or cutover work is implemented by this ownership checkpoint.
+
+## Task 9: Core bootstrap ownership and Tauri shim convergence
+
+- `bootstrap(CoreConfig, CoreBootstrapInputs)` now constructs the shared P1 service graph. Paths remain
+  host-resolved and injected. Tauri injects credentials, the audio engine, the Tokio `Handle`, and the opaque HWND
+  lookup result. Core opens storage/plugins/logging/QQ/player/Local API, hydrates `remember_songs` before
+  `player.restore`, and starts native system media only after the host subscribes to the Core-owned
+  `HostCommandPublisher`.
+- `start_if_enabled()` stays scheduled by Tauri immediately before `app.manage(local_api)`. Event fan-out, lyrics
+  surfaces, tray/shortcuts, OAuth windows, and the 117 command registrations remain host-owned. P0 remains
+  `PENDING`; provenance remains **BLOCKED**.
