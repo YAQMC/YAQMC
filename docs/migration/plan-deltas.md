@@ -959,3 +959,47 @@ the enforced provenance ledger.
   electron-updater). Electron stays **43.4.0**. Main window FACT **1280×800**.
   The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No qm-api-rs. No SMTC claims.
+
+## P11 PACK-01: electron-builder finalize and pin
+
+- Re-verified on 2026-08-17 against npm (`registry.npmjs.org`) and GitHub Releases:
+  electron-builder **v27 is still prerelease** (`27.0.0-alpha.6` on the `next`
+  dist-tag). The current stable line is v26; the newest published v26 release is
+  **26.15.7** (`v26` dist-tag; npm `latest` was stale at 26.15.3 / a local cache
+  still reported 26.8.1). PACK-01 therefore pins exact **`electron-builder@26.15.7`**
+  in `apps/desktop/package.json` (workspace-hoisted via the lockfile) and does
+  **not** take the v27 alpha. Electron stays exact **43.4.0** (not 44).
+- `appId: org.yaqmc.desktop` equals the live Tauri `identifier`. `productName:
+  YAQMC`, `asar: true` with no `asarUnpack` (core stays in `extraResources`
+  `{from: resources/core, to: core}`). NSIS is `oneClick: false`, `perMachine:
+  false` (per-user, directory chooser on). Targets: Windows NSIS + portable;
+  Linux AppImage + deb + rpm + tar.gz; x64 and arm64 are declared. Signing is
+  not required (`forceCodeSigning: false`, Windows `signAndEditExecutable: false`
+  so local pack does not fetch winCodeSign from GitHub). `electronDist` is the
+  workspace-pinned `node_modules/electron/dist` (43.4.0). `publish` is null; **no
+  electron-updater** (UPD-01). No silent-install flags.
+- Artifact names: Windows `YAQMC-windows-${arch}-setup.${ext}` (NSIS) and
+  `YAQMC-windows-${arch}-portable.${ext}` (builder `portable`, a self-contained
+  **exe**, not Tauri's `YAQMC-windows-{arch}-portable.zip`). Linux uses
+  `YAQMC-linux-${arch}.${ext}` (ext separates AppImage/deb/rpm/tar.gz). BASE-05
+  Linux AppImage/deb/rpm kept Tauri-generated basenames and the tar.gz used a
+  `-portable` infix; those exact strings are not reproduced here. MSI remains
+  dropped per `docs/migration/release-assets.md`.
+- Fuses match the binding amendment and SEC-02 (Chromium sandbox stays enabled;
+  do not disable `webSecurity`): `runAsNode` / `enableNodeOptionsEnvironmentVariable` /
+  `enableNodeCliInspectArguments` off; `onlyLoadAppFromAsar` and
+  `enableEmbeddedAsarIntegrityValidation` on (integrity is a Windows/macOS
+  Electron feature, not a Linux anti-tamper claim);
+  `grantFileProtocolExtraPrivileges: false` so `file://` cannot bypass the
+  Chromium sandbox. `apps/desktop/resources/core/.gitkeep` keeps the extraResources
+  source directory in git; staged `yaqmc-core.exe` remains gitignored.
+- `npm run pack:dir -w @yaqmc/desktop` **ran** on this Windows host (`--dir
+  --x64`): `release-electron/win-unpacked/YAQMC.exe`, `resources/app.asar`, and
+  `resources/core/yaqmc-core.exe` (staged binary was present locally; gitignored).
+  `@electron/fuses read` confirmed RunAsNode / NodeOptions / NodeCliInspect off,
+  OnlyLoadAppFromAsar and EnableEmbeddedAsarIntegrityValidation on,
+  GrantFileProtocolExtraPrivileges off. Arm64 was not produced. The packaged
+  renderer still falls back to `harness/` because `index.ts` resolves Vite `dist/`
+  from the unpackaged repo layout (untouched this checkpoint). The 32 MiB hard
+  cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No
+  qm-api-rs.

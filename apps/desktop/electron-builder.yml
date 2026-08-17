@@ -1,13 +1,21 @@
-# ELEC-07 skeleton only. PACK-01 owns targets, fuses, signing, and extraResources hash verify.
+# PACK-01: NSIS/portable + Linux AppImage/deb/rpm/tar.gz. Unsigned builds are expected (R-9).
+# Updater metadata is out of scope here; publish is disabled.
 appId: org.yaqmc.desktop
 productName: YAQMC
 copyright: GPL-3.0-or-later
+asar: true
+electronVersion: 43.4.0
+# Use the workspace-pinned Electron 43.4.0 dist (no GitHub re-download).
+electronDist: ../../node_modules/electron/dist
+forceCodeSigning: false
+publish: null
 directories:
   output: ../../release-electron
   buildResources: resources
 files:
   - dist/main/**
   - dist/preload/**
+  - harness/**
 extraMetadata:
   main: dist/main/index.js
 extraResources:
@@ -15,11 +23,59 @@ extraResources:
     to: core
     filter:
       - '!**/*.md'
+      - '!**/.gitkeep'
+# Binding amendment + SEC-02: Chromium sandbox stays enabled.
+# grantFileProtocolExtraPrivileges stays false so file:// cannot bypass sandbox.
+# EnableEmbeddedAsarIntegrityValidation is a Windows/macOS Electron feature, not a Linux anti-tamper claim.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
 win:
   icon: resources/icon.ico
+  # Unsigned (R-9). Skip rcedit/winCodeSign so local --dir pack does not fetch GitHub.
+  signAndEditExecutable: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+    - target: portable
+      arch:
+        - x64
+        - arm64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: YAQMC-windows-${arch}-setup.${ext}
+portable:
+  artifactName: YAQMC-windows-${arch}-portable.${ext}
 linux:
   icon: resources
   category: AudioVideo
+  artifactName: YAQMC-linux-${arch}.${ext}
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    - target: rpm
+      arch:
+        - x64
+        - arm64
+    - target: tar.gz
+      arch:
+        - x64
+        - arm64
 mac:
   icon: resources/icon.icns
-electronVersion: 43.4.0
