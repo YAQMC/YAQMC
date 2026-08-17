@@ -1403,3 +1403,15 @@ efresh. OAuth popup remains ACCT-01 — this checkpoint does not
 - `docs/migration/acct03-session-continuity.md` is the P8 upgrade test (Tauri-login to Electron boot, no re-login). Win / GNOME / KDE boxes empty. ACCT-03 is not green. Do not claim R-10 closed.
 - Must not happen: re-login prompt; a new keyring service name. Service stays `org.yaqmc.desktop`. Recorded stay-logged-in demo is maintainer **PENDING**.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
+
+## P10 PLUG-02: proxy deny and safe-mode drill (automated)
+
+- `crates/yaqmc-core/tests/plug02.rs` asserts HTTPS-only proxy allow for granted
+  `https://example.com` and deny for `http://` plus private/loopback IP literals.
+  Crash-loop: isolated `tests/fixtures/plugins/hostile` fixture (never enabled as
+  a user plugin) unclean-drop → `safe_mode`; N simulated `mark_failed` then
+  `set_safe_mode(true)` clears scripts/styles. `plugin-runtime.plug02.test.ts`
+  covers `plugin_set_safe_mode` skipping `plugin_runtime_start`.
+- **LIVE VERIFY pending:** in-app plugin journal check. Electron stays **43.4.0**.
+  The 32 MiB hard cap is unchanged. Provenance remains **BLOCKED**. No Playwright.
+  No qm-api-rs.
