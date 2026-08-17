@@ -1,0 +1,19 @@
+{
+  "name": "@yaqmc/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "description": "YAQMC Electron host. Parallel to the Tauri shim until P13.",
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "typecheck": "tsc -b --pretty false",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && node ./scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "esbuild": "^0.25.12"
+  }
+}

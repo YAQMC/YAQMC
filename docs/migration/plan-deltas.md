@@ -351,3 +351,20 @@ the enforced provenance ledger.
   injectable catalog port so `fake-music-provider` can wrap it later. The existing
   `?provider=fake` frontend path is unchanged. No Electron, no qm-api-rs.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P4 ELEC-01: Electron host scaffold
+
+- `@yaqmc/desktop` lives at `apps/desktop` with esbuild (`main` ESM + `preload` CJS → `dist/`).
+  Electron is pinned to exact **43.4.0** (Chrome M150 / Node 24; 44 is still beta as of
+  2026-08-17). `window.yaqmc` is not implemented (ELEC-04). No qm-api-rs.
+- Live FACT window size from `src-tauri/tauri.conf.json` is **1280×800 min 1000×680**, not
+  plan §11.2's 1180×760 min 940×640. The blank smoke window uses the live Tauri numbers.
+- Security baseline on the smoke window: `sandbox: true`, `contextIsolation: true`,
+  `nodeIntegration: false`, `webSecurity: true`. No forbidden Chromium switches in
+  production code. Headless CI uses `YAQMC_DESKTOP_SMOKE=1` (hidden window, quit after
+  load) plus smoke-only `ELECTRON_DISABLE_GPU=1` so the gate can run without a display;
+  sandbox stays on in `main/index.ts`.
+- `apps/desktop/tsconfig.json` is composite with `emitDeclarationOnly` so root `tsc -b`
+  works (composite + `noEmit` is invalid). Root `dist/` gitignore already covers
+  `apps/desktop/dist`. The 32 MiB hard cap is unchanged.
+- P0 remains `PENDING`; provenance remains **BLOCKED**.
