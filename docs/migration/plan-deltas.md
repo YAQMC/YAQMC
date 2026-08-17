@@ -344,3 +344,10 @@ the enforced provenance ledger.
   `npm run contracts:check` is the CI red-on-drift gate after `cargo test`. No Electron,
   no qm-api-rs.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+
+## P3 CLIENT-06: fake HostBridge
+
+- `createFakeBridge()` is an in-memory `HostBridge` with a local player snapshot and an
+  injectable catalog port so `fake-music-provider` can wrap it later. The existing
+  `?provider=fake` frontend path is unchanged. No Electron, no qm-api-rs.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.

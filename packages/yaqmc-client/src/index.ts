@@ -14,7 +14,7 @@ export {
   type PlayerCommandAdapter,
 } from './player-command-adapter';
 export { createElectronBridge } from './bridges/electron';
-export { createFakeBridge } from './bridges/fake';
+export { createFakeBridge, type FakeCatalog } from './bridges/fake';
 export {
   CHANNEL_ACCOUNT_CHANGED,
   CHANNEL_API_EVENT,
