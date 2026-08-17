@@ -918,6 +918,20 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains
   **BLOCKED**. No Playwright. No qm-api-rs.
 
+## P10 PLUG-03: worker isolation from window.yaqmc
+
+- Plugin scripts still run in blob-URL Workers built by `pluginWorkerBootstrap`
+  (`plugin-runtime.ts`). The bootstrap now clears `self.yaqmc` the same way it
+  already clears `self.__TAURI__` and `self.document`, so the Electron preload
+  bridge cannot be read from worker scope even if a host global leaked.
+- jsdom cannot spawn Workers. `plugin-runtime.test.ts` evaluates that bootstrap
+  inside `node:worker_threads` (same generated source the runtime puts in the
+  Blob). The parent test sets `window.yaqmc`; the worker reports
+  `typeof globalThis.yaqmc` and `typeof self.yaqmc` as `'undefined'`, and
+  `importScripts` of a preload URL is denied.
+- Example plugins are not installed (PLUG-01). No Playwright. The 32 MiB hard
+  cap is unchanged. Provenance remains **BLOCKED**.
+
 ## host boot: linux-graphics, unlock overlays, dialogs
 
 - `apps/desktop/main/index.ts` calls `linuxGraphicsSwitches({ platform, wayland,
