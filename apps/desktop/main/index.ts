@@ -138,10 +138,10 @@ let supervisor: CoreSupervisor | undefined;
 let stopping = false;
 let exitCode = 0;
 let mainWindow: BrowserWindow | undefined;
+let e2eSecondInstanceHits = 0;
 let trayHandle: TrayHandle | undefined;
 /** FACT default: hide-to-tray. Preference read is cached; missing prefs stay hide. */
 let closeToTray = true;
-let updaterHandle: UpdaterHandle | undefined;
 let hostLog: HostLog | undefined;
 
 function writeHostLog(message: string): void {
@@ -177,10 +177,15 @@ if (e2e) {
     globalThis as {
       __YAQMC_E2E__?: {
         coreStatus: () => string;
+        corePid: () => number | null;
+        coreDataDir: () => string;
+        hostPid: () => number;
         killCore: () => boolean;
         trayClick: (id: string) => boolean;
         trayActive: () => boolean;
         mainVisible: () => boolean;
+        mainHide: () => boolean;
+        secondInstanceHits: () => number;
         lyricsShow: (kind: LyricsSurfaceKind) => void;
         lyricsHide: (kind: LyricsSurfaceKind) => void;
         lyricsBounds: (kind: LyricsSurfaceKind) => LyricsSurfacePersistedGeometry | null;
@@ -193,10 +198,21 @@ if (e2e) {
     }
   ).__YAQMC_E2E__ = {
     coreStatus: () => supervisor?.status ?? 'absent',
+    corePid: () => supervisor?.runningChildPid() ?? null,
+    coreDataDir: () => coreDataPaths().dataDir,
+    hostPid: () => process.pid,
     killCore: () => supervisor?.killRunningChild() ?? false,
     trayClick: (id) => trayHandle?.click(id as TrayMenuId) ?? false,
     trayActive: () => trayHandle !== undefined,
     mainVisible: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+    mainHide: () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        return false;
+      }
+      mainWindow.hide();
+      return true;
+    },
+    secondInstanceHits: () => e2eSecondInstanceHits,
     lyricsShow: (kind) => {
       lyricsSurfaces.show(kind);
     },
@@ -222,8 +238,7 @@ if (e2e) {
   };
 }
 
-let router: IpcRouter;
-router = new IpcRouter({
+const router = new IpcRouter({
   methods: loadMethodAclFromFile(
     path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
   ),
@@ -273,7 +288,7 @@ router = new IpcRouter({
   }),
 });
 
-updaterHandle = createUpdater({
+const updaterHandle = createUpdater({
   port: smoke ? noopUpdaterPort() : createElectronUpdaterPort(updaterReleaseChannel()),
   emit: (channel, payload) => {
     writeHostLog(`updater ${payload.state}`);
@@ -703,7 +718,14 @@ ipcMain.handle(INVOKE_CHANNEL, async (event, request: InvokeRequest) => {
   return router.invoke(event.sender.id, request);
 });
 
-if (acquireSingleInstanceLock(app, () => mainWindow)) {
+if (
+  acquireSingleInstanceLock(app, () => {
+    if (e2e) {
+      e2eSecondInstanceHits += 1;
+    }
+    return mainWindow;
+  })
+) {
   app.whenReady().then(async () => {
     applySessionSecurity(session.defaultSession);
     const root = rendererRoot();

@@ -51,8 +51,17 @@ describe('host boot wiring', () => {
     expect(source).toContain("YAQMC_E2E_CORE !== '1'");
     expect(source).toContain('__YAQMC_E2E__');
     expect(source).toContain('killRunningChild');
+    expect(source).toContain('runningChildPid');
+    expect(source).toContain('mainHide');
+    expect(source).toContain('corePid');
+    expect(source).toContain('coreDataDir');
+    expect(source).toContain('secondInstanceHits');
     expect(source).toContain('trayClick');
     expect(source).toContain('flushGeometry');
+    expect(source.indexOf('acquireSingleInstanceLock')).toBeGreaterThan(-1);
+    expect(source.indexOf('acquireSingleInstanceLock')).toBeLessThan(
+      source.indexOf('app.whenReady()'),
+    );
   });
 
   it('applies Linux graphics switches before ready and never sandbox/web-security flags', () => {

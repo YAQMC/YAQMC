@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -87,6 +88,252 @@ export async function e2eMainVisible(app: ElectronApplication): Promise<boolean>
     const hooks = (globalThis as { __YAQMC_E2E__?: { mainVisible?: () => boolean } }).__YAQMC_E2E__;
     return hooks?.mainVisible?.() ?? false;
   });
+}
+
+export async function e2eMainHide(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { mainHide?: () => boolean } }).__YAQMC_E2E__;
+    return hooks?.mainHide?.() ?? false;
+  });
+}
+
+export async function e2eCorePid(app: ElectronApplication): Promise<number | null> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { corePid?: () => number | null } })
+      .__YAQMC_E2E__;
+    return hooks?.corePid?.() ?? null;
+  });
+}
+
+export async function e2eCoreDataDir(app: ElectronApplication): Promise<string> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { coreDataDir?: () => string } }).__YAQMC_E2E__;
+    return hooks?.coreDataDir?.() ?? '';
+  });
+}
+
+export async function e2eHostPid(app: ElectronApplication): Promise<number | null> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { hostPid?: () => number } }).__YAQMC_E2E__;
+    return hooks?.hostPid?.() ?? null;
+  });
+}
+
+export async function e2eSecondInstanceHits(app: ElectronApplication): Promise<number> {
+  return app.evaluate(() => {
+    const hooks = (globalThis as { __YAQMC_E2E__?: { secondInstanceHits?: () => number } })
+      .__YAQMC_E2E__;
+    return hooks?.secondInstanceHits?.() ?? 0;
+  });
+}
+
+function parsePidFile(contents: string): number | undefined {
+  const line = contents.trim().split(/\s+/u)[0];
+  if (!line) {
+    return undefined;
+  }
+  const pid = Number.parseInt(line, 10);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return undefined;
+  }
+  return pid;
+}
+
+/** Same image-name contract as `apps/desktop/main/core/pid.ts` `isCoreImageName`. */
+export function e2eIsCoreImageName(name: string | undefined): boolean {
+  if (!name) {
+    return false;
+  }
+  const base = path.basename(name).toLowerCase();
+  return base === 'yaqmc-core' || base === 'yaqmc-core.exe';
+}
+
+/** Same lookup as `apps/desktop/main/core/pid.ts` `lookupProcessImage`. */
+export function e2eProcessImage(pid: number, platform = process.platform): string | undefined {
+  if (platform === 'win32') {
+    try {
+      const output = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 5_000,
+      }).trim();
+      if (!output.startsWith('"')) {
+        return undefined;
+      }
+      const name = output.split(',')[0]?.replaceAll('"', '');
+      return name || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  try {
+    return readFileSync(`/proc/${pid}/comm`, 'utf8').trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function e2ePidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readCorePidFile(dataDir: string): number | undefined {
+  const file = path.join(dataDir, 'core.pid');
+  if (!existsSync(file)) {
+    return undefined;
+  }
+  try {
+    return parsePidFile(readFileSync(file, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Last-resort cleanup for this test's recorded Core PID only.
+ * Unrelated images (PID reuse) are left alone. Never `taskkill /IM`.
+ */
+export function e2eStopOwnedCorePid(pid: number): void {
+  if (!e2eIsCoreImageName(e2eProcessImage(pid))) {
+    return;
+  }
+  try {
+    process.kill(pid);
+  } catch {
+    // already gone
+  }
+}
+
+export async function e2eWaitForPidExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!e2ePidAlive(pid)) {
+      return true;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
+  }
+  return !e2ePidAlive(pid);
+}
+
+export type SpawnedSecondHost = {
+  pid: number;
+  waitForExit: (timeoutMs: number) => Promise<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+    stderr: string;
+  }>;
+  kill: () => void;
+};
+
+/**
+ * Spawn a second real Electron host against the same e2e env/userData.
+ * Do not use Playwright `_electron.launch` here: the loser quits before
+ * `whenReady` and never opens a CDP window.
+ */
+export function spawnSecondElectronHost(options: LaunchElectronOptions = {}): SpawnedSecondHost {
+  const env = electronEnv(options);
+  if (env.YAQMC_ELECTRON_E2E !== '1') {
+    throw new Error('second-launch E2E refused: YAQMC_ELECTRON_E2E must be 1');
+  }
+  const stderrChunks: Buffer[] = [];
+  const child = spawn(electronBinary, ['.', '--lang=en-US'], {
+    cwd: desktopRoot,
+    env,
+    windowsHide: true,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    detached: false,
+  });
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderrChunks.push(chunk);
+  });
+  const pid = child.pid;
+  if (pid === undefined) {
+    throw new Error('second Electron host spawned without a pid');
+  }
+  return {
+    pid,
+    waitForExit(timeoutMs) {
+      return waitForChildExit(child, timeoutMs, stderrChunks);
+    },
+    kill() {
+      killSpawnedHost(child);
+    },
+  };
+}
+
+function waitForChildExit(
+  child: ChildProcess,
+  timeoutMs: number,
+  stderrChunks: Buffer[],
+): Promise<{ code: number | null; signal: NodeJS.Signals | null; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const stderrText = () => Buffer.concat(stderrChunks).toString('utf8');
+    if (child.exitCode !== null) {
+      resolve({ code: child.exitCode, signal: child.signalCode, stderr: stderrText() });
+      return;
+    }
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+    const timer = setTimeout(() => {
+      finish(() => {
+        killSpawnedHost(child);
+        const stderr = stderrText();
+        const timeoutMsg =
+          `second Electron host pid ${String(child.pid)} ` +
+          `did not exit within ${String(timeoutMs)}ms`;
+        reject(new Error(stderr ? `${timeoutMsg}\n${stderr}` : timeoutMsg));
+      });
+    }, timeoutMs);
+    child.once('error', (error) => {
+      finish(() => {
+        reject(error);
+      });
+    });
+    child.once('exit', (code, signal) => {
+      finish(() => {
+        resolve({ code, signal, stderr: stderrText() });
+      });
+    });
+  });
+}
+
+/** Kill only this spawned child (Windows: that PID's process tree). Never `/IM`. */
+function killSpawnedHost(child: ChildProcess): void {
+  if (child.exitCode !== null) {
+    return;
+  }
+  const pid = child.pid;
+  try {
+    child.kill();
+  } catch {
+    // already gone
+  }
+  if (pid === undefined || process.platform !== 'win32') {
+    return;
+  }
+  try {
+    execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      windowsHide: true,
+      timeout: 5_000,
+      stdio: 'ignore',
+    });
+  } catch {
+    // already gone
+  }
 }
 
 export type E2eLyricsKind = 'desktop' | 'island';

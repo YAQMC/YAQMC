@@ -598,6 +598,7 @@ describe('CoreSupervisor', () => {
     const children: ReturnType<typeof mockChild>[] = [];
     const spawnCore: SpawnCore = () => {
       const mock = mockChild();
+      (mock.child as { pid?: number }).pid = 4242;
       children.push(mock);
       return mock.child as unknown as ChildProcess;
     };
@@ -610,10 +611,13 @@ describe('CoreSupervisor', () => {
       spawn: spawnCore,
     });
     expect(supervisor.killRunningChild()).toBe(false);
+    expect(supervisor.runningChildPid()).toBeUndefined();
     const started = supervisor.start();
     await handshakeChild(children.at(-1));
     await started;
+    expect(supervisor.runningChildPid()).toBe(4242);
     expect(supervisor.killRunningChild()).toBe(true);
+    expect(supervisor.runningChildPid()).toBeUndefined();
     expect(supervisor.killRunningChild()).toBe(false);
     await supervisor.stop();
   });

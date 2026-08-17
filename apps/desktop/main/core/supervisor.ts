@@ -220,6 +220,15 @@ export class CoreSupervisor extends EventEmitter {
     return child.kill();
   }
 
+  /** E2E: pid of the live `yaqmc-core` child, if this supervisor still owns one. */
+  runningChildPid(): number | undefined {
+    const child = this.child;
+    if (!child || child.exitCode !== null) {
+      return undefined;
+    }
+    return child.pid;
+  }
+
   stderrSnapshot(): Buffer {
     return Buffer.concat(this.stderrChunks);
   }
