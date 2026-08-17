@@ -1,13 +1,15 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
 import { isNativeRuntime } from './native-player-runtime';
 import type { LogLevel } from './logger';
 import type { PlatformDiagnostics } from './platform-integration';
+import { getYaqmcClient } from './yaqmc-runtime';
+
+const client = getYaqmcClient();
 
 /**
  * Frontend bindings for the Rust `diagnostics_*` and `issue_reporter_*` commands.
  *
- * Everything in this module talks to the native runtime through Tauri IPC and
+ * Everything in this module talks to the native runtime through YaqmcClient and
  * degrades gracefully when the app runs inside the Vite browser preview
  * (isNativeRuntime === false).
  */
@@ -138,7 +140,7 @@ export async function readDiagnosticsSnapshot(
   request: DiagnosticsRequest = {},
 ): Promise<DiagnosticsSnapshot | null> {
   if (!isNativeRuntime) return null;
-  return invoke<DiagnosticsSnapshot>('diagnostics_snapshot', { request });
+  return client.invoke('diagnostics_snapshot', { request }) as Promise<DiagnosticsSnapshot>;
 }
 
 export async function exportDiagnosticsBundle(
@@ -152,32 +154,32 @@ export async function exportDiagnosticsBundle(
     issueCategory,
     ...base,
   };
-  return invoke<BundleExportResult>('diagnostics_export_bundle', { request });
+  return client.invoke('diagnostics_export_bundle', { request });
 }
 
 export async function revealDiagnosticBundle(path: string): Promise<void> {
   if (!isNativeRuntime) return;
-  await invoke('diagnostics_reveal_bundle', { path });
+  await client.invoke('diagnostics_reveal_bundle', { path });
 }
 
 export async function openLogFolder(): Promise<string> {
-  return invoke<string>('diagnostics_open_log_folder');
+  return client.invoke('diagnostics_open_log_folder');
 }
 
 export async function clearOldLogs(): Promise<number> {
-  return invoke<number>('diagnostics_clear_logs');
+  return client.invoke('diagnostics_clear_logs');
 }
 
 export async function currentLogLevel(): Promise<LogLevel> {
-  return invoke<LogLevel>('diagnostics_current_level');
+  return client.invoke('diagnostics_current_level');
 }
 
 export async function setLogLevel(level: LogLevel): Promise<LogLevel> {
-  return invoke<LogLevel>('diagnostics_set_log_level', { level });
+  return client.invoke('diagnostics_set_log_level', { level });
 }
 
 export async function readRecentErrors(): Promise<ErrorRecord[]> {
-  return invoke<ErrorRecord[]>('diagnostics_recent_errors');
+  return client.invoke('diagnostics_recent_errors');
 }
 
 export function useDiagnosticsSnapshot(request: DiagnosticsRequest = {}) {

@@ -1,5 +1,7 @@
-import { invoke } from '@tauri-apps/api/core';
 import { isNativeRuntime } from './native-player-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
+
+const client = getYaqmcClient();
 
 /**
  * Batched frontend logger that mirrors the Rust logging pipeline. Records are
@@ -79,7 +81,7 @@ async function flush(): Promise<void> {
   if (!isNativeRuntime) return;
   flushing = true;
   try {
-    await invoke('diagnostics_log_frontend', {
+    await client.invoke('diagnostics_log_frontend', {
       entries: drained.map((entry) => ({
         level: entry.level,
         target: entry.target,
@@ -133,7 +135,7 @@ function record(
     console[consoleMethod](`[${target}]`, message, fields ?? '');
   }
   if (level === 'error' && isNativeRuntime) {
-    void invoke('diagnostics_record_error', {
+    void client.invoke('diagnostics_record_error', {
       request: {
         code: 'YAQMC-UI-EVENT',
         domain: target,

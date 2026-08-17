@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   choosePluginFile,
@@ -8,8 +7,18 @@ import {
   setPluginSceneInstance,
 } from './plugin-runtime';
 
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), isTauri: () => false }));
+const invokeMock = vi.hoisted(() => vi.fn());
+
+vi.mock('./yaqmc-runtime', () => ({
+  getYaqmcClient: () => ({
+    invoke: invokeMock,
+    on: vi.fn(() => () => undefined),
+  }),
+}));
+
+vi.mock('./native-player-runtime', () => ({
+  isNativeRuntime: true,
+}));
 
 describe('plugin runtime isolation', () => {
   it('bootstraps workers without Tauri, DOM, or network APIs', () => {
@@ -28,7 +37,7 @@ describe('plugin runtime isolation', () => {
     expect(source).toContain('__yaqmcSceneInstance');
     expect(source).toContain('"dev.example"');
     expect(source).not.toMatch(/window\.__TAURI__/);
-    expect(source.includes('invoke(')).toBe(false);
+    expect(source).not.toContain('@tauri-apps');
   });
 
   it('plugin diagnostics omit source code', () => {
@@ -59,9 +68,9 @@ describe('plugin runtime isolation', () => {
   });
 
   it('picks plugin files through the Rust dialog command', async () => {
-    vi.mocked(invoke).mockResolvedValueOnce('C:\\plugin.yaqmc-plugin');
+    invokeMock.mockResolvedValueOnce('C:\\plugin.yaqmc-plugin');
     await expect(choosePluginFile()).resolves.toBe('C:\\plugin.yaqmc-plugin');
-    expect(invoke).toHaveBeenCalledWith('plugin_pick_package');
+    expect(invokeMock).toHaveBeenCalledWith('plugin_pick_package');
   });
 
   it('ignores late scene mutations after a scene switch', () => {

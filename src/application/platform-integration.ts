@@ -1,6 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
 import { isNativeRuntime } from './native-player-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
+
+const client = getYaqmcClient();
 
 export interface PlatformCapabilities {
   reliableAlwaysOnTop: boolean;
@@ -82,7 +84,7 @@ function applyPlatformAttributes(diagnostics: PlatformDiagnostics): void {
 
 export async function readPlatformDiagnostics(): Promise<PlatformDiagnostics | null> {
   if (!isNativeRuntime) return null;
-  const diagnostics = await invoke<PlatformDiagnostics>('platform_diagnostics');
+  const diagnostics = (await client.invoke('platform_diagnostics')) as PlatformDiagnostics;
   cachedDiagnostics = diagnostics;
   applyPlatformAttributes(diagnostics);
   return diagnostics;
@@ -139,7 +141,7 @@ export function usePlatformIntegration() {
     setBusy(true);
     setError(null);
     try {
-      await invoke<DesktopIntegrationStatus>('system_shortcuts_set_enabled', { enabled });
+      await client.invoke('system_shortcuts_set_enabled', { enabled });
       setDiagnostics(await readPlatformDiagnostics());
       return true;
     } catch (caught) {
@@ -155,7 +157,7 @@ export function usePlatformIntegration() {
     setBusy(true);
     setError(null);
     try {
-      const path = await invoke<string>('platform_export_diagnostics');
+      const path = await client.invoke('platform_export_diagnostics');
       setExportPath(path);
     } catch (caught) {
       setError(String(caught));
