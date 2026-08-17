@@ -36,18 +36,25 @@ export function windowRoleFromSearch(search: string = window.location.search): W
   return 'main';
 }
 
-function noopWindow(): HostWindowBridge {
+function invokeWindow(yaqmc: RendererYaqmc): HostWindowBridge {
+  if (yaqmc.window) {
+    return yaqmc.window;
+  }
   return {
-    minimize: async () => undefined,
-    toggleMaximize: async () => undefined,
-    close: async () => undefined,
-    setFullscreen: async () => undefined,
+    minimize: () => yaqmc.invoke('window.minimize').then(() => undefined),
+    toggleMaximize: () => yaqmc.invoke('window.toggleMaximize').then(() => undefined),
+    close: () => yaqmc.invoke('window.close').then(() => undefined),
+    setFullscreen: (enabled) =>
+      yaqmc.invoke('window.setFullscreen', { enabled }).then(() => undefined),
   };
 }
 
-function noopShell(): HostShellBridge {
+function invokeShell(yaqmc: RendererYaqmc): HostShellBridge {
+  if (yaqmc.shell) {
+    return yaqmc.shell;
+  }
   return {
-    openExternal: async () => undefined,
+    openExternal: (url) => yaqmc.invoke('shell.openExternal', { url }).then(() => undefined),
   };
 }
 
@@ -85,8 +92,8 @@ function createElectronRendererBridge(yaqmc: RendererYaqmc, windowRole: WindowRo
   return {
     kind: 'electron',
     windowRole,
-    window: yaqmc.window ?? noopWindow(),
-    shell: yaqmc.shell ?? noopShell(),
+    window: invokeWindow(yaqmc),
+    shell: invokeShell(yaqmc),
     dialog: {
       pickSave: (opts) =>
         yaqmc.invoke('dialog.pickSave', { defaultPath: opts?.defaultPath }) as Promise<string | null>,

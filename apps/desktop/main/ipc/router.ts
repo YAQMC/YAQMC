@@ -14,7 +14,7 @@ import {
   type MethodAclRow,
 } from './channels';
 
-export type HostHandler = (params?: unknown) => Promise<unknown>;
+export type HostHandler = (params?: unknown, webContentsId?: number) => Promise<unknown>;
 
 export type EventFrame = {
   channel: string;
@@ -80,7 +80,7 @@ export class IpcRouter {
         return this.deny(method, role);
       }
       try {
-        return { ok: true, result: await handler(request?.params) };
+        return { ok: true, result: await handler(request?.params, webContentsId) };
       } catch (error) {
         return { ok: false, error: toCoreError(error) };
       }

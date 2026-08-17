@@ -18,6 +18,7 @@ import {
   closeToTrayFromPreferences,
   createHostHandlers,
   DIALOG_PICK_SAVE,
+  HOST_CORE_STATUS,
   HOST_UPDATER_CHECK_METHOD,
   isNativeWaylandSession,
   loginProviderFromParams,
@@ -28,6 +29,10 @@ import {
   playerInvokeMethod,
   rememberCloseToTray,
   SHELL_OPEN_EXTERNAL,
+  WINDOW_CLOSE,
+  WINDOW_MINIMIZE,
+  WINDOW_SET_FULLSCREEN,
+  WINDOW_TOGGLE_MAXIMIZE,
   urlFromOpenExternalParams,
   type OAuthHostDeps,
 } from './host-handlers';
@@ -224,6 +229,68 @@ describe('IpcRouter host intercepts', () => {
     ).resolves.toEqual({ ok: true, result: false });
     expect(openExternal).not.toHaveBeenCalled();
 
+    await expect(
+      router.invoke(2, {
+        method: SHELL_OPEN_EXTERNAL,
+        params: { url: 'https://github.com/YAQMC/YAQMC' },
+      }),
+    ).resolves.toEqual({ ok: false, error: hostDenied(SHELL_OPEN_EXTERNAL, 'lyrics-desktop') });
+  });
+
+  it('routes window chrome and host.coreStatus from main and denies lyrics', async () => {
+    const chrome = {
+      minimize: vi.fn(),
+      toggleMaximize: vi.fn(),
+      close: vi.fn(),
+      setFullscreen: vi.fn(),
+    };
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      windowChrome: (id) => (id === 1 ? chrome : undefined),
+      coreStatus: () => ({ status: 'ready' }),
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(router.invoke(1, { method: WINDOW_MINIMIZE })).resolves.toEqual({
+      ok: true,
+      result: undefined,
+    });
+    expect(chrome.minimize).toHaveBeenCalledTimes(1);
+    await expect(router.invoke(1, { method: WINDOW_TOGGLE_MAXIMIZE })).resolves.toEqual({
+      ok: true,
+      result: undefined,
+    });
+    expect(chrome.toggleMaximize).toHaveBeenCalledTimes(1);
+    await expect(router.invoke(1, { method: WINDOW_CLOSE })).resolves.toEqual({
+      ok: true,
+      result: undefined,
+    });
+    expect(chrome.close).toHaveBeenCalledTimes(1);
+    await expect(
+      router.invoke(1, { method: WINDOW_SET_FULLSCREEN, params: { enabled: true } }),
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(chrome.setFullscreen).toHaveBeenCalledWith(true);
+    await expect(router.invoke(1, { method: HOST_CORE_STATUS })).resolves.toEqual({
+      ok: true,
+      result: { status: 'ready' },
+    });
+
+    chrome.minimize.mockClear();
+    await expect(router.invoke(2, { method: WINDOW_MINIMIZE })).resolves.toEqual({
+      ok: false,
+      error: hostDenied(WINDOW_MINIMIZE, 'lyrics-desktop'),
+    });
+    expect(chrome.minimize).not.toHaveBeenCalled();
+    await expect(router.invoke(2, { method: HOST_CORE_STATUS })).resolves.toEqual({
+      ok: false,
+      error: hostDenied(HOST_CORE_STATUS, 'lyrics-desktop'),
+    });
     await expect(
       router.invoke(2, {
         method: SHELL_OPEN_EXTERNAL,

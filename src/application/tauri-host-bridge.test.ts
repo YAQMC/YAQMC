@@ -219,6 +219,26 @@ describe('selectHostBridge', () => {
     expect(on).toHaveBeenCalledWith('plugin://changed', expect.any(Function));
   });
 
+  it('routes window chrome and shell.openExternal through window.yaqmc.invoke', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    Reflect.set(window, 'yaqmc', { invoke, on: vi.fn(() => () => undefined) });
+
+    const bridge = selectHostBridge('');
+    expect(bridge.kind).toBe('electron');
+    await bridge.window.minimize();
+    await bridge.window.toggleMaximize();
+    await bridge.window.close();
+    await bridge.window.setFullscreen(true);
+    await bridge.shell.openExternal('https://github.com/YAQMC/YAQMC');
+    expect(invoke).toHaveBeenCalledWith('window.minimize');
+    expect(invoke).toHaveBeenCalledWith('window.toggleMaximize');
+    expect(invoke).toHaveBeenCalledWith('window.close');
+    expect(invoke).toHaveBeenCalledWith('window.setFullscreen', { enabled: true });
+    expect(invoke).toHaveBeenCalledWith('shell.openExternal', {
+      url: 'https://github.com/YAQMC/YAQMC',
+    });
+  });
+
   it('routes dialog.pickSave through window.yaqmc.invoke, not inventory MethodName', async () => {
     const invoke = vi.fn().mockResolvedValue('D:\\exports\\YAQMC-diagnostics.zip');
     Reflect.set(window, 'yaqmc', { invoke, on: vi.fn(() => () => undefined) });
