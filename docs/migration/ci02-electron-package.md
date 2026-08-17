@@ -60,4 +60,5 @@ dispatch.
 
 - Public [CI docs](../ci.md)
 - [CI-03 arm64 commands](ci03-arm64.md) (still not boot-test green)
+- [CI-04 Electron release draft](ci04-electron-release.md)
 - Plan §33.1 / §33.2 in `YAQMC_ELECTRON_MIGRATION_PLAN.md`

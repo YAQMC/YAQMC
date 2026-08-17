@@ -1606,3 +1606,18 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   PLAY-01, SMTC/MPRIS flyout, or provenance green.
 - Electron stays **43.4.0**. Builder stays **26.15.7**. The 32 MiB hard cap is
   unchanged. Provenance remains **BLOCKED**. No qm-api-rs.
+
+## P11 CI-04: Electron release workflow draft
+
+- New `.github/workflows/electron-release.yml` packs the Electron matrix at the
+  production LTO profile and opens a **draft** GitHub Release. Tauri
+  `build.yml` is unchanged and still publishes live `v*` releases. Electron
+  drafts use `electron-v*` (tag push) or `electron-draft-<run_id>` (dispatch)
+  so they do not collide with Tauri. `gh release create --draft`; electron-builder
+  still `--publish never`.
+- `assemble-electron-release.mjs` flattens installers, keeps the x64
+  `latest.yml` / `latest-linux.yml` feeds, and writes combined checksums plus
+  unsigned / i686-dropped / WebKitGTK-gone notes. Arm64 files may attach; they
+  are not merged into the updater yml. This is not an A→B rehearsal.
+- Electron stays **43.4.0**. Builder stays **26.15.7**. The 32 MiB hard cap is
+  unchanged. Provenance remains **BLOCKED**. No qm-api-rs.
