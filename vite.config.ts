@@ -41,7 +41,7 @@ export default defineConfig(({ command }) => ({
       '.superpowers/**',
       'scripts/**',
       'packages/**/dist/**',
-      'apps/**/dist/**',
+      'apps/**',
     ],
   },
 }));

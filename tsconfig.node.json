@@ -17,6 +17,8 @@
     "vite.config.ts",
     "eslint.config.js",
     "scripts/**/*.ts",
-    "packages/yaqmc-client/src/**/*.test.ts"
+    "packages/yaqmc-client/src/**/*.test.ts",
+    "apps/desktop/main/**/*.test.ts",
+    "apps/desktop/vitest.config.ts"
   ]
 }
