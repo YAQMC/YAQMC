@@ -46,6 +46,8 @@ describe('host boot wiring', () => {
     expect(source).toContain('yaqmc-electron-e2e');
     expect(source).toContain('${VITE_DEV_ORIGIN}/?provider=fake');
     expect(source).toContain("YAQMC_E2E_CORE !== '1'");
+    expect(source).toContain('__YAQMC_E2E__');
+    expect(source).toContain('killRunningChild');
   });
 
   it('applies Linux graphics switches before ready and never sandbox/web-security flags', () => {

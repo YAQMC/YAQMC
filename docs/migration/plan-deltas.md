@@ -1649,3 +1649,16 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   kill-core, and geometry persist remain follow-ups. PLAY-01 is not green.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
   **BLOCKED**. No qm-api-rs.
+
+## P5 SUP-04 follow-up: Playwright kill-core E2E
+
+- Local `npm run test:e2e:electron` also runs `e2e/electron/kill-core.spec.ts`
+  when a debug/release `yaqmc-core` is on disk (`YAQMC_CORE_BIN`,
+  `CARGO_TARGET_DIR`, or `target/debug`). `YAQMC_E2E_CORE=1` spawns Core in the
+  isolated e2e temp dirs. Main exposes `__YAQMC_E2E__.killCore` so the test can
+  SIGTERM the child; the banner shows `down`/`restarting` then clears on
+  `ready`. Skips when no binary is present. Not wired to GitHub Actions.
+- This is not PLAY-01 / SMTC / soak / provenance green. Tray and geometry
+  persist remain follow-ups.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance remains
+  **BLOCKED**. No qm-api-rs.

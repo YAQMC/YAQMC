@@ -129,6 +129,14 @@ const resourcesDir = path.join(desktopRoot, 'resources');
 const nativeWayland = isNativeWaylandSession();
 
 let supervisor: CoreSupervisor | undefined;
+if (e2e) {
+  (
+    globalThis as { __YAQMC_E2E__?: { coreStatus: () => string; killCore: () => boolean } }
+  ).__YAQMC_E2E__ = {
+    coreStatus: () => supervisor?.status ?? 'absent',
+    killCore: () => supervisor?.killRunningChild() ?? false,
+  };
+}
 let stopping = false;
 let exitCode = 0;
 let mainWindow: BrowserWindow | undefined;

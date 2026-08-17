@@ -4,18 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  HANDSHAKE_TIMEOUT_MS,
-  PROTOCOL_VERSION,
-  SHUTDOWN_TIMEOUT_MS,
-} from '@yaqmc/client';
+import { HANDSHAKE_TIMEOUT_MS, PROTOCOL_VERSION, SHUTDOWN_TIMEOUT_MS } from '@yaqmc/client';
 import type { ChildProcess } from 'node:child_process';
 import { CoreClient } from './client';
 import { FrameDecoder, encodeFrame } from './frames';
-import {
-  CORE_SPAWN_ENV_ALLOWLIST,
-  buildCoreSpawnEnv,
-} from './env';
+import { CORE_SPAWN_ENV_ALLOWLIST, buildCoreSpawnEnv } from './env';
 import { corePidPath } from './pid';
 import {
   CoreSupervisor,
@@ -600,6 +593,30 @@ describe('CoreSupervisor', () => {
     await vi.advanceTimersByTimeAsync(SHUTDOWN_TIMEOUT_MS);
     await stopping;
   });
+
+  it('killRunningChild signals the live child and is a no-op after exit', async () => {
+    const children: ReturnType<typeof mockChild>[] = [];
+    const spawnCore: SpawnCore = () => {
+      const mock = mockChild();
+      children.push(mock);
+      return mock.child as unknown as ChildProcess;
+    };
+    const supervisor = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      autoRestart: false,
+      ...tempDirs(),
+      spawn: spawnCore,
+    });
+    expect(supervisor.killRunningChild()).toBe(false);
+    const started = supervisor.start();
+    await handshakeChild(children.at(-1));
+    await started;
+    expect(supervisor.killRunningChild()).toBe(true);
+    expect(supervisor.killRunningChild()).toBe(false);
+    await supervisor.stop();
+  });
 });
 
 const liveBinary = tryResolveCoreBinary({
@@ -608,23 +625,19 @@ const liveBinary = tryResolveCoreBinary({
 });
 
 describe.skipIf(!liveBinary)('live yaqmc-core', () => {
-  it(
-    'reaches ready and answers core_ping',
-    async () => {
-      const supervisor = new CoreSupervisor({
-        binary: liveBinary as string,
-        hostVersion: '0.1.0',
-        expectedCoreVersion: '0.1.0',
-        autoRestart: false,
-        handshakeTimeoutMs: HANDSHAKE_TIMEOUT_MS,
-        shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
-        ...tempDirs(),
-      });
-      const identity = await supervisor.start();
-      expect(identity.version).toBe('0.1.0');
-      await expect(supervisor.client.invoke('core_ping')).resolves.toEqual({});
-      await supervisor.stop();
-    },
-    20_000,
-  );
+  it('reaches ready and answers core_ping', async () => {
+    const supervisor = new CoreSupervisor({
+      binary: liveBinary as string,
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      autoRestart: false,
+      handshakeTimeoutMs: HANDSHAKE_TIMEOUT_MS,
+      shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
+      ...tempDirs(),
+    });
+    const identity = await supervisor.start();
+    expect(identity.version).toBe('0.1.0');
+    await expect(supervisor.client.invoke('core_ping')).resolves.toEqual({});
+    await supervisor.stop();
+  }, 20_000);
 });
