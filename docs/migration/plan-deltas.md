@@ -1137,3 +1137,19 @@ the enforced provenance ledger.
   core is pending; this checkpoint does not start yaqmc-core or enable the API.
 - No Playwright. The 32 MiB hard cap is unchanged. P0 remains `PENDING`;
   provenance remains **BLOCKED**. No qm-api-rs.
+
+## P11 PACK-04: sync-version and handshake version equality
+
+- Root `package.json` `0.1.0` is SSoT. `scripts/sync-version.mjs` checks then
+  no-op-writes `apps/desktop/package.json` and workspace crate `Cargo.toml`
+  files; `--check` / `--dry-run` fail on mismatch without writing. The version
+  number is not bumped. Core still embeds `CARGO_PKG_VERSION` in the hello
+  handshake.
+- Desktop `scripts/build.mjs` defines `__YAQMC_BUILD_COMMIT__`,
+  `__YAQMC_RELEASE_CHANNEL__`, and `__YAQMC_BUILD_TYPE__` for the main process,
+  matching Vite. `index.ts` is unchanged: `hostVersion` and
+  `expectedCoreVersion` both use `app.getVersion()`.
+- Handshake equality is covered by `apps/desktop/main/packaging-version.test.ts`
+  (root vs desktop vs handshake constant `0.1.0`). Electron stays **43.4.0**.
+  The 32 MiB hard cap is unchanged. No electron-updater. Provenance remains
+  **BLOCKED**.
