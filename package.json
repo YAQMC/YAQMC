@@ -40,7 +40,9 @@
     "tauri": "tauri",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "stage-core": "node scripts/stage-core.mjs",
-    "sync-version": "node scripts/sync-version.mjs"
+    "sync-version": "node scripts/sync-version.mjs",
+    "p7:fake-playback": "node scripts/migration/p7-fake-playback.mjs",
+    "soak": "node scripts/soak-electron.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

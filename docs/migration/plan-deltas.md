@@ -1153,3 +1153,14 @@ the enforced provenance ledger.
   (root vs desktop vs handshake constant `0.1.0`). Electron stays **43.4.0**.
   The 32 MiB hard cap is unchanged. No electron-updater. Provenance remains
   **BLOCKED**.
+
+## P7 follow-up: maintainer script entry points
+
+- Root `package.json` now has `p7:fake-playback` (`node scripts/migration/p7-fake-playback.mjs`)
+  and `soak` (`node scripts/soak-electron.mjs`, default 10 s). These are maintainer/CI
+  entry points only; they do not change PLAY-01 status.
+- `docs/migration/README.md` indexes `p7-playback-checklist.md`, `soak-p7.md`, and
+  `plat06-local-api.md`. PLAY-01 stays not green; PLAY-02 measured p95 stays `PENDING`;
+  the first 4-h soak report stays uncommitted; provenance remains **BLOCKED**.
+- No new PLAY claims. This checkpoint does not run a 4-hour soak, invent a p95
+  number, or clear provenance.
