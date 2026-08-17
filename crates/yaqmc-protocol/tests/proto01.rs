@@ -50,10 +50,10 @@ fn protocol_constants_match_the_binding_plan() {
 fn event_channel_names_match_adr004() {
     use yaqmc_protocol::{
         CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS, CHANNEL_CORE_LOG,
-        CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS, CHANNEL_LYRICS_DOCUMENT,
-        CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_PLAYER_SNAPSHOT,
-        CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS,
-        HOST_EVENT_CHANNELS,
+        CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS, CHANNEL_HOST_UPDATE,
+        CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED,
+        CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED,
+        CORE_EVENT_CHANNELS, HOST_EVENT_CHANNELS,
     };
     assert_eq!(CHANNEL_API_EVENT, "api://event");
     assert_eq!(CHANNEL_PLAYER_SNAPSHOT, "player://snapshot");
@@ -65,10 +65,11 @@ fn event_channel_names_match_adr004() {
     assert_eq!(CHANNEL_APP_OPEN_SETTINGS, "app://open-settings");
     assert_eq!(CHANNEL_HOST_COMMAND, "host://command");
     assert_eq!(CHANNEL_HOST_CORE_STATUS, "host://core-status");
+    assert_eq!(CHANNEL_HOST_UPDATE, "host://update");
     assert_eq!(CHANNEL_CORE_LOG, "core://log");
     assert_eq!(CHANNEL_ACCOUNT_CHANGED, "account://changed");
     assert_eq!(CORE_EVENT_CHANNELS.len(), 9);
-    assert_eq!(HOST_EVENT_CHANNELS.len(), 3);
+    assert_eq!(HOST_EVENT_CHANNELS.len(), 4);
 }
 
 #[test]

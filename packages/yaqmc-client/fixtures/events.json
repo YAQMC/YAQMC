@@ -135,6 +135,19 @@
     },
     "seq": 12
   },
+  "host://update": {
+    "channel": "host://update",
+    "kind": "event",
+    "payload": {
+      "allowPrerelease": false,
+      "canInstall": true,
+      "channel": "latest",
+      "releaseUrl": "https://github.com/YAQMC/YAQMC/releases",
+      "state": "available",
+      "version": "1.2.3"
+    },
+    "seq": 13
+  },
   "lyrics://document": {
     "channel": "lyrics://document",
     "kind": "event",

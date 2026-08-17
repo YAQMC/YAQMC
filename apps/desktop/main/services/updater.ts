@@ -18,30 +18,15 @@
  * `scheduleCheck`; this file does not start a timer by default.
  */
 
+import { CHANNEL_HOST_UPDATE, type UpdatePayload, type UpdateState } from '@yaqmc/client';
+
+export { CHANNEL_HOST_UPDATE };
+export type { UpdatePayload, UpdateState };
+
 export const CHECK_DELAY_MS = 30_000;
-export const CHANNEL_HOST_UPDATE = 'host://update';
 export const DEFAULT_RELEASE_URL = 'https://github.com/YAQMC/YAQMC/releases';
 
-export type UpdateState =
-  | 'idle'
-  | 'checking'
-  | 'available'
-  | 'not-available'
-  | 'error'
-  | 'downloading'
-  | 'ready-to-install';
-
 export type LinuxPackageKind = 'AppImage' | 'deb' | 'rpm' | 'tar.gz';
-
-export type UpdatePayload = {
-  state: UpdateState;
-  canInstall: boolean;
-  allowPrerelease: boolean;
-  channel: string;
-  version?: string;
-  releaseUrl?: string;
-  error?: string;
-};
 
 export type UpdaterCheckResult =
   | { outcome: 'available'; version: string; releaseUrl?: string }

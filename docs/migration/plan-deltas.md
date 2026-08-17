@@ -805,3 +805,14 @@ the enforced provenance ledger.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
 
+## P11-prep: host://update channel
+
+- `host://update` is a new host-originated channel (TS + `yaqmc-protocol`,
+  additive, 117 methods unchanged) matching the UPD-01 updater stub states
+  `idle|checking|available|not-available|error|downloading|ready-to-install`
+  plus optional `version` / `releaseUrl` / `error` fields. It is not a core
+  event. `main/index.ts` still does not import the updater.
+- The updater stub types emit payloads with `CHANNEL_HOST_UPDATE` from
+  `@yaqmc/client`. No `electron-updater` dependency. The 32 MiB hard cap is
+  unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**. No
+  qm-api-rs.

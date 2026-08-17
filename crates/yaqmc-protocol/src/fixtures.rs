@@ -14,11 +14,11 @@ use crate::envelope::{
 use crate::registry::{methods, MethodOwner, TimeoutClass, PROTOCOL_ONLY_METHODS};
 use crate::{
     ErrorCode, CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS,
-    CHANNEL_CORE_LOG, CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS, CHANNEL_LYRICS_DOCUMENT,
-    CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_PLAYER_SNAPSHOT,
-    CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS,
-    DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT, HOST_EVENT_CHANNELS,
-    PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
+    CHANNEL_CORE_LOG, CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS, CHANNEL_HOST_UPDATE,
+    CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED,
+    CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED,
+    CORE_EVENT_CHANNELS, DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT,
+    HOST_EVENT_CHANNELS, PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
 };
 
 pub fn contract_fixtures_dir() -> PathBuf {
@@ -253,6 +253,18 @@ fn events() -> Value {
             seq: 12,
             channel: CHANNEL_HOST_CORE_STATUS.to_owned(),
             payload: json!({ "status": "ready" }),
+        }),
+        CHANNEL_HOST_UPDATE: to_value(&CoreMessage::Event {
+            seq: 13,
+            channel: CHANNEL_HOST_UPDATE.to_owned(),
+            payload: json!({
+                "state": "available",
+                "canInstall": true,
+                "allowPrerelease": false,
+                "channel": "latest",
+                "version": "1.2.3",
+                "releaseUrl": "https://github.com/YAQMC/YAQMC/releases"
+            }),
         }),
     })
 }

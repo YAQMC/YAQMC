@@ -60,6 +60,7 @@ describe('@yaqmc/client protocol mirror', () => {
       'lyrics://surface-closed',
       'app://open-settings',
       'host://core-status',
+      'host://update',
     ]);
   });
 
