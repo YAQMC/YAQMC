@@ -198,6 +198,7 @@ self.importScripts = function () { throw new Error('importScripts denied'); };
 self.eval = function () { throw new Error('eval denied'); };
 self.Function = function () { throw new Error('Function denied'); };
 self.__TAURI__ = undefined;
+self.yaqmc = undefined;
 self.document = undefined;
 var __yaqmcListeners = {};
 var __yaqmcSeq = 1;
