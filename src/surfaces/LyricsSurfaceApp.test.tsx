@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type * as TauriCore from '@tauri-apps/api/core';
+import type { HostBridge } from '@yaqmc/client';
 import { defaultPreferences, type LyricSurfaceSettings } from '../application/preferences';
 import type { LyricLine } from '../domain/music';
 import {
@@ -12,10 +12,30 @@ import {
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
-  ...(await importOriginal<typeof TauriCore>()),
-  invoke: invokeMock,
-}));
+vi.mock('../application/yaqmc-runtime', async () => {
+  const { YaqmcClient } = await import('@yaqmc/client');
+  const bridge = {
+    kind: 'tauri' as const,
+    windowRole: 'lyrics-desktop' as const,
+    window: {
+      minimize: async () => undefined,
+      toggleMaximize: async () => undefined,
+      close: async () => undefined,
+      setFullscreen: async () => undefined,
+    },
+    shell: {
+      openExternal: async () => undefined,
+    },
+    invoke: invokeMock,
+    listen: () => () => undefined,
+  };
+  const client = new YaqmcClient(bridge as HostBridge);
+  client.markReady();
+  return {
+    getHostBridge: () => bridge,
+    getYaqmcClient: () => client,
+  };
+});
 
 const line = (text: string): LyricLine => ({
   id: text,
@@ -70,6 +90,8 @@ describe('Desktop Lyrics interaction presentation', () => {
     const surface = container.querySelector('.lyrics-surface--desktop');
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-idle');
     expect(container.querySelector('.lyrics-surface__controls')).toBeInTheDocument();
+    expect(container.querySelector('.yaqmc-drag')).not.toBeNull();
+    expect(container.querySelector('[data-tauri-drag-region]')).not.toBeNull();
 
     act(() => vi.advanceTimersByTime(121));
     fireEvent.pointerEnter(surface!);
@@ -88,6 +110,7 @@ describe('Desktop Lyrics interaction presentation', () => {
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(container.querySelector('[data-tauri-drag-region="true"]')).toBeNull();
+    expect(container.querySelector('.yaqmc-drag')).toBeNull();
   });
 });
 

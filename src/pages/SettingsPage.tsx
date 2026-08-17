@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { getYaqmcClient } from '../application/yaqmc-runtime';
 import {
   AlignLeft,
   Bug,
@@ -649,7 +649,8 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (!isNativeRuntime) return;
-    void invoke<SurfaceCapabilities>('lyrics_surface_capabilities')
+    void getYaqmcClient()
+      .invoke('lyrics_surface_capabilities')
       .then(setCapabilities)
       .catch(() => setCapabilities(null));
   }, []);
