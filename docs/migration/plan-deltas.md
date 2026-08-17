@@ -1287,3 +1287,22 @@ the enforced provenance ledger.
   QQ/WX live login remains maintainer LIVE VERIFY — not claimed green.
 - No Playwright. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   P0 remains `PENDING`; provenance remains **BLOCKED**. No qm-api-rs.
+
+## P8 ACCT-02: QR/session re-verify checklist (LIVE VERIFY pending)
+
+- docs/migration/acct02-qr-session.md is the §36 P8 QR login + session
+  persist/staging/refresh checklist. Fake (?provider=fake) vs real-account
+  columns; Windows/Linux boxes empty. ACCT-02 is not green.
+- How to run: 
+pm run dev:desktop with the real provider (Vite /, not
+  ?provider=fake). Core QR methods are qqmusic_auth_start / heartbeat /
+  cancel / 
+efresh. OAuth popup remains ACCT-01 — this checkpoint does not
+  edit oauth-window.ts and does not open OAuth at boot.
+- Keyring FACT is unchanged: service org.yaqmc.desktop, entries
+  qqmusic-session, qqmusic-session-staging, local-api-bearer-token.
+  Expected after host swap: user stays logged in (ACCT-03 is the recorded
+  demo). No session-probe script: no in-repo existence-only probe without new
+  native deps or reading secrets.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. P0 remains
+  PENDING; provenance remains **BLOCKED**. No Playwright. No qm-api-rs.
