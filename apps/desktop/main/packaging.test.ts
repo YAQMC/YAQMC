@@ -24,6 +24,9 @@ describe('PACK-01 electron-builder', () => {
     expect(pkg.dependencies?.['electron-updater']).toBeUndefined();
     expect(pkg.devDependencies?.['electron-updater']).toBeUndefined();
     expect(pkg.scripts?.['pack:dir']).toContain('--dir');
+    expect(pkg.scripts?.['pack:win']).toBe(
+      'electron-builder --projectDir . --config electron-builder.yml --win --x64',
+    );
   });
 
   it('finalizes appId parity, targets, NSIS, extraResources, and sandbox fuses', () => {
