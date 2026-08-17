@@ -5,6 +5,10 @@ output/
 release/
 release-electron/
 .playwright-cli/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
 .DS_Store
 *.log
 .env

@@ -33,6 +33,7 @@ permissions:
 
 env:
   YAQMC_BUILD_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && 'production' || 'ci-release' }}
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
 jobs:
   frontend-quality:
