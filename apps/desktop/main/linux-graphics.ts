@@ -3,13 +3,14 @@
  * never calls `app.commandLine.appendSwitch`. Main applies the returned
  * switches before `ready`.
  *
- * Electron must not copy today's WebKitGTK env mutation in `platform.rs`
+ * `src-tauri/src/platform.rs` no longer mutates WebKitGTK env
  * (`WEBKIT_DISABLE_DMABUF_RENDERER`, `WEBKIT_DISABLE_COMPOSITING_MODE`,
- * `LIBGL_ALWAYS_SOFTWARE`, `__NV_DISABLE_EXPLICIT_SYNC`). Those exist solely
- * for WebKitGTK (TD-1). Chromium/Ozone is a different stack.
+ * `LIBGL_ALWAYS_SOFTWARE`, `__NV_DISABLE_EXPLICIT_SYNC`). Those were
+ * WebKitGTK-only (TD-1). Chromium/Ozone is a different stack.
  *
- * `YAQMC_LINUX_RENDERER` is not read here. The caller passes `mode` (settings
- * or that deprecated env) and this table maps it. Default / auto: no flags.
+ * `YAQMC_LINUX_RENDERER` is a host compat read: the caller passes `mode`
+ * (settings or that deprecated env). Core does not set it. Default / auto:
+ * no flags.
  */
 
 export type LinuxGraphicsOptions = {
