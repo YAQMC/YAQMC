@@ -17,6 +17,8 @@ function currentCommit(): string {
 
 export default defineConfig(({ command }) => ({
   plugins: [react()],
+  // serve: '/' keeps Tauri `http://127.0.0.1:1420`. build: './' for app:// relative assets.
+  base: command === 'build' ? './' : '/',
   define: {
     __YAQMC_BUILD_COMMIT__: JSON.stringify(currentCommit()),
     __YAQMC_RELEASE_CHANNEL__: JSON.stringify(process.env.YAQMC_RELEASE_CHANNEL ?? 'development'),

@@ -474,6 +474,15 @@ the enforced provenance ledger.
 - The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
   No qm-api-rs.
 
+## P4 VITE-01: relative production asset URLs for app://
+
+- Vite `serve` keeps `base: '/'` so Tauri `devUrl` `http://127.0.0.1:1420` is unchanged.
+  Production `build` uses `base: './'` so `app://yaqmc/` loads scripts, CSS, and public
+  files relatively (verified `dist/index.html` uses `./assets/…` and `./yaqmc-logo.png`).
+  Electron stays **43.4.0**.
+- The 32 MiB hard cap is unchanged. P0 remains `PENDING`; provenance remains **BLOCKED**.
+  No qm-api-rs.
+
 ## P5 SUP-06: TauriHostBridge and host-bridge auto-selection
 
 - `src/application/tauri-host-bridge.ts` implements `HostBridge` over `@tauri-apps/api/core.invoke`,
