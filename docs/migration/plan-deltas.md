@@ -1786,3 +1786,29 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   `qm-api-rs` are not started. Actions stay frozen.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No qm-api-rs.
+
+## P6 FE-04: Electron window/shell invoke and core-status markReady
+
+- Observed `npm run dev:desktop` failure (window chrome, GitHub opener,
+  Settings desktop actions, diagnostics save) was an implementation defect,
+  not an operator launch error. Preload stays invoke/on only. Missing
+  `window.yaqmc.window` / `.shell` no longer fall through to silent no-ops;
+  the renderer bridge calls `window.minimize` / `window.toggleMaximize` /
+  `window.close` / `window.setFullscreen` / `shell.openExternal` through
+  preload `invoke` (same path as `dialog.pickSave`).
+- Main registers those host methods plus `host.coreStatus`. Window chrome
+  resolves `BrowserWindow` from the invoking `webContentsId`. Close still
+  uses `win.close()` so the existing close-to-tray handler applies.
+- Electron `YaqmcClient` now `markReady()` on `host://core-status` `{ready}`
+  and on a `host.coreStatus` probe (preload invoke, not `YaqmcClient.invoke`)
+  so a missed boot event does not leave catalog/settings/export queued until
+  the 15 s `core.unavailable` timeout.
+- `YAQMC_E2E_NATIVE=1` loads Vite `/` without `?provider=fake`. Fake-mode
+  `_electron` specs are unchanged. Native E2E asserts preload `window.yaqmc`,
+  `windowRole === 'main'`, minimize, and (when a Core binary exists)
+  `player_snapshot` after ready. It does not require a QQ catalog and does
+  not call live `shell.openExternal`.
+- FE-04 / native-host startup stays **BLOCKED** for HUMAN/LIVE acceptance.
+  PLAY/ACCT/SMTC/HUMAN rows are not marked green. §41 / §49 are unchanged.
+  Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No P12–P15. No qm-api-rs.

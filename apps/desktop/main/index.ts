@@ -38,6 +38,7 @@ import {
   lyricsUnlockRoleFromKind,
   playerInvokeMethod,
   rememberCloseToTray,
+  type HostWindowChrome,
 } from './ipc/host-handlers';
 import { IpcRouter } from './ipc/router';
 import {
@@ -152,6 +153,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const smoke = process.env.YAQMC_DESKTOP_SMOKE === '1';
 /** Local Playwright `_electron` (FE-06 follow-up). Not the smoke harness; not CI. */
 const e2e = process.env.YAQMC_ELECTRON_E2E === '1';
+const e2eNative = e2e && process.env.YAQMC_E2E_NATIVE === '1';
 if (e2e) {
   app.setPath('userData', path.join(os.tmpdir(), 'yaqmc-electron-e2e', 'userData'));
 }
@@ -333,6 +335,9 @@ const router = new IpcRouter({
       download: () => requireUpdater().download(),
       install: () => requireUpdater().install(),
     },
+    windowChrome: hostWindowChrome,
+    // host.coreStatus: renderer markReady probe if it missed host://core-status.
+    coreStatus: () => ({ status: supervisor?.status ?? 'down' }),
   }),
 });
 
@@ -374,7 +379,7 @@ function rendererRoot(): string {
 
 function mainWindowUrl(root: string): string {
   if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
-    return e2e ? `${VITE_DEV_ORIGIN}/?provider=fake` : `${VITE_DEV_ORIGIN}/`;
+    return e2e && !e2eNative ? `${VITE_DEV_ORIGIN}/?provider=fake` : `${VITE_DEV_ORIGIN}/`;
   }
   if (!app.isPackaged && root === viteDist) {
     return appIndexUrl('?provider=fake');
@@ -391,6 +396,32 @@ function requireUpdater(): UpdaterHandle {
 
 function updaterReleaseChannel(): string {
   return __YAQMC_RELEASE_CHANNEL__ === 'nightly' ? 'nightly' : 'latest';
+}
+
+function hostWindowChrome(webContentsId: number): HostWindowChrome | undefined {
+  const contents = webContents.fromId(webContentsId);
+  const window = contents ? BrowserWindow.fromWebContents(contents) : null;
+  if (!window || window.isDestroyed()) {
+    return undefined;
+  }
+  return {
+    minimize: () => {
+      window.minimize();
+    },
+    toggleMaximize: () => {
+      if (window.isMaximized()) {
+        window.unmaximize();
+      } else {
+        window.maximize();
+      }
+    },
+    close: () => {
+      window.close();
+    },
+    setFullscreen: (enabled) => {
+      window.setFullScreen(enabled);
+    },
+  };
 }
 
 function collectLiveHostPayload(): ReturnType<typeof collectDiagnosticsHostPayload> {

@@ -1,5 +1,6 @@
 import type {
   AccountLoginMethod,
+  CoreStatusPayload,
   DiagnosticsHostPayload,
   OAuthPrepareResult,
   WindowRole,
@@ -36,6 +37,15 @@ import type { HostHandler } from './router';
 
 /** Not in the 117-command inventory; HostBridge.shell.openExternal lands here. */
 export const SHELL_OPEN_EXTERNAL = 'shell.openExternal';
+
+/** Not in the 117-command inventory; HostBridge.window lands here. */
+export const WINDOW_MINIMIZE = 'window.minimize';
+export const WINDOW_TOGGLE_MAXIMIZE = 'window.toggleMaximize';
+export const WINDOW_CLOSE = 'window.close';
+export const WINDOW_SET_FULLSCREEN = 'window.setFullscreen';
+
+/** Host-only probe so the renderer can markReady if it missed host://core-status. */
+export const HOST_CORE_STATUS = 'host.coreStatus';
 
 /** Not in the 117-command inventory; diagnostics ZIP save-picker for FE later. */
 export const DIALOG_PICK_SAVE = 'dialog.pickSave';
@@ -245,6 +255,15 @@ export type HostUpdaterDeps = {
   install: () => Promise<unknown>;
 };
 
+export type HostWindowChrome = {
+  minimize(): void;
+  toggleMaximize(): void;
+  close(): void;
+  setFullscreen(enabled: boolean): void;
+};
+
+export type HostWindowChromeLookup = (webContentsId: number) => HostWindowChrome | undefined;
+
 export type HostHandlerDeps = {
   openExternal: ExternalOpener;
   extraHttpsUrls?: () => readonly string[];
@@ -258,6 +277,8 @@ export type HostHandlerDeps = {
   coreInvoke?: CoreInvoke;
   collectHostPayload?: () => DiagnosticsHostPayload;
   updater?: HostUpdaterDeps;
+  windowChrome?: HostWindowChromeLookup;
+  coreStatus?: () => CoreStatusPayload;
 };
 
 export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHandler> {
@@ -395,6 +416,35 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     handlers[HOST_UPDATER_CHECK_METHOD] = async () => updater.check();
     handlers[HOST_UPDATER_DOWNLOAD_METHOD] = async () => updater.download();
     handlers[HOST_UPDATER_INSTALL_METHOD] = async () => updater.install();
+  }
+
+  if (deps.windowChrome) {
+    const chromeFor = (webContentsId: number | undefined): HostWindowChrome | undefined => {
+      if (webContentsId === undefined) {
+        return undefined;
+      }
+      return deps.windowChrome?.(webContentsId);
+    };
+    handlers[WINDOW_MINIMIZE] = async (_params, webContentsId) => {
+      chromeFor(webContentsId)?.minimize();
+    };
+    handlers[WINDOW_TOGGLE_MAXIMIZE] = async (_params, webContentsId) => {
+      chromeFor(webContentsId)?.toggleMaximize();
+    };
+    handlers[WINDOW_CLOSE] = async (_params, webContentsId) => {
+      chromeFor(webContentsId)?.close();
+    };
+    handlers[WINDOW_SET_FULLSCREEN] = async (params, webContentsId) => {
+      const enabled =
+        params !== null &&
+        typeof params === 'object' &&
+        (params as { enabled?: unknown }).enabled === true;
+      chromeFor(webContentsId)?.setFullscreen(enabled);
+    };
+  }
+
+  if (deps.coreStatus) {
+    handlers[HOST_CORE_STATUS] = async () => deps.coreStatus!();
   }
 
   if (deps.oauth) {

@@ -13,6 +13,7 @@ const electronBinary = createRequire(path.join(desktopRoot, 'package.json'))('el
 export type LaunchElectronOptions = {
   spawnCore?: boolean;
   tray?: boolean;
+  native?: boolean;
 };
 
 function electronEnv(options: LaunchElectronOptions = {}): Record<string, string> {
@@ -35,6 +36,9 @@ function electronEnv(options: LaunchElectronOptions = {}): Record<string, string
   }
   if (options.tray) {
     env.YAQMC_E2E_TRAY = '1';
+  }
+  if (options.native) {
+    env.YAQMC_E2E_NATIVE = '1';
   }
   return env;
 }
@@ -537,5 +541,25 @@ export async function launchElectronFakeWindow(options: LaunchElectronOptions = 
   await waitForFakeShell(page);
   await page.goto(`${VITE_DEV_ORIGIN}/?provider=fake`);
   await waitForFakeShell(page);
+  return { app, page };
+}
+
+/** Production renderer (no `?provider=fake`). Does not wait for the fake shell. */
+export async function launchElectronNativeWindow(
+  options: Omit<LaunchElectronOptions, 'native'> = {},
+): Promise<{
+  app: ElectronApplication;
+  page: Page;
+}> {
+  const app = await electron.launch({
+    executablePath: electronBinary,
+    args: ['.', '--lang=en-US'],
+    cwd: desktopRoot,
+    env: electronEnv({ ...options, native: true }),
+    timeout: options.spawnCore ? 90_000 : 60_000,
+    chromiumSandbox: true,
+    locale: 'en-US',
+  });
+  const page = await app.firstWindow();
   return { app, page };
 }

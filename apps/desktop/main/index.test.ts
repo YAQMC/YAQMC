@@ -33,6 +33,9 @@ describe('host boot wiring', () => {
     expect(source).toContain('shell.openExternal');
     expect(source).toContain('dialog.showSaveDialog');
     expect(source).toContain('dialog.showOpenDialog');
+    expect(source).toContain('window.minimize');
+    expect(source).toContain('host.coreStatus');
+    expect(source).toContain('hostWindowChrome');
   });
 
   it('skips tray and shortcuts during YAQMC_DESKTOP_SMOKE', () => {
@@ -48,6 +51,8 @@ describe('host boot wiring', () => {
     expect(source).toContain("process.env.YAQMC_ELECTRON_E2E === '1'");
     expect(source).toContain('yaqmc-electron-e2e');
     expect(source).toContain('${VITE_DEV_ORIGIN}/?provider=fake');
+    expect(source).toContain("YAQMC_E2E_NATIVE === '1'");
+    expect(source).toContain('e2e && !e2eNative');
     expect(source).toContain("YAQMC_E2E_CORE !== '1'");
     expect(source).toContain('__YAQMC_E2E__');
     expect(source).toContain('killRunningChild');
