@@ -15,6 +15,15 @@ function unusedBridge(): HostBridge {
   return {
     kind: 'fake',
     windowRole: 'main',
+    window: {
+      minimize: async () => undefined,
+      toggleMaximize: async () => undefined,
+      close: async () => undefined,
+      setFullscreen: async () => undefined,
+    },
+    shell: {
+      openExternal: async () => undefined,
+    },
     invoke: async () => {
       throw new Error('unused');
     },
