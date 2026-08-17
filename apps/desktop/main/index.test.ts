@@ -91,8 +91,12 @@ describe('host boot wiring', () => {
     expect(source).not.toContain('qqmusic_auth_oauth_start');
   });
 
-  it('does not auto-open OAuth or import the updater stub', () => {
-    expect(source).not.toContain('oauth-window');
+  it('wires OAuth factories without auto-opening a window at boot', () => {
+    expect(source).toContain('session.fromPartition');
+    expect(source).toContain('createOAuthBrowserWindow');
+    expect(source).toContain('invokeOAuthCore');
+    expect(source).not.toContain('openOAuthWindow');
+    expect(source).toContain('oauth BrowserWindow is disabled during YAQMC_DESKTOP_SMOKE');
     expect(source).not.toContain("from './dialogs'");
     expect(source).not.toContain("from './services/updater'");
   });

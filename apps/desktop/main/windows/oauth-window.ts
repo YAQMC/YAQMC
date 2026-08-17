@@ -112,7 +112,8 @@ export function oauthWindowCreateOptions(input: {
 
 /**
  * Prepare → ephemeral partition → allowlisted navigation → callback complete.
- * User close cancels. Not imported from `index.ts` (unwired).
+ * User close cancels. Wired from `createHostHandlers` on `qqmusic_auth_oauth_start`
+ * (renderer login click only — no auto-open at boot).
  */
 export async function openOAuthWindow(
   providerKind: AccountLoginMethod,

@@ -160,6 +160,14 @@ const router = new IpcRouter({
           ? dialog.showOpenDialog(mainWindow, options)
           : dialog.showOpenDialog(options),
     },
+    oauth: {
+      createWindow: (options) =>
+        createOAuthBrowserWindow(options as ConstructorParameters<typeof BrowserWindow>[0]),
+      fromPartition: (partition, options) =>
+        smoke ? {} : session.fromPartition(partition, options),
+      isPackaged: app.isPackaged,
+      invoke: invokeOAuthCore,
+    },
   }),
 });
 
@@ -199,6 +207,21 @@ function invokePlayer(method: 'toggle' | 'next' | 'previous'): Promise<void> | u
     return undefined;
   }
   return client.invoke(playerInvokeMethod(method)).then(() => undefined);
+}
+
+function invokeOAuthCore(method: string, params?: unknown): Promise<unknown> {
+  const client = supervisor?.client;
+  if (!client) {
+    return Promise.reject(new Error('core supervisor is not running'));
+  }
+  return client.invoke(method, params);
+}
+
+function createOAuthBrowserWindow(options: ConstructorParameters<typeof BrowserWindow>[0]) {
+  if (smoke) {
+    throw new Error('oauth BrowserWindow is disabled during YAQMC_DESKTOP_SMOKE');
+  }
+  return new BrowserWindow(options);
 }
 
 function quitFromHostCommand(): void {

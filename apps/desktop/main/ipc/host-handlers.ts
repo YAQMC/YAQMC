@@ -1,4 +1,4 @@
-import type { WindowRole } from '@yaqmc/client';
+import type { AccountLoginMethod, OAuthPrepareResult, WindowRole } from '@yaqmc/client';
 import {
   BACKGROUND_IMAGE_FILTERS,
   DIAGNOSTICS_ZIP_DEFAULT_NAME,
@@ -21,6 +21,11 @@ import {
   type LyricsUnlockKind,
   type LyricsUnlockOverlays,
 } from '../windows/lyrics-unlock';
+import {
+  openOAuthWindow,
+  type OAuthWindowCreateOptions,
+  type OAuthWindowLike,
+} from '../windows/oauth-window';
 import type { HostHandler } from './router';
 
 /** Not in the 117-command inventory; HostBridge.shell.openExternal lands here. */
@@ -135,6 +140,24 @@ export type PathPickerDialogs = {
   showOpenDialog: ShowOpenDialog;
 };
 
+export type OAuthHostDeps = {
+  createWindow: (options: OAuthWindowCreateOptions) => OAuthWindowLike;
+  fromPartition: (partition: string, options?: { cache: boolean }) => unknown;
+  isPackaged: boolean;
+  invoke: (method: string, params?: unknown) => Promise<unknown>;
+};
+
+export function loginProviderFromParams(params: unknown): AccountLoginMethod | undefined {
+  if (!params || typeof params !== 'object') {
+    return undefined;
+  }
+  const loginProvider = (params as { loginProvider?: unknown }).loginProvider;
+  if (loginProvider === 'qq' || loginProvider === 'wechat') {
+    return loginProvider;
+  }
+  return undefined;
+}
+
 function defaultPathFromParams(params: unknown, fallback: string): string {
   if (params && typeof params === 'object' && 'defaultPath' in params) {
     const value = (params as { defaultPath?: unknown }).defaultPath;
@@ -212,6 +235,7 @@ export type HostHandlerDeps = {
   showMainAndOpenSettings: () => void;
   emitSurfaceClosed?: (kind: LyricsSurfaceKind) => void;
   dialogs?: PathPickerDialogs;
+  oauth?: OAuthHostDeps;
 };
 
 export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHandler> {
@@ -323,6 +347,26 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         filters: DIAGNOSTICS_ZIP_FILTERS,
         defaultPath: defaultPathFromParams(params, DIAGNOSTICS_ZIP_DEFAULT_NAME),
       });
+  }
+
+  if (deps.oauth) {
+    const oauth = deps.oauth;
+    handlers.qqmusic_auth_oauth_start = async (params) => {
+      const loginProvider = loginProviderFromParams(params);
+      if (!loginProvider) {
+        throw new Error('qqmusic_auth_oauth_start requires loginProvider');
+      }
+      await openOAuthWindow(loginProvider, {
+        createWindow: oauth.createWindow,
+        fromPartition: oauth.fromPartition,
+        isPackaged: oauth.isPackaged,
+        auth_oauth_prepare: (prepareParams) =>
+          oauth.invoke('auth_oauth_prepare', prepareParams) as Promise<OAuthPrepareResult>,
+        auth_oauth_complete: (completeParams) => oauth.invoke('auth_oauth_complete', completeParams),
+        auth_oauth_cancel: (cancelParams) => oauth.invoke('auth_oauth_cancel', cancelParams),
+      });
+      return oauth.invoke('qqmusic_account_snapshot');
+    };
   }
 
   return handlers;
