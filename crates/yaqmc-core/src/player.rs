@@ -2010,6 +2010,13 @@ impl PlayerService {
             let mut previous_song_id: Option<String> = None;
             let mut previous_line_index: Option<usize> = None;
             let mut previous_word_index: Option<usize> = None;
+            let mut stall_session = 0_u64;
+            let mut last_moving_position = 0_u64;
+            let mut last_position_move_at = Instant::now();
+            let mut last_stall_log = Instant::now()
+                .checked_sub(Duration::from_secs(10))
+                .unwrap_or_else(Instant::now);
+            tracing::info!(target: "player.eos", "clock eos-gate 2026-08-18c");
 
             while service.clock_running.load(Ordering::Acquire) {
                 interval.tick().await;
@@ -2114,7 +2121,58 @@ impl PlayerService {
                         core.playback_state = PlaybackState::Playing;
                         core.playback_error = None;
                     }
-                    let should_advance = natural_end_of_stream(&engine, &core, previous_state);
+                    let stalled = !hold_active
+                        && stall_session == core.session_id
+                        && core.position_ms > 0
+                        && core.position_ms.abs_diff(last_moving_position) <= TIMELINE_END_SLACK_MS
+                        && last_position_move_at.elapsed() >= Duration::from_millis(STALL_EOS_MS);
+                    let matches = engine_matches_core(&engine, &core);
+                    let should_advance = !hold_active
+                        && natural_end_of_stream(&engine, &core, previous_state, stalled);
+                    if stalled && last_stall_log.elapsed() >= Duration::from_secs(2) {
+                        last_stall_log = now;
+                        tracing::info!(
+                            target: "player.eos",
+                            session = core.session_id,
+                            hold_active,
+                            matches,
+                            ended = engine.ended,
+                            playing = engine.playing,
+                            paused = engine.paused,
+                            buffering = engine.buffering,
+                            loaded = engine.loaded,
+                            source_error = engine.source_error.is_some(),
+                            core_gen = core.source_generation,
+                            engine_gen = engine.source_generation,
+                            position_ms = core.position_ms,
+                            duration_ms = core.playback_duration_ms,
+                            downloaded = engine.progressive_downloaded_bytes,
+                            total = engine.progressive_total_bytes,
+                            should_advance,
+                            "eos-gate stall sample"
+                        );
+                    }
+                    if hold_active || core.session_id != stall_session {
+                        stall_session = core.session_id;
+                        last_moving_position = core.position_ms;
+                        last_position_move_at = now;
+                    } else if core.position_ms.abs_diff(last_moving_position) > TIMELINE_END_SLACK_MS
+                    {
+                        last_moving_position = core.position_ms;
+                        last_position_move_at = now;
+                    }
+                    if should_advance {
+                        tracing::info!(
+                            target: "player.eos",
+                            session = core.session_id,
+                            ended = engine.ended,
+                            playing = engine.playing,
+                            stalled,
+                            position_ms = core.position_ms,
+                            duration_ms = core.playback_duration_ms,
+                            "natural end of stream observed"
+                        );
+                    }
                     let snapshot = service.stamped(core.snapshot());
                     let lyrics = current_lyric_state(&core);
                     let eos_session = core.session_id;
@@ -2408,16 +2466,35 @@ fn engine_matches_core(engine: &crate::audio::AudioEngineSnapshot, core: &Player
         && engine.source_generation == core.source_generation
 }
 
+const TIMELINE_END_SLACK_MS: u64 = 80;
+const STALL_EOS_MS: u64 = 750;
+
 fn at_timeline_end(position_ms: u64, duration_ms: Option<u64>) -> bool {
-    duration_ms.is_some_and(|duration| duration > 0 && position_ms.saturating_add(80) >= duration)
+    duration_ms
+        .is_some_and(|duration| duration > 0 && position_ms.saturating_add(TIMELINE_END_SLACK_MS) >= duration)
+}
+
+fn remaining_ms(position_ms: u64, duration_ms: Option<u64>) -> Option<u64> {
+    duration_ms.map(|duration| duration.saturating_sub(position_ms))
+}
+
+fn progressive_source_exhausted(engine: &crate::audio::AudioEngineSnapshot) -> bool {
+    match (
+        engine.progressive_downloaded_bytes,
+        engine.progressive_total_bytes,
+    ) {
+        (Some(downloaded), Some(total)) => total > 0 && downloaded >= total,
+        _ => false,
+    }
 }
 
 fn natural_end_of_stream(
     engine: &crate::audio::AudioEngineSnapshot,
     core: &PlayerCore,
     previous_state: PlaybackState,
+    stalled: bool,
 ) -> bool {
-    if engine.source_error.is_some()
+    if engine.paused
         || !matches!(
             previous_state,
             PlaybackState::Playing | PlaybackState::Buffering
@@ -2425,14 +2502,22 @@ fn natural_end_of_stream(
     {
         return false;
     }
-    if !engine_matches_core(engine, core) {
+    let matches = engine_matches_core(engine, core);
+    if matches && engine.source_error.is_none() && !engine.buffering {
+        if engine.ended || at_timeline_end(core.position_ms, core.playback_duration_ms) {
+            return true;
+        }
+    }
+    if !stalled || core.position_ms == 0 {
         return false;
     }
-    engine.ended
-        || (at_timeline_end(core.position_ms, core.playback_duration_ms)
-            && !engine.playing
-            && !engine.paused
-            && !engine.buffering)
+    let remaining = remaining_ms(core.position_ms, core.playback_duration_ms);
+    // Preview audio can stop several seconds before the official duration, and
+    // rodio may keep buffering/waiting at that point. Live: 138s / 143s.
+    !engine.buffering
+        || engine.ended
+        || remaining.is_some_and(|left| left <= 15_000)
+        || progressive_source_exhausted(engine)
 }
 
 fn engine_requires_reload_for_seek(
@@ -2451,7 +2536,7 @@ fn engine_requires_reload_for_seek(
             .duration_ms
             .map(|duration| core.timeline_offset_ms.saturating_add(duration))
     });
-    at_timeline_end(engine_pos, duration) && !engine.playing && !engine.buffering
+    at_timeline_end(engine_pos, duration) && !engine.buffering
 }
 
 fn unix_timestamp_ms() -> u64 {
@@ -3630,6 +3715,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn clock_playing_flag_stuck_at_timeline_end_still_repeats_one() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player.start_clock();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 1_000), song("two", 1_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.set_repeat(RepeatMode::One).await;
+        // Rodio progressive streams keep Player::empty() false, so playing stays true.
+        engine.force_snapshot(|snapshot| {
+            snapshot.playing = true;
+            snapshot.paused = false;
+            snapshot.ended = false;
+            snapshot.buffering = false;
+            snapshot.position_ms = snapshot.duration_ms.unwrap_or(1_000);
+        });
+        tokio::time::sleep(Duration::from_millis(220)).await;
+        let after = player.snapshot().await;
+        assert_eq!(after.playback_state, PlaybackState::Playing);
+        assert_eq!(after.current_index, Some(0));
+        assert_eq!(after.position_ms, 0);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn clock_stalled_exhausted_preview_still_repeats_one() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player.start_clock();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 5_000), song("two", 5_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.set_repeat(RepeatMode::One).await;
+        engine.force_snapshot(|snapshot| {
+            snapshot.playing = true;
+            snapshot.paused = false;
+            snapshot.ended = false;
+            snapshot.buffering = false;
+            snapshot.position_ms = 840;
+            snapshot.duration_ms = Some(5_000);
+            snapshot.progressive_downloaded_bytes = Some(960_887);
+            snapshot.progressive_total_bytes = Some(960_887);
+        });
+        tokio::time::sleep(Duration::from_millis(STALL_EOS_MS + 220)).await;
+        let after = player.snapshot().await;
+        assert_eq!(after.playback_state, PlaybackState::Playing);
+        assert_eq!(after.current_index, Some(0));
+        assert_eq!(after.position_ms, 0);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
     async fn seek_after_silent_end_reloads_without_waiting_for_ended_state() {
         let engine = Arc::new(crate::audio::TestAudioEngine::default());
         let player = test_runtime_player(Arc::clone(&engine));
@@ -3644,6 +3791,32 @@ mod tests {
         let loads = engine.load_count();
         engine.force_snapshot(|snapshot| {
             snapshot.playing = false;
+            snapshot.paused = false;
+            snapshot.ended = false;
+            snapshot.buffering = false;
+            snapshot.position_ms = snapshot.duration_ms.unwrap_or(5_000);
+        });
+        let after = player.seek(400).await.expect("post-EOS seek reloads");
+        assert!(engine.load_count() > loads);
+        assert_eq!(after.position_ms, 400);
+        assert_ne!(after.playback_state, PlaybackState::Ended);
+    }
+
+    #[tokio::test]
+    async fn seek_after_playing_flag_stuck_at_end_reloads() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 5_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        let loads = engine.load_count();
+        engine.force_snapshot(|snapshot| {
+            snapshot.playing = true;
             snapshot.paused = false;
             snapshot.ended = false;
             snapshot.buffering = false;

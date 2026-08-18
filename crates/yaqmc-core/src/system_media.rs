@@ -478,8 +478,12 @@ fn connect_linux_callbacks(
     player_service: Arc<PlayerService>,
 ) {
     let raise_commands = host_commands.clone();
-    player.connect_raise(move |_| raise_commands.publish(HostCommand::RaiseMainWindow));
-    player.connect_quit(move |_| host_commands.publish(HostCommand::Quit));
+    player.connect_raise(move |_| {
+        let _ = raise_commands.publish(HostCommand::RaiseMainWindow);
+    });
+    player.connect_quit(move |_| {
+        let _ = host_commands.publish(HostCommand::Quit);
+    });
 
     let service = Arc::clone(&player_service);
     let command_runtime = runtime.clone();
