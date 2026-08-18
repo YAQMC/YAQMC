@@ -65,6 +65,7 @@ export interface PlayerState {
   isScrubbing: boolean;
   scrubPosition: number;
   scrubAwaitingAckFrom: number | null;
+  isVolumeScrubbing: boolean;
 }
 
 interface PlayerActions {
@@ -167,6 +168,7 @@ export const initialPlayerState: PlayerState = {
   isScrubbing: false,
   scrubPosition: 0,
   scrubAwaitingAckFrom: null,
+  isVolumeScrubbing: false,
 };
 
 let localQueueEntrySequence = 0;
@@ -634,12 +636,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   setVolume: (volume) => {
     const boundedVolume = Math.max(0, Math.min(volume, 1));
+    set({ volume: boundedVolume, isMuted: false, isVolumeScrubbing: true });
     if (dispatchPlayerCommand({ type: 'setVolume', volume: boundedVolume })) return;
-    set({ volume: boundedVolume, isMuted: false });
+    set({ isVolumeScrubbing: false });
   },
   toggleMuted: () => {
+    set((state) => ({ isMuted: !state.isMuted, isVolumeScrubbing: true }));
     if (dispatchPlayerCommand({ type: 'toggleMuted' })) return;
-    set((state) => ({ isMuted: !state.isMuted }));
+    set({ isVolumeScrubbing: false });
   },
   toggleShuffle: () => {
     if (dispatchPlayerCommand({ type: 'toggleShuffle' })) return;
@@ -852,6 +856,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         sessionChanged ||
         state.isPlaying !== snapshot.isPlaying ||
         (!isScrubbing && Math.abs(snapshot.positionMs - predictedPositionMs) > 250);
+      const volumeCaughtUp =
+        Math.abs(snapshot.volume - state.volume) <= 0.005 && snapshot.isMuted === state.isMuted;
+      const isVolumeScrubbing = !sessionChanged && state.isVolumeScrubbing && !volumeCaughtUp;
 
       const playbackOrder = snapshot.playbackOrder ?? (snapshot.shuffle ? 'shuffle' : 'sequential');
       const shuffleTraversal = snapshot.shuffleTraversal ?? [];
@@ -885,6 +892,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         isScrubbing,
         scrubPosition: isScrubbing ? state.scrubPosition : snapshot.positionMs,
         scrubAwaitingAckFrom: isScrubbing ? state.scrubAwaitingAckFrom : null,
+        volume: isVolumeScrubbing ? state.volume : snapshot.volume,
+        isMuted: isVolumeScrubbing ? state.isMuted : snapshot.isMuted,
+        isVolumeScrubbing,
         observedAtMs: now,
         timelineRevision: state.timelineRevision + (discontinuity ? 1 : 0),
       };

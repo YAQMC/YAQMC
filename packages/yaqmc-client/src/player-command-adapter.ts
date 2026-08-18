@@ -35,6 +35,8 @@ export type PlayerCommandAdapter = (command: PlayerCommand) => Promise<void>;
 let activeAdapter: PlayerCommandAdapter | null = null;
 let pendingSeekMs: number | null = null;
 let seekFlush: Promise<void> | null = null;
+let pendingVolume: number | null = null;
+let volumeFlush: Promise<void> | null = null;
 
 async function flushSeekMailbox(): Promise<void> {
   try {
@@ -58,9 +60,29 @@ async function flushSeekMailbox(): Promise<void> {
   }
 }
 
+async function flushVolumeMailbox(): Promise<void> {
+  try {
+    while (pendingVolume !== null && activeAdapter) {
+      const volume = pendingVolume;
+      pendingVolume = null;
+      await activeAdapter({ type: 'setVolume', volume });
+    }
+  } finally {
+    volumeFlush = null;
+    if (pendingVolume !== null && activeAdapter) {
+      volumeFlush = flushVolumeMailbox().catch((error: unknown) => {
+        console.error('Native player command failed', error);
+      });
+    }
+  }
+}
+
 export function setPlayerCommandAdapter(adapter: PlayerCommandAdapter | null): void {
   activeAdapter = adapter;
-  if (!adapter) pendingSeekMs = null;
+  if (!adapter) {
+    pendingSeekMs = null;
+    pendingVolume = null;
+  }
 }
 
 export function dispatchPlayerCommand(command: PlayerCommand): boolean {
@@ -68,6 +90,13 @@ export function dispatchPlayerCommand(command: PlayerCommand): boolean {
   if (command.type === 'seek') {
     pendingSeekMs = command.positionMs;
     seekFlush ??= flushSeekMailbox().catch((error: unknown) => {
+      console.error('Native player command failed', error);
+    });
+    return true;
+  }
+  if (command.type === 'setVolume') {
+    pendingVolume = command.volume;
+    volumeFlush ??= flushVolumeMailbox().catch((error: unknown) => {
       console.error('Native player command failed', error);
     });
     return true;

@@ -79,6 +79,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     openLyrics,
   } = usePlayerStore();
   const positionScrubbing = useRef(false);
+  const volumeScrubbing = useRef(false);
 
   const duration = playbackDurationMs ?? current?.durationMs ?? 0;
   const displayPosition = isScrubbing ? scrubPosition : positionMs;
@@ -294,7 +295,28 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             max={1}
             step={0.01}
             value={isMuted ? 0 : volume}
-            onChange={(event) => setVolume(Number(event.target.value))}
+            onPointerDown={() => {
+              volumeScrubbing.current = true;
+            }}
+            onPointerUp={(event) => {
+              volumeScrubbing.current = false;
+              setVolume(Number(event.currentTarget.value));
+            }}
+            onPointerCancel={(event) => {
+              volumeScrubbing.current = false;
+              setVolume(Number(event.currentTarget.value));
+            }}
+            onKeyDown={() => {
+              volumeScrubbing.current = true;
+            }}
+            onKeyUp={(event) => {
+              volumeScrubbing.current = false;
+              setVolume(Number(event.currentTarget.value));
+            }}
+            onChange={(event) => {
+              if (!volumeScrubbing.current) return;
+              setVolume(Number(event.target.value));
+            }}
             aria-label={t('volume')}
             style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
           />

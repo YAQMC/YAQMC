@@ -335,4 +335,23 @@ describe('PlayerBar lyrics presentation entry', () => {
     });
     expect(usePlayerStore.getState().positionMs).toBe(20_000);
   });
+
+  it('updates volume immediately while dragging', () => {
+    render(<PlayerBar />);
+    const slider = screen.getByRole('slider', { name: 'Volume' });
+    expect(slider).toHaveValue('0.72');
+    fireEvent.pointerDown(slider);
+    fireEvent.change(slider, { target: { value: '0.2' } });
+    expect(slider).toHaveValue('0.2');
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    fireEvent.pointerUp(slider);
+  });
+
+  it('does not set volume when Chromium echoes a controlled volume update', () => {
+    render(<PlayerBar />);
+    fireEvent.change(screen.getByRole('slider', { name: 'Volume' }), {
+      target: { value: '0.2' },
+    });
+    expect(usePlayerStore.getState().volume).toBe(0.72);
+  });
 });
