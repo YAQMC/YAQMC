@@ -98,6 +98,16 @@ describe('lyrics unlock overlay construction table', () => {
     expect(lyricsUnlockLabel('desktop')).toBe('lyrics-desktop-unlock');
   });
 
+  it('loads a Vite unlock URL when the host supplies a pageUrl override', () => {
+    const window = mockWindow();
+    createLyricsUnlockWindow('island', {
+      preloadPath: PRELOAD,
+      pageUrl: (kind) => `http://127.0.0.1:1420/?unlockSurface=${kind}`,
+      createWindow: () => window,
+    });
+    expect(window.loadURL).toHaveBeenCalledWith('http://127.0.0.1:1420/?unlockSurface=island');
+  });
+
   it('loads the island overlay with the same pill size and unlockSurface query', () => {
     const { options, window } = createWithFactory('island', PRELOAD);
     expect(options.width).toBe(42);

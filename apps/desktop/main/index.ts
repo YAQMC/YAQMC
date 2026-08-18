@@ -71,12 +71,14 @@ import { subscribeSurfaceAutoHide } from './windows/surface-auto-hide';
 import {
   createLyricsSurfaces,
   lyricsSurfaceSettingsFromCore,
+  lyricsSurfaceUrl,
   type LyricsSurfaceCreateOptions,
   type LyricsSurfaceKind,
   type LyricsSurfacePersistedGeometry,
 } from './windows/lyrics-surfaces';
 import {
   createLyricsUnlockOverlays,
+  lyricsUnlockUrl,
   type LyricsUnlockCreateOptions,
   type LyricsUnlockKind,
 } from './windows/lyrics-unlock';
@@ -188,9 +190,18 @@ function writeHostLog(message: string): void {
   }
 }
 
+function rendererDevPageUrl(search: string): string | null {
+  if (app.isPackaged || process.env.YAQMC_VITE_DEV !== '1') {
+    return null;
+  }
+  return `${VITE_DEV_ORIGIN}/${search}`;
+}
+
 const lyricsSurfaces = createLyricsSurfaces({
   preloadPath: lyricsPreloadPath,
   createWindow: createLyricsBrowserWindow,
+  pageUrl: (kind) =>
+    rendererDevPageUrl(`?surface=${kind}`) ?? lyricsSurfaceUrl(kind),
   getDisplayBounds: () =>
     screen.getAllDisplays().map((display) => ({
       x: display.workArea.x,
@@ -206,6 +217,8 @@ const lyricsSurfaces = createLyricsSurfaces({
 const lyricsUnlock = createLyricsUnlockOverlays({
   preloadPath: unlockPreloadPath,
   createWindow: createUnlockBrowserWindow,
+  pageUrl: (kind) =>
+    rendererDevPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
 });
 
 if (e2e) {
