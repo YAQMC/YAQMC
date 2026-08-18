@@ -19,7 +19,7 @@ export const APP_HOST = 'yaqmc';
  * Directive mapping (do not loosen):
  * - default-src 'self' — unchanged. 'self' is app://yaqmc after the privileged scheme.
  * - img-src — drop `asset:` and `http://asset.localhost`, add `app:`. Keep `data:` and
- *   the six QQ image hosts. Reject §28.3's `https:` wildcard.
+ *   the QQ image hosts (album/playlist CDNs plus avatars). Reject §28.3's `https:` wildcard.
  * - style-src 'self' 'unsafe-inline' — unchanged.
  * - font-src 'self' — unchanged. FACT has no extra font CDNs.
  * - connect-src — `ipc:` → `app:`; `http://ipc.localhost` → `http://127.0.0.1:19532`
@@ -33,7 +33,7 @@ export const APP_HOST = 'yaqmc';
  */
 export const APP_CSP = [
   "default-src 'self'",
-  "img-src 'self' data: app: https://y.gtimg.cn https://qpic.y.qq.com https://q.qlogo.cn https://thirdwx.qlogo.cn https://thirdqq.qlogo.cn https://y.qq.com",
+  "img-src 'self' data: app: https://y.gtimg.cn https://qpic.y.qq.com https://music-file.y.qq.com https://q.qlogo.cn https://thirdwx.qlogo.cn https://thirdqq.qlogo.cn https://y.qq.com",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'",
   'connect-src app: http://127.0.0.1:19532',

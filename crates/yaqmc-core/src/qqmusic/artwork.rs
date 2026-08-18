@@ -50,6 +50,8 @@ pub(super) fn artwork_from_provider_url(
     }
 }
 
+const ALLOWED_ARTWORK_HOSTS: &[&str] = &["y.gtimg.cn", "qpic.y.qq.com", "music-file.y.qq.com"];
+
 pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(value) else {
         return false;
@@ -60,7 +62,7 @@ pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
         && url.port_or_known_default() == Some(443)
         && url
             .host_str()
-            .is_some_and(|host| host == "y.gtimg.cn" || host == "qpic.y.qq.com")
+            .is_some_and(|host| ALLOWED_ARTWORK_HOSTS.contains(&host))
 }
 
 pub(super) fn provider_cover_url(value: &serde_json::Value) -> String {
@@ -74,7 +76,15 @@ pub(super) fn provider_cover_url(value: &serde_json::Value) -> String {
     let Some(object) = value.as_object() else {
         return String::new();
     };
-    for key in ["url", "default_url", "PhotoUrl", "photo_url"] {
+    for key in [
+        "url",
+        "medium_url",
+        "big_url",
+        "default_url",
+        "small_url",
+        "PhotoUrl",
+        "photo_url",
+    ] {
         if let Some(text) = object
             .get(key)
             .and_then(serde_json::Value::as_str)
@@ -217,6 +227,17 @@ mod tests {
         assert_eq!(artwork.src, "https://qpic.y.qq.com/playlist.jpg");
         assert!(artwork.variants.is_empty());
 
+        let songlist_cdn = artwork_from_provider_url(
+            "https://music-file.y.qq.com/songlist/u/cover?imageView2/4/w/600/h/600",
+            "热门歌单",
+            "#102030".to_owned(),
+        );
+        assert_eq!(
+            songlist_cdn.src,
+            "https://music-file.y.qq.com/songlist/u/cover?imageView2/4/w/600/h/600"
+        );
+        assert!(songlist_cdn.variants.is_empty());
+
         let measured = artwork_from_provider_url(
             "https://y.gtimg.cn/music/photo_new/T003R500x500M00000143qaC3OlGPV.jpg",
             "Toplist",
@@ -271,6 +292,17 @@ mod tests {
                 "picurl": "https://qpic.y.qq.com/fallback.jpg"
             })),
             "https://qpic.y.qq.com/fallback.jpg"
+        );
+        assert_eq!(
+            card_cover_url(&serde_json::json!({
+                "cover": {
+                    "small_url": "https://music-file.y.qq.com/songlist/small",
+                    "medium_url": "https://music-file.y.qq.com/songlist/medium",
+                    "big_url": "https://music-file.y.qq.com/songlist/big",
+                    "default_url": "https://music-file.y.qq.com/songlist/default"
+                }
+            })),
+            "https://music-file.y.qq.com/songlist/medium"
         );
     }
 }

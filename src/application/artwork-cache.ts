@@ -5,12 +5,14 @@ const memoryCache = new Map<string, string>();
 const pendingCache = new Map<string, Promise<string>>();
 let cacheGeneration = 0;
 
+const CACHEABLE_ARTWORK_HOSTS = new Set(['y.gtimg.cn', 'qpic.y.qq.com', 'music-file.y.qq.com']);
+
 export function isCacheableArtworkSource(url: string): boolean {
   try {
     const parsed = new URL(url);
     return (
       parsed.protocol === 'https:' &&
-      (parsed.hostname === 'y.gtimg.cn' || parsed.hostname === 'qpic.y.qq.com') &&
+      CACHEABLE_ARTWORK_HOSTS.has(parsed.hostname) &&
       parsed.username === '' &&
       parsed.password === '' &&
       (parsed.port === '' || parsed.port === '443')
