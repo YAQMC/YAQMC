@@ -52,6 +52,10 @@ pub async fn serve_protocol<T: CoreTransport>(
         "host attached"
     );
 
+    // Electron composition point matching Tauri setup: position/EOS live here.
+    core.player()
+        .start_clock_on_runtime(&tokio::runtime::Handle::current());
+
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
     let sink: Arc<dyn EventSink> = Arc::new(ChannelSink { sender: events_tx });
     spawn_player_fanout(
@@ -92,6 +96,7 @@ pub async fn serve_protocol<T: CoreTransport>(
                     }
                     Ok(CoreMessage::Shutdown { .. }) => {
                         persist_queue(&core).await;
+                        core.player().stop_clock();
                         core.shutdown();
                         transport.send(&CoreMessage::ShutdownAck).await?;
                         break;
@@ -102,6 +107,7 @@ pub async fn serve_protocol<T: CoreTransport>(
                     Err(ProtocolError::Closed) => {
                         tracing::info!(target: "core.protocol", "stdin EOF; shutting down");
                         persist_queue(&core).await;
+                        core.player().stop_clock();
                         core.shutdown();
                         break;
                     }
