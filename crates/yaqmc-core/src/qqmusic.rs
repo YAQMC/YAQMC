@@ -85,7 +85,7 @@ const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
 const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
 const HOME_CACHE_KEY: &str = "qqmusic:home:v3";
-const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v1";
+const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v2";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -5098,6 +5098,7 @@ mod tests {
             "https://y.gtimg.cn/a.jpg",
             "https://y.gtimg.cn:443/a.jpg",
             "https://qpic.y.qq.com/a.jpg",
+            "https://music-file.y.qq.com/songlist/cover.jpg",
         ] {
             assert!(is_allowed_artwork_url(value), "expected allowed: {value}");
         }
@@ -5109,6 +5110,9 @@ mod tests {
             "https://aqqmusic.tc.qq.com/a.jpg",
             "https://music.tc.qq.com/a.jpg",
             "https://example.com/a.jpg",
+            "http://music-file.y.qq.com/songlist/cover.jpg",
+            "https://cdn.music-file.y.qq.com/songlist/cover.jpg",
+            "https://user:password@music-file.y.qq.com/songlist/cover.jpg",
         ] {
             assert!(!is_allowed_artwork_url(value), "expected rejected: {value}");
         }
