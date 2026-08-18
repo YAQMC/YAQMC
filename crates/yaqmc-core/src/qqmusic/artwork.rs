@@ -63,6 +63,43 @@ pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
             .is_some_and(|host| host == "y.gtimg.cn" || host == "qpic.y.qq.com")
 }
 
+pub(super) fn provider_cover_url(value: &serde_json::Value) -> String {
+    if let Some(text) = value
+        .as_str()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        return text.to_owned();
+    }
+    let Some(object) = value.as_object() else {
+        return String::new();
+    };
+    for key in ["url", "default_url", "PhotoUrl", "photo_url"] {
+        if let Some(text) = object
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+        {
+            return text.to_owned();
+        }
+    }
+    String::new()
+}
+
+pub(super) fn card_cover_url(card: &serde_json::Value) -> String {
+    let cover = provider_cover_url(&card["cover"]);
+    if !cover.is_empty() {
+        return cover;
+    }
+    card["picurl"]
+        .as_str()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .unwrap_or_default()
+        .to_owned()
+}
+
 fn fallback_artwork(title: &str, color_key: &str) -> Artwork {
     Artwork {
         src: FALLBACK_ARTWORK.to_owned(),
@@ -201,6 +238,39 @@ mod tests {
             )
             .src,
             FALLBACK_ARTWORK
+        );
+    }
+
+    #[test]
+    fn provider_cover_url_reads_string_or_object_fields() {
+        assert_eq!(
+            provider_cover_url(&serde_json::json!("https://qpic.y.qq.com/a.jpg")),
+            "https://qpic.y.qq.com/a.jpg"
+        );
+        assert_eq!(
+            provider_cover_url(&serde_json::json!({
+                "url": "https://y.gtimg.cn/photo.jpg"
+            })),
+            "https://y.gtimg.cn/photo.jpg"
+        );
+        assert_eq!(
+            provider_cover_url(&serde_json::json!({
+                "default_url": "https://qpic.y.qq.com/default.jpg"
+            })),
+            "https://qpic.y.qq.com/default.jpg"
+        );
+        assert_eq!(
+            card_cover_url(&serde_json::json!({
+                "cover": { "url": "https://qpic.y.qq.com/object.jpg" },
+                "picurl": "https://qpic.y.qq.com/fallback.jpg"
+            })),
+            "https://qpic.y.qq.com/object.jpg"
+        );
+        assert_eq!(
+            card_cover_url(&serde_json::json!({
+                "picurl": "https://qpic.y.qq.com/fallback.jpg"
+            })),
+            "https://qpic.y.qq.com/fallback.jpg"
         );
     }
 }

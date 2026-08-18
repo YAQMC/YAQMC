@@ -920,6 +920,7 @@ mod tests {
             snapshot_revision: 0,
             source_generation: 0,
             last_seek_revision: 0,
+            sampled_at_ms: 0,
         };
         let projected = MediaProjection::from_snapshot(&snapshot, true);
         assert_eq!(projected.repeat, RepeatMode::One);

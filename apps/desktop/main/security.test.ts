@@ -6,10 +6,13 @@ import {
   deniedExternalOpens,
   isAllowedAppNavigation,
   isAppUrl,
+  isArtworkCdnUrl,
   isOAuthNavigationAllowed,
   isPermissionAllowed,
   isViteDevServerUrl,
   resetDeniedExternalOpens,
+  withArtworkCdnReferer,
+  ARTWORK_CDN_REFERER,
   VITE_DEV_ORIGIN,
   type PermissionSession,
 } from './security';
@@ -119,6 +122,49 @@ describe('session and window wiring', () => {
     ) => void;
     registeredDisplay({}, displayCallback);
     expect(displayCallback).toHaveBeenCalledWith({});
+  });
+
+  it('rewrites QQ artwork CDN referers to y.qq.com without touching other hosts', () => {
+    expect(isArtworkCdnUrl('https://qpic.y.qq.com/playlist.jpg')).toBe(true);
+    expect(isArtworkCdnUrl('https://y.gtimg.cn/music/photo_new/T002R300x300M000abc.jpg')).toBe(
+      true,
+    );
+    expect(isArtworkCdnUrl('https://example.test/cover.jpg')).toBe(false);
+    expect(
+      withArtworkCdnReferer('https://qpic.y.qq.com/playlist.jpg', { Accept: 'image/*' }),
+    ).toEqual({ Accept: 'image/*', Referer: ARTWORK_CDN_REFERER });
+    expect(
+      withArtworkCdnReferer('https://example.test/cover.jpg', { Referer: 'https://app/' }),
+    ).toEqual({
+      Referer: 'https://app/',
+    });
+  });
+
+  it('installs an artwork CDN header rewrite on the session', () => {
+    const permissionHandler = vi.fn();
+    const displayHandler = vi.fn();
+    const onBeforeSendHeaders = vi.fn();
+    const target: PermissionSession = {
+      setPermissionRequestHandler: permissionHandler,
+      setDisplayMediaRequestHandler: displayHandler,
+      webRequest: { onBeforeSendHeaders },
+    };
+    applySessionSecurity(target);
+    expect(onBeforeSendHeaders).toHaveBeenCalledOnce();
+    const filter = onBeforeSendHeaders.mock.calls[0]?.[0] as { urls: string[] };
+    expect(filter.urls).toEqual(['https://y.gtimg.cn/*', 'https://qpic.y.qq.com/*']);
+    const listener = onBeforeSendHeaders.mock.calls[0]?.[1] as (
+      details: { url: string; requestHeaders: Record<string, string> },
+      callback: (response: { requestHeaders: Record<string, string> }) => void,
+    ) => void;
+    const callback = vi.fn();
+    listener(
+      { url: 'https://qpic.y.qq.com/cover.jpg', requestHeaders: { Accept: 'image/*' } },
+      callback,
+    );
+    expect(callback).toHaveBeenCalledWith({
+      requestHeaders: { Accept: 'image/*', Referer: ARTWORK_CDN_REFERER },
+    });
   });
 
   it('prevents will-navigate to an external URL and denies window.open', () => {

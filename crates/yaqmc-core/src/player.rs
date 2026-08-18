@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::{
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -301,6 +301,10 @@ pub struct PlayerSnapshot {
     pub source_generation: u64,
     #[serde(default)]
     pub last_seek_revision: u64,
+    /// Unix time at which `position_ms` was sampled. Renderers interpolate
+    /// from this stamp so stdio transit delay is not baked into the lyric clock.
+    #[serde(default)]
+    pub sampled_at_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -567,6 +571,7 @@ impl PlayerCore {
             snapshot_revision: self.snapshot_revision,
             source_generation: self.source_generation,
             last_seek_revision: 0,
+            sampled_at_ms: 0,
         }
     }
 
@@ -585,6 +590,7 @@ pub struct PlayerService {
     load_generation: Arc<AtomicU64>,
     session_id: AtomicU64,
     seek_mailbox: SeekMailbox,
+    seek_applied_at: Mutex<Option<Instant>>,
     audio: Arc<dyn AudioEngine>,
     resolver: Arc<dyn PlaybackSourceResolver>,
     preparer: Arc<dyn MediaPreparer>,
@@ -610,6 +616,7 @@ impl PlayerService {
             load_generation: Arc::new(AtomicU64::new(0)),
             session_id: AtomicU64::new(0),
             seek_mailbox: SeekMailbox::default(),
+            seek_applied_at: Mutex::new(None),
             audio,
             resolver,
             preparer,
@@ -636,7 +643,15 @@ impl PlayerService {
 
     fn stamped(&self, mut snapshot: PlayerSnapshot) -> PlayerSnapshot {
         snapshot.last_seek_revision = self.seek_mailbox.current_revision();
+        snapshot.sampled_at_ms = unix_timestamp_ms();
         snapshot
+    }
+
+    fn mark_seek_applied(&self) {
+        *self
+            .seek_applied_at
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
     }
 
     pub async fn current_track(&self) -> Option<Song> {
@@ -698,9 +713,7 @@ impl PlayerService {
             let mut core = self.core.write().await;
             mutation(&mut core)?;
             core.snapshot_revision = core.snapshot_revision.saturating_add(1);
-            let mut snapshot = core.snapshot();
-            snapshot.last_seek_revision = self.seek_mailbox.current_revision();
-            snapshot
+            self.stamped(core.snapshot())
         };
         self.publish(event_type, &snapshot);
         Ok(snapshot)
@@ -716,7 +729,7 @@ impl PlayerService {
             core.current_index = Some(0);
             core.queue_materially_changed();
         }
-        let snapshot = core.snapshot();
+        let snapshot = self.stamped(core.snapshot());
         drop(core);
         self.publish("queue.changed", &snapshot);
         snapshot
@@ -811,6 +824,7 @@ impl PlayerService {
         } else {
             restored.volume as f32
         });
+        let restored = self.stamped(restored);
         self.publish("queue.changed", &restored);
         restored
     }
@@ -1030,7 +1044,17 @@ impl PlayerService {
             position_ms = intent.position_ms,
             "seek intent published"
         );
-        self.apply_latest_seek(intent).await
+        let started = Instant::now();
+        let snapshot = self.apply_latest_seek(intent).await;
+        tracing::info!(
+            target: "player.seek.hop",
+            session = intent.session_id,
+            revision = intent.revision,
+            position_ms = intent.position_ms,
+            core_apply_ms = started.elapsed().as_millis() as u64,
+            "player.seek settled"
+        );
+        snapshot
     }
 
     #[cfg(test)]
@@ -1051,23 +1075,26 @@ impl PlayerService {
         {
             return Ok(self.snapshot().await);
         }
-        let (bounded, offset, index, loaded, was_ended, session_now) = {
+        let (bounded, offset, index, loaded, reload_source, session_now) = {
             let core = self.core.read().await;
             let song = core.current_song().ok_or(PlayerError::EmptyQueue)?;
             let duration = core.playback_duration_ms.unwrap_or(song.duration_ms);
+            let engine = self.audio.snapshot();
             (
                 intent.position_ms.clamp(core.timeline_offset_ms, duration),
                 core.timeline_offset_ms,
                 core.current_index.expect("current song has an index"),
-                self.audio.snapshot().loaded,
-                core.playback_state == PlaybackState::Ended,
+                engine.loaded,
+                core.playback_state == PlaybackState::Ended
+                    || engine_requires_reload_for_seek(&engine, &core),
                 core.session_id,
             )
         };
         if !self.seek_mailbox.is_current(intent, session_now) {
             return Ok(self.snapshot().await);
         }
-        if was_ended {
+        if reload_source {
+            self.mark_seek_applied();
             return self.load_index(index, true, bounded).await;
         }
         if !loaded {
@@ -1092,6 +1119,13 @@ impl PlayerService {
                 .record_audio_failure(&error, Some(intent.session_id))
                 .await);
         }
+        self.mark_seek_applied();
+        tracing::debug!(
+            target: "player.seek.hop",
+            session = intent.session_id,
+            revision = intent.revision,
+            "audio seek queued"
+        );
         if !self
             .seek_mailbox
             .is_current(intent, self.session_id.load(Ordering::Acquire))
@@ -1486,8 +1520,7 @@ impl PlayerService {
             if previous_song_id.as_deref() != Some(core.queue[index].id.as_str()) {
                 core.lyrics = None;
             }
-            let mut start_snapshot = core.snapshot();
-            start_snapshot.last_seek_revision = self.seek_mailbox.current_revision();
+            let start_snapshot = self.stamped(core.snapshot());
             (
                 core.queue[index].clone(),
                 start_snapshot,
@@ -1508,7 +1541,7 @@ impl PlayerService {
         let buffering = {
             let mut core = self.core.write().await;
             core.playback_state = PlaybackState::Buffering;
-            core.snapshot()
+            self.stamped(core.snapshot())
         };
         self.publish("player.playback", &buffering);
 
@@ -1647,7 +1680,7 @@ impl PlayerService {
         let commit = {
             let mut core = self.core.write().await;
             if generation != self.load_generation.load(Ordering::Acquire) {
-                let snapshot = core.snapshot();
+                let snapshot = self.stamped(core.snapshot());
                 drop(core);
                 return Ok(snapshot);
             }
@@ -1893,7 +1926,7 @@ impl PlayerService {
             core.playback_state = PlaybackState::Ended;
             core.source_selection = None;
             core.active_epoch_guard = None;
-            core.snapshot()
+            self.stamped(core.snapshot())
         };
         self.publish("player.playback", &snapshot);
         snapshot
@@ -1982,6 +2015,12 @@ impl PlayerService {
                 interval.tick().await;
                 let now = Instant::now();
                 let engine = service.audio.snapshot();
+                let pending_seek = service.seek_mailbox.latest();
+                let hold_active = service
+                    .seek_applied_at
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .is_some_and(|applied_at| applied_at.elapsed() < Duration::from_millis(500));
                 let (
                     snapshot,
                     should_advance,
@@ -2024,8 +2063,17 @@ impl PlayerService {
                         && core.source_generation != 0
                         && engine.source_generation == core.source_generation;
                     if engine_matches {
-                        core.position_ms =
+                        let engine_pos =
                             core.timeline_offset_ms.saturating_add(engine.position_ms);
+                        let hold_seek = hold_active
+                            && pending_seek.is_some_and(|intent| {
+                                intent.session_id == core.session_id
+                                    && engine_pos.abs_diff(intent.position_ms) > 80
+                                    && !engine.ended
+                            });
+                        if !hold_seek {
+                            core.position_ms = engine_pos;
+                        }
                         if let Some(duration) = engine.duration_ms {
                             core.playback_duration_ms =
                                 Some(core.timeline_offset_ms.saturating_add(duration));
@@ -2066,14 +2114,8 @@ impl PlayerService {
                         core.playback_state = PlaybackState::Playing;
                         core.playback_error = None;
                     }
-                    let should_advance = engine_matches
-                        && engine.ended
-                        && engine.source_error.is_none()
-                        && matches!(
-                            previous_state,
-                            PlaybackState::Playing | PlaybackState::Buffering
-                        );
-                    let snapshot = core.snapshot();
+                    let should_advance = natural_end_of_stream(&engine, &core, previous_state);
+                    let snapshot = service.stamped(core.snapshot());
                     let lyrics = current_lyric_state(&core);
                     let eos_session = core.session_id;
                     (
@@ -2358,6 +2400,58 @@ fn current_lyric_state(core: &PlayerCore) -> CurrentLyricState {
         line: Some(line),
         word,
     }
+}
+
+fn engine_matches_core(engine: &crate::audio::AudioEngineSnapshot, core: &PlayerCore) -> bool {
+    engine.loaded
+        && core.source_generation != 0
+        && engine.source_generation == core.source_generation
+}
+
+fn at_timeline_end(position_ms: u64, duration_ms: Option<u64>) -> bool {
+    duration_ms.is_some_and(|duration| duration > 0 && position_ms.saturating_add(80) >= duration)
+}
+
+fn natural_end_of_stream(
+    engine: &crate::audio::AudioEngineSnapshot,
+    core: &PlayerCore,
+    previous_state: PlaybackState,
+) -> bool {
+    if engine.source_error.is_some()
+        || !matches!(
+            previous_state,
+            PlaybackState::Playing | PlaybackState::Buffering
+        )
+    {
+        return false;
+    }
+    if !engine_matches_core(engine, core) {
+        return false;
+    }
+    engine.ended
+        || (at_timeline_end(core.position_ms, core.playback_duration_ms)
+            && !engine.playing
+            && !engine.paused
+            && !engine.buffering)
+}
+
+fn engine_requires_reload_for_seek(
+    engine: &crate::audio::AudioEngineSnapshot,
+    core: &PlayerCore,
+) -> bool {
+    if !engine_matches_core(engine, core) {
+        return false;
+    }
+    if engine.ended {
+        return true;
+    }
+    let engine_pos = core.timeline_offset_ms.saturating_add(engine.position_ms);
+    let duration = core.playback_duration_ms.or_else(|| {
+        engine
+            .duration_ms
+            .map(|duration| core.timeline_offset_ms.saturating_add(duration))
+    });
+    at_timeline_end(engine_pos, duration) && !engine.playing && !engine.buffering
 }
 
 fn unix_timestamp_ms() -> u64 {
@@ -3452,6 +3546,191 @@ mod tests {
         );
         assert!(player.current_lyric_state().await.line_index.is_none());
         player.stop_clock();
+    }
+
+    fn test_runtime_player(engine: Arc<crate::audio::TestAudioEngine>) -> Arc<PlayerService> {
+        Arc::new(PlayerService::with_runtime(
+            engine,
+            Arc::new(crate::media::TestPlaybackSourceResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        ))
+    }
+
+    #[tokio::test]
+    async fn clock_end_of_stream_honors_repeat_one_all_and_off() {
+        for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
+            let engine = Arc::new(crate::audio::TestAudioEngine::default());
+            let player = test_runtime_player(Arc::clone(&engine));
+            player.start_clock();
+            player
+                .play_tracks(PlayTracksRequest {
+                    tracks: vec![song("one", 1_000), song("two", 1_000)],
+                    start_at_id: None,
+                    shuffle: None,
+                })
+                .await
+                .expect("playback starts");
+            player.set_repeat(repeat).await;
+            if repeat == RepeatMode::Off {
+                player
+                    .play_from_queue(1)
+                    .await
+                    .expect("no-repeat EOS is observed on the last track");
+            }
+            engine.finish();
+            tokio::time::sleep(Duration::from_millis(220)).await;
+            let after = player.snapshot().await;
+            match repeat {
+                RepeatMode::Off => {
+                    assert_eq!(after.playback_state, PlaybackState::Ended);
+                    assert_eq!(after.current_index, Some(1));
+                }
+                RepeatMode::One => {
+                    assert_eq!(after.playback_state, PlaybackState::Playing);
+                    assert_eq!(after.current_index, Some(0));
+                    assert_eq!(after.position_ms, 0);
+                }
+                RepeatMode::All => {
+                    assert_eq!(after.playback_state, PlaybackState::Playing);
+                    assert_eq!(after.current_index, Some(1));
+                    assert_eq!(after.position_ms, 0);
+                }
+            }
+            player.stop_clock();
+        }
+    }
+
+    #[tokio::test]
+    async fn clock_idle_at_timeline_end_without_ended_flag_still_repeats_one() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player.start_clock();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 1_000), song("two", 1_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.set_repeat(RepeatMode::One).await;
+        engine.force_snapshot(|snapshot| {
+            snapshot.playing = false;
+            snapshot.paused = false;
+            snapshot.ended = false;
+            snapshot.buffering = false;
+            snapshot.position_ms = snapshot.duration_ms.unwrap_or(1_000);
+        });
+        tokio::time::sleep(Duration::from_millis(220)).await;
+        let after = player.snapshot().await;
+        assert_eq!(after.playback_state, PlaybackState::Playing);
+        assert_eq!(after.current_index, Some(0));
+        assert_eq!(after.position_ms, 0);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn seek_after_silent_end_reloads_without_waiting_for_ended_state() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 5_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        let loads = engine.load_count();
+        engine.force_snapshot(|snapshot| {
+            snapshot.playing = false;
+            snapshot.paused = false;
+            snapshot.ended = false;
+            snapshot.buffering = false;
+            snapshot.position_ms = snapshot.duration_ms.unwrap_or(5_000);
+        });
+        let after = player.seek(400).await.expect("post-EOS seek reloads");
+        assert!(engine.load_count() > loads);
+        assert_eq!(after.position_ms, 400);
+        assert_ne!(after.playback_state, PlaybackState::Ended);
+    }
+
+    #[tokio::test]
+    async fn seek_after_end_of_stream_reloads_and_does_not_snap_back_to_the_end() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player.start_clock();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 5_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        engine.finish();
+        tokio::time::sleep(Duration::from_millis(220)).await;
+        assert_eq!(player.snapshot().await.playback_state, PlaybackState::Ended);
+        player.seek(800).await.expect("seek after EOS");
+        tokio::time::sleep(Duration::from_millis(220)).await;
+        let after = player.snapshot().await;
+        assert!(after.position_ms.abs_diff(800) <= 80);
+        assert_ne!(
+            after.position_ms,
+            after.playback_duration_ms.unwrap_or(5_000)
+        );
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn stale_eos_cannot_overwrite_a_newer_seek() {
+        let player = Arc::new(PlayerService::new());
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 10_000), song("two", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("track A starts");
+        let session_a = player.snapshot().await.session_id;
+        player.play_from_queue(1).await.expect("track B starts");
+        player.seek(2_500).await.expect("newer seek");
+        let before = player.snapshot().await;
+        Arc::clone(&player).handle_end(session_a).await;
+        let after = player.snapshot().await;
+        assert_eq!(after.session_id, before.session_id);
+        assert_eq!(after.current_index, Some(1));
+        assert_eq!(after.position_ms, 2_500);
+        assert_eq!(after.last_seek_revision, before.last_seek_revision);
+    }
+
+    #[tokio::test]
+    async fn published_snapshots_keep_seek_revision_and_sample_timestamp() {
+        let player = Arc::new(PlayerService::new());
+        let mut events = player.subscribe();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.seek(1_200).await.expect("seek");
+        let snapshot = player.snapshot().await;
+        assert!(snapshot.last_seek_revision > 0);
+        assert!(snapshot.sampled_at_ms > 1_000_000_000_000);
+        assert_eq!(snapshot.position_ms, 1_200);
+        let mut saw_stamped_seek = false;
+        while let Ok(event) = events.try_recv() {
+            if event.event_type == "player.seeked" {
+                let revision = event.data["lastSeekRevision"].as_u64().unwrap_or(0);
+                let sampled = event.data["sampledAtMs"].as_u64().unwrap_or(0);
+                saw_stamped_seek = revision > 0 && sampled > 1_000_000_000_000;
+            }
+        }
+        assert!(saw_stamped_seek);
     }
 
     #[tokio::test]

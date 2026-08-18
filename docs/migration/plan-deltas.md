@@ -1918,3 +1918,98 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   Path traversal checks are unchanged. The 32 MiB hard cap is unchanged.
 - FE-04 / HUMAN stays **BLOCKED**. §41 / §49 unchanged. Electron stays
   **43.4.0**. Provenance remains **BLOCKED**. No P12–P15. No qm-api-rs.
+
+## PLAY-01 Windows HUMAN triage (do not resume PLAY/PLAT)
+
+Windows HUMAN PLAY-01 found real regressions. PLAY/PLAT acceptance stays
+paused until these are re-tested manually. SURF-02 click-through and
+SURF-04 fullscreen auto-hide remain PASS and are not lyrics content/sync.
+
+### Bucket 1 — Player EOS / repeat / post-EOS seek
+
+- `PlayerService::handle_end` already honors Repeat One / All / Off and
+  fences stale session EOS. Existing tests call `handle_end` directly, so
+  they cannot catch a clock that never treats the native engine as ended.
+- Live EOS depends on the 50 ms clock seeing `engine.ended` (`rodio`
+  `Player::empty()`) while state is Playing/Buffering. Progressive QQ
+  streams can go silent at the timeline end with `empty() == false`, so
+  repeat/list never run and `playback_state` never becomes `Ended`.
+- Post-EOS seek then takes the in-source `audio.seek` path (`was_ended`
+  is false). `try_seek` on an exhausted sink no-ops; the next clock tick
+  copies engine position back to the end.
+- Fix: treat engine-ended **or** idle-at-timeline-end (not paused, not
+  buffering) as EOS through the real clock; reload the source on seek
+  when the engine is exhausted. Stale EOS session fencing is unchanged.
+
+### Bucket 2 — Rapid seek latency / fencing / revision settling
+
+- Renderer seek mailbox already coalesces to the latest position, but
+  `flushSeekMailbox` awaits each Core RPC, and `RodioAudioEngine::seek`
+  waits up to 15 s for `try_seek` on the audio worker. Stdio is
+  sequential, so both Core `SeekMailbox` and the audio pending-seek slot
+  never coalesce under Electron.
+- Clock `player.position` snapshots were built from `PlayerCore::snapshot()`
+  with `last_seek_revision: 0`, so position ticks could clobber the
+  authoritative seek revision.
+- Hop identified before behavior change: **PlayerService →
+  `audio.seek`/`try_seek` wait**, not fencing/revision checks.
+- Fix: queue the rodio seek and return without waiting for `try_seek`;
+  hold core position to the latest intent for a short window so the clock
+  does not snap back; stamp `last_seek_revision` and `sampled_at_ms` on
+  published snapshots. Mailbox/`is_current`/session fencing is unchanged.
+
+### Bucket 3 — Lyrics initial clock synchronization
+
+- Fullscreen lyrics interpolate from snapshot **arrival**
+  (`observedAtMs` / `receivedAt`). A late first `player.playback` sample
+  with `positionMs ≈ 0` bakes stdio latency in forever. Pause/resume
+  publishes a fresh engine sample, which is why HUMAN saw resync.
+- Desktop/Island `useProjectedLyrics` selected lines from the raw
+  projection `positionMs` and did not interpolate, so line choice lagged
+  the word highlighter.
+- Fix: stamp `sampledAtMs` (Core unix clock) on snapshots; estimate
+  position as `positionMs + max(0, now - sampledAtMs)` when the stamp is
+  a unix timestamp. Surfaces use the same estimate (projection
+  `timestampMs` is already unix) and refresh line selection while playing.
+
+### Bucket 4 — Desktop Lyrics / Lyrics Island
+
+- Same clock/line-selection lag as Bucket 3.
+- Island artwork uses `useSafeArtworkSource`, which stays `null` until
+  `qqmusic_cache_artwork` (Main-origin only) returns a data URI, so the
+  island cover never appears from a lyrics window.
+- SURF-02/04 window behavior is not this bucket.
+
+### Bucket 5 — Home recommended-playlist artwork
+
+- CSP already allows `y.gtimg.cn` and `qpic.y.qq.com`. Do not assume QQ
+  API failure: live artwork fetch is documented as HTTPS + browser UA +
+  `Referer: https://y.qq.com/`. Chromium on `app://` / Vite `127.0.0.1`
+  sends a non-`y.qq.com` Referer; QQ CDNs hotlink-protect that.
+- Sidebar avatars already set `referrerPolicy="no-referrer"`. Catalog
+  `<img>` did not. Core `artwork_data_uri` fetched with an empty header
+  map. Personalized recommend cards read `card["cover"].as_str()` only,
+  so object covers become the local fallback SVG.
+- Fix: session header rewrite for those two CDN hosts; `no-referrer` on
+  catalog/island images; send `Referer: https://y.qq.com/` on Core
+  artwork cache fetches; parse string or object cover fields.
+
+### Bucket 6 — Settings / volume slider interaction
+
+- Volume is functionally wired. Custom `appearance: none` range inputs
+  use a 3 px track; Chromium/Electron often swallows pointer hits until a
+  layout/resize invalidates the slider.
+- Fix: larger hit target, `touch-action: none`, compositing isolation,
+  `yaqmc-no-drag` on the volume control. Not a Core volume bug.
+
+### Bucket 7 — Local-file user-visible entry
+
+- `PlaybackLocation::Local` exists for cache/prepared files. Plugin
+  tests use `source: 'local-file'` as a permission denylist string.
+  Host file pickers are background image and plugin package/folder only.
+- There is **no user-visible local-file playback entry**. PLAY-01 local
+  file remains untested because no UI path exists; do not invent one.
+
+PLAY-01 / PLAY/PLAT / FE-04 HUMAN stay **BLOCKED**. §41 / §49 unchanged.
+Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+remains **BLOCKED**. No P12–P15. No qm-api-rs.

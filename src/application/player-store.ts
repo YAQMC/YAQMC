@@ -61,6 +61,7 @@ export interface PlayerState {
   snapshotRevision: number;
   sourceGeneration: number;
   lastSeekRevision: number;
+  sampledAtMs: number;
   isScrubbing: boolean;
   scrubPosition: number;
   scrubAwaitingAckFrom: number | null;
@@ -129,6 +130,7 @@ export interface AuthoritativePlayerSnapshot {
   snapshotRevision?: number;
   sourceGeneration?: number;
   lastSeekRevision?: number;
+  sampledAtMs?: number;
 }
 
 export const initialPlayerState: PlayerState = {
@@ -161,6 +163,7 @@ export const initialPlayerState: PlayerState = {
   snapshotRevision: 0,
   sourceGeneration: 0,
   lastSeekRevision: 0,
+  sampledAtMs: 0,
   isScrubbing: false,
   scrubPosition: 0,
   scrubAwaitingAckFrom: null,
@@ -534,6 +537,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       set({
         positionMs: boundedPosition,
         observedAtMs: performance.now(),
+        sampledAtMs: Date.now(),
         timelineRevision: get().timelineRevision + 1,
         isScrubbing: false,
         scrubPosition: boundedPosition,
@@ -578,6 +582,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       scrubPosition: boundedPosition,
       positionMs: boundedPosition,
       observedAtMs: performance.now(),
+      sampledAtMs: Date.now(),
       timelineRevision: state.timelineRevision + 1,
       scrubAwaitingAckFrom: state.lastSeekRevision,
     });
@@ -875,6 +880,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         snapshotRevision: incomingSession === 0 ? state.snapshotRevision : incomingRevision,
         sourceGeneration: snapshot.sourceGeneration ?? state.sourceGeneration,
         lastSeekRevision,
+        sampledAtMs: snapshot.sampledAtMs ?? 0,
         positionMs: isScrubbing ? state.scrubPosition : snapshot.positionMs,
         isScrubbing,
         scrubPosition: isScrubbing ? state.scrubPosition : snapshot.positionMs,
@@ -889,11 +895,25 @@ export function useCurrentSong(): Song | null {
   return usePlayerStore((state) => state.queue[state.currentIndex] ?? null);
 }
 
-export function getEstimatedPositionMs(now = performance.now()): number {
+const UNIX_MS = 1_000_000_000_000;
+const SAMPLE_FRESH_MS = 2_000;
+
+export function getEstimatedPositionMs(now = performance.now(), nowUnix = Date.now()): number {
   const state = usePlayerStore.getState();
   const current = state.queue[state.currentIndex];
   if (!current) return 0;
   if (state.isScrubbing) return state.scrubPosition;
-  const elapsed = state.isPlaying ? Math.max(0, now - state.observedAtMs) : 0;
+  let elapsed = 0;
+  if (state.isPlaying) {
+    if (
+      state.sampledAtMs >= UNIX_MS &&
+      nowUnix - state.sampledAtMs >= 0 &&
+      nowUnix - state.sampledAtMs < SAMPLE_FRESH_MS
+    ) {
+      elapsed = nowUnix - state.sampledAtMs;
+    } else {
+      elapsed = Math.max(0, now - state.observedAtMs);
+    }
+  }
   return Math.min(state.playbackDurationMs ?? current.durationMs, state.positionMs + elapsed);
 }

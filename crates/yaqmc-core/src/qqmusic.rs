@@ -50,7 +50,9 @@ pub use crate::playback_types::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
 };
 
-use artwork::{artwork_for_album, artwork_from_provider_url, is_allowed_artwork_url};
+use artwork::{
+    artwork_for_album, artwork_from_provider_url, card_cover_url, is_allowed_artwork_url,
+};
 
 use account::{
     AccountEntitlement, AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
@@ -68,9 +70,7 @@ use entitlement::{
 use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, TransportRequest};
 use zeroize::Zeroize;
 
-pub use oauth::{
-    url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult,
-};
+pub use oauth::{url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult};
 
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_MUSICS_URL: &str = "https://u.y.qq.com/cgi-bin/musics.fcg";
@@ -1024,7 +1024,8 @@ impl QQMusicService {
         }
     }
 
-    async fn remember_home_songs(&self, feed: &HomeFeed) {        self.account
+    async fn remember_home_songs(&self, feed: &HomeFeed) {
+        self.account
             .remember_songs(
                 feed.featured
                     .album
@@ -1205,9 +1206,10 @@ impl QQMusicService {
                 history
                     .into_iter()
                     .filter_map(|item| {
-                        item.song.provider.as_ref().and_then(|p| {
-                            p.numeric_id.map(|id| (id, item.song.title.clone()))
-                        })
+                        item.song
+                            .provider
+                            .as_ref()
+                            .and_then(|p| p.numeric_id.map(|id| (id, item.song.title.clone())))
                     })
                     .take(3),
             );
@@ -1215,14 +1217,15 @@ impl QQMusicService {
         if radar_entrance.is_empty() {
             radar_entrance.extend(guess_numeric_titles.clone());
         }
-        let radar_entrance_ids = radar_entrance
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>();
+        let radar_entrance_ids = radar_entrance.iter().map(|(id, _)| *id).collect::<Vec<_>>();
         let radar_based_on_song = radar_entrance.first().map(|(_, title)| title.clone());
         let radar_songs = match session_ref {
             Some(session) if !radar_entrance_ids.is_empty() => {
-                match self.client.radar_recommend(session, &radar_entrance_ids).await {
+                match self
+                    .client
+                    .radar_recommend(session, &radar_entrance_ids)
+                    .await
+                {
                     Ok(songs) => songs,
                     Err(error) => {
                         tracing::warn!(target: "qqmusic", %error, "home radar recommendations failed; leaving the section empty");
@@ -1241,7 +1244,9 @@ impl QQMusicService {
             let artwork = new_song_tracks
                 .first()
                 .map(|song| song.artwork.clone())
-                .unwrap_or_else(|| artwork_from_provider_url("", "New songs", color_for("newsong")));
+                .unwrap_or_else(|| {
+                    artwork_from_provider_url("", "New songs", color_for("newsong"))
+                });
             let id = new_song_disstid
                 .map(|disstid| playlist_id(&disstid.to_string()))
                 .unwrap_or_else(|| playlist_id("new-song-recommend"));
@@ -2030,7 +2035,7 @@ impl QQMusicClient {
                         let Some((tid, title)) = tid.zip(title) else {
                             continue;
                         };
-                        let artwork_url = card["cover"].as_str().unwrap_or_default();
+                        let artwork_url = card_cover_url(&card);
                         playlists.push(Playlist {
                             id: playlist_id(tid),
                             title: title.clone(),
@@ -2042,7 +2047,11 @@ impl QQMusicClient {
                                 id: "qqmusic".to_owned(),
                                 display_name: "QQ Music".to_owned(),
                             },
-                            artwork: artwork_from_provider_url(artwork_url, &title, color_for(tid)),
+                            artwork: artwork_from_provider_url(
+                                &artwork_url,
+                                &title,
+                                color_for(tid),
+                            ),
                             updated_label: String::new(),
                             tracks: Vec::new(),
                         });
@@ -2104,10 +2113,7 @@ impl QQMusicClient {
             let Some((tid, title)) = tid.zip(title) else {
                 continue;
             };
-            let artwork_url = basic["cover"]["default_url"]
-                .as_str()
-                .or_else(|| basic["picurl"].as_str())
-                .unwrap_or_default();
+            let artwork_url = card_cover_url(&basic);
             let creator_nick = basic["creator"]["nick"]
                 .as_str()
                 .or_else(|| basic["creator_nick"].as_str())
@@ -2122,7 +2128,7 @@ impl QQMusicClient {
                     display_name: creator_nick,
                 },
                 artwork: artwork_from_provider_url(
-                    artwork_url,
+                    &artwork_url,
                     &title,
                     color_for(&tid.to_string()),
                 ),
@@ -2335,7 +2341,9 @@ impl QQMusicClient {
             }
         });
         let response: Value = self
-            .send_json("discover.categories", || self.musicu_request(&payload, None))
+            .send_json("discover.categories", || {
+                self.musicu_request(&payload, None)
+            })
             .await?;
         let mut categories = Vec::new();
         let Some(shelf) = response["req_1"]["data"]["shelf"].as_object() else {
@@ -2354,11 +2362,7 @@ impl QQMusicClient {
                     if title.is_empty() {
                         continue;
                     }
-                    let cover = card["cover"]
-                        .as_str()
-                        .or_else(|| card["picurl"].as_str())
-                        .unwrap_or_default()
-                        .to_owned();
+                    let cover = card_cover_url(&card);
                     out.push(Category {
                         enc_area: enc_area.split('&').next().unwrap_or(enc_area).to_owned(),
                         title,
@@ -2400,8 +2404,11 @@ impl QQMusicClient {
             podcasts.push(Podcast {
                 id,
                 title,
-                subtitle: entry["subtitle"].as_str().map(clean_text).unwrap_or_default(),
-                cover: entry["cover"].as_str().unwrap_or_default().to_owned(),
+                subtitle: entry["subtitle"]
+                    .as_str()
+                    .map(clean_text)
+                    .unwrap_or_default(),
+                cover: card_cover_url(&entry),
             });
         }
         Ok(podcasts)
@@ -2442,7 +2449,10 @@ impl QQMusicClient {
                 id,
                 title,
                 cover: entry["picurl"].as_str().unwrap_or_default().to_owned(),
-                duration_ms: entry["duration"].as_u64().map(|value| value * 1_000).unwrap_or(0),
+                duration_ms: entry["duration"]
+                    .as_u64()
+                    .map(|value| value * 1_000)
+                    .unwrap_or(0),
                 artist,
             });
         }
@@ -2476,12 +2486,11 @@ impl QQMusicClient {
                     out.push(FeaturedCard {
                         id: id.to_owned(),
                         title,
-                        subtitle: card["subtitle"].as_str().map(clean_text).unwrap_or_default(),
-                        cover: card["cover"]
+                        subtitle: card["subtitle"]
                             .as_str()
-                            .or_else(|| card["picurl"].as_str())
-                            .unwrap_or_default()
-                            .to_owned(),
+                            .map(clean_text)
+                            .unwrap_or_default(),
+                        cover: card_cover_url(&card),
                     });
                 }
             }
@@ -2552,7 +2561,7 @@ impl QQMusicClient {
                                     display_name: "QQ Music".to_owned(),
                                 },
                                 artwork: artwork_from_provider_url(
-                                    card["cover"].as_str().unwrap_or_default(),
+                                    &card_cover_url(&card),
                                     &title,
                                     color_for(id),
                                 ),
@@ -2578,7 +2587,7 @@ impl QQMusicClient {
                                     display_name: "QQ Music".to_owned(),
                                 },
                                 artwork: artwork_from_provider_url(
-                                    card["cover"].as_str().unwrap_or_default(),
+                                    &card_cover_url(&card),
                                     &title,
                                     color_for(id),
                                 ),
@@ -2595,7 +2604,7 @@ impl QQMusicClient {
                             artists.push(AreaArtist {
                                 id: id.to_owned(),
                                 name,
-                                cover: card["cover"].as_str().unwrap_or_default().to_owned(),
+                                cover: card_cover_url(&card),
                             });
                         }
                         _ => {}
@@ -5261,8 +5270,15 @@ mod tests {
             .await
             .expect("guess songs");
         let first_song = guess.first().expect("song");
-        let first_id = first_song.provider.as_ref().and_then(|p| p.numeric_id).expect("numeric id");
-        let radar = client.radar_recommend(&qq_session, &[first_id]).await.expect("radar");
+        let first_id = first_song
+            .provider
+            .as_ref()
+            .and_then(|p| p.numeric_id)
+            .expect("numeric id");
+        let radar = client
+            .radar_recommend(&qq_session, &[first_id])
+            .await
+            .expect("radar");
         eprintln!("radar_recommend(ids): songs={}", radar.len());
         eprintln!(
             "auth direct: songlists={} daily={} radar={} guess={}",
@@ -5344,7 +5360,10 @@ mod tests {
                 .all(|chart| chart.tracks.iter().all(|song| !song.title.is_empty())),
             "chart songs carry titles"
         );
-        assert!(!feed.popular_songlists.is_empty(), "popular songlists resolve");
+        assert!(
+            !feed.popular_songlists.is_empty(),
+            "popular songlists resolve"
+        );
         assert!(
             feed.popular_songlists
                 .iter()
@@ -5379,7 +5398,10 @@ mod tests {
         );
 
         if let Some(category) = feed.categories.first() {
-            let area = service.area(category.enc_area.clone()).await.expect("area feed");
+            let area = service
+                .area(category.enc_area.clone())
+                .await
+                .expect("area feed");
             eprintln!(
                 "area: title={:?} songlists={} playlists={} artists={}",
                 area.title,

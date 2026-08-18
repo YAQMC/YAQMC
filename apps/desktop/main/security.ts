@@ -16,7 +16,36 @@ export type WindowOpenClassification = {
 export type PermissionSession = Pick<
   Session,
   'setPermissionRequestHandler' | 'setDisplayMediaRequestHandler'
->;
+> & {
+  webRequest?: Pick<Session['webRequest'], 'onBeforeSendHeaders'>;
+};
+
+export const ARTWORK_CDN_REFERER = 'https://y.qq.com/';
+
+export function isArtworkCdnUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'https:' &&
+      (parsed.hostname === 'y.gtimg.cn' || parsed.hostname === 'qpic.y.qq.com') &&
+      parsed.username === '' &&
+      parsed.password === '' &&
+      (parsed.port === '' || parsed.port === '443')
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function withArtworkCdnReferer(
+  url: string,
+  requestHeaders: Record<string, string>,
+): Record<string, string> {
+  if (!isArtworkCdnUrl(url)) {
+    return requestHeaders;
+  }
+  return { ...requestHeaders, Referer: ARTWORK_CDN_REFERER };
+}
 
 const recordedExternalOpens: string[] = [];
 
@@ -96,6 +125,17 @@ export function applySessionSecurity(target: PermissionSession): void {
   target.setDisplayMediaRequestHandler((_request, callback) => {
     callback({});
   });
+  target.webRequest?.onBeforeSendHeaders(
+    { urls: ['https://y.gtimg.cn/*', 'https://qpic.y.qq.com/*'] },
+    (details, callback) => {
+      callback({
+        requestHeaders: withArtworkCdnReferer(
+          details.url,
+          details.requestHeaders as Record<string, string>,
+        ),
+      });
+    },
+  );
 }
 
 export function applyAppWindowGuards(window: BrowserWindow, policy: NavigationPolicy): void {

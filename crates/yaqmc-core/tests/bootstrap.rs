@@ -139,6 +139,7 @@ fn restored_queue_calls_remember_songs_before_player_restore() {
         snapshot_revision: 1,
         source_generation: 1,
         last_seek_revision: 0,
+        sampled_at_ms: 0,
     };
     storage.save_queue(&snapshot).expect("persist queue");
     drop(storage);
