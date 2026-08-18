@@ -20,6 +20,7 @@ import {
   type ShowOpenDialog,
   type ShowSaveDialog,
 } from '../dialogs';
+import { hydrateManagedBackground } from '../managed-background';
 import { openExternalIfAllowed, type ExternalOpener } from '../open-external';
 import {
   LYRICS_SURFACE_GEOMETRY,
@@ -314,6 +315,8 @@ export type HostHandlerDeps = {
   oauth?: OAuthHostDeps;
   coreInvoke?: CoreInvoke;
   collectHostPayload?: () => DiagnosticsHostPayload;
+  /** Core data dir; used to hydrate managed background `dataUri` after stdio. */
+  dataDir?: () => string;
   updater?: HostUpdaterDeps;
   windowChrome?: HostWindowChromeLookup;
   coreStatus?: () => CoreStatusPayload;
@@ -501,6 +504,16 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
           : params;
       return invokeWithHostPayload('diagnostics_export_bundle_to', next, origin);
     };
+  }
+
+  if (deps.coreInvoke && deps.dataDir) {
+    const dataDir = deps.dataDir;
+    const invokeAndHydrate = async (method: string, params: unknown, origin?: string) =>
+      hydrateManagedBackground(await deps.coreInvoke!(method, params, origin), dataDir());
+    handlers.preferences_set_background_from = async (params, _webContentsId, origin) =>
+      invokeAndHydrate('preferences_set_background_from', params, origin);
+    handlers.appearance_background_load = async (params, _webContentsId, origin) =>
+      invokeAndHydrate('appearance_background_load', params, origin);
   }
 
   if (deps.updater) {

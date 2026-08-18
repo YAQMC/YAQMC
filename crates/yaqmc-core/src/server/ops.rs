@@ -427,14 +427,29 @@ pub async fn appearance_background_load(
     data_root: &Path,
     reference: String,
 ) -> Result<Option<ManagedBackgroundImage>, String> {
-    app_preferences::load_background(data_root, &reference).await
+    Ok(app_preferences::load_background(data_root, &reference)
+        .await?
+        .map(protocol_managed_background))
 }
 
 pub async fn preferences_set_background_from(
     data_root: &Path,
     path: String,
 ) -> Result<ManagedBackgroundImage, String> {
-    app_preferences::persist_background(Path::new(&path), data_root).await
+    Ok(protocol_managed_background(
+        app_preferences::persist_background(Path::new(&path), data_root).await?,
+    ))
+}
+
+/// Stdio method responses stay under the 1 MiB default cap. A 24 MiB image's
+/// base64 `dataUri` cannot fit that cap (or the 32 MiB frame hard cap). Core
+/// still copies/validates the file; Electron Main hydrates `dataUri` from the
+/// managed path after the protocol round-trip.
+fn protocol_managed_background(stored: ManagedBackgroundImage) -> ManagedBackgroundImage {
+    ManagedBackgroundImage {
+        reference: stored.reference,
+        data_uri: String::new(),
+    }
 }
 
 pub async fn local_api_set_port(

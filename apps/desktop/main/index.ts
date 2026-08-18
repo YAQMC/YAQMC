@@ -315,6 +315,7 @@ const router = new IpcRouter({
           : dialog.showOpenDialog(options),
     },
     downloadsDir: () => app.getPath('downloads'),
+    dataDir: () => coreDataPaths().dataDir,
     // diagnostics_open_log_folder / diagnostics_reveal_bundle: host-owned OS folder APIs.
     folders: {
       logDir: () => coreDataPaths().logDir,

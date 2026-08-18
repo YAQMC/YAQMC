@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   defaultPreferences,
+  formatBackgroundPickerError,
   normalizePreferences,
   preferencesRequireMigration,
   usePreferencesStore,
@@ -203,5 +204,23 @@ describe('preference persistence model', () => {
     expect(created.lyricsPresets.custom[0]?.id).toBe('custom.keep-me');
     expect(created.lyrics.coverLayout).toBe('full');
     expect(preferencesRequireMigration({ version: 2 })).toBe(true);
+  });
+});
+
+describe('formatBackgroundPickerError', () => {
+  it('keeps generic Core messages and hides filesystem paths', () => {
+    expect(
+      formatBackgroundPickerError(
+        new Error('payload length 1600000 exceeds cap 1048576'),
+        'fallback',
+      ),
+    ).toBe('payload length 1600000 exceeds cap 1048576');
+    expect(
+      formatBackgroundPickerError(new Error('selected file is not a supported image'), 'fallback'),
+    ).toBe('selected file is not a supported image');
+    expect(
+      formatBackgroundPickerError(new Error('C:\\Users\\alice\\Pictures\\wall.png'), 'fallback'),
+    ).toBe('fallback');
+    expect(formatBackgroundPickerError(new Error(''), 'fallback')).toBe('fallback');
   });
 });

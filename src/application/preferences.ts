@@ -572,7 +572,23 @@ export async function pickManagedBackgroundImage(): Promise<ManagedBackgroundIma
   const picked = await client.invoke('appearance_pick_background');
   if (picked === null) return null;
   if (client.bridge.kind !== 'electron') return picked;
+  if (typeof picked.reference !== 'string' || picked.reference.trim().length === 0) {
+    throw new Error('selected image path is missing');
+  }
   return client.invoke('preferences_set_background_from', { path: picked.reference });
+}
+
+const FILESYSTEM_PATH_IN_MESSAGE =
+  /(?:[A-Za-z]:[\\/]|\\\\|\/(?:Users|home|tmp)\/|\\Users\\|APPDATA)/i;
+
+/** Surface Core/host failure text when it is already generic; never show filesystem paths. */
+export function formatBackgroundPickerError(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 240 || FILESYSTEM_PATH_IN_MESSAGE.test(trimmed)) {
+    return fallback;
+  }
+  return trimmed;
 }
 
 function resolveSystemMode(): ResolvedColorMode {

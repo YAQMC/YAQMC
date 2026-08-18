@@ -140,14 +140,85 @@ fn preferences_set_background_from_copies_an_explicit_image() {
             result["reference"].as_str(),
             Some("backgrounds/custom-background.png")
         );
-        let data_uri = result["dataUri"].as_str().expect("dataUri");
-        assert!(data_uri.starts_with("data:image/png;base64,"));
+        assert_eq!(result["dataUri"].as_str(), Some(""));
         assert!(root
             .path()
             .join("data")
             .join("backgrounds")
             .join("custom-background.png")
             .exists());
+    });
+}
+
+#[test]
+fn preferences_set_background_from_omits_data_uri_so_large_images_fit_the_method_cap() {
+    let (root, runtime, core, host) = boot();
+    let source = root.path().join("wall.png");
+    let mut bytes = vec![0u8; 1_200_000];
+    bytes[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+    std::fs::write(&source, &bytes).expect("png");
+    runtime.block_on(async {
+        let result = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "preferences_set_background_from",
+            Some(json!({ "path": source.to_string_lossy() })),
+        )
+        .await
+        .expect("large wallpaper must not trip the 1 MiB stdio response cap");
+        assert_eq!(result["dataUri"].as_str(), Some(""));
+        assert_eq!(
+            result["reference"].as_str(),
+            Some("backgrounds/custom-background.png")
+        );
+        let stored = root
+            .path()
+            .join("data")
+            .join("backgrounds")
+            .join("custom-background.png");
+        assert_eq!(std::fs::metadata(&stored).expect("copied").len(), 1_200_000);
+        let encoded = serde_json::to_vec(&result).expect("json");
+        assert!(encoded.len() < 1024 * 1024);
+    });
+}
+
+#[test]
+fn preferences_set_background_from_accepts_jpeg_and_unicode_source_paths() {
+    let (root, runtime, core, host) = boot();
+    let jpeg = root.path().join("wall.jpg");
+    std::fs::write(&jpeg, b"\xff\xd8\xffjpeg bytes").expect("jpeg");
+    let png = root.path().join("背景.png");
+    std::fs::write(&png, PNG).expect("unicode png");
+    runtime.block_on(async {
+        let jpeg_result = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "preferences_set_background_from",
+            Some(json!({ "path": jpeg.to_string_lossy() })),
+        )
+        .await
+        .expect("jpeg");
+        assert_eq!(
+            jpeg_result["reference"].as_str(),
+            Some("backgrounds/custom-background.jpg")
+        );
+        assert_eq!(jpeg_result["dataUri"].as_str(), Some(""));
+
+        let png_result = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "preferences_set_background_from",
+            Some(json!({ "path": png.to_string_lossy() })),
+        )
+        .await
+        .expect("unicode path");
+        assert_eq!(
+            png_result["reference"].as_str(),
+            Some("backgrounds/custom-background.png")
+        );
     });
 }
 
