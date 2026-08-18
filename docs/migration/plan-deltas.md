@@ -1882,3 +1882,22 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   Export ZIP is confirmed. §41 / §49 unchanged. Electron stays **43.4.0**.
   The 32 MiB hard cap is unchanged. Provenance remains **BLOCKED**.
   No P12–P15. No qm-api-rs.
+
+## P6 FE-04: unpackaged dev spawned a stale staged Core
+
+- Windows HUMAN after `ca40682` still saw `diagnostics_export_bundle_to is
+  not allowed from host` and the same string for `plugin_install_from`.
+  Background picker showed `无法处理所选背景图片。` because Settings maps
+  any `_from` throw to `imageFailed`.
+- That error is Core `AclDenied` for an **unknown method** with the stdio
+  default origin `host`. `apps/desktop/resources/core/yaqmc-core.exe` was
+  dated 17 Aug and does not contain `_to` / `_from`. Unpackaged lookup
+  preferred that extraResources binary over the Core `cargo build` just
+  produced, so Main origin stamping never reached a Core that knows the
+  methods.
+- Unpackaged resolve now prefers cargo debug/release over staged.
+  Packaged still uses extraResources. `npm run dev:desktop` stages the
+  debug binary it just built (`stage-core --profile debug`). Supervisor
+  logs the full Core path. FE-04 / HUMAN stays **BLOCKED**. §41 / §49
+  unchanged. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
+  Provenance remains **BLOCKED**. No P12–P15. No qm-api-rs.

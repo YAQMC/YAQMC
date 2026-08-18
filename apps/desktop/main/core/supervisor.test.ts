@@ -145,17 +145,20 @@ describe('hostHandshake', () => {
 });
 
 describe('tryResolveCoreBinary', () => {
-  it('prefers YAQMC_CORE_BIN, then staged, then cargo debug', () => {
+  it('prefers YAQMC_CORE_BIN, then unpackaged cargo debug over stale staged', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-core-resolve-'));
     const name = coreBinaryName();
     const envBin = path.join(root, `env-${name}`);
     const stagedDir = path.join(root, 'staged');
     const cargoDebug = path.join(root, 'cargo', 'debug');
+    const resourcesPath = path.join(root, 'packaged-resources');
     mkdirSync(stagedDir, { recursive: true });
     mkdirSync(cargoDebug, { recursive: true });
+    mkdirSync(path.join(resourcesPath, 'core'), { recursive: true });
     writeFileSync(envBin, 'env');
     writeFileSync(path.join(stagedDir, name), 'staged');
     writeFileSync(path.join(cargoDebug, name), 'debug');
+    writeFileSync(path.join(resourcesPath, 'core', name), 'packaged');
 
     expect(
       tryResolveCoreBinary({
@@ -169,8 +172,18 @@ describe('tryResolveCoreBinary', () => {
         env: {},
         stagedDir,
         cargoTargetDir: path.join(root, 'cargo'),
+        packaged: false,
       }),
-    ).toBe(path.join(stagedDir, name));
+    ).toBe(path.join(cargoDebug, name));
+    expect(
+      tryResolveCoreBinary({
+        env: {},
+        stagedDir,
+        cargoTargetDir: path.join(root, 'cargo'),
+        packaged: true,
+        resourcesPath,
+      }),
+    ).toBe(path.join(resourcesPath, 'core', name));
     expect(
       tryResolveCoreBinary({
         env: {},
@@ -182,6 +195,14 @@ describe('tryResolveCoreBinary', () => {
         env: {},
         stagedDir,
         cargoTargetDir: path.join(root, 'cargo'),
+        packaged: false,
+      }),
+    ).toEqual({ binary: path.join(cargoDebug, name), integrity: 'optional' });
+    expect(
+      resolveCoreLaunch({
+        env: {},
+        stagedDir,
+        packaged: true,
       }),
     ).toEqual({ binary: path.join(stagedDir, name), integrity: 'required' });
     expect(

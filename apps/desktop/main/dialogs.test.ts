@@ -152,7 +152,9 @@ describe('pickDirectory', () => {
       title: 'Choose unpacked plugin directory',
       properties: ['openDirectory'],
     });
-    const directoryOptions = showOpenDialog.mock.calls[0]?.[0] as { filters?: unknown } | undefined;
+    const directoryOptions = showOpenDialog.mock.calls.at(0)?.at(0) as
+      | { filters?: unknown }
+      | undefined;
     expect(directoryOptions?.filters).toBeUndefined();
   });
 
