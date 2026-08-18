@@ -573,11 +573,7 @@
   }
 
   .volume-control {
-    width: 30px;
-  }
-
-  .volume-control input {
-    display: none;
+    width: 88px;
   }
 }
 

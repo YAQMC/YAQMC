@@ -619,6 +619,33 @@ describe('player store', () => {
     expect(usePlayerStore.getState().positionMs).toBe(4_000);
   });
 
+  it('keeps optimistic volume while stale native snapshots arrive', () => {
+    setPlayerCommandAdapter(async () => {});
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(snapshot({ sessionId: 3, snapshotRevision: 1, volume: 0.72 }));
+    usePlayerStore.getState().setVolume(0.2);
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    expect(usePlayerStore.getState().isMuted).toBe(false);
+    expect(usePlayerStore.getState().isVolumeScrubbing).toBe(true);
+
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(
+        snapshot({ sessionId: 3, snapshotRevision: 2, volume: 0.72, isMuted: false }),
+      );
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    expect(usePlayerStore.getState().isVolumeScrubbing).toBe(true);
+
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(
+        snapshot({ sessionId: 3, snapshotRevision: 3, volume: 0.2, isMuted: false }),
+      );
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    expect(usePlayerStore.getState().isVolumeScrubbing).toBe(false);
+  });
+
   it('estimates playing position from a fresh Core sample timestamp instead of arrival time', () => {
     const nowUnix = Date.now();
     const observedAtMs = performance.now();

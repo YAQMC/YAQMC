@@ -23,6 +23,28 @@ describe('player command adapter', () => {
     expect(seeks).toEqual([1_000, 3_000]);
     setPlayerCommandAdapter(null);
   });
+
+  it('coalesces rapid volume changes so only the latest value is sent', async () => {
+    const volumes: number[] = [];
+    let release!: () => void;
+    const first = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    setPlayerCommandAdapter(async (command) => {
+      if (command.type !== 'setVolume') return;
+      calls += 1;
+      volumes.push(command.volume);
+      if (calls === 1) await first;
+    });
+    expect(dispatchPlayerCommand({ type: 'setVolume', volume: 0.1 })).toBe(true);
+    expect(dispatchPlayerCommand({ type: 'setVolume', volume: 0.4 })).toBe(true);
+    expect(dispatchPlayerCommand({ type: 'setVolume', volume: 0.8 })).toBe(true);
+    release();
+    await viWait(() => volumes.length === 2);
+    expect(volumes).toEqual([0.1, 0.8]);
+    setPlayerCommandAdapter(null);
+  });
 });
 
 async function viWait(predicate: () => boolean): Promise<void> {
