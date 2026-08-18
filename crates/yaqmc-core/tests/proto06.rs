@@ -59,6 +59,15 @@ fn boot() -> (tempfile::TempDir, CoreHandle, NoopHost) {
     (root, handle, host)
 }
 
+async fn recv_until_non_event<T: CoreTransport>(transport: &mut T) -> CoreMessage {
+    loop {
+        match transport.recv().await.expect("protocol message") {
+            CoreMessage::Event { .. } => {}
+            message => return message,
+        }
+    }
+}
+
 fn attach_message() -> AttachMessage {
     AttachMessage {
         protocol: PROTOCOL_VERSION,
@@ -78,7 +87,7 @@ fn attach_message() -> AttachMessage {
 async fn handshake_core_ping_and_stdin_eof_shut_the_server_down() {
     let (_root, core, host) = boot();
     let (mut host_transport, core_transport) = duplex_pair();
-    let server = tokio::spawn(async move { serve_protocol(core, &host, core_transport).await });
+    let server = tokio::spawn(async move { serve_protocol(core, host, core_transport).await });
 
     let identity = host_handshake(&mut host_transport, attach_message(), Some("0.1.0"))
         .await
@@ -95,7 +104,7 @@ async fn handshake_core_ping_and_stdin_eof_shut_the_server_down() {
         })
         .await
         .expect("core_ping");
-    match host_transport.recv().await.expect("ping response") {
+    match recv_until_non_event(&mut host_transport).await {
         CoreMessage::Response { id, body } => {
             assert_eq!(id, 1);
             assert_eq!(body, ResponseBody::success(json!({})));
@@ -114,7 +123,7 @@ async fn handshake_core_ping_and_stdin_eof_shut_the_server_down() {
 async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
     let (_root, core, host) = boot();
     let (mut host_transport, core_transport) = duplex_pair();
-    let server = tokio::spawn(async move { serve_protocol(core, &host, core_transport).await });
+    let server = tokio::spawn(async move { serve_protocol(core, host, core_transport).await });
 
     host_handshake(&mut host_transport, attach_message(), Some("0.1.0"))
         .await
@@ -132,7 +141,7 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
         })
         .await
         .expect("platform_attach");
-    match host_transport.recv().await.expect("attach response") {
+    match recv_until_non_event(&mut host_transport).await {
         CoreMessage::Response { id, body } => {
             assert_eq!(id, 2);
             assert_eq!(body, ResponseBody::success(json!({ "ok": true })));
@@ -149,7 +158,7 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
         })
         .await
         .expect("shutdown prepare");
-    match host_transport.recv().await.expect("prepare response") {
+    match recv_until_non_event(&mut host_transport).await {
         CoreMessage::Response { id, body } => {
             assert_eq!(id, 3);
             assert_eq!(body, ResponseBody::success(json!({ "ok": true })));
@@ -163,7 +172,7 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
         })
         .await
         .expect("shutdown");
-    match host_transport.recv().await.expect("shutdown-ack") {
+    match recv_until_non_event(&mut host_transport).await {
         CoreMessage::ShutdownAck => {}
         other => panic!("expected shutdown-ack, got {other:?}"),
     }
@@ -178,7 +187,7 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
 async fn stdio_requests_use_main_assigned_origin_for_dialog_split_io() {
     let (root, core, host) = boot();
     let (mut host_transport, core_transport) = duplex_pair();
-    let server = tokio::spawn(async move { serve_protocol(core, &host, core_transport).await });
+    let server = tokio::spawn(async move { serve_protocol(core, host, core_transport).await });
 
     host_handshake(&mut host_transport, attach_message(), Some("0.1.0"))
         .await
@@ -196,7 +205,7 @@ async fn stdio_requests_use_main_assigned_origin_for_dialog_split_io() {
         })
         .await
         .expect("host-origin export");
-    match host_transport.recv().await.expect("host-origin response") {
+    match recv_until_non_event(&mut host_transport).await {
         CoreMessage::Response {
             id,
             body: ResponseBody::Failure { error },
@@ -220,7 +229,7 @@ async fn stdio_requests_use_main_assigned_origin_for_dialog_split_io() {
         })
         .await
         .expect("lyrics-origin export");
-    match host_transport.recv().await.expect("lyrics-origin response") {
+    match recv_until_non_event(&mut host_transport).await {
         CoreMessage::Response {
             id,
             body: ResponseBody::Failure { error },
@@ -244,7 +253,7 @@ async fn stdio_requests_use_main_assigned_origin_for_dialog_split_io() {
         })
         .await
         .expect("main-origin export");
-    match host_transport.recv().await.expect("main-origin response") {
+    match recv_until_non_event(&mut host_transport).await {
         CoreMessage::Response {
             id,
             body: ResponseBody::Success { .. },

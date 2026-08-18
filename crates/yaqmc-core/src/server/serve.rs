@@ -38,11 +38,15 @@ fn identity_from_core(core: &CoreHandle) -> CoreIdentity {
 }
 
 /// Handshake, then serve requests/events until shutdown or stdin EOF.
-pub async fn serve_protocol<T: CoreTransport>(
+pub async fn serve_protocol<T, H>(
     core: CoreHandle,
-    host: &dyn HostDispatchHooks,
+    host: H,
     mut transport: T,
-) -> Result<(), ProtocolError> {
+) -> Result<(), ProtocolError>
+where
+    T: CoreTransport,
+    H: HostDispatchHooks + 'static,
+{
     let host_commands = core.subscribe_host_commands();
     let system_media = core.start_system_media();
     let attach = core_handshake(&mut transport, identity_from_core(&core)).await?;
@@ -55,8 +59,15 @@ pub async fn serve_protocol<T: CoreTransport>(
     // Electron composition point matching Tauri setup: position/EOS live here.
     core.player()
         .start_clock_on_runtime(&tokio::runtime::Handle::current());
+    // Tauri setup also spawns restore_session after manage(). Electron must
+    // await it before the request loop: `account://changed` is unused, so a
+    // first snapshot that still sees guest stays guest after restart.
+    core.qq_music().restore_session().await;
 
+    let core = Arc::new(core);
+    let host = Arc::new(host);
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
+    let (replies_tx, mut replies_rx) = mpsc::unbounded_channel();
     let sink: Arc<dyn EventSink> = Arc::new(ChannelSink { sender: events_tx });
     spawn_player_fanout(
         &tokio::runtime::Handle::current(),
@@ -68,12 +79,23 @@ pub async fn serve_protocol<T: CoreTransport>(
     spawn_host_command_fanout(&tokio::runtime::Handle::current(), host_commands, sink);
 
     let mut events_open = true;
+    let mut replies_open = true;
     loop {
         tokio::select! {
             event = events_rx.recv(), if events_open => {
                 match event {
                     Some(event) => transport.send(&event).await?,
                     None => events_open = false,
+                }
+            }
+            reply = replies_rx.recv(), if replies_open => {
+                match reply {
+                    Some((id, body)) => {
+                        transport
+                            .send(&CoreMessage::Response { id, body })
+                            .await?;
+                    }
+                    None => replies_open = false,
                 }
             }
             incoming = transport.recv() => {
@@ -84,15 +106,29 @@ pub async fn serve_protocol<T: CoreTransport>(
                         params,
                         origin,
                     }) => {
+                        // Catalog rebuilds (home refresh) can take several seconds.
+                        // Await them on this task and Electron's 5s×3 ping watchdog
+                        // kills a live Core; spawn so core_ping and player events
+                        // still flush.
                         let origin = origin.unwrap_or(WindowOrigin::Host);
-                        let result = dispatch(&core, host, origin, &method, params).await;
-                        let body = match result {
-                            Ok(value) => ResponseBody::success(value),
-                            Err(error) => ResponseBody::failure(error.into_core_error()),
-                        };
-                        transport
-                            .send(&CoreMessage::Response { id, body })
-                            .await?;
+                        let core = Arc::clone(&core);
+                        let host = Arc::clone(&host);
+                        let replies_tx = replies_tx.clone();
+                        tokio::spawn(async move {
+                            let result = dispatch(
+                                core.as_ref(),
+                                host.as_ref(),
+                                origin,
+                                &method,
+                                params,
+                            )
+                            .await;
+                            let body = match result {
+                                Ok(value) => ResponseBody::success(value),
+                                Err(error) => ResponseBody::failure(error.into_core_error()),
+                            };
+                            let _ = replies_tx.send((id, body));
+                        });
                     }
                     Ok(CoreMessage::Shutdown { .. }) => {
                         persist_queue(&core).await;
