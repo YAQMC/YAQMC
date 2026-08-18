@@ -2,10 +2,10 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::audio::{AUDIO_OUTPUT_DEVICE_SETTING, AudioEngine};
+use crate::audio::{AudioEngine, AUDIO_OUTPUT_DEVICE_SETTING};
 use crate::credentials::CredentialStore;
 use crate::local_api::LocalApiService;
-use crate::logging::{self, LOG_LEVEL_SETTING_KEY, LoggingHandle, persisted_log_level};
+use crate::logging::{self, persisted_log_level, LoggingHandle, LOG_LEVEL_SETTING_KEY};
 #[cfg(not(feature = "test-provider"))]
 use crate::media::CachedMediaPreparer;
 use crate::media::{MediaPreparer, PlaybackSourceResolver};

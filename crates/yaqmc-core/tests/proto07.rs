@@ -3,10 +3,10 @@ use std::sync::Arc;
 use serde_json::json;
 use yaqmc_core::audio::UnavailableAudioEngine;
 use yaqmc_core::credentials::{CredentialError, CredentialStore};
-use yaqmc_core::qqmusic::{OAuthLoginProvider, url_matches_oauth_allowlist};
-use yaqmc_core::server::{NoopHost, dispatch};
-use yaqmc_core::{CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths, bootstrap};
-use yaqmc_protocol::{MethodOwner, PROTOCOL_ONLY_METHODS, WindowOrigin, method};
+use yaqmc_core::qqmusic::{url_matches_oauth_allowlist, OAuthLoginProvider};
+use yaqmc_core::server::{dispatch, NoopHost};
+use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths};
+use yaqmc_protocol::{method, MethodOwner, WindowOrigin, PROTOCOL_ONLY_METHODS};
 
 struct TestCredentials;
 
@@ -99,11 +99,9 @@ fn prepare_returns_allowlist_and_cancel_consumes_the_attempt() {
         let allowlist = prepared["navigationAllowlist"]
             .as_array()
             .expect("allowlist");
-        assert!(
-            allowlist
-                .iter()
-                .any(|entry| entry.as_str() == Some("https://graph.qq.com/**"))
-        );
+        assert!(allowlist
+            .iter()
+            .any(|entry| entry.as_str() == Some("https://graph.qq.com/**")));
         assert_eq!(
             prepared["callbackMatcher"]["urlPrefix"].as_str(),
             Some(OAuthLoginProvider::Qq.callback_url_prefix())

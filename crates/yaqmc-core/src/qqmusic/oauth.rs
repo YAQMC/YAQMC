@@ -1,4 +1,4 @@
-use super::{QQMusicError, account::AccountSnapshot};
+use super::{account::AccountSnapshot, QQMusicError};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
@@ -266,11 +266,9 @@ mod tests {
             Some(WECHAT_REDIRECT_URI)
         );
         assert_eq!(wechat.fragment(), Some("wechat_redirect"));
-        assert!(
-            OAuthLoginProvider::Qq
-                .authorization_url("predictable")
-                .is_err()
-        );
+        assert!(OAuthLoginProvider::Qq
+            .authorization_url("predictable")
+            .is_err());
     }
 
     #[test]
@@ -295,10 +293,8 @@ mod tests {
         assert!(OAuthLoginProvider::Wechat.allows_navigation(
             &Url::parse("https://open.weixin.qq.com/connect/qrconnect").unwrap()
         ));
-        assert!(
-            !OAuthLoginProvider::Wechat
-                .allows_navigation(&Url::parse("https://graph.qq.com/oauth2.0/show").unwrap())
-        );
+        assert!(!OAuthLoginProvider::Wechat
+            .allows_navigation(&Url::parse("https://graph.qq.com/oauth2.0/show").unwrap()));
         let allowlist = OAuthLoginProvider::Qq.navigation_allowlist();
         assert!(url_matches_oauth_allowlist(
             &Url::parse("https://graph.qq.com/oauth2.0/show").unwrap(),

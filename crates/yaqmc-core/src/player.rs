@@ -2480,8 +2480,9 @@ const TIMELINE_END_SLACK_MS: u64 = 80;
 const STALL_EOS_MS: u64 = 750;
 
 fn at_timeline_end(position_ms: u64, duration_ms: Option<u64>) -> bool {
-    duration_ms
-        .is_some_and(|duration| duration > 0 && position_ms.saturating_add(TIMELINE_END_SLACK_MS) >= duration)
+    duration_ms.is_some_and(|duration| {
+        duration > 0 && position_ms.saturating_add(TIMELINE_END_SLACK_MS) >= duration
+    })
 }
 
 fn remaining_ms(position_ms: u64, duration_ms: Option<u64>) -> Option<u64> {

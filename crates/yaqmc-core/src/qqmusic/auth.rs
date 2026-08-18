@@ -1079,11 +1079,15 @@ impl QQMusicAuthService {
     }
 
     pub(crate) async fn oauth_provider(&self, attempt_id: &str) -> Option<OAuthLoginProvider> {
-        self.active_attempt.lock().await.as_ref().and_then(|current| {
-            (current.attempt_id == attempt_id)
-                .then(|| current.oauth.as_ref().map(|oauth| oauth.provider))
-                .flatten()
-        })
+        self.active_attempt
+            .lock()
+            .await
+            .as_ref()
+            .and_then(|current| {
+                (current.attempt_id == attempt_id)
+                    .then(|| current.oauth.as_ref().map(|oauth| oauth.provider))
+                    .flatten()
+            })
     }
 
     pub(crate) async fn start_oauth(

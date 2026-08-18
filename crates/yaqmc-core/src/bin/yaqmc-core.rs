@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yaqmc_core::credentials::PlatformCredentialStore;
-use yaqmc_core::server::{NoopHost, serve_protocol};
-use yaqmc_core::{CoreBootstrapInputs, CoreConfig, CorePaths, bootstrap};
+use yaqmc_core::server::{serve_protocol, NoopHost};
+use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CorePaths};
 use yaqmc_protocol::StdioTransport;
 
 #[cfg(not(feature = "test-provider"))]
@@ -24,8 +24,7 @@ async fn main() {
     let log_dir = env_path("YAQMC_LOG_DIR", "logs");
     let config_dir = env_path("YAQMC_CONFIG_DIR", "config");
     let _ = std::fs::create_dir_all(&config_dir);
-    let _core_pid =
-        yaqmc_core::pidfile::CorePidFile::write(&data_dir).expect("core pid file");
+    let _core_pid = yaqmc_core::pidfile::CorePidFile::write(&data_dir).expect("core pid file");
     let audio = {
         #[cfg(feature = "test-provider")]
         {

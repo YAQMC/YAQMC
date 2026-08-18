@@ -6,10 +6,10 @@ use yaqmc_core::audio::UnavailableAudioEngine;
 use yaqmc_core::credentials::{CredentialError, CredentialStore};
 use yaqmc_core::player::PlayerSnapshot;
 use yaqmc_core::server::{
-    EventSink, actions_for_player_event, host_command_event, lagged_resync_channels,
-    spawn_player_fanout,
+    actions_for_player_event, host_command_event, lagged_resync_channels, spawn_player_fanout,
+    EventSink,
 };
-use yaqmc_core::{CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths, HostCommand, bootstrap};
+use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths, HostCommand};
 use yaqmc_protocol::{
     CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_CORE_LOG, CHANNEL_HOST_COMMAND,
     CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION, CHANNEL_PLAYER_SNAPSHOT,
