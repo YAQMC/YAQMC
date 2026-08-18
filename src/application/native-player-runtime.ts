@@ -37,6 +37,7 @@ interface NativePlayerSnapshot {
   snapshotRevision?: number;
   sourceGeneration?: number;
   lastSeekRevision?: number;
+  sampledAtMs?: number;
 }
 
 export const isNativeRuntime = getHostBridge().kind !== 'fake';

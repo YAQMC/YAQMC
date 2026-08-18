@@ -275,12 +275,13 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             <Puzzle size={16} />
           </IconButton>
         ))}
-        <div className="volume-control">
+        <div className="volume-control yaqmc-no-drag">
           <IconButton label={isMuted ? t('unmute') : t('mute')} size="small" onClick={toggleMuted}>
             <VolumeIcon muted={isMuted} volume={volume} />
           </IconButton>
           <input
             type="range"
+            className="yaqmc-no-drag"
             min={0}
             max={1}
             step={0.01}

@@ -4,6 +4,7 @@ import type { AccountMusicProvider } from '../providers/music-provider';
 import { resetAccountRuntimeForTest, useAccountStore } from './account-runtime';
 import { setPlayerCommandAdapter } from './player-command-adapter';
 import {
+  getEstimatedPositionMs,
   initialPlayerState,
   usePlayerStore,
   type AuthoritativePlayerSnapshot,
@@ -616,5 +617,25 @@ describe('player store', () => {
       );
     expect(usePlayerStore.getState().isScrubbing).toBe(false);
     expect(usePlayerStore.getState().positionMs).toBe(4_000);
+  });
+
+  it('estimates playing position from a fresh Core sample timestamp instead of arrival time', () => {
+    const nowUnix = Date.now();
+    const observedAtMs = performance.now();
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: [track('one')],
+      currentIndex: 0,
+      positionMs: 1_000,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+      observedAtMs,
+      sampledAtMs: nowUnix - 400,
+    });
+    expect(getEstimatedPositionMs(observedAtMs, nowUnix)).toBe(1_400);
+
+    usePlayerStore.setState({ sampledAtMs: nowUnix - 5_000 });
+    expect(getEstimatedPositionMs(observedAtMs, nowUnix)).toBe(1_000);
   });
 });

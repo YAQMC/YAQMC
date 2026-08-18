@@ -378,7 +378,9 @@ impl AudioEngine for RodioAudioEngine {
     }
 
     fn seek(&self, position: Duration) -> Result<(), AudioEngineError> {
-        let (reply_tx, reply_rx) = mpsc::sync_channel(1);
+        // Queue the latest intent and return immediately. Waiting on try_seek
+        // serializes Electron stdio RPCs for up to COMMAND_TIMEOUT, so Core
+        // SeekMailbox and this pending slot never coalesce under rapid seek.
         let generation = self.source_generation.load(Ordering::Acquire);
         {
             let mut slot = self
@@ -393,15 +395,14 @@ impl AudioEngine for RodioAudioEngine {
                 );
                 let _ = previous.reply.send(Ok(()));
             }
+            let (reply_tx, _reply_rx) = mpsc::sync_channel(1);
             *slot = Some(PendingSeek {
                 position,
                 source_generation: generation,
                 reply: reply_tx,
             });
         }
-        reply_rx
-            .recv_timeout(COMMAND_TIMEOUT)
-            .map_err(|_| AudioEngineError::WorkerTimeout)?
+        Ok(())
     }
 
     fn set_volume(&self, volume: f32) -> Result<(), AudioEngineError> {
@@ -1397,7 +1398,19 @@ impl AudioEngine for TestAudioEngine {
     }
 
     fn seek(&self, position: Duration) -> Result<(), AudioEngineError> {
-        self.state.lock().expect("test engine lock").position_ms = duration_ms(position);
+        let mut state = self.state.lock().expect("test engine lock");
+        let exhausted = state.ended
+            || (state.loaded
+                && !state.playing
+                && !state.paused
+                && !state.buffering
+                && state.duration_ms.is_some_and(|duration| {
+                    duration > 0 && state.position_ms.saturating_add(80) >= duration
+                }));
+        if exhausted {
+            return Ok(());
+        }
+        state.position_ms = duration_ms(position);
         Ok(())
     }
 

@@ -112,14 +112,14 @@ describe('artwork source policy', () => {
     expect(isCachedArtworkDataUri(value)).toBe(false);
   });
 
-  it('returns null while native cache resolution is pending, then exposes only validated data', async () => {
+  it('returns the allowlisted remote URL while native cache resolution is pending', async () => {
     const pending = deferred<unknown>();
     clientMocks.invoke.mockReturnValue(pending.promise);
     const remote = 'https://qpic.y.qq.com/pending.jpg';
 
     const { result } = renderHook(() => useSafeArtworkSource(remote));
 
-    expect(result.current).toBeNull();
+    expect(result.current).toBe(remote);
     expect(clientMocks.invoke).toHaveBeenCalledWith('qqmusic_cache_artwork', { url: remote });
     await act(async () => pending.resolve(pngA));
     await waitFor(() => expect(result.current).toBe(pngA));
@@ -135,13 +135,13 @@ describe('artwork source policy', () => {
     expect(clientMocks.invoke).not.toHaveBeenCalled();
   });
 
-  it('turns a rejected native cache request into null', async () => {
+  it('falls back to the allowlisted remote URL when native cache is rejected', async () => {
     clientMocks.invoke.mockRejectedValue(new Error('cache unavailable'));
 
     const { result } = renderHook(() => useSafeArtworkSource('https://y.gtimg.cn/rejected.jpg'));
 
     await waitFor(() => expect(clientMocks.invoke).toHaveBeenCalledTimes(1));
-    expect(result.current).toBeNull();
+    expect(result.current).toBe('https://y.gtimg.cn/rejected.jpg');
   });
 
   it.each([
@@ -160,8 +160,8 @@ describe('artwork source policy', () => {
 
     await waitFor(() => expect(clientMocks.invoke).toHaveBeenCalledTimes(1));
     await act(async () => Promise.resolve());
-    expect(result.current).toBeNull();
-    expect(result.current).not.toBe(remote);
+    expect(result.current).toBe(remote);
+    expect(result.current).not.toEqual(ipcValue);
   });
 
   it('discards an older cache result after the source changes', async () => {
@@ -179,7 +179,7 @@ describe('artwork source policy', () => {
 
     rerender({ source: latestSource });
     await act(async () => oldRequest.resolve(pngA));
-    expect(result.current).toBeNull();
+    expect(result.current).toBe(latestSource);
     await act(async () => latestRequest.resolve(pngB));
     await waitFor(() => expect(result.current).toBe(pngB));
   });
@@ -191,10 +191,10 @@ describe('artwork source policy', () => {
       useSafeArtworkSource('https://y.gtimg.cn/unmounted.jpg'),
     );
 
-    expect(result.current).toBeNull();
+    expect(result.current).toBe('https://y.gtimg.cn/unmounted.jpg');
     unmount();
     await act(async () => pending.resolve(pngA));
-    expect(result.current).toBeNull();
+    expect(result.current).toBe('https://y.gtimg.cn/unmounted.jpg');
   });
 
   it('does not let a cleared older request replace the current cache generation', async () => {

@@ -41,7 +41,12 @@ async function flushSeekMailbox(): Promise<void> {
     while (pendingSeekMs !== null && activeAdapter) {
       const positionMs = pendingSeekMs;
       pendingSeekMs = null;
+      const started = performance.now();
       await activeAdapter({ type: 'seek', positionMs });
+      console.debug('player.seek.hop', {
+        positionMs,
+        clientRpcMs: Math.round(performance.now() - started),
+      });
     }
   } finally {
     seekFlush = null;

@@ -357,7 +357,9 @@ export function IslandSurface(props: SurfaceProps) {
   );
   const duration = projection?.value.playbackDurationMs ?? track?.durationMs ?? 0;
   const progress =
-    duration > 0 ? Math.min(100, ((projection?.value.positionMs ?? 0) / duration) * 100) : 0;
+    duration > 0
+      ? Math.min(100, ((projection ? estimatedSurfacePosition(projection) : 0) / duration) * 100)
+      : 0;
   return (
     <section
       className="lyrics-surface lyrics-surface--island"
@@ -370,7 +372,9 @@ export function IslandSurface(props: SurfaceProps) {
         className={interactive ? 'island-card yaqmc-drag' : 'island-card'}
         data-tauri-drag-region={interactive ? true : undefined}
       >
-        {artworkSource && <img src={artworkSource} alt="" draggable={false} />}
+        {artworkSource && (
+          <img src={artworkSource} alt="" draggable={false} referrerPolicy="no-referrer" />
+        )}
         <span
           className="island-card__state"
           data-playing={projection?.value.isPlaying || undefined}

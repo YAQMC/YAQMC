@@ -52,7 +52,6 @@ impl SeekMailbox {
         self.revision.load(Ordering::Acquire)
     }
 
-    #[allow(dead_code)]
     pub fn latest(&self) -> Option<SeekIntent> {
         *self
             .slot

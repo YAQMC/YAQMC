@@ -112,6 +112,20 @@ describe('lyrics surface projection', () => {
     expect(estimatedSurfacePosition(projection({ isPlaying: false }), 1_500)).toBe(1_100);
   });
 
+  it('uses a Core unix timestamp so transit delay is not baked into the lyric clock', () => {
+    const nowUnix = Date.now();
+    const timed = {
+      receivedAt: 10_000,
+      value: {
+        ...projection().value,
+        timestampMs: nowUnix - 400,
+        positionMs: 1_000,
+        playbackDurationMs: 10_000,
+      },
+    };
+    expect(estimatedSurfacePosition(timed, 10_000, nowUnix)).toBe(1_400);
+  });
+
   it('rejects a stale lyric document after a track change', () => {
     expect(matchingSurfaceDocument(projection(), document)).toBe(document);
     expect(

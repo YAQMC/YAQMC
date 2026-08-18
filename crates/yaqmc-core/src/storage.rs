@@ -1,6 +1,9 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use futures_util::StreamExt;
-use reqwest::{header::HeaderMap, Client, StatusCode};
+use reqwest::{
+    header::{HeaderMap, HeaderValue, REFERER},
+    Client, StatusCode,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -100,6 +103,12 @@ pub struct StorageService {
     fail_provider_cache_delete: AtomicBool,
     #[cfg(any(test, feature = "test-support"))]
     fail_provider_cache_batch_after: AtomicUsize,
+}
+
+fn artwork_fetch_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(REFERER, HeaderValue::from_static("https://y.qq.com/"));
+    headers
 }
 
 impl StorageService {
@@ -679,7 +688,7 @@ impl StorageService {
                 "artwork",
                 &stable_key,
                 url,
-                HeaderMap::new(),
+                artwork_fetch_headers(),
                 "img",
                 SINGLE_ARTWORK_LIMIT,
                 Some("image/"),

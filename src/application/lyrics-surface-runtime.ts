@@ -30,13 +30,29 @@ export interface TimedProjection {
   receivedAt: number;
 }
 
+const UNIX_MS = 1_000_000_000_000;
+const SAMPLE_FRESH_MS = 2_000;
+
 export function estimatedSurfacePosition(
   projection: TimedProjection,
   now = performance.now(),
+  nowUnix = Date.now(),
 ): number {
-  const elapsed = projection.value.isPlaying ? now - projection.receivedAt : 0;
+  const sampledAtMs = projection.value.timestampMs;
+  let elapsed = 0;
+  if (projection.value.isPlaying) {
+    if (
+      sampledAtMs >= UNIX_MS &&
+      nowUnix - sampledAtMs >= 0 &&
+      nowUnix - sampledAtMs < SAMPLE_FRESH_MS
+    ) {
+      elapsed = nowUnix - sampledAtMs;
+    } else {
+      elapsed = Math.max(0, now - projection.receivedAt);
+    }
+  }
   const duration = projection.value.playbackDurationMs ?? Number.POSITIVE_INFINITY;
-  return Math.min(duration, projection.value.positionMs + Math.max(0, elapsed));
+  return Math.min(duration, projection.value.positionMs + elapsed);
 }
 
 export function matchingSurfaceDocument(
@@ -144,9 +160,17 @@ export function useProjectedLyrics(
   document: LyricDocument | null,
 ): { current: LyricLine | null; next: LyricLine | null; wordIndex: number } {
   const timingOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
+  const playing = projection?.value.isPlaying ?? false;
+  const [now, setNow] = useState(() => performance.now());
+  useEffect(() => {
+    if (!playing) return;
+    const id = window.setInterval(() => setNow(performance.now()), 50);
+    return () => window.clearInterval(id);
+  }, [playing]);
   return useMemo(() => {
-    return projectSurfaceLyrics(document, projection?.value.positionMs ?? 0, timingOffsetMs);
-  }, [document, projection, timingOffsetMs]);
+    const positionMs = projection ? estimatedSurfacePosition(projection, now) : 0;
+    return projectSurfaceLyrics(document, positionMs, timingOffsetMs);
+  }, [document, projection, timingOffsetMs, now]);
 }
 
 export async function closeLyricsSurface(kind: SurfaceKind): Promise<void> {

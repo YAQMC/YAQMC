@@ -547,6 +547,7 @@ export interface PlayerSnapshot {
   snapshotRevision?: number;
   sourceGeneration?: number;
   lastSeekRevision?: number;
+  sampledAtMs?: number;
 }
 
 export interface ProviderStatus {

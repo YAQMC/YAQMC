@@ -79,5 +79,6 @@ export function useSafeArtworkSource(source: string | null | undefined): string 
   if (!native) return candidate;
   if (classification?.kind === 'direct') return classification.source;
   if (cacheRequest && resolved?.requested === cacheRequest) return resolved.source;
+  if (classification?.kind === 'cache') return classification.source;
   return null;
 }
