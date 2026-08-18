@@ -2013,3 +2013,15 @@ SURF-04 fullscreen auto-hide remain PASS and are not lyrics content/sync.
 PLAY-01 / PLAY/PLAT / FE-04 HUMAN stay **BLOCKED**. §41 / §49 unchanged.
 Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
 remains **BLOCKED**. No P12–P15. No qm-api-rs.
+
+## Temporary maintainer handoff (2026-08-18)
+
+- Full snapshot for the incoming maintainer:
+  `docs/migration/HANDOFF_2026-08-18.md`.
+- HEAD at writing: `1d6b5356e4d6c25b3db2a0940aef1290045da20c`.
+- HUMAN PLAY-01 remains paused. After `1d6b535`, Repeat One still fails at
+  EOS and Next / Previous / Pause then become ineffective. That post-fix
+  HUMAN result is recorded in the handoff, not as PASS-AUTO.
+- Do not start P12–P15 or `qm-api-rs`. Do not dispatch Actions. Provenance
+  remains **BLOCKED**. First task is reproduce the stuck player on
+  `npm run dev:desktop` with the current debug Core.
