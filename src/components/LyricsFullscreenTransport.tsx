@@ -43,17 +43,19 @@ export function LyricsFullscreenTransport({ ref, artworkSource }: LyricsFullscre
 
   if (currentId === null) return null;
 
+  const durationMs = playbackDurationMs ?? currentDurationMs;
+
   return (
     <LyricsFullscreenTransportSurface
       ref={ref}
       currentId={currentId}
       currentTitle={currentTitle}
       currentArtistLabel={currentArtistLabel}
-      currentDurationMs={currentDurationMs}
+      currentDurationMs={durationMs}
       artworkSource={artworkSource}
       positionMs={positionMs}
       isPlaying={isPlaying}
-      playbackDurationMs={playbackDurationMs}
+      playbackDurationMs={durationMs}
       previous={previous}
       togglePlayback={togglePlayback}
       next={next}

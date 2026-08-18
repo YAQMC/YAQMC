@@ -12,7 +12,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { useContext, type CSSProperties } from 'react';
+import { useContext, useRef, type CSSProperties } from 'react';
 import type { TFunction } from 'i18next';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
 import { useCurrentSong, usePlayerStore, type PlaybackFailure } from '../application/player-store';
@@ -68,7 +68,6 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     togglePlayback,
     next,
     previous,
-    seek,
     beginScrub,
     previewScrub,
     commitScrub,
@@ -79,15 +78,10 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     toggleLyrics,
     openLyrics,
   } = usePlayerStore();
+  const positionScrubbing = useRef(false);
 
-  const timelineDuration = playbackDurationMs ?? current?.durationMs ?? 0;
-  const previewStartMs =
-    sourceSelection?.preview && current?.playbackCapability?.status === 'preview'
-      ? current.playbackCapability.startMs
-      : 0;
-  const duration = Math.max(0, timelineDuration - previewStartMs);
-  const timelinePosition = isScrubbing ? scrubPosition : positionMs;
-  const displayPosition = Math.max(0, Math.min(timelinePosition - previewStartMs, duration));
+  const duration = playbackDurationMs ?? current?.durationMs ?? 0;
+  const displayPosition = isScrubbing ? scrubPosition : positionMs;
   const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
   const volumeProgress = (isMuted ? 0 : volume) * 100;
   const playbackStatus = playbackLabel(playbackState, playbackError, t);
@@ -221,15 +215,29 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             max={Math.max(duration, 1)}
             step={1_000}
             value={displayPosition}
-            onPointerDown={() => beginScrub()}
-            onPointerUp={(event) => commitScrub(Number(event.currentTarget.value) + previewStartMs)}
-            onPointerCancel={(event) =>
-              commitScrub(Number(event.currentTarget.value) + previewStartMs)
-            }
+            onPointerDown={() => {
+              positionScrubbing.current = true;
+              beginScrub();
+            }}
+            onPointerUp={(event) => {
+              positionScrubbing.current = false;
+              commitScrub(Number(event.currentTarget.value));
+            }}
+            onPointerCancel={(event) => {
+              positionScrubbing.current = false;
+              commitScrub(Number(event.currentTarget.value));
+            }}
+            onKeyDown={() => {
+              positionScrubbing.current = true;
+              beginScrub();
+            }}
+            onKeyUp={(event) => {
+              positionScrubbing.current = false;
+              commitScrub(Number(event.currentTarget.value));
+            }}
             onChange={(event) => {
-              const next = Number(event.target.value) + previewStartMs;
-              if (isScrubbing) previewScrub(next);
-              else seek(next);
+              if (!positionScrubbing.current) return;
+              previewScrub(Number(event.target.value));
             }}
             disabled={!current}
             aria-label={t('position')}

@@ -2124,6 +2124,11 @@ impl PlayerService {
                     let stalled = !hold_active
                         && stall_session == core.session_id
                         && core.position_ms > 0
+                        && !engine.paused
+                        && matches!(
+                            previous_state,
+                            PlaybackState::Playing | PlaybackState::Buffering
+                        )
                         && core.position_ms.abs_diff(last_moving_position) <= TIMELINE_END_SLACK_MS
                         && last_position_move_at.elapsed() >= Duration::from_millis(STALL_EOS_MS);
                     let matches = engine_matches_core(&engine, &core);
@@ -2154,6 +2159,11 @@ impl PlayerService {
                     }
                     if hold_active || core.session_id != stall_session {
                         stall_session = core.session_id;
+                        last_moving_position = core.position_ms;
+                        last_position_move_at = now;
+                    } else if engine.paused
+                        || matches!(core.playback_state, PlaybackState::Paused)
+                    {
                         last_moving_position = core.position_ms;
                         last_position_move_at = now;
                     } else if core.position_ms.abs_diff(last_moving_position) > TIMELINE_END_SLACK_MS
@@ -2514,8 +2524,8 @@ fn natural_end_of_stream(
     let remaining = remaining_ms(core.position_ms, core.playback_duration_ms);
     // Preview audio can stop several seconds before the official duration, and
     // rodio may keep buffering/waiting at that point. Live: 138s / 143s.
-    !engine.buffering
-        || engine.ended
+    // Do not treat a mid-track pause or a quiet !buffering sample as EOS.
+    engine.ended
         || remaining.is_some_and(|left| left <= 15_000)
         || progressive_source_exhausted(engine)
 }
@@ -3773,6 +3783,35 @@ mod tests {
         assert_eq!(after.playback_state, PlaybackState::Playing);
         assert_eq!(after.current_index, Some(0));
         assert_eq!(after.position_ms, 0);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn clock_mid_track_stall_does_not_advance() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player.start_clock();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 90_000), song("two", 90_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        engine.force_snapshot(|snapshot| {
+            snapshot.playing = true;
+            snapshot.paused = false;
+            snapshot.ended = false;
+            snapshot.buffering = false;
+            snapshot.position_ms = 42_000;
+            snapshot.duration_ms = Some(90_000);
+        });
+        tokio::time::sleep(Duration::from_millis(STALL_EOS_MS + 220)).await;
+        let after = player.snapshot().await;
+        assert_eq!(after.current_index, Some(0));
+        assert!(after.position_ms.abs_diff(42_000) <= 200);
+        assert_ne!(after.position_ms, 0);
         player.stop_clock();
     }
 

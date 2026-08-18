@@ -519,13 +519,17 @@ export function LyricsScene({
                     transportScrubbing.current = false;
                     (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
                   }}
+                  onKeyDown={() => {
+                    transportScrubbing.current = true;
+                    bindings.beginScrub?.();
+                  }}
+                  onKeyUp={(event) => {
+                    transportScrubbing.current = false;
+                    (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
+                  }}
                   onChange={(event) => {
-                    const next = Number(event.target.value);
-                    if (transportScrubbing.current && bindings.previewScrub) {
-                      bindings.previewScrub(next);
-                    } else {
-                      bindings.seek(next);
-                    }
+                    if (!transportScrubbing.current || !bindings.previewScrub) return;
+                    bindings.previewScrub(Number(event.target.value));
                   }}
                   aria-label={player('position')}
                   style={{ '--range-progress': `${progress}%` } as CSSProperties}
