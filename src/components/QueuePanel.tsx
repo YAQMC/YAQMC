@@ -1,7 +1,9 @@
 import { GripVertical, Play, X } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { usePlayerStore, type QueueEntry } from '../application/player-store';
+import type { Song } from '../domain/music';
 import { formatDuration, joinArtistNames } from '../utils/format';
+import { useAddToPlaylistPicker } from './AddToPlaylistPicker';
 import { Artwork } from './ui/Artwork';
 import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import { IconButton } from './ui/IconButton';
@@ -18,6 +20,74 @@ interface PointerDrag {
 
 function legacyEntries(queue: QueueEntry['track'][]): QueueEntry[] {
   return queue.map((track, index) => ({ id: `legacy:${index}:${track.id}`, track }));
+}
+
+function QueueNowPlayingMenu({ track }: { track: Song }) {
+  const { t } = useTranslation('queue');
+  const addToPlaylist = useAddToPlaylistPicker(track);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div ref={menuRef}>
+      <ActionMenu label={t('moreActions', { title: track.title })} size="small">
+        <ActionMenuItem disabled onClick={() => undefined}>
+          {t('currentItem')}
+        </ActionMenuItem>
+        <ActionMenuItem
+          disabled={!addToPlaylist.available}
+          onClick={() => {
+            const bounds = menuRef.current?.getBoundingClientRect();
+            addToPlaylist.openAt({
+              x: bounds ? Math.min(bounds.right, window.innerWidth - 16) : 24,
+              y: bounds ? bounds.bottom + 6 : 24,
+            });
+          }}
+        >
+          {addToPlaylist.label}
+        </ActionMenuItem>
+      </ActionMenu>
+      {addToPlaylist.menu}
+    </div>
+  );
+}
+
+function QueueEntryOverflow({
+  entry,
+  onPlayNow,
+  onPlayNext,
+  onRemove,
+}: {
+  entry: QueueEntry;
+  onPlayNow: () => void;
+  onPlayNext: () => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation('queue');
+  const addToPlaylist = useAddToPlaylistPicker(entry.track);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div ref={menuRef}>
+      <ActionMenu label={t('moreActions', { title: entry.track.title })} size="small">
+        <ActionMenuItem onClick={onPlayNow}>{t('playNow')}</ActionMenuItem>
+        <ActionMenuItem onClick={onPlayNext}>{t('playNext')}</ActionMenuItem>
+        <ActionMenuItem
+          disabled={!addToPlaylist.available}
+          onClick={() => {
+            const bounds = menuRef.current?.getBoundingClientRect();
+            addToPlaylist.openAt({
+              x: bounds ? Math.min(bounds.right, window.innerWidth - 16) : 24,
+              y: bounds ? bounds.bottom + 6 : 24,
+            });
+          }}
+        >
+          {addToPlaylist.label}
+        </ActionMenuItem>
+        <ActionMenuItem onClick={onRemove}>{t('removeAction')}</ActionMenuItem>
+      </ActionMenu>
+      {addToPlaylist.menu}
+    </div>
+  );
 }
 
 export function QueuePanel() {
@@ -145,11 +215,7 @@ export function QueuePanel() {
                 <strong>{current.track.title}</strong>
                 <span>{joinArtistNames(current.track.artists)}</span>
               </div>
-              <ActionMenu label={t('moreActions', { title: current.track.title })} size="small">
-                <ActionMenuItem disabled onClick={() => undefined}>
-                  {t('currentItem')}
-                </ActionMenuItem>
-              </ActionMenu>
+              <QueueNowPlayingMenu track={current.track} />
             </div>
           </section>
         )}
@@ -208,17 +274,12 @@ export function QueuePanel() {
                     <span className="queue-row__duration">
                       {formatDuration(entry.track.durationMs)}
                     </span>
-                    <ActionMenu label={t('moreActions', { title: entry.track.title })} size="small">
-                      <ActionMenuItem onClick={() => playQueueEntry(entry.id)}>
-                        {t('playNow')}
-                      </ActionMenuItem>
-                      <ActionMenuItem onClick={() => playNextQueueEntry(entry.id)}>
-                        {t('playNext')}
-                      </ActionMenuItem>
-                      <ActionMenuItem onClick={() => removeQueueEntry(entry.id)}>
-                        {t('removeAction')}
-                      </ActionMenuItem>
-                    </ActionMenu>
+                    <QueueEntryOverflow
+                      entry={entry}
+                      onPlayNow={() => playQueueEntry(entry.id)}
+                      onPlayNext={() => playNextQueueEntry(entry.id)}
+                      onRemove={() => removeQueueEntry(entry.id)}
+                    />
                     <span className="queue-row__canonical-position" aria-hidden="true">
                       {canonicalIndex + 1}
                     </span>
