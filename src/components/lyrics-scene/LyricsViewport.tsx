@@ -122,7 +122,10 @@ function useLyricCursor(
             },
       );
 
-      if (!isPlaying || globalThis.document.hidden) return;
+      // PLAY-03: keep the in-app clock while the document is hidden. Desktop
+      // lyrics already ignore visibility; main/surface windows also set
+      // backgroundThrottling: false.
+      if (!isPlaying) return;
       const rawBoundary = nextLyricBoundaryMs(lyricDocument, rawPositionMs);
       if (rawBoundary === null) return;
       const delayMs = Math.min(500, Math.max(16, rawBoundary - rawPositionMs + 8));
@@ -134,17 +137,10 @@ function useLyricCursor(
       }, delayMs);
     };
 
-    const handleVisibilityChange = () => {
-      clearTimer();
-      if (!globalThis.document.hidden) update();
-    };
-
     update();
-    globalThis.document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
       clearTimer();
-      globalThis.document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [getPositionMs, isPlaying, lyricDocument, presentationOffsetMs, timelineRevision]);
 
@@ -201,27 +197,18 @@ function SyncedWord({
 
     const updateFrame = () => {
       frame = null;
-      if (document.hidden) return;
       updateProgress();
-      frame = window.requestAnimationFrame(updateFrame);
+      if (isPlaying) frame = window.requestAnimationFrame(updateFrame);
     };
 
     const start = () => {
-      if (document.hidden) return;
       updateProgress();
       if (isPlaying && frame === null) frame = window.requestAnimationFrame(updateFrame);
     };
 
-    const handleVisibilityChange = () => {
-      cancelFrame();
-      if (!document.hidden) start();
-    };
-
     start();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelFrame();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [
     characters.length,

@@ -7,7 +7,8 @@ use yaqmc_core::server::{serve_protocol, NoopHost};
 use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths};
 use yaqmc_protocol::{
     duplex_pair, host_handshake, AttachMessage, CoreMessage, CoreTransport, HostIdentity,
-    PlatformAttach, PlatformKind, ResponseBody, ShutdownReason, WindowOrigin, PROTOCOL_VERSION,
+    PlatformAttach, PlatformKind, ResponseBody, ShutdownReason, WindowOrigin,
+    CHANNEL_PREFERENCES_CHANGED, PROTOCOL_VERSION,
 };
 
 struct TestCredentials;
@@ -263,6 +264,61 @@ async fn stdio_requests_use_main_assigned_origin_for_dialog_split_io() {
         }
         other => panic!("expected main-origin success, got {other:?}"),
     }
+
+    drop(host_transport);
+    server
+        .await
+        .expect("server task")
+        .expect("EOF shutdown is success");
+}
+
+#[tokio::test]
+async fn app_preferences_set_emits_preferences_changed_string_payload() {
+    let (_root, core, host) = boot();
+    let (mut host_transport, core_transport) = duplex_pair();
+    let server = tokio::spawn(async move { serve_protocol(core, host, core_transport).await });
+
+    host_handshake(&mut host_transport, attach_message(), Some("0.1.0"))
+        .await
+        .expect("host handshake");
+
+    host_transport
+        .send(&CoreMessage::Request {
+            id: 20,
+            method: "app_preferences_set".to_owned(),
+            params: Some(json!({ "value": r#"{"version":2,"locale":"zh-CN"}"# })),
+            origin: Some(WindowOrigin::Main),
+        })
+        .await
+        .expect("preferences set");
+
+    let mut saw_event = false;
+    let mut saw_response = false;
+    for _ in 0..32 {
+        if saw_event && saw_response {
+            break;
+        }
+        match host_transport.recv().await.expect("protocol message") {
+            CoreMessage::Event {
+                channel, payload, ..
+            } if channel == CHANNEL_PREFERENCES_CHANGED => {
+                let stored = payload.as_str().expect("Tauri-shaped JSON string payload");
+                let document: serde_json::Value =
+                    serde_json::from_str(stored).expect("stored preferences");
+                assert_eq!(document["locale"], "zh-CN");
+                saw_event = true;
+            }
+            CoreMessage::Response { id, body } => {
+                assert_eq!(id, 20);
+                assert!(matches!(body, ResponseBody::Success { .. }));
+                saw_response = true;
+            }
+            CoreMessage::Event { .. } => {}
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    assert!(saw_event, "stdio must emit preferences://changed");
+    assert!(saw_response);
 
     drop(host_transport);
     server

@@ -104,11 +104,6 @@ describe('LyricsPanel', () => {
   let previousPlatform: string | null;
   let previousGraphicsMode: string | null;
 
-  const setDocumentHidden = (hidden: boolean) => {
-    documentHidden = hidden;
-    document.dispatchEvent(new Event('visibilitychange'));
-  };
-
   const setReducedMotion = (matches: boolean) => {
     reducedMotion = matches;
     const event = { matches } as MediaQueryListEvent;
@@ -553,19 +548,15 @@ describe('LyricsPanel', () => {
     },
   );
 
-  it.each([
-    { label: 'paused', hidden: false, isPlaying: false },
-    { label: 'hidden', hidden: true, isPlaying: true },
-  ])('retains no cursor timer or cursor frame while $label', ({ hidden, isPlaying }) => {
+  it('retains no cursor timer or cursor frame while paused', () => {
     vi.useFakeTimers();
     const requestFrame = vi.spyOn(window, 'requestAnimationFrame');
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
-    documentHidden = hidden;
     usePlayerStore.setState({
       positionMs: 1_100,
       observedAtMs: performance.now(),
-      isPlaying,
-      playbackState: isPlaying ? 'playing' : 'paused',
+      isPlaying: false,
+      playbackState: 'paused',
     });
     useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
 
@@ -575,9 +566,25 @@ describe('LyricsPanel', () => {
     expect(requestFrame).not.toHaveBeenCalled();
   });
 
-  it('corrects the cursor immediately on visibility restore and schedules one fresh timeout', () => {
+  it('keeps the lyric cursor timer while the document is hidden (PLAY-03)', () => {
     vi.useFakeTimers();
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+    documentHidden = true;
+    usePlayerStore.setState({
+      positionMs: 1_100,
+      observedAtMs: performance.now(),
+      isPlaying: true,
+      playbackState: 'playing',
+    });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+
+    render(<LyricsPanel {...presentationProps()} />);
+
+    expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 500)).toHaveLength(1);
+  });
+
+  it('moves the cursor on seek while hidden without waiting for visibility restore', () => {
+    vi.useFakeTimers();
     documentHidden = true;
     usePlayerStore.setState({
       positionMs: 1_100,
@@ -589,13 +596,11 @@ describe('LyricsPanel', () => {
     render(<LyricsPanel {...presentationProps()} />);
 
     act(() => usePlayerStore.getState().seek(5_500));
-    act(() => setDocumentHidden(false));
 
     expect(screen.getByRole('button', { name: 'Second line' })).toHaveAttribute(
       'aria-current',
       'true',
     );
-    expect(setTimeoutSpy.mock.calls.filter((call) => (call[1] as number) <= 600)).toHaveLength(1);
   });
 
   it('wakes a paused cursor immediately when timeline revision changes', () => {
@@ -717,7 +722,7 @@ describe('LyricsPanel', () => {
     expect(frames.size).toBe(0);
   });
 
-  it('does not write current-word progress or retain a frame while the document is hidden', () => {
+  it('writes current-word progress and keeps a frame while the document is hidden (PLAY-03)', () => {
     documentHidden = true;
     usePlayerStore.setState({
       positionMs: 2_000,
@@ -728,8 +733,8 @@ describe('LyricsPanel', () => {
     useLyricsStore.setState({ document: timedDocument({}, true), status: 'ready' });
     const { container } = render(<LyricsPanel {...presentationProps()} />);
 
-    expect(container.querySelector('.lyrics-word')).toHaveStyle({ '--word-progress': '0%' });
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(container.querySelector('.lyrics-word')).not.toHaveStyle({ '--word-progress': '0%' });
+    expect(requestAnimationFrame).toHaveBeenCalled();
   });
 
   it('does not commit for a content-equivalent ordinary native position snapshot', async () => {

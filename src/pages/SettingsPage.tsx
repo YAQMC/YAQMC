@@ -83,7 +83,10 @@ import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
 import { PluginManager } from '../components/PluginManager';
 import { SettingsUpdateSection } from '../components/SettingsUpdateSection';
-import { SurfaceCapabilityBanner } from '../components/SurfaceCapabilityBanner';
+import {
+  SurfaceCapabilityBanner,
+  surfaceCapabilitiesFromDiagnostics,
+} from '../components/SurfaceCapabilityBanner';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -1327,7 +1330,11 @@ export function SettingsPage() {
           ) : undefined
         }
       >
-        <SurfaceCapabilityBanner capabilities={capabilities} />
+        <SurfaceCapabilityBanner
+          capabilities={
+            surfaceCapabilitiesFromDiagnostics(platform.diagnostics) ?? capabilities
+          }
+        />
         <div className="settings-card settings-card--surfaces">
           <SurfaceSettingsPanel
             kind="desktop"

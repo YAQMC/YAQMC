@@ -22,7 +22,7 @@ pub use types::{
 };
 
 use crate::diagnostics::AppSection;
-use crate::platform::PlatformDiagnostics;
+use crate::platform::{DesktopIntegrationStatus, PlatformDiagnostics};
 use std::path::PathBuf;
 
 pub trait HostDispatchHooks: Send + Sync {
@@ -50,6 +50,15 @@ pub trait HostDispatchHooks: Send + Sync {
     }
     fn notify_preferences_changed(&self, _value: &str) {}
     fn notify_plugin_changed(&self) {}
+    fn desktop_integration_status(&self) -> DesktopIntegrationStatus {
+        crate::platform::empty_desktop_integration()
+    }
+    fn linux_display_backend(&self) -> Option<String> {
+        None
+    }
+    fn linux_graphics_mode(&self) -> Option<String> {
+        None
+    }
     fn oauth_window_is_live(&self, _attempt_id: &str) -> bool {
         true
     }

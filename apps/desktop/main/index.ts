@@ -52,6 +52,12 @@ import {
   diagnosticsDisplayCapabilities,
   HOST_LOG_TAIL_MAX_BYTES,
 } from './diagnostics-host-payload';
+import {
+  isNativeWaylandDisplayBackend,
+  probeLinuxDisplayBackend,
+  readLinuxFdTargets,
+  shortcutsEnabledFromPreferences,
+} from './platform-diagnostics';
 import { createHostLog, type HostLog } from './host-log';
 import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphics';
 import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-updater-port';
@@ -169,6 +175,20 @@ const unlockPreloadPath = path.join(here, '../preload/unlock-overlay.cjs');
 const resourcesDir = path.join(desktopRoot, 'resources');
 const nativeWayland = isNativeWaylandSession();
 
+function liveDisplayBackend(): string {
+  if (process.platform !== 'linux') {
+    return process.platform;
+  }
+  return probeLinuxDisplayBackend({
+    ozonePlatform:
+      app.commandLine.getSwitchValue('ozone-platform') ||
+      (linuxGraphicsFacts.mode.trim().toLowerCase() === 'native-wayland' ? 'wayland' : null),
+    fdTargets: readLinuxFdTargets(),
+    waylandDisplay: process.env.WAYLAND_DISPLAY ?? null,
+    x11Display: process.env.DISPLAY ?? null,
+  });
+}
+
 let supervisor: CoreSupervisor | undefined;
 let stopping = false;
 let exitCode = 0;
@@ -178,6 +198,9 @@ let e2eOpenSettingsHits = 0;
 let e2ePlayerSnapshotHits = 0;
 let e2eLastPlayerSnapshot: E2ePlayerSnapshotView | null = null;
 let trayHandle: TrayHandle | undefined;
+let trayError: string | null = null;
+/** Last `app_preferences_get` / `preferences://changed` document. Tray is created after Core ready. */
+let lastPreferencesRaw: unknown;
 /** FACT default: hide-to-tray. Preference read is cached; missing prefs stay hide. */
 let closeToTray = true;
 let hostLog: HostLog | undefined;
@@ -312,7 +335,11 @@ const router = new IpcRouter({
     openExternal: (url) => shell.openExternal(url),
     lyrics: lyricsSurfaces,
     unlock: lyricsUnlock,
-    capabilities: () => lyricsSurfaceCapabilities({ platform: process.platform, nativeWayland }),
+    capabilities: () =>
+      lyricsSurfaceCapabilities({
+        platform: process.platform,
+        displayBackend: liveDisplayBackend(),
+      }),
     showMainAndOpenSettings: emitOpenSettings,
     emitSurfaceClosed: (kind: LyricsSurfaceKind) => {
       fanoutEvent(CHANNEL_LYRICS_SURFACE_CLOSED, kind);
@@ -354,6 +381,17 @@ const router = new IpcRouter({
     },
     coreInvoke: invokeOAuthCore,
     collectHostPayload: collectLiveHostPayload,
+    platformFacts: () => {
+      const displayBackend = liveDisplayBackend();
+      return {
+        displayBackend,
+        graphicsMode: linuxGraphicsFacts.mode,
+        trayAvailable: trayHandle !== undefined,
+        trayError,
+        globalShortcutsSupported: !isNativeWaylandDisplayBackend(displayBackend),
+        globalShortcutsEnabled: shortcutsEnabledFromPreferences(lastPreferencesRaw),
+      };
+    },
     updater: {
       check: () => requireUpdater().check(),
       download: () => requireUpdater().download(),
@@ -779,8 +817,14 @@ function startSupervisor(): Promise<void> {
 }
 
 function applyTrayLabelsFromPreferences(raw: unknown): void {
+  if (raw !== undefined) {
+    lastPreferencesRaw = raw;
+  }
   trayHandle?.applyLabels(
-    trayLabelsForLocale(localeFromPreferences(raw) ?? 'system', app.getLocale()),
+    trayLabelsForLocale(
+      localeFromPreferences(lastPreferencesRaw) ?? 'system',
+      app.getLocale(),
+    ),
   );
 }
 
@@ -799,10 +843,17 @@ function installTrayAndShortcuts(): void {
         stopping = true;
         app.quit();
       },
+      labels: trayLabelsForLocale(
+        localeFromPreferences(lastPreferencesRaw) ?? 'system',
+        app.getLocale(),
+      ),
     });
+    trayError = null;
+    applyTrayLabelsFromPreferences(lastPreferencesRaw);
   } catch (error) {
     console.warn('tray unavailable', error);
     trayHandle = undefined;
+    trayError = error instanceof Error ? error.message : String(error);
   }
 
   if (e2e) {

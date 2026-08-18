@@ -2,7 +2,8 @@
 
 This directory is the execution record for the Electron migration. Facts in these documents are captured from the `bc55b7ddd2a57cde8987c96c7c20f0b7d4a2e742` Tauri baseline unless explicitly marked as a future migration decision.
 
-- [Temporary maintainer handoff — 2026-08-18](HANDOFF_2026-08-18.md)
+- [Temporary maintainer handoff — 2026-08-18](HANDOFF_2026-08-18.md) (frozen at `1d6b535`; not current HUMAN state)
+- [HUMAN ledger from PLAY-01 — 2026-08-19](linux-human-2026-08-19.md) (this session plus handoff §4 already-tested rows; not a phase sign-off; maintainer HUMAN default is Linux Wayland — do not switch to X11 to fill skipped rows)
 - [Test baseline](test-baseline.md)
 - [Release assets and compatibility delta](release-assets.md)
 - [Governance and factual deltas](governance.md)

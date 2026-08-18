@@ -1,15 +1,15 @@
 use std::sync::{
-    Arc,
     atomic::{AtomicU8, Ordering},
+    Arc,
 };
 
 use tauri::{
-    AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
-    webview::NewWindowResponse,
+    webview::NewWindowResponse, AppHandle, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
 };
 use yaqmc_core::qqmusic::{
-    OAuthLoginProvider, ProviderResult, QQMusicError, QQMusicService, account::AccountSnapshot,
-    url_matches_oauth_allowlist,
+    account::AccountSnapshot, url_matches_oauth_allowlist, OAuthLoginProvider, ProviderResult,
+    QQMusicError, QQMusicService,
 };
 use yaqmc_core::server::ops;
 
