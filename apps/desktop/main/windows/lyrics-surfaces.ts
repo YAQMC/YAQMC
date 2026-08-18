@@ -92,6 +92,7 @@ export type LyricsSurfaceCreateOptions = {
 export type LyricsSurfaceDeps = {
   createWindow: (options: LyricsSurfaceCreateOptions) => LyricsSurfaceWindow;
   preloadPath: string;
+  pageUrl?: (kind: LyricsSurfaceKind) => string;
   settings?: LyricsSurfaceSettingsIo;
   clock?: LyricsSurfaceClock;
   getDisplayBounds?: () => readonly DisplayWorkArea[];
@@ -179,7 +180,7 @@ export function createLyricsSurfaceWindow(
 ): LyricsSurfaceWindow {
   const window = deps.createWindow(lyricsSurfaceCreateOptions(kind, deps.preloadPath));
   window.setAlwaysOnTop(true, LYRICS_SURFACE_ALWAYS_ON_TOP_LEVEL);
-  void window.loadURL(lyricsSurfaceUrl(kind));
+  void window.loadURL(deps.pageUrl?.(kind) ?? lyricsSurfaceUrl(kind));
   return window;
 }
 

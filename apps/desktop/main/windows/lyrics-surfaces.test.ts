@@ -177,6 +177,16 @@ describe('lyrics surface construction table', () => {
     expect(lyricsSurfaceUrl('desktop')).toBe('app://yaqmc/index.html?surface=desktop');
   });
 
+  it('loads a Vite surface URL when the host supplies a pageUrl override', () => {
+    const window = mockWindow();
+    createLyricsSurfaceWindow('desktop', {
+      preloadPath: PRELOAD,
+      pageUrl: (kind) => `http://127.0.0.1:1420/?surface=${kind}`,
+      createWindow: () => window,
+    });
+    expect(window.loadURL).toHaveBeenCalledWith('http://127.0.0.1:1420/?surface=desktop');
+  });
+
   it('uses live Tauri island default geometry (Regular 520×156)', () => {
     expect(LYRICS_SURFACE_GEOMETRY.island).toEqual({
       width: 520,

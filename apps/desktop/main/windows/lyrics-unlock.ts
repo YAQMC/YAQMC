@@ -55,6 +55,7 @@ export type LyricsUnlockDeps = {
     kind: LyricsUnlockKind,
   ) => LyricsUnlockWindow;
   preloadPath?: string;
+  pageUrl?: (kind: LyricsUnlockKind) => string;
 };
 
 export type LyricsUnlockGeometry = {
@@ -137,7 +138,7 @@ export function createLyricsUnlockWindow(
     kind,
   );
   window.setAlwaysOnTop(true, LYRICS_UNLOCK_ALWAYS_ON_TOP_LEVEL);
-  void window.loadURL(lyricsUnlockUrl(kind));
+  void window.loadURL(deps.pageUrl?.(kind) ?? lyricsUnlockUrl(kind));
   return window;
 }
 
