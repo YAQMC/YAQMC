@@ -330,7 +330,6 @@ fn compose_body(
     body
 }
 
-
 /// Environment `host:` identity derived from the renderer label.
 ///
 /// Electron stdio passes `electron/<version>` (e.g. `electron/43.4.0`). Tauri

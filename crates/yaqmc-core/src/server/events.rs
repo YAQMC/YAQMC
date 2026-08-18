@@ -1,10 +1,10 @@
 //! Player event fan-out: §3.2 channel map, lagged-resync, SMTC feed, queue persist.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::sync::broadcast::error::RecvError;
 
 use yaqmc_protocol::{
@@ -12,10 +12,10 @@ use yaqmc_protocol::{
     CHANNEL_PLAYER_SNAPSHOT,
 };
 
-use crate::HostCommand;
 use crate::player::{ApiEvent, PlayerService};
 use crate::storage::StorageService;
 use crate::system_media::SystemMediaIntegration;
+use crate::HostCommand;
 
 const PLAYER_SNAPSHOT_EVENT_TYPES: &[&str] = &[
     "queue.changed",

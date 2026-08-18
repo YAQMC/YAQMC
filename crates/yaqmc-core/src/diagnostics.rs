@@ -1271,7 +1271,6 @@ mod tests {
         assert!(cleaned.contains("<USER_HOME>/Music/"));
     }
 
-
     fn stub_host_payload() -> DiagnosticsHostPayload {
         serde_json::from_value(serde_json::json!({
             "schemaVersion": 1,
@@ -1335,8 +1334,8 @@ mod tests {
         let log_dir = temp.path().join("logs");
         fs::create_dir_all(&log_dir).unwrap();
         let dest = temp.path().join("chosen").join("report.zip");
-        let request: crate::server::DiagnosticsBundleRequest = serde_json::from_value(
-            serde_json::json!({
+        let request: crate::server::DiagnosticsBundleRequest =
+            serde_json::from_value(serde_json::json!({
                 "includeLogs": false,
                 "hostPayload": {
                     "schemaVersion": 1,
@@ -1357,9 +1356,8 @@ mod tests {
                     "restartCounter": 2,
                     "log": "core stderr tail\n"
                 }
-            }),
-        )
-        .expect("bundle request with hostPayload");
+            }))
+            .expect("bundle request with hostPayload");
         let result = export_bundle_to_path(
             &dest,
             &stub_diagnostics("session-host"),
