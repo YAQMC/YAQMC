@@ -6,8 +6,8 @@ use yaqmc_protocol::{
     write_frame, AttachMessage, CoreError, CoreIdentity, CoreMessage, CoreTransport,
     DisplayBackend, DuplexTransport, ErrorCode, FrameError, HostIdentity, PipeTransport,
     PlatformAttach, PlatformKind, ProtocolError, ProtocolVersion, ResponseBody, ShutdownReason,
-    StdioTransport, DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT,
-    PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
+    StdioTransport, WindowOrigin, DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES,
+    HANDSHAKE_TIMEOUT, PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
 };
 
 fn hello_message() -> CoreMessage {
@@ -98,6 +98,7 @@ fn envelope_serde_snapshots_cover_every_kind() {
                 id: 7,
                 method: "player_snapshot".to_owned(),
                 params: None,
+                origin: None,
             },
             r#"{"kind":"request","id":7,"method":"player_snapshot"}"#,
         ),
@@ -106,8 +107,18 @@ fn envelope_serde_snapshots_cover_every_kind() {
                 id: 8,
                 method: "player_seek".to_owned(),
                 params: Some(serde_json::json!({"positionMs": 1000})),
+                origin: None,
             },
             r#"{"kind":"request","id":8,"method":"player_seek","params":{"positionMs":1000}}"#,
+        ),
+        (
+            CoreMessage::Request {
+                id: 9,
+                method: "diagnostics_export_bundle_to".to_owned(),
+                params: Some(serde_json::json!({"path":"/tmp/YAQMC-diagnostics.zip"})),
+                origin: Some(WindowOrigin::Main),
+            },
+            r#"{"kind":"request","id":9,"method":"diagnostics_export_bundle_to","params":{"path":"/tmp/YAQMC-diagnostics.zip"},"origin":"main"}"#,
         ),
         (
             CoreMessage::Response {
@@ -317,6 +328,7 @@ async fn hello_attach_ready_round_trips_over_duplex_transport() {
         id: 1,
         method: "core_ping".to_owned(),
         params: None,
+        origin: None,
     })
     .await
     .expect("request after ready");
@@ -327,6 +339,7 @@ async fn hello_attach_ready_round_trips_over_duplex_transport() {
             id: 1,
             method: "core_ping".to_owned(),
             params: None,
+            origin: None,
         }
     );
 }

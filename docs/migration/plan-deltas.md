@@ -1857,3 +1857,28 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 - Treat as benign/retried Chromium or remote-asset noise until a
   metadata-only net log names a host. Do not disable TLS to silence it.
   Not attributed to Diagnostics Export or Open logs folder.
+
+## P6 FE-04: dialog-split Core continuation keeps renderer origin
+
+- Windows HUMAN after `ad7fd4c`: Open logs folder, GitHub opener, window
+  chrome, and Core/catalog startup passed. Diagnostics Export now reached
+  Core and failed with `diagnostics_export_bundle_to is not allowed from
+  host`. That is an origin-routing defect on the dialog-split continuation,
+  not a picker or filesystem defect.
+- Stdio `serve.rs` previously stamped every Core request as `WindowOrigin::Host`.
+  The `_to` host interceptor then re-dispatched through `coreInvoke` after
+  injecting `hostPayload`, so a main-window Save-dialog continuation arrived
+  at Core ACL as host. Renderer preload still sends only `{method,params}`.
+- Main now assigns origin from the authorized window role and puts it on the
+  Core request envelope. Omitted origin stays host for true host-internal
+  calls (`platform_attach`, OAuth, tray). Renderers cannot choose or spoof
+  origin. IpcRouter still ignores extra renderer fields.
+- `diagnostics_export_bundle_to`, `preferences_set_background_from`, and
+  `plugin_install_from` are dialog-split IO continuations, not host-internal
+  methods. Their MethodSpec allowed origins are main-renderer only. This does
+  not add host to those methods and does not change `OriginClass::Main`
+  (`host+main`) for tray/OAuth/catalog methods.
+- FE-04 / HUMAN acceptance stays **BLOCKED** until a manual Diagnostics
+  Export ZIP is confirmed. §41 / §49 unchanged. Electron stays **43.4.0**.
+  The 32 MiB hard cap is unchanged. Provenance remains **BLOCKED**.
+  No P12–P15. No qm-api-rs.

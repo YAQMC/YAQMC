@@ -3,6 +3,8 @@ use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::registry::WindowOrigin;
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CoreIdentity {
     pub version: String,
@@ -133,6 +135,10 @@ pub enum CoreMessage {
         method: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         params: Option<Value>,
+        /// Assigned only by Electron Main after IpcRouter authorizes the window.
+        /// Omitted requests keep host origin (true host-internal calls).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        origin: Option<WindowOrigin>,
     },
     #[serde(rename = "response")]
     Response {

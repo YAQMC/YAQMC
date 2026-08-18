@@ -3,11 +3,11 @@ use std::sync::Arc;
 use serde_json::json;
 use yaqmc_core::audio::UnavailableAudioEngine;
 use yaqmc_core::credentials::{CredentialError, CredentialStore};
-use yaqmc_core::server::{NoopHost, serve_protocol};
-use yaqmc_core::{CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths, bootstrap};
+use yaqmc_core::server::{serve_protocol, NoopHost};
+use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths};
 use yaqmc_protocol::{
-    AttachMessage, CoreMessage, CoreTransport, HostIdentity, PROTOCOL_VERSION, PlatformAttach,
-    PlatformKind, ResponseBody, ShutdownReason, duplex_pair, host_handshake,
+    duplex_pair, host_handshake, AttachMessage, CoreMessage, CoreTransport, HostIdentity,
+    PlatformAttach, PlatformKind, ResponseBody, ShutdownReason, WindowOrigin, PROTOCOL_VERSION,
 };
 
 struct TestCredentials;
@@ -91,6 +91,7 @@ async fn handshake_core_ping_and_stdin_eof_shut_the_server_down() {
             id: 1,
             method: "core_ping".to_owned(),
             params: None,
+            origin: None,
         })
         .await
         .expect("core_ping");
@@ -127,6 +128,7 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
                 "mainWindowHandle": "0000000000123456",
                 "platformKind": "windows",
             })),
+            origin: None,
         })
         .await
         .expect("platform_attach");
@@ -143,6 +145,7 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
             id: 3,
             method: "core_shutdown_prepare".to_owned(),
             params: None,
+            origin: None,
         })
         .await
         .expect("shutdown prepare");
@@ -169,6 +172,94 @@ async fn platform_attach_and_shutdown_prepare_then_shutdown_ack() {
         .await
         .expect("server task")
         .expect("shutdown-ack path");
+}
+
+#[tokio::test]
+async fn stdio_requests_use_main_assigned_origin_for_dialog_split_io() {
+    let (root, core, host) = boot();
+    let (mut host_transport, core_transport) = duplex_pair();
+    let server = tokio::spawn(async move { serve_protocol(core, &host, core_transport).await });
+
+    host_handshake(&mut host_transport, attach_message(), Some("0.1.0"))
+        .await
+        .expect("host handshake");
+
+    host_transport
+        .send(&CoreMessage::Request {
+            id: 10,
+            method: "diagnostics_export_bundle_to".to_owned(),
+            params: Some(json!({
+                "path": root.path().join("denied-host.zip").to_string_lossy(),
+                "request": { "includeLogs": false }
+            })),
+            origin: None,
+        })
+        .await
+        .expect("host-origin export");
+    match host_transport.recv().await.expect("host-origin response") {
+        CoreMessage::Response {
+            id,
+            body: ResponseBody::Failure { error },
+        } => {
+            assert_eq!(id, 10);
+            assert_eq!(error.code, "host.denied");
+            assert!(error.message.contains("not allowed from host"));
+        }
+        other => panic!("expected host ACL denial, got {other:?}"),
+    }
+
+    host_transport
+        .send(&CoreMessage::Request {
+            id: 11,
+            method: "diagnostics_export_bundle_to".to_owned(),
+            params: Some(json!({
+                "path": root.path().join("denied-lyrics.zip").to_string_lossy(),
+                "request": { "includeLogs": false }
+            })),
+            origin: Some(WindowOrigin::LyricsDesktop),
+        })
+        .await
+        .expect("lyrics-origin export");
+    match host_transport.recv().await.expect("lyrics-origin response") {
+        CoreMessage::Response {
+            id,
+            body: ResponseBody::Failure { error },
+        } => {
+            assert_eq!(id, 11);
+            assert!(error.message.contains("not allowed from lyrics-desktop"));
+        }
+        other => panic!("expected lyrics ACL denial, got {other:?}"),
+    }
+
+    let dest = root.path().join("main-origin.zip");
+    host_transport
+        .send(&CoreMessage::Request {
+            id: 12,
+            method: "diagnostics_export_bundle_to".to_owned(),
+            params: Some(json!({
+                "path": dest.to_string_lossy(),
+                "request": { "includeLogs": false }
+            })),
+            origin: Some(WindowOrigin::Main),
+        })
+        .await
+        .expect("main-origin export");
+    match host_transport.recv().await.expect("main-origin response") {
+        CoreMessage::Response {
+            id,
+            body: ResponseBody::Success { .. },
+        } => {
+            assert_eq!(id, 12);
+            assert!(dest.is_file(), "main-origin export should write a zip");
+        }
+        other => panic!("expected main-origin success, got {other:?}"),
+    }
+
+    drop(host_transport);
+    server
+        .await
+        .expect("server task")
+        .expect("EOF shutdown is success");
 }
 
 #[test]

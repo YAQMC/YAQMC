@@ -84,6 +84,12 @@ fn core_rechecks_acl_and_rejects_origin_spoofing() {
     ));
     assert!(authorize(WindowOrigin::Main, "lyrics_surface_unlock").is_err());
     assert!(authorize(WindowOrigin::LyricsDesktopUnlock, "plugin_list").is_err());
+    authorize(WindowOrigin::Main, "diagnostics_export_bundle_to").expect("export continuation");
+    assert!(authorize(WindowOrigin::Host, "diagnostics_export_bundle_to").is_err());
+    assert!(authorize(WindowOrigin::Host, "preferences_set_background_from").is_err());
+    assert!(authorize(WindowOrigin::Host, "plugin_install_from").is_err());
+    authorize(WindowOrigin::Host, "platform_attach").expect("host-internal attach stays host+main");
+    authorize(WindowOrigin::Host, "qqmusic_sign_out").expect("trusted host account path unchanged");
     assert_eq!(
         authorize(WindowOrigin::Main, "nope")
             .expect_err("unknown")
@@ -127,9 +133,19 @@ fn dialog_split_io_methods_are_core_owned_main_only_with_default_caps() {
         let spec = method(name).expect(name);
         assert_eq!(spec.owner, MethodOwner::Core);
         assert!(spec.main_window_only);
-        assert_eq!(
-            spec.allowed_origins,
-            [WindowOrigin::Host, WindowOrigin::Main].as_slice()
+        assert_eq!(spec.allowed_origins, [WindowOrigin::Main].as_slice());
+        assert!(authorize(WindowOrigin::Main, name).is_ok(), "{name} main");
+        assert!(
+            authorize(WindowOrigin::Host, name).is_err(),
+            "{name} is not host-internal"
+        );
+        assert!(
+            authorize(WindowOrigin::LyricsDesktop, name).is_err(),
+            "{name} lyrics"
+        );
+        assert!(
+            authorize(WindowOrigin::LyricsDesktopUnlock, name).is_err(),
+            "{name} unlock"
         );
         assert_eq!(spec.request_cap, DEFAULT_METHOD_PAYLOAD_BYTES);
         assert_eq!(spec.response_cap, DEFAULT_METHOD_PAYLOAD_BYTES);

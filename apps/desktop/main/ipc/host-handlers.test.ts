@@ -724,10 +724,14 @@ describe('IpcRouter host intercepts', () => {
         params: { path: 'D:\\out\\YAQMC-diagnostics.zip', request: { includeLogs: true } },
       }),
     ).resolves.toEqual({ ok: true, result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 } });
-    expect(coreInvoke).toHaveBeenCalledWith('diagnostics_export_bundle_to', {
-      path: 'D:\\out\\YAQMC-diagnostics.zip',
-      request: { includeLogs: true, hostPayload },
-    });
+    expect(coreInvoke).toHaveBeenCalledWith(
+      'diagnostics_export_bundle_to',
+      {
+        path: 'D:\\out\\YAQMC-diagnostics.zip',
+        request: { includeLogs: true, hostPayload },
+      },
+      'main',
+    );
 
     coreInvoke.mockClear();
     await expect(
@@ -736,10 +740,14 @@ describe('IpcRouter host intercepts', () => {
         params: { path: 'report', request: { includeLogs: true } },
       }),
     ).resolves.toEqual({ ok: true, result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 } });
-    expect(coreInvoke).toHaveBeenCalledWith('diagnostics_export_bundle_to', {
-      path: path.join('D:\\Downloads', 'report.zip'),
-      request: { includeLogs: true, hostPayload },
-    });
+    expect(coreInvoke).toHaveBeenCalledWith(
+      'diagnostics_export_bundle_to',
+      {
+        path: path.join('D:\\Downloads', 'report.zip'),
+        request: { includeLogs: true, hostPayload },
+      },
+      'main',
+    );
 
     coreInvoke.mockClear();
     await expect(

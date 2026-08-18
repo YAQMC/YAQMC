@@ -46,7 +46,7 @@ export type CoreMessage =
   | { kind: 'hello'; protocol: number; core: CoreIdentity }
   | { kind: 'attach'; protocol: number; host: HostIdentity; platform: PlatformAttach }
   | { kind: 'ready' }
-  | { kind: 'request'; id: number; method: string; params?: unknown }
+  | { kind: 'request'; id: number; method: string; params?: unknown; origin?: string }
   | ({ kind: 'response'; id: number } & ResponseBody)
   | { kind: 'event'; seq: number; channel: string; payload: unknown }
   | { kind: 'shutdown'; reason: ShutdownReason }

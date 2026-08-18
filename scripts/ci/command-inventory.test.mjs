@@ -127,7 +127,7 @@ test('protocol registry names and owners match the inventory and capability orig
   );
   const specs = [
     ...registry.matchAll(
-      /spec\(\s*"([a-z][a-z0-9_]*)"\s*,\s*MethodOwner::(Core|Host)\s*,\s*OriginClass::(Main|Surfaces|Unlock)\s*,?\s*\)/g,
+      /spec\(\s*"([a-z][a-z0-9_]*)"\s*,\s*MethodOwner::(Core|Host)\s*,\s*OriginClass::(MainRenderer|Main|Surfaces|Unlock)\s*,?\s*\)/g,
     ),
   ].map((match) => ({
     name: match[1],
@@ -177,12 +177,15 @@ test('protocol registry names and owners match the inventory and capability orig
   }
   const surfaces = allows('src-tauri/permissions/lyrics-surface-application.toml');
   const unlock = allows('src-tauri/permissions/lyrics-surface-unlock-control.toml');
+  const dialogSplitIo = new Set(DIALOG_SPLITS.map(([, next]) => next));
   for (const spec of specs) {
     const expected = unlock.has(spec.name)
       ? 'Unlock'
       : surfaces.has(spec.name)
         ? 'Surfaces'
-        : 'Main';
+        : dialogSplitIo.has(spec.name)
+          ? 'MainRenderer'
+          : 'Main';
     assert.equal(spec.origins, expected, spec.name);
   }
 });

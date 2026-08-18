@@ -106,11 +106,15 @@ impl std::error::Error for AclDenied {}
 #[derive(Clone, Copy)]
 enum OriginClass {
     Main,
+    /// Main-window renderer continuation only. Used by dialog-split IO
+    /// (`*_to` / `*_from`): the host owns the picker, not the Core write.
+    MainRenderer,
     Surfaces,
     Unlock,
 }
 
 const HOST_AND_MAIN: &[WindowOrigin] = &[WindowOrigin::Host, WindowOrigin::Main];
+const MAIN_RENDERER: &[WindowOrigin] = &[WindowOrigin::Main];
 const HOST_MAIN_AND_SURFACES: &[WindowOrigin] = &[
     WindowOrigin::Host,
     WindowOrigin::Main,
@@ -501,14 +505,18 @@ const METHODS: &[MethodSpec] = &[
     spec(
         "diagnostics_export_bundle_to",
         MethodOwner::Core,
-        OriginClass::Main,
+        OriginClass::MainRenderer,
     ),
     spec(
         "preferences_set_background_from",
         MethodOwner::Core,
-        OriginClass::Main,
+        OriginClass::MainRenderer,
     ),
-    spec("plugin_install_from", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "plugin_install_from",
+        MethodOwner::Core,
+        OriginClass::MainRenderer,
+    ),
 ];
 
 pub const PROTOCOL_ONLY_METHODS: &[&str] = &[
@@ -530,7 +538,7 @@ const fn spec(name: &'static str, owner: MethodOwner, origins: OriginClass) -> M
     MethodSpec {
         name,
         owner,
-        main_window_only: matches!(origins, OriginClass::Main),
+        main_window_only: matches!(origins, OriginClass::Main | OriginClass::MainRenderer),
         timeout_class: timeout_class(name),
         allowed_origins: origin_slice(origins),
         request_cap: DEFAULT_METHOD_PAYLOAD_BYTES,
@@ -541,6 +549,7 @@ const fn spec(name: &'static str, owner: MethodOwner, origins: OriginClass) -> M
 const fn origin_slice(origins: OriginClass) -> &'static [WindowOrigin] {
     match origins {
         OriginClass::Main => HOST_AND_MAIN,
+        OriginClass::MainRenderer => MAIN_RENDERER,
         OriginClass::Surfaces => HOST_MAIN_AND_SURFACES,
         OriginClass::Unlock => HOST_AND_UNLOCK,
     }

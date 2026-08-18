@@ -501,12 +501,12 @@ function invokePlayer(method: 'toggle' | 'next' | 'previous'): Promise<void> | u
   return client.invoke(playerInvokeMethod(method)).then(() => undefined);
 }
 
-function invokeOAuthCore(method: string, params?: unknown): Promise<unknown> {
+function invokeOAuthCore(method: string, params?: unknown, origin?: string): Promise<unknown> {
   const client = supervisor?.client;
   if (!client) {
     return Promise.reject(new Error('core supervisor is not running'));
   }
-  return client.invoke(method, params);
+  return client.invoke(method, params, origin);
 }
 
 function createOAuthBrowserWindow(options: ConstructorParameters<typeof BrowserWindow>[0]) {
