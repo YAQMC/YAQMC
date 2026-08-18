@@ -545,10 +545,12 @@ async fn invoke_core(
         "player_snapshot" => ok(core.player().snapshot().await),
         "player_hydrate_queue" => {
             let TracksParams { tracks } = parse(&params)?;
+            core.qq_music().remember_songs(&tracks).await;
             ok(core.player().hydrate_queue(tracks).await)
         }
         "player_play_tracks" => {
             let NamedRequest::<PlayTracksRequest> { request } = parse(&params)?;
+            core.qq_music().remember_songs(&request.tracks).await;
             cmd(core
                 .player()
                 .play_tracks(request)

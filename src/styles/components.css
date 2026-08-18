@@ -117,6 +117,55 @@
   opacity: 0.55;
 }
 
+.add-to-playlist-picker {
+  position: fixed;
+  z-index: 110;
+  display: grid;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 16px));
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+}
+
+.add-to-playlist-picker button {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-to-playlist-picker button:not(:disabled):hover,
+.add-to-playlist-picker button:not(:disabled):focus-visible {
+  background: var(--surface-hover);
+  color: var(--text);
+  outline: none;
+}
+
+.add-to-playlist-picker button:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+
+.add-to-playlist-picker__status {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
 .artwork {
   position: relative;
   display: block;

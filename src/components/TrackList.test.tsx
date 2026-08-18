@@ -4,14 +4,16 @@ import { resetAccountRuntimeForTest, useAccountStore } from '../application/acco
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import type {
+  AccountPlaylistSummary,
   AccountSnapshot,
   FavoriteMutationResult,
+  PlaylistTrackMutationRequest,
   ProviderTrackReference,
   Song,
 } from '../domain/music';
 import i18n from '../i18n';
 import { allSongs } from '../providers/fake/fixtures';
-import { qqMusicProvider } from '../providers/qqmusic/qq-music-provider';
+import { QQMusicProvider, qqMusicProvider } from '../providers/qqmusic/qq-music-provider';
 import { TrackList } from './TrackList';
 
 function qqTrack(): Song {
@@ -173,6 +175,105 @@ describe('TrackList favorite controls', () => {
 
     expect(usePlayerStore.getState().queue).toEqual([track]);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('adds the row track to an owned playlist from the overflow menu', async () => {
+    const track = qqTrack();
+    const playlist: AccountPlaylistSummary = {
+      id: 'qqmusic:playlist:owned-a',
+      reference: { kind: 'owned', tid: 'owned-a', dirId: 2 },
+      title: 'Synthetic Mix',
+      description: '',
+      owner: { id: 'account-owner', displayName: 'Listener' },
+      artwork: track.artwork,
+      ownership: 'owned',
+      capabilities: {
+        canAddTracks: true,
+        canRemoveTracks: true,
+        canRename: true,
+        canDelete: true,
+        canReorder: false,
+      },
+      trackCount: 1,
+      updatedAtMs: null,
+    };
+    const addPlaylistTrack = vi.fn(async (request: PlaylistTrackMutationRequest) => ({
+      clientOperationId: request.clientOperationId,
+      status: 'applied' as const,
+      playlist,
+      errorCode: null,
+      authRevision: 3,
+    }));
+    const provider = Object.assign(new QQMusicProvider(), { addPlaylistTrack });
+    useAccountStore.setState({
+      snapshot: {
+        ...authenticatedSnapshot(),
+        capabilities: { ...authenticatedSnapshot().capabilities, playlistWrite: true },
+      },
+      playlists: {
+        status: 'ready',
+        data: [
+          playlist,
+          {
+            ...playlist,
+            id: 'qqmusic:playlist:collected-a',
+            title: 'Saved Mix',
+            ownership: 'collected',
+            capabilities: {
+              canAddTracks: false,
+              canRemoveTracks: false,
+              canRename: false,
+              canDelete: false,
+              canReorder: false,
+            },
+          },
+        ],
+        nextCursor: null,
+        total: 2,
+        fetchedAtMs: 1,
+        authRevision: 3,
+      },
+    });
+
+    render(
+      <ProviderContext.Provider value={provider}>
+        <TrackList tracks={[track]} />
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: `More actions for ${track.title}` }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to playlist' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Synthetic Mix' }));
+
+    await waitFor(() => expect(addPlaylistTrack).toHaveBeenCalledOnce());
+    expect(addPlaylistTrack.mock.calls[0]![0]).toMatchObject({
+      playlistId: playlist.id,
+      trackId: track.id,
+    });
+    expect(
+      screen.queryByRole('menu', { name: `Add ${track.title} to a playlist` }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Saved Mix' })).not.toBeInTheDocument();
+  });
+
+  it('opens sign-in from Add to playlist when the account is a guest', () => {
+    const track = qqTrack();
+    const addPlaylistTrack = vi.spyOn(qqMusicProvider, 'addPlaylistTrack');
+    useAccountStore.setState({ dialogOpen: false });
+    render(
+      <ProviderContext.Provider value={qqMusicProvider}>
+        <TrackList tracks={[track]} />
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: `More actions for ${track.title}` }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Add to playlist' }));
+
+    expect(addPlaylistTrack).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().dialogOpen).toBe(true);
+    expect(
+      screen.queryByRole('menu', { name: `Add ${track.title} to a playlist` }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens the same song actions from right click and keyboard context menu', () => {

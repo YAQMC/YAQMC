@@ -1796,9 +1796,26 @@ impl QQMusicAccountService {
             .track_references
             .lock()
             .await
-            .numeric_id(&request.track_id)
-            .ok_or(QQMusicError::InvalidRequest)?;
-        let provider_dir_id = before.provider_dir_id.ok_or(QQMusicError::SchemaChanged)?;
+            .numeric_id(&request.track_id);
+        let Some(numeric_track_id) = numeric_track_id else {
+            tracing::warn!(
+                target: "qqmusic.playlist",
+                playlist_id = %request.playlist_id,
+                track_id = %request.track_id,
+                add,
+                "playlist track mutation is missing a remembered numeric songId"
+            );
+            return Err(QQMusicError::InvalidRequest);
+        };
+        let Some(provider_dir_id) = before.provider_dir_id else {
+            tracing::warn!(
+                target: "qqmusic.playlist",
+                playlist_id = %request.playlist_id,
+                ownership = ?before.summary.ownership,
+                "playlist track mutation is missing provider dirId"
+            );
+            return Err(QQMusicError::SchemaChanged);
+        };
         let method = if add { "AddSonglist" } else { "DelSonglist" };
         let operation = if add {
             "account.playlist.add.write"
@@ -2194,6 +2211,10 @@ impl QQMusicAccountService {
         operation: &'static str,
     ) -> Result<FreshPlaylistPage, QQMusicError> {
         let provider_id = provider_playlist_id(playlist_id)?;
+        let disstid = provider_id
+            .parse::<u64>()
+            .map(Value::from)
+            .unwrap_or_else(|_| Value::String(provider_id.to_owned()));
         let response = self
             .execute_account_transport(
                 context,
@@ -2204,9 +2225,14 @@ impl QQMusicAccountService {
                     "music.srfDissInfo.DissInfo",
                     "CgiGetDiss",
                     json!({
-                        "disstid": provider_id,
+                        "disstid": disstid,
+                        "dirid": 0,
+                        "tag": true,
                         "song_begin": offset,
-                        "song_num": 100
+                        "song_num": 100,
+                        "userinfo": true,
+                        "orderlist": true,
+                        "onlysonglist": 1
                     }),
                 ),
                 retry,
@@ -2220,14 +2246,67 @@ impl QQMusicAccountService {
             .or_else(|| data.pointer("/cdlist/0"))
             .cloned()
             .ok_or(QQMusicError::SchemaChanged)?;
-        let provider_dir_id = edit_value
-            .get("dirId")
-            .and_then(Value::as_u64)
-            .filter(|id| *id > 0);
-        let (summary, page) = normalize_playlist_detail_response(&response.body, offset)?;
-        if summary.id != playlist_id {
+        let (mut summary, page) = normalize_playlist_detail_response(&response.body, offset)
+            .map_err(|error| {
+                tracing::warn!(
+                    target: "qqmusic.playlist",
+                    playlist_id = %playlist_id,
+                    operation,
+                    error = %error,
+                    shape = %response_shape(&response.body),
+                    "playlist mutation detail failed to normalize"
+                );
+                error
+            })?;
+        let dirinfo_dir_id = playlist_dir_id_from_value(&edit_value);
+        if let Some(projected) = self
+            .projection_for(context)?
+            .playlists
+            .into_iter()
+            .find(|item| item.id == playlist_id)
+        {
+            if let (Ok(requested_tid), Ok(resolved_tid)) = (
+                projected.reference.generic_tid(),
+                summary.reference.generic_tid(),
+            ) {
+                let resolved_is_dir_id =
+                    dirinfo_dir_id.is_some_and(|dir_id| resolved_tid == dir_id.to_string());
+                if resolved_tid != requested_tid && !resolved_is_dir_id {
+                    tracing::warn!(
+                        target: "qqmusic.playlist",
+                        playlist_id = %playlist_id,
+                        operation,
+                        requested_tid,
+                        resolved_tid,
+                        shape = %response_shape(&response.body),
+                        "playlist mutation detail resolved a different playlist than requested"
+                    );
+                    return Err(QQMusicError::SchemaChanged);
+                }
+            }
+            summary.id = projected.id;
+            summary.reference = projected.reference;
+            summary.ownership = projected.ownership;
+            summary.capabilities = projected.capabilities;
+            if summary.title.trim().is_empty() {
+                summary.title = projected.title;
+            }
+        } else if summary.id != playlist_id {
+            tracing::warn!(
+                target: "qqmusic.playlist",
+                playlist_id = %playlist_id,
+                operation,
+                resolved_id = %summary.id,
+                ownership = ?summary.ownership,
+                shape = %response_shape(&response.body),
+                "playlist mutation detail identity did not match the requested playlist"
+            );
             return Err(QQMusicError::SchemaChanged);
         }
+        let provider_dir_id = dirinfo_dir_id.or_else(|| match &summary.reference {
+            AccountPlaylistReference::Owned { dir_id, .. } => dir_id.filter(|id| *id > 0),
+            _ => None,
+        });
         let next_offset = page
             .next_provider_cursor
             .as_deref()
@@ -3599,7 +3678,7 @@ pub(crate) enum PlaylistEditSafetyError {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawOwnedPlaylistEditFields {
-    #[serde(default, rename = "dirId")]
+    #[serde(default, rename = "dirId", alias = "dirid")]
     provider_dir_id: Option<u64>,
     #[serde(default, rename = "dirName")]
     original_title: Option<String>,
@@ -4220,6 +4299,14 @@ pub(crate) fn normalize_recent_response(
 
 fn value_u64(value: &Value) -> Option<u64> {
     value.as_u64().or_else(|| value.as_str()?.parse().ok())
+}
+
+fn playlist_dir_id_from_value(value: &Value) -> Option<u64> {
+    value
+        .get("dirId")
+        .or_else(|| value.get("dirid"))
+        .and_then(value_u64)
+        .filter(|id| *id > 0)
 }
 
 #[cfg(test)]
@@ -6126,6 +6213,66 @@ mod tests {
         TestReply::Body(serde_json::to_vec(&value).expect("fixture serializes"))
     }
 
+    fn live_cgi_get_diss_dirinfo(mut value: Value) -> Value {
+        let dirinfo = value["req"]["data"]["dirinfo"]
+            .as_object_mut()
+            .expect("dirinfo");
+        let dir_id = dirinfo.remove("dirId").expect("dirId");
+        let title = dirinfo.remove("dirName").unwrap_or(json!(""));
+        dirinfo.remove("tid");
+        dirinfo.remove("ownership");
+        dirinfo.remove("capabilities");
+        dirinfo.remove("creator");
+        dirinfo.insert("id".to_owned(), dir_id.clone());
+        dirinfo.insert("dirid".to_owned(), dir_id);
+        dirinfo.insert("title".to_owned(), title);
+        value
+    }
+
+    fn live_owned_playlist_detail() -> TestReply {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .expect("owned playlist fixture");
+        TestReply::Body(
+            serde_json::to_vec(&live_cgi_get_diss_dirinfo(value)).expect("fixture serializes"),
+        )
+    }
+
+    fn live_owned_playlist_detail_with_track_c() -> TestReply {
+        let TestReply::Body(body) = owned_playlist_detail_with_track_c() else {
+            panic!("owned playlist detail with track C is a body");
+        };
+        let value: Value = serde_json::from_slice(&body).expect("owned playlist JSON");
+        TestReply::Body(
+            serde_json::to_vec(&live_cgi_get_diss_dirinfo(value)).expect("fixture serializes"),
+        )
+    }
+
+    fn seed_owned_playlist_projection(fixture: &AccountServiceFixture) {
+        let owned = normalize_playlist_fixture(include_str!(
+            "../../tests/fixtures/qqmusic/account/playlist-owned.json"
+        ))
+        .expect("owned playlist");
+        let account = validated_account();
+        let projection = AccountLibraryProjection {
+            favorite_ids: Vec::new(),
+            playlists: vec![owned],
+            profile: account.profile,
+            entitlement: account.entitlement,
+            fetched_at_ms: 10_000,
+        };
+        fixture
+            .storage
+            .put_json(
+                &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                ACCOUNT_CACHE_KIND,
+                &projection,
+                u64::MAX,
+            )
+            .expect("seed owned playlist projection");
+    }
+
     fn playlists_with_unique_new_playlist() -> TestReply {
         let mut value: Value = serde_json::from_str(include_str!(
             "../../tests/fixtures/qqmusic/account/playlists.json"
@@ -6480,6 +6627,44 @@ mod tests {
         assert_eq!(
             delete_request.pointer("/req/param/dirId"),
             Some(&json!(3001))
+        );
+    }
+
+    #[tokio::test]
+    async fn playlist_add_uses_live_dissinfo_dirid_and_projected_owned_identity() {
+        let fixture = AccountServiceFixture::authenticated([
+            live_owned_playlist_detail(),
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-success.json"
+            )),
+            live_owned_playlist_detail_with_track_c(),
+        ])
+        .await;
+        seed_owned_playlist_projection(&fixture);
+
+        let add = fixture
+            .service
+            .add_playlist_track(playlist_track_request("playlist-add-live-dirid"))
+            .await
+            .expect("add succeeds against live DissInfo shape");
+        let add_request: Value = serde_json::from_slice(
+            &fixture
+                .transport
+                .request_body("account.playlist.add.write")
+                .await
+                .expect("add request"),
+        )
+        .expect("add JSON");
+
+        assert_eq!(add.status, MutationStatus::Applied);
+        assert_eq!(
+            add.playlist.as_ref().map(|playlist| playlist.id.as_str()),
+            Some("qqmusic:playlist:SANITIZED_PLAYLIST_OWNED")
+        );
+        assert_eq!(add_request.pointer("/req/param/dirId"), Some(&json!(3001)));
+        assert_eq!(
+            add_request.pointer("/req/param/v_songInfo/0"),
+            Some(&json!({ "songId": 1003, "songType": 0 }))
         );
     }
 
