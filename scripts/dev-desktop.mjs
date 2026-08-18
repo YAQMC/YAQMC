@@ -88,6 +88,18 @@ async function runDesktopDev() {
     if (cargo.status !== 0) {
       process.exit(cargo.status ?? 1);
     }
+    const stage = spawnSync(
+      process.execPath,
+      [path.join(repositoryRoot, 'scripts', 'stage-core.mjs'), '--profile', 'debug'],
+      {
+        cwd: repositoryRoot,
+        stdio: 'inherit',
+        env: process.env,
+      },
+    );
+    if (stage.status !== 0) {
+      process.exit(stage.status ?? 1);
+    }
   }
 
   children.push(

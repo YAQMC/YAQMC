@@ -70,6 +70,8 @@ export type CoreBinaryLookup = {
   resourcesPath?: string;
   cargoTargetDir?: string;
   repoRoot?: string;
+  /** Packaged extraResources win. Unpackaged `npm run dev:desktop` prefers cargo. */
+  packaged?: boolean;
 };
 
 export function coreBinaryName(platform = process.platform): string {
@@ -85,17 +87,36 @@ export function tryResolveCoreBinary(lookup: CoreBinaryLookup = {}): string | un
   return resolveCoreLaunch(lookup)?.binary;
 }
 
+function cargoCoreCandidates(lookup: CoreBinaryLookup, name: string): string[] {
+  const cargoTarget = lookup.cargoTargetDir ?? (lookup.env ?? process.env).CARGO_TARGET_DIR;
+  const fromTarget = cargoTarget
+    ? [path.join(cargoTarget, 'debug', name), path.join(cargoTarget, 'release', name)]
+    : [];
+  const fromRepo = lookup.repoRoot
+    ? [
+        path.join(lookup.repoRoot, 'target', 'debug', name),
+        path.join(lookup.repoRoot, 'target', 'release', name),
+      ]
+    : [];
+  return [...fromTarget, ...fromRepo];
+}
+
 export function resolveCoreLaunch(lookup: CoreBinaryLookup = {}): CoreLaunch | undefined {
   const env = lookup.env ?? process.env;
   const name = coreBinaryName();
   if (env.YAQMC_CORE_BIN && existsSync(env.YAQMC_CORE_BIN)) {
     return { binary: env.YAQMC_CORE_BIN, integrity: 'optional' };
   }
-  if (lookup.resourcesPath) {
-    const packaged = path.join(lookup.resourcesPath, 'core', name);
-    if (existsSync(packaged)) {
-      return { binary: packaged, integrity: 'required' };
+  const packaged = lookup.packaged === true;
+  if (packaged && lookup.resourcesPath) {
+    const fromResources = path.join(lookup.resourcesPath, 'core', name);
+    if (existsSync(fromResources)) {
+      return { binary: fromResources, integrity: 'required' };
     }
+  }
+  const cargo = cargoCoreCandidates(lookup, name).find((candidate) => existsSync(candidate));
+  if (!packaged && cargo) {
+    return { binary: cargo, integrity: 'optional' };
   }
   if (lookup.stagedDir) {
     const staged = path.join(lookup.stagedDir, name);
@@ -103,21 +124,10 @@ export function resolveCoreLaunch(lookup: CoreBinaryLookup = {}): CoreLaunch | u
       return { binary: staged, integrity: 'required' };
     }
   }
-  const cargoTarget = lookup.cargoTargetDir ?? env.CARGO_TARGET_DIR;
-  const cargoCandidates = cargoTarget
-    ? [path.join(cargoTarget, 'debug', name), path.join(cargoTarget, 'release', name)]
-    : [];
-  const repoCandidates = lookup.repoRoot
-    ? [
-        path.join(lookup.repoRoot, 'target', 'debug', name),
-        path.join(lookup.repoRoot, 'target', 'release', name),
-      ]
-    : [];
-  const found = [...cargoCandidates, ...repoCandidates].find((candidate) => existsSync(candidate));
-  if (!found) {
-    return undefined;
+  if (cargo) {
+    return { binary: cargo, integrity: 'optional' };
   }
-  return { binary: found, integrity: 'optional' };
+  return undefined;
 }
 
 export function resolveCoreBinary(lookup: CoreBinaryLookup = {}): string {

@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { desktopDevUrl, electronDevEnv, waitForFile, waitForTcp } from '../dev-desktop.mjs';
+import { fileURLToPath } from 'node:url';
+
+test('dev:desktop stages the debug Core it just built', () => {
+  const source = readFileSync(fileURLToPath(new URL('../dev-desktop.mjs', import.meta.url)), 'utf8');
+  assert.match(source, /stage-core\.mjs/);
+  assert.match(source, /--profile['",\s]+debug/);
+});
 
 test('desktop dev URL is the Vite 1420 origin', () => {
   assert.equal(desktopDevUrl(), 'http://127.0.0.1:1420/');

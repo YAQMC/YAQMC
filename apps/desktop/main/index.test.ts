@@ -133,6 +133,11 @@ describe('host boot wiring', () => {
     expect(source).toContain('session.fromPartition');
     expect(source).toContain('createOAuthBrowserWindow');
     expect(source).toContain('invokeOAuthCore');
+    expect(source).toContain(
+      'function invokeOAuthCore(method: string, params?: unknown, origin?: string)',
+    );
+    expect(source).toContain('return client.invoke(method, params, origin);');
+    expect(source).toContain('supervisor start binary=');
     expect(source).not.toContain('openOAuthWindow');
     expect(source).toContain('oauth BrowserWindow is disabled during YAQMC_DESKTOP_SMOKE');
     expect(source).not.toContain("from './dialogs'");
@@ -144,6 +149,7 @@ describe('host boot wiring', () => {
     expect(source).toContain('host.log');
     expect(source).toContain('scheduleLaunchCheck');
     expect(source).toContain('app.isPackaged');
+    expect(source).toContain('packaged: app.isPackaged');
     const oauthFromPartition = source.slice(
       source.indexOf('fromPartition:'),
       source.indexOf('isPackaged:'),

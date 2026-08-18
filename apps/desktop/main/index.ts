@@ -741,6 +741,7 @@ function startSupervisor(): Promise<void> {
     resourcesPath: process.resourcesPath,
     cargoTargetDir: process.env.CARGO_TARGET_DIR,
     repoRoot,
+    packaged: app.isPackaged,
   });
   if (!launch) {
     writeHostLog('supervisor skip: yaqmc-core binary not found');
@@ -751,7 +752,7 @@ function startSupervisor(): Promise<void> {
     }
     return Promise.resolve();
   }
-  writeHostLog(`supervisor start binary=${path.basename(launch.binary)}`);
+  writeHostLog(`supervisor start binary=${launch.binary}`);
   supervisor = new CoreSupervisor({
     binary: launch.binary,
     integrity: launch.integrity,
