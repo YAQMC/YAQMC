@@ -80,15 +80,22 @@ export function trayLabelsForLocale(locale: string, systemLang?: string): TrayLa
 }
 
 function preferencesObject(raw: unknown): { locale?: unknown } | undefined {
-  if (typeof raw === 'string') {
+  const document =
+    raw &&
+    typeof raw === 'object' &&
+    'value' in raw &&
+    typeof (raw as { value?: unknown }).value === 'string'
+      ? (raw as { value: string }).value
+      : raw;
+  if (typeof document === 'string') {
     try {
-      return JSON.parse(raw) as { locale?: unknown };
+      return JSON.parse(document) as { locale?: unknown };
     } catch {
       return undefined;
     }
   }
-  if (raw && typeof raw === 'object') {
-    return raw as { locale?: unknown };
+  if (document && typeof document === 'object') {
+    return document as { locale?: unknown };
   }
   return undefined;
 }

@@ -1,5 +1,7 @@
 //! Stdio/duplex protocol server: handshake, request dispatch, event frames, EOF shutdown.
 
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -7,12 +9,14 @@ use tokio::sync::mpsc;
 
 use yaqmc_protocol::{
     core_handshake, CoreIdentity, CoreMessage, CoreTransport, HandshakeError, ProtocolError,
-    ResponseBody, WindowOrigin,
+    ResponseBody, WindowOrigin, CHANNEL_PREFERENCES_CHANGED,
 };
 
 use super::{
     dispatch, spawn_host_command_fanout, spawn_player_fanout, EventSink, HostDispatchHooks,
 };
+use crate::diagnostics::AppSection;
+use crate::platform::PlatformDiagnostics;
 use crate::CoreHandle;
 
 struct ChannelSink {
@@ -26,6 +30,73 @@ impl EventSink for ChannelSink {
             channel: channel.to_owned(),
             payload: payload.clone(),
         });
+    }
+}
+
+/// Stdio composition: Tauri emitted `preferences://changed` from the host hook.
+/// `NoopHost` is silent, so Electron never rebuilt the tray. Forward the stored
+/// document as a JSON string, matching Tauri `app.emit(..., value)`.
+struct StdioNotifyHost<H> {
+    inner: H,
+    sink: Arc<dyn EventSink>,
+    seq: AtomicU64,
+}
+
+impl<H> StdioNotifyHost<H> {
+    fn new(inner: H, sink: Arc<dyn EventSink>) -> Self {
+        Self {
+            inner,
+            sink,
+            seq: AtomicU64::new(0),
+        }
+    }
+}
+
+impl<H: HostDispatchHooks> HostDispatchHooks for StdioNotifyHost<H> {
+    fn platform_diagnostics(&self) -> PlatformDiagnostics {
+        self.inner.platform_diagnostics()
+    }
+
+    fn download_dir(&self) -> PathBuf {
+        self.inner.download_dir()
+    }
+
+    fn app_section(&self) -> AppSection {
+        self.inner.app_section()
+    }
+
+    fn diagnostic_collector_script(&self) -> &'static str {
+        self.inner.diagnostic_collector_script()
+    }
+
+    fn diagnostic_readme(&self) -> &'static str {
+        self.inner.diagnostic_readme()
+    }
+
+    fn renderer_label(&self, platform: &PlatformDiagnostics) -> String {
+        self.inner.renderer_label(platform)
+    }
+
+    fn notify_preferences_changed(&self, value: &str) {
+        self.inner.notify_preferences_changed(value);
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
+        self.sink.emit(
+            seq,
+            CHANNEL_PREFERENCES_CHANGED,
+            &Value::String(value.to_owned()),
+        );
+    }
+
+    fn notify_plugin_changed(&self) {
+        self.inner.notify_plugin_changed();
+    }
+
+    fn oauth_window_is_live(&self, attempt_id: &str) -> bool {
+        self.inner.oauth_window_is_live(attempt_id)
+    }
+
+    fn close_oauth_window(&self, attempt_id: &str) {
+        self.inner.close_oauth_window(attempt_id);
     }
 }
 
@@ -65,10 +136,10 @@ where
     core.qq_music().restore_session().await;
 
     let core = Arc::new(core);
-    let host = Arc::new(host);
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
     let (replies_tx, mut replies_rx) = mpsc::unbounded_channel();
     let sink: Arc<dyn EventSink> = Arc::new(ChannelSink { sender: events_tx });
+    let host = Arc::new(StdioNotifyHost::new(host, Arc::clone(&sink)));
     spawn_player_fanout(
         &tokio::runtime::Handle::current(),
         core.player(),

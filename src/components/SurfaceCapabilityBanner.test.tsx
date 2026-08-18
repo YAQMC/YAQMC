@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SurfaceCapabilityBanner,
   shouldShowSurfaceCapabilityBanner,
+  surfaceCapabilitiesFromDiagnostics,
   type SurfaceCapabilitySnapshot,
 } from './SurfaceCapabilityBanner';
 
@@ -28,9 +29,23 @@ describe('shouldShowSurfaceCapabilityBanner', () => {
   it('shows for native Wayland backends and unreliable overlay flags', () => {
     expect(shouldShowSurfaceCapabilityBanner(caps({ backend: 'wayland-native' }))).toBe(true);
     expect(shouldShowSurfaceCapabilityBanner(caps({ backend: 'native-wayland' }))).toBe(true);
+    expect(shouldShowSurfaceCapabilityBanner(caps({ backend: 'wayland' }))).toBe(true);
     expect(shouldShowSurfaceCapabilityBanner(caps({ reliableAlwaysOnTop: false }))).toBe(true);
     expect(shouldShowSurfaceCapabilityBanner(caps({ reliableClickThrough: false }))).toBe(true);
     expect(shouldShowSurfaceCapabilityBanner(caps({ limitations: ['degraded'] }))).toBe(true);
+  });
+
+  it('shows the XWayland session note from limitations even though overlays stay reliable', () => {
+    expect(
+      shouldShowSurfaceCapabilityBanner(
+        caps({
+          backend: 'xwayland',
+          limitations: [
+            'The desktop session is Wayland, but YAQMC is using an X11/XWayland window backend.',
+          ],
+        }),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -67,5 +82,26 @@ describe('SurfaceCapabilityBanner', () => {
       />,
     );
     expect(screen.getByRole('status')).toHaveAttribute('data-reliable-always-on-top', 'false');
+  });
+});
+
+describe('surfaceCapabilitiesFromDiagnostics', () => {
+  it('maps native Wayland diagnostics notes onto the lyrics banner snapshot', () => {
+    const snapshot = surfaceCapabilitiesFromDiagnostics({
+      os: 'linux',
+      linux: { displayBackend: 'wayland-native' },
+      capabilities: {
+        reliableAlwaysOnTop: false,
+        clickThrough: false,
+        notes: ['Native Wayland overlay note.'],
+      },
+    });
+    expect(snapshot).toEqual({
+      backend: 'wayland-native',
+      reliableAlwaysOnTop: false,
+      reliableClickThrough: false,
+      limitations: ['Native Wayland overlay note.'],
+    });
+    expect(shouldShowSurfaceCapabilityBanner(snapshot)).toBe(true);
   });
 });

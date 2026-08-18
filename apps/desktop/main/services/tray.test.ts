@@ -264,6 +264,7 @@ describe('tray i18n dictionary', () => {
     expect(trayLabelsForLocale('system', 'en-US')).toEqual(DEFAULT_TRAY_LABELS);
     expect(localeFromPreferences({ locale: 'zh-CN' })).toBe('zh-CN');
     expect(localeFromPreferences('{"locale":"en-US"}')).toBe('en-US');
+    expect(localeFromPreferences({ value: '{"locale":"zh-CN"}' })).toBe('zh-CN');
   });
 
   it('rebuilds the context menu when applyLabels or setLabels is called', () => {

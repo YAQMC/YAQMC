@@ -547,7 +547,7 @@ pub async fn diagnostics_export_bundle(
         &core.qq_music(),
         &core.logging(),
         Some(&core.plugins()),
-        host.platform_diagnostics(),
+        live_platform_diagnostics(core, host),
         host.app_section(),
         request.base,
     )
@@ -579,7 +579,7 @@ pub async fn diagnostics_export_bundle_to(
         &core.qq_music(),
         &core.logging(),
         Some(&core.plugins()),
-        host.platform_diagnostics(),
+        live_platform_diagnostics(core, host),
         host.app_section(),
         request.base,
     )
@@ -611,7 +611,7 @@ pub async fn issue_reporter_preview(
         &core.qq_music(),
         &core.logging(),
         Some(&core.plugins()),
-        host.platform_diagnostics(),
+        live_platform_diagnostics(core, host),
         host.app_section(),
         request,
     )
@@ -807,12 +807,29 @@ pub fn plugin_runtime_stop(host: &ExtensionHost, token: &str) {
     host.stop_runtime(token);
 }
 
+pub fn live_platform_diagnostics(
+    core: &CoreHandle,
+    host: &dyn HostDispatchHooks,
+) -> crate::platform::PlatformDiagnostics {
+    crate::platform::assemble_live_platform_diagnostics(crate::platform::LivePlatformInputs {
+        app_version: host.app_section().version,
+        audio_devices: core.player().output_devices().unwrap_or_default(),
+        system_media: core.start_system_media().status(),
+        desktop_integration: host.desktop_integration_status(),
+        display_backend_override: host.linux_display_backend(),
+        graphics_mode: host.linux_graphics_mode(),
+    })
+}
+
 pub fn plugin_settings_get(host: &ExtensionHost, id: &str) -> Result<Value, String> {
     host.settings_get(id, false).map_err(stringify)
 }
 
-pub fn platform_export_diagnostics(host: &dyn HostDispatchHooks) -> Result<String, String> {
-    let diagnostics = host.platform_diagnostics();
+pub fn platform_export_diagnostics(
+    core: &CoreHandle,
+    host: &dyn HostDispatchHooks,
+) -> Result<String, String> {
+    let diagnostics = live_platform_diagnostics(core, host);
     crate::platform::export_bundle(
         &host.download_dir(),
         &diagnostics,

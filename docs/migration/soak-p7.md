@@ -38,12 +38,17 @@ Copy `docs/migration/soak-last.json` off to the side if you need to keep it; lea
 
 ## PLAY-03 `backgroundThrottling`
 
-Current settings (do not edit these files in this checkpoint; SURF-03 owns lyrics surfaces):
+Host windows keep Chromium from throttling timers when occluded. Do not treat this table as PLAY-03 green.
 
 | Surface                 | File                                                                          | `webPreferences.backgroundThrottling` |
 | ----------------------- | ----------------------------------------------------------------------------- | ------------------------------------- |
 | Main window             | `apps/desktop/main/index.ts`                                                  | `false`                               |
 | Desktop + island lyrics | `apps/desktop/main/windows/lyrics-surfaces.ts` (`lyricsSurfaceCreateOptions`) | `false`                               |
 | Unlock overlays         | `apps/desktop/main/windows/lyrics-unlock.ts`                                  | `false`                               |
+| OAuth window            | `apps/desktop/main/windows/oauth-window.ts`                                   | `false`                               |
 
-Lyrics surfaces already set `backgroundThrottling: false`. Occluded-window cadence vs Tauri is **not** verified here (PLAY-03 still open). Electron stays **43.4.0**. The 32 MiB protocol hard cap is unchanged. No Playwright.
+In-app lyrics (`src/components/lyrics-scene/LyricsViewport.tsx`) used to stop the line-boundary `setTimeout` and word `requestAnimationFrame` while `document.hidden`. That pause is removed: the clock follows `isPlaying` only, matching desktop/island `LyricsSurfaceApp` (those surfaces never checked visibility). Unit coverage is in `src/components/LyricsPanel.test.tsx` (hidden + playing keeps the timer/frame; seek while hidden moves the cursor).
+
+Linux HUMAN cover-window on this Wayland session was **oral OK** (2026-08-19 01:58). The maintainer noted it may be platform-dependent: covering a window here may not set Page Visibility (`document.hidden` is more typical on minimize / workspace switch). Windows occlusion/minimize is **untested**. Occluded cadence vs Tauri is still unmeasured.
+
+PLAY-03 is **not** accepted. Electron stays **43.4.0**. The 32 MiB protocol hard cap is unchanged. No Playwright.

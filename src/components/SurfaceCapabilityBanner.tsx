@@ -25,6 +25,29 @@ export function shouldShowSurfaceCapabilityBanner(
   );
 }
 
+export function surfaceCapabilitiesFromDiagnostics(
+  diagnostics:
+    | {
+        os: string;
+        linux?: { displayBackend: string } | null;
+        capabilities: {
+          reliableAlwaysOnTop: boolean;
+          clickThrough: boolean;
+          notes: readonly string[];
+        };
+      }
+    | null
+    | undefined,
+): SurfaceCapabilitySnapshot | null {
+  if (!diagnostics) return null;
+  return {
+    backend: diagnostics.linux?.displayBackend ?? diagnostics.os,
+    reliableAlwaysOnTop: diagnostics.capabilities.reliableAlwaysOnTop,
+    reliableClickThrough: diagnostics.capabilities.clickThrough,
+    limitations: [...diagnostics.capabilities.notes],
+  };
+}
+
 export function SurfaceCapabilityBanner({
   capabilities,
 }: {

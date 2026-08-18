@@ -23,6 +23,11 @@ import {
 import { hydrateManagedBackground } from '../managed-background';
 import { openExternalIfAllowed, type ExternalOpener } from '../open-external';
 import {
+  desktopIntegrationFromFacts,
+  overlayPlatformDiagnostics,
+  type HostPlatformFacts,
+} from '../platform-diagnostics';
+import {
   LYRICS_SURFACE_GEOMETRY,
   type LyricsSurfaceCreateOptions,
   type LyricsSurfaceKind,
@@ -210,28 +215,66 @@ export type LyricsSurfaceCapabilities = {
 
 export function lyricsSurfaceCapabilities(options: {
   platform: NodeJS.Platform | string;
-  nativeWayland: boolean;
+  nativeWayland?: boolean;
+  displayBackend?: string;
 }): LyricsSurfaceCapabilities {
-  const nativeWayland = options.nativeWayland;
+  const platform = String(options.platform);
+  if (platform !== 'linux') {
+    return {
+      desktop: true,
+      island: true,
+      platform,
+      backend: platform,
+      reliableAlwaysOnTop: true,
+      reliableClickThrough: true,
+      reliableGlobalPositioning: true,
+      limitations: [],
+    };
+  }
+
   const backend =
-    options.platform !== 'linux'
-      ? String(options.platform)
-      : nativeWayland
-        ? 'wayland-native'
-        : 'x11';
+    options.displayBackend ?? (options.nativeWayland ? 'wayland-native' : 'x11');
+  const nativeWayland =
+    backend === 'wayland-native' || backend === 'wayland' || backend === 'native-wayland';
+  if (nativeWayland) {
+    return {
+      desktop: true,
+      island: true,
+      platform,
+      backend: backend === 'wayland' ? 'wayland-native' : backend,
+      reliableAlwaysOnTop: false,
+      reliableClickThrough: false,
+      reliableGlobalPositioning: false,
+      limitations: [
+        'Native Wayland does not guarantee absolute placement, click-through, or always-on-top overlay semantics.',
+      ],
+    };
+  }
+
+  if (backend === 'xwayland') {
+    return {
+      desktop: true,
+      island: true,
+      platform,
+      backend: 'xwayland',
+      reliableAlwaysOnTop: true,
+      reliableClickThrough: true,
+      reliableGlobalPositioning: true,
+      limitations: [
+        'The desktop session is Wayland, but YAQMC is using an X11/XWayland window backend.',
+      ],
+    };
+  }
+
   return {
     desktop: true,
     island: true,
-    platform: String(options.platform),
+    platform,
     backend,
-    reliableAlwaysOnTop: !nativeWayland,
-    reliableClickThrough: !nativeWayland,
-    reliableGlobalPositioning: !nativeWayland,
-    limitations: nativeWayland
-      ? [
-          'Native Wayland does not guarantee absolute placement, click-through, or always-on-top overlay semantics.',
-        ]
-      : [],
+    reliableAlwaysOnTop: true,
+    reliableClickThrough: true,
+    reliableGlobalPositioning: true,
+    limitations: [],
   };
 }
 
@@ -315,6 +358,8 @@ export type HostHandlerDeps = {
   oauth?: OAuthHostDeps;
   coreInvoke?: CoreInvoke;
   collectHostPayload?: () => DiagnosticsHostPayload;
+  /** Live tray / Ozone facts; overlay Core `platform_diagnostics` (stdio, not IpcRouter). */
+  platformFacts?: () => HostPlatformFacts;
   /** Core data dir; used to hydrate managed background `dataUri` after stdio. */
   dataDir?: () => string;
   updater?: HostUpdaterDeps;
@@ -514,6 +559,20 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       invokeAndHydrate('preferences_set_background_from', params, origin);
     handlers.appearance_background_load = async (params, _webContentsId, origin) =>
       invokeAndHydrate('appearance_background_load', params, origin);
+  }
+
+  if (deps.coreInvoke && deps.platformFacts) {
+    const invoke = deps.coreInvoke;
+    const platformFacts = deps.platformFacts;
+    handlers.platform_diagnostics = async (_params, _webContentsId, origin) => {
+      const core = await invoke('platform_diagnostics', undefined, origin);
+      return overlayPlatformDiagnostics(core, platformFacts());
+    };
+  }
+
+  if (deps.platformFacts) {
+    const platformFacts = deps.platformFacts;
+    handlers.system_integration_status = async () => desktopIntegrationFromFacts(platformFacts());
   }
 
   if (deps.updater) {

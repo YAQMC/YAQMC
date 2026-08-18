@@ -8,23 +8,14 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
-#[cfg(target_os = "linux")]
-use std::{collections::BTreeMap, fs};
-
 use yaqmc_core::platform::{
-    assemble_platform_diagnostics, export_bundle as export_core_bundle,
+    assemble_platform_diagnostics, collect_linux_diagnostics, export_bundle as export_core_bundle,
     log_startup as log_core_startup, PlatformDiagnosticAssets, PlatformFacts,
 };
 pub use yaqmc_core::platform::{AudioDiagnostics, LinuxDiagnostics, PlatformDiagnostics};
 
-#[cfg(target_os = "linux")]
-use yaqmc_core::platform::GpuDevice;
-
 #[cfg(test)]
 use yaqmc_core::platform::capabilities_for_backend;
-
-#[cfg(target_os = "linux")]
-use std::path::Path;
 
 #[cfg(target_os = "linux")]
 const GRAPHICS_MODE_ENV: &str = "YAQMC_LINUX_RENDERER";
@@ -168,33 +159,13 @@ pub fn display_backend(app: &AppHandle) -> String {
 
 #[cfg(target_os = "linux")]
 fn linux_diagnostics(app: &AppHandle) -> Option<LinuxDiagnostics> {
-    const KEYS: [&str; 10] = [
-        "XDG_SESSION_TYPE",
-        "XDG_CURRENT_DESKTOP",
-        "XDG_SESSION_DESKTOP",
-        "WAYLAND_DISPLAY",
-        "DISPLAY",
-        GRAPHICS_MODE_ENV,
-        "WEBKIT_DISABLE_DMABUF_RENDERER",
-        "WEBKIT_DISABLE_COMPOSITING_MODE",
-        "LIBGL_ALWAYS_SOFTWARE",
-        "__NV_DISABLE_EXPLICIT_SYNC",
-    ];
-    let environment = KEYS
-        .into_iter()
-        .map(|key| (key.to_owned(), std::env::var(key).ok()))
-        .collect();
-    Some(LinuxDiagnostics {
-        session_type: std::env::var("XDG_SESSION_TYPE").ok(),
-        display_backend: display_backend(app),
-        desktop_environment: std::env::var("XDG_CURRENT_DESKTOP")
-            .or_else(|_| std::env::var("XDG_SESSION_DESKTOP"))
-            .ok(),
-        compositor_hint: compositor_hint(),
-        webkitgtk_version: webkitgtk_version(),
-        graphics_mode: std::env::var(GRAPHICS_MODE_ENV).unwrap_or_else(|_| "auto".to_owned()),
-        environment,
-        gpu_devices: gpu_devices(),
+    Some({
+        let mut linux = collect_linux_diagnostics(
+            display_backend(app),
+            std::env::var(GRAPHICS_MODE_ENV).unwrap_or_else(|_| "auto".to_owned()),
+        );
+        linux.webkitgtk_version = webkitgtk_version();
+        linux
     })
 }
 
@@ -214,55 +185,6 @@ fn webkitgtk_version() -> Option<String> {
         )
     };
     Some(format!("{major}.{minor}.{micro}"))
-}
-
-#[cfg(target_os = "linux")]
-fn gpu_devices() -> Vec<GpuDevice> {
-    let Ok(entries) = fs::read_dir("/sys/class/drm") else {
-        return Vec::new();
-    };
-    let mut devices = entries
-        .flatten()
-        .filter_map(|entry| {
-            let card = entry.file_name().to_string_lossy().into_owned();
-            if !card.starts_with("card") || card.contains('-') {
-                return None;
-            }
-            let device = entry.path().join("device");
-            Some(GpuDevice {
-                card,
-                vendor_id: read_trimmed(&device.join("vendor")),
-                device_id: read_trimmed(&device.join("device")),
-                driver: fs::read_link(device.join("driver")).ok().and_then(|path| {
-                    path.file_name()
-                        .map(|name| name.to_string_lossy().into_owned())
-                }),
-            })
-        })
-        .collect::<Vec<_>>();
-    devices.sort_by(|left, right| left.card.cmp(&right.card));
-    devices
-}
-
-#[cfg(target_os = "linux")]
-fn read_trimmed(path: &Path) -> Option<String> {
-    fs::read_to_string(path)
-        .ok()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-}
-
-#[cfg(target_os = "linux")]
-fn compositor_hint() -> Option<String> {
-    [
-        "SWAYSOCK",
-        "HYPRLAND_INSTANCE_SIGNATURE",
-        "KDE_FULL_SESSION",
-        "GNOME_DESKTOP_SESSION_ID",
-    ]
-    .into_iter()
-    .find(|key| std::env::var_os(key).is_some())
-    .map(str::to_owned)
 }
 
 #[cfg(target_os = "linux")]

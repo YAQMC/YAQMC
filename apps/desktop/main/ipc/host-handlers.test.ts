@@ -202,6 +202,18 @@ describe('host handler helpers', () => {
     expect(win32.backend).toBe('win32');
     expect(win32.reliableClickThrough).toBe(true);
   });
+
+  it('notes XWayland when the session is Wayland but the window is X11', () => {
+    const caps = lyricsSurfaceCapabilities({
+      platform: 'linux',
+      displayBackend: 'xwayland',
+    });
+    expect(caps.backend).toBe('xwayland');
+    expect(caps.reliableAlwaysOnTop).toBe(true);
+    expect(caps.limitations).toEqual([
+      'The desktop session is Wayland, but YAQMC is using an X11/XWayland window backend.',
+    ]);
+  });
 });
 
 describe('IpcRouter host intercepts', () => {
@@ -802,6 +814,67 @@ describe('IpcRouter host intercepts', () => {
       { path: 'D:\\Pictures\\wall.png' },
       'main',
     );
+  });
+
+  it('overlays live tray facts onto Core platform_diagnostics via stdio', async () => {
+    const coreInvoke = vi.fn(async () => ({
+      os: 'linux',
+      linux: { displayBackend: 'wayland-native', graphicsMode: 'gpu-off' },
+      systemMedia: { specification: 'MPRIS 2.2' },
+      desktopIntegration: { trayAvailable: false },
+    }));
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'linux', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      coreInvoke,
+      platformFacts: () => ({
+        displayBackend: 'xwayland',
+        graphicsMode: 'auto',
+        trayAvailable: true,
+        trayError: null,
+        globalShortcutsSupported: true,
+        globalShortcutsEnabled: true,
+      }),
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(router.invoke(1, { method: 'platform_diagnostics' })).resolves.toEqual({
+      ok: true,
+      result: expect.objectContaining({
+        os: 'linux',
+        linux: expect.objectContaining({
+          displayBackend: 'xwayland',
+          graphicsMode: 'auto',
+          webkitgtkVersion: null,
+        }),
+        capabilities: expect.objectContaining({
+          reliableAlwaysOnTop: true,
+          notes: [
+            'The desktop session is Wayland, but YAQMC is using an X11/XWayland window backend.',
+          ],
+        }),
+        systemMedia: { specification: 'MPRIS 2.2' },
+        desktopIntegration: expect.objectContaining({ trayAvailable: true }),
+      }),
+    });
+    expect(coreInvoke).toHaveBeenCalledWith('platform_diagnostics', undefined, 'main');
+
+    await expect(router.invoke(1, { method: 'system_integration_status' })).resolves.toEqual({
+      ok: true,
+      result: expect.objectContaining({ trayAvailable: true, trayError: null }),
+    });
+
+    coreInvoke.mockClear();
+    await expect(router.invoke(2, { method: 'platform_diagnostics' })).resolves.toEqual({
+      ok: false,
+      error: hostDenied('platform_diagnostics', 'lyrics-desktop'),
+    });
+    expect(coreInvoke).not.toHaveBeenCalled();
   });
 
   it('leaves the 32 MiB hard cap unchanged', () => {

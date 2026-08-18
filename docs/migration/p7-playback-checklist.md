@@ -26,5 +26,5 @@ Do not start `qm-api-rs`. Provenance remains **BLOCKED**. First 4-h soak report 
 Related (not PLAY-01 green):
 
 - **PLAY-02** seek round-trip p95 vs §15.4: `node scripts/migration/play02-seek-p95.mjs` — measured cells stay **PENDING**.
-- **PLAY-03** `backgroundThrottling` current settings: see [soak-p7.md](soak-p7.md). Do not treat occluded-window cadence as verified.
+- **PLAY-03** `backgroundThrottling` + in-app clock no longer pauses on `document.hidden`: see [soak-p7.md](soak-p7.md). Linux cover-window oral OK (may be platform-dependent). Windows and Tauri cadence remain unverified. Do not treat PLAY-03 as accepted.
 - **SOAK-01** script: `node scripts/soak-electron.mjs` (default 10 s). 4-h report uncommitted.

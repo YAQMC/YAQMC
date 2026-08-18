@@ -50,7 +50,7 @@ Do not tick §41 or §49.
 Related parked (same later pass, not this overlay's headline list):
 
 - PLAY-02 seek p95: script prints PENDING; do not invent a number.
-- PLAY-03 occluded-window cadence vs Tauri.
+- PLAY-03 occluded-window cadence vs Tauri (in-app clock no longer pauses on `document.hidden`; Linux cover-window oral OK, may be platform-dependent; Windows and Tauri comparison still open).
 - ACCT-02 / ACCT-03 live QQ + WeChat + R-10.
 - SURF-04 real fullscreen auto-hide.
 - UPD-01 A→B against a draft release (needs GitHub; blocked by the Actions freeze).

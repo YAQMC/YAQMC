@@ -335,8 +335,8 @@ async fn invoke_core(
 ) -> Result<Value, DispatchError> {
     let notify_plugin = || host.notify_plugin_changed();
     match method_name {
-        "platform_diagnostics" => ok(host.platform_diagnostics()),
-        "platform_export_diagnostics" => cmd(ops::platform_export_diagnostics(host)),
+        "platform_diagnostics" => ok(ops::live_platform_diagnostics(core, host)),
+        "platform_export_diagnostics" => cmd(ops::platform_export_diagnostics(core, host)),
         "audio_output_devices" => cmd(ops::audio_output_devices(&core.player())),
         "audio_set_output_device" => {
             let DeviceIdParams { device_id } = parse(&params)?;
@@ -688,7 +688,8 @@ async fn invoke_core(
             let ValueParams { value } = parse(&params)?;
             cmd(ops::app_preferences_set(&core.storage(), value, |stored| {
                 host.notify_preferences_changed(stored);
-            }))
+            })
+            .map(|()| json!({})))
         }
         "appearance_background_load" => {
             let ReferenceParams { reference } = parse(&params)?;
@@ -724,7 +725,7 @@ async fn invoke_core(
                 &core.qq_music(),
                 &core.logging(),
                 Some(&core.plugins()),
-                host.platform_diagnostics(),
+                ops::live_platform_diagnostics(core, host),
                 host.app_section(),
                 request,
             )
