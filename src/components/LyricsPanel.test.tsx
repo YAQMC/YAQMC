@@ -251,6 +251,75 @@ describe('LyricsPanel', () => {
     },
   );
 
+  it('seeks a preview lyric line on the same file clock Core reports', () => {
+    const song = allSongs.find((candidate) => candidate.id === 'quiet-light');
+    if (!song) throw new Error('quiet-light fixture is missing');
+    usePlayerStore.setState({
+      queue: [
+        {
+          ...song,
+          durationMs: 193_000,
+          playbackCapability: { status: 'preview', startMs: 32_155, endMs: 66_974 },
+        },
+      ],
+      positionMs: 4_360,
+      playbackDurationMs: 60_000,
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        fallbackReason: 'preview-only',
+        preview: true,
+      },
+    });
+
+    render(<LyricsPanel {...presentationProps()} />);
+    expect(screen.getByRole('slider', { name: 'Playback position' })).toHaveValue('4360');
+    expect(screen.getByText('1:00')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /A quiet light across the floor/i }));
+
+    expect(usePlayerStore.getState().positionMs).toBe(18_000);
+  });
+
+  it('highlights lyrics from Core position without a try_begin shift', async () => {
+    const song = allSongs.find((candidate) => candidate.id === 'quiet-light');
+    if (!song) throw new Error('quiet-light fixture is missing');
+    usePlayerStore.setState({
+      queue: [
+        {
+          ...song,
+          durationMs: 193_000,
+          playbackCapability: { status: 'preview', startMs: 32_155, endMs: 66_974 },
+        },
+      ],
+      positionMs: 4_360,
+      playbackDurationMs: 60_000,
+      observedAtMs: performance.now(),
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        fallbackReason: 'preview-only',
+        preview: true,
+      },
+    });
+    useLyricsStore.setState({
+      songId: song.id,
+      status: 'ready',
+      document: lyricsBySong[song.id] ?? null,
+      error: null,
+    });
+
+    render(<LyricsPanel {...presentationProps()} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /The room keeps the shape of the evening/i }),
+      ).toHaveAttribute('aria-current', 'true'),
+    );
+    expect(
+      screen.getByRole('button', { name: /Nothing asks to be remembered/i }),
+    ).not.toHaveAttribute('aria-current');
+  });
+
   it('renders word timing as text rather than preformatted provider HTML', () => {
     render(<LyricsPanel {...presentationProps()} />);
 

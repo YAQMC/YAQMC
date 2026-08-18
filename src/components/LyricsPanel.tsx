@@ -81,9 +81,6 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const currentIsFavorite = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.isFavorite ?? false,
   );
-  const currentPlaybackCapability = usePlayerStore(
-    (state) => state.queue[state.currentIndex]?.playbackCapability ?? null,
-  );
   const currentProvider = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.provider ?? null,
   );
@@ -92,7 +89,6 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const timelineRevision = usePlayerStore((state) => state.timelineRevision);
   const positionMs = usePlayerStore((state) => state.positionMs);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
-  const sourceSelection = usePlayerStore((state) => state.sourceSelection);
   const seek = usePlayerStore((state) => state.seek);
   const beginScrub = usePlayerStore((state) => state.beginScrub);
   const previewScrub = usePlayerStore((state) => state.previewScrub);
@@ -185,12 +181,6 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const transportRef = useRef<LyricsFullscreenTransportHandle>(null);
 
   const timelineDuration = playbackDurationMs ?? currentDurationMs;
-  const previewStartMs =
-    sourceSelection?.preview && currentPlaybackCapability?.status === 'preview'
-      ? currentPlaybackCapability.startMs
-      : 0;
-  const duration = Math.max(0, timelineDuration - previewStartMs);
-  const displayPosition = Math.max(0, Math.min(positionMs - previewStartMs, duration));
   const favoriteLabel = currentTrackId
     ? favoritePending
       ? player('favoritePending', { title: currentTitle })
@@ -275,15 +265,15 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     lyrics: lyricsOpen ? activeDocument : null,
     lyricsStatus,
     isPlaying,
-    positionMs: displayPosition,
-    durationMs: duration,
+    positionMs,
+    durationMs: timelineDuration,
     timelineRevision,
     presentationOffsetMs,
     getPositionMs: getEstimatedPositionMs,
-    seek: (value) => seek(value + previewStartMs),
+    seek,
     beginScrub,
-    previewScrub: (value) => previewScrub(value + previewStartMs),
-    commitScrub: (value) => commitScrub(value + previewStartMs),
+    previewScrub,
+    commitScrub,
     togglePlayback,
     next,
     previous,

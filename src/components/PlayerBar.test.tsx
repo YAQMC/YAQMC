@@ -279,7 +279,7 @@ describe('PlayerBar lyrics presentation entry', () => {
     },
   );
 
-  it('shows preview progress relative to the clip and seeks on the absolute lyric timeline', () => {
+  it('shows preview progress from Core playback duration, not the full-song catalog length', () => {
     const track = {
       ...qqTrack(),
       durationMs: 249_000,
@@ -288,8 +288,8 @@ describe('PlayerBar lyrics presentation entry', () => {
     usePlayerStore.setState({
       queue: [track],
       currentIndex: 0,
-      positionMs: 220_000,
-      playbackDurationMs: 249_000,
+      positionMs: 20_000,
+      playbackDurationMs: 49_000,
       sourceSelection: {
         requestedQuality: 'automatic',
         resolvedQuality: 'standard',
@@ -304,7 +304,35 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(screen.getByText('0:49')).toBeVisible();
     const slider = screen.getByRole('slider', { name: 'Playback position' });
     expect(slider).toHaveValue('20000');
+    fireEvent.pointerDown(slider);
     fireEvent.change(slider, { target: { value: '30000' } });
-    expect(usePlayerStore.getState().positionMs).toBe(230_000);
+    fireEvent.pointerUp(slider);
+    expect(usePlayerStore.getState().positionMs).toBe(30_000);
+  });
+
+  it('does not seek when Chromium echoes a controlled position update', () => {
+    const track = {
+      ...qqTrack(),
+      durationMs: 249_000,
+      playbackCapability: { status: 'preview', startMs: 200_000, endMs: 249_000 } as const,
+    };
+    usePlayerStore.setState({
+      queue: [track],
+      currentIndex: 0,
+      positionMs: 20_000,
+      playbackDurationMs: 49_000,
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        fallbackReason: 'preview-only',
+        preview: true,
+      },
+    });
+
+    render(<PlayerBar />);
+    fireEvent.change(screen.getByRole('slider', { name: 'Playback position' }), {
+      target: { value: '30000' },
+    });
+    expect(usePlayerStore.getState().positionMs).toBe(20_000);
   });
 });

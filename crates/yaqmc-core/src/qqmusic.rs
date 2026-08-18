@@ -2972,11 +2972,11 @@ impl QQMusicClient {
             "resolved sanitized QQ Music playback source"
         );
         let is_preview = decision.candidate.preview;
-        let (timeline_offset_ms, timeline_end_ms) = if let Some(preview) = decision.preview {
-            (preview.start_ms, preview.end_ms)
-        } else {
-            (0, song.duration_ms)
-        };
+        // `decision.preview` is catalog metadata (try_begin/try_end). The
+        // official preview resource is a standalone file; do not map that
+        // window onto the playback clock.
+        let (timeline_offset_ms, timeline_end_ms) =
+            resolved_playback_timeline(is_preview, song.duration_ms);
         epoch_guard
             .validate()
             .map_err(|_| QQMusicError::Cancelled)?;
@@ -3007,7 +3007,7 @@ impl QQMusicClient {
             supports_range: true,
             expires_at_ms: Some(unix_timestamp_ms().saturating_add(15 * 60 * 1_000)),
             timeline_offset_ms,
-            timeline_end_ms: Some(timeline_end_ms),
+            timeline_end_ms,
             is_preview,
             selection: decision.selection,
             epoch_guard,
@@ -3893,6 +3893,16 @@ fn new_playability(file: &NewFileDto, pay: &NewPayDto) -> (SongAvailability, Pla
     )
 }
 
+/// Official preview MP3 is a self-contained file: t=0 is the first sample.
+/// Catalog `try_begin`/`try_end` stays on `PlaybackCapability` and is not a second clock.
+fn resolved_playback_timeline(is_preview: bool, song_duration_ms: u64) -> (u64, Option<u64>) {
+    if is_preview {
+        (0, None)
+    } else {
+        (0, Some(song_duration_ms))
+    }
+}
+
 fn old_playability(
     pay: &OldPayDto,
     preview: &OldPreviewDto,
@@ -4562,6 +4572,15 @@ mod tests {
             self.calls.fetch_add(1, Ordering::AcqRel);
             Err(QQMusicError::Protocol)
         }
+    }
+
+    #[test]
+    fn official_preview_mp3_uses_the_file_clock() {
+        assert_eq!(resolved_playback_timeline(true, 193_000), (0, None));
+        assert_eq!(
+            resolved_playback_timeline(false, 193_000),
+            (0, Some(193_000))
+        );
     }
 
     #[test]
