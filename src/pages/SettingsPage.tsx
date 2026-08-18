@@ -45,6 +45,7 @@ import {
   defaultPreferences,
   finishAppearancePreview,
   pickManagedBackgroundImage,
+  formatBackgroundPickerError,
   previewAppearance,
   restoreCommittedAppearance,
   usePreferencesStore,
@@ -888,8 +889,8 @@ export function SettingsPage() {
     try {
       const image = await pickManagedBackgroundImage();
       if (image) preferences.setManagedBackground(image.reference, image.dataUri);
-    } catch {
-      setImageError(errors('imageFailed'));
+    } catch (error) {
+      setImageError(formatBackgroundPickerError(error, errors('imageFailed')));
     }
   };
   const regenerate = () => {

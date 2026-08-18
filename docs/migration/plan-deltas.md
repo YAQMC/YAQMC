@@ -1901,3 +1901,20 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
   logs the full Core path. FE-04 / HUMAN stays **BLOCKED**. §41 / §49
   unchanged. Electron stays **43.4.0**. The 32 MiB hard cap is unchanged.
   Provenance remains **BLOCKED**. No P12–P15. No qm-api-rs.
+
+## P6 FE-04: background picker dataUri exceeded the stdio method cap
+
+- After `bf43c53`, Diagnostics Export created a ZIP and plugin install-from-file
+  reached plugin business logic. Background picker still showed
+  `无法处理所选图片` on the current cargo debug Core.
+- The defect is not origin/ACL. Core copies and magic-validates the file, then
+  returns a base64 `dataUri`. Real PNG/JPEG wallpaper exceeds the 1 MiB
+  default method response cap (`payload length N exceeds cap 1048576`).
+  Settings swallowed every throw as `imageFailed`.
+- Protocol `_from` / `appearance_background_load` now omit `dataUri` on the
+  stdio envelope. Electron Main hydrates it from the managed
+  `backgrounds/custom-background.*` file using the same path rules as Core.
+  Settings surfaces the sanitized Core/host message when processing fails.
+  Path traversal checks are unchanged. The 32 MiB hard cap is unchanged.
+- FE-04 / HUMAN stays **BLOCKED**. §41 / §49 unchanged. Electron stays
+  **43.4.0**. Provenance remains **BLOCKED**. No P12–P15. No qm-api-rs.

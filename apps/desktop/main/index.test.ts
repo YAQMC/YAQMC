@@ -150,6 +150,7 @@ describe('host boot wiring', () => {
     expect(source).toContain('scheduleLaunchCheck');
     expect(source).toContain('app.isPackaged');
     expect(source).toContain('packaged: app.isPackaged');
+    expect(source).toContain('dataDir: () => coreDataPaths().dataDir');
     const oauthFromPartition = source.slice(
       source.indexOf('fromPartition:'),
       source.indexOf('isPackaged:'),

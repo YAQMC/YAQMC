@@ -213,6 +213,7 @@ async function liveProductionChain(root: string, openPath: string) {
       ...lyricsStubs(),
       dialogs,
       downloadsDir: () => path.join(root, 'downloads'),
+      dataDir: () => path.join(root, 'data'),
       coreInvoke: (method, params, origin) => supervisor.client.invoke(method, params, origin),
       collectHostPayload: () => HOST_PAYLOAD,
     }),
@@ -418,31 +419,59 @@ describe.skipIf(!liveBinary)('dialog-split live IpcRouter + Core stdio', () => {
     }
   }, 30_000);
 
-  it('background picker _from as main is not a host ACL denial', async () => {
+  it('background picker copies PNG, JPEG, Unicode paths, and >1 MiB images as main', async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-dialog-split-bg-'));
-    const image = path.join(root, 'bg.png');
-    writeFileSync(image, PNG);
-    const chain = await liveProductionChain(root, image);
+    const png = path.join(root, 'wall.png');
+    const jpeg = path.join(root, 'wall.jpg');
+    const unicode = path.join(root, '背景.png');
+    const large = path.join(root, 'large.png');
+    writeFileSync(png, PNG);
+    writeFileSync(jpeg, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]));
+    writeFileSync(unicode, PNG);
+    const largeBytes = Buffer.alloc(1_200_000);
+    PNG.copy(largeBytes, 0, 0, PNG.length);
+    writeFileSync(large, largeBytes);
+    const chain = await liveProductionChain(root, png);
     try {
-      await expect(
-        chain.router.invoke(1, { method: 'appearance_pick_background' }),
-      ).resolves.toMatchObject({ ok: true });
-      const reply = await chain.router.invoke(1, {
-        method: 'preferences_set_background_from',
-        params: { path: image },
-      });
-      const request = chain.frames.find((frame) => frame.method === 'preferences_set_background_from');
-      expect(request?.origin).toBe('main');
-      if (!reply.ok) {
-        throw new Error(
-          `background _from failed (Settings maps this to imageFailed / 无法处理所选图片): ${reply.error.code} ${reply.error.message}`,
-        );
+      const cases: Array<{ file: string; reference: string }> = [
+        { file: png, reference: 'backgrounds/custom-background.png' },
+        { file: jpeg, reference: 'backgrounds/custom-background.jpg' },
+        { file: unicode, reference: 'backgrounds/custom-background.png' },
+        { file: large, reference: 'backgrounds/custom-background.png' },
+      ];
+      for (const sample of cases) {
+        chain.dialogs.showOpenDialog.mockResolvedValueOnce({
+          canceled: false,
+          filePaths: [sample.file],
+        });
+        const picked = await chain.router.invoke(1, { method: 'appearance_pick_background' });
+        expect(picked).toEqual({
+          ok: true,
+          result: { reference: sample.file, dataUri: '' },
+        });
+        const reply = await chain.router.invoke(1, {
+          method: 'preferences_set_background_from',
+          params: { path: sample.file },
+        });
+        const request = [...chain.frames]
+          .reverse()
+          .find((frame) => frame.method === 'preferences_set_background_from');
+        expect(request?.origin).toBe('main');
+        expect(request).not.toHaveProperty('origin', 'host');
+        if (!reply.ok) {
+          throw new Error(
+            `background _from failed for ${path.basename(sample.file)}: ${reply.error.code} ${reply.error.message}`,
+          );
+        }
+        expect(reply.result).toMatchObject({ reference: sample.reference });
+        const image = reply.result as { dataUri: string };
+        expect(image.dataUri.startsWith('data:image/')).toBe(true);
+        expect(image.dataUri.length).toBeGreaterThan(20);
       }
-      expect(reply.result).toMatchObject({ reference: 'backgrounds/custom-background.png' });
     } finally {
       await chain.supervisor.stop();
     }
-  }, 30_000);
+  }, 60_000);
 
   it('plugin install-from-file as main is not a host ACL denial', async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-dialog-split-plugin-'));

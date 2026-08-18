@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -762,6 +762,46 @@ describe('IpcRouter host intercepts', () => {
       ok: true,
       result: { state: 'not-available' },
     });
+  });
+
+  it('hydrates managed background dataUri after the Core stdio continuation', async () => {
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-bg-host-'));
+    mkdirSync(path.join(dataDir, 'backgrounds'));
+    const png = Buffer.from('\x89PNG\r\n\x1a\nrest', 'binary');
+    writeFileSync(path.join(dataDir, 'backgrounds', 'custom-background.png'), png);
+    const coreInvoke = vi.fn(async () => ({
+      reference: 'backgrounds/custom-background.png',
+      dataUri: '',
+    }));
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      coreInvoke,
+      dataDir: () => dataDir,
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+
+    await expect(
+      router.invoke(1, {
+        method: 'preferences_set_background_from',
+        params: { path: 'D:\\Pictures\\wall.png' },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      result: {
+        reference: 'backgrounds/custom-background.png',
+        dataUri: `data:image/png;base64,${png.toString('base64')}`,
+      },
+    });
+    expect(coreInvoke).toHaveBeenCalledWith(
+      'preferences_set_background_from',
+      { path: 'D:\\Pictures\\wall.png' },
+      'main',
+    );
   });
 
   it('leaves the 32 MiB hard cap unchanged', () => {
