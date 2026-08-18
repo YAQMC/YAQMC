@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AccountPlaylistDetail, Album, AreaFeed, MediaCollection, Playlist } from './domain/music';
+import type { AccountPlaylistDetail, Album, AreaFeed, HomeFeed, MediaCollection, Playlist } from './domain/music';
 import { useCatalog } from './application/use-catalog';
 import { useGuessContinuation } from './application/use-guess-continuation';
 import { useTheme } from './application/use-theme';
@@ -79,6 +79,17 @@ function collectEntities(collections: MediaCollection[]) {
     else playlists.push(collection.item);
   }
   return { albums, playlists };
+}
+
+function homePlaylists(home: HomeFeed): Playlist[] {
+  return [
+    ...home.madeForYou,
+    ...collectEntities(home.recentlyPlayed).playlists,
+    ...[home.guessSonglist, home.dailySonglist, home.newSongSonglist].filter(
+      (playlist): playlist is Playlist => playlist !== null,
+    ),
+    ...home.recommendedSonglists,
+  ];
 }
 
 export default function App() {
@@ -286,8 +297,7 @@ export default function App() {
       ...catalog.library.savedAlbums,
     ];
     const playlists = [
-      ...catalog.home.madeForYou,
-      ...recent.playlists,
+      ...homePlaylists(catalog.home),
       ...catalog.library.savedPlaylists,
     ];
     return {

@@ -74,7 +74,7 @@ async fn main() {
     let host = NoopHost {
         download_dir: std::env::temp_dir().join("YAQMC/downloads"),
     };
-    if let Err(error) = serve_protocol(core, &host, StdioTransport::new()).await {
+    if let Err(error) = serve_protocol(core, host, StdioTransport::new()).await {
         tracing::error!(target: "core.protocol", error = %error, "protocol server failed");
         std::process::exit(1);
     }

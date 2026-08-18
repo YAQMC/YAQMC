@@ -774,7 +774,18 @@ impl QQMusicService {
     }
 
     pub async fn restore_session(&self) {
-        let _ = self.auth.restore().await;
+        match self.auth.restore().await {
+            Ok(snapshot) => tracing::info!(
+                target: "qqmusic.auth",
+                state = snapshot.state_name(),
+                "restored account session"
+            ),
+            Err(error) => tracing::warn!(
+                target: "qqmusic.auth",
+                error = %error,
+                "account session restore failed"
+            ),
+        }
     }
 
     #[doc(hidden)]
