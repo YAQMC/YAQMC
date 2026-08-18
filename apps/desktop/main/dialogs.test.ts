@@ -121,8 +121,12 @@ describe('pickFile', () => {
     await expect(
       pickFile(showOpenDialog, { filters: PLUGIN_PACKAGE_FILTERS }),
     ).resolves.toBe('/plugins/pack.yaqmc-plugin');
-    expect(showOpenDialog.mock.calls[0]?.[0].filters).toEqual(PLUGIN_PACKAGE_FILTERS);
-    expect(showOpenDialog.mock.calls[0]?.[0].properties).toEqual(['openFile']);
+    expect(showOpenDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: PLUGIN_PACKAGE_FILTERS,
+        properties: ['openFile'],
+      }),
+    );
   });
 
   it('returns null when the open dialog is canceled or empty', async () => {
@@ -148,7 +152,8 @@ describe('pickDirectory', () => {
       title: 'Choose unpacked plugin directory',
       properties: ['openDirectory'],
     });
-    expect(showOpenDialog.mock.calls[0]?.[0].filters).toBeUndefined();
+    const directoryOptions = showOpenDialog.mock.calls[0]?.[0] as { filters?: unknown } | undefined;
+    expect(directoryOptions?.filters).toBeUndefined();
   });
 
   it('returns null when the directory dialog is canceled', async () => {

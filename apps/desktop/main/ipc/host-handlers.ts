@@ -254,7 +254,11 @@ function asSurfaceRuntimeMap(
   return surfaces as { desktop?: SurfaceRuntimeLike; island?: SurfaceRuntimeLike };
 }
 
-export type CoreInvoke = (method: string, params?: unknown) => Promise<unknown>;
+export type CoreInvoke = (
+  method: string,
+  params?: unknown,
+  origin?: string,
+) => Promise<unknown>;
 
 export type HostUpdaterDeps = {
   check: () => Promise<unknown>;
@@ -467,7 +471,11 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
   }
 
   if (deps.coreInvoke && deps.collectHostPayload) {
-    const invokeWithHostPayload = async (method: string, params: unknown): Promise<unknown> => {
+    const invokeWithHostPayload = async (
+      method: string,
+      params: unknown,
+      origin?: string,
+    ): Promise<unknown> => {
       let hostPayload: DiagnosticsHostPayload | undefined;
       try {
         hostPayload = deps.collectHostPayload?.();
@@ -477,11 +485,11 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       const next = hostPayload
         ? attachHostPayloadToExportParams(params, hostPayload)
         : params;
-      return deps.coreInvoke!(method, next);
+      return deps.coreInvoke!(method, next, origin);
     };
-    handlers.diagnostics_export_bundle = async (params) =>
-      invokeWithHostPayload('diagnostics_export_bundle', params);
-    handlers.diagnostics_export_bundle_to = async (params) => {
+    handlers.diagnostics_export_bundle = async (params, _webContentsId, origin) =>
+      invokeWithHostPayload('diagnostics_export_bundle', params, origin);
+    handlers.diagnostics_export_bundle_to = async (params, _webContentsId, origin) => {
       const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
       const rawPath = typeof record.path === 'string' ? record.path : '';
       const next =
@@ -491,7 +499,7 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
               path: resolveDiagnosticsSavePath(rawPath, deps.downloadsDir?.() ?? ''),
             }
           : params;
-      return invokeWithHostPayload('diagnostics_export_bundle_to', next);
+      return invokeWithHostPayload('diagnostics_export_bundle_to', next, origin);
     };
   }
 

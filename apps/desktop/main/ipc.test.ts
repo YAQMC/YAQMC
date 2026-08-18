@@ -10,7 +10,7 @@ describe('renderer invoke routing', () => {
   it('proxies player_snapshot to the core client', async () => {
     const invoke = vi.fn(async () => ({ playbackState: 'paused', positionMs: 0 }));
     const reply = await handleRendererInvoke(mockClient(invoke), { method: 'player_snapshot' });
-    expect(invoke).toHaveBeenCalledWith('player_snapshot', undefined);
+    expect(invoke).toHaveBeenCalledWith('player_snapshot', undefined, undefined);
     expect(reply).toEqual({
       ok: true,
       result: { playbackState: 'paused', positionMs: 0 },
@@ -51,6 +51,21 @@ describe('renderer invoke routing', () => {
         retryable: false,
       },
     });
+  });
+
+  it('forwards Main-assigned origin and ignores a renderer-supplied origin field', async () => {
+    const invoke = vi.fn(async () => ({ ok: true }));
+    const spoofed = {
+      method: 'diagnostics_export_bundle_to',
+      params: { path: 'D:\\out\\YAQMC-diagnostics.zip' },
+      origin: 'host',
+    };
+    await handleRendererInvoke(mockClient(invoke), spoofed, 'main');
+    expect(invoke).toHaveBeenCalledWith(
+      'diagnostics_export_bundle_to',
+      { path: 'D:\\out\\YAQMC-diagnostics.zip' },
+      'main',
+    );
   });
 
   it('rejects a missing method name without crashing', async () => {

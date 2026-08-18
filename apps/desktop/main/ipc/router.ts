@@ -11,10 +11,15 @@ import {
   hostDenied,
   hostOwnedUnimplemented,
   methodAllowed,
+  PROTOCOL_ORIGIN_BY_ROLE,
   type MethodAclRow,
 } from './channels';
 
-export type HostHandler = (params?: unknown, webContentsId?: number) => Promise<unknown>;
+export type HostHandler = (
+  params?: unknown,
+  webContentsId?: number,
+  origin?: string,
+) => Promise<unknown>;
 
 export type EventFrame = {
   channel: string;
@@ -75,12 +80,13 @@ export class IpcRouter {
     }
     const spec = this.methods.get(method);
     const handler = this.hostHandlers[method];
+    const origin = PROTOCOL_ORIGIN_BY_ROLE[role];
     if (handler) {
       if (spec ? !methodAllowed(spec, role) : role !== 'main') {
         return this.deny(method, role);
       }
       try {
-        return { ok: true, result: await handler(request?.params, webContentsId) };
+        return { ok: true, result: await handler(request?.params, webContentsId, origin) };
       } catch (error) {
         return { ok: false, error: toCoreError(error) };
       }
@@ -92,7 +98,7 @@ export class IpcRouter {
       this.onDenied?.({ method, role });
       return { ok: false, error: hostOwnedUnimplemented(method) };
     }
-    return handleRendererInvoke(this.client, request);
+    return handleRendererInvoke(this.client, { method, params: request?.params }, origin);
   }
 
   private deny(method: string, role: WindowRole): InvokeReply {

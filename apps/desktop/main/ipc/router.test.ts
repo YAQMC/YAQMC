@@ -84,7 +84,7 @@ describe('IpcRouter', () => {
       ok: true,
       result: { playbackState: 'paused' },
     });
-    expect(invoke).toHaveBeenCalledWith('player_snapshot', undefined);
+    expect(invoke).toHaveBeenCalledWith('player_snapshot', undefined, 'main');
 
     invoke.mockClear();
     await expect(router.invoke(1, { method: 'system_integration_status' })).resolves.toEqual({

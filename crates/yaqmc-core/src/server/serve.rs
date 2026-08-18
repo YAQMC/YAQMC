@@ -6,11 +6,13 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use yaqmc_protocol::{
-    CoreIdentity, CoreMessage, CoreTransport, HandshakeError, ProtocolError, ResponseBody,
-    WindowOrigin, core_handshake,
+    core_handshake, CoreIdentity, CoreMessage, CoreTransport, HandshakeError, ProtocolError,
+    ResponseBody, WindowOrigin,
 };
 
-use super::{EventSink, HostDispatchHooks, dispatch, spawn_host_command_fanout, spawn_player_fanout};
+use super::{
+    dispatch, spawn_host_command_fanout, spawn_player_fanout, EventSink, HostDispatchHooks,
+};
 use crate::CoreHandle;
 
 struct ChannelSink {
@@ -59,11 +61,7 @@ pub async fn serve_protocol<T: CoreTransport>(
         system_media,
         Arc::clone(&sink),
     );
-    spawn_host_command_fanout(
-        &tokio::runtime::Handle::current(),
-        host_commands,
-        sink,
-    );
+    spawn_host_command_fanout(&tokio::runtime::Handle::current(), host_commands, sink);
 
     let mut events_open = true;
     loop {
@@ -76,8 +74,14 @@ pub async fn serve_protocol<T: CoreTransport>(
             }
             incoming = transport.recv() => {
                 match incoming {
-                    Ok(CoreMessage::Request { id, method, params }) => {
-                        let result = dispatch(&core, host, WindowOrigin::Host, &method, params).await;
+                    Ok(CoreMessage::Request {
+                        id,
+                        method,
+                        params,
+                        origin,
+                    }) => {
+                        let origin = origin.unwrap_or(WindowOrigin::Host);
+                        let result = dispatch(&core, host, origin, &method, params).await;
                         let body = match result {
                             Ok(value) => ResponseBody::success(value),
                             Err(error) => ResponseBody::failure(error.into_core_error()),

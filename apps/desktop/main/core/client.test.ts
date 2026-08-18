@@ -12,7 +12,7 @@ import {
   STANDARD_TIMEOUT_MS,
   methodTimeoutMs,
 } from './client';
-import { encodeFrame } from './frames';
+import { encodeFrame, FrameDecoder } from './frames';
 
 const fixturesRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -61,6 +61,45 @@ describe('CoreClient', () => {
     await vi.waitFor(() => expect(Buffer.concat(chunks).length).toBeGreaterThan(4));
     pushMessage(readable, { kind: 'response', id: 1, ok: true, result: { positionMs: 0 } });
     await expect(pending).resolves.toEqual({ positionMs: 0 });
+    client.close();
+  });
+
+  it('omits origin on host-internal invokes and stamps Main-assigned origin when given', async () => {
+    const { client, readable, writable } = mockStream();
+    const frames: unknown[] = [];
+    const decoder = new FrameDecoder();
+    writable.on('data', (chunk: Buffer) => {
+      for (const payload of decoder.push(chunk)) {
+        frames.push(JSON.parse(payload.toString('utf8')));
+      }
+    });
+
+    const hostPending = client.invoke('platform_attach', { platformKind: 'windows' });
+    await vi.waitFor(() => expect(frames).toHaveLength(1));
+    expect(frames[0]).toEqual({
+      kind: 'request',
+      id: 1,
+      method: 'platform_attach',
+      params: { platformKind: 'windows' },
+    });
+    pushMessage(readable, { kind: 'response', id: 1, ok: true, result: { ok: true } });
+    await hostPending;
+
+    const mainPending = client.invoke(
+      'diagnostics_export_bundle_to',
+      { path: 'D:\\out\\YAQMC-diagnostics.zip' },
+      'main',
+    );
+    await vi.waitFor(() => expect(frames).toHaveLength(2));
+    expect(frames[1]).toEqual({
+      kind: 'request',
+      id: 2,
+      method: 'diagnostics_export_bundle_to',
+      params: { path: 'D:\\out\\YAQMC-diagnostics.zip' },
+      origin: 'main',
+    });
+    pushMessage(readable, { kind: 'response', id: 2, ok: true, result: { path: 'x', bytes: 1 } });
+    await mainPending;
     client.close();
   });
 

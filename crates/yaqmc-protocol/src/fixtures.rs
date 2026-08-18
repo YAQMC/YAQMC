@@ -107,11 +107,13 @@ fn envelopes() -> Value {
             id: 7,
             method: "player_snapshot".to_owned(),
             params: None,
+            origin: None,
         }),
         "requestWithParams": to_value(&CoreMessage::Request {
             id: 8,
             method: "player_seek".to_owned(),
             params: Some(json!({ "positionMs": 1000 })),
+            origin: None,
         }),
         "responseSuccess": to_value(&CoreMessage::Response {
             id: 7,
@@ -367,21 +369,25 @@ fn requests() -> Value {
             id: 1,
             method: "player_snapshot".to_owned(),
             params: None,
+            origin: None,
         }),
         "player_play": to_value(&CoreMessage::Request {
             id: 2,
             method: "player_play".to_owned(),
             params: None,
+            origin: None,
         }),
         "player_seek": to_value(&CoreMessage::Request {
             id: 3,
             method: "player_seek".to_owned(),
             params: Some(json!({ "positionMs": 4800 })),
+            origin: None,
         }),
         "player_next": to_value(&CoreMessage::Request {
             id: 4,
             method: "player_next".to_owned(),
             params: None,
+            origin: None,
         }),
         "player_play_tracks": to_value(&CoreMessage::Request {
             id: 5,
@@ -392,41 +398,49 @@ fn requests() -> Value {
                     "shuffle": false
                 }
             })),
+            origin: None,
         }),
         "player_reorder_queue_entry": to_value(&CoreMessage::Request {
             id: 6,
             method: "player_reorder_queue_entry".to_owned(),
             params: Some(json!({ "entryId": "entry-0", "targetIndex": 0 })),
+            origin: None,
         }),
         "player_remove_queue_entry": to_value(&CoreMessage::Request {
             id: 7,
             method: "player_remove_queue_entry".to_owned(),
             params: Some(json!({ "entryId": "entry-1" })),
+            origin: None,
         }),
         "player_play_queue_entry": to_value(&CoreMessage::Request {
             id: 8,
             method: "player_play_queue_entry".to_owned(),
             params: Some(json!({ "entryId": "entry-0" })),
+            origin: None,
         }),
         "core_ping": to_value(&CoreMessage::Request {
             id: 9,
             method: "core_ping".to_owned(),
             params: None,
+            origin: None,
         }),
         "platform_attach": to_value(&CoreMessage::Request {
             id: 10,
             method: "platform_attach".to_owned(),
             params: Some(serde_json::to_value(attach_message().platform).expect("platform")),
+            origin: None,
         }),
         "core_shutdown_prepare": to_value(&CoreMessage::Request {
             id: 11,
             method: "core_shutdown_prepare".to_owned(),
             params: None,
+            origin: None,
         }),
         "auth_oauth_prepare": to_value(&CoreMessage::Request {
             id: 12,
             method: "auth_oauth_prepare".to_owned(),
             params: Some(json!({ "providerKind": "qq" })),
+            origin: None,
         }),
         "auth_oauth_complete": to_value(&CoreMessage::Request {
             id: 13,
@@ -435,11 +449,13 @@ fn requests() -> Value {
                 "attemptId": "attempt-0",
                 "callbackUrl": "https://example.invalid/callback"
             })),
+            origin: None,
         }),
         "auth_oauth_cancel": to_value(&CoreMessage::Request {
             id: 14,
             method: "auth_oauth_cancel".to_owned(),
             params: Some(json!({ "attemptId": "attempt-0" })),
+            origin: None,
         }),
         "diagnostics_export_bundle_to": to_value(&CoreMessage::Request {
             id: 15,
@@ -448,11 +464,13 @@ fn requests() -> Value {
                 "path": "/tmp/YAQMC-diagnostics.zip",
                 "request": { "includeLogs": true }
             })),
+            origin: None,
         }),
         "preferences_set_background_from": to_value(&CoreMessage::Request {
             id: 16,
             method: "preferences_set_background_from".to_owned(),
             params: Some(json!({ "path": "/tmp/background.png" })),
+            origin: None,
         }),
         "plugin_install_from": to_value(&CoreMessage::Request {
             id: 17,
@@ -460,6 +478,7 @@ fn requests() -> Value {
             params: Some(json!({
                 "request": { "path": "/tmp/plugin.yaqmc-plugin", "enable": false, "grant": [] }
             })),
+            origin: None,
         }),
     })
 }

@@ -15,12 +15,13 @@ export type InvokeReply =
   | { ok: false; error: CoreError };
 
 export type InvokeTarget = {
-  invoke(method: string, params?: unknown): Promise<unknown>;
+  invoke(method: string, params?: unknown, origin?: string): Promise<unknown>;
 };
 
 export async function handleRendererInvoke(
   client: InvokeTarget | undefined,
   request: InvokeRequest | undefined,
+  origin?: string,
 ): Promise<InvokeReply> {
   const method = request?.method;
   const params = request?.params;
@@ -41,7 +42,7 @@ export async function handleRendererInvoke(
     };
   }
   try {
-    const result = await client.invoke(method, params);
+    const result = await client.invoke(method, params, origin);
     return { ok: true, result };
   } catch (error) {
     return { ok: false, error: toCoreError(error) };

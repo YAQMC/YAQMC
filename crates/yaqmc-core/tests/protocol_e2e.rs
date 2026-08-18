@@ -2,15 +2,15 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::process::{Child, Command};
 use yaqmc_core::player::{
     AlbumSummary, ArtistSummary, Artwork, AudioQuality, Song, SongAvailability,
 };
 use yaqmc_protocol::{
-    AttachMessage, CHANNEL_PLAYER_SNAPSHOT, CoreMessage, CoreTransport, HostIdentity,
-    PROTOCOL_VERSION, PipeTransport, PlatformAttach, PlatformKind, ResponseBody, ShutdownReason,
-    host_handshake,
+    host_handshake, AttachMessage, CoreMessage, CoreTransport, HostIdentity, PipeTransport,
+    PlatformAttach, PlatformKind, ResponseBody, ShutdownReason, CHANNEL_PLAYER_SNAPSHOT,
+    PROTOCOL_VERSION,
 };
 
 struct Session {
@@ -130,6 +130,7 @@ impl Session {
                 id,
                 method: method.to_owned(),
                 params,
+                origin: None,
             })
             .await
             .expect("send request");

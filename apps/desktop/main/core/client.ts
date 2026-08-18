@@ -120,12 +120,15 @@ export class CoreClient extends EventEmitter {
     await writeFrame(this.stream.writable, Buffer.from(JSON.stringify(message)));
   }
 
-  invoke(method: string, params?: unknown): Promise<unknown> {
+  invoke(method: string, params?: unknown, origin?: string): Promise<unknown> {
     const id = ++this.nextId;
-    const message: CoreMessage =
-      params === undefined
-        ? { kind: 'request', id, method }
-        : { kind: 'request', id, method, params };
+    const message: CoreMessage = {
+      kind: 'request',
+      id,
+      method,
+      ...(params === undefined ? {} : { params }),
+      ...(typeof origin === 'string' && origin.length > 0 ? { origin } : {}),
+    };
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
