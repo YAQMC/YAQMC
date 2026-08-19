@@ -3,7 +3,8 @@
 工作会话从交接 **§13 / PLAY-01** 起算（本聊天 2026-08-18 21:06 起：先工作树，再测卡住的播放器）。  
 **以前的也计入：** [`HANDOFF_2026-08-18.md`](HANDOFF_2026-08-18.md) **§4** 里、PLAY-01 之前已经 PASS-HUMAN 的宿主操作（Windows，`1d6b535` 当时）。那份交接的 **§5 失败格子和 HEAD 不要当今天的现状**。
 
-**不是阶段签字。** 口头 OK、有代码、PASS-AUTO 都不能把 PLAY-01 / PLAT-* 标成仓库验收通过。[`p7-playback-checklist.md`](p7-playback-checklist.md) 勾选框保持空。
+**不是阶段签字。** 口头 OK、有代码、PASS-AUTO 都不能把 PLAY-01 / PLAT-* 标成仓库验收通过。[`p7-playback-checklist.md`](p7-playback-checklist.md) 勾选框保持空。  
+**Current Status（2026-08-20）** 以 [`acceptance-p12.md`](acceptance-p12.md) 为准：PLAY-01 / PLAY-02 / SOAK-01 首次 4h / SURF-02 / 桌面歌词 / 歌词岛 / SURF-03 / PLAT-01 / PLAT-05 / PLAT-07 / ACCT-01..03 已 **PASS-HUMAN**。下面本会话口头台账是历史，不能盖过 Current Status。
 
 Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent-2026-08-19.md`](qa-agent-2026-08-19.md)。
 
@@ -28,24 +29,26 @@ Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent
 | **测过（有缺陷）** | 本会话测到失败或只修了一部分。 |
 | **未测** | 没有按这条做。 |
 | **跳过** | 本机会不上。跳过 ≠ 失败，也不等于已测通过。 |
-| **未开始** | P12 及之后，禁止开。 |
+| **未开始** | 本会话当时未做。2026-08-20 起 ACC-01..04 已按豁免开台账；ACC-05 / P13 仍禁止。 |
 
 ---
 
 ## 指针（测到哪）
 
-当前停在 **SURF-06 native-wayland 口头 OK（2026-08-19 02:28）。SURF 组不签绿。**
+本文件 2026-08-19 会话停在 **SURF-06 native-wayland 口头 OK**。那是历史。  
+**Current Status：** [`acceptance-p12.md`](acceptance-p12.md)。不要把 PLAY-01 / SURF-02 / SURF-03 / 桌面歌词 / 歌词岛 / PLAT-01/05/07 / ACCT 再当「下一格」。
 
 1. 交接 §4 宿主/窗口操作：**已计入**（Windows）。本 Linux 机未复测那些铬/ZIP/背景行。
-2. PLAY / PLAT 本会话状态不变。PLAY-01 **仍不接受**。
-3. **SURF 交接已测、本机不复测：** SURF-01 / 02 / 04。**SURF-05** AUTO。
-4. **SURF-03** 本机 **Wayland 暂时不测**。不当 FAIL。
-5. **SURF-06**：先默认无横幅（对）；native-wayland 先不出（缺陷）→ 修 Ozone 优先后 **口头 OK**。xwayland 说明 **未测**。不签绿。
-6. **ACCT** 能测但未开。不要编 PLAY-02 p95，不要跑 4h。
+2. PLAY-01 **Current Status = PASS-HUMAN**（含 Repeat / EOS / seek）。本会话口头 OK 是前史。
+3. SURF-02 / 桌面歌词 / 歌词岛 / SURF-03：**PASS-HUMAN**（`27d10b0`）。本会话「不复测 / Wayland 暂时不测」是前史。
+4. **SURF-06** xwayland 说明仍 **未测**。native-wayland 口头 OK 未升格进 2026-08-20 PASS-HUMAN 集合。
+5. **P12 ACC-01** 剩余是 §29.5 发行版矩阵（Ubuntu X11 / Fedora / Arch+Hyprland / KDE），不是切 X11 去补 PLAT-02。PLAT-02 本机 Wayland **跳过** 仍成立。
+6. 不要做 ACC-05 / P13。
 
-维护者默认 HUMAN 平台是 **Wayland**。不要建议切 X11。本机跳过的 PLAT-02 / SURF-03 保持跳过。
+维护者默认 HUMAN 平台是 **Wayland**。不要建议切 X11 只为补 PLAT-02。
 
-禁止：P12–P15、`qm-api-rs`、provenance 补救、GitHub Actions、改 `main`、4h soak、编造 PLAY-02 p95。
+禁止：ACC-05 / `pre-tauri-removal`、P13–P15、`qm-api-rs`、provenance 补救、GitHub Actions 派发、改 `main`、在代理里跑 4h soak、编造 PLAY-02 p95。  
+P12 ACC-01..04 已按 [`p12-conditional-entry.md`](p12-conditional-entry.md) 开台账（[`acceptance-p12.md`](acceptance-p12.md)）。Actions 配额耗尽是 **BLOCKED-EXTERNAL**，不是产品失败。P11 不标 PASS。
 
 ---
 
@@ -81,7 +84,7 @@ Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent
 | SURF-05 表面 ACL | PASS-AUTO | 不要改 ACL |
 | SURF-06 Wayland 能力横幅 | NOT TESTED | **测过（口头 OK）** native-wayland 出横幅（2026-08-19 02:28）。xwayland 未测 |
 | ACCT-01/02/03 OAuth / 扫码 / 钥匙串改名 | NOT TESTED | **未测**（本会话是已有会话登录，不是那些清单） |
-| PACK / CI 直播 / UPD / ACC / P12+ | 未测或 BLOCKED | **未开始** |
+| PACK / CI 直播 / UPD / ACC / P12+ | CI/UPD = **BLOCKED-EXTERNAL**（配额）；PACK/PLUG 全套 = **DEFERRED** | ACC-01 已开台账（本文件口头结果计入）；ACC-05 / P13 **未开始** |
 
 ---
 
@@ -186,19 +189,23 @@ Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent
 
 ## 开放缺陷
 
+本段是 2026-08-19 会话当时的开放项。PLAY-01 / PLAT-05 / PLAT-07 / SURF-03 的
+**Current Status** 已是 PASS-HUMAN，见 [`acceptance-p12.md`](acceptance-p12.md)。
+
 1. 访客首页三条登录后未再点名。
-2. PLAY-01 / PLAT-05 书面清单与脚本 LIVE VERIFY 仍空。PLAT-03 / PLAT-07 / PLAY-03 修复尚未提交。
-3. PLAT-02 本机跳过；Windows 已 PASS-HUMAN（2026-08-19）。PLAT-04 本机跳过。SURF-03 本机 Wayland 暂时不测。
-4. `LyricsPanel` 里两条 native remote artwork 单元测试在 `1d5fee9` 上已失败（与 PLAY-03 无关）。2026-08-19 代理 AUTO 已用 `pendingRemote: 'hide'` 修过；仍不是 HUMAN 封面验收。
+2. PLAT-03 托盘语言仍是本会话口头 OK，未列入 2026-08-20 PASS-HUMAN 集合。PLAY-03 仍只是盖窗口头 OK。
+3. PLAT-02 本机 Wayland **跳过**（不当 FAIL）。Windows 已 PASS-HUMAN。
+4. `LyricsPanel` native remote artwork 单元测试已在代理 AUTO 修过；仍不是单独的 HUMAN 封面验收。
 
 ---
 
 ## 不要做的下一格
 
-- 不要在本机 Wayland 上补测 PLAT-02 或 SURF-03。
-- 不要让维护者切到 X11 会话来补本机跳过项（默认测试环境就是 Wayland）。
+- 不要在本机 Wayland 上补测 PLAT-02。SURF-03 Current Status 已是 PASS-HUMAN，不要当失败项重测。
+- 不要让维护者切到 X11 会话来补 PLAT-02（默认测试环境就是 Wayland）。
 - 不要把台账抄进 `p7-playback-checklist.md` 当勾选通过。
 - 不要改写 `HANDOFF_2026-08-18.md` 冒充当天 HEAD。
-- 不要把 PLAY-01 / PLAY-03 / PLAT / SURF 组标成阶段绿。
+- 不要把 ACC-01 / ACC-02 整行标 PASS（目录 ID 过了 ≠ 矩阵签绿）。
 - 不要把默认启动看不到 SURF-06 横幅当成失败。
-- 不要编 PLAY-02 p95，不要跑 4h soak。
+- 不要编 PLAY-02 毫秒数。不要在代理里跑 4h soak（第一次 4h 已 PASS-HUMAN；P12 第二次 soak 仍开）。
+- 不要把 Actions 配额写成产品失败。不要把 P11 标 PASS。不要做 ACC-05 / P13。

@@ -2053,3 +2053,46 @@ invented. P12–P15 were not started.
 - Do not start P12–P15 or `qm-api-rs`. Do not dispatch Actions. Provenance
   remains **BLOCKED**. First task is reproduce the stuck player on
   `npm run dev:desktop` with the current debug Core.
+
+## P12 overlay: conditional-entry waiver (Actions quota)
+
+- Maintainer decision 2026-08-20: GitHub Actions quota exhaustion is an
+  **external execution blocker**, not a product FAIL. Do not idle the
+  migration by refusing to start P12. Full text:
+  `docs/migration/p12-conditional-entry.md`. Tracker:
+  `docs/migration/acceptance-p12.md`. Plan book §49.4.
+- **P11 is not fully PASS.** Preserve: CI-01..04 = **BLOCKED-EXTERNAL**,
+  UPD-01 = **BLOCKED-EXTERNAL**, PLUG-01/02 = **DEFERRED**, PACK-01..03
+  clean-VM matrix = **DEFERRED**. Provenance stays **BLOCKED** (unchanged).
+- **P12 execution allowed:** ACC-01 Linux matrix, ACC-02 Windows matrix,
+  ACC-03 §35.2 + second soak, ACC-04 dual-platform daily-driver. Reuse
+  existing HUMAN/LIVE/AUTO ledgers. Do not repeat already-accepted HUMAN
+  rows unless a later change invalidates them.
+- **Hard stop:** do not complete ACC-05 / `pre-tauri-removal` and do not
+  start P13 until CI-01..04 and UPD-01 have real live evidence, deferred
+  PLUG/PACK requirements are resolved or explicitly waived, and the rest of
+  P12 is complete. P13–P15, `main` cutover, Tauri removal, and provenance
+  remediation were not started. Actions stay frozen (do not dispatch).
+- PLAY-02 p95 was not invented. A 4-hour soak was not run in an agent.
+  SURF-02 / Desktop Lyrics lock chrome stay **FAIL-HUMAN** pending retest
+  of `27d10b0`.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No qm-api-rs.
+
+## P12 overlay: reconciled HUMAN Current Status (2026-08-20)
+
+- Maintainer-confirmed **PASS-HUMAN** (HEAD `27d10b0`): PLAY-01 (Repeat
+  One/All/Off, EOS → Next/Previous/Pause-Resume, EOS → seek back, rapid
+  seek), PLAY-02, SOAK-01 first 4h Win+Linux, Desktop Lyrics, Lyrics Island,
+  SURF-02, SURF-03, PLAT-01, PLAT-05, PLAT-07, ACCT-01 QQ OAuth, ACCT-01
+  WeChat OAuth, ACCT-02 QR, ACCT-03 Tauri→Electron continuity.
+- Historical FAIL (post-`1d6b535` PLAY-01, `2604045`/`f864482` surface
+  leaks) stays in evidence notes and **must not** override Current Status.
+- PLAY-02 and SOAK-01 are **not** ACC-03 entry blockers. ACC-01..04 are
+  **not** auto-signed. Remaining cells live in
+  `docs/migration/acceptance-p12.md`.
+- Preserve: CI-01..04 **BLOCKED-EXTERNAL**, UPD-01 **BLOCKED-EXTERNAL**,
+  PLUG-01/02 **DEFERRED**, PACK-01..03 clean-VM **DEFERRED**, ACC-05 / P13
+  blocked.
+- Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
+  remains **BLOCKED**. No qm-api-rs.

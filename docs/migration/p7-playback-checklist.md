@@ -2,9 +2,14 @@
 
 Source: `YAQMC_ELECTRON_MIGRATION_PLAN.md` §36 rows whose **Phase proven** is P7. Verification method key: **A** = automated, **M** = manual, **L** = LIVE VERIFY (real QQ account, maintainer-only).
 
-This document is a checklist only. **PLAY-01 is not green.** Fake-mode assist covers in-memory **A** ops that do not need an account (`node scripts/migration/p7-fake-playback.mjs`, `packages/yaqmc-client/src/bridges/p7-fake-playback.test.ts`). Windows and Linux boxes stay empty until a maintainer runs the row on that host. **L** rows stay `LIVE VERIFY pending`.
+This document is a checklist only. Per-cell Win/Linux boxes stay empty (no dated
+tick grid). **Current Status:** PLAY-01 **PASS-HUMAN** (2026-08-20), including
+Repeat One/All/Off, EOS → Next/Previous/Pause-Resume, EOS → seek back, and
+rapid seek — see [`acceptance-p12.md`](acceptance-p12.md). Do not convert
+AUTO/oral into ticks. Post-`1d6b535` FAIL is history.
 
-Do not start `qm-api-rs`. Provenance remains **BLOCKED**. First 4-h soak report stays uncommitted (`PENDING`).
+Do not start `qm-api-rs`. Provenance remains **BLOCKED**. SOAK-01 first 4h
+Win+Linux is **PASS-HUMAN**; the P12 second soak is still open.
 
 | Feature                                          | Method | Expected result                                                                                             | Windows                 | Linux                   |
 | ------------------------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------- | ----------------------- | ----------------------- |
@@ -23,8 +28,8 @@ Do not start `qm-api-rs`. Provenance remains **BLOCKED**. First 4-h soak report 
 | In-app lyrics page + presets + composer + scenes | M      | Manual: composer + scene switch matches Tauri                                                               | [ ]                     | [ ]                     |
 | Preferences + `preferences://changed`            | A      | Get/set/patch emit `preferences://changed`; round-trip matches Tauri                                        | [ ]                     | [ ]                     |
 
-Related (not PLAY-01 green):
+Related (PLAY-01 Current Status is PASS-HUMAN; these are other IDs):
 
-- **PLAY-02** seek round-trip p95 vs §15.4: `node scripts/migration/play02-seek-p95.mjs` — measured cells stay **PENDING**.
-- **PLAY-03** `backgroundThrottling` + in-app clock no longer pauses on `document.hidden`: see [soak-p7.md](soak-p7.md). Linux cover-window oral OK (may be platform-dependent). Windows and Tauri cadence remain unverified. Do not treat PLAY-03 as accepted.
-- **SOAK-01** script: `node scripts/soak-electron.mjs` (default 10 s). 4-h report uncommitted.
+- **PLAY-02** **PASS-HUMAN** (2026-08-20). Assist script still prints PENDING — do not invent a millisecond.
+- **PLAY-03** `backgroundThrottling` + in-app clock: see [soak-p7.md](soak-p7.md). Linux cover-window oral only. Windows NOT TESTED. Not PLAY-03 signed.
+- **SOAK-01** first 4h Win+Linux **PASS-HUMAN**. Default 10 s script ≠ that result. P12 second soak still open.

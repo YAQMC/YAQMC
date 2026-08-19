@@ -4,10 +4,10 @@ Maintainer script: `node scripts/migration/pack03-linux.mjs`
 
 This is the Linux packaging rehearsal for **AppImage** (updater-bearing per
 plan §32), **deb**, **rpm**, and **tar.gz**, each declared for **x64 and
-arm64** in `apps/desktop/electron-builder.yml` (PACK-01). **PACK-03 is not
-green.** Every row stays unchecked until a maintainer runs it on a **clean
-VM** or a scratch Linux user. **LIVE VERIFY / clean-VM pending** — do not
-treat a local dry-run, or a pack produced elsewhere, as matrix sign-off.
+arm64** in `apps/desktop/electron-builder.yml` (PACK-01). **PACK-03 is not green.** The clean-VM matrix is **DEFERRED** (2026-08-20 P12
+waiver), not a product FAIL. Every row stays unchecked until a maintainer runs
+it on a **clean VM** or a scratch Linux user. **LIVE VERIFY / clean-VM pending**
+— do not treat a local dry-run, or a pack produced elsewhere, as matrix sign-off.
 
 This Windows worktree cannot produce Linux artifacts. The script is a dry-run:
 it parses the yml, prints `electron-builder --linux` commands, and exits 0
@@ -16,7 +16,8 @@ daily-driver profile: `appId` `org.yaqmc.desktop` shares
 `$XDG_DATA_HOME/org.yaqmc.desktop` with the Tauri build.
 
 Unsigned (**R-9**). Notify-only `electron-updater` (UPD-01) is wired; the
-A→B upgrade rehearsal is still pending. Electron stays **43.4.0**.
+A→B upgrade rehearsal is **BLOCKED-EXTERNAL** (Actions quota / draft
+release), not a product FAIL. Electron stays **43.4.0**.
 Builder stays **26.15.7**. Do not start `qm-api-rs`. Provenance remains
 **BLOCKED**. The 32 MiB protocol hard cap is unchanged.
 

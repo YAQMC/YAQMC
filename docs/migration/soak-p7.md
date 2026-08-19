@@ -1,6 +1,13 @@
 # SOAK-01 / PLAY-03 Electron soak notes
 
-P7 first soak and `backgroundThrottling` notes. **PLAY-01 is not green.** LIVE VERIFY (real QQ account) is maintainer-only. Do not start `qm-api-rs`. Provenance remains **BLOCKED**. The first 4-hour report stays uncommitted (`PENDING`).
+P7 first soak and `backgroundThrottling` notes. LIVE VERIFY (real QQ account) is maintainer-only. Do not start `qm-api-rs`. Provenance remains **BLOCKED**.
+
+**Current Status (2026-08-20):** PLAY-01 **PASS-HUMAN**, PLAY-02 **PASS-HUMAN**,
+SOAK-01 first 4h Win+Linux **PASS-HUMAN**. See
+[`acceptance-p12.md`](acceptance-p12.md). The default 10 s script is not that
+result. `soak-last.json` stays gitignored. The P12 **second** soak is still
+open. Do not run `YAQMC_SOAK_SECONDS=14400` in an agent. Do not invent a
+PLAY-02 millisecond.
 
 ## Fake-provider soak (CI/dev)
 
@@ -12,7 +19,8 @@ node scripts/soak-electron.mjs
 
 Override with `YAQMC_SOAK_SECONDS`. The script loops a fake player (`snapshot` + `seek`), records RSS via `process.memoryUsage().rss` when available, and writes `docs/migration/soak-last.json` (gitignored).
 
-This is not a 4-hour soak and does not claim SOAK-01 green.
+This is not a 4-hour soak and does not claim the first SOAK-01 HUMAN result
+(that result is recorded in [`acceptance-p12.md`](acceptance-p12.md)).
 
 ## Maintainer 4-hour run (Windows + Linux)
 
@@ -30,11 +38,18 @@ $env:YAQMC_SOAK_SECONDS = '14400'
 node scripts/soak-electron.mjs
 ```
 
-Copy `docs/migration/soak-last.json` off to the side if you need to keep it; leave it uncommitted until a maintainer accepts the first 4-h capture. Real-account soak remains **LIVE VERIFY pending**.
+Copy `docs/migration/soak-last.json` off to the side if you need to keep it;
+leave it uncommitted. First 4h Win+Linux is **PASS-HUMAN** (Current Status).
+The P12 second soak is still open.
 
 ## PLAY-02 seek p95
 
-`node scripts/migration/play02-seek-p95.mjs` documents how to measure UI-event → settled-snapshot p95 against §15.4 (added latency target < 5 ms p95) and §35.2 (≤ baseline + 5 ms). The measured Windows/Linux cells stay **PENDING**. Do not invent a green number. The existing Seek round-trip p95 rows in `docs/migration/perf-baseline.md` stay PENDING.
+`node scripts/migration/play02-seek-p95.mjs` documents how to measure UI-event →
+settled-snapshot p95 against §15.4 / §35.2. The script still prints PENDING.
+**Current Status is maintainer PLAY-02 PASS-HUMAN**
+([`acceptance-p12.md`](acceptance-p12.md)). Do not invent a millisecond. The
+Seek round-trip p95 cells in `docs/migration/perf-baseline.md` were not updated
+with a number.
 
 ## PLAY-03 `backgroundThrottling`
 
