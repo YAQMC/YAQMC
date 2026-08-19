@@ -6,9 +6,10 @@ This checkpoint **prints** the cargo and electron-builder commands. It does **no
 run cargo, rustup, or electron-builder. It is not a live arm runner. This host
 may be x64 Windows; do not treat a local print as an arm64 boot test.
 
-**CI-03 is not green.** Arm artifacts are **boot-test pending**. Do not edit
-`.github/workflows/ci.yml` here (FE-06 / CI-02 own that file). PACK-01 already
-declares x64 and arm64 in `apps/desktop/electron-builder.yml`.
+**CI-03 is not green.** Live arm boot evidence is **BLOCKED-EXTERNAL** (Actions
+quota / runner), not a product FAIL. Arm artifacts are **boot-test pending**.
+Do not edit `.github/workflows/ci.yml` here (FE-06 / CI-02 own that file).
+PACK-01 already declares x64 and arm64 in `apps/desktop/electron-builder.yml`.
 
 Electron stays **43.4.0**. Builder stays **26.15.7**. Do not start `qm-api-rs`.
 Provenance remains **BLOCKED**. The 32 MiB protocol hard cap is unchanged.

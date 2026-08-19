@@ -20,6 +20,8 @@ Windows i686 is **dropped** (R-13). Pull requests pack only the smoke rows.
 Pushes to `main` and `workflow_dispatch` `all` pack the full four cells.
 `workflow_dispatch` can still limit to `windows` or `linux`.
 
+Live GitHub evidence is **BLOCKED-EXTERNAL** (org Actions quota exhausted), not a product FAIL. Do **not** dispatch this workflow while the freeze holds. YAML on disk ≠ live-green. Local packs are not CI-02.
+
 Plan §33.1 named `ubuntu-24.04-arm`. This repo's working Linux arm runner is
 `ubuntu-22.04-arm` (same as Tauri). CI-03's 24.04 ARM row stays hardware pending.
 

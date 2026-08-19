@@ -1,62 +1,80 @@
-# Parked LIVE VERIFY / hardware / provenance (2026-08-18)
+# Parked LIVE VERIFY / hardware / provenance (2026-08-18; amended 2026-08-20)
 
 This is the handoff for a later, higher-capability pass. **Do not tick these green
 from YAML, scripts, or checklists.** Code and dry-run docs already exist; the
-rows below are still empty.
+rows below are still empty **or** explicitly **BLOCKED-EXTERNAL** / **DEFERRED**.
 
 Branch: `feat/electron-migration`. Do **not** cut a new branch. `main` is frozen.
-Do **not** start P12 ACC, P13 Tauri removal, or P14 `qm-api-rs`. Electron stays
-**43.4.0**. The 32 MiB protocol hard cap is unchanged.
+Electron stays **43.4.0**. The 32 MiB protocol hard cap is unchanged.
 
-## GitHub Actions freeze
+P12 ACC-01..04 **started** under
+[`p12-conditional-entry.md`](p12-conditional-entry.md). Tracker:
+[`acceptance-p12.md`](acceptance-p12.md). Do **not** complete ACC-05 / tag
+`pre-tauri-removal`. Do **not** start P13 Tauri removal or P14 `qm-api-rs`.
+
+## GitHub Actions freeze (**BLOCKED-EXTERNAL**, not a product FAIL)
 
 YAQMC org Actions quota (**2000** minutes) is exhausted. 2026-08-17 GitHub had a
 global outage. **Do not dispatch** `ci.yml`, `build.yml`, `electron-release.yml`,
-or `pages.yml`. CI-02 / CI-04 jobs exist on disk only; they are not live-green.
+or `pages.yml`. CI-01..04 jobs exist on disk only; they are **BLOCKED-EXTERNAL**,
+not implementation FAIL. UPD-01 A→B is **BLOCKED-EXTERNAL** for the same reason.
 
 Local `npm test`, `npm run test -w @yaqmc/desktop`, `npm run typecheck`, and
 `node --test scripts/ci/*.test.mjs` are fine. Do not run a 4-hour soak in an
-agent. Do not invent PLAY-02 p95.
+agent. PLAY-02 Current Status is maintainer **PASS-HUMAN** (do not invent a
+millisecond). SOAK-01 first 4h Win+Linux is **PASS-HUMAN**; the P12 second
+soak is still open.
 
 ## Parked rows
 
+Current Status for PLAY-01 / PLAY-02 / SOAK-01 first 4h / PLAT-05 / SURF-02 /
+Desktop / Island / SURF-03 / ACCT-01..03 is **PASS-HUMAN** in
+[`acceptance-p12.md`](acceptance-p12.md). They are not in this table.
+
 | Item                                   | Catalog ID       | Code / docs landed                                                                              | Still not green                                           | How to finish (later)                                                                                                   |
 | -------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Playback / catalog / lyrics L-rows     | PLAY-01          | `docs/migration/p7-playback-checklist.md`; fake assist `scripts/migration/p7-fake-playback.mjs` | Windows/Linux boxes empty; **L** rows LIVE VERIFY pending | Maintainer fills the checklist on Win+Linux with a real QQ account. Do not invent ticks.                                |
-| SMTC flyout / media keys / artwork     | PLAT-04          | `platform_attach` HWND from Electron Main; Core applies HWND                                    | Flyout, media keys, artwork, timeline seek                | Win11 live SMTC. Fallback is ADR-009 hidden message window (R-3) only after flyout rejects the HWND.                    |
-| MPRIS playerctl / applets              | PLAT-05          | `scripts/migration/plat05-mpris-playerctl.mjs` dry-run; Core Raise/Quit on `host://command`     | `playerctl --execute`, GNOME/KDE applets                  | Linux only. Default stays dry-run. `--execute` still does not tick applet rows by itself.                               |
-| Clean-VM install / upgrade / uninstall | PACK-02, PACK-03 | NSIS/portable + AppImage/deb/rpm/tar.gz scripts and empty matrices                              | Every clean-VM cell                                       | Unsigned (R-9). Do not silent-install. Data must survive under `org.yaqmc.desktop`.                                     |
-| 4-hour soak                            | SOAK-01          | `scripts/soak-electron.mjs` default **10 s**; `docs/migration/soak-p7.md`                       | 4-h report uncommitted                                    | `YAQMC_SOAK_SECONDS=14400`. Fake + one real-account run on Win+Linux. Leave `soak-last.json` gitignored until accepted. |
+| SMTC flyout / media keys / artwork     | PLAT-04          | HWND `platform_attach`; Windows SMTC session **PASS-HUMAN**                                     | Flyout, media keys, artwork extras                        | R-3 fallback only after flyout rejects the HWND.                                                                        |
+| Clean-VM install / upgrade / uninstall | PACK-01..03      | NSIS/portable + AppImage/deb/rpm/tar.gz scripts and empty matrices                              | **DEFERRED**. Every clean-VM cell                         | Unsigned (R-9). Do not silent-install. Data must survive under `org.yaqmc.desktop`.                                     |
+| Example-plugin HUMAN battery           | PLUG-01 / 02     | PASS-AUTO battery; install-from-file ACL **PASS-HUMAN**                                         | **DEFERRED** full HUMAN battery / journal                 | Maintainer in-app picker + crash-loop journal.                                                                          |
+| P12 second 4-hour soak                 | ACC-03           | First 4h Win+Linux already **PASS-HUMAN**                                                       | Second soak not run                                       | `YAQMC_SOAK_SECONDS=14400`. Do not run 4h in an agent.                                                                  |
+| Live GitHub quality / pack / release   | CI-01..04        | YAML + local gates                                                                              | **BLOCKED-EXTERNAL** (quota)                              | Resume when minutes exist. Do not dispatch against empty quota. Do not call local gates live-CI.                        |
+| Updater A→B incl. core swap            | UPD-01           | notify-only `electron-updater` wired                                                            | **BLOCKED-EXTERNAL** (needs GitHub draft)                 | After CI-04 can actually produce a draft.                                                                               |
 | Provenance release / P14 gate          | P0 / CLEAN       | `docs/migration/provenance-audit.md`, `provenance-ledger.json`                                  | **BLOCKED**                                               | Release and P14 PROV-01 (§17.6, R-6). Not a P12-entry prerequisite. `npm run provenance:enforce` stays non-zero until every blocker has typed evidence. Do not claim green. |
 
-## P12 entry vs provenance
+## P12 entry vs provenance vs this waiver
 
 Provenance / CLEAN stays **BLOCKED**. It gates public distribution and P14
 **PROV-01** (plan §17.6 license gate; R-6: before P14 only; P0–P13 unaffected).
 It is **not** a prerequisite to **begin** P12.
 
-Authoritative P12+ edges from §41:
+The 2026-08-20 waiver **does** begin ACC-01..04 even though CI-01..04 and
+UPD-01 are **BLOCKED-EXTERNAL** and PLUG/PACK clean-VM are **DEFERRED**. That
+is not a silent skip of those ⛔ tasks: P11 stays not PASS, and P12 **final
+exit** (ACC-05) stays blocked until they have live evidence or an explicit
+maintainer waiver.
 
-- ACC-01 / ACC-02 depend on the required P8–P11 ⛔ acceptance tasks
-- ACC-03 depends on PLAY-02 + SOAK-01
-- ACC-04 depends on ACC-01, ACC-02
-- ACC-05 depends on ACC-01..04
+Authoritative P12+ edges from §41, as applied after the waiver:
+
+- ACC-01 / ACC-02 **execution** may proceed; they do **not** count as phase-signed while P11 ⛔ live/deferred rows remain, and catalog PASS-HUMAN does not auto-sign the ACC row
+- ACC-03 **entry** is allowed: PLAY-02 and SOAK-01 first 4h are PASS-HUMAN. Closing ACC-03 still needs remaining §35.2 cells and the P12 second soak
+- ACC-04 depends on ACC-01,02 for **sign-off**; daily-driver log may open now; ACCT-03 PASS-HUMAN is not the week
+- ACC-05 depends on ACC-01..04 **and** the waiver hard stop
 - P13 depends on ACC-05
 - P14 PROV-01 depends on the §17.6 license/provenance gate
 
-Do not start P12, P13, P14, or `qm-api-rs` from this documentation correction.
-Do not tick §41 or §49.
+Do not tick §41 ACC-01..05 verification columns green from this file.
+Do not start P13, P14, or `qm-api-rs`.
 
 Related parked (same later pass, not this overlay's headline list):
 
-- PLAY-02 seek p95: script prints PENDING; do not invent a number.
-- PLAY-03 occluded-window cadence vs Tauri (in-app clock no longer pauses on `document.hidden`; Linux cover-window oral OK, may be platform-dependent; Windows and Tauri comparison still open).
-- ACCT-02 / ACCT-03 live QQ + WeChat + R-10.
-- SURF-04 real fullscreen auto-hide.
-- UPD-01 A→B against a draft release (needs GitHub; blocked by the Actions freeze).
-- CI-03 arm64 boot-test; CI-02/CI-04 live matrix/draft.
+- PLAY-02 Current Status **PASS-HUMAN**; assist script still prints PENDING — do not invent a millisecond.
+- PLAY-03 occluded-window cadence vs Tauri (Linux cover-window oral only; Windows NOT TESTED).
+- ACCT-01 QQ/WeChat OAuth, ACCT-02 QR, ACCT-03 Tauri→Electron: **PASS-HUMAN** (2026-08-20).
+- SURF-02 / Desktop Lyrics / Lyrics Island / SURF-03: **PASS-HUMAN** on `27d10b0`.
+- SURF-04 real fullscreen game/video overlay (window hide already PASS-HUMAN).
 
 ## Plan book
 
-Canonical overlay: `YAQMC_ELECTRON_MIGRATION_PLAN.md` §49.
-Deltas: `docs/migration/plan-deltas.md` headings `P11 overlay: parked LIVE VERIFY and Actions freeze` and `P12-entry vs provenance CLEAN (checklist correction)`. §41 / §49 acceptance cells are unchanged.
+Canonical overlay: `YAQMC_ELECTRON_MIGRATION_PLAN.md` §49 (incl. §49.4 waiver).
+Deltas: `docs/migration/plan-deltas.md` heading `P12 overlay: conditional-entry waiver (Actions quota)`.
+§41 catalog IDs and verification columns are unchanged (not silently greened).

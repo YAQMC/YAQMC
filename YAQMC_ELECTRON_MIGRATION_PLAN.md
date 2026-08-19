@@ -1789,6 +1789,7 @@ Sixteen phases, P0–P15. Every phase has the ten fixed fields. Global invariant
 - **Exit criteria:** §36 matrix fully green (every row, both platforms); sign-off note in `docs/migration/acceptance-p12.md` with dates/environments/versions; tag `pre-tauri-removal`.
 - **Rollback:** stay in P12 until green — no time-boxed override.
 - **Checkpoint:** `CHECK-12`.
+- **2026-08-20 execution note (does not rewrite the rows above):** P11 has **not** fully exited. ACC-01..04 may execute under §49.4 while CI-01..04 / UPD-01 are **BLOCKED-EXTERNAL** and PLUG/PACK clean-VM are **DEFERRED**. ACC-05 / `CHECK-12` / P13 remain blocked until the §49.4 hard stop.
 
 ---
 
@@ -2205,50 +2206,72 @@ Replace the host, not the soul: YAQMC's playback authority, provider behavior, p
 
 ### 48.6 Later-pass parked work
 
-See **§49**. Do not mark PLAY-01, SMTC flyout, MPRIS applets, clean-VM, 4-hour soak, or provenance green from this overlay. Do not dispatch GitHub Actions while the freeze in §49 holds.
+See **§49**. Do not mark SMTC flyout extras, MPRIS applets, clean-VM, 4-hour soak, or provenance green from YAML or local substitutes. Do not dispatch GitHub Actions while the freeze in §49.1 holds. P12 ACC-01..04 may execute under §49.4; ACC-05 / P13 may not.
 
 ---
 
-## 49. Execution overlay (2026-08-18)
+## 49. Execution overlay (2026-08-18; amended 2026-08-20)
 
-This section is an **execution snapshot**, not a rewrite of §41. Catalog IDs, ADRs, and verification columns stay as written. Code facts live in `docs/migration/plan-deltas.md`. Operational handoff: `docs/migration/parked-live-verify.md`.
+This section is an **execution snapshot**, not a rewrite of §41. Catalog IDs, ADRs, and verification columns stay as written. Code facts live in `docs/migration/plan-deltas.md`. Operational handoff: `docs/migration/parked-live-verify.md`. Waiver: `docs/migration/p12-conditional-entry.md`. Tracker: `docs/migration/acceptance-p12.md`.
 
 **Branch:** `feat/electron-migration` (do not cut a new branch; `main` is frozen).
-**Do not start:** P12 ACC, P13 Tauri removal, P14 `qm-api-rs`.
+**P11:** not fully PASS.
+**P12 execution:** ACC-01..04 allowed under §49.4 (2026-08-20).
+**Do not start:** ACC-05 / `pre-tauri-removal`, P13 Tauri removal, P14 `qm-api-rs`.
 **Pins:** Electron **43.4.0**, electron-builder **26.15.7**, electron-updater **6.8.6**. Protocol hard cap **32 MiB**.
 
 ### 49.1 GitHub Actions freeze
 
 YAQMC org Actions quota (**2000** minutes) is exhausted. 2026-08-17 GitHub had a global outage.
 
+This is an **external execution blocker**, not an implementation FAIL.
+
 - Do **not** dispatch `ci.yml`, `build.yml`, `electron-release.yml`, or `pages.yml`.
-- CI-02 / CI-04 YAML is landed (`03da7d3`, `7619bc0`) and is **not** live-green.
+- CI-01..04 live GitHub evidence = **BLOCKED-EXTERNAL**. YAML on disk ≠ live-green.
+- UPD-01 A→B live evidence = **BLOCKED-EXTERNAL** (needs a draft release / GitHub).
 - Local unit/typecheck/`node --test scripts/ci/*.test.mjs` is allowed. Do not run a 4-hour soak in an agent. Do not invent PLAY-02 p95.
 
 ### 49.2 Parked for a later higher-capability pass (not green)
 
 | Headline | Catalog | Landed | Still not green |
 |---|---|---|---|
-| PLAY-01 | P7 PLAY-01 ⛔ | Checklist + fake-mode assist | Win/Linux boxes empty; **L** rows LIVE VERIFY pending |
-| SMTC flyout / media keys / artwork | P9 PLAT-04 ⛔ | HWND `platform_attach` from Electron Main | Flyout, keys, artwork, timeline seek. Do not claim SMTC green. R-3 fallback only after flyout rejects the HWND. |
-| MPRIS playerctl / applets | P9 PLAT-05 ⛔ | Dry-run `plat05-mpris-playerctl.mjs`; Core Raise/Quit | `--execute`, GNOME/KDE applets. Do not claim MPRIS green. |
-| Clean-VM install/upgrade/uninstall | P11 PACK-02/03 ⛔ | Pack scripts + empty matrices | Every clean-VM cell. Unsigned (R-9). No silent install. |
-| 4-hour soak | P7 SOAK-01 ⛔ | `soak-electron.mjs` default 10 s | 4-h report uncommitted. `YAQMC_SOAK_SECONDS=14400`. Fake + one real-account run. |
-| Provenance | P0 / CLEAN | Audit + ledger | **BLOCKED**. `provenance:enforce` stays non-zero. |
+| PLAY-01 phase sign-off | P7 PLAY-01 ⛔ | Checklist + later AUTO/LIVE/HUMAN | Catalog **PASS-HUMAN** (2026-08-20). ACC-01/02 still not signed. Post-`1d6b535` FAIL is history. |
+| SMTC flyout / media keys / artwork | P9 PLAT-04 ⛔ | HWND `platform_attach`; Windows SMTC **PASS-HUMAN** (session) | Flyout, keys, artwork extras. R-3 fallback only after flyout rejects the HWND. |
+| MPRIS playerctl / applets | P9 PLAT-05 ⛔ | Dry-run + **PASS-HUMAN** (2026-08-20) | Catalog passed. KDE §29.5 environment cell still unsigned. |
+| Clean-VM install/upgrade/uninstall | P11 PACK-01..03 ⛔ | Pack scripts + empty matrices | **DEFERRED**. Every clean-VM cell. Unsigned (R-9). No silent install. |
+| 4-hour soak | P7 SOAK-01 ⛔ / ACC-03 | `soak-electron.mjs` default 10 s | First 4h Win+Linux **PASS-HUMAN**. P12 second soak still open. |
+| Provenance | P0 / CLEAN | Audit + ledger | **BLOCKED**. `provenance:enforce` stays non-zero. Not a product FAIL of the Electron host. |
 
-Related parked (same later pass): PLAY-02 p95, PLAY-03 occluded cadence, ACCT-02/03 live QQ/WX + R-10, SURF-04 real fullscreen, UPD-01 A→B (needs GitHub), CI-03 arm64 boot-test.
+Related parked (same later pass): PLAY-03 Windows occluded cadence, SURF-06 xwayland / §29.5 Fedora/Arch/KDE/Ubuntu-X11, SURF-04 real fullscreen overlay, UPD-01 A→B (**BLOCKED-EXTERNAL**), CI-01..04 live (**BLOCKED-EXTERNAL**), PLUG-01/02 HUMAN battery (**DEFERRED**). PLAY-02 catalog is **PASS-HUMAN**; remaining ACC-03 is other §35.2 + second soak.
 
 ### 49.3 Code-landed vs live-green (P11 infra)
 
 | ID | YAML / code | Live GitHub / VM |
 |---|---|---|
-| CI-02 Electron package matrix | landed | not run (Actions freeze) |
-| CI-04 Electron draft release | landed (`electron-v*` / `electron-draft-*`, `--draft`) | not run (Actions freeze). Tauri `build.yml` untouched. |
-| UPD-01 notify-only updater | landed (`autoDownload: false`) | A→B rehearsal pending |
+| CI-01 quality job | landed; local gates run in-worktree | **BLOCKED-EXTERNAL** (quota). Not a product FAIL. |
+| CI-02 Electron package matrix | landed | **BLOCKED-EXTERNAL**. Tauri `build.yml` untouched. |
+| CI-03 arm64 boot-test | docs / print script | **BLOCKED-EXTERNAL**. Print ≠ boot. |
+| CI-04 Electron draft release | landed (`electron-v*` / `electron-draft-*`, `--draft`) | **BLOCKED-EXTERNAL**. |
+| UPD-01 notify-only updater | landed (`autoDownload: false`) | **BLOCKED-EXTERNAL** A→B. |
 | DIAG-01 `host.json` + host log | `host.json` inject + stderr ring + rotating Main `host.log` in the Core log dir | Not a soak/provenance claim |
 
-P12 does **not** exit until the §49.2 rows are actually green. Do not skip them.
+P11 is **not** fully PASS while the BLOCKED-EXTERNAL / DEFERRED rows above remain.
+
+### 49.4 P12 conditional-entry waiver (2026-08-20)
+
+Maintainer decision: do **not** idle the migration by refusing to start P12 because Actions quota is exhausted. Full text: `docs/migration/p12-conditional-entry.md`.
+
+- **Allows:** ACC-01, ACC-02, ACC-03, ACC-04 (work with no technical dependency on CI/UPD live evidence or deferred PLUG/PACK clean-VM).
+- **Does not allow:** marking P11 PASS; completing ACC-05; tagging `pre-tauri-removal`; starting P13–P15.
+- **Reuse:** existing HUMAN/LIVE/AUTO ledgers. Do not repeat already-accepted HUMAN rows unless a later change invalidates them.
+- **Hard stop — P12 final exit and P13 remain blocked until:**
+  1. CI-01..04 have real live evidence;
+  2. UPD-01 A→B has real live evidence;
+  3. deferred PLUG-01/02 and PACK-01..03 clean-VM requirements are resolved or explicitly waived by the maintainer;
+  4. all other P12 acceptance requirements are complete.
+
+Therefore: **P12 execution = allowed**. **P12 final exit = conditional**. **P13 = blocked**.
 
 ---
 
-*End of plan. 49 sections (48 original + 2026-08-18 overlay), 16 phases, 115 tasks, 16 checkpoints, 15 risks. Source SHA `bc55b7d`; plan date 2026-08-16; overlay 2026-08-18.*
+*End of plan. 49 sections (48 original + 2026-08-18 overlay, amended 2026-08-20), 16 phases, 115 tasks, 16 checkpoints, 15 risks. Source SHA `bc55b7d`; plan date 2026-08-16; overlay 2026-08-18; waiver 2026-08-20.*

@@ -4,17 +4,18 @@ Maintainer script: `node scripts/migration/pack02-windows.mjs`
 
 This is the Windows packaging rehearsal for per-user NSIS (`oneClick: false`,
 `perMachine: false`) and the electron-builder **portable exe** (not Tauri's
-`YAQMC-windows-{arch}-portable.zip`). **PACK-02 is not green.** Every row stays
-unchecked until a maintainer runs it on a **clean VM** or a scratch Windows
-user. **LIVE VERIFY / clean-VM pending** — do not treat a local `pack:win` as
-matrix sign-off.
+`YAQMC-windows-{arch}-portable.zip`). **PACK-02 is not green.** The clean-VM matrix is **DEFERRED** (2026-08-20 P12
+waiver), not a product FAIL. Every row stays unchecked until a maintainer runs
+it on a **clean VM** or a scratch Windows user. **LIVE VERIFY / clean-VM
+pending** — do not treat a local `pack:win` as matrix sign-off.
 
 Do **not** run the installer against the daily-driver profile: `appId`
 `org.yaqmc.desktop` shares `%APPDATA%\org.yaqmc.desktop` with the Tauri build.
 
 Unsigned (**R-9**). SmartScreen / Defender warnings are expected.
 Notify-only `electron-updater` **6.8.6** (UPD-01) is wired; the A→B upgrade
-rehearsal is still **pending**. Electron stays **43.4.0**. Builder stays
+rehearsal is **BLOCKED-EXTERNAL** (Actions quota / draft release), not a
+product FAIL. Electron stays **43.4.0**. Builder stays
 **26.15.7**. Do not start `qm-api-rs`. Provenance remains **BLOCKED**. The
 32 MiB protocol hard cap is unchanged.
 

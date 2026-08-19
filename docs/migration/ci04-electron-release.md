@@ -22,6 +22,10 @@ workflow creates:
 
 That is a rehearsal, not an A→B updater proof.
 
+Live GitHub evidence is **BLOCKED-EXTERNAL** (org Actions quota exhausted), not
+a product FAIL. Do **not** dispatch this workflow while the freeze holds.
+UPD-01 A→B is **BLOCKED-EXTERNAL** for the same reason.
+
 ## Pipeline
 
 1. Frontend dist once (`YAQMC_PREBUILT_FRONTEND=1` on pack jobs).
