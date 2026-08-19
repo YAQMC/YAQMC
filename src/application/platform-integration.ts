@@ -141,9 +141,12 @@ export function usePlatformIntegration() {
     setBusy(true);
     setError(null);
     try {
-      await client.invoke('system_shortcuts_set_enabled', { enabled });
+      const status = await client.invoke('system_shortcuts_set_enabled', { enabled });
       setDiagnostics(await readPlatformDiagnostics());
-      return true;
+      if (status.shortcutError) {
+        setError(status.shortcutError);
+      }
+      return status.globalShortcutsEnabled === enabled;
     } catch (caught) {
       setError(String(caught));
       setDiagnostics(await readPlatformDiagnostics().catch(() => cachedDiagnostics));

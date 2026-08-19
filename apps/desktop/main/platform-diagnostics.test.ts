@@ -201,4 +201,25 @@ describe('overlayPlatformDiagnostics', () => {
       }),
     );
   });
+
+  it('passes a live shortcutError through desktop integration facts', () => {
+    const overlaid = overlayPlatformDiagnostics(
+      { os: 'windows', linux: null },
+      {
+        displayBackend: 'win32',
+        graphicsMode: 'auto',
+        trayAvailable: true,
+        trayError: null,
+        globalShortcutsSupported: true,
+        globalShortcutsEnabled: true,
+        shortcutError: 'shortcut conflict for control+alt+Space',
+      },
+    );
+    expect(overlaid.desktopIntegration).toEqual(
+      expect.objectContaining({
+        globalShortcutsEnabled: true,
+        shortcutError: 'shortcut conflict for control+alt+Space',
+      }),
+    );
+  });
 });

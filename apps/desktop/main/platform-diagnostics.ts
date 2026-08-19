@@ -16,6 +16,7 @@ export type HostPlatformFacts = {
   trayError: string | null;
   globalShortcutsSupported: boolean;
   globalShortcutsEnabled: boolean;
+  shortcutError?: string | null;
 };
 
 export type LinuxDisplayProbe = {
@@ -128,7 +129,7 @@ export function desktopIntegrationFromFacts(facts: HostPlatformFacts): {
   globalShortcutsSupported: boolean;
   globalShortcutsEnabled: boolean;
   globalShortcuts: string[];
-  shortcutError: null;
+  shortcutError: string | null;
 } {
   return {
     trayAvailable: facts.trayAvailable,
@@ -136,7 +137,7 @@ export function desktopIntegrationFromFacts(facts: HostPlatformFacts): {
     globalShortcutsSupported: facts.globalShortcutsSupported,
     globalShortcutsEnabled: facts.globalShortcutsEnabled,
     globalShortcuts: [...FACT_SHORTCUT_ACCELERATORS],
-    shortcutError: null,
+    shortcutError: facts.shortcutError ?? null,
   };
 }
 

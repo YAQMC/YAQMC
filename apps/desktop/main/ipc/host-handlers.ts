@@ -62,6 +62,7 @@ export const DIALOG_PICK_SAVE = 'dialog.pickSave';
 /** Inventory host-owned methods. Not `shell.openExternal`. */
 export const DIAGNOSTICS_OPEN_LOG_FOLDER = 'diagnostics_open_log_folder';
 export const DIAGNOSTICS_REVEAL_BUNDLE = 'diagnostics_reveal_bundle';
+export const SYSTEM_SHORTCUTS_SET_ENABLED = 'system_shortcuts_set_enabled';
 
 /** Host-only; not in METHOD_NAMES. Settings Check for updates. */
 export const HOST_UPDATER_CHECK_METHOD = 'host_updater_check';
@@ -146,6 +147,14 @@ export function urlFromOpenExternalParams(params: unknown): string {
     }
   }
   return '';
+}
+
+export function enabledFromParams(params: unknown): boolean {
+  return (
+    params !== null &&
+    typeof params === 'object' &&
+    (params as { enabled?: unknown }).enabled === true
+  );
 }
 
 export function lyricsKindFromParams(params: unknown): LyricsSurfaceKind | undefined {
@@ -360,6 +369,8 @@ export type HostHandlerDeps = {
   collectHostPayload?: () => DiagnosticsHostPayload;
   /** Live tray / Ozone facts; overlay Core `platform_diagnostics` (stdio, not IpcRouter). */
   platformFacts?: () => HostPlatformFacts;
+  /** Host-owned FACT shortcuts. Throws on unsupported enable or total registration failure. */
+  setShortcutsEnabled?: (enabled: boolean) => unknown;
   /** Core data dir; used to hydrate managed background `dataUri` after stdio. */
   dataDir?: () => string;
   updater?: HostUpdaterDeps;
@@ -573,6 +584,13 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
   if (deps.platformFacts) {
     const platformFacts = deps.platformFacts;
     handlers.system_integration_status = async () => desktopIntegrationFromFacts(platformFacts());
+    if (deps.setShortcutsEnabled) {
+      const setShortcutsEnabled = deps.setShortcutsEnabled;
+      handlers[SYSTEM_SHORTCUTS_SET_ENABLED] = async (params) => {
+        setShortcutsEnabled(enabledFromParams(params));
+        return desktopIntegrationFromFacts(platformFacts());
+      };
+    }
   }
 
   if (deps.updater) {

@@ -62,6 +62,8 @@ export const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 export type GlobalShortcutApi = {
   register(accelerator: string, callback: () => void): boolean;
   unregisterAll(): void;
+  unregister?(accelerator: string): void;
+  isRegistered?(accelerator: string): boolean;
 };
 
 export type ShortcutLogger = {
@@ -137,5 +139,164 @@ export function registerGlobalShortcuts(
 }
 
 export function unregisterGlobalShortcuts(globalShortcut: GlobalShortcutApi): void {
+  for (const binding of SHORTCUT_BINDINGS) {
+    if (globalShortcut.isRegistered?.(binding.accelerator)) {
+      globalShortcut.unregister?.(binding.accelerator);
+    }
+  }
   globalShortcut.unregisterAll();
+}
+
+/** Matches `src-tauri/src/desktop_integration.rs` native-Wayland enable error. */
+export const WAYLAND_SHORTCUTS_UNSUPPORTED =
+  'configurable global shortcuts are unavailable on the active native Wayland backend; use MPRIS media keys';
+
+export type ShortcutSessionStatus = {
+  globalShortcutsSupported: boolean;
+  globalShortcutsEnabled: boolean;
+  globalShortcuts: string[];
+  shortcutError: string | null;
+  registered: string[];
+  failed: string[];
+};
+
+export type GlobalShortcutSession = {
+  setEnabled(enabled: boolean): ShortcutSessionStatus;
+  applyPreference(enabled: boolean): ShortcutSessionStatus;
+  status(): ShortcutSessionStatus;
+  dispose(): void;
+};
+
+function conflictMessage(failed: readonly string[]): string {
+  return `shortcut conflict for ${failed.join(', ')}`;
+}
+
+/**
+ * Owns Electron `globalShortcut` lifecycle. Callers must unregister-then-register
+ * through this session so a later enable is not reported as a conflict against
+ * a boot-time registration.
+ */
+export function createGlobalShortcutSession(options: {
+  globalShortcut: GlobalShortcutApi;
+  invokePlayer: (method: ShortcutAction) => void | Promise<void>;
+  platform: () => NodeJS.Platform | string;
+  wayland: () => boolean;
+  log?: ShortcutLogger;
+}): GlobalShortcutSession {
+  let appliedEnabled = false;
+  let last: ShortcutSessionStatus = {
+    globalShortcutsSupported: false,
+    globalShortcutsEnabled: false,
+    globalShortcuts: [...FACT_SHORTCUT_ACCELERATORS],
+    shortcutError: null,
+    registered: [],
+    failed: [],
+  };
+
+  const supported = (): boolean =>
+    shouldRegisterGlobalShortcuts({
+      platform: options.platform(),
+      wayland: options.wayland(),
+    });
+
+  const snapshot = (
+    partial: Pick<ShortcutSessionStatus, 'globalShortcutsEnabled' | 'shortcutError'> &
+      Partial<Pick<ShortcutSessionStatus, 'registered' | 'failed'>>,
+  ): ShortcutSessionStatus => {
+    last = {
+      globalShortcutsSupported: supported(),
+      globalShortcutsEnabled: partial.globalShortcutsEnabled,
+      globalShortcuts: [...FACT_SHORTCUT_ACCELERATORS],
+      shortcutError: partial.shortcutError,
+      registered: partial.registered ?? last.registered,
+      failed: partial.failed ?? last.failed,
+    };
+    return last;
+  };
+
+  const setEnabled = (enabled: boolean): ShortcutSessionStatus => {
+    unregisterGlobalShortcuts(options.globalShortcut);
+    appliedEnabled = false;
+
+    if (!supported()) {
+      const status = snapshot({
+        globalShortcutsEnabled: false,
+        shortcutError: enabled ? WAYLAND_SHORTCUTS_UNSUPPORTED : null,
+        registered: [],
+        failed: [],
+      });
+      if (enabled) {
+        throw new Error(WAYLAND_SHORTCUTS_UNSUPPORTED);
+      }
+      return status;
+    }
+
+    if (!enabled) {
+      return snapshot({
+        globalShortcutsEnabled: false,
+        shortcutError: null,
+        registered: [],
+        failed: [],
+      });
+    }
+
+    const result = registerGlobalShortcuts({
+      globalShortcut: options.globalShortcut,
+      invokePlayer: options.invokePlayer,
+      platform: options.platform(),
+      wayland: options.wayland(),
+      log: options.log,
+    });
+    const error = result.failed.length > 0 ? conflictMessage(result.failed) : null;
+    if (result.registered.length === 0) {
+      snapshot({
+        globalShortcutsEnabled: false,
+        shortcutError: error ?? 'globalShortcut.register() failed',
+        registered: [],
+        failed: result.failed,
+      });
+      throw new Error(last.shortcutError ?? 'globalShortcut.register() failed');
+    }
+    appliedEnabled = true;
+    return snapshot({
+      globalShortcutsEnabled: true,
+      shortcutError: error,
+      registered: result.registered,
+      failed: result.failed,
+    });
+  };
+
+  return {
+    setEnabled,
+    applyPreference(enabled: boolean): ShortcutSessionStatus {
+      if (enabled === appliedEnabled) {
+        return {
+          ...last,
+          globalShortcutsSupported: supported(),
+        };
+      }
+      try {
+        return setEnabled(enabled);
+      } catch (error) {
+        options.log?.warn('shortcut preference apply failed', { error: String(error) });
+        return last;
+      }
+    },
+    status(): ShortcutSessionStatus {
+      return {
+        ...last,
+        globalShortcutsSupported: supported(),
+      };
+    },
+    dispose(): void {
+      unregisterGlobalShortcuts(options.globalShortcut);
+      appliedEnabled = false;
+      snapshot({
+        globalShortcutsEnabled: false,
+        shortcutError: null,
+        registered: [],
+        failed: [],
+      });
+    },
+  };
 }

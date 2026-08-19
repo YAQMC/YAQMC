@@ -64,7 +64,7 @@ import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-
 import { createUpdater, type UpdaterHandle } from './services/updater';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
 import { applyAppWindowGuards, applySessionSecurity, VITE_DEV_ORIGIN } from './security';
-import { registerGlobalShortcuts, unregisterGlobalShortcuts } from './services/shortcuts';
+import { createGlobalShortcutSession } from './services/shortcuts';
 import {
   createTray,
   shouldHideInsteadOfClose,
@@ -244,6 +244,18 @@ const lyricsUnlock = createLyricsUnlockOverlays({
     rendererDevPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
 });
 
+const shortcutSession = createGlobalShortcutSession({
+  globalShortcut,
+  invokePlayer,
+  platform: () => process.platform,
+  wayland: () => isNativeWaylandDisplayBackend(liveDisplayBackend()),
+  log: {
+    warn(message, extra) {
+      console.warn(message, extra);
+    },
+  },
+});
+
 if (e2e) {
   (
     globalThis as {
@@ -383,15 +395,18 @@ const router = new IpcRouter({
     collectHostPayload: collectLiveHostPayload,
     platformFacts: () => {
       const displayBackend = liveDisplayBackend();
+      const shortcuts = shortcutSession.status();
       return {
         displayBackend,
         graphicsMode: linuxGraphicsFacts.mode,
         trayAvailable: trayHandle !== undefined,
         trayError,
         globalShortcutsSupported: !isNativeWaylandDisplayBackend(displayBackend),
-        globalShortcutsEnabled: shortcutsEnabledFromPreferences(lastPreferencesRaw),
+        globalShortcutsEnabled: shortcuts.globalShortcutsEnabled,
+        shortcutError: shortcuts.shortcutError,
       };
     },
+    setShortcutsEnabled: (enabled) => shortcutSession.setEnabled(enabled),
     updater: {
       check: () => requireUpdater().check(),
       download: () => requireUpdater().download(),
@@ -708,6 +723,7 @@ function fanoutEvent(channel: string, payload: unknown): void {
   if (channel === CHANNEL_PREFERENCES_CHANGED) {
     closeToTray = rememberCloseToTray(payload, closeToTray);
     applyTrayLabelsFromPreferences(payload);
+    applyShortcutsFromPreferences(payload);
   }
   router.fanout(channel, payload, (id, eventFrame) => {
     webContents.fromId(id)?.send(EVENT_CHANNEL, eventFrame);
@@ -730,6 +746,7 @@ function cacheCloseToTrayPreference(): void {
     .then((raw) => {
       closeToTray = rememberCloseToTray(raw, closeToTray);
       applyTrayLabelsFromPreferences(raw);
+      applyShortcutsFromPreferences(raw);
     })
     .catch(() => {
       // FACT: preference read deferred / failed → keep default hide-to-tray.
@@ -828,6 +845,13 @@ function applyTrayLabelsFromPreferences(raw: unknown): void {
   );
 }
 
+function applyShortcutsFromPreferences(raw: unknown): void {
+  if (smoke) {
+    return;
+  }
+  shortcutSession.applyPreference(shortcutsEnabledFromPreferences(raw));
+}
+
 function installTrayAndShortcuts(): void {
   if (smoke || (e2e && process.env.YAQMC_E2E_TRAY !== '1')) {
     return;
@@ -855,26 +879,10 @@ function installTrayAndShortcuts(): void {
     trayHandle = undefined;
     trayError = error instanceof Error ? error.message : String(error);
   }
-
-  if (e2e) {
-    return;
-  }
-
-  registerGlobalShortcuts({
-    globalShortcut,
-    invokePlayer,
-    platform: process.platform,
-    wayland: nativeWayland,
-    log: {
-      warn(message, extra) {
-        console.warn(message, extra);
-      },
-    },
-  });
 }
 
 function teardownHostChrome(): void {
-  unregisterGlobalShortcuts(globalShortcut);
+  shortcutSession.dispose();
   trayHandle?.destroy();
   trayHandle = undefined;
 }
