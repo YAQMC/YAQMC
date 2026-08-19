@@ -5,6 +5,8 @@
 
 **不是阶段签字。** 口头 OK、有代码、PASS-AUTO 都不能把 PLAY-01 / PLAT-* 标成仓库验收通过。[`p7-playback-checklist.md`](p7-playback-checklist.md) 勾选框保持空。
 
+Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent-2026-08-19.md`](qa-agent-2026-08-19.md)。
+
 | 字段 | 值 |
 | --- | --- |
 | 分支 | `feat/electron-migration`（`main` 冻结） |
@@ -187,7 +189,7 @@
 1. 访客首页三条登录后未再点名。
 2. PLAY-01 / PLAT-05 书面清单与脚本 LIVE VERIFY 仍空。PLAT-03 / PLAT-07 / PLAY-03 修复尚未提交。
 3. PLAT-02 本机跳过；交接 Windows 仍是 FAIL-HUMAN。PLAT-04 本机跳过。SURF-03 本机 Wayland 暂时不测。
-4. `LyricsPanel` 里两条 native remote artwork 单元测试在 HEAD 上已失败（与 PLAY-03 无关；未修）。
+4. `LyricsPanel` 里两条 native remote artwork 单元测试在 `1d5fee9` 上已失败（与 PLAY-03 无关）。2026-08-19 代理 AUTO 已用 `pendingRemote: 'hide'` 修过；仍不是 HUMAN 封面验收。
 
 ---
 

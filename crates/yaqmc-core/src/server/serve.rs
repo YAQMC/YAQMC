@@ -204,6 +204,10 @@ where
                     Ok(CoreMessage::Shutdown { .. }) => {
                         persist_queue(&core).await;
                         core.player().stop_clock();
+                        // Tauri marked the plugin journal clean on host Exit.
+                        // Electron's graceful protocol shutdown must do the same,
+                        // or the next boot treats a normal quit as a crash loop.
+                        core.plugins().mark_clean_exit();
                         core.shutdown();
                         transport.send(&CoreMessage::ShutdownAck).await?;
                         break;

@@ -2,8 +2,8 @@ use std::fs;
 
 use serde_json::Value;
 use yaqmc_protocol::{
-    CORE_EVENT_CHANNELS, CoreMessage, FRAME_HARD_CAP_BYTES, HOST_EVENT_CHANNELS,
-    PROTOCOL_ONLY_METHODS, contract_fixtures_dir, emit_contract_fixtures, methods,
+    contract_fixtures_dir, emit_contract_fixtures, methods, CoreMessage, CORE_EVENT_CHANNELS,
+    FRAME_HARD_CAP_BYTES, HOST_EVENT_CHANNELS, PROTOCOL_ONLY_METHODS,
 };
 
 const FIXTURE_FILES: &[&str] = &[

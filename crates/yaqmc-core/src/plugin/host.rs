@@ -1517,6 +1517,21 @@ mod tests {
     }
 
     #[test]
+    fn clean_exit_preserves_enabled_plugins() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");
+        host.install_inspection(style_inspection("dev.example.one"), true, &[], "test")
+            .expect("install");
+        assert!(host.list()[0].enabled);
+        host.mark_clean_exit();
+        drop(host);
+        let recovered = ExtensionHost::open(root.path().to_path_buf()).expect("reopen");
+        assert!(!recovered.safe_mode());
+        assert!(recovered.list()[0].enabled);
+        assert_eq!(recovered.list()[0].status, PluginStatus::Active);
+    }
+
+    #[test]
     fn safe_mode_is_host_level_even_without_plugins() {
         let root = tempfile::tempdir().expect("root");
         let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");

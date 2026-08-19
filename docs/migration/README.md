@@ -4,6 +4,7 @@ This directory is the execution record for the Electron migration. Facts in thes
 
 - [Temporary maintainer handoff — 2026-08-18](HANDOFF_2026-08-18.md) (frozen at `1d6b535`; not current HUMAN state)
 - [HUMAN ledger from PLAY-01 — 2026-08-19](linux-human-2026-08-19.md) (this session plus handoff §4 already-tested rows; not a phase sign-off; maintainer HUMAN default is Linux Wayland — do not switch to X11 to fill skipped rows)
+- [QA agent AUTO/LIVE ledger — 2026-08-19](qa-agent-2026-08-19.md) (Windows agent pass; PASS-AUTO / LIVE only; not phase sign-off)
 - [Test baseline](test-baseline.md)
 - [Release assets and compatibility delta](release-assets.md)
 - [Governance and factual deltas](governance.md)
