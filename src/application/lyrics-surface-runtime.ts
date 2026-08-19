@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LyricDocument, LyricLine, LyricSyncMode, Song } from '../domain/music';
 import { selectLyricCursor } from './lyrics-timing';
 import {
@@ -62,6 +62,20 @@ export function matchingSurfaceDocument(
   return projection?.value.currentTrack?.id === document?.songId ? document : null;
 }
 
+export function shouldReplaceSurfaceProjection(
+  previous: TimedProjection | null,
+  next: LyricSurfaceProjection,
+): boolean {
+  if (!previous) return true;
+  const prev = previous.value;
+  if ((next.sessionId ?? 0) !== (prev.sessionId ?? 0)) return true;
+  if (prev.currentTrack?.id !== next.currentTrack?.id) return true;
+  if (prev.isPlaying !== next.isPlaying) return true;
+  if (prev.playbackDurationMs !== next.playbackDurationMs) return true;
+  if (prev.lineIndex !== next.lineIndex) return true;
+  return Math.abs(prev.positionMs - next.positionMs) > 250;
+}
+
 export function projectSurfaceLyrics(
   document: LyricDocument | null,
   positionMs: number,
@@ -104,16 +118,43 @@ export function useLyricsSurfaceRuntime(): {
   useEffect(() => {
     let active = true;
     let receivedProjectionEvent = false;
-    let receivedDocumentEvent = false;
     let acceptedSession = 0;
     let acceptedTrackId: string | null = null;
     const client = getYaqmcClient();
+    const acceptDocument = (payload: LyricDocument | null | undefined) => {
+      if (!payload) return;
+      if (acceptedTrackId && payload.songId !== acceptedTrackId) return;
+      if (active) setDocument(payload);
+    };
+    const pullDocument = (trackId: string | null) => {
+      void client.player
+        .lyrics()
+        .then((value) => {
+          if (!active || !value) return;
+          if (trackId && value.songId !== trackId) return;
+          acceptDocument(value);
+        })
+        .catch(() => undefined);
+    };
     const updateProjection = (value: LyricSurfaceProjection) => {
       const session = value.sessionId ?? 0;
       if (session !== 0 && session < acceptedSession) return;
-      if (session > acceptedSession) acceptedSession = session;
-      acceptedTrackId = value.currentTrack?.id ?? null;
-      if (active) setProjection({ value, receivedAt: performance.now() });
+      const nextTrack = value.currentTrack?.id ?? null;
+      const trackChanged = Boolean(nextTrack) && nextTrack !== acceptedTrackId;
+      if (session > acceptedSession) {
+        acceptedSession = session;
+        acceptedTrackId = nextTrack;
+      } else if (nextTrack) {
+        acceptedTrackId = nextTrack;
+      }
+      if (active) {
+        setProjection((previous) =>
+          shouldReplaceSurfaceProjection(previous, value)
+            ? { value, receivedAt: performance.now() }
+            : previous,
+        );
+      }
+      if (trackChanged) pullDocument(nextTrack);
     };
 
     const stopProjection = client.on('lyrics://projection', (payload) => {
@@ -123,13 +164,7 @@ export function useLyricsSurfaceRuntime(): {
       }
     });
     const stopDocument = client.on('lyrics://document', (payload) => {
-      if (active) {
-        if (payload && acceptedTrackId && payload.songId !== acceptedTrackId) {
-          return;
-        }
-        receivedDocumentEvent = true;
-        setDocument(payload);
-      }
+      if (active) acceptDocument(payload);
     });
     void client.player
       .projection()
@@ -137,12 +172,7 @@ export function useLyricsSurfaceRuntime(): {
         if (active && !receivedProjectionEvent) updateProjection(value);
       })
       .catch(() => undefined);
-    void client.player
-      .lyrics()
-      .then((value) => {
-        if (active && !receivedDocumentEvent) setDocument(value);
-      })
-      .catch(() => undefined);
+    pullDocument(null);
 
     return () => {
       active = false;
@@ -161,16 +191,37 @@ export function useProjectedLyrics(
 ): { current: LyricLine | null; next: LyricLine | null; wordIndex: number } {
   const timingOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
   const playing = projection?.value.isPlaying ?? false;
-  const [now, setNow] = useState(() => performance.now());
+  const [projected, setProjected] = useState(() =>
+    projectSurfaceLyrics(document, projection ? estimatedSurfacePosition(projection) : 0, timingOffsetMs),
+  );
+
   useEffect(() => {
+    const apply = (now = performance.now()) => {
+      const next = projectSurfaceLyrics(
+        document,
+        projection ? estimatedSurfacePosition(projection, now) : 0,
+        timingOffsetMs,
+      );
+      setProjected((previous) =>
+        previous.current?.id === next.current?.id &&
+        previous.next?.id === next.next?.id &&
+        previous.wordIndex === next.wordIndex
+          ? previous
+          : next,
+      );
+    };
+    apply();
     if (!playing) return;
-    const id = window.setInterval(() => setNow(performance.now()), 50);
-    return () => window.clearInterval(id);
-  }, [playing]);
-  return useMemo(() => {
-    const positionMs = projection ? estimatedSurfacePosition(projection, now) : 0;
-    return projectSurfaceLyrics(document, positionMs, timingOffsetMs);
-  }, [document, projection, timingOffsetMs, now]);
+    let frame = 0;
+    const tick = () => {
+      apply();
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [document, playing, projection, timingOffsetMs]);
+
+  return projected;
 }
 
 export async function closeLyricsSurface(kind: SurfaceKind): Promise<void> {

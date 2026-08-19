@@ -467,6 +467,25 @@ export async function e2eLyricsShow(app: ElectronApplication, kind: E2eLyricsKin
   }, kind);
 }
 
+export async function e2eLyricsHide(app: ElectronApplication, kind: E2eLyricsKind): Promise<void> {
+  await app.evaluate((_electron, surface) => {
+    (
+      globalThis as { __YAQMC_E2E__?: { lyricsHide?: (kind: E2eLyricsKind) => void } }
+    ).__YAQMC_E2E__?.lyricsHide?.(surface);
+  }, kind);
+}
+
+export async function e2eLyricsPage(
+  app: ElectronApplication,
+  kind: E2eLyricsKind,
+): Promise<Page | undefined> {
+  const needle = `surface=${kind}`;
+  return app.windows().find((page) => {
+    const url = page.url();
+    return url.includes(needle) && !url.includes('unlockSurface');
+  });
+}
+
 export async function e2eLyricsBounds(
   app: ElectronApplication,
   kind: E2eLyricsKind,

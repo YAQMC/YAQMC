@@ -16,7 +16,7 @@ Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent
 | 应用窗口后端 | 默认仍是 ADR-008 的 X11/XWayland ozone。会话 Wayland ≠ 应用 native-Wayland。不要为了出 SURF-06 横幅去设 `YAQMC_LINUX_RENDERER`，除非维护者明确要求 |
 | 交接已测 | Windows `dev:desktop`；维护者见交接；HEAD 当时 `1d6b535` |
 | 本机 Windows | **整机跳过**（含 PLAT-04 SMTC、SURF-04） |
-| PLAT-02 | **本机 Wayland 无法测试**（2026-08-19）。交接 Windows 上是 FAIL-HUMAN。媒体键 ≠ PLAT-02 |
+| PLAT-02 | **本机 Wayland 无法测试**（2026-08-19）。Windows 维护者 2026-08-19 记为 PASS-HUMAN。媒体键 ≠ PLAT-02 |
 | SURF-03 | **本机 Wayland 暂时不测**（2026-08-19）。不当 FAIL。X11/Windows 另测 |
 
 词汇：
@@ -70,7 +70,7 @@ Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent
 | PLAY-03 挡住窗口后歌词钟 | NOT TESTED | **测过（口头 OK）** 本机盖窗；可能与平台有关。Windows / Tauri 节拍未测 |
 | 本地文件播放入口 | 无 UI，不要发明 | **未测** |
 | PLAT-01 托盘 | OS 图标 NOT TESTED；E2E 只点菜单 | **测过（口头 OK）** |
-| PLAT-02 全局快捷键 | **FAIL-HUMAN / 不接受** | **跳过（Wayland 无法测试）** |
+| PLAT-02 全局快捷键 | **Windows PASS-HUMAN（2026-08-19）** | **跳过（Wayland 无法测试）** |
 | PLAT-03 托盘跟语言 | NOT TESTED | **测过（口头 OK）**（先失败，修后再过） |
 | PLAT-04 SMTC | NOT TESTED | **跳过** |
 | PLAT-05 MPRIS | NOT TESTED | **测过（口头 OK）** |
@@ -175,7 +175,7 @@ Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent
 | ID | 测什么 | 本会话 | 下一步 |
 | --- | --- | --- | --- |
 | **PLAT-01** | 托盘图标 / 菜单 / 显示隐藏 | **测过（口头 OK）** | 设置诊断行归 PLAT-07，已过 |
-| **PLAT-02** | `Ctrl+Alt+空格 / ← / →` | **跳过（Wayland 无法测试）** | 不当 FAIL。X11/Windows 另测。交接 Windows 仍是 FAIL-HUMAN |
+| **PLAT-02** | `Ctrl+Alt+空格 / ← / →` | **跳过（Wayland 无法测试）** | 不当 FAIL。X11/Windows 另测。Windows 已 PASS-HUMAN（2026-08-19） |
 | **PLAT-03** | 托盘菜单跟界面语言 | **测过（口头 OK）** | 先失败后修过。未提交。不签绿 |
 | **PLAT-04** | Windows SMTC | **跳过** | |
 | **PLAT-05** | MPRIS 媒体键 / 进度 / Raise / Quit | **测过（口头 OK）** | 脚本 `--execute`、GNOME/KDE 小部件 **未记** |
@@ -188,7 +188,7 @@ Windows 代理 AUTO/LIVE 台账（不覆盖本文件口头结果）：[`qa-agent
 
 1. 访客首页三条登录后未再点名。
 2. PLAY-01 / PLAT-05 书面清单与脚本 LIVE VERIFY 仍空。PLAT-03 / PLAT-07 / PLAY-03 修复尚未提交。
-3. PLAT-02 本机跳过；交接 Windows 仍是 FAIL-HUMAN。PLAT-04 本机跳过。SURF-03 本机 Wayland 暂时不测。
+3. PLAT-02 本机跳过；Windows 已 PASS-HUMAN（2026-08-19）。PLAT-04 本机跳过。SURF-03 本机 Wayland 暂时不测。
 4. `LyricsPanel` 里两条 native remote artwork 单元测试在 `1d5fee9` 上已失败（与 PLAY-03 无关）。2026-08-19 代理 AUTO 已用 `pendingRemote: 'hide'` 修过；仍不是 HUMAN 封面验收。
 
 ---

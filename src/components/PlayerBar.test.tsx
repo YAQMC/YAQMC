@@ -355,7 +355,7 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(usePlayerStore.getState().volume).toBe(0.72);
   });
 
-  it('keeps the play control node across position ticks', () => {
+  it('keeps the play control node across position ticks', async () => {
     usePlayerStore.setState({
       queue: [qqTrack()],
       currentIndex: 0,
@@ -366,10 +366,58 @@ describe('PlayerBar lyrics presentation entry', () => {
     const { container } = render(<PlayerBar />);
     const play = container.querySelector('.player-controls__play');
     expect(play).not.toBeNull();
-    act(() => {
+    await act(async () => {
       usePlayerStore.setState({ positionMs: 12_000 });
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(undefined));
+      });
     });
     expect(container.querySelector('.player-controls__play')).toBe(play);
-    expect(screen.getByRole('slider', { name: 'Playback position' })).toHaveValue('12000');
+  });
+
+  it('keeps progress and volume drafts while playback snapshots arrive', () => {
+    const track = {
+      ...qqTrack(),
+      durationMs: 249_000,
+    };
+    usePlayerStore.setState({
+      queue: [track],
+      currentIndex: 0,
+      isPlaying: true,
+      playbackState: 'playing',
+      positionMs: 20_000,
+      playbackDurationMs: 49_000,
+      volume: 0.72,
+    });
+    render(<PlayerBar />);
+    const progress = screen.getByRole('slider', { name: 'Playback position' });
+    const volume = screen.getByRole('slider', { name: 'Volume' });
+    fireEvent.pointerDown(progress);
+    fireEvent.change(progress, { target: { value: '30000' } });
+    fireEvent.pointerDown(volume);
+    fireEvent.change(volume, { target: { value: '0.2' } });
+    act(() => {
+      usePlayerStore.getState().applyExternalSnapshot({
+        queue: [track],
+        currentIndex: 0,
+        positionMs: 12_000,
+        isPlaying: true,
+        volume: 0.72,
+        isMuted: false,
+        repeat: 'off',
+        shuffle: false,
+        playbackState: 'playing',
+        playbackDurationMs: 49_000,
+        playbackError: null,
+        sessionId: 0,
+        snapshotRevision: 8,
+      });
+    });
+    expect(progress).toHaveValue('30000');
+    expect(volume).toHaveValue('0.2');
+    fireEvent.pointerUp(progress);
+    fireEvent.pointerUp(volume);
+    expect(usePlayerStore.getState().positionMs).toBe(30_000);
+    expect(usePlayerStore.getState().volume).toBe(0.2);
   });
 });

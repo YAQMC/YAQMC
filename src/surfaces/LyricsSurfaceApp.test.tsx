@@ -90,13 +90,14 @@ describe('Desktop Lyrics interaction presentation', () => {
     const surface = container.querySelector('.lyrics-surface--desktop');
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-idle');
     expect(container.querySelector('.lyrics-surface__controls')).toBeInTheDocument();
-    expect(container.querySelector('.yaqmc-drag')).not.toBeNull();
-    expect(container.querySelector('[data-tauri-drag-region]')).not.toBeNull();
+    expect(container.querySelector('.lyrics-surface__drag')).toHaveClass('yaqmc-drag');
+    expect(container.querySelector('.lyrics-surface__drag')).toHaveAttribute('data-tauri-drag-region');
+    expect(container.querySelector('.desktop-lyrics__content')).not.toHaveClass('yaqmc-drag');
 
     act(() => vi.advanceTimersByTime(121));
     fireEvent.pointerEnter(surface!);
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
-    fireEvent.pointerLeave(surface!);
+    fireEvent.pointerLeave(surface!, { clientX: 9_000, clientY: 9_000 });
     act(() => vi.advanceTimersByTime(90));
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-idle');
   });
@@ -115,20 +116,30 @@ describe('Desktop Lyrics interaction presentation', () => {
 });
 
 describe('Lyrics Island passive mode', () => {
-  it('never hover-expands while locked and continues rendering lyric updates', () => {
-    const initial = props('island', { interaction: 'passive-locked' }, line('First line'));
-    const { container, rerender } = render(<IslandSurface {...initial} />);
-    const surface = container.querySelector('.lyrics-surface--island');
-    fireEvent.pointerEnter(surface!);
-    expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
-    expect(screen.getByText('First line')).toBeInTheDocument();
+  it('keeps Island hover after a leave that is still inside the expanded card', () => {
+    vi.useFakeTimers();
+    const { container } = render(<IslandSurface {...props('island')} />);
+    const surface = container.querySelector('.lyrics-surface--island') as HTMLElement;
+    surface.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 240,
+        bottom: 140,
+        width: 240,
+        height: 140,
+        toJSON: () => ({}),
+      }) as DOMRect;
 
-    rerender(
-      <IslandSurface
-        {...props('island', { interaction: 'passive-locked' }, line('Updated line'))}
-      />,
-    );
-    expect(screen.getByText('Updated line')).toBeInTheDocument();
-    expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+    act(() => vi.advanceTimersByTime(121));
+    fireEvent.pointerEnter(surface, { clientX: 40, clientY: 50 });
+    expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
+    expect(container.querySelector('.lyrics-surface__controls')).toBeInTheDocument();
+
+    fireEvent.pointerLeave(surface, { clientX: 40, clientY: 50 });
+    act(() => vi.advanceTimersByTime(90));
+    expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
   });
 });

@@ -12,10 +12,10 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { useContext, useRef, type CSSProperties } from 'react';
+import { useContext, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { TFunction } from 'i18next';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
-import { useCurrentSong, usePlayerStore, type PlaybackFailure } from '../application/player-store';
+import { getEstimatedPositionMs, useCurrentSong, usePlayerStore, type PlaybackFailure } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
@@ -41,54 +41,112 @@ function PlayerProgressSlider({
   current: ReturnType<typeof useCurrentSong>;
   t: TFunction<'player'>;
 }) {
-  const positionMs = usePlayerStore((state) => state.positionMs);
+  const isPlaying = usePlayerStore((state) => state.isPlaying);
   const isScrubbing = usePlayerStore((state) => state.isScrubbing);
   const scrubPosition = usePlayerStore((state) => state.scrubPosition);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
+  const pausedPositionMs = usePlayerStore((state) => (state.isPlaying ? null : state.positionMs));
   const beginScrub = usePlayerStore((state) => state.beginScrub);
   const previewScrub = usePlayerStore((state) => state.previewScrub);
   const commitScrub = usePlayerStore((state) => state.commitScrub);
-  const positionScrubbing = useRef(false);
+  const dragging = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLSpanElement>(null);
+  const [draft, setDraft] = useState<number | null>(null);
+  const [visualMs, setVisualMs] = useState(() => getEstimatedPositionMs());
   const duration = playbackDurationMs ?? current?.durationMs ?? 0;
-  const displayPosition = isScrubbing ? scrubPosition : positionMs;
+  const displayPosition = draft ?? (isScrubbing ? scrubPosition : visualMs);
   const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
+
+  useEffect(() => {
+    if (pausedPositionMs === null) return;
+    if (!dragging.current) setVisualMs(pausedPositionMs);
+  }, [pausedPositionMs]);
+
+  useEffect(() => {
+    if (!isPlaying || isScrubbing) return;
+    let frame = 0;
+    let lastLabel = '';
+    let lastCommit = 0;
+    const tick = (now: number) => {
+      if (!dragging.current) {
+        const ms = getEstimatedPositionMs();
+        const node = inputRef.current;
+        if (node) {
+          node.value = String(ms);
+          const max = Number(node.max) || 1;
+          node.style.setProperty('--range-progress', `${(ms / max) * 100}%`);
+        }
+        const label = formatDuration(ms);
+        if (timeRef.current && label !== lastLabel) {
+          timeRef.current.textContent = label;
+          lastLabel = label;
+        }
+        if (now - lastCommit >= 250) {
+          lastCommit = now;
+          setVisualMs(ms);
+        }
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [isPlaying, isScrubbing]);
+
+  const capture = (event: ReactPointerEvent<HTMLInputElement>) => {
+    dragging.current = true;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic Playwright/jsdom pointer events may not be capturable.
+    }
+    beginScrub();
+    setDraft(Number(event.currentTarget.value));
+  };
+  const release = (
+    event: ReactPointerEvent<HTMLInputElement> | ReactKeyboardEvent<HTMLInputElement>,
+  ) => {
+    dragging.current = false;
+    const next = Number(event.currentTarget.value);
+    setDraft(null);
+    setVisualMs(next);
+    commitScrub(next);
+  };
 
   return (
     <div className="player-progress">
-      <span>{formatDuration(displayPosition)}</span>
+      <span ref={timeRef}>{formatDuration(displayPosition)}</span>
       <input
+        ref={inputRef}
         type="range"
         min={0}
         max={Math.max(duration, 1)}
-        step={1_000}
+        step={1}
         value={displayPosition}
-        onPointerDown={() => {
-          positionScrubbing.current = true;
+        onPointerDown={capture}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onKeyDown={(event) => {
+          dragging.current = true;
           beginScrub();
+          setDraft(Number(event.currentTarget.value));
         }}
-        onPointerUp={(event) => {
-          positionScrubbing.current = false;
-          commitScrub(Number(event.currentTarget.value));
-        }}
-        onPointerCancel={(event) => {
-          positionScrubbing.current = false;
-          commitScrub(Number(event.currentTarget.value));
-        }}
-        onKeyDown={() => {
-          positionScrubbing.current = true;
-          beginScrub();
-        }}
-        onKeyUp={(event) => {
-          positionScrubbing.current = false;
-          commitScrub(Number(event.currentTarget.value));
-        }}
+        onKeyUp={release}
         onChange={(event) => {
-          if (!positionScrubbing.current) return;
-          previewScrub(Number(event.target.value));
+          if (!dragging.current) return;
+          const next = Number(event.target.value);
+          setDraft(next);
+          previewScrub(next);
+        }}
+        onInput={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.currentTarget.value);
+          setDraft(next);
+          previewScrub(next);
         }}
         disabled={!current}
         aria-label={t('position')}
-        style={{ '--range-progress': `${progress}%` } as CSSProperties}
+        style={{ '--range-progress': `${progress}%` } as CSSProperties }
       />
       <span>{formatDuration(duration)}</span>
     </div>
@@ -98,15 +156,37 @@ function PlayerProgressSlider({
 function PlayerVolumeSlider({ t }: { t: TFunction<'player'> }) {
   const volume = usePlayerStore((state) => state.volume);
   const isMuted = usePlayerStore((state) => state.isMuted);
+  const beginVolumeScrub = usePlayerStore((state) => state.beginVolumeScrub);
   const setVolume = usePlayerStore((state) => state.setVolume);
   const toggleMuted = usePlayerStore((state) => state.toggleMuted);
-  const volumeScrubbing = useRef(false);
-  const volumeProgress = (isMuted ? 0 : volume) * 100;
+  const dragging = useRef(false);
+  const [draft, setDraft] = useState<number | null>(null);
+  const shown = draft ?? (isMuted ? 0 : volume);
+  const volumeProgress = shown * 100;
+
+  const capture = (event: ReactPointerEvent<HTMLInputElement>) => {
+    dragging.current = true;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic Playwright/jsdom pointer events may not be capturable.
+    }
+    beginVolumeScrub();
+    setDraft(Number(event.currentTarget.value));
+  };
+  const release = (
+    event: ReactPointerEvent<HTMLInputElement> | ReactKeyboardEvent<HTMLInputElement>,
+  ) => {
+    dragging.current = false;
+    const next = Number(event.currentTarget.value);
+    setDraft(null);
+    setVolume(next);
+  };
 
   return (
     <div className="volume-control yaqmc-no-drag">
       <IconButton label={isMuted ? t('unmute') : t('mute')} size="small" onClick={toggleMuted}>
-        <VolumeIcon muted={isMuted} volume={volume} />
+        <VolumeIcon muted={isMuted} volume={shown} />
       </IconButton>
       <input
         type="range"
@@ -114,31 +194,30 @@ function PlayerVolumeSlider({ t }: { t: TFunction<'player'> }) {
         min={0}
         max={1}
         step={0.01}
-        value={isMuted ? 0 : volume}
-        onPointerDown={() => {
-          volumeScrubbing.current = true;
+        value={shown}
+        onPointerDown={capture}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onKeyDown={(event) => {
+          dragging.current = true;
+          beginVolumeScrub();
+          setDraft(Number(event.currentTarget.value));
         }}
-        onPointerUp={(event) => {
-          volumeScrubbing.current = false;
-          setVolume(Number(event.currentTarget.value));
-        }}
-        onPointerCancel={(event) => {
-          volumeScrubbing.current = false;
-          setVolume(Number(event.currentTarget.value));
-        }}
-        onKeyDown={() => {
-          volumeScrubbing.current = true;
-        }}
-        onKeyUp={(event) => {
-          volumeScrubbing.current = false;
-          setVolume(Number(event.currentTarget.value));
-        }}
+        onKeyUp={release}
         onChange={(event) => {
-          if (!volumeScrubbing.current) return;
-          setVolume(Number(event.target.value));
+          if (!dragging.current) return;
+          const next = Number(event.target.value);
+          setDraft(next);
+          setVolume(next);
+        }}
+        onInput={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.currentTarget.value);
+          setDraft(next);
+          setVolume(next);
         }}
         aria-label={t('volume')}
-        style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
+        style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties }
       />
     </div>
   );

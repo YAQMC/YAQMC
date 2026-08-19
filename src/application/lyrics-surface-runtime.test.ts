@@ -8,6 +8,7 @@ import {
   matchingSurfaceDocument,
   projectSurfaceLyrics,
   setLyricsSurfaceInteraction,
+  shouldReplaceSurfaceProjection,
   unlockAllLyricsSurfaces,
   useLyricsSurfaceRuntime,
   type LyricSurfaceProjection,
@@ -131,6 +132,46 @@ describe('lyrics surface projection', () => {
     expect(
       matchingSurfaceDocument(projection({ currentTrack: { id: 'song-two' } as Song }), document),
     ).toBeNull();
+  });
+
+  it('ignores word-only projection ticks so the surface clock can interpolate locally', () => {
+    const previous = projection({ lineIndex: 0, wordIndex: 0, positionMs: 1_100 });
+    expect(
+      shouldReplaceSurfaceProjection(previous, {
+        ...previous.value,
+        wordIndex: 1,
+        positionMs: 1_140,
+      }),
+    ).toBe(false);
+    expect(
+      shouldReplaceSurfaceProjection(previous, {
+        ...previous.value,
+        lineIndex: 1,
+        positionMs: 2_000,
+      }),
+    ).toBe(true);
+  });
+
+  it('still applies a later lyrics fetch after a null document event', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'lyrics_surface_projection') {
+        return Promise.resolve(projection().value);
+      }
+      if (command === 'player_lyrics') {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve(null);
+    });
+    const { result } = renderHook(() => useLyricsSurfaceRuntime());
+    await waitFor(() => expect(eventMocks.handlers.has('lyrics://document')).toBe(true));
+    act(() => {
+      eventMocks.handlers.get('lyrics://document')?.(null);
+    });
+    act(() => {
+      eventMocks.handlers.get('lyrics://projection')?.(projection().value);
+      eventMocks.handlers.get('lyrics://document')?.(document);
+    });
+    await waitFor(() => expect(result.current.document?.songId).toBe('song-one'));
   });
 
   it('keeps next-track events when older startup snapshots resolve afterward', async () => {
