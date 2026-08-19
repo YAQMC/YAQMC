@@ -14,3 +14,20 @@ export function visibleSurfaceInteractionState(
 export function showsEditingChrome(state: VisibleSurfaceInteractionState): boolean {
   return state === 'visible-interactive-hover';
 }
+
+export function pointerInsideSurface(
+  root: Element | null,
+  clientX: number,
+  clientY: number,
+): boolean {
+  if (!root) return false;
+  const hit =
+    typeof document !== 'undefined' && typeof document.elementFromPoint === 'function'
+      ? document.elementFromPoint(clientX, clientY)
+      : null;
+  if (hit && (root === hit || root.contains(hit))) return true;
+  const rect = root.getBoundingClientRect();
+  return (
+    clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+  );
+}

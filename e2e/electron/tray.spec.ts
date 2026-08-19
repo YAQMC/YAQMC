@@ -140,10 +140,13 @@ test.describe('PLAT-01 tray player and quit', () => {
     expect(corePid).toBeGreaterThan(0);
     ownedCorePid = corePid ?? undefined;
 
-    await e2eCoreInvoke(app, 'player_hydrate_queue', { tracks: TRAY_TRACKS });
+    await e2eCoreInvoke(app, 'player_play_tracks', {
+      request: { tracks: TRAY_TRACKS, shuffle: false },
+    });
+    await e2eCoreInvoke(app, 'player_pause');
     await expect
       .poll(async () => e2eLastPlayerSnapshot(app), { timeout: 15_000 })
-      .toEqual(expect.objectContaining({ queueLength: 2, currentIndex: 0 }));
+      .toEqual(expect.objectContaining({ queueLength: 2, currentIndex: 0, isPlaying: false }));
 
     const hitsAfterHydrate = await e2ePlayerSnapshotHits(app);
     expect(await e2eTrayClick(app, 'next')).toBe(true);

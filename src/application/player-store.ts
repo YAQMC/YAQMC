@@ -82,6 +82,7 @@ interface PlayerActions {
   previewScrub: (positionMs: number) => void;
   commitScrub: (positionMs: number) => void;
   tick: (elapsedMs: number) => void;
+  beginVolumeScrub: () => void;
   setVolume: (volume: number) => void;
   toggleMuted: () => void;
   toggleShuffle: () => void;
@@ -257,6 +258,26 @@ function fallbackOrderState(
     historyCursor: 0,
     upcomingQueueEntryIds: traversal.slice(1),
   };
+}
+
+function reuseQueueIfSameTracks(previous: Song[], incoming: Song[]): Song[] {
+  if (
+    previous.length === incoming.length &&
+    previous.every((song, index) => song.id === incoming[index]?.id)
+  ) {
+    return previous;
+  }
+  return incoming;
+}
+
+function reuseQueueEntriesIfSameIds(previous: QueueEntry[], incoming: QueueEntry[]): QueueEntry[] {
+  if (
+    previous.length === incoming.length &&
+    previous.every((entry, index) => entry.id === incoming[index]?.id)
+  ) {
+    return previous;
+  }
+  return incoming;
 }
 
 function normalizedEntries(
@@ -634,6 +655,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       };
     }),
 
+  beginVolumeScrub: () => {
+    set({ isVolumeScrubbing: true });
+  },
   setVolume: (volume) => {
     const boundedVolume = Math.max(0, Math.min(volume, 1));
     set({ volume: boundedVolume, isMuted: false, isVolumeScrubbing: true });
@@ -835,7 +859,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       const predictedPositionMs = current
         ? Math.max(0, Math.min(durationMs, state.positionMs + elapsedMs))
         : 0;
-      const queueEntries = normalizedEntries(snapshot, state);
+      const queue = reuseQueueIfSameTracks(state.queue, snapshot.queue);
+      const queueEntries = reuseQueueEntriesIfSameIds(
+        state.queueEntries,
+        normalizedEntries({ ...snapshot, queue }, state),
+      );
       const currentQueueEntryId =
         snapshot.currentQueueEntryId ?? queueEntries[snapshot.currentIndex]?.id ?? null;
       const previousTrackId = current?.id ?? null;
@@ -873,6 +901,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
       return {
         ...snapshot,
+        queue,
         queueEntries,
         currentQueueEntryId,
         playbackOrder,

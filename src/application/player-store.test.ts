@@ -461,6 +461,33 @@ describe('player store', () => {
     expect(usePlayerStore.getState().timelineRevision).toBe(12);
   });
 
+  it('reuses queue object identity across position-only snapshots', () => {
+    const songs = [track('one'), track('two')];
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: songs,
+      currentIndex: 0,
+      positionMs: 1_000,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+      sessionId: 3,
+      snapshotRevision: 1,
+    });
+    const before = usePlayerStore.getState().queue;
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({
+        queue: [track('one'), track('two')],
+        positionMs: 1_250,
+        sessionId: 3,
+        snapshotRevision: 2,
+      }),
+    );
+    const after = usePlayerStore.getState();
+    expect(after.queue).toBe(before);
+    expect(after.positionMs).toBe(1_250);
+  });
+
   it.each([
     {
       label: 'seek',

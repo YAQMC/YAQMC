@@ -50,6 +50,7 @@ import {
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
 import { getYaqmcClient } from './application/yaqmc-runtime';
 import { usePluginHost } from './application/plugin-runtime';
+import { installPlaybackUiProbe } from './application/playback-ui-probe';
 import './styles/index.css';
 
 const SettingsPage = lazy(async () => {
@@ -102,6 +103,7 @@ export default function App() {
   usePlatformDiagnosticsRuntime();
   useGuessContinuation(provider);
   usePluginHost();
+  useEffect(() => installPlaybackUiProbe(), []);
   const catalog = useCatalog();
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);

@@ -73,6 +73,7 @@ test.describe('Settings / UI regression on native renderer + production Core', (
     expect(box).not.toBeNull();
     expect((box?.height ?? 0) >= 8 || (box?.width ?? 0) >= 48).toBe(true);
 
+    await slider.dispatchEvent('pointerdown');
     await slider.fill('0.42');
     await expect
       .poll(async () => {
