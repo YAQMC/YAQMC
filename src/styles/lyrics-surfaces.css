@@ -34,6 +34,7 @@
   border-radius: 50%;
   background: rgba(12, 13, 11, 0.9);
   color: #f1f3ec;
+  -webkit-app-region: no-drag;
   box-shadow: 0 7px 22px rgba(0, 0, 0, 0.34);
   transition:
     color var(--motion-fast),
@@ -161,9 +162,14 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
   opacity: 0;
   transform: translateY(-3px);
+  -webkit-app-region: no-drag;
   transition:
     opacity var(--motion-base),
     transform var(--motion-base) var(--ease-out);
+}
+
+.lyrics-surface__controls .icon-button {
+  -webkit-app-region: no-drag;
 }
 
 .lyrics-surface--interactive:hover .lyrics-surface__controls,

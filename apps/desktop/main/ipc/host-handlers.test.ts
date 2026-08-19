@@ -60,6 +60,7 @@ function stubLyricsWindow(): LyricsSurfaceWindow {
     setFocusable: vi.fn(),
     setAlwaysOnTop: vi.fn(),
     setResizable: vi.fn(),
+    getBounds: vi.fn(() => ({ x: 80, y: 40, width: 940, height: 190 })),
   };
 }
 
@@ -101,6 +102,7 @@ function mockLyrics(): LyricsSurfaces & {
     }),
     hide: vi.fn<(kind: LyricsSurfaceKind) => void>(),
     lock: vi.fn<(kind: LyricsSurfaceKind, locked: boolean) => void>(),
+    isLocked: vi.fn<(kind: LyricsSurfaceKind) => boolean>(() => false),
     get: vi.fn((kind: LyricsSurfaceKind) => windows.get(kind)),
     isVisible: vi.fn((kind: LyricsSurfaceKind) => windows.has(kind)),
     restoreGeometry: vi.fn<(kind?: LyricsSurfaceKind) => Promise<void>>(async () => undefined),
@@ -113,6 +115,9 @@ function mockUnlock(): LyricsUnlockOverlays & {
   create: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => LyricsUnlockWindow>>;
   show: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => void>>;
   hide: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => void>>;
+  position: ReturnType<
+    typeof vi.fn<(kind: LyricsUnlockKind, surface: { x: number; y: number; width: number; height: number }) => void>
+  >;
   get: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => LyricsUnlockWindow | undefined>>;
 } {
   const windows = new Map<LyricsUnlockKind, LyricsUnlockWindow>();
@@ -132,6 +137,7 @@ function mockUnlock(): LyricsUnlockOverlays & {
       }
     }),
     hide: vi.fn<(kind: LyricsUnlockKind) => void>(),
+    position: vi.fn<(kind: LyricsUnlockKind, surface: { x: number; y: number; width: number; height: number }) => void>(),
     get: vi.fn((kind: LyricsUnlockKind) => windows.get(kind)),
   };
 }
@@ -355,6 +361,12 @@ describe('IpcRouter host intercepts', () => {
     expect(lyrics.lock).toHaveBeenCalledWith('desktop', true);
     expect(lyrics.hide).toHaveBeenCalledWith('island');
     expect(unlock.show).toHaveBeenCalledWith('desktop');
+    expect(unlock.position).toHaveBeenCalledWith('desktop', {
+      x: 80,
+      y: 40,
+      width: 940,
+      height: 190,
+    });
     expect(unlock.hide).toHaveBeenCalledWith('island');
 
     await expect(
@@ -369,8 +381,12 @@ describe('IpcRouter host intercepts', () => {
         method: 'lyrics_surface_set_interaction',
         params: { kind: 'desktop', interaction: 'interactive', value: '{"version":2}' },
       }),
-    ).resolves.toEqual({ ok: true, result: '{"version":2}' });
+    ).resolves.toEqual({
+      ok: true,
+      result: '{"version":2,"surfaces":{"desktop":{"interaction":"interactive"}}}',
+    });
     expect(lyrics.lock).toHaveBeenCalledWith('desktop', false);
+    expect(unlock.hide).toHaveBeenCalledWith('desktop');
 
     await expect(router.invoke(1, { method: 'lyrics_surface_show_settings' })).resolves.toEqual({
       ok: true,
@@ -399,6 +415,99 @@ describe('IpcRouter host intercepts', () => {
       router.invoke(1, { method: 'lyrics_surface_reset_position', params: { kind: 'desktop' } }),
     ).resolves.toEqual({ ok: true, result: undefined });
     expect(lyrics.resetPosition).toHaveBeenCalledWith('desktop');
+  });
+
+  it('keeps a host lock through a stale Main reconcile and isolates unlock origins', async () => {
+    const lyrics = mockLyrics();
+    const unlock = mockUnlock();
+    const coreInvoke = vi.fn(async (method: string, params?: unknown, origin?: string) => {
+      if (method === 'app_preferences_set') {
+        expect(origin).toBe('host');
+        return (params as { value: string }).value;
+      }
+      if (method === 'app_preferences_get') {
+        return '{"version":2,"surfaces":{"desktop":{"interaction":"interactive"},"island":{"interaction":"interactive"}}}';
+      }
+      return '';
+    });
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics,
+      unlock,
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      coreInvoke,
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+    router.registerWindow(3, 'lyrics-island');
+    router.registerWindow(4, 'unlock-desktop');
+    router.registerWindow(5, 'unlock-island');
+
+    await expect(
+      router.invoke(2, {
+        method: 'lyrics_surface_set_interaction',
+        params: { kind: 'desktop', interaction: 'passive-locked', value: '{"version":2}' },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(lyrics.lock).toHaveBeenCalledWith('desktop', true);
+    expect(coreInvoke).toHaveBeenCalledWith(
+      'app_preferences_set',
+      {
+        value: '{"version":2,"surfaces":{"desktop":{"interaction":"passive-locked"}}}',
+      },
+      'host',
+    );
+
+    lyrics.lock.mockClear();
+    unlock.hide.mockClear();
+    await expect(
+      router.invoke(1, {
+        method: 'lyrics_surfaces_reconcile',
+        params: {
+          surfaces: {
+            desktop: { enabled: true, interaction: 'interactive' },
+            island: { enabled: true, interaction: 'interactive' },
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(lyrics.lock).toHaveBeenCalledWith('desktop', true);
+    expect(lyrics.lock).not.toHaveBeenCalledWith('desktop', false);
+    expect(unlock.hide).not.toHaveBeenCalledWith('desktop');
+
+    lyrics.lock.mockClear();
+    await expect(
+      router.invoke(4, { method: 'lyrics_surface_unlock', params: { kind: 'island' } }),
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(lyrics.lock).not.toHaveBeenCalled();
+
+    await expect(
+      router.invoke(2, {
+        method: 'lyrics_surface_close',
+        params: { kind: 'island' },
+      }),
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(lyrics.hide).not.toHaveBeenCalledWith('island');
+
+    await expect(
+      router.invoke(3, {
+        method: 'lyrics_surface_set_interaction',
+        params: { kind: 'desktop', interaction: 'interactive' },
+      }),
+    ).resolves.toEqual({ ok: true, result: '' });
+    expect(lyrics.lock).not.toHaveBeenCalledWith('desktop', false);
+
+    await expect(
+      router.invoke(5, { method: 'lyrics_surface_unlock', params: { kind: 'desktop' } }),
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(lyrics.lock).not.toHaveBeenCalledWith('desktop', false);
+
+    await expect(
+      router.invoke(4, { method: 'lyrics_surface_unlock', params: { kind: 'desktop' } }),
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(lyrics.lock).toHaveBeenCalledWith('desktop', false);
   });
 
   it('injects Electron dialogs for inventory path pickers and dialog.pickSave', async () => {

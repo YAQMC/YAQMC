@@ -220,6 +220,13 @@ function rendererDevPageUrl(search: string): string | null {
   return `${VITE_DEV_ORIGIN}/${search}`;
 }
 
+const lyricsUnlock = createLyricsUnlockOverlays({
+  preloadPath: unlockPreloadPath,
+  createWindow: createUnlockBrowserWindow,
+  pageUrl: (kind) =>
+    rendererDevPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
+});
+
 const lyricsSurfaces = createLyricsSurfaces({
   preloadPath: lyricsPreloadPath,
   createWindow: createLyricsBrowserWindow,
@@ -235,13 +242,9 @@ const lyricsSurfaces = createLyricsSurfaces({
   // BASE-04 keys: app_settings['lyrics-surface-geometry:desktop'] and
   // app_settings['lyrics-surface-geometry:island'] via CoreClient.
   settings: lyricsSurfaceSettingsFromCore(() => supervisor?.client),
-});
-
-const lyricsUnlock = createLyricsUnlockOverlays({
-  preloadPath: unlockPreloadPath,
-  createWindow: createUnlockBrowserWindow,
-  pageUrl: (kind) =>
-    rendererDevPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
+  onBoundsChanged: (kind, geometry) => {
+    lyricsUnlock.position(kind, geometry);
+  },
 });
 
 const shortcutSession = createGlobalShortcutSession({
@@ -282,6 +285,8 @@ if (e2e) {
           bounds: LyricsSurfacePersistedGeometry,
         ) => boolean;
         lyricsFlushGeometry: (kind: LyricsSurfaceKind) => Promise<void>;
+        lyricsIsLocked: (kind: LyricsSurfaceKind) => boolean;
+        lyricsIsVisible: (kind: LyricsSurfaceKind) => boolean;
       };
     }
   ).__YAQMC_E2E__ = {
@@ -333,6 +338,8 @@ if (e2e) {
       return true;
     },
     lyricsFlushGeometry: (kind) => lyricsSurfaces.flushGeometry(kind),
+    lyricsIsLocked: (kind) => lyricsSurfaces.isLocked(kind),
+    lyricsIsVisible: (kind) => lyricsSurfaces.isVisible(kind),
   };
 }
 
@@ -616,6 +623,17 @@ function sendPlatformAttach(): void {
   });
 }
 
+function pushCoreStatus(contentsId: number): void {
+  const contents = webContents.fromId(contentsId);
+  if (!contents || contents.isDestroyed()) {
+    return;
+  }
+  contents.send(EVENT_CHANNEL, {
+    channel: CHANNEL_HOST_CORE_STATUS,
+    payload: { status: supervisor?.status ?? 'down' },
+  });
+}
+
 function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   const { alwaysOnTop, ...rest } = options;
   void alwaysOnTop;
@@ -629,6 +647,10 @@ function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   writeHostLog(`window lyrics created role=${role}`);
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
+  });
+  window.webContents.on('did-finish-load', () => {
+    pushCoreStatus(contentsId);
+    setTimeout(() => pushCoreStatus(contentsId), 0);
   });
   window.on('closed', () => {
     writeHostLog('window lyrics closed');
@@ -649,6 +671,11 @@ function createUnlockBrowserWindow(options: LyricsUnlockCreateOptions, kind: Lyr
   writeHostLog(`window unlock created kind=${kind}`);
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
+  });
+  window.setAlwaysOnTop(true, 'screen-saver');
+  window.webContents.on('did-finish-load', () => {
+    pushCoreStatus(contentsId);
+    setTimeout(() => pushCoreStatus(contentsId), 0);
   });
   window.on('closed', () => {
     writeHostLog(`window unlock closed kind=${kind}`);

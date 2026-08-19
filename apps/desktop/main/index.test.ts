@@ -73,6 +73,9 @@ describe('host boot wiring', () => {
     expect(source).toContain('e2e && !e2eNative');
     expect(source).toContain("YAQMC_E2E_CORE !== '1'");
     expect(source).toContain('__YAQMC_E2E__');
+    expect(source).toContain('lyricsIsLocked');
+    expect(source).toContain('lyricsIsVisible');
+    expect(source).toContain('pushCoreStatus');
     expect(source).toContain('killRunningChild');
     expect(source).toContain('runningChildPid');
     expect(source).toContain('mainHide');

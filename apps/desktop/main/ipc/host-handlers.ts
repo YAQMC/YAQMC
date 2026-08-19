@@ -287,6 +287,65 @@ export function lyricsSurfaceCapabilities(options: {
   };
 }
 
+type SurfaceInteractionName = 'interactive' | 'passive-locked';
+
+function asSurfaceInteraction(value: unknown): SurfaceInteractionName | undefined {
+  if (value === 'interactive' || value === 'passive-locked') {
+    return value;
+  }
+  return undefined;
+}
+
+function patchSurfaceInteractionDocument(
+  raw: string,
+  kind: LyricsSurfaceKind,
+  interaction: SurfaceInteractionName,
+): string | undefined {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const surfaces =
+      parsed.surfaces && typeof parsed.surfaces === 'object'
+        ? { ...(parsed.surfaces as Record<string, unknown>) }
+        : {};
+    const current =
+      surfaces[kind] && typeof surfaces[kind] === 'object'
+        ? { ...(surfaces[kind] as Record<string, unknown>) }
+        : {};
+    current.interaction = interaction;
+    surfaces[kind] = current;
+    parsed.surfaces = surfaces;
+    return JSON.stringify(parsed);
+  } catch {
+    return undefined;
+  }
+}
+
+function originMayControlKind(origin: string | undefined, kind: LyricsSurfaceKind): boolean {
+  if (origin === undefined || origin === 'host' || origin === 'main') {
+    return true;
+  }
+  if (origin === 'lyrics-desktop') {
+    return kind === 'desktop';
+  }
+  if (origin === 'lyrics-island') {
+    return kind === 'island';
+  }
+  return false;
+}
+
+function originMayUnlockKind(origin: string | undefined, kind: LyricsSurfaceKind): boolean {
+  if (origin === undefined || origin === 'host' || origin === 'main') {
+    return true;
+  }
+  if (origin === 'lyrics-desktop-unlock') {
+    return kind === 'desktop';
+  }
+  if (origin === 'lyrics-island-unlock') {
+    return kind === 'island';
+  }
+  return false;
+}
+
 type SurfaceRuntimeLike = {
   enabled?: unknown;
   interaction?: unknown;
@@ -379,12 +438,50 @@ export type HostHandlerDeps = {
 };
 
 export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHandler> {
+  const hostInteraction: Record<LyricsSurfaceKind, SurfaceInteractionName> = {
+    desktop: 'interactive',
+    island: 'interactive',
+  };
+
   const syncUnlockOverlay = (kind: LyricsSurfaceKind, locked: boolean): void => {
     if (locked && deps.lyrics.get(kind) !== undefined) {
       deps.unlock.show(kind);
+      const bounds = deps.lyrics.get(kind)?.getBounds?.();
+      if (bounds) {
+        deps.unlock.position(kind, bounds);
+      }
       return;
     }
     deps.unlock.hide(kind);
+  };
+
+  const applyNativeInteraction = (kind: LyricsSurfaceKind): void => {
+    const locked = hostInteraction[kind] === 'passive-locked';
+    deps.lyrics.lock(kind, locked);
+    syncUnlockOverlay(kind, locked);
+  };
+
+  const persistInteraction = async (
+    kind: LyricsSurfaceKind,
+    interaction: SurfaceInteractionName,
+    fallbackValue: unknown,
+  ): Promise<string> => {
+    const fallback =
+      typeof fallbackValue === 'string' && fallbackValue.length > 0 ? fallbackValue : '';
+    let source = fallback;
+    if (!source && deps.coreInvoke) {
+      const raw = await deps.coreInvoke('app_preferences_get', undefined, 'host');
+      source = typeof raw === 'string' ? raw : '';
+    }
+    const next = source ? patchSurfaceInteractionDocument(source, kind, interaction) : undefined;
+    if (!next) {
+      return fallback;
+    }
+    if (!deps.coreInvoke) {
+      return next;
+    }
+    const stored = await deps.coreInvoke('app_preferences_set', { value: next }, 'host');
+    return typeof stored === 'string' && stored.length > 0 ? stored : next;
   };
 
   const applyKind = (kind: LyricsSurfaceKind, config: SurfaceRuntimeLike | undefined): void => {
@@ -394,9 +491,10 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       return;
     }
     deps.lyrics.show(kind);
-    const locked = config.interaction === 'passive-locked';
-    deps.lyrics.lock(kind, locked);
-    syncUnlockOverlay(kind, locked);
+    if (asSurfaceInteraction(config.interaction) === 'passive-locked') {
+      hostInteraction[kind] = 'passive-locked';
+    }
+    applyNativeInteraction(kind);
   };
 
   const handlers: Record<string, HostHandler> = {
@@ -415,41 +513,45 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       desktop: deps.lyrics.get('desktop') !== undefined,
       island: deps.lyrics.get('island') !== undefined,
     }),
-    lyrics_surface_close: async (params) => {
+    lyrics_surface_close: async (params, _webContentsId, origin) => {
       const kind = lyricsKindFromParams(params);
-      if (!kind) {
+      if (!kind || !originMayControlKind(origin, kind)) {
         return;
       }
       deps.lyrics.hide(kind);
       deps.unlock.hide(kind);
       deps.emitSurfaceClosed?.(kind);
     },
-    lyrics_surface_set_interaction: async (params) => {
+    lyrics_surface_set_interaction: async (params, _webContentsId, origin) => {
       const kind = lyricsKindFromParams(params);
-      if (!kind) {
+      if (!kind || !originMayControlKind(origin, kind)) {
         return '';
       }
-      const interaction =
+      const interaction = asSurfaceInteraction(
         params && typeof params === 'object'
           ? (params as { interaction?: unknown }).interaction
-          : undefined;
-      const locked = interaction === 'passive-locked';
-      deps.lyrics.lock(kind, locked);
-      syncUnlockOverlay(kind, locked);
+          : undefined,
+      );
+      if (!interaction) {
+        return '';
+      }
+      hostInteraction[kind] = interaction;
+      applyNativeInteraction(kind);
       const value =
         params && typeof params === 'object' ? (params as { value?: unknown }).value : undefined;
-      return typeof value === 'string' ? value : '';
+      return persistInteraction(kind, interaction, value);
     },
     lyrics_surface_show_settings: async () => {
       deps.showMainAndOpenSettings();
     },
-    lyrics_surface_unlock: async (params) => {
+    lyrics_surface_unlock: async (params, _webContentsId, origin) => {
       const kind = lyricsKindFromParams(params);
-      if (!kind) {
+      if (!kind || !originMayUnlockKind(origin, kind)) {
         return;
       }
-      deps.lyrics.lock(kind, false);
-      deps.unlock.hide(kind);
+      hostInteraction[kind] = 'interactive';
+      applyNativeInteraction(kind);
+      await persistInteraction(kind, 'interactive', undefined);
     },
     lyrics_surfaces_unlock_all: async () => {
       let unlocked = 0;
@@ -458,8 +560,9 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
           deps.unlock.hide(kind);
           continue;
         }
-        deps.lyrics.lock(kind, false);
-        deps.unlock.hide(kind);
+        hostInteraction[kind] = 'interactive';
+        applyNativeInteraction(kind);
+        await persistInteraction(kind, 'interactive', undefined);
         unlocked += 1;
       }
       return unlocked;

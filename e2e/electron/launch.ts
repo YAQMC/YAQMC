@@ -545,6 +545,54 @@ export async function e2eLyricsFlushGeometry(
   }, kind);
 }
 
+export async function e2eLyricsIsLocked(
+  app: ElectronApplication,
+  kind: E2eLyricsKind,
+): Promise<boolean> {
+  return app.evaluate((_electron, surface) => {
+    const hooks = (
+      globalThis as { __YAQMC_E2E__?: { lyricsIsLocked?: (kind: E2eLyricsKind) => boolean } }
+    ).__YAQMC_E2E__;
+    return hooks?.lyricsIsLocked?.(surface) ?? false;
+  }, kind);
+}
+
+export async function e2eLyricsIsVisible(
+  app: ElectronApplication,
+  kind: E2eLyricsKind,
+): Promise<boolean> {
+  return app.evaluate((_electron, surface) => {
+    const hooks = (
+      globalThis as { __YAQMC_E2E__?: { lyricsIsVisible?: (kind: E2eLyricsKind) => boolean } }
+    ).__YAQMC_E2E__;
+    return hooks?.lyricsIsVisible?.(surface) ?? false;
+  }, kind);
+}
+
+export async function e2eLyricsUnlockPage(
+  app: ElectronApplication,
+  kind: E2eLyricsKind,
+): Promise<Page | undefined> {
+  const needle = `unlockSurface=${kind}`;
+  return app.windows().find((page) => page.url().includes(needle));
+}
+
+export async function e2eUnlockWindowVisible(
+  app: ElectronApplication,
+  kind: E2eLyricsKind,
+): Promise<boolean> {
+  return app.evaluate((_electron, surface) => {
+    const { BrowserWindow } = _electron;
+    const needle = `unlockSurface=${surface}`;
+    return BrowserWindow.getAllWindows().some(
+      (window) =>
+        !window.isDestroyed() &&
+        window.isVisible() &&
+        window.webContents.getURL().includes(needle),
+    );
+  }, kind);
+}
+
 /** Live Electron window URLs via Playwright's host seam — not an in-memory map. */
 export function e2eBrowserWindowUrls(app: ElectronApplication): string[] {
   return app.windows().map((page) => page.url());

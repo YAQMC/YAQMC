@@ -17,6 +17,7 @@ import {
   defaultPreferences,
   flushPreferencesPersist,
   hasPendingPreferencePersist,
+  mergePendingPersistSurfaceInteraction,
   PREFERENCES_PERSIST_DEBOUNCE_MS,
   resetPreferencesPersistForTest,
   usePreferencesStore,
@@ -79,5 +80,32 @@ describe('preference persist coalescing', () => {
     expect(hasPendingPreferencePersist()).toBe(true);
     flushPreferencesPersist();
     expect(preferenceSets().length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('adopts host lock state into an in-flight Main persist instead of overwriting it', async () => {
+    usePreferencesStore.getState().updateAppearance({ surfaceOpacity: 88 });
+    expect(hasPendingPreferencePersist()).toBe(true);
+
+    mergePendingPersistSurfaceInteraction({
+      ...defaultPreferences,
+      surfaces: {
+        ...defaultPreferences.surfaces,
+        desktop: { ...defaultPreferences.surfaces.desktop, interaction: 'passive-locked' },
+        island: { ...defaultPreferences.surfaces.island, interaction: 'interactive' },
+      },
+    });
+
+    vi.advanceTimersByTime(PREFERENCES_PERSIST_DEBOUNCE_MS);
+    await Promise.resolve();
+
+    expect(preferenceSets()).toHaveLength(1);
+    const payload = preferenceSets()[0] as { value: string };
+    const stored = JSON.parse(payload.value) as {
+      appearance: { surfaceOpacity: number };
+      surfaces: { desktop: { interaction: string }; island: { interaction: string } };
+    };
+    expect(stored.appearance.surfaceOpacity).toBe(88);
+    expect(stored.surfaces.desktop.interaction).toBe('passive-locked');
+    expect(stored.surfaces.island.interaction).toBe('interactive');
   });
 });

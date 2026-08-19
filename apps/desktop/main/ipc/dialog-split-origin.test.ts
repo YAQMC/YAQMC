@@ -41,6 +41,7 @@ function lyricsStubs(): Pick<
       show: vi.fn(),
       hide: vi.fn(),
       lock: vi.fn(),
+      isLocked: vi.fn(),
       get: vi.fn(),
       isVisible: vi.fn(),
       create: vi.fn(),
@@ -51,6 +52,7 @@ function lyricsStubs(): Pick<
     unlock: {
       show: vi.fn(),
       hide: vi.fn(),
+      position: vi.fn(),
       get: vi.fn(),
       create: vi.fn(),
     } as unknown as HostHandlerDeps['unlock'],

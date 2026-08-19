@@ -96,6 +96,7 @@ export type LyricsSurfaceDeps = {
   settings?: LyricsSurfaceSettingsIo;
   clock?: LyricsSurfaceClock;
   getDisplayBounds?: () => readonly DisplayWorkArea[];
+  onBoundsChanged?: (kind: LyricsSurfaceKind, geometry: LyricsSurfacePersistedGeometry) => void;
 };
 
 export type LyricsSurfaceGeometry = {
@@ -205,7 +206,9 @@ export function lockLyricsSurface(
   if (locked) {
     window.setResizable(false);
     window.setFocusable(false);
-    window.setIgnoreMouseEvents(true, { forward: true });
+    // True Windows click-through. `{ forward: true }` keeps the surface in the
+    // hit-test path so clicks never reach the app underneath (SURF-02).
+    window.setIgnoreMouseEvents(true);
     return;
   }
   window.setIgnoreMouseEvents(false);
@@ -338,6 +341,7 @@ export type LyricsSurfaces = {
   show(kind: LyricsSurfaceKind): void;
   hide(kind: LyricsSurfaceKind): void;
   lock(kind: LyricsSurfaceKind, locked: boolean): void;
+  isLocked(kind: LyricsSurfaceKind): boolean;
   get(kind: LyricsSurfaceKind): LyricsSurfaceWindow | undefined;
   isVisible(kind: LyricsSurfaceKind): boolean;
   restoreGeometry(kind?: LyricsSurfaceKind): Promise<void>;
@@ -349,6 +353,7 @@ export type LyricsSurfaces = {
 export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
   const windows = new Map<LyricsSurfaceKind, LyricsSurfaceWindow>();
   const visible = new Set<LyricsSurfaceKind>();
+  const locked = new Set<LyricsSurfaceKind>();
   const persistGeneration = new Map<LyricsSurfaceKind, number>();
   const persistTimers = new Map<LyricsSurfaceKind, unknown>();
   const clock = deps.clock ?? {
@@ -441,6 +446,11 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
       return;
     }
     applyBounds(window, resolvedGeometry(kind, saved));
+    emitBounds(kind, window);
+  }
+
+  function emitBounds(kind: LyricsSurfaceKind, window: LyricsSurfaceWindow): void {
+    deps.onBoundsChanged?.(kind, currentBounds(kind, window));
   }
 
   function schedulePersist(kind: LyricsSurfaceKind, window: LyricsSurfaceWindow): void {
@@ -473,9 +483,11 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
       return;
     }
     window.on('moved', () => {
+      emitBounds(kind, window);
       schedulePersist(kind, window);
     });
     window.on('resized', () => {
+      emitBounds(kind, window);
       schedulePersist(kind, window);
     });
     window.on('closed', () => {
@@ -503,7 +515,11 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     create,
     show(kind) {
       visible.add(kind);
-      showLyricsSurface(create(kind));
+      const window = create(kind);
+      showLyricsSurface(window);
+      if (locked.has(kind)) {
+        lockLyricsSurface(window, kind, true);
+      }
     },
     hide(kind) {
       visible.delete(kind);
@@ -513,12 +529,21 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
       }
       hideLyricsSurface(window);
     },
-    lock(kind, locked) {
+    lock(kind, nextLocked) {
       const window = live(kind);
       if (!window) {
         return;
       }
-      lockLyricsSurface(window, kind, locked);
+      if (nextLocked) {
+        locked.add(kind);
+      } else {
+        locked.delete(kind);
+      }
+      lockLyricsSurface(window, kind, nextLocked);
+      emitBounds(kind, window);
+    },
+    isLocked(kind) {
+      return locked.has(kind);
     },
     get(kind) {
       return live(kind);

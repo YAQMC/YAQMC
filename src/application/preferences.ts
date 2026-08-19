@@ -367,6 +367,26 @@ export function hasPendingPreferencePersist(): boolean {
   return persistQueued !== null || persistInFlight;
 }
 
+/** Host-owned lock/unlock must survive an in-flight Main appearance persist. */
+export function mergePendingPersistSurfaceInteraction(incoming: AppPreferences): void {
+  if (!persistQueued) {
+    return;
+  }
+  persistQueued = {
+    ...persistQueued,
+    surfaces: {
+      desktop: {
+        ...persistQueued.surfaces.desktop,
+        interaction: incoming.surfaces.desktop.interaction,
+      },
+      island: {
+        ...persistQueued.surfaces.island,
+        interaction: incoming.surfaces.island.interaction,
+      },
+    },
+  };
+}
+
 export function flushPreferencesPersist(): void {
   if (persistTimer !== null) {
     clearTimeout(persistTimer);
@@ -748,11 +768,14 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
     let active = true;
     const client = getYaqmcClient();
     const stopChanged = client.on('preferences://changed', (payload) => {
-      if (!active || hasPendingPreferencePersist()) return;
+      if (!active) return;
       try {
-        usePreferencesStore
-          .getState()
-          .hydrate(normalizePreferences(JSON.parse(payload as unknown as string)));
+        const incoming = normalizePreferences(JSON.parse(payload as unknown as string));
+        if (hasPendingPreferencePersist()) {
+          mergePendingPersistSurfaceInteraction(incoming);
+          return;
+        }
+        usePreferencesStore.getState().hydrate(incoming);
       } catch {
         // Invalid cross-window state is ignored; Rust validates persisted documents.
       }
