@@ -2014,6 +2014,34 @@ PLAY-01 / PLAY/PLAT / FE-04 HUMAN stay **BLOCKED**. §41 / §49 unchanged.
 Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
 remains **BLOCKED**. No P12–P15. No qm-api-rs.
 
+## QA agent 2026-08-19: Electron AUTO/LIVE acceptance pass
+
+Windows agent verification on `feat/electron-migration` after
+`1d5fee9`. Ledger: `docs/migration/qa-agent-2026-08-19.md`. PASS-AUTO /
+LIVE only. PLAY-01 is still not phase-accepted. PLAY-02 p95 was not
+invented. P12–P15 were not started.
+
+- Production Core + native Electron retested PLAY-01 controls, EOS,
+  seek fencing, queue restore, lyrics line clock, and PLAT-06 via the
+  repository LIVE script against real Core. Fake provider was not used
+  as LIVE QQ evidence. An existing keyring session made authenticated
+  QQ L-rows LIVE (`search` / `album` / `playlist` / `lyrics` /
+  `cache_artwork` / `home` / `discover` / favorites mutation /
+  live source resolve). Secrets were not printed.
+- `ResponseBody` now accepts JSON `null` success results
+  (`player_set_lyrics`). Fullscreen Lyrics hide pending remote
+  artwork (`pendingRemote: 'hide'`); Island/Home pending-remote
+  default is unchanged.
+- Graceful Core `Shutdown` now calls `ExtensionHost::mark_clean_exit()`,
+  matching Tauri host Exit. Unclean EOF still trips the crash-loop
+  journal. Example-plugin Electron battery plus restart persistence
+  are PASS-AUTO; hostile fixtures were not enabled as user plugins.
+- Settings opacity persist, volume slider hit target, and a
+  non-severe slider `longtask` probe are PASS-AUTO. UI-PERF is
+  classified separately and was not optimized.
+- Local `stage-core` / unpacked pack are recorded in the QA ledger
+  only. They are not PACK-02/03 clean-VM acceptance.
+
 ## Temporary maintainer handoff (2026-08-18)
 
 - Full snapshot for the incoming maintainer:

@@ -111,7 +111,9 @@ impl<'de> Deserialize<'de> for ResponseBody {
 
         let raw = Raw::deserialize(deserializer)?;
         match (raw.ok, raw.result, raw.error) {
-            (true, Some(result), None) => Ok(Self::Success { result }),
+            (true, result, None) => Ok(Self::Success {
+                result: result.unwrap_or(Value::Null),
+            }),
             (false, None, Some(error)) => Ok(Self::Failure { error }),
             _ => Err(D::Error::custom(
                 "response must be {ok:true, result} or {ok:false, error}",

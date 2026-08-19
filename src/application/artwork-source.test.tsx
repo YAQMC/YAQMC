@@ -115,6 +115,19 @@ describe('artwork source policy', () => {
     expect(isCachedArtworkDataUri(value)).toBe(false);
   });
 
+  it('can hide the remote URL on lyrics surfaces until the native cache resolves', async () => {
+    const pending = deferred<unknown>();
+    clientMocks.invoke.mockReturnValue(pending.promise);
+    const remote = 'https://qpic.y.qq.com/lyrics-pending.jpg';
+
+    const { result } = renderHook(() => useSafeArtworkSource(remote, { pendingRemote: 'hide' }));
+
+    expect(result.current).toBeNull();
+    expect(clientMocks.invoke).toHaveBeenCalledWith('qqmusic_cache_artwork', { url: remote });
+    await act(async () => pending.resolve(pngA));
+    await waitFor(() => expect(result.current).toBe(pngA));
+  });
+
   it('returns the allowlisted remote URL while native cache resolution is pending', async () => {
     const pending = deferred<unknown>();
     clientMocks.invoke.mockReturnValue(pending.promise);

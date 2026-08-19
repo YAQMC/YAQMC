@@ -134,7 +134,9 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
         'fullscreen',
       )
     : '';
-  const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null);
+  const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null, {
+    pendingRemote: 'hide',
+  });
   useEffect(() => rememberLyricsArtwork(safeArtworkSource), [safeArtworkSource]);
   const sceneBackground = resolvedPreset.scene.background;
   const appearanceMode =

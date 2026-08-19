@@ -424,3 +424,27 @@ async fn transport_recv_resumes_after_select_timeout_mid_frame() {
     let message = transport.recv().await.expect("resumed recv");
     assert_eq!(message, CoreMessage::Ready);
 }
+
+#[test]
+fn response_body_accepts_json_null_and_omitted_success_result() {
+    let null_result: CoreMessage =
+        serde_json::from_str(r#"{"kind":"response","id":11,"ok":true,"result":null}"#)
+            .expect("null result is a valid success");
+    match null_result {
+        CoreMessage::Response {
+            body: ResponseBody::Success { result },
+            ..
+        } => assert!(result.is_null()),
+        other => panic!("expected success, got {other:?}"),
+    }
+
+    let omitted: CoreMessage =
+        serde_json::from_str(r#"{"kind":"response","id":12,"ok":true}"#).expect("omitted result");
+    match omitted {
+        CoreMessage::Response {
+            body: ResponseBody::Success { result },
+            ..
+        } => assert!(result.is_null()),
+        other => panic!("expected success, got {other:?}"),
+    }
+}

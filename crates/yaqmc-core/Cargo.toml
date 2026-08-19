@@ -61,5 +61,8 @@ name = "protocol_e2e"
 required-features = ["test-provider"]
 
 [[test]]
+name = "qa_play01_production"
+
+[[test]]
 name = "task7_local_api_boundary"
 required-features = ["test-support"]

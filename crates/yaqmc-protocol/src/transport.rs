@@ -1,12 +1,12 @@
 use std::future::Future;
 
 use tokio::io::{
-    AsyncReadExt, BufReader, DuplexStream, ReadHalf, Stdin, Stdout, WriteHalf, split, stdin, stdout,
+    split, stdin, stdout, AsyncReadExt, BufReader, DuplexStream, ReadHalf, Stdin, Stdout, WriteHalf,
 };
 
 use crate::envelope::decode_message;
 use crate::error::FrameError;
-use crate::framing::{FRAME_HARD_CAP_BYTES, write_frame};
+use crate::framing::{write_frame, FRAME_HARD_CAP_BYTES};
 use crate::{CoreMessage, ProtocolError};
 
 /// Incremental frame reader so `recv` stays correct if `select!` cancels it.
@@ -139,8 +139,7 @@ where
                 *filled += n;
             }
         }
-        let FrameRead::Body { buf, .. } = std::mem::take(&mut self.read)
-        else {
+        let FrameRead::Body { buf, .. } = std::mem::take(&mut self.read) else {
             unreachable!("body state");
         };
         Ok(buf)

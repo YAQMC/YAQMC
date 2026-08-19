@@ -377,6 +377,55 @@ async fn kill_core_during_playback_restores_queue_without_duplicates() {
     session.shutdown().await;
 }
 
+#[tokio::test]
+async fn graceful_shutdown_keeps_enabled_example_plugin() {
+    let root = tempfile::tempdir().expect("plugin persist root");
+    let sakura = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/plugins/style-sakura");
+    assert!(
+        sakura.join("manifest.json").is_file(),
+        "missing example plugin at {}",
+        sakura.display()
+    );
+
+    let mut session = spawn_core(root.path()).await;
+    session
+        .request(
+            "plugin_set_developer_mode",
+            Some(json!({ "enabled": true })),
+        )
+        .await;
+    let installed = session
+        .request(
+            "plugin_install_unpacked",
+            Some(json!({
+                "request": {
+                    "path": sakura,
+                    "enable": true,
+                    "grant": []
+                }
+            })),
+        )
+        .await;
+    assert_eq!(installed["id"], "dev.yaqmc.example.sakura");
+    assert_eq!(installed["enabled"], true);
+    session.shutdown().await;
+
+    let recovered = yaqmc_core::plugin::ExtensionHost::open(root.path().join("data/plugins"))
+        .expect("reopen plugin host after graceful shutdown");
+    assert!(
+        !recovered.safe_mode(),
+        "graceful Shutdown must not enter crash-loop safe mode"
+    );
+    let record = recovered
+        .list()
+        .into_iter()
+        .find(|item| item.id == "dev.yaqmc.example.sakura")
+        .expect("sakura remains installed");
+    assert!(record.enabled, "enabled plugin must survive graceful quit");
+    assert_eq!(record.status, yaqmc_core::plugin::PluginStatus::Active);
+}
+
 #[test]
 fn cargo_enables_the_test_provider_feature_for_the_harness() {
     let manifest = include_str!("../Cargo.toml");
