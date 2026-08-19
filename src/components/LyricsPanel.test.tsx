@@ -6,6 +6,10 @@ import { resetLyricsArtworkFallbackForTests } from '../application/lyrics-artwor
 import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
+import {
+  resetLyricsStageForTests,
+  useLyricsStageStore,
+} from '../application/lyrics-stage-machine';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import {
   applyOverride,
@@ -112,6 +116,7 @@ describe('LyricsPanel', () => {
 
   afterEach(() => {
     cleanup();
+    resetLyricsStageForTests();
     vi.clearAllTimers();
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -151,6 +156,7 @@ describe('LyricsPanel', () => {
   });
 
   beforeEach(() => {
+    resetLyricsStageForTests();
     resetLyricsArtworkFallbackForTests();
     nativeArtworkMocks.invoke.mockReset();
     nativeArtworkMocks.invoke.mockResolvedValue(safeArtwork);
@@ -270,20 +276,98 @@ describe('LyricsPanel', () => {
     expect(fromCss).not.toBe('');
     expect(fromCss).toMatch(/transform/);
     expect(fromCss).not.toMatch(/opacity/);
-    expect(stage).not.toHaveAttribute('data-enter-settled');
+    expect(stage).toHaveAttribute('data-stage', 'entering');
 
     act(() => {
       const event = new Event('animationend');
       Object.defineProperty(event, 'animationName', { value: 'lyrics-stage-enter' });
       stage?.dispatchEvent(event);
     });
-    expect(stage).toHaveAttribute('data-enter-settled', 'true');
+    expect(stage).toHaveAttribute('data-stage', 'open');
+    expect(useLyricsStageStore.getState().stage).toBe('open');
   });
 
   it('skips the lyrics enter animation when reduced motion is requested', () => {
     reducedMotion = true;
     const { container } = render(<LyricsPanel {...presentationProps()} />);
-    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-enter-settled', 'true');
+    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-stage', 'open');
+  });
+
+  it('exits the lyrics stage with the inverse transform-only compositor animation', () => {
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    expect(stage).not.toBeNull();
+
+    act(() => {
+      const enter = new Event('animationend');
+      Object.defineProperty(enter, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(enter);
+    });
+    expect(stage).toHaveAttribute('data-stage', 'open');
+
+    let exitCss = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSKeyframesRule && rule.name === 'lyrics-stage-exit') {
+          exitCss = Array.from(rule.cssRules)
+            .map((keyframe) => keyframe.cssText)
+            .join(' ');
+        }
+      }
+    }
+    expect(exitCss).not.toBe('');
+    expect(exitCss).toMatch(/transform/);
+    expect(exitCss).toMatch(/translateY\(100%\)/);
+    expect(exitCss).not.toMatch(/opacity/);
+
+    act(() => {
+      usePlayerStore.getState().closePanels();
+    });
+    const exiting = container.querySelector('.lyrics-stage');
+    expect(exiting).toHaveAttribute('data-stage', 'exiting');
+
+    act(() => {
+      const exit = new Event('animationend');
+      Object.defineProperty(exit, 'animationName', { value: 'lyrics-stage-exit' });
+      exiting?.dispatchEvent(exit);
+    });
+    expect(container.querySelector('.lyrics-stage')).toBeNull();
+    expect(useLyricsStageStore.getState().stage).toBe('closed');
+  });
+
+  it('ignores a stale enter animationend after close has started exiting', () => {
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    act(() => {
+      const enter = new Event('animationend');
+      Object.defineProperty(enter, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(enter);
+    });
+
+    act(() => {
+      usePlayerStore.getState().closePanels();
+    });
+    const exiting = container.querySelector('.lyrics-stage');
+    expect(exiting).toHaveAttribute('data-stage', 'exiting');
+    const exitGeneration = useLyricsStageStore.getState().generation;
+
+    act(() => {
+      const staleEnter = new Event('animationend');
+      Object.defineProperty(staleEnter, 'animationName', { value: 'lyrics-stage-enter' });
+      exiting?.dispatchEvent(staleEnter);
+    });
+
+    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-stage', 'exiting');
+    expect(useLyricsStageStore.getState()).toMatchObject({
+      stage: 'exiting',
+      generation: exitGeneration,
+    });
   });
 
   it('seeks a preview lyric line on the same file clock Core reports', () => {
@@ -600,7 +684,15 @@ describe('LyricsPanel', () => {
     });
     useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
 
-    render(<LyricsPanel {...presentationProps()} />);
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    act(() => {
+      const stage = container.querySelector('.lyrics-stage');
+      const event = new Event('animationend');
+      Object.defineProperty(event, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(event);
+    });
+    setTimeoutSpy.mockClear();
+    requestFrame.mockClear();
 
     expect(setTimeoutSpy.mock.calls.filter((call) => (call[1] as number) <= 600)).toHaveLength(0);
     expect(requestFrame).not.toHaveBeenCalled();

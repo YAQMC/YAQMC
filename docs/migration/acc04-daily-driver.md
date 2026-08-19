@@ -3,9 +3,13 @@
 Opened **2026-08-20** under [`acceptance-p12.md`](acceptance-p12.md).
 This is a **HUMAN GATE**. Do not fabricate missed days. Agent-observed
 minutes are not a completed calendar day. The 2026-08-20 01:49 +08 Windows
-run is **defect-discovery only** (playhead stall). It must not count as
-completed Day 1. Restart Day 1 from a new timestamp after HUMAN confirms
-the clock regression is gone.
+run is **defect-discovery only** (playhead stall, later closed on `e7a6c06`).
+It must not count as completed Day 1. Clock is HUMAN-closed; **do not**
+restart Day 1 while **UI-PERF Windows Lyrics = FAIL-HUMAN** (pause can
+probabilistically stall fullscreen Lyrics FPS). GPU-on Pause A/B hang after
+vinyl was a **perf harness hang** (unbounded rAF/CDP wait); a watchdog GPU-on
+probe then completed 38 Pause cycles at ~200 FPS. That is not HUMAN closure.
+That session’s performance numbers are untrusted.
 
 Electron **43.4.0**. Docs HEAD `230c5d59d82f3a235bb11fb71d9ab0d8a89b95d8`
 (implementation `27d10b0`). Vite-dev + debug Core. Do not install PACK

@@ -32,6 +32,7 @@ import {
   subscribePluginSceneState,
 } from '../../application/plugin-runtime';
 import { widgetBoxStyle } from '../../application/lyrics-scene-geometry';
+import { usePlayerStore } from '../../application/player-store';
 import { formatDuration } from '../../utils/format';
 import { IconButton } from '../ui/IconButton';
 import { coverInk } from './coverInk';
@@ -126,6 +127,73 @@ function SceneWidget({
       {children}
     </div>
   );
+}
+
+function VinylDisc({
+  artworkSrc,
+  artworkAlt,
+  opacity,
+  isPlaying: isPlayingProp,
+}: {
+  artworkSrc: string | null;
+  artworkAlt: string;
+  opacity: number;
+  isPlaying?: boolean;
+}) {
+  const storePlaying = usePlayerStore((state) => state.isPlaying);
+  const isPlaying = isPlayingProp ?? storePlaying;
+  return (
+    <div className="lyrics-stage__disc" data-scene-widget="vinyl" style={{ opacity }}>
+      <div className="lyrics-stage__disc-spin" data-playing={isPlaying || undefined}>
+        {artworkSrc && (
+          <img
+            className="lyrics-stage__disc-cover"
+            src={artworkSrc}
+            alt={artworkAlt}
+            draggable={false}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ScenePlayButton({
+  isPlaying: isPlayingProp,
+  onToggle,
+  playingLabel,
+  pausedLabel,
+}: {
+  isPlaying?: boolean;
+  onToggle: () => void;
+  playingLabel: string;
+  pausedLabel: string;
+}) {
+  const storePlaying = usePlayerStore((state) => state.isPlaying);
+  const isPlaying = isPlayingProp ?? storePlaying;
+  return (
+    <button
+      type="button"
+      className="lyrics-stage__play"
+      onClick={onToggle}
+      aria-label={isPlaying ? playingLabel : pausedLabel}
+    >
+      {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+    </button>
+  );
+}
+
+function ScenePlaybackState({ editor, isPlaying }: { editor: boolean; isPlaying: boolean }) {
+  const storePlaying = usePlayerStore((state) => state.isPlaying);
+  const marker = useRef<HTMLSpanElement>(null);
+  const playing = editor ? isPlaying : storePlaying;
+  useLayoutEffect(() => {
+    const scene = marker.current?.closest('.lyrics-scene');
+    if (scene instanceof HTMLElement) {
+      scene.dataset.playbackState = playing ? 'playing' : 'paused';
+    }
+  }, [playing]);
+  return <span ref={marker} hidden data-scene-playback="" />;
 }
 
 export function LyricsScene({
@@ -284,7 +352,7 @@ export function LyricsScene({
       data-yaqmc-plugin-scene={pluginSceneKey ?? preset.pluginId}
       data-scene-instance={instance.id || undefined}
       data-scene-plugin-state={pluginState || undefined}
-      data-playback-state={bindings.isPlaying ? 'playing' : 'paused'}
+      data-playback-state={editor ? (bindings.isPlaying ? 'playing' : 'paused') : undefined}
       data-mode={mode}
       data-cover-layout={preset.layout}
       data-background-mode={appearance.mode}
@@ -298,6 +366,7 @@ export function LyricsScene({
         if (!widget) onSelectWidget(null);
       }}
     >
+      {!editor && <ScenePlaybackState editor={false} isPlaying={bindings.isPlaying} />}
       {scene.background.visible &&
         appearance.imageSource &&
         scene.background.source !== 'video' && (
@@ -378,21 +447,12 @@ export function LyricsScene({
           style={widgetBoxStyle(scene.artwork)}
         >
           {scene.artwork.renderer === 'vinyl' ? (
-            <div
-              className="lyrics-stage__disc"
-              data-scene-widget="vinyl"
-              data-playing={bindings.isPlaying || undefined}
-              style={{ opacity: scene.artwork.opacity }}
-            >
-              {bindings.artworkSrc && (
-                <img
-                  className="lyrics-stage__disc-cover"
-                  src={bindings.artworkSrc}
-                  alt={bindings.artworkAlt}
-                  draggable={false}
-                />
-              )}
-            </div>
+            <VinylDisc
+              artworkSrc={bindings.artworkSrc}
+              artworkAlt={bindings.artworkAlt}
+              opacity={scene.artwork.opacity}
+              isPlaying={editor ? bindings.isPlaying : undefined}
+            />
           ) : bindings.artworkSrc ? (
             <img
               className="lyrics-stage__control-panel__artwork"
@@ -485,18 +545,12 @@ export function LyricsScene({
                 >
                   <SkipBack size={18} fill="currentColor" />
                 </IconButton>
-                <button
-                  type="button"
-                  className="lyrics-stage__play"
-                  onClick={bindings.togglePlayback}
-                  aria-label={bindings.isPlaying ? common('pause') : common('play')}
-                >
-                  {bindings.isPlaying ? (
-                    <Pause size={20} fill="currentColor" />
-                  ) : (
-                    <Play size={20} fill="currentColor" />
-                  )}
-                </button>
+                <ScenePlayButton
+                  isPlaying={editor ? bindings.isPlaying : undefined}
+                  onToggle={bindings.togglePlayback}
+                  playingLabel={common('pause')}
+                  pausedLabel={common('play')}
+                />
                 <IconButton label={player('next')} size="large" onClick={() => bindings.next?.()}>
                   <SkipForward size={18} fill="currentColor" />
                 </IconButton>

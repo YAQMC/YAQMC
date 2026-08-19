@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ChevronDown, Heart, Image } from 'lucide-react';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
 import { useLyricsStore } from '../application/lyrics-store';
@@ -8,6 +8,14 @@ import {
   resolveLyricsPreset,
 } from '../application/lyrics-preset';
 import { getEstimatedPositionMs, usePlayerStore } from '../application/player-store';
+import {
+  LYRICS_STAGE_ENTER_ANIMATION,
+  LYRICS_STAGE_EXIT_ANIMATION,
+  LYRICS_STAGE_TRANSITION_MS,
+  useLyricsStageStore,
+  type LyricsStageState,
+} from '../application/lyrics-stage-machine';
+import { noteLyricsPanelCommit } from '../application/lyrics-perf-counters';
 import { ProviderContext } from '../application/provider-context';
 import { isAccountMusicProvider } from '../providers/music-provider';
 import { joinArtistNames } from '../utils/format';
@@ -50,11 +58,30 @@ interface LyricsPanelProps {
 
 export function LyricsPanel(props: LyricsPanelProps) {
   const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
-  if (!lyricsOpen) return null;
-  return <LyricsPanelStage {...props} />;
+  const stage = useLyricsStageStore((state) => state.stage);
+
+  useLayoutEffect(() => {
+    if (lyricsOpen) useLyricsStageStore.getState().requestOpen();
+    else useLyricsStageStore.getState().requestClose();
+  }, [lyricsOpen]);
+
+  if (stage === 'closed' && !lyricsOpen) return null;
+  return (
+    <LyricsPanelStage
+      {...props}
+      stageState={stage === 'closed' && lyricsOpen ? 'entering' : stage}
+    />
+  );
 }
 
-function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: LyricsPanelProps) {
+function LyricsPanelStage({
+  focus,
+  fullscreen,
+  fullscreenError,
+  onClose,
+  stageState,
+}: LyricsPanelProps & { stageState: LyricsStageState }) {
+  noteLyricsPanelCommit();
   const { t } = useTranslation('lyrics');
   const { t: player } = useTranslation('player');
   const provider = useContext(ProviderContext);
@@ -90,8 +117,6 @@ function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: Lyric
   const currentProvider = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.provider ?? null,
   );
-  const isPlaying = usePlayerStore((state) => state.isPlaying);
-  const timelineRevision = usePlayerStore((state) => state.timelineRevision);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
   const seek = usePlayerStore((state) => state.seek);
   const beginScrub = usePlayerStore((state) => state.beginScrub);
@@ -212,6 +237,8 @@ function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: Lyric
     setControlsHidden(fullscreen);
   }
 
+  useLayoutEffect(() => useLyricsStageStore.getState().registerSurface(), []);
+
   useEffect(() => {
     const stageElement = stage.current;
     if (!stageElement) return;
@@ -242,20 +269,29 @@ function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: Lyric
   useEffect(() => {
     const stageElement = stage.current;
     if (!stageElement) return;
-    const reducedMotion =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reducedMotion) {
-      stageElement.dataset.enterSettled = 'true';
-      return;
-    }
     const settle = (event: AnimationEvent) => {
-      if (event.target !== stageElement || event.animationName !== 'lyrics-stage-enter') return;
-      stageElement.dataset.enterSettled = 'true';
+      if (event.target !== stageElement) return;
+      const raw = stageElement.dataset.stageGeneration;
+      const generation = raw === undefined ? undefined : Number(raw);
+      useLyricsStageStore
+        .getState()
+        .notifyTransitionFinished(event.animationName, Number.isFinite(generation) ? generation : undefined);
     };
     stageElement.addEventListener('animationend', settle);
     return () => stageElement.removeEventListener('animationend', settle);
   }, []);
+
+  useEffect(() => {
+    const generation = useLyricsStageStore.getState().generation;
+    if (stage.current) stage.current.dataset.stageGeneration = String(generation);
+    if (stageState !== 'entering' && stageState !== 'exiting') return;
+    const animationName =
+      stageState === 'entering' ? LYRICS_STAGE_ENTER_ANIMATION : LYRICS_STAGE_EXIT_ANIMATION;
+    const timer = window.setTimeout(() => {
+      useLyricsStageStore.getState().notifyTransitionFinished(animationName, generation);
+    }, LYRICS_STAGE_TRANSITION_MS + 80);
+    return () => window.clearTimeout(timer);
+  }, [stageState]);
 
   const style = {
     '--lyrics-font-scale': resolvedPreset.typography.fontScale,
@@ -286,10 +322,10 @@ function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: Lyric
     artworkColor: currentArtworkColor,
     lyrics: activeDocument,
     lyricsStatus,
-    isPlaying,
+    isPlaying: usePlayerStore.getState().isPlaying,
     positionMs: getEstimatedPositionMs(),
     durationMs: timelineDuration,
-    timelineRevision,
+    timelineRevision: usePlayerStore.getState().timelineRevision,
     presentationOffsetMs,
     getPositionMs: getEstimatedPositionMs,
     seek,
@@ -310,6 +346,7 @@ function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: Lyric
       className="lyrics-stage"
       style={style}
       aria-label={t('region')}
+      data-stage={stageState}
       data-focus={focus || undefined}
       data-fullscreen={fullscreen || undefined}
       data-cover-layout={coverLayout}

@@ -28,6 +28,11 @@
   visibility: hidden;
 }
 
+.app-shell[data-lyrics-fullscreen] > .content-shell *,
+.app-shell[data-lyrics-fullscreen] > .player-bar * {
+  animation: none !important;
+}
+
 .sidebar {
   position: relative;
   z-index: 10;
