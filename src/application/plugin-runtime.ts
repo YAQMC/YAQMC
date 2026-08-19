@@ -8,7 +8,7 @@ import {
   type LyricsPresetDefinition,
 } from './lyrics-preset';
 import { isNativeRuntime } from './native-player-runtime';
-import { isLinuxWebView } from './platform-integration';
+import { skipsLiveCssBlur } from './platform-integration';
 import { getYaqmcClient } from './yaqmc-runtime';
 import { usePlayerStore } from './player-store';
 import { primaryPlaybackMode } from './playback-mode';
@@ -493,7 +493,7 @@ function applyBridgeSideEffect(
     const widgetId = typeof source.widgetId === 'string' ? source.widgetId : '';
     const property = typeof source.property === 'string' ? source.property : '';
     if (!widgetId || !/^(opacity|scale|rotation|blur)$/.test(property)) return;
-    if (property === 'blur' && isLinuxWebView()) return;
+    if (property === 'blur' && skipsLiveCssBlur()) return;
     const raw = source.value;
     const text =
       typeof raw === 'number' && Number.isFinite(raw)
@@ -531,10 +531,12 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
           logger.error('plugin.runtime.error', data.message ?? 'plugin runtime error', {
             pluginId: script.pluginId,
           });
-          void client.invoke('plugin_mark_failed', {
-            id: script.pluginId,
-            reason: data.message ?? 'plugin runtime error',
-          }).catch(() => undefined);
+          void client
+            .invoke('plugin_mark_failed', {
+              id: script.pluginId,
+              reason: data.message ?? 'plugin runtime error',
+            })
+            .catch(() => undefined);
           worker.terminate();
           workers.delete(script.pluginId);
           clearPluginUi(script.pluginId);
@@ -542,9 +544,14 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
         }
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
         const boundToken = runtimeTokens.get(script.pluginId);
-        void client.invoke('plugin_bridge', {
-          request: { token: boundToken as string, method: data.method, payload: data.payload ?? {} },
-        })
+        void client
+          .invoke('plugin_bridge', {
+            request: {
+              token: boundToken as string,
+              method: data.method,
+              payload: data.payload ?? {},
+            },
+          })
           .then((value) => {
             applyBridgeSideEffect(script, data.method ?? '', data.payload, value);
             worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: true, value });
@@ -560,17 +567,21 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
       };
       worker.onerror = (event) => {
         logger.error('plugin.runtime.error', event.message, { pluginId: script.pluginId });
-        void client.invoke('plugin_mark_failed', {
-          id: script.pluginId,
-          reason: event.message || 'plugin runtime error',
-        }).catch(() => undefined);
+        void client
+          .invoke('plugin_mark_failed', {
+            id: script.pluginId,
+            reason: event.message || 'plugin runtime error',
+          })
+          .catch(() => undefined);
         clearPluginUi(script.pluginId);
       };
       workers.set(script.pluginId, worker);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'plugin runtime failed to start';
       logger.error('plugin.runtime.error', reason, { pluginId: script.pluginId });
-      void client.invoke('plugin_mark_failed', { id: script.pluginId, reason }).catch(() => undefined);
+      void client
+        .invoke('plugin_mark_failed', { id: script.pluginId, reason })
+        .catch(() => undefined);
       clearPluginUi(script.pluginId);
     }
   }

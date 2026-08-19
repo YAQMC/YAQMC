@@ -94,6 +94,12 @@ export function isLinuxWebView(): boolean {
   return typeof document !== 'undefined' && document.documentElement.dataset.platform === 'linux';
 }
 
+export function skipsLiveCssBlur(): boolean {
+  if (typeof document === 'undefined') return false;
+  const platform = document.documentElement.dataset.platform;
+  return platform === 'linux' || platform === 'windows';
+}
+
 export function linuxSkipsLiveVideo(): boolean {
   if (!isLinuxWebView()) return false;
   const mode = document.documentElement.dataset.graphicsMode;

@@ -150,26 +150,26 @@ describe('LyricsFullscreenTransport', () => {
     const progress = () =>
       container.querySelector<HTMLElement>('.lyrics-fullscreen-transport__progress-fill');
 
-    expect(progress()).toHaveStyle({ width: '25%' });
+    expect(progress()).toHaveStyle({ transform: 'scaleX(0.25)' });
 
     act(() => usePlayerStore.setState({ playbackDurationMs: 100_000 }));
-    expect(progress()).toHaveStyle({ width: '63%' });
+    expect(progress()).toHaveStyle({ transform: 'scaleX(0.63)' });
 
     act(() => usePlayerStore.setState({ positionMs: 125_000 }));
-    expect(progress()).toHaveStyle({ width: '100%' });
+    expect(progress()).toHaveStyle({ transform: 'scaleX(1)' });
 
     act(() => usePlayerStore.setState({ positionMs: -1 }));
-    expect(progress()).toHaveStyle({ width: '0%' });
+    expect(progress()).toHaveStyle({ transform: 'scaleX(0)' });
 
     act(() => usePlayerStore.setState({ playbackDurationMs: 0, positionMs: 50_000 }));
-    expect(progress()).toHaveStyle({ width: '0%' });
+    expect(progress()).toHaveStyle({ transform: 'scaleX(0)' });
 
     act(() => usePlayerStore.setState({ playbackDurationMs: null, positionMs: 126_000 }));
-    expect(progress()).toHaveStyle({ width: '50%' });
+    expect(progress()).toHaveStyle({ transform: 'scaleX(0.5)' });
 
     for (const positionMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
       act(() => usePlayerStore.setState({ positionMs }));
-      expect(progress()).toHaveStyle({ width: '0%' });
+      expect(progress()).toHaveStyle({ transform: 'scaleX(0)' });
     }
   });
 

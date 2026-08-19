@@ -529,6 +529,36 @@
   font-size: 0.625rem;
 }
 
+.player-progress__track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.player-progress__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  border-radius: var(--radius-round);
+  background: var(--text-secondary);
+  pointer-events: none;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+  z-index: 0;
+}
+
+.player-progress input[type='range'] {
+  position: relative;
+  z-index: 1;
+}
+
+.player-progress input[type='range']::-webkit-slider-runnable-track {
+  background: var(--surface-pressed);
+}
+
 .player-progress > span:first-child {
   text-align: right;
 }

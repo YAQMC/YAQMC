@@ -591,8 +591,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set({
       isScrubbing: true,
       scrubPosition: boundedPosition,
-      positionMs: boundedPosition,
-      observedAtMs: performance.now(),
     });
   },
 
@@ -917,7 +915,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         sourceGeneration: snapshot.sourceGeneration ?? state.sourceGeneration,
         lastSeekRevision,
         sampledAtMs: snapshot.sampledAtMs ?? 0,
-        positionMs: isScrubbing ? state.scrubPosition : snapshot.positionMs,
+        positionMs: isScrubbing ? state.positionMs : snapshot.positionMs,
         isScrubbing,
         scrubPosition: isScrubbing ? state.scrubPosition : snapshot.positionMs,
         scrubAwaitingAckFrom: isScrubbing ? state.scrubAwaitingAckFrom : null,

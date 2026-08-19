@@ -14,6 +14,8 @@ export type LaunchElectronOptions = {
   spawnCore?: boolean;
   tray?: boolean;
   native?: boolean;
+  /** GPU-on DWM path. Functional E2E must keep the default GPU-disabled launch. */
+  gpu?: boolean;
 };
 
 function electronEnv(options: LaunchElectronOptions = {}): Record<string, string> {
@@ -25,7 +27,12 @@ function electronEnv(options: LaunchElectronOptions = {}): Record<string, string
   }
   env.YAQMC_ELECTRON_E2E = '1';
   env.YAQMC_VITE_DEV = '1';
-  env.ELECTRON_DISABLE_GPU = '1';
+  if (options.gpu) {
+    delete env.ELECTRON_DISABLE_GPU;
+    delete env.YAQMC_LINUX_RENDERER;
+  } else {
+    env.ELECTRON_DISABLE_GPU = '1';
+  }
   if (options.spawnCore) {
     const bin = resolveE2eCoreBin();
     if (!bin) {

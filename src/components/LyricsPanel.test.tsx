@@ -922,6 +922,22 @@ describe('LyricsPanel', () => {
     expect(getComputedStyle(inactive).filter).toBe('none');
   });
 
+  it('does not apply live inactive-line blur on Windows', async () => {
+    document.documentElement.setAttribute('data-platform', 'windows');
+    document.documentElement.removeAttribute('data-graphics-mode');
+    usePlayerStore.setState({ positionMs: 1_100, isPlaying: false, playbackState: 'paused' });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+    render(<LyricsPanel {...presentationProps()} />);
+    const inactive = await screen.findByRole('button', { name: 'Second line' });
+    expect(getComputedStyle(inactive).filter).toBe('none');
+  });
+
+  it('does not mount the lyrics stage while the panel is closed', () => {
+    usePlayerStore.setState({ lyricsOpen: false });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    expect(container.querySelector('.lyrics-stage')).toBeNull();
+  });
+
   it.each(['software', 'safe'])(
     'contains lyric lines and removes only active scale in Linux %s mode',
     async (graphicsMode) => {

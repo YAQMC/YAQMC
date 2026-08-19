@@ -23,7 +23,7 @@ import {
   type SceneWidgetId,
 } from '../../application/lyrics-preset';
 import { resolveSceneAssetUrl } from '../../application/plugin-asset';
-import { isLinuxWebView, linuxSkipsLiveVideo } from '../../application/platform-integration';
+import { linuxSkipsLiveVideo, skipsLiveCssBlur } from '../../application/platform-integration';
 import {
   currentPluginSceneInstance,
   pluginSceneCssVars,
@@ -160,8 +160,10 @@ export function LyricsScene({
   const ink = coverInk(bindings.artworkColor);
   const editor = mode === 'editor';
   const scene = preset.scene;
+  const [transportDraft, setTransportDraft] = useState<number | null>(null);
+  const transportPositionMs = transportDraft ?? bindings.positionMs;
   const progress =
-    bindings.durationMs === 0 ? 0 : (bindings.positionMs / Math.max(bindings.durationMs, 1)) * 100;
+    bindings.durationMs === 0 ? 0 : (transportPositionMs / Math.max(bindings.durationMs, 1)) * 100;
   const primaryFontPx = resolvePrimaryFontSizePx(preset.typography.fontScale, sceneHeight);
   const secondaryFontPx = resolveSecondaryFontSizePx(primaryFontPx);
 
@@ -500,23 +502,25 @@ export function LyricsScene({
                 </IconButton>
               </div>
               <div className="lyrics-stage__progress">
-                <span>{formatDuration(bindings.positionMs)}</span>
+                <span>{formatDuration(transportPositionMs)}</span>
                 <input
                   type="range"
                   min={0}
                   max={Math.max(bindings.durationMs, 1)}
                   step={1_000}
-                  value={bindings.positionMs}
+                  value={transportPositionMs}
                   onPointerDown={() => {
                     transportScrubbing.current = true;
                     bindings.beginScrub?.();
                   }}
                   onPointerUp={(event) => {
                     transportScrubbing.current = false;
+                    setTransportDraft(null);
                     (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
                   }}
                   onPointerCancel={(event) => {
                     transportScrubbing.current = false;
+                    setTransportDraft(null);
                     (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
                   }}
                   onKeyDown={() => {
@@ -525,11 +529,14 @@ export function LyricsScene({
                   }}
                   onKeyUp={(event) => {
                     transportScrubbing.current = false;
+                    setTransportDraft(null);
                     (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
                   }}
                   onChange={(event) => {
                     if (!transportScrubbing.current || !bindings.previewScrub) return;
-                    bindings.previewScrub(Number(event.target.value));
+                    const next = Number(event.target.value);
+                    setTransportDraft(next);
+                    bindings.previewScrub(next);
                   }}
                   aria-label={player('position')}
                   style={{ '--range-progress': `${progress}%` } as CSSProperties}
@@ -549,7 +556,7 @@ export function LyricsScene({
           override={overrides.get(widget.id)}
           bindings={bindings}
           skipVideo={skipVideo}
-          skipLiveBlur={isLinuxWebView()}
+          skipLiveBlur={skipsLiveCssBlur()}
         />
       ))}
 
