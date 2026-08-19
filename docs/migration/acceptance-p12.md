@@ -7,7 +7,7 @@ ACC-05 sign-off and **not** P11 PASS.
 | Field | Value |
 | --- | --- |
 | Branch | `feat/electron-migration` (`main` frozen) |
-| Implementation HEAD | `27d10b0964c150ba75cf60f1c3e3ae2eaea37dce` |
+| Implementation HEAD | `e7a6c06` PLAY-01 Core; UI-PERF renderer / Lyrics stage machine in this commit |
 | Pins | Electron **43.4.0**, builder **26.15.7**, updater **6.8.6**, protocol **32 MiB** |
 | P12 execution | **Allowed** (ACC-01..04) |
 | P12 final exit | **Conditional** — ACC-05 blocked |
@@ -57,11 +57,12 @@ HANDOFF vocabulary still applies. Extra labels used here:
 ## Current Status — maintainer-confirmed HUMAN (2026-08-20)
 
 These catalog rows are **PASS-HUMAN** on HEAD `27d10b0` unless noted. Do not
-re-run them unless a later change invalidates them.
+re-run them unless a later change invalidates them. PLAY-01 was revalidated
+on `e7a6c06` after the Rodio playhead-recovery fix.
 
 | ID / item | Current Status | History (do not use as Current Status) |
 | --- | --- | --- |
-| PLAY-01 (Repeat One/All/Off; EOS → Next/Previous/Pause-Resume; EOS → seek back; rapid seek) | **PASS-HUMAN** historically; **REGRESSION-SUSPECT** (retest required after clock fix) | Maintainer-signed on `27d10b0`. 2026-08-20 ACC-04 session observed a new playhead stall (`isPlaying=true`, `positionMs` frozen). That session is defect evidence, not permission to rewrite the HUMAN row. |
+| PLAY-01 (Repeat One/All/Off; EOS → Next/Previous/Pause-Resume; EOS → seek back; rapid seek) | **PASS-HUMAN (revalidated on `e7a6c06`)** | Maintainer-signed on `27d10b0`. 2026-08-20 ACC-04 session observed a playhead stall (`isPlaying=true`, `positionMs` frozen) — that was **REGRESSION-SUSPECT**, not permission to rewrite the HUMAN row. Clean `e7a6c06` retest (fresh Vite `:1420`, matching Core, GPU on, `clock eos-gate 2026-08-20a playhead-recover`): play advances, pause/resume, seek-while-playing continues, next/previous, Repeat One EOS restarts from 0 and advances. Do **not** reopen PLAY-01 unless a later transport / playback-clock regression provides new evidence. |
 | PLAY-02 | **PASS-HUMAN** | Assist script still prints PENDING; no invented millisecond. Current Status is HUMAN, not the script. |
 | SOAK-01 first 4h Windows + Linux | **PASS-HUMAN** | Default 10 s script ≠ this result. `soak-last.json` stays gitignored. This is the **first** soak, not the P12 second soak. |
 | Desktop Lyrics | **PASS-HUMAN** | FAIL-HUMAN after `2604045`; chrome-while-locked leak on `f864482`. Fix `27d10b0`. Superseded. |
@@ -105,10 +106,53 @@ is frozen while logically playing. `session_id` / snapshot / seek / source /
 load generations, SeekMailbox, and EOS fencing are unchanged.
 
 AUTO coverage is in Core (`player::tests` live clock +
-`qa_play01_production` fixture/QQ position-advance). **HUMAN** must still
-revalidate play → clock advances, pause/resume, seek continues, next/previous,
-and Repeat One EOS. Do **not** restart ACC-04 Day 1, ACC-03 playing CPU /
-lyrics jitter, or the P12 second soak until that HUMAN pass.
+`qa_play01_production` fixture/QQ position-advance). **HUMAN revalidated
+PLAY-01 on `e7a6c06`** (see Current Status). The playhead stall is closed.
+Do **not** reopen it without new transport / clock evidence.
+
+Do **not** restart ACC-04 Day 1, ACC-03 playing CPU / lyrics jitter, or the
+P12 second soak while **UI-PERF Windows Lyrics = FAIL-HUMAN** remains (next
+section). Clock-closed samples are still not trusted until that rendering
+regression is fixed.
+
+---
+
+## UI-PERF Windows Lyrics pause (2026-08-20) — FAIL-HUMAN
+
+Fullscreen Lyrics on a clean Windows session (fresh Vite `:1420`, matching
+`e7a6c06` Core, GPU acceleration enabled, `clock eos-gate 2026-08-20a
+playhead-recover`, no stale dev server / Core) can drop to severe FPS when
+pausing on the Lyrics page. Playing Lyrics is usually smooth; Pause is
+probabilistic. Intermittent low-FPS episodes can also occur after the page
+has settled. Transport / audio clock remain functionally correct — this is
+**not** PLAY-01.
+
+| ID / item | Current Status |
+| --- | --- |
+| UI-PERF Windows Lyrics | **FAIL-HUMAN** (HUMAN retest remaining) |
+
+Renderer fixes in this commit (do not treat as PASS-HUMAN):
+
+- Shared Lyrics route machine stays `closed → entering → open → exiting → closed`. Main → Lyrics is bottom → top; Lyrics → Main is top → bottom. Transform-only / opaque; Lyrics stays mounted through `exiting`; navigation/unmount only after exit completion; generation token ignores stale `animationend`.
+- Pause no longer recommits the fullscreen scene (`LyricsPanel` dropped `isPlaying` / `timelineRevision` subscriptions).
+- `data-stage='open'` clears leftover enter `animation: both`.
+- Artwork/default backdrop on Windows/Linux is unscaled (`transform: none; inset: 0`).
+- Vinyl shadows stay on a static node; spin is transform-only and paused unless `data-stage='open'` and playing.
+- Fullscreen-hidden chrome gets `animation: none` so PlayerBar equalizer cannot keep compositing.
+
+GPU-on Pause A/B hang (previous profiler run after vinyl JSON, before A/B output) classified **perf harness hang**, not an application hang:
+
+- Unbounded `page.evaluate` rAF sampling had no wall-clock timeout, so a wedged CDP/rAF wait never returned.
+- Optional Chromium `Tracing` after each preset (now off unless `YAQMC_GPU_TRACE=1`) plus per-cycle LayerTree/Performance CDP sessions.
+- A/B `noScenePlaybackAttr` MutationObserver that forced `data-playback-state='playing'` was removed (infinite-loop landmine; not reached on the observed hang).
+
+Watchdog GPU-on probe after those harness fixes (`scripts/migration/lyrics-pause-gpu-profile.mjs`, GPU on, ANGLE NVIDIA RTX 5070 Ti Laptop, 8 Pause/Resume cycles × classic/immersive/vinyl + 4 A/B + 10 extra vinyl = 38 Pause cycles): **no hang dump**. Paused steady ~188–213 FPS; Resume ~175–202 FPS; rAF never stuck. One classic Pause-settle frame was 142 ms with paused steady still 193 FPS. One vinyl *playing* sample was 49 FPS with that cycle’s paused steady 213 FPS — not the HUMAN Pause-tank signature. A/B variants all `jank: false`.
+
+**B is true for the A/B hang:** the profiler was the failure; repeated GPU-on Pause cycles stayed healthy. That does **not** close the HUMAN cell. Do not start ACC-03 playing CPU / lyrics jitter, ACC-04 Day 1, or the P12 second soak until HUMAN retests Pause on a clean Windows session.
+
+P12 execution stays **active**. ACC-03 performance measurements and ACC-04
+Windows daily-driver evidence must **not** be trusted until HUMAN closes this
+row. Do **not** start the P12 second 4h soak while it remains FAIL-HUMAN.
 
 ---
 
@@ -145,12 +189,14 @@ SURF-02 / Desktop Lyrics / Island / PLAY-01 / SURF-03 / ACCT-01..03 are
 | Transparency / DWM artifacts | AUTO CSS + screenshot; **HUMAN remaining** | Daily-driver CDP 9232: `.app-shell` `backgroundColor=rgba(0,0,0,0)`; topbar/artwork `backdrop-filter: none` / `filter: none`. Screenshot `output/acc02-dwm-daily-driver.png`. Do not auto-PASS the §30 HUMAN cell. |
 | Long-path profile dirs | **PASS-AUTO under 260**; over MAX_PATH **not classified as product FAIL** | `LongPathsEnabled=0` (OS policy). §30 requires Core paths via `std::path` (parity). Distinguish environment limitation from application failure. Unicode is a separate row. |
 | Unicode profile dirs | **PASS-AUTO** | Isolated `验收-日本語-프로필` APPDATA/LOCALAPPDATA; `core ready`. Not HUMAN. |
-| PLAY-03 Windows occluded / minimized lyric clock | **not passed** | Fake-track E2E: clock does not advance even while visible (`positionMs` stuck). Daily-driver CDP: `document.hidden` stayed `false` on minimize; playhead already stalled (see ACC-04). Linux oral ≠ this cell. |
+| PLAY-03 Windows occluded / minimized lyric clock | **not passed** | Fake-track E2E previously saw a stuck visible clock; that overlapped the now-closed playhead stall. Remaining work is occluded/minimized lyric cadence, not PLAY-01. Linux oral ≠ this cell. |
 | Windows arm64 smoke | **BLOCKED-EXTERNAL** | CI-03 live evidence. Not executable under the Actions freeze. Do not treat a local `pack:win` arm64 unpack as CI-03. |
 | SURF-04 real fullscreen game/video overlay | NOT TESTED | Window hide/restore already PASS-HUMAN. Parked extra, not the next catalog row. |
 
-UI-PERF as a **phase** is still not accepted. Individual playback HUMAN rows
-stay accepted and are not remaining cells.
+UI-PERF as a **phase** is still not accepted. **UI-PERF Windows Lyrics** is
+**FAIL-HUMAN** pending HUMAN retest (GPU-on Pause A/B hang was profiler-side;
+see Current Status section). Individual PLAY-01 transport rows stay accepted
+and are not remaining cells.
 
 ### ACC-03 §35.2 + second soak — not signed
 
@@ -160,10 +206,10 @@ Entry is allowed: PLAY-02 and SOAK-01 first 4h are PASS-HUMAN.
 | --- | --- | --- |
 | Cold start to interactive vs BASE-03 + 1.5 s | Electron captured; **vs-budget PENDING** | Vite-dev median **598 ms** (3 runs) to `.app-shell` + `core ready`. Packaged cold start not this. BASE-03 still PENDING. See [`acc03-windows.md`](acc03-windows.md). |
 | Idle RSS vs baseline + 250 MB | Electron captured; **vs-budget PENDING** | Electron spawn tree **597.3 MiB** after 60 s. BASE-03 still PENDING. |
-| Playing CPU vs baseline + 2 pp | **INVALID** | Sample taken while the playback clock was stalled. Not acceptance evidence. Redo after the clock defect is HUMAN-closed. |
-| Lyrics position-update jitter (manual A/B, 120 s) | **VACUOUS / INVALID** | maxAbsLineDelta 0 because `positionMs` did not move. Redo after the clock defect is HUMAN-closed. |
+| Playing CPU vs baseline + 2 pp | **INVALID / untrusted** | Earlier sample was taken while the playback clock was stalled. Clock is now HUMAN-closed on `e7a6c06`, but **do not redo or trust** this cell while UI-PERF Windows Lyrics remains FAIL-HUMAN. |
+| Lyrics position-update jitter (manual A/B, 120 s) | **VACUOUS / INVALID / untrusted** | Earlier maxAbsLineDelta 0 because `positionMs` did not move. Clock closed; **do not redo or trust** until the Lyrics pause FPS regression is fixed. |
 | Installer size ≤ 120 MB / platform | **not produced** (external/network) | NSIS tool fetch `ETIMEDOUT 199.59.148.9:443`. Not a product FAIL. PACK clean-VM remains **DEFERRED**. |
-| P12 **second** soak (Win+Linux, fake + real-account, 4h) | **NOT STARTED** | Do not start until the playhead stall is HUMAN-closed. First SOAK-01 ≠ this soak. |
+| P12 **second** soak (Win+Linux, fake + real-account, 4h) | **NOT STARTED** | Do **not** start while UI-PERF Windows Lyrics remains FAIL-HUMAN. First SOAK-01 ≠ this soak. |
 
 Seek p95 is Current Status **PLAY-02 PASS-HUMAN**. Do not invent a number.
 
@@ -173,7 +219,7 @@ ACCT-03 continuity PASS-HUMAN is **not** a week of daily-driver use.
 
 | Remaining cell | Status |
 | --- | --- |
-| Windows day-1 through week, zero P1 | 2026-08-20 01:49 +08 session is **defect-discovery only**, not a completed Day 1. Restart Day 1 from a new timestamp only after HUMAN confirms the clock regression is gone. |
+| Windows day-1 through week, zero P1 | 2026-08-20 01:49 +08 session is **defect-discovery only**, not a completed Day 1. Clock is HUMAN-closed on `e7a6c06`; **do not** start a new Day 1 while UI-PERF Windows Lyrics remains FAIL-HUMAN. That session’s FPS / playing-CPU evidence is untrusted. |
 | Linux day-1 through week, zero P1 | **not started** — no Linux/WSL distro on this worktree. Not fabricated. |
 
 HUMAN GATE. Log: [`acc04-daily-driver.md`](acc04-daily-driver.md).

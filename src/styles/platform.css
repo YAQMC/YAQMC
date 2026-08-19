@@ -25,6 +25,16 @@
   filter: none;
   opacity: var(--artwork-influence);
   transform: none;
+  inset: 0;
+}
+
+:root[data-platform='linux'] .lyrics-stage[data-background-mode='artwork'] .lyrics-stage__backdrop,
+:root[data-platform='windows'] .lyrics-stage[data-background-mode='artwork'] .lyrics-stage__backdrop,
+:root[data-platform='linux'] .lyrics-stage[data-background-mode='default'] .lyrics-stage__backdrop,
+:root[data-platform='windows'] .lyrics-stage[data-background-mode='default'] .lyrics-stage__backdrop {
+  filter: none;
+  transform: none;
+  inset: 0;
 }
 
 :root[data-platform='linux'] .lyrics-stage__follow,

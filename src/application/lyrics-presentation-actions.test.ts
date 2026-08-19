@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialPlayerState, usePlayerStore } from './player-store';
+import { resetLyricsStageForTests } from './lyrics-stage-machine';
 import {
   setFullscreenPortForTests,
   useLyricsPresentationStore,
@@ -46,12 +47,16 @@ describe('lyrics presentation actions', () => {
   let restorePort: () => void;
 
   beforeEach(() => {
+    resetLyricsStageForTests();
     usePlayerStore.setState(initialPlayerState);
     port = new FakeFullscreenPort();
     restorePort = setFullscreenPortForTests(port);
   });
 
-  afterEach(() => restorePort());
+  afterEach(() => {
+    restorePort();
+    resetLyricsStageForTests();
+  });
 
   it('opens Lyrics and closes Queue before fullscreen entry begins', async () => {
     usePlayerStore.setState({ queueOpen: true, lyricsOpen: false });

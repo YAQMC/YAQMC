@@ -47,6 +47,7 @@ import {
   runAfterLyricsClose,
   toggleQueueAfterLyricsClose,
 } from './application/lyrics-presentation-actions';
+import { useLyricsStageStore } from './application/lyrics-stage-machine';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
 import { getYaqmcClient } from './application/yaqmc-runtime';
 import { usePluginHost } from './application/plugin-runtime';
@@ -108,6 +109,8 @@ export default function App() {
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);
   const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
+  const lyricsStage = useLyricsStageStore((state) => state.stage);
+  const lyricsSurfaceVisible = lyricsOpen || lyricsStage !== 'closed';
   const focusSidebarCollapsed = usePreferencesStore((state) => state.lyrics.focusSidebarCollapsed);
   const showFpsCounter = usePreferencesStore((state) => state.debug.showFpsCounter);
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
@@ -424,8 +427,8 @@ export default function App() {
       <div
         className="app-shell"
         data-provider-id={provider.id}
-        data-lyrics-focus={(lyricsOpen && focusSidebarCollapsed) || undefined}
-        data-lyrics-fullscreen={(lyricsOpen && fullscreen) || undefined}
+        data-lyrics-focus={(lyricsSurfaceVisible && focusSidebarCollapsed) || undefined}
+        data-lyrics-fullscreen={(lyricsSurfaceVisible && fullscreen) || undefined}
       >
         <Sidebar route={route} onNavigate={navigate} />
         <div className="content-shell">

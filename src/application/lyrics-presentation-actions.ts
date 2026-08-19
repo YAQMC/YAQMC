@@ -1,5 +1,6 @@
 import { usePlayerStore } from './player-store';
 import { useLyricsPresentationStore } from './lyrics-presentation';
+import { useLyricsStageStore, waitForLyricsStageClosed } from './lyrics-stage-machine';
 
 export async function enterLyricsFullscreen(): Promise<boolean> {
   const presentation = useLyricsPresentationStore.getState();
@@ -20,6 +21,8 @@ async function closeLyricsPresentationOnce(): Promise<boolean> {
   if (!presentation.fullscreen && !presentation.pending) {
     presentation.clearError();
     usePlayerStore.getState().closePanels();
+    useLyricsStageStore.getState().requestClose();
+    await waitForLyricsStageClosed();
     return true;
   }
 
@@ -28,6 +31,8 @@ async function closeLyricsPresentationOnce(): Promise<boolean> {
   if (confirmed.fullscreen || confirmed.pending || confirmed.error !== null) return false;
 
   usePlayerStore.getState().closePanels();
+  useLyricsStageStore.getState().requestClose();
+  await waitForLyricsStageClosed();
   return true;
 }
 

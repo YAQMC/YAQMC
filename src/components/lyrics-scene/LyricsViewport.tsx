@@ -21,7 +21,7 @@ import {
 import { logger } from '../../application/logger';
 import type { LyricWordEffect, SecondaryLyricVisibility } from '../../application/preferences';
 import type { LyricDocument, LyricLine, LyricWord } from '../../domain/music';
-import type { LyricsFollowState } from './types';
+import { usePlayerStore } from '../../application/player-store';
 
 const CJK_RE = /^[\p{Unified_Ideograph}\u0800-\u9FFC]+$/u;
 
@@ -427,8 +427,8 @@ function LyricsMessage({
 export function LyricsViewport({
   document,
   status,
-  isPlaying,
-  timelineRevision,
+  isPlaying: isPlayingProp,
+  timelineRevision: timelineRevisionProp,
   presentationOffsetMs,
   getPositionMs,
   seek,
@@ -463,6 +463,10 @@ export function LyricsViewport({
 }) {
   const { t } = useTranslation('lyrics');
   const reducedMotion = useReducedMotion();
+  const runtimePlaying = usePlayerStore((state) => state.isPlaying);
+  const runtimeRevision = usePlayerStore((state) => state.timelineRevision);
+  const isPlaying = editorGesture ? isPlayingProp : runtimePlaying;
+  const timelineRevision = editorGesture ? timelineRevisionProp : runtimeRevision;
   const scrollArea = useRef<HTMLDivElement>(null);
   const scrollContent = useRef<HTMLDivElement>(null);
   const [followState, setFollowState] = useState<LyricsFollowState>('active');
