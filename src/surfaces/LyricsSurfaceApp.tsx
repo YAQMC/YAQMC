@@ -51,6 +51,10 @@ export function LyricsUnlockControl({ kind }: { kind: SurfaceKind }) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
+  useEffect(() => {
+    getYaqmcClient();
+  }, []);
+
   const unlock = async () => {
     if (pending) return;
     setPending(true);
@@ -68,7 +72,7 @@ export function LyricsUnlockControl({ kind }: { kind: SurfaceKind }) {
     <main className="lyrics-unlock-root">
       <button
         type="button"
-        className="lyrics-unlock-button"
+        className="lyrics-unlock-button yaqmc-no-drag"
         aria-label={t('unlockSurface', { name: t(kind) })}
         title={t('unlockSurface', { name: t(kind) })}
         data-failed={failed || undefined}
@@ -279,6 +283,7 @@ function SurfaceControls({
       <IconButton
         label={t('previous')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void getYaqmcClient().player.previous()}
       >
         <SkipBack size={14} fill="currentColor" />
@@ -286,6 +291,7 @@ function SurfaceControls({
       <IconButton
         label={projection?.value.isPlaying ? common('pause') : common('play')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void getYaqmcClient().player.toggle()}
       >
         {projection?.value.isPlaying ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
@@ -293,6 +299,7 @@ function SurfaceControls({
       <IconButton
         label={t('next')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void getYaqmcClient().player.next()}
       >
         <SkipForward size={14} fill="currentColor" />
@@ -300,6 +307,7 @@ function SurfaceControls({
       <IconButton
         label={surfaces('lock')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void setLyricsSurfaceInteraction(kind, 'passive-locked')}
       >
         <Lock size={14} />
@@ -307,6 +315,7 @@ function SurfaceControls({
       <IconButton
         label={navigation('settings')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void showLyricsSettings()}
       >
         <Settings2 size={14} />
@@ -314,6 +323,7 @@ function SurfaceControls({
       <IconButton
         label={common('close')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void closeLyricsSurface(kind)}
       >
         <X size={14} />

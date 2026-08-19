@@ -231,12 +231,12 @@ describe('show / hide / lock helpers', () => {
     expect(window.hide).toHaveBeenCalledTimes(1);
   });
 
-  it('lock sets click-through with forward and is not focusable', () => {
+  it('lock sets native click-through without forwarding mouse events', () => {
     const window = mockWindow();
     lockLyricsSurface(window, 'desktop', true);
     expect(window.setResizable).toHaveBeenCalledWith(false);
     expect(window.setFocusable).toHaveBeenCalledWith(false);
-    expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true, { forward: true });
+    expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
   });
 
   it('unlock restores desktop resize and island non-resize', () => {
@@ -271,12 +271,48 @@ describe('createLyricsSurfaces controller', () => {
     expect(createWindow).toHaveBeenCalledTimes(2);
     expect(desktop.hide).toHaveBeenCalledTimes(1);
     expect(island.show).toHaveBeenCalledTimes(1);
-    expect(island.setIgnoreMouseEvents).toHaveBeenCalledWith(true, { forward: true });
+    expect(island.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
     expect(island.setFocusable).toHaveBeenCalledWith(false);
     expect(surfaces.get('desktop')).toBe(desktop);
     expect(surfaces.get('island')).toBe(island);
     expect(surfaces.isVisible('desktop')).toBe(false);
     expect(surfaces.isVisible('island')).toBe(true);
+    expect(surfaces.isLocked('island')).toBe(true);
+    expect(surfaces.isLocked('desktop')).toBe(false);
+  });
+
+  it('reapplies native lock after hide/show and notifies overlay bounds', () => {
+    const window = mockWindow({ x: 40, y: 80, width: 940, height: 190 });
+    const onBoundsChanged = vi.fn();
+    const surfaces = createLyricsSurfaces({
+      createWindow: () => window,
+      preloadPath: PRELOAD,
+      onBoundsChanged,
+    });
+    surfaces.show('desktop');
+    surfaces.lock('desktop', true);
+    expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
+    expect(window.setIgnoreMouseEvents).not.toHaveBeenCalledWith(true, { forward: true });
+    expect(onBoundsChanged).toHaveBeenCalledWith('desktop', {
+      x: 40,
+      y: 80,
+      width: 940,
+      height: 190,
+    });
+
+    const ignoreMouse = window.setIgnoreMouseEvents as unknown as {
+      mockClear(): void;
+      mock: { calls: unknown[][] };
+    };
+    ignoreMouse.mockClear();
+    surfaces.hide('desktop');
+    surfaces.show('desktop');
+    expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
+    expect(surfaces.isLocked('desktop')).toBe(true);
+
+    surfaces.lock('desktop', false);
+    expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(false);
+    expect(surfaces.isLocked('desktop')).toBe(false);
   });
 
   it('hide and lock are no-ops until create, and skip destroyed windows', () => {
@@ -449,7 +485,7 @@ describe('geometry persist, restore, and reset', () => {
   });
 
   it('maps CoreClient app_settings get/set/remove onto BASE-04 keys', async () => {
-    const invoke = vi.fn(async (method: string, params?: unknown) => {
+    const invoke = vi.fn(async (method: string) => {
       if (method === 'app_settings_get') {
         return '{"x":1,"y":2,"width":940,"height":190}';
       }

@@ -16,6 +16,7 @@ import {
   lyricsUnlockPreloadPath,
   lyricsUnlockUrl,
   showLyricsUnlock,
+  unlockOverlayBounds,
   type LyricsUnlockCreateOptions,
   type LyricsUnlockKind,
   type LyricsUnlockWindow,
@@ -28,8 +29,10 @@ function mockWindow(): LyricsUnlockWindow {
     loadURL: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
+    setIgnoreMouseEvents: vi.fn(),
     setAlwaysOnTop: vi.fn(),
     isDestroyed: () => false,
+    setBounds: vi.fn(),
   };
 }
 
@@ -131,10 +134,11 @@ describe('lyrics unlock overlay construction table', () => {
 });
 
 describe('show / hide helpers', () => {
-  it('show and hide call through the injected window', () => {
+  it('show restores mouse events on the pill and hide calls through', () => {
     const window = mockWindow();
     showLyricsUnlock(window);
     hideLyricsUnlock(window);
+    expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(false);
     expect(window.show).toHaveBeenCalledTimes(1);
     expect(window.hide).toHaveBeenCalledTimes(1);
   });
@@ -161,6 +165,28 @@ describe('createLyricsUnlockOverlays controller', () => {
     expect(overlays.get('desktop')).toBe(desktop);
     expect(overlays.get('island')).toBe(island);
     expect(createWindow.mock.calls[0]?.[0].show).toBe(false);
+    expect(island.setIgnoreMouseEvents).toHaveBeenCalledWith(false);
+  });
+
+  it('positions an existing pill at the surface top-right and does not create on move', () => {
+    const desktop = mockWindow();
+    const createWindow = vi.fn(() => desktop);
+    const overlays = createLyricsUnlockOverlays({ createWindow, preloadPath: PRELOAD });
+    const surface = { x: 100, y: 40, width: 940, height: 190 };
+
+    overlays.position('desktop', surface);
+    expect(createWindow).not.toHaveBeenCalled();
+    expect(desktop.setBounds).not.toHaveBeenCalled();
+
+    overlays.create('desktop');
+    overlays.position('desktop', surface);
+    expect(desktop.setBounds).toHaveBeenCalledWith(unlockOverlayBounds(surface));
+    expect(unlockOverlayBounds(surface)).toEqual({
+      x: 100 + 940 - 42 - 14,
+      y: 40 + 14,
+      width: 42,
+      height: 42,
+    });
   });
 
   it('hide is a no-op until create, and skips destroyed windows', () => {

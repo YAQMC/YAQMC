@@ -77,11 +77,12 @@ export function eventAllowed(role: WindowRole, channel: string): boolean {
       return (
         channel.startsWith('lyrics://') ||
         channel === 'player://snapshot' ||
-        channel === 'preferences://changed'
+        channel === 'preferences://changed' ||
+        channel === 'host://core-status'
       );
     case 'unlock-desktop':
     case 'unlock-island':
-      return channel === 'lyrics://surface-closed';
+      return channel === 'lyrics://surface-closed' || channel === 'host://core-status';
   }
 }
 

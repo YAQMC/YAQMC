@@ -8,6 +8,8 @@ export type LyricsUnlockWindow = {
   show(): void;
   hide(): void;
   setAlwaysOnTop(flag: boolean, level?: string): void;
+  setBounds?(bounds: { x: number; y: number; width: number; height: number }): void;
+  setIgnoreMouseEvents?(ignore: boolean, options?: { forward: boolean }): void;
   isDestroyed?(): boolean;
 };
 
@@ -83,6 +85,25 @@ export const LYRICS_UNLOCK_GEOMETRY: LyricsUnlockGeometry = {
 export const LYRICS_UNLOCK_TITLE = 'Unlock YAQMC Lyrics';
 export const LYRICS_UNLOCK_ALWAYS_ON_TOP_LEVEL = 'screen-saver' as const;
 export const DEFAULT_UNLOCK_OVERLAY_PRELOAD = 'unlock-overlay.cjs';
+/** Live Tauri `unlock_window_position` inset (logical px). */
+export const LYRICS_UNLOCK_INSET = 14;
+
+export type UnlockOverlayBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+/** Place the pill at the surface's top-right, matching live Tauri. */
+export function unlockOverlayBounds(surface: UnlockOverlayBounds): UnlockOverlayBounds {
+  return {
+    x: surface.x + surface.width - LYRICS_UNLOCK_GEOMETRY.width - LYRICS_UNLOCK_INSET,
+    y: surface.y + LYRICS_UNLOCK_INSET,
+    width: LYRICS_UNLOCK_GEOMETRY.width,
+    height: LYRICS_UNLOCK_GEOMETRY.height,
+  };
+}
 
 export function lyricsUnlockLabel(kind: LyricsUnlockKind): string {
   return kind === 'desktop' ? 'lyrics-desktop-unlock' : 'lyrics-island-unlock';
@@ -143,6 +164,7 @@ export function createLyricsUnlockWindow(
 }
 
 export function showLyricsUnlock(window: LyricsUnlockWindow): void {
+  window.setIgnoreMouseEvents?.(false);
   window.show();
 }
 
@@ -154,6 +176,7 @@ export type LyricsUnlockOverlays = {
   create(kind: LyricsUnlockKind): LyricsUnlockWindow;
   show(kind: LyricsUnlockKind): void;
   hide(kind: LyricsUnlockKind): void;
+  position(kind: LyricsUnlockKind, surface: UnlockOverlayBounds): void;
   get(kind: LyricsUnlockKind): LyricsUnlockWindow | undefined;
 };
 
@@ -181,6 +204,13 @@ export function createLyricsUnlockOverlays(deps: LyricsUnlockDeps): LyricsUnlock
         return;
       }
       hideLyricsUnlock(window);
+    },
+    position(kind, surface) {
+      const window = windows.get(kind);
+      if (!window || window.isDestroyed?.()) {
+        return;
+      }
+      window.setBounds?.(unlockOverlayBounds(surface));
     },
     get(kind) {
       const window = windows.get(kind);
