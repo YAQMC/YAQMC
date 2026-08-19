@@ -34,6 +34,116 @@ function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   return <Volume2 size={17} />;
 }
 
+function PlayerProgressSlider({
+  current,
+  t,
+}: {
+  current: ReturnType<typeof useCurrentSong>;
+  t: TFunction<'player'>;
+}) {
+  const positionMs = usePlayerStore((state) => state.positionMs);
+  const isScrubbing = usePlayerStore((state) => state.isScrubbing);
+  const scrubPosition = usePlayerStore((state) => state.scrubPosition);
+  const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
+  const beginScrub = usePlayerStore((state) => state.beginScrub);
+  const previewScrub = usePlayerStore((state) => state.previewScrub);
+  const commitScrub = usePlayerStore((state) => state.commitScrub);
+  const positionScrubbing = useRef(false);
+  const duration = playbackDurationMs ?? current?.durationMs ?? 0;
+  const displayPosition = isScrubbing ? scrubPosition : positionMs;
+  const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
+
+  return (
+    <div className="player-progress">
+      <span>{formatDuration(displayPosition)}</span>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(duration, 1)}
+        step={1_000}
+        value={displayPosition}
+        onPointerDown={() => {
+          positionScrubbing.current = true;
+          beginScrub();
+        }}
+        onPointerUp={(event) => {
+          positionScrubbing.current = false;
+          commitScrub(Number(event.currentTarget.value));
+        }}
+        onPointerCancel={(event) => {
+          positionScrubbing.current = false;
+          commitScrub(Number(event.currentTarget.value));
+        }}
+        onKeyDown={() => {
+          positionScrubbing.current = true;
+          beginScrub();
+        }}
+        onKeyUp={(event) => {
+          positionScrubbing.current = false;
+          commitScrub(Number(event.currentTarget.value));
+        }}
+        onChange={(event) => {
+          if (!positionScrubbing.current) return;
+          previewScrub(Number(event.target.value));
+        }}
+        disabled={!current}
+        aria-label={t('position')}
+        style={{ '--range-progress': `${progress}%` } as CSSProperties}
+      />
+      <span>{formatDuration(duration)}</span>
+    </div>
+  );
+}
+
+function PlayerVolumeSlider({ t }: { t: TFunction<'player'> }) {
+  const volume = usePlayerStore((state) => state.volume);
+  const isMuted = usePlayerStore((state) => state.isMuted);
+  const setVolume = usePlayerStore((state) => state.setVolume);
+  const toggleMuted = usePlayerStore((state) => state.toggleMuted);
+  const volumeScrubbing = useRef(false);
+  const volumeProgress = (isMuted ? 0 : volume) * 100;
+
+  return (
+    <div className="volume-control yaqmc-no-drag">
+      <IconButton label={isMuted ? t('unmute') : t('mute')} size="small" onClick={toggleMuted}>
+        <VolumeIcon muted={isMuted} volume={volume} />
+      </IconButton>
+      <input
+        type="range"
+        className="yaqmc-no-drag"
+        min={0}
+        max={1}
+        step={0.01}
+        value={isMuted ? 0 : volume}
+        onPointerDown={() => {
+          volumeScrubbing.current = true;
+        }}
+        onPointerUp={(event) => {
+          volumeScrubbing.current = false;
+          setVolume(Number(event.currentTarget.value));
+        }}
+        onPointerCancel={(event) => {
+          volumeScrubbing.current = false;
+          setVolume(Number(event.currentTarget.value));
+        }}
+        onKeyDown={() => {
+          volumeScrubbing.current = true;
+        }}
+        onKeyUp={(event) => {
+          volumeScrubbing.current = false;
+          setVolume(Number(event.currentTarget.value));
+        }}
+        onChange={(event) => {
+          if (!volumeScrubbing.current) return;
+          setVolume(Number(event.target.value));
+        }}
+        aria-label={t('volume')}
+        style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
+      />
+    </div>
+  );
+}
+
 interface PlayerBarProps {
   onCloseLyrics?: () => void;
   onToggleQueue?: () => void;
@@ -52,39 +162,19 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     current?.id,
     current?.isFavorite ?? false,
   );
-  const {
-    positionMs,
-    isPlaying,
-    volume,
-    isMuted,
-    playbackState,
-    playbackDurationMs,
-    playbackError,
-    sourceSelection,
-    queueOpen,
-    lyricsOpen,
-    isScrubbing,
-    scrubPosition,
-    togglePlayback,
-    next,
-    previous,
-    beginScrub,
-    previewScrub,
-    commitScrub,
-    setVolume,
-    setQuality,
-    toggleMuted,
-    toggleQueue,
-    toggleLyrics,
-    openLyrics,
-  } = usePlayerStore();
-  const positionScrubbing = useRef(false);
-  const volumeScrubbing = useRef(false);
-
-  const duration = playbackDurationMs ?? current?.durationMs ?? 0;
-  const displayPosition = isScrubbing ? scrubPosition : positionMs;
-  const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
-  const volumeProgress = (isMuted ? 0 : volume) * 100;
+  const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const playbackState = usePlayerStore((state) => state.playbackState);
+  const playbackError = usePlayerStore((state) => state.playbackError);
+  const sourceSelection = usePlayerStore((state) => state.sourceSelection);
+  const queueOpen = usePlayerStore((state) => state.queueOpen);
+  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
+  const togglePlayback = usePlayerStore((state) => state.togglePlayback);
+  const next = usePlayerStore((state) => state.next);
+  const previous = usePlayerStore((state) => state.previous);
+  const setQuality = usePlayerStore((state) => state.setQuality);
+  const toggleQueue = usePlayerStore((state) => state.toggleQueue);
+  const toggleLyrics = usePlayerStore((state) => state.toggleLyrics);
+  const openLyrics = usePlayerStore((state) => state.openLyrics);
   const playbackStatus = playbackLabel(playbackState, playbackError, t);
   const favoriteLabel = current
     ? favoritePending
@@ -208,44 +298,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             <SkipForward size={17} fill="currentColor" />
           </IconButton>
         </div>
-        <div className="player-progress">
-          <span>{formatDuration(displayPosition)}</span>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(duration, 1)}
-            step={1_000}
-            value={displayPosition}
-            onPointerDown={() => {
-              positionScrubbing.current = true;
-              beginScrub();
-            }}
-            onPointerUp={(event) => {
-              positionScrubbing.current = false;
-              commitScrub(Number(event.currentTarget.value));
-            }}
-            onPointerCancel={(event) => {
-              positionScrubbing.current = false;
-              commitScrub(Number(event.currentTarget.value));
-            }}
-            onKeyDown={() => {
-              positionScrubbing.current = true;
-              beginScrub();
-            }}
-            onKeyUp={(event) => {
-              positionScrubbing.current = false;
-              commitScrub(Number(event.currentTarget.value));
-            }}
-            onChange={(event) => {
-              if (!positionScrubbing.current) return;
-              previewScrub(Number(event.target.value));
-            }}
-            disabled={!current}
-            aria-label={t('position')}
-            style={{ '--range-progress': `${progress}%` } as CSSProperties}
-          />
-          <span>{formatDuration(duration)}</span>
-        </div>
+        <PlayerProgressSlider current={current} t={t} />
       </div>
 
       <div className="player-bar__tools">
@@ -284,43 +337,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             <Puzzle size={16} />
           </IconButton>
         ))}
-        <div className="volume-control yaqmc-no-drag">
-          <IconButton label={isMuted ? t('unmute') : t('mute')} size="small" onClick={toggleMuted}>
-            <VolumeIcon muted={isMuted} volume={volume} />
-          </IconButton>
-          <input
-            type="range"
-            className="yaqmc-no-drag"
-            min={0}
-            max={1}
-            step={0.01}
-            value={isMuted ? 0 : volume}
-            onPointerDown={() => {
-              volumeScrubbing.current = true;
-            }}
-            onPointerUp={(event) => {
-              volumeScrubbing.current = false;
-              setVolume(Number(event.currentTarget.value));
-            }}
-            onPointerCancel={(event) => {
-              volumeScrubbing.current = false;
-              setVolume(Number(event.currentTarget.value));
-            }}
-            onKeyDown={() => {
-              volumeScrubbing.current = true;
-            }}
-            onKeyUp={(event) => {
-              volumeScrubbing.current = false;
-              setVolume(Number(event.currentTarget.value));
-            }}
-            onChange={(event) => {
-              if (!volumeScrubbing.current) return;
-              setVolume(Number(event.target.value));
-            }}
-            aria-label={t('volume')}
-            style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
-          />
-        </div>
+        <PlayerVolumeSlider t={t} />
       </div>
     </footer>
   );

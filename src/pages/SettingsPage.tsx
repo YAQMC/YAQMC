@@ -186,16 +186,32 @@ function RangeControl({
   label,
   output,
   onChange,
+  onPreview,
 }: {
   value: number;
   min: number;
   max: number;
   step?: number;
   label: string;
-  output: string;
+  output: string | ((value: number) => string);
   onChange: (value: number) => void;
+  onPreview?: (value: number) => void;
 }) {
-  const progress = ((value - min) / Math.max(1, max - min)) * 100;
+  const dragging = useRef(false);
+  const [draft, setDraft] = useState<number | null>(null);
+  const shown = draft ?? value;
+  const progress = ((shown - min) / Math.max(1, max - min)) * 100;
+  const outputLabel = typeof output === 'function' ? output(shown) : output;
+
+  const preview = (next: number) => {
+    setDraft(next);
+    onPreview?.(next);
+  };
+  const commit = (next: number) => {
+    setDraft(null);
+    onChange(next);
+  };
+
   return (
     <label className="settings-range">
       <input
@@ -203,12 +219,34 @@ function RangeControl({
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={shown}
         aria-label={label}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onPointerDown={() => {
+          dragging.current = true;
+        }}
+        onPointerUp={(event) => {
+          dragging.current = false;
+          commit(Number(event.currentTarget.value));
+        }}
+        onPointerCancel={(event) => {
+          dragging.current = false;
+          commit(Number(event.currentTarget.value));
+        }}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (dragging.current) {
+            preview(next);
+            return;
+          }
+          commit(next);
+        }}
+        onInput={(event) => {
+          if (!dragging.current) return;
+          preview(Number(event.currentTarget.value));
+        }}
         style={{ '--range-progress': `${progress}%` } as CSSProperties}
       />
-      <output>{output}</output>
+      <output>{outputLabel}</output>
     </label>
   );
 }
@@ -504,7 +542,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                 min={12}
                 max={kind === 'desktop' ? 64 : 34}
                 label={t('fontSize')}
-                output={t('fontSizeValue', { value: settings.fontSize })}
+                output={(value) => t('fontSizeValue', { value })}
                 onChange={(fontSize) => update({ fontSize })}
               />
             }
@@ -574,7 +612,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                 min={0}
                 max={100}
                 label={t('backgroundOpacity')}
-                output={`${settings.backgroundOpacity}%`}
+                output={(value) => `${value}%`}
                 onChange={(backgroundOpacity) => update({ backgroundOpacity })}
               />
             }
@@ -603,7 +641,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                       min={-100}
                       max={100}
                       label={t('offsetX')}
-                      output={`${settings.horizontalPosition}`}
+                      output={(value) => `${value}`}
                       onChange={(horizontalPosition) => update({ horizontalPosition })}
                     />
                     <RangeControl
@@ -611,7 +649,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                       min={0}
                       max={160}
                       label={t('offsetY')}
-                      output={`${settings.verticalOffset}px`}
+                      output={(value) => `${value}px`}
                       onChange={(verticalOffset) => update({ verticalOffset })}
                     />
                   </div>
@@ -1209,10 +1247,12 @@ export function SettingsPage() {
                   min={0}
                   max={100}
                   label={t('appearance.artworkInfluence')}
-                  output={`${preferences.appearance.artworkInfluence}%`}
-                  onChange={(artworkInfluence) =>
-                    preferences.updateAppearance({ artworkInfluence })
-                  }
+                  output={(value) => `${value}%`}
+                  onPreview={(artworkInfluence) => previewAppearance({ artworkInfluence })}
+                  onChange={(artworkInfluence) => {
+                    finishAppearancePreview();
+                    preferences.updateAppearance({ artworkInfluence });
+                  }}
                 />
               }
             />
@@ -1226,8 +1266,12 @@ export function SettingsPage() {
                 min={85}
                 max={100}
                 label={t('appearance.interfaceOpacity')}
-                output={`${preferences.appearance.surfaceOpacity}%`}
-                onChange={(surfaceOpacity) => preferences.updateAppearance({ surfaceOpacity })}
+                output={(value) => `${value}%`}
+                onPreview={(surfaceOpacity) => previewAppearance({ surfaceOpacity })}
+                onChange={(surfaceOpacity) => {
+                  finishAppearancePreview();
+                  preferences.updateAppearance({ surfaceOpacity });
+                }}
               />
             }
           />
@@ -1305,7 +1349,7 @@ export function SettingsPage() {
                 max={2_000}
                 step={50}
                 label={t('lyrics.timing')}
-                output={t('lyrics.timingValue', { value: preferences.lyrics.timingOffsetMs })}
+                output={(value) => t('lyrics.timingValue', { value })}
                 onChange={(timingOffsetMs) => preferences.updateLyrics({ timingOffsetMs })}
               />
             }
