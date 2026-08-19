@@ -3,7 +3,13 @@ import { usePlayerStore } from './player-store';
 import { usePreferencesStore } from './preferences';
 
 export type CompositorProbeMode =
-  'off' | 'no-backdrop' | 'no-artwork-blur' | 'no-line-blur' | 'no-filters' | 'no-progress-raf';
+  | 'off'
+  | 'no-backdrop'
+  | 'no-artwork-blur'
+  | 'no-line-blur'
+  | 'no-filters'
+  | 'no-progress-raf'
+  | 'no-enter-artwork';
 
 export interface PlaybackUiProbeSample {
   durationMs: number;
@@ -33,6 +39,9 @@ export interface PlaybackUiProbeSample {
 type ProbeHost = Window & {
   __YAQMC_PLAYBACK_UI_PROBE__?: {
     sample: (durationMs?: number) => Promise<PlaybackUiProbeSample>;
+    sampleLyricsRouteTransition: (
+      direction: 'open' | 'close',
+    ) => Promise<PlaybackUiProbeSample>;
     setCompositorProbe: (mode: CompositorProbeMode) => void;
     enableArtworkBackground: () => void;
     enableFpsOverlay: () => void;
@@ -82,6 +91,7 @@ const PROBE_MODES: readonly CompositorProbeMode[] = [
   'no-line-blur',
   'no-filters',
   'no-progress-raf',
+  'no-enter-artwork',
 ];
 
 export function compositorProbeMode(): CompositorProbeMode {
@@ -196,10 +206,20 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
   };
 }
 
+export async function sampleLyricsRouteTransition(
+  direction: 'open' | 'close',
+): Promise<PlaybackUiProbeSample> {
+  const sampling = samplePlaybackUi(550);
+  if (direction === 'open') usePlayerStore.getState().openLyrics();
+  else usePlayerStore.getState().closePanels();
+  return sampling;
+}
+
 export function installPlaybackUiProbe(): () => void {
   const host = window as ProbeHost;
   host.__YAQMC_PLAYBACK_UI_PROBE__ = {
     sample: samplePlaybackUi,
+    sampleLyricsRouteTransition,
     setCompositorProbe,
     enableArtworkBackground: enableArtworkBackgroundProbe,
     enableFpsOverlay: enableFpsOverlayProbe,

@@ -63,19 +63,12 @@ function PlayerProgressSlider({
   const commitScrub = usePlayerStore((state) => state.commitScrub);
   const dragging = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const fillRef = useRef<HTMLSpanElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
   const [draft, setDraft] = useState<number | null>(null);
   const [visualMs, setVisualMs] = useState(() => getEstimatedPositionMs());
   const duration = playbackDurationMs ?? current?.durationMs ?? 0;
   const displayPosition = draft ?? visualMs;
   const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
-
-  const writeFill = (ms: number, max: number) => {
-    const fill = fillRef.current;
-    if (!fill || max <= 0) return;
-    fill.style.transform = `scaleX(${Math.min(1, Math.max(0, ms / max))})`;
-  };
 
   useEffect(() => {
     if (pausedPositionMs === null) return;
@@ -90,9 +83,11 @@ function PlayerProgressSlider({
     const tick = (now: number) => {
       if (!dragging.current) {
         const ms = getEstimatedPositionMs();
-        const max = duration || Number(inputRef.current?.max) || 1;
-        if (document.documentElement.dataset.compositorProbe !== 'no-progress-raf') {
-          writeFill(ms, max);
+        const node = inputRef.current;
+        if (node && document.documentElement.dataset.compositorProbe !== 'no-progress-raf') {
+          node.value = String(ms);
+          const max = Number(node.max) || 1;
+          node.style.setProperty('--range-progress', `${(ms / max) * 100}%`);
         }
         const label = formatDuration(ms);
         if (timeRef.current && label !== lastLabel) {
@@ -108,7 +103,7 @@ function PlayerProgressSlider({
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [duration, isPlaying, isScrubbing]);
+  }, [isPlaying, isScrubbing]);
 
   const capture = (event: ReactPointerEvent<HTMLInputElement>) => {
     dragging.current = true;
@@ -133,46 +128,38 @@ function PlayerProgressSlider({
   return (
     <div className="player-progress">
       <span ref={timeRef}>{formatDuration(displayPosition)}</span>
-      <div className="player-progress__track">
-        <span
-          ref={fillRef}
-          className="player-progress__fill"
-          style={{ transform: `scaleX(${progress / 100})` }}
-        />
-        <input
-          ref={inputRef}
-          type="range"
-          min={0}
-          max={Math.max(duration, 1)}
-          step={1}
-          value={displayPosition}
-          onPointerDown={capture}
-          onPointerUp={release}
-          onPointerCancel={release}
-          onKeyDown={(event) => {
-            dragging.current = true;
-            beginScrub();
-            setDraft(Number(event.currentTarget.value));
-          }}
-          onKeyUp={release}
-          onChange={(event) => {
-            if (!dragging.current) return;
-            const next = Number(event.target.value);
-            setDraft(next);
-            writeFill(next, duration || 1);
-            previewScrub(next);
-          }}
-          onInput={(event) => {
-            if (!dragging.current) return;
-            const next = Number(event.currentTarget.value);
-            setDraft(next);
-            writeFill(next, duration || 1);
-            previewScrub(next);
-          }}
-          disabled={!current}
-          aria-label={t('position')}
-        />
-      </div>
+      <input
+        ref={inputRef}
+        type="range"
+        min={0}
+        max={Math.max(duration, 1)}
+        step={1}
+        value={displayPosition}
+        onPointerDown={capture}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onKeyDown={(event) => {
+          dragging.current = true;
+          beginScrub();
+          setDraft(Number(event.currentTarget.value));
+        }}
+        onKeyUp={release}
+        onChange={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.target.value);
+          setDraft(next);
+          previewScrub(next);
+        }}
+        onInput={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.currentTarget.value);
+          setDraft(next);
+          previewScrub(next);
+        }}
+        disabled={!current}
+        aria-label={t('position')}
+        style={{ '--range-progress': `${progress}%` } as CSSProperties}
+      />
       <span>{formatDuration(duration)}</span>
     </div>
   );

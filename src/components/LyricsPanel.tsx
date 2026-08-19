@@ -239,6 +239,24 @@ function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: Lyric
     };
   }, [fullscreen]);
 
+  useEffect(() => {
+    const stageElement = stage.current;
+    if (!stageElement) return;
+    const reducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+      stageElement.dataset.enterSettled = 'true';
+      return;
+    }
+    const settle = (event: AnimationEvent) => {
+      if (event.target !== stageElement || event.animationName !== 'lyrics-stage-enter') return;
+      stageElement.dataset.enterSettled = 'true';
+    };
+    stageElement.addEventListener('animationend', settle);
+    return () => stageElement.removeEventListener('animationend', settle);
+  }, []);
+
   const style = {
     '--lyrics-font-scale': resolvedPreset.typography.fontScale,
     '--lyrics-line-height': resolvedPreset.typography.lineHeight,

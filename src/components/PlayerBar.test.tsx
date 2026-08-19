@@ -310,6 +310,28 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(usePlayerStore.getState().positionMs).toBe(30_000);
   });
 
+  it('keeps the PlayerBar progress control as a native range with shared track geometry', () => {
+    usePlayerStore.setState({
+      queue: [qqTrack()],
+      currentIndex: 0,
+      positionMs: 20_000,
+      playbackDurationMs: 80_000,
+    });
+    const { container } = render(<PlayerBar />);
+    const row = container.querySelector('.player-progress');
+    const slider = screen.getByRole('slider', { name: 'Playback position' });
+    expect(row).not.toBeNull();
+    expect(row?.children).toHaveLength(3);
+    expect(row?.children[0]?.tagName).toBe('SPAN');
+    expect(row?.children[1]).toBe(slider);
+    expect(row?.children[2]?.tagName).toBe('SPAN');
+    expect(slider.tagName).toBe('INPUT');
+    expect(slider).toHaveAttribute('type', 'range');
+    expect(row?.querySelector('.player-progress__track')).toBeNull();
+    expect(row?.querySelector('.player-progress__fill')).toBeNull();
+    expect(slider.style.getPropertyValue('--range-progress')).toBe('25%');
+  });
+
   it('does not seek when Chromium echoes a controlled position update', () => {
     const track = {
       ...qqTrack(),
