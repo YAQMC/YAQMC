@@ -246,6 +246,46 @@ describe('LyricsPanel', () => {
     },
   );
 
+  it('enters the lyrics stage with a transform-only compositor animation', () => {
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    expect(stage).not.toBeNull();
+
+    let fromCss = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSKeyframesRule && rule.name === 'lyrics-stage-enter') {
+          fromCss = Array.from(rule.cssRules)
+            .map((keyframe) => keyframe.cssText)
+            .join(' ');
+        }
+      }
+    }
+    expect(fromCss).not.toBe('');
+    expect(fromCss).toMatch(/transform/);
+    expect(fromCss).not.toMatch(/opacity/);
+    expect(stage).not.toHaveAttribute('data-enter-settled');
+
+    act(() => {
+      const event = new Event('animationend');
+      Object.defineProperty(event, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(event);
+    });
+    expect(stage).toHaveAttribute('data-enter-settled', 'true');
+  });
+
+  it('skips the lyrics enter animation when reduced motion is requested', () => {
+    reducedMotion = true;
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-enter-settled', 'true');
+  });
+
   it('seeks a preview lyric line on the same file clock Core reports', () => {
     const song = allSongs.find((candidate) => candidate.id === 'quiet-light');
     if (!song) throw new Error('quiet-light fixture is missing');

@@ -61,6 +61,7 @@ async function probeCall<T>(
   page: Page,
   name:
     | 'sample'
+    | 'sampleLyricsRouteTransition'
     | 'setCompositorProbe'
     | 'enableArtworkBackground'
     | 'enableFpsOverlay'
@@ -168,7 +169,11 @@ test.describe('Windows GPU-on playback compositor probe', () => {
     await page.mouse.up();
 
     await rendererInvoke(page, 'player_set_lyrics', { document: lyricDocument('gpu-clock') });
-    await page.getByRole('button', { name: 'Open lyrics page' }).click();
+    const lyricsOpenTransition = await probeCall<Record<string, number | string>>(
+      page,
+      'sampleLyricsRouteTransition',
+      'open',
+    );
     await expect(page.locator('.lyrics-stage')).toBeVisible({ timeout: 8_000 });
     const lyricsWindowed = await sampleGpu(page, 1_000);
     await page.keyboard.press('F11');
@@ -180,6 +185,11 @@ test.describe('Windows GPU-on playback compositor probe', () => {
     const fullscreenNoFilters = await sampleGpu(page, 1_000);
     await probeCall(page, 'setCompositorProbe', 'off');
     await page.keyboard.press('Escape');
+    const lyricsCloseTransition = await probeCall<Record<string, number | string>>(
+      page,
+      'sampleLyricsRouteTransition',
+      'close',
+    );
 
     await e2eLyricsShow(app, 'desktop');
     const desktop = await sampleGpu(page, 1_000);
@@ -194,10 +204,12 @@ test.describe('Windows GPU-on playback compositor probe', () => {
       playingDefault,
       ab,
       seekDrag,
+      lyricsOpenTransition,
       lyricsWindowed,
       fullscreen,
       fullscreenNoLineBlur,
       fullscreenNoFilters,
+      lyricsCloseTransition,
       desktop,
       desktopAndIsland,
     };

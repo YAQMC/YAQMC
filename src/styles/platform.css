@@ -128,6 +128,11 @@
   filter: none !important;
 }
 
+:root[data-compositor-probe='no-enter-artwork'] .lyrics-stage__backdrop,
+:root[data-compositor-probe='no-enter-artwork'] .app-background__image {
+  visibility: hidden !important;
+}
+
 :root[data-compositor-probe='no-filters'] *,
 :root[data-compositor-probe='no-filters'] *::before,
 :root[data-compositor-probe='no-filters'] *::after {

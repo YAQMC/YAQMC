@@ -8,6 +8,7 @@
  * This is not a functional E2E gate. It prints JSON FPS A/B for HUMAN/GPU/DWM.
  * A GPU-disabled Playwright session is not evidence that playback rendering is healthy.
  */
+/* global document, window, performance */
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import net from 'node:net';
@@ -330,9 +331,32 @@ async function main() {
     await page.mouse.up();
 
     await invoke(page, 'player_set_lyrics', { document: lyricDocument('gpu-clock') });
-    await page.locator('.player-bar__artwork-button').click();
+    const lyricsOpenTrace = collectTrace ? traceWindow(page, 600) : Promise.resolve(null);
+    const lyricsOpenTransition = await probe(page, 'sampleLyricsRouteTransition', 'open');
     await page.waitForSelector('.lyrics-stage', { timeout: 8_000 });
+    const lyricsOpenTraceResult = await lyricsOpenTrace;
     const lyricsWindowed = await probe(page, 'sample', 1_000);
+    const lyricsCloseTrace = collectTrace ? traceWindow(page, 600) : Promise.resolve(null);
+    const lyricsCloseTransition = await probe(page, 'sampleLyricsRouteTransition', 'close');
+    await page
+      .waitForFunction(() => document.querySelector('.lyrics-stage') === null, null, {
+        timeout: 8_000,
+      })
+      .catch(() => undefined);
+    const lyricsCloseTraceResult = await lyricsCloseTrace;
+
+    const lyricsRouteAb = {};
+    for (const mode of ['no-enter-artwork', 'no-filters']) {
+      await probe(page, 'setCompositorProbe', mode);
+      lyricsRouteAb[mode] = {
+        open: await probe(page, 'sampleLyricsRouteTransition', 'open'),
+        close: await probe(page, 'sampleLyricsRouteTransition', 'close'),
+      };
+    }
+    await probe(page, 'setCompositorProbe', 'off');
+
+    await probe(page, 'sampleLyricsRouteTransition', 'open');
+    await page.waitForSelector('.lyrics-stage', { timeout: 8_000 });
     await page.keyboard.press('F11');
     await page
       .waitForSelector('.lyrics-stage[data-fullscreen]', { timeout: 8_000 })
@@ -376,7 +400,12 @@ async function main() {
       playingTrace,
       ab,
       seekDrag,
+      lyricsOpenTransition,
+      lyricsOpenTrace: lyricsOpenTraceResult,
       lyricsWindowed,
+      lyricsCloseTransition,
+      lyricsCloseTrace: lyricsCloseTraceResult,
+      lyricsRouteAb,
       fullscreen,
       fullscreenTrace,
       fullscreenNoLineBlur,
