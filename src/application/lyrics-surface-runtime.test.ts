@@ -263,6 +263,25 @@ describe('lyrics surface projection', () => {
     expect(usePreferencesStore.getState().surfaces.desktop.interaction).toBe('interactive');
   });
 
+  it('keeps a local lock when the persist snapshot still says interactive', async () => {
+    invokeMock.mockImplementation(async (command: string, args: { value: string }) => {
+      expect(command).toBe('lyrics_surface_set_interaction');
+      const preferences = JSON.parse(args.value);
+      expect(preferences.surfaces.desktop.interaction).toBe('passive-locked');
+      return JSON.stringify({
+        version: 2,
+        surfaces: {
+          desktop: { ...preferences.surfaces.desktop, interaction: 'interactive' },
+          island: preferences.surfaces.island,
+        },
+      });
+    });
+
+    await setLyricsSurfaceInteraction('desktop', 'passive-locked');
+
+    expect(usePreferencesStore.getState().surfaces.desktop.interaction).toBe('passive-locked');
+  });
+
   it('rolls the visible state back when native unlocking fails', async () => {
     usePreferencesStore.getState().setSurfaceInteractionLocal('island', 'passive-locked');
     invokeMock.mockRejectedValue(new Error('native transition failed'));

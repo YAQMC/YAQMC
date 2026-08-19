@@ -58,6 +58,7 @@ describe('@yaqmc/client protocol mirror', () => {
     ]);
     expect([...HOST_EVENT_CHANNELS]).toEqual([
       'lyrics://surface-closed',
+      'lyrics://surface-interaction',
       'app://open-settings',
       'host://core-status',
       'host://update',

@@ -420,9 +420,8 @@ describe('IpcRouter host intercepts', () => {
   it('keeps a host lock through a stale Main reconcile and isolates unlock origins', async () => {
     const lyrics = mockLyrics();
     const unlock = mockUnlock();
-    const coreInvoke = vi.fn(async (method: string, params?: unknown, origin?: string) => {
+    const coreInvoke = vi.fn(async (method: string, params?: unknown) => {
       if (method === 'app_preferences_set') {
-        expect(origin).toBe('host');
         return (params as { value: string }).value;
       }
       if (method === 'app_preferences_get') {
@@ -430,6 +429,7 @@ describe('IpcRouter host intercepts', () => {
       }
       return '';
     });
+    const emitSurfaceInteraction = vi.fn();
     const handlers = createHostHandlers({
       openExternal: vi.fn(),
       lyrics,
@@ -437,6 +437,7 @@ describe('IpcRouter host intercepts', () => {
       capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
       showMainAndOpenSettings: vi.fn(),
       coreInvoke,
+      emitSurfaceInteraction,
     });
     const router = new IpcRouter({ methods, hostHandlers: handlers });
     router.registerWindow(1, 'main');
@@ -452,12 +453,33 @@ describe('IpcRouter host intercepts', () => {
       }),
     ).resolves.toMatchObject({ ok: true });
     expect(lyrics.lock).toHaveBeenCalledWith('desktop', true);
+    expect(emitSurfaceInteraction).toHaveBeenCalledWith('desktop', 'passive-locked');
     expect(coreInvoke).toHaveBeenCalledWith(
       'app_preferences_set',
       {
         value: '{"version":2,"surfaces":{"desktop":{"interaction":"passive-locked"}}}',
       },
       'host',
+    );
+
+    lyrics.lock.mockClear();
+    unlock.hide.mockClear();
+    await expect(
+      router.invoke(1, {
+        method: 'app_preferences_set',
+        params: {
+          value:
+            '{"version":2,"surfaces":{"desktop":{"interaction":"interactive"},"island":{"interaction":"interactive"}}}',
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(coreInvoke).toHaveBeenCalledWith(
+      'app_preferences_set',
+      {
+        value:
+          '{"version":2,"surfaces":{"desktop":{"interaction":"passive-locked"},"island":{"interaction":"interactive"}}}',
+      },
+      'main',
     );
 
     lyrics.lock.mockClear();

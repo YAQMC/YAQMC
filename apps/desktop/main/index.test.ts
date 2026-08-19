@@ -76,6 +76,8 @@ describe('host boot wiring', () => {
     expect(source).toContain('lyricsIsLocked');
     expect(source).toContain('lyricsIsVisible');
     expect(source).toContain('pushCoreStatus');
+    expect(source).toContain('pushSurfaceInteraction');
+    expect(source).toContain('CHANNEL_LYRICS_SURFACE_INTERACTION');
     expect(source).toContain('killRunningChild');
     expect(source).toContain('runningChildPid');
     expect(source).toContain('mainHide');

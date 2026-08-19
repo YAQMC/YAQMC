@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   defaultPreferences,
   formatBackgroundPickerError,
+  mergeHydratedSurfaces,
   normalizePreferences,
   preferencesRequireMigration,
   usePreferencesStore,
@@ -96,6 +97,22 @@ describe('preference persistence model', () => {
         alwaysOnTop: false,
       }),
     );
+  });
+
+  it('does not let a preferences snapshot unlock a host-locked surface', () => {
+    const locked = mergeHydratedSurfaces(
+      {
+        ...defaultPreferences.surfaces,
+        desktop: { ...defaultPreferences.surfaces.desktop, interaction: 'passive-locked' },
+      },
+      {
+        ...defaultPreferences.surfaces,
+        desktop: { ...defaultPreferences.surfaces.desktop, interaction: 'interactive' },
+        island: { ...defaultPreferences.surfaces.island, interaction: 'passive-locked' },
+      },
+    );
+    expect(locked.desktop.interaction).toBe('passive-locked');
+    expect(locked.island.interaction).toBe('passive-locked');
   });
 
   it('migrates legacy lock/click-through and removes taskbar state', () => {

@@ -135,6 +135,8 @@ describe('IpcRouter', () => {
     expect(eventAllowed('lyrics-desktop', 'player://snapshot')).toBe(true);
     expect(eventAllowed('lyrics-desktop', 'host://core-status')).toBe(true);
     expect(eventAllowed('lyrics-island', 'host://core-status')).toBe(true);
+    expect(eventAllowed('lyrics-desktop', 'lyrics://surface-interaction')).toBe(true);
+    expect(eventAllowed('lyrics-island', 'lyrics://surface-interaction')).toBe(true);
     expect(eventAllowed('unlock-desktop', 'lyrics://surface-closed')).toBe(true);
     expect(eventAllowed('unlock-desktop', 'host://core-status')).toBe(true);
     expect(eventAllowed('unlock-island', 'host://core-status')).toBe(true);

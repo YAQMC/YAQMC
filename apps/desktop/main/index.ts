@@ -22,6 +22,7 @@ import {
   CHANNEL_LYRICS_DOCUMENT,
   CHANNEL_LYRICS_PROJECTION,
   CHANNEL_LYRICS_SURFACE_CLOSED,
+  CHANNEL_LYRICS_SURFACE_INTERACTION,
   CHANNEL_PLAYER_SNAPSHOT,
   CHANNEL_PREFERENCES_CHANGED,
 } from '@yaqmc/client';
@@ -363,6 +364,9 @@ const router = new IpcRouter({
     emitSurfaceClosed: (kind: LyricsSurfaceKind) => {
       fanoutEvent(CHANNEL_LYRICS_SURFACE_CLOSED, kind);
     },
+    emitSurfaceInteraction: (kind: LyricsSurfaceKind, interaction) => {
+      fanoutEvent(CHANNEL_LYRICS_SURFACE_INTERACTION, { kind, interaction });
+    },
     dialogs: {
       showSaveDialog: (options) =>
         mainWindow && !mainWindow.isDestroyed()
@@ -634,6 +638,17 @@ function pushCoreStatus(contentsId: number): void {
   });
 }
 
+function pushSurfaceInteraction(role: ReturnType<typeof lyricsRoleFromCreateOptions>): void {
+  const kind = role === 'lyrics-island' ? 'island' : role === 'lyrics-desktop' ? 'desktop' : undefined;
+  if (!kind) {
+    return;
+  }
+  fanoutEvent(CHANNEL_LYRICS_SURFACE_INTERACTION, {
+    kind,
+    interaction: lyricsSurfaces.isLocked(kind) ? 'passive-locked' : 'interactive',
+  });
+}
+
 function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   const { alwaysOnTop, ...rest } = options;
   void alwaysOnTop;
@@ -650,7 +665,11 @@ function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   });
   window.webContents.on('did-finish-load', () => {
     pushCoreStatus(contentsId);
-    setTimeout(() => pushCoreStatus(contentsId), 0);
+    pushSurfaceInteraction(role);
+    setTimeout(() => {
+      pushCoreStatus(contentsId);
+      pushSurfaceInteraction(role);
+    }, 0);
   });
   window.on('closed', () => {
     writeHostLog('window lyrics closed');
