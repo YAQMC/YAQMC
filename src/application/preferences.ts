@@ -357,17 +357,67 @@ function writeCache(preferences: AppPreferences): void {
 }
 
 let persistGeneration = 0;
-function persist(preferences: AppPreferences): void {
-  writeCache(preferences);
-  if (!isNativeRuntime) return;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistQueued: AppPreferences | null = null;
+let persistInFlight = false;
+
+export const PREFERENCES_PERSIST_DEBOUNCE_MS = 200;
+
+export function hasPendingPreferencePersist(): boolean {
+  return persistQueued !== null || persistInFlight;
+}
+
+export function flushPreferencesPersist(): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  const preferences = persistQueued;
+  persistQueued = null;
+  if (!preferences || !isNativeRuntime) {
+    return;
+  }
   const generation = ++persistGeneration;
+  persistInFlight = true;
   void getYaqmcClient()
     .invoke('app_preferences_set', { value: JSON.stringify(preferences) })
     .catch((error) => {
       if (generation === persistGeneration) {
         usePreferencesStore.setState({ persistenceError: String(error) });
       }
+    })
+    .finally(() => {
+      if (generation === persistGeneration) {
+        persistInFlight = false;
+      }
     });
+}
+
+export function resetPreferencesPersistForTest(): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  persistQueued = null;
+  persistInFlight = false;
+  persistGeneration = 0;
+}
+
+function persist(preferences: AppPreferences, options?: { immediate?: boolean }): void {
+  writeCache(preferences);
+  if (!isNativeRuntime) return;
+  persistQueued = preferences;
+  if (options?.immediate) {
+    flushPreferencesPersist();
+    return;
+  }
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+  }
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    flushPreferencesPersist();
+  }, PREFERENCES_PERSIST_DEBOUNCE_MS);
 }
 
 interface PreferencesState extends AppPreferences {
@@ -414,7 +464,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   backgroundImageMissing: false,
   setLocale: (locale) => {
     set({ locale, persistenceError: null });
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   updateAppearance: (patch) => {
     set((state) => ({
@@ -493,7 +543,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       }).system,
       persistenceError: null,
     }));
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   updateDebug: (patch) => {
     set((state) => ({
@@ -503,7 +553,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       }).debug,
       persistenceError: null,
     }));
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   updateSurface: (kind, patch) => {
     set((state) => ({
@@ -534,7 +584,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       backgroundImageData: dataUri,
       backgroundImageMissing: false,
     }));
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   setBackgroundImageState: (backgroundImageData, backgroundImageMissing) =>
     set({ backgroundImageData, backgroundImageMissing }),
@@ -553,7 +603,7 @@ export function hydratePreferences(): Promise<void> {
       const parsed = value ? JSON.parse(value) : null;
       const preferences = value ? normalizePreferences(parsed) : initialPreferences;
       usePreferencesStore.getState().hydrate(preferences);
-      if (!value || preferencesRequireMigration(parsed)) persist(preferences);
+      if (!value || preferencesRequireMigration(parsed)) persist(preferences, { immediate: true });
     })
     .catch((error) => {
       usePreferencesStore.setState({ hydrated: true, persistenceError: String(error) });
@@ -698,7 +748,7 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
     let active = true;
     const client = getYaqmcClient();
     const stopChanged = client.on('preferences://changed', (payload) => {
-      if (!active) return;
+      if (!active || hasPendingPreferencePersist()) return;
       try {
         usePreferencesStore
           .getState()
@@ -718,6 +768,22 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
       active = false;
       stopChanged();
       stopClosed();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeRuntime) return;
+    const flushHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPreferencesPersist();
+      }
+    };
+    document.addEventListener('visibilitychange', flushHidden);
+    window.addEventListener('pagehide', flushPreferencesPersist);
+    return () => {
+      document.removeEventListener('visibilitychange', flushHidden);
+      window.removeEventListener('pagehide', flushPreferencesPersist);
+      flushPreferencesPersist();
     };
   }, []);
 

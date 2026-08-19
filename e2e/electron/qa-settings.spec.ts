@@ -108,7 +108,7 @@ test.describe('Settings / UI regression on native renderer + production Core', (
     await expect(session.page.getByRole('slider', { name: 'Interface opacity' })).toHaveValue('90');
   });
 
-  test('UI-PERF: classify settings slider cost without optimizing it', async () => {
+  test('UI-PERF: coalesced preference persist is the slider pathology detector', async () => {
     const { page } = session;
     await openSettings(page);
     const slider = page.getByRole('slider', { name: 'Interface opacity' });
@@ -117,6 +117,17 @@ test.describe('Settings / UI regression on native renderer + production Core', (
       await slider.fill(String(value));
     }
     const elapsedMs = Date.now() - started;
+    await expect
+      .poll(async () => {
+        const raw = await rendererInvoke<string | null>(page, 'app_preferences_get');
+        if (!raw) {
+          return 0;
+        }
+        const parsed = JSON.parse(raw) as { appearance?: { surfaceOpacity?: number } };
+        return parsed.appearance?.surfaceOpacity ?? 0;
+      })
+      .toBe(90);
+
     const probe = await page.evaluate(() => {
       const perf = globalThis.performance as {
         getEntriesByType?: (type: string) => Array<{ duration?: number }>;
@@ -131,7 +142,7 @@ test.describe('Settings / UI regression on native renderer + production Core', (
     });
 
     expect(elapsedMs).toBeGreaterThan(0);
-    // Classification only. Do not treat this as HUMAN smoothness acceptance.
+    // Detects persist/React pathology. Do not treat this as HUMAN smoothness.
     const classification =
       probe.longTaskMaxMs >= 50
         ? 'longtask-present'

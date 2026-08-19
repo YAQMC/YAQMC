@@ -354,4 +354,22 @@ describe('PlayerBar lyrics presentation entry', () => {
     });
     expect(usePlayerStore.getState().volume).toBe(0.72);
   });
+
+  it('keeps the play control node across position ticks', () => {
+    usePlayerStore.setState({
+      queue: [qqTrack()],
+      currentIndex: 0,
+      isPlaying: true,
+      playbackState: 'playing',
+      positionMs: 1_000,
+    });
+    const { container } = render(<PlayerBar />);
+    const play = container.querySelector('.player-controls__play');
+    expect(play).not.toBeNull();
+    act(() => {
+      usePlayerStore.setState({ positionMs: 12_000 });
+    });
+    expect(container.querySelector('.player-controls__play')).toBe(play);
+    expect(screen.getByRole('slider', { name: 'Playback position' })).toHaveValue('12000');
+  });
 });
