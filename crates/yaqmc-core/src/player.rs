@@ -2016,7 +2016,7 @@ impl PlayerService {
             let mut last_stall_log = Instant::now()
                 .checked_sub(Duration::from_secs(10))
                 .unwrap_or_else(Instant::now);
-            tracing::info!(target: "player.eos", "clock eos-gate 2026-08-18c");
+            tracing::info!(target: "player.eos", "clock eos-gate 2026-08-20a playhead-recover");
 
             while service.clock_running.load(Ordering::Acquire) {
                 interval.tick().await;
@@ -2147,8 +2147,11 @@ impl PlayerService {
                             buffering = engine.buffering,
                             loaded = engine.loaded,
                             source_error = engine.source_error.is_some(),
+                            output_error = engine.output_error.is_some(),
                             core_gen = core.source_generation,
                             engine_gen = engine.source_generation,
+                            load_generation = service.load_generation.load(Ordering::Acquire),
+                            engine_position_ms = engine.position_ms,
                             position_ms = core.position_ms,
                             duration_ms = core.playback_duration_ms,
                             downloaded = engine.progressive_downloaded_bytes,
@@ -3652,6 +3655,111 @@ mod tests {
         ))
     }
 
+    fn live_clock_player() -> (Arc<PlayerService>, Arc<crate::audio::TestAudioEngine>) {
+        let engine = Arc::new(crate::audio::TestAudioEngine::with_live_clock());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player.start_clock();
+        (player, engine)
+    }
+
+    fn qq_song(id: &str, duration_ms: u64) -> Song {
+        let mut track = song(id, duration_ms);
+        track.provider = Some(ProviderTrackReference {
+            provider_id: "qqmusic".to_owned(),
+            track_id: id.to_owned(),
+            numeric_id: None,
+            album_id: None,
+            media_id: None,
+        });
+        track
+    }
+
+    struct QqLocalResolver;
+
+    #[async_trait]
+    impl PlaybackSourceResolver for QqLocalResolver {
+        async fn resolve(
+            &self,
+            track: &Song,
+        ) -> Result<crate::media::ResolvedPlaybackSource, PlaybackSourceError> {
+            assert_eq!(
+                track
+                    .provider
+                    .as_ref()
+                    .map(|provider| provider.provider_id.as_str()),
+                Some("qqmusic"),
+                "QQ resolver must see a qqmusic provider reference"
+            );
+            crate::media::TestPlaybackSourceResolver
+                .resolve(track)
+                .await
+        }
+    }
+
+    async fn wait_player_until(
+        player: &PlayerService,
+        timeout: Duration,
+        predicate: impl Fn(&PlayerSnapshot) -> bool,
+    ) -> PlayerSnapshot {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let snapshot = player.snapshot().await;
+            if predicate(&snapshot) || Instant::now() >= deadline {
+                return snapshot;
+            }
+            tokio::time::sleep(Duration::from_millis(40)).await;
+        }
+    }
+
+    async fn assert_playing_clock_advances(player: &PlayerService, label: &str) -> PlayerSnapshot {
+        let first = wait_player_until(player, Duration::from_millis(800), |snapshot| {
+            snapshot.is_playing && snapshot.playback_state != PlaybackState::Buffering
+        })
+        .await;
+        assert!(
+            first.is_playing,
+            "{label} should be playing: state={:?} pos={}",
+            first.playback_state, first.position_ms
+        );
+        assert_ne!(
+            first.playback_state,
+            PlaybackState::Buffering,
+            "{label} is intentionally stalled; clock advance is not required"
+        );
+        let start = first.position_ms;
+        let mut last = start;
+        let mut unchanged_ticks = 0_u32;
+        let deadline = Instant::now() + Duration::from_millis(900);
+        while Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let snapshot = player.snapshot().await;
+            assert!(
+                snapshot.is_playing,
+                "{label} stopped while waiting for the playhead: state={:?} pos={}",
+                snapshot.playback_state, snapshot.position_ms
+            );
+            if snapshot.playback_state == PlaybackState::Buffering {
+                unchanged_ticks = 0;
+                last = snapshot.position_ms;
+                continue;
+            }
+            if snapshot.position_ms.abs_diff(last) <= 15 {
+                unchanged_ticks += 1;
+            } else {
+                unchanged_ticks = 0;
+                last = snapshot.position_ms;
+            }
+            assert!(
+                unchanged_ticks < 5,
+                "{label}: isPlaying=true but positionMs stayed at {last} for {unchanged_ticks} clock intervals (start {start})"
+            );
+            if last >= start.saturating_add(120) {
+                return snapshot;
+            }
+        }
+        panic!("{label}: isPlaying=true but positionMs did not advance from {start} (last {last})");
+    }
+
     #[tokio::test]
     async fn clock_end_of_stream_honors_repeat_one_all_and_off() {
         for repeat in [RepeatMode::Off, RepeatMode::All, RepeatMode::One] {
@@ -3813,6 +3921,209 @@ mod tests {
         assert_eq!(after.current_index, Some(0));
         assert!(after.position_ms.abs_diff(42_000) <= 200);
         assert_ne!(after.position_ms, 0);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn playing_clock_must_advance_unless_intentionally_stalled() {
+        let (player, engine) = live_clock_player();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        assert_playing_clock_advances(&player, "fixture play from idle").await;
+
+        engine.force_snapshot(|snapshot| {
+            snapshot.playing = true;
+            snapshot.paused = false;
+            snapshot.ended = false;
+            snapshot.buffering = true;
+        });
+        let stalled = player.snapshot().await;
+        let frozen = stalled.position_ms;
+        tokio::time::sleep(Duration::from_millis(280)).await;
+        let still = player.snapshot().await;
+        assert!(
+            still.playback_state == PlaybackState::Buffering || !still.is_playing,
+            "buffering must not look like a running playhead: {still:?}"
+        );
+        assert!(
+            still.position_ms.abs_diff(frozen) <= 80,
+            "intentional stall may keep positionMs unchanged"
+        );
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn live_clock_pause_resume_seek_next_previous_and_repeat_eos() {
+        let (player, _engine) = live_clock_player();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 12_000), song("two", 12_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        assert_playing_clock_advances(&player, "play from idle").await;
+
+        player.pause().await.expect("pause");
+        let paused = wait_player_until(&player, Duration::from_millis(400), |snapshot| {
+            !snapshot.is_playing
+        })
+        .await;
+        assert!(!paused.is_playing);
+        let paused_at = paused.position_ms;
+        tokio::time::sleep(Duration::from_millis(280)).await;
+        let still_paused = player.snapshot().await;
+        assert!(!still_paused.is_playing);
+        assert!(
+            still_paused.position_ms.abs_diff(paused_at) <= 80,
+            "pause must stop the playhead: {paused_at} -> {}",
+            still_paused.position_ms
+        );
+
+        player.play().await.expect("resume");
+        let resumed = assert_playing_clock_advances(&player, "resume").await;
+        assert!(
+            resumed.position_ms + 80 >= paused_at,
+            "resume must continue from the paused position: paused={paused_at} resumed={}",
+            resumed.position_ms
+        );
+
+        player.seek(1_600).await.expect("seek while playing");
+        let after_seek = wait_player_until(&player, Duration::from_millis(800), |snapshot| {
+            snapshot.is_playing && snapshot.position_ms >= 1_680
+        })
+        .await;
+        assert!(
+            after_seek.is_playing && after_seek.position_ms >= 1_500,
+            "seek should continue from the target: {}",
+            after_seek.position_ms
+        );
+        assert_playing_clock_advances(&player, "seek while playing").await;
+
+        player.next().await.expect("next");
+        let next = wait_player_until(&player, Duration::from_millis(800), |snapshot| {
+            snapshot.current_index == Some(1) && snapshot.is_playing
+        })
+        .await;
+        assert_eq!(next.current_index, Some(1));
+        assert!(next.position_ms < 400, "next should start near zero");
+        assert_playing_clock_advances(&player, "next").await;
+
+        player.previous().await.expect("previous");
+        let previous = wait_player_until(&player, Duration::from_millis(800), |snapshot| {
+            snapshot.current_index == Some(0) && snapshot.is_playing
+        })
+        .await;
+        assert_eq!(previous.current_index, Some(0));
+        assert_playing_clock_advances(&player, "previous").await;
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn live_clock_repeat_one_eos_replays_from_zero() {
+        let (player, engine) = live_clock_player();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 12_000), song("two", 12_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.set_repeat(RepeatMode::One).await;
+        assert_playing_clock_advances(&player, "Repeat One before EOS").await;
+        engine.finish();
+        let replayed = wait_player_until(&player, Duration::from_millis(800), |snapshot| {
+            snapshot.current_index == Some(0) && snapshot.is_playing && snapshot.position_ms < 80
+        })
+        .await;
+        assert_eq!(replayed.current_index, Some(0));
+        assert_eq!(replayed.playback_state, PlaybackState::Playing);
+        assert_playing_clock_advances(&player, "Repeat One EOS").await;
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn live_clock_repeat_all_eos_advances_to_next_track() {
+        let (player, engine) = live_clock_player();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 400), song("two", 12_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.set_repeat(RepeatMode::All).await;
+        engine.finish();
+        let next = wait_player_until(&player, Duration::from_millis(800), |snapshot| {
+            snapshot.current_index == Some(1) && snapshot.is_playing
+        })
+        .await;
+        assert_eq!(next.current_index, Some(1));
+        assert_playing_clock_advances(&player, "Repeat All EOS").await;
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn live_clock_repeat_off_eos_stops() {
+        let (player, engine) = live_clock_player();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("one", 400), song("two", 400)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.set_repeat(RepeatMode::Off).await;
+        player
+            .play_from_queue(1)
+            .await
+            .expect("no-repeat EOS is observed on the last track");
+        engine.finish();
+        let ended = wait_player_until(&player, Duration::from_millis(800), |snapshot| {
+            snapshot.playback_state == PlaybackState::Ended
+        })
+        .await;
+        assert_eq!(ended.playback_state, PlaybackState::Ended);
+        assert_eq!(ended.current_index, Some(1));
+        assert!(!ended.is_playing);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn live_clock_qq_provider_path_advances() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::with_live_clock());
+        let player = Arc::new(PlayerService::with_runtime(
+            engine,
+            Arc::new(QqLocalResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        ));
+        player.start_clock();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![qq_song("qq-one", 10_000), qq_song("qq-two", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("QQ-tagged playback starts");
+        assert_playing_clock_advances(&player, "QQ provider play").await;
+        player.next().await.expect("QQ next");
+        let next = wait_player_until(&player, Duration::from_millis(800), |snapshot| {
+            snapshot.current_index == Some(1) && snapshot.is_playing
+        })
+        .await;
+        assert_eq!(next.current_index, Some(1));
+        assert_playing_clock_advances(&player, "QQ provider next").await;
         player.stop_clock();
     }
 

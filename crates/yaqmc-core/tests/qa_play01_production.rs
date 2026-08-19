@@ -338,6 +338,51 @@ async fn wait_until(
     last
 }
 
+async fn assert_position_advances(session: &mut Session, label: &str) {
+    let first = session.snapshot().await;
+    assert_eq!(
+        first["isPlaying"].as_bool(),
+        Some(true),
+        "{label} should be playing: {first}"
+    );
+    if first["playbackState"].as_str() == Some("buffering") {
+        return;
+    }
+    let start = first["positionMs"].as_u64().unwrap_or(0);
+    let mut last = start;
+    let mut unchanged = 0_u32;
+    let deadline = Instant::now() + Duration::from_millis(2_500);
+    while Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let snap = session.snapshot().await;
+        if snap["playbackState"].as_str() == Some("buffering") {
+            unchanged = 0;
+            last = snap["positionMs"].as_u64().unwrap_or(last);
+            continue;
+        }
+        assert_eq!(
+            snap["isPlaying"].as_bool(),
+            Some(true),
+            "{label} stopped while waiting for the playhead: {snap}"
+        );
+        let pos = snap["positionMs"].as_u64().unwrap_or(0);
+        if pos.abs_diff(last) <= 20 {
+            unchanged += 1;
+        } else {
+            unchanged = 0;
+            last = pos;
+        }
+        assert!(
+            unchanged < 20,
+            "{label}: isPlaying=true but positionMs stayed at {last} for {unchanged} samples (start {start})"
+        );
+        if last >= start.saturating_add(120) {
+            return;
+        }
+    }
+    panic!("{label}: isPlaying=true but positionMs did not advance from {start} (last {last})");
+}
+
 #[tokio::test]
 async fn production_core_play01_controls_eos_seek_lyrics_and_local_api() {
     let root = tempfile::tempdir().expect("qa root");
@@ -369,6 +414,7 @@ async fn production_core_play01_controls_eos_seek_lyrics_and_local_api() {
             || playing["playbackState"].as_str() == Some("playing"),
         "play must start the Rodio fixture: {playing}"
     );
+    assert_position_advances(&mut session, "fixture play from idle").await;
     let session_id = playing["sessionId"].as_u64().expect("sessionId");
     assert!(session_id > 0);
     assert!(playing["snapshotRevision"].as_u64().unwrap_or(0) > 0);
@@ -386,6 +432,7 @@ async fn production_core_play01_controls_eos_seek_lyrics_and_local_api() {
     })
     .await;
     assert_eq!(resumed["isPlaying"], true);
+    assert_position_advances(&mut session, "fixture resume").await;
 
     session
         .request("player_set_volume", Some(json!({ "volume": 0.42 })))
@@ -1018,6 +1065,7 @@ async fn production_core_qq_live_or_blocked_login() {
                 eprintln!("qa-play01 live vkey/QMC resolve reported playbackError code only");
             } else {
                 assert_eq!(live_play["isPlaying"], true);
+                assert_position_advances(&mut session, "real QQ play").await;
                 eprintln!("qa-play01 live source resolve played without printing URLs");
             }
             session.request("player_pause", None).await;
