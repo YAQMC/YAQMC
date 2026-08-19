@@ -29,6 +29,14 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_OUTPUT_ID: &str = "system:default";
 const OUTPUT_RECOVERY_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_OUTPUT_RECOVERY_ATTEMPTS: usize = 5;
+/// Rodio only writes `Player::get_pos()` from mixer `periodic_access`. If the
+/// CPAL stream stops pulling without an error callback, the atomic pause flag
+/// still says "playing" while the mutex position freezes. Wait this long after
+/// load/play/seek before treating that freeze as a dead output.
+const PLAYHEAD_STALL_GRACE: Duration = Duration::from_millis(250);
+const PLAYHEAD_STALL: Duration = Duration::from_millis(200);
+const PLAYHEAD_RECOVER_INTERVAL: Duration = Duration::from_millis(250);
+const MAX_PLAYHEAD_RECOVER_ATTEMPTS: usize = 4;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutputSelection {
@@ -67,6 +75,80 @@ impl OutputSelection {
 
 fn recovery_selection(selection: &OutputSelection) -> OutputSelection {
     selection.clone()
+}
+
+struct PlayheadWatch {
+    last_pos_ms: u64,
+    last_move_at: Instant,
+    last_transport_at: Instant,
+    last_recover_at: Instant,
+    recover_attempts: usize,
+    nudged_play: bool,
+}
+
+impl PlayheadWatch {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self {
+            last_pos_ms: 0,
+            last_move_at: now,
+            last_transport_at: now,
+            last_recover_at: now.checked_sub(Duration::from_secs(5)).unwrap_or(now),
+            recover_attempts: 0,
+            nudged_play: false,
+        }
+    }
+
+    fn note_transport(&mut self) {
+        let now = Instant::now();
+        self.last_transport_at = now;
+        self.last_move_at = now;
+        self.recover_attempts = 0;
+        self.nudged_play = false;
+    }
+
+    fn note_position(&mut self, position_ms: u64) {
+        if position_ms.abs_diff(self.last_pos_ms) > 0 {
+            self.last_pos_ms = position_ms;
+            self.last_move_at = Instant::now();
+            self.recover_attempts = 0;
+            self.nudged_play = false;
+        }
+    }
+
+    fn stalled_while_playing(&self) -> bool {
+        self.last_transport_at.elapsed() >= PLAYHEAD_STALL_GRACE
+            && self.last_move_at.elapsed() >= PLAYHEAD_STALL
+    }
+}
+
+fn install_rebuilt_output(
+    device_sink: &mut MixerDeviceSink,
+    player: &mut Player,
+    progressive_monitor: &mut Option<ProgressiveMonitor>,
+    selected_output: &mut OutputSelection,
+    resolved_output: &mut AudioResolvedOutput,
+    output_recovery_attempts: &mut usize,
+    snapshot: &Arc<Mutex<AudioEngineSnapshot>>,
+    rebuilt: (
+        MixerDeviceSink,
+        Player,
+        Option<ProgressiveMonitor>,
+        OutputSelection,
+        AudioResolvedOutput,
+    ),
+) {
+    let (next_sink, next_player, next_monitor, selection, resolved) = rebuilt;
+    *device_sink = next_sink;
+    *player = next_player;
+    *progressive_monitor = next_monitor;
+    *selected_output = selection;
+    *resolved_output = resolved;
+    *output_recovery_attempts = 0;
+    snapshot
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .output_error = None;
 }
 
 fn reset_playback_snapshot(snapshot: &mut AudioEngineSnapshot) {
@@ -216,6 +298,11 @@ pub trait AudioEngine: Send + Sync {
     fn set_output_device(&self, device_id: &str) -> Result<(), AudioEngineError>;
     fn snapshot(&self) -> AudioEngineSnapshot;
     fn output_devices(&self) -> Result<Vec<AudioOutputDevice>, AudioEngineError>;
+    /// Rebuild the output stream in place. Used when Rodio still reports
+    /// playing but `get_pos()` has stopped advancing.
+    fn recover_output(&self) -> Result<(), AudioEngineError> {
+        Ok(())
+    }
 }
 
 /// Keeps the application shell and provider features available when the host has no usable
@@ -283,6 +370,7 @@ enum AudioCommand {
         reply: mpsc::SyncSender<Result<(), AudioEngineError>>,
     },
     Devices(mpsc::SyncSender<Result<Vec<AudioOutputDevice>, AudioEngineError>>),
+    RecoverOutput(mpsc::SyncSender<Result<(), AudioEngineError>>),
     Shutdown,
 }
 
@@ -426,6 +514,10 @@ impl AudioEngine for RodioAudioEngine {
     fn output_devices(&self) -> Result<Vec<AudioOutputDevice>, AudioEngineError> {
         self.request(AudioCommand::Devices)
     }
+
+    fn recover_output(&self) -> Result<(), AudioEngineError> {
+        self.request(AudioCommand::RecoverOutput)
+    }
 }
 
 impl Drop for RodioAudioEngine {
@@ -504,11 +596,51 @@ fn audio_worker(
         .checked_sub(Duration::from_secs(5))
         .unwrap_or_else(Instant::now);
     let mut recovery_attempts = 0_usize;
+    let mut playhead = PlayheadWatch::new();
     let _ = ready.send(Ok(()));
 
     loop {
         match receiver.recv_timeout(Duration::from_millis(20)) {
             Ok(AudioCommand::Load { source, reply }) => {
+                if playhead.stalled_while_playing()
+                    && !player.is_paused()
+                    && !player.empty()
+                    && playhead.recover_attempts < MAX_PLAYHEAD_RECOVER_ATTEMPTS
+                {
+                    match replace_output(
+                        &selected_output,
+                        &snapshot,
+                        &player,
+                        loaded_source.as_ref(),
+                        current_volume,
+                    ) {
+                        Ok(rebuilt) => {
+                            tracing::warn!(
+                                target: "audio",
+                                position_ms = duration_ms(player.get_pos()),
+                                "rebuilt audio output before load because the playhead was frozen"
+                            );
+                            install_rebuilt_output(
+                                &mut device_sink,
+                                &mut player,
+                                &mut progressive_monitor,
+                                &mut selected_output,
+                                &mut resolved_output,
+                                &mut recovery_attempts,
+                                &snapshot,
+                                rebuilt,
+                            );
+                            playhead.note_transport();
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                target: "audio",
+                                error = %error,
+                                "frozen-playhead rebuild before load failed"
+                            );
+                        }
+                    }
+                }
                 if source.load_generation != 0 && source.load_generation < accepted_load_generation
                 {
                     tracing::debug!(
@@ -551,6 +683,7 @@ fn audio_worker(
                     }
                     let _ = reply.send(result.map(|(metadata, _)| metadata));
                 }
+                playhead.note_transport();
             }
             Ok(AudioCommand::Play(reply)) => {
                 let result = loaded_source.as_ref().map_or(Ok(()), |source| {
@@ -570,10 +703,12 @@ fn audio_worker(
                     );
                 }
                 let _ = reply.send(result);
+                playhead.note_transport();
             }
             Ok(AudioCommand::Pause(reply)) => {
                 player.pause();
                 let _ = reply.send(Ok(()));
+                playhead.note_transport();
             }
             Ok(AudioCommand::Stop(reply)) => {
                 source_generation.fetch_add(1, Ordering::AcqRel);
@@ -587,6 +722,7 @@ fn audio_worker(
                         .unwrap_or_else(|poisoned| poisoned.into_inner()),
                 );
                 let _ = reply.send(Ok(()));
+                playhead.note_transport();
             }
             Ok(AudioCommand::SetVolume { volume, reply }) => {
                 current_volume = volume.clamp(0.0, 1.0);
@@ -625,6 +761,45 @@ fn audio_worker(
             }
             Ok(AudioCommand::Devices(reply)) => {
                 let _ = reply.send(list_output_devices(&selected_output, &resolved_output));
+            }
+            Ok(AudioCommand::RecoverOutput(reply)) => {
+                let result = replace_output(
+                    &selected_output,
+                    &snapshot,
+                    &player,
+                    loaded_source.as_ref(),
+                    current_volume,
+                );
+                match result {
+                    Ok(rebuilt) => {
+                        tracing::warn!(
+                            target: "audio",
+                            selection = selected_output.kind(),
+                            resolved_device = resolved_output.name,
+                            "rebuilt audio output after a frozen playhead"
+                        );
+                        install_rebuilt_output(
+                            &mut device_sink,
+                            &mut player,
+                            &mut progressive_monitor,
+                            &mut selected_output,
+                            &mut resolved_output,
+                            &mut recovery_attempts,
+                            &snapshot,
+                            rebuilt,
+                        );
+                        playhead.note_transport();
+                        let _ = reply.send(Ok(()));
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "audio",
+                            error = %error,
+                            "frozen-playhead output rebuild failed"
+                        );
+                        let _ = reply.send(Err(error));
+                    }
+                }
             }
             Ok(AudioCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                 discard_pending_seeks(&pending_seek);
@@ -718,32 +893,117 @@ fn audio_worker(
             }
         }
 
-        let mut current = snapshot
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if current.loaded {
-            current.position_ms = duration_ms(player.get_pos());
-            current.paused = player.is_paused();
-            current.ended = player.empty();
-            current.playing = !current.paused && !current.ended && current.output_error.is_none();
-            if let Some(monitor) = &progressive_monitor {
-                current.buffering = monitor.is_waiting();
-                current.source_error = monitor.error();
-                current.source_url_expired =
-                    monitor.error_kind() == Some(crate::streaming::ProgressiveError::UrlExpired);
-                current.progressive_downloaded_bytes = Some(monitor.downloaded_bytes());
-                current.progressive_total_bytes = Some(monitor.content_length());
-                if current.source_error.is_some() {
-                    current.playing = false;
+        let (loaded_playing, buffering) = {
+            let mut current = snapshot
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if current.loaded {
+                current.position_ms = duration_ms(player.get_pos());
+                current.paused = player.is_paused();
+                current.ended = player.empty();
+                current.playing =
+                    !current.paused && !current.ended && current.output_error.is_none();
+                if let Some(monitor) = &progressive_monitor {
+                    current.buffering = monitor.is_waiting();
+                    current.source_error = monitor.error();
+                    current.source_url_expired = monitor.error_kind()
+                        == Some(crate::streaming::ProgressiveError::UrlExpired);
+                    current.progressive_downloaded_bytes = Some(monitor.downloaded_bytes());
+                    current.progressive_total_bytes = Some(monitor.content_length());
+                    if current.source_error.is_some() {
+                        current.playing = false;
+                    }
+                } else {
+                    current.buffering = false;
+                    current.source_error = None;
+                    current.source_url_expired = false;
+                    current.progressive_downloaded_bytes = None;
+                    current.progressive_total_bytes = None;
                 }
+                playhead.note_position(current.position_ms);
+                (
+                    current.playing
+                        && !current.paused
+                        && !current.ended
+                        && !current.buffering
+                        && current.source_error.is_none()
+                        && current.output_error.is_none(),
+                    current.buffering,
+                )
             } else {
-                current.buffering = false;
-                current.source_error = None;
-                current.source_url_expired = false;
-                current.progressive_downloaded_bytes = None;
-                current.progressive_total_bytes = None;
+                playhead.note_position(current.position_ms);
+                (false, false)
             }
+        };
+
+        if loaded_playing && playhead.stalled_while_playing() {
+            if !playhead.nudged_play {
+                player.play();
+                playhead.nudged_play = true;
+                playhead.last_recover_at = Instant::now();
+                tracing::warn!(
+                    target: "audio",
+                    position_ms = playhead.last_pos_ms,
+                    stalled_ms = playhead.last_move_at.elapsed().as_millis() as u64,
+                    "nudged Rodio play() because get_pos() stopped advancing"
+                );
+            } else if playhead.last_recover_at.elapsed() >= PLAYHEAD_RECOVER_INTERVAL
+                && playhead.recover_attempts < MAX_PLAYHEAD_RECOVER_ATTEMPTS
+            {
+                playhead.recover_attempts += 1;
+                playhead.last_recover_at = Instant::now();
+                tracing::warn!(
+                    target: "audio",
+                    position_ms = playhead.last_pos_ms,
+                    attempt = playhead.recover_attempts,
+                    max_attempts = MAX_PLAYHEAD_RECOVER_ATTEMPTS,
+                    "rebuilding audio output because get_pos() is frozen while playing"
+                );
+                match replace_output(
+                    &selected_output,
+                    &snapshot,
+                    &player,
+                    loaded_source.as_ref(),
+                    current_volume,
+                ) {
+                    Ok(rebuilt) => {
+                        install_rebuilt_output(
+                            &mut device_sink,
+                            &mut player,
+                            &mut progressive_monitor,
+                            &mut selected_output,
+                            &mut resolved_output,
+                            &mut recovery_attempts,
+                            &snapshot,
+                            rebuilt,
+                        );
+                        playhead.note_transport();
+                        playhead.last_pos_ms = duration_ms(player.get_pos());
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "audio",
+                            error = %error,
+                            attempt = playhead.recover_attempts,
+                            "frozen-playhead output rebuild failed"
+                        );
+                    }
+                }
+            } else if playhead.recover_attempts >= MAX_PLAYHEAD_RECOVER_ATTEMPTS
+                && playhead.last_recover_at.elapsed() >= Duration::from_secs(5)
+            {
+                playhead.last_recover_at = Instant::now();
+                tracing::error!(
+                    target: "audio",
+                    position_ms = playhead.last_pos_ms,
+                    "playhead is still frozen after output rebuilds; mixer is not consuming"
+                );
+            }
+        } else if buffering || player.is_paused() {
+            playhead.last_move_at = Instant::now();
+            playhead.nudged_play = false;
         }
+
         let _keep_output_alive = &device_sink;
     }
 }
@@ -1236,6 +1496,13 @@ pub fn write_fixture_wav(path: &Path, duration: Duration, seed: u32) -> std::io:
 }
 
 #[cfg(any(test, feature = "test-support"))]
+#[derive(Clone, Copy)]
+struct LiveClockState {
+    origin: Instant,
+    base_ms: u64,
+}
+
+#[cfg(any(test, feature = "test-support"))]
 pub struct TestAudioEngine {
     state: Mutex<AudioEngineSnapshot>,
     volume: Mutex<f32>,
@@ -1245,6 +1512,8 @@ pub struct TestAudioEngine {
     loads: AtomicU64,
     overlaps: AtomicU64,
     accepted_load_generation: AtomicU64,
+    live_clock: bool,
+    live_clock_state: Mutex<Option<LiveClockState>>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1259,18 +1528,83 @@ impl Default for TestAudioEngine {
             loads: AtomicU64::new(0),
             overlaps: AtomicU64::new(0),
             accepted_load_generation: AtomicU64::new(0),
+            live_clock: false,
+            live_clock_state: Mutex::new(None),
         }
     }
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl TestAudioEngine {
+    pub fn with_live_clock() -> Self {
+        Self {
+            live_clock: true,
+            ..Self::default()
+        }
+    }
+
+    fn arm_live_clock(&self, position_ms: u64) {
+        if !self.live_clock {
+            return;
+        }
+        *self
+            .live_clock_state
+            .lock()
+            .expect("test engine live clock lock") = Some(LiveClockState {
+            origin: Instant::now(),
+            base_ms: position_ms,
+        });
+    }
+
+    fn clear_live_clock(&self) {
+        *self
+            .live_clock_state
+            .lock()
+            .expect("test engine live clock lock") = None;
+    }
+
+    fn apply_live_clock(&self, state: &mut AudioEngineSnapshot) {
+        if !self.live_clock {
+            return;
+        }
+        let clock = self
+            .live_clock_state
+            .lock()
+            .expect("test engine live clock lock")
+            .clone();
+        let Some(clock) = clock else {
+            return;
+        };
+        if !(state.playing
+            && !state.paused
+            && !state.buffering
+            && !state.ended
+            && state.source_error.is_none())
+        {
+            return;
+        }
+        let elapsed = clock.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let mut position = clock.base_ms.saturating_add(elapsed);
+        if let Some(duration) = state.duration_ms {
+            if duration > 0 && position >= duration {
+                position = duration;
+                state.playing = false;
+                state.ended = true;
+                state.paused = false;
+                self.clear_live_clock();
+            }
+        }
+        state.position_ms = position;
+    }
+
     pub fn finish(&self) {
         let mut state = self.state.lock().expect("test engine lock");
+        self.apply_live_clock(&mut state);
         state.playing = false;
         state.paused = false;
         state.ended = true;
         state.position_ms = state.duration_ms.unwrap_or(state.position_ms);
+        self.clear_live_clock();
     }
 
     #[allow(dead_code)]
@@ -1291,7 +1625,14 @@ impl TestAudioEngine {
     }
 
     pub fn force_snapshot(&self, mutate: impl FnOnce(&mut AudioEngineSnapshot)) {
-        mutate(&mut self.state.lock().expect("test engine lock"));
+        let mut state = self.state.lock().expect("test engine lock");
+        self.apply_live_clock(&mut state);
+        mutate(&mut state);
+        if self.live_clock && state.playing && !state.paused && !state.ended && !state.buffering {
+            self.arm_live_clock(state.position_ms);
+        } else {
+            self.clear_live_clock();
+        }
     }
 
     pub fn cancel_after_next_play(&self, cancellation: tokio_util::sync::CancellationToken) {
@@ -1335,6 +1676,7 @@ impl AudioEngine for TestAudioEngine {
                     source_generation: generation,
                     ..AudioEngineSnapshot::default()
                 };
+                self.clear_live_clock();
                 *self.loaded_guard.lock().expect("test engine guard lock") =
                     Some(source.epoch_guard.clone());
                 metadata
@@ -1351,8 +1693,11 @@ impl AudioEngine for TestAudioEngine {
         if let Some(guard) = guard {
             let result = guard.validate_and_run(|| {
                 let mut state = self.state.lock().expect("test engine lock");
+                self.apply_live_clock(&mut state);
                 state.playing = true;
                 state.paused = false;
+                state.ended = false;
+                self.arm_live_clock(state.position_ms);
             });
             if result.is_err() {
                 *self.state.lock().expect("test engine lock") = AudioEngineSnapshot::default();
@@ -1370,16 +1715,20 @@ impl AudioEngine for TestAudioEngine {
             return Ok(());
         }
         let mut state = self.state.lock().expect("test engine lock");
+        self.apply_live_clock(&mut state);
         state.playing = true;
         state.paused = false;
         state.ended = false;
+        self.arm_live_clock(state.position_ms);
         Ok(())
     }
 
     fn pause(&self) -> Result<(), AudioEngineError> {
         let mut state = self.state.lock().expect("test engine lock");
+        self.apply_live_clock(&mut state);
         state.playing = false;
         state.paused = true;
+        self.clear_live_clock();
         Ok(())
     }
 
@@ -1394,11 +1743,13 @@ impl AudioEngine for TestAudioEngine {
             .cancel_after_play
             .lock()
             .expect("test engine cancellation lock") = None;
+        self.clear_live_clock();
         Ok(())
     }
 
     fn seek(&self, position: Duration) -> Result<(), AudioEngineError> {
         let mut state = self.state.lock().expect("test engine lock");
+        self.apply_live_clock(&mut state);
         let exhausted = state.ended
             || (state.loaded
                 && !state.playing
@@ -1411,6 +1762,9 @@ impl AudioEngine for TestAudioEngine {
             return Ok(());
         }
         state.position_ms = duration_ms(position);
+        if self.live_clock && state.playing && !state.paused && !state.ended && !state.buffering {
+            self.arm_live_clock(state.position_ms);
+        }
         Ok(())
     }
 
@@ -1433,8 +1787,11 @@ impl AudioEngine for TestAudioEngine {
         if cancelled {
             *self.state.lock().expect("test engine lock") = AudioEngineSnapshot::default();
             *self.loaded_guard.lock().expect("test engine guard lock") = None;
+            self.clear_live_clock();
         }
-        self.state.lock().expect("test engine lock").clone()
+        let mut state = self.state.lock().expect("test engine lock");
+        self.apply_live_clock(&mut state);
+        state.clone()
     }
 
     fn output_devices(&self) -> Result<Vec<AudioOutputDevice>, AudioEngineError> {
@@ -1471,6 +1828,67 @@ mod tests {
         decoder
             .try_seek(Duration::from_millis(500))
             .expect("fixture is seekable");
+    }
+
+    fn rodio_fixture_source(path: PathBuf, duration_ms: u64) -> PreparedPlaybackSource {
+        PreparedPlaybackSource {
+            location: PreparedPlaybackLocation::Local(path),
+            format: AudioFormat::Wav,
+            timeline_offset_ms: 0,
+            timeline_end_ms: Some(duration_ms),
+            is_preview: false,
+            cache_key: "test:rodio-clock".to_owned(),
+            selection: PlaybackSourceSelection {
+                requested_quality: AudioQualityPreference::Automatic,
+                resolved_quality: AudioQuality::Standard,
+                fallback_reason: None,
+                preview: false,
+                quality_capabilities: Vec::new(),
+            },
+            epoch_guard: PlaybackEpochGuard::unrestricted(),
+            load_generation: 1,
+        }
+    }
+
+    #[test]
+    fn rodio_local_fixture_playhead_advances_while_playing() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let path = directory.path().join("clock.wav");
+        write_fixture_wav(&path, Duration::from_millis(2_500), 7).expect("write fixture");
+        let engine = RodioAudioEngine::open_default().expect("default audio output opens");
+        engine.set_volume(0.0).expect("mute fixture");
+        engine
+            .load(&rodio_fixture_source(path, 2_500))
+            .expect("load fixture");
+        engine.play().expect("play");
+        let started = Instant::now();
+        let mut last = 0_u64;
+        let mut advances = 0_u32;
+        while started.elapsed() < Duration::from_millis(2_000) {
+            thread::sleep(Duration::from_millis(80));
+            let snap = engine.snapshot();
+            assert!(
+                snap.playing || snap.buffering,
+                "fixture should stay playing unless intentionally stalled: {snap:?}"
+            );
+            if snap.buffering {
+                last = snap.position_ms;
+                advances = 0;
+                continue;
+            }
+            if snap.position_ms > last {
+                advances += 1;
+                last = snap.position_ms;
+            }
+            if advances >= 3 && last >= 120 {
+                engine.stop().expect("stop");
+                return;
+            }
+        }
+        panic!(
+            "playing=true but Rodio get_pos() did not advance: last={last} advances={advances} snap={:?}",
+            engine.snapshot()
+        );
     }
 
     #[test]
