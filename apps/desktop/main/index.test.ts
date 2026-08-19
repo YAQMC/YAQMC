@@ -26,7 +26,9 @@ describe('host boot wiring', () => {
     expect(source).toContain('applyTrayLabelsFromPreferences');
     expect(source).toContain('lastPreferencesRaw');
     expect(source).toContain('labels: trayLabelsForLocale(');
-    expect(source).toContain('registerGlobalShortcuts');
+    expect(source).toContain('createGlobalShortcutSession');
+    expect(source).toContain('applyShortcutsFromPreferences');
+    expect(source).toContain('setShortcutsEnabled');
     expect(source).toContain('createLyricsSurfaces');
     expect(source).toContain('createLyricsUnlockOverlays');
     expect(source).toContain('linuxGraphicsSwitches');

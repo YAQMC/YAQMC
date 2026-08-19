@@ -22,6 +22,7 @@ import {
   DIALOG_PICK_SAVE,
   DIAGNOSTICS_OPEN_LOG_FOLDER,
   DIAGNOSTICS_REVEAL_BUNDLE,
+  enabledFromParams,
   HOST_CORE_STATUS,
   HOST_UPDATER_CHECK_METHOD,
   isNativeWaylandSession,
@@ -33,6 +34,7 @@ import {
   playerInvokeMethod,
   rememberCloseToTray,
   SHELL_OPEN_EXTERNAL,
+  SYSTEM_SHORTCUTS_SET_ENABLED,
   WINDOW_CLOSE,
   WINDOW_MINIMIZE,
   WINDOW_SET_FULLSCREEN,
@@ -180,6 +182,9 @@ describe('host handler helpers', () => {
     expect(loginProviderFromParams({ loginProvider: 'qq' })).toBe('qq');
     expect(loginProviderFromParams({ loginProvider: 'wechat' })).toBe('wechat');
     expect(loginProviderFromParams({ loginProvider: 'phone' })).toBeUndefined();
+    expect(enabledFromParams({ enabled: true })).toBe(true);
+    expect(enabledFromParams({ enabled: false })).toBe(false);
+    expect(enabledFromParams(undefined)).toBe(false);
   });
 
   it('maps lyrics create geometry onto window roles', () => {
@@ -875,6 +880,94 @@ describe('IpcRouter host intercepts', () => {
       error: hostDenied('platform_diagnostics', 'lyrics-desktop'),
     });
     expect(coreInvoke).not.toHaveBeenCalled();
+  });
+
+  it('keeps system_shortcuts_set_enabled host-owned unimplemented until wired', async () => {
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32' }),
+      showMainAndOpenSettings: vi.fn(),
+      platformFacts: () => ({
+        displayBackend: 'win32',
+        graphicsMode: 'auto',
+        trayAvailable: true,
+        trayError: null,
+        globalShortcutsSupported: true,
+        globalShortcutsEnabled: false,
+      }),
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    await expect(
+      router.invoke(1, { method: SYSTEM_SHORTCUTS_SET_ENABLED, params: { enabled: true } }),
+    ).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'host.denied',
+        message: expect.stringContaining('implemented by the host'),
+      }),
+    });
+  });
+
+  it('implements system_shortcuts_set_enabled on the host and surfaces conflicts', async () => {
+    let enabled = false;
+    let shortcutError: string | null = null;
+    const setShortcutsEnabled = vi.fn((next: boolean) => {
+      if (next === true) {
+        enabled = true;
+        shortcutError = 'shortcut conflict for control+alt+ArrowLeft';
+        return;
+      }
+      enabled = false;
+      shortcutError = null;
+    });
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32' }),
+      showMainAndOpenSettings: vi.fn(),
+      platformFacts: () => ({
+        displayBackend: 'win32',
+        graphicsMode: 'auto',
+        trayAvailable: true,
+        trayError: null,
+        globalShortcutsSupported: true,
+        globalShortcutsEnabled: enabled,
+        shortcutError,
+      }),
+      setShortcutsEnabled,
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+
+    await expect(
+      router.invoke(1, { method: SYSTEM_SHORTCUTS_SET_ENABLED, params: { enabled: true } }),
+    ).resolves.toEqual({
+      ok: true,
+      result: expect.objectContaining({
+        globalShortcutsSupported: true,
+        globalShortcutsEnabled: true,
+        shortcutError: 'shortcut conflict for control+alt+ArrowLeft',
+      }),
+    });
+    expect(setShortcutsEnabled).toHaveBeenCalledWith(true);
+
+    setShortcutsEnabled.mockImplementation(() => {
+      throw new Error(
+        'configurable global shortcuts are unavailable on the active native Wayland backend; use MPRIS media keys',
+      );
+    });
+    await expect(
+      router.invoke(1, { method: SYSTEM_SHORTCUTS_SET_ENABLED, params: { enabled: true } }),
+    ).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        message: expect.stringContaining('native Wayland'),
+      }),
+    });
   });
 
   it('leaves the 32 MiB hard cap unchanged', () => {
