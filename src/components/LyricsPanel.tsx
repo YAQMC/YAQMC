@@ -48,7 +48,13 @@ interface LyricsPanelProps {
   onClose: () => void;
 }
 
-export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: LyricsPanelProps) {
+export function LyricsPanel(props: LyricsPanelProps) {
+  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
+  if (!lyricsOpen) return null;
+  return <LyricsPanelStage {...props} />;
+}
+
+function LyricsPanelStage({ focus, fullscreen, fullscreenError, onClose }: LyricsPanelProps) {
   const { t } = useTranslation('lyrics');
   const { t: player } = useTranslation('player');
   const provider = useContext(ProviderContext);
@@ -84,10 +90,8 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const currentProvider = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.provider ?? null,
   );
-  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const timelineRevision = usePlayerStore((state) => state.timelineRevision);
-  const positionMs = usePlayerStore((state) => state.positionMs);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
   const seek = usePlayerStore((state) => state.seek);
   const beginScrub = usePlayerStore((state) => state.beginScrub);
@@ -200,7 +204,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     (accountSnapshot.state !== 'authenticated' ||
       (accountSnapshot.capabilities.favoriteWrite && hasWritableProviderReference));
 
-  const presentationKey = `${fullscreen}:${lyricsOpen}`;
+  const presentationKey = fullscreen ? 'fullscreen' : 'windowed';
   const [controlsPresentationKey, setControlsPresentationKey] = useState(presentationKey);
   const [controlsHidden, setControlsHidden] = useState(fullscreen);
   if (controlsPresentationKey !== presentationKey) {
@@ -233,9 +237,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
       window.removeEventListener('keydown', handleKeyDown);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [fullscreen, lyricsOpen]);
-
-  if (!lyricsOpen) return null;
+  }, [fullscreen]);
 
   const style = {
     '--lyrics-font-scale': resolvedPreset.typography.fontScale,
@@ -264,10 +266,10 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     artworkSrc: safeArtworkSource,
     artworkAlt: currentArtworkAlt,
     artworkColor: currentArtworkColor,
-    lyrics: lyricsOpen ? activeDocument : null,
+    lyrics: activeDocument,
     lyricsStatus,
     isPlaying,
-    positionMs,
+    positionMs: getEstimatedPositionMs(),
     durationMs: timelineDuration,
     timelineRevision,
     presentationOffsetMs,

@@ -623,6 +623,20 @@ describe('player store', () => {
     expect(usePlayerStore.getState().queue[1]?.id).toBe('two');
   });
 
+  it('keeps preview scrub local without broadcasting positionMs', () => {
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(snapshot({ sessionId: 3, snapshotRevision: 1, positionMs: 1_000 }));
+    usePlayerStore.getState().beginScrub();
+    usePlayerStore.getState().previewScrub(4_000);
+    expect(usePlayerStore.getState()).toMatchObject({
+      isScrubbing: true,
+      positionMs: 1_000,
+      scrubPosition: 4_000,
+    });
+    expect(getEstimatedPositionMs()).toBe(4_000);
+  });
+
   it('keeps the scrub thumb stable while native position events arrive', () => {
     usePlayerStore
       .getState()
@@ -635,7 +649,9 @@ describe('player store', () => {
         snapshot({ sessionId: 3, snapshotRevision: 1, positionMs: 1_250, lastSeekRevision: 0 }),
       );
     expect(usePlayerStore.getState().isScrubbing).toBe(true);
-    expect(usePlayerStore.getState().positionMs).toBe(4_000);
+    expect(usePlayerStore.getState().positionMs).toBe(1_000);
+    expect(usePlayerStore.getState().scrubPosition).toBe(4_000);
+    expect(getEstimatedPositionMs()).toBe(4_000);
     usePlayerStore.getState().commitScrub(4_000);
     usePlayerStore
       .getState()
