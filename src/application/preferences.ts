@@ -387,6 +387,29 @@ export function mergePendingPersistSurfaceInteraction(incoming: AppPreferences):
   };
 }
 
+/** A preferences snapshot cannot unlock a surface; only the host interaction event can. */
+export function mergeHydratedSurfaces(
+  current: AppPreferences['surfaces'],
+  incoming: AppPreferences['surfaces'],
+): AppPreferences['surfaces'] {
+  return {
+    desktop: {
+      ...incoming.desktop,
+      interaction:
+        current.desktop.interaction === 'passive-locked'
+          ? 'passive-locked'
+          : incoming.desktop.interaction,
+    },
+    island: {
+      ...incoming.island,
+      interaction:
+        current.island.interaction === 'passive-locked'
+          ? 'passive-locked'
+          : incoming.island.interaction,
+    },
+  };
+}
+
 export function flushPreferencesPersist(): void {
   if (persistTimer !== null) {
     clearTimeout(persistTimer);
@@ -609,8 +632,13 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   setBackgroundImageState: (backgroundImageData, backgroundImageMissing) =>
     set({ backgroundImageData, backgroundImageMissing }),
   hydrate: (preferences) => {
-    writeCache(preferences);
-    set({ ...preferences, hydrated: true, persistenceError: null });
+    const current = get();
+    const next = {
+      ...preferences,
+      surfaces: mergeHydratedSurfaces(current.surfaces, preferences.surfaces),
+    };
+    writeCache(next);
+    set({ ...next, hydrated: true, persistenceError: null });
   },
 }));
 
@@ -780,6 +808,14 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
         // Invalid cross-window state is ignored; Rust validates persisted documents.
       }
     });
+    const stopInteraction = client.on('lyrics://surface-interaction', (payload) => {
+      if (!active) return;
+      const kind = payload?.kind;
+      const interaction = payload?.interaction;
+      if (kind !== 'desktop' && kind !== 'island') return;
+      if (interaction !== 'interactive' && interaction !== 'passive-locked') return;
+      usePreferencesStore.getState().setSurfaceInteractionLocal(kind, interaction);
+    });
     const stopClosed = client.on('lyrics://surface-closed', (payload) => {
       const kind = payload as unknown as string;
       if (!active || !['desktop', 'island'].includes(kind)) return;
@@ -790,6 +826,7 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
     return () => {
       active = false;
       stopChanged();
+      stopInteraction();
       stopClosed();
     };
   }, []);

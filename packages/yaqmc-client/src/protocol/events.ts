@@ -12,6 +12,7 @@ export const CHANNEL_HOST_UPDATE = 'host://update';
 export const CHANNEL_CORE_LOG = 'core://log';
 export const CHANNEL_ACCOUNT_CHANGED = 'account://changed';
 export const CHANNEL_LYRICS_SURFACE_CLOSED = 'lyrics://surface-closed';
+export const CHANNEL_LYRICS_SURFACE_INTERACTION = 'lyrics://surface-interaction';
 export const CHANNEL_APP_OPEN_SETTINGS = 'app://open-settings';
 
 export const CORE_EVENT_CHANNELS = [
@@ -28,6 +29,7 @@ export const CORE_EVENT_CHANNELS = [
 
 export const HOST_EVENT_CHANNELS = [
   CHANNEL_LYRICS_SURFACE_CLOSED,
+  CHANNEL_LYRICS_SURFACE_INTERACTION,
   CHANNEL_APP_OPEN_SETTINGS,
   CHANNEL_HOST_CORE_STATUS,
   CHANNEL_HOST_UPDATE,
@@ -71,6 +73,11 @@ export interface LyricsSurfaceClosedPayload {
   surface: string;
 }
 
+export interface LyricsSurfaceInteractionPayload {
+  kind: 'desktop' | 'island';
+  interaction: 'interactive' | 'passive-locked';
+}
+
 export interface OpenSettingsPayload {
   section: string;
 }
@@ -111,6 +118,7 @@ export interface ChannelPayload {
   [CHANNEL_CORE_LOG]: CoreLogPayload;
   [CHANNEL_ACCOUNT_CHANGED]: AccountChangedPayload;
   [CHANNEL_LYRICS_SURFACE_CLOSED]: LyricsSurfaceClosedPayload;
+  [CHANNEL_LYRICS_SURFACE_INTERACTION]: LyricsSurfaceInteractionPayload;
   [CHANNEL_APP_OPEN_SETTINGS]: OpenSettingsPayload;
   [CHANNEL_HOST_CORE_STATUS]: CoreStatusPayload;
   [CHANNEL_HOST_UPDATE]: UpdatePayload;

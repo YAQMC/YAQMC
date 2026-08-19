@@ -230,11 +230,20 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
       await e2eLyricsShow(app, other);
       await expect.poll(() => e2eLyricsIsVisible(app, other), { timeout: 15_000 }).toBe(true);
 
-      await hoverSurface(lyricsPage, kind);
+      const surface = await hoverSurface(lyricsPage, kind);
       await lyricsPage.getByRole('button', { name: 'Lock as passive overlay' }).click();
       await expect.poll(() => e2eLyricsIsLocked(app, kind)).toBe(true);
       await expect.poll(() => e2eUnlockWindowVisible(app, kind)).toBe(true);
       expect(await e2eLyricsIsLocked(app, other)).toBe(false);
+      await expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+      await expect(lyricsPage.locator('.lyrics-surface__controls')).toHaveCount(0);
+
+      await lyricsPage.mouse.move(80, 40);
+      await lyricsPage.mouse.move(120, 48);
+      await lyricsPage.mouse.move(24, 24);
+      await expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+      await expect(surface).not.toHaveClass(/lyrics-surface--interactive/);
+      await expect(lyricsPage.locator('.lyrics-surface__controls')).toHaveCount(0);
 
       const hitsBefore = await e2ePlayerSnapshotHits(app);
       await rendererInvoke(page, 'player_seek', { positionMs: 1_800 });
@@ -242,6 +251,14 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
         .poll(() => e2ePlayerSnapshotHits(app), { timeout: 8_000 })
         .toBeGreaterThan(hitsBefore);
       expect(await e2eLyricsIsLocked(app, kind)).toBe(true);
+
+      await rendererInvoke(page, 'player_next');
+      await expect
+        .poll(async () => trackId(await rendererInvoke<PlayerSnapshot>(page, 'player_snapshot')), {
+          timeout: 8_000,
+        })
+        .toBe('surf-control-b');
+      await rendererInvoke(page, 'player_previous').catch(() => undefined);
 
       expect(
         await e2eLyricsSetBounds(app, kind, { x: 96, y: 72, width: 640, height: 190 }),
@@ -251,6 +268,10 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
       await page.waitForTimeout(1_200);
       expect(await e2eLyricsIsLocked(app, kind)).toBe(true);
       expect(await e2eLyricsIsLocked(app, other)).toBe(false);
+      await expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+      await expect(lyricsPage.locator('.lyrics-surface__controls')).toHaveCount(0);
+      await expect(lyricsPage.getByRole('button', { name: 'Play' })).toHaveCount(0);
+      await expect(lyricsPage.getByRole('button', { name: 'Pause' })).toHaveCount(0);
 
       await expect.poll(() => e2eLyricsUnlockPage(app, kind), { timeout: 10_000 }).not.toBeUndefined();
       const unlockPage = await e2eLyricsUnlockPage(app, kind);

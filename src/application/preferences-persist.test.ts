@@ -108,4 +108,18 @@ describe('preference persist coalescing', () => {
     expect(stored.surfaces.desktop.interaction).toBe('passive-locked');
     expect(stored.surfaces.island.interaction).toBe('interactive');
   });
+
+  it('hydrate does not unlock a locally locked surface from a stale snapshot', () => {
+    usePreferencesStore.getState().setSurfaceInteractionLocal('desktop', 'passive-locked');
+    usePreferencesStore.getState().hydrate({
+      ...defaultPreferences,
+      appearance: { ...defaultPreferences.appearance, surfaceOpacity: 77 },
+      surfaces: {
+        ...defaultPreferences.surfaces,
+        desktop: { ...defaultPreferences.surfaces.desktop, interaction: 'interactive' },
+      },
+    });
+    expect(usePreferencesStore.getState().surfaces.desktop.interaction).toBe('passive-locked');
+    expect(usePreferencesStore.getState().appearance.surfaceOpacity).toBe(77);
+  });
 });

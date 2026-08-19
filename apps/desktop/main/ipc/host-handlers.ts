@@ -420,6 +420,10 @@ export type HostHandlerDeps = {
   capabilities: () => LyricsSurfaceCapabilities;
   showMainAndOpenSettings: () => void;
   emitSurfaceClosed?: (kind: LyricsSurfaceKind) => void;
+  emitSurfaceInteraction?: (
+    kind: LyricsSurfaceKind,
+    interaction: 'interactive' | 'passive-locked',
+  ) => void;
   dialogs?: PathPickerDialogs;
   downloadsDir?: () => string;
   folders?: HostFolderOpener;
@@ -459,6 +463,18 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     const locked = hostInteraction[kind] === 'passive-locked';
     deps.lyrics.lock(kind, locked);
     syncUnlockOverlay(kind, locked);
+    deps.emitSurfaceInteraction?.(kind, hostInteraction[kind]);
+  };
+
+  const stampHostInteraction = (raw: string): string => {
+    let next = raw;
+    for (const kind of ['desktop', 'island'] as const) {
+      const patched = patchSurfaceInteractionDocument(next, kind, hostInteraction[kind]);
+      if (patched) {
+        next = patched;
+      }
+    }
+    return next;
   };
 
   const persistInteraction = async (
@@ -575,6 +591,21 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       await deps.lyrics.resetPosition(kind);
     },
   };
+
+  if (deps.coreInvoke) {
+    const invoke = deps.coreInvoke;
+    handlers.app_preferences_set = async (params, _webContentsId, origin) => {
+      const record =
+        params && typeof params === 'object'
+          ? { ...(params as Record<string, unknown>) }
+          : {};
+      const raw = typeof record.value === 'string' ? record.value : '';
+      if (raw.length > 0) {
+        record.value = stampHostInteraction(raw);
+      }
+      return invoke('app_preferences_set', record, origin ?? 'host');
+    };
+  }
 
   if (deps.dialogs) {
     const { showSaveDialog, showOpenDialog } = deps.dialogs;

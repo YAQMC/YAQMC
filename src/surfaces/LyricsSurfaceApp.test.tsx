@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostBridge } from '@yaqmc/client';
-import { defaultPreferences, type LyricSurfaceSettings } from '../application/preferences';
+import { defaultPreferences, usePreferencesStore, type LyricSurfaceSettings } from '../application/preferences';
 import type { LyricLine } from '../domain/music';
 import {
   DesktopSurface,
   IslandSurface,
+  LyricsSurfaceApp,
   LyricsUnlockControl,
   type SurfaceProps,
 } from './LyricsSurfaceApp';
@@ -64,6 +65,13 @@ function props(
 afterEach(() => {
   vi.useRealTimers();
   invokeMock.mockReset();
+  usePreferencesStore.setState({
+    ...defaultPreferences,
+    surfaces: {
+      desktop: { ...defaultPreferences.surfaces.desktop },
+      island: { ...defaultPreferences.surfaces.island },
+    },
+  });
 });
 
 describe('Passive Lyrics unlock control', () => {
@@ -153,6 +161,41 @@ describe('Desktop Lyrics interaction presentation', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(container.querySelector('[data-tauri-drag-region="true"]')).toBeNull();
     expect(container.querySelector('.yaqmc-drag')).toBeNull();
+  });
+
+  it('does not remount controls after a stale interactive hydrate while locked', () => {
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      surfaces: {
+        ...defaultPreferences.surfaces,
+        desktop: {
+          ...defaultPreferences.surfaces.desktop,
+          enabled: true,
+          interaction: 'passive-locked',
+        },
+      },
+    });
+    const { container } = render(<LyricsSurfaceApp kind="desktop" />);
+    act(() => {
+      usePreferencesStore.getState().hydrate({
+        ...defaultPreferences,
+        surfaces: {
+          ...defaultPreferences.surfaces,
+          desktop: {
+            ...defaultPreferences.surfaces.desktop,
+            enabled: true,
+            interaction: 'interactive',
+          },
+        },
+      });
+    });
+    const surface = container.querySelector('.lyrics-surface--desktop');
+    fireEvent.pointerEnter(surface!);
+    fireEvent.pointerMove(surface!, { clientX: 48, clientY: 36 });
+    expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+    expect(surface).not.toHaveClass('lyrics-surface--interactive');
+    expect(container.querySelector('.lyrics-surface__controls')).toBeNull();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });
 

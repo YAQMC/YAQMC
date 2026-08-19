@@ -232,6 +232,15 @@
     },
     "seq": 10
   },
+  "lyrics://surface-interaction": {
+    "channel": "lyrics://surface-interaction",
+    "kind": "event",
+    "payload": {
+      "kind": "desktop",
+      "interaction": "passive-locked"
+    },
+    "seq": 11
+  },
   "player://snapshot": {
     "channel": "player://snapshot",
     "kind": "event",

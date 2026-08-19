@@ -172,7 +172,6 @@
   -webkit-app-region: no-drag;
 }
 
-.lyrics-surface--interactive:hover .lyrics-surface__controls,
 .lyrics-surface[data-interaction-state='visible-interactive-hover'] .lyrics-surface__controls,
 .lyrics-surface__controls:focus-within {
   opacity: 1;
@@ -238,7 +237,6 @@
   transition: opacity var(--motion-base) var(--ease-out);
 }
 
-.lyrics-surface--desktop.lyrics-surface--interactive:hover::after,
 .lyrics-surface--desktop[data-interaction-state='visible-interactive-hover']::after {
   opacity: 1;
 }
@@ -288,7 +286,6 @@
     border-radius 220ms var(--ease-out);
 }
 
-.lyrics-surface--island.lyrics-surface--interactive:hover .island-card,
 .lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card {
   height: 140px;
   border-radius: 25px;
@@ -306,7 +303,6 @@
     border-radius 220ms var(--ease-out);
 }
 
-.lyrics-surface--island.lyrics-surface--interactive:hover .island-card > img,
 .lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card > img {
   width: 56px;
   height: 56px;
@@ -351,7 +347,6 @@
     transform 180ms 45ms var(--ease-out);
 }
 
-.lyrics-surface--island.lyrics-surface--interactive:hover .island-card__expanded,
 .lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card__expanded {
   opacity: 1;
   transform: translateY(0);
@@ -382,7 +377,6 @@
   opacity: 0;
 }
 
-.lyrics-surface--island.lyrics-surface--interactive:hover .lyrics-surface__controls,
 .lyrics-surface--island[data-interaction-state='visible-interactive-hover']
   .lyrics-surface__controls {
   opacity: 1;
