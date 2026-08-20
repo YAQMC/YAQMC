@@ -385,13 +385,19 @@ async fn invoke_core(
         "qqmusic_set_preferred_quality" => {
             let QualityParams { quality } = parse(&params)?;
             provider(
-                ops::qqmusic_set_preferred_quality(&core.qq_music(), &core.player(), quality).await,
+                ops::qqmusic_set_preferred_quality(
+                    core.qq_music().as_ref(),
+                    &core.player(),
+                    quality,
+                )
+                .await,
             )
         }
         "qqmusic_set_current_quality" => {
             let QualityParams { quality } = parse(&params)?;
             provider(
-                ops::qqmusic_set_current_quality(&core.qq_music(), &core.player(), quality).await,
+                ops::qqmusic_set_current_quality(core.qq_music().as_ref(), &core.player(), quality)
+                    .await,
             )
         }
         "qqmusic_account_snapshot" => ok(core.qq_music().account_snapshot().await),
@@ -455,8 +461,13 @@ async fn invoke_core(
             } = parse(&params)?;
             let live = host.oauth_window_is_live(&attempt_id);
             provider(
-                ops::qqmusic_auth_heartbeat(&core.qq_music(), attempt_id, owner_lease_id, live)
-                    .await,
+                ops::qqmusic_auth_heartbeat(
+                    core.qq_music().as_ref(),
+                    attempt_id,
+                    owner_lease_id,
+                    live,
+                )
+                .await,
             )
         }
         "qqmusic_auth_cancel" => {
@@ -652,7 +663,7 @@ async fn invoke_core(
             let NamedRequest::<super::types::DiagnosticsRequest> { request } = parse(&params)?;
             ok(ops::assemble_diagnostics_snapshot(
                 &core.player(),
-                &core.qq_music(),
+                core.qq_music().as_ref(),
                 &core.logging(),
                 Some(&core.plugins()),
                 ops::live_platform_diagnostics(core, host),
@@ -794,7 +805,7 @@ async fn invoke_core(
         }
         "auth_oauth_prepare" => {
             let OAuthPrepareParams { provider_kind } = parse(&params)?;
-            provider(ops::auth_oauth_prepare(&core.qq_music(), provider_kind).await)
+            provider(ops::auth_oauth_prepare(core.qq_music().as_ref(), provider_kind).await)
         }
         "auth_oauth_complete" => {
             let OAuthCompleteParams {
@@ -803,11 +814,13 @@ async fn invoke_core(
             } = parse(&params)?;
             let callback_url = reqwest::Url::parse(&callback_url)
                 .map_err(|error| DispatchError::InvalidParams(error.to_string()))?;
-            provider(ops::auth_oauth_complete(&core.qq_music(), &attempt_id, callback_url).await)
+            provider(
+                ops::auth_oauth_complete(core.qq_music().as_ref(), &attempt_id, callback_url).await,
+            )
         }
         "auth_oauth_cancel" => {
             let AttemptIdParams { attempt_id } = parse(&params)?;
-            provider(ops::auth_oauth_cancel(&core.qq_music(), &attempt_id).await)
+            provider(ops::auth_oauth_cancel(core.qq_music().as_ref(), &attempt_id).await)
         }
         "app_settings_get" => {
             let SettingKeyParams { key } = parse(&params)?;

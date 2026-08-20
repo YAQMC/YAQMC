@@ -526,7 +526,7 @@ pub async fn diagnostics_export_bundle_to(
 ) -> Result<BundleExportResult, String> {
     let snapshot = assemble_diagnostics_snapshot(
         &core.player(),
-        &core.qq_music(),
+        core.qq_music().as_ref(),
         &core.logging(),
         Some(&core.plugins()),
         live_platform_diagnostics(core, host),
@@ -558,7 +558,7 @@ pub async fn issue_reporter_preview(
 ) -> IssuePreview {
     let snapshot = assemble_diagnostics_snapshot(
         &core.player(),
-        &core.qq_music(),
+        core.qq_music().as_ref(),
         &core.logging(),
         Some(&core.plugins()),
         live_platform_diagnostics(core, host),
