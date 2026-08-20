@@ -122,6 +122,8 @@ impl PlayheadWatch {
     }
 }
 
+// These explicit slots mirror the long-lived worker state; a wrapper would exist only to borrow it.
+#[allow(clippy::too_many_arguments)]
 fn install_rebuilt_output(
     device_sink: &mut MixerDeviceSink,
     player: &mut Player,
@@ -1571,11 +1573,10 @@ impl TestAudioEngine {
         if !self.live_clock {
             return;
         }
-        let clock = self
+        let clock = *self
             .live_clock_state
             .lock()
-            .expect("test engine live clock lock")
-            .clone();
+            .expect("test engine live clock lock");
         let Some(clock) = clock else {
             return;
         };

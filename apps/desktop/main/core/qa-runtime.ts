@@ -44,7 +44,7 @@ export function isQaLaunch(env: NodeJS.ProcessEnv = process.env): boolean {
   return QA_LAUNCH_FLAGS.some((key) => env[key] === '1');
 }
 
-function joinFor(platform: NodeJS.Platform, ...parts: string[]): string {
+function joinFor(platform: 'win32' | 'posix', ...parts: string[]): string {
   return (platform === 'win32' ? path.win32 : path.posix).join(...parts);
 }
 

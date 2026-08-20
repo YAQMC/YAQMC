@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createGlobalShortcutSession,
@@ -10,6 +13,8 @@ import {
   WAYLAND_SHORTCUTS_UNSUPPORTED,
   type GlobalShortcutApi,
 } from './shortcuts';
+
+const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 function mockGlobalShortcut(
   registerImpl?: GlobalShortcutApi['register'],

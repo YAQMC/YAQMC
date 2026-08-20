@@ -64,6 +64,10 @@ function fixtureNames(dir) {
     .sort();
 }
 
+function normalizeLineEndings(value) {
+  return value.replace(/\r\n?/gu, '\n');
+}
+
 export function assertFixturesMatch(leftDir, rightDir) {
   const left = fixtureNames(leftDir);
   const right = fixtureNames(rightDir);
@@ -76,7 +80,7 @@ export function assertFixturesMatch(leftDir, rightDir) {
   for (const name of FIXTURE_FILES) {
     const leftText = readFileSync(path.join(leftDir, name), 'utf8');
     const rightText = readFileSync(path.join(rightDir, name), 'utf8');
-    if (leftText !== rightText) {
+    if (normalizeLineEndings(leftText) !== normalizeLineEndings(rightText)) {
       throw new Error(`${name} drifted from cargo --features fixtures emit`);
     }
   }

@@ -1,5 +1,8 @@
+// @ts-expect-error Vitest runs in Node; the renderer tsconfig does not include Node types.
 import { readFileSync } from 'node:fs';
+// @ts-expect-error Vitest runs in Node; the renderer tsconfig does not include Node types.
 import { dirname, join } from 'node:path';
+// @ts-expect-error Vitest runs in Node; the renderer tsconfig does not include Node types.
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {

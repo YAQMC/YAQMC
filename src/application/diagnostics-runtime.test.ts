@@ -5,6 +5,7 @@ import type { BundleExportResult } from './diagnostics-runtime';
 const hostMocks = vi.hoisted(() => {
   const invoke = vi.fn();
   const pickSave = vi.fn();
+  const pickFile = vi.fn();
   const bridge = {
     kind: 'electron' as HostBridge['kind'],
     windowRole: 'main' as const,
@@ -17,11 +18,11 @@ const hostMocks = vi.hoisted(() => {
     shell: {
       openExternal: async () => undefined,
     },
-    dialog: { pickSave },
+    dialog: { pickFile, pickSave },
     invoke,
     listen: () => () => undefined,
   };
-  return { invoke, pickSave, bridge };
+  return { invoke, pickFile, pickSave, bridge };
 });
 
 vi.mock('./yaqmc-runtime', async () => {

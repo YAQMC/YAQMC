@@ -11,6 +11,7 @@ export default tseslint.config(
       'node_modules',
       'target',
       'output/**',
+      'release-electron/**',
       '.superpowers/**',
       '.playwright-cli/**',
       'playwright-report/**',
@@ -88,6 +89,26 @@ export default tseslint.config(
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
       },
+    },
+  },
+  {
+    files: ['scripts/migration/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: {
+        document: 'readonly',
+        getComputedStyle: 'readonly',
+        location: 'readonly',
+      },
+    },
+  },
+  {
+    files: [
+      'src/components/AddToPlaylistPicker.tsx',
+      'src/components/SettingsUpdateSection.tsx',
+      'src/components/SurfaceCapabilityBanner.tsx',
+    ],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
 );

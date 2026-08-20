@@ -183,7 +183,7 @@ export function createLyricsSurfaceWindow(
   deps: LyricsSurfaceDeps,
 ): LyricsSurfaceWindow {
   const window = deps.createWindow(lyricsSurfaceCreateOptions(kind, deps.preloadPath));
-  window.setAlwaysOnTop(true, LYRICS_SURFACE_ALWAYS_ON_TOP_LEVEL);
+  window.setAlwaysOnTop?.(true, LYRICS_SURFACE_ALWAYS_ON_TOP_LEVEL);
   void window.loadURL(deps.pageUrl?.(kind) ?? lyricsSurfaceUrl(kind));
   return window;
 }
