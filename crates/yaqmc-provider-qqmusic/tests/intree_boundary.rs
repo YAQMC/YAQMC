@@ -44,7 +44,7 @@ impl CredentialStore for TestCredentialStore {
 }
 
 #[tokio::test]
-async fn qqmusic_service_and_oauth_policy_are_core_owned() {
+async fn qqmusic_service_and_oauth_policy_are_provider_owned() {
     let fixture = include_str!("fixtures/qqmusic/search-song.json");
     assert!(fixture.contains("SANITIZED_TRACK_MID"));
     let root = tempdir().expect("temporary storage root");
@@ -57,7 +57,7 @@ async fn qqmusic_service_and_oauth_policy_are_core_owned() {
             Arc::new(TestCredentialStore::default()),
             root.path().join("fixtures"),
         )
-        .expect("Core QQ service"),
+        .expect("in-tree QQ Music provider"),
     );
     assert_eq!(OAuthLoginProvider::Qq.as_str(), "qq");
     assert!(OAuthLoginProvider::Qq.allows_navigation(

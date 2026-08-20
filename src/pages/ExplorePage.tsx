@@ -22,12 +22,7 @@ function CoverCard({
   return (
     <article className="media-card" tabIndex={0}>
       <div className="media-card__art">
-        <button
-          type="button"
-          className="media-card__open"
-          onClick={onClick}
-          aria-label={title}
-        >
+        <button type="button" className="media-card__open" onClick={onClick} aria-label={title}>
           <Artwork artwork={{ src: cover, alt: title, dominantColor: '#181818' }} />
         </button>
       </div>

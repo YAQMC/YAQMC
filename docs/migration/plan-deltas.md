@@ -1841,7 +1841,7 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 
 - Same Windows Electron session logged
   `ssl_client_socket_impl.cc:963 handshake failed; returned -1, SSL error
-  code 1, net_error -100`. Chromium `-100` is `ERR_CONNECTION_CLOSED`
+code 1, net_error -100`. Chromium `-100` is `ERR_CONNECTION_CLOSED`
   (TCP FIN during the handshake), not `ERR_SSL_PROTOCOL_ERROR`.
 - PID **47128** was already gone when re-checked; it is an Electron/Chromium
   child (browser, network utility, or renderer), not `yaqmc-core`. No
@@ -1863,7 +1863,7 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 - Windows HUMAN after `ad7fd4c`: Open logs folder, GitHub opener, window
   chrome, and Core/catalog startup passed. Diagnostics Export now reached
   Core and failed with `diagnostics_export_bundle_to is not allowed from
-  host`. That is an origin-routing defect on the dialog-split continuation,
+host`. That is an origin-routing defect on the dialog-split continuation,
   not a picker or filesystem defect.
 - Stdio `serve.rs` previously stamped every Core request as `WindowOrigin::Host`.
   The `_to` host interceptor then re-dispatched through `coreInvoke` after
@@ -1886,7 +1886,7 @@ aarch64-pc-windows-msvc`), then `electron-builder --win --arm64`. Needs MSVC
 ## P6 FE-04: unpackaged dev spawned a stale staged Core
 
 - Windows HUMAN after `ca40682` still saw `diagnostics_export_bundle_to is
-  not allowed from host` and the same string for `plugin_install_from`.
+not allowed from host` and the same string for `plugin_install_from`.
   Background picker showed `无法处理所选背景图片。` because Settings maps
   any `_from` throw to `imageFailed`.
 - That error is Core `AclDenied` for an **unknown method** with the stdio

@@ -30,7 +30,7 @@ describe('electron-updater port', () => {
   });
 
   it('loads electron-updater via createRequire and never silent-installs from check/download', () => {
-    expect(source).toContain("createRequire(import.meta.url)");
+    expect(source).toContain('createRequire(import.meta.url)');
     expect(source).toContain("require('electron-updater')");
     expect(source).toContain('quitAndInstall(false, true)');
     expect(source).not.toContain('quitAndInstall(true');

@@ -11,8 +11,7 @@ const COPY: Record<Exclude<CoreStatus, 'ready'>, string> = {
 
 function defaultSubscribe(handler: (payload: CoreStatusPayload) => void): () => void {
   const yaqmc = Reflect.get(window, 'yaqmc') as
-    | { on?: (channel: string, cb: (payload: unknown) => void) => () => void }
-    | undefined;
+    { on?: (channel: string, cb: (payload: unknown) => void) => () => void } | undefined;
   if (typeof yaqmc?.on !== 'function') {
     return () => undefined;
   }

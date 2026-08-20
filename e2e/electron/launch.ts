@@ -594,9 +594,7 @@ export async function e2eUnlockWindowVisible(
     const needle = `unlockSurface=${surface}`;
     return BrowserWindow.getAllWindows().some(
       (window) =>
-        !window.isDestroyed() &&
-        window.isVisible() &&
-        window.webContents.getURL().includes(needle),
+        !window.isDestroyed() && window.isVisible() && window.webContents.getURL().includes(needle),
     );
   }, kind);
 }

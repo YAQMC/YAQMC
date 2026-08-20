@@ -31,7 +31,7 @@
   are projections over the same state machine.
 - QQ Music discovery, search, albums, playlists/toplists, normalized QRC/LRC lyrics, and account-aware playback
   quality.
-- Restricted, embedded Tencent OAuth for QQ and WeChat. Passwords and WebView cookies are never copied into the
+- Restricted, embedded Tencent OAuth for QQ and WeChat. Passwords and OAuth-window cookies are never copied into the
   application; durable credentials stay in the operating-system secure store.
 - Desktop Lyrics and Lyrics Island with word timing, translation/romanization, click-through lock mode, and a
   dedicated on-surface unlock control.
@@ -46,10 +46,10 @@
 
 Tagged releases publish the package formats that each supported runner can build natively:
 
-| Platform | Architectures                     | Packages                                                |
-| -------- | --------------------------------- | ------------------------------------------------------- |
-| Windows  | x64 / AMD64, ARM64                | NSIS `.exe`, portable `.exe`                             |
-| Linux    | x86_64 / AMD64, ARM64             | AppImage, Debian `.deb`, RPM `.rpm`, portable `.tar.gz` |
+| Platform | Architectures         | Packages                                                |
+| -------- | --------------------- | ------------------------------------------------------- |
+| Windows  | x64 / AMD64, ARM64    | NSIS `.exe`, portable `.exe`                            |
+| Linux    | x86_64 / AMD64, ARM64 | AppImage, Debian `.deb`, RPM `.rpm`, portable `.tar.gz` |
 
 AMD64, x86_64, and the release label x64 name the same architecture. Windows i686/x86 packages are no longer published.
 Release artifacts include SHA-256 checksums. Linux runtime acceptance remains host-specific—especially on native
@@ -69,7 +69,7 @@ verified.
 
 | Area                            | Windows                                    | Linux                                                      |
 | ------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
-| Desktop client and native audio | Implemented (WebView2, CPAL)               | Implemented (WebKitGTK, host ALSA route)                   |
+| Desktop client and native audio | Implemented (Electron/Chromium, CPAL)      | Implemented (Electron/Chromium, ALSA/CPAL)                 |
 | Media session                   | SMTC                                       | MPRIS 2.2                                                  |
 | Tray and close-to-tray          | Implemented                                | Implemented; presentation depends on desktop environment   |
 | Lyric overlays                  | Full positioning and interaction semantics | X11/XWayland supported; native Wayland reports limitations |
@@ -144,8 +144,9 @@ React UI / lyric surfaces / local API / tray / media sessions
   transport + cache              Rodio / CPAL
 ```
 
-Security-sensitive account commands are available only to the exact `main` WebView label and are checked again in
-Rust. OAuth windows have a Tencent-only navigation allowlist, reject popups, disable autofill/devtools, validate an
+Security-sensitive account commands are available only to the main renderer through the Electron Main IPC ACL and
+are checked again by Core. OAuth windows have a Tencent-only navigation allowlist, reject popups, disable
+autofill/devtools, validate an
 unpredictable state value, and accept only the registered QQ Music callback. Lyric unlock controls use a separate,
 single-command capability and cannot access account or player state.
 

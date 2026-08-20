@@ -36,7 +36,7 @@ YAQMC 还在各自许可证允许的范围内独立适配了以下项目公开�
 
 ## 核心生态
 
-感谢 Rust、Tauri、React、Rodio/CPAL、i18next、WebKitGTK、WebView2 及其维护者。没有这些可持续维护的
-开放生态，YAQMC 的跨平台原生边界无法成立。
+感谢 Rust、Electron、Chromium、React、Rodio/CPAL 与 i18next 及其维护者。也感谢曾支撑旧版桌面宿主的
+Tauri、WebKitGTK 与 WebView2 维护者；这些历史贡献仍是 YAQMC 演进的一部分。
 
 如有遗漏或归属不准确，请提交 Issue，但不要在 Issue 中粘贴账号 Cookie、token、ekey 或其他秘密。

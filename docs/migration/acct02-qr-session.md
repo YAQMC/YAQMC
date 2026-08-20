@@ -22,13 +22,13 @@ OAuth QQ/WeChat popup buttons are ACCT-01. This checklist is Core QR (`qqmusic_a
 
 From `crates/yaqmc-core/src/credentials.rs` and `crates/yaqmc-provider-qqmusic/src/qqmusic/auth.rs`:
 
-| Item | FACT |
-| ---- | ---- |
-| Current service | `org.yaqmc.desktop` |
+| Item                          | FACT                       |
+| ----------------------------- | -------------------------- |
+| Current service               | `org.yaqmc.desktop`        |
 | Legacy read-migration service | `dev.music-client.desktop` |
-| Active session entry | `qqmusic-session` |
-| Staging session entry | `qqmusic-session-staging` |
-| Local API token entry | `local-api-bearer-token` |
+| Active session entry          | `qqmusic-session`          |
+| Staging session entry         | `qqmusic-session-staging`  |
+| Local API token entry         | `local-api-bearer-token`   |
 
 Electron yaqmc-core uses the same `PlatformCredentialStore`. Do not rename the service or entries. Values are never exported into this document, logs, or diagnostics.
 
@@ -36,13 +36,13 @@ No in-repo script prints whether a live keyring entry **exists** without new nat
 
 ## Fake vs real account
 
-| Check | Fake (`?provider=fake`) | Real QQ account (Electron + core) |
-| ----- | ----------------------- | --------------------------------- |
-| Host bridge | `selectHostBridge` → `createFakeBridge()` even if `window.yaqmc` is present | `window.yaqmc` → Electron bridge → yaqmc-core |
-| Account UI | `FakeMusicProvider` is catalog-only (not `AccountMusicProvider`); Account dialog does not mount | QQ Music provider: `startQrLogin` → `qqmusic_auth_start` |
-| QR login | No Tencent QR, no poll, no keyring write | `waiting-for-scan` + QR data URI; heartbeat / cancel / refresh through Core |
-| Session persist | None (in-memory fake) | Staging then active under FACT entry names |
-| After host swap | N/A | Restore `qqmusic-session` without re-login (expected; ACCT-03 records the demo) |
+| Check           | Fake (`?provider=fake`)                                                                         | Real QQ account (Electron + core)                                               |
+| --------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Host bridge     | `selectHostBridge` → `createFakeBridge()` even if `window.yaqmc` is present                     | `window.yaqmc` → Electron bridge → yaqmc-core                                   |
+| Account UI      | `FakeMusicProvider` is catalog-only (not `AccountMusicProvider`); Account dialog does not mount | QQ Music provider: `startQrLogin` → `qqmusic_auth_start`                        |
+| QR login        | No Tencent QR, no poll, no keyring write                                                        | `waiting-for-scan` + QR data URI; heartbeat / cancel / refresh through Core     |
+| Session persist | None (in-memory fake)                                                                           | Staging then active under FACT entry names                                      |
+| After host swap | N/A                                                                                             | Restore `qqmusic-session` without re-login (expected; ACCT-03 records the demo) |
 
 ## QR login (real provider)
 
@@ -50,13 +50,13 @@ Core methods: `qqmusic_auth_start`, `qqmusic_auth_heartbeat`, `qqmusic_auth_canc
 
 Promotion (same as Tauri): validate candidate → load prior active → save+read-back staging (`qqmusic-session-staging`) → validate staged → save+read-back active (`qqmusic-session`) → delete staging. Failure before activation clears staging; failure after activation restores the prior active record.
 
-| Step | Expected result | Windows | Linux |
-| ---- | --------------- | ------- | ----- |
-| Start QR (`qqmusic_auth_start`) | Snapshot `waiting-for-scan`; QR image projected; no OAuth popup | [ ] | [ ] |
-| Heartbeat while waiting | Snapshot stays owned; scan/confirm advances without dropping the attempt | [ ] | [ ] |
-| Cancel | Snapshot cancelled/guest; staging not left as the active session | [ ] | [ ] |
-| Refresh expired QR (`qqmusic_auth_refresh`) | New attempt; previous attempt id is not reused as live | [ ] | [ ] |
-| Confirm / promote | Masked authenticated snapshot; active entry is `qqmusic-session` | [ ] | [ ] |
+| Step                                        | Expected result                                                          | Windows | Linux |
+| ------------------------------------------- | ------------------------------------------------------------------------ | ------- | ----- |
+| Start QR (`qqmusic_auth_start`)             | Snapshot `waiting-for-scan`; QR image projected; no OAuth popup          | [ ]     | [ ]   |
+| Heartbeat while waiting                     | Snapshot stays owned; scan/confirm advances without dropping the attempt | [ ]     | [ ]   |
+| Cancel                                      | Snapshot cancelled/guest; staging not left as the active session         | [ ]     | [ ]   |
+| Refresh expired QR (`qqmusic_auth_refresh`) | New attempt; previous attempt id is not reused as live                   | [ ]     | [ ]   |
+| Confirm / promote                           | Masked authenticated snapshot; active entry is `qqmusic-session`         | [ ]     | [ ]   |
 
 All rows stay `LIVE VERIFY pending` until a maintainer signs the box. Do not claim green from this prep.
 
@@ -66,11 +66,11 @@ Keyring service and entry names stay FACT. Boot restore is core `restore_session
 
 Expected: a profile that was logged in on Tauri stays logged in on Electron **without** scanning again. That recorded demo is **ACCT-03**. This table only prepares the ACCT-02 steps.
 
-| Step | Expected result | Windows | Linux |
-| ---- | --------------- | ------- | ----- |
-| Staging slot during QR promote | Writes `qqmusic-session-staging`, then active, then deletes staging | [ ] | [ ] |
-| Refresh / restore on Electron boot | Authenticated snapshot from existing `qqmusic-session`; no re-login | [ ] | [ ] |
-| Tauri-login → Electron boot (same OS user) | User stays logged in; keyring service name unchanged | [ ] | [ ] |
+| Step                                       | Expected result                                                     | Windows | Linux |
+| ------------------------------------------ | ------------------------------------------------------------------- | ------- | ----- |
+| Staging slot during QR promote             | Writes `qqmusic-session-staging`, then active, then deletes staging | [ ]     | [ ]   |
+| Refresh / restore on Electron boot         | Authenticated snapshot from existing `qqmusic-session`; no re-login | [ ]     | [ ]   |
+| Tauri-login → Electron boot (same OS user) | User stays logged in; keyring service name unchanged                | [ ]     | [ ]   |
 
 Linux live keyring also needs session-bus env passthrough (`DBUS_SESSION_BUS_ADDRESS` / `XDG_RUNTIME_DIR` — SUP-01). That matrix is ACCT-03 / PLAT-05, not a green claim here.
 

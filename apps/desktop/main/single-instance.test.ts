@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { acquireSingleInstanceLock, type MainWindowLike, type SingleInstanceApp } from './single-instance';
+import {
+  acquireSingleInstanceLock,
+  type MainWindowLike,
+  type SingleInstanceApp,
+} from './single-instance';
 
 function mockWindow(overrides: Partial<MainWindowLike> = {}): MainWindowLike {
   return {

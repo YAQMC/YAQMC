@@ -57,41 +57,82 @@ export function parseBuilderNsis(yaml) {
     hasElectronUpdater: /^\s*electron-updater:/m.test(yaml),
   };
 }
-export function pack02Report({ repoRoot, env = process.env, now = () => new Date().toISOString().slice(0, 10) } = {}) {
+export function pack02Report({
+  repoRoot,
+  env = process.env,
+  now = () => new Date().toISOString().slice(0, 10),
+} = {}) {
   const outputDir = path.join(repoRoot, OUTPUT_DIR_NAME);
   const yamlPath = path.join(repoRoot, 'apps', 'desktop', 'electron-builder.yml');
   const pkgPath = path.join(repoRoot, 'apps', 'desktop', 'package.json');
   const yaml = existsSync(yamlPath) ? readFileSync(yamlPath, 'utf8') : '';
   const pkg = existsSync(pkgPath) ? JSON.parse(readFileSync(pkgPath, 'utf8')) : {};
-  const localAppData = env.LOCALAPPDATA || path.win32.join(env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Local');
-  const appData = env.APPDATA || path.win32.join(env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Roaming');
+  const localAppData =
+    env.LOCALAPPDATA ||
+    path.win32.join(env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Local');
+  const appData =
+    env.APPDATA || path.win32.join(env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Roaming');
   const installDir = perUserInstallDir(localAppData);
   const artifacts = {};
   for (const arch of ['x64', 'arm64']) {
-    artifacts[`nsis-${arch}`] = { name: nsisArtifactName(arch), path: path.join(outputDir, nsisArtifactName(arch)), found: existsSync(path.join(outputDir, nsisArtifactName(arch))) };
-    artifacts[`portable-${arch}`] = { name: portableArtifactName(arch), path: path.join(outputDir, portableArtifactName(arch)), found: existsSync(path.join(outputDir, portableArtifactName(arch))) };
+    artifacts[`nsis-${arch}`] = {
+      name: nsisArtifactName(arch),
+      path: path.join(outputDir, nsisArtifactName(arch)),
+      found: existsSync(path.join(outputDir, nsisArtifactName(arch))),
+    };
+    artifacts[`portable-${arch}`] = {
+      name: portableArtifactName(arch),
+      path: path.join(outputDir, portableArtifactName(arch)),
+      found: existsSync(path.join(outputDir, portableArtifactName(arch))),
+    };
   }
   return {
-    id: PACK02_ID, date: now(), unsigned: true, risk: 'R-9', electron: ELECTRON_VERSION, electronBuilder: BUILDER_VERSION,
-    appId: APP_ID, nsis: { ...NSIS, scope: 'per-user' }, packWin: pkg.scripts?.['pack:win'] ?? null, packWinArm64: packWinArm64Note(),
-    electronUpdater: Boolean(pkg.dependencies?.['electron-updater'] || pkg.devDependencies?.['electron-updater']),
-    builderConfig: parseBuilderNsis(yaml), dataDir: path.win32.join(appData, APP_ID), perUserInstallDir: installDir, artifacts,
+    id: PACK02_ID,
+    date: now(),
+    unsigned: true,
+    risk: 'R-9',
+    electron: ELECTRON_VERSION,
+    electronBuilder: BUILDER_VERSION,
+    appId: APP_ID,
+    nsis: { ...NSIS, scope: 'per-user' },
+    packWin: pkg.scripts?.['pack:win'] ?? null,
+    packWinArm64: packWinArm64Note(),
+    electronUpdater: Boolean(
+      pkg.dependencies?.['electron-updater'] || pkg.devDependencies?.['electron-updater'],
+    ),
+    builderConfig: parseBuilderNsis(yaml),
+    dataDir: path.win32.join(appData, APP_ID),
+    perUserInstallDir: installDir,
+    artifacts,
     commands: {
       packWin: 'npm run pack:win -w @yaqmc/desktop',
-      nsisInstallA: nsisInstallCommand(path.join(outputDir, nsisArtifactName('x64')), { dir: installDir }),
-      nsisInstallB: nsisInstallCommand(path.join(outputDir, nsisArtifactName('x64')), { dir: installDir }),
+      nsisInstallA: nsisInstallCommand(path.join(outputDir, nsisArtifactName('x64')), {
+        dir: installDir,
+      }),
+      nsisInstallB: nsisInstallCommand(path.join(outputDir, nsisArtifactName('x64')), {
+        dir: installDir,
+      }),
       nsisUninstall: nsisUninstallCommand(installDir),
       portable: `"${path.join(outputDir, portableArtifactName('x64'))}"`,
     },
     Windows: {
-      nsisPerUserInstall: { state: CLEAN_VM_STATE, checked: false }, portableExe: { state: CLEAN_VM_STATE, checked: false },
-      upgradeAB: { state: CLEAN_VM_STATE, checked: false }, uninstall: { state: CLEAN_VM_STATE, checked: false },
-      x64: { state: CLEAN_VM_STATE, checked: false }, arm64: { state: CLEAN_VM_STATE, checked: false },
+      nsisPerUserInstall: { state: CLEAN_VM_STATE, checked: false },
+      portableExe: { state: CLEAN_VM_STATE, checked: false },
+      upgradeAB: { state: CLEAN_VM_STATE, checked: false },
+      uninstall: { state: CLEAN_VM_STATE, checked: false },
+      x64: { state: CLEAN_VM_STATE, checked: false },
+      arm64: { state: CLEAN_VM_STATE, checked: false },
     },
-    notes: ['LIVE VERIFY / clean-VM pending. This script does not install, upgrade, or uninstall.', 'Unsigned (R-9).', 'Do not bump Electron. electron-updater is notify-only (UPD-01); A→B rehearsal still pending.', 'Do not start qm-api-rs. Provenance remains BLOCKED. 32 MiB protocol hard cap unchanged.'],
+    notes: [
+      'LIVE VERIFY / clean-VM pending. This script does not install, upgrade, or uninstall.',
+      'Unsigned (R-9).',
+      'Do not bump Electron. electron-updater is notify-only (UPD-01); A→B rehearsal still pending.',
+      'Do not start qm-api-rs. Provenance remains BLOCKED. 32 MiB protocol hard cap unchanged.',
+    ],
   };
 }
-const invokedDirectly = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly =
+  Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   process.stdout.write(`${JSON.stringify(pack02Report({ repoRoot }), null, 2)}\n`);

@@ -9,8 +9,7 @@ async function rendererInvoke<T>(page: Page, method: string, params?: unknown): 
   return page.evaluate(
     async ({ methodName, payload }) => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -56,7 +55,9 @@ test.describe('Settings / UI regression on native renderer + production Core', (
     await expect
       .poll(
         () =>
-          app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isMinimized() ?? false),
+          app.evaluate(
+            ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isMinimized() ?? false,
+          ),
         { timeout: 10_000 },
       )
       .toBe(true);

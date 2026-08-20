@@ -1052,9 +1052,7 @@ export function SettingsPage() {
   const accountNeedsReauthentication =
     accountSnapshot.state === 'session-expired' ||
     accountSnapshot.state === 'reauthentication-required';
-  const rendererLabel = platform.diagnostics
-    ? 'Electron / Chromium'
-    : t('about.browserPreview');
+  const rendererLabel = platform.diagnostics ? 'Electron / Chromium' : t('about.browserPreview');
   const aboutLinks: Array<{ id: ProductLink; label: string }> = [
     { id: 'repository', label: t('about.repository') },
     { id: 'releases', label: t('about.releases') },
@@ -1371,9 +1369,7 @@ export function SettingsPage() {
         }
       >
         <SurfaceCapabilityBanner
-          capabilities={
-            surfaceCapabilitiesFromDiagnostics(platform.diagnostics) ?? capabilities
-          }
+          capabilities={surfaceCapabilitiesFromDiagnostics(platform.diagnostics) ?? capabilities}
         />
         <div className="settings-card settings-card--surfaces">
           <SurfaceSettingsPanel

@@ -118,9 +118,7 @@ export interface LyricsHangInspect {
 type ProbeHost = Window & {
   __YAQMC_PLAYBACK_UI_PROBE__?: {
     sample: (durationMs?: number) => Promise<PlaybackUiProbeSample>;
-    sampleLyricsRouteTransition: (
-      direction: 'open' | 'close',
-    ) => Promise<PlaybackUiProbeSample>;
+    sampleLyricsRouteTransition: (direction: 'open' | 'close') => Promise<PlaybackUiProbeSample>;
     inspectLyricsCompositor: () => LyricsCompositorInspect;
     inspectHang: () => LyricsHangInspect;
     openLyrics: () => void;
@@ -164,7 +162,9 @@ export function inspectLyricsCompositor(): LyricsCompositorInspect {
   const stage = document.querySelector('.lyrics-stage');
   const scene = document.querySelector('.lyrics-scene');
   const backdrop = document.querySelector('.lyrics-stage__backdrop');
-  const disc = document.querySelector('.lyrics-stage__disc-spin') ?? document.querySelector('.lyrics-stage__disc');
+  const disc =
+    document.querySelector('.lyrics-stage__disc-spin') ??
+    document.querySelector('.lyrics-stage__disc');
   const viewport = document.querySelector('.lyrics-stage__viewport');
   const activeLine = document.querySelector('.lyrics-line[data-active]');
   const inactiveLine = document.querySelector('.lyrics-line:not([data-active])');
@@ -177,7 +177,8 @@ export function inspectLyricsCompositor(): LyricsCompositorInspect {
   return {
     platform: document.documentElement.getAttribute('data-platform'),
     graphicsMode: document.documentElement.getAttribute('data-graphics-mode'),
-    coverLayout: stage?.getAttribute('data-cover-layout') ?? scene?.getAttribute('data-cover-layout') ?? null,
+    coverLayout:
+      stage?.getAttribute('data-cover-layout') ?? scene?.getAttribute('data-cover-layout') ?? null,
     lyricsOpen: player.lyricsOpen,
     isPlaying: player.isPlaying,
     timelineRevision: player.timelineRevision,
@@ -185,7 +186,7 @@ export function inspectLyricsCompositor(): LyricsCompositorInspect {
     stageWillChange: stageStyle?.willChange ?? '',
     stageTransform: stageStyle?.transform ?? '',
     stageAnimation: stageStyle?.animationName ?? '',
-    scenePlaybackState: scene instanceof HTMLElement ? scene.dataset.playbackState ?? null : null,
+    scenePlaybackState: scene instanceof HTMLElement ? (scene.dataset.playbackState ?? null) : null,
     sceneProgress: sceneStyle?.getPropertyValue('--scene-progress') ?? '',
     sceneContainerType: sceneStyle?.containerType ?? '',
     backdropTransform: backdropStyle?.transform ?? '',
@@ -289,14 +290,18 @@ export function inspectHang(): LyricsHangInspect {
   const activeLine = document.querySelector('.lyrics-line[data-active]');
   const animations =
     typeof document.getAnimations === 'function'
-      ? document.getAnimations().slice(0, 24).map((animation) => ({
-          name: animationNameOf(animation),
-          playState: animation.playState,
-        }))
+      ? document
+          .getAnimations()
+          .slice(0, 24)
+          .map((animation) => ({
+            name: animationNameOf(animation),
+            playState: animation.playState,
+          }))
       : [];
   const longTasks = (() => {
     try {
-      return performance.getEntriesByType('longtask').filter((entry) => entry.duration >= 50).length;
+      return performance.getEntriesByType('longtask').filter((entry) => entry.duration >= 50)
+        .length;
     } catch {
       return -1;
     }
@@ -322,12 +327,15 @@ export function inspectHang(): LyricsHangInspect {
     interpolation: {
       activeLine: activeLine?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 80) ?? null,
       sceneProgress:
-        scene instanceof HTMLElement ? getComputedStyle(scene).getPropertyValue('--scene-progress') : '',
+        scene instanceof HTMLElement
+          ? getComputedStyle(scene).getPropertyValue('--scene-progress')
+          : '',
       wordProgress:
         activeLine instanceof HTMLElement
           ? getComputedStyle(activeLine).getPropertyValue('--word-progress')
           : '',
-      scenePlaybackState: scene instanceof HTMLElement ? scene.dataset.playbackState ?? null : null,
+      scenePlaybackState:
+        scene instanceof HTMLElement ? (scene.dataset.playbackState ?? null) : null,
     },
     cssAnimations: animations,
     lyrics: inspectLyricsCompositor(),
@@ -335,7 +343,12 @@ export function inspectHang(): LyricsHangInspect {
   };
 }
 
-export function pingPlaybackUiProbe(): { at: number; rafAgeMs: number; href: string; phase: string } {
+export function pingPlaybackUiProbe(): {
+  at: number;
+  rafAgeMs: number;
+  href: string;
+  phase: string;
+} {
   return {
     at: performance.now(),
     rafAgeMs: rafAgeMs(),
@@ -375,7 +388,8 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
     }
   }
   const bar = document.querySelector('[data-yaqmc="player-bar"]');
-  const lyricsRoot = document.querySelector('.lyrics-stage') ?? document.querySelector('.lyrics-scene');
+  const lyricsRoot =
+    document.querySelector('.lyrics-stage') ?? document.querySelector('.lyrics-scene');
   let playerBarMutations = 0;
   let lyricsMutations = 0;
   const mutationObserver =
@@ -475,7 +489,10 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
     lyrics: inspectLyricsCompositor(),
     rafStuck: wallClockTimedOut && rafFrames < 3,
     wallClockTimedOut,
-    surfaceCommits: Math.max(0, Number(document.documentElement.dataset.surfaceCommits ?? 0) - commitsAtStart),
+    surfaceCommits: Math.max(
+      0,
+      Number(document.documentElement.dataset.surfaceCommits ?? 0) - commitsAtStart,
+    ),
     visibilityState: document.visibilityState,
     hidden: document.hidden,
     hasFocus: document.hasFocus(),

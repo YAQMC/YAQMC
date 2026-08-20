@@ -85,9 +85,9 @@ describe('pickSave', () => {
   });
 
   it('returns null when the save dialog is canceled or has no path', async () => {
-    await expect(pickSave(saveDialog({ canceled: true }), { filters: DIAGNOSTICS_ZIP_FILTERS })).resolves.toBe(
-      null,
-    );
+    await expect(
+      pickSave(saveDialog({ canceled: true }), { filters: DIAGNOSTICS_ZIP_FILTERS }),
+    ).resolves.toBe(null);
     await expect(
       pickSave(saveDialog({ canceled: false, filePath: '' }), { filters: DIAGNOSTICS_ZIP_FILTERS }),
     ).resolves.toBe(null);
@@ -118,9 +118,9 @@ describe('pickFile', () => {
       canceled: false,
       filePaths: ['/plugins/pack.yaqmc-plugin'],
     });
-    await expect(
-      pickFile(showOpenDialog, { filters: PLUGIN_PACKAGE_FILTERS }),
-    ).resolves.toBe('/plugins/pack.yaqmc-plugin');
+    await expect(pickFile(showOpenDialog, { filters: PLUGIN_PACKAGE_FILTERS })).resolves.toBe(
+      '/plugins/pack.yaqmc-plugin',
+    );
     expect(showOpenDialog).toHaveBeenCalledWith(
       expect.objectContaining({
         filters: PLUGIN_PACKAGE_FILTERS,
@@ -131,13 +131,19 @@ describe('pickFile', () => {
 
   it('returns null when the open dialog is canceled or empty', async () => {
     await expect(
-      pickFile(openDialog({ canceled: true, filePaths: ['/x'] }), { filters: BACKGROUND_IMAGE_FILTERS }),
+      pickFile(openDialog({ canceled: true, filePaths: ['/x'] }), {
+        filters: BACKGROUND_IMAGE_FILTERS,
+      }),
     ).resolves.toBe(null);
     await expect(
-      pickFile(openDialog({ canceled: false, filePaths: [] }), { filters: BACKGROUND_IMAGE_FILTERS }),
+      pickFile(openDialog({ canceled: false, filePaths: [] }), {
+        filters: BACKGROUND_IMAGE_FILTERS,
+      }),
     ).resolves.toBe(null);
     await expect(
-      pickFile(openDialog({ canceled: false, filePaths: [''] }), { filters: BACKGROUND_IMAGE_FILTERS }),
+      pickFile(openDialog({ canceled: false, filePaths: [''] }), {
+        filters: BACKGROUND_IMAGE_FILTERS,
+      }),
     ).resolves.toBe(null);
   });
 });
@@ -153,8 +159,7 @@ describe('pickDirectory', () => {
       properties: ['openDirectory'],
     });
     const directoryOptions = showOpenDialog.mock.calls.at(0)?.at(0) as
-      | { filters?: unknown }
-      | undefined;
+      { filters?: unknown } | undefined;
     expect(directoryOptions?.filters).toBeUndefined();
   });
 

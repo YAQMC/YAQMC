@@ -6,10 +6,10 @@ This page describes the Electron-only GitHub Actions pipeline. Actions artifacts
 
 ## Workflows
 
-| Workflow | File | Trigger | Result |
-| --- | --- | --- | --- |
-| CI | `.github/workflows/ci.yml` | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts |
-| Electron release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch | production-profile packages and a draft GitHub Release |
+| Workflow         | File                                     | Trigger                                          | Result                                                 |
+| ---------------- | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| CI               | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts          |
+| Electron release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | production-profile packages and a draft GitHub Release |
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
@@ -29,7 +29,7 @@ Superseded pull-request runs are cancelled. Pushes to `main`, tag builds, and ma
 
 `frontend-build` uploads `yaqmc-frontend-dist-<sha>`. Each package job downloads that exact artifact, compiles `yaqmc-core` for its Rust target, stages the Core executable, builds Electron Main/preload code, and invokes electron-builder with publishing disabled.
 
-Windows produces an NSIS installer and portable executable. Linux produces AppImage, `.deb`, `.rpm`, and `.tar.gz`. Package jobs install Electron packaging tools on Linux; WebKitGTK is not a host dependency.
+Windows produces an NSIS installer and portable executable. Linux produces AppImage, `.deb`, `.rpm`, and `.tar.gz`. Package jobs install Electron packaging tools on Linux; retired Linux web-runtime packages are not host dependencies.
 
 Do not upload or reuse `node_modules` between jobs.
 

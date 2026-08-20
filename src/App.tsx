@@ -1,6 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AccountPlaylistDetail, Album, AreaFeed, HomeFeed, MediaCollection, Playlist } from './domain/music';
+import type {
+  AccountPlaylistDetail,
+  Album,
+  AreaFeed,
+  HomeFeed,
+  MediaCollection,
+  Playlist,
+} from './domain/music';
 import { useCatalog } from './application/use-catalog';
 import { useGuessContinuation } from './application/use-guess-continuation';
 import { useTheme } from './application/use-theme';
@@ -301,10 +308,7 @@ export default function App() {
       ...recent.albums,
       ...catalog.library.savedAlbums,
     ];
-    const playlists = [
-      ...homePlaylists(catalog.home),
-      ...catalog.library.savedPlaylists,
-    ];
+    const playlists = [...homePlaylists(catalog.home), ...catalog.library.savedPlaylists];
     return {
       albums: [...new Map(albums.map((album) => [album.id, album])).values()],
       playlists: [...new Map(playlists.map((playlist) => [playlist.id, playlist])).values()],
@@ -414,7 +418,9 @@ export default function App() {
         break;
       }
       case 'area':
-        pageContent = <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={navigate} />;
+        pageContent = (
+          <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={navigate} />
+        );
         break;
     }
   }

@@ -11,7 +11,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { waitForTcp } from '../dev-desktop.mjs';
-import { APP_IDENTIFIER, isSameOrInsidePath, resolveProductionCoreRoots, stripQaLaunchFlags } from '../qa-runtime.mjs';
+import {
+  APP_IDENTIFIER,
+  isSameOrInsidePath,
+  resolveProductionCoreRoots,
+  stripQaLaunchFlags,
+} from '../qa-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
@@ -100,7 +105,10 @@ function longPathsEnabled() {
 async function boot(label, roaming, local, userData, port) {
   const production = resolveProductionCoreRoots({ env: process.env });
   const candidate = path.join(roaming, APP_IDENTIFIER);
-  if (isSameOrInsidePath(candidate, production.dataDir) || isSameOrInsidePath(production.dataDir, candidate)) {
+  if (
+    isSameOrInsidePath(candidate, production.dataDir) ||
+    isSameOrInsidePath(production.dataDir, candidate)
+  ) {
     throw new Error(`ACC-02 profile probe refused: ${candidate} overlaps production Core data`);
   }
   mkdirSync(roaming, { recursive: true });
@@ -203,7 +211,10 @@ async function main() {
     longPathsEnabled: longPathsEnabled(),
     results,
   };
-  writeFileSync(path.join(os.tmpdir(), 'yaqmc-acc02-profiles.json'), `${JSON.stringify(out, null, 2)}\n`);
+  writeFileSync(
+    path.join(os.tmpdir(), 'yaqmc-acc02-profiles.json'),
+    `${JSON.stringify(out, null, 2)}\n`,
+  );
   process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
   const required = results.filter((row) => row.label !== 'long-path-over-max');
   if (required.some((row) => !row.ok)) process.exit(1);

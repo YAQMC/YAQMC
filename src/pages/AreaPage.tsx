@@ -75,7 +75,9 @@ export function AreaPage({ feed, onNavigate }: AreaPageProps) {
             {feed.artists.map((artist) => (
               <article key={artist.id} className="media-card">
                 <div className="media-card__art">
-                  <Artwork artwork={{ src: artist.cover, alt: artist.name, dominantColor: '#181818' }} />
+                  <Artwork
+                    artwork={{ src: artist.cover, alt: artist.name, dominantColor: '#181818' }}
+                  />
                 </div>
                 <button type="button" className="media-card__meta">
                   <span className="media-card__title">{artist.name}</span>

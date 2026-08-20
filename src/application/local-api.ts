@@ -62,7 +62,8 @@ export function useLocalApiSettings(): LocalApiSettings {
   useEffect(() => {
     if (!isNativeRuntime) return;
     let active = true;
-    void client.invoke('local_api_status')
+    void client
+      .invoke('local_api_status')
       .then((next) => {
         if (active) setStatus(next);
       })

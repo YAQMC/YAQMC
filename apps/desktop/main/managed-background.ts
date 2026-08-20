@@ -46,7 +46,10 @@ export function detectImageMime(bytes: Buffer): string | undefined {
   if (bytes.subarray(0, 2).equals(Buffer.from('BM'))) {
     return 'image/bmp';
   }
-  if (bytes.subarray(0, 6).equals(Buffer.from('GIF87a')) || bytes.subarray(0, 6).equals(Buffer.from('GIF89a'))) {
+  if (
+    bytes.subarray(0, 6).equals(Buffer.from('GIF87a')) ||
+    bytes.subarray(0, 6).equals(Buffer.from('GIF89a'))
+  ) {
     return 'image/gif';
   }
   return undefined;

@@ -52,14 +52,15 @@ export function useCatalog(): CatalogState {
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      void provider.getHome().then((home) => {
-        setState((current) =>
-          current.status === 'ready' ? { ...current, home } : current,
-        );
-      }).catch(() => {
-        // A background refresh failure keeps the current feed; the next
-        // interval retries and the initial load already reported errors.
-      });
+      void provider
+        .getHome()
+        .then((home) => {
+          setState((current) => (current.status === 'ready' ? { ...current, home } : current));
+        })
+        .catch(() => {
+          // A background refresh failure keeps the current feed; the next
+          // interval retries and the initial load already reported errors.
+        });
     }, HOME_REFRESH_MS);
 
     return () => window.clearInterval(interval);

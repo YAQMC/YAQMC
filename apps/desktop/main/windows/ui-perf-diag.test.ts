@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { OVERLAY_VISUAL_DOCUMENT_GUARD, inferUiPerfCause, sliceProbeSample, type DiagStep } from './ui-perf-diag';
+import {
+  OVERLAY_VISUAL_DOCUMENT_GUARD,
+  inferUiPerfCause,
+  sliceProbeSample,
+  type DiagStep,
+} from './ui-perf-diag';
 
 function step(
   label: string,
@@ -123,7 +128,13 @@ describe('ui-perf overlay lifecycle inference', () => {
 
   it('names a 254 ms frame-time stall plus overlay focus-steal when rAF stays above 4 Hz', () => {
     const cause = inferUiPerfCause([
-      step('A-fullscreen-only', { rafFps: 240, ipcSnapshotHz: 4.1, rafP95Ms: 4.3 }, undefined, [], true),
+      step(
+        'A-fullscreen-only',
+        { rafFps: 240, ipcSnapshotHz: 4.1, rafP95Ms: 4.3 },
+        undefined,
+        [],
+        true,
+      ),
       step(
         'B-desktop-open',
         { rafFps: 44.9, ipcSnapshotHz: 3.7, rafP95Ms: 254 },
@@ -131,7 +142,13 @@ describe('ui-perf overlay lifecycle inference', () => {
         [],
         false,
       ),
-      step('C-desktop-closed', { rafFps: 239, ipcSnapshotHz: 4.1, rafP95Ms: 4.3 }, undefined, [], false),
+      step(
+        'C-desktop-closed',
+        { rafFps: 239, ipcSnapshotHz: 4.1, rafP95Ms: 4.3 },
+        undefined,
+        [],
+        false,
+      ),
     ]);
     expect(cause).toContain('44.9 Hz');
     expect(cause).toContain('overlay show() activation');

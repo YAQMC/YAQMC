@@ -13,8 +13,7 @@
  * before `ready`. Linux/macOS: empty.
  */
 
-export const DISABLE_BACKGROUNDING_OCCLUDED_WINDOWS =
-  '--disable-backgrounding-occluded-windows';
+export const DISABLE_BACKGROUNDING_OCCLUDED_WINDOWS = '--disable-backgrounding-occluded-windows';
 export const DISABLE_CALCULATE_NATIVE_WIN_OCCLUSION =
   '--disable-features=CalculateNativeWinOcclusion';
 

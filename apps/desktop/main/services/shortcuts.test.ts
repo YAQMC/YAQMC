@@ -109,9 +109,9 @@ describe('registerGlobalShortcuts', () => {
     expect(result.registered).toEqual([]);
     expect(result.failed).toEqual([...FACT_SHORTCUT_ACCELERATORS]);
     expect(log.warn).toHaveBeenCalled();
-    expect(
-      log.warn.mock.calls.some((call) => String(call[0]).includes('shortcut conflict')),
-    ).toBe(true);
+    expect(log.warn.mock.calls.some((call) => String(call[0]).includes('shortcut conflict'))).toBe(
+      true,
+    );
   });
 
   it('skips registration on native Wayland', () => {

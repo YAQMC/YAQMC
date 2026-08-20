@@ -47,7 +47,10 @@ describe('managed background hydrate', () => {
   it('rejects a traversal reference and keeps the 24 MiB bound', async () => {
     expect(MAX_MANAGED_BACKGROUND_BYTES).toBe(24 * 1024 * 1024);
     await expect(
-      hydrateManagedBackground({ reference: 'backgrounds/../secrets.png', dataUri: '' }, os.tmpdir()),
+      hydrateManagedBackground(
+        { reference: 'backgrounds/../secrets.png', dataUri: '' },
+        os.tmpdir(),
+      ),
     ).rejects.toThrow('background reference is outside the managed directory');
   });
 });

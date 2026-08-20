@@ -12,10 +12,10 @@ collected, and no external service is ever contacted for logging.
 ## Layers
 
 ```
-Frontend (React)           ─┐
-Rust core (Tauri commands) ─┤─▶ tracing_subscriber
-Platform adapters          ─┤        │
-Provider / audio / player  ─┘        ▼
+Frontend (React)           ── Electron IPC ─┐
+Rust Core server                            ├─▶ tracing_subscriber
+Platform adapters                           ┤        │
+Provider / audio / player                   ┘        ▼
                                  RedactingWriter
                                      │
                                      ▼
@@ -117,18 +117,18 @@ There is no analytics ID, no install ID, no fingerprint.
 
 ## Files, rotation, and location
 
-Logs are written by `tracing_appender::rolling::Builder::new()` under the
-Tauri app-log directory:
+Core logs are written by `tracing_appender::rolling::Builder::new()` under the
+directory resolved by `apps/desktop/main/core/paths.ts`. Electron Main's bounded
+`host.log` is written beside them:
 
-| Platform | Location                                              |
-| -------- | ----------------------------------------------------- |
-| Windows  | `%LOCALAPPDATA%\Velune\YAQMC\logs\yaqmc-current.log`  |
-| Linux    | `$XDG_DATA_HOME/Velune/YAQMC/logs/yaqmc-current.log`  |
-| Fallback | The Tauri path resolver `app_log_dir()` return value. |
+| Platform | Log directory                                     |
+| -------- | ------------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\org.yaqmc.desktop\logs`           |
+| Linux    | `$XDG_DATA_HOME/org.yaqmc.desktop/logs`           |
+| Fallback | Windows AppData fallback or `~/.local/share/...`. |
 
-The `yaqmc-current.log` file is followed by up to 7 rotated files
-(`yaqmc-current.log.YYYY-MM-DD`) written by `tracing-appender`'s daily
-rotation. `diagnostics_clear_logs` removes the rotated files.
+Core uses daily files named `yaqmc.YYYY-MM-DD.log` and retains at most seven.
+Electron Main rotates `host.log` to `host.log.1` at 256 KiB.
 
 Users can jump to this folder from **Settings → Diagnostics & logging → Open
 log folder**.

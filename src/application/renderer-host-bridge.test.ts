@@ -88,13 +88,15 @@ describe('selectHostBridge', () => {
     Reflect.set(window, 'yaqmc', { invoke, on: vi.fn(() => () => undefined) });
 
     const bridge = selectHostBridge('');
-    await expect(
-      bridge.dialog?.pickSave({ defaultPath: 'YAQMC-diagnostics.zip' }),
-    ).resolves.toBe('D:\\exports\\YAQMC-diagnostics.zip');
+    await expect(bridge.dialog?.pickSave({ defaultPath: 'YAQMC-diagnostics.zip' })).resolves.toBe(
+      'D:\\exports\\YAQMC-diagnostics.zip',
+    );
     await expect(bridge.dialog?.pickFile({ kind: 'plugin-package' })).resolves.toBe(
       'D:\\plugins\\sample.yaqmc-plugin',
     );
-    expect(invoke).toHaveBeenCalledWith('dialog.pickSave', { defaultPath: 'YAQMC-diagnostics.zip' });
+    expect(invoke).toHaveBeenCalledWith('dialog.pickSave', {
+      defaultPath: 'YAQMC-diagnostics.zip',
+    });
     expect(invoke).toHaveBeenCalledWith('dialog.pickFile', { kind: 'plugin-package' });
   });
 

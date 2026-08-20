@@ -143,7 +143,8 @@ export function assertSandboxNotProduction(
   sandboxOrRoot: string | QaSandboxPaths,
   lookup: ProductionRootLookup = {},
 ): QaSandboxPaths {
-  const sandbox = typeof sandboxOrRoot === 'string' ? describeSandbox(sandboxOrRoot) : sandboxOrRoot;
+  const sandbox =
+    typeof sandboxOrRoot === 'string' ? describeSandbox(sandboxOrRoot) : sandboxOrRoot;
   const env = lookup.env ?? process.env;
   const roots = productionRootsList({ ...lookup, env });
   const watched = [

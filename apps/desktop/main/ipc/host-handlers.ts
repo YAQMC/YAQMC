@@ -33,10 +33,7 @@ import {
   type LyricsSurfaceKind,
   type LyricsSurfaces,
 } from '../windows/lyrics-surfaces';
-import {
-  type LyricsUnlockKind,
-  type LyricsUnlockOverlays,
-} from '../windows/lyrics-unlock';
+import { type LyricsUnlockKind, type LyricsUnlockOverlays } from '../windows/lyrics-unlock';
 import {
   openOAuthWindow,
   type OAuthWindowCreateOptions,
@@ -122,9 +119,7 @@ export function rememberCloseToTray(raw: unknown, current: boolean): boolean {
   return current;
 }
 
-function preferencesDocument(
-  raw: unknown,
-): { system?: { closeBehavior?: unknown } } | undefined {
+function preferencesDocument(raw: unknown): { system?: { closeBehavior?: unknown } } | undefined {
   if (typeof raw === 'string') {
     try {
       return JSON.parse(raw) as { system?: { closeBehavior?: unknown } };
@@ -254,8 +249,7 @@ export function lyricsSurfaceCapabilities(options: {
     };
   }
 
-  const backend =
-    options.displayBackend ?? (options.nativeWayland ? 'wayland-native' : 'x11');
+  const backend = options.displayBackend ?? (options.nativeWayland ? 'wayland-native' : 'x11');
   const nativeWayland =
     backend === 'wayland-native' || backend === 'wayland' || backend === 'native-wayland';
   if (nativeWayland) {
@@ -379,11 +373,7 @@ function asSurfaceRuntimeMap(
   return surfaces as { desktop?: SurfaceRuntimeLike; island?: SurfaceRuntimeLike };
 }
 
-export type CoreInvoke = (
-  method: string,
-  params?: unknown,
-  origin?: string,
-) => Promise<unknown>;
+export type CoreInvoke = (method: string, params?: unknown, origin?: string) => Promise<unknown>;
 
 export type HostUpdaterDeps = {
   check: () => Promise<unknown>;
@@ -609,9 +599,7 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     const invoke = deps.coreInvoke;
     handlers.app_preferences_set = async (params, _webContentsId, origin) => {
       const record =
-        params && typeof params === 'object'
-          ? { ...(params as Record<string, unknown>) }
-          : {};
+        params && typeof params === 'object' ? { ...(params as Record<string, unknown>) } : {};
       const raw = typeof record.value === 'string' ? record.value : '';
       if (raw.length > 0) {
         record.value = stampHostInteraction(raw);
@@ -686,13 +674,12 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       } catch {
         hostPayload = undefined;
       }
-      const next = hostPayload
-        ? attachHostPayloadToExportParams(params, hostPayload)
-        : params;
+      const next = hostPayload ? attachHostPayloadToExportParams(params, hostPayload) : params;
       return deps.coreInvoke!(method, next, origin);
     };
     handlers.diagnostics_export_bundle_to = async (params, _webContentsId, origin) => {
-      const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
+      const record =
+        params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
       const rawPath = typeof record.path === 'string' ? record.path : '';
       const next =
         rawPath.length > 0
@@ -785,7 +772,8 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         isPackaged: oauth.isPackaged,
         auth_oauth_prepare: (prepareParams) =>
           oauth.invoke('auth_oauth_prepare', prepareParams) as Promise<OAuthPrepareResult>,
-        auth_oauth_complete: (completeParams) => oauth.invoke('auth_oauth_complete', completeParams),
+        auth_oauth_complete: (completeParams) =>
+          oauth.invoke('auth_oauth_complete', completeParams),
         auth_oauth_cancel: (cancelParams) => oauth.invoke('auth_oauth_cancel', cancelParams),
       });
       return oauth.invoke('qqmusic_account_snapshot');

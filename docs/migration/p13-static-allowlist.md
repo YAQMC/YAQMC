@@ -41,5 +41,7 @@ These files intentionally preserve the retired host name because they document o
 - `docs/superpowers/**`
 - `docs/windows-acceptance.md`
 - `docs/zh-CN/windows-acceptance.md`
+- `ACKNOWLEDGEMENTS.md`
+- `ACKNOWLEDGEMENTS-EN.md`
 
 Architecture/reference pages outside those paths still containing legacy-host descriptions belong to the later P15 documentation rewrite. They are not executable setup instructions; current build, contribution, and CI instructions were corrected in P13. Terra should report any non-historical hit outside this allowlist instead of silently expanding it.

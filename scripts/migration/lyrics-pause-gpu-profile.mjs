@@ -14,7 +14,7 @@
  *   $env:YAQMC_CORE_BIN="$env:CARGO_TARGET_DIR\debug\yaqmc-core.exe"
  *   node scripts/migration/lyrics-pause-gpu-profile.mjs
  */
-/* global document, window, performance, requestAnimationFrame */
+/* global window, performance, requestAnimationFrame */
 import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
@@ -22,7 +22,12 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { cleanupQaSandbox, createQaSandbox, electronQaArgs, qaElectronEnv } from '../qa-runtime.mjs';
+import {
+  cleanupQaSandbox,
+  createQaSandbox,
+  electronQaArgs,
+  qaElectronEnv,
+} from '../qa-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
@@ -263,7 +268,8 @@ async function probe(page, name, arg, timeoutMs = 12_000) {
       async ({ methodName, payload }) => {
         const api = globalThis.__YAQMC_PLAYBACK_UI_PROBE__;
         const method = api?.[methodName];
-        if (typeof method !== 'function') throw new Error(`playback UI probe ${methodName} is missing`);
+        if (typeof method !== 'function')
+          throw new Error(`playback UI probe ${methodName} is missing`);
         return method(payload);
       },
       { methodName: name, payload: arg },
@@ -365,7 +371,10 @@ async function captureHang(page, child, cause) {
     probe: 'lyrics-pause-gpu-on-hang',
     at: new Date().toISOString(),
     phase: currentPhase,
-    cause: cause instanceof Error ? { name: cause.name, message: cause.message, phase: cause.phase } : String(cause),
+    cause:
+      cause instanceof Error
+        ? { name: cause.name, message: cause.message, phase: cause.phase }
+        : String(cause),
     rendererResponsive: false,
     rafProgressed: null,
     hangClass: 'unknown',
@@ -637,11 +646,19 @@ async function connectPage(child) {
     }
   });
   page.on('pageerror', (error) => rememberConsole({ type: 'pageerror', text: String(error) }));
-  await withTimeout(page.waitForSelector('.app-shell', { timeout: 60_000 }), 61_000, 'waitAppShell');
   await withTimeout(
-    page.waitForFunction(() => typeof globalThis.__YAQMC_PLAYBACK_UI_PROBE__?.sample === 'function', null, {
-      timeout: 30_000,
-    }),
+    page.waitForSelector('.app-shell', { timeout: 60_000 }),
+    61_000,
+    'waitAppShell',
+  );
+  await withTimeout(
+    page.waitForFunction(
+      () => typeof globalThis.__YAQMC_PLAYBACK_UI_PROBE__?.sample === 'function',
+      null,
+      {
+        timeout: 30_000,
+      },
+    ),
     31_000,
     'waitProbe',
   );
@@ -757,9 +774,9 @@ async function runPreset(page, preset, cycleCount) {
       resumedFps: run.resumedSteady?.rafFps,
       rafStuck: Boolean(
         run.playingSteady?.rafStuck ||
-          run.pause0to250?.rafStuck ||
-          run.pausedSteady?.rafStuck ||
-          run.resumedSteady?.rafStuck,
+        run.pause0to250?.rafStuck ||
+        run.pausedSteady?.rafStuck ||
+        run.resumedSteady?.rafStuck,
       ),
     })),
   };
@@ -842,8 +859,9 @@ async function main() {
       byPreset[preset] = await runPreset(page, preset, cycles);
     }
     abTarget =
-      Object.entries(byPreset).sort((left, right) => right[1].jankCount - left[1].jankCount)[0]?.[0] ??
-      'builtin.vinyl';
+      Object.entries(byPreset).sort(
+        (left, right) => right[1].jankCount - left[1].jankCount,
+      )[0]?.[0] ?? 'builtin.vinyl';
     if (!ab) ab = await runAb(page, abTarget);
     if (!extraVinyl) {
       await probe(page, 'selectLyricsPreset', 'builtin.vinyl');

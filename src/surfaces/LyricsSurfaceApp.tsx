@@ -28,7 +28,10 @@ import {
 } from '../application/preferences';
 import { wordProgress } from '../application/lyrics-timing';
 import { shouldShowLyricSecondary } from '../application/lyrics-presentation';
-import { visibleSurfaceInteractionState, pointerInsideSurface } from '../application/lyrics-surface-interaction';
+import {
+  visibleSurfaceInteractionState,
+  pointerInsideSurface,
+} from '../application/lyrics-surface-interaction';
 import {
   drivePercentageClock,
   freezePercentageClock,

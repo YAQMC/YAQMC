@@ -96,9 +96,7 @@ export function shouldRegisterGlobalShortcuts(options: {
   return !(options.platform === 'linux' && options.wayland);
 }
 
-export function registerGlobalShortcuts(
-  options: RegisterShortcutsOptions,
-): ShortcutRegistration {
+export function registerGlobalShortcuts(options: RegisterShortcutsOptions): ShortcutRegistration {
   const registered: string[] = [];
   const failed: string[] = [];
   const platform = options.platform ?? process.platform;

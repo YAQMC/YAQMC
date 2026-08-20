@@ -2,6 +2,8 @@
 
 > [简体中文](zh-CN/windows-acceptance.md) | **English**
 
+> Historical pre-migration evidence only. It does not validate the current Electron host.
+
 ## Local lyrics checkpoint C
 
 Checkpoint C passed for the raw `tauri-no-bundle` Windows binary. This is a local visual and interaction

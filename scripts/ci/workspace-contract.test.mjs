@@ -150,24 +150,19 @@ test('rejects a forbidden platform dependency reached transitively from Core', (
 });
 
 test('allows the P14 provider boundary in the Core dependency closure', () => {
-  assert.doesNotThrow(
-    () =>
-      validateCoreDependencyClosure(
-        metadataWithCoreClosure([
-          ['yaqmc-core', ['portable-layer']],
-          ['portable-layer', ['yaqmc-provider-qqmusic']],
-          ['yaqmc-provider-qqmusic', []],
-        ]),
-      ),
+  assert.doesNotThrow(() =>
+    validateCoreDependencyClosure(
+      metadataWithCoreClosure([
+        ['yaqmc-core', ['portable-layer']],
+        ['portable-layer', ['yaqmc-provider-qqmusic']],
+        ['yaqmc-provider-qqmusic', []],
+      ]),
+    ),
   );
 });
 
 test('rejects underscore-form forbidden dependencies reached transitively from Core', () => {
-  for (const forbidden of [
-    'raw_window_handle',
-    'qqmusic_api',
-    'napi_build',
-  ]) {
+  for (const forbidden of ['raw_window_handle', 'qqmusic_api', 'napi_build']) {
     assert.throws(
       () =>
         validateCoreDependencyClosure(

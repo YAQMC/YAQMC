@@ -48,7 +48,11 @@ export function drivePercentageClock(
   node.style.setProperty(property, '100%');
 }
 
-export function freezePercentageClock(node: HTMLElement | null, property: string, value01: number): void {
+export function freezePercentageClock(
+  node: HTMLElement | null,
+  property: string,
+  value01: number,
+): void {
   if (!node) return;
   node.style.transition = 'none';
   node.style.setProperty(property, `${Math.max(0, Math.min(1, value01)) * 100}%`);

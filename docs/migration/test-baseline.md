@@ -2,11 +2,11 @@
 
 Captured for `bc55b7ddd2a57cde8987c96c7c20f0b7d4a2e742` before runtime migration work.
 
-| Command | Result |
-|---|---|
-| `npm run check` | Passed: public-docs check (42 docs), 60 test files / 485 tests, and production build. |
-| `npm run ci:test-scripts` | Passed: 9 / 9 script tests. |
-| `cargo test --manifest-path src-tauri/Cargo.toml --all-targets` | Passed with Rust 1.88: 346 passed; 9 ignored. |
+| Command                                                         | Result                                                                                |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `npm run check`                                                 | Passed: public-docs check (42 docs), 60 test files / 485 tests, and production build. |
+| `npm run ci:test-scripts`                                       | Passed: 9 / 9 script tests.                                                           |
+| `cargo test --manifest-path src-tauri/Cargo.toml --all-targets` | Passed with Rust 1.88: 346 passed; 9 ignored.                                         |
 
 Observed non-failing warnings:
 

@@ -8,7 +8,10 @@ import { desktopDevUrl, electronDevEnv, waitForFile, waitForTcp } from '../dev-d
 import { fileURLToPath } from 'node:url';
 
 test('dev:desktop stages the debug Core it just built', () => {
-  const source = readFileSync(fileURLToPath(new URL('../dev-desktop.mjs', import.meta.url)), 'utf8');
+  const source = readFileSync(
+    fileURLToPath(new URL('../dev-desktop.mjs', import.meta.url)),
+    'utf8',
+  );
   assert.match(source, /stage-core\.mjs/);
   assert.match(source, /--profile['",\s]+debug/);
 });

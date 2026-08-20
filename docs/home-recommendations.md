@@ -34,13 +34,13 @@ hard-coded in the backend payloads.
 
 Each section uses the signed-in session when available and a general fallback otherwise:
 
-| Section              | Authenticated source                                                    | Guest fallback                          |
-| -------------------- | ---------------------------------------------------------------------- | --------------------------------------- |
-| Guess you like       | `music.radioProxy.MbTrackRadioSvr/get_radio_track`                      | `newsong.NewSongServer/get_new_song_info` |
-| Daily 30             | `CgiGetDiss` with disstid `5505165762`                                  | `newsong.NewSongServer/get_new_song_info` |
-| New song picks       | feed `500/511` disstid, then `CgiGetDiss`                               | `newsong.NewSongServer/get_new_song_info` |
-| Recommended playlists| feed `500/0` dissid cards (paged)                                       | `music.playlist.PlaylistSquare/GetRecommendFeed` |
-| Radar                | `music.recommend.TrackRelationServer/GetRadarSong` with `EntranceSongs` = numeric ids of recently listened songs | empty                                    |
+| Section               | Authenticated source                                                                                             | Guest fallback                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Guess you like        | `music.radioProxy.MbTrackRadioSvr/get_radio_track`                                                               | `newsong.NewSongServer/get_new_song_info`        |
+| Daily 30              | `CgiGetDiss` with disstid `5505165762`                                                                           | `newsong.NewSongServer/get_new_song_info`        |
+| New song picks        | feed `500/511` disstid, then `CgiGetDiss`                                                                        | `newsong.NewSongServer/get_new_song_info`        |
+| Recommended playlists | feed `500/0` dissid cards (paged)                                                                                | `music.playlist.PlaylistSquare/GetRecommendFeed` |
+| Radar                 | `music.recommend.TrackRelationServer/GetRadarSong` with `EntranceSongs` = numeric ids of recently listened songs | empty                                            |
 
 The feed can return a page without any songlist card; the loader keeps paging and, if the personalized feed yields
 nothing, falls back to the general playlist read so the section is never empty.

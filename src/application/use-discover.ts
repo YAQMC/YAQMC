@@ -51,14 +51,15 @@ export function useDiscover(): DiscoverState {
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      void provider.getDiscover().then((discover) => {
-        setState((current) =>
-          current.status === 'ready' ? { ...current, discover } : current,
-        );
-      }).catch(() => {
-        // A background refresh failure keeps the current feed; the next
-        // interval retries.
-      });
+      void provider
+        .getDiscover()
+        .then((discover) => {
+          setState((current) => (current.status === 'ready' ? { ...current, discover } : current));
+        })
+        .catch(() => {
+          // A background refresh failure keeps the current feed; the next
+          // interval retries.
+        });
     }, DISCOVER_REFRESH_MS);
 
     return () => window.clearInterval(interval);

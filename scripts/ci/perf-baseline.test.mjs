@@ -428,8 +428,7 @@ test('rejects production source drift in an injected repository with the canonic
   const cases = [
     [
       'main window dimensions',
-      (root) =>
-        replaceFactSource(root, 'apps/desktop/main/index.ts', 'width: 1280', 'width: 1'),
+      (root) => replaceFactSource(root, 'apps/desktop/main/index.ts', 'width: 1280', 'width: 1'),
       /runtimeFacts mainWindow.*repository fact/,
     ],
     [

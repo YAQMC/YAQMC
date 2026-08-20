@@ -69,7 +69,9 @@ describe('ACCT-04 auth ACL negatives from surfaces', () => {
       methods.some((row) => row.name === name),
     );
     expect(presentRequired.length).toBeGreaterThan(0);
-    expect(accountRows.map((row) => row.name)).toEqual(expect.arrayContaining([...presentRequired]));
+    expect(accountRows.map((row) => row.name)).toEqual(
+      expect.arrayContaining([...presentRequired]),
+    );
 
     for (const row of accountRows) {
       expect(row.allowedOrigins.every((origin) => origin === 'host' || origin === 'main')).toBe(

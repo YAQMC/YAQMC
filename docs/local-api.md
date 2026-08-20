@@ -16,7 +16,7 @@ integrations, and future companion applications. It is not a public or LAN serve
 - Regenerating the token restarts an active listener and immediately invalidates previous clients.
 - Every `/v1` route requires authentication. `/health` is public and returns only service/version status.
 - CORS is not enabled. Requests are limited to 16 KiB and JSON bodies reject unknown fields.
-- There is no generic command, shell, filesystem-path, plugin-execution, or Tauri-invoke endpoint.
+- There is no generic command, shell, filesystem-path, plugin-execution, or unrestricted host-IPC endpoint.
 - Duplicate starts are idempotent. Stop uses Axum graceful shutdown, releases the port, and is also called on
   application exit. Bind failures are retained as status for the Settings UI.
 - A leftover `yaqmc-core` can keep port `19532` bound after a host crash. Core writes `{data}/core.pid`; the

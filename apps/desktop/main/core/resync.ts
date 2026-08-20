@@ -27,8 +27,7 @@ export function hostBridgeFromCoreClient(client: CoreClient): HostBridge {
     windowRole: 'main',
     window: noopWindow(),
     shell: noopShell(),
-    invoke: ((method, ...params) =>
-      client.invoke(method, params[0])) as HostBridge['invoke'],
+    invoke: ((method, ...params) => client.invoke(method, params[0])) as HostBridge['invoke'],
     listen: () => () => undefined,
   };
 }

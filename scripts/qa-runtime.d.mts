@@ -30,6 +30,12 @@ export type CreateQaSandboxOptions = {
 export function createQaSandbox(options?: CreateQaSandboxOptions): QaSandboxPaths;
 
 export function qaElectronEnv(
+  parentEnv: Record<string, string>,
+  sandbox: QaSandboxPaths,
+  extras?: Record<string, string>,
+): Record<string, string>;
+
+export function qaElectronEnv(
   parentEnv: NodeJS.ProcessEnv,
   sandbox: QaSandboxPaths,
   extras?: NodeJS.ProcessEnv,

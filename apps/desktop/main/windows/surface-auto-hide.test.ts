@@ -66,9 +66,7 @@ function mockSurfaces(options?: {
     }),
     get: (kind) => windows.get(kind) as never,
     isVisible: (kind) => visible.has(kind),
-    enabled: options?.enabled
-      ? (kind) => options.enabled?.[kind] !== false
-      : undefined,
+    enabled: options?.enabled ? (kind) => options.enabled?.[kind] !== false : undefined,
     hideInFullscreen: options?.hideInFullscreen
       ? (kind) => options.hideInFullscreen?.[kind] !== false
       : undefined,

@@ -156,7 +156,8 @@ export function productionRootsList(lookup = {}) {
 }
 
 export function assertSandboxNotProduction(sandboxOrRoot, lookup = {}) {
-  const sandbox = typeof sandboxOrRoot === 'string' ? describeSandbox(sandboxOrRoot) : sandboxOrRoot;
+  const sandbox =
+    typeof sandboxOrRoot === 'string' ? describeSandbox(sandboxOrRoot) : sandboxOrRoot;
   const env = lookup.env ?? process.env;
   const roots = productionRootsList({ ...lookup, env });
   const watched = [

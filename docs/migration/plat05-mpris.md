@@ -32,7 +32,8 @@ green until a maintainer ticks the LIVE VERIFY rows.
 
 **Pending.** LIVE VERIFY pending. CI covers the dry-run script (`scripts/ci/plat05-mpris-playerctl.test.mjs`,
 `npm run ci:test-scripts`). A maintainer run on Ubuntu X11/XWayland (and GNOME
-+ KDE applets) is still required.
+
+- KDE applets) is still required.
 
 ## Checkpoint
 

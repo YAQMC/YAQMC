@@ -70,7 +70,9 @@ export function resetLyricsStageForTests(): void {
   useLyricsStageStore.setState({ stage: 'closed', generation: 0, surfaceCount: 0 });
 }
 
-export function waitForLyricsStageClosed(timeoutMs = LYRICS_STAGE_TRANSITION_MS + 250): Promise<void> {
+export function waitForLyricsStageClosed(
+  timeoutMs = LYRICS_STAGE_TRANSITION_MS + 250,
+): Promise<void> {
   if (useLyricsStageStore.getState().stage === 'closed') return Promise.resolve();
   return new Promise((resolve) => {
     let settled = false;

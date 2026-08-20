@@ -6,10 +6,7 @@ import { resetLyricsArtworkFallbackForTests } from '../application/lyrics-artwor
 import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
-import {
-  resetLyricsStageForTests,
-  useLyricsStageStore,
-} from '../application/lyrics-stage-machine';
+import { resetLyricsStageForTests, useLyricsStageStore } from '../application/lyrics-stage-machine';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import {
   applyOverride,

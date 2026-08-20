@@ -61,14 +61,8 @@ import {
 } from './platform-diagnostics';
 import { createHostLog, type HostLog } from './host-log';
 import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphics';
-import {
-  mergeChromiumFeatureList,
-  windowsOcclusionSwitches,
-} from './windows/windows-occlusion';
-import {
-  OVERLAY_VISUAL_DOCUMENT_GUARD,
-  runUiPerfDiagSequence,
-} from './windows/ui-perf-diag';
+import { mergeChromiumFeatureList, windowsOcclusionSwitches } from './windows/windows-occlusion';
+import { OVERLAY_VISUAL_DOCUMENT_GUARD, runUiPerfDiagSequence } from './windows/ui-perf-diag';
 import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-updater-port';
 import { createUpdater, type UpdaterHandle } from './services/updater';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
@@ -161,7 +155,10 @@ function appendCommandLineFlag(flag: string): void {
   const name = body.slice(0, separator);
   const value = body.slice(separator + 1);
   if (name === 'disable-features' || name === 'enable-features') {
-    app.commandLine.appendSwitch(name, mergeChromiumFeatureList(app.commandLine.getSwitchValue(name), value));
+    app.commandLine.appendSwitch(
+      name,
+      mergeChromiumFeatureList(app.commandLine.getSwitchValue(name), value),
+    );
     return;
   }
   app.commandLine.appendSwitch(name, value);
@@ -256,15 +253,13 @@ function rendererDevPageUrl(search: string): string | null {
 const lyricsUnlock = createLyricsUnlockOverlays({
   preloadPath: unlockPreloadPath,
   createWindow: createUnlockBrowserWindow,
-  pageUrl: (kind) =>
-    rendererDevPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
+  pageUrl: (kind) => rendererDevPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
 });
 
 const lyricsSurfaces = createLyricsSurfaces({
   preloadPath: lyricsPreloadPath,
   createWindow: createLyricsBrowserWindow,
-  pageUrl: (kind) =>
-    rendererDevPageUrl(`?surface=${kind}`) ?? lyricsSurfaceUrl(kind),
+  pageUrl: (kind) => rendererDevPageUrl(`?surface=${kind}`) ?? lyricsSurfaceUrl(kind),
   getDisplayBounds: () =>
     screen.getAllDisplays().map((display) => ({
       x: display.workArea.x,
@@ -671,7 +666,8 @@ function pushCoreStatus(contentsId: number): void {
 }
 
 function pushSurfaceInteraction(role: ReturnType<typeof lyricsRoleFromCreateOptions>): void {
-  const kind = role === 'lyrics-island' ? 'island' : role === 'lyrics-desktop' ? 'desktop' : undefined;
+  const kind =
+    role === 'lyrics-island' ? 'island' : role === 'lyrics-desktop' ? 'desktop' : undefined;
   if (!kind) {
     return;
   }
@@ -1015,10 +1011,7 @@ function applyTrayLabelsFromPreferences(raw: unknown): void {
     lastPreferencesRaw = raw;
   }
   trayHandle?.applyLabels(
-    trayLabelsForLocale(
-      localeFromPreferences(lastPreferencesRaw) ?? 'system',
-      app.getLocale(),
-    ),
+    trayLabelsForLocale(localeFromPreferences(lastPreferencesRaw) ?? 'system', app.getLocale()),
   );
 }
 

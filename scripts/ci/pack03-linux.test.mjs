@@ -158,7 +158,10 @@ test('dry-run does not fail when this host cannot produce Linux artifacts', () =
 });
 
 test('checklist doc does not claim the clean-VM matrix green', () => {
-  const doc = readFileSync(path.join(repositoryRoot, 'docs', 'migration', 'pack03-linux.md'), 'utf8');
+  const doc = readFileSync(
+    path.join(repositoryRoot, 'docs', 'migration', 'pack03-linux.md'),
+    'utf8',
+  );
   assert.match(doc, /LIVE VERIFY \/ clean-VM pending/);
   assert.match(doc, /PACK-03 is not\s+green/);
   assert.match(doc, /updater-bearing per\s+plan §32/);

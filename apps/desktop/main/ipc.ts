@@ -10,9 +10,7 @@ export type InvokeRequest = {
   params?: unknown;
 };
 
-export type InvokeReply =
-  | { ok: true; result: unknown }
-  | { ok: false; error: CoreError };
+export type InvokeReply = { ok: true; result: unknown } | { ok: false; error: CoreError };
 
 export type InvokeTarget = {
   invoke(method: string, params?: unknown, origin?: string): Promise<unknown>;

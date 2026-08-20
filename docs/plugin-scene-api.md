@@ -44,5 +44,5 @@ and gradient/video sources are additive. Existing Classic / Immersive / Vinyl / 
 load. Plugin scenes are immutable in Composer; use **Fork to My Scene**.
 
 On Linux, live CSS `filter: blur()` is disabled for lyric lines and scene widget blur overrides. Scene video is not
-decoded in `software` / `safe` graphics modes. `@scope` requires a current WebKitGTK; if the engine ignores it, the
+decoded in `gpu-off` / compatibility graphics modes. `@scope` requires the bundled Chromium engine; if the engine ignores it, the
 sheet does not apply and does not leak into Settings.

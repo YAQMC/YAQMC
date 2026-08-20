@@ -68,7 +68,10 @@ export function applyUnlockedSurfaceInput(
  * focusable at show-time. `showInactive` + `moveTop` keep it above the
  * click-through lyrics surface without activating Fullscreen Lyrics.
  */
-export function applyUnlockOverlayInput(window: OverlayInputWindow, alwaysOnTopLevel: string): void {
+export function applyUnlockOverlayInput(
+  window: OverlayInputWindow,
+  alwaysOnTopLevel: string,
+): void {
   window.setIgnoreMouseEvents(false);
   window.setFocusable(true);
   window.setSkipTaskbar?.(true);

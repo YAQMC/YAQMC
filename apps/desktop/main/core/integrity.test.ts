@@ -3,12 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  CoreIntegrityError,
-  parseCoreManifest,
-  sha256File,
-  verifyCoreBinary,
-} from './integrity';
+import { CoreIntegrityError, parseCoreManifest, sha256File, verifyCoreBinary } from './integrity';
 
 function stagedBinary(contents: string | Buffer) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-integrity-'));
@@ -19,13 +14,11 @@ function stagedBinary(contents: string | Buffer) {
   return { dir, name, binary };
 }
 
-function writeManifest(
-  dir: string,
-  name: string,
-  sha256: string,
-  bytes: number,
-) {
-  writeFileSync(path.join(dir, 'manifest.json'), `${JSON.stringify({ name, sha256, bytes }, null, 2)}\n`);
+function writeManifest(dir: string, name: string, sha256: string, bytes: number) {
+  writeFileSync(
+    path.join(dir, 'manifest.json'),
+    `${JSON.stringify({ name, sha256, bytes }, null, 2)}\n`,
+  );
 }
 
 describe('core spawn-time sha256 verify', () => {

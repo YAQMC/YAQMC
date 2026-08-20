@@ -59,9 +59,9 @@ export async function openIssueUrl(url: string): Promise<void> {
     window.open(url, '_blank', 'noopener,noreferrer');
     return;
   }
-  // The scoped opener allowlist (`main-window.json`) restricts openExternal to
-  // the https://github.com/YAQMC/YAQMC/* origin+path prefix, matching the Rust
-  // `validate_open_url` check above.
+  // Electron Main's allowlist (`apps/desktop/main/open-external.ts`) restricts
+  // openExternal to approved HTTPS destinations; Core's `validate_open_url`
+  // applies the narrower GitHub Issue prefix for this workflow.
   await getYaqmcClient().host.shell.openExternal(url);
 }
 
