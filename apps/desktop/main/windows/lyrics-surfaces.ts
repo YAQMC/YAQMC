@@ -1,4 +1,9 @@
 import { appIndexUrl } from '../protocol';
+import {
+  applyLockedSurfaceInput,
+  applyUnlockedSurfaceInput,
+  type OverlayInputWindow,
+} from './windows-overlay-input';
 
 export type LyricsSurfaceKind = 'desktop' | 'island';
 
@@ -42,14 +47,11 @@ export type LyricsSurfaceCoreClient = {
 };
 
 /** Injected window seam so unit tests never construct a real Electron `BrowserWindow`. */
-export type LyricsSurfaceWindow = {
+export type LyricsSurfaceWindow = OverlayInputWindow & {
   loadURL(url: string): Promise<void> | void;
   show(): void;
   showInactive?(): void;
   hide(): void;
-  setIgnoreMouseEvents(ignore: boolean, options?: { forward: boolean }): void;
-  setFocusable(focusable: boolean): void;
-  setAlwaysOnTop(flag: boolean, level?: string): void;
   setResizable(resizable: boolean): void;
   isDestroyed?(): boolean;
   getBounds?(): LyricsSurfacePersistedGeometry;
@@ -201,9 +203,12 @@ export function hideLyricsSurface(window: LyricsSurfaceWindow): void {
 }
 
 /**
- * Lock: click-through + not focusable (plan §22.2). Unlock overlays are SURF-02.
- * Call order matches Tauri `apply_window_interaction`: lock sets resizable/focusable
- * before ignore-cursor; unlock reverses cursor first.
+ * Lock: whole-window click-through + not focusable (plan §22.2, Option A).
+ * Unlock is a separate HWND (`lyrics-unlock.ts`), not a hole in this window.
+ * `{ forward: true }` is forbidden: it keeps the surface in the Windows
+ * hit-test path so clicks never reach apps underneath (SURF-02).
+ * Locked Windows z-order uses `floating` so Electron inserts the HWND behind
+ * the taskbar; unlocked restores `screen-saver` (above the taskbar).
  */
 export function lockLyricsSurface(
   window: LyricsSurfaceWindow,
@@ -212,15 +217,14 @@ export function lockLyricsSurface(
 ): void {
   if (locked) {
     window.setResizable(false);
-    window.setFocusable(false);
-    // True Windows click-through. `{ forward: true }` keeps the surface in the
-    // hit-test path so clicks never reach the app underneath (SURF-02).
-    window.setIgnoreMouseEvents(true);
+    applyLockedSurfaceInput(window);
     return;
   }
-  window.setIgnoreMouseEvents(false);
-  window.setFocusable(true);
-  window.setResizable(LYRICS_SURFACE_GEOMETRY[kind].resizableWhenUnlocked);
+  applyUnlockedSurfaceInput(
+    window,
+    LYRICS_SURFACE_GEOMETRY[kind].resizableWhenUnlocked,
+    LYRICS_SURFACE_ALWAYS_ON_TOP_LEVEL,
+  );
 }
 
 export function parseLyricsSurfaceGeometry(

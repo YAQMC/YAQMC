@@ -129,6 +129,8 @@ describe('host boot wiring', () => {
     expect(source.indexOf("backgroundColor: '#00000000'", lyricsBind)).toBeGreaterThan(lyricsBind);
     expect(source.indexOf("backgroundColor: '#00000000'", lyricsBind)).toBeLessThan(mainBind);
     expect(source.indexOf("backgroundColor: '#00000000'", mainBind)).toBe(-1);
+    expect(source.slice(unlockBind, mainBind)).toContain('Unparented on purpose');
+    expect(source.slice(unlockBind, mainBind)).not.toMatch(/\bparent\s*:/);
   });
 
   it('applies Linux graphics switches before ready and never sandbox/web-security flags', () => {

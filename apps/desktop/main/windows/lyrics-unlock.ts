@@ -1,16 +1,19 @@
 import { appIndexUrl } from '../protocol';
+import {
+  applyUnlockOverlayInput,
+  showOverlayInactive,
+  type OverlayInputWindow,
+} from './windows-overlay-input';
 
 export type LyricsUnlockKind = 'desktop' | 'island';
 
 /** Injected window seam so unit tests never construct a real Electron `BrowserWindow`. */
-export type LyricsUnlockWindow = {
+export type LyricsUnlockWindow = OverlayInputWindow & {
   loadURL(url: string): Promise<void> | void;
   show(): void;
   showInactive?(): void;
   hide(): void;
-  setAlwaysOnTop(flag: boolean, level?: string): void;
   setBounds?(bounds: { x: number; y: number; width: number; height: number }): void;
-  setIgnoreMouseEvents?(ignore: boolean, options?: { forward: boolean }): void;
   isDestroyed?(): boolean;
 };
 
@@ -165,12 +168,9 @@ export function createLyricsUnlockWindow(
 }
 
 export function showLyricsUnlock(window: LyricsUnlockWindow): void {
-  window.setIgnoreMouseEvents?.(false);
-  if (typeof window.showInactive === 'function') {
-    window.showInactive();
-    return;
-  }
-  window.show();
+  applyUnlockOverlayInput(window, LYRICS_UNLOCK_ALWAYS_ON_TOP_LEVEL);
+  showOverlayInactive(window);
+  window.moveTop?.();
 }
 
 export function hideLyricsUnlock(window: LyricsUnlockWindow): void {
@@ -216,6 +216,7 @@ export function createLyricsUnlockOverlays(deps: LyricsUnlockDeps): LyricsUnlock
         return;
       }
       window.setBounds?.(unlockOverlayBounds(surface));
+      window.moveTop?.();
     },
     get(kind) {
       const window = windows.get(kind);

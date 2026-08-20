@@ -601,6 +601,40 @@ export async function e2eUnlockWindowVisible(
   }, kind);
 }
 
+export async function e2eLyricsIsFocusable(
+  app: ElectronApplication,
+  kind: E2eLyricsKind,
+): Promise<boolean | null> {
+  return app.evaluate(
+    (_electron, payload) => {
+      const { BrowserWindow } = _electron;
+      const window = BrowserWindow.getAllWindows().find((candidate) => {
+        if (candidate.isDestroyed()) {
+          return false;
+        }
+        const url = candidate.webContents.getURL();
+        return url.includes(`surface=${payload.kind}`) && !url.includes('unlockSurface');
+      });
+      return window ? window.isFocusable() : null;
+    },
+    { kind },
+  );
+}
+
+export async function e2eUnlockIsFocusable(
+  app: ElectronApplication,
+  kind: E2eLyricsKind,
+): Promise<boolean | null> {
+  return app.evaluate((_electron, surface) => {
+    const { BrowserWindow } = _electron;
+    const needle = `unlockSurface=${surface}`;
+    const window = BrowserWindow.getAllWindows().find(
+      (candidate) => !candidate.isDestroyed() && candidate.webContents.getURL().includes(needle),
+    );
+    return window ? window.isFocusable() : null;
+  }, kind);
+}
+
 /** Live Electron window URLs via Playwright's host seam — not an in-memory map. */
 export function e2eBrowserWindowUrls(app: ElectronApplication): string[] {
   return app.windows().map((page) => page.url());

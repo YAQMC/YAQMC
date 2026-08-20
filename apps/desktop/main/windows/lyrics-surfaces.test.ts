@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FRAME_HARD_CAP_BYTES } from '@yaqmc/client';
+import { LYRICS_LOCKED_ALWAYS_ON_TOP_LEVEL } from './windows-overlay-input';
 import { appIndexUrl } from '../protocol';
 import {
   clampLyricsSurfaceGeometry,
@@ -49,6 +50,7 @@ function mockWindow(
     setIgnoreMouseEvents: vi.fn(),
     setFocusable: vi.fn(),
     setAlwaysOnTop: vi.fn(),
+    setSkipTaskbar: vi.fn(),
     setResizable: vi.fn(),
     isDestroyed: () => false,
     getBounds: vi.fn(() => ({ ...window.bounds })),
@@ -246,6 +248,8 @@ describe('show / hide / lock helpers', () => {
     expect(window.setResizable).toHaveBeenCalledWith(false);
     expect(window.setFocusable).toHaveBeenCalledWith(false);
     expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
+    expect(window.setIgnoreMouseEvents).not.toHaveBeenCalledWith(true, { forward: true });
+    expect(window.setAlwaysOnTop).toHaveBeenCalledWith(true, LYRICS_LOCKED_ALWAYS_ON_TOP_LEVEL);
   });
 
   it('unlock restores desktop resize and island non-resize', () => {
@@ -253,11 +257,14 @@ describe('show / hide / lock helpers', () => {
     lockLyricsSurface(desktop, 'desktop', false);
     expect(desktop.setIgnoreMouseEvents).toHaveBeenCalledWith(false);
     expect(desktop.setFocusable).toHaveBeenCalledWith(true);
+    expect(desktop.setSkipTaskbar).toHaveBeenCalledWith(true);
     expect(desktop.setResizable).toHaveBeenCalledWith(true);
+    expect(desktop.setAlwaysOnTop).toHaveBeenCalledWith(true, LYRICS_SURFACE_ALWAYS_ON_TOP_LEVEL);
 
     const island = mockWindow();
     lockLyricsSurface(island, 'island', false);
     expect(island.setFocusable).toHaveBeenCalledWith(true);
+    expect(island.setSkipTaskbar).toHaveBeenCalledWith(true);
     expect(island.setResizable).toHaveBeenCalledWith(false);
   });
 });
