@@ -54,9 +54,7 @@ export const CORE_SPAWN_ENV_ALLOWLIST = [
   'YAQMC_LOG_LEVEL',
 ] as const;
 
-const ALLOWLIST_LOOKUP = new Set(
-  CORE_SPAWN_ENV_ALLOWLIST.map((key) => key.toUpperCase()),
-);
+const ALLOWLIST_LOOKUP = new Set(CORE_SPAWN_ENV_ALLOWLIST.map((key) => key.toUpperCase()));
 
 export type CoreSpawnEnvInputs = {
   parentEnv?: NodeJS.ProcessEnv;

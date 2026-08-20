@@ -236,8 +236,8 @@
     "channel": "lyrics://surface-interaction",
     "kind": "event",
     "payload": {
-      "kind": "desktop",
-      "interaction": "passive-locked"
+      "interaction": "passive-locked",
+      "kind": "desktop"
     },
     "seq": 11
   },

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -50,14 +51,14 @@ describe('typed filters for the three §27.4 flows', () => {
 
 describe('resolveDiagnosticsSavePath', () => {
   it('keeps an absolute zip path and joins a relative name under Downloads', () => {
-    expect(resolveDiagnosticsSavePath('D:\\exports\\YAQMC-diagnostics.zip', 'D:\\Downloads')).toBe(
-      'D:\\exports\\YAQMC-diagnostics.zip',
+    const exportsZip = path.join(os.tmpdir(), 'yaqmc-exports', 'YAQMC-diagnostics.zip');
+    const downloads = path.join(os.tmpdir(), 'yaqmc-downloads');
+    expect(resolveDiagnosticsSavePath(exportsZip, downloads)).toBe(exportsZip);
+    expect(resolveDiagnosticsSavePath('YAQMC-diagnostics.zip', downloads)).toBe(
+      path.join(downloads, 'YAQMC-diagnostics.zip'),
     );
-    expect(resolveDiagnosticsSavePath('YAQMC-diagnostics.zip', 'D:\\Downloads')).toBe(
-      path.join('D:\\Downloads', 'YAQMC-diagnostics.zip'),
-    );
-    expect(resolveDiagnosticsSavePath('report', 'D:\\Downloads')).toBe(
-      path.join('D:\\Downloads', 'report.zip'),
+    expect(resolveDiagnosticsSavePath('report', downloads)).toBe(
+      path.join(downloads, 'report.zip'),
     );
     expect(resolveDiagnosticsSavePath('YAQMC-diagnostics.zip', '')).toBe('YAQMC-diagnostics.zip');
   });

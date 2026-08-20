@@ -34,6 +34,7 @@ describe('core pid file guard', () => {
     expect(parsePidFile('0')).toBeUndefined();
     expect(isCoreImageName('yaqmc-core')).toBe(true);
     expect(isCoreImageName('C:\\bin\\yaqmc-core.exe')).toBe(true);
+    expect(isCoreImageName('/usr/bin/yaqmc-core')).toBe(true);
     expect(isCoreImageName('YAQMC-CORE.EXE')).toBe(true);
     expect(isCoreImageName('notepad.exe')).toBe(false);
     expect(isCoreImageName('chrome')).toBe(false);

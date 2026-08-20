@@ -673,7 +673,7 @@ describe('IpcRouter host intercepts', () => {
     });
     expect(openPath).toHaveBeenCalledWith(logDir);
 
-    const zip = 'D:\\exports\\YAQMC-diagnostics.zip';
+    const zip = path.join(os.tmpdir(), 'yaqmc-exports', 'YAQMC-diagnostics.zip');
     await expect(
       router.invoke(1, { method: DIAGNOSTICS_REVEAL_BUNDLE, params: { path: zip } }),
     ).resolves.toEqual({ ok: true, result: undefined });
@@ -720,7 +720,7 @@ describe('IpcRouter host intercepts', () => {
     await expect(
       router.invoke(1, {
         method: DIAGNOSTICS_REVEAL_BUNDLE,
-        params: { path: 'D:\\Windows\\notepad.exe' },
+        params: { path: path.join(os.tmpdir(), 'notepad.exe') },
       }),
     ).resolves.toMatchObject({
       ok: false,
@@ -847,6 +847,8 @@ describe('IpcRouter host intercepts', () => {
   });
 
   it('injects hostPayload into diagnostics export before forwarding to core', async () => {
+    const exportZip = path.join(os.tmpdir(), 'yaqmc-out', 'YAQMC-diagnostics.zip');
+    const downloads = path.join(os.tmpdir(), 'yaqmc-downloads');
     const hostPayload = {
       schemaVersion: 1,
       electron: '43.4.0',
@@ -865,14 +867,14 @@ describe('IpcRouter host intercepts', () => {
       updater: { state: 'idle' },
       restartCounter: 0,
     };
-    const coreInvoke = vi.fn(async () => ({ path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 }));
+    const coreInvoke = vi.fn(async () => ({ path: exportZip, bytes: 12 }));
     const handlers = createHostHandlers({
       openExternal: vi.fn(),
       lyrics: mockLyrics(),
       unlock: mockUnlock(),
       capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
       showMainAndOpenSettings: vi.fn(),
-      downloadsDir: () => 'D:\\Downloads',
+      downloadsDir: () => downloads,
       coreInvoke,
       collectHostPayload: () => hostPayload,
       updater: {
@@ -888,13 +890,13 @@ describe('IpcRouter host intercepts', () => {
     await expect(
       router.invoke(1, {
         method: 'diagnostics_export_bundle_to',
-        params: { path: 'D:\\out\\YAQMC-diagnostics.zip', request: { includeLogs: true } },
+        params: { path: exportZip, request: { includeLogs: true } },
       }),
-    ).resolves.toEqual({ ok: true, result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 } });
+    ).resolves.toEqual({ ok: true, result: { path: exportZip, bytes: 12 } });
     expect(coreInvoke).toHaveBeenCalledWith(
       'diagnostics_export_bundle_to',
       {
-        path: 'D:\\out\\YAQMC-diagnostics.zip',
+        path: exportZip,
         request: { includeLogs: true, hostPayload },
       },
       'main',
@@ -906,11 +908,11 @@ describe('IpcRouter host intercepts', () => {
         method: 'diagnostics_export_bundle_to',
         params: { path: 'report', request: { includeLogs: true } },
       }),
-    ).resolves.toEqual({ ok: true, result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 } });
+    ).resolves.toEqual({ ok: true, result: { path: exportZip, bytes: 12 } });
     expect(coreInvoke).toHaveBeenCalledWith(
       'diagnostics_export_bundle_to',
       {
-        path: path.join('D:\\Downloads', 'report.zip'),
+        path: path.join(downloads, 'report.zip'),
         request: { includeLogs: true, hostPayload },
       },
       'main',
