@@ -12,7 +12,7 @@
  *   $env:YAQMC_CORE_BIN="$env:CARGO_TARGET_DIR\debug\yaqmc-core.exe"
  *   node scripts/migration/lyrics-occlusion-lifecycle-diag.mjs
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -30,6 +30,19 @@ const variants = (process.env.YAQMC_UI_PERF_DIAG_VARIANTS || 'off,on')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
+
+function killTree(pid) {
+  if (!pid) return;
+  try {
+    execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+      timeout: 8_000,
+    });
+  } catch {
+    // already gone
+  }
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -141,7 +154,7 @@ async function runVariant(mode) {
     { cwd: desktopRoot, env, stdio: 'inherit', windowsHide: false },
   );
   const stop = () => {
-    if (child.exitCode === null) child.kill();
+    killTree(child.pid);
   };
   process.on('exit', stop);
   try {
@@ -149,7 +162,7 @@ async function runVariant(mode) {
     stop();
     await Promise.race([
       new Promise((resolve) => child.once('exit', resolve)),
-      sleep(5_000).then(stop),
+      sleep(8_000).then(() => killTree(child.pid)),
     ]);
     return report;
   } catch (error) {
@@ -157,6 +170,7 @@ async function runVariant(mode) {
     throw error;
   } finally {
     process.off('exit', stop);
+    killTree(child.pid);
   }
 }
 
