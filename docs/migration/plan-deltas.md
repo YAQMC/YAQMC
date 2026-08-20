@@ -1142,7 +1142,7 @@ false` (per-user, directory chooser on). Targets: Windows NSIS + portable;
 
 - Maintainer script `scripts/migration/plat06-local-api-sse.mjs` hits FACT
   `127.0.0.1:19532`: public `GET /health` (no token), `GET /v1/player` with
-  `Authorization: Bearer`, and `GET /v1/events` SSE (read a few events, then
+  `Authorization: Bearer <LOCAL_API_TOKEN>`, and `GET /v1/events` SSE (read a few events, then
   exit). Token comes from Settings reveal or `YAQMC_API_TOKEN`.
 - Port-conflict note is already in `docs/local-api.md` (`core.pid` / image-name);
   this checkpoint cross-links it and does not rewrite the security model.

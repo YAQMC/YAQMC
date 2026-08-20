@@ -34,8 +34,11 @@ is_safe_value() {
   if [[ "$candidate" =~ ^[Bb]earer[[:space:]]+(.+)$ ]]; then
     candidate="${BASH_REMATCH[1]}"
   fi
+  while [[ "$candidate" == *'`' ]]; do
+    candidate="${candidate%?}"
+  done
   case "$candidate" in
-    ""|'[REDACTED]'|'%5BREDACTED%5D'|redacted|SECRET|SANITIZED_*|'$'*|'%'*'%'|'<'*'>') return 0 ;;
+    ""|'[REDACTED]'|'%5BREDACTED%5D'|redacted|SECRET|SANITIZED_*|'$'*|'%'*'%'|'<'*'>'|'{'|'['|'(') return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -97,9 +100,14 @@ scan_file() {
 
 if [[ "$mode" == "self-test" ]]; then
   secret_tail='value-12345678'
+  authorization_case='Authorization: Bearer session-'"$secret_tail"
   cookie_case='"cookie":"session-'"$secret_tail"'"'
   url_case='https://example.invalid/media?v''key=token-12345678'
   second_field_case='"uin":"SANITIZED_ACCOUNT","refresh_''token":"session-'"$secret_tail"'"'
+  if scan_text "$authorization_case" '<self-test>' 2>/dev/null; then
+    echo 'secret scanner self-test did not reject the Authorization case' >&2
+    exit 1
+  fi
   if scan_text "$cookie_case" '<self-test>' 2>/dev/null; then
     echo 'secret scanner self-test did not reject the cookie case' >&2
     exit 1
@@ -116,6 +124,9 @@ if [[ "$mode" == "self-test" ]]; then
     'qm_keyst' \
     'qm_keyst=[REDACTED]' \
     '"uin":"SANITIZED_ACCOUNT"' \
+    '`Authorization: Bearer $LOCAL_API_TOKEN`' \
+    '`Authorization: Bearer <LOCAL_API_TOKEN>`' \
+    '"authorization": {' \
     'https://qpic.y.qq.com/synthetic.png'; do
     if ! scan_text "$safe_case" '<self-test>'; then
       echo "secret scanner self-test rejected a safe case: $safe_case" >&2

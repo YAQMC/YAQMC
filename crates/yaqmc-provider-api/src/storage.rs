@@ -69,6 +69,8 @@ pub trait ProviderStorage: Send + Sync {
 
     fn load_queue_value(&self) -> Result<Option<Value>, ProviderStorageError>;
 
+    fn record_search(&self, provider: &str, query: &str) -> Result<(), ProviderStorageError>;
+
     fn record_playback_snapshot_value(
         &self,
         provider: &str,

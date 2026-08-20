@@ -23,12 +23,14 @@ function Test-SafeValue {
   if ($candidate.StartsWith('Bearer ', [StringComparison]::OrdinalIgnoreCase)) {
     $candidate = $candidate.Substring(7).Trim()
   }
+  $candidate = $candidate.TrimEnd([char]96)
 
   if ($candidate -ceq '[REDACTED]' -or
       $candidate -ieq '%5BREDACTED%5D' -or
       $candidate -ieq 'redacted' -or
       $candidate -ceq 'SECRET' -or
-      $candidate -like 'SANITIZED_*') {
+      $candidate -like 'SANITIZED_*' -or
+      $candidate -in @('{', '[', '(')) {
     return $true
   }
 
@@ -108,21 +110,26 @@ function Invoke-PathScan {
 
 function Invoke-SelfTest {
   $secretTail = 'value-12345678'
+  $authorizationCase = 'Authorization: Bearer session-' + $secretTail
   $cookieCase = '"cookie":"session-' + $secretTail + '"'
   $urlCase = 'https://example.invalid/media?v' + 'key=token-12345678'
   $secondFieldCase = '"uin":"SANITIZED_ACCOUNT","refresh_' + 'token":"session-' + $secretTail + '"'
   $rejected = @()
+  $rejected += @(Get-LineFindings -Text $authorizationCase -DisplayPath '<self-test>')
   $rejected += @(Get-LineFindings -Text $cookieCase -DisplayPath '<self-test>')
   $rejected += @(Get-LineFindings -Text $urlCase -DisplayPath '<self-test>')
   $rejected += @(Get-LineFindings -Text $secondFieldCase -DisplayPath '<self-test>')
-  if ($rejected.Count -ne 3) {
-    throw "secret scanner self-test expected three rejected cases, got $($rejected.Count)"
+  if ($rejected.Count -ne 4) {
+    throw "secret scanner self-test expected four rejected cases, got $($rejected.Count)"
   }
 
   foreach ($safeCase in @(
       'qm_keyst',
       'qm_keyst=[REDACTED]',
       '"uin":"SANITIZED_ACCOUNT"',
+      '`Authorization: Bearer $LOCAL_API_TOKEN`',
+      '`Authorization: Bearer <LOCAL_API_TOKEN>`',
+      '"authorization": {',
       'https://qpic.y.qq.com/synthetic.png'
     )) {
     $findings = @(Get-LineFindings -Text $safeCase -DisplayPath '<self-test>')

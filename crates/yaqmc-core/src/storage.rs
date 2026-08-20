@@ -1017,6 +1017,10 @@ impl ProviderStorage for StorageService {
         StorageService::load_queue(self).map_err(|_| ProviderStorageError)
     }
 
+    fn record_search(&self, provider: &str, query: &str) -> Result<(), ProviderStorageError> {
+        StorageService::record_search(self, provider, query).map_err(|_| ProviderStorageError)
+    }
+
     fn record_playback_snapshot_value(
         &self,
         provider: &str,
