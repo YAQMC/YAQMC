@@ -6,6 +6,7 @@ export type LyricsUnlockKind = 'desktop' | 'island';
 export type LyricsUnlockWindow = {
   loadURL(url: string): Promise<void> | void;
   show(): void;
+  showInactive?(): void;
   hide(): void;
   setAlwaysOnTop(flag: boolean, level?: string): void;
   setBounds?(bounds: { x: number; y: number; width: number; height: number }): void;
@@ -165,6 +166,10 @@ export function createLyricsUnlockWindow(
 
 export function showLyricsUnlock(window: LyricsUnlockWindow): void {
   window.setIgnoreMouseEvents?.(false);
+  if (typeof window.showInactive === 'function') {
+    window.showInactive();
+    return;
+  }
   window.show();
 }
 

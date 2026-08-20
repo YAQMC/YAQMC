@@ -61,6 +61,14 @@ import {
 } from './platform-diagnostics';
 import { createHostLog, type HostLog } from './host-log';
 import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphics';
+import {
+  mergeChromiumFeatureList,
+  windowsOcclusionSwitches,
+} from './windows/windows-occlusion';
+import {
+  OVERLAY_VISUAL_DOCUMENT_GUARD,
+  runUiPerfDiagSequence,
+} from './windows/ui-perf-diag';
 import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-updater-port';
 import { createUpdater, type UpdaterHandle } from './services/updater';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
@@ -143,20 +151,39 @@ const linuxGraphicsFacts = {
   fromDeprecatedEnv: Boolean(linuxRendererEnv),
 };
 
+function appendCommandLineFlag(flag: string): void {
+  const body = flag.startsWith('--') ? flag.slice(2) : flag;
+  const separator = body.indexOf('=');
+  if (separator === -1) {
+    app.commandLine.appendSwitch(body);
+    return;
+  }
+  const name = body.slice(0, separator);
+  const value = body.slice(separator + 1);
+  if (name === 'disable-features' || name === 'enable-features') {
+    app.commandLine.appendSwitch(name, mergeChromiumFeatureList(app.commandLine.getSwitchValue(name), value));
+    return;
+  }
+  app.commandLine.appendSwitch(name, value);
+}
+
 function applyLinuxGraphicsSwitches(): void {
-  const flags = linuxGraphicsSwitches(linuxGraphicsFacts);
-  for (const flag of flags) {
-    const body = flag.startsWith('--') ? flag.slice(2) : flag;
-    const separator = body.indexOf('=');
-    if (separator === -1) {
-      app.commandLine.appendSwitch(body);
-    } else {
-      app.commandLine.appendSwitch(body.slice(0, separator), body.slice(separator + 1));
-    }
+  for (const flag of linuxGraphicsSwitches(linuxGraphicsFacts)) {
+    appendCommandLineFlag(flag);
+  }
+}
+
+function applyWindowsOcclusionSwitches(): void {
+  for (const flag of windowsOcclusionSwitches({
+    platform: process.platform,
+    mode: process.env.YAQMC_WINDOWS_OCCLUSION ?? 'auto',
+  })) {
+    appendCommandLineFlag(flag);
   }
 }
 
 applyLinuxGraphicsSwitches();
+applyWindowsOcclusionSwitches();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const smoke = process.env.YAQMC_DESKTOP_SMOKE === '1';
@@ -205,6 +232,10 @@ let lastPreferencesRaw: unknown;
 /** FACT default: hide-to-tray. Preference read is cached; missing prefs stay hide. */
 let closeToTray = true;
 let hostLog: HostLog | undefined;
+let playerSnapshotHits = 0;
+let uiPerfDiagStarted = false;
+let uiPerfMainLoaded = false;
+let uiPerfCoreReady = false;
 
 function writeHostLog(message: string): void {
   try {
@@ -649,17 +680,22 @@ function pushSurfaceInteraction(role: ReturnType<typeof lyricsRoleFromCreateOpti
   });
 }
 
-function bindOverlayVisibilityThrottle(window: BrowserWindow): void {
+function bindOverlayVisibilityThrottle(window: BrowserWindow, role: string): void {
   let visualGeneration = 0;
   const apply = () => {
     if (window.isDestroyed()) return;
     const visible = window.isVisible();
+    const contentsId = window.webContents.id;
     window.webContents.setBackgroundThrottling(!visible);
     const generation = (visualGeneration += 1);
     const visual = visible ? 'active' : 'idle';
+    writeHostLog(
+      `overlay-visual role=${role} window=${window.id} contents=${String(contentsId)} visible=${String(visible)} visual=${visual}`,
+    );
     void window.webContents
       .executeJavaScript(
         `(function () {
+          ${OVERLAY_VISUAL_DOCUMENT_GUARD}
           if ((window.__yaqmcSurfaceVisualGen ?? 0) > ${String(generation)}) return;
           window.__yaqmcSurfaceVisualGen = ${String(generation)};
           var next = ${JSON.stringify(visual)};
@@ -678,6 +714,59 @@ function bindOverlayVisibilityThrottle(window: BrowserWindow): void {
   window.on('restore', apply);
 }
 
+function maybeStartUiPerfDiag(): void {
+  if (process.env.YAQMC_UI_PERF_DIAG !== '1') {
+    return;
+  }
+  if (uiPerfDiagStarted || !uiPerfMainLoaded || !uiPerfCoreReady) {
+    return;
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  uiPerfDiagStarted = true;
+  const switches = windowsOcclusionSwitches({
+    platform: process.platform,
+    mode: process.env.YAQMC_WINDOWS_OCCLUSION ?? 'auto',
+  });
+  const outputPath =
+    process.env.YAQMC_UI_PERF_DIAG_OUT ??
+    path.join(repoRoot, 'output', 'lyrics-occlusion-lifecycle.json');
+  writeHostLog(`ui-perf-diag start variant=${process.env.YAQMC_WINDOWS_OCCLUSION ?? 'auto'}`);
+  void runUiPerfDiagSequence({
+    variant: process.env.YAQMC_WINDOWS_OCCLUSION ?? 'auto',
+    switches: [...switches],
+    outputPath,
+    log: writeHostLog,
+    mainWindow: () => mainWindow,
+    lyrics: lyricsSurfaces,
+    unlock: lyricsUnlock,
+    invokeCore: async (method, params) => {
+      const client = supervisor?.client;
+      if (!client) {
+        throw new Error('core supervisor is not running');
+      }
+      return params === undefined ? client.invoke(method) : client.invoke(method, params);
+    },
+    snapshotHits: () => playerSnapshotHits,
+    setMainBackgroundThrottling: (enabled) => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        return;
+      }
+      mainWindow.webContents.setBackgroundThrottling(enabled);
+      writeHostLog(
+        `ui-perf-diag main-throttle contents=${String(mainWindow.webContents.id)} enabled=${String(enabled)}`,
+      );
+    },
+    quit: () => quitWith(0),
+  }).catch((error: unknown) => {
+    writeHostLog(`ui-perf-diag failed ${String(error)}`);
+    if (process.env.YAQMC_UI_PERF_DIAG_QUIT === '1') {
+      quitWith(1);
+    }
+  });
+}
+
 function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   const { alwaysOnTop, ...rest } = options;
   void alwaysOnTop;
@@ -693,7 +782,7 @@ function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });
-  bindOverlayVisibilityThrottle(window);
+  bindOverlayVisibilityThrottle(window, role);
   window.webContents.on('did-finish-load', () => {
     pushCoreStatus(contentsId);
     pushSurfaceInteraction(role);
@@ -724,7 +813,7 @@ function createUnlockBrowserWindow(options: LyricsUnlockCreateOptions, kind: Lyr
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });
   window.setAlwaysOnTop(true, 'screen-saver');
-  bindOverlayVisibilityThrottle(window);
+  bindOverlayVisibilityThrottle(window, lyricsUnlockRoleFromKind(kind));
   window.webContents.on('did-finish-load', () => {
     pushCoreStatus(contentsId);
     setTimeout(() => pushCoreStatus(contentsId), 0);
@@ -787,11 +876,18 @@ function createMainWindow(root: string): BrowserWindow {
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });
+  window.webContents.on('did-finish-load', () => {
+    uiPerfMainLoaded = true;
+    maybeStartUiPerfDiag();
+  });
   void window.loadURL(mainWindowUrl(root));
   return window;
 }
 
 function fanoutEvent(channel: string, payload: unknown): void {
+  if (channel === CHANNEL_PLAYER_SNAPSHOT) {
+    playerSnapshotHits += 1;
+  }
   if (e2e && channel === CHANNEL_PLAYER_SNAPSHOT) {
     const view = e2eViewFromPlayerPayload(payload);
     if (view) {
@@ -849,6 +945,8 @@ function attachSupervisor(instance: CoreSupervisor): void {
       quit: quitFromHostCommand,
     });
     sendPlatformAttach();
+    uiPerfCoreReady = true;
+    maybeStartUiPerfDiag();
     if (!info.restart) {
       return;
     }

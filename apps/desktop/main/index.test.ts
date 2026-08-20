@@ -19,6 +19,8 @@ describe('host boot wiring', () => {
     expect(source).toContain("from './windows/surface-auto-hide'");
     expect(source).toContain("from './host-commands'");
     expect(source).toContain("from './linux-graphics'");
+    expect(source).toContain("from './windows/windows-occlusion'");
+    expect(source).toContain("from './windows/ui-perf-diag'");
     expect(source).toContain('lyrics-surface.cjs');
     expect(source).toContain('unlock-overlay.cjs');
     expect(source).toContain('createTray');
@@ -32,6 +34,7 @@ describe('host boot wiring', () => {
     expect(source).toContain('createLyricsSurfaces');
     expect(source).toContain('createLyricsUnlockOverlays');
     expect(source).toContain('linuxGraphicsSwitches');
+    expect(source).toContain('windowsOcclusionSwitches');
     expect(source).toContain('linuxGraphicsDiagnostics');
     expect(source).toContain('platformFacts');
     expect(source).toContain('probeLinuxDisplayBackend');
@@ -99,18 +102,24 @@ describe('host boot wiring', () => {
     expect(source).toContain('bindOverlayVisibilityThrottle');
     expect(source).toContain('setBackgroundThrottling(!visible)');
     expect(source).toContain("window.webContents.on('did-finish-load', apply);");
+    expect(source).toContain('OVERLAY_VISUAL_DOCUMENT_GUARD');
+    expect(source).toContain('${OVERLAY_VISUAL_DOCUMENT_GUARD}');
     const lyricsBind = source.indexOf('function createLyricsBrowserWindow');
     const unlockBind = source.indexOf('function createUnlockBrowserWindow');
     const mainBind = source.indexOf('function createMainWindow');
-    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', lyricsBind)).toBeGreaterThan(
+    expect(source.indexOf('bindOverlayVisibilityThrottle(window, role);', lyricsBind)).toBeGreaterThan(
       lyricsBind,
     );
-    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', lyricsBind)).toBeLessThan(unlockBind);
-    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', unlockBind)).toBeGreaterThan(
+    expect(source.indexOf('bindOverlayVisibilityThrottle(window, role);', lyricsBind)).toBeLessThan(
       unlockBind,
     );
-    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', unlockBind)).toBeLessThan(mainBind);
-    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', mainBind)).toBe(-1);
+    expect(
+      source.indexOf('bindOverlayVisibilityThrottle(window, lyricsUnlockRoleFromKind(kind));', unlockBind),
+    ).toBeGreaterThan(unlockBind);
+    expect(
+      source.indexOf('bindOverlayVisibilityThrottle(window, lyricsUnlockRoleFromKind(kind));', unlockBind),
+    ).toBeLessThan(mainBind);
+    expect(source.indexOf('bindOverlayVisibilityThrottle(', mainBind)).toBe(-1);
     expect(source.indexOf("backgroundColor: '#00000000'", lyricsBind)).toBeGreaterThan(lyricsBind);
     expect(source.indexOf("backgroundColor: '#00000000'", lyricsBind)).toBeLessThan(mainBind);
     expect(source.indexOf("backgroundColor: '#00000000'", mainBind)).toBe(-1);
@@ -123,6 +132,11 @@ describe('host boot wiring', () => {
     expect(source.indexOf('applyLinuxGraphicsSwitches();')).toBeLessThan(
       source.indexOf('app.whenReady()'),
     );
+    expect(source.indexOf('applyWindowsOcclusionSwitches();')).toBeGreaterThan(-1);
+    expect(source.indexOf('applyWindowsOcclusionSwitches();')).toBeLessThan(
+      source.indexOf('app.whenReady()'),
+    );
+    expect(source).toContain('windowsOcclusionSwitches');
     expect(source).toContain('process.platform');
     for (const flag of forbidden) {
       expect(source).not.toContain(flag);

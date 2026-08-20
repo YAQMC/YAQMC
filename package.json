@@ -46,7 +46,8 @@
     "sync-version": "node scripts/sync-version.mjs",
     "p7:fake-playback": "node scripts/migration/p7-fake-playback.mjs",
     "soak": "node scripts/soak-electron.mjs",
-    "perf:windows-gpu": "node scripts/migration/lyrics-multiwindow-gpu-profile.mjs"
+    "perf:windows-gpu": "node scripts/migration/lyrics-multiwindow-gpu-profile.mjs",
+    "perf:lyrics-occlusion": "node scripts/migration/lyrics-occlusion-lifecycle-diag.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

@@ -3,6 +3,7 @@ import { getEstimatedPositionMs, usePlayerStore } from './player-store';
 import { usePreferencesStore } from './preferences';
 import { useLyricsStageStore } from './lyrics-stage-machine';
 import { lyricsPerfCounters } from './lyrics-perf-counters';
+import { enterLyricsFullscreen } from './lyrics-presentation-actions';
 
 export type CompositorProbeMode =
   | 'off'
@@ -79,6 +80,11 @@ export interface PlaybackUiProbeSample {
   wallClockTimedOut: boolean;
   surfaceCommits: number;
   visibilityState: DocumentVisibilityState;
+  hidden: boolean;
+  hasFocus: boolean;
+  surfaceVisual: string;
+  visualIdle: boolean;
+  panelCommits: number;
 }
 
 export interface LyricsHangInspect {
@@ -119,6 +125,7 @@ type ProbeHost = Window & {
     inspectHang: () => LyricsHangInspect;
     openLyrics: () => void;
     closeLyrics: () => void;
+    enterFullscreen: () => Promise<boolean>;
     ping: () => { at: number; rafAgeMs: number };
     selectLyricsPreset: (id: string) => void;
     setCompositorProbe: (mode: CompositorProbeMode) => void;
@@ -397,6 +404,7 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
   });
 
   const commitsAtStart = Number(document.documentElement.dataset.surfaceCommits ?? 0);
+  const panelCommitsAtStart = lyricsPerfCounters.panelCommits;
   const frameTimes: number[] = [];
   const started = performance.now();
   let previous: number | null = null;
@@ -469,6 +477,13 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
     wallClockTimedOut,
     surfaceCommits: Math.max(0, Number(document.documentElement.dataset.surfaceCommits ?? 0) - commitsAtStart),
     visibilityState: document.visibilityState,
+    hidden: document.hidden,
+    hasFocus: document.hasFocus(),
+    surfaceVisual: document.documentElement.dataset.surfaceVisual ?? '',
+    visualIdle:
+      document.visibilityState === 'hidden' ||
+      document.documentElement.dataset.surfaceVisual === 'idle',
+    panelCommits: Math.max(0, lyricsPerfCounters.panelCommits - panelCommitsAtStart),
   };
 }
 
@@ -499,6 +514,7 @@ export function installPlaybackUiProbe(options?: { heartbeat?: boolean }): () =>
     inspectHang,
     openLyrics: () => usePlayerStore.getState().openLyrics(),
     closeLyrics: () => usePlayerStore.getState().closePanels(),
+    enterFullscreen: () => enterLyricsFullscreen(),
     ping: pingPlaybackUiProbe,
     selectLyricsPreset: selectLyricsPresetProbe,
     setCompositorProbe,

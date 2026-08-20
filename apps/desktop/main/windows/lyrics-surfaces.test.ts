@@ -44,6 +44,7 @@ function mockWindow(
     bounds: { ...bounds },
     loadURL: vi.fn(),
     show: vi.fn(),
+    showInactive: vi.fn(),
     hide: vi.fn(),
     setIgnoreMouseEvents: vi.fn(),
     setFocusable: vi.fn(),
@@ -223,12 +224,20 @@ describe('lyrics surface construction table', () => {
 });
 
 describe('show / hide / lock helpers', () => {
-  it('show and hide call through the injected window', () => {
+  it('show uses showInactive so always-on-top overlays do not steal Fullscreen focus', () => {
     const window = mockWindow();
     showLyricsSurface(window);
     hideLyricsSurface(window);
-    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.showInactive).toHaveBeenCalledTimes(1);
+    expect(window.show).not.toHaveBeenCalled();
     expect(window.hide).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to show when showInactive is absent', () => {
+    const window = mockWindow();
+    delete window.showInactive;
+    showLyricsSurface(window);
+    expect(window.show).toHaveBeenCalledTimes(1);
   });
 
   it('lock sets native click-through without forwarding mouse events', () => {
@@ -270,7 +279,8 @@ describe('createLyricsSurfaces controller', () => {
 
     expect(createWindow).toHaveBeenCalledTimes(2);
     expect(desktop.hide).toHaveBeenCalledTimes(1);
-    expect(island.show).toHaveBeenCalledTimes(1);
+    expect(island.showInactive).toHaveBeenCalledTimes(1);
+    expect(island.show).not.toHaveBeenCalled();
     expect(island.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
     expect(island.setFocusable).toHaveBeenCalledWith(false);
     expect(surfaces.get('desktop')).toBe(desktop);
@@ -411,7 +421,8 @@ describe('geometry persist, restore, and reset', () => {
     await surfaces.restoreGeometry('desktop');
 
     expect(desktop.setBounds).toHaveBeenCalledWith({ x: 80, y: 60, width: 780, height: 190 });
-    expect(desktop.show).toHaveBeenCalledTimes(1);
+    expect(desktop.showInactive).toHaveBeenCalledTimes(1);
+    expect(desktop.show).not.toHaveBeenCalled();
   });
 
   it('debounces move/resize persist at 350 ms and writes the live Tauri JSON blob', async () => {

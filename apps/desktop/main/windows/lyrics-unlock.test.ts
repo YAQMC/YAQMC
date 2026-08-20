@@ -28,6 +28,7 @@ function mockWindow(): LyricsUnlockWindow {
   return {
     loadURL: vi.fn(),
     show: vi.fn(),
+    showInactive: vi.fn(),
     hide: vi.fn(),
     setIgnoreMouseEvents: vi.fn(),
     setAlwaysOnTop: vi.fn(),
@@ -139,7 +140,8 @@ describe('show / hide helpers', () => {
     showLyricsUnlock(window);
     hideLyricsUnlock(window);
     expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(false);
-    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.showInactive).toHaveBeenCalledTimes(1);
+    expect(window.show).not.toHaveBeenCalled();
     expect(window.hide).toHaveBeenCalledTimes(1);
   });
 });
@@ -161,7 +163,8 @@ describe('createLyricsUnlockOverlays controller', () => {
 
     expect(createWindow).toHaveBeenCalledTimes(2);
     expect(desktop.hide).toHaveBeenCalledTimes(1);
-    expect(island.show).toHaveBeenCalledTimes(1);
+    expect(island.showInactive).toHaveBeenCalledTimes(1);
+    expect(island.show).not.toHaveBeenCalled();
     expect(overlays.get('desktop')).toBe(desktop);
     expect(overlays.get('island')).toBe(island);
     expect(createWindow.mock.calls[0]?.[0].show).toBe(false);
