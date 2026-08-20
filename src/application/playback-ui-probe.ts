@@ -77,6 +77,8 @@ export interface PlaybackUiProbeSample {
   lyrics: LyricsCompositorInspect;
   rafStuck: boolean;
   wallClockTimedOut: boolean;
+  surfaceCommits: number;
+  visibilityState: DocumentVisibilityState;
 }
 
 export interface LyricsHangInspect {
@@ -123,6 +125,7 @@ type ProbeHost = Window & {
     enableArtworkBackground: () => void;
     enableFpsOverlay: () => void;
     enableLyricsSurface: (kind: 'desktop' | 'island') => void;
+    disableLyricsSurface: (kind: 'desktop' | 'island') => void;
     makeArtwork: () => string;
   };
 };
@@ -140,6 +143,10 @@ export function enableFpsOverlayProbe(): void {
 
 export function enableLyricsSurfaceProbe(kind: 'desktop' | 'island'): void {
   usePreferencesStore.getState().updateSurface(kind, { enabled: true });
+}
+
+export function disableLyricsSurfaceProbe(kind: 'desktop' | 'island'): void {
+  usePreferencesStore.getState().updateSurface(kind, { enabled: false });
 }
 
 export function selectLyricsPresetProbe(id: string): void {
@@ -280,12 +287,13 @@ export function inspectHang(): LyricsHangInspect {
           playState: animation.playState,
         }))
       : [];
-  let longTasks = 0;
-  try {
-    longTasks = performance.getEntriesByType('longtask').filter((entry) => entry.duration >= 50).length;
-  } catch {
-    longTasks = -1;
-  }
+  const longTasks = (() => {
+    try {
+      return performance.getEntriesByType('longtask').filter((entry) => entry.duration >= 50).length;
+    } catch {
+      return -1;
+    }
+  })();
   return {
     at: now,
     href: window.location.href,
@@ -388,6 +396,7 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
     attributes: true,
   });
 
+  const commitsAtStart = Number(document.documentElement.dataset.surfaceCommits ?? 0);
   const frameTimes: number[] = [];
   const started = performance.now();
   let previous: number | null = null;
@@ -458,6 +467,8 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
     lyrics: inspectLyricsCompositor(),
     rafStuck: wallClockTimedOut && rafFrames < 3,
     wallClockTimedOut,
+    surfaceCommits: Math.max(0, Number(document.documentElement.dataset.surfaceCommits ?? 0) - commitsAtStart),
+    visibilityState: document.visibilityState,
   };
 }
 
@@ -470,9 +481,9 @@ export async function sampleLyricsRouteTransition(
   return sampling;
 }
 
-export function installPlaybackUiProbe(): () => void {
+export function installPlaybackUiProbe(options?: { heartbeat?: boolean }): () => void {
   const host = window as ProbeHost;
-  const stopHeartbeat = startRafHeartbeat();
+  const stopHeartbeat = options?.heartbeat === false ? () => undefined : startRafHeartbeat();
   const onWindowError = (event: ErrorEvent) => {
     noteProbeError(event.message);
   };
@@ -494,6 +505,7 @@ export function installPlaybackUiProbe(): () => void {
     enableArtworkBackground: enableArtworkBackgroundProbe,
     enableFpsOverlay: enableFpsOverlayProbe,
     enableLyricsSurface: enableLyricsSurfaceProbe,
+    disableLyricsSurface: disableLyricsSurfaceProbe,
     makeArtwork: makeProbeArtworkDataUri,
   };
   return () => {

@@ -11,6 +11,7 @@ import {
   shouldReplaceSurfaceProjection,
   unlockAllLyricsSurfaces,
   useLyricsSurfaceRuntime,
+  useProjectedLyrics,
   type LyricSurfaceProjection,
   type TimedProjection,
 } from './lyrics-surface-runtime';
@@ -216,6 +217,34 @@ describe('lyrics surface projection', () => {
     expect(result.current.document?.songId).toBe('song-two');
   });
 
+  it('keeps a next-track lyric document that arrives before its projection', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'lyrics_surface_projection') {
+        return Promise.resolve(projection().value);
+      }
+      if (command === 'player_lyrics') {
+        return Promise.resolve(document);
+      }
+      return Promise.resolve(null);
+    });
+    const { result } = renderHook(() => useLyricsSurfaceRuntime());
+    await waitFor(() => expect(eventMocks.handlers.has('lyrics://document')).toBe(true));
+    await waitFor(() => expect(result.current.document?.songId).toBe('song-one'));
+
+    const nextDocument: LyricDocument = { ...document, songId: 'song-two' };
+    act(() => {
+      eventMocks.handlers.get('lyrics://document')?.(nextDocument);
+    });
+    expect(result.current.document?.songId).toBe('song-one');
+
+    act(() => {
+      eventMocks.handlers.get('lyrics://projection')?.(
+        projection({ currentTrack: { id: 'song-two' } as Song }).value,
+      );
+    });
+    await waitFor(() => expect(result.current.document?.songId).toBe('song-two'));
+  });
+
   it('applies presentation timing offset without mutating the document', () => {
     expect(projectSurfaceLyrics(document, 900, 0).current).toBeNull();
     expect(projectSurfaceLyrics(document, 900, 200).current?.id).toBe('line-one');
@@ -292,6 +321,55 @@ describe('lyrics surface projection', () => {
 
     expect(usePreferencesStore.getState().surfaces.island.interaction).toBe('passive-locked');
     expect(usePreferencesStore.getState().persistenceError).toContain('native transition failed');
+  });
+
+  it('advances overlay lyrics on lyric boundaries instead of a display-rate rAF loop', () => {
+    vi.useFakeTimers();
+    const raf = vi.spyOn(window, 'requestAnimationFrame');
+    const timed = {
+      receivedAt: 0,
+      value: {
+        ...projection({ positionMs: 1_100, timestampMs: 0, isPlaying: true, playbackDurationMs: 10_000 })
+          .value,
+      },
+    };
+    const { result } = renderHook(() => useProjectedLyrics(timed, document));
+
+    expect(result.current.current?.id).toBe('line-one');
+    expect(result.current.wordIndex).toBe(0);
+    expect(raf).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    act(() => {
+      vi.advanceTimersByTime(450);
+    });
+    expect(result.current.wordIndex).toBe(1);
+    raf.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('does not keep a cursor timer while paused or while the overlay is hidden', () => {
+    vi.useFakeTimers();
+    const raf = vi.spyOn(window, 'requestAnimationFrame');
+    const paused = projection({ isPlaying: false, positionMs: 1_100 });
+    const { unmount } = renderHook(() => useProjectedLyrics(paused, document));
+    expect(raf).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    unmount();
+
+    Object.defineProperty(globalThis.document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    renderHook(() => useProjectedLyrics(projection(), document));
+    expect(raf).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    raf.mockRestore();
+    vi.useRealTimers();
+    Object.defineProperty(globalThis.document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
   });
 
   it('uses one native transaction for the all-surfaces recovery action', async () => {

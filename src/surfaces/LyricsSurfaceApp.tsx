@@ -29,6 +29,14 @@ import {
 import { wordProgress } from '../application/lyrics-timing';
 import { shouldShowLyricSecondary } from '../application/lyrics-presentation';
 import { visibleSurfaceInteractionState, pointerInsideSurface } from '../application/lyrics-surface-interaction';
+import {
+  drivePercentageClock,
+  freezePercentageClock,
+  subscribeSurfaceVisualActive,
+  surfaceVisualActive,
+} from '../application/lyrics-surface-visual';
+import { installPlaybackUiProbe } from '../application/playback-ui-probe';
+import { usePlatformDiagnosticsRuntime } from '../application/platform-integration';
 import type { LyricDocument, LyricLine, LyricWord } from '../domain/music';
 import { joinArtistNames } from '../utils/format';
 import { IconButton } from '../components/ui/IconButton';
@@ -51,6 +59,7 @@ export function LyricsUnlockControl({ kind }: { kind: SurfaceKind }) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
+  usePlatformDiagnosticsRuntime();
   useEffect(() => {
     getYaqmcClient();
   }, []);
@@ -187,26 +196,23 @@ function SurfaceWord({
 }) {
   const element = useRef<HTMLSpanElement>(null);
   useEffect(() => {
-    if (state !== 'current') return;
-    const updateProgress = () => {
-      const position =
-        estimatedSurfacePosition(projection) + presentationOffsetMs - documentOffsetMs;
-      element.current?.style.setProperty(
-        '--word-progress',
-        `${wordProgress(word, position) * 100}%`,
-      );
-    };
-    if (!projection.value.isPlaying) {
-      updateProgress();
+    if (state !== 'current') {
+      freezePercentageClock(element.current, '--word-progress', state === 'complete' ? 1 : 0);
       return;
     }
-    let frame = 0;
-    const update = () => {
-      updateProgress();
-      frame = window.requestAnimationFrame(update);
+    const apply = () => {
+      const position =
+        estimatedSurfacePosition(projection) + presentationOffsetMs - documentOffsetMs;
+      const progress = wordProgress(word, position);
+      const remaining = Math.max(0, word.endMs - position);
+      if (!projection.value.isPlaying || !surfaceVisualActive()) {
+        freezePercentageClock(element.current, '--word-progress', progress);
+        return;
+      }
+      drivePercentageClock(element.current, '--word-progress', progress, remaining);
     };
-    update();
-    return () => window.cancelAnimationFrame(frame);
+    apply();
+    return subscribeSurfaceVisualActive(apply);
   }, [documentOffsetMs, presentationOffsetMs, projection, state, word]);
   return (
     <span
@@ -405,22 +411,27 @@ export function IslandSurface(props: SurfaceProps) {
   useEffect(() => {
     const node = progressRef.current;
     if (!node) return;
+    let timer: number | null = null;
     const apply = () => {
-      const progress =
-        duration > 0
-          ? Math.min(100, ((projection ? estimatedSurfacePosition(projection) : 0) / duration) * 100)
-          : 0;
-      node.style.setProperty('--island-progress', `${progress}%`);
+      const position = projection ? estimatedSurfacePosition(projection) : 0;
+      const progress = duration > 0 ? Math.min(1, position / duration) : 0;
+      freezePercentageClock(node, '--island-progress', progress);
     };
-    apply();
-    if (!projection?.value.isPlaying) return;
-    let frame = 0;
-    const tick = () => {
+    const arm = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
       apply();
-      frame = window.requestAnimationFrame(tick);
+      if (!projection?.value.isPlaying || !surfaceVisualActive()) return;
+      timer = window.setInterval(apply, 250);
     };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+    arm();
+    const stopVisual = subscribeSurfaceVisualActive(arm);
+    return () => {
+      stopVisual();
+      if (timer !== null) window.clearInterval(timer);
+    };
   }, [duration, projection]);
 
   return (
@@ -482,7 +493,15 @@ export function IslandSurface(props: SurfaceProps) {
 }
 
 export function LyricsSurfaceApp({ kind }: { kind: SurfaceKind }) {
+  usePlatformDiagnosticsRuntime();
   usePreferencesRuntime(false);
+  useEffect(() => installPlaybackUiProbe({ heartbeat: false }), []);
+  useEffect(() => subscribeSurfaceVisualActive(() => undefined), []);
+  useEffect(() => {
+    document.documentElement.dataset.surfaceCommits = String(
+      Number(document.documentElement.dataset.surfaceCommits ?? '0') + 1,
+    );
+  });
   const settings = usePreferencesStore((state) => state.surfaces[kind]);
   const runtime = useLyricsSurfaceRuntime();
   const projected = useProjectedLyrics(runtime.projection, runtime.document);

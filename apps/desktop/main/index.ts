@@ -649,12 +649,42 @@ function pushSurfaceInteraction(role: ReturnType<typeof lyricsRoleFromCreateOpti
   });
 }
 
+function bindOverlayVisibilityThrottle(window: BrowserWindow): void {
+  let visualGeneration = 0;
+  const apply = () => {
+    if (window.isDestroyed()) return;
+    const visible = window.isVisible();
+    window.webContents.setBackgroundThrottling(!visible);
+    const generation = (visualGeneration += 1);
+    const visual = visible ? 'active' : 'idle';
+    void window.webContents
+      .executeJavaScript(
+        `(function () {
+          if ((window.__yaqmcSurfaceVisualGen ?? 0) > ${String(generation)}) return;
+          window.__yaqmcSurfaceVisualGen = ${String(generation)};
+          var next = ${JSON.stringify(visual)};
+          if (document.documentElement.dataset.surfaceVisual === next) return;
+          document.documentElement.dataset.surfaceVisual = next;
+          window.dispatchEvent(new Event('yaqmc-surface-visual'));
+        })()`,
+      )
+      .catch(() => undefined);
+  };
+  apply();
+  window.webContents.on('did-finish-load', apply);
+  window.on('show', apply);
+  window.on('hide', apply);
+  window.on('minimize', apply);
+  window.on('restore', apply);
+}
+
 function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   const { alwaysOnTop, ...rest } = options;
   void alwaysOnTop;
   const window = new BrowserWindow({
     ...rest,
     alwaysOnTop: true,
+    backgroundColor: '#00000000',
   });
   const contentsId = window.webContents.id;
   const role = lyricsRoleFromCreateOptions(options);
@@ -663,6 +693,7 @@ function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
   applyAppWindowGuards(window, {
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });
+  bindOverlayVisibilityThrottle(window);
   window.webContents.on('did-finish-load', () => {
     pushCoreStatus(contentsId);
     pushSurfaceInteraction(role);
@@ -684,6 +715,7 @@ function createUnlockBrowserWindow(options: LyricsUnlockCreateOptions, kind: Lyr
   const window = new BrowserWindow({
     ...rest,
     alwaysOnTop: true,
+    backgroundColor: '#00000000',
   });
   const contentsId = window.webContents.id;
   router.registerWindow(contentsId, lyricsUnlockRoleFromKind(kind));
@@ -692,6 +724,7 @@ function createUnlockBrowserWindow(options: LyricsUnlockCreateOptions, kind: Lyr
     allowViteDevServer: !app.isPackaged && process.env.YAQMC_VITE_DEV === '1',
   });
   window.setAlwaysOnTop(true, 'screen-saver');
+  bindOverlayVisibilityThrottle(window);
   window.webContents.on('did-finish-load', () => {
     pushCoreStatus(contentsId);
     setTimeout(() => pushCoreStatus(contentsId), 0);
