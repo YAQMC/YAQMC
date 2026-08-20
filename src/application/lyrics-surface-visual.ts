@@ -1,4 +1,4 @@
-/** Desktop / Island overlay visual work. Not the main-window PLAY-03 clock. */
+/** Overlay-document visual clock. Never import from the main-window Fullscreen Lyrics renderer. */
 
 const MAX_CSS_CLOCK_MS = 2_500;
 

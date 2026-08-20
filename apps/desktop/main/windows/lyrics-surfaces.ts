@@ -45,6 +45,7 @@ export type LyricsSurfaceCoreClient = {
 export type LyricsSurfaceWindow = {
   loadURL(url: string): Promise<void> | void;
   show(): void;
+  showInactive?(): void;
   hide(): void;
   setIgnoreMouseEvents(ignore: boolean, options?: { forward: boolean }): void;
   setFocusable(focusable: boolean): void;
@@ -186,6 +187,12 @@ export function createLyricsSurfaceWindow(
 }
 
 export function showLyricsSurface(window: LyricsSurfaceWindow): void {
+  // `show()` activates the always-on-top overlay and Chromium then
+  // deprioritizes the unfocused Fullscreen Lyrics renderer (~250 ms frames).
+  if (typeof window.showInactive === 'function') {
+    window.showInactive();
+    return;
+  }
   window.show();
 }
 

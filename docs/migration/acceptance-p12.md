@@ -127,73 +127,75 @@ PLAY-01 remains **PASS-HUMAN on `e7a6c06`**. Desktop Lyrics / Lyrics Island
 controls, lock persistence, native click-through, explicit unlock, and
 SURF-02 remain **PASS-HUMAN**. Do not solve this row by breaking SURF-02.
 
-### Current HUMAN reproduction (2026-08-20, after `135a687`)
+### Current HUMAN reproduction (2026-08-20, after `9b87a90`)
 
-Fullscreen Lyrics performance is **conditionally** bad. Pause/Resume alone is
-no longer a sufficient reproduction. Cases:
+Fullscreen Lyrics is **conditionally** bad. Pause/Resume alone is not a
+sufficient reproduction. Maintainer GPU-on RTX 5070 Ti Laptop / D3D11,
+`npm run dev:desktop`:
 
 | Case | Setup | HUMAN |
 | --- | --- | --- |
 | A | Fullscreen Lyrics; Desktop Lyrics and Lyrics Island **closed** | smooth |
-| B | Keep Desktop Lyrics open, then Fullscreen Lyrics | low-FPS |
-| C | Keep Lyrics Island open, then Fullscreen Lyrics | low-FPS |
-| D | Keep both overlays open | low-FPS |
+| B | Keep Desktop Lyrics open, then Fullscreen Lyrics | **~4 FPS**, frame times ~252 / 254 / 254 ms |
+| C | Keep Lyrics Island open, then Fullscreen Lyrics | **~4 FPS** |
+| D | Keep both overlays open | **~4 FPS** |
 
-Primary hypothesis: multi-window Windows Chromium / ANGLE / DWM composition
-(main Fullscreen Lyrics BrowserWindow + transparent always-on-top Desktop
-and/or Island). Not a Core/player cadence defect.
+This is snapshot-cadence visible updates, not “slightly janky.” CDP
+`perf:windows-gpu` (~228–236 FPS with overlays) is a **false negative**:
+DevTools attachment keeps the main renderer visually active.
 
-Renderer / host follow-up in this commit (do not treat as PASS-HUMAN):
+### Causal transition (no CDP, same process, 2026-08-20)
 
-- Overlay windows call `usePlatformDiagnosticsRuntime()` so
-  `data-platform='windows'` matches and the existing Windows
-  `backdrop-filter: none` rules apply to Desktop/Island (they previously
-  never matched, so overlay `backdrop-filter: blur(...)` ran on transparent
-  always-on-top surfaces).
-- Overlay lyric cursor uses lyric-boundary timers, not a display-rate rAF
-  loop. Word fill is transform-only CSS for the word duration; Island
-  progress is a 250 ms snap, not a minutes-long CSS transition.
-- Hidden/inactive overlay documents set `data-surface-visual='idle'` and skip
-  renderer-only interpolation. Authoritative `lyrics://projection` delivery
-  continues.
-- Overlay/unlock `webContents` enable background throttling while hidden.
-  Main window stays unthrottled (PLAY-03).
-- Overlay `BrowserWindow` `backgroundColor` is `#00000000`. Lock remains
-  `setIgnoreMouseEvents(true)` without `{ forward: true }`.
+`npm run perf:lyrics-occlusion` (`YAQMC_UI_PERF_DIAG=1`, no
+`--remote-debugging-port`). Overlay idle/throttle is scoped to the overlay
+`webContents` / `data-surface` document and did **not** set main
+`visualIdle`. Main `document.hidden` stayed `false`. Overlay HWND was not
+screen-sized (Desktop 1418×292, Island 782×234 at 1.5× DPI).
 
-GPU-on matrix (`npm run perf:windows-gpu`,
-`scripts/migration/lyrics-multiwindow-gpu-profile.mjs`, GPU on, ANGLE NVIDIA
-RTX 5070 Ti Laptop, Tracing off, no hang dump):
+| Step | Main focused | rAF | p95 | snapshots | visualIdle |
+| --- | --- | --- | --- | --- | --- |
+| Fullscreen only | true | 240.5 Hz | 4.3 ms | 3.3 Hz | false |
+| Open Desktop (`show()`) | **false** | 44.9 Hz | **266.7 ms** | 3.7 Hz | false |
+| `setBackgroundThrottling` true/false | false | 44–48 Hz | ~254 ms | ~4 Hz | false |
+| `mainWindow.focus()` | false (overlay recaptured) | 46 Hz | 254 ms | 3.1 Hz | false |
+| Close Desktop | false | 239.7 Hz | 4.3 ms | 3.3 Hz | false |
+| Open Island | false | 47.1 Hz | 258 ms | 3.9 Hz | false |
+| `--disable-backgrounding-occluded-windows` + Desktop | false | 47.2 Hz | ~254 ms | 3.9 Hz | false |
 
-| Combination | Main rAF FPS | Overlay rAF FPS | Main p95 |
+The 254 ms p95 matches the HUMAN FpsOverlay line. Overlay `show()` **activated**
+the always-on-top window, unfocused Fullscreen Lyrics, and Chromium parked
+the unfocused fullscreen renderer onto ~250 ms wakes (player snapshots also
+~4 Hz). Electron `backgroundThrottling: false` and the occluded-window
+Chromium switch did not restore display-rate rAF.
+
+Fix in this commit (do **not** treat as PASS-HUMAN): Desktop/Island/unlock
+windows use `showInactive()` so they become visible without stealing the
+Fullscreen Lyrics foreground. After the change, same no-CDP matrix:
+
+| Step | Main focused | rAF | p95 |
 | --- | --- | --- | --- |
-| Fullscreen only | 224 | — | 8.2 ms |
-| Fullscreen + Desktop | 233 | Desktop 241 | 4.3 ms |
-| Fullscreen + Island | 236 | Island 241 | 4.3 ms |
-| Fullscreen + Desktop + Island | 228 | Desktop 241 / Island 240 | 4.3 ms |
+| Fullscreen only | true | 239 Hz | 4.3 ms |
+| Fullscreen + Desktop | true | 238 Hz | 4.3 ms |
+| Fullscreen + Island | true | 238 Hz | 4.3 ms |
+| Fullscreen + both | true | 207 Hz | 8.4 ms |
 
-Hidden overlay renderers: rAF frames 0 (background throttling). GPU process
-working set ~151–166 MiB across the matrix. Worst-combination Pause/Resume
-(5 cycles, both overlays open): playing 209–231 FPS, paused 223–238 FPS,
-resume 211–233 FPS; `rafStuck: false`. Overlay React commits during a 900 ms
-sample stayed ~16–30, not a display-rate recommit loop.
+Lock remains `setIgnoreMouseEvents(true)` without `{ forward: true }`. Overlay
+hidden-window throttle still does not bind the main window. Clicking an
+**unlocked** overlay can still focus it; HUMAN retests the matrix below.
 
-Do **not** treat these AUTO numbers as PASS-HUMAN. HUMAN still retests the
-matrix below.
+CDP `perf:windows-gpu` numbers from `9b87a90` stay historical false negatives.
+Do not chase that harness until HUMAN closes this row.
 
-Preserve `135a687` Pause compositor fixes: shared stage machine, no
-Pause-driven `LyricsPanel` recommit, transform-only opaque enter/exit, split
-vinyl shadow/spin, hidden PlayerBar equalizer suppression.
+Preserve `135a687` Pause compositor fixes and `9b87a90` overlay clock /
+Windows `data-platform` blur suppression.
 
 Do **not** start ACC-03 playing CPU / lyrics jitter, ACC-04 Day 1, or the P12
-second soak until HUMAN closes this row against the matrix:
+second soak until HUMAN closes this row against:
 
 - Fullscreen Lyrics alone
 - Fullscreen + Desktop Lyrics
 - Fullscreen + Island
 - Fullscreen + Desktop + Island
-- Worst combination: Pause / paused steady / Resume / Main → Lyrics /
-  Lyrics → Main
 
 ### Earlier Pause-only investigation (history; `135a687`)
 
@@ -267,7 +269,7 @@ Entry is allowed: PLAY-02 and SOAK-01 first 4h are PASS-HUMAN.
 | Cold start to interactive vs BASE-03 + 1.5 s | Electron captured; **vs-budget PENDING** | Vite-dev median **598 ms** (3 runs) to `.app-shell` + `core ready`. Packaged cold start not this. BASE-03 still PENDING. See [`acc03-windows.md`](acc03-windows.md). |
 | Idle RSS vs baseline + 250 MB | Electron captured; **vs-budget PENDING** | Electron spawn tree **597.3 MiB** after 60 s. BASE-03 still PENDING. |
 | Playing CPU vs baseline + 2 pp | **INVALID / untrusted** | Earlier sample was taken while the playback clock was stalled. Clock is now HUMAN-closed on `e7a6c06`, but **do not redo or trust** this cell while UI-PERF Windows Lyrics remains FAIL-HUMAN. |
-| Lyrics position-update jitter (manual A/B, 120 s) | **VACUOUS / INVALID / untrusted** | Earlier maxAbsLineDelta 0 because `positionMs` did not move. Clock closed; **do not redo or trust** until the Lyrics pause FPS regression is fixed. |
+| Lyrics position-update jitter (manual A/B, 120 s) | **VACUOUS / INVALID / untrusted** | Earlier maxAbsLineDelta 0 because `positionMs` did not move. Clock closed; **do not redo or trust** until UI-PERF Windows Lyrics is HUMAN-closed. |
 | Installer size ≤ 120 MB / platform | **not produced** (external/network) | NSIS tool fetch `ETIMEDOUT 199.59.148.9:443`. Not a product FAIL. PACK clean-VM remains **DEFERRED**. |
 | P12 **second** soak (Win+Linux, fake + real-account, 4h) | **NOT STARTED** | Do **not** start while UI-PERF Windows Lyrics remains FAIL-HUMAN. First SOAK-01 ≠ this soak. |
 

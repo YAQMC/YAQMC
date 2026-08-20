@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   drivePercentageClock,
@@ -54,5 +57,19 @@ describe('lyrics surface visual clock', () => {
     freezePercentageClock(node, '--island-progress', 0.5);
     expect(node.style.getPropertyValue('--island-progress')).toBe('50%');
     node.remove();
+  });
+
+  it('is not imported by the main-window Fullscreen Lyrics renderer', () => {
+    const srcDir = dirname(fileURLToPath(import.meta.url));
+    const repoSrc = join(srcDir, '..');
+    for (const relative of [
+      'App.tsx',
+      'components/LyricsPanel.tsx',
+      'components/lyrics-scene/LyricsViewport.tsx',
+    ]) {
+      const source = readFileSync(join(repoSrc, relative), 'utf8');
+      expect(source, relative).not.toContain('lyrics-surface-visual');
+      expect(source, relative).not.toContain('surfaceVisualActive');
+    }
   });
 });
