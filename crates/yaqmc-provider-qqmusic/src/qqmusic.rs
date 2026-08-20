@@ -2129,7 +2129,7 @@ impl QQMusicClient {
             let Some((tid, title)) = tid.zip(title) else {
                 continue;
             };
-            let artwork_url = card_cover_url(&basic);
+            let artwork_url = card_cover_url(basic);
             let creator_nick = basic["creator"]["nick"]
                 .as_str()
                 .or_else(|| basic["creator_nick"].as_str())
@@ -2378,7 +2378,7 @@ impl QQMusicClient {
                     if title.is_empty() {
                         continue;
                     }
-                    let cover = card_cover_url(&card);
+                    let cover = card_cover_url(card);
                     out.push(Category {
                         enc_area: enc_area.split('&').next().unwrap_or(enc_area).to_owned(),
                         title,
@@ -2424,7 +2424,7 @@ impl QQMusicClient {
                     .as_str()
                     .map(clean_text)
                     .unwrap_or_default(),
-                cover: card_cover_url(&entry),
+                cover: card_cover_url(entry),
             });
         }
         Ok(podcasts)
@@ -2506,7 +2506,7 @@ impl QQMusicClient {
                             .as_str()
                             .map(clean_text)
                             .unwrap_or_default(),
-                        cover: card_cover_url(&card),
+                        cover: card_cover_url(card),
                     });
                 }
             }
@@ -2577,7 +2577,7 @@ impl QQMusicClient {
                                     display_name: "QQ Music".to_owned(),
                                 },
                                 artwork: artwork_from_provider_url(
-                                    &card_cover_url(&card),
+                                    &card_cover_url(card),
                                     &title,
                                     color_for(id),
                                 ),
@@ -2603,7 +2603,7 @@ impl QQMusicClient {
                                     display_name: "QQ Music".to_owned(),
                                 },
                                 artwork: artwork_from_provider_url(
-                                    &card_cover_url(&card),
+                                    &card_cover_url(card),
                                     &title,
                                     color_for(id),
                                 ),
@@ -2620,7 +2620,7 @@ impl QQMusicClient {
                             artists.push(AreaArtist {
                                 id: id.to_owned(),
                                 name,
-                                cover: card_cover_url(&card),
+                                cover: card_cover_url(card),
                             });
                         }
                         _ => {}
