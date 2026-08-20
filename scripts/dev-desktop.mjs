@@ -5,6 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { stripQaLaunchFlags } from './qa-runtime.mjs';
 
 export const VITE_DEV_HOST = '127.0.0.1';
 export const VITE_DEV_PORT = 1420;
@@ -15,7 +16,7 @@ export function desktopDevUrl(host = VITE_DEV_HOST, port = VITE_DEV_PORT) {
 
 export function electronDevEnv(env = process.env) {
   return {
-    ...env,
+    ...stripQaLaunchFlags(env),
     YAQMC_VITE_DEV: '1',
   };
 }

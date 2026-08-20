@@ -16,16 +16,15 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { cleanupQaSandbox, createQaSandbox, electronQaArgs, qaElectronEnv } from '../qa-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
 const electronBinary = createRequire(path.join(desktopRoot, 'package.json'))('electron');
 const debugPort = Number(process.env.YAQMC_GPU_PROBE_PORT || 9231);
-const userData = path.join(os.tmpdir(), 'yaqmc-gpu-perf-probe');
 const enableTrace = process.env.YAQMC_GPU_TRACE === '1';
 const pauseCycles = Number(process.env.YAQMC_PAUSE_CYCLES || 5);
 const outputDir = path.join(repoRoot, 'output');
@@ -532,18 +531,18 @@ async function traceInteresting(page, durationMs) {
 }
 
 async function main() {
-  const env = {
-    ...process.env,
+  const sandbox = createQaSandbox({ purpose: 'windows-gpu-multiwindow' });
+  const env = qaElectronEnv(process.env, sandbox, {
     YAQMC_VITE_DEV: '1',
     YAQMC_E2E_NATIVE: '1',
     YAQMC_ELECTRON_E2E: '1',
-  };
+    YAQMC_E2E_CORE: '1',
+  });
   delete env.ELECTRON_DISABLE_GPU;
   delete env.YAQMC_DESKTOP_SMOKE;
   if (!env.YAQMC_CORE_BIN && env.CARGO_TARGET_DIR) {
     env.YAQMC_CORE_BIN = path.join(env.CARGO_TARGET_DIR, 'debug', 'yaqmc-core.exe');
   }
-  env.YAQMC_E2E_CORE = '1';
 
   await waitForTcp('127.0.0.1', 1420, 5_000).catch(() => {
     throw new Error('Vite is not serving 127.0.0.1:1420; start npm run dev first');
@@ -552,14 +551,12 @@ async function main() {
 
   const child = spawn(
     electronBinary,
-    [
-      '.',
+    electronQaArgs(sandbox, [
       `--remote-debugging-port=${String(debugPort)}`,
-      `--user-data-dir=${userData}`,
       '--lang=en-US',
       '--force-device-scale-factor=1.5',
       '--start-maximized',
-    ],
+    ]),
     { cwd: desktopRoot, env, stdio: 'inherit', windowsHide: false },
   );
   const stop = () => {
@@ -755,6 +752,7 @@ async function main() {
     await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     await browser.close().catch(() => undefined);
+    cleanupQaSandbox(sandbox.root);
   } catch (error) {
     try {
       await captureHang(page, child, error);

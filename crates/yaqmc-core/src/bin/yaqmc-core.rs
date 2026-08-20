@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use yaqmc_core::credentials::PlatformCredentialStore;
+use yaqmc_core::credentials::{CredentialStore, FileCredentialStore, PlatformCredentialStore};
 use yaqmc_core::server::{serve_protocol, NoopHost};
 use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CorePaths};
 use yaqmc_protocol::StdioTransport;
@@ -15,6 +15,22 @@ fn env_path(key: &str, fallback: &str) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(fallback)
     })
+}
+
+fn env_path_or_temp(key: &str, suffix: &str) -> PathBuf {
+    std::env::var_os(key)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join(suffix))
+}
+
+fn credential_store() -> std::sync::Arc<dyn CredentialStore> {
+    match std::env::var_os("YAQMC_CREDENTIAL_DIR") {
+        Some(dir) if !dir.is_empty() => {
+            std::sync::Arc::new(FileCredentialStore::open(dir).expect("YAQMC_CREDENTIAL_DIR"))
+        }
+        _ => std::sync::Arc::new(PlatformCredentialStore::new()),
+    }
 }
 
 #[tokio::main]
@@ -60,18 +76,18 @@ async fn main() {
                 .to_owned(),
         },
         CoreBootstrapInputs {
-            credentials: Arc::new(PlatformCredentialStore::new()),
+            credentials: credential_store(),
             audio,
             runtime,
             windows_hwnd: None,
             windows_start_error: None,
-            plugin_fallback_dir: std::env::temp_dir().join("YAQMC/plugins"),
-            log_fallback_dir: std::env::temp_dir().join("YAQMC/logs"),
+            plugin_fallback_dir: env_path_or_temp("YAQMC_PLUGIN_FALLBACK_DIR", "YAQMC/plugins"),
+            log_fallback_dir: env_path_or_temp("YAQMC_LOG_FALLBACK_DIR", "YAQMC/logs"),
         },
     )
     .expect("core bootstrap");
     let host = NoopHost {
-        download_dir: std::env::temp_dir().join("YAQMC/downloads"),
+        download_dir: env_path_or_temp("YAQMC_DOWNLOAD_DIR", "YAQMC/downloads"),
     };
     if let Err(error) = serve_protocol(core, host, StdioTransport::new()).await {
         tracing::error!(target: "core.protocol", error = %error, "protocol server failed");

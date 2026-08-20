@@ -13,7 +13,6 @@ import {
   webContents,
 } from 'electron';
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -29,6 +28,7 @@ import {
 import { resyncAfterCoreRestart } from './core/resync';
 import { CoreSupervisor, resolveCoreLaunch, type CoreStatusPayload } from './core/supervisor';
 import { resolveCorePaths } from './core/paths';
+import { coreTempEnv, requireQaSandboxFromEnv, type QaSandboxPaths } from './core/qa-runtime';
 import { EVENT_CHANNEL, INVOKE_CHANNEL, type InvokeRequest } from './ipc';
 import { loadMethodAclFromFile } from './ipc/channels';
 import {
@@ -190,8 +190,9 @@ const smoke = process.env.YAQMC_DESKTOP_SMOKE === '1';
 /** Local Playwright `_electron` (FE-06 follow-up). Not the smoke harness; not CI. */
 const e2e = process.env.YAQMC_ELECTRON_E2E === '1';
 const e2eNative = e2e && process.env.YAQMC_E2E_NATIVE === '1';
-if (e2e) {
-  app.setPath('userData', path.join(os.tmpdir(), 'yaqmc-electron-e2e', 'userData'));
+const qaSandbox: QaSandboxPaths | null = requireQaSandboxFromEnv(process.env);
+if (qaSandbox) {
+  app.setPath('userData', qaSandbox.electronUserData);
 }
 const desktopRoot = path.resolve(here, '../..');
 const repoRoot = path.resolve(desktopRoot, '../..');
@@ -715,6 +716,8 @@ function bindOverlayVisibilityThrottle(window: BrowserWindow, role: string): voi
 }
 
 function maybeStartUiPerfDiag(): void {
+  // Pref/playback mutations from this sequence stay on the QA sandbox Core
+  // (`YAQMC_QA_ROOT`). The flag is a QA launch flag; Main fail-closes without a sandbox.
   if (process.env.YAQMC_UI_PERF_DIAG !== '1') {
     return;
   }
@@ -961,17 +964,8 @@ function attachSupervisor(instance: CoreSupervisor): void {
 }
 
 function coreDataPaths() {
-  if (smoke || e2e || process.env.YAQMC_UI_PERF_DIAG === '1') {
-    const tempRoot = path.join(
-      app.getPath('temp'),
-      e2e ? 'yaqmc-electron-e2e' : process.env.YAQMC_UI_PERF_DIAG === '1' ? 'yaqmc-ui-perf-diag' : 'yaqmc-core',
-    );
-    return {
-      dataDir: path.join(tempRoot, 'data'),
-      cacheDir: path.join(tempRoot, 'cache'),
-      logDir: path.join(tempRoot, 'logs'),
-      configDir: path.join(tempRoot, 'config'),
-    };
+  if (qaSandbox) {
+    return qaSandbox.corePaths;
   }
   return resolveCorePaths();
 }
@@ -1008,6 +1002,7 @@ function startSupervisor(): Promise<void> {
     ...paths,
     hostVersion: app.getVersion(),
     expectedCoreVersion: app.getVersion(),
+    extraEnv: qaSandbox ? coreTempEnv(qaSandbox) : undefined,
   });
   attachSupervisor(supervisor);
   return supervisor.start().then(() => undefined);

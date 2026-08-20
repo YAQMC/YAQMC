@@ -4,6 +4,7 @@ import { _electron as electron, type ElectronApplication, type Page } from '@pla
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createQaSandbox, electronQaArgs, qaElectronEnv } from '../../scripts/qa-runtime.mjs';
 import { VITE_DEV_ORIGIN, waitForFakeShell } from '../fake-ui';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -17,6 +18,13 @@ export type LaunchElectronOptions = {
   /** GPU-on DWM path. Functional E2E must keep the default GPU-disabled launch. */
   gpu?: boolean;
 };
+
+let e2eSandbox: ReturnType<typeof createQaSandbox> | undefined;
+
+export function e2eQaSandbox(): ReturnType<typeof createQaSandbox> {
+  e2eSandbox ??= createQaSandbox({ purpose: 'electron-e2e' });
+  return e2eSandbox;
+}
 
 function electronEnv(options: LaunchElectronOptions = {}): Record<string, string> {
   const env: Record<string, string> = {};
@@ -47,7 +55,7 @@ function electronEnv(options: LaunchElectronOptions = {}): Record<string, string
   if (options.native) {
     env.YAQMC_E2E_NATIVE = '1';
   }
-  return env;
+  return qaElectronEnv(env, e2eQaSandbox());
 }
 
 export function resolveE2eCoreBin(): string | undefined {
@@ -364,7 +372,7 @@ export function spawnSecondElectronHost(options: LaunchElectronOptions = {}): Sp
     throw new Error('second-launch E2E refused: YAQMC_ELECTRON_E2E must be 1');
   }
   const stderrChunks: Buffer[] = [];
-  const child = spawn(electronBinary, ['.', '--lang=en-US'], {
+  const child = spawn(electronBinary, electronQaArgs(e2eQaSandbox(), ['--lang=en-US']), {
     cwd: desktopRoot,
     env,
     windowsHide: true,
@@ -604,7 +612,7 @@ export async function launchElectronFakeWindow(options: LaunchElectronOptions = 
 }> {
   const app = await electron.launch({
     executablePath: electronBinary,
-    args: ['.', '--lang=en-US'],
+    args: electronQaArgs(e2eQaSandbox(), ['--lang=en-US']),
     cwd: desktopRoot,
     env: electronEnv(options),
     timeout: options.spawnCore ? 90_000 : 60_000,
@@ -627,7 +635,7 @@ export async function launchElectronNativeWindow(
 }> {
   const app = await electron.launch({
     executablePath: electronBinary,
-    args: ['.', '--lang=en-US'],
+    args: electronQaArgs(e2eQaSandbox(), ['--lang=en-US']),
     cwd: desktopRoot,
     env: electronEnv({ ...options, native: true }),
     timeout: options.spawnCore ? 90_000 : 60_000,

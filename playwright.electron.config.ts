@@ -7,7 +7,7 @@
  * Kill-core runs when a local `yaqmc-core` binary is present. Tray click uses
  * `YAQMC_E2E_TRAY=1` (show/hide + settings without Core; play/pause/next/
  * previous/quit need Core). Geometry persist (desktop + island) and SUP-05
- * second-launch need Core plus the shared e2e userData.
+ * second-launch need Core plus one `YAQMC_QA_ROOT` per Playwright worker.
  *
  * Maintainers: `npx playwright install chromium` is not required for this
  * driver. `npm run test:e2e:electron`.

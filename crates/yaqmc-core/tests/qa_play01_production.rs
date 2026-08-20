@@ -102,16 +102,47 @@ fn attach_message() -> AttachMessage {
 }
 
 async fn spawn_core(root: &std::path::Path) -> Session {
-    for dir in ["data", "cache", "logs", "config"] {
+    spawn_core_with_credentials(root, true).await
+}
+
+/// Explicit production-keyring read for LIVE QQ account snapshot.
+/// SQLite, cache, temp, and plugin fallback stay under `root`.
+async fn spawn_core_with_platform_keyring(root: &std::path::Path) -> Session {
+    spawn_core_with_credentials(root, false).await
+}
+
+async fn spawn_core_with_credentials(root: &std::path::Path, isolate_credentials: bool) -> Session {
+    for dir in [
+        "data",
+        "cache",
+        "logs",
+        "config",
+        "credentials",
+        "tmp",
+        "plugin-fallback",
+    ] {
         std::fs::create_dir_all(root.join(dir)).expect("session dir");
     }
-    let mut child = Command::new(env!("CARGO_BIN_EXE_yaqmc-core"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_yaqmc-core"));
+    command
         .env("YAQMC_DATA_DIR", root.join("data"))
         .env("YAQMC_CACHE_DIR", root.join("cache"))
         .env("YAQMC_LOG_DIR", root.join("logs"))
         .env("YAQMC_CONFIG_DIR", root.join("config"))
+        .env("YAQMC_PLUGIN_FALLBACK_DIR", root.join("plugin-fallback"))
+        .env("YAQMC_LOG_FALLBACK_DIR", root.join("logs").join("fallback"))
+        .env("YAQMC_DOWNLOAD_DIR", root.join("tmp").join("downloads"))
+        .env("TEMP", root.join("tmp"))
+        .env("TMP", root.join("tmp"))
+        .env("TMPDIR", root.join("tmp"))
         .env("YAQMC_CHANNEL", "test")
-        .env("RUST_BACKTRACE", "1")
+        .env("RUST_BACKTRACE", "1");
+    if isolate_credentials {
+        command.env("YAQMC_CREDENTIAL_DIR", root.join("credentials"));
+    } else {
+        command.env_remove("YAQMC_CREDENTIAL_DIR");
+    }
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -902,7 +933,7 @@ async fn production_core_play01_controls_eos_seek_lyrics_and_local_api() {
 #[tokio::test]
 async fn production_core_qq_live_or_blocked_login() {
     let root = tempfile::tempdir().expect("live root");
-    let mut session = spawn_core(root.path()).await;
+    let mut session = spawn_core_with_platform_keyring(root.path()).await;
 
     let account = session.request("qqmusic_account_snapshot", None).await;
     let state = account

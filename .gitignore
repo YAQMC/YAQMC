@@ -31,6 +31,7 @@ apps/desktop/resources/core/manifest.json
 
 # P7 soak report (noisy; first 4-h capture stays uncommitted)
 docs/migration/soak-last.json
+docs/migration/acc03-windows-last.json
 
 # Editors
 .idea/

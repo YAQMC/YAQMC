@@ -68,9 +68,13 @@ describe('host boot wiring', () => {
 
   it('isolates Playwright _electron from the smoke harness and live profile', () => {
     expect(source).toContain("process.env.YAQMC_ELECTRON_E2E === '1'");
-    expect(source).toContain('yaqmc-electron-e2e');
-    expect(source).toContain("process.env.YAQMC_UI_PERF_DIAG === '1'");
-    expect(source).toContain('yaqmc-ui-perf-diag');
+    expect(source).toContain('requireQaSandboxFromEnv');
+    expect(source).toContain("process.env.YAQMC_UI_PERF_DIAG !== '1'");
+    expect(source).toContain('qaSandbox.electronUserData');
+    expect(source).toContain('qaSandbox.corePaths');
+    expect(source).toContain('coreTempEnv(qaSandbox)');
+    expect(source).not.toContain('yaqmc-electron-e2e');
+    expect(source).not.toContain('yaqmc-ui-perf-diag');
     expect(source).toContain('${VITE_DEV_ORIGIN}/?provider=fake');
     expect(source).toContain('?surface=${kind}');
     expect(source).toContain('?unlockSurface=${kind}');
