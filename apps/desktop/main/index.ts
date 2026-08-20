@@ -961,8 +961,11 @@ function attachSupervisor(instance: CoreSupervisor): void {
 }
 
 function coreDataPaths() {
-  if (smoke || e2e) {
-    const tempRoot = path.join(app.getPath('temp'), e2e ? 'yaqmc-electron-e2e' : 'yaqmc-core');
+  if (smoke || e2e || process.env.YAQMC_UI_PERF_DIAG === '1') {
+    const tempRoot = path.join(
+      app.getPath('temp'),
+      e2e ? 'yaqmc-electron-e2e' : process.env.YAQMC_UI_PERF_DIAG === '1' ? 'yaqmc-ui-perf-diag' : 'yaqmc-core',
+    );
     return {
       dataDir: path.join(tempRoot, 'data'),
       cacheDir: path.join(tempRoot, 'cache'),
