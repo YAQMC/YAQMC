@@ -69,7 +69,10 @@ function stubUnlockWindow(): LyricsUnlockWindow {
     loadURL: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
+    setIgnoreMouseEvents: vi.fn(),
+    setFocusable: vi.fn(),
     setAlwaysOnTop: vi.fn(),
+    setSkipTaskbar: vi.fn(),
   };
 }
 

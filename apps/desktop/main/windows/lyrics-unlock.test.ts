@@ -31,7 +31,10 @@ function mockWindow(): LyricsUnlockWindow {
     showInactive: vi.fn(),
     hide: vi.fn(),
     setIgnoreMouseEvents: vi.fn(),
+    setFocusable: vi.fn(),
     setAlwaysOnTop: vi.fn(),
+    setSkipTaskbar: vi.fn(),
+    moveTop: vi.fn(),
     isDestroyed: () => false,
     setBounds: vi.fn(),
   };
@@ -140,6 +143,9 @@ describe('show / hide helpers', () => {
     showLyricsUnlock(window);
     hideLyricsUnlock(window);
     expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(false);
+    expect(window.setFocusable).toHaveBeenCalledWith(true);
+    expect(window.setSkipTaskbar).toHaveBeenCalledWith(true);
+    expect(window.moveTop).toHaveBeenCalled();
     expect(window.showInactive).toHaveBeenCalledTimes(1);
     expect(window.show).not.toHaveBeenCalled();
     expect(window.hide).toHaveBeenCalledTimes(1);
@@ -169,6 +175,9 @@ describe('createLyricsUnlockOverlays controller', () => {
     expect(overlays.get('island')).toBe(island);
     expect(createWindow.mock.calls[0]?.[0].show).toBe(false);
     expect(island.setIgnoreMouseEvents).toHaveBeenCalledWith(false);
+    expect(island.setFocusable).toHaveBeenCalledWith(true);
+    expect(island.setSkipTaskbar).toHaveBeenCalledWith(true);
+    expect(island.moveTop).toHaveBeenCalled();
   });
 
   it('positions an existing pill at the surface top-right and does not create on move', () => {
@@ -184,6 +193,7 @@ describe('createLyricsUnlockOverlays controller', () => {
     overlays.create('desktop');
     overlays.position('desktop', surface);
     expect(desktop.setBounds).toHaveBeenCalledWith(unlockOverlayBounds(surface));
+    expect(desktop.moveTop).toHaveBeenCalled();
     expect(unlockOverlayBounds(surface)).toEqual({
       x: 100 + 940 - 42 - 14,
       y: 40 + 14,

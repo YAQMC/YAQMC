@@ -10,6 +10,8 @@ import {
   e2eLyricsUnlockPage,
   e2eOpenSettingsHits,
   e2ePlayerSnapshotHits,
+  e2eLyricsIsFocusable,
+  e2eUnlockIsFocusable,
   e2eUnlockWindowVisible,
   launchElectronNativeWindow,
   resolveE2eCoreBin,
@@ -234,6 +236,8 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
       await lyricsPage.getByRole('button', { name: 'Lock as passive overlay' }).click();
       await expect.poll(() => e2eLyricsIsLocked(app, kind)).toBe(true);
       await expect.poll(() => e2eUnlockWindowVisible(app, kind)).toBe(true);
+      await expect.poll(() => e2eLyricsIsFocusable(app, kind)).toBe(false);
+      await expect.poll(() => e2eUnlockIsFocusable(app, kind)).toBe(true);
       expect(await e2eLyricsIsLocked(app, other)).toBe(false);
       await expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
       await expect(lyricsPage.locator('.lyrics-surface__controls')).toHaveCount(0);
@@ -280,6 +284,27 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
       }
       const unlockName = kind === 'desktop' ? 'Unlock Desktop Lyrics' : 'Unlock Lyrics Island';
       await unlockPage.getByRole('button', { name: unlockName }).click();
+      await expect.poll(() => e2eLyricsIsLocked(app, kind)).toBe(false);
+      await expect.poll(() => e2eUnlockWindowVisible(app, kind)).toBe(false);
+      await expect.poll(() => e2eLyricsIsFocusable(app, kind)).toBe(true);
+
+      const unlocked = await hoverSurface(lyricsPage, kind);
+      await expect(unlocked).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
+      await expect(lyricsPage.locator('.lyrics-surface__controls')).toHaveCount(1);
+
+      await lyricsPage.getByRole('button', { name: 'Lock as passive overlay' }).click();
+      await expect.poll(() => e2eLyricsIsLocked(app, kind)).toBe(true);
+      await expect.poll(() => e2eUnlockWindowVisible(app, kind)).toBe(true);
+      await expect.poll(() => e2eLyricsIsFocusable(app, kind)).toBe(false);
+      await expect.poll(() => e2eUnlockIsFocusable(app, kind)).toBe(true);
+      await expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+      await expect(lyricsPage.locator('.lyrics-surface__controls')).toHaveCount(0);
+
+      const relockUnlockPage = await e2eLyricsUnlockPage(app, kind);
+      if (!relockUnlockPage) {
+        throw new Error(`unlock overlay for ${kind} missing after relock`);
+      }
+      await relockUnlockPage.getByRole('button', { name: unlockName }).click();
       await expect.poll(() => e2eLyricsIsLocked(app, kind)).toBe(false);
       await expect.poll(() => e2eUnlockWindowVisible(app, kind)).toBe(false);
     });
