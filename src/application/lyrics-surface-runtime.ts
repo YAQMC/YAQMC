@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { LyricDocument, LyricLine, LyricSyncMode, Song } from '../domain/music';
-import { selectLyricCursor } from './lyrics-timing';
+import { nextLyricBoundaryMs, selectLyricCursor } from './lyrics-timing';
 import {
   normalizePreferences,
   usePreferencesStore,
@@ -9,6 +9,7 @@ import {
   type SurfaceKind,
 } from './preferences';
 import { getYaqmcClient } from './yaqmc-runtime';
+import { subscribeSurfaceVisualActive, surfaceVisualActive } from './lyrics-surface-visual';
 
 export interface LyricSurfaceProjection {
   timestampMs: number;
@@ -120,13 +121,20 @@ export function useLyricsSurfaceRuntime(): {
     let receivedProjectionEvent = false;
     let acceptedSession = 0;
     let acceptedTrackId: string | null = null;
+    const pendingDocuments = new Map<string, LyricDocument>();
     const client = getYaqmcClient();
     const acceptDocument = (payload: LyricDocument | null | undefined) => {
       if (!payload) return;
-      if (acceptedTrackId && payload.songId !== acceptedTrackId) return;
+      if (acceptedTrackId && payload.songId !== acceptedTrackId) {
+        pendingDocuments.set(payload.songId, payload);
+        return;
+      }
+      pendingDocuments.delete(payload.songId);
       if (active) setDocument(payload);
     };
     const pullDocument = (trackId: string | null) => {
+      const pending = trackId ? pendingDocuments.get(trackId) : undefined;
+      if (pending) acceptDocument(pending);
       void client.player
         .lyrics()
         .then((value) => {
@@ -196,6 +204,17 @@ export function useProjectedLyrics(
   );
 
   useEffect(() => {
+    let cancelled = false;
+    let generation = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimer = () => {
+      generation += 1;
+      if (timer === null) return;
+      clearTimeout(timer);
+      timer = null;
+    };
+
     const apply = (now = performance.now()) => {
       const next = projectSurfaceLyrics(
         document,
@@ -210,15 +229,32 @@ export function useProjectedLyrics(
           : next,
       );
     };
-    apply();
-    if (!playing) return;
-    let frame = 0;
-    const tick = () => {
+
+    const schedule = () => {
+      clearTimer();
+      if (cancelled) return;
       apply();
-      frame = window.requestAnimationFrame(tick);
+      if (!playing || !document || !surfaceVisualActive()) return;
+      const rawPositionMs =
+        (projection ? estimatedSurfacePosition(projection) : 0) + timingOffsetMs;
+      const rawBoundary = nextLyricBoundaryMs(document, rawPositionMs);
+      if (rawBoundary === null) return;
+      const delayMs = Math.min(500, Math.max(16, rawBoundary - rawPositionMs + 8));
+      const scheduledGeneration = ++generation;
+      timer = setTimeout(() => {
+        if (cancelled || scheduledGeneration !== generation) return;
+        timer = null;
+        schedule();
+      }, delayMs);
     };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+
+    schedule();
+    const stopVisual = subscribeSurfaceVisualActive(schedule);
+    return () => {
+      cancelled = true;
+      clearTimer();
+      stopVisual();
+    };
   }, [document, playing, projection, timingOffsetMs]);
 
   return projected;

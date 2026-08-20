@@ -129,10 +129,13 @@
 .surface-word > span:last-child {
   position: absolute;
   inset: 0;
-  width: var(--word-progress);
+  width: 100%;
   overflow: hidden;
   color: var(--surface-lyric-primary);
   white-space: pre;
+  transform: scaleX(var(--word-progress, 0%));
+  transform-origin: left center;
+  backface-visibility: hidden;
 }
 
 .surface-word[data-state='complete'] > span:first-child {
@@ -395,20 +398,53 @@
   --island-progress: 0%;
 }
 
+@property --island-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
 .island-card__progress::after {
   display: block;
-  width: var(--island-progress);
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: var(--accent-primary);
   content: '';
+  transform: scaleX(var(--island-progress));
+  transform-origin: left center;
+  backface-visibility: hidden;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .island-card,
-  .island-card > img,
-  .island-card__expanded,
-  .lyrics-surface__controls {
-    transition: none;
-  }
+@property --word-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+:root[data-compositor-probe='no-surface-anim'] .surface-word > span:last-child,
+:root[data-compositor-probe='no-surface-anim'] .island-card__progress::after {
+  transition: none !important;
+  transform: none !important;
+}
+
+:root[data-compositor-probe='no-island-expand'] .island-card,
+:root[data-compositor-probe='no-island-expand'] .island-card > img,
+:root[data-compositor-probe='no-island-expand'] .island-card__expanded {
+  transition: none !important;
+}
+
+:root[data-compositor-probe='no-surface-artwork'] .island-card > img {
+  visibility: hidden !important;
+}
+
+:root[data-surface-visual='idle'] .island-card,
+:root[data-surface-visual='idle'] .island-card > img,
+:root[data-surface-visual='idle'] .island-card__expanded,
+:root[data-surface-visual='idle'] .lyrics-surface__controls,
+:root[data-surface-visual='idle'] .surface-word > span:last-child,
+:root[data-surface-visual='idle'] .island-card__progress,
+:root[data-surface-visual='idle'] .island-card__progress::after {
+  transition: none !important;
+  animation: none !important;
 }

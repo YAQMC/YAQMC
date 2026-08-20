@@ -65,6 +65,10 @@ function props(
 afterEach(() => {
   vi.useRealTimers();
   invokeMock.mockReset();
+  delete document.documentElement.dataset.platform;
+  delete document.documentElement.dataset.surfaceVisual;
+  delete document.documentElement.dataset.surfaceCommits;
+  delete document.documentElement.dataset.compositorProbe;
   usePreferencesStore.setState({
     ...defaultPreferences,
     surfaces: {
@@ -247,5 +251,29 @@ describe('Lyrics Island passive mode', () => {
     expect(screen.getByRole('button', { name: 'Lock as passive overlay' })).toHaveClass(
       'yaqmc-no-drag',
     );
+  });
+});
+
+describe('overlay visual clock', () => {
+  it('does not start a display-rate rAF loop on Desktop Lyrics', () => {
+    vi.useFakeTimers();
+    const raf = vi.spyOn(window, 'requestAnimationFrame');
+    render(<LyricsSurfaceApp kind="desktop" />);
+    expect(raf).not.toHaveBeenCalled();
+    raf.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('applies host platform attributes so Windows overlay blur CSS can match', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'platform_diagnostics') {
+        return Promise.resolve({ os: 'windows', linux: null });
+      }
+      return Promise.resolve(null);
+    });
+    render(<LyricsSurfaceApp kind="desktop" />);
+    await waitFor(() => {
+      expect(document.documentElement.dataset.platform).toBe('windows');
+    });
   });
 });

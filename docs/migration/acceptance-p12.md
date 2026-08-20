@@ -117,38 +117,97 @@ regression is fixed.
 
 ---
 
-## UI-PERF Windows Lyrics pause (2026-08-20) — FAIL-HUMAN
-
-Fullscreen Lyrics on a clean Windows session (fresh Vite `:1420`, matching
-`e7a6c06` Core, GPU acceleration enabled, `clock eos-gate 2026-08-20a
-playhead-recover`, no stale dev server / Core) can drop to severe FPS when
-pausing on the Lyrics page. Playing Lyrics is usually smooth; Pause is
-probabilistic. Intermittent low-FPS episodes can also occur after the page
-has settled. Transport / audio clock remain functionally correct — this is
-**not** PLAY-01.
+## UI-PERF Windows Lyrics (2026-08-20) — FAIL-HUMAN
 
 | ID / item | Current Status |
 | --- | --- |
-| UI-PERF Windows Lyrics | **FAIL-HUMAN** (HUMAN retest remaining) |
+| UI-PERF Windows Lyrics | **FAIL-HUMAN** (HUMAN retest remaining; **not** PASS-HUMAN) |
 
-Renderer fixes in this commit (do not treat as PASS-HUMAN):
+PLAY-01 remains **PASS-HUMAN on `e7a6c06`**. Desktop Lyrics / Lyrics Island
+controls, lock persistence, native click-through, explicit unlock, and
+SURF-02 remain **PASS-HUMAN**. Do not solve this row by breaking SURF-02.
 
-- Shared Lyrics route machine stays `closed → entering → open → exiting → closed`. Main → Lyrics is bottom → top; Lyrics → Main is top → bottom. Transform-only / opaque; Lyrics stays mounted through `exiting`; navigation/unmount only after exit completion; generation token ignores stale `animationend`.
-- Pause no longer recommits the fullscreen scene (`LyricsPanel` dropped `isPlaying` / `timelineRevision` subscriptions).
-- `data-stage='open'` clears leftover enter `animation: both`.
-- Artwork/default backdrop on Windows/Linux is unscaled (`transform: none; inset: 0`).
-- Vinyl shadows stay on a static node; spin is transform-only and paused unless `data-stage='open'` and playing.
-- Fullscreen-hidden chrome gets `animation: none` so PlayerBar equalizer cannot keep compositing.
+### Current HUMAN reproduction (2026-08-20, after `135a687`)
 
-GPU-on Pause A/B hang (previous profiler run after vinyl JSON, before A/B output) classified **perf harness hang**, not an application hang:
+Fullscreen Lyrics performance is **conditionally** bad. Pause/Resume alone is
+no longer a sufficient reproduction. Cases:
 
-- Unbounded `page.evaluate` rAF sampling had no wall-clock timeout, so a wedged CDP/rAF wait never returned.
-- Optional Chromium `Tracing` after each preset (now off unless `YAQMC_GPU_TRACE=1`) plus per-cycle LayerTree/Performance CDP sessions.
-- A/B `noScenePlaybackAttr` MutationObserver that forced `data-playback-state='playing'` was removed (infinite-loop landmine; not reached on the observed hang).
+| Case | Setup | HUMAN |
+| --- | --- | --- |
+| A | Fullscreen Lyrics; Desktop Lyrics and Lyrics Island **closed** | smooth |
+| B | Keep Desktop Lyrics open, then Fullscreen Lyrics | low-FPS |
+| C | Keep Lyrics Island open, then Fullscreen Lyrics | low-FPS |
+| D | Keep both overlays open | low-FPS |
 
-Watchdog GPU-on probe after those harness fixes (`scripts/migration/lyrics-pause-gpu-profile.mjs`, GPU on, ANGLE NVIDIA RTX 5070 Ti Laptop, 8 Pause/Resume cycles × classic/immersive/vinyl + 4 A/B + 10 extra vinyl = 38 Pause cycles): **no hang dump**. Paused steady ~188–213 FPS; Resume ~175–202 FPS; rAF never stuck. One classic Pause-settle frame was 142 ms with paused steady still 193 FPS. One vinyl *playing* sample was 49 FPS with that cycle’s paused steady 213 FPS — not the HUMAN Pause-tank signature. A/B variants all `jank: false`.
+Primary hypothesis: multi-window Windows Chromium / ANGLE / DWM composition
+(main Fullscreen Lyrics BrowserWindow + transparent always-on-top Desktop
+and/or Island). Not a Core/player cadence defect.
 
-**B is true for the A/B hang:** the profiler was the failure; repeated GPU-on Pause cycles stayed healthy. That does **not** close the HUMAN cell. Do not start ACC-03 playing CPU / lyrics jitter, ACC-04 Day 1, or the P12 second soak until HUMAN retests Pause on a clean Windows session.
+Renderer / host follow-up in this commit (do not treat as PASS-HUMAN):
+
+- Overlay windows call `usePlatformDiagnosticsRuntime()` so
+  `data-platform='windows'` matches and the existing Windows
+  `backdrop-filter: none` rules apply to Desktop/Island (they previously
+  never matched, so overlay `backdrop-filter: blur(...)` ran on transparent
+  always-on-top surfaces).
+- Overlay lyric cursor uses lyric-boundary timers, not a display-rate rAF
+  loop. Word fill is transform-only CSS for the word duration; Island
+  progress is a 250 ms snap, not a minutes-long CSS transition.
+- Hidden/inactive overlay documents set `data-surface-visual='idle'` and skip
+  renderer-only interpolation. Authoritative `lyrics://projection` delivery
+  continues.
+- Overlay/unlock `webContents` enable background throttling while hidden.
+  Main window stays unthrottled (PLAY-03).
+- Overlay `BrowserWindow` `backgroundColor` is `#00000000`. Lock remains
+  `setIgnoreMouseEvents(true)` without `{ forward: true }`.
+
+GPU-on matrix (`npm run perf:windows-gpu`,
+`scripts/migration/lyrics-multiwindow-gpu-profile.mjs`, GPU on, ANGLE NVIDIA
+RTX 5070 Ti Laptop, Tracing off, no hang dump):
+
+| Combination | Main rAF FPS | Overlay rAF FPS | Main p95 |
+| --- | --- | --- | --- |
+| Fullscreen only | 224 | — | 8.2 ms |
+| Fullscreen + Desktop | 233 | Desktop 241 | 4.3 ms |
+| Fullscreen + Island | 236 | Island 241 | 4.3 ms |
+| Fullscreen + Desktop + Island | 228 | Desktop 241 / Island 240 | 4.3 ms |
+
+Hidden overlay renderers: rAF frames 0 (background throttling). GPU process
+working set ~151–166 MiB across the matrix. Worst-combination Pause/Resume
+(5 cycles, both overlays open): playing 209–231 FPS, paused 223–238 FPS,
+resume 211–233 FPS; `rafStuck: false`. Overlay React commits during a 900 ms
+sample stayed ~16–30, not a display-rate recommit loop.
+
+Do **not** treat these AUTO numbers as PASS-HUMAN. HUMAN still retests the
+matrix below.
+
+Preserve `135a687` Pause compositor fixes: shared stage machine, no
+Pause-driven `LyricsPanel` recommit, transform-only opaque enter/exit, split
+vinyl shadow/spin, hidden PlayerBar equalizer suppression.
+
+Do **not** start ACC-03 playing CPU / lyrics jitter, ACC-04 Day 1, or the P12
+second soak until HUMAN closes this row against the matrix:
+
+- Fullscreen Lyrics alone
+- Fullscreen + Desktop Lyrics
+- Fullscreen + Island
+- Fullscreen + Desktop + Island
+- Worst combination: Pause / paused steady / Resume / Main → Lyrics /
+  Lyrics → Main
+
+### Earlier Pause-only investigation (history; `135a687`)
+
+Fullscreen Lyrics on a clean Windows session could drop FPS on Pause. Playing
+Lyrics was usually smooth; Pause was probabilistic. Transport / audio clock
+remained correct — **not** PLAY-01.
+
+GPU-on Pause A/B hang classified **perf harness hang**, not an application
+hang (unbounded rAF/CDP Tracing). Watchdog probe
+`scripts/migration/lyrics-pause-gpu-profile.mjs`: 38 Pause cycles, no hang
+dump; paused steady ~188–213 FPS; Resume ~175–202 FPS.
+
+**B was true for that A/B hang.** That did **not** close the HUMAN cell; the
+remaining defect is the multi-window case above.
 
 P12 execution stays **active**. ACC-03 performance measurements and ACC-04
 Windows daily-driver evidence must **not** be trusted until HUMAN closes this
@@ -194,9 +253,10 @@ SURF-02 / Desktop Lyrics / Island / PLAY-01 / SURF-03 / ACCT-01..03 are
 | SURF-04 real fullscreen game/video overlay | NOT TESTED | Window hide/restore already PASS-HUMAN. Parked extra, not the next catalog row. |
 
 UI-PERF as a **phase** is still not accepted. **UI-PERF Windows Lyrics** is
-**FAIL-HUMAN** pending HUMAN retest (GPU-on Pause A/B hang was profiler-side;
-see Current Status section). Individual PLAY-01 transport rows stay accepted
-and are not remaining cells.
+**FAIL-HUMAN** pending HUMAN retest of the multi-window Fullscreen matrix
+(Fullscreen alone vs +Desktop / +Island / both). Pause-only GPU-on hang was
+profiler-side; see Current Status section. Individual PLAY-01 transport rows
+stay accepted and are not remaining cells.
 
 ### ACC-03 §35.2 + second soak — not signed
 

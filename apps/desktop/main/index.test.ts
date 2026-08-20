@@ -95,6 +95,27 @@ describe('host boot wiring', () => {
     );
   });
 
+  it('throttles hidden Desktop/Island/unlock renderers without touching the main window clock', () => {
+    expect(source).toContain('bindOverlayVisibilityThrottle');
+    expect(source).toContain('setBackgroundThrottling(!visible)');
+    expect(source).toContain("window.webContents.on('did-finish-load', apply);");
+    const lyricsBind = source.indexOf('function createLyricsBrowserWindow');
+    const unlockBind = source.indexOf('function createUnlockBrowserWindow');
+    const mainBind = source.indexOf('function createMainWindow');
+    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', lyricsBind)).toBeGreaterThan(
+      lyricsBind,
+    );
+    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', lyricsBind)).toBeLessThan(unlockBind);
+    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', unlockBind)).toBeGreaterThan(
+      unlockBind,
+    );
+    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', unlockBind)).toBeLessThan(mainBind);
+    expect(source.indexOf('bindOverlayVisibilityThrottle(window);', mainBind)).toBe(-1);
+    expect(source.indexOf("backgroundColor: '#00000000'", lyricsBind)).toBeGreaterThan(lyricsBind);
+    expect(source.indexOf("backgroundColor: '#00000000'", lyricsBind)).toBeLessThan(mainBind);
+    expect(source.indexOf("backgroundColor: '#00000000'", mainBind)).toBe(-1);
+  });
+
   it('applies Linux graphics switches before ready and never sandbox/web-security flags', () => {
     const forbidden = [['--', 'no-sandbox'].join(''), ['--', 'disable-web-security'].join('')];
     expect(source).toContain('app.commandLine.appendSwitch');

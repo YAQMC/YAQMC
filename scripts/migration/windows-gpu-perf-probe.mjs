@@ -2,11 +2,13 @@
  * GPU-on Windows compositor probe against a real Electron process (dev:desktop
  * spawn, not Playwright `_electron` and not ELECTRON_DISABLE_GPU).
  *
- * Run (Vite must already serve 127.0.0.1:1420, desktop main built):
+ * Broader ACC-02 compositor probe. The UI-PERF multi-window matrix is:
  *   npm run perf:windows-gpu
+ *   (scripts/migration/lyrics-multiwindow-gpu-profile.mjs)
  *
- * This is not a functional E2E gate. It prints JSON FPS A/B for HUMAN/GPU/DWM.
- * A GPU-disabled Playwright session is not evidence that playback rendering is healthy.
+ * This file is not started by P12 while UI-PERF Windows Lyrics is FAIL-HUMAN.
+ * Tracing is opt-in (`YAQMC_GPU_TRACE=1`). rAF sampling always has a wall-clock
+ * timeout so a wedged CDP/rAF wait is a harness hang, not an unbounded wait.
  */
 /* global document, window, performance */
 import { spawn } from 'node:child_process';
@@ -22,7 +24,32 @@ const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
 const electronBinary = createRequire(path.join(desktopRoot, 'package.json'))('electron');
 const debugPort = Number(process.env.YAQMC_GPU_PROBE_PORT || 9231);
 const userData = path.join(os.tmpdir(), 'yaqmc-gpu-perf-probe');
-const collectTrace = process.env.YAQMC_GPU_TRACE !== '0';
+const collectTrace = process.env.YAQMC_GPU_TRACE === '1';
+
+class ProbeTimeout extends Error {
+  constructor(phase, timeoutMs) {
+    super(`probe timeout after ${timeoutMs}ms during ${phase}`);
+    this.name = 'ProbeTimeout';
+    this.phase = phase;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+async function withTimeout(promise, timeoutMs, phase) {
+  let timer;
+  let settled = false;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      if (!settled) reject(new ProbeTimeout(phase, timeoutMs));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    settled = true;
+    clearTimeout(timer);
+  }
+}
 
 function waitForTcp(host, port, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
@@ -77,59 +104,84 @@ function lyricDocument(songId) {
 }
 
 async function invoke(page, method, params) {
-  return page.evaluate(
-    async ({ methodName, payload }) => {
-      const yaqmc = globalThis.yaqmc;
-      if (!yaqmc || typeof yaqmc.invoke !== 'function') {
-        throw new Error('window.yaqmc.invoke is missing');
-      }
-      return yaqmc.invoke(methodName, payload);
-    },
-    { methodName: method, payload: params },
+  return withTimeout(
+    page.evaluate(
+      async ({ methodName, payload }) => {
+        const yaqmc = globalThis.yaqmc;
+        if (!yaqmc || typeof yaqmc.invoke !== 'function') {
+          throw new Error('window.yaqmc.invoke is missing');
+        }
+        return yaqmc.invoke(methodName, payload);
+      },
+      { methodName: method, payload: params },
+    ),
+    12_000,
+    `invoke:${method}`,
   );
 }
 
 async function probe(page, name, arg) {
-  return page.evaluate(
-    async ({ methodName, payload }) => {
-      const api = globalThis.__YAQMC_PLAYBACK_UI_PROBE__;
-      const method = api?.[methodName];
-      if (typeof method !== 'function') throw new Error('playback UI probe is missing');
-      return method(payload);
-    },
-    { methodName: name, payload: arg },
+  return withTimeout(
+    page.evaluate(
+      async ({ methodName, payload }) => {
+        const api = globalThis.__YAQMC_PLAYBACK_UI_PROBE__;
+        const method = api?.[methodName];
+        if (typeof method !== 'function') throw new Error('playback UI probe is missing');
+        return method(payload);
+      },
+      { methodName: name, payload: arg },
+    ),
+    16_000,
+    `probe:${name}`,
   );
 }
 
 async function sampleRaf(page, durationMs = 1_000) {
-  return page.evaluate(async (ms) => {
-    const frameTimes = [];
-    const started = performance.now();
-    let previous = null;
-    let frames = 0;
-    await new Promise((resolve) => {
-      const tick = (now) => {
-        frames += 1;
-        if (previous !== null) frameTimes.push(now - previous);
-        previous = now;
-        if (now - started >= ms) {
+  return withTimeout(
+    page.evaluate(async (ms) => {
+      const frameTimes = [];
+      const started = performance.now();
+      let previous = null;
+      let frames = 0;
+      let wallClockTimedOut = false;
+      await new Promise((resolve) => {
+        let settled = false;
+        const finish = (timedOut) => {
+          if (settled) return;
+          settled = true;
+          wallClockTimedOut = timedOut;
           resolve();
-          return;
-        }
+        };
+        const wall = setTimeout(() => finish(true), ms + 250);
+        const tick = (now) => {
+          if (settled) return;
+          frames += 1;
+          if (previous !== null) frameTimes.push(now - previous);
+          previous = now;
+          if (now - started >= ms) {
+            clearTimeout(wall);
+            finish(false);
+            return;
+          }
+          window.requestAnimationFrame(tick);
+        };
         window.requestAnimationFrame(tick);
+      });
+      const elapsed = Math.max(1, performance.now() - started);
+      const sorted = [...frameTimes].sort((left, right) => left - right);
+      return {
+        durationMs: elapsed,
+        rafFrames: frames,
+        rafFps: frames * (1_000 / elapsed),
+        rafP95Ms: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0,
+        rafMaxMs: sorted[sorted.length - 1] ?? 0,
+        wallClockTimedOut,
+        rafStuck: wallClockTimedOut && frames < 3,
       };
-      window.requestAnimationFrame(tick);
-    });
-    const elapsed = Math.max(1, performance.now() - started);
-    const sorted = [...frameTimes].sort((left, right) => left - right);
-    return {
-      durationMs: elapsed,
-      rafFrames: frames,
-      rafFps: frames * (1_000 / elapsed),
-      rafP95Ms: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0,
-      rafMaxMs: sorted[sorted.length - 1] ?? 0,
-    };
-  }, durationMs);
+    }, durationMs),
+    durationMs + 4_000,
+    `sampleRaf:${durationMs}`,
+  );
 }
 
 async function traceWindow(page, durationMs) {
