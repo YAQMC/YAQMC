@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -92,12 +93,13 @@ describe('dialog-split origin continuation', () => {
       updater: { state: 'idle' },
       restartCounter: 0,
     };
-    const coreInvoke = vi.fn(async () => ({ path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 }));
+    const exportZip = path.join(os.tmpdir(), 'yaqmc-out', 'YAQMC-diagnostics.zip');
+    const coreInvoke = vi.fn(async () => ({ path: exportZip, bytes: 12 }));
     const router = new IpcRouter({
       methods,
       hostHandlers: createHostHandlers({
         ...lyricsStubs(),
-        downloadsDir: () => 'D:\\Downloads',
+        downloadsDir: () => path.join(os.tmpdir(), 'yaqmc-downloads'),
         coreInvoke,
         collectHostPayload: () => hostPayload,
       }),
@@ -107,16 +109,16 @@ describe('dialog-split origin continuation', () => {
     await expect(
       router.invoke(1, {
         method: 'diagnostics_export_bundle_to',
-        params: { path: 'D:\\out\\YAQMC-diagnostics.zip', request: { includeLogs: true } },
+        params: { path: exportZip, request: { includeLogs: true } },
       }),
     ).resolves.toEqual({
       ok: true,
-      result: { path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 12 },
+      result: { path: exportZip, bytes: 12 },
     });
     expect(coreInvoke).toHaveBeenCalledWith(
       'diagnostics_export_bundle_to',
       {
-        path: 'D:\\out\\YAQMC-diagnostics.zip',
+        path: exportZip,
         request: { includeLogs: true, hostPayload },
       },
       'main',
@@ -202,8 +204,9 @@ describe('dialog-split origin continuation', () => {
   });
 
   it('does not let a renderer choose or spoof origin', async () => {
+    const exportZip = path.join(os.tmpdir(), 'yaqmc-out', 'YAQMC-diagnostics.zip');
     const invoke = vi.fn(async () => ({ ok: true }));
-    const coreInvoke = vi.fn(async () => ({ path: 'D:\\out\\YAQMC-diagnostics.zip', bytes: 1 }));
+    const coreInvoke = vi.fn(async () => ({ path: exportZip, bytes: 1 }));
     const router = new IpcRouter({
       methods,
       client: { invoke },
@@ -234,7 +237,7 @@ describe('dialog-split origin continuation', () => {
 
     const spoofed = {
       method: 'diagnostics_export_bundle_to',
-      params: { path: 'D:\\out\\YAQMC-diagnostics.zip', origin: 'host' },
+      params: { path: exportZip, origin: 'host' },
       origin: 'host',
     } as InvokeRequest & { origin: string };
 
@@ -242,7 +245,7 @@ describe('dialog-split origin continuation', () => {
     expect(coreInvoke).toHaveBeenCalledWith(
       'diagnostics_export_bundle_to',
       expect.objectContaining({
-        path: 'D:\\out\\YAQMC-diagnostics.zip',
+        path: exportZip,
       }),
       'main',
     );

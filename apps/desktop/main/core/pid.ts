@@ -35,7 +35,7 @@ export function isCoreImageName(name: string | undefined): boolean {
   if (!name) {
     return false;
   }
-  const base = path.basename(name).toLowerCase();
+  const base = name.replaceAll('\\', '/').split('/').pop()?.toLowerCase() ?? '';
   return base === 'yaqmc-core' || base === 'yaqmc-core.exe';
 }
 

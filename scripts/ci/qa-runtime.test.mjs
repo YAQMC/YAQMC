@@ -146,7 +146,10 @@ test('failed/hung profiler still cannot point Core at production', () => {
   const before = hashDirectory(home);
   const sandbox = createQaSandbox({ purpose: 'hung-profiler', env });
   writeFileSync(path.join(sandbox.coreData, 'partial.json'), '{"hung":true}');
-  assert.throws(() => assertSandboxNotProduction(prod.dataDir, { env }), /overlaps production/);
+  assert.throws(
+    () => assertSandboxNotProduction(prod.dataDir, { env, platform: 'win32', homedir: home }),
+    /overlaps production/,
+  );
   assert.equal(hashDirectory(home), before);
 });
 

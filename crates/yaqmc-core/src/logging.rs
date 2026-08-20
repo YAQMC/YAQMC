@@ -330,17 +330,7 @@ fn truncate_with_scrub(value: &str, max_bytes: usize) -> Cow<'_, str> {
 ///
 /// This avoids leaking the local OS username through file paths that end up in logs.
 pub fn sanitize_path(value: &str) -> String {
-    let mut result = value.to_owned();
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(idx) = result.find("C:\\Users\\") {
-            let tail = &result[idx + "C:\\Users\\".len()..];
-            if let Some(slash) = tail.find('\\') {
-                let replaced = format!("{}<USER_HOME>{}", &result[..idx], &tail[slash..]);
-                result = replaced;
-            }
-        }
-    }
+    let result = sanitize_windows_profile_prefix(value);
     let home = std::env::var("HOME").ok();
     let userprofile = std::env::var("USERPROFILE").ok();
     let roots = [home.as_deref(), userprofile.as_deref()]
@@ -348,6 +338,22 @@ pub fn sanitize_path(value: &str) -> String {
         .flatten()
         .collect::<Vec<_>>();
     sanitize_path_with_roots(&result, &roots)
+}
+
+#[cfg(target_os = "windows")]
+fn sanitize_windows_profile_prefix(value: &str) -> String {
+    if let Some(idx) = value.find("C:\\Users\\") {
+        let tail = &value[idx + "C:\\Users\\".len()..];
+        if let Some(slash) = tail.find('\\') {
+            return format!("{}<USER_HOME>{}", &value[..idx], &tail[slash..]);
+        }
+    }
+    value.to_owned()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn sanitize_windows_profile_prefix(value: &str) -> String {
+    value.to_owned()
 }
 
 /// Pure path-sanitization primitive for deterministic host-independent tests.

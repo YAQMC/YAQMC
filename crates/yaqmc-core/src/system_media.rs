@@ -678,85 +678,105 @@ fn connect_linux_callbacks(
     let service = Arc::clone(&player_service);
     let command_runtime = runtime.clone();
     player.connect_play(move |_| {
-        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Play);
+        std::mem::drop(spawn_command(
+            &command_runtime,
+            Arc::clone(&service),
+            LinuxCommand::Play,
+        ));
     });
     let service = Arc::clone(&player_service);
     let command_runtime = runtime.clone();
     player.connect_pause(move |_| {
-        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Pause);
+        std::mem::drop(spawn_command(
+            &command_runtime,
+            Arc::clone(&service),
+            LinuxCommand::Pause,
+        ));
     });
     let service = Arc::clone(&player_service);
     let command_runtime = runtime.clone();
     player.connect_play_pause(move |_| {
-        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Toggle);
+        std::mem::drop(spawn_command(
+            &command_runtime,
+            Arc::clone(&service),
+            LinuxCommand::Toggle,
+        ));
     });
     let service = Arc::clone(&player_service);
     let command_runtime = runtime.clone();
     player.connect_stop(move |_| {
-        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Stop);
+        std::mem::drop(spawn_command(
+            &command_runtime,
+            Arc::clone(&service),
+            LinuxCommand::Stop,
+        ));
     });
     let service = Arc::clone(&player_service);
     let command_runtime = runtime.clone();
     player.connect_next(move |_| {
-        let _ = spawn_command(&command_runtime, Arc::clone(&service), LinuxCommand::Next);
+        std::mem::drop(spawn_command(
+            &command_runtime,
+            Arc::clone(&service),
+            LinuxCommand::Next,
+        ));
     });
     let service = Arc::clone(&player_service);
     let command_runtime = runtime.clone();
     player.connect_previous(move |_| {
-        let _ = spawn_command(
+        std::mem::drop(spawn_command(
             &command_runtime,
             Arc::clone(&service),
             LinuxCommand::Previous,
-        );
+        ));
     });
 
     let service = Arc::clone(&player_service);
     let callback_runtime = runtime.clone();
     player.connect_seek(move |_, offset| {
-        let _ = dispatch_mpris_callback(
+        std::mem::drop(dispatch_mpris_callback(
             &callback_runtime,
             Arc::clone(&service),
             SystemMediaPlayerCommand::SeekRelative(offset.as_millis()),
-        );
+        ));
     });
     let service = Arc::clone(&player_service);
     let callback_runtime = runtime.clone();
     player.connect_set_position(move |_, track_id, position| {
-        let _ = dispatch_mpris_callback(
+        std::mem::drop(dispatch_mpris_callback(
             &callback_runtime,
             Arc::clone(&service),
             SystemMediaPlayerCommand::SetPosition {
                 position_ms: position.as_millis().max(0) as u64,
                 expected_mpris_track_id: Some(track_id.to_string()),
             },
-        );
+        ));
     });
     let service = Arc::clone(&player_service);
     let callback_runtime = runtime.clone();
     player.connect_set_shuffle(move |_, shuffle| {
-        let _ = dispatch_mpris_callback(
+        std::mem::drop(dispatch_mpris_callback(
             &callback_runtime,
             Arc::clone(&service),
             SystemMediaPlayerCommand::SetShuffle(shuffle),
-        );
+        ));
     });
     let service = Arc::clone(&player_service);
     let callback_runtime = runtime.clone();
     player.connect_set_loop_status(move |_, status| {
         let repeat = repeat_mode_for_mpris(status);
-        let _ = dispatch_mpris_callback(
+        std::mem::drop(dispatch_mpris_callback(
             &callback_runtime,
             Arc::clone(&service),
             SystemMediaPlayerCommand::SetRepeat(repeat),
-        );
+        ));
     });
     let callback_runtime = runtime;
     player.connect_set_volume(move |_, volume| {
-        let _ = dispatch_mpris_callback(
+        std::mem::drop(dispatch_mpris_callback(
             &callback_runtime,
             Arc::clone(&player_service),
             SystemMediaPlayerCommand::SetVolume(volume),
-        );
+        ));
     });
 }
 

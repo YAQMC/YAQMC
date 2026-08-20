@@ -31,6 +31,12 @@ apps/desktop/resources/core/manifest.json
 docs/migration/soak-last.json
 docs/migration/acc03-windows-last.json
 
+# Example plugin entrypoints (root `dist/` would hide plug01 fixtures)
+!examples/plugins/script-network/dist/
+!examples/plugins/script-network/dist/main.js
+!examples/plugins/script-actions/dist/
+!examples/plugins/script-actions/dist/main.js
+
 # Editors
 .idea/
 .vscode/*

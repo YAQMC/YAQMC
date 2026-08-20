@@ -2724,7 +2724,11 @@ mod tests {
         assert_eq!(playing.current_index, Some(0));
         let next = player.next().await.expect("next succeeds");
         assert_eq!(next.current_index, Some(1));
-        assert_eq!(player.snapshot().await, next);
+        let mut live = player.snapshot().await;
+        let mut expected = next;
+        live.sampled_at_ms = 0;
+        expected.sampled_at_ms = 0;
+        assert_eq!(live, expected);
     }
 
     #[tokio::test]

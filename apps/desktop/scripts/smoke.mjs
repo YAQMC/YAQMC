@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createQaSandbox, electronQaArgs, qaElectronEnv } from '../../scripts/qa-runtime.mjs';
+import { createQaSandbox, electronQaArgs, qaElectronEnv } from '../../../scripts/qa-runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const electronBinary = createRequire(import.meta.url)('electron');

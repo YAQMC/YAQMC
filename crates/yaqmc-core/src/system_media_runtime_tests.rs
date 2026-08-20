@@ -3,9 +3,10 @@ use std::sync::Arc;
 use crate::player::{PlaybackState, PlayerService, RepeatMode};
 use crate::system_media::{
     dispatch_player_command_on_runtime, mpris_track_id, HostCommandPublisher,
-    SystemMediaCallbackOrigin, SystemMediaIntegration, SystemMediaPlayerCommand,
-    SystemMediaStartConfig,
+    SystemMediaCallbackOrigin, SystemMediaPlayerCommand,
 };
+#[cfg(target_os = "windows")]
+use crate::system_media::{SystemMediaIntegration, SystemMediaStartConfig};
 use crate::HostCommand;
 
 #[cfg(target_os = "windows")]
