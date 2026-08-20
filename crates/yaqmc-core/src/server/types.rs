@@ -115,7 +115,7 @@ pub struct CursorPageParams {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistTracksParams {
-    pub playlist: crate::qqmusic::account::AccountPlaylistSummary,
+    pub playlist: yaqmc_provider_api::AccountPlaylistSummary,
     pub cursor: Option<String>,
     pub limit: u32,
 }
@@ -136,7 +136,7 @@ pub struct AttemptIdParams {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthPrepareParams {
-    pub provider_kind: crate::qqmusic::OAuthLoginProvider,
+    pub provider_kind: yaqmc_provider_api::OAuthLoginProvider,
 }
 
 #[derive(Deserialize)]

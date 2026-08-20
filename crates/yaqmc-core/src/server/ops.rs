@@ -23,13 +23,12 @@ use crate::plugin::api::{
 use crate::plugin::host::{ActivePluginResources, ExtensionHost, PluginRecord};
 use crate::plugin::permissions::parse_permission;
 use crate::plugin::{PluginDiagnostic, PluginStatus};
-use crate::qqmusic::account::AccountSnapshot;
-use crate::qqmusic::{
-    AudioQualityPreference, OAuthLoginProvider, OAuthPrepareResult, ProviderCommandError,
-    ProviderResult, ProviderStatus, QQMusicService,
-};
 use crate::storage::StorageService;
 use crate::CoreHandle;
+use yaqmc_provider_api::{
+    AccountSnapshot, AudioQualityPreference, MusicProvider, OAuthLoginProvider, OAuthPrepareResult,
+    ProviderCommandError, ProviderResult, ProviderStatus,
+};
 
 use super::types::{
     DebugPerfSample, DiagnosticsBundleRequest, DiagnosticsRequest, FrontendLogEntry,
@@ -164,7 +163,7 @@ fn map_plugin_diagnostic(diagnostic: PluginDiagnostic) -> WirePluginDiagnostic {
 
 pub async fn assemble_diagnostics_snapshot(
     player: &PlayerService,
-    provider: &QQMusicService,
+    provider: &dyn MusicProvider,
     logging: &LoggingHandle,
     plugins: Option<&ExtensionHost>,
     platform: crate::platform::PlatformDiagnostics,
@@ -280,7 +279,7 @@ pub fn audio_set_output_device(
 }
 
 pub async fn qqmusic_set_preferred_quality(
-    provider: &QQMusicService,
+    provider: &dyn MusicProvider,
     player: &PlayerService,
     quality: AudioQualityPreference,
 ) -> ProviderResult<ProviderStatus> {
@@ -289,10 +288,7 @@ pub async fn qqmusic_set_preferred_quality(
         .as_ref()
         .and_then(|song| song.provider.as_ref())
         .is_some_and(|reference| reference.provider_id == "qqmusic");
-    let status = provider
-        .set_preferred_quality(quality)
-        .await
-        .map_err(ProviderCommandError::from)?;
+    let status = provider.set_preferred_quality(quality).await?;
     if current_is_qqmusic {
         player
             .reload_current()
@@ -307,7 +303,7 @@ pub async fn qqmusic_set_preferred_quality(
 }
 
 pub async fn qqmusic_set_current_quality(
-    provider: &QQMusicService,
+    provider: &dyn MusicProvider,
     player: &PlayerService,
     quality: AudioQualityPreference,
 ) -> ProviderResult<PlayerSnapshot> {
@@ -317,11 +313,8 @@ pub async fn qqmusic_set_current_quality(
         .and_then(|song| song.provider)
         .filter(|reference| reference.provider_id == "qqmusic")
         .map(|reference| reference.track_id)
-        .ok_or_else(|| ProviderCommandError::from(crate::qqmusic::QQMusicError::InvalidRequest))?;
-    provider
-        .set_current_quality(track_id, quality)
-        .await
-        .map_err(ProviderCommandError::from)?;
+        .ok_or_else(|| ProviderCommandError::invalid_request("the QQ Music request was invalid"))?;
+    provider.set_current_quality(track_id, quality).await?;
     player
         .reload_current()
         .await
@@ -333,53 +326,41 @@ pub async fn qqmusic_set_current_quality(
 }
 
 pub async fn qqmusic_auth_heartbeat(
-    provider: &QQMusicService,
+    provider: &dyn MusicProvider,
     attempt_id: String,
     owner_lease_id: String,
     oauth_window_live: bool,
 ) -> ProviderResult<AccountSnapshot> {
     if provider.is_oauth_login(&attempt_id).await && !oauth_window_live {
-        return provider
-            .cancel_qr_login(attempt_id)
-            .await
-            .map_err(Into::into);
+        return provider.cancel_qr_login(attempt_id).await;
     }
     provider
         .heartbeat_qr_login(attempt_id, owner_lease_id)
         .await
-        .map_err(Into::into)
 }
 
 pub async fn auth_oauth_prepare(
-    provider: &Arc<QQMusicService>,
+    provider: &dyn MusicProvider,
     kind: OAuthLoginProvider,
 ) -> ProviderResult<OAuthPrepareResult> {
-    let launch = provider
-        .start_oauth_login(kind)
-        .await
-        .map_err(ProviderCommandError::from)?;
-    Ok(OAuthPrepareResult::from_launch(kind, launch))
+    provider.prepare_oauth_login(kind).await
 }
 
 pub async fn auth_oauth_complete(
-    provider: &QQMusicService,
+    provider: &dyn MusicProvider,
     attempt_id: &str,
     callback_url: reqwest::Url,
 ) -> ProviderResult<AccountSnapshot> {
     provider
-        .complete_oauth_login_callback(attempt_id, callback_url)
+        .complete_oauth_login(attempt_id, callback_url)
         .await
-        .map_err(Into::into)
 }
 
 pub async fn auth_oauth_cancel(
-    provider: &QQMusicService,
+    provider: &dyn MusicProvider,
     attempt_id: &str,
 ) -> ProviderResult<AccountSnapshot> {
-    provider
-        .cancel_oauth_login(attempt_id)
-        .await
-        .map_err(Into::into)
+    provider.cancel_oauth_login(attempt_id).await
 }
 
 pub fn app_preferences_get(storage: &StorageService) -> Result<Option<String>, String> {

@@ -12,14 +12,11 @@ use super::{
     },
     clock::Clock,
     color_for, normalize_new_song, normalize_old_song, playlist_id,
-    redaction::redact_json,
+    redaction::{redact_json, sanitize_field},
     stable_component,
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
-use crate::logging::sanitize_field;
-use crate::player::{Artwork, AudioQuality, Song};
-use crate::storage::{ProviderCacheMutation, StorageService};
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
     Method, StatusCode, Url,
@@ -35,6 +32,9 @@ use std::{
 use tokio::sync::Mutex;
 #[cfg(test)]
 use tokio::sync::Notify;
+use yaqmc_provider_api::{
+    Artwork, AudioQuality, ProviderCacheMutation, ProviderStorage, ProviderStorageExt, Song,
+};
 
 const FAVORITES_TTL_MS: u64 = 2 * 60 * 1_000;
 const ACCOUNT_COLLECTION_TTL_MS: u64 = 5 * 60 * 1_000;
@@ -737,7 +737,7 @@ impl RefreshState {
 pub(crate) struct QQMusicAccountService {
     transport: Arc<dyn QqTransport>,
     clock: Arc<dyn Clock>,
-    storage: Arc<StorageService>,
+    storage: Arc<dyn ProviderStorage>,
     auth: Arc<QQMusicAuthService>,
     cursors: Mutex<OpaqueCursorRegistry>,
     refreshes: Mutex<RefreshState>,
@@ -754,7 +754,7 @@ impl QQMusicAccountService {
     pub(crate) fn new(
         transport: Arc<dyn QqTransport>,
         clock: Arc<dyn Clock>,
-        storage: Arc<StorageService>,
+        storage: Arc<dyn ProviderStorage>,
         auth: Arc<QQMusicAuthService>,
     ) -> Self {
         Self {
@@ -4400,15 +4400,16 @@ mod tests {
         clock::ManualClock,
     };
     use super::*;
-    use crate::credentials::{
-        CredentialStore, MemoryCredentialStore, SpawnBlockingCredentialStore,
-    };
     use async_trait::async_trait;
     use std::{
         collections::VecDeque,
         sync::atomic::{AtomicUsize, Ordering},
     };
     use tokio_util::sync::CancellationToken;
+    use yaqmc_core::{
+        credentials::{CredentialStore, MemoryCredentialStore, SpawnBlockingCredentialStore},
+        storage::StorageService,
+    };
 
     struct StaticAuthProtocol;
 
@@ -4546,7 +4547,7 @@ mod tests {
             let credentials = Arc::new(MemoryCredentialStore::default());
             let session = synthetic_session('a');
             let auth = build_auth(
-                Arc::clone(&storage),
+                storage.clone(),
                 Arc::clone(&clock),
                 Arc::clone(&credentials),
             );
@@ -4557,7 +4558,7 @@ mod tests {
             let service = Arc::new(QQMusicAccountService::new(
                 Arc::clone(&transport) as Arc<dyn QqTransport>,
                 Arc::clone(&clock) as Arc<dyn Clock>,
-                Arc::clone(&storage),
+                storage.clone(),
                 Arc::clone(&auth),
             ));
             {
@@ -4579,7 +4580,7 @@ mod tests {
 
         async fn restarted(&self, replies: impl IntoIterator<Item = TestReply>) -> Self {
             let auth = build_auth(
-                Arc::clone(&self.storage),
+                self.storage.clone(),
                 Arc::clone(&self.clock),
                 Arc::clone(&self.credentials),
             );
@@ -4588,7 +4589,7 @@ mod tests {
             let service = Arc::new(QQMusicAccountService::new(
                 Arc::clone(&transport) as Arc<dyn QqTransport>,
                 Arc::clone(&self.clock) as Arc<dyn Clock>,
-                Arc::clone(&self.storage),
+                self.storage.clone(),
                 Arc::clone(&auth),
             ));
             {

@@ -1,0 +1,120 @@
+//! Object-safe music-provider contracts derived from the current QQMusic service.
+
+use crate::{
+    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Album, AreaFeed,
+    AudioQualityPreference, CacheStats, CatalogProviderCapabilities, CollectPlaylistRequest,
+    CreatePlaylistRequest, DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest,
+    FavoriteMutationResult, HomeFeed, LibrarySnapshot, LyricDocument, OAuthLoginProvider,
+    OAuthPrepareResult, Page, PlaybackSourceResolver, Playlist, PlaylistMutationResult,
+    PlaylistTrackMutationRequest, ProviderResult, ProviderStatus, RemotePlayHistoryItem,
+    RenamePlaylistRequest, SearchResult, Song,
+};
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait ProviderAccount: Send + Sync {
+    async fn account_snapshot(&self) -> AccountSnapshot;
+    async fn favorite_songs(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<Page<Song>>;
+    async fn account_playlists(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<Page<AccountPlaylistSummary>>;
+    async fn account_playlist_tracks(
+        &self,
+        playlist: AccountPlaylistSummary,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<AccountPlaylistDetail>;
+    async fn account_recently_played(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<Page<RemotePlayHistoryItem>>;
+    async fn set_favorite(
+        &self,
+        request: FavoriteMutationRequest,
+    ) -> ProviderResult<FavoriteMutationResult>;
+    async fn create_playlist(
+        &self,
+        request: CreatePlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult>;
+    async fn rename_playlist(
+        &self,
+        request: RenamePlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult>;
+    async fn add_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> ProviderResult<PlaylistMutationResult>;
+    async fn remove_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> ProviderResult<PlaylistMutationResult>;
+    async fn delete_playlist(
+        &self,
+        request: DeletePlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult>;
+    async fn set_playlist_collected(
+        &self,
+        request: CollectPlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult>;
+
+    async fn start_qr_login(&self) -> ProviderResult<AccountSnapshot>;
+    async fn prepare_oauth_login(
+        &self,
+        provider: OAuthLoginProvider,
+    ) -> ProviderResult<OAuthPrepareResult>;
+    async fn complete_oauth_login(
+        &self,
+        attempt_id: &str,
+        callback_url: reqwest::Url,
+    ) -> ProviderResult<AccountSnapshot>;
+    async fn cancel_oauth_login(&self, attempt_id: &str) -> ProviderResult<AccountSnapshot>;
+    async fn heartbeat_qr_login(
+        &self,
+        attempt_id: String,
+        owner_lease_id: String,
+    ) -> ProviderResult<AccountSnapshot>;
+    async fn is_oauth_login(&self, attempt_id: &str) -> bool;
+    async fn cancel_qr_login(&self, attempt_id: String) -> ProviderResult<AccountSnapshot>;
+    async fn refresh_qr_login(&self, attempt_id: Option<String>)
+        -> ProviderResult<AccountSnapshot>;
+    async fn restore_session(&self);
+    async fn sign_out(&self) -> ProviderResult<AccountSnapshot>;
+}
+
+#[async_trait]
+pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync {
+    fn id(&self) -> &'static str;
+    fn account(&self) -> &dyn ProviderAccount;
+    fn media_http_client(&self) -> reqwest::Client;
+    fn capabilities(&self) -> CatalogProviderCapabilities;
+    async fn status(&self) -> ProviderStatus;
+    async fn set_preferred_quality(
+        &self,
+        quality: AudioQualityPreference,
+    ) -> ProviderResult<ProviderStatus>;
+    async fn set_current_quality(
+        &self,
+        track_id: String,
+        quality: AudioQualityPreference,
+    ) -> ProviderResult<()>;
+    async fn search(&self, query: String, page: u32, limit: u32) -> ProviderResult<SearchResult>;
+    async fn album(&self, id: String) -> ProviderResult<Album>;
+    async fn playlist(&self, id: String) -> ProviderResult<Playlist>;
+    async fn home(&self, refresh: bool) -> ProviderResult<HomeFeed>;
+    async fn discover(&self, refresh: bool) -> ProviderResult<DiscoverFeed>;
+    async fn area(&self, enc_area: String) -> ProviderResult<AreaFeed>;
+    fn library(&self) -> LibrarySnapshot;
+    async fn lyrics(&self, song_id: String) -> ProviderResult<Option<LyricDocument>>;
+    async fn guess_next(&self, limit: u32) -> ProviderResult<Vec<Song>>;
+    async fn artwork_data_uri(&self, url: String) -> ProviderResult<String>;
+    fn cache_stats(&self) -> ProviderResult<CacheStats>;
+    fn clear_cache(&self) -> ProviderResult<CacheStats>;
+    async fn remember_songs(&self, songs: &[Song]);
+}

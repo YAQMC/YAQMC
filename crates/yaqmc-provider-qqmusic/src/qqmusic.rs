@@ -1,18 +1,4 @@
-use crate::{
-    audio::{write_fixture_wav, AudioFormat},
-    credentials::{CredentialStore, SpawnBlockingCredentialStore},
-    media::{
-        PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver,
-        ResolvedPlaybackSource,
-    },
-    player::{
-        AlbumSummary, ArtistSummary, Artwork, AudioCodec, AudioFormatInfo, AudioQuality,
-        LyricDocument, LyricLine, LyricMetadata, LyricSyncMode, LyricWord, PlaybackCapability,
-        ProviderTrackReference, Song, SongAvailability,
-    },
-    qmc::EncryptedMediaKey,
-    storage::{CacheStats, StorageService},
-};
+use crate::qmc::EncryptedMediaKey;
 use async_trait::async_trait;
 use base64::Engine as _;
 use lyrics_crypto::decrypter::qrc::decrypter::decrypt_lyrics as decrypt_qrc;
@@ -46,7 +32,14 @@ mod oauth;
 mod redaction;
 mod transport;
 
-pub use crate::playback_types::{
+use yaqmc_provider_api::{
+    AlbumSummary, ArtistSummary, Artwork, AudioCodec, AudioFormat, AudioFormatInfo, AudioQuality,
+    CacheStats, CredentialStore, LyricDocument, LyricLine, LyricMetadata, LyricSyncMode, LyricWord,
+    PlaybackCapability, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
+    PlaybackSourceResolver, ProviderStorage, ProviderStorageExt, ProviderTrackReference,
+    ResolvedPlaybackSource, Song, SongAvailability, SpawnBlockingCredentialStore,
+};
+pub use yaqmc_provider_api::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
 };
 
@@ -277,6 +270,11 @@ struct QQSession {
     cookie_header: String,
 }
 
+#[derive(Deserialize)]
+struct StoredQueueSnapshot {
+    queue: Vec<Song>,
+}
+
 impl From<SessionRecord> for QQSession {
     fn from(session: SessionRecord) -> Self {
         Self {
@@ -400,7 +398,7 @@ pub struct QQMusicService {
     clock: Arc<dyn Clock>,
     auth: Arc<QQMusicAuthService>,
     account: Arc<QQMusicAccountService>,
-    storage: Arc<StorageService>,
+    storage: Arc<dyn ProviderStorage>,
     preferred_quality: RwLock<AudioQualityPreference>,
     current_quality_override: RwLock<Option<(String, AudioQualityPreference)>>,
     fixture_root: PathBuf,
@@ -410,24 +408,31 @@ pub struct QQMusicService {
 }
 
 impl QQMusicService {
-    pub fn new(
-        storage: Arc<StorageService>,
+    pub fn new<S>(
+        storage: Arc<S>,
         credentials: Arc<dyn CredentialStore>,
         fixture_root: PathBuf,
-    ) -> Result<Self, QQMusicError> {
+    ) -> Result<Self, QQMusicError>
+    where
+        S: ProviderStorage + 'static,
+    {
         let clock: Arc<dyn Clock> = Arc::new(SystemClock);
         let account_transport: Arc<dyn QqTransport> =
             Arc::new(ReqwestQqTransport::new(Arc::clone(&clock))?);
         Self::new_with_runtime(storage, credentials, fixture_root, account_transport, clock)
     }
 
-    pub(crate) fn new_with_runtime(
-        storage: Arc<StorageService>,
+    pub(crate) fn new_with_runtime<S>(
+        storage: Arc<S>,
         credentials: Arc<dyn CredentialStore>,
         fixture_root: PathBuf,
         account_transport: Arc<dyn QqTransport>,
         clock: Arc<dyn Clock>,
-    ) -> Result<Self, QQMusicError> {
+    ) -> Result<Self, QQMusicError>
+    where
+        S: ProviderStorage + 'static,
+    {
+        let storage: Arc<dyn ProviderStorage> = storage;
         let preferred_quality = AudioQualityPreference::from_setting(
             storage
                 .get_setting("preferred-quality")
@@ -617,7 +622,7 @@ impl QQMusicService {
         if limit == 0 {
             return Ok(Vec::new());
         }
-        if let Ok(Some(snapshot)) = self.storage.load_queue::<crate::player::PlayerSnapshot>() {
+        if let Ok(Some(snapshot)) = self.storage.load_queue::<StoredQueueSnapshot>() {
             for song in snapshot.queue {
                 if let Some(provider) = song
                     .provider
@@ -705,7 +710,7 @@ impl QQMusicService {
 
     #[doc(hidden)]
     pub async fn start_oauth_login(
-        self: &Arc<Self>,
+        &self,
         provider: OAuthLoginProvider,
     ) -> Result<OAuthLaunch, QQMusicError> {
         self.auth.start_oauth(provider).await
@@ -3000,7 +3005,7 @@ impl QQMusicClient {
                 PlaybackLocation::EncryptedHttp {
                     url,
                     headers: playback_headers(),
-                    ekey,
+                    encryption: Arc::new(ekey),
                 }
             } else {
                 PlaybackLocation::Http {
@@ -4549,6 +4554,45 @@ fn upgrade_https(value: &str) -> String {
     value.trim().replacen("http://", "https://", 1)
 }
 
+fn write_fixture_wav(path: &std::path::Path, duration: Duration, seed: u32) -> std::io::Result<()> {
+    use std::io::Write as _;
+
+    const SAMPLE_RATE: u32 = 16_000;
+    const CHANNELS: u16 = 1;
+    const BITS_PER_SAMPLE: u16 = 16;
+    let sample_count = (duration.as_secs_f64() * f64::from(SAMPLE_RATE)).round() as u32;
+    let data_size = sample_count * u32::from(CHANNELS) * u32::from(BITS_PER_SAMPLE / 8);
+    let mut writer = std::io::BufWriter::new(std::fs::File::create(path)?);
+
+    writer.write_all(b"RIFF")?;
+    writer.write_all(&(36_u32.saturating_add(data_size)).to_le_bytes())?;
+    writer.write_all(b"WAVEfmt ")?;
+    writer.write_all(&16_u32.to_le_bytes())?;
+    writer.write_all(&1_u16.to_le_bytes())?;
+    writer.write_all(&CHANNELS.to_le_bytes())?;
+    writer.write_all(&SAMPLE_RATE.to_le_bytes())?;
+    let byte_rate = SAMPLE_RATE * u32::from(CHANNELS) * u32::from(BITS_PER_SAMPLE / 8);
+    writer.write_all(&byte_rate.to_le_bytes())?;
+    let block_align = CHANNELS * (BITS_PER_SAMPLE / 8);
+    writer.write_all(&block_align.to_le_bytes())?;
+    writer.write_all(&BITS_PER_SAMPLE.to_le_bytes())?;
+    writer.write_all(b"data")?;
+    writer.write_all(&data_size.to_le_bytes())?;
+
+    let root = 174.0 + f64::from(seed % 9) * 11.0;
+    for sample_index in 0..sample_count {
+        let time = f64::from(sample_index) / f64::from(SAMPLE_RATE);
+        let phase = (time % 8.0) / 8.0;
+        let envelope = (phase * std::f64::consts::PI).sin().powi(2);
+        let chord = (time * root * std::f64::consts::TAU).sin()
+            + 0.45 * (time * root * 1.5 * std::f64::consts::TAU).sin()
+            + 0.25 * (time * root * 2.0 * std::f64::consts::TAU).sin();
+        let sample = (chord * envelope * 1_600.0).clamp(f64::from(i16::MIN), f64::from(i16::MAX));
+        writer.write_all(&(sample as i16).to_le_bytes())?;
+    }
+    writer.flush()
+}
+
 fn unix_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -4562,13 +4606,14 @@ mod tests {
     use super::account::AccountState;
     use super::transport::{TransportRequest, TransportResponse};
     use super::*;
-    use crate::{
-        audio::{AudioEngine, RodioAudioEngine},
-        credentials::MemoryCredentialStore,
-        media::{CachedMediaPreparer, MediaPreparer, PlaybackSourceResolver},
-    };
     use axum::{response::Redirect, routing::get, Router};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use yaqmc_core::{
+        audio::{AudioEngine, RodioAudioEngine},
+        credentials::{MemoryCredentialStore, PlatformCredentialStore},
+        media::{CachedMediaPreparer, MediaPreparer, PlaybackSourceResolver},
+        storage::StorageService,
+    };
 
     struct RecordingAccountTransport {
         calls: Arc<AtomicUsize>,
@@ -5255,7 +5300,7 @@ mod tests {
         let service = Arc::new(
             QQMusicService::new(
                 Arc::clone(&storage),
-                Arc::new(crate::credentials::PlatformCredentialStore::new()),
+                Arc::new(PlatformCredentialStore::new()),
                 root.path().join("fixtures"),
             )
             .expect("service"),
@@ -5537,7 +5582,7 @@ mod tests {
         let service = Arc::new(
             QQMusicService::new(
                 Arc::clone(&storage),
-                Arc::new(crate::credentials::PlatformCredentialStore::new()),
+                Arc::new(PlatformCredentialStore::new()),
                 root.path().join("fixtures"),
             )
             .expect("service"),
@@ -5628,8 +5673,8 @@ mod tests {
         assert_eq!(
             matches!(
                 &prepared.location,
-                crate::audio::PreparedPlaybackLocation::EncryptedLocal { .. }
-                    | crate::audio::PreparedPlaybackLocation::EncryptedProgressive { .. }
+                yaqmc_core::audio::PreparedPlaybackLocation::EncryptedLocal { .. }
+                    | yaqmc_core::audio::PreparedPlaybackLocation::EncryptedProgressive { .. }
             ),
             expected_encrypted
         );

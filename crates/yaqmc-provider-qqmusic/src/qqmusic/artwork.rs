@@ -1,5 +1,5 @@
 use super::{clean_text, color_for, upgrade_https};
-use crate::player::{Artwork, ArtworkVariant};
+use yaqmc_provider_api::{Artwork, ArtworkVariant};
 
 const FALLBACK_ARTWORK: &str = "/artwork/stillness.svg";
 const VERIFIED_ALBUM_SIZES: [u32; 4] = [150, 300, 500, 800];

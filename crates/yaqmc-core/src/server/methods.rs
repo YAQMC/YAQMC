@@ -11,12 +11,11 @@ use crate::plugin::api::{
     PluginBridgeRequest, PluginEnableRequest, PluginInstallRequest, PluginSettingsWrite,
     PluginUninstallRequest,
 };
-use crate::qqmusic::account::{
-    CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest, FavoriteMutationRequest,
-    PlaylistTrackMutationRequest, RenamePlaylistRequest,
-};
-use crate::qqmusic::{ProviderCommandError, ProviderResult};
 use crate::CoreHandle;
+use yaqmc_provider_api::{
+    CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest, FavoriteMutationRequest,
+    PlaylistTrackMutationRequest, ProviderCommandError, ProviderResult, RenamePlaylistRequest,
+};
 
 use super::ops;
 use super::types::{
@@ -348,50 +347,40 @@ async fn invoke_core(
         "qqmusic_status" => ok(core.qq_music().status().await),
         "qqmusic_home" => {
             let super::types::RefreshParams { refresh } = parse(&params)?;
-            provider(core.qq_music().home(refresh).await.map_err(Into::into))
+            provider(core.qq_music().home(refresh).await)
         }
         "qqmusic_discover" => {
             let super::types::RefreshParams { refresh } = parse(&params)?;
-            provider(core.qq_music().discover(refresh).await.map_err(Into::into))
+            provider(core.qq_music().discover(refresh).await)
         }
         "qqmusic_area" => {
             let EncAreaParams { enc_area } = parse(&params)?;
-            provider(core.qq_music().area(enc_area).await.map_err(Into::into))
+            provider(core.qq_music().area(enc_area).await)
         }
         "qqmusic_guess_next" => {
             let LimitParams { limit } = parse(&params)?;
-            provider(core.qq_music().guess_next(limit).await.map_err(Into::into))
+            provider(core.qq_music().guess_next(limit).await)
         }
         "qqmusic_library" => ok(core.qq_music().library()),
         "qqmusic_search" => {
             let SearchParams { query, page, limit } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .search(query, page, limit)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().search(query, page, limit).await)
         }
         "qqmusic_album" => {
             let IdParams { id } = parse(&params)?;
-            provider(core.qq_music().album(id).await.map_err(Into::into))
+            provider(core.qq_music().album(id).await)
         }
         "qqmusic_playlist" => {
             let IdParams { id } = parse(&params)?;
-            provider(core.qq_music().playlist(id).await.map_err(Into::into))
+            provider(core.qq_music().playlist(id).await)
         }
         "qqmusic_lyrics" => {
             let SongIdParams { song_id } = parse(&params)?;
-            provider(core.qq_music().lyrics(song_id).await.map_err(Into::into))
+            provider(core.qq_music().lyrics(song_id).await)
         }
         "qqmusic_cache_artwork" => {
             let UrlParams { url } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .artwork_data_uri(url)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().artwork_data_uri(url).await)
         }
         "qqmusic_set_preferred_quality" => {
             let QualityParams { quality } = parse(&params)?;
@@ -408,21 +397,11 @@ async fn invoke_core(
         "qqmusic_account_snapshot" => ok(core.qq_music().account_snapshot().await),
         "qqmusic_favorite_songs" => {
             let CursorPageParams { cursor, limit } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .favorite_songs(cursor, limit)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().favorite_songs(cursor, limit).await)
         }
         "qqmusic_account_playlists" => {
             let CursorPageParams { cursor, limit } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .account_playlists(cursor, limit)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().account_playlists(cursor, limit).await)
         }
         "qqmusic_account_playlist_tracks" => {
             let PlaylistTracksParams {
@@ -433,85 +412,42 @@ async fn invoke_core(
             provider(
                 core.qq_music()
                     .account_playlist_tracks(playlist, cursor, limit)
-                    .await
-                    .map_err(Into::into),
+                    .await,
             )
         }
         "qqmusic_account_recently_played" => {
             let CursorPageParams { cursor, limit } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .account_recently_played(cursor, limit)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().account_recently_played(cursor, limit).await)
         }
         "qqmusic_set_favorite" => {
             let NamedRequest::<FavoriteMutationRequest> { request } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .set_favorite(request)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().set_favorite(request).await)
         }
         "qqmusic_create_playlist" => {
             let NamedRequest::<CreatePlaylistRequest> { request } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .create_playlist(request)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().create_playlist(request).await)
         }
         "qqmusic_rename_playlist" => {
             let NamedRequest::<RenamePlaylistRequest> { request } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .rename_playlist(request)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().rename_playlist(request).await)
         }
         "qqmusic_add_playlist_track" => {
             let NamedRequest::<PlaylistTrackMutationRequest> { request } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .add_playlist_track(request)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().add_playlist_track(request).await)
         }
         "qqmusic_remove_playlist_track" => {
             let NamedRequest::<PlaylistTrackMutationRequest> { request } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .remove_playlist_track(request)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().remove_playlist_track(request).await)
         }
         "qqmusic_delete_playlist" => {
             let NamedRequest::<DeletePlaylistRequest> { request } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .delete_playlist(request)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().delete_playlist(request).await)
         }
         "qqmusic_set_playlist_collected" => {
             let NamedRequest::<CollectPlaylistRequest> { request } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .set_playlist_collected(request)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().set_playlist_collected(request).await)
         }
-        "qqmusic_auth_start" => {
-            provider(core.qq_music().start_qr_login().await.map_err(Into::into))
-        }
+        "qqmusic_auth_start" => provider(core.qq_music().start_qr_login().await),
         "qqmusic_auth_heartbeat" => {
             let AuthHeartbeatParams {
                 attempt_id,
@@ -527,20 +463,15 @@ async fn invoke_core(
             let AttemptIdParams { attempt_id } = parse(&params)?;
             let result = core.qq_music().cancel_qr_login(attempt_id.clone()).await;
             host.close_oauth_window(&attempt_id);
-            provider(result.map_err(Into::into))
+            provider(result)
         }
         "qqmusic_auth_refresh" => {
             let OptionalAttemptParams { attempt_id } = parse(&params)?;
-            provider(
-                core.qq_music()
-                    .refresh_qr_login(attempt_id)
-                    .await
-                    .map_err(Into::into),
-            )
+            provider(core.qq_music().refresh_qr_login(attempt_id).await)
         }
-        "qqmusic_sign_out" => provider(core.qq_music().sign_out().await.map_err(Into::into)),
-        "qqmusic_cache_stats" => provider(core.qq_music().cache_stats().map_err(Into::into)),
-        "qqmusic_clear_cache" => provider(core.qq_music().clear_cache().map_err(Into::into)),
+        "qqmusic_sign_out" => provider(core.qq_music().sign_out().await),
+        "qqmusic_cache_stats" => provider(core.qq_music().cache_stats()),
+        "qqmusic_clear_cache" => provider(core.qq_music().clear_cache()),
         "player_snapshot" => ok(core.player().snapshot().await),
         "player_hydrate_queue" => {
             let TracksParams { tracks } = parse(&params)?;

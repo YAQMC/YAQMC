@@ -7,9 +7,9 @@ use reqwest::Url;
 use tempfile::tempdir;
 use yaqmc_core::{
     credentials::{CredentialError, CredentialStore},
-    qqmusic::{OAuthLoginProvider, QQMusicService},
     storage::StorageService,
 };
+use yaqmc_provider_qqmusic::qqmusic::{OAuthLoginProvider, QQMusicService};
 
 #[derive(Default)]
 struct TestCredentialStore {

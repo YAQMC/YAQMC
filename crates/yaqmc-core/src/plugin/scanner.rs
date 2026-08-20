@@ -199,7 +199,12 @@ mod tests {
 
     #[test]
     fn script_legacy_host_and_fetch_are_high_risk() {
-        let source = ["fetch('/x'); window.__", "TA", "URI__.invoke('player_seek')"].concat();
+        let source = [
+            "fetch('/x'); window.__",
+            "TA",
+            "URI__.invoke('player_seek')",
+        ]
+        .concat();
         let report = scan_script(&source);
         assert_eq!(report.severity, Some(RiskSeverity::High));
         assert!(report

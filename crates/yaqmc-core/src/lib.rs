@@ -15,8 +15,6 @@ pub mod playback_session;
 pub mod playback_types;
 pub mod player;
 pub mod plugin;
-pub mod qmc;
-pub mod qqmusic;
 pub mod server;
 pub mod storage;
 pub mod streaming;
@@ -192,7 +190,11 @@ impl CoreHandle {
         Arc::clone(&self.services.credentials)
     }
 
-    pub fn qq_music(&self) -> Arc<crate::qqmusic::QQMusicService> {
+    pub fn providers(&self) -> Arc<yaqmc_provider_api::ProviderRegistry> {
+        Arc::clone(&self.services.providers)
+    }
+
+    pub fn qq_music(&self) -> Arc<dyn yaqmc_provider_api::MusicProvider> {
         Arc::clone(&self.services.qq_music)
     }
 

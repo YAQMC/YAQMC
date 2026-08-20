@@ -1,62 +1,11 @@
-use std::sync::Arc;
 #[cfg(any(test, feature = "test-support"))]
 use std::{collections::HashMap, sync::Mutex};
-use thiserror::Error;
+pub use yaqmc_provider_api::credentials::{
+    CredentialError, CredentialStore, SpawnBlockingCredentialStore,
+};
 
 const SERVICE_NAME: &str = "org.yaqmc.desktop";
 const LEGACY_SERVICE_NAME: &str = "dev.music-client.desktop";
-
-#[derive(Debug, Error)]
-pub enum CredentialError {
-    #[error("the platform secure credential store is unavailable")]
-    Unavailable,
-    #[error("the secure credential operation failed")]
-    OperationFailed,
-    #[error("the secure credential worker failed")]
-    JoinFailed,
-}
-
-pub trait CredentialStore: Send + Sync {
-    fn load(&self, account: &str) -> Result<Option<String>, CredentialError>;
-    fn save(&self, account: &str, secret: &str) -> Result<(), CredentialError>;
-    fn delete(&self, account: &str) -> Result<(), CredentialError>;
-}
-
-#[derive(Clone)]
-pub struct SpawnBlockingCredentialStore {
-    inner: Arc<dyn CredentialStore>,
-}
-
-impl SpawnBlockingCredentialStore {
-    pub fn new(inner: Arc<dyn CredentialStore>) -> Self {
-        Self { inner }
-    }
-
-    pub async fn load(&self, account: &str) -> Result<Option<String>, CredentialError> {
-        let inner = Arc::clone(&self.inner);
-        let account = account.to_owned();
-        tokio::task::spawn_blocking(move || inner.load(&account))
-            .await
-            .map_err(|_| CredentialError::JoinFailed)?
-    }
-
-    pub async fn save(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
-        let inner = Arc::clone(&self.inner);
-        let account = account.to_owned();
-        let secret = secret.to_owned();
-        tokio::task::spawn_blocking(move || inner.save(&account, &secret))
-            .await
-            .map_err(|_| CredentialError::JoinFailed)?
-    }
-
-    pub async fn delete(&self, account: &str) -> Result<(), CredentialError> {
-        let inner = Arc::clone(&self.inner);
-        let account = account.to_owned();
-        tokio::task::spawn_blocking(move || inner.delete(&account))
-            .await
-            .map_err(|_| CredentialError::JoinFailed)?
-    }
-}
 
 /// Sandbox-only credential backend. Used when `YAQMC_CREDENTIAL_DIR` is set so
 /// QA/perf Core processes never read or write the maintainer OS keyring.
