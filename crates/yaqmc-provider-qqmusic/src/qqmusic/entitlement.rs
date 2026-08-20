@@ -543,10 +543,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        player::{AudioCodec, AudioFormatInfo, AudioQuality},
-        qqmusic::account::{AccountEntitlement, EntitlementTier, MembershipState},
-    };
+    use crate::qqmusic::account::{AccountEntitlement, EntitlementTier, MembershipState};
 
     fn entitlement(qualities: Vec<AudioQuality>) -> AccountEntitlement {
         AccountEntitlement {

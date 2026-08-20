@@ -74,7 +74,7 @@ export function waitForLyricsStageClosed(timeoutMs = LYRICS_STAGE_TRANSITION_MS 
   if (useLyricsStageStore.getState().stage === 'closed') return Promise.resolve();
   return new Promise((resolve) => {
     let settled = false;
-    let unsubscribe = () => undefined;
+    let unsubscribe: () => void = () => undefined;
     const finish = () => {
       if (settled) return;
       settled = true;

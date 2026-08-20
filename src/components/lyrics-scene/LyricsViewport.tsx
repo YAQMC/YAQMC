@@ -22,6 +22,7 @@ import { logger } from '../../application/logger';
 import type { LyricWordEffect, SecondaryLyricVisibility } from '../../application/preferences';
 import type { LyricDocument, LyricLine, LyricWord } from '../../domain/music';
 import { usePlayerStore } from '../../application/player-store';
+import type { LyricsFollowState } from './types';
 
 const CJK_RE = /^[\p{Unified_Ideograph}\u0800-\u9FFC]+$/u;
 

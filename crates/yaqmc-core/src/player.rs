@@ -2008,10 +2008,8 @@ impl PlayerService {
                         last_position_move_at = now;
                     } else if engine.paused
                         || matches!(core.playback_state, PlaybackState::Paused)
-                    {
-                        last_moving_position = core.position_ms;
-                        last_position_move_at = now;
-                    } else if core.position_ms.abs_diff(last_moving_position) > TIMELINE_END_SLACK_MS
+                        || core.position_ms.abs_diff(last_moving_position)
+                            > TIMELINE_END_SLACK_MS
                     {
                         last_moving_position = core.position_ms;
                         last_position_move_at = now;
@@ -2359,10 +2357,12 @@ fn natural_end_of_stream(
         return false;
     }
     let matches = engine_matches_core(engine, core);
-    if matches && engine.source_error.is_none() && !engine.buffering {
-        if engine.ended || at_timeline_end(core.position_ms, core.playback_duration_ms) {
-            return true;
-        }
+    if matches
+        && engine.source_error.is_none()
+        && !engine.buffering
+        && (engine.ended || at_timeline_end(core.position_ms, core.playback_duration_ms))
+    {
+        return true;
     }
     if !stalled || core.position_ms == 0 {
         return false;

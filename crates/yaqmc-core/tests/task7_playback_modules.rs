@@ -3,7 +3,6 @@ use yaqmc_core::{
     media::{MediaPreparer, PlaybackSourceResolver},
     playback_session::{snapshot_is_stale, SeekMailbox},
     player::{ApiEvent, PlayerService, RepeatMode},
-    qmc::QmcDecryptor,
     streaming::ProgressiveSource,
 };
 
@@ -26,7 +25,6 @@ fn playback_compile_closure_is_core_owned_and_preserves_seek_contract() {
 
     require_core_type::<PlayerService>();
     require_core_type::<ApiEvent>();
-    require_core_type::<QmcDecryptor>();
     require_core_type::<ProgressiveSource>();
     require_core_type::<dyn MediaPreparer>();
     require_core_type::<dyn PlaybackSourceResolver>();

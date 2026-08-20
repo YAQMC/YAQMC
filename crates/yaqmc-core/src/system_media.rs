@@ -4,9 +4,12 @@ use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(any(target_os = "linux", test))]
 const MPRIS_SEEKED_SLACK_MS: u64 = 1_500;
 const MAX_POSITION_EXTRAPOLATION_MS: u64 = 1_000;
+#[cfg(target_os = "linux")]
 const MPRIS_PROGRESS_TICK_MS: u64 = 100;
+#[cfg(any(target_os = "linux", test))]
 const MPRIS_PROGRESS_HEARTBEAT_MS: u64 = 250;
 
 #[cfg(target_os = "windows")]
@@ -121,6 +124,7 @@ fn reported_position_ms(snapshot: &PlayerSnapshot) -> u64 {
     reported_position_ms_at(snapshot, unix_now_ms())
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn mpris_position_jump_is_seeked(
     previous_position_ms: u64,
     previous_playing: bool,
@@ -140,10 +144,12 @@ fn mpris_position_jump_is_seeked(
     next_position_ms.saturating_add(MPRIS_SEEKED_SLACK_MS) < previous_position_ms
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn mpris_should_heartbeat_seeked(playing: bool, since_last_seeked_ms: u64) -> bool {
     playing && since_last_seeked_ms >= MPRIS_PROGRESS_HEARTBEAT_MS
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn mpris_should_emit_seeked(
     previous: Option<&MediaProjection>,
     next: &MediaProjection,

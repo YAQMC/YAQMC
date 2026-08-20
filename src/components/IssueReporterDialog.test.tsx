@@ -37,7 +37,7 @@ vi.mock('../application/native-player-runtime', () => ({
 }));
 
 vi.mock('../application/diagnostics-runtime', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../application/diagnostics-runtime')>();
+  const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
     exportDiagnosticsBundle: exportBundleMock,

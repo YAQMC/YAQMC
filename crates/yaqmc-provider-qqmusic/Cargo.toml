@@ -30,6 +30,9 @@ zeroize = "1"
 
 [dev-dependencies]
 axum = "0.8"
+futures-util = "0.3"
+rodio = { version = "0.22.2", default-features = false, features = ["flac"] }
 tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
 tracing-subscriber = "0.3"
 yaqmc-core = { path = "../yaqmc-core", features = ["test-support"] }

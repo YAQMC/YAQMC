@@ -20,6 +20,7 @@
     "e2e/**/*.ts",
     "eslint.config.js",
     "scripts/**/*.ts",
+    "packages/yaqmc-client/vitest.config.ts",
     "packages/yaqmc-client/src/**/*.test.ts",
     "apps/desktop/main/**/*.test.ts",
     "apps/desktop/vitest.config.ts"
