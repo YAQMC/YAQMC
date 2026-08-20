@@ -9,7 +9,7 @@ use yaqmc_protocol::{
 #[test]
 fn registry_is_the_117_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 117 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 114 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -172,22 +172,13 @@ fn dialog_split_io_methods_are_core_owned_main_only_with_default_caps() {
         TimeoutClass::Standard
     );
 
-    assert_eq!(
-        method("diagnostics_export_bundle")
-            .expect("old export")
-            .owner,
-        MethodOwner::Core
-    );
-    assert_eq!(
-        method("appearance_pick_background")
-            .expect("pick background")
-            .owner,
-        MethodOwner::Host
-    );
-    assert_eq!(
-        method("plugin_pick_package").expect("pick package").owner,
-        MethodOwner::Host
-    );
+    for retired in [
+        "diagnostics_export_bundle",
+        "appearance_pick_background",
+        "plugin_pick_package",
+    ] {
+        assert!(method(retired).is_none(), "{retired} must stay retired after P13");
+    }
 }
 
 #[test]

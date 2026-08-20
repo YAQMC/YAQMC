@@ -106,7 +106,6 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "local_api_regenerate_token",
     "debug_perf_sample",
     "diagnostics_snapshot",
-    "diagnostics_export_bundle",
     "diagnostics_clear_logs",
     "diagnostics_set_log_level",
     "diagnostics_current_level",
@@ -730,11 +729,6 @@ async fn invoke_core(
                 request,
             )
             .await)
-        }
-        "diagnostics_export_bundle" => {
-            let NamedRequest::<super::types::DiagnosticsBundleRequest> { request } =
-                parse(&params)?;
-            cmd(ops::diagnostics_export_bundle(core, host, request).await)
         }
         "diagnostics_clear_logs" => ok(ops::diagnostics_clear_logs(&core.logging())),
         "diagnostics_set_log_level" => {

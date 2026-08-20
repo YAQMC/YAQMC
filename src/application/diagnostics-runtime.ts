@@ -175,19 +175,16 @@ export async function exportDiagnosticsBundle(
   if (destPath) {
     return client.invoke('diagnostics_export_bundle_to', { path: destPath, request });
   }
-  if (client.bridge.kind === 'electron') {
-    const chosen = await client.bridge.dialog?.pickSave({
-      defaultPath: DIAGNOSTICS_ZIP_DEFAULT_NAME,
-    });
-    if (chosen == null) {
-      throw new DiagnosticsExportAbortedError();
-    }
-    if (typeof chosen !== 'string' || chosen.trim().length === 0) {
-      throw new Error('Diagnostics save dialog returned an invalid path');
-    }
-    return client.invoke('diagnostics_export_bundle_to', { path: chosen, request });
+  const chosen = await client.host.dialog?.pickSave({
+    defaultPath: DIAGNOSTICS_ZIP_DEFAULT_NAME,
+  });
+  if (chosen == null) {
+    throw new DiagnosticsExportAbortedError();
   }
-  return client.invoke('diagnostics_export_bundle', { request });
+  if (typeof chosen !== 'string' || chosen.trim().length === 0) {
+    throw new Error('Diagnostics save dialog returned an invalid path');
+  }
+  return client.invoke('diagnostics_export_bundle_to', { path: chosen, request });
 }
 
 export async function revealDiagnosticBundle(path: string): Promise<void> {

@@ -7,7 +7,7 @@ const openExternalMock = vi.hoisted(() => vi.fn());
 vi.mock('./yaqmc-runtime', async () => {
   const { YaqmcClient } = await import('@yaqmc/client');
   const bridge = {
-    kind: 'tauri' as const,
+    kind: 'electron' as const,
     windowRole: 'main' as const,
     window: {
       minimize: async () => undefined,

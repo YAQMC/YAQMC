@@ -52,16 +52,15 @@ describe('TopBar', () => {
   it('keeps native window controls hidden outside the desktop runtime', () => {
     const { container } = renderTopBar(false);
     expect(screen.queryByLabelText('Minimize')).toBeNull();
-    expect(container.querySelector('[data-tauri-drag-region]')).toBeNull();
     expect(container.querySelector('.yaqmc-drag')).toBeNull();
   });
 
-  it('renders self-drawn window controls and a dual drag region in the desktop runtime', () => {
+  it('renders self-drawn window controls and an Electron drag region in the desktop runtime', () => {
     const { container } = renderTopBar(true);
     expect(screen.getByLabelText('Minimize')).toBeInTheDocument();
     expect(screen.getByLabelText('Maximize')).toBeInTheDocument();
     expect(screen.getByLabelText('Close')).toBeInTheDocument();
-    const drag = container.querySelector('[data-tauri-drag-region]');
+    const drag = container.querySelector('.topbar__drag');
     expect(drag).not.toBeNull();
     expect(drag).toHaveClass('yaqmc-drag');
   });

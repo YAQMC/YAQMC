@@ -5,7 +5,7 @@ export const APP_SCHEME = 'app';
 export const APP_HOST = 'yaqmc';
 
 /**
- * SEC-01 CSP port. FACT source: `src-tauri/tauri.conf.json` `app.security.csp`:
+ * SEC-01 CSP continuity policy:
  *
  *   default-src 'self';
  *   img-src 'self' data: asset: http://asset.localhost https://y.gtimg.cn

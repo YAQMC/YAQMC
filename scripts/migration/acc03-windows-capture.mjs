@@ -9,7 +9,7 @@
  *   node scripts/migration/acc03-windows-capture.mjs
  *
  * Writes docs/migration/acc03-windows-last.json (gitignored). Does not invent
- * PLAY-02 p95. Does not run the P12 second 4h soak. BASE-03 Tauri cells stay
+ * PLAY-02 p95. Does not run the P12 second 4h soak. BASE-03 pre-migration cells stay
  * PENDING unless that snapshot already has numbers.
  */
 import { spawn, execFileSync } from 'node:child_process';
@@ -200,7 +200,7 @@ async function main() {
     head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim(),
     notes: [
       'Unique yaqmc-qa sandbox. Not ACC-04 daily-driver.',
-      'BASE-03 Tauri live cells were PENDING in perf-baseline.md at capture time.',
+      'BASE-03 pre-migration live cells were PENDING in perf-baseline.md at capture time.',
       'Not PLAY-02. Not P12 second soak.',
     ],
     coldStart: {
@@ -223,7 +223,7 @@ async function main() {
       electronTreeProcesses: idleTree.processes,
       coreTreeMiB: idleCore ? idleCore.miB : null,
       sumMiB: idleTree.miB,
-      note: 'sumMiB is the Electron spawn tree (includes yaqmc-core if it is a child). coreTreeMiB is diagnostic only — do not add it again. Not BASE-03 until Tauri cells exist.',
+      note: 'sumMiB is the Electron spawn tree (includes yaqmc-core if it is a child). coreTreeMiB is diagnostic only — do not add it again. Not BASE-03 until the historical comparison cells exist.',
     };
 
     await invoke(page, 'player_play_tracks', {

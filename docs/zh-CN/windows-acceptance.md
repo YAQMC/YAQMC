@@ -37,13 +37,10 @@ W01–W09 覆盖 1280×800、1000×700、1000×1000 的 Normal/Focus/原生全�
 
 ```powershell
 npm run check
-npm run tauri -- build --no-bundle
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capture-windows-lyrics-acceptance.ps1 `
-  -Binary "$PWD/target/release/yaqmc.exe" `
-  -Output "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/windows" `
-  -BuildKind tauri-no-bundle
-node scripts/verify-lyrics-acceptance.mjs --platform windows `
-  --root "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/windows"
+npm run stage-core
+npm run build -w @yaqmc/desktop
+npm run test:e2e:electron
+npm run perf:windows-gpu
 ```
 
-采集要求 tracked tree 干净、输出目录不存在或为空。原始 no-bundle exe 不得当成最终 Windows 安装包分发。
+旧宿主专用采集器已退出支持。请单独记录 Electron 截图、窗口状态证据和被测 commit；本地未打包输出不得作为发布包分发。

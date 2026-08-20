@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml/badge.svg" alt="Desktop build status"></a>
-  <img src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2">
+  <a href="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111" alt="React 19">
   <img src="https://img.shields.io/badge/Rust-1.88%2B-000?logo=rust&logoColor=white" alt="Rust 1.88 or newer">
 </p>
@@ -48,10 +48,10 @@ Tagged releases publish the package formats that each supported runner can build
 
 | Platform | Architectures                     | Packages                                                |
 | -------- | --------------------------------- | ------------------------------------------------------- |
-| Windows  | x86_64 / AMD64, x86 / i686, ARM64 | NSIS `.exe`, WiX `.msi`, portable `.zip`                |
+| Windows  | x64 / AMD64, ARM64                | NSIS `.exe`, portable `.exe`                             |
 | Linux    | x86_64 / AMD64, ARM64             | AppImage, Debian `.deb`, RPM `.rpm`, portable `.tar.gz` |
 
-AMD64 and x86_64 are two names for the same architecture; Windows “x32” is published as the i686/x86 build.
+AMD64, x86_64, and the release label x64 name the same architecture. Windows i686/x86 packages are no longer published.
 Release artifacts include SHA-256 checksums. Linux runtime acceptance remains host-specific—especially on native
 Wayland—so the x86_64 AppImage also ships with the diagnostics and acceptance bundle described in
 [the Linux guide](docs/linux.md).
@@ -77,21 +77,20 @@ verified.
 
 ## Install prerequisites
 
-- Node.js 24 and npm
+- Node.js 24.19.0 and npm
 - Rust 1.88 or newer
-- [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/)
-- Windows: MSVC build tools and WebView2 Runtime
-- Debian/Ubuntu: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev`
+- Windows: MSVC build tools
+- Debian/Ubuntu: ALSA development files for native audio; `rpm` and `fakeroot` when producing RPM bundles
 
 ## Development
 
 ```powershell
 npm ci
-npm run tauri dev
+npm run dev:desktop
 ```
 
 Browser development intentionally uses the deterministic fake provider because credentials, native audio, cache,
-and QQ Music transport live behind Tauri:
+and QQ Music transport live behind the Electron desktop host:
 
 ```powershell
 npm run dev
@@ -103,14 +102,12 @@ deterministic UI evidence.
 ## Build locally
 
 ```powershell
-# Executable only; no installer
-npm run tauri -- build --no-bundle
+# Build frontend assets, Electron Main, and preload scripts
+npm run ci:frontend-build
+npm run build -w @yaqmc/desktop
 
-# Windows host
-npm run tauri -- build --bundles nsis,msi
-
-# Linux host
-npm run tauri -- build --bundles appimage,deb,rpm
+# Package the current platform without publishing
+npm run package -w @yaqmc/desktop -- --publish never
 ```
 
 Cross-architecture installer builds should use the corresponding Rust target or a native hosted runner; changing an
@@ -118,22 +115,19 @@ artifact filename does not change its architecture.
 
 ## Verification
 
-The release `generate_context!` requires `dist/` to exist, so run `npm run build` (or `npm run check`) once before
-running cargo commands directly.
-
 ```powershell
 npm run format:check
 npm run check
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
 ```
 
 Four ignored Rust tests deliberately contact a live provider or audible native output. Run them only on a suitable
 host:
 
 ```powershell
-cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
+cargo test --workspace -- --ignored --nocapture
 ```
 
 ## Architecture
@@ -164,9 +158,9 @@ single-command capability and cannot access account or player state.
 - `crates/yaqmc-core/src/player.rs` — authoritative queue/playback state machine
 - `crates/yaqmc-core/src/audio.rs` — native decoding/output and device switching
 - `crates/yaqmc-core/src/streaming.rs` — seekable HTTP Range source
-- `crates/yaqmc-core/src/system_media.rs` — Core-owned MPRIS/SMTC adapters; Tauri injects the HWND/runtime and handles closed host commands
-- `src-tauri/src/desktop_integration.rs` — tray, close behavior, and shortcuts
-- `src-tauri/src/platform.rs` — backend/capability diagnostics and export
+- `crates/yaqmc-core/src/system_media.rs` — Core-owned MPRIS/SMTC adapters
+- `apps/desktop/main` — Electron windows, tray, shortcuts, updater, dialogs, and Core process supervision
+- `apps/desktop/preload` — context-isolated renderer bridge
 - `scripts/collect-linux-diagnostics.sh` — privacy-bounded tester capture
 
 Start with [architecture](docs/architecture.md), [playback](docs/playback.md),

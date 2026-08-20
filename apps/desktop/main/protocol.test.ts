@@ -17,7 +17,7 @@ function tempRoot(): string {
 }
 
 describe('app:// protocol', () => {
-  it('maps FACT Tauri asset/ipc schemes without loosening img-src', () => {
+  it('maps the pre-migration asset/ipc policy without loosening img-src', () => {
     expect(APP_CSP).toBe(
       "default-src 'self'; img-src 'self' data: app: https://y.gtimg.cn https://qpic.y.qq.com https://music-file.y.qq.com https://q.qlogo.cn https://thirdwx.qlogo.cn https://thirdqq.qlogo.cn https://y.qq.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src app: http://127.0.0.1:19532; worker-src 'self' blob:",
     );

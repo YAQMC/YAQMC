@@ -83,7 +83,7 @@ export type TrayHandle = {
 /**
  * Close-to-tray gate for the main-window close handler.
  *
- * FACT `src-tauri/src/lib.rs`: hide (do not destroy) when
+ * Preserve the established behavior: hide (do not destroy) when
  * `close_hides_to_tray` is true — i.e. `system.closeBehavior` is not `"quit"`
  * (default hide-to-tray). `trayActive` is the Electron extra: if tray creation
  * failed there is nowhere to hide to, so close proceeds.

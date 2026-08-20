@@ -653,7 +653,7 @@ describe('Windows lyrics evidence verifier', () => {
       monitorId: '\\\\.\\DISPLAY1',
       visualBinaryPath: binaryPath,
       visualBinarySha256: sha256(binary),
-      visualBuildKind: 'tauri-no-bundle',
+      visualBuildKind: 'electron-local',
       provider: 'fake',
       fixtureSongId: 'quiet-light',
       interactionSequence: {

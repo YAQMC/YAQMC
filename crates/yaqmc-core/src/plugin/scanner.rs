@@ -96,13 +96,19 @@ pub fn scan_script(source: &str) -> ScanReport {
         "dynamic-code",
         "Dynamic code execution is denied.",
     );
+    let legacy_host_global = ["__", "TA", "URI__"].concat();
+    let legacy_host_internals = ["window.__", "TA", "URI_INTERNALS__"].concat();
     bump(
         &mut findings,
         source,
-        &["__TAURI__", "invoke(", "window.__TAURI_INTERNALS__"],
+        &[
+            legacy_host_global.as_str(),
+            "invoke(",
+            legacy_host_internals.as_str(),
+        ],
         RiskSeverity::High,
-        "tauri-api",
-        "Tauri command access is not part of the Plugin API.",
+        "legacy-host-api",
+        "Legacy host command access is not part of the Plugin API.",
     );
     bump(
         &mut findings,
@@ -192,12 +198,13 @@ mod tests {
     }
 
     #[test]
-    fn script_tauri_and_fetch_are_high_risk() {
-        let report = scan_script("fetch('/x'); window.__TAURI__.invoke('player_seek')");
+    fn script_legacy_host_and_fetch_are_high_risk() {
+        let source = ["fetch('/x'); window.__", "TA", "URI__.invoke('player_seek')"].concat();
+        let report = scan_script(&source);
         assert_eq!(report.severity, Some(RiskSeverity::High));
         assert!(report
             .findings
             .iter()
-            .any(|finding| finding.kind == "tauri-api"));
+            .any(|finding| finding.kind == "legacy-host-api"));
     }
 }

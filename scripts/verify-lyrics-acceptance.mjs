@@ -631,8 +631,8 @@ function validateManifestIdentity(manifest, checklist, commands, errors) {
   if (manifest?.releaseArtifact !== null) {
     errors.push('manifest.releaseArtifact: must be null for the local visual gate');
   }
-  if (manifest?.visualBuildKind !== 'tauri-no-bundle') {
-    errors.push('manifest.visualBuildKind: expected tauri-no-bundle');
+  if (manifest?.visualBuildKind !== 'electron-local') {
+    errors.push('manifest.visualBuildKind: expected electron-local');
   }
   for (const field of ['osVersion', 'appVersion', 'webview2Version', 'monitorId']) {
     if (typeof manifest?.[field] !== 'string' || manifest[field].trim() === '') {

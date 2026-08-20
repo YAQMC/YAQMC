@@ -10,7 +10,7 @@ use tokio::sync::watch;
 
 use crate::{HostCommand, HostCommandPublisher};
 
-/// Cadence copied from the Tauri `lyrics_surface` watcher.
+/// Cadence preserved from the original lyrics-surface watcher.
 pub const POLL_INTERVAL: Duration = Duration::from_millis(800);
 
 /// Injected foreground check. Tests pass a hook; production Windows uses

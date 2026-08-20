@@ -2,89 +2,59 @@
 
 > [简体中文](zh-CN/ci.md) | **English**
 
-This page describes GitHub Actions for YAQMC. It is not a substitute for a tagged GitHub Release.
+This page describes the Electron-only GitHub Actions pipeline. Actions artifacts and draft releases are unsigned and do not, by themselves, prove that a package was launched on its target hardware.
 
 ## Workflows
 
-| Workflow              | File                                     | When it runs                                     | What it produces                                                                                       |
-| --------------------- | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| CI                    | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned Actions artifacts                                                          |
-| Build desktop bundles | `.github/workflows/build.yml`            | `v*` tags and manual dispatch                    | production-profile Tauri installers; tagged GitHub Releases only on `v*`                               |
-| Electron release      | `.github/workflows/electron-release.yml` | `v*` tags and manual dispatch                    | production-profile Electron installers; **draft** GitHub Release on `electron-v*` / `electron-draft-*` |
-| Project website       | `.github/workflows/pages.yml`            | documentation/site changes on `main`             | GitHub Pages when the repository is public                                                             |
+| Workflow | File | Trigger | Result |
+| --- | --- | --- | --- |
+| CI | `.github/workflows/ci.yml` | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts |
+| Electron release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch | production-profile packages and a draft GitHub Release |
 
-CI artifacts are **not** GitHub Releases. Retention is **14 days**. Do not treat a green packaging job as native runtime proof for every architecture.
+The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
-## Events and matrix
+## Gates and package matrix
 
-- **Pull request:** Prettier, ESLint, TypeScript, Vitest, docs, secret scan, Rust fmt/clippy/tests, one frontend production build, an Electron host build-only job on Ubuntu and Windows, Windows x86_64 and Linux x86_64 Tauri packages, and Electron NSIS/portable plus AppImage/deb/rpm/tar.gz for Windows x64 and Linux x64.
-- **Push to `main`:** the same quality gates plus the full Tauri Windows/Linux matrix (`x86_64`, `i686`, `aarch64` on Windows; `x86_64` and `aarch64` on Linux) and the Electron matrix (Windows x64, Windows arm64 cross on `windows-2025`, Linux x64, Linux arm64 on `ubuntu-22.04-arm`). Electron does not pack Windows i686.
-- **Manual `workflow_dispatch`:** choose `windows`, `linux`, or `all`, and `ci` or `production` optimization. Both Tauri and Electron package jobs honor the OS filter.
+Every CI run performs frontend formatting, documentation, lint, TypeScript, Vitest and script checks; builds the Electron host on Linux and Windows; runs Rust fmt, clippy and workspace tests; validates contracts; and scans for secrets on Linux and Windows.
 
-Superseded pull-request runs are cancelled. Pushes to `main` and manual packaging runs are not cancelled mid-flight.
+- Pull requests package Windows x64 and Linux x64.
+- Pushes to `main` package Windows x64/arm64 and Linux x64/arm64.
+- Manual runs select `windows`, `linux`, or `all`, and `ci` or `production` optimization.
+- Windows arm64 is cross-compiled on `windows-2025`. Linux arm64 uses `ubuntu-22.04-arm`.
+- Windows i686 is not built or published.
 
-## Frontend reuse
+Superseded pull-request runs are cancelled. Pushes to `main`, tag builds, and manual packaging runs are not cancelled mid-flight.
 
-Packaging jobs download `yaqmc-frontend-dist-<sha>`. `YAQMC_PREBUILT_FRONTEND=1` makes `scripts/ci/tauri-before-build.mjs` skip Vite after checking `dist/yaqmc-frontend-build.json` against the current commit, and makes `scripts/ci/package-electron.mjs` reuse that same dist (no second Vite build). Local `tauri build` still runs a normal frontend build. Electron packs need a populated `dist/` (CI downloads it; locally run `npm run ci:frontend-build` first).
+## Build and packaging flow
 
-Do not upload `node_modules` between jobs.
+`frontend-build` uploads `yaqmc-frontend-dist-<sha>`. Each package job downloads that exact artifact, compiles `yaqmc-core` for its Rust target, stages the Core executable, builds Electron Main/preload code, and invokes electron-builder with publishing disabled.
 
-## Native compile
+Windows produces an NSIS installer and portable executable. Linux produces AppImage, `.deb`, `.rpm`, and `.tar.gz`. Package jobs install Electron packaging tools on Linux; WebKitGTK is not a host dependency.
 
-Each Tauri packaging target runs `tauri build --no-bundle` once, verifies PE/ELF architecture, then `tauri bundle` for the requested formats. Windows publishes NSIS, MSI, and a portable ZIP of the executable. Linux publishes AppImage, `.deb`, `.rpm`, and a dynamically linked binary tarball (not a static portable). The x86_64 AppImage still receives the existing GDK session-aware repack.
+Do not upload or reuse `node_modules` between jobs.
 
-Each Electron packaging target compiles `yaqmc-core` for the rust triple, stages it with `scripts/stage-core.mjs --rust-target`, builds `@yaqmc/desktop`, then runs electron-builder with `--publish never`. Windows publishes NSIS and a portable exe. Linux publishes AppImage, `.deb`, `.rpm`, and `.tar.gz`. Electron jobs install `rpm`/`fakeroot` on Linux and do not install WebKitGTK.
+## Optimization and caches
 
-For Tauri, staging copies installers from `target/<triple>/release/bundle` next to the release-root `yaqmc` / `yaqmc.exe`. It does not search nested payload copies of that binary. Linux packaging installs `xdg-utils` and sets `APPIMAGE_EXTRACT_AND_RUN=1` so linuxdeploy can run on ARM runners that lack `/usr/bin/xdg-open` or FUSE.
+Normal CI packages override the release profile with ThinLTO and eight codegen units:
 
-## Optimization profiles
-
-The Cargo `[profile.release]` in the repository remains Fat LTO (`lto = true`, `codegen-units = 1`) for local `tauri build` and tagged production builds.
-
-Normal CI packages set:
-
-```
+```text
 CARGO_PROFILE_RELEASE_LTO=thin
 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8
 ```
 
-That is still an optimized release build (debug assertions off, `opt-level = "s"`). It is not a debug artifact. `build-info.json` records `profile`, `lto`, and `codegenUnits`. Manual dispatch `production` uses the repository Fat LTO settings and names that in metadata.
+Manual `production` runs and the release workflow use Fat LTO and one codegen unit. `build-info.json` records the effective profile, LTO mode, codegen units, Rust target, Node version, Electron version, and Git identity.
 
-Measured local Windows x86_64 `--release` compile (same machine; ThinLTO used an isolated `CARGO_TARGET_DIR`):
+Cargo caches are keyed by OS, Rust target, toolchain class, `Cargo.lock`, and profile class. Pull requests may restore caches but only `main` pushes, tags, and manual runs save them. Restored caches are untrusted inputs; a cold-cache build must still succeed.
 
-- Fat LTO / `codegen-units=1`: about 3 minutes 47 seconds native compile during a previous full package; `yaqmc.exe` was about 12.1 MB. A later `cargo clean --release` failed because that executable was locked.
-- ThinLTO / `codegen-units=8`: 141.7 seconds, 14.2 MB (`output/lto-bench/thin.json`). This is the default CI package profile.
-- LTO off / `codegen-units=8`: 107.4 seconds, 14.4 MB. Faster to compile, but this repository did not measure runtime playback quality against ThinLTO, so CI keeps ThinLTO.
+## Artifact and release names
 
-## Caches
+CI uploads `YAQMC-electron-<os>-<arch>-<sha>` from the corresponding `release-electron` directory. Architectures use electron-builder labels `x64` and `arm64`.
 
-Cargo caches are keyed by OS, target triple, toolchain class (`1.88` for packaging, `stable` for rust-quality), `Cargo.lock`, and profile class (`dev`, `ci-release`, `production`). Paths are the crates.io registry, git checkouts, and root-workspace `target`.
+The release workflow flattens package assets, writes `SHA256SUMS-electron.txt` and `RELEASE-NOTES-ELECTRON.md`, and keeps only x64 updater feeds as `latest.yml` and `latest-linux.yml`. A `v*` push keeps that tag; a manual run uses `electron-draft-<run-id>`. Both create a draft release for maintainer review.
 
-Packaging installs Rust **1.88**. Quality jobs use the current stable `rustfmt`/`clippy` so they match local `cargo fmt` / `cargo clippy`.
+## Build-accepted versus runtime-tested
 
-Restored caches are untrusted build inputs. Pull requests and pushes to other branches may restore those keys but do not save onto them. Saves happen on `main` pushes and manual dispatch. A cold cache must still succeed.
-
-To invalidate a cache, change `Cargo.lock` or the key prefix in `.github/actions/setup-packaging/action.yml`.
-
-## Artifact names
-
-Each target uploads `YAQMC-<os>-<arch>-<sha>` containing versioned files plus `build-info.json` and `SHA256SUMS-<os>-<arch>.txt`. Architecture labels follow existing release naming: `x86_64`, `i686`, `aarch64`.
-
-Electron targets upload `YAQMC-electron-<os>-<arch>-<sha>` from `release-electron/YAQMC-electron-<os>-<arch>/`. Architecture labels follow electron-builder: `x64`, `arm64`. Those artifacts are unsigned Actions blobs, not GitHub Releases.
-
-## Runners
-
-- Windows x86_64 / i686: `windows-2025`
-- Windows aarch64 (Tauri): `windows-11-arm` (native; never cross-label an x64 binary)
-- Windows arm64 (Electron): `windows-2025` with `cargo --target aarch64-pc-windows-msvc` (cross; CI-03 boot-test pending)
-- Linux x86_64: `ubuntu-22.04`
-- Linux aarch64: `ubuntu-22.04-arm`
-
-If an ARM hosted runner is unavailable, that matrix row fails with a runner error. It must not silently publish the wrong architecture.
-
-## Build-accepted vs runtime-tested
-
-CI packaging means the binary compiled, architecture checks passed, and bundles were uploaded. It does **not** mean the artifact was launched on that OS/CPU. Windows x86_64 is the maintained runtime-tested desktop target in this repository. Linux and ARM rows are package-inspected unless a later acceptance record says otherwise.
+A green package job proves compilation, package assembly, metadata generation, and artifact upload. It does not prove startup, overlay behavior, OAuth, keyring continuity, media integration, updater behavior, or native execution on every OS/CPU. Those require separate hardware acceptance evidence.
 
 ## Local commands
 
@@ -92,6 +62,5 @@ CI packaging means the binary compiled, architecture checks passed, and bundles 
 npm run ci:frontend-build
 npm run ci:test-scripts
 npm run ci:package-metadata
+npm run package -w @yaqmc/desktop -- --publish never
 ```
-
-Unsigned CI artifacts do not use release signing secrets. Formal Tauri tags still go through `.github/workflows/build.yml`. Electron drafts go through `.github/workflows/electron-release.yml` on `electron-v*` / `electron-draft-*` and stay unpublished until a maintainer promotes them.

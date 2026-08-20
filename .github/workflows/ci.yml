@@ -52,7 +52,7 @@ jobs:
       - run: npm test
       - run: npm run test -w @yaqmc/client
       - run: npm run test -w @yaqmc/desktop
-      - run: node scripts/ci/tauri-imports.mjs
+      - run: node scripts/ci/legacy-host-imports.mjs
       - run: node scripts/ci/electron-security-lint.mjs
       - run: npm run ci:test-scripts
 
@@ -113,7 +113,6 @@ jobs:
           key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('Cargo.lock') }}-dev
           restore-keys: |
             cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-
-      - uses: ./.github/actions/linux-tauri-deps
       - run: npm run ci:verify-workspace
       - name: Prepare frontend stub for cargo-only builds
         run: mkdir -p dist && printf '<!doctype html><html><body></body></html>' > dist/index.html
@@ -150,138 +149,6 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1 -SelfTest
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qqmusic-auth-preflight.ps1 -SelfTest
-
-  package-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      include: ${{ steps.select.outputs.include }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24.19.0
-      - id: select
-        env:
-          YAQMC_EVENT_NAME: ${{ github.event_name }}
-          YAQMC_TARGETS: ${{ inputs.targets }}
-        run: node scripts/ci/select-package-matrix.mjs
-
-  package:
-    name: Package ${{ matrix.os }} ${{ matrix.arch }}
-    needs: [frontend-build, package-matrix]
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.package-matrix.outputs.include) }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    env:
-      YAQMC_PREBUILT_FRONTEND: '1'
-      APPIMAGE_EXTRACT_AND_RUN: '1'
-      CARGO_PROFILE_RELEASE_LTO: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && 'true' || 'thin' }}
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.event_name == 'workflow_dispatch' && inputs.optimization == 'production' && '1' || '8' }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Require the requested runner architecture
-        run: echo "Packaging ${{ matrix.target }} on ${{ runner.os }} / ${{ matrix.runner }}"
-      - uses: ./.github/actions/setup-packaging
-        with:
-          target: ${{ matrix.target }}
-          profile: ${{ env.YAQMC_BUILD_PROFILE }}
-      - if: runner.os == 'Linux'
-        uses: ./.github/actions/linux-tauri-deps
-      - run: npm ci
-      - uses: actions/download-artifact@v8
-        with:
-          name: yaqmc-frontend-dist-${{ github.sha }}
-          path: dist
-      - name: Compile once, then bundle
-        run: >-
-          node scripts/ci/package-native.mjs
-          --target ${{ matrix.target }}
-          --os ${{ matrix.os }}
-          --arch ${{ matrix.arch }}
-          --bundles ${{ matrix.bundles }}
-      - name: Repack x86_64 AppImage with session-aware GTK policy
-        if: matrix.os == 'linux' && matrix.arch == 'x86_64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_appimage="$(find target/${{ matrix.target }}/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
-          test -n "$source_appimage"
-          curl --fail --location --retry 3 \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
-            --output /tmp/appimagetool-x86_64.AppImage
-          echo 'a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0  /tmp/appimagetool-x86_64.AppImage' | sha256sum --check
-          chmod +x /tmp/appimagetool-x86_64.AppImage scripts/repack-appimage-gdk-backend.sh
-          scripts/repack-appimage-gdk-backend.sh \
-            "$source_appimage" \
-            /tmp/appimagetool-x86_64.AppImage \
-            "$source_appimage"
-      - name: Stage named artifacts and checksums
-        run: >-
-          node scripts/ci/stage-artifacts.mjs
-          --target ${{ matrix.target }}
-          --os ${{ matrix.os }}
-          --arch ${{ matrix.arch }}
-          --profile ${{ env.YAQMC_BUILD_PROFILE }}
-          --bundles ${{ matrix.bundles }}
-      - name: Verify Linux package architecture
-        if: matrix.os == 'linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          release_dir="release/YAQMC-linux-${{ matrix.arch }}"
-          expected='${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}'
-          rpm_expected='${{ matrix.arch == 'x86_64' && 'x86_64' || 'aarch64' }}'
-          echo "Staged files in ${release_dir}:"
-          ls -la "$release_dir"
-          deb="$(find "$release_dir" -maxdepth 1 -name '*.deb' -print -quit)"
-          rpm="$(find "$release_dir" -maxdepth 1 -name '*.rpm' -print -quit)"
-          if [ -z "$deb" ] || [ -z "$rpm" ]; then
-            echo "missing .deb or .rpm in ${release_dir}" >&2
-            exit 1
-          fi
-          deb_arch="$(dpkg-deb -f "$deb" Architecture)"
-          rpm_arch="$(rpm -qp --qf '%{ARCH}' "$rpm")"
-          echo "deb=$(basename "$deb") arch=${deb_arch} expected=${expected}"
-          echo "rpm=$(basename "$rpm") arch=${rpm_arch} expected=${rpm_expected}"
-          test "$deb_arch" = "$expected"
-          test "$rpm_arch" = "$rpm_expected"
-      - name: Job summary
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo "## ${{ matrix.os }} ${{ matrix.arch }}"
-            echo "- target: \`${{ matrix.target }}\`"
-            echo "- profile: \`${{ env.YAQMC_BUILD_PROFILE }}\`"
-            echo "- lto: \`${{ env.CARGO_PROFILE_RELEASE_LTO }}\`"
-            echo "- codegen-units: \`${{ env.CARGO_PROFILE_RELEASE_CODEGEN_UNITS }}\`"
-            if [ -f "release/timings-${{ matrix.os }}-${{ matrix.arch }}.json" ]; then
-              echo "- timings:"
-              echo '```json'
-              cat "release/timings-${{ matrix.os }}-${{ matrix.arch }}.json"
-              echo '```'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: YAQMC-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
-          path: release/YAQMC-${{ matrix.os }}-${{ matrix.arch }}
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
-      - uses: actions/cache/save@v4
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
 
   electron-package-matrix:
     runs-on: ubuntu-latest
@@ -372,8 +239,6 @@ jobs:
         frontend-build,
         rust-quality,
         secret-scan,
-        package-matrix,
-        package,
         electron-build,
         electron-package-matrix,
         electron-package,
@@ -393,8 +258,6 @@ jobs:
             echo "- rust-quality: \`${{ needs.rust-quality.result }}\`"
             echo "- electron-build: \`${{ needs.electron-build.result }}\`"
             echo "- secret-scan: \`${{ needs.secret-scan.result }}\`"
-            echo "- package-matrix: \`${{ needs.package-matrix.result }}\`"
-            echo "- package: \`${{ needs.package.result }}\`"
             echo "- electron-package-matrix: \`${{ needs.electron-package-matrix.result }}\`"
             echo "- electron-package: \`${{ needs.electron-package.result }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -405,9 +268,6 @@ jobs:
           needs.rust-quality.result != 'success' ||
           needs.electron-build.result != 'success' ||
           needs.secret-scan.result != 'success' ||
-          needs.package-matrix.result != 'success' ||
-          needs.package.result == 'failure' ||
-          needs.package.result == 'cancelled' ||
           needs.electron-package-matrix.result != 'success' ||
           needs.electron-package.result == 'failure' ||
           needs.electron-package.result == 'cancelled'

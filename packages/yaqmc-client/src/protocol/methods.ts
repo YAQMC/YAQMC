@@ -65,7 +65,7 @@ import type {
 } from './dto';
 import type { PlatformAttach } from './types';
 
-export const TAURI_METHOD_NAMES = [
+export const MIGRATED_METHOD_NAMES = [
   'platform_diagnostics',
   'platform_export_diagnostics',
   'system_integration_status',
@@ -134,7 +134,6 @@ export const TAURI_METHOD_NAMES = [
   'lyrics_surface_projection',
   'app_preferences_get',
   'app_preferences_set',
-  'appearance_pick_background',
   'appearance_background_load',
   'lyrics_surfaces_reconcile',
   'lyrics_surface_capabilities',
@@ -152,7 +151,6 @@ export const TAURI_METHOD_NAMES = [
   'local_api_regenerate_token',
   'debug_perf_sample',
   'diagnostics_snapshot',
-  'diagnostics_export_bundle',
   'diagnostics_reveal_bundle',
   'diagnostics_open_log_folder',
   'diagnostics_clear_logs',
@@ -164,7 +162,6 @@ export const TAURI_METHOD_NAMES = [
   'issue_reporter_preview',
   'issue_reporter_validate_url',
   'plugin_list',
-  'plugin_pick_package',
   'plugin_inspect_path',
   'plugin_install',
   'plugin_set_enabled',
@@ -200,9 +197,9 @@ export const PROTOCOL_ONLY_METHODS = [
   'plugin_install_from',
 ] as const;
 
-export const METHOD_NAMES = [...TAURI_METHOD_NAMES, ...PROTOCOL_ONLY_METHODS] as const;
+export const METHOD_NAMES = [...MIGRATED_METHOD_NAMES, ...PROTOCOL_ONLY_METHODS] as const;
 
-export type TauriMethodName = (typeof TAURI_METHOD_NAMES)[number];
+export type MigratedMethodName = (typeof MIGRATED_METHOD_NAMES)[number];
 export type ProtocolOnlyMethodName = (typeof PROTOCOL_ONLY_METHODS)[number];
 export type MethodName = (typeof METHOD_NAMES)[number];
 
@@ -281,7 +278,6 @@ export type MethodParams = Exhaustive<{
   lyrics_surface_projection: void;
   app_preferences_get: void;
   app_preferences_set: { value: string };
-  appearance_pick_background: void;
   appearance_background_load: { reference: string };
   lyrics_surfaces_reconcile: { surfaces: SurfaceRuntimeMap };
   lyrics_surface_capabilities: void;
@@ -303,7 +299,6 @@ export type MethodParams = Exhaustive<{
   local_api_regenerate_token: void;
   debug_perf_sample: { sample: DebugPerfSample };
   diagnostics_snapshot: NamedRequest<DiagnosticsRequest>;
-  diagnostics_export_bundle: NamedRequest<DiagnosticsBundleRequest>;
   diagnostics_reveal_bundle: { path: string };
   diagnostics_open_log_folder: void;
   diagnostics_clear_logs: void;
@@ -315,7 +310,6 @@ export type MethodParams = Exhaustive<{
   issue_reporter_preview: { draft: IssueDraft; request: DiagnosticsRequest };
   issue_reporter_validate_url: { url: string };
   plugin_list: void;
-  plugin_pick_package: void;
   plugin_inspect_path: { path: string };
   plugin_install: NamedRequest<PluginInstallRequest>;
   plugin_set_enabled: NamedRequest<PluginEnableRequest>;
@@ -417,7 +411,6 @@ export type MethodResult = Exhaustive<{
   lyrics_surface_projection: LyricSurfaceProjection;
   app_preferences_get: string | null;
   app_preferences_set: void;
-  appearance_pick_background: ManagedBackgroundImage | null;
   appearance_background_load: ManagedBackgroundImage | null;
   lyrics_surfaces_reconcile: SurfaceCapabilities;
   lyrics_surface_capabilities: SurfaceCapabilities;
@@ -435,7 +428,6 @@ export type MethodResult = Exhaustive<{
   local_api_regenerate_token: LocalApiStatus;
   debug_perf_sample: void;
   diagnostics_snapshot: DiagnosticsSnapshot;
-  diagnostics_export_bundle: BundleExportResult;
   diagnostics_reveal_bundle: void;
   diagnostics_open_log_folder: string;
   diagnostics_clear_logs: number;
@@ -447,7 +439,6 @@ export type MethodResult = Exhaustive<{
   issue_reporter_preview: IssuePreview;
   issue_reporter_validate_url: void;
   plugin_list: PluginRecord[];
-  plugin_pick_package: string | null;
   plugin_inspect_path: PluginInspectResult;
   plugin_install: PluginRecord;
   plugin_set_enabled: PluginRecord;

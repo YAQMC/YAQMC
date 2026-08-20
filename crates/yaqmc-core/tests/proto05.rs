@@ -110,8 +110,8 @@ fn boot() -> (tempfile::TempDir, tokio::runtime::Runtime, CoreHandle) {
     (root, runtime, handle)
 }
 
-/// Recorded from the live Tauri `lib.rs` fan-out (§3.2) before the PROTO-05 move.
-const TAURI_CHANNEL_MAP_FIXTURE: &[(&str, &[&str], bool, bool, bool)] = &[
+/// Recorded from the pre-stdio host fan-out (§3.2) before the PROTO-05 move.
+const LEGACY_CHANNEL_MAP_FIXTURE: &[(&str, &[&str], bool, bool, bool)] = &[
     (
         "queue.changed",
         &[CHANNEL_API_EVENT, CHANNEL_PLAYER_SNAPSHOT],
@@ -216,9 +216,9 @@ const TAURI_CHANNEL_MAP_FIXTURE: &[(&str, &[&str], bool, bool, bool)] = &[
 ];
 
 #[test]
-fn player_channel_map_matches_the_recorded_tauri_fanout_fixture() {
+fn player_channel_map_matches_the_recorded_host_fanout_fixture() {
     for (event_type, channels, update_system_media, persist_queue, seeked) in
-        TAURI_CHANNEL_MAP_FIXTURE
+        LEGACY_CHANNEL_MAP_FIXTURE
     {
         let actions = actions_for_player_event(event_type);
         assert_eq!(actions.channels, *channels, "{event_type} channels");
@@ -329,19 +329,6 @@ fn unknown_player_events_still_emit_api_event_only() {
     assert!(!actions.update_system_media);
     assert!(!actions.persist_queue);
     assert!(!actions.system_media_seeked);
-}
-
-#[test]
-fn tauri_shim_no_longer_owns_the_player_channel_map() {
-    let tauri = include_str!("../../../src-tauri/src/lib.rs");
-    assert!(
-        tauri.contains("spawn_player_fanout("),
-        "Tauri must call Core fan-out"
-    );
-    assert!(
-        !tauri.contains("\"queue.changed\""),
-        "channel map must not remain duplicated in the Tauri shim"
-    );
 }
 
 #[test]

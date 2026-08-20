@@ -283,7 +283,7 @@ function SurfaceControls({
   const { t: surfaces } = useTranslation('settings', { keyPrefix: 'surfaces' });
   return (
     <div className="lyrics-surface__controls yaqmc-no-drag">
-      <span className="lyrics-surface__drag yaqmc-drag" data-tauri-drag-region>
+      <span className="lyrics-surface__drag yaqmc-drag">
         <GripHorizontal size={15} />
       </span>
       <IconButton

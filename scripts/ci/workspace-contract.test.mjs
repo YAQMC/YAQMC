@@ -13,7 +13,6 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 function metadataWithTargetDirectory(targetDirectory) {
   const members = [
-    ['yaqmc', 'src-tauri/Cargo.toml'],
     ['yaqmc-core', 'crates/yaqmc-core/Cargo.toml'],
     ['yaqmc-protocol', 'crates/yaqmc-protocol/Cargo.toml'],
     ['yaqmc-provider-api', 'crates/yaqmc-provider-api/Cargo.toml'],
@@ -64,11 +63,11 @@ test('accepts exactly the root workspace metadata contract', () => {
   );
 });
 
-test('rejects metadata that points Cargo output back under the Tauri member', () => {
+test('rejects metadata that points Cargo output under a workspace member', () => {
   assert.throws(
     () =>
       validateWorkspaceMetadata(
-        metadataWithTargetDirectory(path.join(repositoryRoot, 'src-tauri', 'target')),
+        metadataWithTargetDirectory(path.join(repositoryRoot, 'crates', 'yaqmc-core', 'target')),
       ),
     /Cargo target directory/,
   );
@@ -136,17 +135,17 @@ test('labels a forbidden desktop closure with the target that resolves it', () =
   );
 });
 
-test('rejects a forbidden host dependency reached transitively from Core', () => {
+test('rejects a forbidden platform dependency reached transitively from Core', () => {
   assert.throws(
     () =>
       validateCoreDependencyClosure(
         metadataWithCoreClosure([
           ['yaqmc-core', ['portable-layer']],
-          ['portable-layer', ['tauri']],
-          ['tauri', []],
+          ['portable-layer', ['webkit2gtk']],
+          ['webkit2gtk', []],
         ]),
       ),
-    /forbidden yaqmc-core dependency closure: tauri/,
+    /forbidden yaqmc-core dependency closure: webkit2gtk/,
   );
 });
 
@@ -166,7 +165,6 @@ test('rejects a transitive provider dependency reached from Core', () => {
 
 test('rejects underscore-form forbidden dependencies reached transitively from Core', () => {
   for (const forbidden of [
-    'tauri_plugin_dialog',
     'raw_window_handle',
     'qqmusic_api',
     'napi_build',

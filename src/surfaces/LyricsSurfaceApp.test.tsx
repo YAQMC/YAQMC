@@ -16,7 +16,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock('../application/yaqmc-runtime', async () => {
   const { YaqmcClient } = await import('@yaqmc/client');
   const bridge = {
-    kind: 'tauri' as const,
+    kind: 'electron' as const,
     windowRole: 'lyrics-desktop' as const,
     window: {
       minimize: async () => undefined,
@@ -103,7 +103,6 @@ describe('Desktop Lyrics interaction presentation', () => {
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-idle');
     expect(container.querySelector('.lyrics-surface__controls')).toBeInTheDocument();
     expect(container.querySelector('.lyrics-surface__drag')).toHaveClass('yaqmc-drag');
-    expect(container.querySelector('.lyrics-surface__drag')).toHaveAttribute('data-tauri-drag-region');
     expect(container.querySelector('.desktop-lyrics__content')).not.toHaveClass('yaqmc-drag');
 
     act(() => vi.advanceTimersByTime(121));
@@ -163,7 +162,6 @@ describe('Desktop Lyrics interaction presentation', () => {
     fireEvent.pointerEnter(surface!);
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(container.querySelector('[data-tauri-drag-region="true"]')).toBeNull();
     expect(container.querySelector('.yaqmc-drag')).toBeNull();
   });
 

@@ -85,7 +85,7 @@ export function diagnosticsDisplayCapabilities(
 }
 
 /**
- * Inject `hostPayload` into `diagnostics_export_bundle[_to]` params.
+ * Inject `hostPayload` into `diagnostics_export_bundle_to` params.
  * `{ path, request }` keeps `path`; Main overwrites any renderer-supplied blob.
  */
 export function attachHostPayloadToExportParams(

@@ -8,7 +8,7 @@
  *   `https://github.com/YAQMC/YAQMC…`).
  * - `src/application/issue-reporter.ts` + Rust `validate_open_url` require
  *   `https://github.com/YAQMC/YAQMC/issues/new…`.
- * - Tauri opener (`src-tauri/capabilities/main-window.json`) allows only
+ * - The pre-migration opener allowed only
  *   `https://github.com/YAQMC/YAQMC` and `https://github.com/YAQMC/YAQMC/*`.
  *
  * Plan §28.6 widens the Electron Main list to the org prefix

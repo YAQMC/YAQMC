@@ -35,14 +35,7 @@ export interface SafeDiagnosticInput {
 
 function rendererFor(platform: PlatformDiagnostics | null): string {
   if (!platform) return 'browser preview';
-  if (platform.os === 'windows') return 'WebView2 / Tauri';
-  if (platform.os === 'linux') {
-    return platform.linux?.webkitgtkVersion
-      ? `WebKitGTK ${platform.linux.webkitgtkVersion} / Tauri`
-      : 'WebKitGTK / Tauri';
-  }
-  if (platform.os === 'macos') return 'WKWebView / Tauri';
-  return 'Tauri WebView';
+  return 'Electron / Chromium';
 }
 
 export function formatSafeDiagnostics({

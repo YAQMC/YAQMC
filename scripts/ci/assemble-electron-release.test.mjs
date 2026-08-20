@@ -13,15 +13,14 @@ import {
 } from './assemble-electron-release.mjs';
 
 const WORKFLOW = path.join(repositoryRoot, '.github', 'workflows', 'electron-release.yml');
-const TAURI_BUILD = path.join(repositoryRoot, '.github', 'workflows', 'build.yml');
 
-test('electron draft tags do not collide with Tauri v* releases', () => {
-  assert.equal(electronDraftTag({ eventName: 'push', refName: 'v0.1.0' }), 'electron-v0.1.0');
+test('tagged builds publish against the existing version tag', () => {
+  assert.equal(electronDraftTag({ eventName: 'push', refName: 'v0.1.0' }), 'v0.1.0');
   assert.equal(
     electronDraftTag({ eventName: 'workflow_dispatch', refName: 'main', runId: '99' }),
     'electron-draft-99',
   );
-  assert.notEqual(electronDraftTag({ eventName: 'push', refName: 'v1.2.3' }), 'v1.2.3');
+  assert.equal(electronDraftTag({ eventName: 'push', refName: 'v1.2.3' }), 'v1.2.3');
 });
 
 test('assembles installers, x64 updater feeds, and combined checksums', () => {
@@ -62,21 +61,14 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
   assert.match(ELECTRON_RELEASE_NOTES, /BLOCKED/);
 });
 
-test('Electron release workflow is a draft successor and does not replace Tauri build.yml', () => {
+test('Electron release workflow is the sole tagged desktop release workflow', () => {
   const workflow = readFileSync(WORKFLOW, 'utf8');
-  const tauri = readFileSync(TAURI_BUILD, 'utf8');
   assert.match(workflow, /^name: Electron release/m);
   assert.match(workflow, /tags:\s*\n\s+-\s+'v\*'/);
   assert.match(workflow, /node scripts\/ci\/package-electron\.mjs/);
   assert.match(workflow, /node scripts\/ci\/assemble-electron-release\.mjs/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /--draft/);
-  assert.doesNotMatch(workflow, /linux-tauri-deps/);
-  assert.doesNotMatch(workflow, /npm run tauri/);
   assert.doesNotMatch(workflow, /autoDownload:\s*true/);
   assert.doesNotMatch(workflow, /--publish always/);
-  assert.match(tauri, /npm run tauri/);
-  assert.match(tauri, /^ {2}github-release:/m);
-  assert.doesNotMatch(tauri, /--draft/);
-  assert.doesNotMatch(tauri, /package-electron/);
 });

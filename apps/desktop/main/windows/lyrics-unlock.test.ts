@@ -60,7 +60,7 @@ function createWithFactory(kind: LyricsUnlockKind, preloadPath?: string): {
 }
 
 describe('lyrics unlock overlay construction table', () => {
-  it('uses live Tauri 42×42 pill geometry for both kinds', () => {
+  it('uses the preserved 42×42 pill geometry for both kinds', () => {
     expect(LYRICS_UNLOCK_GEOMETRY).toEqual({
       width: 42,
       height: 42,

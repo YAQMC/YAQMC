@@ -16,25 +16,24 @@ const FACT_FILES = [
   'package-lock.json',
   'Cargo.toml',
   '.github/actions/setup-packaging/action.yml',
-  '.github/workflows/build.yml',
   '.github/workflows/ci.yml',
+  '.github/workflows/electron-release.yml',
   '.github/workflows/pages.yml',
-  'src-tauri/Cargo.toml',
-  'src-tauri/tauri.conf.json',
-  'src-tauri/build.rs',
-  'src-tauri/src/lib.rs',
+  'apps/desktop/electron-builder.yml',
+  'apps/desktop/main/index.ts',
+  'apps/desktop/main/core/paths.ts',
+  'apps/desktop/main/windows/lyrics-surfaces.ts',
+  'packages/yaqmc-client/fixtures/methods.json',
   'crates/yaqmc-core/src/storage.rs',
-  'src-tauri/src/commands.rs',
+  'crates/yaqmc-core/src/audio.rs',
   'crates/yaqmc-core/src/app_preferences.rs',
   'crates/yaqmc-core/src/logging.rs',
-  'src-tauri/src/lyrics_surface/mod.rs',
   'crates/yaqmc-core/src/qqmusic.rs',
   'crates/yaqmc-core/src/credentials.rs',
   'crates/yaqmc-core/src/qqmusic/auth.rs',
   'crates/yaqmc-core/src/local_api.rs',
   'crates/yaqmc-core/src/system_media.rs',
   'crates/yaqmc-core/src/bootstrap.rs',
-  'docs/migration/command-inventory.md',
 ];
 
 const REQUIRED_METRICS = [
@@ -188,7 +187,7 @@ function fixture() {
       legacyService: 'dev.music-client.desktop',
       entries: ['qqmusic-session', 'qqmusic-session-staging', 'local-api-bearer-token'],
     },
-    runtimeFacts: { registeredTauriCommands: 117, mainWindow: '1280×800 (minimum 1000×680)' },
+    runtimeFacts: { registeredProtocolMethods: 126, mainWindow: '1280×800 (minimum 1000×680)' },
     measurements: pendingMeasurements(),
   };
 }
@@ -288,13 +287,6 @@ function replaceFactSource(root, relativePath, currentValue, driftedValue) {
   writeFileSync(sourcePath, drifted);
 }
 
-function mutateTauriConfig(root, mutate) {
-  const configPath = path.join(root, 'src-tauri', 'tauri.conf.json');
-  const config = JSON.parse(readFileSync(configPath, 'utf8'));
-  mutate(config);
-  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-}
-
 test('renders injected toolchain observations separately from project requirements', () => {
   const result = runBaseline(fixture());
 
@@ -332,14 +324,11 @@ test('renders every pending metric and complete continuity and artifact facts', 
   assert.match(output, /preferred-quality/);
   assert.match(output, /preferences-schema-version/);
   assert.match(output, /dev\.music-client\.desktop/);
-  assert.match(output, /YAQMC-\{version\}-windows-\{arch\}-\{shortSha\}-nsis-setup\.exe/);
-  assert.match(output, /YAQMC-linux-\{arch\}-portable\.tar\.gz/);
-  assert.match(output, /SHA256SUMS-windows-\{arch\}\.txt/);
-  assert.match(output, /README-binary\.txt/);
-  assert.match(
-    output,
-    /`\{arch\}`: Windows uses `x86_64`, `i686`, and `aarch64`; Linux uses `x86_64` and `aarch64`/,
-  );
+  assert.match(output, /YAQMC-windows-\{arch\}-setup\.exe/);
+  assert.match(output, /YAQMC-linux-\{arch\}\.tar\.gz/);
+  assert.match(output, /SHA256SUMS-electron\.txt/);
+  assert.match(output, /RELEASE-NOTES-ELECTRON\.md/);
+  assert.match(output, /`\{arch\}` is `x64` or `arm64`/);
   assert.match(output, /P0 performance gate: NOT COMPLETE/);
 });
 
@@ -389,9 +378,9 @@ test('rejects snapshot drift against an injected unchanged repository', async (t
     [
       'command count=0',
       (snapshot) => {
-        snapshot.runtimeFacts.registeredTauriCommands = 0;
+        snapshot.runtimeFacts.registeredProtocolMethods = 0;
       },
-      /runtimeFacts registeredTauriCommands.*repository fact/,
+      /runtimeFacts registeredProtocolMethods.*repository fact/,
     ],
     [
       'window=1x1',
@@ -440,18 +429,25 @@ test('rejects production source drift in an injected repository with the canonic
     [
       'main window dimensions',
       (root) =>
-        mutateTauriConfig(root, (config) => {
-          const main = config.app.windows.find(({ label }) => label === 'main');
-          Object.assign(main, { width: 1, height: 1, minWidth: 1, minHeight: 1 });
-        }),
+        replaceFactSource(root, 'apps/desktop/main/index.ts', 'width: 1280', 'width: 1'),
       /runtimeFacts mainWindow.*repository fact/,
     ],
     [
       'identifier-derived paths',
-      (root) =>
-        mutateTauriConfig(root, (config) => {
-          config.identifier = 'org.yaqmc.drifted';
-        }),
+      (root) => {
+        replaceFactSource(
+          root,
+          'apps/desktop/electron-builder.yml',
+          'appId: org.yaqmc.desktop',
+          'appId: org.yaqmc.drifted',
+        );
+        replaceFactSource(
+          root,
+          'apps/desktop/main/core/paths.ts',
+          "'org.yaqmc.desktop'",
+          "'org.yaqmc.drifted'",
+        );
+      },
       /dataPaths windows-app-data path.*repository fact/,
     ],
     [
@@ -459,7 +455,7 @@ test('rejects production source drift in an injected repository with the canonic
       (root) =>
         replaceFactSource(
           root,
-          'src-tauri/src/commands.rs',
+          'crates/yaqmc-core/src/audio.rs',
           '"audio-output-device"',
           '"audio-output-device-drifted"',
         ),
@@ -536,7 +532,7 @@ test('rejects missing required collection entries', async (t) => {
     ['toolchains', 'cargo'],
     ['dataPaths', 'windows-local-api-config'],
     ['persistenceEntries', 'queue-state'],
-    ['releaseArtifacts', 'ci-linux-readme'],
+    ['releaseArtifacts', 'electron-linux-tar'],
   ];
   for (const [collection, id] of cases) {
     await t.test(`${collection} requires ${id}`, () => {

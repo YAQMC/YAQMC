@@ -2,7 +2,7 @@
     not(test),
     expect(
         dead_code,
-        reason = "the guarded Tauri auth commands are introduced in the next implementation task"
+        reason = "the guarded auth commands are introduced in the next implementation task"
     )
 )]
 #![cfg_attr(

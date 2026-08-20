@@ -26,7 +26,7 @@ import {
 const coreStatusMocks = vi.hoisted(() => {
   const listeners = new Set<(payload: { status: string }) => void>();
   return {
-    kind: 'fake' as 'electron' | 'tauri' | 'fake',
+    kind: 'fake' as 'electron' | 'fake',
     listeners,
     emit(status: string) {
       for (const listener of listeners) {

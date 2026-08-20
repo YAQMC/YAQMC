@@ -16,7 +16,6 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 function writeMiniRepo(root, versions) {
   mkdirSync(path.join(root, 'apps', 'desktop'), { recursive: true });
   mkdirSync(path.join(root, 'crates', 'yaqmc-core'), { recursive: true });
-  mkdirSync(path.join(root, 'src-tauri'), { recursive: true });
   writeFileSync(
     path.join(root, 'package.json'),
     `${JSON.stringify({ name: 'yaqmc', version: versions.root }, null, 2)}\n`,
@@ -27,15 +26,11 @@ function writeMiniRepo(root, versions) {
   );
   writeFileSync(
     path.join(root, 'Cargo.toml'),
-    `[workspace]\nmembers = [\n    "src-tauri",\n    "crates/yaqmc-core",\n]\n`,
+    `[workspace]\nmembers = [\n    "crates/yaqmc-core",\n]\n`,
   );
   writeFileSync(
     path.join(root, 'crates', 'yaqmc-core', 'Cargo.toml'),
     `[package]\nname = "yaqmc-core"\nversion = "${versions.core}"\nedition = "2021"\n`,
-  );
-  writeFileSync(
-    path.join(root, 'src-tauri', 'Cargo.toml'),
-    `[package]\nname = "yaqmc"\nversion = "${versions.tauri}"\nedition = "2021"\n`,
   );
 }
 
@@ -61,7 +56,6 @@ test('check/dry-run fails when desktop package.json differs from root', () => {
     root: '0.1.0',
     desktop: '9.9.9',
     core: '0.1.0',
-    tauri: '0.1.0',
   });
   assert.throws(
     () => syncVersions({ repoRoot: root, check: true }),
@@ -79,7 +73,6 @@ test('check/dry-run fails when a workspace crate differs from root', () => {
     root: '0.1.0',
     desktop: '0.1.0',
     core: '0.2.0',
-    tauri: '0.1.0',
   });
   assert.throws(
     () => syncVersions({ repoRoot: root, check: true }),
@@ -93,10 +86,7 @@ test('write mode copies the root version and no-ops files that already match', (
     root: '0.1.0',
     desktop: '0.0.9',
     core: '0.0.8',
-    tauri: '0.1.0',
   });
-  const matching = path.join(root, 'src-tauri', 'Cargo.toml');
-  const beforeMatch = readFileSync(matching);
   const result = syncVersions({ repoRoot: root });
   assert.equal(result.version, '0.1.0');
   assert.equal(result.updates.length, 2);
@@ -108,7 +98,6 @@ test('write mode copies the root version and no-ops files that already match', (
     readCargoPackageVersion(readFileSync(path.join(root, 'crates', 'yaqmc-core', 'Cargo.toml'), 'utf8')),
     '0.1.0',
   );
-  assert.deepEqual(readFileSync(matching), beforeMatch);
 });
 
 test('already-matching trees are a no-op write', () => {
@@ -117,12 +106,10 @@ test('already-matching trees are a no-op write', () => {
     root: '0.1.0',
     desktop: '0.1.0',
     core: '0.1.0',
-    tauri: '0.1.0',
   });
   const files = [
     path.join(root, 'apps', 'desktop', 'package.json'),
     path.join(root, 'crates', 'yaqmc-core', 'Cargo.toml'),
-    path.join(root, 'src-tauri', 'Cargo.toml'),
   ];
   const before = files.map((filePath) => readFileSync(filePath));
   const result = syncVersions({ repoRoot: root });

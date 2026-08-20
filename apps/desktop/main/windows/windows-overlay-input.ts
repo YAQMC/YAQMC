@@ -1,7 +1,7 @@
 /**
  * Windows native input policy for lyrics overlays.
  *
- * Intended architecture is Option A (Tauri-parity): when locked, the whole
+ * Intended architecture is Option A: when locked, the whole
  * lyrics HWND is click-through. Unlock is a separate 42×42 overlay, not a
  * hole punched with `{ forward: true }`.
  *

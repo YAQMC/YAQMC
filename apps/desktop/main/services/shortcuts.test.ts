@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createGlobalShortcutSession,
@@ -13,12 +10,6 @@ import {
   WAYLAND_SHORTCUTS_UNSUPPORTED,
   type GlobalShortcutApi,
 } from './shortcuts';
-
-const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const rustSource = path.resolve(
-  desktopRoot,
-  '../../src-tauri/src/desktop_integration.rs',
-);
 
 function mockGlobalShortcut(
   registerImpl?: GlobalShortcutApi['register'],
@@ -40,16 +31,12 @@ function mockGlobalShortcut(
 }
 
 describe('FACT accelerators', () => {
-  it('matches desktop_integration.rs SHORTCUTS exactly', () => {
+  it('keeps the canonical play-pause, previous, and next accelerators', () => {
     expect(FACT_SHORTCUT_ACCELERATORS).toEqual([
       'control+alt+Space',
       'control+alt+ArrowLeft',
       'control+alt+ArrowRight',
     ]);
-    const rust = readFileSync(rustSource, 'utf8');
-    for (const fact of FACT_SHORTCUT_ACCELERATORS) {
-      expect(rust).toContain(`"${fact}"`);
-    }
   });
 
   it('maps FACT strings onto Electron accelerators', () => {

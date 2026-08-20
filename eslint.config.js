@@ -9,10 +9,7 @@ export default tseslint.config(
       'dist',
       'coverage',
       'node_modules',
-      'src-tauri/target',
-      'src-tauri/target-bench-*/**',
       'target',
-      'src-tauri/gen',
       'output/**',
       '.superpowers/**',
       '.playwright-cli/**',
@@ -48,33 +45,18 @@ export default tseslint.config(
   },
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/application/tauri-host-bridge.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            {
-              name: '@tauri-apps/plugin-opener',
-              message:
-                'Use HostBridge.shell.openExternal via YaqmcClient instead of @tauri-apps/plugin-opener.',
-            },
-          ],
           patterns: [
             {
               group: ['@tauri-apps', '@tauri-apps/*', '@tauri-apps/**'],
-              message:
-                'Import @tauri-apps only from src/application/tauri-host-bridge.ts until P13.',
+              message: 'Legacy host packages are forbidden; use HostBridge via YaqmcClient.',
             },
           ],
         },
       ],
-    },
-  },
-  {
-    files: ['src/application/tauri-host-bridge.test.ts'],
-    rules: {
-      'no-restricted-imports': 'off',
     },
   },
   {

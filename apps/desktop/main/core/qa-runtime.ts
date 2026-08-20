@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 
-/** FACT `src-tauri/tauri.conf.json` identifier. Matches `scripts/qa-runtime.mjs`. */
+/** Stable application identifier. Matches `scripts/qa-runtime.mjs`. */
 export const APP_IDENTIFIER = 'org.yaqmc.desktop';
 export const QA_SANDBOX_DIR_NAME = 'yaqmc-qa';
 export const QA_ROOT_ENV = 'YAQMC_QA_ROOT';

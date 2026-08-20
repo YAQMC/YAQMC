@@ -31,11 +31,11 @@ const nativeArtworkMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../application/yaqmc-runtime', () => ({
-  getHostBridge: () => ({ kind: 'tauri' }),
+  getHostBridge: () => ({ kind: 'electron' }),
   getYaqmcClient: () => ({
     invoke: nativeArtworkMocks.invoke,
     on: () => () => undefined,
-    bridge: { kind: 'tauri' },
+    bridge: { kind: 'electron' },
     host: {
       window: {
         minimize: async () => undefined,

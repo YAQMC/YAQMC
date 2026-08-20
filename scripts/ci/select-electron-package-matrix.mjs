@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Electron package matrix (CI-02). Additive to the Tauri PACKAGE_TARGETS.
+ * Electron package matrix (CI-02). This is the sole desktop package matrix.
  * Drops Windows i686 (R-13). Windows arm64 is a cross-compile on windows-2025.
  * Linux arm64 stays on the FACT ubuntu-22.04-arm runner (CI-03's ubuntu-24.04-arm
  * remains hardware pending).

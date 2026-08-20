@@ -33,9 +33,9 @@ impl EventSink for ChannelSink {
     }
 }
 
-/// Stdio composition: Tauri emitted `preferences://changed` from the host hook.
+/// Stdio composition: the host hook emits `preferences://changed`.
 /// `NoopHost` is silent, so Electron never rebuilt the tray. Forward the stored
-/// document as a JSON string, matching Tauri `app.emit(..., value)`.
+/// document as a JSON string, preserving the renderer event payload contract.
 struct StdioNotifyHost<H> {
     inner: H,
     sink: Arc<dyn EventSink>,
@@ -127,10 +127,10 @@ where
         "host attached"
     );
 
-    // Electron composition point matching Tauri setup: position/EOS live here.
+    // Electron composition point: position/EOS fan-out lives here.
     core.player()
         .start_clock_on_runtime(&tokio::runtime::Handle::current());
-    // Tauri setup also spawns restore_session after manage(). Electron must
+    // Restore the account session after bootstrap. Electron must
     // await it before the request loop: `account://changed` is unused, so a
     // first snapshot that still sees guest stays guest after restart.
     core.qq_music().restore_session().await;
@@ -204,7 +204,7 @@ where
                     Ok(CoreMessage::Shutdown { .. }) => {
                         persist_queue(&core).await;
                         core.player().stop_clock();
-                        // Tauri marked the plugin journal clean on host Exit.
+                        // Mark the plugin journal clean on host Exit.
                         // Electron's graceful protocol shutdown must do the same,
                         // or the next boot treats a normal quit as a crash loop.
                         core.plugins().mark_clean_exit();

@@ -1053,11 +1053,7 @@ export function SettingsPage() {
     accountSnapshot.state === 'session-expired' ||
     accountSnapshot.state === 'reauthentication-required';
   const rendererLabel = platform.diagnostics
-    ? platform.diagnostics.os === 'windows'
-      ? 'WebView2 / Tauri'
-      : platform.diagnostics.os === 'linux'
-        ? 'WebKitGTK / Tauri'
-        : 'Tauri WebView'
+    ? 'Electron / Chromium'
     : t('about.browserPreview');
   const aboutLinks: Array<{ id: ProductLink; label: string }> = [
     { id: 'repository', label: t('about.repository') },

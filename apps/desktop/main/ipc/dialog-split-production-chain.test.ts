@@ -256,9 +256,9 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
   it('serializes origin=main on background _from and plugin _from after host pickers', async () => {
     const { router, frames, rendererInvoke } = productionChain();
 
-    await expect(router.invoke(1, { method: 'appearance_pick_background' })).resolves.toMatchObject({
-      ok: true,
-    });
+    await expect(
+      router.invoke(1, { method: 'dialog.pickFile', params: { kind: 'background-image' } }),
+    ).resolves.toMatchObject({ ok: true });
     await expect(
       rendererInvoke({
         method: 'preferences_set_background_from',
@@ -274,9 +274,9 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
       origin: 'main',
     });
 
-    await expect(router.invoke(1, { method: 'plugin_pick_package' })).resolves.toMatchObject({
-      ok: true,
-    });
+    await expect(
+      router.invoke(1, { method: 'dialog.pickFile', params: { kind: 'plugin-package' } }),
+    ).resolves.toMatchObject({ ok: true });
     await expect(
       rendererInvoke({
         method: 'plugin_install_from',
@@ -446,10 +446,13 @@ describe.skipIf(!liveBinary)('dialog-split live IpcRouter + Core stdio', () => {
           canceled: false,
           filePaths: [sample.file],
         });
-        const picked = await chain.router.invoke(1, { method: 'appearance_pick_background' });
+        const picked = await chain.router.invoke(1, {
+          method: 'dialog.pickFile',
+          params: { kind: 'background-image' },
+        });
         expect(picked).toEqual({
           ok: true,
-          result: { reference: sample.file, dataUri: '' },
+          result: sample.file,
         });
         const reply = await chain.router.invoke(1, {
           method: 'preferences_set_background_from',
@@ -480,9 +483,12 @@ describe.skipIf(!liveBinary)('dialog-split live IpcRouter + Core stdio', () => {
     const pkg = path.join(root, 'missing.yaqmc-plugin');
     const chain = await liveProductionChain(root, pkg);
     try {
-      await expect(chain.router.invoke(1, { method: 'plugin_pick_package' })).resolves.toMatchObject({
-        ok: true,
-      });
+      await expect(
+        chain.router.invoke(1, {
+          method: 'dialog.pickFile',
+          params: { kind: 'plugin-package' },
+        }),
+      ).resolves.toMatchObject({ ok: true });
       const reply = await chain.router.invoke(1, {
         method: 'plugin_install_from',
         params: { request: { path: pkg, enable: true, grant: [] } },

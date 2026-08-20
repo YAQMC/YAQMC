@@ -11,7 +11,7 @@ param(
     'rustfmt',
     'clippy',
     'rust-tests',
-    'local-release-binary',
+    'desktop-build',
     'self-test-silent',
     'self-test-fail'
   )]
@@ -73,22 +73,22 @@ switch ($CommandId) {
     exit $commandExit
   }
   'rustfmt' {
-    & cargo.exe fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+    & cargo.exe fmt --all -- --check
     $commandExit = $LASTEXITCODE
     exit $commandExit
   }
   'clippy' {
-    & cargo.exe clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+    & cargo.exe clippy --workspace --all-targets --locked -- -D warnings
     $commandExit = $LASTEXITCODE
     exit $commandExit
   }
   'rust-tests' {
-    & cargo.exe test --manifest-path src-tauri/Cargo.toml --all-targets
+    & cargo.exe test --workspace --all-targets --locked
     $commandExit = $LASTEXITCODE
     exit $commandExit
   }
-  'local-release-binary' {
-    & npm.cmd run tauri -- build --no-bundle
+  'desktop-build' {
+    & npm.cmd run build -w '@yaqmc/desktop'
     $commandExit = $LASTEXITCODE
     exit $commandExit
   }

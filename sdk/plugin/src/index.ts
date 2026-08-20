@@ -1,7 +1,7 @@
 /**
  * YAQMC runtime plugin SDK (compile-time types).
  *
- * This is not a Tauri framework plugin API. Application code must not be imported
+ * This is not an Electron extension API. Application code must not be imported
  * from `src/`. Build TypeScript to `dist/main.js` and ship it inside a
  * `*.yaqmc-plugin` package. The production host executes that JavaScript in an
  * isolated worker; it does not compile TypeScript at runtime.

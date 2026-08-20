@@ -804,7 +804,7 @@ function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
 function createUnlockBrowserWindow(options: LyricsUnlockCreateOptions, kind: LyricsUnlockKind) {
   const { alwaysOnTop, ...rest } = options;
   void alwaysOnTop;
-  // Unparented on purpose. Tauri parents the pill to the lyrics surface; an
+  // Unparented on purpose. Parenting the pill to a click-through lyrics surface
   // Electron parent with WS_EX_TRANSPARENT swallows the child's hit-test.
   const window = new BrowserWindow({
     ...rest,

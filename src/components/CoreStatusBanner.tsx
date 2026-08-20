@@ -28,10 +28,7 @@ function defaultSubscribe(handler: (payload: CoreStatusPayload) => void): () => 
   });
 }
 
-/**
- * Host-agnostic core-status banner. On Tauri, `host://core-status` never fires
- * and `window.yaqmc` is absent, so this stays inert.
- */
+/** Host-agnostic core-status banner driven by the Electron preload event bridge. */
 export function CoreStatusBanner({
   subscribe = defaultSubscribe,
 }: {

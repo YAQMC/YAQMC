@@ -27,7 +27,7 @@ pub use crate::HostCommandPublisher;
 #[derive(Clone)]
 pub struct SystemMediaStartConfig {
     pub windows_hwnd: Option<isize>,
-    /// Tauri's original HWND lookup error, if resolving the host window failed.
+    /// Host HWND lookup error, if resolving the main window failed.
     pub windows_start_error: Option<String>,
     pub runtime: tokio::runtime::Handle,
     pub host_commands: HostCommandPublisher,

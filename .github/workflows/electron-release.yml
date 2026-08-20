@@ -158,7 +158,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            tag="electron-${GITHUB_REF_NAME}"
+            tag="${GITHUB_REF_NAME}"
           else
             tag="electron-draft-${GITHUB_RUN_ID}"
           fi

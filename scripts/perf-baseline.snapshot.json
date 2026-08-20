@@ -8,69 +8,39 @@
     { "id": "cargo", "name": "Cargo", "required": "1.88.0" }
   ],
   "runtimeFacts": {
-    "registeredTauriCommands": 117,
+    "registeredProtocolMethods": 126,
     "mainWindow": "1280×800 (minimum 1000×680)"
   },
   "releaseArtifacts": [
     {
-      "id": "ci-windows-nsis"
+      "id": "electron-windows-nsis"
     },
     {
-      "id": "ci-windows-msi"
+      "id": "electron-windows-portable"
     },
     {
-      "id": "ci-windows-portable"
+      "id": "electron-windows-updater"
     },
     {
-      "id": "ci-linux-appimage"
+      "id": "electron-linux-appimage"
     },
     {
-      "id": "ci-linux-deb"
+      "id": "electron-linux-deb"
     },
     {
-      "id": "ci-linux-rpm"
+      "id": "electron-linux-rpm"
     },
     {
-      "id": "ci-linux-binary"
+      "id": "electron-linux-tar"
     },
     {
-      "id": "ci-linux-readme"
+      "id": "electron-linux-updater"
     },
     {
-      "id": "ci-build-info"
+      "id": "electron-release-checksums"
     },
     {
-      "id": "ci-checksum"
-    },
-    {
-      "id": "release-windows-nsis"
-    },
-    {
-      "id": "release-windows-msi"
-    },
-    {
-      "id": "release-windows-portable"
-    },
-    {
-      "id": "release-windows-checksum"
-    },
-    {
-      "id": "release-linux-appimage"
-    },
-    {
-      "id": "release-linux-deb"
-    },
-    {
-      "id": "release-linux-rpm"
-    },
-    {
-      "id": "release-linux-portable"
-    },
-    {
-      "id": "release-linux-tester"
-    },
-    {
-      "id": "release-linux-checksum"
+      "id": "electron-release-notes"
     }
   ],
   "dataPaths": [

@@ -900,19 +900,6 @@
   {
     "allowedOrigins": [
       "host",
-      "main"
-    ],
-    "mainWindowOnly": true,
-    "name": "appearance_pick_background",
-    "owner": "host",
-    "requestCap": 1048576,
-    "responseCap": 1048576,
-    "timeoutClass": "standard",
-    "timeoutMs": 30000
-  },
-  {
-    "allowedOrigins": [
-      "host",
       "main",
       "lyrics-desktop",
       "lyrics-island"
@@ -1146,19 +1133,6 @@
       "main"
     ],
     "mainWindowOnly": true,
-    "name": "diagnostics_export_bundle",
-    "owner": "core",
-    "requestCap": 1048576,
-    "responseCap": 1048576,
-    "timeoutClass": "long",
-    "timeoutMs": 120000
-  },
-  {
-    "allowedOrigins": [
-      "host",
-      "main"
-    ],
-    "mainWindowOnly": true,
     "name": "diagnostics_reveal_bundle",
     "owner": "host",
     "requestCap": 1048576,
@@ -1291,19 +1265,6 @@
     "mainWindowOnly": true,
     "name": "plugin_list",
     "owner": "core",
-    "requestCap": 1048576,
-    "responseCap": 1048576,
-    "timeoutClass": "standard",
-    "timeoutMs": 30000
-  },
-  {
-    "allowedOrigins": [
-      "host",
-      "main"
-    ],
-    "mainWindowOnly": true,
-    "name": "plugin_pick_package",
-    "owner": "host",
     "requestCap": 1048576,
     "responseCap": 1048576,
     "timeoutClass": "standard",

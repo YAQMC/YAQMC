@@ -667,13 +667,12 @@ export interface ManagedBackgroundImage {
 export async function pickManagedBackgroundImage(): Promise<ManagedBackgroundImage | null> {
   if (!isNativeRuntime) return null;
   const client = getYaqmcClient();
-  const picked = await client.invoke('appearance_pick_background');
-  if (picked === null) return null;
-  if (client.bridge.kind !== 'electron') return picked;
-  if (typeof picked.reference !== 'string' || picked.reference.trim().length === 0) {
+  const picked = await client.host.dialog?.pickFile({ kind: 'background-image' });
+  if (picked == null) return null;
+  if (typeof picked !== 'string' || picked.trim().length === 0) {
     throw new Error('selected image path is missing');
   }
-  return client.invoke('preferences_set_background_from', { path: picked.reference });
+  return client.invoke('preferences_set_background_from', { path: picked });
 }
 
 const FILESYSTEM_PATH_IN_MESSAGE =

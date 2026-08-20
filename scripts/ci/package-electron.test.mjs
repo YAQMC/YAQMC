@@ -115,12 +115,12 @@ test('stages named Electron artifacts and checksums without unpacked trees', () 
   assert.doesNotMatch(sums, /win-unpacked/);
 });
 
-test('CI adds an Electron package job without replacing Tauri package or using WebKitGTK deps', () => {
+test('CI uses the Electron package job as the only desktop package path', () => {
   const workflow = readFileSync(WORKFLOW, 'utf8');
   assert.match(workflow, /^ {2}electron-package-matrix:/m);
   assert.match(workflow, /^ {2}electron-package:/m);
-  assert.match(workflow, /^ {2}package:/m);
-  assert.match(workflow, /node scripts\/ci\/package-native\.mjs/);
+  assert.doesNotMatch(workflow, /^ {2}package:/m);
+  assert.doesNotMatch(workflow, /node scripts\/ci\/package-native\.mjs/);
   assert.match(workflow, /node scripts\/ci\/package-electron\.mjs/);
   assert.match(workflow, /node scripts\/ci\/select-electron-package-matrix\.mjs/);
   assert.match(
@@ -131,7 +131,6 @@ test('CI adds an Electron package job without replacing Tauri package or using W
   assert.match(electronJob, /YAQMC_PREBUILT_FRONTEND: '1'/);
   assert.match(electronJob, /continue-on-error:\s*false/);
   assert.match(electronJob, /setup-packaging/);
-  assert.doesNotMatch(electronJob, /linux-tauri-deps/);
   assert.doesNotMatch(electronJob, /webkit/i);
   assert.match(electronJob, /rpm fakeroot/);
   assert.match(readFileSync(SCRIPT, 'utf8'), /'--publish', 'never'/);

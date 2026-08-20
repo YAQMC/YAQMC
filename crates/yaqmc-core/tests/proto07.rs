@@ -66,7 +66,7 @@ fn boot() -> (
 }
 
 #[test]
-fn oauth_protocol_methods_are_core_owned_and_not_tauri_commands() {
+fn oauth_protocol_methods_are_core_owned_and_not_host_commands() {
     for name in [
         "auth_oauth_prepare",
         "auth_oauth_complete",
@@ -132,10 +132,9 @@ fn prepare_returns_allowlist_and_cancel_consumes_the_attempt() {
 }
 
 #[test]
-fn tauri_oauth_window_consumes_the_protocol_methods() {
-    let source = include_str!("../../../src-tauri/src/qqmusic_oauth_host.rs");
-    assert!(source.contains("ops::auth_oauth_prepare"));
-    assert!(source.contains("ops::auth_oauth_complete"));
-    assert!(source.contains("ops::auth_oauth_cancel"));
-    assert!(!source.contains("start_oauth_login("));
+fn electron_oauth_window_consumes_the_protocol_methods() {
+    let source = include_str!("../../../apps/desktop/main/windows/oauth-window.ts");
+    assert!(source.contains("deps.auth_oauth_prepare"));
+    assert!(source.contains("auth_oauth_complete"));
+    assert!(source.contains("auth_oauth_cancel"));
 }
