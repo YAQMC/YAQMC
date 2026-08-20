@@ -55,7 +55,9 @@ export function updateStatusCopy(payload: UpdatePayload): string {
           ? `Version ${payload.version} is available. This package cannot update in place — open the release page.`
           : 'An update is available. This package cannot update in place — open the release page.';
       }
-      return payload.version ? `Version ${payload.version} is available.` : 'An update is available.';
+      return payload.version
+        ? `Version ${payload.version} is available.`
+        : 'An update is available.';
     case 'not-available':
       return 'You are on the latest version.';
     case 'downloading':
@@ -95,7 +97,11 @@ export function SettingsUpdateSection() {
     try {
       await requestHostUpdateDownload(getYaqmcClient() as unknown as HostInvokeSeam);
     } catch {
-      setPayload((current) => ({ ...current, state: 'error', error: 'Could not download the update.' }));
+      setPayload((current) => ({
+        ...current,
+        state: 'error',
+        error: 'Could not download the update.',
+      }));
     }
   };
 
@@ -104,7 +110,11 @@ export function SettingsUpdateSection() {
     try {
       await requestHostUpdateInstall(getYaqmcClient() as unknown as HostInvokeSeam);
     } catch {
-      setPayload((current) => ({ ...current, state: 'error', error: 'Could not restart to install.' }));
+      setPayload((current) => ({
+        ...current,
+        state: 'error',
+        error: 'Could not restart to install.',
+      }));
     }
   };
 
@@ -153,7 +163,11 @@ export function SettingsUpdateSection() {
               <strong>Download</strong>
               <span>Starts only after you click. Nothing installs in the background.</span>
             </div>
-            <button type="button" className="button button--secondary" onClick={() => void download()}>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => void download()}
+            >
               <Download size={14} /> Download update
             </button>
           </div>
@@ -164,7 +178,11 @@ export function SettingsUpdateSection() {
               <strong>Release page</strong>
               <span>deb / rpm / tar.gz builds cannot update in place.</span>
             </div>
-            <button type="button" className="button button--secondary" onClick={() => void openRelease()}>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => void openRelease()}
+            >
               <ExternalLink size={14} /> Open release page
             </button>
           </div>
@@ -175,7 +193,11 @@ export function SettingsUpdateSection() {
               <strong>Restart to install</strong>
               <span>Installs only after you click. Playback will stop.</span>
             </div>
-            <button type="button" className="button button--secondary" onClick={() => void install()}>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => void install()}
+            >
               <RotateCw size={14} /> Restart to install
             </button>
           </div>

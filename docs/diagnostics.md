@@ -12,15 +12,16 @@ only created when the user explicitly asks for it.
 ## What lives inside a diagnostic snapshot
 
 `DiagnosticsSnapshot` is produced by
-`src-tauri/src/diagnostics.rs::snapshot_from_handle` and contains these
+`crates/yaqmc-core/src/diagnostics.rs::snapshot_from_handle` and contains these
 sections:
 
-- **`app`** — application version, short commit SHA (embedded at build time by
-  `src-tauri/build.rs`), build channel (`stable`/`beta`/`dev`), build type
+- **`app`** — application version, short commit SHA supplied by the Electron
+  build metadata, build channel (`stable`/`beta`/`dev`), build type
   (`release`/`debug`), the session ID for the current run.
 - **`platform`** — `PlatformDiagnostics` (OS, version, architecture, renderer),
   the audio implementation, the resolved output policy, MPRIS/SMTC/tray state,
-  and, on Linux, XDG session type + WebKitGTK version if we can detect them.
+  Electron/Chromium host versions and, on Linux, the observed Ozone/display
+  backend. The legacy Linux renderer-version field remains `null` for schema compatibility.
 - **`provider`** — QQ Music mode (`guest`/`authenticated`), connection state,
   account state, membership tier — but never cookies, session tokens, uin,
   or QR-login secrets.
@@ -53,9 +54,8 @@ YAQMC-diagnostics-YYYYMMDD-HHMMSS.zip
 ├── diagnostics.txt
 ├── redaction-report.txt
 └── logs/
-    ├── yaqmc-current.log
-    ├── yaqmc-current.log.YYYY-MM-DD
-    └── … (bounded, only the current + rotated files)
+    ├── yaqmc.YYYY-MM-DD.log
+    └── … (bounded daily files)
 ```
 
 - **`manifest.json`** — bundle schema version, YAQMC version, timestamp,
@@ -101,7 +101,7 @@ Unresolved high-risk patterns: 0
 ## Error ring buffer
 
 `LoggingHandle` keeps a bounded in-memory ring buffer (`VecDeque<ErrorRecord>`
-of the last 64 errors). Records include:
+of the last 32 errors). Records include:
 
 - stable error code (see [issue-reporting.md](issue-reporting.md#error-codes)),
 - domain (`qqmusic.auth`, `audio.output`, …),

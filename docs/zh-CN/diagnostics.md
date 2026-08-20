@@ -9,15 +9,15 @@
 
 ## 诊断快照包含什么
 
-`DiagnosticsSnapshot` 由 `src-tauri/src/diagnostics.rs::snapshot_from_handle`
+`DiagnosticsSnapshot` 由 `crates/yaqmc-core/src/diagnostics.rs::snapshot_from_handle`
 构造，包含这些块：
 
-- **`app`**：应用版本、短提交 SHA（由 `src-tauri/build.rs` 在构建时嵌入）、
+- **`app`**：应用版本、Electron 构建元数据提供的短提交 SHA、
   构建通道 (`stable`/`beta`/`dev`)、构建类型 (`release`/`debug`)、本次
   运行的 Session ID。
 - **`platform`**：`PlatformDiagnostics`（操作系统、版本、架构、渲染器）、
-  音频实现、已选输出策略、MPRIS/SMTC/托盘状态；Linux 下还包含可检测到
-  的 XDG session 类型与 WebKitGTK 版本。
+  音频实现、已选输出策略、MPRIS/SMTC/托盘状态、Electron/Chromium host 版本；
+  Linux 下还包含观测到的 Ozone/显示后端。旧 Linux 渲染器版本字段为兼容 schema 保留并固定为 `null`。
 - **`provider`**：QQ 音乐模式 (`guest`/`authenticated`)、连接状态、账号
   状态、会员等级——绝不包含 Cookie、Session Token、uin、QR 登录密钥。
 - **`playback`**：当前播放状态、已选音质代码、源分类
@@ -48,9 +48,8 @@ YAQMC-diagnostics-YYYYMMDD-HHMMSS.zip
 ├── diagnostics.txt
 ├── redaction-report.txt
 └── logs/
-    ├── yaqmc-current.log
-    ├── yaqmc-current.log.YYYY-MM-DD
-    └── …（有上限；只包含当前 + 已滚动的文件）
+    ├── yaqmc.YYYY-MM-DD.log
+    └── …（数量有上限的每日文件）
 ```
 
 - **`manifest.json`**：诊断包 schema 版本、YAQMC 版本、时间戳、平台、
@@ -90,7 +89,7 @@ Unresolved high-risk patterns: 0
 
 ## 错误环形缓冲
 
-`LoggingHandle` 维护一个 `VecDeque<ErrorRecord>`（容量 64）的有界内存
+`LoggingHandle` 维护一个 `VecDeque<ErrorRecord>`（容量 32）的有界内存
 环形缓冲，每条记录包含：
 
 - 稳定错误码（见 [issue-reporting.md](issue-reporting.md#错误码)），

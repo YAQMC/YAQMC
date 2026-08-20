@@ -6,10 +6,10 @@
 
 ## 工作流
 
-| 工作流 | 文件 | 触发条件 | 结果 |
-| --- | --- | --- | --- |
-| CI | `.github/workflows/ci.yml` | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact |
-| Electron 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发 | 生产配置安装包与草稿 GitHub Release |
+| 工作流        | 文件                                     | 触发条件                            | 结果                                |
+| ------------- | ---------------------------------------- | ----------------------------------- | ----------------------------------- |
+| CI            | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact     |
+| Electron 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 生产配置安装包与草稿 GitHub Release |
 
 已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
@@ -29,7 +29,7 @@
 
 `frontend-build` 上传 `yaqmc-frontend-dist-<sha>`。每个打包任务下载该精确产物，按目标三元组编译 `yaqmc-core`，暂存 Core 可执行文件，构建 Electron Main/预加载代码，再以禁止发布模式调用 electron-builder。
 
-Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。Linux 任务只安装 Electron 打包工具；WebKitGTK 不再是宿主依赖。
+Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
 
 不要在任务间上传或复用 `node_modules`。
 

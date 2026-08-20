@@ -179,7 +179,9 @@ function tapSerializedRequests(client: CoreClient): CoreRequestFrame[] {
   const frames: CoreRequestFrame[] = [];
   const originalSend = client.send.bind(client);
   client.send = async (message: CoreMessage) => {
-    const wire = JSON.parse(Buffer.from(JSON.stringify(message)).toString('utf8')) as CoreRequestFrame;
+    const wire = JSON.parse(
+      Buffer.from(JSON.stringify(message)).toString('utf8'),
+    ) as CoreRequestFrame;
     if (wire.kind === 'request') {
       frames.push(wire);
     }
@@ -229,7 +231,10 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
     const { router, frames, rendererInvoke } = productionChain();
 
     await expect(
-      router.invoke(1, { method: 'dialog.pickSave', params: { defaultPath: 'YAQMC-diagnostics.zip' } }),
+      router.invoke(1, {
+        method: 'dialog.pickSave',
+        params: { defaultPath: 'YAQMC-diagnostics.zip' },
+      }),
     ).resolves.toMatchObject({ ok: true });
     expect(frames.filter((frame) => frame.kind === 'request')).toEqual([]);
 
@@ -307,7 +312,9 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
       method: 'preferences_set_background_from',
       params: { path: 'D:\\Pictures\\bg.png' },
     });
-    await vi.waitFor(() => frames.some((frame) => frame.method === 'preferences_set_background_from'));
+    await vi.waitFor(() =>
+      frames.some((frame) => frame.method === 'preferences_set_background_from'),
+    );
     const frame = frames.find((entry) => entry.method === 'preferences_set_background_from');
     expect(frame?.origin).toBe('main');
     readable.write(
@@ -348,13 +355,17 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
     for (const [index, role] of denied.entries()) {
       router.registerWindow(index + 10, role);
       for (const method of DIALOG_SPLIT_IO) {
-        await expect(router.invoke(index + 10, { method, params: { path: 'x' } })).resolves.toEqual({
-          ok: false,
-          error: hostDenied(method, role),
-        });
+        await expect(router.invoke(index + 10, { method, params: { path: 'x' } })).resolves.toEqual(
+          {
+            ok: false,
+            error: hostDenied(method, role),
+          },
+        );
       }
     }
-    await expect(router.invoke(99, { method: 'diagnostics_export_bundle_to' })).resolves.toMatchObject({
+    await expect(
+      router.invoke(99, { method: 'diagnostics_export_bundle_to' }),
+    ).resolves.toMatchObject({
       ok: false,
       error: { code: 'host.denied' },
     });
@@ -372,7 +383,9 @@ describe('dialog-split production IpcRouter + dialog + CoreClient stdio', () => 
     expect(attach).not.toHaveProperty('origin');
     readable.write(
       encodeFrame(
-        Buffer.from(JSON.stringify({ kind: 'response', id: attach?.id, ok: true, result: { ok: true } })),
+        Buffer.from(
+          JSON.stringify({ kind: 'response', id: attach?.id, ok: true, result: { ok: true } }),
+        ),
       ),
     );
     await hostInternal;

@@ -56,8 +56,7 @@ function lyricsStubs(): Pick<
       get: vi.fn(),
       create: vi.fn(),
     } as unknown as HostHandlerDeps['unlock'],
-    capabilities: () =>
-      lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+    capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
     showMainAndOpenSettings: vi.fn(),
   };
 }
@@ -184,12 +183,16 @@ describe('dialog-split origin continuation', () => {
 
     for (const name of DIALOG_SPLIT_IO) {
       for (const [index, role] of UNAUTHORIZED_ROLES.entries()) {
-        await expect(router.invoke(index + 2, { method: name, params: { path: 'x' } })).resolves.toEqual({
+        await expect(
+          router.invoke(index + 2, { method: name, params: { path: 'x' } }),
+        ).resolves.toEqual({
           ok: false,
           error: hostDenied(name, role),
         });
       }
-      await expect(router.invoke(99, { method: name, params: { path: 'x' } })).resolves.toMatchObject({
+      await expect(
+        router.invoke(99, { method: name, params: { path: 'x' } }),
+      ).resolves.toMatchObject({
         ok: false,
         error: { code: 'host.denied' },
       });

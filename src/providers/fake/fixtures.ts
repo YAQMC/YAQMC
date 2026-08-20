@@ -305,9 +305,27 @@ export const discoverFeed: DiscoverFeed = {
     { id: 'podcast-3', title: '拾光片场', subtitle: '影视原声', cover: albums[3]!.artwork.src },
   ],
   newMvs: [
-    { id: 'mv-1', title: '夜航 (Live)', cover: albums[0]!.artwork.src, durationMs: 240000, artist: 'Mira Vale' },
-    { id: 'mv-2', title: '余晖', cover: albums[2]!.artwork.src, durationMs: 210000, artist: 'Linnea' },
-    { id: 'mv-3', title: '无眠', cover: albums[3]!.artwork.src, durationMs: 195000, artist: 'Noa Sora' },
+    {
+      id: 'mv-1',
+      title: '夜航 (Live)',
+      cover: albums[0]!.artwork.src,
+      durationMs: 240000,
+      artist: 'Mira Vale',
+    },
+    {
+      id: 'mv-2',
+      title: '余晖',
+      cover: albums[2]!.artwork.src,
+      durationMs: 210000,
+      artist: 'Linnea',
+    },
+    {
+      id: 'mv-3',
+      title: '无眠',
+      cover: albums[3]!.artwork.src,
+      durationMs: 195000,
+      artist: 'Noa Sora',
+    },
   ],
   featured: [
     { id: 'focus-1', title: '春日特辑', subtitle: '编辑推荐', cover: albums[0]!.artwork.src },
@@ -329,7 +347,8 @@ export const areaFeeds: Record<string, AreaFeed> = {
   },
 };
 
-export const librarySnapshot: LibrarySnapshot = {  favoriteSongs: [...afterglowTracks, ...glasshouseTracks, ...sunroomTracks].filter(
+export const librarySnapshot: LibrarySnapshot = {
+  favoriteSongs: [...afterglowTracks, ...glasshouseTracks, ...sunroomTracks].filter(
     (song) => song.isFavorite,
   ),
   savedAlbums: [albums[0]!, albums[2]!, albums[3]!],

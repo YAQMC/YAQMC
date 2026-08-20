@@ -47,10 +47,7 @@ export function setCargoPackageVersion(text, version) {
   if (current === version) {
     return { text, changed: false };
   }
-  const next = text.replace(
-    /^(\[package\][\s\S]*?^version\s*=\s*")([^"]+)(")/m,
-    `$1${version}$3`,
-  );
+  const next = text.replace(/^(\[package\][\s\S]*?^version\s*=\s*")([^"]+)(")/m, `$1${version}$3`);
   if (next === text) {
     throw new Error('failed to replace Cargo.toml package version');
   }

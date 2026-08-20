@@ -97,18 +97,18 @@ This migration replaces **only the host**: Tauri 2 → Electron. It is explicitl
 
 **Headline decisions (all final — see §6 and the ADRs referenced there):**
 
-| Decision | Choice |
-|---|---|
-| Desktop host | Electron (pinned to current stable line, Electron 43.x at planning time; version policy in §11.6) |
-| Rust ↔ Electron connection | **Separate `yaqmc-core` process** spawned and supervised by Electron Main. No NAPI module in this migration. |
-| Core transport | **stdio, 4-byte little-endian length-prefixed frames, JSON (serde) payloads**, versioned handshake (`CoreHello`/`CoreReady`). stderr reserved for uncontrolled output. |
-| Protocol schema | serde-defined Rust structs are the source of truth; TypeScript mirror types live in `packages/yaqmc-client`; golden-fixture contract tests keep both honest. **No Protobuf/codegen** (rationale in §13.6). |
-| Method names | The existing 117 registered Tauri command names (112 referenced by the frontend — §37.9) are preserved verbatim as protocol method names for v1. Event channels keep existing names (`player://snapshot`, `lyrics://projection`, `lyrics://document`, `api://event`, `plugin://changed`, `preferences://changed`, `lyrics://surface-closed`, `app://open-settings`) plus new `host.*` / `core.*` channels. Zero semantic drift = testable parity. |
-| Frontend bridge | `window.yaqmc` via `contextBridge`; React talks only to `packages/yaqmc-client` (`YaqmcClient` over a `HostBridge` interface). A temporary `TauriHostBridge` adapter lets the frontend migrate **before** Electron exists. |
-| Packaging | **electron-builder v27** (NSIS + portable zip on Windows; AppImage + deb + rpm + tar.gz on Linux — same formats as today). Rationale vs Forge in §31.1. |
-| Updater | **electron-updater** with GitHub Releases provider — new functionality (Tauri build has **no** updater today — FACT). Electron Host + frontend + core binary ship as one release unit. |
-| Migration shape | Strangler pattern: extract `crates/yaqmc-core` first, keep `src-tauri` as a thin shim over it (both hosts share one core during co-existence), migrate frontend onto the Client SDK while still on Tauri, then bring Electron to parity, then delete Tauri, then swap provider internals onto qm-api-rs. No Big Bang. |
-| User data | **Path parity, not data copy**: the core replicates Tauri's exact per-platform directories for identifier `org.yaqmc.desktop`, so existing SQLite/plugins/keyring survive untouched (verification tasks included; fallback copy-migration specified in §18.4). |
+| Decision                   | Choice                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop host               | Electron (pinned to current stable line, Electron 43.x at planning time; version policy in §11.6)                                                                                                                                                                                                                                                                                                                                                 |
+| Rust ↔ Electron connection | **Separate `yaqmc-core` process** spawned and supervised by Electron Main. No NAPI module in this migration.                                                                                                                                                                                                                                                                                                                                      |
+| Core transport             | **stdio, 4-byte little-endian length-prefixed frames, JSON (serde) payloads**, versioned handshake (`CoreHello`/`CoreReady`). stderr reserved for uncontrolled output.                                                                                                                                                                                                                                                                            |
+| Protocol schema            | serde-defined Rust structs are the source of truth; TypeScript mirror types live in `packages/yaqmc-client`; golden-fixture contract tests keep both honest. **No Protobuf/codegen** (rationale in §13.6).                                                                                                                                                                                                                                        |
+| Method names               | The existing 117 registered Tauri command names (112 referenced by the frontend — §37.9) are preserved verbatim as protocol method names for v1. Event channels keep existing names (`player://snapshot`, `lyrics://projection`, `lyrics://document`, `api://event`, `plugin://changed`, `preferences://changed`, `lyrics://surface-closed`, `app://open-settings`) plus new `host.*` / `core.*` channels. Zero semantic drift = testable parity. |
+| Frontend bridge            | `window.yaqmc` via `contextBridge`; React talks only to `packages/yaqmc-client` (`YaqmcClient` over a `HostBridge` interface). A temporary `TauriHostBridge` adapter lets the frontend migrate **before** Electron exists.                                                                                                                                                                                                                        |
+| Packaging                  | **electron-builder v27** (NSIS + portable zip on Windows; AppImage + deb + rpm + tar.gz on Linux — same formats as today). Rationale vs Forge in §31.1.                                                                                                                                                                                                                                                                                           |
+| Updater                    | **electron-updater** with GitHub Releases provider — new functionality (Tauri build has **no** updater today — FACT). Electron Host + frontend + core binary ship as one release unit.                                                                                                                                                                                                                                                            |
+| Migration shape            | Strangler pattern: extract `crates/yaqmc-core` first, keep `src-tauri` as a thin shim over it (both hosts share one core during co-existence), migrate frontend onto the Client SDK while still on Tauri, then bring Electron to parity, then delete Tauri, then swap provider internals onto qm-api-rs. No Big Bang.                                                                                                                             |
+| User data                  | **Path parity, not data copy**: the core replicates Tauri's exact per-platform directories for identifier `org.yaqmc.desktop`, so existing SQLite/plugins/keyring survive untouched (verification tasks included; fallback copy-migration specified in §18.4).                                                                                                                                                                                    |
 
 **The two highest-risk areas and how the plan de-risks them:**
 
@@ -123,17 +123,17 @@ This migration replaces **only the host**: Tauri 2 → Electron. It is explicitl
 
 Captured 2026-08-16 from the working repository at `D:\Velune` (all FACT):
 
-| Item | Value |
-|---|---|
-| Repository | `https://github.com/YAQMC/YAQMC.git` (origin) |
-| Current branch | `main`, tracking `origin/main`, **in sync** (`## main...origin/main`) |
-| HEAD SHA | `bc55b7ddd2a57cde8987c96c7c20f0b7d4a2e742` |
-| origin/main SHA | same as HEAD |
-| Uncommitted changes | **None** (`git status --short` empty) |
-| Unpushed commits | None |
-| Local feature branches | `feat/ci-build-optimization` @ `1e0f2c0` (tracks `origin/feat/ci-build-optimization`; already merged into `main` via `bc55b7d`) |
-| Other remote branches | `origin/apple-like-lyrics` (contributor branch — **do not delete, do not rebase**) |
-| Working-tree extras | `node_modules/`, `dist/`, `release/`, `output/`, `artifacts/` are build outputs (gitignored); `.superpowers/` is historical planning material |
+| Item                   | Value                                                                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository             | `https://github.com/YAQMC/YAQMC.git` (origin)                                                                                                 |
+| Current branch         | `main`, tracking `origin/main`, **in sync** (`## main...origin/main`)                                                                         |
+| HEAD SHA               | `bc55b7ddd2a57cde8987c96c7c20f0b7d4a2e742`                                                                                                    |
+| origin/main SHA        | same as HEAD                                                                                                                                  |
+| Uncommitted changes    | **None** (`git status --short` empty)                                                                                                         |
+| Unpushed commits       | None                                                                                                                                          |
+| Local feature branches | `feat/ci-build-optimization` @ `1e0f2c0` (tracks `origin/feat/ci-build-optimization`; already merged into `main` via `bc55b7d`)               |
+| Other remote branches  | `origin/apple-like-lyrics` (contributor branch — **do not delete, do not rebase**)                                                            |
+| Working-tree extras    | `node_modules/`, `dist/`, `release/`, `output/`, `artifacts/` are build outputs (gitignored); `.superpowers/` is historical planning material |
 
 Recent history (`git log --oneline -10`): merge of `feat/ci-build-optimization`, discover/home feature work, plugin API v2 (`639d466`, `902de1c`), scene extras (`8e19929`), rapid-seek fix (`9bd4e61` "fix(player): make rapid seek session-safe").
 
@@ -148,17 +148,17 @@ Recent history (`git log --oneline -10`): merge of `feat/ci-build-optimization`,
 
 The migration prompt encodes some assumptions that do not match HEAD. **Planning follows the repository, not the prompt.** Each delta below states: prompt assumption → actual repository state → planning consequence.
 
-| # | Prompt assumption | Actual state at HEAD (FACT unless noted) | Planning consequence |
-|---|---|---|---|
-| D1 | `QueueEntryId`, `PlaybackSessionId`, `SnapshotRevision`, `SeekRevision`, `SourceGeneration` exist as named types | Only `SeekMailbox` + `SeekIntent {session_id, revision, position_ms}` are types (`src-tauri/src/playback_session.rs:15-25`). The rest are **fields**: `session_id: u64`, `snapshot_revision: u64`, `source_generation: u64` on `PlayerCore`/`PlayerSnapshot` (`player.rs:430-455`, `295-336`), `last_seek_revision` on snapshots, plus an additional `load_generation: AtomicU64` on `PlayerService` not mentioned in the prompt | §15 protects the mechanisms under their real names; `load_generation` is added to the protected list |
-| D2 | qm-api-rs is a public repo at `https://github.com/YAQMC/qm-api-rs` | Repo exists but is **private** (unauthenticated fetch → 404; local git credentials can read it). HEAD `a7430a831a256bb15212291f11a055d801e31648`, branches `main` and `fix/final-hardening` (same SHA). The crate is named **`qqmusic-api`** (lib `qqmusic_api`), version 0.1.0, license **GPL-3.0-or-later** | §17 pins the git rev; CI needs an auth story for the private dependency; license implication recorded (YAQMC repo currently has **no LICENSE file** — FACT) |
-| D3 | Plugin runtime may live in Rust | Plugin JS executes in **blob-URL Web Workers inside the main webview**; Rust is a filesystem/permission/bridge service only (`src/application/plugin-runtime.ts:186-320,514-518`; `src-tauri/src/plugin/*`) | §20 keeps the Worker sandbox in the renderer and hardens it; no JS engine is added to core |
-| D4 | A Tauri updater exists and must be removed/replaced | **No updater exists anywhere** (no `tauri-plugin-updater`, no updater config — verified by search) | §32 ships the Electron updater as *new* functionality, not a port |
-| D5 | Tray/deep link/single-instance/notifications all exist | Tray + global shortcuts exist. **No single-instance plugin, no deep-link handler, no OS notification API** (`lib.rs` plugin list; searched) | Single-instance is added in Electron (it is one line and prevents dual-core spawn — §11.4). Deep link + OS notifications stay out of scope (parity-first) |
-| D6 | "Library" is a full feature | `qqmusic_library` returns an **empty placeholder** `LibrarySnapshot` (`qqmusic.rs:1382-1384`); the Library page is account-backed via playlists | Parity target is the current actual behavior |
-| D7 | Prompt lists `isTauri`, dialog, clipboard, notification, updater, tray usage in frontend | Frontend uses exactly: `invoke`, `listen`, `isTauri`, `getCurrentWindow` (2 files), `@tauri-apps/plugin-opener` (2 files), `data-tauri-drag-region` (2 files). No clipboard/notification/dialog plugin usage in frontend (dialogs are Rust-side via `tauri-plugin-dialog`) | §12/§37 scope the bridge work to the real 22 coupled files |
-| D8 | In-tree QQ signing equals qm-api-rs signing | In-tree `musics.fcg` sign is MD5-based with prefix `zzb` (`qqmusic.rs:4454-4479`); qm-api-rs uses SHA1-based `zzc_sign`. Both pass server validation per their docs/tests — LIVE VERIFY | §17 keeps the proven in-tree path during host migration; sign-path swap happens only in the provider phase with live verification |
-| D9 | Docs describe current paths | `docs/logging.md:123` still references `%LOCALAPPDATA%\Velune\YAQMC\logs`; the real identifier is `org.yaqmc.desktop` everywhere at runtime | Docs fixed in cleanup phase; data-dir parity is based on code, not docs |
+| #   | Prompt assumption                                                                                                | Actual state at HEAD (FACT unless noted)                                                                                                                                                                                                                                                                                                                                                                                         | Planning consequence                                                                                                                                        |
+| --- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | `QueueEntryId`, `PlaybackSessionId`, `SnapshotRevision`, `SeekRevision`, `SourceGeneration` exist as named types | Only `SeekMailbox` + `SeekIntent {session_id, revision, position_ms}` are types (`src-tauri/src/playback_session.rs:15-25`). The rest are **fields**: `session_id: u64`, `snapshot_revision: u64`, `source_generation: u64` on `PlayerCore`/`PlayerSnapshot` (`player.rs:430-455`, `295-336`), `last_seek_revision` on snapshots, plus an additional `load_generation: AtomicU64` on `PlayerService` not mentioned in the prompt | §15 protects the mechanisms under their real names; `load_generation` is added to the protected list                                                        |
+| D2  | qm-api-rs is a public repo at `https://github.com/YAQMC/qm-api-rs`                                               | Repo exists but is **private** (unauthenticated fetch → 404; local git credentials can read it). HEAD `a7430a831a256bb15212291f11a055d801e31648`, branches `main` and `fix/final-hardening` (same SHA). The crate is named **`qqmusic-api`** (lib `qqmusic_api`), version 0.1.0, license **GPL-3.0-or-later**                                                                                                                    | §17 pins the git rev; CI needs an auth story for the private dependency; license implication recorded (YAQMC repo currently has **no LICENSE file** — FACT) |
+| D3  | Plugin runtime may live in Rust                                                                                  | Plugin JS executes in **blob-URL Web Workers inside the main webview**; Rust is a filesystem/permission/bridge service only (`src/application/plugin-runtime.ts:186-320,514-518`; `src-tauri/src/plugin/*`)                                                                                                                                                                                                                      | §20 keeps the Worker sandbox in the renderer and hardens it; no JS engine is added to core                                                                  |
+| D4  | A Tauri updater exists and must be removed/replaced                                                              | **No updater exists anywhere** (no `tauri-plugin-updater`, no updater config — verified by search)                                                                                                                                                                                                                                                                                                                               | §32 ships the Electron updater as _new_ functionality, not a port                                                                                           |
+| D5  | Tray/deep link/single-instance/notifications all exist                                                           | Tray + global shortcuts exist. **No single-instance plugin, no deep-link handler, no OS notification API** (`lib.rs` plugin list; searched)                                                                                                                                                                                                                                                                                      | Single-instance is added in Electron (it is one line and prevents dual-core spawn — §11.4). Deep link + OS notifications stay out of scope (parity-first)   |
+| D6  | "Library" is a full feature                                                                                      | `qqmusic_library` returns an **empty placeholder** `LibrarySnapshot` (`qqmusic.rs:1382-1384`); the Library page is account-backed via playlists                                                                                                                                                                                                                                                                                  | Parity target is the current actual behavior                                                                                                                |
+| D7  | Prompt lists `isTauri`, dialog, clipboard, notification, updater, tray usage in frontend                         | Frontend uses exactly: `invoke`, `listen`, `isTauri`, `getCurrentWindow` (2 files), `@tauri-apps/plugin-opener` (2 files), `data-tauri-drag-region` (2 files). No clipboard/notification/dialog plugin usage in frontend (dialogs are Rust-side via `tauri-plugin-dialog`)                                                                                                                                                       | §12/§37 scope the bridge work to the real 22 coupled files                                                                                                  |
+| D8  | In-tree QQ signing equals qm-api-rs signing                                                                      | In-tree `musics.fcg` sign is MD5-based with prefix `zzb` (`qqmusic.rs:4454-4479`); qm-api-rs uses SHA1-based `zzc_sign`. Both pass server validation per their docs/tests — LIVE VERIFY                                                                                                                                                                                                                                          | §17 keeps the proven in-tree path during host migration; sign-path swap happens only in the provider phase with live verification                           |
+| D9  | Docs describe current paths                                                                                      | `docs/logging.md:123` still references `%LOCALAPPDATA%\Velune\YAQMC\logs`; the real identifier is `org.yaqmc.desktop` everywhere at runtime                                                                                                                                                                                                                                                                                      | Docs fixed in cleanup phase; data-dir parity is based on code, not docs                                                                                     |
 
 ---
 
@@ -223,11 +223,11 @@ Position cadence: internal clock ticks every **50 ms**; `player.position` is emi
 
 ### 3.4 What is correct and must be preserved (design classification)
 
-| Classification | Items |
-|---|---|
-| **Correct design — do not break** | PlayerService authority + seek/session fencing (§15); internal broadcast bus + lagged-resync pattern; snapshot-projection frontend stores with client-side interpolation; MusicProvider frontend interface + fake provider; plugin Worker sandbox + host-bound token bridge + permission model; storage schema v5; keyring usage; localhost API bearer-token + SSE; redaction layers (logging + transport + diagnostics); mutation reconciliation with `client_operation_id`; per-window capability scoping (main-window guard for account commands) |
-| **Host coupling only — replace transport, keep semantics** | `lib.rs` bootstrap/fan-out; 117 `#[tauri::command]` wrappers; `command_guard.rs` window-label check; `tauri::async_runtime::spawn` call sites (4 in player.rs, 2 in oauth.rs, 1 in auth.rs); `oauth.rs` window mechanics; `LyricsSurfaceManager` window mechanics; tray/shortcuts; dialog/opener plugins; SMTC HWND acquisition from Tauri window; Tauri path resolver usage; `data-tauri-drag-region`; `TopBar` window controls |
-| **True technical debt** (see §5) | WebKitGTK env-var magic in `platform.rs`; in-tree QQ protocol duplicating qm-api-rs; DTO leaks (QQ `mid`/`tid`/`dirId`/`encArea` in frontend-visible types); one crate for everything; Linux fullscreen detection stub; docs path staleness; no updater; no single-instance |
+| Classification                                             | Items                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Correct design — do not break**                          | PlayerService authority + seek/session fencing (§15); internal broadcast bus + lagged-resync pattern; snapshot-projection frontend stores with client-side interpolation; MusicProvider frontend interface + fake provider; plugin Worker sandbox + host-bound token bridge + permission model; storage schema v5; keyring usage; localhost API bearer-token + SSE; redaction layers (logging + transport + diagnostics); mutation reconciliation with `client_operation_id`; per-window capability scoping (main-window guard for account commands) |
+| **Host coupling only — replace transport, keep semantics** | `lib.rs` bootstrap/fan-out; 117 `#[tauri::command]` wrappers; `command_guard.rs` window-label check; `tauri::async_runtime::spawn` call sites (4 in player.rs, 2 in oauth.rs, 1 in auth.rs); `oauth.rs` window mechanics; `LyricsSurfaceManager` window mechanics; tray/shortcuts; dialog/opener plugins; SMTC HWND acquisition from Tauri window; Tauri path resolver usage; `data-tauri-drag-region`; `TopBar` window controls                                                                                                                     |
+| **True technical debt** (see §5)                           | WebKitGTK env-var magic in `platform.rs`; in-tree QQ protocol duplicating qm-api-rs; DTO leaks (QQ `mid`/`tid`/`dirId`/`encArea` in frontend-visible types); one crate for everything; Linux fullscreen detection stub; docs path staleness; no updater; no single-instance                                                                                                                                                                                                                                                                          |
 
 ---
 
@@ -237,103 +237,103 @@ Status legend: **Implemented** (works, has tests or is exercised daily), **Parti
 
 ### 4.1 Playback & queue
 
-| Feature | Status | Evidence / notes |
-|---|---|---|
-| Play/pause/stop/next/previous, position clock | Implemented | `player.rs` state machine; 50 ms clock, 250 ms position events |
-| Latest-wins rapid seek with stale fencing | Implemented | `SeekMailbox` + audio-worker coalescing + `session_id`/`last_seek_revision` fencing; regression-tested (`player.rs` tests + `9bd4e61`) |
-| Queue: replace/enqueue(next|end)/remove/move/jump; unique `entry_id: u64` per entry | Implemented | `player.rs:340-352` (`QueueEntry`), counter-assigned entry ids |
-| Play modes: sequential / repeat-one / shuffle (bag-based, anti-adjacent-repeat) | Implemented | `player.rs` `PlayMode`, shuffle bag |
-| Volume + mute with clamping | Implemented | `player_set_volume`, `player_toggle_mute` |
-| Gapless-ish track advance (auto-advance on `TrackEnded`) | Implemented | audio worker end event → core advance |
-| Queue persistence & restore (max 500 entries, revalidated lazily) | Implemented | `queue_snapshot` app-setting; restore path in `player.rs` |
-| Media source resolution: QQ stream vkey / EKey-encrypted QMC / local file | Implemented | `media.rs` resolver → `qqmusic.rs` vkey; `qmc.rs` decrypt-on-read |
-| Progressive HTTP range cache + sparse-file promotion | Implemented | `streaming.rs` background fill thread |
-| Quality ladder + entitlement gating (128k/320k/flac/hires by VIP) | Implemented | `entitlement.rs`; LIVE VERIFY for server behavior |
+| Feature                                                                         | Status                                                  | Evidence / notes                                                                                                                       |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Play/pause/stop/next/previous, position clock                                   | Implemented                                             | `player.rs` state machine; 50 ms clock, 250 ms position events                                                                         |
+| Latest-wins rapid seek with stale fencing                                       | Implemented                                             | `SeekMailbox` + audio-worker coalescing + `session_id`/`last_seek_revision` fencing; regression-tested (`player.rs` tests + `9bd4e61`) |
+| Queue: replace/enqueue(next                                                     | end)/remove/move/jump; unique `entry_id: u64` per entry | Implemented                                                                                                                            | `player.rs:340-352` (`QueueEntry`), counter-assigned entry ids |
+| Play modes: sequential / repeat-one / shuffle (bag-based, anti-adjacent-repeat) | Implemented                                             | `player.rs` `PlayMode`, shuffle bag                                                                                                    |
+| Volume + mute with clamping                                                     | Implemented                                             | `player_set_volume`, `player_toggle_mute`                                                                                              |
+| Gapless-ish track advance (auto-advance on `TrackEnded`)                        | Implemented                                             | audio worker end event → core advance                                                                                                  |
+| Queue persistence & restore (max 500 entries, revalidated lazily)               | Implemented                                             | `queue_snapshot` app-setting; restore path in `player.rs`                                                                              |
+| Media source resolution: QQ stream vkey / EKey-encrypted QMC / local file       | Implemented                                             | `media.rs` resolver → `qqmusic.rs` vkey; `qmc.rs` decrypt-on-read                                                                      |
+| Progressive HTTP range cache + sparse-file promotion                            | Implemented                                             | `streaming.rs` background fill thread                                                                                                  |
+| Quality ladder + entitlement gating (128k/320k/flac/hires by VIP)               | Implemented                                             | `entitlement.rs`; LIVE VERIFY for server behavior                                                                                      |
 
 ### 4.2 Catalog / account (QQ Music)
 
-| Feature | Status | Notes |
-|---|---|---|
-| Search: songs + albums (paged) | Implemented | `qqmusic_search_*` commands |
-| Home / Discover: recommended playlists, new releases, rankings, MV & podcast cards, category browse (`encArea`) | Implemented | display-level; MV/podcast are card links, **no MV playback** |
-| Album / playlist detail + paged tracks | Implemented | |
-| Favorites: songs/albums/playlists/MVs, add/remove with `client_operation_id` reconciliation | Implemented | `account.rs` mutation queue |
-| User playlists (own + collected), create/delete/add/remove tracks | Implemented | |
-| QR login (QQ) + OAuth popup login (QQ/WeChat) | Implemented | OAuth uses ephemeral Tauri WebviewWindow — host-coupled |
-| Session persistence + staging slot + auto-refresh | Implemented | keyring `qqmusic-session` / `qqmusic-session-staging`; poll-based account state (frontend polls, no push event) |
-| Entitlement snapshot (VIP tier, quality rights) | Implemented | cached; LIVE VERIFY |
-| "Library" aggregate | **Partial (placeholder)** | `qqmusic_library` returns empty `LibrarySnapshot` (D6) |
-| Lyrics fetch QRC/LRC + decrypt + parse (word/line/plain) | Implemented | in-tree `lyrics-crypto` crate usage |
+| Feature                                                                                                         | Status                    | Notes                                                                                                           |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Search: songs + albums (paged)                                                                                  | Implemented               | `qqmusic_search_*` commands                                                                                     |
+| Home / Discover: recommended playlists, new releases, rankings, MV & podcast cards, category browse (`encArea`) | Implemented               | display-level; MV/podcast are card links, **no MV playback**                                                    |
+| Album / playlist detail + paged tracks                                                                          | Implemented               |                                                                                                                 |
+| Favorites: songs/albums/playlists/MVs, add/remove with `client_operation_id` reconciliation                     | Implemented               | `account.rs` mutation queue                                                                                     |
+| User playlists (own + collected), create/delete/add/remove tracks                                               | Implemented               |                                                                                                                 |
+| QR login (QQ) + OAuth popup login (QQ/WeChat)                                                                   | Implemented               | OAuth uses ephemeral Tauri WebviewWindow — host-coupled                                                         |
+| Session persistence + staging slot + auto-refresh                                                               | Implemented               | keyring `qqmusic-session` / `qqmusic-session-staging`; poll-based account state (frontend polls, no push event) |
+| Entitlement snapshot (VIP tier, quality rights)                                                                 | Implemented               | cached; LIVE VERIFY                                                                                             |
+| "Library" aggregate                                                                                             | **Partial (placeholder)** | `qqmusic_library` returns empty `LibrarySnapshot` (D6)                                                          |
+| Lyrics fetch QRC/LRC + decrypt + parse (word/line/plain)                                                        | Implemented               | in-tree `lyrics-crypto` crate usage                                                                             |
 
 ### 4.3 Lyrics presentation & scenes
 
-| Feature | Status | Notes |
-|---|---|---|
-| In-app lyrics page: word-level karaoke, blur/scale effects, fonts, presets | Implemented | `LyricsPage`, `useLyricsStore`, presets in app_settings |
-| Scene composer (user-composed lyric scenes) + presets + preview | Implemented | plugin scene API v2 integration |
-| Desktop lyrics overlay window | Implemented (Windows-first) | transparent, always-on-top, click-through lock, unlock overlay, geometry persistence (350 ms debounce), fullscreen auto-hide **Windows-only** (`lyrics_surface/linux.rs` returns `NotSupported` — FACT) |
-| Lyrics island (compact pill overlay) | Implemented (Windows-first) | same mechanics, separate geometry + unlock overlay |
-| Lyrics offset per track | Implemented | `lyrics_set_offset` |
+| Feature                                                                    | Status                      | Notes                                                                                                                                                                                                   |
+| -------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| In-app lyrics page: word-level karaoke, blur/scale effects, fonts, presets | Implemented                 | `LyricsPage`, `useLyricsStore`, presets in app_settings                                                                                                                                                 |
+| Scene composer (user-composed lyric scenes) + presets + preview            | Implemented                 | plugin scene API v2 integration                                                                                                                                                                         |
+| Desktop lyrics overlay window                                              | Implemented (Windows-first) | transparent, always-on-top, click-through lock, unlock overlay, geometry persistence (350 ms debounce), fullscreen auto-hide **Windows-only** (`lyrics_surface/linux.rs` returns `NotSupported` — FACT) |
+| Lyrics island (compact pill overlay)                                       | Implemented (Windows-first) | same mechanics, separate geometry + unlock overlay                                                                                                                                                      |
+| Lyrics offset per track                                                    | Implemented                 | `lyrics_set_offset`                                                                                                                                                                                     |
 
 ### 4.4 Plugins
 
-| Feature | Status | Notes |
-|---|---|---|
-| Plugin install/enable/disable/uninstall (`.yaqmc-plugin` zip, ≤ 32 MiB, path-traversal-guarded) | Implemented | `plugin/host.rs` |
-| Manifest v1 + v2 (`apiVersion: 2`, scene extensions) | Implemented | `plugin/manifest.rs` |
-| Permission model (declared → granted, prompts, rate limits) | Implemented | `plugin/permissions.rs` |
-| Worker sandbox (blob Workers in main webview) + token-gated bridge (20 `plugin_*`/bridge commands) | Implemented | D3 |
-| Plugin network proxy (HTTPS-only, DNS/private-IP blocking, size caps) | Implemented | `plugin/network.rs` |
-| Plugin JSON storage (per-plugin file, quota) | Implemented | `plugin/storage.rs` |
-| Safe Mode (crash journal, boot-loop guard) | Implemented | `plugin/safety.rs` |
-| Scene registration (lyric scene providers) API v2 | Implemented | `902de1c`, `639d466` |
+| Feature                                                                                            | Status      | Notes                   |
+| -------------------------------------------------------------------------------------------------- | ----------- | ----------------------- |
+| Plugin install/enable/disable/uninstall (`.yaqmc-plugin` zip, ≤ 32 MiB, path-traversal-guarded)    | Implemented | `plugin/host.rs`        |
+| Manifest v1 + v2 (`apiVersion: 2`, scene extensions)                                               | Implemented | `plugin/manifest.rs`    |
+| Permission model (declared → granted, prompts, rate limits)                                        | Implemented | `plugin/permissions.rs` |
+| Worker sandbox (blob Workers in main webview) + token-gated bridge (20 `plugin_*`/bridge commands) | Implemented | D3                      |
+| Plugin network proxy (HTTPS-only, DNS/private-IP blocking, size caps)                              | Implemented | `plugin/network.rs`     |
+| Plugin JSON storage (per-plugin file, quota)                                                       | Implemented | `plugin/storage.rs`     |
+| Safe Mode (crash journal, boot-loop guard)                                                         | Implemented | `plugin/safety.rs`      |
+| Scene registration (lyric scene providers) API v2                                                  | Implemented | `902de1c`, `639d466`    |
 
 ### 4.5 Platform integration
 
-| Feature | Status | Notes |
-|---|---|---|
-| Tray icon + menu (show/hide, play/pause, next/prev, settings, quit) + close-to-tray preference | Implemented | `desktop_integration.rs`; tray id `yaqmc-tray` |
-| Global shortcuts (3 bindings: play-pause / next / prev; fixed, not user-configurable) | Implemented; **disabled on native Wayland** | `desktop_integration.rs` guard |
-| SMTC (Windows) | Implemented | `souvlaki` with HWND from main Tauri window |
-| MPRIS (Linux) | Implemented | `mpris-server` on dedicated thread, bus `org.mpris.MediaPlayer2.yaqmc` |
-| Local HTTP API (127.0.0.1:19532) + SSE events + bearer token in keyring | Implemented | `local_api.rs`; token rotate command exists |
-| Window: transparent main window (Windows), opaque on Linux (`tauri.linux.conf.json`) | Implemented | D-shaped: platform-conditional |
-| Custom title bar with drag region + min/max/close | Implemented | `TopBar.tsx` — host-coupled |
-| Single instance | **Missing** | no plugin, second launch = second app (D5) |
-| Deep links / custom URI scheme | **Missing** | docs/deep-link.md is a security doc only |
-| OS notifications | **Missing** | |
-| Auto-update | **Missing** | D4 |
+| Feature                                                                                        | Status                                      | Notes                                                                  |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------- |
+| Tray icon + menu (show/hide, play/pause, next/prev, settings, quit) + close-to-tray preference | Implemented                                 | `desktop_integration.rs`; tray id `yaqmc-tray`                         |
+| Global shortcuts (3 bindings: play-pause / next / prev; fixed, not user-configurable)          | Implemented; **disabled on native Wayland** | `desktop_integration.rs` guard                                         |
+| SMTC (Windows)                                                                                 | Implemented                                 | `souvlaki` with HWND from main Tauri window                            |
+| MPRIS (Linux)                                                                                  | Implemented                                 | `mpris-server` on dedicated thread, bus `org.mpris.MediaPlayer2.yaqmc` |
+| Local HTTP API (127.0.0.1:19532) + SSE events + bearer token in keyring                        | Implemented                                 | `local_api.rs`; token rotate command exists                            |
+| Window: transparent main window (Windows), opaque on Linux (`tauri.linux.conf.json`)           | Implemented                                 | D-shaped: platform-conditional                                         |
+| Custom title bar with drag region + min/max/close                                              | Implemented                                 | `TopBar.tsx` — host-coupled                                            |
+| Single instance                                                                                | **Missing**                                 | no plugin, second launch = second app (D5)                             |
+| Deep links / custom URI scheme                                                                 | **Missing**                                 | docs/deep-link.md is a security doc only                               |
+| OS notifications                                                                               | **Missing**                                 |                                                                        |
+| Auto-update                                                                                    | **Missing**                                 | D4                                                                     |
 
 ### 4.6 Infrastructure
 
-| Feature | Status | Notes |
-|---|---|---|
-| SQLite storage `library.sqlite3`, `user_version = 5`, WAL | Implemented | tables: `tracks`, `albums`, `playlists`, `playlist_tracks`, `app_settings`, `provider_cache` (schema in §18.2) |
-| Media disk cache (256 MiB cap) + artwork cache (64 MiB) with LRU eviction | Implemented | `storage.rs` |
-| Keyring credentials (3 entries: session, staging, `local-api-token`) service `org.yaqmc.desktop` | Implemented | + one legacy read-migration from service `yaqmc` |
-| Logging: `tracing` + daily rotation, 7 files, secret redaction, frontend log ingestion command | Implemented | `logging.rs` |
-| Diagnostics snapshot + ZIP bundle (8 MiB cap, redacted) + GitHub issue URL builder | Implemented | `diagnostics.rs`, `issue_reporter.rs` |
-| i18n en-US / zh-CN (i18next) | Implemented | |
-| Preferences (`ui-preferences-v1` in app_settings) + `preferences://changed` broadcast | Implemented | `app_preferences.rs` |
-| CI: quality gate + package matrix (win x64/i686/arm64 → NSIS+portable; linux x64/arm64 → AppImage/deb/rpm), unsigned; tag → GitHub Release | Implemented | `.github/workflows/ci.yml`, `build.yml` |
-| Docs site (`docs/`, 90 files, EN+zh pairs) via GitHub Pages | Implemented | `pages.yml` |
+| Feature                                                                                                                                    | Status      | Notes                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------- |
+| SQLite storage `library.sqlite3`, `user_version = 5`, WAL                                                                                  | Implemented | tables: `tracks`, `albums`, `playlists`, `playlist_tracks`, `app_settings`, `provider_cache` (schema in §18.2) |
+| Media disk cache (256 MiB cap) + artwork cache (64 MiB) with LRU eviction                                                                  | Implemented | `storage.rs`                                                                                                   |
+| Keyring credentials (3 entries: session, staging, `local-api-token`) service `org.yaqmc.desktop`                                           | Implemented | + one legacy read-migration from service `yaqmc`                                                               |
+| Logging: `tracing` + daily rotation, 7 files, secret redaction, frontend log ingestion command                                             | Implemented | `logging.rs`                                                                                                   |
+| Diagnostics snapshot + ZIP bundle (8 MiB cap, redacted) + GitHub issue URL builder                                                         | Implemented | `diagnostics.rs`, `issue_reporter.rs`                                                                          |
+| i18n en-US / zh-CN (i18next)                                                                                                               | Implemented |                                                                                                                |
+| Preferences (`ui-preferences-v1` in app_settings) + `preferences://changed` broadcast                                                      | Implemented | `app_preferences.rs`                                                                                           |
+| CI: quality gate + package matrix (win x64/i686/arm64 → NSIS+portable; linux x64/arm64 → AppImage/deb/rpm), unsigned; tag → GitHub Release | Implemented | `.github/workflows/ci.yml`, `build.yml`                                                                        |
+| Docs site (`docs/`, 90 files, EN+zh pairs) via GitHub Pages                                                                                | Implemented | `pages.yml`                                                                                                    |
 
 ---
 
 ## 5. Current Technical Debt (verbatim register, kept honest)
 
-| ID | Debt | Where | Migration disposition |
-|---|---|---|---|
-| TD-1 | WebKitGTK compositing workarounds driven by env vars (`WEBKIT_DISABLE_DMABUF_RENDERER`, `YAQMC_LINUX_RENDERER` modes, NVIDIA/Hyprland sniffing) | `platform.rs` | **Eliminated by Electron** (WebKitGTK gone). Replaced by explicit, documented Chromium flag policy + diagnostics (§29). This is the single biggest quality win of the migration |
-| TD-2 | ~19k LOC in-tree QQ protocol duplicating qm-api-rs (transport, signing, QR login, QMC, lyric decrypt) | `src-tauri/src/qqmusic/*`, `qmc.rs` | Strangler-replaced in provider phase (§17), behind the `MusicProvider` trait, feature-flag switchable, LIVE VERIFY gated |
-| TD-3 | Provider DTO leaks: frontend types carry QQ-specific `mid`/`numericId`/`albumId`/`mediaId`, playlist `tid`/`dirId`, category `encArea` | `ProviderTrackReference` etc. (Rust + TS) | **Accepted for this migration** (wire-format freeze is what makes parity testable). Documented as post-migration cleanup; the `MusicProvider` trait (§16) makes reference types opaque at the *trait* boundary already |
-| TD-4 | Single mega-crate `yaqmc` | `src-tauri` | Split into 4 crates (core/protocol/provider-api/provider-qqmusic) — deliberately **not** 10 (§9.3) |
-| TD-5 | Linux fullscreen detection stub (desktop lyrics never auto-hide on Linux) | `lyrics_surface/linux.rs` | Carried over as-is (parity), documented in capability matrix; NEEDS ACCEPTANCE TEST for any improvement — out of scope |
-| TD-6 | Poll-based account state (no push event channel for auth changes) | `account.rs`, frontend polling | Carried over (parity). Protocol reserves `account://changed` channel name for future use |
-| TD-7 | Stale docs (log paths mention `Velune`, deep-link doc describes non-feature) | `docs/logging.md:123` etc. | Fixed in cleanup phase (§40 P15) |
-| TD-8 | No LICENSE file in main repo while planning to link GPL-3.0-or-later qm-api-rs | repo root | **Decision required from maintainer** recorded in §17.6; plan proceeds with GPL-compatible assumption (provider crate isolation does not remove GPL obligations for distributed binaries) |
-| TD-9 | Tracked generated plugin packages | `examples/plugins/packages/*.yaqmc-plugin` | Regenerated whenever plugin examples change (`npm run plugin:pack`) |
-| TD-10 | `beforeDevCommand`/`beforeBuildCommand` couple frontend build to Tauri CLI | `tauri.conf.json` | Dissolved when Tauri removed; Electron scripts own orchestration (§33) |
+| ID    | Debt                                                                                                                                            | Where                                      | Migration disposition                                                                                                                                                                                                  |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TD-1  | WebKitGTK compositing workarounds driven by env vars (`WEBKIT_DISABLE_DMABUF_RENDERER`, `YAQMC_LINUX_RENDERER` modes, NVIDIA/Hyprland sniffing) | `platform.rs`                              | **Eliminated by Electron** (WebKitGTK gone). Replaced by explicit, documented Chromium flag policy + diagnostics (§29). This is the single biggest quality win of the migration                                        |
+| TD-2  | ~19k LOC in-tree QQ protocol duplicating qm-api-rs (transport, signing, QR login, QMC, lyric decrypt)                                           | `src-tauri/src/qqmusic/*`, `qmc.rs`        | Strangler-replaced in provider phase (§17), behind the `MusicProvider` trait, feature-flag switchable, LIVE VERIFY gated                                                                                               |
+| TD-3  | Provider DTO leaks: frontend types carry QQ-specific `mid`/`numericId`/`albumId`/`mediaId`, playlist `tid`/`dirId`, category `encArea`          | `ProviderTrackReference` etc. (Rust + TS)  | **Accepted for this migration** (wire-format freeze is what makes parity testable). Documented as post-migration cleanup; the `MusicProvider` trait (§16) makes reference types opaque at the _trait_ boundary already |
+| TD-4  | Single mega-crate `yaqmc`                                                                                                                       | `src-tauri`                                | Split into 4 crates (core/protocol/provider-api/provider-qqmusic) — deliberately **not** 10 (§9.3)                                                                                                                     |
+| TD-5  | Linux fullscreen detection stub (desktop lyrics never auto-hide on Linux)                                                                       | `lyrics_surface/linux.rs`                  | Carried over as-is (parity), documented in capability matrix; NEEDS ACCEPTANCE TEST for any improvement — out of scope                                                                                                 |
+| TD-6  | Poll-based account state (no push event channel for auth changes)                                                                               | `account.rs`, frontend polling             | Carried over (parity). Protocol reserves `account://changed` channel name for future use                                                                                                                               |
+| TD-7  | Stale docs (log paths mention `Velune`, deep-link doc describes non-feature)                                                                    | `docs/logging.md:123` etc.                 | Fixed in cleanup phase (§40 P15)                                                                                                                                                                                       |
+| TD-8  | No LICENSE file in main repo while planning to link GPL-3.0-or-later qm-api-rs                                                                  | repo root                                  | **Decision required from maintainer** recorded in §17.6; plan proceeds with GPL-compatible assumption (provider crate isolation does not remove GPL obligations for distributed binaries)                              |
+| TD-9  | Tracked generated plugin packages                                                                                                               | `examples/plugins/packages/*.yaqmc-plugin` | Regenerated whenever plugin examples change (`npm run plugin:pack`)                                                                                                                                                    |
+| TD-10 | `beforeDevCommand`/`beforeBuildCommand` couple frontend build to Tauri CLI                                                                      | `tauri.conf.json`                          | Dissolved when Tauri removed; Electron scripts own orchestration (§33)                                                                                                                                                 |
 
 ---
 
@@ -344,10 +344,12 @@ These are **final**. The executor must not re-litigate them. Rationale is record
 **ADR-001 — Electron is the desktop host.** Mandated. Also independently justified: removes WebKitGTK (TD-1), single rendering engine across Windows/Linux, mature multi-window + tray + shortcut APIs, first-class updater ecosystem.
 
 **ADR-002 — Rust Core runs as a separate supervised process (no NAPI in this migration).**
+
 - Chosen: `yaqmc-core` executable, spawned by Electron Main, stdio transport.
-- Rejected: `napi-rs` in-process module. Reasons: (1) fault isolation — an audio/decoder crash must not take down the UI, and core panics become supervised restarts instead of app crashes (§14); (2) the Android constraint (§7.5) requires the core to be linkable without any Node assumption — a process boundary keeps `yaqmc-core` a plain tokio binary, and the same protocol crate can later run over JNI/UDS; (3) host replaceability (§7.4) — the core must outlive Electron; (4) no shared-memory-scale data crosses the boundary (positions at 4 Hz, snapshots on change — §3.2 measurements); (5) removes Node ABI/electron-rebuild churn from CI. `napi-rs` v3 (VERIFIED web 2026-08-16: stable, Electron-compatible via Node-API) remains available for *future* needs; nothing in this plan requires it.
+- Rejected: `napi-rs` in-process module. Reasons: (1) fault isolation — an audio/decoder crash must not take down the UI, and core panics become supervised restarts instead of app crashes (§14); (2) the Android constraint (§7.5) requires the core to be linkable without any Node assumption — a process boundary keeps `yaqmc-core` a plain tokio binary, and the same protocol crate can later run over JNI/UDS; (3) host replaceability (§7.4) — the core must outlive Electron; (4) no shared-memory-scale data crosses the boundary (positions at 4 Hz, snapshots on change — §3.2 measurements); (5) removes Node ABI/electron-rebuild churn from CI. `napi-rs` v3 (VERIFIED web 2026-08-16: stable, Electron-compatible via Node-API) remains available for _future_ needs; nothing in this plan requires it.
 
 **ADR-003 — stdio + 4-byte LE length-prefixed JSON frames, versioned envelope.**
+
 - Rejected TCP localhost (port squatting, firewall prompts, any-local-process reachability), named pipes/UDS (per-platform divergence, filesystem ACL surface, lifetime cleanup), MessagePack/Protobuf (§13.6).
 - stdio inherits the process lifetime (EOF = crash detection), is private to the parent/child pair (no token needed), and is identical on Windows and Linux.
 
@@ -395,26 +397,26 @@ These are **final**. The executor must not re-litigate them. Rationale is record
 
 ### 7.2 Layer responsibilities (single-sentence contracts)
 
-| Layer | Owns | Must never |
-|---|---|---|
-| React Frontend (`src/`) | All UI, stores, interpolation, plugin Worker runtime | import Electron/Tauri/Node APIs; know the transport |
-| YAQMC Client API (`packages/yaqmc-client`) | Typed methods+events, `HostBridge` interface, protocol TS types, reconnect/resync semantics | contain host conditionals beyond bridge selection |
-| Electron Host (`apps/desktop`) | Windows, chrome, tray, shortcuts, dialogs, external URLs, updater, core supervision, renderer ACLs | contain business logic, QQ protocol, playback state |
-| Core Protocol (`crates/yaqmc-protocol`) | Envelope, framing, method/event names, version, error codes | depend on Electron, Tauri, or provider internals |
-| Rust Core (`crates/yaqmc-core`) | Playback authority, providers, storage, credentials, plugins host-side, local API, SMTC/MPRIS, diagnostics | link Tauri/Electron; open windows; assume a UI exists |
-| Provider (`crates/yaqmc-provider-api`, `-qqmusic`) | `MusicProvider` trait; QQ implementation over qm-api-rs | reach into player/storage internals |
+| Layer                                              | Owns                                                                                                       | Must never                                            |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| React Frontend (`src/`)                            | All UI, stores, interpolation, plugin Worker runtime                                                       | import Electron/Tauri/Node APIs; know the transport   |
+| YAQMC Client API (`packages/yaqmc-client`)         | Typed methods+events, `HostBridge` interface, protocol TS types, reconnect/resync semantics                | contain host conditionals beyond bridge selection     |
+| Electron Host (`apps/desktop`)                     | Windows, chrome, tray, shortcuts, dialogs, external URLs, updater, core supervision, renderer ACLs         | contain business logic, QQ protocol, playback state   |
+| Core Protocol (`crates/yaqmc-protocol`)            | Envelope, framing, method/event names, version, error codes                                                | depend on Electron, Tauri, or provider internals      |
+| Rust Core (`crates/yaqmc-core`)                    | Playback authority, providers, storage, credentials, plugins host-side, local API, SMTC/MPRIS, diagnostics | link Tauri/Electron; open windows; assume a UI exists |
+| Provider (`crates/yaqmc-provider-api`, `-qqmusic`) | `MusicProvider` trait; QQ implementation over qm-api-rs                                                    | reach into player/storage internals                   |
 
 ### 7.3 Authority map (who is the source of truth)
 
-| State | Authority | Distribution |
-|---|---|---|
-| Playback state, queue, position, volume, mode | Rust `PlayerService` | `player://snapshot` + `api://event` frames → Main → renderer(s) + SSE + SMTC/MPRIS |
-| Lyrics document/projection | Rust lyrics pipeline | `lyrics://document` / `lyrics://projection` |
-| Account/session/entitlement | Rust QQMusic provider | poll commands (parity; TD-6) |
-| Preferences | Rust `app_preferences` (SQLite) | `preferences://changed` |
-| Plugin registry/permissions/storage | Rust `ExtensionHost` | `plugin://changed` + commands |
-| Window geometry/visibility, tray, shortcuts | **Electron Main** | geometry persisted via core preference commands (same app_settings keys — §22.6) |
-| Update availability | Electron Main (electron-updater) | `host://update` events (new) |
+| State                                         | Authority                        | Distribution                                                                       |
+| --------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------- |
+| Playback state, queue, position, volume, mode | Rust `PlayerService`             | `player://snapshot` + `api://event` frames → Main → renderer(s) + SSE + SMTC/MPRIS |
+| Lyrics document/projection                    | Rust lyrics pipeline             | `lyrics://document` / `lyrics://projection`                                        |
+| Account/session/entitlement                   | Rust QQMusic provider            | poll commands (parity; TD-6)                                                       |
+| Preferences                                   | Rust `app_preferences` (SQLite)  | `preferences://changed`                                                            |
+| Plugin registry/permissions/storage           | Rust `ExtensionHost`             | `plugin://changed` + commands                                                      |
+| Window geometry/visibility, tray, shortcuts   | **Electron Main**                | geometry persisted via core preference commands (same app_settings keys — §22.6)   |
+| Update availability                           | Electron Main (electron-updater) | `host://update` events (new)                                                       |
 
 ### 7.4 Electron-replaceability proof obligation
 
@@ -440,6 +442,7 @@ src-tauri (during co-existence only)  →  crates/yaqmc-core (lib)
 ```
 
 Hard bans:
+
 - `crates/**` must never depend on `tauri*`, `electron`, `napi`, or `node` anything. CI greps for `tauri` in `crates/` (§33.5).
 - `src/**` must never import `@tauri-apps/*` or `electron` after P6 (except the single `TauriHostBridge` adapter file until P13). ESLint `no-restricted-imports` rule added in P6.
 - `apps/desktop/**` must never import from `src/` internals (only serves its built output).
@@ -529,7 +532,7 @@ YAQMC/
 
 ### 9.3 Why exactly four crates (anti-over-engineering note, prompt §76)
 
-The current single crate has clean *module* boundaries already. Splitting player/storage/plugins into separate crates would create cyclic-dependency pressure (player needs storage for restore; plugins need player+provider) for zero migration value. The four chosen crates each encode a *real* contract: protocol (shared with tests/hosts), provider-api (Android/provider swap seam), provider-qqmusic (GPL isolation + qm-api-rs), core (everything whose internal boundaries are already fine as modules).
+The current single crate has clean _module_ boundaries already. Splitting player/storage/plugins into separate crates would create cyclic-dependency pressure (player needs storage for restore; plugins need player+provider) for zero migration value. The four chosen crates each encode a _real_ contract: protocol (shared with tests/hosts), provider-api (Android/provider swap seam), provider-qqmusic (GPL isolation + qm-api-rs), core (everything whose internal boundaries are already fine as modules).
 
 ---
 
@@ -576,20 +579,20 @@ The current `lib.rs` fan-out task (§3.2) becomes `server/events.rs`: same subsc
 
 ### 10.3 De-Tauri substitutions inside core code (complete list — from audit)
 
-| Site | Today | Core replacement |
-|---|---|---|
-| `player.rs` ×4 `tauri::async_runtime::spawn` | Tauri runtime handle | `tokio::spawn` (core owns the runtime; all call sites already run inside it) |
-| `qqmusic/auth.rs:1` spawn | same | `tokio::spawn` |
-| `qqmusic/oauth.rs` ×2 spawn + WebviewWindow lifecycle | Tauri windows | split: URL build/callback parse/token exchange stay in core as `auth_oauth_prepare`/`auth_oauth_complete` methods (§16.4); window mechanics move to hosts |
-| `system_media.rs` `AppHandle` (raise window, quit, HWND) | Tauri | `HostCommand` events on the protocol (`host://command` channel: `raise`, `quit`) + HWND via `platform_attach` (ADR-009) |
-| `commands.rs` 117 `#[tauri::command]` fns | Tauri macros | `server/methods.rs` dispatch table calling the same service functions (§13.5); the service-layer code is already command-body-free |
-| `command_guard.rs` main-window-only guard | window label check | per-connection/per-window ACL enforced by Electron Main's IpcRouter (§11.3) **and** re-checked in core via method metadata (`MainWindowOnly` flag carried in `platform_attach`-declared window role) — defense in depth |
-| `lyrics_surface/mod.rs` window management | Tauri windows | moves to Electron Main entirely (§22); core keeps only lyric *data* (projection/document) |
-| `desktop_integration.rs` tray/shortcuts | Tauri APIs | moves to Electron Main (§26); core keeps the player-control functions they call |
-| dialogs (`tauri-plugin-dialog` in diagnostics export, background picker) | Rust-side dialog | dialogs move to Electron Main (`dialogs.ts`); core methods that needed "ask user for path" split into pure-IO methods taking an explicit path (§27.4) |
-| opener (`tauri-plugin-opener`) | Rust plugin | `shell.openExternal` in Main with allowlist (§28.6); core never opens URLs |
-| Tauri path resolver | `app.path()` | `CoreConfig` injected paths (§18.1) |
-| build-time command manifest (`build.rs` `APP_COMMANDS`) | Tauri ACL generation | replaced by `yaqmc-protocol` method registry (compile-time table, §13.5); `build.rs` keeps only build metadata embedding |
+| Site                                                                     | Today                | Core replacement                                                                                                                                                                                                        |
+| ------------------------------------------------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `player.rs` ×4 `tauri::async_runtime::spawn`                             | Tauri runtime handle | `tokio::spawn` (core owns the runtime; all call sites already run inside it)                                                                                                                                            |
+| `qqmusic/auth.rs:1` spawn                                                | same                 | `tokio::spawn`                                                                                                                                                                                                          |
+| `qqmusic/oauth.rs` ×2 spawn + WebviewWindow lifecycle                    | Tauri windows        | split: URL build/callback parse/token exchange stay in core as `auth_oauth_prepare`/`auth_oauth_complete` methods (§16.4); window mechanics move to hosts                                                               |
+| `system_media.rs` `AppHandle` (raise window, quit, HWND)                 | Tauri                | `HostCommand` events on the protocol (`host://command` channel: `raise`, `quit`) + HWND via `platform_attach` (ADR-009)                                                                                                 |
+| `commands.rs` 117 `#[tauri::command]` fns                                | Tauri macros         | `server/methods.rs` dispatch table calling the same service functions (§13.5); the service-layer code is already command-body-free                                                                                      |
+| `command_guard.rs` main-window-only guard                                | window label check   | per-connection/per-window ACL enforced by Electron Main's IpcRouter (§11.3) **and** re-checked in core via method metadata (`MainWindowOnly` flag carried in `platform_attach`-declared window role) — defense in depth |
+| `lyrics_surface/mod.rs` window management                                | Tauri windows        | moves to Electron Main entirely (§22); core keeps only lyric _data_ (projection/document)                                                                                                                               |
+| `desktop_integration.rs` tray/shortcuts                                  | Tauri APIs           | moves to Electron Main (§26); core keeps the player-control functions they call                                                                                                                                         |
+| dialogs (`tauri-plugin-dialog` in diagnostics export, background picker) | Rust-side dialog     | dialogs move to Electron Main (`dialogs.ts`); core methods that needed "ask user for path" split into pure-IO methods taking an explicit path (§27.4)                                                                   |
+| opener (`tauri-plugin-opener`)                                           | Rust plugin          | `shell.openExternal` in Main with allowlist (§28.6); core never opens URLs                                                                                                                                              |
+| Tauri path resolver                                                      | `app.path()`         | `CoreConfig` injected paths (§18.1)                                                                                                                                                                                     |
+| build-time command manifest (`build.rs` `APP_COMMANDS`)                  | Tauri ACL generation | replaced by `yaqmc-protocol` method registry (compile-time table, §13.5); `build.rs` keeps only build metadata embedding                                                                                                |
 
 **Everything else in the Rust tree compiles unmodified** — the audits confirmed player/audio/media/streaming/qmc/storage/credentials/logging/diagnostics/local_api/plugin(minus commands)/qqmusic(minus oauth windows) are already Tauri-free. FACT.
 
@@ -634,26 +637,26 @@ Unchanged authority (§24, §20, §27). They already avoid Tauri except via comm
 
 All windows: `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, `webSecurity: true`, `spellcheck: false`, `backgroundThrottling: false` for surfaces + main (position clock smoothness; NEEDS ACCEPTANCE TEST for battery impact).
 
-| Window | URL | Preload | Size/traits (parity source: `tauri.conf.json` + `lyrics_surface/mod.rs`) |
-|---|---|---|---|
-| `main` | `app://index.html` (prod) / `http://localhost:1420` (dev) | `preload/main.ts` | 1180×760 min 940×640, frameless (`frame:false`), transparent on Windows / opaque on Linux (parity with `tauri.linux.conf.json` — FACT), custom drag region |
-| `lyrics-desktop` | `app://index.html?surface=desktop` | `preload/lyrics-surface.ts` | frameless, `transparent:true`, `alwaysOnTop:'screen-saver'`, `skipTaskbar:true`, `resizable:true`, `focusable:false` when locked, click-through via `setIgnoreMouseEvents(true,{forward:true})` |
-| `lyrics-island` | `app://index.html?surface=island` | `preload/lyrics-surface.ts` | same class, compact default geometry |
-| `lyrics-desktop-unlock` / `lyrics-island-unlock` | `?unlockSurface=desktop|island` | `preload/unlock-overlay.ts` | tiny always-on-top pill matching current unlock overlays |
-| `qqmusic-oauth-{attemptId}` | provider URL from `auth_oauth_prepare` | **none** | 480×640, ephemeral `session.fromPartition('oauth:'+attemptId)` (non-persistent = today's incognito), nav-allowlist from prepare result, close → cancel |
+| Window                                           | URL                                                       | Preload                     | Size/traits (parity source: `tauri.conf.json` + `lyrics_surface/mod.rs`)                                                                                                                        |
+| ------------------------------------------------ | --------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`                                           | `app://index.html` (prod) / `http://localhost:1420` (dev) | `preload/main.ts`           | 1180×760 min 940×640, frameless (`frame:false`), transparent on Windows / opaque on Linux (parity with `tauri.linux.conf.json` — FACT), custom drag region                                      |
+| `lyrics-desktop`                                 | `app://index.html?surface=desktop`                        | `preload/lyrics-surface.ts` | frameless, `transparent:true`, `alwaysOnTop:'screen-saver'`, `skipTaskbar:true`, `resizable:true`, `focusable:false` when locked, click-through via `setIgnoreMouseEvents(true,{forward:true})` |
+| `lyrics-island`                                  | `app://index.html?surface=island`                         | `preload/lyrics-surface.ts` | same class, compact default geometry                                                                                                                                                            |
+| `lyrics-desktop-unlock` / `lyrics-island-unlock` | `?unlockSurface=desktop                                   | island`                     | `preload/unlock-overlay.ts`                                                                                                                                                                     | tiny always-on-top pill matching current unlock overlays |
+| `qqmusic-oauth-{attemptId}`                      | provider URL from `auth_oauth_prepare`                    | **none**                    | 480×640, ephemeral `session.fromPartition('oauth:'+attemptId)` (non-persistent = today's incognito), nav-allowlist from prepare result, close → cancel                                          |
 
 `app://` is a `protocol.handle`-registered scheme serving `dist/` with correct MIME + `Content-Security-Policy` header; rationale vs `loadFile`: enables absolute URLs, service-worker-free asset serving, and a single CSP point (§28.3).
 
 ### 11.3 Renderer⇆Main ACL (ports today's per-window Tauri capabilities — FACT source: `src-tauri/capabilities/*.json` + `command_guard.rs`)
 
-| Capability group | main | lyrics surfaces | unlock overlays |
-|---|---|---|---|
-| All core methods | ✅ (minus none) | subset: `player_snapshot`, `player_play/pause/toggle/next/previous`, `lyrics_projection`, `lyrics_document`, `preferences_get` | none (host-only) |
-| Account/auth methods (`qqmusic_*` auth+account) | ✅ (main-window-only guard preserved) | ❌ | ❌ |
-| Host: window controls (min/max/close/drag) | own window | own window (drag/resize per lock state) | own window |
-| Host: surface management (`surface_show/hide/lock/unlock/set_geometry`) | ✅ | lock/unlock self | unlock action only |
-| Host: dialogs, openExternal, updater | ✅ | ❌ | ❌ |
-| Events | all channels | `lyrics://*`, `player://snapshot`, `preferences://changed` | `lyrics://surface-closed` only |
+| Capability group                                                        | main                                  | lyrics surfaces                                                                                                                | unlock overlays                |
+| ----------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| All core methods                                                        | ✅ (minus none)                       | subset: `player_snapshot`, `player_play/pause/toggle/next/previous`, `lyrics_projection`, `lyrics_document`, `preferences_get` | none (host-only)               |
+| Account/auth methods (`qqmusic_*` auth+account)                         | ✅ (main-window-only guard preserved) | ❌                                                                                                                             | ❌                             |
+| Host: window controls (min/max/close/drag)                              | own window                            | own window (drag/resize per lock state)                                                                                        | own window                     |
+| Host: surface management (`surface_show/hide/lock/unlock/set_geometry`) | ✅                                    | lock/unlock self                                                                                                               | unlock action only             |
+| Host: dialogs, openExternal, updater                                    | ✅                                    | ❌                                                                                                                             | ❌                             |
+| Events                                                                  | all channels                          | `lyrics://*`, `player://snapshot`, `preferences://changed`                                                                     | `lyrics://surface-closed` only |
 
 The ACL is a static table in `ipc/channels.ts`; router enforcement + core-side re-check (§10.3) replaces Tauri capabilities.
 
@@ -679,9 +682,13 @@ Pin exact major at adoption time and record in `apps/desktop/package.json`; at p
 // packages/yaqmc-client/src/bridge.ts
 export interface HostBridge {
   invoke<M extends MethodName>(method: M, params: MethodParams<M>): Promise<MethodResult<M>>;
-  listen<C extends ChannelName>(channel: C, handler: (payload: ChannelPayload<C>) => void): () => void;
+  listen<C extends ChannelName>(
+    channel: C,
+    handler: (payload: ChannelPayload<C>) => void,
+  ): () => void;
   readonly kind: 'electron' | 'tauri' | 'fake';
-  readonly windowRole: 'main' | 'lyrics-desktop' | 'lyrics-island' | 'unlock-desktop' | 'unlock-island';
+  readonly windowRole:
+    'main' | 'lyrics-desktop' | 'lyrics-island' | 'unlock-desktop' | 'unlock-island';
 }
 ```
 
@@ -698,10 +705,10 @@ export interface HostBridge {
 ```ts
 // exposed via contextBridge.exposeInMainWorld('yaqmc', ...)
 interface YaqmcGlobal {
-  invoke(method: string, params?: unknown): Promise<unknown>;   // routed+ACL'd in Main
+  invoke(method: string, params?: unknown): Promise<unknown>; // routed+ACL'd in Main
   on(channel: string, cb: (payload: unknown) => void): () => void;
   windowRole: string;
-  hostInfo: { electron: string; platform: 'win32'|'linux'; coreProtocol: number };
+  hostInfo: { electron: string; platform: 'win32' | 'linux'; coreProtocol: number };
 }
 ```
 
@@ -709,16 +716,16 @@ Type safety lives in `@yaqmc/client`, not in the preload (keeps preload tiny and
 
 ### 12.4 Frontend refactor scope (from the 22-file coupling audit — FACT)
 
-| File(s) | Change |
-|---|---|
-| `native-player-runtime.ts` | replace `invoke/listen` with `client.player.*` / `client.on('player://snapshot')`; delete `isNativeRuntime` Tauri sniffing → `bridge.kind !== 'fake'` |
-| `qq-music-provider.ts`, `account-store.ts`, `preferences-store.ts`, `lyrics-store` fetch paths, `plugin-runtime.ts` bridge calls, `local-api settings`, `diagnostics settings`, remaining bridge-only files (17 total) | mechanical `invoke(`→`client.invoke(` swap (names unchanged — ADR-004 pays off here) |
-| `TopBar.tsx` | window buttons → `client.host.window.minimize()/toggleMaximize()/close()`; drag region: keep `data-tauri-drag-region` attr AND add `.yaqmc-drag` class mapped to `-webkit-app-region: drag` (both hosts work during co-existence; attr removed in P13) |
-| `lyrics-presentation.ts` | fullscreen → `client.host.window.setFullscreen(bool)` |
-| `external-links.ts`, `issue-reporter.ts` | `openUrl` → `client.host.shell.openExternal(url)` |
-| `surfaces/LyricsSurfaceApp.tsx`, `LyricsIslandSurface.tsx` | direct invokes → client subset; drag: same dual-mechanism as TopBar |
-| `main.tsx` | unchanged (query-param routing preserved; Electron loads the same URLs — §11.2) |
-| Zustand stores | **no semantic changes**: snapshot merge, revision guards, interpolation, discontinuity threshold all stay |
+| File(s)                                                                                                                                                                                                                | Change                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `native-player-runtime.ts`                                                                                                                                                                                             | replace `invoke/listen` with `client.player.*` / `client.on('player://snapshot')`; delete `isNativeRuntime` Tauri sniffing → `bridge.kind !== 'fake'`                                                                                                  |
+| `qq-music-provider.ts`, `account-store.ts`, `preferences-store.ts`, `lyrics-store` fetch paths, `plugin-runtime.ts` bridge calls, `local-api settings`, `diagnostics settings`, remaining bridge-only files (17 total) | mechanical `invoke(`→`client.invoke(` swap (names unchanged — ADR-004 pays off here)                                                                                                                                                                   |
+| `TopBar.tsx`                                                                                                                                                                                                           | window buttons → `client.host.window.minimize()/toggleMaximize()/close()`; drag region: keep `data-tauri-drag-region` attr AND add `.yaqmc-drag` class mapped to `-webkit-app-region: drag` (both hosts work during co-existence; attr removed in P13) |
+| `lyrics-presentation.ts`                                                                                                                                                                                               | fullscreen → `client.host.window.setFullscreen(bool)`                                                                                                                                                                                                  |
+| `external-links.ts`, `issue-reporter.ts`                                                                                                                                                                               | `openUrl` → `client.host.shell.openExternal(url)`                                                                                                                                                                                                      |
+| `surfaces/LyricsSurfaceApp.tsx`, `LyricsIslandSurface.tsx`                                                                                                                                                             | direct invokes → client subset; drag: same dual-mechanism as TopBar                                                                                                                                                                                    |
+| `main.tsx`                                                                                                                                                                                                             | unchanged (query-param routing preserved; Electron loads the same URLs — §11.2)                                                                                                                                                                        |
+| Zustand stores                                                                                                                                                                                                         | **no semantic changes**: snapshot merge, revision guards, interpolation, discontinuity threshold all stay                                                                                                                                              |
 
 ESLint guard (P6): `no-restricted-imports` for `@tauri-apps/*` everywhere except `tauri-host-bridge.ts`.
 
@@ -739,15 +746,24 @@ Max frame 32 MiB (matches plugin package cap; diagnostics bundles stream through
 
 ```ts
 type CoreMessage =
-  | { kind: 'hello';  protocol: 1; core: { version: string; commit: string; channel: string } }   // core → host, first frame
-  | { kind: 'attach'; protocol: 1; host: { app: string; version: string }, platform: { mainWindowHandle?: string /* hex HWND */, platformKind: 'windows'|'linux', displayBackend?: 'x11'|'wayland' } } // host → core
-  | { kind: 'ready' }                                                                              // core → host, after attach applied
-  | { kind: 'request';  id: number; method: string; params?: unknown }                             // host → core
-  | { kind: 'response'; id: number; ok: true;  result: unknown }
+  | { kind: 'hello'; protocol: 1; core: { version: string; commit: string; channel: string } } // core → host, first frame
+  | {
+      kind: 'attach';
+      protocol: 1;
+      host: { app: string; version: string };
+      platform: {
+        mainWindowHandle?: string /* hex HWND */;
+        platformKind: 'windows' | 'linux';
+        displayBackend?: 'x11' | 'wayland';
+      };
+    } // host → core
+  | { kind: 'ready' } // core → host, after attach applied
+  | { kind: 'request'; id: number; method: string; params?: unknown } // host → core
+  | { kind: 'response'; id: number; ok: true; result: unknown }
   | { kind: 'response'; id: number; ok: false; error: CoreError }
-  | { kind: 'event'; seq: number; channel: string; payload: unknown }                              // core → host
-  | { kind: 'shutdown'; reason: 'quit'|'restart' }                                                 // host → core
-  | { kind: 'shutdown-ack' };                                                                      // core → host (then exit 0)
+  | { kind: 'event'; seq: number; channel: string; payload: unknown } // core → host
+  | { kind: 'shutdown'; reason: 'quit' | 'restart' } // host → core
+  | { kind: 'shutdown-ack' }; // core → host (then exit 0)
 
 type CoreError = { code: string; message: string; details?: unknown; retryable: boolean };
 ```
@@ -804,14 +820,14 @@ Renderer boot does not wait for core: the client SDK queues invokes until `ready
 
 ### 14.2 Crash / restart matrix
 
-| Failure | Detection | Response |
-|---|---|---|
-| Core exits unexpectedly | child `exit` event / stdout EOF | UI event `host://core-status {down}` → non-blocking banner "Playback engine restarting…"; supervisor backoff restart; on `ready`: resync (§14.5), banner clears. Audio stops (engine lived in core) — acceptable, playback position restores from last snapshot, **paused** (never auto-resume audibly after crash) |
-| Core hangs (no response) | per-request timeouts + 3 missed 5 s `core_ping`s (new lightweight method) | supervisor kills (SIGKILL/TerminateProcess) → restart path as above |
-| Repeated crash (>3/60 s) | supervisor counter | core-safe-mode screen: offer restart, open logs, export diagnostics (host-side collector §27.3 still works without core), disable plugins hint (plugin safe-mode journal already covers plugin-caused crashes on next boot — FACT) |
-| Renderer crash | `render-process-gone` | log + recreate window (main) / recreate surface (surfaces); core unaffected — playback continues (an improvement over Tauri single-process risk profile) |
-| Main process crash | OS | app dies; core detects stdin EOF → runs §14.3 shutdown autonomously (queue+state saved) — this is why core watches stdin EOF |
-| GPU process crash | Chromium auto-restarts | log only |
+| Failure                  | Detection                                                                 | Response                                                                                                                                                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core exits unexpectedly  | child `exit` event / stdout EOF                                           | UI event `host://core-status {down}` → non-blocking banner "Playback engine restarting…"; supervisor backoff restart; on `ready`: resync (§14.5), banner clears. Audio stops (engine lived in core) — acceptable, playback position restores from last snapshot, **paused** (never auto-resume audibly after crash) |
+| Core hangs (no response) | per-request timeouts + 3 missed 5 s `core_ping`s (new lightweight method) | supervisor kills (SIGKILL/TerminateProcess) → restart path as above                                                                                                                                                                                                                                                 |
+| Repeated crash (>3/60 s) | supervisor counter                                                        | core-safe-mode screen: offer restart, open logs, export diagnostics (host-side collector §27.3 still works without core), disable plugins hint (plugin safe-mode journal already covers plugin-caused crashes on next boot — FACT)                                                                                  |
+| Renderer crash           | `render-process-gone`                                                     | log + recreate window (main) / recreate surface (surfaces); core unaffected — playback continues (an improvement over Tauri single-process risk profile)                                                                                                                                                            |
+| Main process crash       | OS                                                                        | app dies; core detects stdin EOF → runs §14.3 shutdown autonomously (queue+state saved) — this is why core watches stdin EOF                                                                                                                                                                                        |
+| GPU process crash        | Chromium auto-restarts                                                    | log only                                                                                                                                                                                                                                                                                                            |
 
 ### 14.3 Graceful shutdown (quit path)
 
@@ -848,28 +864,28 @@ Pull `player_snapshot` + `lyrics_projection` + `lyrics_document` + `preferences_
 
 ### 15.2 The real state model (authoritative reference for the executor — FACT, `player.rs` + `playback_session.rs`)
 
-| Mechanism | Real identifier(s) | Purpose |
-|---|---|---|
-| Playback session fencing | `session_id: u64` on `PlayerCore`, bumped on every track load/source change; carried in `PlayerSnapshot.session_id` and `SeekIntent.session_id` | Any async result (seek completion, position report, prepared source) tagged with an old `session_id` is dropped |
-| Snapshot ordering | `snapshot_revision: u64`, monotonically bumped on every state mutation; in every snapshot | Frontend/store rejects snapshots with `revision <= last_seen` (out-of-order delivery safe) |
-| Seek ordering | `SeekMailbox { intent: Mutex<Option<SeekIntent>>, revision: AtomicU64 }` (`playback_session.rs:15-25`); `SeekIntent { session_id, revision, position_ms }`; `last_seek_revision` in snapshots | **Latest-wins**: rapid seeks overwrite the mailbox slot; the audio worker drains only the newest intent; completions for stale revisions are fenced |
-| Source generation | `source_generation: u64` | distinguishes re-resolves of the same track (quality change, cache promotion) |
-| Load generation | `load_generation: AtomicU64` on `PlayerService` (**not in prompt — D1**) | fences overlapping async track-load pipelines |
-| Audio-side coalescing | audio worker seek mailbox (in `audio.rs`) | rodio sink rebuild is expensive; worker coalesces bursts |
-| Frontend coalescing | `player-command-adapter.ts` mailbox | UI slider drags don't flood IPC |
-| Position interpolation | `player-store.ts:892-899`, 250 ms discontinuity threshold | smooth UI between 4 Hz updates |
+| Mechanism                | Real identifier(s)                                                                                                                                                                            | Purpose                                                                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Playback session fencing | `session_id: u64` on `PlayerCore`, bumped on every track load/source change; carried in `PlayerSnapshot.session_id` and `SeekIntent.session_id`                                               | Any async result (seek completion, position report, prepared source) tagged with an old `session_id` is dropped                                     |
+| Snapshot ordering        | `snapshot_revision: u64`, monotonically bumped on every state mutation; in every snapshot                                                                                                     | Frontend/store rejects snapshots with `revision <= last_seen` (out-of-order delivery safe)                                                          |
+| Seek ordering            | `SeekMailbox { intent: Mutex<Option<SeekIntent>>, revision: AtomicU64 }` (`playback_session.rs:15-25`); `SeekIntent { session_id, revision, position_ms }`; `last_seek_revision` in snapshots | **Latest-wins**: rapid seeks overwrite the mailbox slot; the audio worker drains only the newest intent; completions for stale revisions are fenced |
+| Source generation        | `source_generation: u64`                                                                                                                                                                      | distinguishes re-resolves of the same track (quality change, cache promotion)                                                                       |
+| Load generation          | `load_generation: AtomicU64` on `PlayerService` (**not in prompt — D1**)                                                                                                                      | fences overlapping async track-load pipelines                                                                                                       |
+| Audio-side coalescing    | audio worker seek mailbox (in `audio.rs`)                                                                                                                                                     | rodio sink rebuild is expensive; worker coalesces bursts                                                                                            |
+| Frontend coalescing      | `player-command-adapter.ts` mailbox                                                                                                                                                           | UI slider drags don't flood IPC                                                                                                                     |
+| Position interpolation   | `player-store.ts:892-899`, 250 ms discontinuity threshold                                                                                                                                     | smooth UI between 4 Hz updates                                                                                                                      |
 
 Migration rule: these names/semantics may not be "simplified", renamed, or merged during any phase. A dedicated regression suite guards them (§34.7).
 
 ### 15.3 What actually changes
 
-| Site | Change |
-|---|---|
-| `tauri::async_runtime::spawn` ×4 in `player.rs` | → `tokio::spawn` (P1). Semantics identical: same runtime kind, same task shape |
-| Command entry (`commands.rs` player group) | bodies move to `server/methods.rs` dispatch arms (P2); the service functions they call are untouched |
-| Event exit (`lib.rs` fan-out) | becomes `server/events.rs` (P2), emitting frames; channel mapping table preserved verbatim (§3.2) |
-| Queue persistence trigger (inside fan-out task) | moves with the fan-out task, unchanged |
-| SMTC feed (inside fan-out task) | unchanged call, HWND source changes (ADR-009) |
+| Site                                            | Change                                                                                               |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `tauri::async_runtime::spawn` ×4 in `player.rs` | → `tokio::spawn` (P1). Semantics identical: same runtime kind, same task shape                       |
+| Command entry (`commands.rs` player group)      | bodies move to `server/methods.rs` dispatch arms (P2); the service functions they call are untouched |
+| Event exit (`lib.rs` fan-out)                   | becomes `server/events.rs` (P2), emitting frames; channel mapping table preserved verbatim (§3.2)    |
+| Queue persistence trigger (inside fan-out task) | moves with the fan-out task, unchanged                                                               |
+| SMTC feed (inside fan-out task)                 | unchanged call, HWND source changes (ADR-009)                                                        |
 
 `audio.rs`, `media.rs`, `streaming.rs`, `qmc.rs`, `playback_session.rs`: **zero changes** in the host migration (FACT: they are Tauri-free).
 
@@ -905,7 +921,7 @@ Keep 50 ms clock / 250 ms position emissions / 20 ms audio poll (FACT values). D
 
 ### 16.1 `MusicProvider` trait (new, `crates/yaqmc-provider-api`)
 
-The frontend already has this interface in TS (FACT: `music-provider.ts` with QQ + fake impls). The migration mirrors it in Rust so the *core* stops knowing "QQ" at the type level. Sketch (final signatures derived from today's `QQMusicService` public API during P14-A):
+The frontend already has this interface in TS (FACT: `music-provider.ts` with QQ + fake impls). The migration mirrors it in Rust so the _core_ stops knowing "QQ" at the type level. Sketch (final signatures derived from today's `QQMusicService` public API during P14-A):
 
 ```rust
 #[async_trait]
@@ -928,7 +944,7 @@ pub trait MusicProvider: Send + Sync {
 }
 ```
 
-`TrackRef`/`AlbumRef`/`PlaylistRef` are **opaque provider-scoped reference structs** that serialize to the exact same JSON the frontend already uses (`ProviderTrackReference { mid, numericId, albumId, mediaId }` etc. — TD-3 wire freeze). The trait makes them opaque to the *core*; the wire format is unchanged.
+`TrackRef`/`AlbumRef`/`PlaylistRef` are **opaque provider-scoped reference structs** that serialize to the exact same JSON the frontend already uses (`ProviderTrackReference { mid, numericId, albumId, mediaId }` etc. — TD-3 wire freeze). The trait makes them opaque to the _core_; the wire format is unchanged.
 
 ### 16.2 Registry & wiring
 
@@ -937,7 +953,7 @@ pub trait MusicProvider: Send + Sync {
 ### 16.3 Strangler order inside the provider migration (P14)
 
 - **P14-A (boundary)**: introduce trait + registry; implement `MusicProvider` for the existing in-tree `QQMusicService` (pure adapter, zero behavior change); move `qqmusic/` + `qmc.rs` into `crates/yaqmc-provider-qqmusic` via `git mv`. Gate: full parity suite green — this step must be a provable no-op.
-- **P14-B (qm-api-rs backend)**: add `qqmusic-api` dependency and swap *internals* module-by-module (§17.4), behind a build-time feature `provider-qq-backend = "intree" | "qmapi"` allowing A/B binaries during verification. LIVE VERIFY gates each module swap.
+- **P14-B (qm-api-rs backend)**: add `qqmusic-api` dependency and swap _internals_ module-by-module (§17.4), behind a build-time feature `provider-qq-backend = "intree" | "qmapi"` allowing A/B binaries during verification. LIVE VERIFY gates each module swap.
 - **P14-C (retire duplicates)**: delete in-tree modules fully replaced; drop `lyrics-crypto` dependency if qm-api-rs's QRC path proves equivalent (byte-identical decrypt outputs on the golden corpus — §17.4 row L).
 
 ### 16.4 OAuth ownership split (removes the last window code from provider land)
@@ -955,19 +971,19 @@ Unchanged poll model (TD-6). The `ProviderAccount` trait exposes the same operat
 
 ### 17.1 Verified library facts (audited @ `a7430a8`, 2026-08-16)
 
-| Item | Finding |
-|---|---|
-| Repo / crate | `github.com/YAQMC/qm-api-rs` (**private** — D2); crate `qqmusic-api`, lib `qqmusic_api`, v0.1.0, **GPL-3.0-or-later**, edition 2021, `rust-version 1.85` |
-| Runtime deps | tokio, reqwest (rustls), serde, thiserror, tracing — same stack as YAQMC core (no version conflicts expected; workspace dedup check in PROV-02) |
-| Architecture | `Client` (cloneable handle) + `ClientContext` (device/QIMEI/credential state) + module facades: `song`, `album`, `songlist`, `search`, `top`, `lyric`, `mv`, `user`, `login`, `qmc`, `radio`, `singer` |
-| Auth | QR login (QQ + WeChat) via `login::qrcode_*` + `QRCodeLoginSession` poll loop; phone login; **no graph.qq.com OAuth-popup flow** (YAQMC's OAuth window flow has no library equivalent — stays in-tree, §17.4 row F) |
-| Credentials | `Credential { musicid, musickey, refresh_key, ... }` structured type + `CredentialPersist` trait for host-provided storage + auto-refresh support |
-| Signing | SHA1-based `zzc_sign` for `musics.fcg` (in-tree uses MD5 `zzb` — D8); request encryption + device fingerprint (QIMEI) handled internally |
-| Media | `song::get_song_urls(mids, filetype)` → vkey URLs; `MediaSource` abstraction — host decides how to consume (explicitly designed for YAQMC — doc quote: "YAQMC 等宿主自行决定如何消费 MediaSource") |
-| QMC | `qmc` module: v1/v2, RC4/Map, EKey TEA unwrap — functional overlap with in-tree `qmc.rs` is total |
-| Lyrics | `lyric::get_lyric` with automatic QRC decrypt (overlaps in-tree `lyrics-crypto` usage) |
-| Rate limiting | built-in per-endpoint rate limiter |
-| Quality flags | tests exist; hires/entitlement behavior LIVE VERIFY |
+| Item          | Finding                                                                                                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repo / crate  | `github.com/YAQMC/qm-api-rs` (**private** — D2); crate `qqmusic-api`, lib `qqmusic_api`, v0.1.0, **GPL-3.0-or-later**, edition 2021, `rust-version 1.85`                                                            |
+| Runtime deps  | tokio, reqwest (rustls), serde, thiserror, tracing — same stack as YAQMC core (no version conflicts expected; workspace dedup check in PROV-02)                                                                     |
+| Architecture  | `Client` (cloneable handle) + `ClientContext` (device/QIMEI/credential state) + module facades: `song`, `album`, `songlist`, `search`, `top`, `lyric`, `mv`, `user`, `login`, `qmc`, `radio`, `singer`              |
+| Auth          | QR login (QQ + WeChat) via `login::qrcode_*` + `QRCodeLoginSession` poll loop; phone login; **no graph.qq.com OAuth-popup flow** (YAQMC's OAuth window flow has no library equivalent — stays in-tree, §17.4 row F) |
+| Credentials   | `Credential { musicid, musickey, refresh_key, ... }` structured type + `CredentialPersist` trait for host-provided storage + auto-refresh support                                                                   |
+| Signing       | SHA1-based `zzc_sign` for `musics.fcg` (in-tree uses MD5 `zzb` — D8); request encryption + device fingerprint (QIMEI) handled internally                                                                            |
+| Media         | `song::get_song_urls(mids, filetype)` → vkey URLs; `MediaSource` abstraction — host decides how to consume (explicitly designed for YAQMC — doc quote: "YAQMC 等宿主自行决定如何消费 MediaSource")                  |
+| QMC           | `qmc` module: v1/v2, RC4/Map, EKey TEA unwrap — functional overlap with in-tree `qmc.rs` is total                                                                                                                   |
+| Lyrics        | `lyric::get_lyric` with automatic QRC decrypt (overlaps in-tree `lyrics-crypto` usage)                                                                                                                              |
+| Rate limiting | built-in per-endpoint rate limiter                                                                                                                                                                                  |
+| Quality flags | tests exist; hires/entitlement behavior LIVE VERIFY                                                                                                                                                                 |
 
 ### 17.2 Dependency mechanics
 
@@ -985,22 +1001,22 @@ In-tree persists a `SessionRecord` centered on a raw cookie header (keyring `qqm
 
 ### 17.4 Module-by-module mapping (Duplicate / Keep / Move / Replace)
 
-| # | In-tree module (in `yaqmc-provider-qqmusic` after P14-A) | qm-api-rs counterpart | Disposition |
-|---|---|---|---|
-| A | `transport.rs` (dual-endpoint, retry, redaction) | `Client` + context | **Replace** in P14-B; keep in-tree redaction wrapper around the library's HTTP layer if the library logs URLs (audit in PROV-03) |
-| B | request signing (`zzb` MD5) | `zzc_sign` (SHA1) | **Replace**; LIVE VERIFY both accepted; keep in-tree code until soak passes |
-| C | QR login (`auth.rs` QR flow) | `login::qrcode_*` + poll session | **Replace** |
-| D | session refresh (`auth.rs`) | `Credential` refresh + `CredentialPersist` | **Replace**; persist trait implemented over YAQMC keyring |
-| E | staging slot (`qqmusic-session-staging`) | none | **Keep** in-tree (YAQMC-specific safety feature) layered over `CredentialPersist` |
-| F | OAuth popup flow (`oauth.rs` logic half) | none | **Keep** in-tree (§16.4) |
-| G | `account.rs` favorites/playlists + mutation reconciliation | `songlist`/`user` modules (raw ops) | **Hybrid**: raw calls → library; reconciliation queue + `client_operation_id` stays in-tree (library has no equivalent) |
-| H | `entitlement.rs` | `user::get_vip_info` (partial) | **Hybrid**: quality-rights derivation stays in-tree; identity/VIP fetch → library |
-| I | vkey/EKey resolution (`qqmusic.rs`) | `song::get_song_urls` + `MediaSource` | **Replace**; adapter to existing `ResolvedSource` shape |
-| J | `qmc.rs` decrypt | `qmc` module | **Replace**; golden corpus: decrypt N local QMC fixtures with both, byte-compare (PROV-07) |
-| K | discover/home/category (`encArea` etc.) | `top`/`songlist`/partial | **Hybrid/Keep**: audit coverage per endpoint (PROV-04); anything missing stays in-tree |
-| L | lyrics fetch+QRC decrypt | `lyric::get_lyric` | **Replace** if byte-identical on corpus; else Keep |
-| M | caching (`provider_cache` SQLite table, artwork cache) | none | **Keep** (YAQMC-side, wraps any backend) |
-| N | DTO mapping to wire types | n/a | **Keep** — the wire freeze (§16.1) means mapping code is the adapter's job forever |
+| #   | In-tree module (in `yaqmc-provider-qqmusic` after P14-A)   | qm-api-rs counterpart                      | Disposition                                                                                                                      |
+| --- | ---------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| A   | `transport.rs` (dual-endpoint, retry, redaction)           | `Client` + context                         | **Replace** in P14-B; keep in-tree redaction wrapper around the library's HTTP layer if the library logs URLs (audit in PROV-03) |
+| B   | request signing (`zzb` MD5)                                | `zzc_sign` (SHA1)                          | **Replace**; LIVE VERIFY both accepted; keep in-tree code until soak passes                                                      |
+| C   | QR login (`auth.rs` QR flow)                               | `login::qrcode_*` + poll session           | **Replace**                                                                                                                      |
+| D   | session refresh (`auth.rs`)                                | `Credential` refresh + `CredentialPersist` | **Replace**; persist trait implemented over YAQMC keyring                                                                        |
+| E   | staging slot (`qqmusic-session-staging`)                   | none                                       | **Keep** in-tree (YAQMC-specific safety feature) layered over `CredentialPersist`                                                |
+| F   | OAuth popup flow (`oauth.rs` logic half)                   | none                                       | **Keep** in-tree (§16.4)                                                                                                         |
+| G   | `account.rs` favorites/playlists + mutation reconciliation | `songlist`/`user` modules (raw ops)        | **Hybrid**: raw calls → library; reconciliation queue + `client_operation_id` stays in-tree (library has no equivalent)          |
+| H   | `entitlement.rs`                                           | `user::get_vip_info` (partial)             | **Hybrid**: quality-rights derivation stays in-tree; identity/VIP fetch → library                                                |
+| I   | vkey/EKey resolution (`qqmusic.rs`)                        | `song::get_song_urls` + `MediaSource`      | **Replace**; adapter to existing `ResolvedSource` shape                                                                          |
+| J   | `qmc.rs` decrypt                                           | `qmc` module                               | **Replace**; golden corpus: decrypt N local QMC fixtures with both, byte-compare (PROV-07)                                       |
+| K   | discover/home/category (`encArea` etc.)                    | `top`/`songlist`/partial                   | **Hybrid/Keep**: audit coverage per endpoint (PROV-04); anything missing stays in-tree                                           |
+| L   | lyrics fetch+QRC decrypt                                   | `lyric::get_lyric`                         | **Replace** if byte-identical on corpus; else Keep                                                                               |
+| M   | caching (`provider_cache` SQLite table, artwork cache)     | none                                       | **Keep** (YAQMC-side, wraps any backend)                                                                                         |
+| N   | DTO mapping to wire types                                  | n/a                                        | **Keep** — the wire freeze (§16.1) means mapping code is the adapter's job forever                                               |
 
 ### 17.5 Verification protocol for every Replace row (LIVE VERIFY discipline)
 
@@ -1021,12 +1037,12 @@ qm-api-rs is GPL-3.0-or-later; linking it makes distributed YAQMC binaries GPL-c
 
 Tauri resolves directories from identifier `org.yaqmc.desktop` (FACT: `tauri.conf.json`). The core replicates them with the `dirs` crate; Electron's own `userData` is **not** used for core data at all (Electron keeps only Chromium profile data there).
 
-| Purpose | Windows (today = target) | Linux (today = target) |
-|---|---|---|
-| App data (SQLite, plugins, queue) | `%APPDATA%\org.yaqmc.desktop` | `~/.local/share/org.yaqmc.desktop` |
-| Cache (media/artwork cache) | `%LOCALAPPDATA%\org.yaqmc.desktop` | `~/.cache/org.yaqmc.desktop` |
-| Logs | `%LOCALAPPDATA%\org.yaqmc.desktop\logs` | `~/.local/share/org.yaqmc.desktop/logs` |
-| Config (preferences live in SQLite; no separate config dir used) | — | — |
+| Purpose                                                          | Windows (today = target)                | Linux (today = target)                  |
+| ---------------------------------------------------------------- | --------------------------------------- | --------------------------------------- |
+| App data (SQLite, plugins, queue)                                | `%APPDATA%\org.yaqmc.desktop`           | `~/.local/share/org.yaqmc.desktop`      |
+| Cache (media/artwork cache)                                      | `%LOCALAPPDATA%\org.yaqmc.desktop`      | `~/.cache/org.yaqmc.desktop`            |
+| Logs                                                             | `%LOCALAPPDATA%\org.yaqmc.desktop\logs` | `~/.local/share/org.yaqmc.desktop/logs` |
+| Config (preferences live in SQLite; no separate config dir used) | —                                       | —                                       |
 
 **BASE-04 (P0) captures ground truth**: run the current Tauri build, export a diagnostics snapshot (it contains resolved paths — FACT `diagnostics.rs`), and commit the recorded table into `docs/migration/data-paths.md`. P4's first-boot integration test asserts the core resolves byte-identical paths. This converts an assumption into a tested fact before anything ships.
 
@@ -1102,18 +1118,18 @@ Separate always-on-top transparent window loading `index.html?surface=desktop`; 
 
 ### 22.2 Electron mapping
 
-| Concern | Electron implementation |
-|---|---|
-| Window creation | `windows/lyrics-surfaces.ts` construction table (§11.2) |
-| Always-on-top | `win.setAlwaysOnTop(true, 'screen-saver')` (matches Tauri's above-everything intent) |
-| Click-through when locked | `win.setIgnoreMouseEvents(true, { forward: true })`; unlocked: `(false)` |
-| Focusable toggle | `win.setFocusable(bool)` |
-| Drag when unlocked | CSS `-webkit-app-region: drag` on the surface root (dual-mechanism §12.4) |
-| Resize when unlocked | `resizable: true` + standard edges; lock sets `resizable(false)` |
-| Geometry persistence | `move`/`resize` events → 350 ms debounce → `preferences_set` with **the same app_settings keys** (restore path then works for both hosts during co-existence — key names recorded in BASE-04 doc) |
-| Fullscreen auto-hide (Windows) | The existing Rust poller stays in core (it is pure Win32 — FACT); core emits `host://command {surfaceAutoHide: bool}` → Main hides/shows surfaces. Same 800 ms cadence |
-| Unlock overlays | Two micro-windows as today; unlock button → host method → lock state change → `lyrics://surface-closed`-family events preserved |
-| Multi-display | `screen` API clamping on restore: if saved geometry is off all displays, center on primary (parity: Tauri had implicit clamping; NEEDS ACCEPTANCE TEST on multi-monitor Windows) |
+| Concern                        | Electron implementation                                                                                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Window creation                | `windows/lyrics-surfaces.ts` construction table (§11.2)                                                                                                                                           |
+| Always-on-top                  | `win.setAlwaysOnTop(true, 'screen-saver')` (matches Tauri's above-everything intent)                                                                                                              |
+| Click-through when locked      | `win.setIgnoreMouseEvents(true, { forward: true })`; unlocked: `(false)`                                                                                                                          |
+| Focusable toggle               | `win.setFocusable(bool)`                                                                                                                                                                          |
+| Drag when unlocked             | CSS `-webkit-app-region: drag` on the surface root (dual-mechanism §12.4)                                                                                                                         |
+| Resize when unlocked           | `resizable: true` + standard edges; lock sets `resizable(false)`                                                                                                                                  |
+| Geometry persistence           | `move`/`resize` events → 350 ms debounce → `preferences_set` with **the same app_settings keys** (restore path then works for both hosts during co-existence — key names recorded in BASE-04 doc) |
+| Fullscreen auto-hide (Windows) | The existing Rust poller stays in core (it is pure Win32 — FACT); core emits `host://command {surfaceAutoHide: bool}` → Main hides/shows surfaces. Same 800 ms cadence                            |
+| Unlock overlays                | Two micro-windows as today; unlock button → host method → lock state change → `lyrics://surface-closed`-family events preserved                                                                   |
+| Multi-display                  | `screen` API clamping on restore: if saved geometry is off all displays, center on primary (parity: Tauri had implicit clamping; NEEDS ACCEPTANCE TEST on multi-monitor Windows)                  |
 
 ### 22.3 Transparency
 
@@ -1121,7 +1137,7 @@ Windows: `transparent: true` frameless windows — supported; known Electron cav
 
 ### 22.4 Wayland reality (VERIFIED web 2026-08-16)
 
-Native-Wayland Chromium cannot set always-on-top (protocol gap — `zwlr_layer_shell` is not exposed through Chromium/Electron), and native-Wayland `setIgnoreMouseEvents` support is only now arriving (landed in Electron 44 nightlies as of May 2026) with compositor-dependent behavior (GNOME Mutter pointer-focus quirks). **Consequence:** ADR-008 defaults Linux to X11/XWayland backend, where all of §22.2 works as on any X11 WM. In optional native-Wayland mode, surfaces degrade: not-always-on-top, no click-through guarantee → the settings UI shows a capability banner (capability flags come from `platform_attach`'s `displayBackend` + a Main-computed `SurfaceCapabilities` object — new but small, §29.3). This replaces today's undocumented degradation (Tauri surfaces on Wayland have the same protocol limits — parity is not lost; it becomes *visible*).
+Native-Wayland Chromium cannot set always-on-top (protocol gap — `zwlr_layer_shell` is not exposed through Chromium/Electron), and native-Wayland `setIgnoreMouseEvents` support is only now arriving (landed in Electron 44 nightlies as of May 2026) with compositor-dependent behavior (GNOME Mutter pointer-focus quirks). **Consequence:** ADR-008 defaults Linux to X11/XWayland backend, where all of §22.2 works as on any X11 WM. In optional native-Wayland mode, surfaces degrade: not-always-on-top, no click-through guarantee → the settings UI shows a capability banner (capability flags come from `platform_attach`'s `displayBackend` + a Main-computed `SurfaceCapabilities` object — new but small, §29.3). This replaces today's undocumented degradation (Tauri surfaces on Wayland have the same protocol limits — parity is not lost; it becomes _visible_).
 
 ### 22.5 Acceptance (SURF tasks)
 
@@ -1181,12 +1197,12 @@ Port the 3 fixed bindings via `globalShortcut` (FACT: play-pause/next/prev, not 
 
 ### 27.1 Log topology (one new stream, everything else parity)
 
-| Stream | Today | Target |
-|---|---|---|
-| Core Rust log | `tracing` daily rotation, 7 files, redaction (FACT `logging.rs`) | unchanged (same dir §18.1) |
-| Frontend log ingestion | `log_frontend_event` command | same method, same sink |
-| **Electron host log** (new) | — | `electron-log`-free hand-rolled tiny rotating file `host.log` in the same log dir (main-process events: spawn/restart, window lifecycle, updater, ACL denials, core stderr tail) — keep it dependency-light, ~100 LOC |
-| Renderer console | webview devtools only | + forwarded `console.error/warn` in packaged builds → `log_frontend_event` (parity plus; behind preference; default on for error level) |
+| Stream                      | Today                                                            | Target                                                                                                                                                                                                                |
+| --------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core Rust log               | `tracing` daily rotation, 7 files, redaction (FACT `logging.rs`) | unchanged (same dir §18.1)                                                                                                                                                                                            |
+| Frontend log ingestion      | `log_frontend_event` command                                     | same method, same sink                                                                                                                                                                                                |
+| **Electron host log** (new) | —                                                                | `electron-log`-free hand-rolled tiny rotating file `host.log` in the same log dir (main-process events: spawn/restart, window lifecycle, updater, ACL denials, core stderr tail) — keep it dependency-light, ~100 LOC |
+| Renderer console            | webview devtools only                                            | + forwarded `console.error/warn` in packaged builds → `log_frontend_event` (parity plus; behind preference; default on for error level)                                                                               |
 
 ### 27.2 Correlation
 
@@ -1258,13 +1274,13 @@ electron-builder targets identical list, x64 + arm64. AppImage is the updater-be
 
 ### 29.5 Linux acceptance matrix (P12)
 
-| Environment | Must pass |
-|---|---|
-| Ubuntu LTS current, X11, Intel/AMD | full §46 suite |
-| Ubuntu LTS current, Wayland session (XWayland backend) | full suite incl. surfaces + shortcuts |
-| Fedora current, Wayland, GNOME | full suite; plus native-wayland opt-in smoke (degraded banner correct) |
-| Arch + Hyprland, NVIDIA proprietary | boot, playback, surfaces best-effort (this is TD-1's historical trouble spot; regression bar = today's behavior with `YAQMC_LINUX_RENDERER` mapped) |
-| KDE Plasma current (X11 + Wayland) | tray, MPRIS applet, surfaces |
+| Environment                                            | Must pass                                                                                                                                           |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ubuntu LTS current, X11, Intel/AMD                     | full §46 suite                                                                                                                                      |
+| Ubuntu LTS current, Wayland session (XWayland backend) | full suite incl. surfaces + shortcuts                                                                                                               |
+| Fedora current, Wayland, GNOME                         | full suite; plus native-wayland opt-in smoke (degraded banner correct)                                                                              |
+| Arch + Hyprland, NVIDIA proprietary                    | boot, playback, surfaces best-effort (this is TD-1's historical trouble spot; regression bar = today's behavior with `YAQMC_LINUX_RENDERER` mapped) |
+| KDE Plasma current (X11 + Wayland)                     | tray, MPRIS applet, surfaces                                                                                                                        |
 
 ---
 
@@ -1328,11 +1344,11 @@ Quality job additions (all PRs): `cargo fmt/clippy/test --workspace` (now a real
 
 Package matrix (replaces Tauri matrix):
 
-| OS runner | Targets |
-|---|---|
-| windows-latest | x64, arm64 (cross via electron-builder; core cross-compiled with `aarch64-pc-windows-msvc` toolchain — CI-03 verifies) |
-| ubuntu-latest | x64 AppImage/deb/rpm/tar.gz |
-| ubuntu-24.04-arm | arm64 same targets (native runner — parity with today's arm64 builds which exist in ci.yml — FACT) |
+| OS runner        | Targets                                                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| windows-latest   | x64, arm64 (cross via electron-builder; core cross-compiled with `aarch64-pc-windows-msvc` toolchain — CI-03 verifies) |
+| ubuntu-latest    | x64 AppImage/deb/rpm/tar.gz                                                                                            |
+| ubuntu-24.04-arm | arm64 same targets (native runner — parity with today's arm64 builds which exist in ci.yml — FACT)                     |
 
 `YAQMC_PREBUILT_FRONTEND` dist-reuse optimization is preserved (build renderer once, reuse across matrix — FACT this exists; keep the same env-var contract in the new scripts).
 
@@ -1405,14 +1421,14 @@ No new coverage-percentage targets. The bar is: every migrated behavior has eith
 
 ### 35.2 Budgets (Electron vs Tauri baseline; measured at P11 exit, gate at P12)
 
-| Metric | Budget |
-|---|---|
-| Cold start to interactive | ≤ baseline + 1.5 s |
-| Idle RSS (sum of processes) | ≤ baseline + 250 MB (Chromium tax — honest budget) |
-| Playing CPU (idle UI) | ≤ baseline + 2 pp |
-| Seek round-trip p95 (UI event→settled snapshot) | ≤ baseline + 5 ms |
-| Position-update jitter on lyrics surface | no visible regression (manual A/B, 120 s video capture compared) |
-| Installer size | ≤ 120 MB per platform |
+| Metric                                          | Budget                                                           |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| Cold start to interactive                       | ≤ baseline + 1.5 s                                               |
+| Idle RSS (sum of processes)                     | ≤ baseline + 250 MB (Chromium tax — honest budget)               |
+| Playing CPU (idle UI)                           | ≤ baseline + 2 pp                                                |
+| Seek round-trip p95 (UI event→settled snapshot) | ≤ baseline + 5 ms                                                |
+| Position-update jitter on lyrics surface        | no visible regression (manual A/B, 120 s video capture compared) |
+| Installer size                                  | ≤ 120 MB per platform                                            |
 
 Overrun → profile first (tracing spans exist in core; `chrome://tracing` for renderer), only then negotiate the budget in the risk register — never silently.
 
@@ -1426,36 +1442,36 @@ Overrun → profile first (tracing spans exist in core; `chrome://tracing` for r
 
 Verification method key: **A** = automated (unit/contract/harness/E2E), **M** = manual checklist (§34.8), **L** = LIVE VERIFY (real QQ account/server). Target: parity with §4 statuses — Partial stays Partial, Missing stays Missing unless listed as new.
 
-| Feature (from §4) | Parity target | Phase proven | Method |
-|---|---|---|---|
-| Playback controls, modes, volume | identical | P7 | A |
-| Rapid seek + fencing invariants | identical | P2 (harness), P7 (UI) | A |
-| Queue ops + persistence/restore | identical | P7 | A |
-| Media resolution: vkey / QMC / local file | identical | P7 | A(local) + L(vkey/QMC) |
-| Progressive cache + promotion | identical | P7 | A + M |
-| Search / home / discover / album / playlist | identical | P7 | L |
-| Favorites + mutation reconciliation | identical | P7 | L |
-| QR login / OAuth login | identical | P8 | L |
-| Session persist/staging/refresh (keyring untouched) | identical — **user stays logged in across host swap** | P8 | L |
-| Entitlement/quality ladder | identical | P8 | L |
-| Lyrics fetch/parse/offset | identical | P7 | A + L |
-| In-app lyrics page + presets + composer + scenes | identical | P7 | A + M |
-| Desktop lyrics + island (Windows) | identical incl. lock/click-through/geometry/fullscreen-hide | P9 | A(E2E) + M |
-| Desktop lyrics + island (Linux X11/XWayland) | identical to today's X11 behavior | P12 | M |
-| Linux native-Wayland surfaces | degraded-with-banner (documented — better than today's silent) | P12 | M |
-| Plugins: lifecycle/permissions/storage/proxy/safe-mode/scenes | identical | P10 | A + M |
-| Tray + close-to-tray | identical | P9 | A(E2E) + M |
-| Global shortcuts (3) | identical; Wayland caveat unchanged | P9 | M |
-| SMTC / MPRIS | identical | P9 | M |
-| Local API + SSE + token rotate | identical (external consumers unaffected) | P9 | A + M |
-| Preferences + `preferences://changed` | identical | P7 | A |
-| Logging/diagnostics/issue reporter | identical + host section added | P11 | A + M |
-| i18n | identical (+ tray dictionary) | P9 | A |
-| CI packages: win x64/arm64, linux x64/arm64 × all formats | identical set **minus win-i686** (accepted — §30) | P11 | A |
-| **New:** single instance | new | P5 | A(E2E) |
-| **New:** updater (notify + install) | new | P11 | M |
-| **New:** core crash resilience (UI survives, auto-restart) | new (better than today) | P5 | A |
-| OS notifications / deep links / MV playback | still Missing (unchanged scope) | — | — |
+| Feature (from §4)                                             | Parity target                                                  | Phase proven          | Method                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------- | --------------------- | ---------------------- |
+| Playback controls, modes, volume                              | identical                                                      | P7                    | A                      |
+| Rapid seek + fencing invariants                               | identical                                                      | P2 (harness), P7 (UI) | A                      |
+| Queue ops + persistence/restore                               | identical                                                      | P7                    | A                      |
+| Media resolution: vkey / QMC / local file                     | identical                                                      | P7                    | A(local) + L(vkey/QMC) |
+| Progressive cache + promotion                                 | identical                                                      | P7                    | A + M                  |
+| Search / home / discover / album / playlist                   | identical                                                      | P7                    | L                      |
+| Favorites + mutation reconciliation                           | identical                                                      | P7                    | L                      |
+| QR login / OAuth login                                        | identical                                                      | P8                    | L                      |
+| Session persist/staging/refresh (keyring untouched)           | identical — **user stays logged in across host swap**          | P8                    | L                      |
+| Entitlement/quality ladder                                    | identical                                                      | P8                    | L                      |
+| Lyrics fetch/parse/offset                                     | identical                                                      | P7                    | A + L                  |
+| In-app lyrics page + presets + composer + scenes              | identical                                                      | P7                    | A + M                  |
+| Desktop lyrics + island (Windows)                             | identical incl. lock/click-through/geometry/fullscreen-hide    | P9                    | A(E2E) + M             |
+| Desktop lyrics + island (Linux X11/XWayland)                  | identical to today's X11 behavior                              | P12                   | M                      |
+| Linux native-Wayland surfaces                                 | degraded-with-banner (documented — better than today's silent) | P12                   | M                      |
+| Plugins: lifecycle/permissions/storage/proxy/safe-mode/scenes | identical                                                      | P10                   | A + M                  |
+| Tray + close-to-tray                                          | identical                                                      | P9                    | A(E2E) + M             |
+| Global shortcuts (3)                                          | identical; Wayland caveat unchanged                            | P9                    | M                      |
+| SMTC / MPRIS                                                  | identical                                                      | P9                    | M                      |
+| Local API + SSE + token rotate                                | identical (external consumers unaffected)                      | P9                    | A + M                  |
+| Preferences + `preferences://changed`                         | identical                                                      | P7                    | A                      |
+| Logging/diagnostics/issue reporter                            | identical + host section added                                 | P11                   | A + M                  |
+| i18n                                                          | identical (+ tray dictionary)                                  | P9                    | A                      |
+| CI packages: win x64/arm64, linux x64/arm64 × all formats     | identical set **minus win-i686** (accepted — §30)              | P11                   | A                      |
+| **New:** single instance                                      | new                                                            | P5                    | A(E2E)                 |
+| **New:** updater (notify + install)                           | new                                                            | P11                   | M                      |
+| **New:** core crash resilience (UI survives, auto-restart)    | new (better than today)                                        | P5                    | A                      |
+| OS notifications / deep links / MV playback                   | still Missing (unchanged scope)                                | —                     | —                      |
 
 ---
 
@@ -1465,84 +1481,84 @@ Legend — **Action**: KEEP (unchanged), MOVE (git mv, content unchanged), MOVE+
 
 ### 37.1 Rust — `src-tauri/src/` root modules (all 24 files accounted for)
 
-| File | Action | Destination | Notes |
-|---|---|---|---|
-| `lib.rs` | SPLIT | boot order → `yaqmc-core/src/lib.rs` (§10.2); event fan-out → `yaqmc-core/src/server/events.rs`; window/close-to-tray/oauth-cancel handlers → `apps/desktop/main/windows/*`; plugin registration lines → DELETE(P13) | the one file that touches everything; P1+P2 |
-| `main.rs` | REWRITE | `yaqmc-core/src/main.rs` (30-line bin over `run()`); Tauri's main → stays in `src-tauri` shim until DELETE(P13) | |
-| `commands.rs` (97 non-plugin commands) | MOVE+EDIT | bodies → `yaqmc-core/src/server/methods.rs` dispatch arms; `#[tauri::command]`/`State`/`Window` params dropped (services already injected) | P2; the shim keeps thin Tauri wrappers calling the same service fns until P13 |
-| `command_guard.rs` | REWRITE | Main IpcRouter ACL + core method-metadata re-check (§10.3, §11.3) | DELETE(P13) of original |
-| `player.rs` | MOVE+EDIT | `yaqmc-core/src/player.rs` — only the 4 spawn substitutions (§10.3) | protected invariants §15.2 |
-| `playback_session.rs` | MOVE | `yaqmc-core/src/playback_session.rs` | zero edits |
-| `audio.rs` | MOVE | `yaqmc-core/src/audio.rs` | zero edits |
-| `media.rs` | MOVE | `yaqmc-core/src/media.rs` | zero edits |
-| `streaming.rs` | MOVE | `yaqmc-core/src/streaming.rs` | zero edits |
-| `qmc.rs` | MOVE | `yaqmc-core/src/qmc.rs`; P14-A → `yaqmc-provider-qqmusic`; P14-C possibly DELETE (replaced by qm-api-rs `qmc`) | |
-| `storage.rs` | MOVE+EDIT | `yaqmc-core/src/storage.rs` — path injection via `CoreConfig` instead of Tauri resolver | schema frozen §18.2 |
-| `credentials.rs` | MOVE | `yaqmc-core/src/credentials.rs` | service name frozen §19 |
-| `app_preferences.rs` | MOVE | `yaqmc-core/src/app_preferences.rs` | keys frozen §22.6 |
-| `logging.rs` | MOVE+EDIT | `yaqmc-core/src/logging.rs` — log dir injected | |
-| `diagnostics.rs` | MOVE+EDIT | `yaqmc-core/src/diagnostics.rs` — host payload param (§27.3); dialog removed (§27.4) | |
-| `issue_reporter.rs` | MOVE+EDIT | `yaqmc-core/src/issue_reporter.rs` — host line added | |
-| `local_api.rs` | MOVE | `yaqmc-core/src/local_api.rs` | §24 |
-| `system_media.rs` | MOVE+EDIT | `yaqmc-core/src/system_media.rs` — HWND via attach; raise/quit → `host://command` (§25) | |
-| `platform.rs` | SPLIT | diagnostics probes → `yaqmc-core/src/platform.rs`; env-mutation workarounds → DELETE(P9) (§29.1); flag policy → NEW `apps/desktop/main/services/linux-graphics.ts` | TD-1 payoff |
-| `desktop_integration.rs` | REWRITE | `apps/desktop/main/services/{tray,shortcuts}.ts` (§26); original DELETE(P13) | |
-| `lyrics_surface/mod.rs` | REWRITE | `apps/desktop/main/windows/lyrics-surfaces.ts` (§22); lyric-data commands stay core | |
-| `lyrics_surface/windows.rs` | MOVE+EDIT | fullscreen poller → `yaqmc-core` platform module emitting `host://command` (§22.2) | pure Win32, stays Rust |
-| `lyrics_surface/linux.rs` | KEEP-as-stub | carried (TD-5) | |
-| `build.rs` | MOVE+EDIT | `yaqmc-core/build.rs` — keep metadata embedding; DELETE command-manifest generation (§13.5) | |
+| File                                   | Action       | Destination                                                                                                                                                                                                          | Notes                                                                         |
+| -------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `lib.rs`                               | SPLIT        | boot order → `yaqmc-core/src/lib.rs` (§10.2); event fan-out → `yaqmc-core/src/server/events.rs`; window/close-to-tray/oauth-cancel handlers → `apps/desktop/main/windows/*`; plugin registration lines → DELETE(P13) | the one file that touches everything; P1+P2                                   |
+| `main.rs`                              | REWRITE      | `yaqmc-core/src/main.rs` (30-line bin over `run()`); Tauri's main → stays in `src-tauri` shim until DELETE(P13)                                                                                                      |                                                                               |
+| `commands.rs` (97 non-plugin commands) | MOVE+EDIT    | bodies → `yaqmc-core/src/server/methods.rs` dispatch arms; `#[tauri::command]`/`State`/`Window` params dropped (services already injected)                                                                           | P2; the shim keeps thin Tauri wrappers calling the same service fns until P13 |
+| `command_guard.rs`                     | REWRITE      | Main IpcRouter ACL + core method-metadata re-check (§10.3, §11.3)                                                                                                                                                    | DELETE(P13) of original                                                       |
+| `player.rs`                            | MOVE+EDIT    | `yaqmc-core/src/player.rs` — only the 4 spawn substitutions (§10.3)                                                                                                                                                  | protected invariants §15.2                                                    |
+| `playback_session.rs`                  | MOVE         | `yaqmc-core/src/playback_session.rs`                                                                                                                                                                                 | zero edits                                                                    |
+| `audio.rs`                             | MOVE         | `yaqmc-core/src/audio.rs`                                                                                                                                                                                            | zero edits                                                                    |
+| `media.rs`                             | MOVE         | `yaqmc-core/src/media.rs`                                                                                                                                                                                            | zero edits                                                                    |
+| `streaming.rs`                         | MOVE         | `yaqmc-core/src/streaming.rs`                                                                                                                                                                                        | zero edits                                                                    |
+| `qmc.rs`                               | MOVE         | `yaqmc-core/src/qmc.rs`; P14-A → `yaqmc-provider-qqmusic`; P14-C possibly DELETE (replaced by qm-api-rs `qmc`)                                                                                                       |                                                                               |
+| `storage.rs`                           | MOVE+EDIT    | `yaqmc-core/src/storage.rs` — path injection via `CoreConfig` instead of Tauri resolver                                                                                                                              | schema frozen §18.2                                                           |
+| `credentials.rs`                       | MOVE         | `yaqmc-core/src/credentials.rs`                                                                                                                                                                                      | service name frozen §19                                                       |
+| `app_preferences.rs`                   | MOVE         | `yaqmc-core/src/app_preferences.rs`                                                                                                                                                                                  | keys frozen §22.6                                                             |
+| `logging.rs`                           | MOVE+EDIT    | `yaqmc-core/src/logging.rs` — log dir injected                                                                                                                                                                       |                                                                               |
+| `diagnostics.rs`                       | MOVE+EDIT    | `yaqmc-core/src/diagnostics.rs` — host payload param (§27.3); dialog removed (§27.4)                                                                                                                                 |                                                                               |
+| `issue_reporter.rs`                    | MOVE+EDIT    | `yaqmc-core/src/issue_reporter.rs` — host line added                                                                                                                                                                 |                                                                               |
+| `local_api.rs`                         | MOVE         | `yaqmc-core/src/local_api.rs`                                                                                                                                                                                        | §24                                                                           |
+| `system_media.rs`                      | MOVE+EDIT    | `yaqmc-core/src/system_media.rs` — HWND via attach; raise/quit → `host://command` (§25)                                                                                                                              |                                                                               |
+| `platform.rs`                          | SPLIT        | diagnostics probes → `yaqmc-core/src/platform.rs`; env-mutation workarounds → DELETE(P9) (§29.1); flag policy → NEW `apps/desktop/main/services/linux-graphics.ts`                                                   | TD-1 payoff                                                                   |
+| `desktop_integration.rs`               | REWRITE      | `apps/desktop/main/services/{tray,shortcuts}.ts` (§26); original DELETE(P13)                                                                                                                                         |                                                                               |
+| `lyrics_surface/mod.rs`                | REWRITE      | `apps/desktop/main/windows/lyrics-surfaces.ts` (§22); lyric-data commands stay core                                                                                                                                  |                                                                               |
+| `lyrics_surface/windows.rs`            | MOVE+EDIT    | fullscreen poller → `yaqmc-core` platform module emitting `host://command` (§22.2)                                                                                                                                   | pure Win32, stays Rust                                                        |
+| `lyrics_surface/linux.rs`              | KEEP-as-stub | carried (TD-5)                                                                                                                                                                                                       |                                                                               |
+| `build.rs`                             | MOVE+EDIT    | `yaqmc-core/build.rs` — keep metadata embedding; DELETE command-manifest generation (§13.5)                                                                                                                          |                                                                               |
 
 ### 37.2 Rust — `qqmusic/` (all files; move as a directory)
 
-| File(s) | Action | Notes |
-|---|---|---|
-| `qqmusic.rs` + `qqmusic/` (transport, auth, account, entitlement, dto, cache, artwork modules) | MOVE (P1 into core) → MOVE again (P14-A into `yaqmc-provider-qqmusic`) | content edits only per §17.4 dispositions in P14-B/C |
-| `qqmusic/oauth.rs` | SPLIT (P2) | URL-build/callback-parse/exchange → provider (`auth_oauth_prepare/complete/cancel` §16.4); WebviewWindow mechanics → `apps/desktop/main/windows/oauth-window.ts`; Tauri window code DELETE(P13) |
-| `plugin/` (host, manifest, permissions, storage, network, safety, scenes) | MOVE (P1) | unchanged (§20) |
-| `plugin/commands.rs` | MOVE+EDIT (P2) | 20 commands → dispatch arms; token-gate logic unchanged |
+| File(s)                                                                                        | Action                                                                 | Notes                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `qqmusic.rs` + `qqmusic/` (transport, auth, account, entitlement, dto, cache, artwork modules) | MOVE (P1 into core) → MOVE again (P14-A into `yaqmc-provider-qqmusic`) | content edits only per §17.4 dispositions in P14-B/C                                                                                                                                            |
+| `qqmusic/oauth.rs`                                                                             | SPLIT (P2)                                                             | URL-build/callback-parse/exchange → provider (`auth_oauth_prepare/complete/cancel` §16.4); WebviewWindow mechanics → `apps/desktop/main/windows/oauth-window.ts`; Tauri window code DELETE(P13) |
+| `plugin/` (host, manifest, permissions, storage, network, safety, scenes)                      | MOVE (P1)                                                              | unchanged (§20)                                                                                                                                                                                 |
+| `plugin/commands.rs`                                                                           | MOVE+EDIT (P2)                                                         | 20 commands → dispatch arms; token-gate logic unchanged                                                                                                                                         |
 
 ### 37.3 Rust/Tauri config & shim
 
-| File | Action | Notes |
-|---|---|---|
-| `src-tauri/Cargo.toml` | SPLIT (P1) | deps partitioned: core deps → `crates/yaqmc-core/Cargo.toml`; tauri deps stay in shim; root workspace `Cargo.toml` NEW | DELETE(P13) shim |
-| `tauri.conf.json`, `tauri.linux.conf.json` | KEEP until DELETE(P13) | facts already ported: CSP→§28.3, window table→§11.2, identifier→§31.2, linux-opaque→§11.2 |
-| `src-tauri/capabilities/*.json` | KEEP until DELETE(P13) | ported to ACL table §11.3 |
-| `src-tauri/icons/*` | MOVE (P4) | → `apps/desktop/resources/` (builder regenerates platform formats; keep originals) |
+| File                                       | Action                 | Notes                                                                                                                  |
+| ------------------------------------------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `src-tauri/Cargo.toml`                     | SPLIT (P1)             | deps partitioned: core deps → `crates/yaqmc-core/Cargo.toml`; tauri deps stay in shim; root workspace `Cargo.toml` NEW | DELETE(P13) shim |
+| `tauri.conf.json`, `tauri.linux.conf.json` | KEEP until DELETE(P13) | facts already ported: CSP→§28.3, window table→§11.2, identifier→§31.2, linux-opaque→§11.2                              |
+| `src-tauri/capabilities/*.json`            | KEEP until DELETE(P13) | ported to ACL table §11.3                                                                                              |
+| `src-tauri/icons/*`                        | MOVE (P4)              | → `apps/desktop/resources/` (builder regenerates platform formats; keep originals)                                     |
 
 ### 37.4 Frontend (from the 22-file coupling audit; 82 host-agnostic files = KEEP, listed as one row)
 
-| File | Action | Notes |
-|---|---|---|
-| 82 host-agnostic files (components, stores, pages, i18n, styles, utils) | KEEP | zero edits; protected by ESLint guard |
-| `application/native-player-runtime.ts` | MOVE+EDIT (P6) | → client SDK consumption (§12.4) |
-| 16 further bridge-only files (`qq-music-provider.ts`, `account-store.ts`, `preferences-store.ts`, `plugin-runtime.ts`, `lyrics-surface-runtime.ts`, diagnostics/settings/local-api/issue bridge files, etc. — full list in the P6 task) | EDIT (P6) | mechanical `invoke`→`client.invoke`, `listen`→`client.on` |
-| `components/TopBar.tsx` | EDIT (P6) | window controls + dual drag mechanism (§12.4); drag attr removed P13 |
-| `application/lyrics-presentation.ts` | EDIT (P6) | fullscreen via host API |
-| `application/external-links.ts`, `application/issue-reporter.ts` | EDIT (P6) | openExternal via host API |
-| `surfaces/LyricsSurfaceApp.tsx`, island surface component | EDIT (P6) | subset client + dual drag |
-| `application/player-command-adapter.ts` | MOVE (P5) | seek-coalescing logic → `packages/yaqmc-client` (imported back; no behavior change) |
-| `providers/fake-music-provider.ts` | KEEP + wrap | backs `bridges/fake.ts` (§12.2) |
-| `main.tsx`, `index.html` | KEEP | query routing preserved (§11.2) |
-| NEW `application/tauri-host-bridge.ts` | NEW (P5) → DELETE(P13) | the co-existence adapter |
+| File                                                                                                                                                                                                                                    | Action                 | Notes                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------- |
+| 82 host-agnostic files (components, stores, pages, i18n, styles, utils)                                                                                                                                                                 | KEEP                   | zero edits; protected by ESLint guard                                               |
+| `application/native-player-runtime.ts`                                                                                                                                                                                                  | MOVE+EDIT (P6)         | → client SDK consumption (§12.4)                                                    |
+| 16 further bridge-only files (`qq-music-provider.ts`, `account-store.ts`, `preferences-store.ts`, `plugin-runtime.ts`, `lyrics-surface-runtime.ts`, diagnostics/settings/local-api/issue bridge files, etc. — full list in the P6 task) | EDIT (P6)              | mechanical `invoke`→`client.invoke`, `listen`→`client.on`                           |
+| `components/TopBar.tsx`                                                                                                                                                                                                                 | EDIT (P6)              | window controls + dual drag mechanism (§12.4); drag attr removed P13                |
+| `application/lyrics-presentation.ts`                                                                                                                                                                                                    | EDIT (P6)              | fullscreen via host API                                                             |
+| `application/external-links.ts`, `application/issue-reporter.ts`                                                                                                                                                                        | EDIT (P6)              | openExternal via host API                                                           |
+| `surfaces/LyricsSurfaceApp.tsx`, island surface component                                                                                                                                                                               | EDIT (P6)              | subset client + dual drag                                                           |
+| `application/player-command-adapter.ts`                                                                                                                                                                                                 | MOVE (P5)              | seek-coalescing logic → `packages/yaqmc-client` (imported back; no behavior change) |
+| `providers/fake-music-provider.ts`                                                                                                                                                                                                      | KEEP + wrap            | backs `bridges/fake.ts` (§12.2)                                                     |
+| `main.tsx`, `index.html`                                                                                                                                                                                                                | KEEP                   | query routing preserved (§11.2)                                                     |
+| NEW `application/tauri-host-bridge.ts`                                                                                                                                                                                                  | NEW (P5) → DELETE(P13) | the co-existence adapter                                                            |
 
 ### 37.5 Build/config/tooling
 
-| File | Action | Notes |
-|---|---|---|
-| `vite.config.ts` | EDIT (P4, minimal) | keep 1420 port + defines; add `base` compatibility for `app://` (build already relative — verify VITE-01) |
-| root `package.json` | EDIT (P3/P4) | workspaces, new scripts (`dev:desktop`, `build:desktop`, `contracts:update`, `perf:baseline`); Tauri scripts DELETE(P13) |
-| `tsconfig.json` | EDIT (P3) | project references for packages/apps |
-| `.github/workflows/ci.yml`, `build.yml` | EDIT (P4 add Electron jobs) → EDIT (P13 remove Tauri jobs) | §33 |
-| `scripts/*` (existing dev/plugin/docs scripts) | KEEP | plugin:pack/docs unchanged |
-| NEW: `scripts/stage-core.mjs`, `scripts/sync-version.mjs`, `scripts/perf-baseline.mjs`, `apps/desktop/*` configs | NEW | §31–§35 |
-| `docs/**` (90 files) | EDIT (P15) | §38.3 list |
+| File                                                                                                             | Action                                                     | Notes                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `vite.config.ts`                                                                                                 | EDIT (P4, minimal)                                         | keep 1420 port + defines; add `base` compatibility for `app://` (build already relative — verify VITE-01)                |
+| root `package.json`                                                                                              | EDIT (P3/P4)                                               | workspaces, new scripts (`dev:desktop`, `build:desktop`, `contracts:update`, `perf:baseline`); Tauri scripts DELETE(P13) |
+| `tsconfig.json`                                                                                                  | EDIT (P3)                                                  | project references for packages/apps                                                                                     |
+| `.github/workflows/ci.yml`, `build.yml`                                                                          | EDIT (P4 add Electron jobs) → EDIT (P13 remove Tauri jobs) | §33                                                                                                                      |
+| `scripts/*` (existing dev/plugin/docs scripts)                                                                   | KEEP                                                       | plugin:pack/docs unchanged                                                                                               |
+| NEW: `scripts/stage-core.mjs`, `scripts/sync-version.mjs`, `scripts/perf-baseline.mjs`, `apps/desktop/*` configs | NEW                                                        | §31–§35                                                                                                                  |
+| `docs/**` (90 files)                                                                                             | EDIT (P15)                                                 | §38.3 list                                                                                                               |
 
 ### 37.9 Command/API disposition summary (117 registered — FACT count from `generate_handler!`)
 
 - **Verified checksums (measured at HEAD, 2026-08-16):** 117 commands in `generate_handler!` (97 non-plugin + 20 plugin); 118 `#[tauri::command]` attribute occurrences (one command is defined but unregistered — dispositioned in PROTO-02); 112 of the 117 are referenced by frontend source strings; 5 never referenced by the frontend: `system_integration_status`, `player_play`, `player_pause`, `lyrics_surface_status`, `plugin_diagnostics` (host-side callers such as tray/shim, or retirement candidates).
 - After migration: the large majority stay core-owned protocol methods with unchanged names; window/surface-shaped methods become host-implemented under the same names (window controls per window role, surface show/hide/lock/unlock/geometry ×2 surfaces, fullscreen, openExternal); the 3 dialog-coupled methods are split (host picks path via `dialogs.ts` + core does IO under new `_to`/`_from` names, old names retired P13 — §27.4); +2 new core methods (`platform_attach`, `core_shutdown_prepare`), +`core_ping`, +1 new host group (`host_updater_*`).
-- The executor's P2 task PROTO-02 generates the authoritative 117-row table mechanically from `generate_handler!` + a frontend string scan, committed as `docs/migration/command-inventory.md`; every later task checks off rows there. (This plan deliberately specifies the *procedure* — the list is machine-derivable, and hand-copying 117 rows here would only invite transcription drift; the counts above are the verified checksums a correct table must reproduce.)
+- The executor's P2 task PROTO-02 generates the authoritative 117-row table mechanically from `generate_handler!` + a frontend string scan, committed as `docs/migration/command-inventory.md`; every later task checks off rows there. (This plan deliberately specifies the _procedure_ — the list is machine-derivable, and hand-copying 117 rows here would only invite transcription drift; the counts above are the verified checksums a correct table must reproduce.)
 
 ---
 
@@ -1554,17 +1570,17 @@ Electron parity matrix §36 rows P5–P12 all green; two consecutive nightly bui
 
 ### 38.2 Removal inventory (executed in one PR, CHECK-13)
 
-| Item | Removal |
-|---|---|
+| Item                                                                                                                         | Removal                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Cargo deps: `tauri`, `tauri-build`, `tauri-plugin-dialog`, `tauri-plugin-global-shortcut`, `tauri-plugin-opener` (FACT list) | delete from workspace; `cargo tree -i tauri` must be empty |
-| `src-tauri/` shim directory (remaining: Tauri main, conf files, capabilities, shim wrappers) | `git rm -r` |
-| npm deps: `@tauri-apps/api`, `@tauri-apps/cli`, plugin JS packages (FACT package.json) | uninstall; lockfile regenerated |
-| `src/application/tauri-host-bridge.ts` + ESLint exception | delete |
-| `data-tauri-drag-region` attributes (2 files) | delete (CSS class remains) |
-| `isTauri` sniffing remnants | delete (`bridge.kind` everywhere) |
-| CI Tauri jobs + Tauri caching steps | delete |
-| `tauri.conf.json` facts | already ported; verify checklist then delete |
-| Root scripts `tauri`, `tauri:*` | delete |
+| `src-tauri/` shim directory (remaining: Tauri main, conf files, capabilities, shim wrappers)                                 | `git rm -r`                                                |
+| npm deps: `@tauri-apps/api`, `@tauri-apps/cli`, plugin JS packages (FACT package.json)                                       | uninstall; lockfile regenerated                            |
+| `src/application/tauri-host-bridge.ts` + ESLint exception                                                                    | delete                                                     |
+| `data-tauri-drag-region` attributes (2 files)                                                                                | delete (CSS class remains)                                 |
+| `isTauri` sniffing remnants                                                                                                  | delete (`bridge.kind` everywhere)                          |
+| CI Tauri jobs + Tauri caching steps                                                                                          | delete                                                     |
+| `tauri.conf.json` facts                                                                                                      | already ported; verify checklist then delete               |
+| Root scripts `tauri`, `tauri:*`                                                                                              | delete                                                     |
 
 ### 38.3 Docs to update in P15 (from docs audit)
 
@@ -1578,23 +1594,23 @@ Fresh-clone build on all three CI OS images; `rg -i "tauri" -g '!docs/migration/
 
 ## 39. Risk Register
 
-| ID | Risk | L×I | Mitigation | Trigger → Response |
-|---|---|---|---|---|
-| R-1 | Seek/session regression during transport swap | M×**Critical** | §15 freeze + §34.7 pack at every gate; transport-only diffs in P2 | any pack failure → block phase, bisect within P2 commits |
-| R-2 | Wayland surfaces worse than today | M×H | ADR-008 X11 default = today's capability; banner for native mode | §29.5 matrix failure → keep X11 default, document |
-| R-3 | SMTC cross-process HWND rejection | L×M | ADR-009 fallback hidden window (dep already present) | acceptance test fail → switch to fallback (1-day task) |
-| R-4 | qm-api-rs behavioral drift vs in-tree (signing, DTOs, entitlement) | M×H | §17.4 per-module gates, A/B feature flag, 3-day soak, golden corpus | any L-test fail → stay `intree` for that module; P14-C deferred |
-| R-5 | qm-api-rs private-repo access breaks CI | M×M | pinned rev + token secret + documented local auth; option to vendor snapshot if org approves | fetch failure → vendor tarball fallback (PROV-01 alt path) |
-| R-6 | GPL licensing unresolved | M×H | §17.6 gate before P14 only; P0–P13 unaffected | no decision → ship Electron migration, defer P14 (plan explicitly allows) |
-| R-7 | Electron RSS/startup exceeds budgets | H×M | honest budgets §35.2; profiling playbook | overrun → profile, then budget renegotiation recorded in this doc |
-| R-8 | Dual-host co-existence CI cost/flake | M×M | dist reuse, cargo cache, Tauri jobs frozen (no new work on them) | CI > 45 min → trim Tauri matrix to x64-only until P13 |
-| R-9 | Unsigned Windows + updater = SmartScreen friction / downgrade-attack surface | M×M | notify-only updater, checksums file, docs; signing = follow-up | user reports → prioritize signing post-migration |
-| R-10 | Keyring/Secret Service differences under Electron process (Linux) | L×H | same `keyring` crate in same-named core process; P8 L-test on GNOME+KDE | failure → investigate service naming/DBus session env pass-through (`DBUS_SESSION_BUS_ADDRESS` must be inherited — SUP-01 env passthrough list) |
-| R-11 | `dirs`-crate path mismatch vs Tauri on some distro | L×H | BASE-04 ground truth + first-boot assert + §18.4 override | assert fires → ship override mapping |
-| R-12 | Plugin ecosystem breakage (worker CSP/blob under Chromium) | L×M | §20 parity CSP + PLUG-03 runtime test; Chromium is *more* standard than WebKitGTK | breakage → CSP directive fix; API unchanged |
-| R-13 | win-i686 users stranded | certain×L | release notes + last-Tauri-release remains downloadable | complaints → point to final Tauri release; no reversal |
-| R-14 | Executor scope-creep (UI redesign, protocol "improvements") | M×H | ADR-004 freeze, §34.1 no-silent-test-rewrites, §20.4/§15.5 non-goals, review checklist §10.7 | any diff touching frozen semantics without a task ID → reject |
-| R-15 | Electron major EOL mid-migration | L×L | §11.6 policy; upgrade PRs isolated | CVE in pinned major → expedite upgrade PR with smoke matrix |
+| ID   | Risk                                                                         | L×I            | Mitigation                                                                                   | Trigger → Response                                                                                                                              |
+| ---- | ---------------------------------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-1  | Seek/session regression during transport swap                                | M×**Critical** | §15 freeze + §34.7 pack at every gate; transport-only diffs in P2                            | any pack failure → block phase, bisect within P2 commits                                                                                        |
+| R-2  | Wayland surfaces worse than today                                            | M×H            | ADR-008 X11 default = today's capability; banner for native mode                             | §29.5 matrix failure → keep X11 default, document                                                                                               |
+| R-3  | SMTC cross-process HWND rejection                                            | L×M            | ADR-009 fallback hidden window (dep already present)                                         | acceptance test fail → switch to fallback (1-day task)                                                                                          |
+| R-4  | qm-api-rs behavioral drift vs in-tree (signing, DTOs, entitlement)           | M×H            | §17.4 per-module gates, A/B feature flag, 3-day soak, golden corpus                          | any L-test fail → stay `intree` for that module; P14-C deferred                                                                                 |
+| R-5  | qm-api-rs private-repo access breaks CI                                      | M×M            | pinned rev + token secret + documented local auth; option to vendor snapshot if org approves | fetch failure → vendor tarball fallback (PROV-01 alt path)                                                                                      |
+| R-6  | GPL licensing unresolved                                                     | M×H            | §17.6 gate before P14 only; P0–P13 unaffected                                                | no decision → ship Electron migration, defer P14 (plan explicitly allows)                                                                       |
+| R-7  | Electron RSS/startup exceeds budgets                                         | H×M            | honest budgets §35.2; profiling playbook                                                     | overrun → profile, then budget renegotiation recorded in this doc                                                                               |
+| R-8  | Dual-host co-existence CI cost/flake                                         | M×M            | dist reuse, cargo cache, Tauri jobs frozen (no new work on them)                             | CI > 45 min → trim Tauri matrix to x64-only until P13                                                                                           |
+| R-9  | Unsigned Windows + updater = SmartScreen friction / downgrade-attack surface | M×M            | notify-only updater, checksums file, docs; signing = follow-up                               | user reports → prioritize signing post-migration                                                                                                |
+| R-10 | Keyring/Secret Service differences under Electron process (Linux)            | L×H            | same `keyring` crate in same-named core process; P8 L-test on GNOME+KDE                      | failure → investigate service naming/DBus session env pass-through (`DBUS_SESSION_BUS_ADDRESS` must be inherited — SUP-01 env passthrough list) |
+| R-11 | `dirs`-crate path mismatch vs Tauri on some distro                           | L×H            | BASE-04 ground truth + first-boot assert + §18.4 override                                    | assert fires → ship override mapping                                                                                                            |
+| R-12 | Plugin ecosystem breakage (worker CSP/blob under Chromium)                   | L×M            | §20 parity CSP + PLUG-03 runtime test; Chromium is _more_ standard than WebKitGTK            | breakage → CSP directive fix; API unchanged                                                                                                     |
+| R-13 | win-i686 users stranded                                                      | certain×L      | release notes + last-Tauri-release remains downloadable                                      | complaints → point to final Tauri release; no reversal                                                                                          |
+| R-14 | Executor scope-creep (UI redesign, protocol "improvements")                  | M×H            | ADR-004 freeze, §34.1 no-silent-test-rewrites, §20.4/§15.5 non-goals, review checklist §10.7 | any diff touching frozen semantics without a task ID → reject                                                                                   |
+| R-15 | Electron major EOL mid-migration                                             | L×L            | §11.6 policy; upgrade PRs isolated                                                           | CVE in pinned major → expedite upgrade PR with smoke matrix                                                                                     |
 
 ---
 
@@ -1711,7 +1727,7 @@ Sixteen phases, P0–P15. Every phase has the ten fixed fields. Global invariant
 
 ### P7 — Electron Playback/Catalog Parity + First Soak
 
-- **Goal:** Electron app is a *usable music player* with a real account: playback, queue, seek storms, lyrics page, search/discover/album/playlist, favorites — all real-provider.
+- **Goal:** Electron app is a _usable music player_ with a real account: playback, queue, seek storms, lyrics page, search/discover/album/playlist, favorites — all real-provider.
 - **Preconditions:** P6.
 - **Scope:** bug-fixing phase against §36 P7 rows; no new architecture. `backgroundThrottling` verification for the position clock UI; media/artwork cache behavior under Chromium (`app://` + `http://127.0.0.1` interplay).
 - **Steps:** run §36 P7 row checklists on Windows + Linux; fix; first 4-h soak (§35.3); record protocol round-trip p95 (§15.4).
@@ -1726,7 +1742,7 @@ Sixteen phases, P0–P15. Every phase has the ten fixed fields. Global invariant
 
 ### P8 — Account & Auth Parity
 
-- **Goal:** QR login, OAuth popup logins (QQ + WeChat), session continuity from the *existing* keyring entry, staging slot, refresh, entitlement — all on Electron.
+- **Goal:** QR login, OAuth popup logins (QQ + WeChat), session continuity from the _existing_ keyring entry, staging slot, refresh, entitlement — all on Electron.
 - **Preconditions:** P7.
 - **Scope:** `oauth-window.ts` (§16.4 host half); auth E2E-manual scripts; keyring continuity verification (R-10) on GNOME + KDE + Windows.
 - **Steps:** oauth window lifecycle (open/allowlist/capture/complete/cancel-on-close) → QR flow re-verify → upgrade-in-place test: boot Electron build on a profile where the Tauri build was logged in → assert session valid without re-login.
@@ -1833,198 +1849,198 @@ Atomic tasks, grouped by phase. Columns: **Depends** (task IDs; phase-entry impl
 
 ### P0
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| BASE-01 ⛔ | Cut `feat/electron-migration` from `bc55b7d`; enable branch CI | — | CI green on branch |
-| BASE-02 | Record test baseline (suite names + counts) → `docs/migration/test-baseline.md` | BASE-01 | doc committed |
-| BASE-03 ⛔ | `scripts/perf-baseline.mjs` + run on Win/Linux → `docs/migration/perf-baseline.md` (§35.1) | BASE-01 | numbers for every §35.2 metric |
+| ID         | Task                                                                                                                                               | Depends | Verification                                                |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------- |
+| BASE-01 ⛔ | Cut `feat/electron-migration` from `bc55b7d`; enable branch CI                                                                                     | —       | CI green on branch                                          |
+| BASE-02    | Record test baseline (suite names + counts) → `docs/migration/test-baseline.md`                                                                    | BASE-01 | doc committed                                               |
+| BASE-03 ⛔ | `scripts/perf-baseline.mjs` + run on Win/Linux → `docs/migration/perf-baseline.md` (§35.1)                                                         | BASE-01 | numbers for every §35.2 metric                              |
 | BASE-04 ⛔ | Ground-truth data paths + app_settings keys (geometry, queue, presets) from live Tauri diagnostics → `docs/migration/data-paths.md` (§18.1, §22.6) | BASE-01 | table incl. Win+Linux paths, keyring entries, settings keys |
-| BASE-05 | Record current release asset names/formats → `docs/migration/release-assets.md` | BASE-01 | doc committed |
+| BASE-05    | Record current release asset names/formats → `docs/migration/release-assets.md`                                                                    | BASE-01 | doc committed                                               |
 
 ### P1
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| CORE-01 ⛔ | Root workspace `Cargo.toml`; empty `crates/yaqmc-core` wired; shim builds | BASE-01 | `cargo build` workspace green |
-| CORE-02 ⛔ | `git mv` batch 1: player, audio, playback_session, media, streaming, qmc | CORE-01 | tests moved+green; `git log --follow` intact |
-| CORE-03 ⛔ | Batch 2: storage, credentials, app_preferences, logging | CORE-02 | same |
-| CORE-04 ⛔ | Batch 3: qqmusic/* (oauth window half stays in shim), diagnostics, issue_reporter, local_api, system_media, platform | CORE-03 | same |
-| CORE-05 ⛔ | Batch 4: plugin/* (minus commands.rs) | CORE-04 | same |
-| CORE-06 ⛔ | Replace 7 `tauri::async_runtime::spawn` → `tokio::spawn`; inject runtime `Handle` via `CoreHandle` | CORE-02..05 | `rg tauri crates/` empty; tests green |
-| CORE-07 ⛔ | `HostCommand` internal bus; `system_media` raise/quit → bus; shim subscribes → AppHandle | CORE-06 | SMTC/MPRIS raise/quit manual check on Tauri |
-| CORE-08 ⛔ | `CoreConfig` path injection; shim passes Tauri-resolved paths; `bootstrap()` assembles services in §10.2 order | CORE-06 | Tauri smoke: data lands in same dirs (diff vs BASE-04) |
+| ID         | Task                                                                                                                 | Depends     | Verification                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------ |
+| CORE-01 ⛔ | Root workspace `Cargo.toml`; empty `crates/yaqmc-core` wired; shim builds                                            | BASE-01     | `cargo build` workspace green                          |
+| CORE-02 ⛔ | `git mv` batch 1: player, audio, playback_session, media, streaming, qmc                                             | CORE-01     | tests moved+green; `git log --follow` intact           |
+| CORE-03 ⛔ | Batch 2: storage, credentials, app_preferences, logging                                                              | CORE-02     | same                                                   |
+| CORE-04 ⛔ | Batch 3: qqmusic/* (oauth window half stays in shim), diagnostics, issue_reporter, local_api, system_media, platform | CORE-03     | same                                                   |
+| CORE-05 ⛔ | Batch 4: plugin/* (minus commands.rs)                                                                                | CORE-04     | same                                                   |
+| CORE-06 ⛔ | Replace 7 `tauri::async_runtime::spawn` → `tokio::spawn`; inject runtime `Handle` via `CoreHandle`                   | CORE-02..05 | `rg tauri crates/` empty; tests green                  |
+| CORE-07 ⛔ | `HostCommand` internal bus; `system_media` raise/quit → bus; shim subscribes → AppHandle                             | CORE-06     | SMTC/MPRIS raise/quit manual check on Tauri            |
+| CORE-08 ⛔ | `CoreConfig` path injection; shim passes Tauri-resolved paths; `bootstrap()` assembles services in §10.2 order       | CORE-06     | Tauri smoke: data lands in same dirs (diff vs BASE-04) |
 
 ### P2
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| PROTO-01 ⛔ | `crates/yaqmc-protocol`: envelope, framing codec, `CoreTransport` + `StdioTransport`/`DuplexTransport`, error codes | CORE-01 | §34.2 unit tests |
-| PROTO-02 ⛔ | Generate `docs/migration/command-inventory.md`: 117 rows (name, params/result type, owner-after, notes) from `generate_handler!` + frontend string scan (§37.9) | BASE-01 | row count = 117; frontend-referenced = 112; the 5 unreferenced + 1 unregistered commands dispositioned |
-| PROTO-03 ⛔ | Method registry (`registry.rs`) from inventory + `MethodSpec` flags | PROTO-02 | registry-vs-dispatch drift test |
-| PROTO-04 ⛔ | `server/methods.rs`: dispatch arms for all core-owned methods (bodies from `commands.rs`); shim wrappers shrink to shared-fn calls | PROTO-03, CORE-08 | Tauri full smoke; dispatch unit tests per group |
-| PROTO-05 ⛔ | `server/events.rs`: port §3.2 fan-out (channel map, lagged-resync, SMTC feed, queue persist) | CORE-07 | harness observes identical event sequences vs Tauri run (recorded fixture compare) |
-| PROTO-06 ⛔ | `yaqmc-core` bin: `main.rs`, handshake, `attach`/`ready`, stdin-EOF shutdown, `core_ping`, `platform_attach`, `core_shutdown_prepare` | PROTO-01,04,05 | handshake + EOF tests |
-| PROTO-07 ⛔ | OAuth logic split: `auth_oauth_prepare/complete/cancel` methods; shim window code consumes them (§16.4) | PROTO-04 | Tauri OAuth login manual (QQ+WX) |
-| PROTO-08 ⛔ | Integration harness `protocol_e2e.rs` + test-provider feature + §15.6 scenarios 1–4 | PROTO-06 | harness green Win+Linux CI |
-| PROTO-09 | Fixture emitter (`--features fixtures`) for contract tests | PROTO-06 | fixtures generated deterministically |
+| ID          | Task                                                                                                                                                            | Depends           | Verification                                                                                           |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| PROTO-01 ⛔ | `crates/yaqmc-protocol`: envelope, framing codec, `CoreTransport` + `StdioTransport`/`DuplexTransport`, error codes                                             | CORE-01           | §34.2 unit tests                                                                                       |
+| PROTO-02 ⛔ | Generate `docs/migration/command-inventory.md`: 117 rows (name, params/result type, owner-after, notes) from `generate_handler!` + frontend string scan (§37.9) | BASE-01           | row count = 117; frontend-referenced = 112; the 5 unreferenced + 1 unregistered commands dispositioned |
+| PROTO-03 ⛔ | Method registry (`registry.rs`) from inventory + `MethodSpec` flags                                                                                             | PROTO-02          | registry-vs-dispatch drift test                                                                        |
+| PROTO-04 ⛔ | `server/methods.rs`: dispatch arms for all core-owned methods (bodies from `commands.rs`); shim wrappers shrink to shared-fn calls                              | PROTO-03, CORE-08 | Tauri full smoke; dispatch unit tests per group                                                        |
+| PROTO-05 ⛔ | `server/events.rs`: port §3.2 fan-out (channel map, lagged-resync, SMTC feed, queue persist)                                                                    | CORE-07           | harness observes identical event sequences vs Tauri run (recorded fixture compare)                     |
+| PROTO-06 ⛔ | `yaqmc-core` bin: `main.rs`, handshake, `attach`/`ready`, stdin-EOF shutdown, `core_ping`, `platform_attach`, `core_shutdown_prepare`                           | PROTO-01,04,05    | handshake + EOF tests                                                                                  |
+| PROTO-07 ⛔ | OAuth logic split: `auth_oauth_prepare/complete/cancel` methods; shim window code consumes them (§16.4)                                                         | PROTO-04          | Tauri OAuth login manual (QQ+WX)                                                                       |
+| PROTO-08 ⛔ | Integration harness `protocol_e2e.rs` + test-provider feature + §15.6 scenarios 1–4                                                                             | PROTO-06          | harness green Win+Linux CI                                                                             |
+| PROTO-09    | Fixture emitter (`--features fixtures`) for contract tests                                                                                                      | PROTO-06          | fixtures generated deterministically                                                                   |
 
 ### P3
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| CLIENT-01 ⛔ | npm workspaces + tsconfig references + package scaffold | BASE-01 | `npm run build -w @yaqmc/client` |
-| CLIENT-02 ⛔ | Protocol TS mirror (types/methods/events) seeded from existing frontend types | CLIENT-01, PROTO-02 | tsc strict green |
-| CLIENT-03 ⛔ | `HostBridge` + `YaqmcClient` (method groups, event sub, invoke queue-until-ready) | CLIENT-02 | unit tests |
-| CLIENT-04 ⛔ | Move seek-coalescing adapter into package; old path re-exports | CLIENT-03 | frontend untouched; Vitest green |
-| CLIENT-05 ⛔ | Contract tests over PROTO-09 fixtures + `contracts:update` script | CLIENT-02, PROTO-09 | CI job red-on-drift demo |
-| CLIENT-06 | Fake bridge wrapping `fake-music-provider` | CLIENT-03 | browser `?provider=fake` unchanged |
+| ID           | Task                                                                              | Depends             | Verification                       |
+| ------------ | --------------------------------------------------------------------------------- | ------------------- | ---------------------------------- |
+| CLIENT-01 ⛔ | npm workspaces + tsconfig references + package scaffold                           | BASE-01             | `npm run build -w @yaqmc/client`   |
+| CLIENT-02 ⛔ | Protocol TS mirror (types/methods/events) seeded from existing frontend types     | CLIENT-01, PROTO-02 | tsc strict green                   |
+| CLIENT-03 ⛔ | `HostBridge` + `YaqmcClient` (method groups, event sub, invoke queue-until-ready) | CLIENT-02           | unit tests                         |
+| CLIENT-04 ⛔ | Move seek-coalescing adapter into package; old path re-exports                    | CLIENT-03           | frontend untouched; Vitest green   |
+| CLIENT-05 ⛔ | Contract tests over PROTO-09 fixtures + `contracts:update` script                 | CLIENT-02, PROTO-09 | CI job red-on-drift demo           |
+| CLIENT-06    | Fake bridge wrapping `fake-music-provider`                                        | CLIENT-03           | browser `?provider=fake` unchanged |
 
 ### P4
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| ELEC-01 ⛔ | Scaffold `apps/desktop` (esbuild main/preload, tsconfig, Electron pinned per §11.6) | CLIENT-01 | `electron .` opens blank window |
-| ELEC-02 ⛔ | `core/frames.ts` + `core/client.ts` (framing, promise map, timeouts, event demux) | ELEC-01 | unit tests w/ mock stream |
-| ELEC-03 ⛔ | `core/supervisor.ts` v1 (spawn, handshake, exit detection) + `scripts/stage-core.mjs` | ELEC-02, PROTO-06 | dev boot reaches `ready` |
-| ELEC-04 ⛔ | `app://` protocol + CSP header + main window per §11.2 + preload `main.ts` (`window.yaqmc`) | ELEC-03 | renderer console round-trip `player_snapshot` |
-| ELEC-05 ⛔ | IpcRouter + ACL table (`channels.ts`) incl. host-method interception | ELEC-04 | ACL unit tests (denied method → `host.denied`) |
-| SEC-01 ⛔ | CSP port audit vs `tauri.conf.json` (exact directive mapping doc in code comment) | ELEC-04 | CSP header matches §28.3 decision |
-| SEC-02 ⛔ | `security.ts`: permission handlers, navigation containment, window-open handler (§28.4–28.5) | ELEC-04 | Playwright: nav to external URL blocked |
-| SEC-03 | CI lint: forbidden Chromium switches + preload purity greps (§28.7, §33.5) | ELEC-01 | CI fails on seeded violation |
-| VITE-01 | Verify Vite `base`/asset URLs under `app://`; fix if absolute | ELEC-04 | packaged renderer loads assets |
-| ELEC-06 ⛔ | First-boot path-parity integration test (scratch profile vs BASE-04) | ELEC-03 | test green Win+Linux |
-| ELEC-07 | Move icons → `apps/desktop/resources`; wire builder skeleton config | ELEC-01 | dev app shows icon |
-| ELEC-08 ⛔ | CI: Electron build job (build-only, both OS) | ELEC-03 | CI green |
-| ELEC-09 | Dev scripts: `dev:desktop` orchestration (§11.5) | ELEC-03 | one-command dev loop |
+| ID         | Task                                                                                         | Depends           | Verification                                   |
+| ---------- | -------------------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------- |
+| ELEC-01 ⛔ | Scaffold `apps/desktop` (esbuild main/preload, tsconfig, Electron pinned per §11.6)          | CLIENT-01         | `electron .` opens blank window                |
+| ELEC-02 ⛔ | `core/frames.ts` + `core/client.ts` (framing, promise map, timeouts, event demux)            | ELEC-01           | unit tests w/ mock stream                      |
+| ELEC-03 ⛔ | `core/supervisor.ts` v1 (spawn, handshake, exit detection) + `scripts/stage-core.mjs`        | ELEC-02, PROTO-06 | dev boot reaches `ready`                       |
+| ELEC-04 ⛔ | `app://` protocol + CSP header + main window per §11.2 + preload `main.ts` (`window.yaqmc`)  | ELEC-03           | renderer console round-trip `player_snapshot`  |
+| ELEC-05 ⛔ | IpcRouter + ACL table (`channels.ts`) incl. host-method interception                         | ELEC-04           | ACL unit tests (denied method → `host.denied`) |
+| SEC-01 ⛔  | CSP port audit vs `tauri.conf.json` (exact directive mapping doc in code comment)            | ELEC-04           | CSP header matches §28.3 decision              |
+| SEC-02 ⛔  | `security.ts`: permission handlers, navigation containment, window-open handler (§28.4–28.5) | ELEC-04           | Playwright: nav to external URL blocked        |
+| SEC-03     | CI lint: forbidden Chromium switches + preload purity greps (§28.7, §33.5)                   | ELEC-01           | CI fails on seeded violation                   |
+| VITE-01    | Verify Vite `base`/asset URLs under `app://`; fix if absolute                                | ELEC-04           | packaged renderer loads assets                 |
+| ELEC-06 ⛔ | First-boot path-parity integration test (scratch profile vs BASE-04)                         | ELEC-03           | test green Win+Linux                           |
+| ELEC-07    | Move icons → `apps/desktop/resources`; wire builder skeleton config                          | ELEC-01           | dev app shows icon                             |
+| ELEC-08 ⛔ | CI: Electron build job (build-only, both OS)                                                 | ELEC-03           | CI green                                       |
+| ELEC-09    | Dev scripts: `dev:desktop` orchestration (§11.5)                                             | ELEC-03           | one-command dev loop                           |
 
 ### P5
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| SUP-01 ⛔ | Env passthrough audit + allowlist for core spawn (`DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, locale, `HOME`, platform vars) | ELEC-03 | keyring + MPRIS work from spawned core on Linux |
-| SUP-02 | PID-file guard (stale core kill, image-name check — §24) | ELEC-03 | zombie-core test |
-| SUP-03 | Core binary sha256 manifest + spawn-time verify (§28.8) | ELEC-03 | tamper test fails closed |
-| SUP-04 ⛔ | Backoff/restart/safe-mode state machine + `host://core-status` events + banner component + resync (§14.5) in client | ELEC-05, CLIENT-03 | §34.6 unit + Playwright kill-core E2E |
-| SUP-05 ⛔ | Single instance + second-launch focus (§11.4) | ELEC-01 | E2E |
-| SUP-06 ⛔ | `TauriHostBridge` (invoke/listen/window APIs) + bridge auto-selection bootstrap | CLIENT-03 | bridge unit tests on Tauri dev build |
+| ID        | Task                                                                                                                            | Depends            | Verification                                    |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------- |
+| SUP-01 ⛔ | Env passthrough audit + allowlist for core spawn (`DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, locale, `HOME`, platform vars) | ELEC-03            | keyring + MPRIS work from spawned core on Linux |
+| SUP-02    | PID-file guard (stale core kill, image-name check — §24)                                                                        | ELEC-03            | zombie-core test                                |
+| SUP-03    | Core binary sha256 manifest + spawn-time verify (§28.8)                                                                         | ELEC-03            | tamper test fails closed                        |
+| SUP-04 ⛔ | Backoff/restart/safe-mode state machine + `host://core-status` events + banner component + resync (§14.5) in client             | ELEC-05, CLIENT-03 | §34.6 unit + Playwright kill-core E2E           |
+| SUP-05 ⛔ | Single instance + second-launch focus (§11.4)                                                                                   | ELEC-01            | E2E                                             |
+| SUP-06 ⛔ | `TauriHostBridge` (invoke/listen/window APIs) + bridge auto-selection bootstrap                                                 | CLIENT-03          | bridge unit tests on Tauri dev build            |
 
 ### P6
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| FE-01 ⛔ | Player runtime + adapter re-import onto client (§12.4 row 1) | SUP-06, CLIENT-04 | Tauri smoke + store tests unchanged |
-| FE-02 ⛔ | Provider/account/preferences/lyrics bridge files (17-file group) | FE-01 | Tauri smoke; Vitest green |
-| FE-03 ⛔ | Plugin-runtime, local-api settings, diagnostics bridges | FE-02 | Tauri plugin battery |
-| FE-04 ⛔ | TopBar/window chrome, fullscreen, external links, surfaces (dual drag §12.4) | FE-01 | both-host window controls manual |
-| FE-05 ⛔ | ESLint `no-restricted-imports` gate + `isNativeRuntime` sniff removal | FE-01..04 | lint green; grep clean (§33.5) |
-| FE-06 | Playwright fake-mode suite covering main UI flows on Electron | FE-01..04, SUP-04 | ~15 scenarios green |
+| ID       | Task                                                                         | Depends           | Verification                        |
+| -------- | ---------------------------------------------------------------------------- | ----------------- | ----------------------------------- |
+| FE-01 ⛔ | Player runtime + adapter re-import onto client (§12.4 row 1)                 | SUP-06, CLIENT-04 | Tauri smoke + store tests unchanged |
+| FE-02 ⛔ | Provider/account/preferences/lyrics bridge files (17-file group)             | FE-01             | Tauri smoke; Vitest green           |
+| FE-03 ⛔ | Plugin-runtime, local-api settings, diagnostics bridges                      | FE-02             | Tauri plugin battery                |
+| FE-04 ⛔ | TopBar/window chrome, fullscreen, external links, surfaces (dual drag §12.4) | FE-01             | both-host window controls manual    |
+| FE-05 ⛔ | ESLint `no-restricted-imports` gate + `isNativeRuntime` sniff removal        | FE-01..04         | lint green; grep clean (§33.5)      |
+| FE-06    | Playwright fake-mode suite covering main UI flows on Electron                | FE-01..04, SUP-04 | ~15 scenarios green                 |
 
 ### P7
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| PLAY-01 ⛔ | §36 P7 row execution (playback/queue/seek/lyrics/catalog/favorites) Win+Linux, fix backlog | FE-05 | rows green incl. L-tests |
-| PLAY-02 ⛔ | Seek round-trip p95 measurement vs budget (§15.4) | PLAY-01 | number in perf doc |
-| PLAY-03 | `backgroundThrottling` + occluded-window cadence verification | PLAY-01 | lyrics surface cadence unaffected |
-| SOAK-01 ⛔ | Soak script + first 4-h run (§35.3) | PLAY-01 | report committed |
+| ID         | Task                                                                                       | Depends | Verification                      |
+| ---------- | ------------------------------------------------------------------------------------------ | ------- | --------------------------------- |
+| PLAY-01 ⛔ | §36 P7 row execution (playback/queue/seek/lyrics/catalog/favorites) Win+Linux, fix backlog | FE-05   | rows green incl. L-tests          |
+| PLAY-02 ⛔ | Seek round-trip p95 measurement vs budget (§15.4)                                          | PLAY-01 | number in perf doc                |
+| PLAY-03    | `backgroundThrottling` + occluded-window cadence verification                              | PLAY-01 | lyrics surface cadence unaffected |
+| SOAK-01 ⛔ | Soak script + first 4-h run (§35.3)                                                        | PLAY-01 | report committed                  |
 
 ### P8
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| ACCT-01 ⛔ | `oauth-window.ts` (partition, allowlist, capture, cancel-on-close) | SEC-02, PROTO-07 | QQ+WX OAuth manual green |
-| ACCT-02 ⛔ | QR login + session staging/refresh re-verify on Electron | PLAY-01 | manual script green |
-| ACCT-03 ⛔ | Session-continuity upgrade test (Tauri-login → Electron boot, no re-login) Win/GNOME/KDE | ACCT-02, SUP-01 | recorded demo; R-10 closed |
-| ACCT-04 | ACL negative tests (auth methods from surface windows rejected) | ELEC-05 | automated |
+| ID         | Task                                                                                     | Depends          | Verification               |
+| ---------- | ---------------------------------------------------------------------------------------- | ---------------- | -------------------------- |
+| ACCT-01 ⛔ | `oauth-window.ts` (partition, allowlist, capture, cancel-on-close)                       | SEC-02, PROTO-07 | QQ+WX OAuth manual green   |
+| ACCT-02 ⛔ | QR login + session staging/refresh re-verify on Electron                                 | PLAY-01          | manual script green        |
+| ACCT-03 ⛔ | Session-continuity upgrade test (Tauri-login → Electron boot, no re-login) Win/GNOME/KDE | ACCT-02, SUP-01  | recorded demo; R-10 closed |
+| ACCT-04    | ACL negative tests (auth methods from surface windows rejected)                          | ELEC-05          | automated                  |
 
 ### P9
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| PLAT-01 ⛔ | Tray + menu + close-to-tray + left-click toggle (§26.1) | FE-05 | E2E + manual |
-| PLAT-02 ⛔ | Global shortcuts ×3 + failure logging + Wayland guard (§26.2) | PLAT-01 | manual matrix |
-| PLAT-03 | Tray i18n dictionary generated from i18next JSON | PLAT-01 | locale switch updates menu |
-| PLAT-04 ⛔ | SMTC HWND attach via `platform_attach` (+fallback decision per R-3) | ELEC-04 | Win flyout/media keys/artwork manual |
-| PLAT-05 ⛔ | MPRIS re-verify + raise/quit via `host://command` | SUP-01 | playerctl + applets |
-| PLAT-06 ⛔ | Local API external-consumer parity (SSE tool smoke) + SUP-02 port note | PLAY-01 | curl/SSE script |
-| PLAT-07 ⛔ | `linux-graphics.ts` policy + `platform.rs` env-magic deletion + `YAQMC_LINUX_RENDERER` compat mapping (§29.2) | PLAY-01 | modes logged in diagnostics; env deleted from core |
-| SURF-01 ⛔ | `lyrics-surfaces.ts`: create/show/hide desktop+island per §11.2 | ELEC-05 | surfaces render |
-| SURF-02 ⛔ | Lock/unlock: click-through, focusable, unlock overlays ×2 | SURF-01 | click-through manual (§22.5) |
-| SURF-03 ⛔ | Geometry persistence (350 ms debounce, same keys) + boot restore + multi-display clamp | SURF-01 | restart-restore E2E; BASE-04 key diff = none |
-| SURF-04 ⛔ | Fullscreen auto-hide: core Win32 poller → `host://command` → hide/show | SURF-01, PLAT-04 | fullscreen video manual |
-| SURF-05 | Surface ACL preloads (`lyrics-surface.ts`, `unlock-overlay.ts`) | SURF-01 | ACL tests |
-| SURF-06 | Capability flags + settings banner (§29.3) | PLAT-07 | native-wayland mode shows banner |
+| ID         | Task                                                                                                          | Depends          | Verification                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------- |
+| PLAT-01 ⛔ | Tray + menu + close-to-tray + left-click toggle (§26.1)                                                       | FE-05            | E2E + manual                                       |
+| PLAT-02 ⛔ | Global shortcuts ×3 + failure logging + Wayland guard (§26.2)                                                 | PLAT-01          | manual matrix                                      |
+| PLAT-03    | Tray i18n dictionary generated from i18next JSON                                                              | PLAT-01          | locale switch updates menu                         |
+| PLAT-04 ⛔ | SMTC HWND attach via `platform_attach` (+fallback decision per R-3)                                           | ELEC-04          | Win flyout/media keys/artwork manual               |
+| PLAT-05 ⛔ | MPRIS re-verify + raise/quit via `host://command`                                                             | SUP-01           | playerctl + applets                                |
+| PLAT-06 ⛔ | Local API external-consumer parity (SSE tool smoke) + SUP-02 port note                                        | PLAY-01          | curl/SSE script                                    |
+| PLAT-07 ⛔ | `linux-graphics.ts` policy + `platform.rs` env-magic deletion + `YAQMC_LINUX_RENDERER` compat mapping (§29.2) | PLAY-01          | modes logged in diagnostics; env deleted from core |
+| SURF-01 ⛔ | `lyrics-surfaces.ts`: create/show/hide desktop+island per §11.2                                               | ELEC-05          | surfaces render                                    |
+| SURF-02 ⛔ | Lock/unlock: click-through, focusable, unlock overlays ×2                                                     | SURF-01          | click-through manual (§22.5)                       |
+| SURF-03 ⛔ | Geometry persistence (350 ms debounce, same keys) + boot restore + multi-display clamp                        | SURF-01          | restart-restore E2E; BASE-04 key diff = none       |
+| SURF-04 ⛔ | Fullscreen auto-hide: core Win32 poller → `host://command` → hide/show                                        | SURF-01, PLAT-04 | fullscreen video manual                            |
+| SURF-05    | Surface ACL preloads (`lyrics-surface.ts`, `unlock-overlay.ts`)                                               | SURF-01          | ACL tests                                          |
+| SURF-06    | Capability flags + settings banner (§29.3)                                                                    | PLAT-07          | native-wayland mode shows banner                   |
 
 ### P10
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| PLUG-01 ⛔ | Example-plugin battery (install/enable/disable/uninstall/permissions/storage) on Electron | FE-03 | §20.3 green |
-| PLUG-02 ⛔ | Network proxy allow/deny + safe-mode crash-loop drill | PLUG-01 | manual + journal check |
-| PLUG-03 | Worker-isolation runtime test (no `window.yaqmc` in Worker scope) | PLUG-01 | automated |
-| PLUG-04 | Scene API v2 demo plugin end-to-end | PLUG-01 | manual |
+| ID         | Task                                                                                      | Depends | Verification           |
+| ---------- | ----------------------------------------------------------------------------------------- | ------- | ---------------------- |
+| PLUG-01 ⛔ | Example-plugin battery (install/enable/disable/uninstall/permissions/storage) on Electron | FE-03   | §20.3 green            |
+| PLUG-02 ⛔ | Network proxy allow/deny + safe-mode crash-loop drill                                     | PLUG-01 | manual + journal check |
+| PLUG-03    | Worker-isolation runtime test (no `window.yaqmc` in Worker scope)                         | PLUG-01 | automated              |
+| PLUG-04    | Scene API v2 demo plugin end-to-end                                                       | PLUG-01 | manual                 |
 
 ### P11
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| PACK-01 ⛔ | Finalize `electron-builder.yml` (appId parity §31.2); re-verify+pin Electron/builder versions | ELEC-07 | local package boots |
-| PACK-02 ⛔ | Windows NSIS + portable (x64, arm64) + install/upgrade/uninstall script | PACK-01, CI-03 | clean-VM matrix |
-| PACK-03 ⛔ | Linux AppImage/deb/rpm/tar.gz (x64, arm64) | PACK-01, CI-03 | clean-VM matrix |
-| PACK-04 | `sync-version.mjs` + build metadata defines parity (§31.3) | PACK-01 | handshake version-equality test |
-| CI-01 ⛔ | Rewrite quality job (workspace clippy/test, tsc multi-project, contracts, greps) | FE-05 | CI green |
-| CI-02 ⛔ | Electron package matrix jobs + dist-reuse + cargo cache | PACK-02,03 | matrix artifacts |
-| CI-03 ⛔ | arm64 story: `aarch64-pc-windows-msvc` core cross-build + `ubuntu-24.04-arm` native | ELEC-08 | arm artifacts boot-tested where hardware allows |
-| CI-04 | Release workflow successor (§33.4) + checksums + updater metadata | CI-02 | draft release rehearsal |
-| UPD-01 ⛔ | electron-updater wiring (notify-flow, channels, unsigned config §32) | PACK-04, CI-04 | A→B upgrade rehearsal incl. core swap |
-| UPD-02 | Settings UI: update section + `host://update` states | UPD-01 | manual |
-| DIAG-01 ⛔ | Host log + `diagnostics_host_payload` + bundle extension (§27.3) | SUP-04 | bundle contains host.json + stderr tail |
-| DIAG-02 | Issue reporter host line | DIAG-01 | URL contains electron version |
-| DIAG-03 ⛔ | Dialog-split methods `_to/_from` ×3 + Main `dialogs.ts` (§27.4) | ELEC-05 | export/background/install flows manual |
+| ID         | Task                                                                                          | Depends        | Verification                                    |
+| ---------- | --------------------------------------------------------------------------------------------- | -------------- | ----------------------------------------------- |
+| PACK-01 ⛔ | Finalize `electron-builder.yml` (appId parity §31.2); re-verify+pin Electron/builder versions | ELEC-07        | local package boots                             |
+| PACK-02 ⛔ | Windows NSIS + portable (x64, arm64) + install/upgrade/uninstall script                       | PACK-01, CI-03 | clean-VM matrix                                 |
+| PACK-03 ⛔ | Linux AppImage/deb/rpm/tar.gz (x64, arm64)                                                    | PACK-01, CI-03 | clean-VM matrix                                 |
+| PACK-04    | `sync-version.mjs` + build metadata defines parity (§31.3)                                    | PACK-01        | handshake version-equality test                 |
+| CI-01 ⛔   | Rewrite quality job (workspace clippy/test, tsc multi-project, contracts, greps)              | FE-05          | CI green                                        |
+| CI-02 ⛔   | Electron package matrix jobs + dist-reuse + cargo cache                                       | PACK-02,03     | matrix artifacts                                |
+| CI-03 ⛔   | arm64 story: `aarch64-pc-windows-msvc` core cross-build + `ubuntu-24.04-arm` native           | ELEC-08        | arm artifacts boot-tested where hardware allows |
+| CI-04      | Release workflow successor (§33.4) + checksums + updater metadata                             | CI-02          | draft release rehearsal                         |
+| UPD-01 ⛔  | electron-updater wiring (notify-flow, channels, unsigned config §32)                          | PACK-04, CI-04 | A→B upgrade rehearsal incl. core swap           |
+| UPD-02     | Settings UI: update section + `host://update` states                                          | UPD-01         | manual                                          |
+| DIAG-01 ⛔ | Host log + `diagnostics_host_payload` + bundle extension (§27.3)                              | SUP-04         | bundle contains host.json + stderr tail         |
+| DIAG-02    | Issue reporter host line                                                                      | DIAG-01        | URL contains electron version                   |
+| DIAG-03 ⛔ | Dialog-split methods `_to/_from` ×3 + Main `dialogs.ts` (§27.4)                               | ELEC-05        | export/background/install flows manual          |
 
 ### P12
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| ACC-01 ⛔ | Linux acceptance matrix §29.5 execution + fixes | P8–P11 ⛔ tasks | signed matrix doc |
-| ACC-02 ⛔ | Windows acceptance (§30 checks incl. transparency/DWM, arm64 smoke) | P8–P11 | signed |
-| ACC-03 ⛔ | Perf budgets gate (§35.2) + second soak | PLAY-02, SOAK-01 | table within budgets |
-| ACC-04 ⛔ | Daily-driver week ×2 platforms + bug backlog burn-down | ACC-01,02 | zero P1 bugs open |
-| ACC-05 ⛔ | `pre-tauri-removal` tag + §38.1 checklist sign-off | ACC-01..04 | tag pushed |
+| ID        | Task                                                                | Depends          | Verification         |
+| --------- | ------------------------------------------------------------------- | ---------------- | -------------------- |
+| ACC-01 ⛔ | Linux acceptance matrix §29.5 execution + fixes                     | P8–P11 ⛔ tasks  | signed matrix doc    |
+| ACC-02 ⛔ | Windows acceptance (§30 checks incl. transparency/DWM, arm64 smoke) | P8–P11           | signed               |
+| ACC-03 ⛔ | Perf budgets gate (§35.2) + second soak                             | PLAY-02, SOAK-01 | table within budgets |
+| ACC-04 ⛔ | Daily-driver week ×2 platforms + bug backlog burn-down              | ACC-01,02        | zero P1 bugs open    |
+| ACC-05 ⛔ | `pre-tauri-removal` tag + §38.1 checklist sign-off                  | ACC-01..04       | tag pushed           |
 
 ### P13
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| REM-01 ⛔ | Execute §38.2 removal inventory (single PR) | ACC-05 | §38.4 sweeps green |
-| REM-02 ⛔ | CI Tauri-job deletion + guard-grep exception updates | REM-01 | CI green |
-| REM-03 ⛔ | Fresh-clone builds ×3 OS images + packaged smoke | REM-01 | recorded |
-| REM-04 | Release-notes draft (i686, size, data-in-place, WebKitGTK removal) | REM-01 | doc committed |
+| ID        | Task                                                               | Depends | Verification       |
+| --------- | ------------------------------------------------------------------ | ------- | ------------------ |
+| REM-01 ⛔ | Execute §38.2 removal inventory (single PR)                        | ACC-05  | §38.4 sweeps green |
+| REM-02 ⛔ | CI Tauri-job deletion + guard-grep exception updates               | REM-01  | CI green           |
+| REM-03 ⛔ | Fresh-clone builds ×3 OS images + packaged smoke                   | REM-01  | recorded           |
+| REM-04    | Release-notes draft (i686, size, data-in-place, WebKitGTK removal) | REM-01  | doc committed      |
 
 ### P14
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| PROV-01 ⛔ | qm-api-rs access: CI token/insteadOf (or vendor fallback); pin rev `a7430a8` | §17.6 license gate | CI builds provider crate |
-| PROV-02 | Workspace dep dedup audit (reqwest/tokio single versions) | PROV-01 | `cargo tree -d` clean |
-| PROV-03 | Library logging/redaction audit; wrap if it logs URLs/secrets | PROV-01 | log scan under verbose run |
-| PROV-04 | Endpoint coverage audit → final Keep/Hybrid/Replace per §17.4 K rows | PROV-01 | updated table committed |
-| PROV-05 ⛔ | `yaqmc-provider-api` trait + registry + core rewire (`PlaybackSourceResolver` over trait) — behavior no-op | REM-03 | full §34.7 pack + parity spot-checks |
-| PROV-06 ⛔ | `git mv` qqmusic/* + qmc.rs → `yaqmc-provider-qqmusic`; adapter implements trait | PROV-05 | no-op gate: suites green |
-| PROV-07 ⛔ | QMC golden corpus + `qmc` module swap (first Replace) | PROV-06 | byte-identical decrypts |
-| PROV-08 ⛔ | Swap batches: lyrics → vkey → transport+signing → QR login/session (+`qqmusic-credential-v2` converter §17.3), each behind feature flag + L-verified | PROV-07 | §17.5 protocol per batch |
-| PROV-09 ⛔ | Account/entitlement hybrids (raw ops via library; reconciliation in-tree) | PROV-08 | favorites L-tests |
-| PROV-10 ⛔ | 3-day soak → default `qmapi` → retire replaced modules + old keyring entry | PROV-08,09 | parity matrix re-run; dead code deleted |
+| ID         | Task                                                                                                                                                 | Depends            | Verification                            |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------- |
+| PROV-01 ⛔ | qm-api-rs access: CI token/insteadOf (or vendor fallback); pin rev `a7430a8`                                                                         | §17.6 license gate | CI builds provider crate                |
+| PROV-02    | Workspace dep dedup audit (reqwest/tokio single versions)                                                                                            | PROV-01            | `cargo tree -d` clean                   |
+| PROV-03    | Library logging/redaction audit; wrap if it logs URLs/secrets                                                                                        | PROV-01            | log scan under verbose run              |
+| PROV-04    | Endpoint coverage audit → final Keep/Hybrid/Replace per §17.4 K rows                                                                                 | PROV-01            | updated table committed                 |
+| PROV-05 ⛔ | `yaqmc-provider-api` trait + registry + core rewire (`PlaybackSourceResolver` over trait) — behavior no-op                                           | REM-03             | full §34.7 pack + parity spot-checks    |
+| PROV-06 ⛔ | `git mv` qqmusic/* + qmc.rs → `yaqmc-provider-qqmusic`; adapter implements trait                                                                     | PROV-05            | no-op gate: suites green                |
+| PROV-07 ⛔ | QMC golden corpus + `qmc` module swap (first Replace)                                                                                                | PROV-06            | byte-identical decrypts                 |
+| PROV-08 ⛔ | Swap batches: lyrics → vkey → transport+signing → QR login/session (+`qqmusic-credential-v2` converter §17.3), each behind feature flag + L-verified | PROV-07            | §17.5 protocol per batch                |
+| PROV-09 ⛔ | Account/entitlement hybrids (raw ops via library; reconciliation in-tree)                                                                            | PROV-08            | favorites L-tests                       |
+| PROV-10 ⛔ | 3-day soak → default `qmapi` → retire replaced modules + old keyring entry                                                                           | PROV-08,09         | parity matrix re-run; dead code deleted |
 
 ### P15
 
-| ID | Task | Depends | Verification |
-|---|---|---|---|
-| CLEAN-01 ⛔ | §38.3 docs updates (architecture, linux, logging TD-7, local-api, README) | REM-04 | docs build (`pages.yml`) green |
-| CLEAN-02 | Follow-up issues filed (signing, notifications, deep-link, native-Wayland, TD-3) | — | issue links in doc |
-| CLEAN-03 ⛔ | Final full §46 re-run + §47 checklist | PROV-10 (or REM-03 if P14 deferred per R-6) | signed |
-| CLEAN-04 | CONTRIBUTING/uninstall/private-dep docs | CLEAN-01 | reviewed |
-| CLEAN-05 | Tag `electron-migration-complete`; archive `docs/migration/` scratch | CLEAN-03 | tag pushed |
+| ID          | Task                                                                             | Depends                                     | Verification                   |
+| ----------- | -------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------ |
+| CLEAN-01 ⛔ | §38.3 docs updates (architecture, linux, logging TD-7, local-api, README)        | REM-04                                      | docs build (`pages.yml`) green |
+| CLEAN-02    | Follow-up issues filed (signing, notifications, deep-link, native-Wayland, TD-3) | —                                           | issue links in doc             |
+| CLEAN-03 ⛔ | Final full §46 re-run + §47 checklist                                            | PROV-10 (or REM-03 if P14 deferred per R-6) | signed                         |
+| CLEAN-04    | CONTRIBUTING/uninstall/private-dep docs                                          | CLEAN-01                                    | reviewed                       |
+| CLEAN-05    | Tag `electron-migration-complete`; archive `docs/migration/` scratch             | CLEAN-03                                    | tag pushed                     |
 
 ---
 
@@ -2067,20 +2083,20 @@ Key cross-phase task edges (already encoded in §41, repeated for visibility): `
 
 Maximum useful concurrency without merge pain — lanes are disjoint by directory ownership:
 
-| Window | Lane A (Rust) | Lane B (TypeScript app) | Lane C (Frontend) | Lane D (Infra/QA) |
-|---|---|---|---|---|
-| P0 | BASE-04 | — | — | BASE-01/02/03/05 |
-| P1 | CORE-01..08 (serial-ish; batches 2–5 can pipeline) | — | — | CI branch care |
-| P2 | PROTO-01,03..09 | — | — | PROTO-02 (scan tooling) |
-| P3 ∥ P4 | harness polish | ELEC-01..09, SEC-01..03, VITE-01 | CLIENT-01..06 | ELEC-08 |
-| P5 | — | SUP-01..05 | SUP-06 | — |
-| P6 | bugfix support | FE-06 harness | FE-01..05 (serial groups) | — |
-| P7 | PLAY fixes | PLAY-03 | PLAY-01 assist | SOAK-01, PLAY-02 |
-| P8 ∥ P9 ∥ P10 ∥ P11 | PLAT-04/05, SURF-04, DIAG core side | ACCT-01, PLAT-01..03, SURF-01..06, DIAG-03, UPD-01/02 | ACCT-04, SURF banner UI, UPD-02 UI | PACK-01..04, CI-01..04, DIAG-01 |
-| P12 | fix backlog | fix backlog | fix backlog | ACC-01..05 orchestration |
-| P13 | REM-01 Rust side | REM-01 TS side | REM-01 frontend side | REM-02/03/04 |
-| P14 | PROV-01..10 | — | — | PROV soak logistics |
-| P15 | — | — | — | CLEAN-01..05 |
+| Window              | Lane A (Rust)                                      | Lane B (TypeScript app)                               | Lane C (Frontend)                  | Lane D (Infra/QA)               |
+| ------------------- | -------------------------------------------------- | ----------------------------------------------------- | ---------------------------------- | ------------------------------- |
+| P0                  | BASE-04                                            | —                                                     | —                                  | BASE-01/02/03/05                |
+| P1                  | CORE-01..08 (serial-ish; batches 2–5 can pipeline) | —                                                     | —                                  | CI branch care                  |
+| P2                  | PROTO-01,03..09                                    | —                                                     | —                                  | PROTO-02 (scan tooling)         |
+| P3 ∥ P4             | harness polish                                     | ELEC-01..09, SEC-01..03, VITE-01                      | CLIENT-01..06                      | ELEC-08                         |
+| P5                  | —                                                  | SUP-01..05                                            | SUP-06                             | —                               |
+| P6                  | bugfix support                                     | FE-06 harness                                         | FE-01..05 (serial groups)          | —                               |
+| P7                  | PLAY fixes                                         | PLAY-03                                               | PLAY-01 assist                     | SOAK-01, PLAY-02                |
+| P8 ∥ P9 ∥ P10 ∥ P11 | PLAT-04/05, SURF-04, DIAG core side                | ACCT-01, PLAT-01..03, SURF-01..06, DIAG-03, UPD-01/02 | ACCT-04, SURF banner UI, UPD-02 UI | PACK-01..04, CI-01..04, DIAG-01 |
+| P12                 | fix backlog                                        | fix backlog                                           | fix backlog                        | ACC-01..05 orchestration        |
+| P13                 | REM-01 Rust side                                   | REM-01 TS side                                        | REM-01 frontend side               | REM-02/03/04                    |
+| P14                 | PROV-01..10                                        | —                                                     | —                                  | PROV soak logistics             |
+| P15                 | —                                                  | —                                                     | —                                  | CLEAN-01..05                    |
 
 Rules: one lane = one subagent = one directory scope; cross-lane file touches require the lane owner's rebase-first; every ⛔ task merges only through the branch CI; LIVE VERIFY tasks are maintainer-executed (agents prepare scripts, humans hold the account).
 
@@ -2090,21 +2106,21 @@ Rules: one lane = one subagent = one directory scope; cross-lane file touches re
 
 Branch model: `feat/electron-migration` (long-lived integration branch, PR'd into `main` at three points: after P2 [optional early merge — co-existence is invisible to users], after P12/P13, after P15). Task work happens in short-lived branches PR'd into the integration branch. Every checkpoint = annotated tag on the integration branch after its phase-exit CI run.
 
-| Checkpoint | Tag | Must be true (verified by CI + scripted checks) |
-|---|---|---|
-| CHECK-00 | `migration-p0` | baselines committed; suites green |
-| CHECK-01 | `migration-p1` | workspace builds; `cargo tree -p yaqmc-core -i tauri` empty; Tauri smoke signed |
-| CHECK-02 | `migration-p2` | harness green both OS; 117-row inventory committed; Tauri smoke |
-| CHECK-03 | `migration-p3` | contract tests in CI; fake mode intact |
-| CHECK-04 | `migration-p4` | Electron boots fake mode both OS; path-parity test green |
-| CHECK-05 | `migration-p5` | crash-matrix E2E green; single instance |
-| CHECK-06 | `migration-p6` | ESLint gate on; both hosts full UI; store tests unmodified |
-| CHECK-07 | `migration-p7` | §36 P7 rows + soak report |
-| CHECK-08–11 | `migration-p8..11` | per-phase exits (§40) |
-| CHECK-12 | `pre-tauri-removal` | §38.1 complete — **the rollback anchor** |
-| CHECK-13 | `migration-p13` | §38.4 verification |
-| CHECK-14/A/B/C | `migration-p14*` | per-subphase gates (§40 P14) |
-| CHECK-15 | `electron-migration-complete` | §47 checklist |
+| Checkpoint     | Tag                           | Must be true (verified by CI + scripted checks)                                 |
+| -------------- | ----------------------------- | ------------------------------------------------------------------------------- |
+| CHECK-00       | `migration-p0`                | baselines committed; suites green                                               |
+| CHECK-01       | `migration-p1`                | workspace builds; `cargo tree -p yaqmc-core -i tauri` empty; Tauri smoke signed |
+| CHECK-02       | `migration-p2`                | harness green both OS; 117-row inventory committed; Tauri smoke                 |
+| CHECK-03       | `migration-p3`                | contract tests in CI; fake mode intact                                          |
+| CHECK-04       | `migration-p4`                | Electron boots fake mode both OS; path-parity test green                        |
+| CHECK-05       | `migration-p5`                | crash-matrix E2E green; single instance                                         |
+| CHECK-06       | `migration-p6`                | ESLint gate on; both hosts full UI; store tests unmodified                      |
+| CHECK-07       | `migration-p7`                | §36 P7 rows + soak report                                                       |
+| CHECK-08–11    | `migration-p8..11`            | per-phase exits (§40)                                                           |
+| CHECK-12       | `pre-tauri-removal`           | §38.1 complete — **the rollback anchor**                                        |
+| CHECK-13       | `migration-p13`               | §38.4 verification                                                              |
+| CHECK-14/A/B/C | `migration-p14*`              | per-subphase gates (§40 P14)                                                    |
+| CHECK-15       | `electron-migration-complete` | §47 checklist                                                                   |
 
 Commit hygiene: `git mv` in dedicated commits (no content change in the same commit); conventional-commit style matching repo history (`feat(scope):`, `fix(player):` — FACT of existing log); every commit message referencing its task ID.
 
@@ -2112,13 +2128,13 @@ Commit hygiene: `git mv` in dedicated commits (no content change in the same com
 
 ## 45. Rollback Strategy
 
-| Situation | Rollback |
-|---|---|
-| Any task PR broken | revert PR on integration branch (all PRs revert-clean by construction: moves separated from edits) |
-| Phase gate unmet | phase does not exit; no time-boxed overrides; integration branch stays pre-tag |
-| Electron fundamentally blocked pre-P13 (e.g. unfixable platform issue) | integration branch still contains a fully working Tauri app at every commit (§40 invariant) — abandon = merge nothing or merge only P1–P2 refactors (which improve the codebase host-agnostically) |
-| Disaster discovered post-P13 release | re-release last Tauri build (assets remain on GitHub Releases); user data untouched by design (§18 path parity + §22.6 key freeze mean the Tauri build reads everything the Electron build wrote, **except** new keyring entry `qqmusic-credential-v2` which only exists post-P14 and coexists with the legacy entry until P14-C — the rollback window narrows only at P14-C, which is why P14-C requires the 3-day soak) |
-| qm-api-rs regression post-P14-C | revert P14-C PR (restores in-tree modules + dual-write); worst case: users re-login |
+| Situation                                                              | Rollback                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Any task PR broken                                                     | revert PR on integration branch (all PRs revert-clean by construction: moves separated from edits)                                                                                                                                                                                                                                                                                                                        |
+| Phase gate unmet                                                       | phase does not exit; no time-boxed overrides; integration branch stays pre-tag                                                                                                                                                                                                                                                                                                                                            |
+| Electron fundamentally blocked pre-P13 (e.g. unfixable platform issue) | integration branch still contains a fully working Tauri app at every commit (§40 invariant) — abandon = merge nothing or merge only P1–P2 refactors (which improve the codebase host-agnostically)                                                                                                                                                                                                                        |
+| Disaster discovered post-P13 release                                   | re-release last Tauri build (assets remain on GitHub Releases); user data untouched by design (§18 path parity + §22.6 key freeze mean the Tauri build reads everything the Electron build wrote, **except** new keyring entry `qqmusic-credential-v2` which only exists post-P14 and coexists with the legacy entry until P14-C — the rollback window narrows only at P14-C, which is why P14-C requires the 3-day soak) |
+| qm-api-rs regression post-P14-C                                        | revert P14-C PR (restores in-tree modules + dual-write); worst case: users re-login                                                                                                                                                                                                                                                                                                                                       |
 
 The single irreversible moment is deleting the legacy session entry (P14-C). Everything else is a revert or a tag checkout.
 
@@ -2128,28 +2144,28 @@ The single irreversible moment is deleting the legacy session entry (P14-C). Eve
 
 Consolidated release gate (P15/CLEAN-03; every row names its §34 method; platforms: **W** = Windows x64 (+arm64 smoke), **L** = Ubuntu X11 + XWayland (+§29.5 extended)):
 
-| # | Acceptance item | Method | Platforms |
-|---|---|---|---|
-| 1 | Cold boot → logged-in state restored from pre-migration keyring | M/L | W, L |
-| 2 | Full §36 parity matrix green | per-row | W, L |
-| 3 | §15.6 player consistency pack (harness + UI layers) | A | W, L |
-| 4 | §35.2 perf budgets met vs BASE-03 baselines | A/M | W, L |
-| 5 | 4-h soak clean (final build) | A | W, L |
-| 6 | Crash resilience: core kill → auto-restart → resync ≤ 10 s, UI survives | A | W, L |
-| 7 | Clean shutdown: quit → core ack → exit 0, queue restored next boot | A | W, L |
-| 8 | Packaged artifacts install/upgrade/uninstall on clean VMs; data survives upgrade in place | M | W (NSIS+portable), L (AppImage/deb/rpm) |
-| 9 | Updater rehearsal A→B incl. core binary swap | M | W, L(AppImage) |
-| 10 | Local API + SSE external consumer unchanged | A/M | W, L |
-| 11 | SMTC/MPRIS full control surface | M | W / L |
-| 12 | Surfaces: lock/click-through/geometry/restore/fullscreen-hide(W) | A/M | W, L(X11) |
-| 13 | Plugins: §20.3 battery + safe-mode drill | A/M | W, L |
-| 14 | Security: ACL negative tests, nav containment, permission denials, no forbidden switches, preload purity | A | W, L |
-| 15 | Diagnostics bundle contains core+host sections, redaction verified | A/M | W, L |
-| 16 | `rg -i tauri` sweep clean (§38.4 allowlist) | A | repo |
-| 17 | qm-api-rs backend default; §17.5 per-module verifications signed (or P14 formally deferred per R-6 with plan note) | L | W, L |
-| 18 | Docs truthful (§38.3 list reviewed) | M | repo |
-| 19 | CI: quality + package matrix + release workflow green on final SHA | A | all |
-| 20 | Fresh-clone contributor build (README steps only) succeeds | M | W, L |
+| #   | Acceptance item                                                                                                    | Method  | Platforms                               |
+| --- | ------------------------------------------------------------------------------------------------------------------ | ------- | --------------------------------------- |
+| 1   | Cold boot → logged-in state restored from pre-migration keyring                                                    | M/L     | W, L                                    |
+| 2   | Full §36 parity matrix green                                                                                       | per-row | W, L                                    |
+| 3   | §15.6 player consistency pack (harness + UI layers)                                                                | A       | W, L                                    |
+| 4   | §35.2 perf budgets met vs BASE-03 baselines                                                                        | A/M     | W, L                                    |
+| 5   | 4-h soak clean (final build)                                                                                       | A       | W, L                                    |
+| 6   | Crash resilience: core kill → auto-restart → resync ≤ 10 s, UI survives                                            | A       | W, L                                    |
+| 7   | Clean shutdown: quit → core ack → exit 0, queue restored next boot                                                 | A       | W, L                                    |
+| 8   | Packaged artifacts install/upgrade/uninstall on clean VMs; data survives upgrade in place                          | M       | W (NSIS+portable), L (AppImage/deb/rpm) |
+| 9   | Updater rehearsal A→B incl. core binary swap                                                                       | M       | W, L(AppImage)                          |
+| 10  | Local API + SSE external consumer unchanged                                                                        | A/M     | W, L                                    |
+| 11  | SMTC/MPRIS full control surface                                                                                    | M       | W / L                                   |
+| 12  | Surfaces: lock/click-through/geometry/restore/fullscreen-hide(W)                                                   | A/M     | W, L(X11)                               |
+| 13  | Plugins: §20.3 battery + safe-mode drill                                                                           | A/M     | W, L                                    |
+| 14  | Security: ACL negative tests, nav containment, permission denials, no forbidden switches, preload purity           | A       | W, L                                    |
+| 15  | Diagnostics bundle contains core+host sections, redaction verified                                                 | A/M     | W, L                                    |
+| 16  | `rg -i tauri` sweep clean (§38.4 allowlist)                                                                        | A       | repo                                    |
+| 17  | qm-api-rs backend default; §17.5 per-module verifications signed (or P14 formally deferred per R-6 with plan note) | L       | W, L                                    |
+| 18  | Docs truthful (§38.3 list reviewed)                                                                                | M       | repo                                    |
+| 19  | CI: quality + package matrix + release workflow green on final SHA                                                 | A       | all                                     |
+| 20  | Fresh-clone contributor build (README steps only) succeeds                                                         | M       | W, L                                    |
 
 ---
 
@@ -2233,27 +2249,27 @@ This is an **external execution blocker**, not an implementation FAIL.
 
 ### 49.2 Parked for a later higher-capability pass (not green)
 
-| Headline | Catalog | Landed | Still not green |
-|---|---|---|---|
-| PLAY-01 phase sign-off | P7 PLAY-01 ⛔ | Checklist + later AUTO/LIVE/HUMAN | Catalog **PASS-HUMAN** (2026-08-20). ACC-01/02 still not signed. Post-`1d6b535` FAIL is history. |
-| SMTC flyout / media keys / artwork | P9 PLAT-04 ⛔ | HWND `platform_attach`; Windows SMTC **PASS-HUMAN** (session) | Flyout, keys, artwork extras. R-3 fallback only after flyout rejects the HWND. |
-| MPRIS playerctl / applets | P9 PLAT-05 ⛔ | Dry-run + **PASS-HUMAN** (2026-08-20) | Catalog passed. KDE §29.5 environment cell still unsigned. |
-| Clean-VM install/upgrade/uninstall | P11 PACK-01..03 ⛔ | Pack scripts + empty matrices | **DEFERRED**. Every clean-VM cell. Unsigned (R-9). No silent install. |
-| 4-hour soak | P7 SOAK-01 ⛔ / ACC-03 | `soak-electron.mjs` default 10 s | First 4h Win+Linux **PASS-HUMAN**. P12 second soak still open. |
-| Provenance | P0 / CLEAN | Audit + ledger | **BLOCKED**. `provenance:enforce` stays non-zero. Not a product FAIL of the Electron host. |
+| Headline                           | Catalog                | Landed                                                        | Still not green                                                                                  |
+| ---------------------------------- | ---------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| PLAY-01 phase sign-off             | P7 PLAY-01 ⛔          | Checklist + later AUTO/LIVE/HUMAN                             | Catalog **PASS-HUMAN** (2026-08-20). ACC-01/02 still not signed. Post-`1d6b535` FAIL is history. |
+| SMTC flyout / media keys / artwork | P9 PLAT-04 ⛔          | HWND `platform_attach`; Windows SMTC **PASS-HUMAN** (session) | Flyout, keys, artwork extras. R-3 fallback only after flyout rejects the HWND.                   |
+| MPRIS playerctl / applets          | P9 PLAT-05 ⛔          | Dry-run + **PASS-HUMAN** (2026-08-20)                         | Catalog passed. KDE §29.5 environment cell still unsigned.                                       |
+| Clean-VM install/upgrade/uninstall | P11 PACK-01..03 ⛔     | Pack scripts + empty matrices                                 | **DEFERRED**. Every clean-VM cell. Unsigned (R-9). No silent install.                            |
+| 4-hour soak                        | P7 SOAK-01 ⛔ / ACC-03 | `soak-electron.mjs` default 10 s                              | First 4h Win+Linux **PASS-HUMAN**. P12 second soak still open.                                   |
+| Provenance                         | P0 / CLEAN             | Audit + ledger                                                | **BLOCKED**. `provenance:enforce` stays non-zero. Not a product FAIL of the Electron host.       |
 
 Related parked (same later pass): PLAY-03 Windows occluded cadence, SURF-06 xwayland / §29.5 Fedora/Arch/KDE/Ubuntu-X11, SURF-04 real fullscreen overlay, UPD-01 A→B (**BLOCKED-EXTERNAL**), CI-01..04 live (**BLOCKED-EXTERNAL**), PLUG-01/02 HUMAN battery (**DEFERRED**). PLAY-02 catalog is **PASS-HUMAN**; remaining ACC-03 is other §35.2 + second soak.
 
 ### 49.3 Code-landed vs live-green (P11 infra)
 
-| ID | YAML / code | Live GitHub / VM |
-|---|---|---|
-| CI-01 quality job | landed; local gates run in-worktree | **BLOCKED-EXTERNAL** (quota). Not a product FAIL. |
-| CI-02 Electron package matrix | landed | **BLOCKED-EXTERNAL**. Tauri `build.yml` untouched. |
-| CI-03 arm64 boot-test | docs / print script | **BLOCKED-EXTERNAL**. Print ≠ boot. |
-| CI-04 Electron draft release | landed (`electron-v*` / `electron-draft-*`, `--draft`) | **BLOCKED-EXTERNAL**. |
-| UPD-01 notify-only updater | landed (`autoDownload: false`) | **BLOCKED-EXTERNAL** A→B. |
-| DIAG-01 `host.json` + host log | `host.json` inject + stderr ring + rotating Main `host.log` in the Core log dir | Not a soak/provenance claim |
+| ID                             | YAML / code                                                                     | Live GitHub / VM                                   |
+| ------------------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------- |
+| CI-01 quality job              | landed; local gates run in-worktree                                             | **BLOCKED-EXTERNAL** (quota). Not a product FAIL.  |
+| CI-02 Electron package matrix  | landed                                                                          | **BLOCKED-EXTERNAL**. Tauri `build.yml` untouched. |
+| CI-03 arm64 boot-test          | docs / print script                                                             | **BLOCKED-EXTERNAL**. Print ≠ boot.                |
+| CI-04 Electron draft release   | landed (`electron-v*` / `electron-draft-*`, `--draft`)                          | **BLOCKED-EXTERNAL**.                              |
+| UPD-01 notify-only updater     | landed (`autoDownload: false`)                                                  | **BLOCKED-EXTERNAL** A→B.                          |
+| DIAG-01 `host.json` + host log | `host.json` inject + stderr ring + rotating Main `host.log` in the Core log dir | Not a soak/provenance claim                        |
 
 P11 is **not** fully PASS while the BLOCKED-EXTERNAL / DEFERRED rows above remain.
 
@@ -2274,4 +2290,4 @@ Therefore: **P12 execution = allowed**. **P12 final exit = conditional**. **P13 
 
 ---
 
-*End of plan. 49 sections (48 original + 2026-08-18 overlay, amended 2026-08-20), 16 phases, 115 tasks, 16 checkpoints, 15 risks. Source SHA `bc55b7d`; plan date 2026-08-16; overlay 2026-08-18; waiver 2026-08-20.*
+_End of plan. 49 sections (48 original + 2026-08-18 overlay, amended 2026-08-20), 16 phases, 115 tasks, 16 checkpoints, 15 risks. Source SHA `bc55b7d`; plan date 2026-08-16; overlay 2026-08-18; waiver 2026-08-20._

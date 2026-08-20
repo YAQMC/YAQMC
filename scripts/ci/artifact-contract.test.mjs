@@ -10,9 +10,14 @@ test('artifact contract describes only current Electron packages and release met
   assert.equal(entries.length, 10);
   assert.equal(new Set(entries.map(({ id }) => id)).size, entries.length);
   assert.ok(entries.every(({ id }) => id.startsWith('electron-')));
-  assert.ok(entries.every(({ source, platform, kind, pattern }) => source && platform && kind && pattern));
+  assert.ok(
+    entries.every(({ source, platform, kind, pattern }) => source && platform && kind && pattern),
+  );
 
-  const builder = readFileSync(path.join(repositoryRoot, 'apps/desktop/electron-builder.yml'), 'utf8');
+  const builder = readFileSync(
+    path.join(repositoryRoot, 'apps/desktop/electron-builder.yml'),
+    'utf8',
+  );
   for (const target of ['nsis', 'portable', 'AppImage', 'deb', 'rpm', 'tar.gz']) {
     assert.match(builder, new RegExp(target.replace('.', '\\.')));
   }

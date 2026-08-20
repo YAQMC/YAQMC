@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostBridge } from '@yaqmc/client';
-import { defaultPreferences, usePreferencesStore, type LyricSurfaceSettings } from '../application/preferences';
+import {
+  defaultPreferences,
+  usePreferencesStore,
+  type LyricSurfaceSettings,
+} from '../application/preferences';
 import type { LyricLine } from '../domain/music';
 import {
   DesktopSurface,

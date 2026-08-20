@@ -7,10 +7,10 @@ a permission-checked bridge, package jail, and host-proxied network. Raw `fetch`
 
 ## Isolation
 
-Third-party script does **not** run in the main YAQMC WebView. Each script plugin gets a dedicated worker built from
-YAQMC-owned bootstrap plus the plugin’s `dist/main.js`. The worker has no `document`, no `__TAURI__`, no `invoke`,
+Third-party script does **not** run in the main YAQMC renderer. Each script plugin gets a dedicated worker built from
+YAQMC-owned bootstrap plus the plugin’s `dist/main.js`. The worker has no `document`, no legacy-host globals, no raw IPC,
 and no raw `fetch`. All privileged work goes through `plugin_bridge` with a host-bound runtime token. Plugin-supplied
-`pluginId` is not authorization. The application CSP allows `worker-src 'self' blob:` so WebKitGTK can construct that
+`pluginId` is not authorization. The application CSP allows `worker-src 'self' blob:` so Chromium can construct that
 blob worker; Worker construction failure marks the plugin Failed.
 
 CSS and Scene Schema never execute JavaScript. Scene CSS is scoped to `[data-yaqmc-plugin-scene]`. Global styles may
@@ -25,7 +25,7 @@ Granted only after review:
 `network:https://host`.
 
 Hard-denied: `network`, `network:*`, `filesystem`, `provider`, `account`, `native`, `shell`, QQ cookies / `qm_keyst` /
-`qrsig` / OAuth secrets / ekey / local HTTP bearer tokens, arbitrary Tauri commands, and native `dll`/`so` loading.
+`qrsig` / OAuth secrets / ekey / local HTTP bearer tokens, arbitrary host IPC, and native `dll`/`so` loading.
 
 `player.control` and `network:https://…` are sensitive. Updates that expand permissions require a new approval.
 The install review lists added and removed permissions when a package updates an already-installed plugin.
@@ -42,7 +42,7 @@ v1 plugins are **Unsigned / local**. SHA-256 matching itself is integrity, not p
 
 ## Scanner
 
-JS/CSS is scanned for fetch, `eval`, `__TAURI__`, remote `@import`, and similar signals (Low / Medium / High). A clean
+JS/CSS is scanned for fetch, `eval`, legacy-host globals, remote `@import`, and similar signals (Low / Medium / High). A clean
 scan does not prove safety. A high CSS remote-url finding blocks style activation.
 
 ## Safe Mode

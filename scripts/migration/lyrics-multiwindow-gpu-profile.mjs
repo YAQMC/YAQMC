@@ -11,7 +11,7 @@
  *   $env:YAQMC_CORE_BIN="$env:CARGO_TARGET_DIR\debug\yaqmc-core.exe"
  *   npm run perf:windows-gpu
  */
-/* global document, window, performance, requestAnimationFrame */
+/* global window, performance, requestAnimationFrame */
 import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
@@ -19,7 +19,12 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { cleanupQaSandbox, createQaSandbox, electronQaArgs, qaElectronEnv } from '../qa-runtime.mjs';
+import {
+  cleanupQaSandbox,
+  createQaSandbox,
+  electronQaArgs,
+  qaElectronEnv,
+} from '../qa-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
@@ -183,7 +188,8 @@ async function probe(page, name, arg, timeoutMs = 12_000) {
       async ({ methodName, payload }) => {
         const api = globalThis.__YAQMC_PLAYBACK_UI_PROBE__;
         const method = api?.[methodName];
-        if (typeof method !== 'function') throw new Error(`playback UI probe ${methodName} is missing`);
+        if (typeof method !== 'function')
+          throw new Error(`playback UI probe ${methodName} is missing`);
         return method(payload);
       },
       { methodName: name, payload: arg },
@@ -236,8 +242,9 @@ async function sampleRaf(page, durationMs) {
         rafMaxMs: sorted[sorted.length - 1] ?? 0,
         wallClockTimedOut,
         rafStuck: wallClockTimedOut && frames < 3,
-        longTasks: performance.getEntriesByType?.('longtask')?.filter((entry) => entry.duration >= 50)
-          .length ?? -1,
+        longTasks:
+          performance.getEntriesByType?.('longtask')?.filter((entry) => entry.duration >= 50)
+            .length ?? -1,
         href: location.href,
         visualActive: document.visibilityState !== 'hidden',
         probePhase: document.documentElement.dataset.probePhase ?? '',
@@ -292,7 +299,10 @@ async function captureHang(page, child, cause) {
     probe: 'lyrics-multiwindow-gpu-on-hang',
     at: new Date().toISOString(),
     phase: currentPhase,
-    cause: cause instanceof Error ? { name: cause.name, message: cause.message, phase: cause.phase } : String(cause),
+    cause:
+      cause instanceof Error
+        ? { name: cause.name, message: cause.message, phase: cause.phase }
+        : String(cause),
     rendererResponsive: false,
     hangClass: 'unknown',
     processes: snapshotProcesses(child?.pid),
@@ -304,7 +314,11 @@ async function captureHang(page, child, cause) {
   } else {
     try {
       dump.rendererPing = await withTimeout(
-        page.evaluate(() => ({ at: Date.now(), href: location.href, vis: document.visibilityState })),
+        page.evaluate(() => ({
+          at: Date.now(),
+          href: location.href,
+          vis: document.visibilityState,
+        })),
         2_500,
         'hang:rendererPing',
       );
@@ -518,7 +532,13 @@ async function traceInteresting(page, durationMs) {
   } finally {
     session.off('Tracing.dataCollected', onData);
   }
-  const interesting = new Set(['Paint', 'RasterTask', 'CompositeLayers', 'FireAnimationFrame', 'Commit']);
+  const interesting = new Set([
+    'Paint',
+    'RasterTask',
+    'CompositeLayers',
+    'FireAnimationFrame',
+    'Commit',
+  ]);
   return [...buckets.entries()]
     .filter(([name]) => interesting.has(name))
     .map(([name, stats]) => ({
@@ -587,11 +607,19 @@ async function main() {
       }
     });
     page.on('pageerror', (error) => rememberConsole({ type: 'pageerror', text: String(error) }));
-    await withTimeout(page.waitForSelector('.app-shell', { timeout: 60_000 }), 61_000, 'waitAppShell');
     await withTimeout(
-      page.waitForFunction(() => typeof globalThis.__YAQMC_PLAYBACK_UI_PROBE__?.sample === 'function', null, {
-        timeout: 30_000,
-      }),
+      page.waitForSelector('.app-shell', { timeout: 60_000 }),
+      61_000,
+      'waitAppShell',
+    );
+    await withTimeout(
+      page.waitForFunction(
+        () => typeof globalThis.__YAQMC_PLAYBACK_UI_PROBE__?.sample === 'function',
+        null,
+        {
+          timeout: 30_000,
+        },
+      ),
       31_000,
       'waitProbe',
     );
@@ -603,7 +631,9 @@ async function main() {
         if (!gl) return { renderer: 'none', vendor: 'none' };
         const ext = gl.getExtension('WEBGL_debug_renderer_info');
         return {
-          renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+          renderer: ext
+            ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+            : gl.getParameter(gl.RENDERER),
           vendor: ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
         };
       }),
@@ -686,7 +716,12 @@ async function main() {
 
     const animationAb = {};
     surfaces = await setSurfaces(page, browser, { desktop: true, island: true });
-    for (const mode of ['no-surface-anim', 'no-island-expand', 'no-surface-artwork', 'no-backdrop']) {
+    for (const mode of [
+      'no-surface-anim',
+      'no-island-expand',
+      'no-surface-artwork',
+      'no-backdrop',
+    ]) {
       await setOverlayProbe(surfaces, mode);
       animationAb[mode] = await sampleWindows(page, surfaces, `ab:${mode}`, child);
     }

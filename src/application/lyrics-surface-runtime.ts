@@ -200,7 +200,11 @@ export function useProjectedLyrics(
   const timingOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
   const playing = projection?.value.isPlaying ?? false;
   const [projected, setProjected] = useState(() =>
-    projectSurfaceLyrics(document, projection ? estimatedSurfacePosition(projection) : 0, timingOffsetMs),
+    projectSurfaceLyrics(
+      document,
+      projection ? estimatedSurfacePosition(projection) : 0,
+      timingOffsetMs,
+    ),
   );
 
   useEffect(() => {

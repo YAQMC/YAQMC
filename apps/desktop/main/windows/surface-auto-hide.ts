@@ -4,9 +4,7 @@ import type { LyricsSurfaceKind, LyricsSurfaces } from './lyrics-surfaces';
 const SURFACE_KINDS: readonly LyricsSurfaceKind[] = ['desktop', 'island'];
 
 export type ParsedHostCommand =
-  | { kind: 'surfaceAutoHide'; hidden: boolean }
-  | { kind: 'raise' }
-  | { kind: 'quit' };
+  { kind: 'surfaceAutoHide'; hidden: boolean } | { kind: 'raise' } | { kind: 'quit' };
 
 /**
  * Surfaces plus optional per-kind flags. `enabled` / `hideInFullscreen`
@@ -57,10 +55,7 @@ export function parseHostCommandPayload(payload: unknown): ParsedHostCommand | u
   return undefined;
 }
 
-export function handleSurfaceHostCommand(
-  surfaces: SurfaceAutoHideTarget,
-  payload: unknown,
-): void {
+export function handleSurfaceHostCommand(surfaces: SurfaceAutoHideTarget, payload: unknown): void {
   const parsed = parseHostCommandPayload(payload);
   if (parsed?.kind !== 'surfaceAutoHide') {
     return;

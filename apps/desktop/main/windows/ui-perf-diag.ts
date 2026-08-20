@@ -242,7 +242,9 @@ export function inferUiPerfCause(steps: readonly DiagStep[]): string {
   const collapsed = (step: DiagStep | undefined) => {
     const fps = step?.mainSample?.rafFps;
     const p95 = step?.mainSample?.rafP95Ms;
-    return (typeof fps === 'number' && fps > 0 && fps < 60) || (typeof p95 === 'number' && p95 > 80);
+    return (
+      (typeof fps === 'number' && fps > 0 && fps < 60) || (typeof p95 === 'number' && p95 > 80)
+    );
   };
   const displayRate = (step: DiagStep | undefined) => {
     const fps = step?.mainSample?.rafFps;
@@ -253,7 +255,9 @@ export function inferUiPerfCause(steps: readonly DiagStep[]): string {
     parts.push(
       `open Desktop: Fullscreen rAF ${alone?.mainSample?.rafFps?.toFixed(1)} Hz → ${desktop?.mainSample?.rafFps?.toFixed(1)} Hz`,
     );
-    if (approx(desktop?.mainSample?.rafFps ?? null, desktop?.mainSample?.ipcSnapshotHz ?? null, 2.5)) {
+    if (
+      approx(desktop?.mainSample?.rafFps ?? null, desktop?.mainSample?.ipcSnapshotHz ?? null, 2.5)
+    ) {
       parts.push(
         `visible Fullscreen updates ≈ Core snapshots (${desktop?.mainSample?.ipcSnapshotHz?.toFixed(1)} Hz)`,
       );
@@ -272,7 +276,9 @@ export function inferUiPerfCause(steps: readonly DiagStep[]): string {
     desktop?.mainSample?.surfaceVisual === 'idle' &&
     (desktop.mainRenderer?.surface === '' || !desktop.mainRenderer?.surface)
   ) {
-    parts.push('main document data-surface-visual=idle without data-surface (host throttle mis-targeted)');
+    parts.push(
+      'main document data-surface-visual=idle without data-surface (host throttle mis-targeted)',
+    );
   }
   if (displayRate(desktopClosed) && collapsed(desktop)) {
     parts.push('close Desktop: Fullscreen rAF recovered');
@@ -440,7 +446,10 @@ export async function runUiPerfDiagSequence(deps: UiPerfDiagDeps): Promise<UiPer
     `window.__YAQMC_PLAYBACK_UI_PROBE__.makeArtwork()`,
   );
   await execJson(window.webContents, `window.__YAQMC_PLAYBACK_UI_PROBE__.enableFpsOverlay()`);
-  await execJson(window.webContents, `window.__YAQMC_PLAYBACK_UI_PROBE__.enableArtworkBackground()`);
+  await execJson(
+    window.webContents,
+    `window.__YAQMC_PLAYBACK_UI_PROBE__.enableArtworkBackground()`,
+  );
   window.maximize();
 
   try {
@@ -453,14 +462,18 @@ export async function runUiPerfDiagSequence(deps: UiPerfDiagDeps): Promise<UiPer
     deps.log(`ui-perf-diag playback setup failed ${String(error)}`);
   }
   await execJson(window.webContents, `window.__YAQMC_PLAYBACK_UI_PROBE__.openLyrics()`);
-  await waitUntil(async () => {
-    return (
-      (await execJson<boolean>(
-        window.webContents,
-        `Boolean(document.querySelector('.lyrics-stage'))`,
-      )) === true
-    );
-  }, 20_000, 'lyrics-stage');
+  await waitUntil(
+    async () => {
+      return (
+        (await execJson<boolean>(
+          window.webContents,
+          `Boolean(document.querySelector('.lyrics-stage'))`,
+        )) === true
+      );
+    },
+    20_000,
+    'lyrics-stage',
+  );
   await execJson(window.webContents, `window.__YAQMC_PLAYBACK_UI_PROBE__.enterFullscreen()`);
   await delay(800);
 
@@ -470,9 +483,10 @@ export async function runUiPerfDiagSequence(deps: UiPerfDiagDeps): Promise<UiPer
     rows.push(dumpBrowserWindow(main, { role: 'main', locked: false }));
     for (const kind of ['desktop', 'island'] as const) {
       const surface = deps.lyrics.get(kind) as BrowserWindow | undefined;
-      const painted = surface && !surface.isDestroyed()
-        ? await execJson<Record<string, unknown>>(surface.webContents, PAINTED_SCRIPT)
-        : null;
+      const painted =
+        surface && !surface.isDestroyed()
+          ? await execJson<Record<string, unknown>>(surface.webContents, PAINTED_SCRIPT)
+          : null;
       rows.push(
         dumpBrowserWindow(surface, {
           role: kind === 'desktop' ? 'lyrics-desktop' : 'lyrics-island',
@@ -500,7 +514,8 @@ export async function runUiPerfDiagSequence(deps: UiPerfDiagDeps): Promise<UiPer
     }
     const renderer = await execJson<RendererLifecycleDump>(main.webContents, RENDERER_SCRIPT);
     const sample = await sampleMain(main);
-    const hostSnapshotHz = ((deps.snapshotHits() - hitsBefore) * 1_000) / Math.max(1, Date.now() - started);
+    const hostSnapshotHz =
+      ((deps.snapshotHits() - hitsBefore) * 1_000) / Math.max(1, Date.now() - started);
     const step: DiagStep = {
       label,
       at: Date.now(),
@@ -518,7 +533,10 @@ export async function runUiPerfDiagSequence(deps: UiPerfDiagDeps): Promise<UiPer
 
   const setSurface = async (kind: LyricsSurfaceKind, enabled: boolean) => {
     const method = enabled ? 'enableLyricsSurface' : 'disableLyricsSurface';
-    await execJson(window.webContents, `window.__YAQMC_PLAYBACK_UI_PROBE__.${method}(${JSON.stringify(kind)})`);
+    await execJson(
+      window.webContents,
+      `window.__YAQMC_PLAYBACK_UI_PROBE__.${method}(${JSON.stringify(kind)})`,
+    );
     await delay(enabled ? 700 : 400);
   };
 

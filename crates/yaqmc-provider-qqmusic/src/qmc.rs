@@ -520,14 +520,6 @@ impl Rc4Cipher {
 }
 
 #[cfg(test)]
-pub(crate) fn valid_test_ekey_v1() -> EncryptedMediaKey {
-    let clear_key = (0..512)
-        .map(|value| (value % 251 + 1) as u8)
-        .collect::<Vec<_>>();
-    EncryptedMediaKey::new(tests::encode_test_ekey(&clear_key, false)).expect("valid fixture key")
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use rodio::Source;

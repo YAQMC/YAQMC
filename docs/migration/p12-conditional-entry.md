@@ -24,27 +24,27 @@ Living ACC tracker: [`acceptance-p12.md`](acceptance-p12.md). Plan overlay:
 
 **Start P12 now** under this waiver.
 
-| Gate | Status after this waiver |
-| --- | --- |
-| P11 fully PASS | **No.** Do not mark P11 complete. |
-| P12 execution (ACC-01..04) | **Allowed** |
+| Gate                                          | Status after this waiver                            |
+| --------------------------------------------- | --------------------------------------------------- |
+| P11 fully PASS                                | **No.** Do not mark P11 complete.                   |
+| P12 execution (ACC-01..04)                    | **Allowed**                                         |
 | P12 final exit (ACC-05 / `pre-tauri-removal`) | **Conditional — blocked** until the hard stop below |
-| P13 | **Blocked** |
+| P13                                           | **Blocked**                                         |
 
 ## Preserved P11 statuses (do not green these)
 
 These labels are **not** product failures:
 
-| ID | Status | Meaning |
-| --- | --- | --- |
-| CI-01 | **BLOCKED-EXTERNAL** | Quality-job YAML and local gates exist. Live GitHub Actions evidence cannot be obtained while quota is exhausted. |
-| CI-02 | **BLOCKED-EXTERNAL** | Electron package-matrix YAML exists. No live matrix artifacts. |
-| CI-03 | **BLOCKED-EXTERNAL** | Arm64 boot-test evidence cannot be obtained from live Actions (hardware/runner path included). Docs/print scripts are not live-green. |
-| CI-04 | **BLOCKED-EXTERNAL** | Draft-release workflow exists on disk. Not dispatched. |
-| UPD-01 | **BLOCKED-EXTERNAL** | Notify-only updater is wired. A→B incl. core swap needs a draft release / GitHub, which this freeze blocks. |
-| PLUG-01 | **DEFERRED** | Full example-plugin HUMAN battery deferred. Install-from-file ACL path remains prior **PASS-HUMAN**. PASS-AUTO battery is unchanged. |
-| PLUG-02 | **DEFERRED** | Proxy / safe-mode HUMAN journal deferred. PASS-AUTO `plug02` is unchanged. |
-| PACK-01..03 clean-VM matrix | **DEFERRED** | Builder pin and pack scripts remain in tree. Every clean-VM install/upgrade/uninstall cell stays unsigned and unrun. Local `pack:dir` is not that matrix. |
+| ID                          | Status               | Meaning                                                                                                                                                   |
+| --------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI-01                       | **BLOCKED-EXTERNAL** | Quality-job YAML and local gates exist. Live GitHub Actions evidence cannot be obtained while quota is exhausted.                                         |
+| CI-02                       | **BLOCKED-EXTERNAL** | Electron package-matrix YAML exists. No live matrix artifacts.                                                                                            |
+| CI-03                       | **BLOCKED-EXTERNAL** | Arm64 boot-test evidence cannot be obtained from live Actions (hardware/runner path included). Docs/print scripts are not live-green.                     |
+| CI-04                       | **BLOCKED-EXTERNAL** | Draft-release workflow exists on disk. Not dispatched.                                                                                                    |
+| UPD-01                      | **BLOCKED-EXTERNAL** | Notify-only updater is wired. A→B incl. core swap needs a draft release / GitHub, which this freeze blocks.                                               |
+| PLUG-01                     | **DEFERRED**         | Full example-plugin HUMAN battery deferred. Install-from-file ACL path remains prior **PASS-HUMAN**. PASS-AUTO battery is unchanged.                      |
+| PLUG-02                     | **DEFERRED**         | Proxy / safe-mode HUMAN journal deferred. PASS-AUTO `plug02` is unchanged.                                                                                |
+| PACK-01..03 clean-VM matrix | **DEFERRED**         | Builder pin and pack scripts remain in tree. Every clean-VM install/upgrade/uninstall cell stays unsigned and unrun. Local `pack:dir` is not that matrix. |
 
 **Provenance / CLEAN** stays **BLOCKED** (license/audit gate, not this quota).
 It is still not a P12-entry prerequisite and is still not a P12-exit

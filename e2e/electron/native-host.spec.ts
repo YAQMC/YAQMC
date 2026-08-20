@@ -32,15 +32,12 @@ test.describe('FE-04 native host', () => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
       return {
         hasInvoke: Boolean(
-          yaqmc &&
-            typeof yaqmc === 'object' &&
-            typeof Reflect.get(yaqmc, 'invoke') === 'function',
+          yaqmc && typeof yaqmc === 'object' && typeof Reflect.get(yaqmc, 'invoke') === 'function',
         ),
         hasOn: Boolean(
           yaqmc && typeof yaqmc === 'object' && typeof Reflect.get(yaqmc, 'on') === 'function',
         ),
-        windowRole:
-          yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'windowRole') : null,
+        windowRole: yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'windowRole') : null,
       };
     });
     expect(info).toEqual({ hasInvoke: true, hasOn: true, windowRole: 'main' });
@@ -51,8 +48,7 @@ test.describe('FE-04 native host', () => {
     await expect(page.locator('.app-shell')).toBeVisible({ timeout: 60_000 });
     await page.evaluate(() => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -77,8 +73,7 @@ test.describe('FE-04 native host', () => {
     const { page } = session;
     const logDir = await page.evaluate(() => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -93,8 +88,7 @@ test.describe('FE-04 native host', () => {
     const { page } = session;
     const status = await page.evaluate(() => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -131,8 +125,7 @@ test.describe('FE-04 native host with Core', () => {
 
     const status = await page.evaluate(() => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -142,8 +135,7 @@ test.describe('FE-04 native host with Core', () => {
 
     const snapshot = await page.evaluate(() => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -155,11 +147,13 @@ test.describe('FE-04 native host with Core', () => {
   test('diagnostics_export_bundle_to writes a ZIP at the exact selected path', async () => {
     const { app, page } = session;
     await expect.poll(() => e2eCoreStatus(app), { timeout: 60_000 }).toBe('ready');
-    const dest = path.join(mkdtempSync(path.join(os.tmpdir(), 'yaqmc-diag-')), 'YAQMC-diagnostics.zip');
+    const dest = path.join(
+      mkdtempSync(path.join(os.tmpdir(), 'yaqmc-diag-')),
+      'YAQMC-diagnostics.zip',
+    );
     const result = (await page.evaluate((filePath) => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }

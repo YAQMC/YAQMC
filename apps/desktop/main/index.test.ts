@@ -113,17 +113,23 @@ describe('host boot wiring', () => {
     const lyricsBind = source.indexOf('function createLyricsBrowserWindow');
     const unlockBind = source.indexOf('function createUnlockBrowserWindow');
     const mainBind = source.indexOf('function createMainWindow');
-    expect(source.indexOf('bindOverlayVisibilityThrottle(window, role);', lyricsBind)).toBeGreaterThan(
-      lyricsBind,
-    );
+    expect(
+      source.indexOf('bindOverlayVisibilityThrottle(window, role);', lyricsBind),
+    ).toBeGreaterThan(lyricsBind);
     expect(source.indexOf('bindOverlayVisibilityThrottle(window, role);', lyricsBind)).toBeLessThan(
       unlockBind,
     );
     expect(
-      source.indexOf('bindOverlayVisibilityThrottle(window, lyricsUnlockRoleFromKind(kind));', unlockBind),
+      source.indexOf(
+        'bindOverlayVisibilityThrottle(window, lyricsUnlockRoleFromKind(kind));',
+        unlockBind,
+      ),
     ).toBeGreaterThan(unlockBind);
     expect(
-      source.indexOf('bindOverlayVisibilityThrottle(window, lyricsUnlockRoleFromKind(kind));', unlockBind),
+      source.indexOf(
+        'bindOverlayVisibilityThrottle(window, lyricsUnlockRoleFromKind(kind));',
+        unlockBind,
+      ),
     ).toBeLessThan(mainBind);
     expect(source.indexOf('bindOverlayVisibilityThrottle(', mainBind)).toBe(-1);
     expect(source.indexOf("backgroundColor: '#00000000'", lyricsBind)).toBeGreaterThan(lyricsBind);

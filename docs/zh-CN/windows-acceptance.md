@@ -2,6 +2,8 @@
 
 > **简体中文** | [English](../windows-acceptance.md)
 
+> 仅作为迁移前历史证据保留，不验证当前 Electron host。
+
 ## 本机歌词 Checkpoint C
 
 Checkpoint C 已在 `tauri-no-bundle` 原始 Windows 二进制通过。这只是本机视觉/交互检查：

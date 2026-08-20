@@ -5,11 +5,11 @@
 ## Current product state
 
 Guest mode remains the startup fallback. QQ and WeChat authorization now open Tencent-hosted OAuth pages in a
-restricted, incognito application WebView; live account acceptance is pending. The registered QQ Music callback URL
+restricted, incognito Electron `BrowserWindow`; live account acceptance is pending. The registered QQ Music callback URL
 is intercepted before navigation, its single-use code and CSRF state are validated in Rust, and the code is exchanged
 for the normalized QQ Music session. This is still a compatibility integration rather than a supported third-party
 QQ Music SDK contract. YAQMC never renders its own password form, reads credentials entered into the hosted page,
-copies WebView cookies, or asks the user to paste session data.
+copies OAuth-window cookies, or asks the user to paste session data.
 
 The normalized state machine includes guest, restoring, authorization waiting, authenticated,
 cancelled/expired/rejected, network/protocol failure, reauthentication-required, and secure-store-unavailable. React
@@ -35,12 +35,13 @@ store is unavailable, listener startup fails closed and the secret is not writte
 
 ## OAuth ownership and session promotion
 
-Only the `main` WebView has the `qqmusic-account` capability, and every Rust command independently checks the caller
-label. Desktop Lyrics, Lyrics Island, and the remote OAuth WebView cannot call account commands. The WebView permits
+Only the main renderer can reach `qqmusic-account` through the Electron Main IPC ACL, and every Core command
+independently checks the caller role. Desktop Lyrics, Lyrics Island, and the remote OAuth window cannot call account
+commands. The OAuth window permits
 only the exact HTTPS hosts required by the selected QQ or WeChat flow, denies popups, disables autofill/devtools,
 uses an incognito profile, and validates the callback origin, path, login type, return URL, unique state, and bounded
 code. The visible account dialog renews an opaque native owner lease; closing/reloading the owner, closing or losing
-the OAuth WebView, or missing the lease deadline cancels the attempt. Each attempt is bounded to five minutes.
+the OAuth window, or missing the lease deadline cancels the attempt. Each attempt is bounded to five minutes.
 
 After confirmation, the native service follows a transactional sequence:
 

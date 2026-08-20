@@ -95,7 +95,9 @@ test('write mode copies the root version and no-ops files that already match', (
     '0.1.0',
   );
   assert.equal(
-    readCargoPackageVersion(readFileSync(path.join(root, 'crates', 'yaqmc-core', 'Cargo.toml'), 'utf8')),
+    readCargoPackageVersion(
+      readFileSync(path.join(root, 'crates', 'yaqmc-core', 'Cargo.toml'), 'utf8'),
+    ),
     '0.1.0',
   );
 });

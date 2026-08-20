@@ -42,12 +42,12 @@ electron-builder --projectDir . --config electron-builder.yml --linux AppImage d
 `--linux` without target names uses the same four from the yml. Artifacts land
 in gitignored `release-electron/`:
 
-| Target   | Artifact                         | Notes                                      |
-| -------- | -------------------------------- | ------------------------------------------ |
-| AppImage | `YAQMC-linux-{arch}.AppImage`    | Updater-bearing target (§32). Notify-only; A→B pending. |
-| deb      | `YAQMC-linux-{arch}.deb`         | `libayatana-appindicator3-1` as Recommends |
-| rpm      | `YAQMC-linux-{arch}.rpm`         | weak `Recommends: libayatana-appindicator-gtk3` |
-| tar.gz   | `YAQMC-linux-{arch}.tar.gz`      | Portable tree; not an in-place updater     |
+| Target   | Artifact                      | Notes                                                   |
+| -------- | ----------------------------- | ------------------------------------------------------- |
+| AppImage | `YAQMC-linux-{arch}.AppImage` | Updater-bearing target (§32). Notify-only; A→B pending. |
+| deb      | `YAQMC-linux-{arch}.deb`      | `libayatana-appindicator3-1` as Recommends              |
+| rpm      | `YAQMC-linux-{arch}.rpm`      | weak `Recommends: libayatana-appindicator-gtk3`         |
+| tar.gz   | `YAQMC-linux-{arch}.tar.gz`   | Portable tree; not an in-place updater                  |
 
 Read the package name from the artifact (`dpkg-deb -f … Package` /
 `rpm -qp --queryformat '%{NAME}\n' …`) before remove/erase. Do not assume a
@@ -58,13 +58,13 @@ hard-coded Debian/RPM name.
 Attempted as a dry-run parse on a Windows host. Result is recorded in the
 plan-delta; this table is **not** a clean-VM matrix.
 
-| Artifact                          | This host                                      |
-| --------------------------------- | ---------------------------------------------- |
-| `YAQMC-linux-x64.AppImage`        | not produced (Windows host; dry-run only)      |
-| `YAQMC-linux-x64.deb`             | not produced (Windows host; dry-run only)      |
-| `YAQMC-linux-x64.rpm`             | not produced (Windows host; dry-run only)      |
-| `YAQMC-linux-x64.tar.gz`          | not produced (Windows host; dry-run only)      |
-| arm64 AppImage / deb / rpm / tar.gz | not produced (x64 Windows host; CI-03)       |
+| Artifact                            | This host                                 |
+| ----------------------------------- | ----------------------------------------- |
+| `YAQMC-linux-x64.AppImage`          | not produced (Windows host; dry-run only) |
+| `YAQMC-linux-x64.deb`               | not produced (Windows host; dry-run only) |
+| `YAQMC-linux-x64.rpm`               | not produced (Windows host; dry-run only) |
+| `YAQMC-linux-x64.tar.gz`            | not produced (Windows host; dry-run only) |
+| arm64 AppImage / deb / rpm / tar.gz | not produced (x64 Windows host; CI-03)    |
 
 ## AppImage
 
@@ -157,17 +157,17 @@ Do not treat a missing indicator as a packaging blocker.
 **LIVE VERIFY / clean-VM pending.** Leave boxes empty until a maintainer ticks
 them on a clean VM. This checkpoint does not claim the matrix green.
 
-| Check | x64 AppImage | x64 deb | x64 rpm | x64 tar.gz | arm64 AppImage | arm64 deb | arm64 rpm | arm64 tar.gz |
-| ----- | ------------ | ------- | ------- | ---------- | -------------- | --------- | --------- | ------------ |
-| Artifact exists in `release-electron/` | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| Install (AppImage chmod+run / apt / dnf / extract) | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| App launches; core extraResource present | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| Data under `$XDG_DATA_HOME/org.yaqmc.desktop` | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| Tray missing `libayatana-appindicator` is non-fatal | [ ] | [ ] | [ ] | n/a | [ ] | [ ] | [ ] | n/a |
-| Upgrade A then B; marker/SQLite survives | [ ] | [ ] | [ ] | n/a | [ ] | [ ] | [ ] | n/a |
-| Uninstall removes package/binary, keeps app data | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| No WebKitGTK Depends | n/a | [ ] | [ ] | n/a | n/a | [ ] | [ ] | n/a |
-| Clean VM | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending |
+| Check                                               | x64 AppImage            | x64 deb                 | x64 rpm                 | x64 tar.gz              | arm64 AppImage          | arm64 deb               | arm64 rpm               | arm64 tar.gz            |
+| --------------------------------------------------- | ----------------------- | ----------------------- | ----------------------- | ----------------------- | ----------------------- | ----------------------- | ----------------------- | ----------------------- |
+| Artifact exists in `release-electron/`              | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| Install (AppImage chmod+run / apt / dnf / extract)  | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| App launches; core extraResource present            | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| Data under `$XDG_DATA_HOME/org.yaqmc.desktop`       | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| Tray missing `libayatana-appindicator` is non-fatal | [ ]                     | [ ]                     | [ ]                     | n/a                     | [ ]                     | [ ]                     | [ ]                     | n/a                     |
+| Upgrade A then B; marker/SQLite survives            | [ ]                     | [ ]                     | [ ]                     | n/a                     | [ ]                     | [ ]                     | [ ]                     | n/a                     |
+| Uninstall removes package/binary, keeps app data    | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| No WebKitGTK Depends                                | n/a                     | [ ]                     | [ ]                     | n/a                     | n/a                     | [ ]                     | [ ]                     | n/a                     |
+| Clean VM                                            | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending |
 
 Related: [PACK-01 builder pin](plan-deltas.md), [PACK-02 Windows](pack02-windows.md),
 [data paths](data-paths.md), [release asset names](release-assets.md). CI-03

@@ -2,10 +2,10 @@
 
 > **简体中文** | [English](../linux-acceptance.md)
 
-本账本区分历史观测和仍需 Arch Linux 测试者执行的最终 AppImage 验收。采集完成只会生成
-`verification: pending`，不能自行宣告通过。
+本账本区分迁移前历史观测和仍需 Arch Linux 测试者执行的当前 Electron 最终 AppImage 验收。
+采集完成只会生成 `verification: pending`，不能自行宣告通过。
 
-## 2026-08-10 原生 Wayland 基线
+## 2026-08-10 迁移前原生 Wayland 基线
 
 | 字段     | 值                                                                 |
 | -------- | ------------------------------------------------------------------ |
@@ -19,8 +19,8 @@
 | 音频     | Rodio/CPAL ALSA → PipeWire                                         |
 | 时长     | 50.379 秒                                                          |
 
-压缩包解压前验证过路径，无绝对路径、盘符、NUL 或 `..` 穿越；解压前后摘要一致。它证明原生 Wayland
-主窗、MPRIS 2.2、托盘和音频初始化，日志没有 panic、应用 ERROR、Wayland 协议错误、DMABUF 故障或崩溃。
+压缩包解压前验证过路径，无绝对路径、盘符、NUL 或 `..` 穿越；解压前后摘要一致。它只证明已退役宿主
+当时创建了原生 Wayland 主窗并完成 MPRIS 2.2、托盘和音频初始化；不验证当前 Electron host。
 
 它不证明旧 bundle 的精确 Git/工作流/最终 AppImage 身份，也没有分阶段记录播放、seek、性能、全屏几何
 恢复或歌词锁定。旧报告的生命周期 CPU 与 RSS 不能当瞬时性能或唯一内存。
@@ -30,8 +30,8 @@
 使用 workflow 的扁平 `YAQMC-linux-x86_64` artifact，其中应包含最终 AppImage、`BUILD-IDENTITY.json`、
 `SHA256SUMS`、测试说明、采集器和验证器。先执行 `sha256sum -c` 与 identity-only 验证，再依次采集：
 
-1. `auto`；
-2. `native-wayland`，必须报告 `wayland-native`；
+1. `auto`，不设置 YAQMC 图形 override；
+2. `native-wayland`，提供 `YAQMC_LINUX_RENDERER=native-wayland` 且必须报告 `wayland-native`；
 3. `x11`，在 Wayland 会话可报告 `xwayland`；
 4. 只有前面的原生图形故障才允许 `software`，并保留两份报告。
 

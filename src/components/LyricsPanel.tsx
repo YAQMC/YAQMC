@@ -1,4 +1,11 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { ChevronDown, Heart, Image } from 'lucide-react';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
 import { useLyricsStore } from '../application/lyrics-store';
@@ -275,7 +282,10 @@ function LyricsPanelStage({
       const generation = raw === undefined ? undefined : Number(raw);
       useLyricsStageStore
         .getState()
-        .notifyTransitionFinished(event.animationName, Number.isFinite(generation) ? generation : undefined);
+        .notifyTransitionFinished(
+          event.animationName,
+          Number.isFinite(generation) ? generation : undefined,
+        );
     };
     stageElement.addEventListener('animationend', settle);
     return () => stageElement.removeEventListener('animationend', settle);

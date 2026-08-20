@@ -120,7 +120,12 @@ function mockUnlock(): LyricsUnlockOverlays & {
   show: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => void>>;
   hide: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => void>>;
   position: ReturnType<
-    typeof vi.fn<(kind: LyricsUnlockKind, surface: { x: number; y: number; width: number; height: number }) => void>
+    typeof vi.fn<
+      (
+        kind: LyricsUnlockKind,
+        surface: { x: number; y: number; width: number; height: number },
+      ) => void
+    >
   >;
   get: ReturnType<typeof vi.fn<(kind: LyricsUnlockKind) => LyricsUnlockWindow | undefined>>;
 } {
@@ -141,7 +146,13 @@ function mockUnlock(): LyricsUnlockOverlays & {
       }
     }),
     hide: vi.fn<(kind: LyricsUnlockKind) => void>(),
-    position: vi.fn<(kind: LyricsUnlockKind, surface: { x: number; y: number; width: number; height: number }) => void>(),
+    position:
+      vi.fn<
+        (
+          kind: LyricsUnlockKind,
+          surface: { x: number; y: number; width: number; height: number },
+        ) => void
+      >(),
     get: vi.fn((kind: LyricsUnlockKind) => windows.get(kind)),
   };
 }

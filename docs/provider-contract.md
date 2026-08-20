@@ -38,9 +38,9 @@ new query even though an already-dispatched native command cannot cancel its und
 
 Public capabilities include search, album and artist metadata, playlist/toplist read, lyrics, word-timed lyrics,
 streaming, and quality selection. The native adapter also implements the account extension. Its capability snapshot
-is session-derived: QQ/WeChat OAuth launch is exposed only to the main WebView; favorites and owned-playlist
+is session-derived: QQ/WeChat OAuth launch is exposed only to the main renderer; favorites and owned-playlist
 operations require an authenticated account; recent history is called only when the provider advertises it. The
-remote authorization WebView has no account-command capability. Status remains
+remote authorization window has no account-command capability. Status remains
 `implemented; live account acceptance pending` until the explicit account acceptance gate completes.
 
 ### FakeMusicProvider

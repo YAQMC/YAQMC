@@ -225,16 +225,31 @@ function collectPersistence(repositoryRoot) {
   );
 
   return [
-    { id: 'sqlite-library', store: 'SQLite', key: 'library.sqlite3 (WAL)', target: 'Keep in place' },
+    {
+      id: 'sqlite-library',
+      store: 'SQLite',
+      key: 'library.sqlite3 (WAL)',
+      target: 'Keep in place',
+    },
     {
       id: 'queue-state',
       store: 'SQLite table',
       key: 'queue_state singleton row (value_json)',
       target: 'Keep in place',
     },
-    { id: 'audio-output-device', store: 'app_settings', key: audioOutput, target: 'Keep exact key' },
+    {
+      id: 'audio-output-device',
+      store: 'app_settings',
+      key: audioOutput,
+      target: 'Keep exact key',
+    },
     { id: 'logging-level', store: 'app_settings', key: loggingLevel, target: 'Keep exact key' },
-    { id: 'preferred-quality', store: 'app_settings', key: 'preferred-quality', target: 'Keep exact key' },
+    {
+      id: 'preferred-quality',
+      store: 'app_settings',
+      key: 'preferred-quality',
+      target: 'Keep exact key',
+    },
     {
       id: 'preferences-schema-version',
       store: 'app_settings',

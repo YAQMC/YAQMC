@@ -107,9 +107,7 @@ export function capabilitiesForBackend(
     globalShortcuts: globalShortcutsSupported,
     notes:
       backend === 'xwayland'
-        ? [
-            'The desktop session is Wayland, but YAQMC is using an X11/XWayland window backend.',
-          ]
+        ? ['The desktop session is Wayland, but YAQMC is using an X11/XWayland window backend.']
         : [],
   };
 }

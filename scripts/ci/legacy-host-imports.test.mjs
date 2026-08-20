@@ -17,7 +17,10 @@ test('seeded legacy host package references fail the linter', () => {
   assert.deepEqual(lintLegacyHostImportText(`// leftover ${needle} import\n`, 'src/main.tsx'), [
     'src/main.tsx: forbidden legacy host package reference',
   ]);
-  assert.deepEqual(lintLegacyHostImportText('export const kind = "electron";\n', 'src/main.tsx'), []);
+  assert.deepEqual(
+    lintLegacyHostImportText('export const kind = "electron";\n', 'src/main.tsx'),
+    [],
+  );
 });
 
 test('a temporary tree with a seeded src reference fails the repository scan', () => {

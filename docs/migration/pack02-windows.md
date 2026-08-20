@@ -42,11 +42,11 @@ npx electron-builder --projectDir apps/desktop --config electron-builder.yml --w
 
 Not a clean-VM matrix.
 
-| Artifact | This host |
-| -------- | --------- |
-| `YAQMC-windows-x64-setup.exe` | **not produced** — `--win nsis --x64` failed `getaddrinfo ENOTFOUND github.com` (NSIS tool fetch) |
-| `YAQMC-windows-x64-portable.exe` | skipped (same GitHub fetch; not attempted after NSIS failure) |
-| arm64 NSIS / portable | not produced (x64 host; CI-03) |
+| Artifact                         | This host                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `YAQMC-windows-x64-setup.exe`    | **not produced** — `--win nsis --x64` failed `getaddrinfo ENOTFOUND github.com` (NSIS tool fetch) |
+| `YAQMC-windows-x64-portable.exe` | skipped (same GitHub fetch; not attempted after NSIS failure)                                     |
+| arm64 NSIS / portable            | not produced (x64 host; CI-03)                                                                    |
 
 `win-unpacked` packaging **did** run (Electron **43.4.0**, fuses, `oneClick: false`,
 `perMachine: false`). NSIS tooling download from GitHub failed DNS. Documented
@@ -89,14 +89,14 @@ Programs gone; app data remains.
 
 **LIVE VERIFY / clean-VM pending.** Leave boxes empty. Do not claim the matrix green.
 
-| Check | x64 NSIS | x64 portable | arm64 NSIS | arm64 portable |
-| ----- | -------- | ------------ | ---------- | -------------- |
-| Artifact exists | [ ] | [ ] | [ ] | [ ] |
-| Per-user install, no admin (`perMachine: false`) | [ ] | n/a | [ ] | n/a |
-| Directory chooser / `/D=` (`oneClick: false`) | [ ] | n/a | [ ] | n/a |
-| App launches; core extraResource present | [ ] | [ ] | [ ] | [ ] |
-| Data under `%APPDATA%\org.yaqmc.desktop` | [ ] | [ ] | [ ] | [ ] |
-| Upgrade A then B; marker/SQLite survives | [ ] | n/a | [ ] | n/a |
-| Uninstall removes Programs, keeps app data | [ ] | n/a | [ ] | n/a |
-| Unsigned (R-9) SmartScreen expected | [ ] | [ ] | [ ] | [ ] |
-| Clean VM | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending |
+| Check                                            | x64 NSIS                | x64 portable            | arm64 NSIS              | arm64 portable          |
+| ------------------------------------------------ | ----------------------- | ----------------------- | ----------------------- | ----------------------- |
+| Artifact exists                                  | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| Per-user install, no admin (`perMachine: false`) | [ ]                     | n/a                     | [ ]                     | n/a                     |
+| Directory chooser / `/D=` (`oneClick: false`)    | [ ]                     | n/a                     | [ ]                     | n/a                     |
+| App launches; core extraResource present         | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| Data under `%APPDATA%\org.yaqmc.desktop`         | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| Upgrade A then B; marker/SQLite survives         | [ ]                     | n/a                     | [ ]                     | n/a                     |
+| Uninstall removes Programs, keeps app data       | [ ]                     | n/a                     | [ ]                     | n/a                     |
+| Unsigned (R-9) SmartScreen expected              | [ ]                     | [ ]                     | [ ]                     | [ ]                     |
+| Clean VM                                         | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending | [ ] LIVE VERIFY pending |

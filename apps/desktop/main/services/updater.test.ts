@@ -31,9 +31,7 @@ function fakePort(overrides: Partial<UpdaterPort> = {}): UpdaterPort {
   };
 }
 
-function createTestUpdater(
-  overrides: Partial<UpdaterOptions> = {},
-): {
+function createTestUpdater(overrides: Partial<UpdaterOptions> = {}): {
   updater: ReturnType<typeof createUpdater>;
   emitted: Array<{ channel: typeof CHANNEL_HOST_UPDATE; payload: UpdatePayload }>;
   scheduleCheck: ReturnType<typeof vi.fn>;
@@ -103,7 +101,11 @@ describe('notify state machine', () => {
   it('goes idle → checking → available and does not auto-download', async () => {
     const port = fakePort({
       checkForUpdates: async () =>
-        ({ outcome: 'available', version: '1.2.3', releaseUrl: DEFAULT_RELEASE_URL }) satisfies UpdaterCheckResult,
+        ({
+          outcome: 'available',
+          version: '1.2.3',
+          releaseUrl: DEFAULT_RELEASE_URL,
+        }) satisfies UpdaterCheckResult,
     });
     const { updater, emitted } = createTestUpdater({ port });
     expect(updater.state()).toBe('idle');
@@ -112,7 +114,10 @@ describe('notify state machine', () => {
     expect(result.version).toBe('1.2.3');
     expect(result.canInstall).toBe(true);
     expect(result.allowPrerelease).toBe(false);
-    expect(emitted.map((entry) => entry.channel)).toEqual([CHANNEL_HOST_UPDATE, CHANNEL_HOST_UPDATE]);
+    expect(emitted.map((entry) => entry.channel)).toEqual([
+      CHANNEL_HOST_UPDATE,
+      CHANNEL_HOST_UPDATE,
+    ]);
     expect(emitted.map((entry) => entry.payload.state)).toEqual(['checking', 'available']);
     expect(port.installUpdate).not.toHaveBeenCalled();
   });

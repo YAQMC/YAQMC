@@ -13,7 +13,9 @@ function mockWindow(): OverlayInputWindow & { order: string[] } {
   return {
     order,
     setIgnoreMouseEvents: vi.fn((ignore: boolean, options?: { forward: boolean }) => {
-      order.push(options?.forward ? `ignore:${String(ignore)}:forward` : `ignore:${String(ignore)}`);
+      order.push(
+        options?.forward ? `ignore:${String(ignore)}:forward` : `ignore:${String(ignore)}`,
+      );
     }),
     setFocusable: vi.fn((focusable: boolean) => {
       order.push(`focusable:${String(focusable)}`);
@@ -66,7 +68,9 @@ describe('Windows overlay input', () => {
     expect(window.setSkipTaskbar).toHaveBeenCalledWith(true);
     expect(window.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver');
     expect(window.moveTop).toHaveBeenCalledTimes(1);
-    expect(window.order.indexOf('focusable:true')).toBeLessThan(window.order.indexOf('skipTaskbar:true'));
+    expect(window.order.indexOf('focusable:true')).toBeLessThan(
+      window.order.indexOf('skipTaskbar:true'),
+    );
   });
 
   it('skips optional Electron APIs when absent', () => {

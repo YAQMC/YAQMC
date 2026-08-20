@@ -117,7 +117,10 @@ test('QA Core cannot resolve to the normal dev Core root', () => {
 test('cleanup cannot delete outside a marked yaqmc-qa sandbox', () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-maintainer-'));
   const { env, prod } = seedMaintainer(home);
-  assert.throws(() => cleanupQaSandbox(prod.dataDir, { env }), /not under yaqmc-qa|no \.yaqmc-qa-sandbox/);
+  assert.throws(
+    () => cleanupQaSandbox(prod.dataDir, { env }),
+    /not under yaqmc-qa|no \.yaqmc-qa-sandbox/,
+  );
   assert.throws(() => assertIsQaSandbox(prod.dataDir), /not under yaqmc-qa/);
   const decoy = mkdtempSync(path.join(os.tmpdir(), 'not-qa-'));
   writeFileSync(path.join(decoy, '.yaqmc-qa-sandbox'), '{}\n');
@@ -143,10 +146,7 @@ test('failed/hung profiler still cannot point Core at production', () => {
   const before = hashDirectory(home);
   const sandbox = createQaSandbox({ purpose: 'hung-profiler', env });
   writeFileSync(path.join(sandbox.coreData, 'partial.json'), '{"hung":true}');
-  assert.throws(
-    () => assertSandboxNotProduction(prod.dataDir, { env }),
-    /overlaps production/,
-  );
+  assert.throws(() => assertSandboxNotProduction(prod.dataDir, { env }), /overlaps production/);
   assert.equal(hashDirectory(home), before);
 });
 
@@ -210,12 +210,21 @@ test('QA Core child env keeps credentials and plugin fallback inside the sandbox
 });
 
 test('ACC-02 profile probe refuse production overlap and strip QA flags', () => {
-  const source = readFileSync(path.join(repoRoot, 'scripts', 'migration', 'acc02-profile-dirs.mjs'), 'utf8');
+  const source = readFileSync(
+    path.join(repoRoot, 'scripts', 'migration', 'acc02-profile-dirs.mjs'),
+    'utf8',
+  );
   assert.match(source, /stripQaLaunchFlags/);
   assert.match(source, /overlaps production Core data/);
-  const play03 = readFileSync(path.join(repoRoot, 'scripts', 'migration', 'acc02-play03-cdp.mjs'), 'utf8');
+  const play03 = readFileSync(
+    path.join(repoRoot, 'scripts', 'migration', 'acc02-play03-cdp.mjs'),
+    'utf8',
+  );
   assert.match(play03, /assertProductionAttachAllowed/);
-  const dwm = readFileSync(path.join(repoRoot, 'scripts', 'migration', 'acc02-dwm-css.mjs'), 'utf8');
+  const dwm = readFileSync(
+    path.join(repoRoot, 'scripts', 'migration', 'acc02-dwm-css.mjs'),
+    'utf8',
+  );
   assert.match(dwm, /assertProductionAttachAllowed/);
 });
 

@@ -8,7 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from '@playwright/test';
 import { waitForTcp } from '../dev-desktop.mjs';
-import { cleanupQaSandbox, createQaSandbox, electronQaArgs, qaElectronEnv } from '../qa-runtime.mjs';
+import {
+  cleanupQaSandbox,
+  createQaSandbox,
+  electronQaArgs,
+  qaElectronEnv,
+} from '../qa-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
@@ -45,10 +50,10 @@ try {
   if (!page) throw new Error('no page');
   await page.waitForSelector('.app-shell', { timeout: 60_000 });
   const inv = (method, params) =>
-    page.evaluate(
-      async ({ methodName, payload }) => globalThis.yaqmc.invoke(methodName, payload),
-      { methodName: method, payload: params },
-    );
+    page.evaluate(async ({ methodName, payload }) => globalThis.yaqmc.invoke(methodName, payload), {
+      methodName: method,
+      payload: params,
+    });
   await inv('player_play_tracks', {
     request: {
       tracks: [

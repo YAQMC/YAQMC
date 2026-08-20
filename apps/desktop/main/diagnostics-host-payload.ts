@@ -127,9 +127,7 @@ function copyWindow(window: DiagnosticsHostWindowState): DiagnosticsHostWindowSt
   return next;
 }
 
-function copyLinuxGraphics(
-  graphics: DiagnosticsHostLinuxGraphics,
-): DiagnosticsHostLinuxGraphics {
+function copyLinuxGraphics(graphics: DiagnosticsHostLinuxGraphics): DiagnosticsHostLinuxGraphics {
   return {
     platform: graphics.platform,
     mode: graphics.mode,

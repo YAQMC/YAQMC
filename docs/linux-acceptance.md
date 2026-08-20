@@ -2,10 +2,11 @@
 
 > [简体中文](zh-CN/linux-acceptance.md) | **English**
 
-This ledger separates historical observations from the final-AppImage acceptance that still requires an Arch Linux
-tester. A collection run produces evidence with `verification: pending`; it does not declare a pass.
+This ledger separates pre-migration observations from current Electron final-AppImage acceptance, which still
+requires an Arch Linux tester. A collection run produces evidence with `verification: pending`; it does not declare
+a pass.
 
-## 2026-08-10 native-Wayland baseline
+## 2026-08-10 pre-migration native-Wayland baseline
 
 | Field                       | Value                                                                           |
 | --------------------------- | ------------------------------------------------------------------------------- |
@@ -20,15 +21,15 @@ tester. A collection run produces evidence with `verification: pending`; it does
 | Audio                       | Rodio/CPAL ALSA route to PipeWire Sound Server                                  |
 | Runtime duration            | 50.379 seconds                                                                  |
 
-This current baseline was native Wayland. An earlier, pre-launcher-fix report used XWayland; that historical result
-does not describe the current baseline and cannot satisfy native-Wayland acceptance.
+This capture was native Wayland for the retired desktop host. It does not describe the current Electron host and
+cannot satisfy current native-Wayland acceptance. An even earlier launcher capture used XWayland.
 
 The archive was checked before extraction: all entries normalized below the destination directory and none used an
 absolute path, drive prefix, NUL byte, or `..` traversal segment. Its digest matched before and after extraction.
 
 ### What it proves
 
-- YAQMC created a native Wayland main window without `GDK_BACKEND` or a renderer override.
+- The retired host created a native Wayland main window without an explicit renderer override.
 - MPRIS 2.2, the tray adapter, and Rodio/CPAL initialization completed.
 - The log contained no panic, application `ERROR`, Wayland protocol error, DMABUF failure, or crash signature.
 
@@ -39,11 +40,11 @@ absolute path, drive prefix, NUL byte, or `..` traversal segment. Its digest mat
 - Playback, seek continuity, media controls, frame pacing, Focus/fullscreen geometry restoration, and lyric-surface
   lock/unlock were not phase-marked.
 - Summed lifetime `%CPU` and RSS are not instantaneous utilization or unique memory. The old report had no PSS and
-  cannot attribute its sustained WebKit work to a specific surface.
+  cannot attribute its sustained renderer work to a specific surface.
 
 ## Required final-AppImage protocol
 
-Use the flat `YAQMC-linux-x86_64` workflow artifact. It contains the final repacked AppImage,
+Use the flat `YAQMC-linux-x86_64` Electron workflow artifact. It contains the final AppImage,
 `BUILD-IDENTITY.json`, `SHA256SUMS`, `TESTING.md`, `ACCEPTANCE.md`, the collector, and the verifier. A repository
 checkout is neither required nor accepted as binary identity evidence.
 
@@ -59,8 +60,9 @@ node verify-lyrics-acceptance.mjs \
 
 Collect into one root, in this order:
 
-1. `auto` with no GTK or renderer override.
-2. `native-wayland`, which must log `display_backend="wayland-native"`.
+1. `auto` with no YAQMC graphics override.
+2. `native-wayland`, which supplies `YAQMC_LINUX_RENDERER=native-wayland` and must log
+   `display_backend="wayland-native"`.
 3. `x11`, which may report `x11` in an X11 session or `xwayland` in a Wayland session.
 4. `software` only when a preceding native run reproduces a graphics failure; retain both reports.
 

@@ -33,17 +33,17 @@
 
 发现页各区段全部走访客路径（无会话）：
 
-| 区段        | 数据源                                                    |
-| ----------- | -------------------------------------------------------- |
-| 排行榜      | `musicToplist.ToplistInfoServer/GetDetail`（8 个 topId） |
-| 新歌        | `newsong.NewSongServer/get_new_song_info`                |
-| 新专辑      | `topId 27` 榜单歌曲按专辑分组                             |
-| 分类        | `music.area.CategoryArea/getCategoryAreaInCategoryPlaylist` |
-| 新MV        | `MvService.MvInfoProServer/GetNewMv`                     |
-| 播客        | `music.longRadio.recommend/getRadioList`                 |
-| 焦点        | `music.musicHall.MusicHallPlatformSvr/GetFocus`          |
-| 热门歌单    | `music.playlist.PlaylistSquare/GetRecommendFeed`         |
-| 专区详情页  | `music.area.AreaHome/getAreaHomePage`                    |
+| 区段       | 数据源                                                      |
+| ---------- | ----------------------------------------------------------- |
+| 排行榜     | `musicToplist.ToplistInfoServer/GetDetail`（8 个 topId）    |
+| 新歌       | `newsong.NewSongServer/get_new_song_info`                   |
+| 新专辑     | `topId 27` 榜单歌曲按专辑分组                               |
+| 分类       | `music.area.CategoryArea/getCategoryAreaInCategoryPlaylist` |
+| 新MV       | `MvService.MvInfoProServer/GetNewMv`                        |
+| 播客       | `music.longRadio.recommend/getRadioList`                    |
+| 焦点       | `music.musicHall.MusicHallPlatformSvr/GetFocus`             |
+| 热门歌单   | `music.playlist.PlaylistSquare/GetRecommendFeed`            |
+| 专区详情页 | `music.area.AreaHome/getAreaHomePage`                       |
 
 发现页刻意与首页保持独立：首页保留个性化精选（猜你喜欢、每日30首、雷达、个性化歌单，以及个性化新歌推荐
 卡片），而发现页对所有用户展示相同内容。

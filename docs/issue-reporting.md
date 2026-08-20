@@ -63,7 +63,7 @@ change beyond appending to `IssueCategory::ALL` and mapping the new template.
 
 ## GitHub URL prefill
 
-Rust composes the URL in `src-tauri/src/issue_reporter.rs::compose_url`.
+Rust composes the URL in `crates/yaqmc-core/src/issue_reporter.rs::compose_url`.
 Supported GitHub Issue Form query parameters are used:
 
 - `template=` — the target Issue Form file.
@@ -90,7 +90,7 @@ Every generated body includes:
 - YAQMC version + short commit,
 - build channel + type,
 - OS + architecture,
-- renderer (WebView2 on Windows, `WebKitGTK <version>` on Linux),
+- renderer/host identity supplied by Electron Main (Electron/Chromium and the observed display backend),
 - audio backend + resolved policy + host,
 - provider mode + connection + membership tier (never secrets),
 - log level + session ID,
@@ -132,17 +132,16 @@ GitHub's Submit button.
 
 ## Browser open security
 
-`openIssueUrl` calls `issue_reporter_validate_url` (Rust) before invoking
-`openUrl` (Tauri opener plugin). The Rust check requires that the URL:
+`openIssueUrl` calls `issue_reporter_validate_url` (Rust) before invoking the
+Electron Main `shell.openExternal` bridge. The Rust check requires that the URL:
 
 - starts with `https://github.com/YAQMC/YAQMC/issues/new`,
 - contains no whitespace,
 - is under the 6 000-character soft limit.
 
-The opener capability in `src-tauri/capabilities/main-window.json`
-(`opener:allow-open-url` with a scoped `url` allowlist) restricts the
-plugin to the same GitHub Issues origin+path. Both checks must pass before
-the browser sees the URL.
+The allowlist in `apps/desktop/main/open-external.ts` independently restricts
+external HTTPS destinations. The narrower Core Issue-prefix check and the Main
+allowlist must both pass before the browser sees the URL.
 
 No GitHub OAuth is used. YAQMC does not read browser cookies. If the user
 happens to be logged into GitHub in their browser already, the browser
@@ -152,8 +151,8 @@ integration".
 ## Error codes
 
 When a report is linked to an application error, we prepopulate a stable
-error code. The taxonomy lives in `src-tauri/src/error_codes.rs` and follows
-the pattern `YAQMC-<DOMAIN>-<REASON>`, e.g.:
+error code. Codes carried by Core `ErrorRecord` values and the frontend logger
+follow the pattern `YAQMC-<DOMAIN>-<REASON>`, e.g.:
 
 ```
 YAQMC-QQ-AUTH-COOKIES-INVALID

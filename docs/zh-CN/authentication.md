@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-应用默认以访客模式启动。QQ 和微信登录会打开受限制、无痕的腾讯 OAuth WebView。Rust 在跳转前拦截
+应用默认以访客模式启动。QQ 和微信登录会打开受限制、无痕的腾讯 OAuth Electron `BrowserWindow`。Rust 在跳转前拦截
 已注册 QQ 音乐回调，校验一次性 code 与 CSRF state，再交换为规范化会话。YAQMC 不渲染密码表单、不读
-用户在腾讯页面输入的凭据、不复制 WebView Cookie，也不要求粘贴会话。该集成属于兼容接口，不是腾讯
+用户在腾讯页面输入的凭据、不复制 OAuth 窗口 Cookie，也不要求粘贴会话。该集成属于兼容接口，不是腾讯
 公开支持的第三方 QQ 音乐 SDK；真实账号完整验收仍待完成。
 
 状态机区分访客、恢复中、等待授权、已认证、取消/过期/拒绝、网络/协议错误、需要重新认证和安全存储
@@ -27,8 +27,8 @@
 
 ## OAuth 所有权和会话提升
 
-只有标签精确为 `main` 的 WebView 拥有 `qqmusic-account` capability，Rust 命令还会再次检查调用者。
-歌词窗口和远程 OAuth WebView 无法调用账号命令。OAuth 只允许所需 HTTPS 域名，禁止 popup、自动填充和
+只有主渲染器能通过 Electron Main IPC ACL 访问 `qqmusic-account`，Core 命令还会再次检查调用者角色。
+歌词窗口和远程 OAuth 窗口无法调用账号命令。OAuth 只允许所需 HTTPS 域名，禁止 popup、自动填充和
 devtools，并验证回调 origin/path、登录类型、return URL、唯一 state 和 code 长度。主窗口对话框用不透明
 lease 保持所有权；所有者关闭/重载、OAuth 窗口丢失或 lease 超时会取消，单次最长五分钟。
 

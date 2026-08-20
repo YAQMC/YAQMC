@@ -35,8 +35,7 @@ async function rendererInvoke<T>(page: Page, method: string, params?: unknown): 
   return page.evaluate(
     async ({ methodName, payload }) => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -46,16 +45,11 @@ async function rendererInvoke<T>(page: Page, method: string, params?: unknown): 
   );
 }
 
-async function rendererInvokeError(
-  page: Page,
-  method: string,
-  params?: unknown,
-): Promise<string> {
+async function rendererInvokeError(page: Page, method: string, params?: unknown): Promise<string> {
   return page.evaluate(
     async ({ methodName, payload }) => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }

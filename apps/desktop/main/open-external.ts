@@ -79,10 +79,7 @@ function isExplicitUserTypedUrl(parsed: URL, extraHttpsUrls: readonly string[]):
  * True iff `url` may be handed to `shell.openExternal`.
  * `extraHttpsUrls` are exact settings values; each must itself be https.
  */
-export function isAllowedExternalUrl(
-  url: string,
-  extraHttpsUrls: readonly string[] = [],
-): boolean {
+export function isAllowedExternalUrl(url: string, extraHttpsUrls: readonly string[] = []): boolean {
   const parsed = parseSafeHttpsUrl(url);
   if (!parsed) {
     return false;

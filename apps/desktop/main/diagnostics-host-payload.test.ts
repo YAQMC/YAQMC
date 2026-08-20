@@ -151,7 +151,9 @@ describe('collectDiagnosticsHostPayload', () => {
       updater: { state: 'idle' },
       restartCounter: 0,
     });
-    expect(attachHostPayloadToExportParams({ request: { includeLogs: true } }, hostPayload)).toEqual({
+    expect(
+      attachHostPayloadToExportParams({ request: { includeLogs: true } }, hostPayload),
+    ).toEqual({
       request: { includeLogs: true, hostPayload },
     });
     expect(

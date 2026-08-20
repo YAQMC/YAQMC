@@ -264,10 +264,12 @@ unset GDK_BACKEND YAQMC_LINUX_RENDERER WEBKIT_DISABLE_DMABUF_RENDERER WEBKIT_DIS
 case "$MODE" in
   auto) ;;
   native-wayland)
+    export YAQMC_LINUX_RENDERER=native-wayland
     export GDK_BACKEND=wayland
     unset DISPLAY
     ;;
   x11)
+    export YAQMC_LINUX_RENDERER=x11
     export GDK_BACKEND=x11
     ;;
   software)

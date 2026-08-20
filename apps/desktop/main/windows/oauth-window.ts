@@ -158,12 +158,10 @@ function attachOAuthWindowGuards(
         return;
       }
       phase = 'completing';
-      void deps
-        .auth_oauth_complete({ attemptId, callbackUrl: url })
-        .finally(() => {
-          phase = 'finished';
-          window.close();
-        });
+      void deps.auth_oauth_complete({ attemptId, callbackUrl: url }).finally(() => {
+        phase = 'finished';
+        window.close();
+      });
       return;
     }
     if (!urlMatchesOAuthAllowlist(url, allowlist)) {

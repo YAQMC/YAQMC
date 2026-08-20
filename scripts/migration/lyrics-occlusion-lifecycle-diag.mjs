@@ -151,17 +151,21 @@ async function runVariant(mode) {
     env.YAQMC_CORE_BIN = path.join(env.CARGO_TARGET_DIR, 'debug', 'yaqmc-core.exe');
   }
 
-  const child = spawn(
-    electronBinary,
-    electronQaArgs(sandbox, ['--lang=en-US']),
-    { cwd: desktopRoot, env, stdio: 'inherit', windowsHide: false },
-  );
+  const child = spawn(electronBinary, electronQaArgs(sandbox, ['--lang=en-US']), {
+    cwd: desktopRoot,
+    env,
+    stdio: 'inherit',
+    windowsHide: false,
+  });
   const stop = () => {
     killTree(child.pid);
   };
   process.on('exit', stop);
   try {
-    const report = await waitForFile(variantOut, Number(process.env.YAQMC_UI_PERF_DIAG_TIMEOUT_MS || 180_000));
+    const report = await waitForFile(
+      variantOut,
+      Number(process.env.YAQMC_UI_PERF_DIAG_TIMEOUT_MS || 180_000),
+    );
     stop();
     await Promise.race([
       new Promise((resolve) => child.once('exit', resolve)),

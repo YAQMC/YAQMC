@@ -40,17 +40,17 @@ Each category card opens a dedicated area page (`qqmusic_area`), which resolves 
 
 All discover sections use the guest path (no session):
 
-| Section              | Source                                                |
-| -------------------- | ----------------------------------------------------- |
-| Charts               | `musicToplist.ToplistInfoServer/GetDetail` (8 topIds) |
-| New songs            | `newsong.NewSongServer/get_new_song_info`             |
-| New albums           | grouped tracks from the `topId 27` chart              |
-| Categories           | `music.area.CategoryArea/getCategoryAreaInCategoryPlaylist` |
-| New MVs              | `MvService.MvInfoProServer/GetNewMv`                  |
-| Podcasts             | `music.longRadio.recommend/getRadioList`              |
-| Featured             | `music.musicHall.MusicHallPlatformSvr/GetFocus`       |
-| Popular playlists    | `music.playlist.PlaylistSquare/GetRecommendFeed`      |
-| Area page            | `music.area.AreaHome/getAreaHomePage`                 |
+| Section           | Source                                                      |
+| ----------------- | ----------------------------------------------------------- |
+| Charts            | `musicToplist.ToplistInfoServer/GetDetail` (8 topIds)       |
+| New songs         | `newsong.NewSongServer/get_new_song_info`                   |
+| New albums        | grouped tracks from the `topId 27` chart                    |
+| Categories        | `music.area.CategoryArea/getCategoryAreaInCategoryPlaylist` |
+| New MVs           | `MvService.MvInfoProServer/GetNewMv`                        |
+| Podcasts          | `music.longRadio.recommend/getRadioList`                    |
+| Featured          | `music.musicHall.MusicHallPlatformSvr/GetFocus`             |
+| Popular playlists | `music.playlist.PlaylistSquare/GetRecommendFeed`            |
+| Area page         | `music.area.AreaHome/getAreaHomePage`                       |
 
 The discovery feed is intentionally distinct from the home feed: home keeps personalized picks (guess-you-like,
 daily 30, radar, personalized songlists, and the personalized new-song picks card), while Discover shows the same

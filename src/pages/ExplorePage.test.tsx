@@ -19,7 +19,9 @@ describe('ExplorePage', () => {
       </ProviderContext.Provider>,
     );
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Charts' })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Charts' })).toBeInTheDocument(),
+    );
 
     expect(screen.getByRole('heading', { name: 'Charts' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'New songs' })).toBeInTheDocument();
@@ -66,7 +68,9 @@ describe('ExplorePage', () => {
       </ProviderContext.Provider>,
     );
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Charts' })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Charts' })).toBeInTheDocument(),
+    );
 
     const chart = discoverFeed.charts[0]!;
     const openButtons = screen.getAllByRole('button', {
@@ -87,7 +91,9 @@ describe('ExplorePage', () => {
       </ProviderContext.Provider>,
     );
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Categories' })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Categories' })).toBeInTheDocument(),
+    );
 
     const category = discoverFeed.categories[0]!;
     const openButtons = screen.getAllByRole('button', {

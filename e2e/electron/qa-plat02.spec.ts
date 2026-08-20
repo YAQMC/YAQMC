@@ -21,8 +21,7 @@ async function rendererInvoke<T>(page: Page, method: string, params?: unknown): 
   return page.evaluate(
     async ({ methodName, payload }) => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -169,8 +168,7 @@ test.describe('PLAT-02 global shortcuts production path', () => {
     await expect.poll(() => e2eCoreStatus(session.app), { timeout: 60_000 }).toBe('ready');
     await expect
       .poll(
-        async () =>
-          (await readPreferences(session.page)).system?.globalShortcutsEnabled === true,
+        async () => (await readPreferences(session.page)).system?.globalShortcutsEnabled === true,
       )
       .toBe(true);
     await expect

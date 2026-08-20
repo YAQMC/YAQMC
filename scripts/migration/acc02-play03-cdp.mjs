@@ -53,10 +53,17 @@ async function invoke(page, method, params) {
 
 const browser = await chromium.connectOverCDP(`http://127.0.0.1:${String(port)}`);
 const page =
-  browser.contexts().flatMap((context) => context.pages()).find((item) => {
-    const url = item.url();
-    return url.includes('127.0.0.1:1420') && !url.includes('surface=') && !url.includes('unlockSurface=');
-  }) ?? browser.contexts().flatMap((context) => context.pages())[0];
+  browser
+    .contexts()
+    .flatMap((context) => context.pages())
+    .find((item) => {
+      const url = item.url();
+      return (
+        url.includes('127.0.0.1:1420') &&
+        !url.includes('surface=') &&
+        !url.includes('unlockSurface=')
+      );
+    }) ?? browser.contexts().flatMap((context) => context.pages())[0];
 if (!page) throw new Error('no daily-driver page');
 
 const snap0 = await invoke(page, 'player_snapshot');

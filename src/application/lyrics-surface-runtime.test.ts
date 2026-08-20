@@ -329,8 +329,12 @@ describe('lyrics surface projection', () => {
     const timed = {
       receivedAt: 0,
       value: {
-        ...projection({ positionMs: 1_100, timestampMs: 0, isPlaying: true, playbackDurationMs: 10_000 })
-          .value,
+        ...projection({
+          positionMs: 1_100,
+          timestampMs: 0,
+          isPlaying: true,
+          playbackDurationMs: 10_000,
+        }).value,
       },
     };
     const { result } = renderHook(() => useProjectedLyrics(timed, document));

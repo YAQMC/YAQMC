@@ -109,7 +109,8 @@ export type UpdaterHandle = {
 };
 
 export function createUpdater(options: UpdaterOptions): UpdaterHandle {
-  const platform = options.platform ?? (typeof process !== 'undefined' ? process.platform : 'win32');
+  const platform =
+    options.platform ?? (typeof process !== 'undefined' ? process.platform : 'win32');
   const linuxPackage = options.linuxPackage ?? linuxPackageFromEnv(options.env ?? {});
   const canInstall = canInstallInPlace({ platform, linuxPackage });
   const allowPrerelease = allowPrereleaseForChannel(options.channel);

@@ -5,9 +5,19 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { repositoryRoot } from './repo.mjs';
 import {
-  APP_ID, BUILDER_VERSION, CLEAN_VM_STATE, ELECTRON_VERSION, NSIS, PACK02_ID,
-  nsisArtifactName, nsisInstallCommand, nsisUninstallCommand, pack02Report,
-  packWinScript, parseBuilderNsis, portableArtifactName,
+  APP_ID,
+  BUILDER_VERSION,
+  CLEAN_VM_STATE,
+  ELECTRON_VERSION,
+  NSIS,
+  PACK02_ID,
+  nsisArtifactName,
+  nsisInstallCommand,
+  nsisUninstallCommand,
+  pack02Report,
+  packWinScript,
+  parseBuilderNsis,
+  portableArtifactName,
 } from '../migration/pack02-windows.mjs';
 
 const SCRIPT = path.join(repositoryRoot, 'scripts', 'migration', 'pack02-windows.mjs');
@@ -25,7 +35,14 @@ test('PACK-02 assist prints a pending clean-VM matrix and does not invent green'
   assert.equal(payload.nsis.oneClick, false);
   assert.equal(payload.nsis.perMachine, false);
   assert.equal(payload.electronUpdater, true);
-  for (const key of ['nsisPerUserInstall', 'portableExe', 'upgradeAB', 'uninstall', 'x64', 'arm64']) {
+  for (const key of [
+    'nsisPerUserInstall',
+    'portableExe',
+    'upgradeAB',
+    'uninstall',
+    'x64',
+    'arm64',
+  ]) {
     assert.equal(payload.Windows[key].state, CLEAN_VM_STATE);
     assert.equal(payload.Windows[key].checked, false);
   }
@@ -34,14 +51,19 @@ test('PACK-02 assist prints a pending clean-VM matrix and does not invent green'
 });
 
 test('pack:win is --win --x64 and NSIS stays per-user', () => {
-  const pkg = JSON.parse(readFileSync(path.join(repositoryRoot, 'apps', 'desktop', 'package.json'), 'utf8'));
+  const pkg = JSON.parse(
+    readFileSync(path.join(repositoryRoot, 'apps', 'desktop', 'package.json'), 'utf8'),
+  );
   assert.equal(pkg.scripts['pack:win'], packWinScript());
   assert.match(pkg.scripts['pack:win'], /--win/);
   assert.match(pkg.scripts['pack:win'], /--x64/);
   assert.doesNotMatch(pkg.scripts['pack:win'], /--arm64/);
   assert.equal(pkg.devDependencies.electron, ELECTRON_VERSION);
   assert.equal(pkg.dependencies?.['electron-updater'], '6.8.6');
-  const yaml = readFileSync(path.join(repositoryRoot, 'apps', 'desktop', 'electron-builder.yml'), 'utf8');
+  const yaml = readFileSync(
+    path.join(repositoryRoot, 'apps', 'desktop', 'electron-builder.yml'),
+    'utf8',
+  );
   const flags = parseBuilderNsis(yaml);
   assert.equal(flags.appId, true);
   assert.equal(flags.oneClickFalse, true);
@@ -64,7 +86,10 @@ test('artifact names and silent per-user install/uninstall commands', () => {
   assert.equal(nsisUninstallCommand(dir), `"${dir}\\Uninstall YAQMC.exe" /S`);
   const report = pack02Report({
     repoRoot: repositoryRoot,
-    env: { APPDATA: 'C:\\Users\\scratch\\AppData\\Roaming', LOCALAPPDATA: 'C:\\Users\\scratch\\AppData\\Local' },
+    env: {
+      APPDATA: 'C:\\Users\\scratch\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\scratch\\AppData\\Local',
+    },
     now: () => '2026-08-17',
   });
   assert.equal(report.dataDir, 'C:\\Users\\scratch\\AppData\\Roaming\\org.yaqmc.desktop');
@@ -74,7 +99,10 @@ test('artifact names and silent per-user install/uninstall commands', () => {
 });
 
 test('checklist doc does not claim the clean-VM matrix green', () => {
-  const doc = readFileSync(path.join(repositoryRoot, 'docs', 'migration', 'pack02-windows.md'), 'utf8');
+  const doc = readFileSync(
+    path.join(repositoryRoot, 'docs', 'migration', 'pack02-windows.md'),
+    'utf8',
+  );
   assert.match(doc, /LIVE VERIFY \/ clean-VM pending/);
   assert.match(doc, /PACK-02 is not green/);
   assert.match(doc, /oneClick: false/);

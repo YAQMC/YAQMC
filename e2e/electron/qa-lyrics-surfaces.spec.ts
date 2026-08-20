@@ -55,8 +55,7 @@ async function rendererInvoke<T>(page: Page, method: string, params?: unknown): 
   return page.evaluate(
     async ({ methodName, payload }) => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -264,9 +263,9 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
         .toBe('surf-control-b');
       await rendererInvoke(page, 'player_previous').catch(() => undefined);
 
-      expect(
-        await e2eLyricsSetBounds(app, kind, { x: 96, y: 72, width: 640, height: 190 }),
-      ).toBe(true);
+      expect(await e2eLyricsSetBounds(app, kind, { x: 96, y: 72, width: 640, height: 190 })).toBe(
+        true,
+      );
       await lyricsPage.mouse.move(24, 24);
       await lyricsPage.mouse.move(0, 0);
       await page.waitForTimeout(1_200);
@@ -277,7 +276,9 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
       await expect(lyricsPage.getByRole('button', { name: 'Play' })).toHaveCount(0);
       await expect(lyricsPage.getByRole('button', { name: 'Pause' })).toHaveCount(0);
 
-      await expect.poll(() => e2eLyricsUnlockPage(app, kind), { timeout: 10_000 }).not.toBeUndefined();
+      await expect
+        .poll(() => e2eLyricsUnlockPage(app, kind), { timeout: 10_000 })
+        .not.toBeUndefined();
       const unlockPage = await e2eLyricsUnlockPage(app, kind);
       if (!unlockPage) {
         throw new Error(`unlock overlay for ${kind} missing`);

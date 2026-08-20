@@ -201,9 +201,9 @@ describe('plugin runtime isolation', () => {
       }
       throw new Error(method);
     });
-    await expect(installPlugin('C:\\plugin.yaqmc-plugin', { enable: true, grant: [] })).resolves.toEqual(
-      record,
-    );
+    await expect(
+      installPlugin('C:\\plugin.yaqmc-plugin', { enable: true, grant: [] }),
+    ).resolves.toEqual(record);
     expect(invokeMock).toHaveBeenCalledWith('plugin_install_from', {
       request: { path: 'C:\\plugin.yaqmc-plugin', enable: true, grant: [] },
     });

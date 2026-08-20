@@ -7,7 +7,7 @@
 
 未来实现必须由用户主动开启且可以完整回滚；精确白名单 scheme、动作、实体、长度和标识符语法；只规范化
 成提供器领域引用；拒绝未知或注入式输入。URI 内容绝不能成为 Shell 参数、文件路径、HTML 片段、SQL 或
-任意 Tauri 命令。歌词辅助 WebView 不能获得这一能力。
+任意 host/Core IPC 命令。歌词辅助渲染器不能获得这一能力。
 
-关于页使用 Tauri 官方 opener 插件，capability 只允许集中配置的 YAQMC GitHub 仓库链接；不接收用户输入
-URL。
+关于页请求 Electron Main 调用 `shell.openExternal`；`apps/desktop/main/open-external.ts` 的白名单只允许
+集中配置的 YAQMC 链接，不接收用户输入 URL。

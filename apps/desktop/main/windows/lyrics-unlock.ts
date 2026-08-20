@@ -56,10 +56,7 @@ export type LyricsUnlockCreateOptions = {
 };
 
 export type LyricsUnlockDeps = {
-  createWindow: (
-    options: LyricsUnlockCreateOptions,
-    kind: LyricsUnlockKind,
-  ) => LyricsUnlockWindow;
+  createWindow: (options: LyricsUnlockCreateOptions, kind: LyricsUnlockKind) => LyricsUnlockWindow;
   preloadPath?: string;
   pageUrl?: (kind: LyricsUnlockKind) => string;
 };

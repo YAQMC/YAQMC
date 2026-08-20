@@ -75,7 +75,9 @@ export function parseBuilderLinux(yaml) {
   const targets = LINUX_TARGETS.filter((target) =>
     new RegExp(`target:\\s*${target.replace('.', '\\.')}\\s*$`, 'm').test(linux),
   );
-  const arches = LINUX_ARCHES.filter((arch) => new RegExp(`^\\s+-\\s*${arch}\\s*$`, 'm').test(linux));
+  const arches = LINUX_ARCHES.filter((arch) =>
+    new RegExp(`^\\s+-\\s*${arch}\\s*$`, 'm').test(linux),
+  );
   return {
     appId: /^\s*appId:\s*org\.yaqmc\.desktop\s*$/m.test(yaml),
     linuxSection: linux.startsWith('linux:'),
@@ -141,7 +143,9 @@ export function pack03Report({
   const builderConfig = parseBuilderLinux(yaml);
   const homedir = env.HOME || '/home/scratch';
   const dataDir = linuxDataDir({ env, homedir });
-  const commands = packLinuxCommands(builderConfig.targets.length ? builderConfig.targets : LINUX_TARGETS);
+  const commands = packLinuxCommands(
+    builderConfig.targets.length ? builderConfig.targets : LINUX_TARGETS,
+  );
   const artifacts = {};
   for (const arch of LINUX_ARCHES) {
     for (const target of LINUX_TARGETS) {
@@ -193,7 +197,10 @@ export function pack03Report({
     commands: {
       packLinuxX64: commands.x64,
       packLinuxArm64: commands.arm64,
-      appImageRun: linuxInstallCommand('AppImage', path.join(outputDir, linuxArtifactName('AppImage'))),
+      appImageRun: linuxInstallCommand(
+        'AppImage',
+        path.join(outputDir, linuxArtifactName('AppImage')),
+      ),
       debInstall: linuxInstallCommand('deb', path.join(outputDir, linuxArtifactName('deb'))),
       rpmInstall: linuxInstallCommand('rpm', path.join(outputDir, linuxArtifactName('rpm'))),
       tarExtract: linuxInstallCommand('tar.gz', path.join(outputDir, linuxArtifactName('tar.gz'))),

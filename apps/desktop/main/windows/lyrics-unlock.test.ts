@@ -40,7 +40,10 @@ function mockWindow(): LyricsUnlockWindow {
   };
 }
 
-function createWithFactory(kind: LyricsUnlockKind, preloadPath?: string): {
+function createWithFactory(
+  kind: LyricsUnlockKind,
+  preloadPath?: string,
+): {
   window: LyricsUnlockWindow;
   options: LyricsUnlockCreateOptions;
 } {

@@ -54,7 +54,7 @@ Cover fills the visual viewport while preserving aspect ratio and cropping overf
 Contain shows the entire image and may letterbox when the aspect ratio does not match.
 Letterboxing is intentional, not a display bug. Unused regions use the configured fallback
 color (the appearance background color for the app shell, or the lyrics preset fallback
-color on the lyrics stage), not a raw WebView black fill.
+color on the lyrics stage), not a raw renderer black fill.
 
 Appearance → Image fit still controls the application shell. Lyrics stages use the selected
 [lyrics preset](lyrics-presets.md) `background.fit` and the shared [Lyrics Composer](lyrics-composer.md)
@@ -83,8 +83,8 @@ installer.
 ## Transparency and platform behavior
 
 `Opaque` uses the configured surface alpha directly. `Translucent` lowers only surface alpha within the safe
-clamp and enables a restrained CSS backdrop fallback. The Tauri main window is transparent so Windows WebView2
-can composite the background; the current implementation does not require Acrylic, private shell APIs, or a
+clamp and enables a restrained CSS backdrop fallback. Electron Main creates a transparent `BrowserWindow` so
+Chromium can composite the background; the current implementation does not require Acrylic, private shell APIs, or a
 native blur plugin. Linux uses the same CSS/token fallback because compositor behavior differs across X11 and
 Wayland. Resizing stability takes priority over a platform-specific material effect.
 

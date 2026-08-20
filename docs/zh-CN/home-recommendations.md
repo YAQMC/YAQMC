@@ -29,13 +29,13 @@ hero 行下方，在有数据时展示两个区段：
 
 每个区段在可用时使用登录会话，否则使用通用降级：
 
-| 区段         | 登录态数据源                                                  | 未登录降级                          |
-| ------------ | ------------------------------------------------------------- | ----------------------------------- |
-| 猜你喜欢     | `music.radioProxy.MbTrackRadioSvr/get_radio_track`             | `newsong.NewSongServer/get_new_song_info` |
-| 每日30首     | 带 disstid `5505165762` 的 `CgiGetDiss`                        | `newsong.NewSongServer/get_new_song_info` |
-| 新歌推荐     | feed `500/511` disstid，然后 `CgiGetDiss`                      | `newsong.NewSongServer/get_new_song_info` |
-| 推荐歌单     | feed `500/0` dissid 卡片（翻页收集）                           | `music.playlist.PlaylistSquare/GetRecommendFeed` |
-| 雷达         | `music.recommend.TrackRelationServer/GetRadarSong`，`EntranceSongs` = 最近听过歌曲的数字 id | 空                                  |
+| 区段     | 登录态数据源                                                                                | 未登录降级                                       |
+| -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 猜你喜欢 | `music.radioProxy.MbTrackRadioSvr/get_radio_track`                                          | `newsong.NewSongServer/get_new_song_info`        |
+| 每日30首 | 带 disstid `5505165762` 的 `CgiGetDiss`                                                     | `newsong.NewSongServer/get_new_song_info`        |
+| 新歌推荐 | feed `500/511` disstid，然后 `CgiGetDiss`                                                   | `newsong.NewSongServer/get_new_song_info`        |
+| 推荐歌单 | feed `500/0` dissid 卡片（翻页收集）                                                        | `music.playlist.PlaylistSquare/GetRecommendFeed` |
+| 雷达     | `music.recommend.TrackRelationServer/GetRadarSong`，`EntranceSongs` = 最近听过歌曲的数字 id | 空                                               |
 
 feed 可能返回一页没有任何歌单卡片的内容；加载器会继续翻页，并且若个性化 feed 没有结果，则回退到通用歌单
 读取，保证区段永不为空。

@@ -9,7 +9,7 @@ React pages/components
         |
 MusicProvider + ProviderAccount + player projection
    |                                        |
-QQMusicProvider (main WebView/Electron)      | player://snapshot + api://event
+QQMusicProvider (Electron renderer/Main)     | player://snapshot + api://event
 FakeMusicProvider                            |
    |                                        |
 QQMusicService ------------------------> PlayerService <-------- LocalApiService

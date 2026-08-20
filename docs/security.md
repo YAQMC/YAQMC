@@ -38,13 +38,13 @@ Structured tracing fields are preferred over string interpolation because the
 Rust type system can enforce that we never pass raw secrets through
 `tracing::info!("... {token}")`.
 
-Automated tests in `src-tauri/src/logging.rs` feed every representative
+Automated tests in `crates/yaqmc-core/src/logging.rs` feed every representative
 sensitive pattern through the writer and assert that the emitted output
 contains only `[REDACTED]` markers.
 
 ## Diagnostic bundle safety
 
-The bundle exporter (`src-tauri/src/diagnostics.rs::export_bundle`) runs a
+The bundle exporter (`crates/yaqmc-core/src/diagnostics.rs::export_bundle`) runs a
 second-pass scan over every text file it is about to ZIP up. The
 `RedactionReport` written into `redaction-report.txt` records:
 
@@ -77,10 +77,9 @@ verify integrity.
 - **Manual submission only.** YAQMC opens GitHub in the user's default
   browser with a prefilled Issue Form; the user reviews and clicks Submit
   themselves.
-- **Scoped opener.** `openIssueUrl` first invokes the Rust `validate_open_url`
-  check and then calls the Tauri opener plugin, whose capability
-  (`capabilities/main-window.json`) only allows
-  `https://github.com/YAQMC/YAQMC/issues/new*`.
+- **Scoped opener.** `openIssueUrl` first invokes Core's `validate_open_url`
+  check and then crosses Electron Main's `shell.openExternal` allowlist in
+  `apps/desktop/main/open-external.ts`.
 - **No browser cookie access.** YAQMC does not read the system browser
   cookie jar, does not embed a browser view for this workflow, and does not
   automate any DOM action.
@@ -94,8 +93,8 @@ verify integrity.
 - A user unknowingly attaching the wrong bundle: mitigated by the SHA-256
   surface and the "Reveal bundle" action.
 - A user opening an attacker-controlled URL that pretends to be the reporter:
-  not possible; the opener capability only allows the fixed GitHub Issues
-  path.
+  blocked by the narrow Core Issue-prefix check plus Electron Main's HTTPS
+  allowlist.
 
 ## Coordinated disclosure
 

@@ -2,46 +2,52 @@
 
 > **简体中文** | [English](../linux-graphics.md)
 
-Tauri 在 Linux 使用 WebKitGTK。React 调度、WebKitGTK/合成器、窗口后端和音频缓冲是不同故障域，日志
-也分别记录。
+Linux 桌面宿主为 Electron/Chromium。React 调度、Chromium/Ozone、合成器、
+窗口后端选择和音频缓冲是不同故障域，诊断会分别记录。
 
-## 默认策略
+## 启动策略
 
-隐式默认 `YAQMC_LINUX_RENDERER=auto`，不设置加速变量；源码不强制 GTK 后端。auto 模式做两项定向
-兼容：
+`apps/desktop/main/linux-graphics.ts` 是 YAQMC Chromium 图形开关的唯一
+来源；Main 在 Electron ready 前应用白名单结果：
 
-1. 检测到 NVIDIA 驱动且用户未自行设置 `__NV_DISABLE_EXPLICIT_SYNC` 时，关闭驱动级显式同步，
-   让 WebKitGTK 改用隐式同步 DMA-BUF 并保留硬件加速，规避 WebKit bug 317089 在 Hyprland/KWin
-   上的协议错误断连；
-2. 检测到 Hyprland（非 NVIDIA）且用户未设置 `WEBKIT_DISABLE_DMABUF_RENDERER` 时，禁用 WebKitGTK
-   的 DMA-BUF 渲染器，规避同样的协议错误。
+| 模式                | Chromium 开关                               | 策略                                                         |
+| ------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| `auto` / 未知值     | 无                                          | 默认；使用 Chromium 平台选择并探测实际后端。                 |
+| `native-wayland`    | `--ozone-platform=wayland`                  | 显式选择原生 Wayland。                                       |
+| `x11`               | 无                                          | 默认 X11/XWayland 路径的验收别名；采集器会拒绝其他实际后端。 |
+| `gpu-off`           | `--disable-gpu`                             | 显式故障排查模式。                                           |
+| `software` / `safe` | `--disable-gpu`                             | `gpu-off` 的弃用兼容别名。                                   |
+| `vaapi-on`          | `--enable-features=VaapiVideoDecodeLinuxGL` | 显式 VA-API 实验，默认关闭。                                 |
 
-最终 AppImage launcher：
+`YAQMC_LINUX_RENDERER` 仅作为打包验收工具的弃用 host 兼容输入保留。
+Core 不设置也不解释渲染器环境变量；旧 GTK/WebKit 图形变量不定义当前
+Electron 策略。
 
-1. 保留测试者显式设置的 `GDK_BACKEND`；
-2. 否则当 `XDG_SESSION_TYPE=wayland` 且有 `WAYLAND_DISPLAY` 时选择 Wayland；
-3. 其他情况选择 X11。
-
-2026-08-10 Arch/Hyprland 基线报告 `wayland-native`。Linux 主窗口保持 opaque；平台 CSS 保留布局、transform、
-颜色和歌词交互，同时减少高成本实时 backdrop blur、封面模糊、大阴影和未 contain 的歌词绘制。这是风险
-控制，不是性能根因证明。Plugin API v2 延续该策略：Linux 关闭未激活歌词行和场景控件的实时 `filter: blur()`，
-`software` / `safe` 模式不解码场景视频。WebKitGTK 渲染器策略本身不变。
+实际显示后端由已应用的 Ozone 开关和 `/proc/self/fd` 中观测到的客户端
+socket 共同判断，不能只凭 `XDG_SESSION_TYPE`。诊断值为
+`wayland-native`、`xwayland`、`x11` 或 `unavailable`。
 
 ## 验收模式
 
-| 模式              | 环境变化                                                 | 规则                             |
-| ----------------- | -------------------------------------------------------- | -------------------------------- |
-| `auto`            | NVIDIA：关驱动显式同步，保留 DMABUF；Hyprland：禁 DMABUF | 首先必跑                         |
-| `dmabuf`          | 移除 DMABUF 禁用，强制原生路径                           | 对照模式；已知崩溃组合可能仍崩溃 |
-| `native-wayland`  | Wayland，清除 `DISPLAY`                                  | 必跑且必须报原生 Wayland         |
-| `x11`             | `GDK_BACKEND=x11`                                        | 必跑回退对照                     |
-| `compositing-off` | 关闭 WebKitGTK 加速合成                                  | 可选渲染对照                     |
-| `software`        | 禁 DMABUF、软件 GL                                       | 仅复现原生 bug 后                |
+Linux 打包采集器保留四个稳定证据目录名：
 
-软件模式需 `YAQMC_ALLOW_SOFTWARE=confirmed-native-failure`，必须保留翻译后的界面和定位 transform。
+| 采集模式         | host 输入                                   | 用途                         |
+| ---------------- | ------------------------------------------- | ---------------------------- |
+| `auto`           | 无 YAQMC 图形 override                      | 第一项必跑                   |
+| `native-wayland` | `YAQMC_LINUX_RENDERER=native-wayland`       | 必须报告 `wayland-native`    |
+| `x11`            | `YAQMC_LINUX_RENDERER=x11` 及采集器兼容提示 | 必须报告 `x11` 或 `xwayland` |
+| `software`       | `YAQMC_LINUX_RENDERER=software`             | 仅原生图形故障后的条件对照   |
+
+`baseline` 只是 `auto` 的别名。软件对照仍需
+`YAQMC_ALLOW_SOFTWARE=confirmed-native-failure`，不能替代缺失的原生结果。
+
+Linux CSS 保留布局、transform、颜色和歌词交互，同时减少高成本实时模糊
+与大阴影。`software`/`safe` 兼容模式也不解码场景视频。这些源码控制只降低
+风险，不构成合成器性能证明。
 
 ## 测量边界
 
-新采集器按各操作阶段记录进程树、RSS/PSS（内核支持时）、CPU、线程、窗口状态、实际后端和图形环境。
-这些仍是诊断，不是 frame-time benchmark。测试者还必须记录卡顿、空白帧、错误几何、全屏恢复、锁定/
-解锁和音频中断；增加软件对照前先保留失败的原生报告。
+采集器按阶段记录进程树、CPU、RSS/PSS（可用时）、线程、窗口状态、实际
+后端和图形模式，覆盖启动、播放、seek/暂停/恢复、缩放、歌词、辅助窗口和
+退出。这些是诊断而非 frame-time benchmark；测试者还必须单独记录卡顿、
+空白帧、几何/全屏恢复、锁定/解锁和音频中断。

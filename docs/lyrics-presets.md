@@ -89,7 +89,7 @@ Preview frames: **Desktop 16:9** and **Current window**. Ultrawide is reserved i
 
 Cover fills the target area and may crop edges. Contain shows the entire image and may letterbox.
 Letterboxing is intentional. Unused space uses the preset fallback color (`#20231C` by default),
-not a raw WebView black region.
+not a raw renderer black region.
 
 Appearance → Image fit still controls the application shell. Lyrics stages use the selected preset's
 `background.fit`.

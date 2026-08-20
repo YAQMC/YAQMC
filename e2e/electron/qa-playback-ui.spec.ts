@@ -48,8 +48,7 @@ async function rendererInvoke<T>(page: Page, method: string, params?: unknown): 
   return page.evaluate(
     async ({ methodName, payload }) => {
       const yaqmc = Reflect.get(globalThis, 'yaqmc');
-      const invoke =
-        yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
+      const invoke = yaqmc && typeof yaqmc === 'object' ? Reflect.get(yaqmc, 'invoke') : undefined;
       if (typeof invoke !== 'function') {
         throw new Error('window.yaqmc.invoke is missing');
       }
@@ -62,8 +61,7 @@ async function rendererInvoke<T>(page: Page, method: string, params?: unknown): 
 async function samplePlaybackUi(page: Page, durationMs = 1_200) {
   return page.evaluate(async (ms) => {
     const probe = Reflect.get(globalThis, '__YAQMC_PLAYBACK_UI_PROBE__') as
-      | { sample?: (durationMs?: number) => Promise<Record<string, number>> }
-      | undefined;
+      { sample?: (durationMs?: number) => Promise<Record<string, number>> } | undefined;
     if (typeof probe?.sample !== 'function') {
       throw new Error('playback UI probe is missing');
     }
@@ -198,7 +196,9 @@ test.describe('Playback UI + lyrics surfaces (native renderer + production Core)
       'data-interaction-state',
       'visible-interactive-hover',
     );
-    await expect(lyricsPage!.locator('.lyrics-surface__controls .icon-button').first()).toBeVisible();
+    await expect(
+      lyricsPage!.locator('.lyrics-surface__controls .icon-button').first(),
+    ).toBeVisible();
   });
 
   test('Lyrics Island hover stays expanded across the progress/control region', async () => {
@@ -214,7 +214,10 @@ test.describe('Playback UI + lyrics surfaces (native renderer + production Core)
     const box = await card.boundingBox();
     expect(box).not.toBeNull();
     await card.hover({
-      position: { x: Math.round((box?.width ?? 80) / 2), y: Math.max(8, Math.round((box?.height ?? 20) - 8)) },
+      position: {
+        x: Math.round((box?.width ?? 80) / 2),
+        y: Math.max(8, Math.round((box?.height ?? 20) - 8)),
+      },
     });
     await expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
     const states: string[] = [];
