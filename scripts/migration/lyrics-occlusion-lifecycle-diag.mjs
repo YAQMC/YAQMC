@@ -7,6 +7,8 @@
  * Chromium occluded-window backgrounding.
  *
  * Vite must already serve 127.0.0.1:1420; this script rebuilds desktop main.
+ * Core + Chromium profiles are isolated under %TEMP% — never the live APPDATA
+ * session. Fixture track `ui-perf-diag` must not appear in HUMAN playback.
  *
  *   $env:CARGO_TARGET_DIR='E:\cargo-target\yaqmc-electron-migration'
  *   $env:YAQMC_CORE_BIN="$env:CARGO_TARGET_DIR\debug\yaqmc-core.exe"
@@ -133,12 +135,15 @@ async function runVariant(mode) {
   await fs.rm(variantOut, { force: true });
   await fs.rm(userData, { recursive: true, force: true });
 
+  const coreProfile = path.join(userData, 'core-profile');
   const env = electronDevEnv({
     ...process.env,
     YAQMC_UI_PERF_DIAG: '1',
     YAQMC_UI_PERF_DIAG_QUIT: '1',
     YAQMC_UI_PERF_DIAG_OUT: variantOut,
     YAQMC_WINDOWS_OCCLUSION: mode,
+    APPDATA: path.join(coreProfile, 'appdata'),
+    LOCALAPPDATA: path.join(coreProfile, 'localappdata'),
   });
   delete env.ELECTRON_DISABLE_GPU;
   delete env.YAQMC_DESKTOP_SMOKE;
