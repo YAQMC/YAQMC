@@ -163,7 +163,7 @@
       "noticeStatus": "incomplete",
       "mappings": [
         {
-          "target": "crates/yaqmc-core/src/qmc.rs",
+          "target": "crates/yaqmc-provider-qqmusic/src/qmc.rs",
           "relation": "QMC key derivation and segmented stream cipher; file/range/transformation record still required"
         }
       ],
@@ -184,7 +184,7 @@
       "status": "blocked",
       "mappings": [
         {
-          "target": "crates/yaqmc-core/src/qmc.rs",
+          "target": "crates/yaqmc-provider-qqmusic/src/qmc.rs",
           "relation": "EncV2 wrapper declaration; exact-source license was not independently retrievable"
         }
       ],
@@ -204,7 +204,7 @@
       "status": "blocked",
       "mappings": [
         {
-          "target": "crates/yaqmc-core/src/qqmusic.rs and related provider interoperability",
+          "target": "crates/yaqmc-provider-qqmusic/src/qqmusic.rs and related provider interoperability",
           "relation": "historical source revision and file/range mapping are unknown; current MIT upper-bound is not a source pin"
         }
       ],
@@ -327,7 +327,7 @@
     },
     {
       "id": "qmc-implementation-notice",
-      "path": "crates/yaqmc-core/src/qmc.rs and THIRD_PARTY_NOTICES.md",
+      "path": "crates/yaqmc-provider-qqmusic/src/qmc.rs and THIRD_PARTY_NOTICES.md",
       "sourceId": "gongjiehong-qmcdecode",
       "status": "blocked",
       "evidence": "Current notice exists but does not contain the required file/range/transformation audit mapping."

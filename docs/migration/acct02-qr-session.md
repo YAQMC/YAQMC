@@ -20,7 +20,7 @@ OAuth QQ/WeChat popup buttons are ACCT-01. This checklist is Core QR (`qqmusic_a
 
 ## FACT keyring (untouched across host swap)
 
-From `crates/yaqmc-core/src/credentials.rs` and `crates/yaqmc-core/src/qqmusic/auth.rs`:
+From `crates/yaqmc-core/src/credentials.rs` and `crates/yaqmc-provider-qqmusic/src/qqmusic/auth.rs`:
 
 | Item | FACT |
 | ---- | ---- |

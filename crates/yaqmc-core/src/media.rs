@@ -1,199 +1,19 @@
 use crate::{
-    audio::{AudioFormat, PreparedPlaybackLocation, PreparedPlaybackSource},
-    playback_types::{PlaybackEpoch, PlaybackSourceSelection},
-    player::Song,
-    qmc::{EncryptedMediaKey, QmcDecryptor, QmcError},
+    audio::{PreparedPlaybackLocation, PreparedPlaybackSource},
     storage::{StorageError, StorageService},
     streaming::{prepare_progressive, ProgressiveError, ProgressivePreparation},
 };
+#[cfg(any(test, feature = "test-support"))]
+use crate::{playback_types::PlaybackSourceSelection, player::Song};
 use async_trait::async_trait;
 use reqwest::{header::HeaderMap, Client};
-use std::{
-    fmt,
-    path::PathBuf,
-    sync::{Arc, RwLock as StdRwLock},
+#[cfg(any(test, feature = "test-support"))]
+use std::path::PathBuf;
+use std::sync::Arc;
+pub use yaqmc_provider_api::media::{
+    AudioFormat, EncryptedMedia, MediaDecryptor, PlaybackEpochClock, PlaybackEpochGuard,
+    PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver, ResolvedPlaybackSource,
 };
-use thiserror::Error;
-use tokio_util::sync::CancellationToken;
-
-#[derive(Default)]
-pub struct PlaybackEpochClock {
-    current: StdRwLock<Option<PlaybackEpoch>>,
-}
-
-impl PlaybackEpochClock {
-    #[doc(hidden)]
-    pub fn replace(&self, epoch: Option<PlaybackEpoch>) {
-        *self
-            .current
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = epoch;
-    }
-}
-
-#[derive(Clone)]
-pub struct PlaybackEpochGuard {
-    expected: Option<PlaybackEpoch>,
-    cancellation: CancellationToken,
-    clock: Arc<PlaybackEpochClock>,
-    identity: Arc<()>,
-}
-
-impl PlaybackEpochGuard {
-    pub fn unrestricted() -> Self {
-        Self {
-            expected: None,
-            cancellation: CancellationToken::new(),
-            clock: Arc::new(PlaybackEpochClock::default()),
-            identity: Arc::new(()),
-        }
-    }
-
-    #[doc(hidden)]
-    pub fn account_bound(
-        expected: PlaybackEpoch,
-        cancellation: CancellationToken,
-        clock: Arc<PlaybackEpochClock>,
-    ) -> Self {
-        Self {
-            expected: Some(expected),
-            cancellation,
-            clock,
-            identity: Arc::new(()),
-        }
-    }
-
-    pub fn is_account_bound(&self) -> bool {
-        self.expected.is_some()
-    }
-
-    pub fn cancellation_token(&self) -> CancellationToken {
-        self.cancellation.clone()
-    }
-
-    pub fn same_instance(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.identity, &other.identity)
-    }
-
-    pub fn validate(&self) -> Result<(), PlaybackSourceError> {
-        self.validate_and_run(|| ())
-    }
-
-    pub fn validate_and_run<T>(
-        &self,
-        operation: impl FnOnce() -> T,
-    ) -> Result<T, PlaybackSourceError> {
-        if self.cancellation.is_cancelled() {
-            return Err(PlaybackSourceError::Cancelled);
-        }
-        let current = self
-            .clock
-            .current
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if self
-            .expected
-            .as_ref()
-            .is_some_and(|expected| current.as_ref() != Some(expected))
-        {
-            return Err(PlaybackSourceError::Cancelled);
-        }
-        let result = operation();
-        if self.cancellation.is_cancelled() {
-            return Err(PlaybackSourceError::Cancelled);
-        }
-        Ok(result)
-    }
-}
-
-impl fmt::Debug for PlaybackEpochGuard {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("PlaybackEpochGuard")
-            .field("account_bound", &self.is_account_bound())
-            .finish()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum PlaybackLocation {
-    Local(PathBuf),
-    Http {
-        url: String,
-        headers: Vec<(String, String)>,
-    },
-    EncryptedHttp {
-        url: String,
-        headers: Vec<(String, String)>,
-        ekey: EncryptedMediaKey,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub struct ResolvedPlaybackSource {
-    pub cache_key: String,
-    pub location: PlaybackLocation,
-    pub format: AudioFormat,
-    pub mime_type: Option<String>,
-    pub quality_label: String,
-    pub bitrate_kbps: Option<u32>,
-    pub sample_rate_hz: Option<u32>,
-    pub bit_depth: Option<u16>,
-    pub content_length: Option<u64>,
-    pub supports_range: bool,
-    pub expires_at_ms: Option<u64>,
-    pub timeline_offset_ms: u64,
-    pub timeline_end_ms: Option<u64>,
-    pub is_preview: bool,
-    pub selection: PlaybackSourceSelection,
-    pub epoch_guard: PlaybackEpochGuard,
-}
-
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
-pub enum PlaybackSourceError {
-    #[error("no playable media URL is available for this track")]
-    UrlUnavailable,
-    #[error("the provider media URL expired")]
-    UrlExpired,
-    #[error("the network request failed")]
-    Network,
-    #[error("the server does not support the required media request")]
-    #[allow(dead_code)]
-    // Used by the future progressive Range reader; full-file cache is current.
-    RangeUnsupported,
-    #[error("the media response exceeded the configured cache limit")]
-    ResponseTooLarge,
-    #[error("this audio format is not supported")]
-    #[allow(dead_code)] // Resolver currently emits only formats enabled in Rodio.
-    DecoderUnsupported,
-    #[error("the active account is not entitled to this track or quality")]
-    EntitlementInsufficient,
-    #[error("the active account entitlement could not be confirmed")]
-    EntitlementUnknown,
-    #[error("the provider session expired")]
-    AuthenticationExpired,
-    #[error("the track is unavailable")]
-    TrackUnavailable,
-    #[error("the account-bound playback source was cancelled")]
-    Cancelled,
-    #[error("the local media cache failed")]
-    CacheFailure,
-    #[error("the encrypted media could not be decrypted")]
-    DecryptionFailed,
-}
-
-#[async_trait]
-pub trait PlaybackSourceResolver: Send + Sync {
-    async fn resolve(&self, song: &Song) -> Result<ResolvedPlaybackSource, PlaybackSourceError>;
-
-    async fn resolve_client_fallback(
-        &self,
-        _song: &Song,
-        _failed: &PlaybackSourceSelection,
-    ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
-        Err(PlaybackSourceError::DecoderUnsupported)
-    }
-}
 
 #[async_trait]
 pub trait MediaPreparer: Send + Sync {
@@ -330,18 +150,22 @@ impl MediaPreparer for CachedMediaPreparer {
                     PreparedPlaybackLocation::Local(cached.path)
                 }
             }
-            PlaybackLocation::EncryptedHttp { url, headers, ekey } => {
-                let decryptor = QmcDecryptor::new(&ekey).map_err(|error| {
+            PlaybackLocation::EncryptedHttp {
+                url,
+                headers,
+                encryption,
+            } => {
+                let decryptor = encryption.create_decryptor().map_err(|error| {
                     tracing::warn!(
                         target: "media",
                         cache_key = %source.cache_key,
                         url = %url,
-                        ekey_length = ekey.len(),
-                        ekey_v2 = ekey.is_v2(),
+                        ekey_length = encryption.key_len(),
+                        ekey_v2 = encryption.key_is_v2(),
                         error = %error,
-                        "failed to construct the QMC decryptor"
+                        "failed to construct the provider media decryptor"
                     );
-                    map_qmc_error(error)
+                    error
                 })?;
                 let encrypted_key = format!("{}:encrypted", source.cache_key);
                 let encrypted_limit = self.storage.encrypted_media_limit();
@@ -462,17 +286,6 @@ fn parse_headers(headers: Vec<(String, String)>) -> Result<HeaderMap, PlaybackSo
     Ok(parsed)
 }
 
-fn map_qmc_error(error: QmcError) -> PlaybackSourceError {
-    match error {
-        QmcError::InvalidKey
-        | QmcError::KeyNotBase64
-        | QmcError::InvalidV2Wrapper
-        | QmcError::InvalidDerivedKeyLength
-        | QmcError::TeaPaddingMismatch
-        | QmcError::EmptyCipherKey => PlaybackSourceError::DecryptionFailed,
-    }
-}
-
 fn map_progressive_error(error: ProgressiveError) -> PlaybackSourceError {
     match error {
         ProgressiveError::Network => PlaybackSourceError::Network,
@@ -562,6 +375,7 @@ impl MediaPreparer for PassthroughMediaPreparer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::playback_types::PlaybackEpoch;
     use tokio_util::sync::CancellationToken;
 
     #[test]

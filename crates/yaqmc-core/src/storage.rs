@@ -17,6 +17,8 @@ use std::{
 };
 use thiserror::Error;
 use tokio::{fs as async_fs, io::AsyncWriteExt, sync::Semaphore};
+pub use yaqmc_provider_api::storage::{CacheStats, ProviderCacheMutation};
+use yaqmc_provider_api::storage::{ProviderStorage, ProviderStorageError};
 
 const MEDIA_CACHE_LIMIT: u64 = 256 * 1024 * 1024;
 const ARTWORK_CACHE_LIMIT: u64 = 64 * 1024 * 1024;
@@ -48,42 +50,6 @@ pub struct CachedFile {
     pub path: PathBuf,
     pub bytes: u64,
     pub mime_type: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CacheStats {
-    pub total_bytes: u64,
-    pub media_bytes: u64,
-    pub artwork_bytes: u64,
-    pub media_entries: u64,
-    pub artwork_entries: u64,
-    pub metadata_entries: u64,
-    pub lyric_entries: u64,
-    pub media_limit_bytes: u64,
-    pub artwork_limit_bytes: u64,
-}
-
-#[derive(Clone)]
-#[doc(hidden)]
-pub enum ProviderCacheMutation {
-    Put {
-        key: String,
-        kind: String,
-        value_json: String,
-        expires_at_ms: u64,
-    },
-    #[allow(
-        dead_code,
-        reason = "single-row account cache invalidation is consumed by the mutation tasks"
-    )]
-    Delete {
-        key: String,
-    },
-    DeleteKindPrefix {
-        kind: String,
-        prefix: String,
-    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -1004,6 +970,98 @@ impl StorageService {
                 )
                 .map_err(|_| StorageError::Database)?;
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl ProviderStorage for StorageService {
+    fn get_json_value(
+        &self,
+        key: &str,
+        allow_expired: bool,
+    ) -> Result<Option<serde_json::Value>, ProviderStorageError> {
+        StorageService::get_json(self, key, allow_expired).map_err(|_| ProviderStorageError)
+    }
+
+    fn put_json_value(
+        &self,
+        key: &str,
+        kind: &str,
+        value: serde_json::Value,
+        ttl_ms: u64,
+    ) -> Result<(), ProviderStorageError> {
+        StorageService::put_json(self, key, kind, &value, ttl_ms).map_err(|_| ProviderStorageError)
+    }
+
+    fn delete_provider_cache_kind(&self, kind: &str) -> Result<u64, ProviderStorageError> {
+        StorageService::delete_provider_cache_kind(self, kind).map_err(|_| ProviderStorageError)
+    }
+
+    fn apply_provider_cache_batch(
+        &self,
+        operations: &[ProviderCacheMutation],
+    ) -> Result<(), ProviderStorageError> {
+        StorageService::apply_provider_cache_batch(self, operations)
+            .map_err(|_| ProviderStorageError)
+    }
+
+    fn get_setting(&self, key: &str) -> Result<Option<String>, ProviderStorageError> {
+        StorageService::get_setting(self, key).map_err(|_| ProviderStorageError)
+    }
+
+    fn set_setting(&self, key: &str, value: &str) -> Result<(), ProviderStorageError> {
+        StorageService::set_setting(self, key, value).map_err(|_| ProviderStorageError)
+    }
+
+    fn load_queue_value(&self) -> Result<Option<serde_json::Value>, ProviderStorageError> {
+        StorageService::load_queue(self).map_err(|_| ProviderStorageError)
+    }
+
+    fn record_playback_snapshot_value(
+        &self,
+        provider: &str,
+        track_id: &str,
+        snapshot: serde_json::Value,
+    ) -> Result<(), ProviderStorageError> {
+        StorageService::record_playback_snapshot(self, provider, track_id, &snapshot)
+            .map_err(|_| ProviderStorageError)
+    }
+
+    fn backfill_playback_history_snapshot_value(
+        &self,
+        provider: &str,
+        track_id: &str,
+        snapshot: serde_json::Value,
+    ) -> Result<(), ProviderStorageError> {
+        StorageService::backfill_playback_history_snapshot(self, provider, track_id, &snapshot)
+            .map_err(|_| ProviderStorageError)
+    }
+
+    fn load_playback_history_values(
+        &self,
+        provider: &str,
+        limit: u32,
+    ) -> Result<Vec<(serde_json::Value, u64)>, ProviderStorageError> {
+        StorageService::load_playback_history(self, provider, limit)
+            .map_err(|_| ProviderStorageError)
+    }
+
+    async fn artwork_data_uri(
+        &self,
+        client: &Client,
+        url: &str,
+    ) -> Result<String, ProviderStorageError> {
+        StorageService::artwork_data_uri(self, client, url)
+            .await
+            .map_err(|_| ProviderStorageError)
+    }
+
+    fn stats(&self) -> Result<CacheStats, ProviderStorageError> {
+        StorageService::stats(self).map_err(|_| ProviderStorageError)
+    }
+
+    fn clear(&self) -> Result<CacheStats, ProviderStorageError> {
+        StorageService::clear(self).map_err(|_| ProviderStorageError)
     }
 }
 

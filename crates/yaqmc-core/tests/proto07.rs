@@ -3,10 +3,10 @@ use std::sync::Arc;
 use serde_json::json;
 use yaqmc_core::audio::UnavailableAudioEngine;
 use yaqmc_core::credentials::{CredentialError, CredentialStore};
-use yaqmc_core::qqmusic::{url_matches_oauth_allowlist, OAuthLoginProvider};
 use yaqmc_core::server::{dispatch, NoopHost};
 use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths};
 use yaqmc_protocol::{method, MethodOwner, WindowOrigin, PROTOCOL_ONLY_METHODS};
+use yaqmc_provider_qqmusic::qqmusic::{url_matches_oauth_allowlist, OAuthLoginProvider};
 
 struct TestCredentials;
 

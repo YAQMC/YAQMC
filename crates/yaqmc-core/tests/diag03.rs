@@ -83,7 +83,10 @@ fn dialog_split_io_methods_are_protocol_only_core_owned() {
         "appearance_pick_background",
         "plugin_pick_package",
     ] {
-        assert!(method(retired).is_none(), "{retired} must stay retired after P13");
+        assert!(
+            method(retired).is_none(),
+            "{retired} must stay retired after P13"
+        );
     }
 }
 

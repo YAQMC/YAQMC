@@ -3884,10 +3884,7 @@ dependencies = [
  "futures-util",
  "http-body-util",
  "keyring",
- "lyrics-crypto",
- "md-5",
  "mpris-server",
- "quick-xml",
  "rand 0.9.5",
  "reqwest",
  "rodio",
@@ -3908,7 +3905,8 @@ dependencies = [
  "tracing-subscriber",
  "windows-sys 0.61.2",
  "yaqmc-protocol",
- "zeroize",
+ "yaqmc-provider-api",
+ "yaqmc-provider-qqmusic",
  "zip",
 ]
 
@@ -3924,10 +3922,42 @@ dependencies = [
 [[package]]
 name = "yaqmc-provider-api"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+]
 
 [[package]]
 name = "yaqmc-provider-qqmusic"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "base64",
+ "lyrics-crypto",
+ "md-5",
+ "quick-xml",
+ "rand 0.9.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "yaqmc-core",
+ "yaqmc-provider-api",
+ "zeroize",
+]
 
 [[package]]
 name = "yoke"

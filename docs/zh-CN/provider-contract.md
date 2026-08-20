@@ -3,7 +3,7 @@
 > **简体中文** | [English](../provider-contract.md)
 
 `MusicProvider` 只暴露规范化公开目录操作：主页/访客音乐库、分页搜索、专辑与歌单/榜单详情、歌词。
-`AccountMusicProvider` 是独立且运行时检查的账号扩展，负责账号快照/OAuth 生命周期、收藏、账号歌单、
+`ProviderAccount` 是原生提供器实现的账号契约，负责账号快照/OAuth 生命周期、收藏、账号歌单、
 最近播放和类型化写操作。公开 Home/Search/Explore 只依赖 `MusicProvider`，账号功能失败不能拖垮访客目录。
 
 进入 React 的值统一使用 `src/domain/music.ts`。QQ 的歌曲 MID、数字 song ID、album MID/ID 和 media MID
@@ -23,7 +23,7 @@
 
 ## 实现
 
-默认 `QQMusicProvider` 是薄 Tauri 适配器；Rust 负责 HTTP、DTO 解析、封面缓存、歌词解密、音源签名、
+默认 `QQMusicProvider` 是薄 Electron/Core 协议适配器；Rust 负责 HTTP、DTO 解析、封面缓存、歌词解密、音源签名、
 秘密存储和错误映射。公开能力包含搜索、专辑/艺人、歌单/榜单、逐字歌词、流媒体和音质选择；账号扩展
 只在主 WebView 暴露 OAuth，自有/收藏写操作需要认证，最近播放只在能力快照声明时调用。状态仍是“已实现，
 等待真实账号验收”。

@@ -26,13 +26,6 @@ use super::{
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     QQMusicError, QQ_MUSICU_URL,
 };
-#[cfg(test)]
-use crate::player::AudioQuality;
-use crate::{
-    credentials::SpawnBlockingCredentialStore,
-    media::PlaybackEpochClock,
-    storage::{StorageError, StorageService},
-};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use reqwest::{
@@ -55,6 +48,11 @@ use tokio::sync::Notify;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+#[cfg(test)]
+use yaqmc_provider_api::AudioQuality;
+use yaqmc_provider_api::{
+    PlaybackEpochClock, ProviderStorage, ProviderStorageError, SpawnBlockingCredentialStore,
+};
 
 pub(crate) const ACTIVE_SESSION: &str = "qqmusic-session";
 pub(crate) const STAGING_SESSION: &str = "qqmusic-session-staging";
@@ -795,7 +793,7 @@ pub(crate) struct QQMusicAuthService {
     protocol: Arc<dyn QQMusicAuthProtocol>,
     credentials: SpawnBlockingCredentialStore,
     clock: Arc<dyn Clock>,
-    storage: Arc<StorageService>,
+    storage: Arc<dyn ProviderStorage>,
     snapshot: RwLock<AccountSnapshot>,
     active_session: RwLock<Option<SessionRecord>>,
     active_attempt: Mutex<Option<ActiveAttempt>>,
@@ -813,7 +811,7 @@ impl QQMusicAuthService {
         protocol: Arc<dyn QQMusicAuthProtocol>,
         credentials: SpawnBlockingCredentialStore,
         clock: Arc<dyn Clock>,
-        storage: Arc<StorageService>,
+        storage: Arc<dyn ProviderStorage>,
     ) -> Self {
         Self {
             protocol,
@@ -913,7 +911,7 @@ impl QQMusicAuthService {
         commit: F,
     ) -> Result<T, QQMusicError>
     where
-        F: FnOnce() -> Result<T, StorageError>,
+        F: FnOnce() -> Result<T, ProviderStorageError>,
     {
         let _lifecycle = self.lifecycle.lock().await;
         self.ensure_current(epoch).await?;
@@ -2671,12 +2669,7 @@ fn numeric_u64(value: &Value, paths: &[&str]) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        credentials::{CredentialError, CredentialStore},
-        media::{PlaybackEpochGuard, PlaybackSourceError},
-        qqmusic::{clock::ManualClock, transport::TransportResponse},
-        storage::StorageService,
-    };
+    use crate::qqmusic::{clock::ManualClock, transport::TransportResponse};
     use std::{
         collections::{BTreeMap, VecDeque},
         sync::{
@@ -2685,6 +2678,11 @@ mod tests {
         },
     };
     use tokio::sync::Notify;
+    use yaqmc_core::{
+        credentials::{CredentialError, CredentialStore},
+        storage::StorageService,
+    };
+    use yaqmc_provider_api::{PlaybackEpochGuard, PlaybackSourceError};
 
     fn session(label: &str) -> SessionRecord {
         let scope_seed = label.bytes().fold(0_u128, |value, byte| {
@@ -3034,7 +3032,7 @@ mod tests {
                 protocol,
                 SpawnBlockingCredentialStore::new(credentials),
                 clock,
-                Arc::clone(&storage),
+                storage.clone(),
             )),
             storage,
         )

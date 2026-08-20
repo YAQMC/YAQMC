@@ -3,12 +3,11 @@
 // See THIRD_PARTY_NOTICES.md for the upstream MIT license notice.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use std::{
-    fmt,
-    io::{self, Read, Seek, SeekFrom},
-    sync::Arc,
-};
+#[cfg(test)]
+use std::io::{Read, Seek, SeekFrom};
+use std::{fmt, io, sync::Arc};
 use thiserror::Error;
+use yaqmc_provider_api::{EncryptedMedia, MediaDecryptor, PlaybackSourceError};
 use zeroize::{Zeroize, Zeroizing};
 
 const FIRST_SEGMENT_SIZE: usize = 128;
@@ -135,14 +134,46 @@ impl fmt::Debug for QmcDecryptor {
     }
 }
 
-pub(crate) struct QmcReader<Reader> {
+impl MediaDecryptor for QmcDecryptor {
+    fn decrypt(&self, data: &mut [u8], offset: u64) -> io::Result<()> {
+        QmcDecryptor::decrypt(self, data, offset)
+    }
+
+    fn cipher_kind(&self) -> &'static str {
+        QmcDecryptor::cipher_kind(self)
+    }
+
+    fn derived_key_length(&self) -> usize {
+        QmcDecryptor::derived_key_length(self)
+    }
+}
+
+impl EncryptedMedia for EncryptedMediaKey {
+    fn key_len(&self) -> usize {
+        self.len()
+    }
+
+    fn key_is_v2(&self) -> bool {
+        self.is_v2()
+    }
+
+    fn create_decryptor(&self) -> Result<Arc<dyn MediaDecryptor>, PlaybackSourceError> {
+        QmcDecryptor::new(self)
+            .map(|decryptor| Arc::new(decryptor) as Arc<dyn MediaDecryptor>)
+            .map_err(|_| PlaybackSourceError::DecryptionFailed)
+    }
+}
+
+#[cfg(test)]
+struct QmcReader<Reader> {
     inner: Reader,
     decryptor: QmcDecryptor,
     position: u64,
 }
 
+#[cfg(test)]
 impl<Reader> QmcReader<Reader> {
-    pub(crate) fn new(inner: Reader, decryptor: QmcDecryptor) -> Self {
+    fn new(inner: Reader, decryptor: QmcDecryptor) -> Self {
         Self {
             inner,
             decryptor,
@@ -151,6 +182,7 @@ impl<Reader> QmcReader<Reader> {
     }
 }
 
+#[cfg(test)]
 impl<Reader: Read> Read for QmcReader<Reader> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         let read = self.inner.read(buffer)?;
@@ -160,6 +192,7 @@ impl<Reader: Read> Read for QmcReader<Reader> {
     }
 }
 
+#[cfg(test)]
 impl<Reader: Seek> Seek for QmcReader<Reader> {
     fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
         self.position = self.inner.seek(position)?;

@@ -149,8 +149,8 @@ test('rejects a forbidden platform dependency reached transitively from Core', (
   );
 });
 
-test('rejects a transitive provider dependency reached from Core', () => {
-  assert.throws(
+test('allows the P14 provider boundary in the Core dependency closure', () => {
+  assert.doesNotThrow(
     () =>
       validateCoreDependencyClosure(
         metadataWithCoreClosure([
@@ -159,7 +159,6 @@ test('rejects a transitive provider dependency reached from Core', () => {
           ['yaqmc-provider-qqmusic', []],
         ]),
       ),
-    /forbidden yaqmc-core dependency closure: yaqmc-provider-qqmusic/,
   );
 });
 
@@ -168,7 +167,6 @@ test('rejects underscore-form forbidden dependencies reached transitively from C
     'raw_window_handle',
     'qqmusic_api',
     'napi_build',
-    'yaqmc_provider_qqmusic',
   ]) {
     assert.throws(
       () =>

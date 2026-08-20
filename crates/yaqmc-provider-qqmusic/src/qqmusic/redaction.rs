@@ -3,10 +3,35 @@ use reqwest::{
     Url,
 };
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 const REDACTED: &str = "[REDACTED]";
 const PRESENT: &str = "[PRESENT]";
+const FIELD_VALUE_TRUNCATE: usize = 512;
+
+const HIGH_RISK_KEYS: &[&str] = &[
+    "cookie",
+    "set-cookie",
+    "authorization",
+    "proxy-authorization",
+    "bearer",
+    "qm_keyst",
+    "qmkeyst",
+    "qrsig",
+    "ptqrtoken",
+    "musickey",
+    "access_token",
+    "accesstoken",
+    "refresh_token",
+    "refreshtoken",
+    "refresh_key",
+    "refreshkey",
+    "ekey",
+    "vkey",
+    "pskey",
+    "ptsigx",
+    "ptloginsig",
+];
 
 pub(crate) const SECRET_KEYS: &[&str] = &[
     "authorization",
@@ -98,6 +123,98 @@ pub(crate) fn redact_json(value: &Value) -> Value {
         Value::Array(values) => Value::Array(values.iter().map(redact_json).collect()),
         _ => value.clone(),
     }
+}
+
+pub(crate) fn sanitize_field(value: &str) -> Cow<'_, str> {
+    let scrubbed = scrub_high_risk_patterns(value);
+    if scrubbed.len() <= FIELD_VALUE_TRUNCATE {
+        return scrubbed;
+    }
+    let mut end = FIELD_VALUE_TRUNCATE;
+    while end > 0 && !scrubbed.is_char_boundary(end) {
+        end -= 1;
+    }
+    Cow::Owned(format!(
+        "{}...[truncated {} bytes]",
+        &scrubbed[..end],
+        scrubbed.len().saturating_sub(end)
+    ))
+}
+
+fn scrub_high_risk_patterns(value: &str) -> Cow<'_, str> {
+    if value.is_empty() {
+        return Cow::Borrowed(value);
+    }
+    let lowered = value.to_ascii_lowercase();
+    let mut mutated: Option<String> = None;
+    for key in HIGH_RISK_KEYS {
+        if !lowered.contains(key) {
+            continue;
+        }
+        let source = mutated.as_deref().unwrap_or(value).to_owned();
+        let replaced = redact_key_value_occurrences(&source, key);
+        if replaced != source {
+            mutated = Some(replaced);
+        }
+    }
+    mutated.map(Cow::Owned).unwrap_or(Cow::Borrowed(value))
+}
+
+fn redact_key_value_occurrences(text: &str, key: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let key_len = key.len();
+    let mut out = String::with_capacity(text.len());
+    let mut cursor = 0usize;
+    let bytes = text.as_bytes();
+
+    while cursor < bytes.len() {
+        let Some(relative) = lower[cursor..].find(key) else {
+            out.push_str(&text[cursor..]);
+            break;
+        };
+        let start = cursor + relative;
+        let before_ok = start == 0
+            || matches!(
+                bytes[start - 1] as char,
+                '"' | '\'' | ' ' | '\t' | '\n' | ',' | '{' | '&' | '?' | ';' | ':'
+            );
+        let end = start + key_len;
+        if !before_ok || end > bytes.len() {
+            out.push_str(&text[cursor..end.min(bytes.len())]);
+            cursor = end;
+            continue;
+        }
+        let mut lookahead = end;
+        while lookahead < bytes.len() && matches!(bytes[lookahead] as char, ' ' | '\t' | '"' | '\'')
+        {
+            lookahead += 1;
+        }
+        if lookahead >= bytes.len() || !matches!(bytes[lookahead] as char, '=' | ':') {
+            out.push_str(&text[cursor..end]);
+            cursor = end;
+            continue;
+        }
+        out.push_str(&text[cursor..lookahead + 1]);
+        let mut value_start = lookahead + 1;
+        while value_start < bytes.len()
+            && matches!(bytes[value_start] as char, ' ' | '\t' | '"' | '\'')
+        {
+            out.push(bytes[value_start] as char);
+            value_start += 1;
+        }
+        let mut value_end = value_start;
+        while value_end < bytes.len()
+            && !matches!(
+                bytes[value_end] as char,
+                '"' | '\'' | ',' | ';' | '&' | '}' | ']' | '\n' | '\r'
+            )
+        {
+            value_end += 1;
+        }
+        out.push_str(REDACTED);
+        cursor = value_end;
+    }
+    out
 }
 
 pub(crate) fn is_secret_header(name: &header::HeaderName) -> bool {

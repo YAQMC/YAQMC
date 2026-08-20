@@ -1,7 +1,6 @@
 use crate::{
-    media::PlaybackEpochGuard,
+    media::{MediaDecryptor, PlaybackEpochGuard},
     playback_types::PlaybackSourceSelection,
-    qmc::{QmcDecryptor, QmcReader},
     streaming::{ProgressiveMonitor, ProgressiveSource},
 };
 use rodio::{
@@ -22,6 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
+pub use yaqmc_provider_api::media::AudioFormat;
 
 pub const AUDIO_OUTPUT_DEVICE_SETTING: &str = "audio-output-device";
 
@@ -159,34 +159,6 @@ fn reset_playback_snapshot(snapshot: &mut AudioEngineSnapshot) {
     };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AudioFormat {
-    Mp3,
-    Aac,
-    Flac,
-    Wav,
-}
-
-impl AudioFormat {
-    pub fn extension(self) -> &'static str {
-        match self {
-            Self::Mp3 => "mp3",
-            Self::Aac => "m4a",
-            Self::Flac => "flac",
-            Self::Wav => "wav",
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Mp3 => "mp3",
-            Self::Aac => "aac",
-            Self::Flac => "flac",
-            Self::Wav => "wav",
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum PreparedPlaybackLocation {
     Local(PathBuf),
@@ -194,12 +166,44 @@ pub enum PreparedPlaybackLocation {
     EncryptedLocal {
         path: PathBuf,
         content_length: u64,
-        decryptor: QmcDecryptor,
+        decryptor: Arc<dyn MediaDecryptor>,
     },
     EncryptedProgressive {
         source: ProgressiveSource,
-        decryptor: QmcDecryptor,
+        decryptor: Arc<dyn MediaDecryptor>,
     },
+}
+
+struct DecryptingReader<Reader> {
+    inner: Reader,
+    decryptor: Arc<dyn MediaDecryptor>,
+    position: u64,
+}
+
+impl<Reader> DecryptingReader<Reader> {
+    fn new(inner: Reader, decryptor: Arc<dyn MediaDecryptor>) -> Self {
+        Self {
+            inner,
+            decryptor,
+            position: 0,
+        }
+    }
+}
+
+impl<Reader: Read> Read for DecryptingReader<Reader> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.decryptor.decrypt(&mut buffer[..read], self.position)?;
+        self.position = self.position.saturating_add(read as u64);
+        Ok(read)
+    }
+}
+
+impl<Reader: Seek> Seek for DecryptingReader<Reader> {
+    fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+        self.position = self.inner.seek(position)?;
+        Ok(self.position)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1233,11 +1237,11 @@ fn load_source_unchecked(
             content_length,
             decryptor,
         } => {
-            let mut reader = QmcReader::new(
+            let mut reader = DecryptingReader::new(
                 File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?,
                 decryptor.clone(),
             );
-            validate_decrypted_flac(&mut reader, decryptor)?;
+            validate_decrypted_flac(&mut reader, decryptor.as_ref())?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(*content_length)
@@ -1266,13 +1270,13 @@ fn load_source_unchecked(
             ))
         }
         PreparedPlaybackLocation::EncryptedProgressive { source, decryptor } => {
-            let mut reader = QmcReader::new(
+            let mut reader = DecryptingReader::new(
                 source
                     .open_reader()
                     .map_err(|_| AudioEngineError::StreamingFailed)?,
                 decryptor.clone(),
             );
-            validate_decrypted_flac(&mut reader, decryptor)?;
+            validate_decrypted_flac(&mut reader, decryptor.as_ref())?;
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
                 .with_byte_len(source.content_length())
@@ -1306,7 +1310,7 @@ fn load_source_unchecked(
 
 fn validate_decrypted_flac<Reader: Read + Seek>(
     reader: &mut Reader,
-    decryptor: &QmcDecryptor,
+    decryptor: &dyn MediaDecryptor,
 ) -> Result<(), AudioEngineError> {
     let mut magic = [0_u8; 4];
     reader.read_exact(&mut magic).map_err(|error| {
@@ -1955,8 +1959,24 @@ mod tests {
 
     #[test]
     fn decrypted_flac_probe_requires_magic_and_rewinds() {
-        let decryptor =
-            QmcDecryptor::new(&crate::qmc::valid_test_ekey_v1()).expect("valid fixture key");
+        #[derive(Debug)]
+        struct IdentityDecryptor;
+
+        impl MediaDecryptor for IdentityDecryptor {
+            fn decrypt(&self, _data: &mut [u8], _offset: u64) -> std::io::Result<()> {
+                Ok(())
+            }
+
+            fn cipher_kind(&self) -> &'static str {
+                "identity-test"
+            }
+
+            fn derived_key_length(&self) -> usize {
+                0
+            }
+        }
+
+        let decryptor = IdentityDecryptor;
         let mut valid = std::io::Cursor::new(b"fLaCpayload".to_vec());
         assert_eq!(validate_decrypted_flac(&mut valid, &decryptor), Ok(()));
         assert_eq!(valid.position(), 0);

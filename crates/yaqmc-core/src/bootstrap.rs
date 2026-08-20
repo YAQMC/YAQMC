@@ -11,10 +11,11 @@ use crate::media::CachedMediaPreparer;
 use crate::media::{MediaPreparer, PlaybackSourceResolver};
 use crate::player::{PlayerService, PlayerSnapshot};
 use crate::plugin::ExtensionHost;
-use crate::qqmusic::QQMusicService;
 use crate::storage::StorageService;
 use crate::system_media::{SystemMediaIntegration, SystemMediaStartConfig};
 use crate::{CoreBootstrapError, CoreConfig, HostCommandPublisher};
+use yaqmc_provider_api::{MusicProvider, ProviderRegistry};
+use yaqmc_provider_qqmusic::create_intree_provider;
 
 pub struct CoreBootstrapInputs {
     pub credentials: Arc<dyn CredentialStore>,
@@ -31,7 +32,8 @@ pub(crate) struct CoreServices {
     pub plugins: Arc<ExtensionHost>,
     pub logging: Arc<LoggingHandle>,
     pub credentials: Arc<dyn CredentialStore>,
-    pub qq_music: Arc<QQMusicService>,
+    pub providers: Arc<ProviderRegistry>,
+    pub qq_music: Arc<dyn MusicProvider>,
     pub audio: Arc<dyn AudioEngine>,
     pub player: Arc<PlayerService>,
     pub local_api: Arc<LocalApiService>,
@@ -81,13 +83,15 @@ impl CoreServices {
             }),
         );
         let credentials = inputs.credentials;
-        let qq_music = Arc::new(
-            QQMusicService::new(
-                Arc::clone(&storage),
-                Arc::clone(&credentials),
-                config.paths.cache_dir.join("fixture-media"),
-            )
-            .map_err(CoreBootstrapError::from_error)?,
+        let qq_music = create_intree_provider(
+            Arc::clone(&storage),
+            Arc::clone(&credentials),
+            config.paths.cache_dir.join("fixture-media"),
+        )
+        .map_err(CoreBootstrapError::from_error)?;
+        let providers = Arc::new(
+            ProviderRegistry::new("qqmusic", [Arc::clone(&qq_music)])
+                .map_err(CoreBootstrapError::from_error)?,
         );
         let audio = inputs.audio;
         if let Ok(Some(device_id)) = storage.get_setting(AUDIO_OUTPUT_DEVICE_SETTING) {
@@ -99,12 +103,12 @@ impl CoreServices {
         let resolver: Arc<dyn PlaybackSourceResolver> =
             Arc::new(crate::media::TestPlaybackSourceResolver);
         #[cfg(not(feature = "test-provider"))]
-        let resolver: Arc<dyn PlaybackSourceResolver> = qq_music.clone();
+        let resolver: Arc<dyn PlaybackSourceResolver> = providers.clone();
         #[cfg(feature = "test-provider")]
         let preparer: Arc<dyn MediaPreparer> = Arc::new(crate::media::PassthroughMediaPreparer);
         #[cfg(not(feature = "test-provider"))]
         let preparer: Arc<dyn MediaPreparer> = Arc::new(CachedMediaPreparer::new(
-            qq_music.http_client(),
+            qq_music.media_http_client(),
             Arc::clone(&storage),
         ));
         let player = Arc::new(PlayerService::with_runtime(
@@ -135,6 +139,7 @@ impl CoreServices {
             plugins,
             logging,
             credentials,
+            providers,
             qq_music,
             audio,
             player,

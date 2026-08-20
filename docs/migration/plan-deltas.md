@@ -2096,3 +2096,26 @@ invented. P12–P15 were not started.
   blocked.
 - Electron stays **43.4.0**. The 32 MiB hard cap is unchanged. Provenance
   remains **BLOCKED**. No qm-api-rs.
+
+## Maintainer-directed P13 / P14-A implementation overlay (2026-08-20)
+
+- The maintainer explicitly authorized implementation on
+  `feat/electron-migration`. This supersedes the earlier execution pause for
+  this branch only; it does **not** convert P11/P12 evidence to PASS, sign
+  ACC-05, authorize a tag, or authorize a merge to `main`.
+- P13 removed the legacy host and renderer bridge in commit `24e6a2a`. Electron
+  is now the only desktop host implementation. Static allowlist and release-note
+  drafts are under `docs/migration/p13-*`.
+- P14-A extracts the current QQ Music service behind the object-safe contracts
+  and immutable registry in `yaqmc-provider-api`, and moves the implementation
+  into `yaqmc-provider-qqmusic`. Core services retain trait objects; the default
+  backend remains `intree`.
+- P14-A is a behavior-preserving boundary move: local media preparation stays in
+  Core, the OAuth popup stays in Electron, provider prepare/complete/cancel stays
+  in Rust, `qqmusic-session` / `qqmusic-session-staging`, `provider_cache`,
+  artwork cache behavior, and the frozen wire representation are unchanged.
+- No `qqmusic-api` / `qm-api-rs` dependency is linked. P14-B and P14-C remain
+  deferred. Provenance remains **BLOCKED**.
+- The implementing agent ran formatting and offline Cargo metadata/lockfile
+  resolution only. It did **not** run tests, builds, package validation, LIVE
+  account checks, or HUMAN acceptance; those checks are handed to Terra.

@@ -16,7 +16,7 @@ Case-insensitive matching sees the substring `tauri` across the boundary in `dat
 - `apps/desktop/main/managed-background.ts`
 - `apps/desktop/main/ipc/host-handlers.ts`
 - `crates/yaqmc-core/src/server/ops.rs`
-- `crates/yaqmc-core/src/qqmusic/account.rs`
+- `crates/yaqmc-provider-qqmusic/src/qqmusic/account.rs`
 - `packages/yaqmc-client/src/protocol/dto.ts`
 - `src/application/account-runtime.ts`
 - `src/application/artwork-cache.ts`

@@ -17,7 +17,6 @@ const forbiddenCoreDependencyPatterns = [
   /^napi(?:-.+)?$/,
   /^(?:electron|node)(?:-.+)?$/,
   /^yaqmc$/,
-  /^yaqmc-provider(?:-.+)?$/,
 ];
 export const SUPPORTED_CORE_TARGETS = Object.freeze([
   'x86_64-unknown-linux-gnu',
