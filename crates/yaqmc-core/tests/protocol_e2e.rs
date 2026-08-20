@@ -66,7 +66,15 @@ fn attach_message() -> AttachMessage {
 }
 
 async fn spawn_core(root: &std::path::Path) -> Session {
-    for dir in ["data", "cache", "logs", "config"] {
+    for dir in [
+        "data",
+        "cache",
+        "logs",
+        "config",
+        "credentials",
+        "tmp",
+        "plugin-fallback",
+    ] {
         std::fs::create_dir_all(root.join(dir)).expect("session dir");
     }
     let mut child = Command::new(env!("CARGO_BIN_EXE_yaqmc-core"))
@@ -74,6 +82,13 @@ async fn spawn_core(root: &std::path::Path) -> Session {
         .env("YAQMC_CACHE_DIR", root.join("cache"))
         .env("YAQMC_LOG_DIR", root.join("logs"))
         .env("YAQMC_CONFIG_DIR", root.join("config"))
+        .env("YAQMC_CREDENTIAL_DIR", root.join("credentials"))
+        .env("YAQMC_PLUGIN_FALLBACK_DIR", root.join("plugin-fallback"))
+        .env("YAQMC_LOG_FALLBACK_DIR", root.join("logs").join("fallback"))
+        .env("YAQMC_DOWNLOAD_DIR", root.join("tmp").join("downloads"))
+        .env("TEMP", root.join("tmp"))
+        .env("TMP", root.join("tmp"))
+        .env("TMPDIR", root.join("tmp"))
         .env("YAQMC_CHANNEL", "test")
         .env("RUST_BACKTRACE", "1")
         .stdin(Stdio::piped())

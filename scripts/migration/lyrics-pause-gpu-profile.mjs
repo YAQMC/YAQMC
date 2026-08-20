@@ -19,16 +19,15 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { cleanupQaSandbox, createQaSandbox, electronQaArgs, qaElectronEnv } from '../qa-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
 const electronBinary = createRequire(path.join(desktopRoot, 'package.json'))('electron');
 const debugPort = Number(process.env.YAQMC_GPU_PROBE_PORT || 9235);
-const userData = path.join(os.tmpdir(), 'yaqmc-lyrics-pause-gpu-profile');
 const cycles = Number(process.env.YAQMC_PAUSE_CYCLES || 8);
 const extraVinylCycles = Number(process.env.YAQMC_VINYL_EXTRA_CYCLES || 10);
 const jankFps = Number(process.env.YAQMC_JANK_FPS || 20);
@@ -650,17 +649,15 @@ async function connectPage(child) {
   return { browser, page, child };
 }
 
-function spawnElectron(env) {
+function spawnElectron(env, sandbox) {
   const child = spawn(
     electronBinary,
-    [
-      '.',
+    electronQaArgs(sandbox, [
       `--remote-debugging-port=${String(debugPort)}`,
-      `--user-data-dir=${userData}`,
       '--lang=en-US',
       '--force-device-scale-factor=1.5',
       '--start-maximized',
-    ],
+    ]),
     {
       cwd: desktopRoot,
       env,
@@ -806,25 +803,25 @@ async function runAb(page, preset) {
 }
 
 async function main() {
-  const env = {
-    ...process.env,
+  const sandbox = createQaSandbox({ purpose: 'lyrics-pause-gpu-profile' });
+  const env = qaElectronEnv(process.env, sandbox, {
     YAQMC_VITE_DEV: '1',
     YAQMC_E2E_NATIVE: '1',
     YAQMC_ELECTRON_E2E: '1',
-  };
+    YAQMC_E2E_CORE: '1',
+  });
   delete env.ELECTRON_DISABLE_GPU;
   delete env.YAQMC_DESKTOP_SMOKE;
   if (!env.YAQMC_CORE_BIN && env.CARGO_TARGET_DIR) {
     env.YAQMC_CORE_BIN = path.join(env.CARGO_TARGET_DIR, 'debug', 'yaqmc-core.exe');
   }
-  env.YAQMC_E2E_CORE = '1';
 
   await waitForTcp('127.0.0.1', 1420, 5_000).catch(() => {
     throw new Error('Vite is not serving 127.0.0.1:1420; start npm run dev first');
   });
   await fs.mkdir(outputDir, { recursive: true });
 
-  let child = spawnElectron(env);
+  let child = spawnElectron(env, sandbox);
   const stop = () => {
     if (child.exitCode === null) child.kill();
   };
@@ -896,6 +893,7 @@ async function main() {
       try {
         await runBody(session.page);
         await writeReport(session);
+        cleanupQaSandbox(sandbox.root);
         return;
       } catch (error) {
         const dump = await captureHang(session.page, child, error);
@@ -907,7 +905,7 @@ async function main() {
           await writeReport(null);
           throw error;
         }
-        child = spawnElectron(env);
+        child = spawnElectron(env, sandbox);
         session = await connectPage(child);
       }
     }

@@ -17,10 +17,18 @@ test('desktop dev URL is the Vite 1420 origin', () => {
   assert.equal(desktopDevUrl(), 'http://127.0.0.1:1420/');
 });
 
-test('Electron dev env opts the main window into the Vite origin', () => {
-  const env = electronDevEnv({ PATH: '/bin' });
+test('Electron dev env opts the main window into the Vite origin and strips QA flags', () => {
+  const env = electronDevEnv({
+    PATH: '/bin',
+    YAQMC_ELECTRON_E2E: '1',
+    YAQMC_QA_ROOT: '/tmp/yaqmc-qa/stale',
+    YAQMC_UI_PERF_DIAG: '1',
+  });
   assert.equal(env.YAQMC_VITE_DEV, '1');
   assert.equal(env.PATH, '/bin');
+  assert.equal(env.YAQMC_ELECTRON_E2E, undefined);
+  assert.equal(env.YAQMC_QA_ROOT, undefined);
+  assert.equal(env.YAQMC_UI_PERF_DIAG, undefined);
 });
 
 test('waitForTcp resolves once the port accepts connections', async () => {

@@ -7,8 +7,7 @@
  * Chromium occluded-window backgrounding.
  *
  * Vite must already serve 127.0.0.1:1420; this script rebuilds desktop main.
- * Core + Chromium profiles are isolated under %TEMP% — never the live APPDATA
- * session. Fixture track `ui-perf-diag` must not appear in HUMAN playback.
+ * Core + Chromium profiles use a unique `<tmpdir>/yaqmc-qa/<run-id>` sandbox.
  *
  *   $env:CARGO_TARGET_DIR='E:\cargo-target\yaqmc-electron-migration'
  *   $env:YAQMC_CORE_BIN="$env:CARGO_TARGET_DIR\debug\yaqmc-core.exe"
@@ -18,10 +17,15 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { electronDevEnv } from '../dev-desktop.mjs';
+import {
+  cleanupQaSandbox,
+  createQaSandbox,
+  electronQaArgs,
+  qaElectronEnv,
+} from '../qa-runtime.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const desktopRoot = path.join(repoRoot, 'apps', 'desktop');
@@ -130,20 +134,14 @@ function summarizeVariant(report) {
 }
 
 async function runVariant(mode) {
-  const userData = path.join(os.tmpdir(), `yaqmc-ui-perf-diag-${mode}`);
   const variantOut = path.join(outputDir, `lyrics-occlusion-lifecycle-${mode}.json`);
   await fs.rm(variantOut, { force: true });
-  await fs.rm(userData, { recursive: true, force: true });
-
-  const coreProfile = path.join(userData, 'core-profile');
-  const env = electronDevEnv({
-    ...process.env,
+  const sandbox = createQaSandbox({ purpose: `ui-perf-diag-${mode}` });
+  const env = qaElectronEnv(electronDevEnv(process.env), sandbox, {
     YAQMC_UI_PERF_DIAG: '1',
     YAQMC_UI_PERF_DIAG_QUIT: '1',
     YAQMC_UI_PERF_DIAG_OUT: variantOut,
     YAQMC_WINDOWS_OCCLUSION: mode,
-    APPDATA: path.join(coreProfile, 'appdata'),
-    LOCALAPPDATA: path.join(coreProfile, 'localappdata'),
   });
   delete env.ELECTRON_DISABLE_GPU;
   delete env.YAQMC_DESKTOP_SMOKE;
@@ -155,7 +153,7 @@ async function runVariant(mode) {
 
   const child = spawn(
     electronBinary,
-    ['.', `--user-data-dir=${userData}`, '--lang=en-US'],
+    electronQaArgs(sandbox, ['--lang=en-US']),
     { cwd: desktopRoot, env, stdio: 'inherit', windowsHide: false },
   );
   const stop = () => {
@@ -169,6 +167,7 @@ async function runVariant(mode) {
       new Promise((resolve) => child.once('exit', resolve)),
       sleep(8_000).then(() => killTree(child.pid)),
     ]);
+    cleanupQaSandbox(sandbox.root);
     return report;
   } catch (error) {
     stop();

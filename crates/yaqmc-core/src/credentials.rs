@@ -58,6 +58,50 @@ impl SpawnBlockingCredentialStore {
     }
 }
 
+/// Sandbox-only credential backend. Used when `YAQMC_CREDENTIAL_DIR` is set so
+/// QA/perf Core processes never read or write the maintainer OS keyring.
+pub struct FileCredentialStore {
+    dir: std::path::PathBuf,
+}
+
+impl FileCredentialStore {
+    pub fn open(dir: impl Into<std::path::PathBuf>) -> Result<Self, CredentialError> {
+        let dir = dir.into();
+        std::fs::create_dir_all(&dir).map_err(|_| CredentialError::OperationFailed)?;
+        Ok(Self { dir })
+    }
+
+    fn path_for(&self, account: &str) -> std::path::PathBuf {
+        let mut name = String::from("acct-");
+        for byte in account.as_bytes() {
+            name.push_str(&format!("{byte:02x}"));
+        }
+        self.dir.join(name)
+    }
+}
+
+impl CredentialStore for FileCredentialStore {
+    fn load(&self, account: &str) -> Result<Option<String>, CredentialError> {
+        match std::fs::read_to_string(self.path_for(account)) {
+            Ok(secret) => Ok(Some(secret)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(_) => Err(CredentialError::OperationFailed),
+        }
+    }
+
+    fn save(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        std::fs::write(self.path_for(account), secret).map_err(|_| CredentialError::OperationFailed)
+    }
+
+    fn delete(&self, account: &str) -> Result<(), CredentialError> {
+        match std::fs::remove_file(self.path_for(account)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err(CredentialError::OperationFailed),
+        }
+    }
+}
+
 pub struct PlatformCredentialStore;
 
 impl Default for PlatformCredentialStore {
@@ -190,6 +234,25 @@ mod tests {
         fn delete(&self, _account: &str) -> Result<(), CredentialError> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn file_store_stays_inside_its_directory() {
+        let dir = tempfile::tempdir().expect("credential dir");
+        let store = FileCredentialStore::open(dir.path()).expect("open");
+        assert_eq!(store.load("qqmusic-session").expect("load"), None);
+        store.save("qqmusic-session", "sandbox-only").expect("save");
+        assert_eq!(
+            store.load("qqmusic-session").expect("load"),
+            Some("sandbox-only".to_owned())
+        );
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .expect("read dir")
+            .map(|entry| entry.expect("entry").file_name())
+            .collect();
+        assert_eq!(entries.len(), 1);
+        store.delete("qqmusic-session").expect("delete");
+        assert_eq!(store.load("qqmusic-session").expect("load"), None);
     }
 
     #[test]
