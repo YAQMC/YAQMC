@@ -133,7 +133,7 @@ else
   cd "$repo_root"
   while IFS= read -r -d '' path; do
     scan_file "$repo_root/$path" "$path" || failed=1
-  done < <(git ls-files -z --cached --others --exclude-standard -- README.md docs src-tauri/tests/fixtures)
+  done < <(git ls-files -z --cached --others --exclude-standard -- README.md docs tests/fixtures)
 fi
 
 if [[ "$failed" -ne 0 ]]; then

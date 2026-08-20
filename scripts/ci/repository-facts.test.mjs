@@ -12,25 +12,24 @@ const FACT_FILES = [
   'package-lock.json',
   'Cargo.toml',
   '.github/actions/setup-packaging/action.yml',
-  '.github/workflows/build.yml',
   '.github/workflows/ci.yml',
+  '.github/workflows/electron-release.yml',
   '.github/workflows/pages.yml',
-  'src-tauri/Cargo.toml',
-  'src-tauri/tauri.conf.json',
-  'src-tauri/build.rs',
-  'src-tauri/src/lib.rs',
+  'apps/desktop/electron-builder.yml',
+  'apps/desktop/main/index.ts',
+  'apps/desktop/main/core/paths.ts',
+  'apps/desktop/main/windows/lyrics-surfaces.ts',
+  'packages/yaqmc-client/fixtures/methods.json',
   'crates/yaqmc-core/src/storage.rs',
-  'src-tauri/src/commands.rs',
+  'crates/yaqmc-core/src/audio.rs',
   'crates/yaqmc-core/src/app_preferences.rs',
   'crates/yaqmc-core/src/logging.rs',
-  'src-tauri/src/lyrics_surface/mod.rs',
   'crates/yaqmc-core/src/qqmusic.rs',
   'crates/yaqmc-core/src/credentials.rs',
   'crates/yaqmc-core/src/qqmusic/auth.rs',
   'crates/yaqmc-core/src/local_api.rs',
   'crates/yaqmc-core/src/system_media.rs',
   'crates/yaqmc-core/src/bootstrap.rs',
-  'docs/migration/command-inventory.md',
 ];
 
 function copyFactRepository() {
@@ -45,7 +44,6 @@ function copyFactRepository() {
 
 test('collects canonical requirements and continuity facts from production repository sources', () => {
   const facts = collectRepositoryFacts(repositoryRoot);
-
   assert.deepEqual(facts.toolchains, {
     node: '24.19.0',
     npm: null,
@@ -53,7 +51,7 @@ test('collects canonical requirements and continuity facts from production repos
     cargo: '1.88.0',
   });
   assert.deepEqual(facts.runtimeFacts, {
-    registeredTauriCommands: 117,
+    registeredProtocolMethods: 126,
     mainWindow: '1280×800 (minimum 1000×680)',
   });
   assert.deepEqual(
@@ -80,57 +78,36 @@ test('collects canonical requirements and continuity facts from production repos
 test('rejects a temporary repository whose Node pins disagree', () => {
   const root = copyFactRepository();
   writeFileSync(path.join(root, '.node-version'), '0.0.0\n');
-
   assert.throws(() => collectRepositoryFacts(root), /Node requirement.*0\.0\.0.*24\.19\.0/);
 });
 
-test('rejects a temporary repository whose workspace MSRV disagrees with Rust toolchain pins', () => {
+test('rejects a temporary repository whose workspace MSRV disagrees with workflow pins', () => {
   const root = copyFactRepository();
   const manifestPath = path.join(root, 'Cargo.toml');
-  const manifest = readFileSync(manifestPath, 'utf8').replace(
-    'rust-version = "1.88"',
-    'rust-version = "1.89"',
+  writeFileSync(
+    manifestPath,
+    readFileSync(manifestPath, 'utf8').replace('rust-version = "1.88"', 'rust-version = "1.89"'),
   );
-  writeFileSync(manifestPath, manifest);
-
   assert.throws(() => collectRepositoryFacts(root), /Rust requirement.*1\.89\.0.*1\.88\.0/);
 });
 
-test('rejects a member manifest that no longer inherits the workspace MSRV', () => {
+test('rejects app identity drift between packaging and Core paths', () => {
   const root = copyFactRepository();
-  const manifestPath = path.join(root, 'src-tauri', 'Cargo.toml');
-  const manifest = readFileSync(manifestPath, 'utf8').replace(
-    'rust-version.workspace = true',
-    '# rust-version inheritance removed',
+  const builderPath = path.join(root, 'apps', 'desktop', 'electron-builder.yml');
+  writeFileSync(
+    builderPath,
+    readFileSync(builderPath, 'utf8').replace('appId: org.yaqmc.desktop', 'appId: drifted.id'),
   );
-  writeFileSync(manifestPath, manifest);
-
-  assert.throws(
-    () => collectRepositoryFacts(root),
-    /src-tauri Cargo MSRV must inherit the workspace requirement/,
-  );
+  assert.throws(() => collectRepositoryFacts(root), /appId and Core path identifier must match/);
 });
 
-test('rejects a temporary repository whose command sources disagree', () => {
-  const root = copyFactRepository();
-  const buildPath = path.join(root, 'src-tauri', 'build.rs');
-  const source = readFileSync(buildPath, 'utf8').replace(/ {4}"platform_diagnostics",\r?\n/, '');
-  writeFileSync(buildPath, source);
-
-  assert.throws(
-    () => collectRepositoryFacts(root),
-    /command contract.*APP_COMMANDS.*generate_handler/,
-  );
-});
-
-test('collects migrated persistence keys from their Core-owned canonical sources', () => {
+test('collects persistence keys from Core and Electron-owned canonical sources', () => {
   const root = copyFactRepository();
   const loggingPath = path.join(root, 'crates', 'yaqmc-core', 'src', 'logging.rs');
   writeFileSync(
     loggingPath,
     readFileSync(loggingPath, 'utf8').replace('"logging.level"', '"logging.level.drifted"'),
   );
-
   const facts = collectRepositoryFacts(root);
   assert.equal(
     facts.persistenceEntries.find(({ id }) => id === 'logging-level')?.key,
@@ -138,30 +115,23 @@ test('collects migrated persistence keys from their Core-owned canonical sources
   );
 });
 
-test('rejects a temporary repository whose Core-owned storage source drifts', () => {
-  const root = copyFactRepository();
-  const storagePath = path.join(root, 'crates', 'yaqmc-core', 'src', 'storage.rs');
+test('rejects storage and host-command boundary drift', () => {
+  const storageRoot = copyFactRepository();
+  const storagePath = path.join(storageRoot, 'crates', 'yaqmc-core', 'src', 'storage.rs');
   writeFileSync(
     storagePath,
     readFileSync(storagePath, 'utf8').replaceAll('library.sqlite3', 'drifted.sqlite3'),
   );
-
-  assert.throws(() => collectRepositoryFacts(root), /SQLite library\.sqlite3 WAL contract is missing/);
-});
-
-test('rejects a temporary repository whose system-media host boundary drifts', () => {
-  const root = copyFactRepository();
-  const mediaPath = path.join(root, 'crates', 'yaqmc-core', 'src', 'system_media.rs');
-  writeFileSync(
-    mediaPath,
-    readFileSync(mediaPath, 'utf8').replace(
-      'pub runtime: tokio::runtime::Handle',
-      'pub runtime: ()',
-    ),
-  );
-
   assert.throws(
-    () => collectRepositoryFacts(root),
-    /Core system-media ownership contract is missing pub runtime: tokio::runtime::Handle/,
+    () => collectRepositoryFacts(storageRoot),
+    /SQLite library\.sqlite3 WAL contract is missing/,
   );
+
+  const hostRoot = copyFactRepository();
+  const mainPath = path.join(hostRoot, 'apps', 'desktop', 'main', 'index.ts');
+  writeFileSync(
+    mainPath,
+    readFileSync(mainPath, 'utf8').replace('subscribeHostCommands(instance.client', 'removed('),
+  );
+  assert.throws(() => collectRepositoryFacts(hostRoot), /must subscribe to Core host commands/);
 });

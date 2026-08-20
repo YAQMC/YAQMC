@@ -537,37 +537,6 @@ pub fn diagnostics_log_frontend(logging: &LoggingHandle, entries: Vec<FrontendLo
     }
 }
 
-pub async fn diagnostics_export_bundle(
-    core: &CoreHandle,
-    host: &dyn HostDispatchHooks,
-    request: DiagnosticsBundleRequest,
-) -> Result<BundleExportResult, String> {
-    let snapshot = assemble_diagnostics_snapshot(
-        &core.player(),
-        &core.qq_music(),
-        &core.logging(),
-        Some(&core.plugins()),
-        live_platform_diagnostics(core, host),
-        host.app_section(),
-        request.base,
-    )
-    .await;
-    let options = BundleOptions {
-        include_logs: request.include_logs.unwrap_or(true),
-        override_unresolved: request.override_unresolved.unwrap_or(false),
-        description: request.description.as_deref(),
-        issue_category: request.issue_category.as_deref(),
-        host_payload: request.host_payload,
-    };
-    diagnostics::export_bundle(
-        &host.download_dir(),
-        &snapshot,
-        core.logging().log_dir(),
-        options,
-    )
-    .map_err(stringify)
-}
-
 pub async fn diagnostics_export_bundle_to(
     core: &CoreHandle,
     host: &dyn HostDispatchHooks,

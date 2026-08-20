@@ -331,9 +331,9 @@ fn diagnostics_and_issue_wire_contracts_remain_exact_with_injected_renderer() {
             linked_op_id: None,
         },
         &snapshot,
-        "WebView2 / Tauri",
+        "electron/43.4.0",
     );
-    assert!(preview.body.contains("Renderer: WebView2 / Tauri"));
+    assert!(preview.body.contains("Renderer: electron/43.4.0"));
     assert!(!preview.body.contains("SECRET"));
     assert!(preview.url.contains("template=bug-report.yml"));
     validate_open_url(&preview.url).expect("generated issue URL");

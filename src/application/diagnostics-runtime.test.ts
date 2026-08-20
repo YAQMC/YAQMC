@@ -6,7 +6,7 @@ const hostMocks = vi.hoisted(() => {
   const invoke = vi.fn();
   const pickSave = vi.fn();
   const bridge = {
-    kind: 'tauri' as HostBridge['kind'],
+    kind: 'electron' as HostBridge['kind'],
     windowRole: 'main' as const,
     window: {
       minimize: async () => undefined,
@@ -77,7 +77,7 @@ function sampleBundle(path: string): BundleExportResult {
 
 describe('exportDiagnosticsBundle', () => {
   beforeEach(() => {
-    hostMocks.bridge.kind = 'tauri';
+    hostMocks.bridge.kind = 'electron';
     hostMocks.invoke.mockReset();
     hostMocks.pickSave.mockReset();
     hostMocks.invoke.mockResolvedValue(sampleBundle('/tmp/YAQMC-diagnostics.zip'));
@@ -85,29 +85,14 @@ describe('exportDiagnosticsBundle', () => {
   });
 
   afterEach(() => {
-    hostMocks.bridge.kind = 'tauri';
+    hostMocks.bridge.kind = 'electron';
     hostMocks.invoke.mockReset();
     hostMocks.pickSave.mockReset();
-  });
-
-  it('keeps the Tauri combined command when destPath is omitted', async () => {
-    await exportDiagnosticsBundle({ includeLogs: true });
-    expect(hostMocks.pickSave).not.toHaveBeenCalled();
-    expect(hostMocks.invoke).toHaveBeenCalledWith('diagnostics_export_bundle', {
-      request: {
-        includeLogs: true,
-        overrideUnresolved: false,
-        description: undefined,
-        issueCategory: undefined,
-      },
-    });
   });
 
   it('writes to destPath via _to without opening pickSave', async () => {
     const bundle = sampleBundle('D:\\exports\\given.zip');
     hostMocks.invoke.mockResolvedValue(bundle);
-    hostMocks.bridge.kind = 'electron';
-
     await expect(
       exportDiagnosticsBundle({ includeLogs: false }, 'D:\\exports\\given.zip'),
     ).resolves.toEqual(bundle);
@@ -123,10 +108,9 @@ describe('exportDiagnosticsBundle', () => {
     });
   });
 
-  it('picks a save path then calls _to on Electron', async () => {
+  it('picks a save path then calls _to', async () => {
     const dest = 'D:\\exports\\YAQMC-diagnostics.zip';
     const bundle = sampleBundle(dest);
-    hostMocks.bridge.kind = 'electron';
     hostMocks.pickSave.mockResolvedValue(dest);
     hostMocks.invoke.mockResolvedValue(bundle);
 
@@ -142,14 +126,9 @@ describe('exportDiagnosticsBundle', () => {
         issueCategory: undefined,
       },
     });
-    expect(hostMocks.invoke).not.toHaveBeenCalledWith(
-      'diagnostics_export_bundle',
-      expect.anything(),
-    );
   });
 
-  it('surfaces a real error when Electron pickSave returns a non-string path', async () => {
-    hostMocks.bridge.kind = 'electron';
+  it('surfaces a real error when pickSave returns a non-string path', async () => {
     hostMocks.pickSave.mockResolvedValue({ filePath: 'D:\\exports\\YAQMC-diagnostics.zip' });
 
     await expect(exportDiagnosticsBundle({ includeLogs: true })).rejects.toThrow(
@@ -158,8 +137,7 @@ describe('exportDiagnosticsBundle', () => {
     expect(hostMocks.invoke).not.toHaveBeenCalled();
   });
 
-  it('throws DiagnosticsExportAbortedError when Electron pickSave is cancelled', async () => {
-    hostMocks.bridge.kind = 'electron';
+  it('throws DiagnosticsExportAbortedError when pickSave is cancelled', async () => {
     hostMocks.pickSave.mockResolvedValue(null);
 
     await expect(exportDiagnosticsBundle({ includeLogs: true })).rejects.toBeInstanceOf(

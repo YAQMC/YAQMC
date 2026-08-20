@@ -80,7 +80,7 @@ function Get-RepositoryCandidatePaths {
   $repositoryRoot = Split-Path -Parent $PSScriptRoot
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = 'git.exe'
-  $startInfo.Arguments = 'ls-files -z --cached --others --exclude-standard -- README.md docs src-tauri/tests/fixtures'
+  $startInfo.Arguments = 'ls-files -z --cached --others --exclude-standard -- README.md docs tests/fixtures'
   $startInfo.WorkingDirectory = $repositoryRoot
   $startInfo.UseShellExecute = $false
   $startInfo.RedirectStandardOutput = $true

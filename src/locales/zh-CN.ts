@@ -686,7 +686,7 @@ export const zhCN = {
     plugins: {
       title: '插件',
       description:
-        '安装本地 YAQMC 运行时插件，用于样式、歌词场景和隔离脚本。这不是 Tauri 框架插件列表。',
+        '安装本地 YAQMC 运行时插件，用于样式、歌词场景和隔离脚本。这些不是 Electron 扩展。',
       install: '从文件安装',
       installDescription: '支持 .yaqmc-plugin 包，以及本地 .css / .js 便捷导入。',
       installAction: '选择文件',

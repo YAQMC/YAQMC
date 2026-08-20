@@ -35,18 +35,8 @@ pub trait HostDispatchHooks: Send + Sync {
     fn diagnostic_readme(&self) -> &'static str {
         ""
     }
-    fn renderer_label(&self, platform: &PlatformDiagnostics) -> String {
-        match platform.os {
-            "windows" => "WebView2 / Tauri".to_owned(),
-            "linux" => platform
-                .linux
-                .as_ref()
-                .and_then(|linux| linux.webkitgtk_version.as_deref())
-                .map(|version| format!("WebKitGTK {version} / Tauri"))
-                .unwrap_or_else(|| "WebKitGTK / Tauri".to_owned()),
-            "macos" => "WKWebView / Tauri".to_owned(),
-            _ => "Tauri WebView".to_owned(),
-        }
+    fn renderer_label(&self, _platform: &PlatformDiagnostics) -> String {
+        "electron/unknown".to_owned()
     }
     fn notify_preferences_changed(&self, _value: &str) {}
     fn notify_plugin_changed(&self) {}
@@ -89,7 +79,7 @@ impl HostDispatchHooks for NoopHost {
     }
 
     /// Stdio Electron host: issue-reporter Environment block uses this as
-    /// `host: electron/<version>`. Tauri adapters keep their own WebView labels.
+    /// `host: electron/<version>`.
     fn renderer_label(&self, _platform: &PlatformDiagnostics) -> String {
         "electron/43.4.0".to_owned()
     }

@@ -4,7 +4,7 @@ import {
   type CoreStatusPayload,
   type HostBridge,
 } from '@yaqmc/client';
-import { selectHostBridge } from './tauri-host-bridge';
+import { selectHostBridge } from './renderer-host-bridge';
 
 let hostBridge: HostBridge | undefined;
 let yaqmcClient: YaqmcClient | undefined;
@@ -44,7 +44,7 @@ export function getYaqmcClient(): YaqmcClient {
   if (!yaqmcClient) {
     const bridge = getHostBridge();
     yaqmcClient = new YaqmcClient(bridge);
-    // Tauri invoke is already live; fake is local. Electron waits for core-status.
+    // Fake is local. Electron waits for core-status.
     if (bridge.kind === 'electron') {
       attachElectronCoreReady(yaqmcClient);
     } else {

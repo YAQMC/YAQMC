@@ -302,7 +302,7 @@ async fn app_preferences_set_emits_preferences_changed_string_payload() {
             CoreMessage::Event {
                 channel, payload, ..
             } if channel == CHANNEL_PREFERENCES_CHANGED => {
-                let stored = payload.as_str().expect("Tauri-shaped JSON string payload");
+                let stored = payload.as_str().expect("host-shaped JSON string payload");
                 let document: serde_json::Value =
                     serde_json::from_str(stored).expect("stored preferences");
                 assert_eq!(document["locale"], "zh-CN");

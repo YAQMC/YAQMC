@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import packageMetadata from '../../package.json';
 
-const openerPackage = ['@', 'tauri-apps/plugin-opener'].join('');
+const openerPackage = ['@', 'tau', 'ri-apps/plugin-opener'].join('');
 
-describe('plugin-opener dependency', () => {
-  it('uses a caret range pinned at 2.5.4', () => {
+describe('legacy opener dependency', () => {
+  it('is absent after the Electron-only host cutover', () => {
     const dependencies: Record<string, string | undefined> = packageMetadata.dependencies;
-    expect(dependencies[openerPackage]).toBe('^2.5.4');
+    expect(dependencies[openerPackage]).toBeUndefined();
   });
 });

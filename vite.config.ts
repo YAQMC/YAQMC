@@ -17,7 +17,7 @@ function currentCommit(): string {
 
 export default defineConfig(({ command }) => ({
   plugins: [react()],
-  // serve: '/' keeps Tauri `http://127.0.0.1:1420`. build: './' for app:// relative assets.
+  // Serve from `/` in development; package relative assets for the app:// protocol.
   base: command === 'build' ? './' : '/',
   define: {
     __YAQMC_BUILD_COMMIT__: JSON.stringify(currentCommit()),
@@ -29,9 +29,6 @@ export default defineConfig(({ command }) => ({
     host: '127.0.0.1',
     port: 1420,
     strictPort: true,
-    watch: {
-      ignored: ['**/src-tauri/**'],
-    },
   },
   test: {
     environment: 'jsdom',

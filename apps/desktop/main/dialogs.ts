@@ -1,20 +1,20 @@
 import path from 'node:path';
 
 /**
- * §27.4 host half: Main path pickers. Host IPC intercepts inventory pick
- * methods and extra `dialog.pickSave`. Core `_to`/`_from` methods
- * (`diagnostics_export_bundle_to`, `preferences_set_background_from`,
- * `plugin_install_from`) remain TODO — this module does not add Rust.
+ * §27.4 host half: Main path pickers. Private HostBridge methods
+ * `dialog.pickSave` / `dialog.pickFile` select paths before the renderer invokes
+ * Core `_to`/`_from` continuations (`diagnostics_export_bundle_to`,
+ * `preferences_set_background_from`, `plugin_install_from`).
  *
  * Callers inject Electron `dialog.showSaveDialog` / `showOpenDialog` so unit
  * tests never need a display. Cancel and missing paths return `null`.
  *
- * FACT filters from live Tauri dialogs:
+ * Canonical filters preserved across the host migration:
  * - background: `app_preferences.rs` `Images` png/jpg/jpeg/webp/bmp/gif
  * - plugin package: `plugin/commands.rs` `YAQMC Plugin` yaqmc-plugin/css/js/ts
  *   plus `All files`
  * - plugin unpacked dir: `blocking_pick_folder` (no file filter)
- * - diagnostics ZIP: Tauri currently writes to the downloads dir with
+ * - diagnostics ZIP: defaults to the downloads directory with
  *   `YAQMC-diagnostics-*.zip`; the Electron save dialog uses a zip filter
  *   and that suggested name.
  */
@@ -74,7 +74,7 @@ export type PickDirectoryOptions = {
   buttonLabel?: string;
 };
 
-/** Suggested filename for diagnostics `pickSave` (core `_to` still TODO). */
+/** Suggested filename for diagnostics `pickSave`. */
 export const DIAGNOSTICS_ZIP_DEFAULT_NAME = 'YAQMC-diagnostics.zip';
 
 export const DIAGNOSTICS_ZIP_FILTERS: DialogFileFilter[] = [

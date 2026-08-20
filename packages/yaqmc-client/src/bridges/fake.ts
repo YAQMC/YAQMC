@@ -52,6 +52,7 @@ function noopShell(): HostShellBridge {
 function unusedDialog(): HostDialogBridge {
   return {
     pickSave: async () => null,
+    pickFile: async () => null,
   };
 }
 

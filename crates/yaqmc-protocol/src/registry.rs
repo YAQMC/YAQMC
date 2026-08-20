@@ -325,11 +325,6 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::Surfaces,
     ),
     spec(
-        "appearance_pick_background",
-        MethodOwner::Host,
-        OriginClass::Main,
-    ),
-    spec(
         "appearance_background_load",
         MethodOwner::Core,
         OriginClass::Surfaces,
@@ -399,11 +394,6 @@ const METHODS: &[MethodSpec] = &[
     spec("debug_perf_sample", MethodOwner::Core, OriginClass::Main),
     spec("diagnostics_snapshot", MethodOwner::Core, OriginClass::Main),
     spec(
-        "diagnostics_export_bundle",
-        MethodOwner::Core,
-        OriginClass::Main,
-    ),
-    spec(
         "diagnostics_reveal_bundle",
         MethodOwner::Host,
         OriginClass::Main,
@@ -454,7 +444,6 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::Main,
     ),
     spec("plugin_list", MethodOwner::Core, OriginClass::Main),
-    spec("plugin_pick_package", MethodOwner::Host, OriginClass::Main),
     spec("plugin_inspect_path", MethodOwner::Core, OriginClass::Main),
     spec("plugin_install", MethodOwner::Core, OriginClass::Main),
     spec("plugin_set_enabled", MethodOwner::Core, OriginClass::Main),
@@ -562,7 +551,6 @@ const fn timeout_class(name: &str) -> TimeoutClass {
         || const_eq(name, "plugin_install_from")
         || const_eq(name, "plugin_install_unpacked")
         || const_eq(name, "plugin_reload")
-        || const_eq(name, "diagnostics_export_bundle")
         || const_eq(name, "diagnostics_export_bundle_to")
         || const_eq(name, "platform_export_diagnostics")
     {

@@ -8,7 +8,7 @@ import {
 } from './plugin-runtime';
 
 const invokeMock = vi.hoisted(() => vi.fn());
-const hostKind = vi.hoisted(() => ({ value: 'electron' as 'electron' | 'tauri' | 'fake' }));
+const hostKind = vi.hoisted(() => ({ value: 'electron' as 'electron' | 'fake' }));
 
 vi.mock('./yaqmc-runtime', () => ({
   getYaqmcClient: () => ({

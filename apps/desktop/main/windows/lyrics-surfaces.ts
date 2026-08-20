@@ -7,14 +7,14 @@ import {
 
 export type LyricsSurfaceKind = 'desktop' | 'island';
 
-/** BASE-04 / live Tauri `GEOMETRY_PREFIX` in `lyrics_surface/mod.rs`. */
+/** BASE-04 stable geometry-key prefix. */
 export const LYRICS_SURFACE_GEOMETRY_PREFIX = 'lyrics-surface-geometry:';
 
-/** Live Tauri `attach_geometry_persistence` debounce. */
+/** Stable geometry-persistence debounce. */
 export const LYRICS_SURFACE_GEOMETRY_DEBOUNCE_MS = 350;
 
 /**
- * Persisted JSON blob — live Tauri `SurfaceGeometry` (`camelCase` serde):
+ * Persisted JSON blob (`camelCase` continuity contract):
  * `{ x: i32, y: i32, width: u32, height: u32 }`.
  */
 export type LyricsSurfacePersistedGeometry = {
@@ -60,7 +60,7 @@ export type LyricsSurfaceWindow = OverlayInputWindow & {
 };
 
 /**
- * Construction table for lyrics-desktop / lyrics-island (§11.2 + live Tauri FACT).
+ * Construction table for lyrics-desktop / lyrics-island (§11.2 continuity contract).
  * `alwaysOnTop: 'screen-saver'` is the intended Electron level; host boot maps
  * this custom field onto `BrowserWindow({ alwaysOnTop: true })` plus
  * `setAlwaysOnTop(true, 'screen-saver')`.
@@ -111,7 +111,7 @@ export type LyricsSurfaceGeometry = {
 };
 
 /**
- * Default create geometry from live Tauri `lyrics_surface/mod.rs` `logical_dimensions`
+ * Preserved default create geometry
  * + `SurfaceRuntimeConfig::disabled` (desktop Wide, island Regular) and
  * `WebviewWindowBuilder` min sizes. Not the main window's 1280×800.
  */
@@ -257,7 +257,7 @@ export function serializeLyricsSurfaceGeometry(geometry: LyricsSurfacePersistedG
   });
 }
 
-/** Live Tauri `geometry_overlaps_work_area`: ≥80×40 overlap, including negative monitor coords. */
+/** Geometry overlap rule: ≥80×40 overlap, including negative monitor coordinates. */
 export function geometryOverlapsWorkArea(
   geometry: LyricsSurfacePersistedGeometry,
   area: DisplayWorkArea,
@@ -273,7 +273,7 @@ export function geometryOverlapsWorkArea(
 
 /**
  * Clamp x/y/width/height into a display work area. Off-all-displays uses
- * live Tauri default placement on the primary work area (not the main 1280×800).
+ * preserved default placement on the primary work area (not the main 1280×800).
  */
 export function clampLyricsSurfaceGeometry(
   geometry: LyricsSurfacePersistedGeometry,
@@ -291,7 +291,7 @@ export function clampLyricsSurfaceGeometry(
   return clampToWorkArea(geometry, area, kind);
 }
 
-/** Live Tauri `apply_default_geometry` at scale 1 with disabled-config offsets. */
+/** Apply the stable scale-1 default geometry with disabled-config offsets. */
 export function defaultLyricsSurfaceGeometry(
   kind: LyricsSurfaceKind,
   area: DisplayWorkArea,
@@ -330,7 +330,7 @@ export function lyricsSurfaceSettingsFromCore(
       try {
         await client.invoke('app_settings_set', { key, value });
       } catch {
-        // Geometry persist is best-effort, matching live Tauri `let _ = storage.set_setting`.
+        // Geometry persistence is best-effort.
       }
     },
     async remove(key) {

@@ -197,7 +197,6 @@ self.WebAssembly = undefined;
 self.importScripts = function () { throw new Error('importScripts denied'); };
 self.eval = function () { throw new Error('eval denied'); };
 self.Function = function () { throw new Error('Function denied'); };
-self.__TAURI__ = undefined;
 self.yaqmc = undefined;
 self.document = undefined;
 var __yaqmcListeners = {};
@@ -729,10 +728,7 @@ export async function installPlugin(
   options: { enable?: boolean; grant?: string[] } = {},
 ): Promise<PluginRecord> {
   const request = { path, enable: options.enable ?? false, grant: options.grant ?? [] };
-  const record =
-    client.bridge?.kind === 'electron'
-      ? await client.invoke('plugin_install_from', { request })
-      : await client.invoke('plugin_install', { request });
+  const record = await client.invoke('plugin_install_from', { request });
   await applyPluginResources();
   return record;
 }
@@ -767,7 +763,7 @@ export async function pluginHostSafeMode(): Promise<boolean> {
 }
 
 export async function choosePluginFile(): Promise<string | null> {
-  return client.invoke('plugin_pick_package');
+  return (await client.host.dialog?.pickFile({ kind: 'plugin-package' })) ?? null;
 }
 
 export function pluginDiagnosticsText(record: PluginRecord): string {

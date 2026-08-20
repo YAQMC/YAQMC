@@ -1,7 +1,7 @@
 import type { ChannelName, ChannelPayload } from './protocol/events';
 import type { MethodName, MethodParams, MethodResult } from './protocol/methods';
 
-export type HostKind = 'electron' | 'tauri' | 'fake';
+export type HostKind = 'electron' | 'fake';
 
 export type WindowRole =
   'main' | 'lyrics-desktop' | 'lyrics-island' | 'unlock-desktop' | 'unlock-island';
@@ -21,9 +21,12 @@ export interface HostShellBridge {
   openExternal(url: string): Promise<void>;
 }
 
-/** Extra host IPC (`dialog.pickSave`); not an inventory MethodName. */
+export type HostOpenFileKind = 'background-image' | 'plugin-package';
+
+/** Extra host IPC (`dialog.pickSave` / `dialog.pickFile`); not inventory MethodNames. */
 export interface HostDialogBridge {
   pickSave(opts?: { defaultPath?: string }): Promise<string | null>;
+  pickFile(opts: { kind: HostOpenFileKind }): Promise<string | null>;
 }
 
 export interface HostBridge {

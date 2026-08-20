@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "src-tauri",
     "crates/yaqmc-core",
     "crates/yaqmc-protocol",
     "crates/yaqmc-provider-api",

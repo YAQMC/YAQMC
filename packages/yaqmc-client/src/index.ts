@@ -2,6 +2,7 @@ export {
   type HostBridge,
   type HostDialogBridge,
   type HostKind,
+  type HostOpenFileKind,
   type HostShellBridge,
   type HostWindowBridge,
   type InvokeArgs,
@@ -14,7 +15,7 @@ export {
   type PlayerCommand,
   type PlayerCommandAdapter,
 } from './player-command-adapter';
-export { createElectronBridge } from './bridges/electron';
+export { createElectronBridge, type ElectronRendererApi } from './bridges/electron';
 export { createFakeBridge, type FakeCatalog } from './bridges/fake';
 export {
   CHANNEL_ACCOUNT_CHANGED,
@@ -44,15 +45,15 @@ export {
 } from './protocol/events';
 export {
   METHOD_NAMES,
+  MIGRATED_METHOD_NAMES,
   PROTOCOL_ONLY_METHODS,
-  TAURI_METHOD_NAMES,
+  type MigratedMethodName,
   type MethodName,
   type MethodParams,
   type MethodResult,
   type ParamsOf,
   type ProtocolOnlyMethodName,
   type ResultOf,
-  type TauriMethodName,
 } from './protocol/methods';
 export {
   DEFAULT_METHOD_PAYLOAD_BYTES,

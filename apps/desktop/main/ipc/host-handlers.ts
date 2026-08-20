@@ -9,14 +9,14 @@ import { attachHostPayloadToExportParams } from '../diagnostics-host-payload';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import {
-  BACKGROUND_IMAGE_FILTERS,
   DIAGNOSTICS_ZIP_DEFAULT_NAME,
   DIAGNOSTICS_ZIP_FILTERS,
+  filtersFor,
   pickDirectory,
   pickFile,
   pickSave,
-  PLUGIN_PACKAGE_FILTERS,
   resolveDiagnosticsSavePath,
+  type PathPickerKind,
   type ShowOpenDialog,
   type ShowSaveDialog,
 } from '../dialogs';
@@ -44,10 +44,10 @@ import {
 } from '../windows/oauth-window';
 import type { HostHandler } from './router';
 
-/** Not in the 117-command inventory; HostBridge.shell.openExternal lands here. */
+/** Not in the migrated Core inventory; HostBridge.shell.openExternal lands here. */
 export const SHELL_OPEN_EXTERNAL = 'shell.openExternal';
 
-/** Not in the 117-command inventory; HostBridge.window lands here. */
+/** Not in the migrated Core inventory; HostBridge.window lands here. */
 export const WINDOW_MINIMIZE = 'window.minimize';
 export const WINDOW_TOGGLE_MAXIMIZE = 'window.toggleMaximize';
 export const WINDOW_CLOSE = 'window.close';
@@ -56,8 +56,10 @@ export const WINDOW_SET_FULLSCREEN = 'window.setFullscreen';
 /** Host-only probe so the renderer can markReady if it missed host://core-status. */
 export const HOST_CORE_STATUS = 'host.coreStatus';
 
-/** Not in the 117-command inventory; diagnostics ZIP save-picker for FE later. */
+/** Not in the protocol inventory; diagnostics ZIP save-picker for the renderer. */
 export const DIALOG_PICK_SAVE = 'dialog.pickSave';
+/** Not in the protocol inventory; typed open-file picker for renderer continuations. */
+export const DIALOG_PICK_FILE = 'dialog.pickFile';
 
 /** Inventory host-owned methods. Not `shell.openExternal`. */
 export const DIAGNOSTICS_OPEN_LOG_FOLDER = 'diagnostics_open_log_folder';
@@ -209,6 +211,17 @@ function defaultPathFromParams(params: unknown, fallback: string): string {
     }
   }
   return fallback;
+}
+
+function openFileKindFromParams(params: unknown): Exclude<PathPickerKind, 'diagnostics-zip'> {
+  const kind =
+    params && typeof params === 'object' && 'kind' in params
+      ? (params as { kind?: unknown }).kind
+      : undefined;
+  if (kind === 'background-image' || kind === 'plugin-package') {
+    return kind;
+  }
+  throw new Error('dialog.pickFile requires a supported kind');
 }
 
 export type LyricsSurfaceCapabilities = {
@@ -609,13 +622,11 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
 
   if (deps.dialogs) {
     const { showSaveDialog, showOpenDialog } = deps.dialogs;
-    handlers.appearance_pick_background = async () => {
-      const chosen = await pickFile(showOpenDialog, { filters: BACKGROUND_IMAGE_FILTERS });
-      return chosen === null ? null : { reference: chosen, dataUri: '' };
-    };
-    handlers.plugin_pick_package = async () =>
-      pickFile(showOpenDialog, { filters: PLUGIN_PACKAGE_FILTERS });
     handlers.plugin_pick_directory = async () => pickDirectory(showOpenDialog);
+    handlers[DIALOG_PICK_FILE] = async (params) => {
+      const kind = openFileKindFromParams(params);
+      return pickFile(showOpenDialog, { filters: filtersFor(kind) });
+    };
     handlers[DIALOG_PICK_SAVE] = async (params) => {
       const downloads = deps.downloadsDir?.() ?? '';
       const chosen = await pickSave(showSaveDialog, {
@@ -680,8 +691,6 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         : params;
       return deps.coreInvoke!(method, next, origin);
     };
-    handlers.diagnostics_export_bundle = async (params, _webContentsId, origin) =>
-      invokeWithHostPayload('diagnostics_export_bundle', params, origin);
     handlers.diagnostics_export_bundle_to = async (params, _webContentsId, origin) => {
       const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
       const rawPath = typeof record.path === 'string' ? record.path : '';

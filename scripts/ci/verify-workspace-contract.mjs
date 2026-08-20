@@ -5,14 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const expectedMembers = [
-  ['yaqmc', 'src-tauri/Cargo.toml'],
   ['yaqmc-core', 'crates/yaqmc-core/Cargo.toml'],
   ['yaqmc-protocol', 'crates/yaqmc-protocol/Cargo.toml'],
   ['yaqmc-provider-api', 'crates/yaqmc-provider-api/Cargo.toml'],
   ['yaqmc-provider-qqmusic', 'crates/yaqmc-provider-qqmusic/Cargo.toml'],
 ];
 const forbiddenCoreDependencyPatterns = [
-  /^tauri(?:-.+)?$/,
   /^webkit2gtk(?:-.+)?$/,
   /^raw-window-handle$/,
   /^qqmusic-api$/,
@@ -47,9 +45,6 @@ export function validateWorkspaceMetadata(metadata) {
   }
   if (!existsSync(path.join(repositoryRoot, 'Cargo.lock'))) {
     throw new Error('root Cargo.lock is missing');
-  }
-  if (existsSync(path.join(repositoryRoot, 'src-tauri', 'Cargo.lock'))) {
-    throw new Error('member Cargo.lock must not exist');
   }
 }
 

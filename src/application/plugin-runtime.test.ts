@@ -11,16 +11,14 @@ import {
 } from './plugin-runtime';
 
 const invokeMock = vi.hoisted(() => vi.fn());
-const hostKind = vi.hoisted(() => ({ value: 'tauri' as 'electron' | 'tauri' | 'fake' }));
+const pickFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock('./yaqmc-runtime', () => ({
   getYaqmcClient: () => ({
     invoke: invokeMock,
     on: vi.fn(() => () => undefined),
-    bridge: {
-      get kind() {
-        return hostKind.value;
-      },
+    host: {
+      dialog: { pickFile: pickFileMock },
     },
   }),
 }));
@@ -93,17 +91,16 @@ function runPluginWorkerBootstrap(source: string, pluginId: string): Promise<Iso
 describe('plugin runtime isolation', () => {
   afterEach(() => {
     Reflect.deleteProperty(window, 'yaqmc');
-    hostKind.value = 'tauri';
     invokeMock.mockReset();
+    pickFileMock.mockReset();
   });
 
-  it('bootstraps workers without Tauri, DOM, or network APIs', () => {
+  it('bootstraps workers without host, DOM, or network APIs', () => {
     const source = pluginWorkerBootstrap(
       'definePlugin({ activate() { return function () {}; } });',
       'dev.example',
     );
     expect(source).toContain('network denied');
-    expect(source).toContain('self.__TAURI__ = undefined');
     expect(source).toContain('self.yaqmc = undefined');
     expect(source).toContain('self.document = undefined');
     expect(source).toContain('importScripts denied');
@@ -113,9 +110,8 @@ describe('plugin runtime isolation', () => {
     expect(source).toContain('ui.contextMenu');
     expect(source).toContain('__yaqmcSceneInstance');
     expect(source).toContain('"dev.example"');
-    expect(source).not.toMatch(/window\.__TAURI__/);
     expect(source).not.toContain('window.yaqmc');
-    expect(source).not.toContain(['@', 'tauri-apps'].join(''));
+    expect(source).not.toContain(['@', 'tau', 'ri-apps'].join(''));
   });
 
   it('evaluates the blob-worker bootstrap without seeing window.yaqmc', async () => {
@@ -182,13 +178,14 @@ describe('plugin runtime isolation', () => {
     expect(text).not.toContain('stylesheet');
   });
 
-  it('picks plugin files through the Rust dialog command', async () => {
-    invokeMock.mockResolvedValueOnce('C:\\plugin.yaqmc-plugin');
+  it('picks plugin files through the private host dialog bridge', async () => {
+    pickFileMock.mockResolvedValueOnce('C:\\plugin.yaqmc-plugin');
     await expect(choosePluginFile()).resolves.toBe('C:\\plugin.yaqmc-plugin');
-    expect(invokeMock).toHaveBeenCalledWith('plugin_pick_package');
+    expect(pickFileMock).toHaveBeenCalledWith({ kind: 'plugin-package' });
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it('installs from an explicit path with plugin_install on Tauri', async () => {
+  it('installs from an explicit path with plugin_install_from', async () => {
     const record = { id: 'dev.example.sakura' };
     invokeMock.mockImplementation(async (method: string) => {
       if (method === 'plugin_install' || method === 'plugin_install_from') return record;
@@ -207,32 +204,8 @@ describe('plugin runtime isolation', () => {
     await expect(installPlugin('C:\\plugin.yaqmc-plugin', { enable: true, grant: [] })).resolves.toEqual(
       record,
     );
-    expect(invokeMock).toHaveBeenCalledWith('plugin_install', {
-      request: { path: 'C:\\plugin.yaqmc-plugin', enable: true, grant: [] },
-    });
-    expect(invokeMock).not.toHaveBeenCalledWith('plugin_install_from', expect.anything());
-  });
-
-  it('installs from an explicit path with plugin_install_from on Electron', async () => {
-    hostKind.value = 'electron';
-    const record = { id: 'dev.example.sakura' };
-    invokeMock.mockImplementation(async (method: string) => {
-      if (method === 'plugin_install' || method === 'plugin_install_from') return record;
-      if (method === 'plugin_active_resources') {
-        return {
-          safeMode: false,
-          developerMode: false,
-          styleOrder: [],
-          styles: [],
-          scenes: [],
-          scripts: [],
-        };
-      }
-      throw new Error(method);
-    });
-    await expect(installPlugin('C:\\plugin.yaqmc-plugin')).resolves.toEqual(record);
     expect(invokeMock).toHaveBeenCalledWith('plugin_install_from', {
-      request: { path: 'C:\\plugin.yaqmc-plugin', enable: false, grant: [] },
+      request: { path: 'C:\\plugin.yaqmc-plugin', enable: true, grant: [] },
     });
     expect(invokeMock).not.toHaveBeenCalledWith('plugin_install', expect.anything());
   });

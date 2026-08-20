@@ -9,8 +9,8 @@
 //!   * never carries a GitHub token or personal credentials,
 //!   * URL length capped at [`GITHUB_URL_SOFT_LIMIT`] (GitHub itself accepts a
 //!     couple KiB but browsers vary; we stay conservative),
-//!   * only emits URLs whose origin+path match [`ISSUE_URL_PREFIX`] and matches the
-//!     Tauri opener allowlist in `capabilities/main-window.json`,
+//!   * only emits URLs whose origin+path match [`ISSUE_URL_PREFIX`] and the
+//!     Electron Main opener allowlist,
 //!   * category → template mapping is stable so form-field IDs remain valid.
 
 use crate::{diagnostics::DiagnosticsSnapshot, logging::sanitize_report_field};
@@ -332,10 +332,8 @@ fn compose_body(
 
 /// Environment `host:` identity derived from the renderer label.
 ///
-/// Electron stdio passes `electron/<version>` (e.g. `electron/43.4.0`). Tauri
-/// adapters keep WebView labels such as `WebView2 / Tauri` and emit `tauri`
-/// without inventing a toolkit version. Unrecognized labels keep the renderer
-/// line only.
+/// Electron stdio passes `electron/<version>` (e.g. `electron/43.4.0`).
+/// Unrecognized labels keep the renderer line only.
 fn environment_host_line(renderer_label: &str) -> Option<String> {
     let trimmed = renderer_label.trim();
     if trimmed.is_empty() {
@@ -351,9 +349,6 @@ fn environment_host_line(renderer_label: &str) -> Option<String> {
     }
     if lower.contains("electron") {
         return Some(format!("electron/{trimmed}"));
-    }
-    if lower.contains("tauri") {
-        return Some("tauri".to_owned());
     }
     None
 }
@@ -493,10 +488,10 @@ mod tests {
             linked_error_code: Some("YAQMC-AUDIO-DECODE-004".into()),
             linked_op_id: Some("8f3b41".into()),
         };
-        let preview = prepare_preview(&draft, &snapshot(), "WebView2 / Tauri");
+        let preview = prepare_preview(&draft, &snapshot(), "electron/43.4.0");
         assert!(preview.title.starts_with("[Bug] Song pauses"));
         assert!(preview.body.contains("YAQMC: 0.1.0"));
-        assert!(preview.body.contains("Renderer: WebView2"));
+        assert!(preview.body.contains("Renderer: electron/43.4.0"));
         assert!(preview.body.contains("Session: `sessionid00000000`"));
         assert!(preview
             .body
@@ -521,7 +516,7 @@ mod tests {
             linked_error_code: None,
             linked_op_id: None,
         };
-        let preview = prepare_preview(&draft, &snapshot(), "WebView2 / Tauri");
+        let preview = prepare_preview(&draft, &snapshot(), "electron/43.4.0");
         assert!(preview.title.contains("播放暂停在"));
         // Percent-encoded UTF-8 bytes for the leading Chinese char '播' = 0xE6 0x92 0xAD
         assert!(preview.url.contains("%E6%92%AD"));
@@ -539,7 +534,7 @@ mod tests {
             linked_error_code: None,
             linked_op_id: None,
         };
-        let preview = prepare_preview(&draft, &snapshot(), "WebView2 / Tauri");
+        let preview = prepare_preview(&draft, &snapshot(), "electron/43.4.0");
         assert!(preview.body.len() <= ISSUE_BODY_SOFT_LIMIT + 200);
         assert!(preview.body.contains("_...body truncated by YAQMC"));
         // With truncation the URL should stay within the browser cap.
@@ -556,7 +551,7 @@ mod tests {
             linked_error_code: None,
             linked_op_id: None,
         };
-        let preview = prepare_preview(&draft, &snapshot(), "WebView2 / Tauri");
+        let preview = prepare_preview(&draft, &snapshot(), "electron/43.4.0");
         assert!(!preview.title.contains("SECRET"));
         assert!(!preview.body.contains("SECRET"));
         assert!(!preview.body.contains("TOKEN123"));
@@ -601,7 +596,7 @@ mod tests {
             linked_error_code: None,
             linked_op_id: None,
         };
-        let preview = prepare_preview(&draft, &snapshot(), "WebView2 / Tauri");
+        let preview = prepare_preview(&draft, &snapshot(), "electron/43.4.0");
         assert_eq!(preview.title, "[Bug] issue");
     }
 
@@ -627,10 +622,10 @@ mod tests {
     }
 
     #[test]
-    fn preview_keeps_tauri_webview_path_without_electron_host() {
-        let preview = prepare_preview(&minimal_draft(), &snapshot(), "WebView2 / Tauri");
-        assert!(preview.body.contains("Renderer: WebView2 / Tauri"));
-        assert!(preview.body.contains("- host: tauri"));
+    fn preview_keeps_unknown_renderer_without_inventing_a_host() {
+        let preview = prepare_preview(&minimal_draft(), &snapshot(), "custom renderer");
+        assert!(preview.body.contains("Renderer: custom renderer"));
+        assert!(!preview.body.contains("- host:"));
         assert!(!preview.body.contains("host: electron/"));
         assert!(!preview.url.contains("electron%2F"));
         assert!(!preview.url.contains("electron/"));

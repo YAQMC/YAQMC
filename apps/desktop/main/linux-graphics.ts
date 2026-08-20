@@ -3,7 +3,7 @@
  * never calls `app.commandLine.appendSwitch`. Main applies the returned
  * switches before `ready`.
  *
- * `src-tauri/src/platform.rs` no longer mutates WebKitGTK env
+ * Core platform diagnostics do not mutate renderer environment variables
  * (`WEBKIT_DISABLE_DMABUF_RENDERER`, `WEBKIT_DISABLE_COMPOSITING_MODE`,
  * `LIBGL_ALWAYS_SOFTWARE`, `__NV_DISABLE_EXPLICIT_SYNC`). Those were
  * WebKitGTK-only (TD-1). Chromium/Ozone is a different stack.

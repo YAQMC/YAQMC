@@ -137,7 +137,7 @@ function createWithFactory(kind: LyricsSurfaceKind): {
 }
 
 describe('lyrics surface construction table', () => {
-  it('uses live Tauri desktop geometry, not the main 1280×800 window', () => {
+  it('uses the preserved desktop geometry, not the main 1280×800 window', () => {
     expect(LYRICS_SURFACE_GEOMETRY.desktop).toEqual({
       width: 940,
       height: 190,
@@ -190,7 +190,7 @@ describe('lyrics surface construction table', () => {
     expect(window.loadURL).toHaveBeenCalledWith('http://127.0.0.1:1420/?surface=desktop');
   });
 
-  it('uses live Tauri island default geometry (Regular 520×156)', () => {
+  it('uses the preserved island default geometry (Regular 520×156)', () => {
     expect(LYRICS_SURFACE_GEOMETRY.island).toEqual({
       width: 520,
       height: 156,
@@ -366,7 +366,7 @@ describe('createLyricsSurfaces controller', () => {
 });
 
 describe('BASE-04 geometry keys and JSON blob', () => {
-  it('uses live Tauri app_settings keys and camelCase x/y/width/height', () => {
+  it('uses stable app_settings keys and camelCase x/y/width/height', () => {
     expect(LYRICS_SURFACE_GEOMETRY_PREFIX).toBe('lyrics-surface-geometry:');
     expect(lyricsSurfaceGeometryKey('desktop')).toBe('lyrics-surface-geometry:desktop');
     expect(lyricsSurfaceGeometryKey('island')).toBe('lyrics-surface-geometry:island');
@@ -432,7 +432,7 @@ describe('geometry persist, restore, and reset', () => {
     expect(desktop.show).not.toHaveBeenCalled();
   });
 
-  it('debounces move/resize persist at 350 ms and writes the live Tauri JSON blob', async () => {
+  it('debounces move/resize persist at 350 ms and writes the stable JSON blob', async () => {
     const desktop = mockWindow({ x: 10, y: 20, width: 940, height: 190 });
     const settings = memorySettings();
     const clock = fakeClock();

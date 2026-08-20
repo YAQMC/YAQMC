@@ -18,7 +18,7 @@ export type LyricsUnlockWindow = OverlayInputWindow & {
 };
 
 /**
- * Construction table for lyrics-desktop-unlock / lyrics-island-unlock (§11.2 + live Tauri FACT).
+ * Construction table for lyrics-desktop-unlock / lyrics-island-unlock (§11.2 contract).
  * `alwaysOnTop: 'screen-saver'` is the intended Electron level; host boot maps
  * this custom field onto `BrowserWindow({ alwaysOnTop: true })` plus
  * `setAlwaysOnTop(true, 'screen-saver')`.
@@ -74,7 +74,7 @@ export type LyricsUnlockGeometry = {
 };
 
 /**
- * Default create geometry from live Tauri `lyrics_surface/mod.rs` `build_unlock_window`:
+ * Preserved default create geometry:
  * inner/min/max 42×42. Same pill for desktop and island.
  */
 export const LYRICS_UNLOCK_GEOMETRY: LyricsUnlockGeometry = {
@@ -89,7 +89,7 @@ export const LYRICS_UNLOCK_GEOMETRY: LyricsUnlockGeometry = {
 export const LYRICS_UNLOCK_TITLE = 'Unlock YAQMC Lyrics';
 export const LYRICS_UNLOCK_ALWAYS_ON_TOP_LEVEL = 'screen-saver' as const;
 export const DEFAULT_UNLOCK_OVERLAY_PRELOAD = 'unlock-overlay.cjs';
-/** Live Tauri `unlock_window_position` inset (logical px). */
+/** Stable unlock-window inset (logical px). */
 export const LYRICS_UNLOCK_INSET = 14;
 
 export type UnlockOverlayBounds = {
@@ -99,7 +99,7 @@ export type UnlockOverlayBounds = {
   height: number;
 };
 
-/** Place the pill at the surface's top-right, matching live Tauri. */
+/** Place the pill at the surface's top-right. */
 export function unlockOverlayBounds(surface: UnlockOverlayBounds): UnlockOverlayBounds {
   return {
     x: surface.x + surface.width - LYRICS_UNLOCK_GEOMETRY.width - LYRICS_UNLOCK_INSET,

@@ -78,19 +78,13 @@ fn dialog_split_io_methods_are_protocol_only_core_owned() {
         assert_eq!(spec.owner, MethodOwner::Core);
         assert!(spec.main_window_only);
     }
-    assert_eq!(
-        method("appearance_pick_background")
-            .expect("picker stays host")
-            .owner,
-        MethodOwner::Host
-    );
-    assert_eq!(
-        method("plugin_pick_package")
-            .expect("plugin picker stays host")
-            .owner,
-        MethodOwner::Host
-    );
-    assert!(method("diagnostics_export_bundle").is_some());
+    for retired in [
+        "diagnostics_export_bundle",
+        "appearance_pick_background",
+        "plugin_pick_package",
+    ] {
+        assert!(method(retired).is_none(), "{retired} must stay retired after P13");
+    }
 }
 
 #[test]

@@ -40,7 +40,6 @@
     "perf:baseline": "node scripts/perf-baseline.mjs",
     "contracts:update": "node scripts/update-contract-fixtures.mjs",
     "contracts:check": "node scripts/update-contract-fixtures.mjs --check",
-    "tauri": "tauri",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "stage-core": "node scripts/stage-core.mjs",
     "sync-version": "node scripts/sync-version.mjs",
@@ -50,9 +49,6 @@
     "perf:lyrics-occlusion": "node scripts/migration/lyrics-occlusion-lifecycle-diag.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-dialog": "^2.7.2",
-    "@tauri-apps/plugin-opener": "^2.5.4",
     "@yaqmc/client": "*",
     "i18next": "^26.3.6",
     "lucide-react": "^1.31.0",
@@ -65,7 +61,6 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.62.1",
-    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.10.0",

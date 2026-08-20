@@ -1,4 +1,10 @@
-import type { HostBridge, HostShellBridge, HostWindowBridge, InvokeArgs } from './bridge';
+import type {
+  HostBridge,
+  HostDialogBridge,
+  HostShellBridge,
+  HostWindowBridge,
+  InvokeArgs,
+} from './bridge';
 import {
   CHANNEL_LYRICS_DOCUMENT,
   CHANNEL_LYRICS_PROJECTION,
@@ -134,7 +140,6 @@ export class YaqmcClient {
 
   readonly plugins = {
     list: () => this.invoke('plugin_list'),
-    pickPackage: () => this.invoke('plugin_pick_package'),
     inspectPath: (path: string) => this.invoke('plugin_inspect_path', { path }),
     install: (request: MethodParams['plugin_install']['request']) =>
       this.invoke('plugin_install', { request }),
@@ -167,6 +172,7 @@ export class YaqmcClient {
   readonly host: {
     window: HostWindowBridge;
     shell: HostShellBridge;
+    dialog?: HostDialogBridge;
     systemIntegrationStatus: () => Promise<MethodResult['system_integration_status']>;
     setShortcutsEnabled: (
       enabled: boolean,
@@ -177,6 +183,7 @@ export class YaqmcClient {
     this.host = {
       window: bridge.window,
       shell: bridge.shell,
+      dialog: bridge.dialog,
       systemIntegrationStatus: () => this.invoke('system_integration_status'),
       setShortcutsEnabled: (enabled: boolean) =>
         this.invoke('system_shortcuts_set_enabled', { enabled }),

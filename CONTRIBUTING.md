@@ -7,19 +7,12 @@
 
 ## 开发环境
 
-- Node.js 24 与 npm；
+- Node.js 24.19.0 与 npm；
 - Rust 1.88 或更高版本；
-- [Tauri 2 平台依赖](https://v2.tauri.app/start/prerequisites/)；
-- Windows 使用 MSVC/WebView2；Linux 使用 WebKitGTK 4.1、AppIndicator、ALSA 等构建依赖。
+- Windows 使用 MSVC；Linux 安装 Rust 原生音频与目标打包格式所需的系统依赖。
 
 ```powershell
 npm ci
-npm run tauri dev
-```
-
-Electron 宿主（P13 前并行）：
-
-```powershell
 npm run dev:desktop
 ```
 
@@ -41,17 +34,17 @@ npm run dev
 npm run docs:check
 npm run format:check
 npm run check
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
 ```
 
 Pull Request 应说明问题、方案、风险/回退、测试证据和界面截图（如适用）。不要把本机凭据或真实账号数据
 放入测试 fixture。
 
-CI（`.github/workflows/ci.yml`）会在 pull request 上构建 Windows x86_64 与 Linux x86_64 安装包，在
-`main` 推送和手动触发时构建完整 Windows/Linux 矩阵，并以 Actions artifact 保留 14 天。CI 使用 ThinLTO；
-带 tag 的生产包仍由 `build.yml` 使用仓库里的 Fat LTO。事件、缓存、产物命名与“构建通过 vs 运行时验证”
+CI（`.github/workflows/ci.yml`）会在 pull request 上构建 Windows x64 与 Linux x64 Electron 包，在
+`main` 推送和手动触发时扩展到 Windows/Linux 的 x64/arm64 矩阵，并以 Actions artifact 保留 14 天。
+CI 使用 ThinLTO；`v*` tag 的生产草稿由 `electron-release.yml` 使用仓库里的 Fat LTO。事件、缓存、产物命名与“构建通过 vs 运行时验证”
 见 [CI 文档](docs/zh-CN/ci.md)。也可以在 Actions 里对当前分支手动运行 **CI**。
 
 ## 安全与协议边界

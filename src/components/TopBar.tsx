@@ -51,7 +51,6 @@ export function TopBar({
       <span
         className={isNativeRuntime ? 'topbar__drag yaqmc-drag' : 'topbar__drag'}
         aria-hidden="true"
-        data-tauri-drag-region={isNativeRuntime || undefined}
       />
       <div className="topbar__history yaqmc-no-drag">
         <IconButton label={t('goBack')} size="small" disabled={!canGoBack} onClick={onBack}>

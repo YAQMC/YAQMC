@@ -24,7 +24,7 @@ const hostMocks = vi.hoisted(() => {
   };
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   return {
-    kind: 'tauri' as 'electron' | 'tauri' | 'fake',
+    kind: 'fake' as 'electron' | 'fake',
     snapshot,
     listeners,
     coreStatus: { status: 'down' as 'down' | 'ready' | 'restarting' | 'safe-mode' },
@@ -50,7 +50,7 @@ const hostMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('./tauri-host-bridge', () => ({
+vi.mock('./renderer-host-bridge', () => ({
   selectHostBridge: () => ({
     kind: hostMocks.kind,
     windowRole: 'main' as const,
@@ -76,7 +76,7 @@ async function loadRuntime() {
 describe('yaqmc runtime singleton', () => {
   afterEach(() => {
     vi.useRealTimers();
-    hostMocks.kind = 'tauri';
+    hostMocks.kind = 'fake';
     hostMocks.coreStatus = { status: 'down' };
     hostMocks.listeners.clear();
     hostMocks.invoke.mockClear();
@@ -90,8 +90,8 @@ describe('yaqmc runtime singleton', () => {
     expect(getYaqmcClient().bridge).toBe(getHostBridge());
   });
 
-  it.each(['tauri', 'fake'] as const)('marks %s ready immediately so invoke does not stall', async (kind) => {
-    hostMocks.kind = kind;
+  it('marks fake ready immediately so invoke does not stall', async () => {
+    hostMocks.kind = 'fake';
     const { getYaqmcClient } = await loadRuntime();
     await expect(getYaqmcClient().player.snapshot()).resolves.toMatchObject({ queue: [] });
     expect(hostMocks.invoke).toHaveBeenCalledWith('player_snapshot');

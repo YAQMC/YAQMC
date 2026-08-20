@@ -18,9 +18,7 @@ artifacts/branding/yaqmc-logo-chroma.png
 GPT-Readme.md
 GPT-Read-me.md
 
-# Rust / Tauri
-src-tauri/target/
-src-tauri/target-bench-*/
+# Rust
 /target/
 
 # Staged Electron core binary (scripts/stage-core.mjs)
@@ -37,6 +35,3 @@ docs/migration/acc03-windows-last.json
 .idea/
 .vscode/*
 !.vscode/extensions.json
-
-# Tauri generated schemas
-src-tauri/gen/

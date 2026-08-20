@@ -19,13 +19,13 @@ function commandOutput(command, args) {
 
 export function writeBuildInfo(options) {
   const { outputPath, target, arch, os, profile, lto, codegenUnits, bundles, files } = options;
-  const tauriConf = JSON.parse(
-    readFileSync(path.join(repositoryRoot, 'src-tauri/tauri.conf.json'), 'utf8'),
+  const desktopPackage = JSON.parse(
+    readFileSync(path.join(repositoryRoot, 'apps/desktop/package.json'), 'utf8'),
   );
   const info = {
     schemaVersion: 1,
     appName: 'YAQMC',
-    version: tauriConf.version,
+    version: desktopPackage.version,
     gitSha: currentGitSha(),
     gitRef: process.env.GITHUB_REF || commandOutput('git', ['rev-parse', '--abbrev-ref', 'HEAD']),
     builtAt: new Date().toISOString(),
@@ -34,8 +34,7 @@ export function writeBuildInfo(options) {
     architecture: arch,
     rustc: commandOutput('rustc', ['--version']),
     node: process.version,
-    tauriCli: JSON.parse(readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'))
-      .devDependencies['@tauri-apps/cli'],
+    electron: desktopPackage.devDependencies.electron,
     profile,
     lto,
     codegenUnits,

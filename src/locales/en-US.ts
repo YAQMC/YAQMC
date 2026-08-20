@@ -690,7 +690,7 @@ export const enUS = {
     plugins: {
       title: 'Plugins',
       description:
-        'Install local YAQMC runtime plugins for styles, lyrics scenes, and isolated scripts. This is not a Tauri framework plugin list.',
+        'Install local YAQMC runtime plugins for styles, lyrics scenes, and isolated scripts. These are not Electron extensions.',
       install: 'Install from file',
       installDescription:
         'Accepts .yaqmc-plugin packages, or local .css / .js convenience imports.',

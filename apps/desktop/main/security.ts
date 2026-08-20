@@ -1,7 +1,7 @@
 import type { BrowserWindow, Session } from 'electron';
 import { APP_SCHEME } from './protocol';
 
-/** Vite `server.host` + `server.port` in `vite.config.ts`. Tauri `devUrl` uses the same origin. */
+/** Vite `server.host` + `server.port` in `vite.config.ts`. */
 export const VITE_DEV_ORIGIN = 'http://127.0.0.1:1420';
 
 export type NavigationPolicy = {

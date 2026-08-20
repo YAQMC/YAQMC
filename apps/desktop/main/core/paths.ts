@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 
-/** FACT `src-tauri/tauri.conf.json` identifier. Electron `userData` is not used for core data. */
+/** Stable application identifier. Electron `userData` is not used for Core data. */
 export const APP_IDENTIFIER = 'org.yaqmc.desktop';
 export const LIBRARY_SQLITE = 'library.sqlite3';
 export const LOCAL_API_CONFIG = 'local-api.json';
@@ -20,7 +20,7 @@ export type CoreDataPaths = {
 };
 
 /**
- * BASE-04 / §18.1 Tauri-parity directories for yaqmc-core.
+ * BASE-04 / §18.1 continuity directories for yaqmc-core.
  * Windows: `%APPDATA%` / `%LOCALAPPDATA%`. Linux: XDG with `~/.local/share` etc. fallbacks.
  */
 export function resolveCorePaths(lookup: CorePathLookup = {}): CoreDataPaths {

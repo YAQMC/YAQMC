@@ -6,7 +6,7 @@
  *
  * Budget (do not treat as a measured result):
  * - §15.4: Electron adds one hop (renderer→main). Total added latency target < 5 ms p95.
- * - §35.2: Seek round-trip p95 (UI event → settled snapshot) ≤ Tauri baseline + 5 ms.
+ * - §35.2: Seek round-trip p95 (UI event → settled snapshot) ≤ pre-migration baseline + 5 ms.
  *
  * Suggested protocol (maintainer, real Electron window, fake or live account):
  * 1. Instrument the UI seek event timestamp at the player-store / slider commit.

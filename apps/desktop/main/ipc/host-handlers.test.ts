@@ -19,6 +19,7 @@ import { hostDenied, loadMethodAclFromFile } from './channels';
 import {
   closeToTrayFromPreferences,
   createHostHandlers,
+  DIALOG_PICK_FILE,
   DIALOG_PICK_SAVE,
   DIAGNOSTICS_OPEN_LOG_FOLDER,
   DIAGNOSTICS_REVEAL_BUNDLE,
@@ -535,7 +536,7 @@ describe('IpcRouter host intercepts', () => {
     expect(lyrics.lock).toHaveBeenCalledWith('desktop', false);
   });
 
-  it('injects Electron dialogs for inventory path pickers and dialog.pickSave', async () => {
+  it('injects Electron dialogs for typed host pickers', async () => {
     const dialogs = mockDialogs({
       save: { canceled: false, filePath: 'D:\\exports\\YAQMC-diagnostics.zip' },
       open: { canceled: false, filePaths: ['/tmp/wall.png'] },
@@ -551,9 +552,11 @@ describe('IpcRouter host intercepts', () => {
     const router = new IpcRouter({ methods, hostHandlers: handlers });
     router.registerWindow(1, 'main');
 
-    await expect(router.invoke(1, { method: 'appearance_pick_background' })).resolves.toEqual({
+    await expect(
+      router.invoke(1, { method: DIALOG_PICK_FILE, params: { kind: 'background-image' } }),
+    ).resolves.toEqual({
       ok: true,
-      result: { reference: '/tmp/wall.png', dataUri: '' },
+      result: '/tmp/wall.png',
     });
     expect(dialogs.showOpenDialog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -566,7 +569,9 @@ describe('IpcRouter host intercepts', () => {
       canceled: false,
       filePaths: ['/plugins/pack.yaqmc-plugin'],
     });
-    await expect(router.invoke(1, { method: 'plugin_pick_package' })).resolves.toEqual({
+    await expect(
+      router.invoke(1, { method: DIALOG_PICK_FILE, params: { kind: 'plugin-package' } }),
+    ).resolves.toEqual({
       ok: true,
       result: '/plugins/pack.yaqmc-plugin',
     });

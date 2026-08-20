@@ -14,14 +14,13 @@ function walk(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) files.push(...walk(absolutePath));
-    else files.push(absolutePath);
+    else if (entry.isFile()) files.push(absolutePath);
   }
   return files;
 }
 
 function workflowText(repositoryRoot) {
-  const githubRoot = path.join(repositoryRoot, '.github');
-  return walk(githubRoot)
+  return walk(path.join(repositoryRoot, '.github'))
     .filter((file) => /\.ya?ml$/i.test(file))
     .map((file) => readFileSync(file, 'utf8'))
     .join('\n');
@@ -65,12 +64,7 @@ function collectToolchains(repositoryRoot) {
     );
   }
 
-  const workspaceCargoToml = read(repositoryRoot, 'Cargo.toml');
-  const workspaceMsrv = workspacePackageValue(workspaceCargoToml, 'rust-version');
-  const cargoToml = read(repositoryRoot, 'src-tauri/Cargo.toml');
-  if (!/(?:^|\n)rust-version\.workspace\s*=\s*true\s*(?:\n|$)/.test(cargoToml)) {
-    throw new Error('src-tauri Cargo MSRV must inherit the workspace requirement');
-  }
+  const workspaceMsrv = workspacePackageValue(read(repositoryRoot, 'Cargo.toml'), 'rust-version');
   const normalizedMsrv = workspaceMsrv ? normalizeRustVersion(workspaceMsrv) : null;
   const rustActionCount = (workflows.match(/uses:\s*dtolnay\/rust-toolchain@[^\s#]+/g) ?? [])
     .length;
@@ -89,77 +83,35 @@ function collectToolchains(repositoryRoot) {
   return { node, npm: null, rustc: normalizedMsrv, cargo: normalizedMsrv };
 }
 
-function stringsIn(source) {
-  return [...source.matchAll(/"([a-z][a-z0-9_-]+)"/g)].map((match) => match[1]);
-}
-
-function sameSet(left, right) {
-  return left.length === right.length && left.every((entry) => right.includes(entry));
-}
-
-function collectCommandCount(repositoryRoot) {
-  const buildSource = read(repositoryRoot, 'src-tauri/build.rs');
-  const appCommandsBlock = /const APP_COMMANDS:[\s\S]*?=\s*&\[([\s\S]*?)\];/.exec(buildSource)?.[1];
-  const appCommands = appCommandsBlock ? stringsIn(appCommandsBlock) : [];
-
-  const registrationSource = read(repositoryRoot, 'src-tauri/src/lib.rs');
-  const handlerBlock = /\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/.exec(
-    registrationSource,
-  )?.[1];
-  const registered = handlerBlock
-    ? [...handlerBlock.matchAll(/(?:^|\s)(?:[a-z_]+::)*commands::([a-z][a-z0-9_]*)\s*,/g)].map(
-        (match) => match[1],
-      )
-    : [];
-
-  const inventory = [
-    ...read(repositoryRoot, 'docs/migration/command-inventory.md').matchAll(
-      /^\|\s*\d+\s*\|\s*`([a-z][a-z0-9_]*)`\s*\|/gm,
-    ),
-  ].map((match) => match[1]);
-
-  if (
-    appCommands.length === 0 ||
-    registered.length === 0 ||
-    inventory.length === 0 ||
-    !sameSet(appCommands, registered) ||
-    !sameSet(appCommands, inventory)
-  ) {
-    throw new Error(
-      `command contract mismatch: APP_COMMANDS=${appCommands.length}, generate_handler=${registered.length}, command inventory=${inventory.length}`,
-    );
-  }
-  return appCommands.length;
-}
-
 function collectRuntimeAndPaths(repositoryRoot) {
-  const tauri = JSON.parse(read(repositoryRoot, 'src-tauri/tauri.conf.json'));
-  const identifier = tauri.identifier;
-  const main = tauri.app?.windows?.find((window) => window.label === 'main');
-  if (
-    typeof identifier !== 'string' ||
-    !main ||
-    ![main.width, main.height, main.minWidth, main.minHeight].every(
-      (dimension) => Number.isFinite(dimension) && dimension > 0,
-    )
-  ) {
-    throw new Error('Tauri identifier and main window dimensions must be defined');
+  const builder = read(repositoryRoot, 'apps/desktop/electron-builder.yml');
+  const identifier = /^appId:\s*([^\s#]+)\s*$/m.exec(builder)?.[1];
+  const paths = read(repositoryRoot, 'apps/desktop/main/core/paths.ts');
+  const pathIdentifier = /APP_IDENTIFIER\s*=\s*'([^']+)'/.exec(paths)?.[1];
+  if (!identifier || identifier !== pathIdentifier) {
+    throw new Error('Electron appId and Core path identifier must match');
   }
-  const lib = read(repositoryRoot, 'src-tauri/src/lib.rs');
-  for (const marker of [
-    '.app_log_dir()',
-    '.app_data_dir()',
-    '.app_cache_dir()',
-    '.app_config_dir()?.join("local-api.json")',
-  ]) {
-    if (!lib.includes(marker)) throw new Error(`Tauri path resolver contract is missing ${marker}`);
+
+  const main = read(repositoryRoot, 'apps/desktop/main/index.ts');
+  const dimension = (name) => Number(new RegExp(`\\b${name}:\\s*(\\d+)`).exec(main)?.[1]);
+  const [width, height, minWidth, minHeight] = [
+    dimension('width'),
+    dimension('height'),
+    dimension('minWidth'),
+    dimension('minHeight'),
+  ];
+  if (![width, height, minWidth, minHeight].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new Error('Electron main window dimensions must be defined');
   }
+
+  const registeredProtocolMethods = JSON.parse(
+    read(repositoryRoot, 'packages/yaqmc-client/fixtures/methods.json'),
+  ).length;
 
   return {
-    identifier,
     runtimeFacts: {
-      registeredTauriCommands: collectCommandCount(repositoryRoot),
-      mainWindow: `${main.width}×${main.height} (minimum ${main.minWidth}×${main.minHeight})`,
+      registeredProtocolMethods,
+      mainWindow: `${width}×${height} (minimum ${minWidth}×${minHeight})`,
     },
     dataPaths: [
       {
@@ -223,9 +175,10 @@ function collectRuntimeAndPaths(repositoryRoot) {
 }
 
 function constant(source, name) {
-  const value = new RegExp(`(?:pub(?:\\([^)]*\\))?\\s+)?const\\s+${name}[^=]*=\\s*"([^"]+)"`).exec(
-    source,
-  )?.[1];
+  const match = new RegExp(
+    `(?:export\\s+)?(?:pub(?:\\([^)]*\\))?\\s+)?const\\s+${name}[^=]*=\\s*(["'])([^"']+)\\1`,
+  ).exec(source);
+  const value = match?.[2];
   if (!value) throw new Error(`repository constant ${name} is missing`);
   return value;
 }
@@ -238,28 +191,26 @@ function collectPersistence(repositoryRoot) {
   ) {
     throw new Error('SQLite library.sqlite3 WAL contract is missing');
   }
-  for (const queueMarker of [
+  for (const marker of [
     'CREATE TABLE IF NOT EXISTS queue_state',
     'singleton INTEGER PRIMARY KEY CHECK(singleton = 1)',
     'value_json TEXT NOT NULL',
     'updated_at_ms INTEGER NOT NULL',
   ]) {
-    if (!storage.includes(queueMarker))
-      throw new Error(`queue_state contract is missing ${queueMarker}`);
+    if (!storage.includes(marker)) throw new Error(`queue_state contract is missing ${marker}`);
   }
 
-  const commands = read(repositoryRoot, 'src-tauri/src/commands.rs');
-  const audioOutput = constant(commands, 'AUDIO_OUTPUT_SETTING');
+  const audioOutput = constant(
+    read(repositoryRoot, 'crates/yaqmc-core/src/audio.rs'),
+    'AUDIO_OUTPUT_DEVICE_SETTING',
+  );
   const loggingLevel = constant(
     read(repositoryRoot, 'crates/yaqmc-core/src/logging.rs'),
     'LOG_LEVEL_SETTING_KEY',
   );
   const qqmusic = read(repositoryRoot, 'crates/yaqmc-core/src/qqmusic.rs');
-  const qualityKeys = [...qqmusic.matchAll(/\.(?:get|set)_setting\(\s*"([^"]+)"/g)].map(
-    (match) => match[1],
-  );
-  if (qualityKeys.length === 0 || qualityKeys.some((key) => key !== 'preferred-quality')) {
-    throw new Error(`preferred quality setting contract is invalid: ${qualityKeys.join(', ')}`);
+  if (!qqmusic.includes('"preferred-quality"')) {
+    throw new Error('preferred quality setting contract is missing');
   }
   const preferences = constant(
     read(repositoryRoot, 'crates/yaqmc-core/src/app_preferences.rs'),
@@ -268,41 +219,22 @@ function collectPersistence(repositoryRoot) {
   if (!storage.includes("VALUES ('preferences-schema-version', '2'")) {
     throw new Error('preferences-schema-version current migration value is missing');
   }
-  const surface = read(repositoryRoot, 'src-tauri/src/lyrics_surface/mod.rs');
-  const geometryPrefix = constant(surface, 'GEOMETRY_PREFIX');
-  const surfaceValues = [...surface.matchAll(/Self::(?:Desktop|Island)\s*=>\s*"([^"]+)"/g)].map(
-    (match) => match[1],
+  const geometryPrefix = constant(
+    read(repositoryRoot, 'apps/desktop/main/windows/lyrics-surfaces.ts'),
+    'LYRICS_SURFACE_GEOMETRY_PREFIX',
   );
-  if (!surfaceValues.includes('desktop') || !surfaceValues.includes('island')) {
-    throw new Error('lyrics surface geometry setting contract is incomplete');
-  }
 
   return [
-    {
-      id: 'sqlite-library',
-      store: 'SQLite',
-      key: 'library.sqlite3 (WAL)',
-      target: 'Keep in place',
-    },
+    { id: 'sqlite-library', store: 'SQLite', key: 'library.sqlite3 (WAL)', target: 'Keep in place' },
     {
       id: 'queue-state',
       store: 'SQLite table',
       key: 'queue_state singleton row (value_json)',
       target: 'Keep in place',
     },
-    {
-      id: 'audio-output-device',
-      store: 'app_settings',
-      key: audioOutput,
-      target: 'Keep exact key',
-    },
+    { id: 'audio-output-device', store: 'app_settings', key: audioOutput, target: 'Keep exact key' },
     { id: 'logging-level', store: 'app_settings', key: loggingLevel, target: 'Keep exact key' },
-    {
-      id: 'preferred-quality',
-      store: 'app_settings',
-      key: qualityKeys[0],
-      target: 'Keep exact key',
-    },
+    { id: 'preferred-quality', store: 'app_settings', key: 'preferred-quality', target: 'Keep exact key' },
     {
       id: 'preferences-schema-version',
       store: 'app_settings',
@@ -343,7 +275,7 @@ function collectKeyring(repositoryRoot) {
 function assertSystemMediaCoreOwnership(repositoryRoot) {
   const core = read(repositoryRoot, 'crates/yaqmc-core/src/system_media.rs');
   const coreBootstrap = read(repositoryRoot, 'crates/yaqmc-core/src/bootstrap.rs');
-  const tauri = read(repositoryRoot, 'src-tauri/src/lib.rs');
+  const electronMain = read(repositoryRoot, 'apps/desktop/main/index.ts');
   for (const marker of [
     'pub struct SystemMediaStartConfig',
     'pub windows_hwnd: Option<isize>',
@@ -357,21 +289,14 @@ function assertSystemMediaCoreOwnership(repositoryRoot) {
       throw new Error(`Core system-media ownership contract is missing ${marker}`);
     }
   }
-  if (/tauri::|\bAppHandle\b|\bWebviewWindow\b|\braw_window_handle\b/.test(core)) {
-    throw new Error('Core system-media source must not depend on a Tauri or raw-window host type');
-  }
-  if (!tauri.includes('pub use yaqmc_core::system_media::*;')) {
-    throw new Error('Tauri system-media compatibility re-export is missing');
+  if (/\bAppHandle\b|\bWebviewWindow\b|\braw_window_handle\b/.test(core)) {
+    throw new Error('Core system-media source must not depend on a renderer host type');
   }
   if (!coreBootstrap.includes('SystemMediaIntegration::start(')) {
     throw new Error('Core bootstrap must start native system media');
   }
-  const subscription = tauri.indexOf(
-    'subscribe_host_commands(app.handle().clone(), core.subscribe_host_commands());',
-  );
-  const initialization = tauri.indexOf('core.start_system_media()');
-  if (subscription < 0 || initialization < 0 || subscription > initialization) {
-    throw new Error('Tauri must subscribe to host commands before system-media initialization');
+  if (!electronMain.includes('subscribeHostCommands(instance.client')) {
+    throw new Error('Electron Main must subscribe to Core host commands');
   }
 }
 

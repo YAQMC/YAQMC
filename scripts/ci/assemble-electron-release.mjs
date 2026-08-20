@@ -6,10 +6,9 @@ import { sha256File } from './write-build-info.mjs';
 export const ELECTRON_RELEASE_NOTES_NAME = 'RELEASE-NOTES-ELECTRON.md';
 export const ELECTRON_COMBINED_CHECKSUMS_NAME = 'SHA256SUMS-electron.txt';
 
-export const ELECTRON_RELEASE_NOTES = `# YAQMC Electron draft
+export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release draft
 
-This is an **unsigned** Electron host draft (**R-9**). It is not the Tauri GitHub
-Release from \`build.yml\`.
+This is an **unsigned** Electron host draft (**R-9**).
 
 - Windows i686 is not published.
 - App and keyring data stay under \`org.yaqmc.desktop\`.
@@ -32,7 +31,7 @@ export function parseAssembleArgs(argv) {
 
 export function electronDraftTag({ eventName, refName, runId }) {
   if (eventName === 'push' && typeof refName === 'string' && /^v\d/.test(refName)) {
-    return `electron-${refName}`;
+    return refName;
   }
   if (!runId) {
     throw new Error('electron draft tag requires GITHUB_RUN_ID when not a v* tag');

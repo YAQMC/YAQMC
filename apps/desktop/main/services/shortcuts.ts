@@ -1,6 +1,5 @@
 /**
- * FACT accelerators from `src-tauri/src/desktop_integration.rs` `SHORTCUTS`:
- * play-pause, previous, next. Not user-configurable.
+ * Canonical play-pause, previous, and next accelerators. Not user-configurable.
  */
 export const FACT_SHORTCUT_ACCELERATORS = [
   'control+alt+Space',
@@ -17,7 +16,7 @@ export type ShortcutBinding = {
 };
 
 /**
- * Map Tauri/FACT accelerator strings onto Electron's Accelerator grammar
+ * Map the persisted accelerator strings onto Electron's Accelerator grammar
  * (`Control+Alt+Space`, `Left` / `Right` rather than `ArrowLeft` / `ArrowRight`).
  */
 export function toElectronAccelerator(fact: string): string {
@@ -147,7 +146,7 @@ export function unregisterGlobalShortcuts(globalShortcut: GlobalShortcutApi): vo
   globalShortcut.unregisterAll();
 }
 
-/** Matches `src-tauri/src/desktop_integration.rs` native-Wayland enable error. */
+/** Stable native-Wayland enable error retained for diagnostics compatibility. */
 export const WAYLAND_SHORTCUTS_UNSUPPORTED =
   'configurable global shortcuts are unavailable on the active native Wayland backend; use MPRIS media keys';
 

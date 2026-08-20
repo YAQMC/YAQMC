@@ -17,7 +17,7 @@ function methodNamesFromClient() {
     assert.ok(match, name);
     return [...match[1].matchAll(/'([a-z][a-z0-9_]*)'/g)].map((entry) => entry[1]);
   };
-  return [...block('TAURI_METHOD_NAMES'), ...block('PROTOCOL_ONLY_METHODS')];
+  return [...block('MIGRATED_METHOD_NAMES'), ...block('PROTOCOL_ONLY_METHODS')];
 }
 
 test('committed contract fixtures exist and stay under the 32 MiB hard cap', () => {

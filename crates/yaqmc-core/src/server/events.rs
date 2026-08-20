@@ -203,7 +203,7 @@ pub fn spawn_host_command_fanout(
 /// Subscribe to `PlayerService` and emit protocol events with the §3.2 map.
 ///
 /// SMTC feed and queue persistence stay in this task. The host sink is responsible
-/// for delivering frames (Tauri `emit` today; stdio in PROTO-06).
+/// for delivering frames over the stdio transport.
 pub fn spawn_player_fanout(
     runtime: &tokio::runtime::Handle,
     player: Arc<PlayerService>,

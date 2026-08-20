@@ -72,15 +72,11 @@ writing frontend presentation state directly.
 
 ```powershell
 npm run check
-npm run tauri -- build --no-bundle
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capture-windows-lyrics-acceptance.ps1 `
-  -Binary "$PWD/target/release/yaqmc.exe" `
-  -Output "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/windows" `
-  -BuildKind tauri-no-bundle
-node scripts/verify-lyrics-acceptance.mjs `
-  --platform windows `
-  --root "$PWD/output/visual-acceptance/lyrics-focus-fullscreen/windows"
+npm run stage-core
+npm run build -w @yaqmc/desktop
+npm run test:e2e:electron
+npm run perf:windows-gpu
 ```
 
-The collector requires a clean tracked tree and an absent or empty output directory. A raw no-bundle executable
-must not be described or distributed as the final Windows release.
+The retired host-specific collector is no longer a supported evidence path. Record Electron screenshots,
+window-state evidence, and the exact tested commit separately; local unpacked output is not a release artifact.

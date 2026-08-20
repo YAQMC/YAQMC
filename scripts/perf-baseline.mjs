@@ -259,16 +259,16 @@ function validateSnapshot(snapshot, repositoryFacts) {
   }
 
   if (
-    !Number.isInteger(snapshot.runtimeFacts?.registeredTauriCommands) ||
-    snapshot.runtimeFacts.registeredTauriCommands < 0
+    !Number.isInteger(snapshot.runtimeFacts?.registeredProtocolMethods) ||
+    snapshot.runtimeFacts.registeredProtocolMethods < 0
   ) {
-    throw new Error('runtimeFacts registeredTauriCommands must be a non-negative integer');
+    throw new Error('runtimeFacts registeredProtocolMethods must be a non-negative integer');
   }
   requireString(snapshot.runtimeFacts.mainWindow, 'runtimeFacts mainWindow');
   requireRepositoryValue(
-    snapshot.runtimeFacts.registeredTauriCommands,
-    repositoryFacts.runtimeFacts.registeredTauriCommands,
-    'runtimeFacts registeredTauriCommands',
+    snapshot.runtimeFacts.registeredProtocolMethods,
+    repositoryFacts.runtimeFacts.registeredProtocolMethods,
+    'runtimeFacts registeredProtocolMethods',
   );
   requireRepositoryValue(
     snapshot.runtimeFacts.mainWindow,
@@ -354,7 +354,7 @@ export function renderBaseline(
     '',
     '**P0 performance gate: NOT COMPLETE.** Windows and Linux live performance, installed-size, and diagnostics measurements remain pending.',
     '',
-    'No pending item is an estimate or zero. It requires the documented manual protocol on a current Tauri build.',
+    'No pending item is an estimate or zero. It requires the documented manual protocol on a current Electron build.',
     '',
     '## Toolchain requirements and capture observations',
     '',
@@ -374,7 +374,7 @@ export function renderBaseline(
     '| Runtime fact | Value |',
     '|---|---|',
     table([
-      ['Registered Tauri commands', String(snapshot.runtimeFacts.registeredTauriCommands)],
+      ['Registered protocol methods', String(snapshot.runtimeFacts.registeredProtocolMethods)],
       ['Main window target', snapshot.runtimeFacts.mainWindow],
     ]),
     '',
@@ -392,7 +392,7 @@ export function renderBaseline(
       ]),
     ),
     '',
-    '## Current Tauri release artifact name patterns',
+    '## Current Electron release artifact name patterns',
     '',
     '| Source | Platform | Artifact | Checked-in name/pattern |',
     '|---|---|---|---|',
@@ -405,7 +405,7 @@ export function renderBaseline(
       ]),
     ),
     '',
-    'Placeholders are literal pattern variables from the staging workflow. `{arch}`: Windows uses `x86_64`, `i686`, and `aarch64`; Linux uses `x86_64` and `aarch64`. `{os}` is `windows` or `linux`; `{shortSha}` is the first seven Git commit characters; `{version}` is the Tauri app version. Tauri-produced bundle filename placeholders intentionally preserve the upstream basename. No Electron artifact is introduced here.',
+    'Patterns are controlled by electron-builder and the release assembler. `{arch}` is `x64` or `arm64`; updater metadata is published only from the x64 packages.',
     '',
     '## Data continuity facts',
     '',
@@ -433,7 +433,7 @@ export function renderBaseline(
     '',
     `Persisted keyring entries: ${snapshot.keyring.entries.map((entry) => `\`${entry}\``).join(', ')}.`,
     '',
-    'The path values above are source-verified expectations. Export and attach a live Tauri diagnostics snapshot on Windows and Linux to promote each platform/path row to live-verified.',
+    'The path values above are source-verified expectations. Export and attach a live Electron diagnostics snapshot on Windows and Linux to promote each platform/path row to live-verified.',
     '',
   ];
   return lines.join('\n');

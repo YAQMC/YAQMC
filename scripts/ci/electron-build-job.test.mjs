@@ -18,13 +18,11 @@ test('CI runs an Electron build-only job on Ubuntu and Windows', () => {
     'frontend-build',
     'rust-quality',
     'secret-scan',
-    'package-matrix',
     'electron-build',
     'electron-package-matrix',
   ]) {
     assert.match(needs, new RegExp(`^\\s+${job},\\s*$`, 'm'));
   }
-  assert.match(needs, /^\s+package,\s*$/m);
   assert.match(needs, /^\s+electron-package,\s*$/m);
 });
 
@@ -39,7 +37,7 @@ test('frontend-quality runs desktop tests and Electron security greps', () => {
   const frontendJob = workflow.split(/^ {2}frontend-quality:/m)[1]?.split(/^ {2}[a-z]/m)[0] ?? '';
   assert.match(frontendJob, /npm run test -w @yaqmc\/client/);
   assert.match(frontendJob, /npm run test -w @yaqmc\/desktop/);
-  assert.match(frontendJob, /node scripts\/ci\/tauri-imports\.mjs/);
+  assert.match(frontendJob, /node scripts\/ci\/legacy-host-imports\.mjs/);
   assert.match(frontendJob, /node scripts\/ci\/electron-security-lint\.mjs/);
   assert.match(frontendJob, /npm run typecheck(?! -w)/);
   assert.match(frontendJob, /npm run format:check/);
