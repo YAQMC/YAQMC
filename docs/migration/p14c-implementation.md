@@ -57,13 +57,15 @@ are maintainer-only and are not evidence for the three-day soak. The full run
 also includes row J's byte-identical in-tree/library Map and RC4 synthetic gate.
 
 The remaining P14-C blockers are the exact-pin P14-B rerun, `crate-provenance`,
-the production QMC library route after its real-file golden, and
-`exact-pin-three-day-soak`. Until all pass, `intree` remains the default,
-`qqmusic-api` remains optional, and the rollback slots and network fallbacks
-stay present.
+and `exact-pin-three-day-soak`. The production QMC library path passed on
+2026-08-21: `qmapi` builds hard-route `EncryptedMedia` to the library adapter,
+and live playback of a real encrypted `lossless-mflac` stream decrypted,
+decoded, and seeked through it. Until the remaining gates pass, `intree`
+remains the default, `qqmusic-api` remains optional, and the rollback slots and
+network fallbacks stay present.
 
 The real-file QMC golden harness is now in place as the ignored, env-gated test
 `library_adapter_matches_intree_on_a_real_qmc_file`; see
 `p14b-live-verify.md` for the run command. It requires a real encrypted sample
-plus its ekey and must pass before `EncryptedMedia` routes to the library
-adapter in production.
+plus its ekey and remains an optional extra check beyond the live playback
+evidence that closed the gate.

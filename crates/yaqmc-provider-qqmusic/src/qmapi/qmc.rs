@@ -28,6 +28,18 @@ impl QmapiQmcDecryptor {
         } else {
             QmapiCipher::Rc4(Qmc2Rc4::new(&key)?)
         };
+        tracing::info!(
+            target: "qmc",
+            ekey_length = ekey.expose().len(),
+            ekey_v2 = ekey.is_v2(),
+            derived_key_length,
+            cipher = if matches!(cipher, QmapiCipher::Map(_)) {
+                "map"
+            } else {
+                "rc4"
+            },
+            "constructed library QMC stream decryptor"
+        );
         Ok(Self {
             cipher,
             derived_key_length,

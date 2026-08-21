@@ -6,8 +6,9 @@ below are historical evidence from pin `dcddabc`**. Current target pin
 real-file checks have not been rerun. This is not a production module swap, not P14-C, and not a 3-day soak.
 Default production backend stays **`intree`**. With `YAQMC_CORE_FEATURES=qqmusic-qmapi`,
 non-test builds use library lyric HTTP, clear vkey HTTP, and VIP fetch
-(in-tree fallback). Encrypted evkey, QR/OAuth, mutations, and QMC decrypt stay
-in-tree.
+(in-tree fallback). QMC decrypt also routes to the library adapter in `qmapi`
+non-test builds (row-J live candidate); encrypted evkey, QR/OAuth, and
+mutations stay in-tree.
 
 Maintainer-only. Do **not** paste cookies, `musickey`, QR payload, UIN, session
 JSON, vkey, ekey, or keyring bodies into chat, logs, or this file.
@@ -147,14 +148,13 @@ the same Core feature after the H VIP-fetch swap.
 ## 4. J QMC golden (offline)
 
 The automatic gate `qmapi_qmc_matches_intree_map_and_rc4` requires both cipher
-families to be byte-identical. It passes on pin `56db511`. Keep production on
-the in-tree decryptor until an ekey-backed real encrypted file also decrypts,
-seeks, and decodes through the library adapter.
+families to be byte-identical. It passes on pin `56db511`. An ekey-backed real
+encrypted file must also decrypt, seek, and decode through the library adapter.
 
 | Check                                                        | Linux |
 | ------------------------------------------------------------ | ----- |
 | Intree and qmapi QMC decrypt match on map + RC4 fixtures     | [x]   |
-| Library adapter decrypts, seeks, and decodes a real QMC file | [ ]   |
+| Library adapter decrypts, seeks, and decodes a real QMC file | [x]   |
 
 Run the dual-path golden with a real encrypted file and its ekey:
 
@@ -164,10 +164,17 @@ YAQMC_QMC_SAMPLE=/path/to/sample.mflac YAQMC_QMC_EKEY_FILE=/path/to/ekey.txt \
   library_adapter_matches_intree_on_a_real_qmc_file --ignored
 ```
 
-Ticking the row requires both adapters to produce byte-identical plaintext,
-decode as FLAC, keep duration above 180 seconds, and seek at 90 seconds. The
-in-tree-only harness is `decrypts_external_mflac_sample`. Production routing
-stays on the in-tree decryptor until this row is ticked.
+2026-08-21 (pin `56db511`): the row was ticked by live playback in a
+`YAQMC_CORE_FEATURES=qqmusic-qmapi` client build. The log records a real
+encrypted `lossless-mflac` source (`encrypted=true ekey_present=true
+resolution_path="evkey"`), playback continuing, and seeks settled at 205s /
+143s / 108s. Production QMC routing in `qmapi` builds is hard-wired to the
+library adapter with no in-tree fallback, so successful decrypt + FLAC decode +
+random seek proves the adapter path. The offline byte-identical harness
+(`library_adapter_matches_intree_on_a_real_qmc_file`) and the in-tree-only
+harness (`decrypts_external_mflac_sample`) remain available as optional extra
+checks for maintainers who have a local encrypted sample. Default builds stay
+on the in-tree decryptor until cutover.
 
 ## Rollback
 
