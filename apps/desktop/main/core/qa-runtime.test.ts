@@ -1,16 +1,20 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { afterAll, describe, expect, it } from 'vitest';
 import {
   APP_IDENTIFIER,
   assertSandboxNotProduction,
   coreTempEnv,
   describeSandbox,
   isQaLaunch,
+  isSameOrInsidePath,
   requireQaSandboxFromEnv,
   resolveProductionCoreRoots,
 } from './qa-runtime';
+
+const repoRoot = path.resolve(fileURLToPath(new URL('../../../../', import.meta.url)));
 
 function seed(root: string) {
   const env = {
@@ -18,10 +22,18 @@ function seed(root: string) {
     HOME: root,
   };
   const prod = resolveProductionCoreRoots({ env, platform: 'win32', homedir: root });
+  if (!isSameOrInsidePath(prod.dataDir, root)) {
+    throw new Error(`refusing to mkdir ${prod.dataDir} outside fake maintainer root ${root}`);
+  }
   mkdirSync(prod.dataDir, { recursive: true });
   writeFileSync(path.join(prod.dataDir, 'library.sqlite3'), 'prod');
   return { env, prod };
 }
+
+afterAll(() => {
+  const leaked = readdirSync(repoRoot).filter((name) => name.includes('\\'));
+  expect(leaked, `win32-joined paths leaked into the repository root: ${leaked}`).toEqual([]);
+});
 
 describe('QA sandbox fail-closed guard', () => {
   it('detects QA launch flags', () => {
