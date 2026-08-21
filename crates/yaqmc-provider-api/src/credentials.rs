@@ -29,6 +29,11 @@ impl SpawnBlockingCredentialStore {
         Self { inner }
     }
 
+    /// Shared host backend (`PlatformCredentialStore`, file sandbox, or memory).
+    pub fn inner(&self) -> Arc<dyn CredentialStore> {
+        Arc::clone(&self.inner)
+    }
+
     pub async fn load(&self, account: &str) -> Result<Option<String>, CredentialError> {
         let inner = Arc::clone(&self.inner);
         let account = account.to_owned();

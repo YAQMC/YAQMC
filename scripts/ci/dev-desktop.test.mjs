@@ -4,8 +4,43 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { desktopDevUrl, electronDevEnv, waitForFile, waitForTcp } from '../dev-desktop.mjs';
+import {
+  coreBuildEnv,
+  coreCargoArgs,
+  desktopDevUrl,
+  electronDevEnv,
+  waitForFile,
+  waitForTcp,
+} from '../dev-desktop.mjs';
 import { fileURLToPath } from 'node:url';
+
+test('core cargo args stay intree unless YAQMC_CORE_FEATURES is set', () => {
+  assert.deepEqual(coreCargoArgs({}), ['build', '-p', 'yaqmc-core']);
+  assert.deepEqual(coreCargoArgs({ YAQMC_CORE_FEATURES: 'qqmusic-qmapi' }), [
+    'build',
+    '-p',
+    'yaqmc-core',
+    '--features',
+    'qqmusic-qmapi',
+  ]);
+});
+
+test('qmapi Core builds honor git insteadOf via CARGO_NET_GIT_FETCH_WITH_CLI', () => {
+  assert.equal(coreBuildEnv({ PATH: '/bin' }).CARGO_NET_GIT_FETCH_WITH_CLI, undefined);
+  assert.equal(
+    coreBuildEnv({ PATH: '/bin', YAQMC_CORE_FEATURES: 'qqmusic-qmapi' })
+      .CARGO_NET_GIT_FETCH_WITH_CLI,
+    'true',
+  );
+  assert.equal(
+    coreBuildEnv({
+      PATH: '/bin',
+      YAQMC_CORE_FEATURES: 'qqmusic-qmapi',
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'false',
+    }).CARGO_NET_GIT_FETCH_WITH_CLI,
+    'false',
+  );
+});
 
 test('dev:desktop stages the debug Core it just built', () => {
   const source = readFileSync(
