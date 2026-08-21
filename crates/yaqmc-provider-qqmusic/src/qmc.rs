@@ -166,15 +166,15 @@ impl EncryptedMedia for EncryptedMediaKey {
 }
 
 #[cfg(test)]
-struct QmcReader<Reader> {
+struct QmcReader<Reader, Decryptor> {
     inner: Reader,
-    decryptor: QmcDecryptor,
+    decryptor: Decryptor,
     position: u64,
 }
 
 #[cfg(test)]
-impl<Reader> QmcReader<Reader> {
-    fn new(inner: Reader, decryptor: QmcDecryptor) -> Self {
+impl<Reader, Decryptor> QmcReader<Reader, Decryptor> {
+    fn new(inner: Reader, decryptor: Decryptor) -> Self {
         Self {
             inner,
             decryptor,
@@ -184,7 +184,7 @@ impl<Reader> QmcReader<Reader> {
 }
 
 #[cfg(test)]
-impl<Reader: Read> Read for QmcReader<Reader> {
+impl<Reader: Read, Decryptor: MediaDecryptor> Read for QmcReader<Reader, Decryptor> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         let read = self.inner.read(buffer)?;
         self.decryptor.decrypt(&mut buffer[..read], self.position)?;
@@ -194,7 +194,7 @@ impl<Reader: Read> Read for QmcReader<Reader> {
 }
 
 #[cfg(test)]
-impl<Reader: Seek> Seek for QmcReader<Reader> {
+impl<Reader: Seek, Decryptor> Seek for QmcReader<Reader, Decryptor> {
     fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
         self.position = self.inner.seek(position)?;
         Ok(self.position)
@@ -729,6 +729,72 @@ mod tests {
         decoder
             .try_seek(std::time::Duration::from_secs(90))
             .expect("decrypted stream supports random seek");
+        assert!(decoder.next().is_some());
+    }
+
+    #[cfg(feature = "qmapi")]
+    #[test]
+    #[ignore = "requires YAQMC_QMC_SAMPLE and YAQMC_QMC_EKEY_FILE"]
+    fn library_adapter_matches_intree_on_a_real_qmc_file() {
+        use crate::qmapi::qmc::QmapiQmcDecryptor;
+        use yaqmc_provider_api::MediaDecryptor as _;
+
+        let input = PathBuf::from(std::env::var_os("YAQMC_QMC_SAMPLE").expect("sample path"));
+        let ekey_path =
+            PathBuf::from(std::env::var_os("YAQMC_QMC_EKEY_FILE").expect("ekey file path"));
+        let ekey = EncryptedMediaKey::new(
+            fs::read_to_string(&ekey_path)
+                .expect("read external ekey")
+                .trim()
+                .to_owned(),
+        )
+        .expect("valid external ekey");
+
+        let sample = fs::read(&input).expect("read external sample");
+        let intree = QmcDecryptor::new(&ekey).expect("intree decryptor");
+        let library = QmapiQmcDecryptor::new(&ekey).expect("library decryptor");
+        assert_eq!(intree.cipher_kind(), library.cipher_kind());
+        assert_eq!(intree.derived_key_length(), library.derived_key_length());
+
+        // Byte-compare chunked decryption at real offsets so segmented RC4 and
+        // map keying are exercised exactly the way streaming playback uses them.
+        let mut intree_bytes = sample.clone();
+        let mut library_bytes = sample.clone();
+        let mut intree_offset = 0_u64;
+        for chunk in intree_bytes.chunks_mut(8_192) {
+            intree
+                .decrypt(chunk, intree_offset)
+                .expect("intree decrypt chunk");
+            intree_offset += chunk.len() as u64;
+        }
+        let mut library_offset = 0_u64;
+        for chunk in library_bytes.chunks_mut(8_192) {
+            library
+                .decrypt(chunk, library_offset)
+                .expect("library decrypt chunk");
+            library_offset += chunk.len() as u64;
+        }
+        assert_eq!(
+            intree_bytes, library_bytes,
+            "real-file plaintext diverged between the in-tree and library adapters"
+        );
+        assert_eq!(&intree_bytes[..4], b"fLaC", "decrypted sample is not FLAC");
+
+        // The library adapter must also decode and seek like the in-tree path.
+        let library = QmapiQmcDecryptor::new(&ekey).expect("library decryptor for decode");
+        let reader = QmcReader::new(File::open(&input).expect("reopen sample"), library);
+        let mut decoder = rodio::decoder::DecoderBuilder::new()
+            .with_data(reader)
+            .with_byte_len(intree_bytes.len() as u64)
+            .with_seekable(true)
+            .with_hint("flac")
+            .build()
+            .expect("library adapter stream decodes as FLAC");
+        let duration = decoder.total_duration().expect("FLAC duration");
+        assert!(duration > std::time::Duration::from_secs(180));
+        decoder
+            .try_seek(std::time::Duration::from_secs(90))
+            .expect("library adapter stream supports random seek");
         assert!(decoder.next().is_some());
     }
 

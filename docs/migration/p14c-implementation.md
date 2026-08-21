@@ -61,3 +61,9 @@ the production QMC library route after its real-file golden, and
 `exact-pin-three-day-soak`. Until all pass, `intree` remains the default,
 `qqmusic-api` remains optional, and the rollback slots and network fallbacks
 stay present.
+
+The real-file QMC golden harness is now in place as the ignored, env-gated test
+`library_adapter_matches_intree_on_a_real_qmc_file`; see
+`p14b-live-verify.md` for the run command. It requires a real encrypted sample
+plus its ekey and must pass before `EncryptedMedia` routes to the library
+adapter in production.

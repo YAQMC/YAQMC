@@ -156,6 +156,19 @@ seeks, and decodes through the library adapter.
 | Intree and qmapi QMC decrypt match on map + RC4 fixtures     | [x]   |
 | Library adapter decrypts, seeks, and decodes a real QMC file | [ ]   |
 
+Run the dual-path golden with a real encrypted file and its ekey:
+
+```bash
+YAQMC_QMC_SAMPLE=/path/to/sample.mflac YAQMC_QMC_EKEY_FILE=/path/to/ekey.txt \
+  cargo test -p yaqmc-provider-qqmusic --features qmapi -- \
+  library_adapter_matches_intree_on_a_real_qmc_file --ignored
+```
+
+Ticking the row requires both adapters to produce byte-identical plaintext,
+decode as FLAC, keep duration above 180 seconds, and seek at 90 seconds. The
+in-tree-only harness is `decrypts_external_mflac_sample`. Production routing
+stays on the in-tree decryptor until this row is ticked.
+
 ## Rollback
 
 Leave each module on `intree`. Do not enable default `qmapi`. Do not drop
