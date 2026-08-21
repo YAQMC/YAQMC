@@ -7,7 +7,7 @@
   "gates": [
     {
       "id": "p14b-live-hybrid",
-      "status": "needs-rerun",
+      "status": "pass",
       "evidence": "docs/migration/p14b-live-verify.md"
     },
     {
