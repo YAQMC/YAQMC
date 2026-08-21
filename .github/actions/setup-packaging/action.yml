@@ -7,6 +7,10 @@ inputs:
   profile:
     description: Cache profile class (dev, ci-release, or production).
     required: true
+  qm-api-rs-token:
+    description: Optional PAT used to fetch the private qqmusic-api git pin.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -31,3 +35,10 @@ runs:
         restore-keys: |
           cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('Cargo.lock') }}-
           cargo-${{ runner.os }}-${{ inputs.target }}-1.88-
+    - name: Authenticate private qm-api-rs when the token is present
+      shell: bash
+      env:
+        CI: 'true'
+        CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        QM_API_RS_TOKEN: ${{ inputs.qm-api-rs-token }}
+      run: node scripts/ci/qm-api-rs-access.mjs --configure-git
