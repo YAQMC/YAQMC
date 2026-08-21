@@ -14,7 +14,6 @@ const expectedMembers = [
 const forbiddenCoreDependencyPatterns = [
   /^webkit2gtk(?:-.+)?$/,
   /^raw-window-handle$/,
-  /^qqmusic-api$/,
   /^napi(?:-.+)?$/,
   /^(?:electron|node)(?:-.+)?$/,
   /^yaqmc$/,

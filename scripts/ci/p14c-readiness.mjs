@@ -74,17 +74,22 @@ export function assertP14cPreparationGuards({
   if (blockers.length > 0 && record.defaultBackend !== 'intree') {
     throw new Error('P14-C default backend must remain intree while gates are open');
   }
-  if (!/^default\s*=\s*\["intree"\]$/m.test(providerManifest)) {
-    throw new Error('provider default feature changed before P14-C gates passed');
+  if (!/^default\s*=\s*\[\]$/m.test(providerManifest)) {
+    throw new Error('provider must have empty default features after the P14-C cutover');
   }
-  if (!/^qqmusic-api\s*=\s*\{[^\n]*optional\s*=\s*true[^\n]*\}$/m.test(providerManifest)) {
-    throw new Error('qqmusic-api must remain optional during P14-C preparation');
+  if (
+    !/^qqmusic-api\s*=\s*\{[^\n]*git\s*=\s*"[^"]+"[^\n]*rev\s*=\s*"[^"]+"[^\n]*\}$/m.test(
+      providerManifest,
+    ) ||
+    /^qqmusic-api\s*=\s*\{[^\n]*optional\s*=\s*true[^\n]*\}$/m.test(providerManifest)
+  ) {
+    throw new Error('qqmusic-api must be an unconditional git pin after the P14-C cutover');
   }
-  if (!/^qqmusic-qmapi\s*=\s*\["yaqmc-provider-qqmusic\/qmapi"\]$/m.test(coreManifest)) {
-    throw new Error('Core must retain the explicit qqmusic-qmapi opt-in before cutover');
+  if (/^qqmusic-qmapi\s*=\s*\[/m.test(coreManifest)) {
+    throw new Error('Core must drop the qqmusic-qmapi opt-in after the P14-C cutover');
   }
-  if (!qmcSource.includes('QmcDecryptor::new(self)')) {
-    throw new Error('row J Keep guard no longer points at the in-tree decryptor');
+  if (!qmcSource.includes('QmapiQmcDecryptor::new(self)')) {
+    throw new Error('production QMC routing no longer points at the library adapter');
   }
   if (!authSource.includes('pub(crate) const ACTIVE_SESSION: &str = "qqmusic-session";')) {
     throw new Error('legacy credential fallback was removed before credential-v2 became primary');
@@ -99,7 +104,7 @@ export function assertP14cPreparationGuards({
   }
   if (
     !accountSource.includes('async fn execute_playlist_write(') ||
-    !/#\[cfg\(all\(feature = "qmapi", not\(test\)\)\)\][\s\S]{0,1600}crate::qmapi::account::execute_account_write\(/.test(
+    !/#\[cfg\(not\(test\)\)\][\s\S]{0,1600}crate::qmapi::account::execute_account_write\(/.test(
       accountSource,
     )
   ) {

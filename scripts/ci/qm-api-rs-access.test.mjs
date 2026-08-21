@@ -7,7 +7,7 @@ import {
   QM_API_RS_GIT,
   QM_API_RS_REV,
   QM_API_RS_TOKEN_ENV,
-  assertProviderOptionalQmapiPin,
+  assertProviderQmapiPin,
   checkAccess,
   configureGitInsteadOf,
   gitInsteadOfArgs,
@@ -60,29 +60,37 @@ test('configures insteadOf without echoing the token through the git argv helper
   assert.match(calls[0][1][2], /x-access-token:test-token@github.com\/YAQMC\/qm-api-rs/);
 });
 
-test('current provider manifest pins optional qqmusic-api at the P14 rev', () => {
+test('current provider manifest pins unconditional qqmusic-api at the P14 rev', () => {
   const checked = checkAccess({
     root: repositoryRoot,
     sibling: path.join(os.tmpdir(), 'yaqmc-no-qm-api-rs-checkout'),
   });
-  assert.equal(checked.linked, 'optional');
+  assert.equal(checked.linked, 'required');
   assert.equal(checked.rev, QM_API_RS_REV);
   assert.equal(checked.siblingRevision, null);
   assert.throws(
     () =>
-      assertProviderOptionalQmapiPin(`
+      assertProviderQmapiPin(`
 default = ["qmapi"]
 qmapi = ["dep:qqmusic-api"]
-qqmusic-api = { git = "${QM_API_RS_GIT}", rev = "${QM_API_RS_REV}", optional = true }
+qqmusic-api = { git = "${QM_API_RS_GIT}", rev = "${QM_API_RS_REV}" }
 `),
-    /must not be a default feature/,
+    /default features must be empty/,
   );
   assert.throws(
     () =>
-      assertProviderOptionalQmapiPin(`
-default = ["intree"]
+      assertProviderQmapiPin(`
+default = []
 qmapi = ["dep:qqmusic-api"]
-qqmusic-api = { git = "${QM_API_RS_GIT}", rev = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }
+qqmusic-api = { git = "${QM_API_RS_GIT}", rev = "${QM_API_RS_REV}" }
+`),
+    /backend feature split must be removed/,
+  );
+  assert.throws(
+    () =>
+      assertProviderQmapiPin(`
+default = []
+qqmusic-api = { git = "${QM_API_RS_GIT}", rev = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", optional = true }
 `),
     /must pin rev/,
   );
@@ -106,7 +114,7 @@ test('a sibling checkout at the pin is accepted', () => {
     root: repositoryRoot,
     siblingRevision: QM_API_RS_REV,
   });
-  assert.equal(checked.linked, 'optional');
+  assert.equal(checked.linked, 'required');
   assert.equal(checked.siblingRevision, QM_API_RS_REV);
 });
 

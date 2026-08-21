@@ -4,11 +4,9 @@ Status: **maintainer re-verified the hybrid set on pin `56db511` on
 2026-08-21**; pin `ffcc86c` is a docs-only descendant with unchanged code, so
 the evidence carries over. The `dcddabc` ticks below remain historical.
 This is not a production module swap, not P14-C, and not a 3-day soak.
-Default production backend stays **`intree`**. With `YAQMC_CORE_FEATURES=qqmusic-qmapi`,
-non-test builds use library lyric HTTP, clear vkey HTTP, and VIP fetch
-(in-tree fallback). QMC decrypt also routes to the library adapter in `qmapi`
-non-test builds (row-J live candidate); encrypted evkey, QR/OAuth, and
-mutations stay in-tree.
+`qmapi` is the production backend since the 2026-08-21 cutover: lyric HTTP,
+clear vkey HTTP, VIP fetch, QMC decrypt, and raw favorite/playlist writes use
+the library. Encrypted evkey, QR/OAuth, and mutations stay in-tree.
 
 Maintainer-only. Do **not** paste cookies, `musickey`, QR payload, UIN, session
 JSON, vkey, ekey, or keyring bodies into chat, logs, or this file.
@@ -128,7 +126,7 @@ the v2 slot.
 | Restores `qqmusic-session` without re-QR | [x]   |
 | Dual-write path did not replace QR/OAuth | [x]   |
 
-## 3. HUMAN in-app (default Core still intree)
+## 3. HUMAN in-app (historical: default Core was intree)
 
 The first 2026-08-21 ticks below were against **intree** production paths.
 Library L/I play + lyrics was ticked the same day after
@@ -179,8 +177,9 @@ on the in-tree decryptor until cutover.
 
 ## Rollback
 
-Leave each module on `intree`. Do not enable default `qmapi`. Do not drop
-`qqmusic-session`. Do not start P14-C or a 3-day soak from this document.
+Since the P14-C cutover, `qmapi` is the production backend. The pre-cutover
+commit and pin `ffcc86c` are the rollback anchors; do not drop `qqmusic-session`
+until validated migration.
 
 Related: [`p14b-qmapi-backend.md`](p14b-qmapi-backend.md),
 [`p14-entry-gates.md`](p14-entry-gates.md),

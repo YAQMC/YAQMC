@@ -5,22 +5,29 @@
 //! uses library `UrlGetVkey` / `get_song_urls`.
 
 use std::collections::HashMap;
+#[cfg(test)]
 use std::sync::Arc;
 
 use qqmusic_api::modules::song::{FileTypeLike, SongFileInfo, SongFileType};
 use qqmusic_api::Platform;
+#[cfg(test)]
 use yaqmc_provider_api::PlaybackLocation;
 
 use crate::qmapi::cgi::map_qmapi_error;
 use crate::qmapi::credential::credential_from_uin_and_cookie;
 use crate::qmapi::qmapi_client_with;
+#[cfg(test)]
 use crate::qmc::EncryptedMediaKey;
-use crate::qqmusic::{normalize_cdn_url, playback_headers, QQMusicError};
+#[cfg(test)]
+use crate::qqmusic::playback_headers;
+use crate::qqmusic::{normalize_cdn_url, QQMusicError};
 
 /// Library unplayable result used when the account cannot stream this quality.
+#[cfg(test)]
 pub(crate) const QMAP_UNPLAYABLE_RESULT: i64 = 104_003;
 const LIBRARY_FALLBACK_ORIGIN: &str = "https://isure.stream.qqmusic.qq.com/";
 
+#[cfg(test)]
 pub(crate) fn playback_location_from_qmapi(
     result: i64,
     url: &str,

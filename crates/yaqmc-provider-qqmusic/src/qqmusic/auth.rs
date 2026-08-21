@@ -162,78 +162,69 @@ impl TransportQQMusicAuthProtocol {
         if cancellation.is_cancelled() {
             return Err(QQMusicError::Cancelled);
         }
-        #[cfg(all(feature = "qmapi", not(test)))]
+        #[cfg(not(test))]
         {
-            match crate::qmapi::entitlement::fetch_account_entitlement(session).await {
-                Ok(entitlement) => return Ok(entitlement),
-                Err(QQMusicError::Cancelled) => return Err(QQMusicError::Cancelled),
-                Err(error) => {
-                    tracing::warn!(
-                        target: "qqmusic.auth",
-                        error = %error,
-                        "qmapi vip_login_base failed; falling back to in-tree HTTP"
-                    );
-                }
-            }
-            if cancellation.is_cancelled() {
-                return Err(QQMusicError::Cancelled);
-            }
+            crate::qmapi::entitlement::fetch_account_entitlement(session).await
         }
-        let payload = json!({
-            "comm": {
-                "ct": 24,
-                "cv": 0,
-                "format": "json",
-                "uin": session.uin,
-            },
-            "req": {
-                "module": "VipLogin.VipLoginInter",
-                "method": "vip_login_base",
-                "param": {},
-            },
-        });
-        let mut headers = referer_headers("https://y.qq.com/")?;
-        headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json; charset=utf-8"),
-        );
-        headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
-        headers.insert(
-            header::COOKIE,
-            HeaderValue::from_str(&session.cookie_header).map_err(|_| QQMusicError::Protocol)?,
-        );
-        let response = self
-            .transport
-            .execute(TransportRequest {
-                operation: "auth.entitlement.validate",
-                method: Method::POST,
-                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                headers,
-                body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
-                retry: RetryClass::SafeRead,
-                redirects: RedirectMode::FollowValidated,
-                response_shape: "account-entitlement",
-                cancellation,
-            })
-            .await?;
-        require_success(&response)?;
-        let payload: Value =
-            serde_json::from_slice(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
-        if json_code(&payload).unwrap_or(-1) != 0
-            || payload
-                .pointer("/req/code")
-                .or_else(|| payload.pointer("/req_0/code"))
-                .and_then(Value::as_i64)
-                .unwrap_or(-1)
-                != 0
-            || payload
-                .pointer("/req/data")
-                .or_else(|| payload.pointer("/req_0/data"))
-                .is_none()
+        #[cfg(test)]
         {
-            return Err(QQMusicError::SchemaChanged);
+            let payload = json!({
+                "comm": {
+                    "ct": 24,
+                    "cv": 0,
+                    "format": "json",
+                    "uin": session.uin,
+                },
+                "req": {
+                    "module": "VipLogin.VipLoginInter",
+                    "method": "vip_login_base",
+                    "param": {},
+                },
+            });
+            let mut headers = referer_headers("https://y.qq.com/")?;
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json; charset=utf-8"),
+            );
+            headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
+            headers.insert(
+                header::COOKIE,
+                HeaderValue::from_str(&session.cookie_header)
+                    .map_err(|_| QQMusicError::Protocol)?,
+            );
+            let response = self
+                .transport
+                .execute(TransportRequest {
+                    operation: "auth.entitlement.validate",
+                    method: Method::POST,
+                    url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
+                    headers,
+                    body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
+                    retry: RetryClass::SafeRead,
+                    redirects: RedirectMode::FollowValidated,
+                    response_shape: "account-entitlement",
+                    cancellation,
+                })
+                .await?;
+            require_success(&response)?;
+            let payload: Value = serde_json::from_slice(&response.body)
+                .map_err(|_| QQMusicError::MalformedResponse)?;
+            if json_code(&payload).unwrap_or(-1) != 0
+                || payload
+                    .pointer("/req/code")
+                    .or_else(|| payload.pointer("/req_0/code"))
+                    .and_then(Value::as_i64)
+                    .unwrap_or(-1)
+                    != 0
+                || payload
+                    .pointer("/req/data")
+                    .or_else(|| payload.pointer("/req_0/data"))
+                    .is_none()
+            {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            Ok(normalize_account_entitlement(&payload))
         }
-        Ok(normalize_account_entitlement(&payload))
     }
 
     async fn exchange_code(
@@ -804,7 +795,6 @@ enum LifecycleBoundary {
 
 struct CredentialRollbackSnapshot {
     legacy: Option<String>,
-    #[cfg(feature = "qmapi")]
     v2: Option<String>,
 }
 
@@ -872,17 +862,14 @@ impl QQMusicAuthService {
         Arc::clone(&self.playback_epoch)
     }
 
-    #[cfg(feature = "qmapi")]
     async fn persist_credential_v2(&self, session: &SessionRecord) -> Result<(), QQMusicError> {
         crate::qmapi::credential::persist_v2(&self.credentials, session).await
     }
 
-    #[cfg(feature = "qmapi")]
     async fn clear_credential_v2(&self) -> Result<(), QQMusicError> {
         crate::qmapi::credential::clear_v2(&self.credentials).await
     }
 
-    #[cfg(feature = "qmapi")]
     async fn restore_credential_v2_raw(&self, prior: Option<&str>) -> bool {
         let restored = if let Some(prior) = prior {
             self.credentials
@@ -997,7 +984,6 @@ impl QQMusicAuthService {
         };
         let (generation, _) = self.begin_generation().await;
         let active = self.credentials.delete(ACTIVE_SESSION).await;
-        #[cfg(feature = "qmapi")]
         let v2 = self.clear_credential_v2().await;
         let account_cache = self.storage.delete_provider_cache_kind(ACCOUNT_CACHE_KIND);
         *self.active_session.write().await = None;
@@ -1014,12 +1000,7 @@ impl QQMusicAuthService {
         {
             return Err(QQMusicError::Cancelled);
         }
-        #[cfg(feature = "qmapi")]
         if active.is_err() || v2.is_err() || account_cache.is_err() {
-            return Err(QQMusicError::Storage);
-        }
-        #[cfg(not(feature = "qmapi"))]
-        if active.is_err() || account_cache.is_err() {
             return Err(QQMusicError::Storage);
         }
         Ok(())
@@ -1496,7 +1477,6 @@ impl QQMusicAuthService {
         let legacy_session = legacy_raw
             .as_deref()
             .and_then(|raw| serde_json::from_str::<SessionRecord>(raw).ok());
-        #[cfg(feature = "qmapi")]
         let primary = crate::qmapi::credential::load_primary_session_v2(
             &self.credentials,
             legacy_session.as_ref(),
@@ -1505,7 +1485,6 @@ impl QQMusicAuthService {
         .await;
         self.ensure_generation_current(generation)?;
 
-        #[cfg(feature = "qmapi")]
         let (mut session, validated, restored_from_v2) = match primary {
             Ok(Some(primary_session)) => match self
                 .validate_restored_session(primary_session, cancellation.clone())
@@ -1566,29 +1545,9 @@ impl QQMusicAuthService {
             }
         };
 
-        #[cfg(not(feature = "qmapi"))]
-        let (mut session, validated) = {
-            let Some(legacy) = legacy_session else {
-                if legacy_raw.is_some() {
-                    return self
-                        .fail_restore(generation, QQMusicError::AuthenticationExpired)
-                        .await;
-                }
-                *self.active_session.write().await = None;
-                self.playback_epoch.replace(None);
-                self.publish_if_current(generation, guest_state()).await;
-                return Ok(self.snapshot().await);
-            };
-            match self.validate_restored_session(legacy, cancellation).await {
-                Ok(restored) => restored,
-                Err(error) => return self.fail_restore(generation, error).await,
-            }
-        };
-
         if session.encrypted_uin.is_none() {
             session.encrypted_uin = validated.encrypted_uin.clone();
         }
-        #[cfg(feature = "qmapi")]
         if restored_from_v2 {
             let serialized = serde_json::to_string(&session).map_err(|_| QQMusicError::Protocol)?;
             if legacy_raw.as_deref() != Some(serialized.as_str()) {
@@ -1689,15 +1648,11 @@ impl QQMusicAuthService {
         let _lifecycle = self.lifecycle.lock().await;
         let staging = self.credentials.delete(STAGING_SESSION).await;
         let active = self.credentials.delete(ACTIVE_SESSION).await;
-        #[cfg(feature = "qmapi")]
         let v2 = self.clear_credential_v2().await;
         let account_cache = self.storage.delete_provider_cache_kind(ACCOUNT_CACHE_KIND);
         *self.active_session.write().await = None;
         self.playback_epoch.replace(None);
-        #[cfg(feature = "qmapi")]
         let credential_delete_failed = staging.is_err() || active.is_err() || v2.is_err();
-        #[cfg(not(feature = "qmapi"))]
-        let credential_delete_failed = staging.is_err() || active.is_err();
         if credential_delete_failed {
             self.publish_secure_store_unavailable_if_current(generation)
                 .await;
@@ -1884,7 +1839,6 @@ impl QQMusicAuthService {
                 return Err(QQMusicError::Storage);
             }
         };
-        #[cfg(feature = "qmapi")]
         let prior_v2 = match self
             .credentials
             .load(crate::qmapi::credential::CREDENTIAL_V2)
@@ -1899,7 +1853,6 @@ impl QQMusicAuthService {
         };
         let prior = CredentialRollbackSnapshot {
             legacy: prior_legacy,
-            #[cfg(feature = "qmapi")]
             v2: prior_v2,
         };
         self.ensure_generation_current(generation)?;
@@ -1989,7 +1942,6 @@ impl QQMusicAuthService {
         if let Err(error) = self.ensure_generation_current(generation) {
             return self.rollback_after_active(generation, &prior, error).await;
         }
-        #[cfg(feature = "qmapi")]
         if let Err(error) = self.persist_credential_v2(&candidate).await {
             return self.rollback_after_active(generation, &prior, error).await;
         }
@@ -2071,7 +2023,6 @@ impl QQMusicAuthService {
         } else {
             self.credentials.delete(ACTIVE_SESSION).await
         };
-        #[cfg(feature = "qmapi")]
         let v2_restored = self.restore_credential_v2_raw(prior.v2.as_deref()).await;
         let active = self.credentials.load(ACTIVE_SESSION).await;
         let restored = match (prior.legacy.as_deref(), active) {
@@ -2080,10 +2031,7 @@ impl QQMusicAuthService {
             _ => false,
         };
         let staging = self.credentials.delete(STAGING_SESSION).await;
-        #[cfg(feature = "qmapi")]
         let rollback_failed = restore.is_err() || !restored || !v2_restored || staging.is_err();
-        #[cfg(not(feature = "qmapi"))]
-        let rollback_failed = restore.is_err() || !restored || staging.is_err();
         if rollback_failed {
             self.publish_secure_store_unavailable_if_current(generation)
                 .await;
@@ -3179,7 +3127,6 @@ mod tests {
                 return Err(CredentialError::OperationFailed);
             }
             self.seed(account, secret.to_owned());
-            #[cfg(feature = "qmapi")]
             if account == crate::qmapi::credential::CREDENTIAL_V2
                 && self.consume_fault(CredentialFault::PartialV2Save)
             {
@@ -3608,19 +3555,6 @@ mod tests {
 
         assert_eq!(snapshot.state_name(), "authenticated");
         assert_eq!(protocol.validation_count.load(Ordering::Acquire), 2);
-        #[cfg(not(feature = "qmapi"))]
-        assert_eq!(
-            credentials.operations(),
-            [
-                "load:qqmusic-session",
-                "save:qqmusic-session-staging",
-                "load:qqmusic-session-staging",
-                "save:qqmusic-session",
-                "load:qqmusic-session",
-                "delete:qqmusic-session-staging",
-            ]
-        );
-        #[cfg(feature = "qmapi")]
         assert_eq!(
             credentials.operations(),
             [
@@ -3748,7 +3682,6 @@ mod tests {
         assert!(credentials.value(STAGING_SESSION).is_none());
     }
 
-    #[cfg(feature = "qmapi")]
     #[tokio::test]
     async fn partial_v2_save_rolls_back_both_credential_slots() {
         let protocol = Arc::new(FakeProtocol::new(Vec::new()));
@@ -3923,7 +3856,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "qmapi")]
     #[tokio::test]
     async fn restore_prefers_valid_v2_and_syncs_the_legacy_fallback() {
         let protocol = Arc::new(FakeProtocol::new(Vec::new()));
@@ -3950,7 +3882,6 @@ mod tests {
         assert!(legacy.cookie_header.contains("SYNTHETIC_primary"));
     }
 
-    #[cfg(feature = "qmapi")]
     #[tokio::test]
     async fn malformed_v2_falls_back_to_validated_legacy_and_is_rebuilt() {
         let protocol = Arc::new(FakeProtocol::new(Vec::new()));

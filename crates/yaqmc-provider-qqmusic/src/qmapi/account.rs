@@ -4,7 +4,9 @@
 //! `client_operation_id`, epoch cancellation, safe-read reconciliation, cache
 //! projection, and wire DTO/error mapping.
 
-use qqmusic_api::{models::songlist::CreateDeleteSonglistResp, CgiOptions, Client, Platform};
+#[cfg(test)]
+use qqmusic_api::models::songlist::CreateDeleteSonglistResp;
+use qqmusic_api::{CgiOptions, Client, Platform};
 use serde_json::Value;
 
 use crate::qmapi::cgi::map_qmapi_error;
@@ -13,19 +15,23 @@ use crate::qmapi::qmapi_client_with;
 use crate::qqmusic::{QQMusicError, SessionRecord};
 
 /// Favorite Songs directory. In-tree writes and library `like_song` use 201.
+#[cfg(test)]
 pub(crate) const FAVORITE_DIR_ID: i64 = 201;
 
 /// Library `v_songInfo` tuple. In-tree writes send `songType: 0`.
+#[cfg(test)]
 pub(crate) fn song_info_from_numeric_id(song_id: i64) -> (i64, i64) {
     (song_id, 0)
 }
 
+#[cfg(test)]
 pub(crate) struct CreatedPlaylist {
     pub dir_id: i64,
     pub tid: i64,
     pub name: String,
 }
 
+#[cfg(test)]
 pub(crate) fn created_playlist_from_library(
     response: &CreateDeleteSonglistResp,
 ) -> Result<CreatedPlaylist, QQMusicError> {

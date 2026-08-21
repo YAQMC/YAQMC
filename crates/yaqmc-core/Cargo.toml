@@ -9,7 +9,6 @@ rust-version.workspace = true
 default = []
 test-support = ["dep:tempfile"]
 test-provider = ["test-support"]
-qqmusic-qmapi = ["yaqmc-provider-qqmusic/qmapi"]
 
 [dependencies]
 async-trait = "0.1"

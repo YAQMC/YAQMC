@@ -1355,7 +1355,7 @@ impl QQMusicAccountService {
             "uin": encrypted_uin,
             "v_playlistId": [provider_id.parse::<u64>().map_err(|_| QQMusicError::InvalidRequest)?]
         });
-        #[cfg(all(feature = "qmapi", not(test)))]
+        #[cfg(not(test))]
         let write = crate::qmapi::account::execute_account_write(
             &context.session,
             "music.musicasset.PlaylistFavWrite",
@@ -1364,7 +1364,7 @@ impl QQMusicAccountService {
             context.cancellation.clone(),
         )
         .await;
-        #[cfg(any(not(feature = "qmapi"), test))]
+        #[cfg(test)]
         let write = self
             .execute_account_transport(
                 context,
@@ -2028,7 +2028,7 @@ impl QQMusicAccountService {
         method: &'static str,
         param: Value,
     ) -> Result<bool, QQMusicError> {
-        #[cfg(all(feature = "qmapi", not(test)))]
+        #[cfg(not(test))]
         {
             let _ = (operation, response_shape);
             self.auth.ensure_current(&context.epoch).await?;
@@ -2043,7 +2043,7 @@ impl QQMusicAccountService {
             self.auth.ensure_current(&context.epoch).await?;
             result
         }
-        #[cfg(any(not(feature = "qmapi"), test))]
+        #[cfg(test)]
         {
             let response = self
                 .execute_account_transport(

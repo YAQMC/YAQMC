@@ -15,7 +15,7 @@ The removed legacy desktop workflow is not a supported build path. CI package ar
 
 ## Gates and package matrix
 
-Every CI run performs frontend formatting, documentation, lint, TypeScript, Vitest and script checks; builds the Electron host on Linux and Windows; runs Rust fmt, clippy and workspace tests; validates contracts; checks the private `qm-api-rs` optional git pin (default Core remains `intree`); and scans for secrets on Linux and Windows. `rust-quality` and package jobs may rewrite git `insteadOf` for `github.com/YAQMC/qm-api-rs` when `QM_API_RS_TOKEN` is present (`CARGO_NET_GIT_FETCH_WITH_CLI=true`). A missing token skips `insteadOf` and skips `--features qmapi` tests.
+Every CI run performs frontend formatting, documentation, lint, TypeScript, Vitest and script checks; builds the Electron host on Linux and Windows; runs Rust fmt, clippy and workspace tests; validates contracts; checks the unconditional private `qm-api-rs` git pin; and scans for secrets on Linux and Windows. `rust-quality` and package jobs may rewrite git `insteadOf` for `github.com/YAQMC/qm-api-rs` when `QM_API_RS_TOKEN` is present (`CARGO_NET_GIT_FETCH_WITH_CLI=true`). A missing token skips `insteadOf`.
 
 - Pull requests package Windows x64 and Linux x64.
 - Pushes to `main` package Windows x64/arm64 and Linux x64/arm64.

@@ -1,12 +1,13 @@
 # P14-C production-path implementation evidence
 
-Status: **IMPLEMENTED; CUTOVER NOT AUTHORIZED** at qm-api-rs pin
+Status: **CUTOVER COMPLETE** at qm-api-rs pin
 `ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` (docs-only descendant of
 `56db511`) on 2026-08-21.
 
-This record closes the two code prerequisites in `p14c-readiness.json`. It does
-not start or complete the exact-pin three-day soak, change the default backend,
-or authorize deletion of fallback code.
+This record closes the two code prerequisites in `p14c-readiness.json`. The
+three-day soak was waived by the maintainer; the provider feature split and
+`qqmusic-qmapi` opt-in were removed, and `qqmusic-api` is now the unconditional
+production dependency.
 
 ## Credential-v2 primary
 
@@ -48,8 +49,8 @@ the production branch is compile-checked outside `cfg(test)`.
 The implementation passed these automatic checks at the recorded pin:
 
 ```text
-cargo check -p yaqmc-provider-qqmusic --no-default-features --features qmapi
-cargo test -p yaqmc-provider-qqmusic --all-features
+cargo check -p yaqmc-provider-qqmusic
+cargo test -p yaqmc-provider-qqmusic
 ```
 
 The full provider run reported 233 passed and 9 ignored tests; the external
@@ -64,7 +65,9 @@ and live playback of a real encrypted `lossless-mflac` stream decrypted,
 decoded, and seeked through it. The three-day soak was waived by the
 maintainer on 2026-08-21 (see `p14c-readiness.md`). Until cutover is
 authorized, `intree` remains the default, `qqmusic-api` remains optional, and
-the rollback slots and network fallbacks stay present.
+the rollback slots and network fallbacks stay present. The cutover then landed
+on 2026-08-21: `qmapi` is the unconditional production backend, and the legacy
+session slot remains as the bounded migration/rollback fallback.
 
 The real-file QMC golden harness is now in place as the ignored, env-gated test
 `library_adapter_matches_intree_on_a_real_qmc_file`; see
