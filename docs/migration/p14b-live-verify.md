@@ -1,9 +1,8 @@
 # P14-B LIVE VERIFY (real QQ Music account)
 
-Status: **the Linux auto, §2 dual-write, §3 HUMAN in-app, and G mutation ticks
-below are historical evidence from pin `dcddabc`**. Current target pin
-`56db511` passes the J Map/RC4 synthetic comparison, but its exact-pin LIVE and
-real-file checks have not been rerun. This is not a production module swap, not P14-C, and not a 3-day soak.
+Status: **maintainer re-verified the hybrid set on the exact pin `56db511` on
+2026-08-21**; the `dcddabc` ticks below remain historical and are superseded.
+This is not a production module swap, not P14-C, and not a 3-day soak.
 Default production backend stays **`intree`**. With `YAQMC_CORE_FEATURES=qqmusic-qmapi`,
 non-test builds use library lyric HTTP, clear vkey HTTP, and VIP fetch
 (in-tree fallback). QMC decrypt also routes to the library adapter in `qmapi`

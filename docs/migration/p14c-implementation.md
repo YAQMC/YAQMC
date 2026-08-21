@@ -56,8 +56,9 @@ loopback integration boundary reported 1 passed test. Ignored LIVE_ACCOUNT tests
 are maintainer-only and are not evidence for the three-day soak. The full run
 also includes row J's byte-identical in-tree/library Map and RC4 synthetic gate.
 
-The remaining P14-C blockers are the exact-pin P14-B rerun, `crate-provenance`,
-and `exact-pin-three-day-soak`. The production QMC library path passed on
+The remaining P14-C blockers are `crate-provenance` and
+`exact-pin-three-day-soak`. The P14-B hybrid set was re-verified by the
+maintainer on the exact pin, and the production QMC library path passed on
 2026-08-21: `qmapi` builds hard-route `EncryptedMedia` to the library adapter,
 and live playback of a real encrypted `lossless-mflac` stream decrypted,
 decoded, and seeked through it. Until the remaining gates pass, `intree`
