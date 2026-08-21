@@ -32,7 +32,6 @@ test('rust-quality stays independent of the Electron build job', () => {
   assert.match(rustJob, /node scripts\/ci\/qm-api-rs-access\.mjs --check/);
   assert.match(rustJob, /node scripts\/ci\/qm-api-rs-access\.mjs --configure-git/);
   assert.match(rustJob, /secrets\.QM_API_RS_TOKEN/);
-  assert.match(rustJob, /--features qmapi/);
   assert.match(rustJob, /CARGO_NET_GIT_FETCH_WITH_CLI/);
   assert.doesNotMatch(rustJob, /--ignored/);
   assert.doesNotMatch(rustJob, /electron-build/);

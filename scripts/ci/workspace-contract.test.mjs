@@ -152,7 +152,7 @@ test('rejects a forbidden platform dependency reached transitively from Core', (
   );
 });
 
-test('requires Cargo.lock to pin optional qqmusic-api and rejects any other metadata source', () => {
+test('requires Cargo.lock to pin qqmusic-api and rejects any other metadata source', () => {
   assert.throws(() => validateQqmusicApiLockPin('name = "other"\n'), /Cargo.lock must pin/);
   assert.doesNotThrow(() =>
     validateQqmusicApiLockPin(
@@ -180,6 +180,19 @@ test('requires Cargo.lock to pin optional qqmusic-api and rejects any other meta
   assert.throws(() => validateQqmusicApiMetadataIfPresent(wrongRev), /must be git/);
 });
 
+test('allows the pinned qqmusic-api production dependency in the Core closure', () => {
+  assert.doesNotThrow(() =>
+    validateCoreDependencyClosure(
+      metadataWithCoreClosure([
+        ['yaqmc-core', ['portable-layer']],
+        ['portable-layer', ['yaqmc-provider-qqmusic']],
+        ['yaqmc-provider-qqmusic', ['qqmusic-api']],
+        ['qqmusic-api', []],
+      ]),
+    ),
+  );
+});
+
 test('allows the P14 provider boundary in the Core dependency closure', () => {
   assert.doesNotThrow(() =>
     validateCoreDependencyClosure(
@@ -193,7 +206,7 @@ test('allows the P14 provider boundary in the Core dependency closure', () => {
 });
 
 test('rejects underscore-form forbidden dependencies reached transitively from Core', () => {
-  for (const forbidden of ['raw_window_handle', 'qqmusic_api', 'napi_build']) {
+  for (const forbidden of ['raw_window_handle', 'napi_build']) {
     assert.throws(
       () =>
         validateCoreDependencyClosure(

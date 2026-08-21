@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "phase": "P14-C",
   "targetPin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
-  "defaultBackend": "intree",
-  "cutoverAuthorized": false,
+  "defaultBackend": "qmapi",
+  "cutoverAuthorized": true,
   "gates": [
     {
       "id": "p14b-live-hybrid",
@@ -48,7 +48,7 @@
       "vip-login-intree-fallback",
       "intree-qmc-decrypt"
     ],
-    "pendingProductionReplacement": ["intree-qmc-decrypt"],
+    "pendingProductionReplacement": [],
     "keep": [
       "encrypted-evkey-and-zzb",
       "oauth-and-staging-slot",

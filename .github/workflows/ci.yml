@@ -115,7 +115,7 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-
       - run: npm run ci:verify-workspace
-      - name: Check qm-api-rs pin without linking it
+      - name: Check the unconditional qm-api-rs pin
         run: node scripts/ci/qm-api-rs-access.mjs --check
       - name: Authenticate private qm-api-rs when the token is present
         env:
@@ -132,17 +132,6 @@ jobs:
       - run: cargo test --workspace --all-targets --locked
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-      - name: Clippy and test the optional qmapi feature
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-          QM_API_RS_TOKEN: ${{ secrets.QM_API_RS_TOKEN }}
-        run: |
-          if [ -z "${QM_API_RS_TOKEN}" ]; then
-            echo "skip qmapi tests: QM_API_RS_TOKEN unset"
-            exit 0
-          fi
-          cargo clippy -p yaqmc-provider-qqmusic --all-targets --locked --features qmapi -- -D warnings
-          cargo test -p yaqmc-provider-qqmusic --all-targets --locked --features qmapi
       - run: npm run contracts:check
       - uses: actions/cache/save@v4
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')

@@ -1,7 +1,6 @@
-# P14-B qmapi backend (optional)
+# P14-B qmapi backend
 
-Status: **started**. Default production backend remains **`intree`**. This is not
-P14-C and is not a 3-day soak or LIVE VERIFY sign-off. The maintainer
+Status: **production since the P14-C cutover on 2026-08-21**. The maintainer
 LIVE VERIFY harness is [`p14b-live-verify.md`](p14b-live-verify.md). Linux auto
 boxes were ticked 2026-08-21; §2 dual-write, §3 HUMAN in-app, G mutations, and
 library L/I play + lyrics and H account VIP (`qqmusic-qmapi`) were ticked the

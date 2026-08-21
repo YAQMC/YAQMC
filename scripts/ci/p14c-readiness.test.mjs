@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { inspectP14cReadiness, validateP14cRecord } from './p14c-readiness.mjs';
 
-test('current P14-C preparation is guarded and reports the open gates', () => {
+test('P14-C cutover is authorized and only the waived soak remains visible', () => {
   const { record, blockers } = inspectP14cReadiness();
-  assert.equal(record.cutoverAuthorized, false);
-  assert.equal(record.defaultBackend, 'intree');
-  assert.deepEqual(record.responsibilities.pendingProductionReplacement, ['intree-qmc-decrypt']);
+  assert.equal(record.cutoverAuthorized, true);
+  assert.equal(record.defaultBackend, 'qmapi');
+  assert.deepEqual(record.responsibilities.pendingProductionReplacement, []);
   assert.deepEqual(blockers, []);
   assert.deepEqual(
     record.gates.filter((gate) => gate.status === 'waived').map((gate) => gate.id),

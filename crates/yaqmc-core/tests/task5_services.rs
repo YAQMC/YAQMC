@@ -186,7 +186,7 @@ fn preferences_apply_atomic_transform_and_emit_the_final_document() {
     assert!(document["surfaces"]["desktop"].get("locked").is_none());
     assert_eq!(
         sink.values.lock().expect("recorded sink").as_slice(),
-        [stored.clone()]
+        std::slice::from_ref(&stored)
     );
     assert!(!close_hides_to_tray(&repository));
     assert!(global_shortcuts_enabled(&repository));

@@ -1,9 +1,9 @@
 # P14-C readiness and retirement scope
 
-Status: **PRODUCTION PATHS IMPLEMENTED; CUTOVER BLOCKED**. The machine-readable state
+Status: **CUTOVER COMPLETE; `qmapi` IS THE PRODUCTION BACKEND**. The machine-readable state
 is [`p14c-readiness.json`](p14c-readiness.json); run `npm run p14c:report`.
-This record does not authorize defaulting to `qmapi`, deleting fallback code,
-or dropping a credential slot.
+The three-day soak was waived by the maintainer; the legacy session slot is
+retained for migration/rollback and is not yet deleted.
 
 ## Scope correction
 
@@ -74,10 +74,13 @@ evidence that the whole file was replaced.
 
 ## Rollback
 
-Until cutover, the normal build remains `intree` and `qqmusic-qmapi` remains an
-explicit opt-in. The final pre-cutover commit and qm-api-rs pin are the rollback
-anchors. After duplicate code is removed, rollback is a Git revert/build from
-that anchor, not an undocumented runtime backend toggle.
+The pre-cutover commit and qm-api-rs pin `ffcc86c` are the rollback anchors.
+Rollback after the duplicate in-tree code was removed is a Git revert/build
+from that anchor, not an undocumented runtime backend toggle.
 
-Do not commit, tag, push, dispatch Actions, or start the soak merely by updating
-this readiness record.
+The cutover-only changes are complete: the provider feature split and
+`qqmusic-qmapi` opt-in were removed, `qqmusic-api` is an unconditional pinned
+dependency, production routes QMC/lyric/vkey/VIP/account writes through the
+library, and the in-tree QMC implementation plus probe-only modules were
+deleted. The legacy `qqmusic-session` slot is still written as the bounded
+migration/rollback fallback until validated migration allows its retirement.

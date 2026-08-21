@@ -21,20 +21,11 @@ export function electronDevEnv(env = process.env) {
   };
 }
 
-export function coreCargoArgs(env = process.env) {
-  const args = ['build', '-p', 'yaqmc-core'];
-  const features = String(env.YAQMC_CORE_FEATURES ?? '').trim();
-  if (features) {
-    args.push('--features', features);
-  }
-  return args;
+export function coreCargoArgs() {
+  return ['build', '-p', 'yaqmc-core'];
 }
 
 export function coreBuildEnv(env = process.env) {
-  const features = String(env.YAQMC_CORE_FEATURES ?? '');
-  if (!/(^|[\s,])qqmusic-qmapi([\s,]|$)/.test(features)) {
-    return env;
-  }
   return {
     ...env,
     CARGO_NET_GIT_FETCH_WITH_CLI: env.CARGO_NET_GIT_FETCH_WITH_CLI || 'true',
@@ -100,7 +91,7 @@ async function runDesktopDev() {
   });
 
   if (process.env.YAQMC_SKIP_CORE_BUILD !== '1') {
-    const cargo = spawnSync('cargo', coreCargoArgs(process.env), {
+    const cargo = spawnSync('cargo', coreCargoArgs(), {
       cwd: repositoryRoot,
       stdio: 'inherit',
       shell: process.platform === 'win32',

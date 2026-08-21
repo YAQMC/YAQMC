@@ -2267,3 +2267,21 @@ invented. P12–P15 were not started.
   `waived` and non-empty evidence; `p14c:report` prints it as waived and
   treats it as non-blocking. This is a maintainer decision, not a fabricated
   soak result. The pre-cutover commit and pin remain the rollback anchor.
+
+## P14-C cutover overlay (2026-08-21)
+
+- Cutover authorized and completed. `qqmusic-api` at pin `ffcc86c` is the
+  unconditional production dependency; the provider `intree`/`qmapi` feature
+  split, the `qqmusic-qmapi` Core opt-in, and the `YAQMC_CORE_FEATURES`
+  plumbing were removed.
+- Production now routes QMC decryption, lyric HTTP/decrypt, clear vkey HTTP,
+  VIP fetch, and raw favorite/playlist writes through the library with no
+  in-tree fallback. The in-tree QMC cipher/TEA stack, the A/B CGI probe, the K
+  catalog probe, and the LIVE VERIFY/login probe modules were deleted; their
+  evidence remains archived in `p14b-live-verify.md` and earlier overlays.
+  Encrypted evkey/`zzb`, QR/OAuth, mutation reconciliation, entitlement
+  derivation, home/discover mapping, and cache/artwork stay in-tree.
+- The legacy `qqmusic-session` slot remains a bounded migration/rollback
+  fallback; deletion awaits validated post-release migration. Workspace
+  contract checks now allow the pinned `qqmusic-api` in the Core closure and
+  require it to match the recorded revision.

@@ -6,7 +6,7 @@ default, does not finish module swaps, and does not start P14-C. The prepared
 P14-C scope and current blockers are recorded in
 [`p14c-readiness.md`](p14c-readiness.md).
 
-## Still required before defaulting to qmapi or distributing a qmapi binary
+## Met before the cutover; still required before distributing a linked binary
 
 - [Crate-level provenance](p14-qm-api-rs-provenance.md): the L-1124 record was
   closed at `ffcc86c` via the independent-implementation attestation; the
@@ -20,10 +20,10 @@ P14-C scope and current blockers are recorded in
   account VIP ticked 2026-08-21 on the former pin. Current pin `ffcc86c`
   passes J synthetic parity; exact-pin LIVE and the real-file QMC playback
   evidence are recorded in `p14b-live-verify.md`.
-  Under `qmapi` in non-test builds, lyric HTTP, clear vkey HTTP, and VIP fetch
-  use the library with in-tree fallback. Production `zzb`, QR, and mutations
-  stay Keep.
-- Three-day soak before P14-C.
+  Since the cutover, lyric HTTP, clear vkey HTTP, VIP fetch, QMC decrypt, and
+  raw favorite/playlist writes use the library. Production `zzb`, QR, and
+  mutations stay Keep.
+- Three-day soak was waived by the maintainer on 2026-08-21.
 
 Upstream `ApiTransport`, MSRV metadata, and hiding `reqwest` from the public
 crate API landed in qm-api-rs at this pin. YAQMC injects reqwest **0.13.4**

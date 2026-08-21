@@ -315,6 +315,7 @@ pub(crate) struct KeyringCredentialPersist {
 }
 
 impl KeyringCredentialPersist {
+    #[cfg(test)]
     pub(crate) fn new(inner: Arc<dyn CredentialStore>) -> Self {
         Self {
             inner,

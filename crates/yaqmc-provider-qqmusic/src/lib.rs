@@ -1,21 +1,12 @@
-//! QQ Music provider with in-tree and pinned `qqmusic-api` integration paths.
+//! QQ Music provider with the pinned `qqmusic-api` production path.
 //!
-//! P14-C still keeps `intree` as the default feature until provenance and soak
-//! gates pass. Optional `qmapi` compiles an
-//! injected `ApiTransport` plus QMC, lyric, vkey, CGI/sign, session, G/H
-//! account/entitlement, and K catalog comparison adapters against pinned
-//! `qqmusic-api`. Production QMC decrypt stays in-tree until row J passes a
-//! real-file golden. When `qmapi` is on in a non-test build, lyric HTTP, clear
-//! vkey HTTP, VIP fetch, and raw favorite/playlist writes use the library;
-//! credential-v2 is the restore primary. The legacy session remains a synced
-//! migration/rollback fallback. Encrypted evkey, `zzb`, QR/OAuth, mutation
-//! reconciliation, `choose_source`, and home/discover/area stay in-tree.
-
-#[cfg(not(any(feature = "intree", feature = "qmapi")))]
-compile_error!("enable the `intree` and/or `qmapi` QQ Music backend feature");
+//! The pinned library is the production backend: QMC decryption, lyric HTTP,
+//! clear vkey HTTP, VIP fetch, credential-v2 restore, and raw favorite/playlist
+//! writes run through the injected `ApiTransport`. Encrypted evkey, `zzb`,
+//! QR/OAuth, mutation reconciliation, `choose_source`, and home/discover/area
+//! remain in-tree Keep responsibilities.
 
 mod adapter;
-#[cfg(feature = "qmapi")]
 mod qmapi;
 pub mod qmc;
 pub mod qqmusic;

@@ -1,6 +1,7 @@
 use crate::qmc::EncryptedMediaKey;
 use async_trait::async_trait;
 use base64::Engine as _;
+#[cfg(test)]
 use lyrics_crypto::decrypter::qrc::decrypter::decrypt_lyrics as decrypt_qrc;
 use md5::{Digest as Md5Digest, Md5};
 use quick_xml::{escape::unescape, events::Event, Reader};
@@ -64,11 +65,7 @@ use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, Trans
 use zeroize::Zeroize;
 
 pub(crate) use auth::SessionRecord;
-#[cfg(all(test, feature = "qmapi"))]
-pub(crate) use auth::ACTIVE_SESSION;
-#[cfg(feature = "qmapi")]
 pub(crate) use cache::OpaqueAccountScope;
-#[cfg(feature = "qmapi")]
 pub(crate) use entitlement::normalize_account_entitlement;
 pub use oauth::{url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult};
 
@@ -78,6 +75,7 @@ const QQ_EVKEY_MODULE_KEY: &str = "music.vkey.GetEVkey.CgiGetEVkey";
 const QQ_SEARCH_URL: &str = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp";
 const QQ_ALBUM_URL: &str = "https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg";
 const QQ_PLAYLIST_URL: &str = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg";
+#[cfg(test)]
 const QQ_LRC_URL: &str = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
 const DEFAULT_TOPLIST_ID: u64 = 62;
 const DISCOVER_TOPLIST_IDS: [u64; 8] = [26, 27, 4, 3, 5, 6, 62, 57];
@@ -2748,47 +2746,41 @@ impl QQMusicClient {
     }
 
     async fn lyrics(&self, mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
-        #[cfg(all(feature = "qmapi", not(test)))]
+        #[cfg(not(test))]
         {
-            match crate::qmapi::lyric::fetch_lyric_document(mid).await {
-                Ok(Some(document)) => return Ok(Some(document)),
-                Ok(None) => {}
-                Err(error) => {
-                    tracing::warn!(
-                        target: "qqmusic",
-                        error = %error,
-                        "qmapi lyrics failed; falling back to in-tree HTTP"
-                    );
+            return crate::qmapi::lyric::fetch_lyric_document(mid).await;
+        }
+        #[cfg(test)]
+        {
+            let payload = json!({
+                "comm": { "ct": 24, "cv": 0 },
+                "req_1": {
+                    "module": "music.musichallSong.PlayLyricInfo",
+                    "method": "GetPlayLyricInfo",
+                    "param": { "songMID": mid, "qrc": 1, "qrc_t": 0, "roma": 1, "trans": 1 }
+                }
+            });
+            let response: LyricEnvelope = self
+                .send_json("lyrics.qrc", || self.musicu_request(&payload, None))
+                .await?;
+            if response.code == 0 && response.request.code == 0 {
+                let data = response.request.data;
+                if let Some(decrypted) = decrypt_provider_lyric(&data.lyric) {
+                    if let Some(mut document) = parse_qrc_document(mid, &decrypted) {
+                        attach_companion_lyrics(
+                            &mut document,
+                            decrypt_provider_lyric(&data.translation).as_deref(),
+                            decrypt_provider_lyric(&data.romanization).as_deref(),
+                        );
+                        return Ok(Some(document));
+                    }
                 }
             }
+            self.legacy_lyrics(mid).await
         }
-        let payload = json!({
-            "comm": { "ct": 24, "cv": 0 },
-            "req_1": {
-                "module": "music.musichallSong.PlayLyricInfo",
-                "method": "GetPlayLyricInfo",
-                "param": { "songMID": mid, "qrc": 1, "qrc_t": 0, "roma": 1, "trans": 1 }
-            }
-        });
-        let response: LyricEnvelope = self
-            .send_json("lyrics.qrc", || self.musicu_request(&payload, None))
-            .await?;
-        if response.code == 0 && response.request.code == 0 {
-            let data = response.request.data;
-            if let Some(decrypted) = decrypt_provider_lyric(&data.lyric) {
-                if let Some(mut document) = parse_qrc_document(mid, &decrypted) {
-                    attach_companion_lyrics(
-                        &mut document,
-                        decrypt_provider_lyric(&data.translation).as_deref(),
-                        decrypt_provider_lyric(&data.romanization).as_deref(),
-                    );
-                    return Ok(Some(document));
-                }
-            }
-        }
-        self.legacy_lyrics(mid).await
     }
 
+    #[cfg(test)]
     async fn legacy_lyrics(&self, mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
         let song_mid = mid.to_owned();
         let response: LegacyLyricResponse = self
@@ -2895,31 +2887,22 @@ impl QQMusicClient {
             .iter()
             .map(|candidate| candidate.filename.clone())
             .collect::<Vec<_>>();
-        #[cfg(all(feature = "qmapi", not(test)))]
+        #[cfg(not(test))]
         let qmapi_clear_urls = if filenames.is_empty() {
             Some(HashMap::new())
         } else {
-            match crate::qmapi::vkey::clear_playable_urls(
-                &provider.track_id,
-                media_mid,
-                &filenames,
-                session.map(|session| session.uin.as_str()),
-                session.map(|session| session.cookie_header.as_str()),
+            Some(
+                crate::qmapi::vkey::clear_playable_urls(
+                    &provider.track_id,
+                    media_mid,
+                    &filenames,
+                    session.map(|session| session.uin.as_str()),
+                    session.map(|session| session.cookie_header.as_str()),
+                )
+                .await?,
             )
-            .await
-            {
-                Ok(urls) => Some(urls),
-                Err(error) => {
-                    tracing::warn!(
-                        target: "qqmusic",
-                        error = %error,
-                        "qmapi clear vkey failed; falling back to in-tree CgiGetVkey"
-                    );
-                    None
-                }
-            }
         };
-        #[cfg(not(all(feature = "qmapi", not(test))))]
+        #[cfg(test)]
         let qmapi_clear_urls: Option<HashMap<String, String>> = None;
         let response: VkeyEnvelope = if qmapi_clear_urls.is_some() || filenames.is_empty() {
             VkeyEnvelope::default()
@@ -3634,6 +3617,7 @@ struct MagicColor {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg(test)]
 struct LyricEnvelope {
     code: i32,
     #[serde(rename = "req_1")]
@@ -3641,12 +3625,14 @@ struct LyricEnvelope {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg(test)]
 struct LyricRequest {
     code: i32,
     data: LyricData,
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[cfg(test)]
 struct LyricData {
     #[serde(default)]
     lyric: String,
@@ -3657,6 +3643,7 @@ struct LyricData {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[cfg(test)]
 struct LegacyLyricResponse {
     #[serde(default)]
     code: i32,
@@ -4115,6 +4102,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
     ]
 }
 
+#[cfg(test)]
 pub(crate) fn decrypt_provider_lyric(value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {

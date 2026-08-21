@@ -1,9 +1,8 @@
 /**
- * P14-B access helper for the private `qm-api-rs` pin.
+ * Access helper for the private `qm-api-rs` pin.
  *
- * Records an optional `qqmusic-api` git dependency. Default features stay
- * `intree` so Core does not link the crate unless `--features qmapi` /
- * `qqmusic-qmapi` is enabled.
+ * The `qqmusic-api` dependency is unconditional since the P14-C cutover; the
+ * provider has no backend feature split and Core links it by default.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -15,7 +14,6 @@ export const QM_API_RS_ORIGIN = 'https://github.com/YAQMC/qm-api-rs';
 export const QM_API_RS_REV = 'ffcc86cec2993b79ccf34faf25c1eba6c0d995ca';
 export const QM_API_RS_CRATE = 'qqmusic-api';
 export const QM_API_RS_TOKEN_ENV = 'QM_API_RS_TOKEN';
-export const QM_API_RS_FEATURE = 'qmapi';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -55,19 +53,19 @@ export function gitInsteadOfArgs(token, scope = 'global') {
   return ['config', `--${scope}`, `url.${insteadOfRewriteUrl(token)}.insteadOf`, QM_API_RS_GIT];
 }
 
-export function assertProviderOptionalQmapiPin(manifestSource) {
+export function assertProviderQmapiPin(manifestSource) {
   const defaultFeatures = manifestSource.match(/^default\s*=\s*\[([^\]]*)\]/m)?.[1] ?? '';
-  if (/(^|,)\s*"qmapi"\s*(,|$)/.test(defaultFeatures)) {
-    throw new Error(`${QM_API_RS_FEATURE} must not be a default feature; production stays intree`);
+  if (defaultFeatures.trim() !== '') {
+    throw new Error('provider default features must be empty after the P14-C cutover');
   }
-  if (!/^qmapi\s*=\s*\[/m.test(manifestSource)) {
-    throw new Error(`provider manifest must declare feature ${QM_API_RS_FEATURE}`);
+  if (/^qmapi\s*=\s*\[/m.test(manifestSource) || /^intree\s*=\s*\[/m.test(manifestSource)) {
+    throw new Error('provider backend feature split must be removed after the P14-C cutover');
   }
   const dependency = manifestSource.match(
     new RegExp(`${QM_API_RS_CRATE}\\s*=\\s*\\{([^}]+)\\}`, 'm'),
   );
   if (!dependency) {
-    throw new Error(`${QM_API_RS_CRATE} optional git pin is missing from the provider manifest`);
+    throw new Error(`${QM_API_RS_CRATE} git pin is missing from the provider manifest`);
   }
   const body = dependency[1];
   if (!body.includes(`git = "${QM_API_RS_GIT}"`)) {
@@ -76,8 +74,8 @@ export function assertProviderOptionalQmapiPin(manifestSource) {
   if (!body.includes(`rev = "${QM_API_RS_REV}"`)) {
     throw new Error(`${QM_API_RS_CRATE} must pin rev = "${QM_API_RS_REV}"`);
   }
-  if (!/optional\s*=\s*true/.test(body)) {
-    throw new Error(`${QM_API_RS_CRATE} must remain optional so default Core does not link it`);
+  if (/optional\s*=\s*true/.test(body)) {
+    throw new Error(`${QM_API_RS_CRATE} must be unconditional after the P14-C cutover`);
   }
 }
 
@@ -119,7 +117,7 @@ export function checkAccess(options = {}) {
   const root = options.root ?? repositoryRoot;
   const sibling = options.sibling ?? defaultSiblingCheckout(root);
   const manifest = readFileSync(providerManifestPath(root), 'utf8');
-  assertProviderOptionalQmapiPin(manifest);
+  assertProviderQmapiPin(manifest);
   const revision = options.siblingRevision ?? readSiblingRevision(sibling, options.runGit);
   assertSiblingMatchesPin(revision);
   return {
@@ -128,7 +126,7 @@ export function checkAccess(options = {}) {
     crate: QM_API_RS_CRATE,
     sibling,
     siblingRevision: revision,
-    linked: 'optional',
+    linked: 'required',
   };
 }
 
@@ -144,7 +142,7 @@ export function configureGitInsteadOf(options = {}) {
   if (!token) {
     return {
       configured: false,
-      reason: `${QM_API_RS_TOKEN_ENV} unset; default intree builds skip qmapi fetch configuration`,
+      reason: `${QM_API_RS_TOKEN_ENV} unset; the unconditional qmapi pin cannot be fetched`,
     };
   }
   const runGit = options.runGit ?? execFileSync;
@@ -169,7 +167,7 @@ function main(argv = process.argv.slice(2)) {
       ? 'no sibling checkout'
       : `sibling HEAD ${checked.siblingRevision}`;
   process.stdout.write(
-    `qm-api-rs pin ${checked.rev} (${sibling}); ${checked.crate} is optional (${QM_API_RS_FEATURE}), default remains intree\n`,
+    `qm-api-rs pin ${checked.rev} (${sibling}); ${checked.crate} is the unconditional production dependency\n`,
   );
 }
 
