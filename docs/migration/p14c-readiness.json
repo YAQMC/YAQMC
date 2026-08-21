@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "phase": "P14-C",
+  "targetPin": "56db511cfc98d2f860e48da4805d878ec3c2061e",
+  "defaultBackend": "intree",
+  "cutoverAuthorized": false,
+  "gates": [
+    {
+      "id": "p14b-live-hybrid",
+      "status": "needs-rerun",
+      "evidence": "docs/migration/p14b-live-verify.md"
+    },
+    {
+      "id": "retirement-scope",
+      "status": "pass",
+      "evidence": "docs/migration/p14c-readiness.md"
+    },
+    {
+      "id": "crate-provenance",
+      "status": "blocked",
+      "evidence": "docs/migration/p14-qm-api-rs-provenance.md"
+    },
+    {
+      "id": "production-qmc-library",
+      "status": "not-started",
+      "evidence": "docs/migration/p14b-live-verify.md"
+    },
+    {
+      "id": "exact-pin-three-day-soak",
+      "status": "not-started",
+      "evidence": null
+    },
+    {
+      "id": "production-credential-primary",
+      "status": "pass",
+      "evidence": "docs/migration/p14c-implementation.md"
+    },
+    {
+      "id": "production-account-mutation-hybrid",
+      "status": "pass",
+      "evidence": "docs/migration/p14c-implementation.md"
+    }
+  ],
+  "responsibilities": {
+    "retireAfterGates": [
+      "legacy-lyric-http-and-qrc-decrypt",
+      "clear-vkey-intree-fallback",
+      "vip-login-intree-fallback",
+      "intree-qmc-decrypt"
+    ],
+    "pendingProductionReplacement": ["intree-qmc-decrypt"],
+    "keep": [
+      "encrypted-evkey-and-zzb",
+      "oauth-and-staging-slot",
+      "mutation-reconciliation-and-client-operation-id",
+      "entitlement-quality-derivation",
+      "home-discover-area-keep-paths",
+      "provider-cache-artwork-and-wire-mapping",
+      "yaqmc-reqwest-transport-policy"
+    ]
+  }
+}
