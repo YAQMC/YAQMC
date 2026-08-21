@@ -45,6 +45,16 @@ export function isQaLaunch(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 function joinFor(platform: 'win32' | 'posix', ...parts: string[]): string {
+  // path.win32.join('/tmp/x', 'AppData') => '\tmp\x\AppData', which is cwd-relative
+  // on POSIX and must never be mkdir'd. Keep the Windows layout, but join with posix
+  // when the homedir is already a POSIX absolute path.
+  if (
+    platform === 'win32' &&
+    process.platform !== 'win32' &&
+    String(parts[0] ?? '').startsWith('/')
+  ) {
+    return path.posix.join(...parts.map((part) => String(part).replaceAll('\\', '/')));
+  }
   return (platform === 'win32' ? path.win32 : path.posix).join(...parts);
 }
 

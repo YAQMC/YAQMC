@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import {
   APP_IDENTIFIER,
   QA_SANDBOX_DIR_NAME,
@@ -15,6 +15,7 @@ import {
   electronQaArgs,
   hashDirectory,
   isQaLaunch,
+  isSameOrInsidePath,
   qaElectronEnv,
   requireQaSandboxFromEnv,
   resolveProductionCoreRoots,
@@ -34,6 +35,11 @@ function fakeMaintainerEnv(root) {
 function seedMaintainer(root) {
   const env = fakeMaintainerEnv(root);
   const prod = resolveProductionCoreRoots({ env, platform: 'win32', homedir: root });
+  for (const dir of [prod.dataDir, prod.cacheDir, prod.electronUserDataUnpackaged]) {
+    if (!isSameOrInsidePath(dir, root)) {
+      throw new Error(`refusing to mkdir ${dir} outside fake maintainer root ${root}`);
+    }
+  }
   mkdirSync(prod.dataDir, { recursive: true });
   mkdirSync(prod.cacheDir, { recursive: true });
   mkdirSync(prod.electronUserDataUnpackaged, { recursive: true });
@@ -42,6 +48,11 @@ function seedMaintainer(root) {
   writeFileSync(path.join(prod.cacheDir, 'marker.bin'), Buffer.from('cache-sentinel'));
   return { env, prod };
 }
+
+after(() => {
+  const leaked = readdirSync(repoRoot).filter((name) => name.includes('\\'));
+  assert.deepEqual(leaked, [], `win32-joined paths leaked into the repository root: ${leaked}`);
+});
 
 function simulatePerfHarness(parentEnv) {
   const sandbox = createQaSandbox({ purpose: 'sentinel-perf', env: parentEnv });
@@ -134,8 +145,8 @@ test('sentinel: mutating perf harness leaves a fake maintainer root byte-identic
   const { sandbox, env: harnessEnv } = simulatePerfHarness(env);
   assert.equal(harnessEnv.YAQMC_UI_PERF_DIAG, '1');
   assert.notEqual(sandbox.coreData, prod.dataDir);
-  const after = hashDirectory(home);
-  assert.equal(after, before);
+  const afterHash = hashDirectory(home);
+  assert.equal(afterHash, before);
   cleanupQaSandbox(sandbox.root, { env });
   assert.equal(hashDirectory(home), before);
 });
@@ -151,6 +162,7 @@ test('failed/hung profiler still cannot point Core at production', () => {
     /overlaps production/,
   );
   assert.equal(hashDirectory(home), before);
+  cleanupQaSandbox(sandbox.root, { env });
 });
 
 test('dev:desktop strips QA flags so HUMAN cannot inherit a test Core', () => {
@@ -238,4 +250,16 @@ test('production identifier stays org.yaqmc.desktop', () => {
     homedir: 'D:\\scratch',
   });
   assert.equal(roots.dataDir, path.win32.join('D:\\scratch', 'AppData', 'Roaming', APP_IDENTIFIER));
+});
+
+test('a POSIX maintainer homedir with platform win32 stays under that homedir', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-maintainer-'));
+  const { prod } = seedMaintainer(home);
+  assert.ok(isSameOrInsidePath(prod.dataDir, home));
+  assert.ok(isSameOrInsidePath(prod.cacheDir, home));
+  assert.ok(isSameOrInsidePath(prod.electronUserDataUnpackaged, home));
+  if (process.platform !== 'win32') {
+    assert.equal(prod.dataDir, path.posix.join(home, 'AppData', 'Roaming', APP_IDENTIFIER));
+    assert.doesNotMatch(prod.dataDir, /\\/);
+  }
 });
