@@ -2119,3 +2119,127 @@ invented. P12–P15 were not started.
 - The implementing agent ran formatting and offline Cargo metadata/lockfile
   resolution only. It did **not** run tests, builds, package validation, LIVE
   account checks, or HUMAN acceptance; those checks are handed to Terra.
+
+## P14 overlay: YAQMC-side access scaffolding (2026-08-21)
+
+- `scripts/ci/qm-api-rs-access.mjs` records the private pin
+  `93fc0a621df13c46adde7653d387b15ef6b490f2` and refuses to declare
+  `qqmusic-api` in `yaqmc-provider-qqmusic`. Workspace metadata must not
+  contain that package. A sibling checkout at `../qm-api-rs` is fail-closed
+  against the pin when present; absence is not an error while the default
+  backend is `intree`.
+- `rust-quality` may configure git `insteadOf` when `CI=true` and
+  `QM_API_RS_TOKEN` is set. A missing token skips; it does not fail.
+  `--configure-git` is refused on maintainer workstations. Composite
+  `setup-packaging` cannot see repository secrets unless they are passed as
+  an input, so package and release jobs are **not** wired yet. P14-B must
+  pass the token into those jobs before Cargo can fetch the crate.
+- This does **not** pin Cargo, start P14-B/C module swaps, clear provenance,
+  or claim §17.6 dual-maintainer consent. Electron stays **43.4.0**. The
+  32 MiB protocol hard cap is unchanged. Actions quota remains
+  **BLOCKED-EXTERNAL**; YAML on disk is not live-green evidence.
+
+## P14 overlay: qm-api-rs upstream work order (2026-08-21)
+
+- `docs/migration/p14-qm-api-rs-upstream.md` remains the historical work
+  order. Sibling HEAD `93fc0a621df13c46adde7653d387b15ef6b490f2` landed
+  `ApiTransport`, `rust-version = "1.88.0"`, and hiding `reqwest` from the
+  public crate API. MQTT WebSocket stays outside the trait. YAQMC pin
+  matches that SHA. YAQMC records an optional `qqmusic-api` git pin behind
+  feature `qmapi`; default Core remains `intree`. Provenance ledger capture
+  remains `a7430a8` and is not a re-audit of `93fc0a6`.
+
+## P14 overlay: optional qmapi pin (2026-08-21)
+
+- Maintainer directed P14-B start on `feat/electron-migration`. Default
+  backend stays `intree`. Feature `qmapi` compiles optional `qqmusic-api` at
+  `93fc0a621df13c46adde7653d387b15ef6b490f2`. Core exposes `qqmusic-qmapi` and
+  does not enable it.
+- HTTP injection uses YAQMC reqwest **0.13.4** (`YaqmcReqwestTransport`). Do
+  not upgrade qm-api-rs to reqwest 0.13 for version uniformity. MQTT stays
+  outside `ApiTransport`.
+- Row J (QMC) compiles a comparison adapter. The in-tree and pinned library
+  Map/RC4 implementations are not byte-identical on synthetic fixtures.
+  Production decrypt stays in-tree (Keep).
+- Row L (lyrics) maps `GetLyricResponse` through in-tree QRC/LRC parsers.
+  QRC decrypt matches `lyrics-crypto` on the library reference vector.
+  Under `qmapi` in a non-test build, production lyric HTTP uses library
+  `get_lyric` with in-tree fallback. Library `lyric_parser` is not the wire
+  `LyricDocument`.
+- Row I (vkey) sanitizes library `MediaSource` URLs through the in-tree CDN
+  allowlist. Under `qmapi` in a non-test build, clear vkey HTTP uses library
+  `get_song_urls` with in-tree `CgiGetVkey` fallback. Encrypted evkey,
+  `zzb`, and `choose_source` stay in-tree.
+- Rows A/B (transport+sign) are an offline probe only: library CGI over a
+  recording `ApiTransport` uses `zzc` on `musics.fcg`; production HTTP and
+  MD5 `zzb` stay in-tree (Keep). Do not add `zzb` to qm-api-rs.
+- Rows C/D dual-write library `Credential` JSON to keyring account
+  `qqmusic-credential-v2` on successful session persist, through the injected
+  YAQMC `CredentialStore` and library `CredentialStore::add` (not a second
+  keyring client). `qqmusic-session`, staging, and Electron OAuth stay.
+  Production QR is not replaced. G/H hybrids probe library songlist/user CGI
+  and map VIP through in-tree derivation. Under `qmapi` in a non-test build,
+  VIP fetch uses library `get_vip_info` with in-tree fallback. Production
+  mutations, reconciliation, and `choose_source` stay in-tree. Row K (PROV-04)
+  audits home/discover/area CGI: overlapping recommend/songlist calls are
+  Hybrid; toplist/MV CGI diverge; `encArea`/podcasts/featured stay Keep.
+  Production feeds stay in-tree. P14-C is not started.
+- 2026-08-21 LIVE VERIFY harness: ignored
+  `qmapi::live::qmapi_live_verify_session_lyrics_sign_vkey_vip_and_feed` plus
+  `docs/migration/p14b-live-verify.md`. CI must not pass `--ignored`. Default
+  Core stays `intree`. `YAQMC_CORE_FEATURES=qqmusic-qmapi` is opt-in for
+  dual-write Core only. Boxes stay empty until a maintainer ticks them.
+  First live run: Web signed `GetPlayLyricInfo` returned CGI **24001**; that
+  is a harness mismatch (`get_lyric` is unsigned). A/B probe moved to Android
+  `GetDislikeList` (`authst` in CGI body). Harness L now compares in-tree HTTP
+  vs `get_lyric` line timings; SuperVip + 104003 fails I.
+- Staging slot, Electron OAuth popup, `provider_cache`/artwork, wire DTO
+  mapping, and mutation reconciliation remain in-tree.
+- `setup-packaging` takes `qm-api-rs-token`. `rust-quality` runs `--features qmapi` tests only when `QM_API_RS_TOKEN` is set. Electron stays **43.4.0**.
+  The 32 MiB protocol hard cap is unchanged. Actions quota remains
+  **BLOCKED-EXTERNAL**.
+
+## P14 overlay: qm-api-rs pin `dcddabc` (2026-08-21)
+
+- Optional `qqmusic-api` pin moved from `93fc0a6` to
+  `dcddabc9fd007a6205383e217be7759ebe1d8f2e`. Upstream now writes Credential
+  Cookie and y.qq `Referer`/`Origin` on every CGI, and pins `get_lyric` to
+  unsigned Web `musicu.fcg`. Default Core stays `intree`. Feature `qmapi` is
+  not default. Provenance capture remains `a7430a8`. This is not P14-C.
+- 2026-08-21 Linux auto LIVE VERIFY (ignored cargo, pin `dcddabc`) ticked C/D,
+  L (63-line timing compare), A/B, I, H (`SuperVip`/`Active`), K. Maintainer
+  reported dual-write §2, library L/I play + lyrics, and library H account VIP
+  in-app HUMAN pass the same day; those boxes ticked. Maintainer reported G
+  like/playlist persist; G ticked. J replace-gate still proves intree/qmapi QMC
+  are not both byte-identical; J stays open. Production stays `intree`.
+
+## P14 overlay: qm-api-rs pin `56db511` (2026-08-21)
+
+- Optional `qqmusic-api` pin moved to
+  `56db511cfc98d2f860e48da4805d878ec3c2061e`. Upstream replaced its QMC
+  implementation with the QMCDecode-based Map/segmented-RC4 and ekey code,
+  added the immutable QMCDecode mapping and MIT notice, and removed the former
+  `mzj3920`, unrelated QMC, and ASAR implementation-source claims.
+- YAQMC's row J Map and RC4 synthetic comparison is now byte-identical. The
+  old `dcddabc` LIVE/HUMAN ticks remain historical only; exact-pin LIVE, a real
+  encrypted-file golden, and the production QMC route change remain open.
+- Crate provenance is reduced to the L-1124 port record: exact source revision,
+  file/range/transformation mappings, copyright, and required notice evidence.
+  Default production remains `intree`; no soak starts from this pin update.
+
+## P14-C readiness overlay (2026-08-21)
+
+- Preparation is recorded in `p14c-readiness.md` and the machine-readable
+  `p14c-readiness.json`; `npm run p14c:report` validates the record plus the
+  default-intree, optional dependency, legacy credential, and in-tree QMC
+  guards. `p14c:enforce` intentionally exits non-zero while gates remain open.
+- P14-C is responsibility-level retirement, not deletion of the whole in-tree
+  provider. QMC is now a pending replacement; encrypted evkey/`zzb`, OAuth/staging, mutation reconciliation,
+  entitlement derivation, uncovered K feeds, cache/artwork, and wire mapping
+  remain Keep/Hybrid. L lyric HTTP/decrypt, clear I vkey HTTP, H VIP HTTP, and
+  probe-only adapters may retire only after their final gates pass.
+- Open gates are crate-level qm-api-rs provenance, production credential-v2 as
+  the validated primary with a bounded legacy fallback, production G library
+  calls under YAQMC reconciliation, and a maintainer three-day real-account
+  soak on the exact final pin/cutover candidate. Pin or production-path changes
+  restart that soak. Default production remains `intree`; P14-C is not started.
