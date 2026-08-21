@@ -2,9 +2,9 @@
 
 Status: **landed** in sibling at `93fc0a621df13c46adde7653d387b15ef6b490f2`
 (2026-08-21 `ApiTransport`). Current YAQMC optional pin is
-`56db511cfc98d2f860e48da4805d878ec3c2061e` (QMCDecode replacement and notice,
-after the CGI Referer/Cookie + unsigned web lyrics fix). Feature `qmapi` is
-still not default. Crate provenance now has only the L-1124 record open.
+`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` (docs-only descendant of
+`56db511`: independent-implementation record drops the L-1124 port claims).
+Feature `qmapi` is still not default. Crate provenance is closed at this pin.
 
 下面保留对照基线 `a7430a831a256bb15212291f11a055d801e31648` 的历史工作单，
 不要当未完成清单再改一遍上游。crate 名 `qqmusic-api`，lib `qqmusic_api`，

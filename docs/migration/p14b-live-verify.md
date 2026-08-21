@@ -1,7 +1,8 @@
 # P14-B LIVE VERIFY (real QQ Music account)
 
-Status: **maintainer re-verified the hybrid set on the exact pin `56db511` on
-2026-08-21**; the `dcddabc` ticks below remain historical and are superseded.
+Status: **maintainer re-verified the hybrid set on pin `56db511` on
+2026-08-21**; pin `ffcc86c` is a docs-only descendant with unchanged code, so
+the evidence carries over. The `dcddabc` ticks below remain historical.
 This is not a production module swap, not P14-C, and not a 3-day soak.
 Default production backend stays **`intree`**. With `YAQMC_CORE_FEATURES=qqmusic-qmapi`,
 non-test builds use library lyric HTTP, clear vkey HTTP, and VIP fetch
@@ -149,6 +150,7 @@ the same Core feature after the H VIP-fetch swap.
 The automatic gate `qmapi_qmc_matches_intree_map_and_rc4` requires both cipher
 families to be byte-identical. It passes on pin `56db511`. An ekey-backed real
 encrypted file must also decrypt, seek, and decode through the library adapter.
+(Code is unchanged at the current docs-only pin `ffcc86c`.)
 
 | Check                                                        | Linux |
 | ------------------------------------------------------------ | ----- |

@@ -9,7 +9,7 @@ test('current P14-C preparation is guarded and reports the open gates', () => {
   assert.deepEqual(record.responsibilities.pendingProductionReplacement, ['intree-qmc-decrypt']);
   assert.deepEqual(
     blockers.map((gate) => gate.id),
-    ['crate-provenance', 'exact-pin-three-day-soak'],
+    ['exact-pin-three-day-soak'],
   );
 });
 

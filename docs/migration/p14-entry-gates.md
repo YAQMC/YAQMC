@@ -8,17 +8,18 @@ P14-C scope and current blockers are recorded in
 
 ## Still required before defaulting to qmapi or distributing a qmapi binary
 
-- [Crate-level provenance](p14-qm-api-rs-provenance.md) for the remaining
-  L-1124 port records. The QMCDecode mapping and notice are complete; ASAR and
-  `mzj3920` are not implementation sources at the current pin. The YAQMC-tree
-  `LICENSING_CONSENT.md` / `npm run provenance:enforce` pass does **not**
-  authorize shipping a linked `qqmusic-api` binary.
+- [Crate-level provenance](p14-qm-api-rs-provenance.md): the L-1124 record was
+  closed at `ffcc86c` via the independent-implementation attestation; the
+  QMCDecode mapping and notice are complete, and ASAR and `mzj3920` are not
+  implementation sources. Shipping a linked `qqmusic-api` binary still requires
+  corresponding-source delivery.
 - Per-module golden / LIVE VERIFY (order: J qmc → L lyrics → I vkey → A/B
   transport+sign → C/D login/session → G/H hybrids). Maintainer harness:
   [`p14b-live-verify.md`](p14b-live-verify.md). Linux auto, §2 dual-write,
   §3 HUMAN in-app, G mutations, library L/I play + lyrics, and library H
-  account VIP ticked 2026-08-21 on the former pin. Current pin `56db511`
-  passes J synthetic parity; exact-pin LIVE and the real-file QMC golden remain open.
+  account VIP ticked 2026-08-21 on the former pin. Current pin `ffcc86c`
+  passes J synthetic parity; exact-pin LIVE and the real-file QMC playback
+  evidence are recorded in `p14b-live-verify.md`.
   Under `qmapi` in non-test builds, lyric HTTP, clear vkey HTTP, and VIP fetch
   use the library with in-tree fallback. Production `zzb`, QR, and mutations
   stay Keep.
@@ -43,7 +44,7 @@ in-tree.
 | Gate                          | Record                                                                                                                                                                                                                                              |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | License file / crate metadata | Root `LICENSE` and workspace `GPL-3.0-or-later` already match qm-api-rs. YAQMC-tree maintainer consent is recorded; it still does not clear this crate.                                                                                             |
-| Pin                           | `56db511cfc98d2f860e48da4805d878ec3c2061e` at `https://github.com/YAQMC/qm-api-rs.git` (QMCDecode replacement and notice; descendant of `dcddabc` CGI/lyrics fixes and `93fc0a6` `ApiTransport`)                                                    |
+| Pin                           | `ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` at `https://github.com/YAQMC/qm-api-rs.git` (docs-only descendant of `56db511`: independent-implementation record replaces the L-1124 port claims)                                                       |
 | Cargo                         | Optional `qqmusic-api` git dependency behind feature `qmapi`. Default features remain `["intree"]`. Default Core resolve must not contain `qqmusic-api`.                                                                                            |
 | Local sibling                 | If `../qm-api-rs` exists, `node scripts/ci/qm-api-rs-access.mjs --check` requires that HEAD                                                                                                                                                         |
 | CI insteadOf                  | `rust-quality` and `setup-packaging` run `--configure-git` only when `CI=true` and `QM_API_RS_TOKEN` is set. Missing token skips `insteadOf` and skips `--features qmapi` tests. Use `CARGO_NET_GIT_FETCH_WITH_CLI=true` so git honors `insteadOf`. |

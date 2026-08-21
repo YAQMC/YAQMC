@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "phase": "P14-C",
-  "targetPin": "56db511cfc98d2f860e48da4805d878ec3c2061e",
+  "targetPin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
   "defaultBackend": "intree",
   "cutoverAuthorized": false,
   "gates": [
@@ -17,7 +17,7 @@
     },
     {
       "id": "crate-provenance",
-      "status": "blocked",
+      "status": "pass",
       "evidence": "docs/migration/p14-qm-api-rs-provenance.md"
     },
     {

@@ -5,15 +5,17 @@ P14-C and is not a 3-day soak or LIVE VERIFY sign-off. The maintainer
 LIVE VERIFY harness is [`p14b-live-verify.md`](p14b-live-verify.md). Linux auto
 boxes were ticked 2026-08-21; §2 dual-write, §3 HUMAN in-app, G mutations, and
 library L/I play + lyrics and H account VIP (`qqmusic-qmapi`) were ticked the
-same day after maintainer pass on `dcddabc`. At current pin `56db511`, J QMC
-synthetic Map/RC4 parity passes; production stays in-tree pending a real-file golden.
+same day after maintainer pass on `dcddabc`. At current pin `ffcc86c` (code
+unchanged from `56db511`), J QMC
+synthetic Map/RC4 parity passes; production routes to the library adapter after
+the real-file playback evidence (see `p14b-live-verify.md` §4).
 A/B production `zzb` stays Keep. Under `qmapi` in non-test builds, lyric HTTP,
 clear vkey HTTP, and VIP fetch use the library with in-tree fallback.
 
 ## Landed
 
 - Optional Cargo git pin `qqmusic-api` at
-  `56db511cfc98d2f860e48da4805d878ec3c2061e`. Feature `qmapi` is not default.
+  `ffcc86cec2993b79ccf34faf25c1eba6c0d995ca`. Feature `qmapi` is not default.
   Core forwards it as `qqmusic-qmapi` and does not enable it.
 - `YaqmcReqwestTransport` implements `ApiTransport` with YAQMC reqwest
   **0.13.4** (timeout, host allowlist, cancellation, retry class, validated

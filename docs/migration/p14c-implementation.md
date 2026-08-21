@@ -1,11 +1,12 @@
 # P14-C production-path implementation evidence
 
 Status: **IMPLEMENTED; CUTOVER NOT AUTHORIZED** at qm-api-rs pin
-`56db511cfc98d2f860e48da4805d878ec3c2061e` on 2026-08-21.
+`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` (docs-only descendant of
+`56db511`) on 2026-08-21.
 
 This record closes the two code prerequisites in `p14c-readiness.json`. It does
-not clear crate provenance, start or complete the exact-pin three-day soak,
-change the default backend, or authorize deletion of fallback code.
+not start or complete the exact-pin three-day soak, change the default backend,
+or authorize deletion of fallback code.
 
 ## Credential-v2 primary
 
