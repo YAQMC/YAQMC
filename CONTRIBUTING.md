@@ -22,6 +22,15 @@ npm run dev:desktop
 npm run dev
 ```
 
+P14 默认仍是 in-tree QQ Music 后端。私有 `qm-api-rs`（crate `qqmusic-api`）以
+**可选** git 依赖钉在 `56db511cfc98d2f860e48da4805d878ec3c2061e`，feature `qmapi`
+（Core：`qqmusic-qmapi`）默认关闭。本地若在 `../qm-api-rs` 有检出，运行
+`node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。不要把访问令牌写入
+仓库；CI 使用可选 secret `QM_API_RS_TOKEN`。`cargo test --features qmapi` 需要能
+fetch 该私有 git pin。详见
+[P14 入口门禁](docs/migration/p14-entry-gates.md) 与
+[P14-B](docs/migration/p14b-qmapi-backend.md)。
+
 ## 提交流程
 
 1. 从 `main` 创建短生命周期分支。

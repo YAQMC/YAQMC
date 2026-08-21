@@ -35,7 +35,9 @@ The extraction deliberately preserves these existing boundaries and values:
 
 ## Explicitly deferred
 
-- No `qqmusic-api` dependency or private `qm-api-rs` revision is linked.
+- Optional `qqmusic-api` git pin may exist behind feature `qmapi`. Default
+  production backend remains `intree`. See [P14-B qmapi backend](p14b-qmapi-backend.md)
+  and [P14 entry gates](p14-entry-gates.md).
 - No upstream transport, endpoint, QMC, QRC, account, entitlement, cache, or DTO
   implementation has been selected as the default.
 - P14-B replacement candidates, provenance evidence, real-account comparison,

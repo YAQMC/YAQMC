@@ -26,7 +26,10 @@ There is no plaintext file, SQLite, browser storage, environment-variable, or lo
 Secure-store account names are separate:
 
 - `qqmusic-session-staging` — transactional candidate slot
-- `qqmusic-session` — reserved serialized provider session
+- `qqmusic-session` — serialized provider session retained as the bounded
+  migration and rollback fallback
+- `qqmusic-credential-v2` — primary library credential envelope in `qmapi`
+  builds (same `org.yaqmc.desktop` service; not a second keyring client)
 - `local-api-bearer-token` — random 32-byte loopback API token
 
 The local API configuration file contains only `enabled` and `port`. Builds predating this boundary may have a
@@ -43,20 +46,25 @@ uses an incognito profile, and validates the callback origin, path, login type, 
 code. The visible account dialog renews an opaque native owner lease; closing/reloading the owner, closing or losing
 the OAuth window, or missing the lease deadline cancels the attempt. Each attempt is bounded to five minutes.
 
-After confirmation, the native service follows a transactional sequence:
+After confirmation, the native service follows a transactional sequence. In a
+`qmapi` build, activation also persists and reads back credential-v2 before the
+authenticated snapshot can be published:
 
 1. validate the candidate session;
 2. load the prior active record;
 3. save and read back the staging record;
 4. validate the staged record;
 5. save and read back the active record;
-6. delete staging and the prior account cache;
-7. publish the masked authenticated snapshot.
+6. persist and read back credential-v2;
+7. delete staging and the prior account cache;
+8. publish the masked authenticated snapshot.
 
 A single lifecycle mutex serializes promotion, restore, and logout. Generation and opaque-scope checks occur around
-awaited storage/network boundaries. Failure before activation clears staging; failure after activation restores and
-reads back the prior active value. Logout cancels the generation, removes staging and active records, clears the
-account cache and playback epoch, then publishes guest state.
+awaited storage/network boundaries. Failure before activation clears staging; failure after activation restores both
+credential slots byte-for-byte. Restore in a `qmapi` build validates credential-v2 first, refreshes it when possible,
+and falls back to a valid `qqmusic-session`; either valid path synchronizes the other rollback slot. Logout and forced
+reauthentication remove both credential slots, clear the account cache and playback epoch, and propagate
+secure-storage failures.
 
 ## Native transport boundary
 
@@ -64,6 +72,9 @@ Account traffic uses a dedicated direct client with OS/system proxies disabled, 
 explicit cancellation, and no automatic redirects. At most three reviewed redirect hops are followed; every hop is
 revalidated. Cross-origin secret headers are stripped, and authenticated body-preserving cross-origin redirects are
 rejected. Account writes are never automatically retried. Logs keep only redacted URL/header/body shapes.
+In production `qmapi` builds, raw favorite and playlist writes use the library CGI client with write retry
+classification and cancellation. YAQMC continues to own operation IDs, outcome-unknown reconciliation, account
+epochs, cache projection, and typed results.
 
 ## Threat model
 

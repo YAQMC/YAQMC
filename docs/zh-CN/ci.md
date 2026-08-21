@@ -15,7 +15,7 @@
 
 ## 门禁与打包矩阵
 
-每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux 和 Windows 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查；并在 Linux/Windows 扫描密钥。
+每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux 和 Windows 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查；核验私有 `qm-api-rs` 的可选 git pin（默认 Core 仍是 `intree`）；并在 Linux/Windows 扫描密钥。`rust-quality` 与打包任务在存在 `QM_API_RS_TOKEN` 时可为 `github.com/YAQMC/qm-api-rs` 配置 git `insteadOf`（`CARGO_NET_GIT_FETCH_WITH_CLI=true`）；缺省时跳过 insteadOf 以及 `--features qmapi` 测试。
 
 - Pull request 打包 Windows x64 与 Linux x64。
 - 推送 `main` 打包 Windows x64/arm64 与 Linux x64/arm64。

@@ -26,5 +26,13 @@ This directory is the execution record for the Electron migration. Facts in thes
 - [ACCT-02 QR login / session checklist](acct02-qr-session.md)
 - [ACCT-03 session continuity checklist](acct03-session-continuity.md)
 - [Copyright, contributor, and source provenance audit](provenance-audit.md)
+- [P14-A in-tree provider boundary](p14a-provider-boundary.md)
+- [P14 entry gates](p14-entry-gates.md)
+- [P14-B optional qmapi backend](p14b-qmapi-backend.md)
+- [P14-B LIVE VERIFY (real account)](p14b-live-verify.md)
+- [P14-C readiness and retirement scope](p14c-readiness.md)
+- [P14-C production-path implementation evidence](p14c-implementation.md)
+- [P14 qm-api-rs crate provenance gate](p14-qm-api-rs-provenance.md)
+- [P14 qm-api-rs upstream work order](p14-qm-api-rs-upstream.md)
 
 The source specification is retained verbatim at repository root as `YAQMC_ELECTRON_MIGRATION_PLAN.md`.

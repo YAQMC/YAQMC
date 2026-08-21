@@ -91,15 +91,17 @@ complete.
 
 | Repository                     | Commit                                   | GitHub-detected license       | Use                                                    |
 | ------------------------------ | ---------------------------------------- | ----------------------------- | ------------------------------------------------------ |
-| L-1124/QQMusicApi              | 108617ffe80abefec6358717b9f4d3677550db10 | GPL-3.0                       | Protocol-behavior reference only; no source reuse      |
+| L-1124/QQMusicApi              | 108617ffe80abefec6358717b9f4d3677550db10 | GPL-3.0-or-later              | Protocol-behavior reference only; no source reuse      |
 | wxuyu/QQMusicApi               | 44c3b26c8741521266c63002844564392a1fa38c | MIT                           | Protocol-behavior reference only; no source reuse      |
 | RethinkQAQ/allmusic-qqmusicapi | a828f1f2d2dc8416bd1a549ee4c14efbb8ba4974 | LGPL-3.0                      | Protocol-behavior reference only; no source reuse      |
 | tlyanyu/multiPlatformMusicApi  | 0fd583b384f5d6477067ff3d29ccedd97fc3a317 | no license detected by GitHub | Rename-behavior research only; no source reuse         |
 | wangwalk/qqm                   | 4a434ccf7468af29731a9792917cb6fc5a126bab | no license detected by GitHub | Recent-history behavior research only; no source reuse |
 | Flechazo/qmc                   | 5039640e4b7e3a57d97003c62990841a3089e871 | no license in repository      | User-supplied behavior check only; no source reuse     |
 | gongjiehong/QMCDecode          | aea76301a08678100ec677cb61a8458bc75662ec | MIT                           | Independently adapted QMC cipher behavior              |
-| Mirror/unlock-music            | 986e02f182c1f8f30101568a8246cd5f30785378 | MIT                           | Independently adapted EncV2 wrapper behavior           |
-| AynaLivePlayer/miaosic         | c509534bd7bbc9c4094ec6c2663901cb67fec342 | MIT                           | EVkey/quality interoperability corroboration           |
+| AynaLivePlayer/miaosic         | c509534bd7bbc9c4094ec6c2663901cb67fec342 | MIT                           | EVkey/quality corroboration only; no source reuse      |
+
+`mzj3920/qqmusic-decrypt` and official QQ Music Electron ASAR contents are not in-tree YAQMC sources. Their former
+source claims in `qm-api-rs` were removed at pin `56db511`; see the separate crate provenance gate.
 
 The pinned-source validator downloads these immutable paths only in memory, verifies each content SHA-256, emits
 symbol-only evidence, and writes neither source bodies nor authentication artifacts to the repository.
