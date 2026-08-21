@@ -27,24 +27,28 @@ delete the `qqmusic/` tree:
 
 ## Readiness gates
 
-| Gate                                                 | State       | Required evidence                                                                                                    |
-| ---------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
-| P14-B LIVE/HUMAN hybrid verification                 | PASS        | Maintainer re-verification on the exact pin recorded in `p14b-live-verify.md`                                        |
-| Responsibility-level retirement inventory            | PASS        | This document and JSON record                                                                                        |
-| Sanitized qm-api-rs pin and crate provenance         | PASS        | `p14-qm-api-rs-provenance.md` at `ffcc86c`: independent-implementation record replaces the L-1124 port claims        |
-| Production QMC library path                          | PASS        | Live playback on a real encrypted lossless-mflac stream through the routed library adapter; `p14b-live-verify.md` §4 |
-| Production credential-v2 primary path                | PASS        | `p14c-implementation.md` and restore/promotion tests                                                                 |
-| Production G library calls with YAQMC reconciliation | PASS        | `p14c-implementation.md` and mutation tests                                                                          |
-| Three-day real-account soak                          | NOT STARTED | Maintainer evidence on the exact final pin and cutover candidate                                                     |
+| Gate                                                 | State  | Required evidence                                                                                                    |
+| ---------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
+| P14-B LIVE/HUMAN hybrid verification                 | PASS   | Maintainer re-verification on the exact pin recorded in `p14b-live-verify.md`                                        |
+| Responsibility-level retirement inventory            | PASS   | This document and JSON record                                                                                        |
+| Sanitized qm-api-rs pin and crate provenance         | PASS   | `p14-qm-api-rs-provenance.md` at `ffcc86c`: independent-implementation record replaces the L-1124 port claims        |
+| Production QMC library path                          | PASS   | Live playback on a real encrypted lossless-mflac stream through the routed library adapter; `p14b-live-verify.md` §4 |
+| Production credential-v2 primary path                | PASS   | `p14c-implementation.md` and restore/promotion tests                                                                 |
+| Production G library calls with YAQMC reconciliation | PASS   | `p14c-implementation.md` and mutation tests                                                                          |
+| Three-day real-account soak                          | WAIVED | Maintainer waiver recorded below; exact-pin live and real-file playback evidence remains the substitute              |
 
-Any pin or production-path change after soak starts invalidates that soak.
-Agent-only execution cannot mark the three-day LIVE_ACCOUNT gate PASS.
+Only the maintainer can pass or waive the three-day LIVE_ACCOUNT gate; the
+waiver below is an explicit maintainer decision, not evidence that the soak ran.
 
-## Remaining gates
+## Maintainer waivers
 
-1. Build the exact cutover candidate and run the maintainer three-day soak:
-   VIP quality, clear and encrypted playback, lyrics, favorites/playlists,
-   restart restore, QR, OAuth, home/discover, and rollback build.
+- **`exact-pin-three-day-soak`** — waived by Osilvfe on 2026-08-21: no
+  three-day testing window. Substitute evidence is the exact-pin live/human
+  hybrid re-verification and the real encrypted-file playback recorded in
+  `p14b-live-verify.md`. Accepted risk: long-run real-account regressions
+  (VIP quality, restart restore, mutation reconciliation, rollback) may only
+  surface after release; the pre-cutover commit and pin remain the rollback
+  anchor.
 
 The credential-primary and production G mutation slices are complete. Their
 code and test evidence is recorded in `p14c-implementation.md`.

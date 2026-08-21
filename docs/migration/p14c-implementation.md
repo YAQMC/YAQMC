@@ -57,14 +57,14 @@ loopback integration boundary reported 1 passed test. Ignored LIVE_ACCOUNT tests
 are maintainer-only and are not evidence for the three-day soak. The full run
 also includes row J's byte-identical in-tree/library Map and RC4 synthetic gate.
 
-The remaining P14-C blockers are `crate-provenance` and
-`exact-pin-three-day-soak`. The P14-B hybrid set was re-verified by the
-maintainer on the exact pin, and the production QMC library path passed on
+All P14-C gates are clear: the P14-B hybrid set was re-verified by the
+maintainer on the exact pin, the production QMC library path passed on
 2026-08-21: `qmapi` builds hard-route `EncryptedMedia` to the library adapter,
 and live playback of a real encrypted `lossless-mflac` stream decrypted,
-decoded, and seeked through it. Until the remaining gates pass, `intree`
-remains the default, `qqmusic-api` remains optional, and the rollback slots and
-network fallbacks stay present.
+decoded, and seeked through it. The three-day soak was waived by the
+maintainer on 2026-08-21 (see `p14c-readiness.md`). Until cutover is
+authorized, `intree` remains the default, `qqmusic-api` remains optional, and
+the rollback slots and network fallbacks stay present.
 
 The real-file QMC golden harness is now in place as the ignored, env-gated test
 `library_adapter_matches_intree_on_a_real_qmc_file`; see

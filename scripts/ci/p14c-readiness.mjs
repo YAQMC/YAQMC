@@ -49,7 +49,12 @@ export function validateP14cRecord(record) {
     );
   }
 
-  const blockers = record.gates.filter((gate) => gate.status !== 'pass');
+  const blockers = record.gates.filter(
+    (gate) => gate.status !== 'pass' && gate.status !== 'waived',
+  );
+  for (const gate of record.gates.filter((gate) => gate.status === 'waived')) {
+    requireString(gate?.evidence, `waiver evidence for gate ${gate.id}`);
+  }
   if (record.cutoverAuthorized && blockers.length > 0) {
     throw new Error('P14-C cutover cannot be authorized while gates are open');
   }
@@ -132,10 +137,13 @@ export function inspectP14cReadiness(root = repositoryRoot) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  const { blockers } = inspectP14cReadiness();
+  const { record, blockers } = inspectP14cReadiness();
   const status = blockers.length === 0 ? 'READY' : 'BLOCKED';
   process.stdout.write(`P14-C STATUS: ${status}\n`);
   for (const gate of blockers) process.stdout.write(`- ${gate.id}: ${gate.status}\n`);
+  for (const gate of record.gates) {
+    if (gate.status === 'waived') process.stdout.write(`- ${gate.id}: waived\n`);
+  }
   if (argv.includes('--enforce') && blockers.length > 0) process.exitCode = 3;
 }
 
