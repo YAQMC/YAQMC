@@ -6,8 +6,11 @@ import {
   SUPPORTED_CORE_TARGETS,
   validateCoreDependencyClosure,
   validateDesktopCoreDependencyClosures,
+  validateQqmusicApiLockPin,
+  validateQqmusicApiMetadataIfPresent,
   validateWorkspaceMetadata,
 } from './verify-workspace-contract.mjs';
+import { QM_API_RS_GIT, QM_API_RS_REV } from './qm-api-rs-access.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -147,6 +150,34 @@ test('rejects a forbidden platform dependency reached transitively from Core', (
       ),
     /forbidden yaqmc-core dependency closure: webkit2gtk/,
   );
+});
+
+test('requires Cargo.lock to pin optional qqmusic-api and rejects any other metadata source', () => {
+  assert.throws(() => validateQqmusicApiLockPin('name = "other"\n'), /Cargo.lock must pin/);
+  assert.doesNotThrow(() =>
+    validateQqmusicApiLockPin(
+      `name = "qqmusic-api"\nsource = "git+${QM_API_RS_GIT}?rev=${QM_API_RS_REV}#${QM_API_RS_REV}"\n`,
+    ),
+  );
+  assert.doesNotThrow(() =>
+    validateQqmusicApiMetadataIfPresent(
+      metadataWithTargetDirectory(path.join(repositoryRoot, 'target')),
+    ),
+  );
+  const pinned = metadataWithTargetDirectory(path.join(repositoryRoot, 'target'));
+  pinned.packages.push({
+    id: `git+${QM_API_RS_GIT}?rev=${QM_API_RS_REV}#qqmusic-api@0.1.0`,
+    name: 'qqmusic-api',
+    manifest_path: '/tmp/qqmusic-api/Cargo.toml',
+  });
+  assert.doesNotThrow(() => validateQqmusicApiMetadataIfPresent(pinned));
+  const wrongRev = metadataWithTargetDirectory(path.join(repositoryRoot, 'target'));
+  wrongRev.packages.push({
+    id: 'git+https://github.com/YAQMC/qm-api-rs.git?rev=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef#qqmusic-api',
+    name: 'qqmusic-api',
+    manifest_path: '/tmp/qqmusic-api/Cargo.toml',
+  });
+  assert.throws(() => validateQqmusicApiMetadataIfPresent(wrongRev), /must be git/);
 });
 
 test('allows the P14 provider boundary in the Core dependency closure', () => {

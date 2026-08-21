@@ -1351,6 +1351,20 @@ impl QQMusicAccountService {
         } else {
             "CancelFavPlaylist"
         };
+        let param = json!({
+            "uin": encrypted_uin,
+            "v_playlistId": [provider_id.parse::<u64>().map_err(|_| QQMusicError::InvalidRequest)?]
+        });
+        #[cfg(all(feature = "qmapi", not(test)))]
+        let write = crate::qmapi::account::execute_account_write(
+            &context.session,
+            "music.musicasset.PlaylistFavWrite",
+            method,
+            param,
+            context.cancellation.clone(),
+        )
+        .await;
+        #[cfg(any(not(feature = "qmapi"), test))]
         let write = self
             .execute_account_transport(
                 context,
@@ -1360,19 +1374,14 @@ impl QQMusicAccountService {
                     &context.session,
                     "music.musicasset.PlaylistFavWrite",
                     method,
-                    json!({
-                        "uin": encrypted_uin,
-                        "v_playlistId": [provider_id.parse::<u64>().map_err(|_| QQMusicError::InvalidRequest)?]
-                    }),
+                    param,
                 ),
                 RetryClass::Write,
             )
-            .await;
+            .await
+            .and_then(|response| playlist_collection_write_accepted(&response.body, provider_id));
         let (accepted, definitively_rejected) = match write {
-            Ok(response) => (
-                playlist_collection_write_accepted(&response.body, provider_id)?,
-                true,
-            ),
+            Ok(accepted) => (accepted, true),
             Err(QQMusicError::OutcomeUnknown | QQMusicError::Timeout | QQMusicError::Offline) => {
                 (false, false)
             }
@@ -2019,49 +2028,70 @@ impl QQMusicAccountService {
         method: &'static str,
         param: Value,
     ) -> Result<bool, QQMusicError> {
-        let response = self
-            .execute_account_transport(
-                context,
-                operation,
-                response_shape,
-                authenticated_musicu_write_request(&context.session, module, method, param)?,
-                RetryClass::Write,
+        #[cfg(all(feature = "qmapi", not(test)))]
+        {
+            let _ = (operation, response_shape);
+            self.auth.ensure_current(&context.epoch).await?;
+            let result = crate::qmapi::account::execute_account_write(
+                &context.session,
+                module,
+                method,
+                param,
+                context.cancellation.clone(),
             )
-            .await?;
-        let parsed = playlist_write_accepted(&response.body);
-        if parsed.is_err() {
-            let content_type = response
-                .headers
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("unknown");
-            let diagnostic = serde_json::from_slice::<Value>(&response.body)
-                .ok()
-                .map(|value| {
-                    let top_level_keys = value
-                        .as_object()
-                        .map(|object| object.keys().cloned().collect::<Vec<_>>())
-                        .unwrap_or_default();
-                    let top_code = value
-                        .get("code")
-                        .and_then(|code| code.as_i64().or_else(|| code.as_str()?.parse().ok()));
-                    let request_code = value
-                        .pointer("/req/code")
-                        .or_else(|| value.pointer("/req_0/code"))
-                        .and_then(|code| code.as_i64().or_else(|| code.as_str()?.parse().ok()));
-                    (top_level_keys, top_code, request_code)
-                });
-            tracing::warn!(
-                target: "account.favorite",
-                operation,
-                status = response.status.as_u16(),
-                content_type,
-                body_len = response.body.len(),
-                diagnostic = ?diagnostic,
-                "account write response shape was not recognized"
-            );
+            .await;
+            self.auth.ensure_current(&context.epoch).await?;
+            result
         }
-        parsed
+        #[cfg(any(not(feature = "qmapi"), test))]
+        {
+            let response = self
+                .execute_account_transport(
+                    context,
+                    operation,
+                    response_shape,
+                    authenticated_musicu_write_request(&context.session, module, method, param)?,
+                    RetryClass::Write,
+                )
+                .await?;
+            let parsed = playlist_write_accepted(&response.body);
+            if parsed.is_err() {
+                let content_type = response
+                    .headers
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or("unknown");
+                let diagnostic =
+                    serde_json::from_slice::<Value>(&response.body)
+                        .ok()
+                        .map(|value| {
+                            let top_level_keys = value
+                                .as_object()
+                                .map(|object| object.keys().cloned().collect::<Vec<_>>())
+                                .unwrap_or_default();
+                            let top_code = value.get("code").and_then(|code| {
+                                code.as_i64().or_else(|| code.as_str()?.parse().ok())
+                            });
+                            let request_code = value
+                                .pointer("/req/code")
+                                .or_else(|| value.pointer("/req_0/code"))
+                                .and_then(|code| {
+                                    code.as_i64().or_else(|| code.as_str()?.parse().ok())
+                                });
+                            (top_level_keys, top_code, request_code)
+                        });
+                tracing::warn!(
+                    target: "account.favorite",
+                    operation,
+                    status = response.status.as_u16(),
+                    content_type,
+                    body_len = response.body.len(),
+                    diagnostic = ?diagnostic,
+                    "account write response shape was not recognized"
+                );
+            }
+            parsed
+        }
     }
 
     async fn execute_account_transport(

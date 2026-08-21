@@ -54,7 +54,7 @@ use account::{
     PlaylistTrackMutationRequest, ProviderErrorCode, QQMusicAccountService, RemotePlayHistoryItem,
     RemotePlayHistorySource, RenamePlaylistRequest,
 };
-use auth::{QQMusicAuthService, SessionRecord, TransportQQMusicAuthProtocol};
+use auth::{QQMusicAuthService, TransportQQMusicAuthProtocol};
 use clock::{Clock, SystemClock};
 use entitlement::{
     candidates_for_request, choose_source, ClientCapabilityState, PreviewRange, SourceCandidate,
@@ -63,6 +63,13 @@ use entitlement::{
 use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, TransportRequest};
 use zeroize::Zeroize;
 
+pub(crate) use auth::SessionRecord;
+#[cfg(all(test, feature = "qmapi"))]
+pub(crate) use auth::ACTIVE_SESSION;
+#[cfg(feature = "qmapi")]
+pub(crate) use cache::OpaqueAccountScope;
+#[cfg(feature = "qmapi")]
+pub(crate) use entitlement::normalize_account_entitlement;
 pub use oauth::{url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult};
 
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
@@ -2741,6 +2748,20 @@ impl QQMusicClient {
     }
 
     async fn lyrics(&self, mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
+        #[cfg(all(feature = "qmapi", not(test)))]
+        {
+            match crate::qmapi::lyric::fetch_lyric_document(mid).await {
+                Ok(Some(document)) => return Ok(Some(document)),
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        target: "qqmusic",
+                        error = %error,
+                        "qmapi lyrics failed; falling back to in-tree HTTP"
+                    );
+                }
+            }
+        }
         let payload = json!({
             "comm": { "ct": 24, "cv": 0 },
             "req_1": {
@@ -2874,28 +2895,54 @@ impl QQMusicClient {
             .iter()
             .map(|candidate| candidate.filename.clone())
             .collect::<Vec<_>>();
-        let song_mids = vec![provider.track_id.clone(); filenames.len()];
-        let song_types = vec![0_u8; filenames.len()];
-        let uin = session.map_or("0", |session| session.uin.as_str());
-        let payload = json!({
-            "comm": { "uin": uin, "format": "json", "ct": 24, "cv": 0 },
-            "req_0": {
-                "module": "vkey.GetVkeyServer",
-                "method": "CgiGetVkey",
-                "param": {
-                    "guid": stable_guid(),
-                    "songmid": song_mids,
-                    "songtype": song_types,
-                    "uin": uin,
-                    "loginflag": 1,
-                    "platform": "20",
-                    "filename": filenames
+        #[cfg(all(feature = "qmapi", not(test)))]
+        let qmapi_clear_urls = if filenames.is_empty() {
+            Some(HashMap::new())
+        } else {
+            match crate::qmapi::vkey::clear_playable_urls(
+                &provider.track_id,
+                media_mid,
+                &filenames,
+                session.map(|session| session.uin.as_str()),
+                session.map(|session| session.cookie_header.as_str()),
+            )
+            .await
+            {
+                Ok(urls) => Some(urls),
+                Err(error) => {
+                    tracing::warn!(
+                        target: "qqmusic",
+                        error = %error,
+                        "qmapi clear vkey failed; falling back to in-tree CgiGetVkey"
+                    );
+                    None
                 }
             }
-        });
-        let response: VkeyEnvelope = if filenames.is_empty() {
+        };
+        #[cfg(not(all(feature = "qmapi", not(test))))]
+        let qmapi_clear_urls: Option<HashMap<String, String>> = None;
+        let response: VkeyEnvelope = if qmapi_clear_urls.is_some() || filenames.is_empty() {
             VkeyEnvelope::default()
         } else {
+            let song_mids = vec![provider.track_id.clone(); filenames.len()];
+            let song_types = vec![0_u8; filenames.len()];
+            let uin = session.map_or("0", |session| session.uin.as_str());
+            let payload = json!({
+                "comm": { "uin": uin, "format": "json", "ct": 24, "cv": 0 },
+                "req_0": {
+                    "module": "vkey.GetVkeyServer",
+                    "method": "CgiGetVkey",
+                    "param": {
+                        "guid": stable_guid(),
+                        "songmid": song_mids,
+                        "songtype": song_types,
+                        "uin": uin,
+                        "loginflag": 1,
+                        "platform": "20",
+                        "filename": filenames.clone()
+                    }
+                }
+            });
             self.send_json("playback.resolve", || {
                 self.musicu_request(&payload, session)
             })
@@ -2904,25 +2951,45 @@ impl QQMusicClient {
         epoch_guard
             .validate()
             .map_err(|_| QQMusicError::Cancelled)?;
-        if !filenames.is_empty() && (response.code != 0 || response.request.code != 0) {
+        if qmapi_clear_urls.is_none()
+            && !filenames.is_empty()
+            && (response.code != 0 || response.request.code != 0)
+        {
             return Err(QQMusicError::SchemaChanged);
         }
         let mut available_paths = HashMap::new();
-        let mut availability = clear_candidates
-            .iter()
-            .zip(response.request.data.items)
-            .map(|(candidate, item)| {
-                let available = item.result == 0 && !item.path.is_empty();
-                if available {
-                    available_paths.insert(candidate.filename.clone(), item.path);
-                }
-                VkeyAvailability {
-                    filename: candidate.filename.clone(),
-                    available,
-                    known: true,
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut availability = if let Some(urls) = &qmapi_clear_urls {
+            clear_candidates
+                .iter()
+                .map(|candidate| {
+                    let available = urls.contains_key(&candidate.filename);
+                    VkeyAvailability {
+                        filename: candidate.filename.clone(),
+                        available,
+                        known: true,
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            clear_candidates
+                .iter()
+                .zip(response.request.data.items)
+                .map(|(candidate, item)| {
+                    let available = item.result == 0 && !item.path.is_empty();
+                    if available {
+                        available_paths.insert(candidate.filename.clone(), item.path);
+                    }
+                    VkeyAvailability {
+                        filename: candidate.filename.clone(),
+                        available,
+                        known: true,
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        if let Some(urls) = qmapi_clear_urls {
+            available_paths = urls;
+        }
         availability.extend(
             encrypted_results
                 .iter()
@@ -2961,17 +3028,13 @@ impl QQMusicClient {
                 .map(|source| (source.url, Some(source.ekey)))
                 .ok_or(QQMusicError::MalformedResponse)?
         } else {
-            let sip = response
-                .request
-                .data
-                .sip
-                .into_iter()
-                .find_map(|value| normalize_cdn_base(&value))
-                .ok_or(QQMusicError::MalformedResponse)?;
             let path = available_paths
                 .remove(&decision.candidate.filename)
                 .ok_or(QQMusicError::MalformedResponse)?;
-            (normalize_cdn_url(&sip, &path)?, None)
+            (
+                join_clear_playback_url(&response.request.data.sip, &path)?,
+                None,
+            )
         };
         tracing::info!(
             target: "qqmusic.playback",
@@ -3639,14 +3702,14 @@ struct EncryptedPlaybackSource {
     ekey: EncryptedMediaKey,
 }
 
-fn playback_headers() -> Vec<(String, String)> {
+pub(crate) fn playback_headers() -> Vec<(String, String)> {
     vec![
         ("Referer".to_owned(), "https://y.qq.com/".to_owned()),
         ("Origin".to_owned(), "https://y.qq.com".to_owned()),
     ]
 }
 
-fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
     header.split(';').find_map(|part| {
         let (key, value) = part.trim().split_once('=')?;
         (key == name && !value.is_empty()).then_some(value)
@@ -4052,7 +4115,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
     ]
 }
 
-fn decrypt_provider_lyric(value: &str) -> Option<String> {
+pub(crate) fn decrypt_provider_lyric(value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {
         return None;
@@ -4063,7 +4126,7 @@ fn decrypt_provider_lyric(value: &str) -> Option<String> {
     decrypt_qrc(value)
 }
 
-fn parse_qrc_document(song_mid: &str, raw: &str) -> Option<LyricDocument> {
+pub(crate) fn parse_qrc_document(song_mid: &str, raw: &str) -> Option<LyricDocument> {
     let content = extract_qrc_content(raw).unwrap_or_else(|| raw.to_owned());
     let mut lines = Vec::new();
     for (line_number, raw_line) in content.lines().enumerate() {
@@ -4202,7 +4265,7 @@ fn parse_qrc_words(body: &str, line_start: u64, line_end: u64) -> Vec<LyricWord>
     words
 }
 
-fn parse_lrc_document(song_mid: &str, raw: &str) -> Option<LyricDocument> {
+pub(crate) fn parse_lrc_document(song_mid: &str, raw: &str) -> Option<LyricDocument> {
     let timed = parse_lrc_timed(raw);
     if timed.is_empty() {
         let plain = raw
@@ -4320,7 +4383,7 @@ fn lrc_offset(raw: &str) -> i64 {
         .unwrap_or(0)
 }
 
-fn attach_companion_lyrics(
+pub(crate) fn attach_companion_lyrics(
     document: &mut LyricDocument,
     translation: Option<&str>,
     romanization: Option<&str>,
@@ -4368,6 +4431,25 @@ fn album_from_songs(summary: &AlbumSummary, artists: &[ArtistSummary], songs: Ve
     }
 }
 
+fn join_clear_playback_url(sip_bases: &[String], path: &str) -> Result<String, QQMusicError> {
+    if path.starts_with("https://") || path.starts_with("http://") {
+        let url = reqwest::Url::parse(path).map_err(|_| QQMusicError::MalformedResponse)?;
+        let host = url.host_str().ok_or(QQMusicError::MalformedResponse)?;
+        let origin = format!("{}://{}/", url.scheme(), host);
+        let mut relative = url.path().trim_start_matches('/').to_owned();
+        if let Some(query) = url.query() {
+            relative.push('?');
+            relative.push_str(query);
+        }
+        return normalize_cdn_url(&origin, &relative);
+    }
+    let sip = sip_bases
+        .iter()
+        .find_map(|value| normalize_cdn_base(value))
+        .ok_or(QQMusicError::MalformedResponse)?;
+    normalize_cdn_url(&sip, path)
+}
+
 fn normalize_cdn_base(value: &str) -> Option<String> {
     let upgraded = upgrade_https(value);
     let url = reqwest::Url::parse(&upgraded).ok()?;
@@ -4380,7 +4462,7 @@ fn normalize_cdn_base(value: &str) -> Option<String> {
     Some(format!("{}://{}/", url.scheme(), host))
 }
 
-fn normalize_cdn_url(base: &str, path: &str) -> Result<String, QQMusicError> {
+pub(crate) fn normalize_cdn_url(base: &str, path: &str) -> Result<String, QQMusicError> {
     let base = reqwest::Url::parse(base).map_err(|_| QQMusicError::MalformedResponse)?;
     let url = base
         .join(path)
@@ -4514,7 +4596,7 @@ fn stable_guid() -> String {
     value.to_string()
 }
 
-fn qq_request_signature(body: &[u8]) -> String {
+pub(crate) fn qq_request_signature(body: &[u8]) -> String {
     const HEAD: [usize; 8] = [21, 4, 9, 26, 16, 20, 27, 30];
     const TAIL: [usize; 8] = [18, 11, 3, 2, 1, 7, 6, 25];
     const XOR: [u8; 16] = [

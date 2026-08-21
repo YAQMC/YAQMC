@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { QM_API_RS_GIT, QM_API_RS_REV, isPinnedQqmusicApiPackage } from './qm-api-rs-access.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const expectedMembers = [
@@ -44,6 +45,33 @@ export function validateWorkspaceMetadata(metadata) {
   }
   if (!existsSync(path.join(repositoryRoot, 'Cargo.lock'))) {
     throw new Error('root Cargo.lock is missing');
+  }
+}
+
+export function validateQqmusicApiLockPin(lockfileSource) {
+  const source = `git+${QM_API_RS_GIT}?rev=${QM_API_RS_REV}`;
+  if (
+    !/^name = "qqmusic-api"$/m.test(lockfileSource) ||
+    !lockfileSource.includes(`source = "${source}#${QM_API_RS_REV}"`)
+  ) {
+    throw new Error(`Cargo.lock must pin qqmusic-api at ${source}`);
+  }
+}
+
+export function validateQqmusicApiMetadataIfPresent(metadata) {
+  const linked = (metadata.packages ?? []).filter((pkg) => {
+    const normalized = String(pkg.name ?? '')
+      .toLowerCase()
+      .replaceAll('_', '-');
+    return normalized === 'qqmusic-api';
+  });
+  if (linked.length === 0) {
+    return;
+  }
+  if (!linked.every((pkg) => isPinnedQqmusicApiPackage(pkg))) {
+    throw new Error(
+      `qqmusic-api in Cargo metadata must be git ${QM_API_RS_GIT} rev ${QM_API_RS_REV}`,
+    );
   }
 }
 
@@ -109,7 +137,10 @@ function cargoMetadata(target) {
 }
 
 function main() {
-  validateWorkspaceMetadata(cargoMetadata());
+  const metadata = cargoMetadata();
+  validateWorkspaceMetadata(metadata);
+  validateQqmusicApiLockPin(readFileSync(path.join(repositoryRoot, 'Cargo.lock'), 'utf8'));
+  validateQqmusicApiMetadataIfPresent(metadata);
   validateDesktopCoreDependencyClosures(
     new Map(SUPPORTED_CORE_TARGETS.map((target) => [target, cargoMetadata(target)])),
   );

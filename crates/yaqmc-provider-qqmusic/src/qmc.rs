@@ -1,6 +1,5 @@
-// QMC key derivation and segmented stream cipher are based on QMCDecode;
-// the EncV2 wrapper follows Unlock Music's MIT-licensed implementation.
-// See THIRD_PARTY_NOTICES.md for the upstream MIT license notice.
+// QMC key derivation and segmented stream cipher independently adapt
+// QMCDecode (MIT). See THIRD_PARTY_NOTICES.md.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 #[cfg(test)]
@@ -31,7 +30,7 @@ impl EncryptedMediaKey {
         }
         Ok(Self(Zeroizing::new(value.to_owned())))
     }
-    fn expose(&self) -> &str {
+    pub(crate) fn expose(&self) -> &str {
         self.0.as_str()
     }
 
@@ -158,6 +157,8 @@ impl EncryptedMedia for EncryptedMediaKey {
     }
 
     fn create_decryptor(&self) -> Result<Arc<dyn MediaDecryptor>, PlaybackSourceError> {
+        // Synthetic vectors match the pinned library. Keep the in-tree
+        // decryptor until row J also passes a real-file golden.
         QmcDecryptor::new(self)
             .map(|decryptor| Arc::new(decryptor) as Arc<dyn MediaDecryptor>)
             .map_err(|_| PlaybackSourceError::DecryptionFailed)
@@ -424,8 +425,8 @@ impl MapCipher {
                 position
             };
             let key_index = position.wrapping_mul(position).wrapping_add(71_214) % self.key.len();
-            // Mirrors QMCDecode's QMMapCipher: the mask is `(key << rot) | (key >> rot)`,
-            // NOT a circular rotate. rot = ((key_index & 7) + 4) % 8.
+            // Same non-circular mask as QMCDecode QMMapCipher: `(key << rot) | (key >> rot)`,
+            // not u8::rotate_left. rot = ((key_index & 7) + 4) % 8.
             let rotate = ((key_index & 7) + 4) % 8;
             let value = self.key[key_index];
             *byte ^= (value << rotate) | (value >> rotate);
@@ -729,5 +730,39 @@ mod tests {
             .try_seek(std::time::Duration::from_secs(90))
             .expect("decrypted stream supports random seek");
         assert!(decoder.next().is_some());
+    }
+
+    #[cfg(feature = "qmapi")]
+    fn intree_and_qmapi_decrypt_match(clear_key: Vec<u8>) -> bool {
+        use yaqmc_provider_api::MediaDecryptor as _;
+
+        let encoded = encode_test_ekey(&clear_key, true);
+        let ekey = EncryptedMediaKey::new(encoded).expect("encoded key");
+        let intree = QmcDecryptor::new(&ekey).expect("intree decryptor");
+        let Ok(qmapi) = crate::qmapi::qmc::QmapiQmcDecryptor::new(&ekey) else {
+            return false;
+        };
+        assert_eq!(intree.cipher_kind(), qmapi.cipher_kind());
+        assert_eq!(intree.derived_key_length(), qmapi.derived_key_length());
+        let original = (0..8_192).map(|value| value as u8).collect::<Vec<_>>();
+        let mut intree_bytes = original.clone();
+        let mut qmapi_bytes = original;
+        intree
+            .decrypt(&mut intree_bytes, 0)
+            .expect("intree encrypt fixture");
+        qmapi
+            .decrypt(&mut qmapi_bytes, 0)
+            .expect("qmapi encrypt fixture");
+        intree_bytes == qmapi_bytes
+    }
+
+    #[cfg(feature = "qmapi")]
+    #[test]
+    fn qmapi_qmc_matches_intree_map_and_rc4() {
+        let map_equal = intree_and_qmapi_decrypt_match((1..=128).collect());
+        let rc4_equal =
+            intree_and_qmapi_decrypt_match((0..512).map(|value| (value % 251 + 1) as u8).collect());
+        assert!(map_equal, "P14-B row J: Map cipher output diverged");
+        assert!(rc4_equal, "P14-B row J: RC4 cipher output diverged");
     }
 }
