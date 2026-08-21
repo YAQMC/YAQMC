@@ -27,8 +27,8 @@
     },
     {
       "id": "exact-pin-three-day-soak",
-      "status": "not-started",
-      "evidence": null
+      "status": "waived",
+      "evidence": "docs/migration/p14c-readiness.md"
     },
     {
       "id": "production-credential-primary",

@@ -2259,3 +2259,11 @@ invented. P12–P15 were not started.
   the exact-pin live and real-file evidence from `56db511` carries over; no
   soak had started, so nothing is invalidated. Corresponding-source delivery
   still applies to any shipped binary that links the crate.
+
+## P14-C overlay: three-day soak waived (2026-08-21)
+
+- Osilvfe waived `exact-pin-three-day-soak` on 2026-08-21 (no three-day
+  testing window). The readiness record keeps the gate id with status
+  `waived` and non-empty evidence; `p14c:report` prints it as waived and
+  treats it as non-blocking. This is a maintainer decision, not a fabricated
+  soak result. The pre-cutover commit and pin remain the rollback anchor.

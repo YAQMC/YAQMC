@@ -7,8 +7,9 @@ test('current P14-C preparation is guarded and reports the open gates', () => {
   assert.equal(record.cutoverAuthorized, false);
   assert.equal(record.defaultBackend, 'intree');
   assert.deepEqual(record.responsibilities.pendingProductionReplacement, ['intree-qmc-decrypt']);
+  assert.deepEqual(blockers, []);
   assert.deepEqual(
-    blockers.map((gate) => gate.id),
+    record.gates.filter((gate) => gate.status === 'waived').map((gate) => gate.id),
     ['exact-pin-three-day-soak'],
   );
 });
@@ -16,8 +17,27 @@ test('current P14-C preparation is guarded and reports the open gates', () => {
 test('cutover authorization fails closed while any gate is open', () => {
   const { record } = inspectP14cReadiness();
   assert.throws(
-    () => validateP14cRecord({ ...record, cutoverAuthorized: true }),
+    () =>
+      validateP14cRecord({
+        ...record,
+        cutoverAuthorized: true,
+        gates: [...record.gates, { id: 'extra-open-gate', status: 'not-started', evidence: null }],
+      }),
     /cannot be authorized/,
+  );
+});
+
+test('a waived gate must carry non-empty waiver evidence', () => {
+  const { record } = inspectP14cReadiness();
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        gates: record.gates.map((gate) =>
+          gate.id === 'exact-pin-three-day-soak' ? { ...gate, evidence: '' } : gate,
+        ),
+      }),
+    /waiver evidence/,
   );
 });
 
