@@ -54,6 +54,7 @@ jobs:
       - run: npm run test -w @yaqmc/desktop
       - run: node scripts/ci/legacy-host-imports.mjs
       - run: node scripts/ci/electron-security-lint.mjs
+      - run: node scripts/ci/qm-api-rs-access.mjs --check
       - run: npm run ci:test-scripts
 
   frontend-build:
@@ -114,11 +115,34 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-
       - run: npm run ci:verify-workspace
+      - name: Check qm-api-rs pin without linking it
+        run: node scripts/ci/qm-api-rs-access.mjs --check
+      - name: Authenticate private qm-api-rs when the token is present
+        env:
+          CI: 'true'
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          QM_API_RS_TOKEN: ${{ secrets.QM_API_RS_TOKEN }}
+        run: node scripts/ci/qm-api-rs-access.mjs --configure-git
       - name: Prepare frontend stub for cargo-only builds
         run: mkdir -p dist && printf '<!doctype html><html><body></body></html>' > dist/index.html
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
       - run: cargo test --workspace --all-targets --locked
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      - name: Clippy and test the optional qmapi feature
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          QM_API_RS_TOKEN: ${{ secrets.QM_API_RS_TOKEN }}
+        run: |
+          if [ -z "${QM_API_RS_TOKEN}" ]; then
+            echo "skip qmapi tests: QM_API_RS_TOKEN unset"
+            exit 0
+          fi
+          cargo clippy -p yaqmc-provider-qqmusic --all-targets --locked --features qmapi -- -D warnings
+          cargo test -p yaqmc-provider-qqmusic --all-targets --locked --features qmapi
       - run: npm run contracts:check
       - uses: actions/cache/save@v4
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -187,6 +211,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           profile: ${{ env.YAQMC_BUILD_PROFILE }}
+          qm-api-rs-token: ${{ secrets.QM_API_RS_TOKEN }}
       - name: Linux electron-builder packaging tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm fakeroot

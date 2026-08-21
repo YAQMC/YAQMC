@@ -131,6 +131,8 @@ test('CI uses the Electron package job as the only desktop package path', () => 
   assert.match(electronJob, /YAQMC_PREBUILT_FRONTEND: '1'/);
   assert.match(electronJob, /continue-on-error:\s*false/);
   assert.match(electronJob, /setup-packaging/);
+  assert.match(electronJob, /qm-api-rs-token:/);
+  assert.match(electronJob, /secrets\.QM_API_RS_TOKEN/);
   assert.doesNotMatch(electronJob, /webkit/i);
   assert.match(electronJob, /rpm fakeroot/);
   assert.match(readFileSync(SCRIPT, 'utf8'), /'--publish', 'never'/);
