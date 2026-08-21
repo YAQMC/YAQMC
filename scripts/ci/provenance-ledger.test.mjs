@@ -71,21 +71,16 @@ function runLedger(ledgerPath, enforce = false) {
   );
 }
 
-test('committed ledger reports BLOCKED without treating its unresolved rights as a parser failure', () => {
+test('committed ledger reports PASS and enforcement succeeds', () => {
   const report = runLedger(committedLedger);
 
   assert.equal(report.status, 0, report.stderr);
-  assert.match(report.stdout, /PROVENANCE STATUS: BLOCKED/);
-  assert.match(report.stdout, /release decision: block/);
-  assert.match(report.stdout, /proprietary-client-extraction/);
-});
+  assert.match(report.stdout, /PROVENANCE STATUS: PASS/);
+  assert.match(report.stdout, /release decision: pass/);
 
-test('enforcement rejects the committed ledger while its audit remains blocked', () => {
   const enforced = runLedger(committedLedger, true);
-
-  assert.notEqual(enforced.status, 0);
-  assert.match(enforced.stdout, /PROVENANCE STATUS: BLOCKED/);
-  assert.match(enforced.stderr, /enforcement failed/i);
+  assert.equal(enforced.status, 0, enforced.stderr);
+  assert.match(enforced.stdout, /PROVENANCE STATUS: PASS/);
 });
 
 test('clean fixture passes enforcement only with typed immutable evidence references', () => {

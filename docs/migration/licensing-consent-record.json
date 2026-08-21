@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "license": "GPL-3.0-or-later",
+  "recordedAt": "2026-08-21",
+  "scope": "Rights each named maintainer actually controls in the YAQMC Git history and current tree. This record does not relicense third-party MIT notices, and it does not clear the unlinked private qm-api-rs crate.",
+  "approvals": [
+    {
+      "name": "Mai-xiyu",
+      "status": "approved",
+      "rightsScope": "Root import, branding assets, and later YAQMC commits authored by Mai-xiyu."
+    },
+    {
+      "name": "Osilvfe",
+      "status": "approved",
+      "rightsScope": "YAQMC commits authored by Osilvfe."
+    }
+  ]
+}

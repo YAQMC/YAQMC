@@ -31,21 +31,22 @@ Current Status for PLAY-01 / PLAY-02 / SOAK-01 first 4h / PLAT-05 / SURF-02 /
 Desktop / Island / SURF-03 / ACCT-01..03 is **PASS-HUMAN** in
 [`acceptance-p12.md`](acceptance-p12.md). They are not in this table.
 
-| Item                                   | Catalog ID   | Code / docs landed                                                 | Still not green                           | How to finish (later)                                                                                                                                                       |
-| -------------------------------------- | ------------ | ------------------------------------------------------------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SMTC flyout / media keys / artwork     | PLAT-04      | HWND `platform_attach`; Windows SMTC session **PASS-HUMAN**        | Flyout, media keys, artwork extras        | R-3 fallback only after flyout rejects the HWND.                                                                                                                            |
-| Clean-VM install / upgrade / uninstall | PACK-01..03  | NSIS/portable + AppImage/deb/rpm/tar.gz scripts and empty matrices | **DEFERRED**. Every clean-VM cell         | Unsigned (R-9). Do not silent-install. Data must survive under `org.yaqmc.desktop`.                                                                                         |
-| Example-plugin HUMAN battery           | PLUG-01 / 02 | PASS-AUTO battery; install-from-file ACL **PASS-HUMAN**            | **DEFERRED** full HUMAN battery / journal | Maintainer in-app picker + crash-loop journal.                                                                                                                              |
-| P12 second 4-hour soak                 | ACC-03       | First 4h Win+Linux already **PASS-HUMAN**                          | Second soak not run                       | `YAQMC_SOAK_SECONDS=14400`. Do not run 4h in an agent.                                                                                                                      |
-| Live GitHub quality / pack / release   | CI-01..04    | YAML + local gates                                                 | **BLOCKED-EXTERNAL** (quota)              | Resume when minutes exist. Do not dispatch against empty quota. Do not call local gates live-CI.                                                                            |
-| Updater A→B incl. core swap            | UPD-01       | notify-only `electron-updater` wired                               | **BLOCKED-EXTERNAL** (needs GitHub draft) | After CI-04 can actually produce a draft.                                                                                                                                   |
-| Provenance release / P14 gate          | P0 / CLEAN   | `docs/migration/provenance-audit.md`, `provenance-ledger.json`     | **BLOCKED**                               | Release and P14 PROV-01 (§17.6, R-6). Not a P12-entry prerequisite. `npm run provenance:enforce` stays non-zero until every blocker has typed evidence. Do not claim green. |
+| Item                                   | Catalog ID   | Code / docs landed                                                 | Still not green                                 | How to finish (later)                                                                                                                         |
+| -------------------------------------- | ------------ | ------------------------------------------------------------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| SMTC flyout / media keys / artwork     | PLAT-04      | HWND `platform_attach`; Windows SMTC session **PASS-HUMAN**        | Flyout, media keys, artwork extras              | R-3 fallback only after flyout rejects the HWND.                                                                                              |
+| Clean-VM install / upgrade / uninstall | PACK-01..03  | NSIS/portable + AppImage/deb/rpm/tar.gz scripts and empty matrices | **DEFERRED**. Every clean-VM cell               | Unsigned (R-9). Do not silent-install. Data must survive under `org.yaqmc.desktop`.                                                           |
+| Example-plugin HUMAN battery           | PLUG-01 / 02 | PASS-AUTO battery; install-from-file ACL **PASS-HUMAN**            | **DEFERRED** full HUMAN battery / journal       | Maintainer in-app picker + crash-loop journal.                                                                                                |
+| P12 second 4-hour soak                 | ACC-03       | First 4h Win+Linux already **PASS-HUMAN**                          | Second soak not run                             | `YAQMC_SOAK_SECONDS=14400`. Do not run 4h in an agent.                                                                                        |
+| Live GitHub quality / pack / release   | CI-01..04    | YAML + local gates                                                 | **BLOCKED-EXTERNAL** (quota)                    | Resume when minutes exist. Do not dispatch against empty quota. Do not call local gates live-CI.                                              |
+| Updater A→B incl. core swap            | UPD-01       | notify-only `electron-updater` wired                               | **BLOCKED-EXTERNAL** (needs GitHub draft)       | After CI-04 can actually produce a draft.                                                                                                     |
+| Provenance release / P14 gate          | P0 / CLEAN   | `docs/migration/provenance-audit.md`, `provenance-ledger.json`     | YAQMC tree **PASS**; `qm-api-rs` still unlinked | In-tree `npm run provenance:enforce` is green. Cargo-linking `qqmusic-api` remains a separate crate-level gate. Not a P12-entry prerequisite. |
 
 ## P12 entry vs provenance vs this waiver
 
-Provenance / CLEAN stays **BLOCKED**. It gates public distribution and P14
-**PROV-01** (plan §17.6 license gate; R-6: before P14 only; P0–P13 unaffected).
-It is **not** a prerequisite to **begin** P12.
+In-tree provenance / CLEAN now **PASS**es `npm run provenance:enforce`. Public
+distribution of this tree is no longer blocked by that ledger. Linking
+`qm-api-rs` for P14 **PROV-01** (plan §17.6; R-6: before P14 only) still needs
+a separate crate-level pass. It is **not** a prerequisite to **begin** P12.
 
 The 2026-08-20 waiver **does** begin ACC-01..04 even though CI-01..04 and
 UPD-01 are **BLOCKED-EXTERNAL** and PLUG/PACK clean-VM are **DEFERRED**. That
