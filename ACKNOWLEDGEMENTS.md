@@ -26,13 +26,12 @@ YAQMC 是独立实现的非官方 QQ 音乐桌面客户端。感谢下面的个�
 
 ## QMC / mflac 基础
 
-YAQMC 还在各自许可证允许的范围内独立适配了以下项目公开的互操作行为：
+YAQMC 在各自许可证允许的范围内独立适配了以下项目公开的互操作行为：
 
 - [QMCDecode](https://github.com/gongjiehong/QMCDecode)
-- [Unlock Music](https://github.com/ix64/unlock-music)
-- [miaosic](https://github.com/AynaLivePlayer/miaosic)
 
-实际复用依赖、版权与完整许可证文本见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+`miaosic` 只用于 EVkey/音质互操作核对，没有进入实现。实际复用的版权与完整许可证文本见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 核心生态
 
