@@ -18,7 +18,7 @@ import {
 const repositoryRoot = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 
 test('pins the audited private revision and refuses a dirty token', () => {
-  assert.equal(QM_API_RS_REV, '56db511cfc98d2f860e48da4805d878ec3c2061e');
+  assert.equal(QM_API_RS_REV, 'ffcc86cec2993b79ccf34faf25c1eba6c0d995ca');
   assert.equal(QM_API_RS_GIT, 'https://github.com/YAQMC/qm-api-rs.git');
   assert.equal(sanitizeAccessToken(''), '');
   assert.throws(() => sanitizeAccessToken('abc@def'), /cannot be used/);

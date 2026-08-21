@@ -2243,3 +2243,19 @@ invented. P12–P15 were not started.
   calls under YAQMC reconciliation, and a maintainer three-day real-account
   soak on the exact final pin/cutover candidate. Pin or production-path changes
   restart that soak. Default production remains `intree`; P14-C is not started.
+
+## P14 overlay: qm-api-rs pin `ffcc86c` (2026-08-21)
+
+- qm-api-rs `ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` is a docs-only
+  descendant of `56db511`. The maintainer recorded on 2026-08-21 that no
+  upstream L-1124/QQMusicApi source file or file content was incorporated into
+  the crate, and the inaccurate "ported from L-1124" wording was removed from
+  `README.md`, `Cargo.toml`, `src/lib.rs`, and `src/tripledes.rs`.
+  `PROVENANCE.md` (blob
+  `5d57147c353ca3de2f6f7a8ef207499999bdd9b8`) records the attestation,
+  reference inputs, and obligations.
+- YAQMC moves its optional `qqmusic-api` pin to `ffcc86c` and closes the
+  crate-level provenance gate. Because the commit changes documentation only,
+  the exact-pin live and real-file evidence from `56db511` carries over; no
+  soak had started, so nothing is invalidated. Corresponding-source delivery
+  still applies to any shipped binary that links the crate.

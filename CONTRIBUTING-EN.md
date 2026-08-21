@@ -14,7 +14,7 @@ npm run dev:desktop
 
 P14 keeps the in-tree QQ Music backend as the default. The private `qm-api-rs`
 crate (`qqmusic-api`) is an **optional** git pin at
-`56db511cfc98d2f860e48da4805d878ec3c2061e` behind feature `qmapi` (Core:
+`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` behind feature `qmapi` (Core:
 `qqmusic-qmapi`). A sibling checkout at `../qm-api-rs` is checked against that
 pin by `node scripts/ci/qm-api-rs-access.mjs --check`. Never commit an access
 token. CI may use the optional `QM_API_RS_TOKEN` secret; `cargo test --features

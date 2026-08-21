@@ -23,7 +23,7 @@ npm run dev
 ```
 
 P14 默认仍是 in-tree QQ Music 后端。私有 `qm-api-rs`（crate `qqmusic-api`）以
-**可选** git 依赖钉在 `56db511cfc98d2f860e48da4805d878ec3c2061e`，feature `qmapi`
+**可选** git 依赖钉在 `ffcc86cec2993b79ccf34faf25c1eba6c0d995ca`，feature `qmapi`
 （Core：`qqmusic-qmapi`）默认关闭。本地若在 `../qm-api-rs` 有检出，运行
 `node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。不要把访问令牌写入
 仓库；CI 使用可选 secret `QM_API_RS_TOKEN`。`cargo test --features qmapi` 需要能

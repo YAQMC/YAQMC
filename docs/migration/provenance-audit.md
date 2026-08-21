@@ -38,7 +38,7 @@ numstat binary matches. Those binaries are maintainer screenshots, branding, and
 third-party assets.
 
 The separate qm-api-rs audit target and optional Cargo pin are
-`56db511cfc98d2f860e48da4805d878ec3c2061e`. Default Core does not link the crate. See
+`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca`. Default Core does not link the crate. See
 [p14-qm-api-rs-provenance.md](p14-qm-api-rs-provenance.md); that crate audit is not part of this in-tree PASS.
 
 ## Rights-holder rule

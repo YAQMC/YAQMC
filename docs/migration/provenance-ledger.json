@@ -28,10 +28,10 @@
     },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
-      "revision": "56db511cfc98d2f860e48da4805d878ec3c2061e",
-      "yaqmcPin": "56db511cfc98d2f860e48da4805d878ec3c2061e",
+      "revision": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
+      "yaqmcPin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
       "linked": false,
-      "note": "Out of this ledger. Default YAQMC does not vendor or Cargo-link qqmusic-api. Pin 56db511 removes the former ASAR and mzj3920 source claims; crate-level L-1124 provenance remains a separate distribution gate."
+      "note": "Out of this ledger. Default YAQMC does not vendor or Cargo-link qqmusic-api. Pin ffcc86c adds the independent-implementation record and removes the L-1124 port claims on top of the 56db511 QMCDecode replacement."
     }
   },
   "sources": [

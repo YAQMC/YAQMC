@@ -11,9 +11,9 @@ P14-B produced a hybrid provider, not two interchangeable whole providers.
 P14-C must therefore retire responsibilities that are fully replaced, not
 delete the `qqmusic/` tree:
 
-- J QMC is now a replacement candidate: pin `56db511` matches the in-tree
-  QMCDecode Map/RC4 synthetic vectors, but the real-file golden and production
-  routing change remain open.
+- J QMC is a replacement candidate: pin `ffcc86c` (docs-only descendant of
+  `56db511`) matches the in-tree QMCDecode Map/RC4 synthetic vectors, and the
+  production route now uses the library adapter after the real-file evidence.
 - A/B production `zzb`, encrypted evkey, OAuth/staging, mutation
   reconciliation, entitlement derivation, cache/artwork, wire mapping, and
   uncovered K feeds remain in-tree.
@@ -31,7 +31,7 @@ delete the `qqmusic/` tree:
 | ---------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
 | P14-B LIVE/HUMAN hybrid verification                 | PASS        | Maintainer re-verification on the exact pin recorded in `p14b-live-verify.md`                                        |
 | Responsibility-level retirement inventory            | PASS        | This document and JSON record                                                                                        |
-| Sanitized qm-api-rs pin and crate provenance         | BLOCKED     | `p14-qm-api-rs-provenance.md` PASS at the final pin                                                                  |
+| Sanitized qm-api-rs pin and crate provenance         | PASS        | `p14-qm-api-rs-provenance.md` at `ffcc86c`: independent-implementation record replaces the L-1124 port claims        |
 | Production QMC library path                          | PASS        | Live playback on a real encrypted lossless-mflac stream through the routed library adapter; `p14b-live-verify.md` §4 |
 | Production credential-v2 primary path                | PASS        | `p14c-implementation.md` and restore/promotion tests                                                                 |
 | Production G library calls with YAQMC reconciliation | PASS        | `p14c-implementation.md` and mutation tests                                                                          |
@@ -42,10 +42,7 @@ Agent-only execution cannot mark the three-day LIVE_ACCOUNT gate PASS.
 
 ## Remaining gates
 
-1. Complete the exact L-1124 source revision, file/range mappings, copyright,
-   and notice evidence in qm-api-rs. QMCDecode is cleared; ASAR and `mzj3920`
-   are not sources at pin `56db511`.
-2. Build the exact cutover candidate and run the maintainer three-day soak:
+1. Build the exact cutover candidate and run the maintainer three-day soak:
    VIP quality, clear and encrypted playback, lyrics, favorites/playlists,
    restart restore, QR, OAuth, home/discover, and rollback build.
 

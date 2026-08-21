@@ -21,7 +21,7 @@ source required to build, and the `LICENSE` and third-party notices.
 
 Once a release links the `qm-api-rs` dependency, its source delivery must additionally include the exact YAQMC
 source for the released commit and the exact `qm-api-rs` source resolved by the pinned revision
-`56db511cfc98d2f860e48da4805d878ec3c2061e` (or the revision recorded in that release's lockfile). Include the
+`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` (or the revision recorded in that release's lockfile). Include the
 dependency's license files, manifests, lockfiles, and build scripts, together with YAQMC's manifests, lockfiles, and
 build/packaging/release scripts. The release notes or a source manifest must identify the YAQMC commit, the
 `qm-api-rs` revision, the provenance-ledger SHA-256 digest, evidence references, and hashes of the delivered
