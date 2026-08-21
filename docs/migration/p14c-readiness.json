@@ -22,7 +22,7 @@
     },
     {
       "id": "production-qmc-library",
-      "status": "needs-golden",
+      "status": "pass",
       "evidence": "docs/migration/p14b-live-verify.md"
     },
     {

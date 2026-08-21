@@ -1,5 +1,10 @@
 // QMC key derivation and segmented stream cipher independently adapt
 // QMCDecode (MIT). See THIRD_PARTY_NOTICES.md.
+//
+// The in-tree cipher stack stays compiled in `qmapi` builds as the row-J
+// golden-comparison reference and rollback anchor while production routing
+// lives in `EncryptedMediaKey::create_decryptor`.
+#![cfg_attr(all(feature = "qmapi", not(test)), allow(dead_code))]
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 #[cfg(test)]
@@ -156,9 +161,18 @@ impl EncryptedMedia for EncryptedMediaKey {
         self.is_v2()
     }
 
+    #[cfg(all(feature = "qmapi", not(test)))]
     fn create_decryptor(&self) -> Result<Arc<dyn MediaDecryptor>, PlaybackSourceError> {
-        // Synthetic vectors match the pinned library. Keep the in-tree
-        // decryptor until row J also passes a real-file golden.
+        // Production qmapi builds route QMC decryption through the pinned
+        // library adapter. The in-tree implementation remains the default
+        // and the row-J fallback until the real-file golden passes.
+        crate::qmapi::qmc::QmapiQmcDecryptor::new(self)
+            .map(|decryptor| Arc::new(decryptor) as Arc<dyn MediaDecryptor>)
+            .map_err(|_| PlaybackSourceError::DecryptionFailed)
+    }
+
+    #[cfg(not(all(feature = "qmapi", not(test))))]
+    fn create_decryptor(&self) -> Result<Arc<dyn MediaDecryptor>, PlaybackSourceError> {
         QmcDecryptor::new(self)
             .map(|decryptor| Arc::new(decryptor) as Arc<dyn MediaDecryptor>)
             .map_err(|_| PlaybackSourceError::DecryptionFailed)

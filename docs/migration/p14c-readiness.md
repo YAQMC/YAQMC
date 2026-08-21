@@ -27,15 +27,15 @@ delete the `qqmusic/` tree:
 
 ## Readiness gates
 
-| Gate                                                 | State        | Required evidence                                                                                                    |
-| ---------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| P14-B LIVE/HUMAN hybrid verification                 | NEEDS RERUN  | Exact-pin rerun recorded in `p14b-live-verify.md`                                                                    |
-| Responsibility-level retirement inventory            | PASS         | This document and JSON record                                                                                        |
-| Sanitized qm-api-rs pin and crate provenance         | BLOCKED      | `p14-qm-api-rs-provenance.md` PASS at the final pin                                                                  |
-| Production QMC library path                          | NEEDS GOLDEN | Real-file golden via `library_adapter_matches_intree_on_a_real_qmc_file`, then route `EncryptedMedia` to the adapter |
-| Production credential-v2 primary path                | PASS         | `p14c-implementation.md` and restore/promotion tests                                                                 |
-| Production G library calls with YAQMC reconciliation | PASS         | `p14c-implementation.md` and mutation tests                                                                          |
-| Three-day real-account soak                          | NOT STARTED  | Maintainer evidence on the exact final pin and cutover candidate                                                     |
+| Gate                                                 | State       | Required evidence                                                                                                    |
+| ---------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| P14-B LIVE/HUMAN hybrid verification                 | NEEDS RERUN | Exact-pin rerun recorded in `p14b-live-verify.md`                                                                    |
+| Responsibility-level retirement inventory            | PASS        | This document and JSON record                                                                                        |
+| Sanitized qm-api-rs pin and crate provenance         | BLOCKED     | `p14-qm-api-rs-provenance.md` PASS at the final pin                                                                  |
+| Production QMC library path                          | PASS        | Live playback on a real encrypted lossless-mflac stream through the routed library adapter; `p14b-live-verify.md` §4 |
+| Production credential-v2 primary path                | PASS        | `p14c-implementation.md` and restore/promotion tests                                                                 |
+| Production G library calls with YAQMC reconciliation | PASS        | `p14c-implementation.md` and mutation tests                                                                          |
+| Three-day real-account soak                          | NOT STARTED | Maintainer evidence on the exact final pin and cutover candidate                                                     |
 
 Any pin or production-path change after soak starts invalidates that soak.
 Agent-only execution cannot mark the three-day LIVE_ACCOUNT gate PASS.
@@ -45,11 +45,11 @@ Agent-only execution cannot mark the three-day LIVE_ACCOUNT gate PASS.
 1. Complete the exact L-1124 source revision, file/range mappings, copyright,
    and notice evidence in qm-api-rs. QMCDecode is cleared; ASAR and `mzj3920`
    are not sources at pin `56db511`.
-2. Rerun P14-B on the exact pin, including the real QMC file golden. The
-   dual-path harness (`library_adapter_matches_intree_on_a_real_qmc_file`) is
-   in place and env-gated on `YAQMC_QMC_SAMPLE` / `YAQMC_QMC_EKEY_FILE`; the
-   production `EncryptedMedia` route stays in-tree until it passes. Then route
-   production `EncryptedMedia` through the library adapter and rerun that check.
+2. Rerun P14-B on the exact pin. The production QMC library path is now
+   verified: `qmapi` builds hard-route `EncryptedMedia` to the library adapter,
+   and live playback on a real encrypted `lossless-mflac` stream decrypted,
+   decoded, and seeked successfully (§4 of `p14b-live-verify.md`). The optional
+   offline byte-golden harness remains available for extra strictness.
 3. Build the exact cutover candidate and run the maintainer three-day soak:
    VIP quality, clear and encrypted playback, lyrics, favorites/playlists,
    restart restore, QR, OAuth, home/discover, and rollback build.
