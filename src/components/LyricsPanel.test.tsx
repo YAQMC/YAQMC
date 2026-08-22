@@ -647,7 +647,7 @@ describe('LyricsPanel', () => {
     { positionMs: 1_100, expectedDelay: 500 },
     { positionMs: 1_999, expectedDelay: 16 },
   ])(
-    'uses one bounded boundary timeout instead of cursor animation-frame polling at $positionMs ms',
+    'uses one bounded boundary timeout for the lyric cursor while transport owns one visual frame at $positionMs ms',
     ({ positionMs, expectedDelay }) => {
       vi.useFakeTimers();
       const requestFrame = vi.spyOn(window, 'requestAnimationFrame');
@@ -662,12 +662,50 @@ describe('LyricsPanel', () => {
 
       render(<LyricsPanel {...presentationProps()} />);
 
-      expect(requestFrame).not.toHaveBeenCalled();
+      expect(requestFrame).toHaveBeenCalledTimes(1);
       expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === expectedDelay)).toHaveLength(
         1,
       );
     },
   );
+
+  it('advances the lyric transport from the shared estimated playback clock', () => {
+    let nextFrame = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((callback: FrameRequestCallback) => {
+        const id = ++nextFrame;
+        frames.set(id, callback);
+        return id;
+      }),
+    );
+    vi.stubGlobal(
+      'cancelAnimationFrame',
+      vi.fn((id: number) => frames.delete(id)),
+    );
+    const performanceNow = vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    usePlayerStore.setState({
+      positionMs: 1_000,
+      observedAtMs: 1_000,
+      sampledAtMs: 0,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+    });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+
+    render(<LyricsPanel {...presentationProps()} />);
+    const transport = screen.getByRole('slider', { name: 'Playback position' });
+    expect(transport).toHaveValue('1000');
+
+    performanceNow.mockReturnValue(3_500);
+    const callbacks = [...frames.values()];
+    frames.clear();
+    act(() => callbacks.forEach((callback) => callback(3_500)));
+
+    expect(transport).toHaveValue('3500');
+  });
 
   it('retains no cursor timer or cursor frame while paused', () => {
     vi.useFakeTimers();
@@ -843,12 +881,14 @@ describe('LyricsPanel', () => {
     useLyricsStore.setState({ document: timedDocument({}, true), status: 'ready' });
     const { container } = render(<LyricsPanel {...presentationProps()} />);
     const word = container.querySelector<HTMLElement>('.lyrics-word');
-    expect(frames.size).toBe(1);
+    expect(frames.size).toBe(2);
 
     act(() => setReducedMotion(true));
 
     expect(word).toHaveStyle({ '--word-progress': '100%' });
-    expect(frames.size).toBe(0);
+    // Reduced motion stops the word animation; the shared playback progress
+    // clock continues so the transport remains synchronized with the player.
+    expect(frames.size).toBe(1);
   });
 
   it('writes current-word progress and keeps a frame while the document is hidden (PLAY-03)', () => {

@@ -10,7 +10,7 @@ import {
   type Ref,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { usePlayerStore } from '../application/player-store';
+import { getEstimatedPositionMs, usePlayerStore } from '../application/player-store';
 import { joinArtistNames } from '../utils/format';
 import { IconButton } from './ui/IconButton';
 
@@ -37,6 +37,7 @@ export function LyricsFullscreenTransport({ ref, artworkSource }: LyricsFullscre
   const positionMs = usePlayerStore((state) => state.positionMs);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
+  const isScrubbing = usePlayerStore((state) => state.isScrubbing);
   const previous = usePlayerStore((state) => state.previous);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const next = usePlayerStore((state) => state.next);
@@ -55,6 +56,7 @@ export function LyricsFullscreenTransport({ ref, artworkSource }: LyricsFullscre
       artworkSource={artworkSource}
       positionMs={positionMs}
       isPlaying={isPlaying}
+      isScrubbing={isScrubbing}
       playbackDurationMs={durationMs}
       previous={previous}
       togglePlayback={togglePlayback}
@@ -72,6 +74,7 @@ interface LyricsFullscreenTransportSurfaceProps {
   artworkSource: string | null;
   positionMs: number;
   isPlaying: boolean;
+  isScrubbing: boolean;
   playbackDurationMs: number | null;
   previous: () => void;
   togglePlayback: () => void;
@@ -87,6 +90,7 @@ function LyricsFullscreenTransportSurface({
   artworkSource,
   positionMs,
   isPlaying,
+  isScrubbing,
   playbackDurationMs,
   previous,
   togglePlayback,
@@ -97,6 +101,7 @@ function LyricsFullscreenTransportSurface({
   const [visible, setVisible] = useState(true);
   const [focused, setFocused] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressFill = useRef<HTMLSpanElement>(null);
 
   const clearTimer = useCallback(() => {
     if (timer.current === null) return;
@@ -155,10 +160,23 @@ function LyricsFullscreenTransportSurface({
   };
 
   const durationMs = playbackDurationMs ?? currentDurationMs ?? 0;
+  const visualPositionMs = isPlaying && !isScrubbing ? getEstimatedPositionMs() : positionMs;
   const progress =
     durationMs > 0 && Number.isFinite(positionMs)
-      ? Math.min(100, Math.max(0, (positionMs / durationMs) * 100))
+      ? Math.min(100, Math.max(0, (visualPositionMs / durationMs) * 100))
       : 0;
+
+  useEffect(() => {
+    if (!isPlaying || isScrubbing || durationMs <= 0) return;
+    let frame = 0;
+    const tick = () => {
+      const position = Math.max(0, Math.min(getEstimatedPositionMs(), durationMs));
+      progressFill.current?.style.setProperty('transform', `scaleX(${position / durationMs})`);
+      frame = window.requestAnimationFrame(tick);
+    };
+    tick();
+    return () => window.cancelAnimationFrame(frame);
+  }, [durationMs, isPlaying, isScrubbing]);
 
   return (
     <div
@@ -198,6 +216,7 @@ function LyricsFullscreenTransportSurface({
       </div>
       <span className="lyrics-fullscreen-transport__progress" aria-hidden="true">
         <span
+          ref={progressFill}
           className="lyrics-fullscreen-transport__progress-fill"
           style={{ transform: `scaleX(${progress / 100})` } as CSSProperties}
         />

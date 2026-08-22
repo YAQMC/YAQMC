@@ -38,6 +38,11 @@ function transport(): HTMLElement {
 describe('LyricsFullscreenTransport', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
     setPlayerCommandAdapter(null);
     setPlaybackState();
   });
@@ -47,6 +52,7 @@ describe('LyricsFullscreenTransport', () => {
     setPlayerCommandAdapter(null);
     vi.clearAllTimers();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('dispatches localized previous, play-pause, and next controls through the player adapter', () => {
