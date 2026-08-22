@@ -13,4 +13,10 @@ describe('coverInk', () => {
   it('keeps a safe light fallback for malformed artwork metadata', () => {
     expect(coverInk('not-a-color')).toEqual({ ink: '#ffffff', contrast: '#10140c' });
   });
+
+  it('selects against the scene treatment for a pale cover', () => {
+    const { ink } = coverInk('#F4DFC5', { dimmed: true });
+    expect(ink).toBe('#FFFFFF');
+    expect(contrastRatio('#49433B', ink)).toBeGreaterThanOrEqual(4.5);
+  });
 });

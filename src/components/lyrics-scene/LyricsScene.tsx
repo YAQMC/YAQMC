@@ -41,6 +41,7 @@ import type { LyricsSceneProps } from './types';
 
 type SceneStyle = CSSProperties & {
   '--lyrics-color': string;
+  '--lyrics-foreground': string;
   '--lyrics-ink': string;
   '--lyrics-ink-contrast': string;
   '--lyrics-stage-base': string;
@@ -247,7 +248,7 @@ export function LyricsScene({
     appearance.baseColor ??
     palette?.primary ??
     bindings.artworkColor;
-  const ink = coverInk(backgroundInkSource);
+  const ink = coverInk(backgroundInkSource, { dimmed: true });
 
   useLayoutEffect(() => {
     const node = root.current;
@@ -277,14 +278,11 @@ export function LyricsScene({
     const identity = bindings.songId ?? paletteSource ?? 'none';
     const generation = Date.now();
     let cancelled = false;
-    void resolveArtworkPalette(
-      identity,
-      paletteSource,
-      bindings.artworkColor,
-      generation,
-    ).then((next) => {
-      if (!cancelled) setPalette(next);
-    });
+    void resolveArtworkPalette(identity, paletteSource, bindings.artworkColor, generation).then(
+      (next) => {
+        if (!cancelled) setPalette(next);
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -353,9 +351,12 @@ export function LyricsScene({
   ]);
 
   const style = {
-    '--lyrics-color': bindings.artworkColor,
+    '--lyrics-color': palette?.secondary ?? bindings.artworkColor,
     '--lyrics-ink': ink.ink,
     '--lyrics-ink-contrast': ink.contrast,
+    // Keep the foreground accessible, but make the sampled cover accent
+    // visible enough to read as part of the scene rather than plain white.
+    '--lyrics-foreground': `color-mix(in srgb, ${ink.ink} 72%, ${palette?.secondary ?? bindings.artworkColor})`,
     '--lyrics-stage-base': appearance.baseColor ?? scene.background.fallbackColor,
     '--lyrics-font-scale': String(preset.typography.fontScale),
     '--lyrics-font-size': cssPx(primaryFontPx),
