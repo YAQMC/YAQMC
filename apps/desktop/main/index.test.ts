@@ -246,6 +246,13 @@ describe('host boot wiring', () => {
     );
   });
 
+  it('loads the packaged IPC ACL from extraResources instead of the source tree', () => {
+    expect(source).toContain('const methodAclPath = app.isPackaged');
+    expect(source).toContain("process.resourcesPath, 'contract', 'methods.json'");
+    expect(source).toContain("'packages/yaqmc-client/fixtures/methods.json'");
+    expect(source).toContain('loadMethodAclFromFile(methodAclPath)');
+  });
+
   it('does not scrape every WebContents console-message', () => {
     expect(source).not.toContain('console-message');
   });

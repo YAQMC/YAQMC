@@ -36,6 +36,9 @@ extraResources:
     filter:
       - '**/*'
       - '!**/*.map'
+  # Main-process IPC ACL; packaged apps must not resolve this from the source tree.
+  - from: ../../packages/yaqmc-client/fixtures/methods.json
+    to: contract/methods.json
 # Binding amendment + SEC-02: Chromium sandbox stays enabled.
 # grantFileProtocolExtraPrivileges stays false so file:// cannot bypass sandbox.
 # EnableEmbeddedAsarIntegrityValidation is a Windows/macOS Electron feature, not a Linux anti-tamper claim.
