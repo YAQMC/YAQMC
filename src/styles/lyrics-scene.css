@@ -98,9 +98,14 @@
   justify-content: stretch;
 }
 
+.lyrics-scene__widget[data-widget='artwork'] {
+  /* The artwork work area can be rectangular, while a record must stay round. */
+  container-type: size;
+}
+
 .lyrics-scene__widget[data-widget='artwork'] .lyrics-stage__disc {
-  width: auto;
-  height: auto;
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
   max-width: 100%;
   max-height: 100%;
   aspect-ratio: 1;
