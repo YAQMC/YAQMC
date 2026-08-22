@@ -187,6 +187,7 @@ const smoke = process.env.YAQMC_DESKTOP_SMOKE === '1';
 /** Local Playwright `_electron` (FE-06 follow-up). Not the smoke harness; not CI. */
 const e2e = process.env.YAQMC_ELECTRON_E2E === '1';
 const e2eNative = e2e && process.env.YAQMC_E2E_NATIVE === '1';
+const rendererDiagnostics = !app.isPackaged || e2e || process.env.YAQMC_UI_PERF_DIAG === '1';
 const qaSandbox: QaSandboxPaths | null = requireQaSandboxFromEnv(process.env);
 if (qaSandbox) {
   app.setPath('userData', qaSandbox.electronUserData);
@@ -246,23 +247,29 @@ function writeHostLog(message: string): void {
   }
 }
 
-function rendererDevPageUrl(search: string): string | null {
-  if (app.isPackaged || process.env.YAQMC_VITE_DEV !== '1') {
-    return null;
+function diagnosticsSearch(search: string): string {
+  if (!rendererDiagnostics) return search;
+  return `${search}${search.includes('?') ? '&' : '?'}uiDiagnostics=1`;
+}
+
+function rendererPageUrl(search: string): string | null {
+  const resolvedSearch = diagnosticsSearch(search);
+  if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
+    return `${VITE_DEV_ORIGIN}/${resolvedSearch}`;
   }
-  return `${VITE_DEV_ORIGIN}/${search}`;
+  return rendererDiagnostics ? appIndexUrl(resolvedSearch) : null;
 }
 
 const lyricsUnlock = createLyricsUnlockOverlays({
   preloadPath: unlockPreloadPath,
   createWindow: createUnlockBrowserWindow,
-  pageUrl: (kind) => rendererDevPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
+  pageUrl: (kind) => rendererPageUrl(`?unlockSurface=${kind}`) ?? lyricsUnlockUrl(kind),
 });
 
 const lyricsSurfaces = createLyricsSurfaces({
   preloadPath: lyricsPreloadPath,
   createWindow: createLyricsBrowserWindow,
-  pageUrl: (kind) => rendererDevPageUrl(`?surface=${kind}`) ?? lyricsSurfaceUrl(kind),
+  pageUrl: (kind) => rendererPageUrl(`?surface=${kind}`) ?? lyricsSurfaceUrl(kind),
   getDisplayBounds: () =>
     screen.getAllDisplays().map((display) => ({
       x: display.workArea.x,
@@ -500,12 +507,13 @@ function rendererRoot(): string {
 
 function mainWindowUrl(root: string): string {
   if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
-    return e2e && !e2eNative ? `${VITE_DEV_ORIGIN}/?provider=fake` : `${VITE_DEV_ORIGIN}/`;
+    const search = e2e && !e2eNative ? '?provider=fake' : '';
+    return `${VITE_DEV_ORIGIN}/${diagnosticsSearch(search)}`;
   }
   if (!app.isPackaged && root === viteDist) {
-    return appIndexUrl('?provider=fake');
+    return appIndexUrl(diagnosticsSearch('?provider=fake'));
   }
-  return appIndexUrl();
+  return appIndexUrl(diagnosticsSearch(''));
 }
 
 function requireUpdater(): UpdaterHandle {

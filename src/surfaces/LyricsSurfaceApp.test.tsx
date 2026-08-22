@@ -109,7 +109,6 @@ describe('Desktop Lyrics interaction presentation', () => {
     expect(container.querySelector('.lyrics-surface__drag')).toHaveClass('yaqmc-drag');
     expect(container.querySelector('.desktop-lyrics__content')).not.toHaveClass('yaqmc-drag');
 
-    act(() => vi.advanceTimersByTime(121));
     fireEvent.pointerEnter(surface!);
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
     fireEvent.pointerLeave(surface!, { clientX: 9_000, clientY: 9_000 });

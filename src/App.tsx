@@ -59,6 +59,7 @@ import { usePlatformDiagnosticsRuntime } from './application/platform-integratio
 import { getYaqmcClient } from './application/yaqmc-runtime';
 import { usePluginHost } from './application/plugin-runtime';
 import { installPlaybackUiProbe } from './application/playback-ui-probe';
+import { uiDiagnosticsEnabled } from './application/ui-diagnostics';
 import './styles/index.css';
 
 const SettingsPage = lazy(async () => {
@@ -111,7 +112,8 @@ export default function App() {
   usePlatformDiagnosticsRuntime();
   useGuessContinuation(provider);
   usePluginHost();
-  useEffect(() => installPlaybackUiProbe(), []);
+  const uiDiagnostics = uiDiagnosticsEnabled();
+  useEffect(() => (uiDiagnostics ? installPlaybackUiProbe() : undefined), [uiDiagnostics]);
   const catalog = useCatalog();
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);
@@ -429,7 +431,7 @@ export default function App() {
     <div className="application-frame">
       <AppBackground />
       <ApplicationContextMenu />
-      {showFpsCounter && <FpsOverlay />}
+      {uiDiagnostics && showFpsCounter && <FpsOverlay />}
       <div
         className="app-shell"
         data-provider-id={provider.id}

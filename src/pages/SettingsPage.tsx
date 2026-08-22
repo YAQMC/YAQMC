@@ -61,6 +61,7 @@ import { isNativeRuntime } from '../application/native-player-runtime';
 import { useProviderSettings } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
 import { openProductLink } from '../application/external-links';
+import { uiDiagnosticsEnabled } from '../application/ui-diagnostics';
 import { buildMetadata, productMetadata, type ProductLink } from '../application/product-metadata';
 import {
   clearOldLogs,
@@ -687,6 +688,7 @@ export function SettingsPage() {
   const signOut = useAccountStore((state) => state.signOut);
   const platform = usePlatformIntegration();
   const preferences = usePreferencesStore();
+  const uiDiagnostics = uiDiagnosticsEnabled();
   const [copied, setCopied] = useState<'endpoint' | 'token' | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
@@ -1602,17 +1604,19 @@ export function SettingsPage() {
               </button>
             }
           />
-          <SettingRow
-            title={t('debug.fpsCounter')}
-            description={t('debug.fpsCounterDescription')}
-            control={
-              <Toggle
-                checked={preferences.debug.showFpsCounter}
-                label={t('debug.fpsCounter')}
-                onChange={(showFpsCounter) => preferences.updateDebug({ showFpsCounter })}
-              />
-            }
-          />
+          {uiDiagnostics && (
+            <SettingRow
+              title={t('debug.fpsCounter')}
+              description={t('debug.fpsCounterDescription')}
+              control={
+                <Toggle
+                  checked={preferences.debug.showFpsCounter}
+                  label={t('debug.fpsCounter')}
+                  onChange={(showFpsCounter) => preferences.updateDebug({ showFpsCounter })}
+                />
+              }
+            />
+          )}
           <SettingRow
             title={t('diagnostics.platformExport')}
             description={t('diagnostics.platformExportDescription')}
