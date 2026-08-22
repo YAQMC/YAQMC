@@ -556,6 +556,28 @@ describe('LyricsPanel', () => {
     expect(lastSung).toHaveAttribute('data-active');
   });
 
+  it('uses a three-dot marker only for a long instrumental break', async () => {
+    usePlayerStore.setState({ positionMs: 3_000 });
+    useLyricsStore.setState({
+      document: timedDocument({
+        lines: [
+          { id: 'one', text: 'One', startMs: 1_000, endMs: 2_000, words: [] },
+          { id: 'two', text: 'Two', startMs: 10_000, endMs: 11_000, words: [] },
+        ],
+      }),
+      status: 'ready',
+    });
+    render(<LyricsPanel {...presentationProps()} />);
+
+    const marker = await waitFor(() => {
+      const candidate = document.querySelector<HTMLElement>('.lyrics-stage__instrumental');
+      if (!candidate) throw new Error('instrumental marker is missing');
+      return candidate;
+    });
+    expect(marker.querySelectorAll('.lyrics-stage__instrumental-dot')).toHaveLength(3);
+    expect(marker).toHaveTextContent('');
+  });
+
   it('clears the previous cursor while an automatically advanced track loads its lyrics', () => {
     usePlayerStore.setState({ positionMs: 19_000, observedAtMs: performance.now() });
     const { container } = render(<LyricsPanel {...presentationProps()} />);

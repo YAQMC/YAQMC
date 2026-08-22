@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LyricDocument, LyricLine } from '../domain/music';
 import {
+  activeLyricInterlude,
   lastSungLineIndex,
   lyricInterludeRemainingMs,
   lyricScrollBehavior,
@@ -86,15 +87,36 @@ describe('lyrics timing', () => {
   });
 
   it('reports the remaining interlude during a long gap and a long intro', () => {
+    const firstStartMs = MIN_INTERLUDE_GAP_MS + 2_000;
+    const firstEndMs = firstStartMs + 1_000;
+    const secondStartMs = firstEndMs + MIN_INTERLUDE_GAP_MS;
     const lyrics = document([
-      line({ id: 'one', text: 'One', startMs: MIN_INTERLUDE_GAP_MS + 2_000, endMs: 9_000 }),
-      line({ id: 'two', text: 'Two', startMs: 14_000, endMs: 15_000 }),
+      line({ id: 'one', text: 'One', startMs: firstStartMs, endMs: firstEndMs }),
+      line({ id: 'two', text: 'Two', startMs: secondStartMs, endMs: secondStartMs + 1_000 }),
     ]);
 
     expect(lyricInterludeRemainingMs(lyrics, 1_000)).toBe(MIN_INTERLUDE_GAP_MS + 1_000);
-    expect(lyricInterludeRemainingMs(lyrics, 10_000)).toBe(4_000);
-    expect(lyricInterludeRemainingMs(lyrics, 14_000)).toBeNull();
-    expect(lyricInterludeRemainingMs(lyrics, 14_500)).toBeNull();
+    expect(lyricInterludeRemainingMs(lyrics, firstEndMs + 2_000)).toBe(
+      MIN_INTERLUDE_GAP_MS - 2_000,
+    );
+    expect(lyricInterludeRemainingMs(lyrics, secondStartMs - 1_000)).toBe(1_000);
+    expect(lyricInterludeRemainingMs(lyrics, secondStartMs)).toBeNull();
+  });
+
+  it('uses the latest earlier lyric end when qualifying interludes', () => {
+    const lyrics = document([
+      line({ id: 'one', text: 'One', startMs: 1_000, endMs: 9_000 }),
+      line({ id: 'overlap', text: 'Overlap', startMs: 3_000, endMs: 4_000 }),
+      line({ id: 'two', text: 'Two', startMs: 12_000, endMs: 13_000 }),
+      line({ id: 'three', text: 'Three', startMs: 17_000, endMs: 18_000 }),
+    ]);
+
+    expect(activeLyricInterlude(lyrics, 10_000)).toBeNull();
+    expect(activeLyricInterlude(lyrics, 15_000)).toEqual({
+      startMs: 13_000,
+      endMs: 17_000,
+      anchorLineIndex: 2,
+    });
   });
 
   it('tracks the last sung line through timed gaps', () => {
