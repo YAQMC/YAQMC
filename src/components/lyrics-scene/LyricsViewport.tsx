@@ -1,4 +1,12 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { AlignLeft, LocateFixed, Music2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -314,8 +322,9 @@ const LyricLineView = memo(
     const active = cursor.lineIndex === lineIndex;
     const highlighted = highlightLineIndex === lineIndex;
     const complete =
-      cursor.lineIndex > lineIndex ||
-      (cursor.lineIndex !== lineIndex && lastSungLineIndex >= lineIndex);
+      !highlighted &&
+      (cursor.lineIndex > lineIndex ||
+        (cursor.lineIndex !== lineIndex && lastSungLineIndex >= lineIndex));
     const vocalist = document.vocalists.find((candidate) => candidate.id === line.vocalistId);
 
     return (
@@ -470,6 +479,7 @@ export function LyricsViewport({
   const timelineRevision = editorGesture ? timelineRevisionProp : runtimeRevision;
   const scrollArea = useRef<HTMLDivElement>(null);
   const scrollContent = useRef<HTMLDivElement>(null);
+  const initialFollowContext = useRef<string | null>(null);
   const [followState, setFollowState] = useState<LyricsFollowState>('active');
   const [followSongId, setFollowSongId] = useState(songId);
   if (followSongId !== songId) {
@@ -481,20 +491,24 @@ export function LyricsViewport({
     lastSungLineIndex: sungLineIndex,
     interludeRemainingMs,
   } = useLyricCursor(document, getPositionMs, presentationOffsetMs, timelineRevision, isPlaying);
-  const [highlightLineIndex, setHighlightLineIndex] = useState(cursor.lineIndex);
+  // Between timed lines there is no active cursor, but playback is still at a
+  // meaningful lyric position. Keep the last sung line in view rather than
+  // falling back to the beginning of the document on a fresh mount.
+  const followLineIndex = cursor.lineIndex >= 0 ? cursor.lineIndex : sungLineIndex;
+  const [highlightLineIndex, setHighlightLineIndex] = useState(followLineIndex);
   const [highlightSongId, setHighlightSongId] = useState(songId);
   if (highlightSongId !== songId) {
     setHighlightSongId(songId);
-    setHighlightLineIndex(cursor.lineIndex);
+    setHighlightLineIndex(followLineIndex);
   }
   const followingActive = followState === 'active' && !editorGesture;
   const handoffPending =
     followingActive &&
     !reducedMotion &&
     highlightLineIndex >= 0 &&
-    cursor.lineIndex - highlightLineIndex === 1;
-  if (!handoffPending && highlightLineIndex !== cursor.lineIndex) {
-    setHighlightLineIndex(cursor.lineIndex);
+    followLineIndex - highlightLineIndex === 1;
+  if (!handoffPending && highlightLineIndex !== followLineIndex) {
+    setHighlightLineIndex(followLineIndex);
   }
 
   useEffect(() => {
@@ -506,22 +520,72 @@ export function LyricsViewport({
     highlightLineRef.current = highlightLineIndex;
   }, [highlightLineIndex]);
 
-  const latestCursorLineRef = useRef(cursor.lineIndex);
+  const latestFollowLineRef = useRef(followLineIndex);
   useEffect(() => {
-    latestCursorLineRef.current = cursor.lineIndex;
-  }, [cursor.lineIndex]);
+    latestFollowLineRef.current = followLineIndex;
+  }, [followLineIndex]);
 
   const scrollToCurrentLine = (options: { force?: boolean; onArrive?: () => void } = {}) => {
-    centerLyricLine(scrollArea.current, scrollContent.current, cursor.lineIndex, reducedMotion, {
+    centerLyricLine(scrollArea.current, scrollContent.current, followLineIndex, reducedMotion, {
       followAnchor,
       force: options.force,
       onArrive: options.onArrive,
     });
   };
 
+  const followContext = `${songId ?? 'none'}:${document?.songId ?? 'none'}:${layoutKey ?? ''}`;
+
+  useLayoutEffect(() => {
+    if (
+      initialFollowContext.current === followContext ||
+      followState !== 'active' ||
+      editorGesture ||
+      followLineIndex < 0
+    ) {
+      return;
+    }
+
+    let frame: number | null = null;
+    const centerAfterLayout = () => {
+      frame = null;
+      const area = scrollArea.current;
+      const content = scrollContent.current;
+      if (!area || !content) return;
+      const areaHeight = area.clientHeight || area.getBoundingClientRect().height;
+      const contentHeight = content.getBoundingClientRect().height;
+      if (areaHeight <= 0 || contentHeight <= 0) return;
+
+      // A lyrics stage can mount while its enter transition and scene sizing are
+      // still settling. Wait for a real layout, then place the current line once;
+      // subsequent line changes continue through the regular spring path below.
+      centerLyricLine(area, content, followLineIndex, reducedMotion, {
+        followAnchor,
+        force: true,
+      });
+      initialFollowContext.current = followContext;
+    };
+    const scheduleCenter = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(centerAfterLayout);
+    };
+
+    if (typeof ResizeObserver !== 'function') {
+      return;
+    }
+
+    const observer = new ResizeObserver(scheduleCenter);
+    if (scrollArea.current) observer.observe(scrollArea.current);
+    if (scrollContent.current) observer.observe(scrollContent.current);
+    scheduleCenter();
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [followLineIndex, editorGesture, followContext, followState, followAnchor, reducedMotion]);
+
   useEffect(() => {
-    if (followState !== 'active' || editorGesture || cursor.lineIndex < 0) return;
-    const targetLine = cursor.lineIndex;
+    if (followState !== 'active' || editorGesture || followLineIndex < 0) return;
+    const targetLine = followLineIndex;
     const needsHandoff =
       !reducedMotion &&
       highlightLineRef.current >= 0 &&
@@ -530,7 +594,7 @@ export function LyricsViewport({
       onArrive: needsHandoff
         ? () => {
             requestAnimationFrame(() => {
-              if (latestCursorLineRef.current === targetLine) {
+              if (latestFollowLineRef.current === targetLine) {
                 setHighlightLineIndex(targetLine);
               }
             });
@@ -539,15 +603,7 @@ export function LyricsViewport({
     });
     // Line-transition driven. Word ticks must not recenter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    songId,
-    cursor.lineIndex,
-    followState,
-    editorGesture,
-    followAnchor,
-    reducedMotion,
-    layoutKey,
-  ]);
+  }, [songId, followLineIndex, followState, editorGesture, followAnchor, reducedMotion, layoutKey]);
 
   useEffect(() => () => cancelScrollSpring(scrollArea.current), []);
 
@@ -555,7 +611,7 @@ export function LyricsViewport({
     setFollowState('active');
     logger.info('lyrics.follow.resume', 'resumed current-line follow', {
       songId,
-      lineIndex: cursor.lineIndex,
+      lineIndex: followLineIndex,
     });
     scrollToCurrentLine({ force: true });
   };

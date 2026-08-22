@@ -491,6 +491,71 @@ describe('LyricsPanel', () => {
     await waitFor(() => expect(lyricOffset(container)).toBeGreaterThan(settled));
   });
 
+  it('centers the last sung line when opening during a timed lyric gap', async () => {
+    const rect = (top: number, height = 50) =>
+      ({ top, height, bottom: top + height, left: 0, right: 0, width: 0 }) as DOMRect;
+    let layoutReady = false;
+    const resizeCallbacks = new Set<ResizeObserverCallback>();
+    let nextFrame = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    class TestResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallbacks.add(callback);
+      }
+      observe() {}
+      disconnect() {
+        resizeCallbacks.clear();
+      }
+      unobserve() {}
+    }
+    vi.stubGlobal('ResizeObserver', TestResizeObserver);
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((callback: FrameRequestCallback) => {
+        const id = ++nextFrame;
+        frames.set(id, callback);
+        return id;
+      }),
+    );
+    vi.stubGlobal(
+      'cancelAnimationFrame',
+      vi.fn((id: number) => frames.delete(id)),
+    );
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: vi.fn(function (this: HTMLElement) {
+        if (!layoutReady) return rect(0, 0);
+        if (this.classList.contains('lyrics-stage__scroll')) return rect(0, 400);
+        if (this.classList.contains('lyrics-stage__scroll-content')) return rect(0, 1_200);
+        if (this.hasAttribute('data-line-index')) return rect(600);
+        return rect(0, 0);
+      }),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get() {
+        return layoutReady ? 400 : 0;
+      },
+    });
+    usePlayerStore.setState({ positionMs: 3_000 });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+
+    const lastSung = await screen.findByRole('button', { name: 'First line' });
+    expect(lyricOffset(container)).toBe(0);
+
+    layoutReady = true;
+    act(() => {
+      resizeCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
+      const pending = [...frames.values()];
+      frames.clear();
+      pending.forEach((callback) => callback(performance.now()));
+    });
+
+    expect(lyricOffset(container)).toBeGreaterThan(0);
+    expect(lastSung).toHaveAttribute('data-active');
+  });
+
   it('clears the previous cursor while an automatically advanced track loads its lyrics', () => {
     usePlayerStore.setState({ positionMs: 19_000, observedAtMs: performance.now() });
     const { container } = render(<LyricsPanel {...presentationProps()} />);
