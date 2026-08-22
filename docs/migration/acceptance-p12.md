@@ -1,5 +1,10 @@
 # P12 acceptance tracker (ACC-01..04)
 
+> **P15 historical-evidence overlay:** this tracker records the P12 entry
+> decision only. It is frozen and cannot satisfy final acceptance. Use
+> [`acceptance-final.md`](acceptance-final.md) for the current §46/CLEAN-03
+> state.
+
 Opened **2026-08-20** under
 [`p12-conditional-entry.md`](p12-conditional-entry.md). This is **not**
 ACC-05 sign-off and **not** P11 PASS.

@@ -8,6 +8,7 @@ plans under `docs/plans/` and `docs/superpowers/` are historical development rec
 ## Start here
 
 - [Architecture](architecture.md)
+- [Development](development.md) and [data locations, upgrades, and uninstall](data-locations.md)
 - [Playback](playback.md) and [progressive streaming](streaming.md)
 - [QQ Music provider](qqmusic-provider.md), [authentication](authentication.md),
   [home recommendations](home-recommendations.md), [discover page](discover.md),
@@ -29,6 +30,7 @@ plans under `docs/plans/` and `docs/superpowers/` are historical development rec
 - [Logging](logging.md), [diagnostics](diagnostics.md),
   [Issue reporting](issue-reporting.md), and [security & privacy](security.md)
 - [CI, caches, and downloadable artifacts](ci.md)
+- [Electron migration execution archive](migration/README.md)
 
 ## Acceptance records
 

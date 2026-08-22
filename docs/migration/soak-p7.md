@@ -1,5 +1,9 @@
 # SOAK-01 / PLAY-03 Electron soak notes
 
+> **P15 historical overlay (2026-08-22):** this is retained soak evidence, not
+> the current phase tracker. Use [`acceptance-final.md`](acceptance-final.md)
+> and [`p15-closeout.md`](p15-closeout.md) for current status.
+
 P7 first soak and `backgroundThrottling` notes. LIVE VERIFY (real QQ account) is maintainer-only. Do not start `qm-api-rs`. Provenance remains **BLOCKED**.
 
 **Current Status (2026-08-20):** PLAY-01 **PASS-HUMAN**, PLAY-02 **PASS-HUMAN**,

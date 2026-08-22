@@ -1,5 +1,9 @@
 # Data-path and persistence baseline
 
+> **P15 historical-evidence overlay:** this is the retired-host P0 baseline,
+> not current setup or uninstall guidance. Current Electron paths and retention
+> rules are documented in [`../data-locations.md`](../data-locations.md).
+
 This is the P0 continuity baseline for the current Tauri host. The rows marked **SOURCE-VERIFIED** come from the current identifier and path-resolution code; they are not substitutes for a live desktop measurement. No Windows or Linux diagnostics snapshot was supplied to this worktree, so every live result remains **PENDING — manual measurement required**.
 
 ## Resolved directories

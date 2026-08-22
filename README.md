@@ -17,6 +17,7 @@
   <a href="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml/badge.svg" alt="CI 状态"></a>
   <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111" alt="React 19">
+  <img src="https://img.shields.io/badge/Rust-1.88%2B-000?logo=rust&logoColor=white" alt="Rust 1.88 或更高版本">
 </p>
 
 > [!IMPORTANT]
@@ -129,7 +130,10 @@ chmod +x YAQMC*.AppImage
 ./YAQMC*.AppImage
 ```
 
-如果仍然失败，请运行安装包附带的 `collect-linux-diagnostics.sh`，并将生成的压缩包交给开发者分析。
+如果仍然失败，请另行下载与同一 commit 绑定的
+`YAQMC-linux-x64-tester-<commit>` 测试产物，运行其中的
+`collect-linux-diagnostics.sh`，再将生成的压缩包交给开发者分析。普通 AppImage
+安装包不内含诊断脚本。
 
 ## 安全与隐私
 
@@ -159,7 +163,7 @@ QMC/MFLAC 解密与随机拖动已经通过外部样本验证。线上“臻品�
 
 ### 环境
 
-- Node.js 24.19.0 与 npm
+- 精确使用 Node.js 24.19.0 与其自带 npm
 - Rust 1.88 或更高版本
 - Windows：MSVC 构建工具
 - Debian / Ubuntu：Rust 原生音频所需的 ALSA 开发包；生成 `.rpm` 时还需 `rpm` 与 `fakeroot`
@@ -171,6 +175,9 @@ npm ci
 npm run dev:desktop
 ```
 
+原生 Core 无条件链接私有 `qm-api-rs` 精确 pin；本机 Git 必须已有读取权限。
+完整认证与环境说明见[开发环境](docs/zh-CN/development.md)。
+
 浏览器开发模式使用确定性的假数据提供器；账号、安全存储、缓存和原生音频只存在于 Electron 桌面宿主：
 
 ```powershell
@@ -180,7 +187,9 @@ npm run dev
 ### 构建
 
 ```powershell
-# 生成前端 dist 并构建 Electron 主进程/预加载脚本
+# 先生成并暂存 release Core，再构建前端与 Electron 主进程/预加载脚本
+cargo build -p yaqmc-core --release --locked
+npm run stage-core -- --profile release
 npm run ci:frontend-build
 npm run build -w @yaqmc/desktop
 
@@ -198,7 +207,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --all-targets --locked
 ```
 
-四个被忽略的 Rust 测试会连接真实服务或播放声音，只应在合适的测试环境中主动运行：
+被忽略的 Rust 测试可能连接真实服务或播放声音，只应在合适的测试环境中主动运行：
 
 ```powershell
 cargo test --workspace -- --ignored --nocapture
@@ -207,6 +216,8 @@ cargo test --workspace -- --ignored --nocapture
 ### 进一步阅读
 
 - [中文文档总目录](docs/zh-CN/README.md)
+- [开发环境](docs/zh-CN/development.md)
+- [数据位置、升级与卸载](docs/zh-CN/data-locations.md)
 - [架构](docs/zh-CN/architecture.md)
 - [播放](docs/zh-CN/playback.md)
 - [流式传输](docs/zh-CN/streaming.md)

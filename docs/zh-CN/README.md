@@ -8,6 +8,7 @@
 ## 从这里开始
 
 - [整体架构](architecture.md)
+- [开发环境](development.md)与[数据位置、升级及卸载](data-locations.md)
 - [播放系统](playback.md)与[渐进式流媒体](streaming.md)
 - [QQ 音乐提供器](qqmusic-provider.md)、[登录与安全存储](authentication.md)、
   [首页推荐](home-recommendations.md)、[发现页](discover.md)、[账号音乐库](account-library.md)、
@@ -25,6 +26,7 @@
 - [日志系统](logging.md)、[诊断快照与诊断包](diagnostics.md)、
   [GitHub Issue 报告](issue-reporting.md)与[安全与隐私](security.md)
 - [CI、缓存与可下载产物](ci.md)
+- [Electron 迁移执行档案](../migration/README.md)
 
 ## 验收记录
 

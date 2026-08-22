@@ -53,7 +53,8 @@ Tagged releases publish the package formats that each supported runner can build
 
 AMD64, x86_64, and the release label x64 name the same architecture. Windows i686/x86 packages are no longer published.
 Release artifacts include SHA-256 checksums. Linux runtime acceptance remains host-specific—especially on native
-Wayland—so the x86_64 AppImage also ships with the diagnostics and acceptance bundle described in
+Wayland. The x86_64 AppImage and the revision-bound `YAQMC-linux-x64-tester-<commit>` bundle are separate artifacts;
+only the tester bundle contains the diagnostics collector, verifier, and acceptance documents described in
 [the Linux guide](docs/linux.md).
 
 ## Current status
@@ -77,7 +78,7 @@ verified.
 
 ## Install prerequisites
 
-- Node.js 24.19.0 and npm
+- Node.js 24.19.0 exactly, with its bundled npm
 - Rust 1.88 or newer
 - Windows: MSVC build tools
 - Debian/Ubuntu: ALSA development files for native audio; `rpm` and `fakeroot` when producing RPM bundles
@@ -88,6 +89,10 @@ verified.
 npm ci
 npm run dev:desktop
 ```
+
+Native Core links the exact private `qm-api-rs` production pin unconditionally;
+local Git must already have read access. See [development](docs/development.md)
+for authentication and environment details.
 
 Browser development intentionally uses the deterministic fake provider because credentials, native audio, cache,
 and QQ Music transport live behind the Electron desktop host:
@@ -102,7 +107,9 @@ deterministic UI evidence.
 ## Build locally
 
 ```powershell
-# Build frontend assets, Electron Main, and preload scripts
+# Build and stage release Core, then frontend assets, Electron Main, and preload
+cargo build -p yaqmc-core --release --locked
+npm run stage-core -- --profile release
 npm run ci:frontend-build
 npm run build -w @yaqmc/desktop
 
@@ -123,8 +130,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --all-targets --locked
 ```
 
-Four ignored Rust tests deliberately contact a live provider or audible native output. Run them only on a suitable
-host:
+Ignored Rust tests may contact a live provider or audible native output. Run them only on a suitable host:
 
 ```powershell
 cargo test --workspace -- --ignored --nocapture
@@ -165,6 +171,7 @@ single-command capability and cannot access account or player state.
 - `scripts/collect-linux-diagnostics.sh` — privacy-bounded tester capture
 
 Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
+[development](docs/development.md), [data locations and uninstall](docs/data-locations.md),
 [streaming](docs/streaming.md), [platform integration](docs/platform-integration.md),
 [Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),
 [authentication](docs/authentication.md), [account library](docs/account-library.md),

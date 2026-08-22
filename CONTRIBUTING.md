@@ -16,6 +16,9 @@ npm ci
 npm run dev:desktop
 ```
 
+完整的分层构建、打包与 QA profile 约束见[开发环境](docs/zh-CN/development.md)；
+升级、卸载与持久数据路径见[数据位置](docs/zh-CN/data-locations.md)。
+
 浏览器开发使用确定性 fake provider：
 
 ```powershell

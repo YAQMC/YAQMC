@@ -1,5 +1,10 @@
 # Parked LIVE VERIFY / hardware / provenance (2026-08-18; amended 2026-08-20)
 
+> **P15 historical overlay (2026-08-22):** this file preserves an earlier
+> execution snapshot; its phase gates and “Current Status” statements are not
+> current. Use [`acceptance-final.md`](acceptance-final.md) for the final
+> acceptance ledger and [`p15-closeout.md`](p15-closeout.md) for closeout state.
+
 This is the handoff for a later, higher-capability pass. **Do not tick these green
 from YAML, scripts, or checklists.** Code and dry-run docs already exist; the
 rows below are still empty **or** explicitly **BLOCKED-EXTERNAL** / **DEFERRED**.

@@ -12,6 +12,9 @@ npm ci
 npm run dev:desktop
 ```
 
+See [development](docs/development.md) for the layered build, packaging, and QA-profile rules, and
+[data locations](docs/data-locations.md) for upgrade and uninstall behavior.
+
 Since the P14-C cutover, the private `qm-api-rs` crate (`qqmusic-api`) is the
 unconditional production dependency, pinned at
 `476b37e3135560dff132e9ba8996e068af706458`. A sibling checkout at `../qm-api-rs`

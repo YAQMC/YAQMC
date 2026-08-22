@@ -5,26 +5,23 @@
 The desktop runtime keeps transport, persistence, playback, and presentation independently replaceable:
 
 ```text
-React pages/components
-        |
-MusicProvider + ProviderAccount + player projection
-   |                                        |
-QQMusicProvider (Electron renderer/Main)     | player://snapshot + api://event
-FakeMusicProvider                            |
-   |                                        |
-QQMusicService ------------------------> PlayerService <-------- LocalApiService
-   |          account/auth/entitlement    queue/state machine       127.0.0.1 + SSE
-   |                                        |
-direct account transport + public HTTP   MediaPreparer
-   |                                        |
-QQ compatibility endpoints              HTTP Range source + bounded file cache
-                                            |
-                                      AudioEngine worker
-                                        Rodio / CPAL
+Sandboxed React renderers (main / lyrics / island / OAuth)
+        │ contextBridge: role-scoped API only
+        ▼
+Electron preload + Main
+windows · tray · shortcuts · updater · dialogs · Core supervisor
+        │ framed protocol v1 over child stdio
+        ▼
+yaqmc-core
+ProviderRegistry ── QQMusicProvider ── pinned qm-api-rs + retained hybrids
+        │
+        ├── PlayerService ── MediaPreparer / HTTP Range cache ── AudioEngine (Rodio / CPAL)
+        ├── StorageService ── SQLite metadata, settings, history, queue, cache index
+        ├── CredentialStore ── OS keychain / credential vault
+        ├── LocalApiService ── authenticated 127.0.0.1 HTTP + SSE
+        └── SystemMediaIntegration ── MPRIS 2.2 / SMTC
 
-StorageService: SQLite metadata, settings, history, queue state, and file-cache index
-CredentialStore: OS keychain/credential vault for provider sessions and the local API token
-Platform adapters: Core-owned MPRIS 2.2 / SMTC, plus Electron tray / shortcuts -> PlayerService
+Browser-only Vite: React ── FakeMusicProvider + simulated player adapter
 ```
 
 ## Ownership rules

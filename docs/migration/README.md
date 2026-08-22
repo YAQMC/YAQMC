@@ -2,8 +2,11 @@
 
 This directory is the execution record for the Electron migration. Facts in these documents are captured from the `bc55b7ddd2a57cde8987c96c7c20f0b7d4a2e742` Tauri baseline unless explicitly marked as a future migration decision.
 
-- [P12 conditional-entry waiver — 2026-08-20](p12-conditional-entry.md) (Actions quota is **BLOCKED-EXTERNAL**, not a product FAIL; P11 not PASS; ACC-01..04 allowed; ACC-05 / P13 blocked)
-- [P12 acceptance tracker ACC-01..04](acceptance-p12.md) (living; not ACC-05 sign-off)
+- [P12 conditional-entry waiver — 2026-08-20](p12-conditional-entry.md)
+  (historical entry conditions only; superseded by the P15 closeout and final
+  acceptance tracker)
+- [P12 acceptance tracker ACC-01..04](acceptance-p12.md) (historical P12 entry
+  evidence; not final sign-off)
 - [Temporary maintainer handoff — 2026-08-18](HANDOFF_2026-08-18.md) (frozen at `1d6b535`; not current HUMAN state; ignore its “P12 not started” line)
 - [HUMAN ledger from PLAY-01 — 2026-08-19](linux-human-2026-08-19.md) (this session plus handoff §4 already-tested rows; not a phase sign-off; maintainer HUMAN default is Linux Wayland — do not switch to X11 to fill skipped rows)
 - [QA agent AUTO/LIVE ledger — 2026-08-19](qa-agent-2026-08-19.md) (Windows agent pass; PASS-AUTO / LIVE only; not phase sign-off)
@@ -34,5 +37,10 @@ This directory is the execution record for the Electron migration. Facts in thes
 - [P14-C production-path implementation evidence](p14c-implementation.md)
 - [P14 qm-api-rs crate provenance gate](p14-qm-api-rs-provenance.md)
 - [P14 qm-api-rs upstream work order](p14-qm-api-rs-upstream.md)
+- [P15 cleanup closeout](p15-closeout.md)
+- [P15 final §46 acceptance tracker](acceptance-final.md) (0/20 until
+  independently signed)
+- [P15 post-migration issue drafts](follow-up-issues.md) (filing blocked until
+  authorized GitHub access is available)
 
 The source specification is retained verbatim at repository root as `YAQMC_ELECTRON_MIGRATION_PLAN.md`.
