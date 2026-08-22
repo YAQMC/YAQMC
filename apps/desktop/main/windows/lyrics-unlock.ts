@@ -184,6 +184,7 @@ export type LyricsUnlockOverlays = {
 
 export function createLyricsUnlockOverlays(deps: LyricsUnlockDeps): LyricsUnlockOverlays {
   const windows = new Map<LyricsUnlockKind, LyricsUnlockWindow>();
+  const visible = new Set<LyricsUnlockKind>();
 
   function create(kind: LyricsUnlockKind): LyricsUnlockWindow {
     const existing = windows.get(kind);
@@ -198,9 +199,17 @@ export function createLyricsUnlockOverlays(deps: LyricsUnlockDeps): LyricsUnlock
   return {
     create,
     show(kind) {
+      const existing = windows.get(kind);
+      if (visible.has(kind) && existing && existing.isDestroyed?.() !== true) {
+        return;
+      }
+      visible.add(kind);
       showLyricsUnlock(create(kind));
     },
     hide(kind) {
+      if (!visible.delete(kind)) {
+        return;
+      }
       const window = windows.get(kind);
       if (!window || window.isDestroyed?.()) {
         return;

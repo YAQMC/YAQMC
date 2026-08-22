@@ -99,6 +99,22 @@ describe('preference persistence model', () => {
     );
   });
 
+  it('does not replace surface state for an unchanged native interaction event', () => {
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      surfaces: {
+        desktop: { ...defaultPreferences.surfaces.desktop },
+        island: { ...defaultPreferences.surfaces.island },
+      },
+      persistenceError: null,
+    });
+    const surfaces = usePreferencesStore.getState().surfaces;
+
+    usePreferencesStore.getState().setSurfaceInteractionLocal('desktop', 'interactive');
+
+    expect(usePreferencesStore.getState().surfaces).toBe(surfaces);
+  });
+
   it('does not let a preferences snapshot unlock a host-locked surface', () => {
     const locked = mergeHydratedSurfaces(
       {

@@ -168,10 +168,12 @@ describe('createLyricsUnlockOverlays controller', () => {
     expect(overlays.create('desktop')).toBe(desktop);
     expect(overlays.create('desktop')).toBe(desktop);
     overlays.show('island');
+    overlays.show('desktop');
     overlays.hide('desktop');
 
     expect(createWindow).toHaveBeenCalledTimes(2);
     expect(desktop.hide).toHaveBeenCalledTimes(1);
+    expect(desktop.showInactive).toHaveBeenCalledTimes(1);
     expect(island.showInactive).toHaveBeenCalledTimes(1);
     expect(island.show).not.toHaveBeenCalled();
     expect(overlays.get('desktop')).toBe(desktop);
@@ -181,6 +183,19 @@ describe('createLyricsUnlockOverlays controller', () => {
     expect(island.setFocusable).toHaveBeenCalledWith(true);
     expect(island.setSkipTaskbar).toHaveBeenCalledWith(true);
     expect(island.moveTop).toHaveBeenCalled();
+  });
+
+  it('does not repeat unchanged native show and hide operations', () => {
+    const window = mockWindow();
+    const overlays = createLyricsUnlockOverlays({ createWindow: () => window });
+
+    overlays.show('desktop');
+    overlays.show('desktop');
+    overlays.hide('desktop');
+    overlays.hide('desktop');
+
+    expect(window.showInactive).toHaveBeenCalledTimes(1);
+    expect(window.hide).toHaveBeenCalledTimes(1);
   });
 
   it('positions an existing pill at the surface top-right and does not create on move', () => {
