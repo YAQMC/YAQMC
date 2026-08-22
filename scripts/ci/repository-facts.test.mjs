@@ -45,7 +45,7 @@ function copyFactRepository() {
 test('collects canonical requirements and continuity facts from production repository sources', () => {
   const facts = collectRepositoryFacts(repositoryRoot);
   assert.deepEqual(facts.toolchains, {
-    node: '24.19.0',
+    node: '26.7.0',
     npm: null,
     rustc: '1.88.0',
     cargo: '1.88.0',
@@ -78,7 +78,7 @@ test('collects canonical requirements and continuity facts from production repos
 test('rejects a temporary repository whose Node pins disagree', () => {
   const root = copyFactRepository();
   writeFileSync(path.join(root, '.node-version'), '0.0.0\n');
-  assert.throws(() => collectRepositoryFacts(root), /Node requirement.*0\.0\.0.*24\.19\.0/);
+  assert.throws(() => collectRepositoryFacts(root), /Node requirement.*0\.0\.0.*26\.7\.0/);
 });
 
 test('rejects a temporary repository whose workspace MSRV disagrees with workflow pins', () => {

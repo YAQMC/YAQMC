@@ -7,7 +7,7 @@
 
 ## 开发环境
 
-- Node.js 24.19.0 与 npm；
+- Node.js 26.7.0 与 npm；
 - Rust 1.88 或更高版本；
 - Windows 使用 MSVC；Linux 安装 Rust 原生音频与目标打包格式所需的系统依赖。
 

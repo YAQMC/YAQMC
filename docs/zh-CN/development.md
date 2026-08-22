@@ -7,7 +7,7 @@ Rust Core 进程。原生开发会构建三层；浏览器开发固定使用确�
 
 ## 必需工具链
 
-- 精确使用 Node.js **24.19.0** 及其自带 npm；
+- 精确使用 Node.js **26.7.0** 及其自带 npm；
 - Rust **1.88.0 或更高版本**（CI 使用 1.88.0 验证 workspace）；
 - Windows：MSVC 构建工具；
 - Debian/Ubuntu：原生音频所需 ALSA 开发头；若生成全部 Linux 包格式，还需

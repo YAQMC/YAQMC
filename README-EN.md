@@ -78,7 +78,7 @@ verified.
 
 ## Install prerequisites
 
-- Node.js 24.19.0 exactly, with its bundled npm
+- Node.js 26.7.0 exactly, with its bundled npm
 - Rust 1.88 or newer
 - Windows: MSVC build tools
 - Debian/Ubuntu: ALSA development files for native audio; `rpm` and `fakeroot` when producing RPM bundles

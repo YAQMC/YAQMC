@@ -8,7 +8,7 @@ development intentionally substitutes the deterministic fake provider.
 
 ## Required toolchain
 
-- Node.js **24.19.0 exactly** and the npm version bundled with it;
+- Node.js **26.7.0 exactly** and the npm version bundled with it;
 - Rust **1.88.0 or newer** (CI verifies the workspace on 1.88.0);
 - Windows: MSVC build tools;
 - Debian/Ubuntu: ALSA development headers for native audio, plus `rpm` and
