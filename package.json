@@ -51,6 +51,8 @@
     "perf:lyrics-occlusion": "node scripts/migration/lyrics-occlusion-lifecycle-diag.mjs"
   },
   "dependencies": {
+    "@applemusic-like-lyrics/core": "0.5.2",
+    "@applemusic-like-lyrics/react": "0.5.2",
     "@yaqmc/client": "*",
     "i18next": "^26.3.6",
     "lucide-react": "^1.31.0",

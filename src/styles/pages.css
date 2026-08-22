@@ -1182,14 +1182,6 @@
   grid-row: 1;
 }
 
-.lyrics-composer-stage .lyrics-stage__spacer {
-  flex-basis: 36cqh;
-}
-
-.lyrics-composer-stage .lyrics-stage__scroll-content {
-  padding-block: 6cqh 8cqh;
-}
-
 @media (max-width: 1280px) {
   .lyrics-preset-editor {
     width: 98vw;

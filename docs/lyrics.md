@@ -108,10 +108,11 @@ fullscreen reconciliation. It does not close the final NSIS release checkpoint.
 ## AMLL decision
 
 The upstream [Apple Music-like Lyrics repository](https://github.com/amll-dev/applemusic-like-lyrics) and its
-published packages are currently licensed `AGPL-3.0-only`. YAQMC does not yet have a final project
-license. Direct package linkage or source reuse would therefore create an unresolved strong-copyleft
-distribution obligation.
+published packages are licensed `AGPL-3.0-only`. YAQMC is `GPL-3.0-or-later`; GPLv3 section 13 expressly
+permits a combined work with AGPLv3 code, while the AGPL network-interaction source requirement applies to
+the combination.
 
-No AMLL code or package is used in this repository. The renderer is an independent implementation based on
-the product's required behavior and normalized data model. If the project later adopts an AGPL-compatible
-license, maintainers may reassess the maintained upstream package instead of duplicating its capabilities.
+The desktop renderer directly uses the official, lockfile-pinned `@applemusic-like-lyrics/core` and
+`@applemusic-like-lyrics/react` packages at `0.5.2`. YAQMC adapts its normalized lyric document at the
+component boundary and does not vendor or modify AMLL source. Distributors must preserve AMLL's notices and
+provide the complete corresponding source required by GPLv3/AGPLv3.

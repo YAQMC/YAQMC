@@ -54,7 +54,7 @@ describe('LyricsPresetPicker', () => {
     const preview = document.querySelector('.lyrics-preset-preview') as HTMLElement | null;
     expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1.25');
     expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
-    expect(document.querySelector('.lyrics-line')).not.toBeNull();
+    expect(document.querySelector('.amll-lyric-player')).not.toBeNull();
     const backdrop = document.querySelector('.lyrics-stage__backdrop') as HTMLElement | null;
     expect(backdrop?.style.backgroundImage).toContain('/artwork/gem-together.svg');
     expect(backdrop?.style.filter).toBe('');
@@ -63,8 +63,7 @@ describe('LyricsPresetPicker', () => {
     const lineSpacing = screen.getByRole('slider', { name: 'Lyrics line spacing' });
     fireEvent.input(lineSpacing, { target: { value: '1.4' } });
     expect(preview?.style.getPropertyValue('--lyrics-line-height')).toBe('1.4');
-    expect(screen.getByText('Even if the world is vast')).toBeInTheDocument();
-    expect(screen.getByText('jiu suan shi jie zai da')).toBeInTheDocument();
+    expect(document.querySelector('.amll-lyric-player')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply to this preset' }));

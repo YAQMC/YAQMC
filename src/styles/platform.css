@@ -41,8 +41,6 @@
   inset: 0;
 }
 
-:root[data-platform='linux'] .lyrics-stage__follow,
-:root[data-platform='linux'] .lyrics-stage__instrumental,
 :root[data-platform='linux'] .lyrics-fullscreen-transport,
 :root[data-platform='linux']
   .lyrics-stage[data-cover-layout='full']
@@ -50,8 +48,6 @@
 :root[data-platform='linux'] .lyrics-surface--desktop::before,
 :root[data-platform='linux'] .lyrics-surface--desktop::after,
 :root[data-platform='linux'] .island-card,
-:root[data-platform='windows'] .lyrics-stage__follow,
-:root[data-platform='windows'] .lyrics-stage__instrumental,
 :root[data-platform='windows'] .lyrics-fullscreen-transport,
 :root[data-platform='windows']
   .lyrics-stage[data-cover-layout='full']
@@ -74,18 +70,9 @@
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
 }
 
-:root[data-platform='linux'] .lyrics-line,
 :root[data-platform='linux'] .lyrics-surface__line,
-:root[data-platform='windows'] .lyrics-line,
 :root[data-platform='windows'] .lyrics-surface__line {
   contain: layout paint style;
-}
-
-:root[data-platform='linux'] .lyrics-line:not([data-active]),
-:root[data-platform='linux'] .lyrics-line[data-active],
-:root[data-platform='windows'] .lyrics-line:not([data-active]),
-:root[data-platform='windows'] .lyrics-line[data-active] {
-  filter: none;
 }
 
 :root[data-platform='linux'][data-graphics-mode='software'] .lyrics-scene__video,
@@ -109,15 +96,8 @@
   transition-duration: 1ms !important;
 }
 
-:root[data-platform='linux'][data-graphics-mode='software'] .lyrics-line[data-active],
-:root[data-platform='linux'][data-graphics-mode='safe'] .lyrics-line[data-active] {
-  transform: translateX(7px);
-}
-
 /* Runtime A/B probes. Not a production visual mode. */
 :root[data-compositor-probe='no-backdrop'] .topbar,
-:root[data-compositor-probe='no-backdrop'] .lyrics-stage__follow,
-:root[data-compositor-probe='no-backdrop'] .lyrics-stage__instrumental,
 :root[data-compositor-probe='no-backdrop'] .lyrics-fullscreen-transport,
 :root[data-compositor-probe='no-backdrop']
   .lyrics-stage[data-cover-layout='full']
@@ -135,10 +115,6 @@
 :root[data-compositor-probe='no-artwork-blur']
   .lyrics-stage[data-background-mode='image']
   .lyrics-stage__backdrop {
-  filter: none !important;
-}
-
-:root[data-compositor-probe='no-line-blur'] .lyrics-line:not([data-active]) {
   filter: none !important;
 }
 

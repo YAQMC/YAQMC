@@ -104,26 +104,7 @@ function SceneWidget({
       style={style}
     >
       {editor && (
-        <div
-          className="lyrics-scene__hit"
-          data-editor-hit=""
-          aria-hidden="true"
-          onWheel={(event) => {
-            const scroll =
-              event.currentTarget.parentElement?.querySelector('.lyrics-stage__scroll');
-            if (!(scroll instanceof HTMLElement) || (event.deltaY === 0 && event.deltaX === 0)) {
-              return;
-            }
-            scroll.dispatchEvent(
-              new WheelEvent('wheel', {
-                deltaX: event.deltaX,
-                deltaY: event.deltaY,
-                bubbles: true,
-                cancelable: true,
-              }),
-            );
-          }}
-        />
+        <div className="lyrics-scene__hit" data-editor-hit="" aria-hidden="true" />
       )}
       {children}
     </div>
@@ -564,7 +545,7 @@ export function LyricsScene({
             followAnchor={scene.lyrics.followAnchor}
             align={scene.lyrics.align}
             songId={bindings.songId}
-            editorGesture={editorGesture}
+            editorGesture={editor || editorGesture}
             allowSeek={!editor}
             onFollowStateChange={onFollowStateChange}
             layoutKey={layoutKey}

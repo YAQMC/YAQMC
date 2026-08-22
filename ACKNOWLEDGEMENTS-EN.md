@@ -12,10 +12,11 @@ does not imply endorsement, participation in a release, or support for YAQMC.
   resolution, and local seekable stream decryption. `Flechazo/qmc` had no repository license when reviewed, so
   YAQMC used it only to corroborate behavior: no source was copied, vendored, or rewritten. YAQMC's Rust
   implementation and tests are independent.
-- **[amll-dev/applemusic-like-lyrics](https://github.com/amll-dev/applemusic-like-lyrics)** — a behavioral and
-  interaction reference for lyric timelines, interludes, and motion hierarchy. Upstream is `AGPL-3.0-only`;
-  YAQMC uses neither its package nor its source code, and implements the renderer independently against its own
-  domain model. See the [lyrics documentation](docs/lyrics.md#amll-decision) for the licensing decision.
+- **[amll-dev/applemusic-like-lyrics](https://github.com/amll-dev/applemusic-like-lyrics)** — the implementation
+  source for lyric timing, interludes, and motion hierarchy. YAQMC uses the official
+  `@applemusic-like-lyrics/core` and `@applemusic-like-lyrics/react` `0.5.2` packages, which are
+  `AGPL-3.0-only`. See the [lyrics documentation](docs/lyrics.md#amll-decision) for licensing and distribution
+  obligations.
 - **OpenAI Codex / GPT-5.6 Sol** — for assistance with implementation, test design, code review, documentation,
   and release workflow.
 
