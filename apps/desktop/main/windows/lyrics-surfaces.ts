@@ -526,8 +526,17 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     create,
     show(kind) {
       visible.add(kind);
-      const window = create(kind);
+      const existing = live(kind);
+      const window = existing ?? create(kind);
       showLyricsSurface(window);
+      if (!existing) {
+        // Let the first compositor mapping settle before the final restore.
+        // An initially hidden transparent window can otherwise retain the
+        // compositor's origin even though its saved size is applied.
+        clock.setTimeout(() => {
+          void restoreOne(kind, window);
+        }, LYRICS_SURFACE_GEOMETRY_DEBOUNCE_MS);
+      }
       if (locked.has(kind)) {
         lockLyricsSurface(window, kind, true);
       }

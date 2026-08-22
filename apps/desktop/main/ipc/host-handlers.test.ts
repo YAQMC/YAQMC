@@ -545,6 +545,34 @@ describe('IpcRouter host intercepts', () => {
       router.invoke(4, { method: 'lyrics_surface_unlock', params: { kind: 'desktop' } }),
     ).resolves.toEqual({ ok: true, result: undefined });
     expect(lyrics.lock).toHaveBeenCalledWith('desktop', false);
+
+    lyrics.lock.mockClear();
+    await expect(
+      router.invoke(1, {
+        method: 'lyrics_surfaces_reconcile',
+        params: {
+          surfaces: {
+            desktop: { enabled: true, interaction: 'passive-locked' },
+            island: { enabled: true, interaction: 'interactive' },
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(lyrics.lock).toHaveBeenCalledWith('desktop', false);
+
+    lyrics.lock.mockClear();
+    await expect(
+      router.invoke(1, {
+        method: 'lyrics_surfaces_reconcile',
+        params: {
+          surfaces: {
+            desktop: { enabled: true, interaction: 'interactive' },
+            island: { enabled: true, interaction: 'interactive' },
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(lyrics.lock).toHaveBeenCalledWith('desktop', false);
   });
 
   it('injects Electron dialogs for typed host pickers', async () => {

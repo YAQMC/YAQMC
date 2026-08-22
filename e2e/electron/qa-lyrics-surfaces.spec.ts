@@ -179,6 +179,25 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
     test(`${kind} operation buttons reach player/host handlers and stay out of drag`, async () => {
       const { app, page } = session;
       await rendererInvoke(page, 'lyrics_surfaces_unlock_all').catch(() => undefined);
+      // Each parameterized surface case owns its playback precondition. The
+      // desktop close/lock cases before Island can legitimately change player
+      // state, so inheriting the suite's initial queue makes this UI contract
+      // order-dependent.
+      await rendererInvoke(page, 'player_play_tracks', {
+        request: {
+          tracks: [
+            fixtureTrack('surf-control-a', 120_000),
+            fixtureTrack('surf-control-b', 120_000),
+          ],
+          shuffle: false,
+        },
+      });
+      await rendererInvoke(page, 'player_play');
+      await expect
+        .poll(async () => rendererInvoke<PlayerSnapshot>(page, 'player_snapshot'), {
+          timeout: 12_000,
+        })
+        .toEqual(expect.objectContaining({ isPlaying: true }));
       const lyricsPage = await waitForLyricsPage(app, page, kind);
       const role = await lyricsPage.evaluate(() => {
         const yaqmc = Reflect.get(globalThis, 'yaqmc');
@@ -206,6 +225,16 @@ test.describe('SURF-02 lyrics surface controls + lock ownership', () => {
         })
         .toBe('surf-control-a');
 
+      // The QA tracks intentionally have no media URL, so the native backend
+      // can settle back to paused while the surface is being exercised. Put
+      // the toggle in a deterministic paused->playing state before asserting
+      // the surface control rather than coupling it to source availability.
+      await rendererInvoke(page, 'player_pause');
+      await expect
+        .poll(async () => rendererInvoke<PlayerSnapshot>(page, 'player_snapshot'), {
+          timeout: 8_000,
+        })
+        .toEqual(expect.objectContaining({ isPlaying: false }));
       const beforeToggle = await rendererInvoke<PlayerSnapshot>(page, 'player_snapshot');
       await hoverSurface(lyricsPage, kind);
       const playOrPause = lyricsPage.getByRole('button', { name: /^(Play|Pause)$/ });
