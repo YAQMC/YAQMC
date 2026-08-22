@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
   "phase": "P14-C",
-  "targetPin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
+  "targetPin": "476b37e3135560dff132e9ba8996e068af706458",
+  "cutoverBaselinePin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
   "defaultBackend": "qmapi",
   "cutoverAuthorized": true,
   "gates": [
@@ -28,6 +29,11 @@
     {
       "id": "exact-pin-three-day-soak",
       "status": "waived",
+      "appliesToPin": "476b37e3135560dff132e9ba8996e068af706458",
+      "waivedBy": "Osilvfe",
+      "waivedOn": "2026-08-22",
+      "waiverKind": "maintainer-authorized-skip",
+      "reissuedFrom": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
       "evidence": "docs/migration/p14c-readiness.md"
     },
     {

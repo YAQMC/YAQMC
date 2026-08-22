@@ -1,9 +1,8 @@
 # P14 entry gates (YAQMC-side)
 
-Status: **optional Cargo pin recorded; default backend `intree`**. Enabling
-`--features qmapi` compiles `qqmusic-api`. That does not make `qmapi` the
-default, does not finish module swaps, and does not start P14-C. The prepared
-P14-C scope and current blockers are recorded in
+Status: **P14-C cutover complete; `qqmusic-api` is an unconditional production
+dependency**. The former `qmapi`/`intree` backend feature split has been
+removed. The completed P14-C scope and evidence are recorded in
 [`p14c-readiness.md`](p14c-readiness.md).
 
 ## Met before the cutover; still required before distributing a linked binary
@@ -17,13 +16,18 @@ P14-C scope and current blockers are recorded in
   transport+sign → C/D login/session → G/H hybrids). Maintainer harness:
   [`p14b-live-verify.md`](p14b-live-verify.md). Linux auto, §2 dual-write,
   §3 HUMAN in-app, G mutations, library L/I play + lyrics, and library H
-  account VIP ticked 2026-08-21 on the former pin. Current pin `ffcc86c`
+  account VIP ticked 2026-08-21 on the former pin. Current pin `476b37e`
   passes J synthetic parity; exact-pin LIVE and the real-file QMC playback
   evidence are recorded in `p14b-live-verify.md`.
   Since the cutover, lyric HTTP, clear vkey HTTP, VIP fetch, QMC decrypt, and
   raw favorite/playlist writes use the library. Production `zzb`, QR, and
-  mutations stay Keep.
-- Three-day soak was waived by the maintainer on 2026-08-21.
+  mutation reconciliation stay Keep.
+- Three-day soak at the `ffcc86c` cutover baseline was waived by the maintainer
+  on 2026-08-21, and the maintainer reissued that waiver for the current pin
+  `476b37e` on 2026-08-22 as a maintainer-authorized skip. No three-day soak
+  ran at either pin; the exact-pin LIVE and real-file playback evidence in
+  `p14b-live-verify.md` plus the 2026-08-22 favorite remove/restore LIVE round
+  trip are the substitute evidence.
 
 Upstream `ApiTransport`, MSRV metadata, and hiding `reqwest` from the public
 crate API landed in qm-api-rs at this pin. YAQMC injects reqwest **0.13.4**
@@ -41,13 +45,13 @@ in-tree.
 
 ## Landed in YAQMC
 
-| Gate                          | Record                                                                                                                                                                                                                                              |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| License file / crate metadata | Root `LICENSE` and workspace `GPL-3.0-or-later` already match qm-api-rs. YAQMC-tree maintainer consent is recorded; it still does not clear this crate.                                                                                             |
-| Pin                           | `ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` at `https://github.com/YAQMC/qm-api-rs.git` (docs-only descendant of `56db511`: independent-implementation record replaces the L-1124 port claims)                                                       |
-| Cargo                         | Optional `qqmusic-api` git dependency behind feature `qmapi`. Default features remain `["intree"]`. Default Core resolve must not contain `qqmusic-api`.                                                                                            |
-| Local sibling                 | If `../qm-api-rs` exists, `node scripts/ci/qm-api-rs-access.mjs --check` requires that HEAD                                                                                                                                                         |
-| CI insteadOf                  | `rust-quality` and `setup-packaging` run `--configure-git` only when `CI=true` and `QM_API_RS_TOKEN` is set. Missing token skips `insteadOf` and skips `--features qmapi` tests. Use `CARGO_NET_GIT_FETCH_WITH_CLI=true` so git honors `insteadOf`. |
+| Gate                          | Record                                                                                                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| License file / crate metadata | Root `LICENSE` and workspace `GPL-3.0-or-later` already match qm-api-rs. YAQMC-tree maintainer consent is recorded; it still does not clear this crate.                                                                   |
+| Pin                           | `476b37e3135560dff132e9ba8996e068af706458` at `https://github.com/YAQMC/qm-api-rs.git` (tolerant clear-vkey parsing on top of the `ffcc86c` independent-implementation record)                                            |
+| Cargo                         | Unconditional `qqmusic-api` git dependency. The former `qmapi`/`intree` feature split and Core `qqmusic-qmapi` opt-in have been removed; the production Core resolve contains the exact pin.                              |
+| Local sibling                 | If `../qm-api-rs` exists, `node scripts/ci/qm-api-rs-access.mjs --check` requires that HEAD                                                                                                                               |
+| CI insteadOf                  | `rust-quality` and `setup-packaging` run `--configure-git` when `CI=true` and `QM_API_RS_TOKEN` is set. A clean private-pin build requires that token; use `CARGO_NET_GIT_FETCH_WITH_CLI=true` so Git honors `insteadOf`. |
 
 ## Commands
 

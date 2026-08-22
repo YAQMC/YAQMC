@@ -2285,3 +2285,11 @@ invented. P12–P15 were not started.
   fallback; deletion awaits validated post-release migration. Workspace
   contract checks now allow the pinned `qqmusic-api` in the Core closure and
   require it to match the recorded revision.
+
+## P14 overlay: qm-api-rs pin `476b37e` (2026-08-22)
+
+- `UrlGetVkey` clear responses omit `vkey`/`ekey`, but `UrlinfoItem` required
+  both fields, so clear-source resolution failed with a malformed-response
+  error. `476b37e3135560dff132e9ba8996e068af706458` defaults the fields and
+  adds a regression test. YAQMC moves its pin to `476b37e`; no other library
+  behavior changes.

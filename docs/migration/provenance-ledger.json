@@ -28,10 +28,10 @@
     },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
-      "revision": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
-      "yaqmcPin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
-      "linked": false,
-      "note": "Out of this ledger. Default YAQMC does not vendor or Cargo-link qqmusic-api. Pin ffcc86c adds the independent-implementation record and removes the L-1124 port claims on top of the 56db511 QMCDecode replacement."
+      "revision": "476b37e3135560dff132e9ba8996e068af706458",
+      "yaqmcPin": "476b37e3135560dff132e9ba8996e068af706458",
+      "linked": true,
+      "note": "Current dependency overlay only; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. YAQMC links qqmusic-api unconditionally. Pin 476b37e adds tolerant clear-vkey parsing on top of the ffcc86c independent-implementation record."
     }
   },
   "sources": [
@@ -93,23 +93,25 @@
       "license": "MIT",
       "status": "verified",
       "noticeStatus": "complete",
+      "scope": "current-linked-qm-api-rs-overlay",
       "copyright": "Copyright (c) 2019 程序猿老龚 gjh.me",
       "mappings": [
         {
-          "target": "crates/yaqmc-provider-qqmusic/src/qmc.rs MapCipher.decrypt",
-          "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMMapCipher.getMask/rotate"
+          "target": "qm-api-rs@476b37e/src/qmc.rs Qmc2Map::decrypt_in_place",
+          "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMMapCipher.getMask/rotate, reached through the YAQMC provider adapter"
         },
         {
-          "target": "crates/yaqmc-provider-qqmusic/src/qmc.rs Rc4Cipher",
-          "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMRC4Cipher segmented stream"
+          "target": "qm-api-rs@476b37e/src/qmc.rs Qmc2Rc4::decrypt_in_place",
+          "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMRC4Cipher segmented stream, reached through the YAQMC provider adapter"
         },
         {
-          "target": "crates/yaqmc-provider-qqmusic/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
-          "relation": "independent Rust rewrite of QMCDecode/QMCKeyDecoder.swift and TeaCipher.swift ekey TEA unwrap"
+          "target": "qm-api-rs@476b37e/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
+          "relation": "independent Rust rewrite of QMCDecode/QMCKeyDecoder.swift and TeaCipher.swift ekey TEA unwrap, reached through the YAQMC provider adapter"
         }
       ],
       "evidence": [
-        "git-revision-url:https://github.com/gongjiehong/QMCDecode/blob/aea76301a08678100ec677cb61a8458bc75662ec/LICENSE"
+        "git-revision-url:https://github.com/gongjiehong/QMCDecode/blob/aea76301a08678100ec677cb61a8458bc75662ec/LICENSE",
+        "sha256:6a95666edbaf48cea17b168c980dc22e325b6ee88b685ccdd347098cd3b8281d"
       ],
       "authorization": { "status": "not-required" }
     }
@@ -120,7 +122,7 @@
       "name": "Mai-xiyu",
       "commitCount": 136,
       "consentStatus": "verified",
-      "rightsScope": "Rights actually controlled by Mai-xiyu in YAQMC, including the root import and branding. Does not speak for third-party MIT notices or unlinked qm-api-rs.",
+      "rightsScope": "Rights actually controlled by Mai-xiyu in YAQMC, including the root import and branding. Does not speak for third-party MIT notices or the separately audited linked qm-api-rs dependency.",
       "evidence": "sha256:92e5f1990f8b36992da9de37667492ef6807912aa8a55ec6edc30556382c178b"
     },
     {
@@ -128,7 +130,7 @@
       "name": "Osilvfe",
       "commitCount": 31,
       "consentStatus": "verified",
-      "rightsScope": "Rights actually controlled by Osilvfe in YAQMC. Does not speak for third-party MIT notices or unlinked qm-api-rs.",
+      "rightsScope": "Rights actually controlled by Osilvfe in YAQMC. Does not speak for third-party MIT notices or the separately audited linked qm-api-rs dependency.",
       "evidence": "sha256:92e5f1990f8b36992da9de37667492ef6807912aa8a55ec6edc30556382c178b"
     }
   ],
@@ -159,7 +161,7 @@
       "path": "THIRD_PARTY_NOTICES.md",
       "sourceId": "gongjiehong-qmcdecode",
       "status": "verified",
-      "evidence": "sha256:d3077ebb3b5cdd8469392eda333cef90812c61bc84520054386e2b5dd6aaf15f"
+      "evidence": "sha256:6a95666edbaf48cea17b168c980dc22e325b6ee88b685ccdd347098cd3b8281d"
     }
   ],
   "release": {
