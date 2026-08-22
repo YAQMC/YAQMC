@@ -1,6 +1,33 @@
+/* Keep Latin letterforms in San Francisco while CJK text keeps PingFang's
+ * glyph metrics. The local() sources deliberately avoid bundling Apple fonts. */
+@font-face {
+  font-family: 'YAQMC Text';
+  src: local('SF Pro Text'), local('San Francisco');
+  unicode-range: U+0000-02AF, U+1E00-1EFF, U+2000-214F;
+}
+
+@font-face {
+  font-family: 'YAQMC Text';
+  src: local('PingFang SC');
+  unicode-range: U+3000-303F, U+3040-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}
+
+@font-face {
+  font-family: 'YAQMC Display';
+  src: local('SF Pro Display'), local('San Francisco');
+  unicode-range: U+0000-02AF, U+1E00-1EFF, U+2000-214F;
+}
+
+@font-face {
+  font-family: 'YAQMC Display';
+  src: local('PingFang SC');
+  unicode-range: U+3000-303F, U+3040-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}
+
 :root {
   color-scheme: dark;
   font-family:
+    'YAQMC Text',
     'PingFang SC',
     'Segoe UI Variable',
     'Segoe UI',
@@ -13,6 +40,7 @@
   text-rendering: optimizeLegibility;
 
   --font-display:
+    'YAQMC Display',
     'PingFang SC',
     'SF Pro Display',
     'Segoe UI Variable Display',
