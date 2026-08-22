@@ -1,10 +1,12 @@
 # qm-api-rs 上游工作单（P14-B 前置）
 
 Status: **landed** in sibling at `93fc0a621df13c46adde7653d387b15ef6b490f2`
-(2026-08-21 `ApiTransport`). Current YAQMC optional pin is
-`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` (docs-only descendant of
+(2026-08-21 `ApiTransport`). Current YAQMC unconditional pin is
+`476b37e3135560dff132e9ba8996e068af706458` (tolerant clear-vkey parsing on top
+of the docs-only descendant of
 `56db511`: independent-implementation record drops the L-1124 port claims).
-Feature `qmapi` is still not default. Crate provenance is closed at this pin.
+The former backend feature split has been removed. Crate provenance is closed
+at this pin.
 
 下面保留对照基线 `a7430a831a256bb15212291f11a055d801e31648` 的历史工作单，
 不要当未完成清单再改一遍上游。crate 名 `qqmusic-api`，lib `qqmusic_api`，

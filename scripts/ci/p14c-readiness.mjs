@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { QM_API_RS_REV } from './qm-api-rs-access.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const exactPinSoakGateId = 'exact-pin-three-day-soak';
+const immutableRevision = /^[0-9a-f]{40}$/u;
 
 function requireString(value, label) {
   if (typeof value !== 'string' || value.length === 0) {
@@ -18,6 +20,10 @@ export function validateP14cRecord(record) {
   if (record.targetPin !== QM_API_RS_REV) {
     throw new Error(`P14-C target pin must match ${QM_API_RS_REV}`);
   }
+  requireString(record.cutoverBaselinePin, 'P14-C cutover baseline pin');
+  if (!immutableRevision.test(record.cutoverBaselinePin)) {
+    throw new Error('P14-C cutover baseline pin must be an immutable 40-character SHA');
+  }
   if (!Array.isArray(record.gates) || record.gates.length === 0) {
     throw new Error('P14-C readiness record must contain gates');
   }
@@ -29,6 +35,14 @@ export function validateP14cRecord(record) {
     if (ids.has(gate.id)) throw new Error(`duplicate P14-C gate: ${gate.id}`);
     ids.add(gate.id);
   }
+
+  const exactPinSoakGates = record.gates.filter((gate) => gate.id === exactPinSoakGateId);
+  if (exactPinSoakGates.length !== 1) {
+    throw new Error(`P14-C readiness record must contain exactly one ${exactPinSoakGateId} gate`);
+  }
+  const [exactPinSoakGate] = exactPinSoakGates;
+  requireString(exactPinSoakGate.evidence, `evidence for gate ${exactPinSoakGateId}`);
+  requireString(exactPinSoakGate.appliesToPin, `target pin for gate ${exactPinSoakGateId}`);
 
   for (const name of ['retireAfterGates', 'keep']) {
     const entries = record.responsibilities?.[name];
@@ -55,7 +69,24 @@ export function validateP14cRecord(record) {
   for (const gate of record.gates.filter((gate) => gate.status === 'waived')) {
     requireString(gate?.evidence, `waiver evidence for gate ${gate.id}`);
   }
-  if (record.cutoverAuthorized && blockers.length > 0) {
+  if (exactPinSoakGate.appliesToPin !== record.targetPin) {
+    const mismatch = {
+      ...exactPinSoakGate,
+      status: 'blocked',
+      blocker: 'target-pin-mismatch',
+      reason: `applies to ${exactPinSoakGate.appliesToPin}, not target ${record.targetPin}`,
+    };
+    const existingIndex = blockers.findIndex((gate) => gate.id === exactPinSoakGateId);
+    if (existingIndex === -1) blockers.push(mismatch);
+    else blockers[existingIndex] = mismatch;
+  }
+
+  const reviewingAPostCutoverPin =
+    record.cutoverAuthorized && record.targetPin !== record.cutoverBaselinePin;
+  const historicalCutoverBlockers = reviewingAPostCutoverPin
+    ? blockers.filter((gate) => gate.id !== exactPinSoakGateId)
+    : blockers;
+  if (record.cutoverAuthorized && historicalCutoverBlockers.length > 0) {
     throw new Error('P14-C cutover cannot be authorized while gates are open');
   }
   return blockers;
@@ -71,7 +102,12 @@ export function assertP14cPreparationGuards({
   accountSource,
 }) {
   const blockers = validateP14cRecord(record);
-  if (blockers.length > 0 && record.defaultBackend !== 'intree') {
+  const reviewingAPostCutoverPin =
+    record.cutoverAuthorized && record.targetPin !== record.cutoverBaselinePin;
+  const preparationBlockers = reviewingAPostCutoverPin
+    ? blockers.filter((gate) => gate.id !== exactPinSoakGateId)
+    : blockers;
+  if (preparationBlockers.length > 0 && record.defaultBackend !== 'intree') {
     throw new Error('P14-C default backend must remain intree while gates are open');
   }
   if (!/^default\s*=\s*\[\]$/m.test(providerManifest)) {
@@ -141,15 +177,34 @@ export function inspectP14cReadiness(root = repositoryRoot) {
   return { record, blockers };
 }
 
-function main(argv = process.argv.slice(2)) {
-  const { record, blockers } = inspectP14cReadiness();
+export function formatP14cStatus(record, blockers) {
   const status = blockers.length === 0 ? 'READY' : 'BLOCKED';
-  process.stdout.write(`P14-C STATUS: ${status}\n`);
-  for (const gate of blockers) process.stdout.write(`- ${gate.id}: ${gate.status}\n`);
-  for (const gate of record.gates) {
-    if (gate.status === 'waived') process.stdout.write(`- ${gate.id}: waived\n`);
+  const lines = [`P14-C STATUS: ${status}`];
+  const blockerIds = new Set();
+  for (const gate of blockers) {
+    blockerIds.add(gate.id);
+    const detail = gate.reason ? ` (${gate.reason})` : '';
+    lines.push(`- ${gate.id}: ${gate.status}${detail}`);
   }
-  if (argv.includes('--enforce') && blockers.length > 0) process.exitCode = 3;
+  for (const gate of record.gates) {
+    if (gate.status === 'waived' && !blockerIds.has(gate.id)) {
+      lines.push(`- ${gate.id}: waived`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function main(argv = process.argv.slice(2)) {
+  try {
+    const { record, blockers } = inspectP14cReadiness();
+    process.stdout.write(formatP14cStatus(record, blockers));
+    if (argv.includes('--enforce') && blockers.length > 0) process.exitCode = 3;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stdout.write('P14-C STATUS: BLOCKED\n');
+    process.stdout.write(`- record-invalid: ${message}\n`);
+    process.exitCode = argv.includes('--enforce') ? 3 : 2;
+  }
 }
 
 if (Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

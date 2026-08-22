@@ -1,11 +1,13 @@
 # P14-C production-path implementation evidence
 
 Status: **CUTOVER COMPLETE** at qm-api-rs pin
-`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` (docs-only descendant of
-`56db511`) on 2026-08-21.
+`ffcc86cec2993b79ccf34faf25c1eba6c0d995ca` on 2026-08-21. The current pin is
+`476b37e3135560dff132e9ba8996e068af706458`, an affected-row clear-vkey parsing
+fix verified on 2026-08-22.
 
 This record closes the two code prerequisites in `p14c-readiness.json`. The
-three-day soak was waived by the maintainer; the provider feature split and
+three-day soak at the `ffcc86c` cutover baseline was waived by the maintainer;
+that waiver was not reissued for `476b37e`. The provider feature split and
 `qqmusic-qmapi` opt-in were removed, and `qqmusic-api` is now the unconditional
 production dependency.
 
@@ -36,6 +38,15 @@ logout, and reauthentication cleanup.
 - Library requests require a login credential, preserve boolean values, carry
   the account cancellation token, and use `RetryClass::Write`. Offline and
   timeout write failures become `OutcomeUnknown`.
+- Account writes override the library's read-oriented Web `comm` with the
+  previously live-validated mobile identity envelope (`ct/cv/v`, account
+  identity, login type, and `g_tk`). The values come from the in-memory library
+  credential and are never logged. Without that override, a live
+  `DelSonglist` returned `80105` while its nested `retCode` was `0`.
+- The known no-change code `80092` remains a typed rejection. The contradictory
+  `80105` shape and successful replies without an acceptance marker remain
+  `OutcomeUnknown`, so YAQMC performs its existing bounded safe-read
+  reconciliation instead of claiming success or reporting schema drift.
 - YAQMC retains `client_operation_id`, account-epoch checks, safe-read
   reconciliation, cache projection, and typed wire results.
 
@@ -53,24 +64,20 @@ cargo check -p yaqmc-provider-qqmusic
 cargo test -p yaqmc-provider-qqmusic
 ```
 
-The full provider run reported 233 passed and 9 ignored tests; the external
+The full provider run reported 236 passed and 7 ignored tests; the external
 loopback integration boundary reported 1 passed test. Ignored LIVE_ACCOUNT tests
 are maintainer-only and are not evidence for the three-day soak. The full run
 also includes row J's byte-identical in-tree/library Map and RC4 synthetic gate.
 
-All P14-C gates are clear: the P14-B hybrid set was re-verified by the
-maintainer on the exact pin, the production QMC library path passed on
-2026-08-21: `qmapi` builds hard-route `EncryptedMedia` to the library adapter,
-and live playback of a real encrypted `lossless-mflac` stream decrypted,
-decoded, and seeked through it. The three-day soak was waived by the
-maintainer on 2026-08-21 (see `p14c-readiness.md`). Until cutover is
-authorized, `intree` remains the default, `qqmusic-api` remains optional, and
-the rollback slots and network fallbacks stay present. The cutover then landed
-on 2026-08-21: `qmapi` is the unconditional production backend, and the legacy
-session slot remains as the bounded migration/rollback fallback.
+All P14-C gates were clear at `ffcc86c`: the P14-B hybrid set was re-verified,
+the production QMC library path decrypted, decoded, and seeked a real encrypted
+`lossless-mflac` stream, and the maintainer waived the three-day soak on
+2026-08-21. The cutover then made `qmapi` unconditional and retained the legacy
+session slot only as a bounded migration/rollback fallback.
 
-The real-file QMC golden harness is now in place as the ignored, env-gated test
-`library_adapter_matches_intree_on_a_real_qmc_file`; see
-`p14b-live-verify.md` for the run command. It requires a real encrypted sample
-plus its ekey and remains an optional extra check beyond the live playback
-evidence that closed the gate.
+The 2026-08-22 affected-row recheck at `476b37e` resolved guest clear-vkey,
+parsed live lyrics, restored an authenticated session after online validation,
+confirmed a favorite remove/restore round trip, and played and sought within
+encrypted lossless RC4 and map streams through the desktop client. See
+`p14b-live-verify.md`; the removed dual-path QMC harness remains in Git history
+rather than as a runtime fallback.

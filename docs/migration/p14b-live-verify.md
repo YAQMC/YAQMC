@@ -1,17 +1,51 @@
 # P14-B LIVE VERIFY (real QQ Music account)
 
 Status: **maintainer re-verified the hybrid set on pin `56db511` on
-2026-08-21**; pin `ffcc86c` is a docs-only descendant with unchanged code, so
-the evidence carries over. The `dcddabc` ticks below remain historical.
-This is not a production module swap, not P14-C, and not a 3-day soak.
-`qmapi` is the production backend since the 2026-08-21 cutover: lyric HTTP,
-clear vkey HTTP, VIP fetch, QMC decrypt, and raw favorite/playlist writes use
-the library. Encrypted evkey, QR/OAuth, and mutations stay in-tree.
+2026-08-21**; the cutover pin `ffcc86c` was a docs-only descendant. Current pin
+`476b37e` changes clear-vkey parsing; that affected row and production lyrics
+were rechecked on 2026-08-22, while unaffected evidence carries forward. The
+`dcddabc` ticks below remain historical.
+The pre-cutover comparison harness and commands below are retained as a
+historical record; its removed `qmapi` feature switches must not be copied into
+new commands. `qmapi` is the production backend since the 2026-08-21 cutover:
+lyric HTTP, clear-vkey HTTP, VIP fetch, QMC decrypt, and raw
+favorite/playlist writes use the library. Encrypted evkey, QR/OAuth, and
+mutation reconciliation stay in-tree as intentional Keep responsibilities.
 
 Maintainer-only. Do **not** paste cookies, `musickey`, QR payload, UIN, session
 JSON, vkey, ekey, or keyring bodies into chat, logs, or this file.
 
-## What this pass is
+## 2026-08-22 cutover regression recheck
+
+At pin `476b37e`, the maintainer desktop recheck passed after renewing a key
+that QQ Music had authoritatively rejected:
+
+- restart restored `credential-v2` and published `authenticated` only after an
+  online profile validation;
+- guest clear-vkey resolved a standard MP3 through library `UrlGetVkey`, and
+  the same production service parsed 36 lyric lines;
+- three authenticated lossless sources resolved through encrypted evkey and
+  the library QMC adapter; both RC4 and map streams initialized progressive
+  playback, and a seek settled at 34.353 seconds;
+- the production LIVE_ACCOUNT test confirmed a favorite removal and restoration
+  before continuing to live source resolution. The library client retained the
+  previously verified account-write `comm`; its default Web read envelope had
+  produced `DelSonglist` code `80105` with nested `retCode=0`. Unknown write
+  acceptance is now reconciled by one safe read, and the test always attempts
+  restoration before evaluating either result;
+- no credential, media key, signed URL, or account identifier was recorded.
+
+The clear-vkey regression had two independent causes. First, the pinned
+library's `UrlinfoItem` required `vkey` and `ekey`, although normal clear-vkey
+responses omit them; `476b37e` makes those response fields tolerant. Second, a
+normal guest batch contains `M500`, `C400`, and `RS02`, while the YAQMC adapter
+initially rejected the `RS02` preview filename before network I/O. The adapter
+now maps `RS02` to `SpecialSongFileType::Try` and correlates returned URLs by
+response filename rather than response position.
+The earlier lyric `24001` probe used a synthetic fixture MID; valid live MIDs
+continue to return lyrics through the library request.
+
+## Historical pre-cutover comparison pass
 
 Per-module comparison of optional `--features qmapi` adapters against a real
 session, in the plan order (J is offline-only here):
@@ -43,22 +77,20 @@ QR: [ACCT-02](acct02-qr-session.md). OAuth popup: ACCT-01. Confirm a masked
 authenticated account snapshot. Leave `YAQMC_CREDENTIAL_DIR` unset so Core
 writes `org.yaqmc.desktop` / `qqmusic-session`.
 
-## 1. Read-only library comparison (ignored cargo test)
+## 1. Historical read-only library comparison
 
-CI never passes `--ignored`. Unset `YAQMC_CREDENTIAL_DIR`. Run from a desktop
-session with Secret Service / the same OS user that just logged in:
+The former multi-row `qmapi_live_verify_*` harness was retired at cutover. CI
+never passes `--ignored`. Current read-only production-path equivalents are:
 
 ```bash
-unset YAQMC_CREDENTIAL_DIR CARGO_TARGET_DIR
-export YAQMC_QMAP_LIVE=1
-export YAQMC_ALLOW_PRODUCTION_ATTACH=1
 export CARGO_NET_GIT_FETCH_WITH_CLI=true
-cargo test -p yaqmc-provider-qqmusic --features qmapi --locked -- \
-  --ignored --nocapture \
-  qmapi::live::qmapi_live_verify_session_lyrics_sign_vkey_vip_and_feed
+cargo test -p yaqmc-provider-qqmusic --locked \
+  live_public_catalog_search_and_lyrics -- --ignored --nocapture
+cargo test -p yaqmc-provider-qqmusic --locked \
+  live_authenticated_source_resolves_without_secret_output -- --ignored --nocapture
 ```
 
-Expected stderr lines (no secrets):
+The historical harness emitted these sanitized lines:
 
 ```text
 LIVE VERIFY C/D: session converted
@@ -108,14 +140,14 @@ writes persist; later the same day, play + lyrics also worked with
 `YAQMC_CORE_FEATURES=qqmusic-qmapi` (library L/I). These ticks predate the
 `56db511` QMC replacement and must not be treated as exact-pin evidence.
 
-## 2. Dual-write Core (still intree production paths)
+## 2. Credential dual-write
 
-Optional. Confirms restore dual-writes `qqmusic-credential-v2` through the
-injected YAQMC store. With `qqmusic-qmapi`, lyric HTTP, clear vkey HTTP, and
-VIP fetch use the library; QR, encrypted evkey, and mutations remain in-tree.
+Current Core restore synchronizes `qqmusic-credential-v2` and the bounded
+legacy migration slot through the injected YAQMC store. The backend feature
+switch no longer exists.
 
 ```bash
-YAQMC_CORE_FEATURES=qqmusic-qmapi npm run dev:desktop
+npm run dev:desktop
 ```
 
 Boot should restore the existing session without scanning again. Do not dump
@@ -148,20 +180,17 @@ the same Core feature after the H VIP-fetch swap.
 The automatic gate `qmapi_qmc_matches_intree_map_and_rc4` requires both cipher
 families to be byte-identical. It passes on pin `56db511`. An ekey-backed real
 encrypted file must also decrypt, seek, and decode through the library adapter.
-(Code is unchanged at the current docs-only pin `ffcc86c`.)
+(The current pin `476b37e` adds tolerant clear-vkey parsing only.)
 
 | Check                                                        | Linux |
 | ------------------------------------------------------------ | ----- |
 | Intree and qmapi QMC decrypt match on map + RC4 fixtures     | [x]   |
 | Library adapter decrypts, seeks, and decodes a real QMC file | [x]   |
 
-Run the dual-path golden with a real encrypted file and its ekey:
-
-```bash
-YAQMC_QMC_SAMPLE=/path/to/sample.mflac YAQMC_QMC_EKEY_FILE=/path/to/ekey.txt \
-  cargo test -p yaqmc-provider-qqmusic --features qmapi -- \
-  library_adapter_matches_intree_on_a_real_qmc_file --ignored
-```
+The removed dual-path golden is retained in Git history. Current acceptance is
+the authenticated production-path test above plus the in-app encrypted
+playback/seek evidence; the repository no longer carries an alternate in-tree
+QMC implementation to compare at runtime.
 
 2026-08-21 (pin `56db511`): the row was ticked by live playback in a
 `YAQMC_CORE_FEATURES=qqmusic-qmapi` client build. The log records a real
@@ -169,11 +198,9 @@ encrypted `lossless-mflac` source (`encrypted=true ekey_present=true
 resolution_path="evkey"`), playback continuing, and seeks settled at 205s /
 143s / 108s. Production QMC routing in `qmapi` builds is hard-wired to the
 library adapter with no in-tree fallback, so successful decrypt + FLAC decode +
-random seek proves the adapter path. The offline byte-identical harness
-(`library_adapter_matches_intree_on_a_real_qmc_file`) and the in-tree-only
-harness (`decrypts_external_mflac_sample`) remain available as optional extra
-checks for maintainers who have a local encrypted sample. Default builds stay
-on the in-tree decryptor until cutover.
+random seek proves the adapter path. The former offline byte-identical and
+in-tree-only harnesses were retired with the cutover; production builds now use
+the library decryptor unconditionally.
 
 ## Rollback
 
