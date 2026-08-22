@@ -56,6 +56,8 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).toContain('enableNodeCliInspectArguments: false');
     expect(yaml).toContain('onlyLoadAppFromAsar: true');
     expect(yaml).toContain('grantFileProtocolExtraPrivileges: false');
+    expect(yaml).toContain('signExecutable: false');
+    expect(yaml).not.toContain('signAndEditExecutable: false');
     expect(yaml).toContain('provider: github');
     expect(yaml).toContain('owner: YAQMC');
     expect(yaml).not.toContain(['--', 'no-sandbox'].join(''));
