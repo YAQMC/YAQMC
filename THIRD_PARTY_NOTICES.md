@@ -1,8 +1,12 @@
 # Third-party notices
 
-YAQMC independently adapts QMC/mflac cipher behavior from the MIT-licensed project below. Upstream files
-were not vendored. Protocol-only research references, including GPL/LGPL and unlicensed repositories, are
-recorded in [docs/qqmusic-provider.md](docs/qqmusic-provider.md) and are not reproduced here.
+YAQMC's production QMC/mflac decryptor delegates to the pinned `qm-api-rs`
+revision `476b37e3135560dff132e9ba8996e068af706458`, which independently
+adapts cipher behavior from the MIT-licensed project below. Upstream files were
+not vendored. Protocol-only research references, including GPL/LGPL and
+unlicensed repositories, are recorded in
+[docs/qqmusic-provider.md](docs/qqmusic-provider.md) and are not reproduced
+here.
 
 `mzj3920/qqmusic-decrypt`, AynaLivePlayer/miaosic, and official QQ Music Electron ASAR contents are **not**
 in-tree YAQMC sources. The `mzj3920` and ASAR claims were removed from the current private `qm-api-rs` pin;
@@ -13,11 +17,18 @@ miaosic was protocol corroboration only.
 Source: <https://github.com/gongjiehong/QMCDecode>
 Revision: `aea76301a08678100ec677cb61a8458bc75662ec`
 
-| Upstream file / range                                           | YAQMC target                                                                                      | Transformation                                                                                                                         |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `QMCDecode/QMCipher.swift` `QMMapCipher.getMask` / `rotate`     | `crates/yaqmc-provider-qqmusic/src/qmc.rs` `MapCipher.decrypt`                                    | Independent Rust rewrite of the non-circular `(key << rot) \| (key >> rot)` mask. YAQMC indexes with `key.len()` rather than `& 0xFF`. |
-| `QMCDecode/QMCipher.swift` `QMRC4Cipher`                        | `crates/yaqmc-provider-qqmusic/src/qmc.rs` `Rc4Cipher`                                            | Independent Rust rewrite of the 128-byte first segment and 5,120-byte segmented RC4 stream.                                            |
-| `QMCDecode/QMCKeyDecoder.swift` and `QMCDecode/TeaCipher.swift` | `crates/yaqmc-provider-qqmusic/src/qmc.rs` `derive_key`, `simple_make_key`, `decrypt_tencent_tea` | Independent Rust rewrite of ekey TEA unwrapping after any EncV2 outer wrap is removed.                                                 |
+| Upstream file / range                                           | Pinned `qm-api-rs` target                                           | Transformation                                                                                                                              |
+| --------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `QMCDecode/QMCipher.swift` `QMMapCipher.getMask` / `rotate`     | `src/qmc.rs` `Qmc2Map::decrypt_in_place`                            | Independent Rust rewrite of the non-circular `(key << rot) \| (key >> rot)` mask. The key is indexed with `key.len()` rather than `& 0xFF`. |
+| `QMCDecode/QMCipher.swift` `QMRC4Cipher`                        | `src/qmc.rs` `Qmc2Rc4` / `decrypt_in_place`                         | Independent Rust rewrite of the 128-byte first segment and 5,120-byte segmented RC4 stream.                                                 |
+| `QMCDecode/QMCKeyDecoder.swift` and `QMCDecode/TeaCipher.swift` | `src/qmc.rs` `derive_key`, `simple_make_key`, `decrypt_tencent_tea` | Independent Rust rewrite of ekey TEA unwrapping after any EncV2 outer wrapper is removed.                                                   |
+
+The YAQMC file `crates/yaqmc-provider-qqmusic/src/qmc.rs` now only validates
+and redacts the media key before selecting
+`crates/yaqmc-provider-qqmusic/src/qmapi/qmc.rs`'s `QmapiQmcDecryptor`. That
+adapter delegates Map, segmented-RC4, and ekey processing to the pinned symbols
+above; the former duplicate in-tree cipher and TEA implementation was retired
+at the P14-C cutover.
 
 MIT License
 
