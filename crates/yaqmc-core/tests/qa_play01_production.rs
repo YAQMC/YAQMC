@@ -262,6 +262,13 @@ impl Session {
     }
 }
 
+fn mutation_is_confirmed(result: &Value) -> bool {
+    matches!(
+        result.get("status").and_then(Value::as_str),
+        Some("applied" | "reconciled")
+    )
+}
+
 fn current_track_id(snapshot: &Value) -> String {
     snapshot
         .get("queue")
@@ -1048,7 +1055,7 @@ async fn production_core_qq_live_or_blocked_login() {
         let was_favorite = track["isFavorite"].as_bool().unwrap_or(true);
         if !track_id.is_empty() {
             let flipped = session
-                .request(
+                .request_result(
                     "qqmusic_set_favorite",
                     Some(json!({
                         "request": {
@@ -1059,9 +1066,8 @@ async fn production_core_qq_live_or_blocked_login() {
                     })),
                 )
                 .await;
-            assert_eq!(flipped["trackId"], track_id);
             let restored = session
-                .request(
+                .request_result(
                     "qqmusic_set_favorite",
                     Some(json!({
                         "request": {
@@ -1072,7 +1078,25 @@ async fn production_core_qq_live_or_blocked_login() {
                     })),
                 )
                 .await;
-            assert_eq!(restored["favorite"], was_favorite);
+            match (flipped, restored) {
+                (Ok(flipped), Ok(restored)) => {
+                    if flipped["trackId"] != track_id
+                        || flipped["favorite"] != !was_favorite
+                        || restored["favorite"] != was_favorite
+                        || !mutation_is_confirmed(&flipped)
+                        || !mutation_is_confirmed(&restored)
+                    {
+                        panic!(
+                            "favorite flip/restore returned an unexpected state: flip={flipped:?}; restore={restored:?}"
+                        );
+                    }
+                }
+                (flipped, restored) => {
+                    panic!(
+                        "favorite flip/restore failed after both writes were attempted: flip={flipped:?}; restore={restored:?}"
+                    );
+                }
+            }
         }
     }
 

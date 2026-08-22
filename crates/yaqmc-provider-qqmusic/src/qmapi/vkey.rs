@@ -4,11 +4,12 @@
 //! evkey stays on in-tree `zzb` HTTP. Under `qmapi` (non-test) clear vkey HTTP
 //! uses library `UrlGetVkey` / `get_song_urls`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::sync::Arc;
 
-use qqmusic_api::modules::song::{FileTypeLike, SongFileInfo, SongFileType};
+use qqmusic_api::models::song::UrlinfoItem;
+use qqmusic_api::modules::song::{FileTypeLike, SongFileInfo, SongFileType, SpecialSongFileType};
 use qqmusic_api::Platform;
 #[cfg(test)]
 use yaqmc_provider_api::PlaybackLocation;
@@ -82,14 +83,16 @@ fn clear_file_type(filename: &str) -> Option<&'static (dyn FileTypeLike + Send +
         Some(&SongFileType::Mp3_128)
     } else if filename.starts_with("C400") && filename.ends_with(".m4a") {
         Some(&SongFileType::Acc96)
+    } else if filename.starts_with("RS02") && filename.ends_with(".mp3") {
+        Some(&SpecialSongFileType::Try)
     } else {
         None
     }
 }
 
 /// Full CDN URLs for playable clear candidates. Missing filenames were queried
-/// and are unplayable. Returns `Err` when a filename cannot be mapped so the
-/// caller can fall back to in-tree `CgiGetVkey`.
+/// and are unplayable. Unsupported filename shapes fail closed before the
+/// library request.
 pub(crate) async fn clear_playable_urls(
     track_id: &str,
     media_mid: &str,
@@ -116,15 +119,59 @@ pub(crate) async fn clear_playable_urls(
         }
         _ => None,
     };
+    tracing::debug!(
+        target: "qqmusic.vkey",
+        track_id,
+        media_mid,
+        filenames = filenames.len(),
+        authenticated = credential.is_some(),
+        "library clear-vkey request"
+    );
     let client =
-        qmapi_client_with(credential.clone(), Some(Platform::Android)).map_err(map_qmapi_error)?;
+        qmapi_client_with(credential.clone(), Some(Platform::Android)).map_err(|error| {
+            let classification = map_qmapi_error(error);
+            tracing::warn!(
+                target: "qqmusic.vkey",
+                classification = classification.code(),
+                "library client construction failed"
+            );
+            classification
+        })?;
     let response = client
         .song
         .get_song_urls(&infos, &SongFileType::Mp3_128, credential.as_ref())
         .await
-        .map_err(map_qmapi_error)?;
+        .map_err(|error| {
+            let classification = map_qmapi_error(error);
+            tracing::warn!(
+                target: "qqmusic.vkey",
+                classification = classification.code(),
+                "library get_song_urls failed"
+            );
+            classification
+        })?;
+    clear_urls_from_items(filenames, response.data)
+}
+
+fn clear_urls_from_items(
+    filenames: &[String],
+    items: Vec<UrlinfoItem>,
+) -> Result<HashMap<String, String>, QQMusicError> {
+    let requested = filenames.iter().map(String::as_str).collect::<HashSet<_>>();
+    if requested.len() != filenames.len() {
+        return Err(QQMusicError::MalformedResponse);
+    }
+
+    let mut seen = HashSet::with_capacity(items.len());
     let mut urls = HashMap::new();
-    for (filename, item) in filenames.iter().zip(response.data) {
+    for item in items {
+        let filename = item.filename.as_str();
+        if filename.trim().is_empty()
+            || !requested.contains(filename)
+            || !seen.insert(filename.to_owned())
+        {
+            return Err(QQMusicError::MalformedResponse);
+        }
         if item.result != 0 || item.purl.trim().is_empty() {
             continue;
         }
@@ -137,7 +184,7 @@ pub(crate) async fn clear_playable_urls(
             )
         };
         let sanitized = sanitize_qmapi_playback_url(&joined)?;
-        urls.insert(filename.clone(), sanitized);
+        urls.insert(filename.to_owned(), sanitized);
     }
     Ok(urls)
 }
@@ -214,7 +261,66 @@ mod tests {
         assert!(clear_file_type("M800MEDIA.mp3").is_some());
         assert!(clear_file_type("M500MEDIA.mp3").is_some());
         assert!(clear_file_type("C400MEDIA.m4a").is_some());
-        assert!(clear_file_type("RS02MEDIA.mp3").is_none());
+        assert!(clear_file_type("RS02MEDIA.mp3").is_some());
         assert!(clear_file_type("AIM0MEDIA.mflac").is_none());
+    }
+
+    fn urlinfo(filename: &str, purl: &str, result: i64) -> UrlinfoItem {
+        UrlinfoItem {
+            filename: filename.to_owned(),
+            purl: purl.to_owned(),
+            result,
+            ..UrlinfoItem::default()
+        }
+    }
+
+    #[test]
+    fn clear_urls_are_correlated_by_response_filename_not_position() {
+        let requested = vec!["M500MEDIA.mp3".to_owned(), "C400MEDIA.m4a".to_owned()];
+        let urls = clear_urls_from_items(
+            &requested,
+            vec![
+                urlinfo("C400MEDIA.m4a", "C400MEDIA.m4a?vkey=redacted", 0),
+                urlinfo("M500MEDIA.mp3", "M500MEDIA.mp3?vkey=redacted", 0),
+            ],
+        )
+        .expect("response order is not authoritative");
+
+        assert!(urls["M500MEDIA.mp3"].contains("M500MEDIA.mp3"));
+        assert!(urls["C400MEDIA.m4a"].contains("C400MEDIA.m4a"));
+    }
+
+    #[test]
+    fn clear_urls_fail_closed_for_unknown_or_duplicate_response_filenames() {
+        let requested = vec!["M500MEDIA.mp3".to_owned()];
+        assert!(matches!(
+            clear_urls_from_items(
+                &requested,
+                vec![urlinfo("M800OTHER.mp3", "M800OTHER.mp3?vkey=redacted", 0)]
+            ),
+            Err(QQMusicError::MalformedResponse)
+        ));
+        assert!(matches!(
+            clear_urls_from_items(
+                &requested,
+                vec![
+                    urlinfo("M500MEDIA.mp3", "M500MEDIA.mp3?vkey=one", 0),
+                    urlinfo("M500MEDIA.mp3", "M500MEDIA.mp3?vkey=two", 0),
+                ]
+            ),
+            Err(QQMusicError::MalformedResponse)
+        ));
+    }
+
+    #[test]
+    fn missing_or_unplayable_clear_results_remain_unavailable() {
+        let requested = vec!["M500MEDIA.mp3".to_owned(), "C400MEDIA.m4a".to_owned()];
+        let urls = clear_urls_from_items(
+            &requested,
+            vec![urlinfo("M500MEDIA.mp3", "", QMAP_UNPLAYABLE_RESULT)],
+        )
+        .expect("missing and rejected candidates are safely unavailable");
+
+        assert!(urls.is_empty());
     }
 }

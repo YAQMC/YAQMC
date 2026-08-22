@@ -114,7 +114,17 @@ impl YaqmcReqwestTransport {
                         QmError::ValueError(format!("invalid redirect: {error}"))
                     })?;
                     self.validate(&next)?;
-                    if !same_origin(&current_url, &next) {
+                    let cross_origin = !same_origin(&current_url, &next);
+                    if cross_origin
+                        && matches!(status, 307 | 308)
+                        && (has_secret_headers(&headers) || !matches!(&body, HttpBody::Empty))
+                    {
+                        return Err(network_kind(
+                            NetworkErrorKind::Redirect,
+                            "cross-origin redirect would preserve authenticated request content",
+                        ));
+                    }
+                    if cross_origin {
                         strip_secret_headers(&mut headers);
                     }
                     if redirects_as_get(status, method) {
@@ -456,8 +466,18 @@ fn strip_secret_headers(headers: &mut Vec<(String, String)>) {
     headers.retain(|(key, _)| {
         !key.eq_ignore_ascii_case("cookie")
             && !key.eq_ignore_ascii_case("authorization")
+            && !key.eq_ignore_ascii_case("proxy-authorization")
             && !key.eq_ignore_ascii_case("x-cos-security-token")
     });
+}
+
+fn has_secret_headers(headers: &[(String, String)]) -> bool {
+    headers.iter().any(|(key, _)| {
+        key.eq_ignore_ascii_case("cookie")
+            || key.eq_ignore_ascii_case("authorization")
+            || key.eq_ignore_ascii_case("proxy-authorization")
+            || key.eq_ignore_ascii_case("x-cos-security-token")
+    })
 }
 
 fn map_reqwest_error(error: reqwest::Error) -> QmError {
@@ -505,7 +525,7 @@ mod tests {
     use axum::{
         http::{header::LOCATION, StatusCode},
         response::IntoResponse,
-        routing::get,
+        routing::{any, get},
         Router,
     };
     use qqmusic_api::TransportRequest;
@@ -633,6 +653,60 @@ mod tests {
         let response = transport.execute(request).await.expect("30x");
         assert_eq!(response.status, 302);
         assert_ne!(response.text(), "landed");
+    }
+
+    #[tokio::test]
+    async fn cross_origin_307_and_308_never_forward_comm_authst() {
+        for status in [
+            StatusCode::TEMPORARY_REDIRECT,
+            StatusCode::PERMANENT_REDIRECT,
+        ] {
+            let target_hits = Arc::new(AtomicU32::new(0));
+            let target_hits_for_handler = Arc::clone(&target_hits);
+            let target = spawn_router(Router::new().route(
+                "/target",
+                any(move || {
+                    let target_hits_for_handler = Arc::clone(&target_hits_for_handler);
+                    async move {
+                        target_hits_for_handler.fetch_add(1, Ordering::SeqCst);
+                        StatusCode::OK
+                    }
+                }),
+            ))
+            .await;
+            let location = format!("{target}/target");
+            let source = spawn_router(Router::new().route(
+                "/source",
+                any(move || {
+                    let location = location.clone();
+                    async move { (status, [(LOCATION, location)]).into_response() }
+                }),
+            ))
+            .await;
+            let transport = transport_for(&source, TransportConfig::default());
+            transport.allow_origin(&target);
+            let mut request = TransportRequest::new(HttpMethod::Post, format!("{source}/source"));
+            request.retry = RetryClass::Write;
+            request.redirects = RedirectMode::FollowValidated;
+            request.body = HttpBody::Json(serde_json::json!({
+                "comm": { "authst": "SYNTHETIC_MUSIC_KEY" },
+                "req_0": { "method": "DelSonglist" }
+            }));
+
+            let error = transport
+                .execute(request)
+                .await
+                .expect_err("credential-bearing body-preserving redirect must be rejected");
+
+            assert!(matches!(
+                error,
+                QmError::Network(NetworkError {
+                    kind: NetworkErrorKind::Redirect,
+                    ..
+                })
+            ));
+            assert_eq!(target_hits.load(Ordering::SeqCst), 0);
+        }
     }
 
     #[tokio::test]

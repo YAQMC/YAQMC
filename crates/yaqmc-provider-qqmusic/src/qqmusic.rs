@@ -64,7 +64,7 @@ use entitlement::{
 use transport::{QqTransport, RedirectMode, ReqwestQqTransport, RetryClass, TransportRequest};
 use zeroize::Zeroize;
 
-pub(crate) use auth::SessionRecord;
+pub(crate) use auth::{SessionRecord, FALLBACK_SESSION_LIFETIME_MS};
 pub(crate) use cache::OpaqueAccountScope;
 pub(crate) use entitlement::normalize_account_entitlement;
 pub use oauth::{url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult};
@@ -2887,6 +2887,14 @@ impl QQMusicClient {
             .iter()
             .map(|candidate| candidate.filename.clone())
             .collect::<Vec<_>>();
+        tracing::debug!(
+            target: "qqmusic.playback",
+            requested_candidates = requested_candidates.len(),
+            clear_candidates = clear_candidates.len(),
+            encrypted_candidates = requested_candidates.len().saturating_sub(clear_candidates.len()),
+            authenticated = session.is_some(),
+            "prepared QQ Music playback candidates"
+        );
         #[cfg(not(test))]
         let qmapi_clear_urls = if filenames.is_empty() {
             Some(HashMap::new())
