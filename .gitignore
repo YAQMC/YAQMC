@@ -4,6 +4,8 @@ coverage/
 output/
 release/
 release-electron/
+corresponding-source/
+.corresponding-source/
 .playwright-cli/
 playwright-report/
 test-results/

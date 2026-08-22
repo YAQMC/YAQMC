@@ -7,7 +7,7 @@ import { repositoryRoot } from './repo.mjs';
 
 test('artifact contract describes only current Electron packages and release metadata', () => {
   const entries = artifactContractEntries();
-  assert.equal(entries.length, 10);
+  assert.equal(entries.length, 15);
   assert.equal(new Set(entries.map(({ id }) => id)).size, entries.length);
   assert.ok(entries.every(({ id }) => id.startsWith('electron-')));
   assert.ok(
@@ -26,5 +26,9 @@ test('artifact contract describes only current Electron packages and release met
     'utf8',
   );
   assert.match(workflow, /assemble-electron-release\.mjs/);
+  assert.match(workflow, /corresponding-source\.mjs/);
+  assert.match(workflow, /repository: YAQMC\/qm-api-rs/);
+  assert.match(workflow, /stage-linux-tester\.mjs/);
+  assert.match(workflow, /YAQMC-linux-x64-tester-\$\{\{ github\.sha \}\}/);
   assert.match(workflow, /gh release create/);
 });

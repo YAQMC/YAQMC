@@ -326,8 +326,13 @@ test('renders every pending metric and complete continuity and artifact facts', 
   assert.match(output, /dev\.music-client\.desktop/);
   assert.match(output, /YAQMC-windows-\{arch\}-setup\.exe/);
   assert.match(output, /YAQMC-linux-\{arch\}\.tar\.gz/);
+  assert.match(output, /YAQMC-linux-x64-tester-\{sha\}/);
+  assert.match(output, /build-info-\{os\}-\{arch\}\.json/);
   assert.match(output, /SHA256SUMS-electron\.txt/);
   assert.match(output, /RELEASE-NOTES-ELECTRON\.md/);
+  assert.match(output, /CORRESPONDING-SOURCE-MANIFEST\.json/);
+  assert.match(output, /YAQMC-source-\{sha\}\.zip/);
+  assert.match(output, /qm-api-rs-source-\{pin\}\.zip/);
   assert.match(output, /`\{arch\}` is `x64` or `arm64`/);
   assert.match(output, /P0 performance gate: NOT COMPLETE/);
 });

@@ -252,7 +252,7 @@ trap signal_exit INT TERM HUP
   if [[ -r /etc/os-release ]]; then
     sed -n 's/^\(NAME\|VERSION\|ID\|VERSION_ID\)=/os.\1=/p' /etc/os-release
   fi
-  for key in XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP WAYLAND_DISPLAY DISPLAY GDK_BACKEND YAQMC_LINUX_RENDERER WEBKIT_DISABLE_DMABUF_RENDERER WEBKIT_DISABLE_COMPOSITING_MODE LIBGL_ALWAYS_SOFTWARE __NV_DISABLE_EXPLICIT_SYNC; do
+  for key in XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP WAYLAND_DISPLAY DISPLAY GDK_BACKEND YAQMC_LINUX_RENDERER; do
     printf '%s=%s\n' "$key" "$(field_value "${!key-}")"
   done
   printf 'desktopProcesses='
@@ -274,8 +274,6 @@ case "$MODE" in
     ;;
   software)
     export YAQMC_LINUX_RENDERER=software
-    export WEBKIT_DISABLE_DMABUF_RENDERER=1
-    export LIBGL_ALWAYS_SOFTWARE=1
     GRAPHICS_MODE=software
     ;;
 esac
@@ -284,13 +282,15 @@ export RUST_LOG='linux.graphics=debug,linux.window=debug,audio.backend=debug,str
 {
   printf 'mode=%s\n' "$MODE"
   printf 'requestedMode=%s\n' "$REQUESTED_MODE"
-  for key in XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY GDK_BACKEND YAQMC_LINUX_RENDERER WEBKIT_DISABLE_DMABUF_RENDERER WEBKIT_DISABLE_COMPOSITING_MODE LIBGL_ALWAYS_SOFTWARE __NV_DISABLE_EXPLICIT_SYNC RUST_LOG; do
+  for key in XDG_SESSION_TYPE WAYLAND_DISPLAY DISPLAY GDK_BACKEND YAQMC_LINUX_RENDERER RUST_LOG; do
     printf '%s=%s\n' "$key" "$(field_value "${!key-}")"
   done
 } >"$OUT/launch-environment.txt"
 
 : >"$OUT/commands.log"
 : >"$OUT/state.jsonl"
+# Keep the final two schema-v1 columns so older evidence parsers remain able to
+# read the file. Electron never populates them; the verifier requires blanks.
 printf 'phase\ttimestamp_utc\tprocess_count\ttotal_cpu_percent\ttotal_rss_kib\ttotal_pss_kib\ttotal_threads\twindow_state\treported_backend\txdg_session_type\tgdk_backend\tgraphics_mode\tdmabuf_disabled\tsoftware_gl\n' >"$OUT/process-samples.tsv"
 printf 'phase\ttimestamp_utc\tpid\tppid\tcpu_percent\trss_kib\tpss_kib\tthreads\telapsed\tcommand\n' >"$OUT/process-tree-samples.tsv"
 

@@ -1601,9 +1601,11 @@ function validateLinuxModeReport(root, mode, identity, errors) {
     }
     if (
       mode === 'software' &&
-      (row.graphics_mode !== 'software' || row.dmabuf_disabled !== '1' || row.software_gl !== '1')
+      (row.graphics_mode !== 'software' || row.dmabuf_disabled !== '' || row.software_gl !== '')
     ) {
-      errors.push(`${label}/process-samples.tsv:${index + 2}: software flags are incomplete`);
+      errors.push(
+        `${label}/process-samples.tsv:${index + 2}: software mode must use the Chromium host switch without legacy renderer overrides`,
+      );
     }
   }
   if (JSON.stringify(samplePhases) !== JSON.stringify(LINUX_PHASES)) {

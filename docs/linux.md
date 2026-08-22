@@ -35,7 +35,7 @@ The packaged collector uses `auto`, `native-wayland`, `x11`, and conditional
 
 ## Arch tester procedure
 
-Use only the extracted `YAQMC-linux-x86_64` GitHub Actions artifact. A
+Use only the extracted `YAQMC-linux-x64-tester-<commit>` GitHub Actions artifact. A
 repository checkout is neither needed nor accepted as binary identity
 evidence. From the extracted bundle directory:
 

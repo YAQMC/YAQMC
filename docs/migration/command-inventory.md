@@ -1,5 +1,10 @@
 # Command inventory
 
+> **P15 historical-evidence overlay:** this is the frozen P2 inventory used to
+> prove protocol coverage during the host migration. The Tauri registration
+> paths named below no longer exist. The current protocol registry and contract
+> checks, not this generator description, are authoritative for development.
+
 This is the authoritative P2 inventory of the 117 commands registered by `tauri::generate_handler!`.
 
 ## Generation contract

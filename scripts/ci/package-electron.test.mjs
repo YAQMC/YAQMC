@@ -103,6 +103,13 @@ test('stages named Electron artifacts and checksums without unpacked trees', () 
     os: 'windows',
     arch: 'x64',
     sourceDir: root,
+    buildInfo: {
+      target: 'x86_64-pc-windows-msvc',
+      profile: 'ci-release',
+      lto: 'thin',
+      codegenUnits: 8,
+      bundles: ['nsis', 'portable'],
+    },
   });
   assert.equal(dest, path.join(root, 'YAQMC-electron-windows-x64'));
   assert.equal(
@@ -110,9 +117,37 @@ test('stages named Electron artifacts and checksums without unpacked trees', () 
     'YAQMC-windows-x64-setup.exe',
   );
   assert.equal(readFileSync(path.join(dest, 'latest.yml'), 'utf8'), 'version: 0.1.0\n');
+  const buildInfo = JSON.parse(
+    readFileSync(path.join(dest, 'build-info-windows-x64.json'), 'utf8'),
+  );
+  assert.equal(buildInfo.target, 'x86_64-pc-windows-msvc');
+  assert.equal(buildInfo.profile, 'ci-release');
+  assert.equal(buildInfo.lto, 'thin');
+  assert.deepEqual(
+    buildInfo.files.map(({ name }) => name),
+    ['YAQMC-windows-x64-setup.exe', 'latest.yml'],
+  );
+  assert.ok(buildInfo.files.every(({ sha256 }) => /^[0-9a-f]{64}$/u.test(sha256)));
   const sums = readFileSync(path.join(dest, 'SHA256SUMS-electron-windows-x64.txt'), 'utf8');
   assert.match(sums, /YAQMC-windows-x64-setup\.exe/);
+  assert.match(sums, /build-info-windows-x64\.json/);
   assert.doesNotMatch(sums, /win-unpacked/);
+  assert.throws(
+    () =>
+      stageElectronArtifacts({
+        os: 'windows',
+        arch: 'x64',
+        sourceDir: root,
+        buildInfo: {
+          target: 'x86_64-pc-windows-msvc',
+          profile: 'ci-release',
+          lto: 'thin',
+          codegenUnits: 8,
+          bundles: ['nsis', 'portable'],
+        },
+      }),
+    /refusing to overwrite non-empty Electron package directory/,
+  );
 });
 
 test('CI uses the Electron package job as the only desktop package path', () => {
@@ -135,6 +170,9 @@ test('CI uses the Electron package job as the only desktop package path', () => 
   assert.match(electronJob, /secrets\.QM_API_RS_TOKEN/);
   assert.doesNotMatch(electronJob, /webkit/i);
   assert.match(electronJob, /rpm fakeroot/);
+  assert.match(electronJob, /node scripts\/ci\/stage-linux-tester\.mjs/);
+  assert.match(electronJob, /--identity-only/);
+  assert.match(electronJob, /YAQMC-linux-x64-tester-\$\{\{ github\.sha \}\}/);
   assert.match(readFileSync(SCRIPT, 'utf8'), /'--publish', 'never'/);
   assert.doesNotMatch(electronJob, /--publish always/);
   assert.doesNotMatch(workflow, /autoDownload:\s*true/);

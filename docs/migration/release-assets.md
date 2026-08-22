@@ -1,5 +1,10 @@
 # Release assets and approved compatibility deltas
 
+> **P15 historical-evidence overlay:** the matrices below capture the
+> coexistence and removal plan at their original checkpoints. The Tauri release
+> path is retired. Use [`../ci.md`](../ci.md) for the current Electron package
+> and corresponding-source workflow.
+
 ## Current Tauri package matrix
 
 | Platform | Architectures         | Artifacts                                   |

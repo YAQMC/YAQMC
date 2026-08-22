@@ -1101,8 +1101,8 @@ function writeLinuxMode(
       'wayland',
       mode === 'x11' ? 'x11' : mode === 'native-wayland' ? 'wayland' : '',
       mode === 'software' ? 'software' : 'auto',
-      mode === 'software' ? '1' : '',
-      mode === 'software' ? '1' : '',
+      '',
+      '',
     ].join('\t'),
   );
   writeFileSync(

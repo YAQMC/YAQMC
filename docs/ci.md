@@ -15,7 +15,15 @@ The removed legacy desktop workflow is not a supported build path. CI package ar
 
 ## Gates and package matrix
 
-Every CI run performs frontend formatting, documentation, lint, TypeScript, Vitest and script checks; builds the Electron host on Linux and Windows; runs Rust fmt, clippy and workspace tests; validates contracts; checks the unconditional private `qm-api-rs` git pin; and scans for secrets on Linux and Windows. `rust-quality` and package jobs may rewrite git `insteadOf` for `github.com/YAQMC/qm-api-rs` when `QM_API_RS_TOKEN` is present (`CARGO_NET_GIT_FETCH_WITH_CLI=true`). A missing token skips `insteadOf`.
+Every CI run performs frontend formatting, documentation, lint, TypeScript,
+Vitest and script checks; builds the Electron host on Linux and Windows; runs
+Rust fmt, clippy and workspace tests; validates contracts; checks the
+unconditional private `qm-api-rs` git pin; explicitly enforces P14-C readiness
+and provenance; and scans for secrets on Linux and Windows. `rust-quality` and
+package jobs may rewrite Git `insteadOf` for `github.com/YAQMC/qm-api-rs` when
+`QM_API_RS_TOKEN` is present (`CARGO_NET_GIT_FETCH_WITH_CLI=true`). A missing
+token skips the rewrite; a build that needs and cannot fetch the private
+dependency fails.
 
 - Pull requests package Windows x64 and Linux x64.
 - Pushes to `main` package Windows x64/arm64 and Linux x64/arm64.
@@ -42,7 +50,12 @@ CARGO_PROFILE_RELEASE_LTO=thin
 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8
 ```
 
-Manual `production` runs and the release workflow use Fat LTO and one codegen unit. `build-info.json` records the effective profile, LTO mode, codegen units, Rust target, Node version, Electron version, and Git identity.
+Manual `production` runs and the release workflow use Fat LTO and one codegen
+unit. Every package artifact contains a unique
+`build-info-<os>-<arch>.json` recording the effective profile, LTO mode,
+codegen units, Rust target, Node version, Electron version, and Git identity.
+The release assembler requires that identity to match the corresponding-source
+commit before flattening assets.
 
 Cargo caches are keyed by OS, Rust target, toolchain class, `Cargo.lock`, and profile class. Pull requests may restore caches but only `main` pushes, tags, and manual runs save them. Restored caches are untrusted inputs; a cold-cache build must still succeed.
 
@@ -50,7 +63,20 @@ Cargo caches are keyed by OS, Rust target, toolchain class, `Cargo.lock`, and pr
 
 CI uploads `YAQMC-electron-<os>-<arch>-<sha>` from the corresponding `release-electron` directory. Architectures use electron-builder labels `x64` and `arm64`.
 
-The release workflow flattens package assets, writes `SHA256SUMS-electron.txt` and `RELEASE-NOTES-ELECTRON.md`, and keeps only x64 updater feeds as `latest.yml` and `latest-linux.yml`. A `v*` push keeps that tag; a manual run uses `electron-draft-<run-id>`. Both create a draft release for maintainer review.
+Linux x64 package jobs also upload
+`YAQMC-linux-x64-tester-<sha>`. This separate flat artifact contains the exact
+AppImage, immutable build identity, checksums, current testing/acceptance
+instructions, collector, and verifier. CI runs the verifier's identity-only
+gate before upload; it is not mixed into draft release assets.
+
+The release workflow fails before packaging unless the pin, P14-C, and
+provenance gates pass. It checks out the exact private dependency revision,
+builds revision-bound YAQMC and `qm-api-rs` source archives, and writes
+`CORRESPONDING-SOURCE-MANIFEST.json`. Assembly verifies those archive hashes,
+flattens package assets, writes `SHA256SUMS-electron.txt` and
+`RELEASE-NOTES-ELECTRON.md`, and keeps only x64 updater feeds as `latest.yml`
+and `latest-linux.yml`. A `v*` push keeps that tag; a manual run uses
+`electron-draft-<run-id>`. Both create a draft release for maintainer review.
 
 ## Build-accepted versus runtime-tested
 
@@ -62,5 +88,7 @@ A green package job proves compilation, package assembly, metadata generation, a
 npm run ci:frontend-build
 npm run ci:test-scripts
 npm run ci:package-metadata
+npm run p14c:enforce
+npm run provenance:enforce
 npm run package -w @yaqmc/desktop -- --publish never
 ```

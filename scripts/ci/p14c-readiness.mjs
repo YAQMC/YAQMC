@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { QM_API_RS_REV } from './qm-api-rs-access.mjs';
@@ -6,14 +6,74 @@ import { QM_API_RS_REV } from './qm-api-rs-access.mjs';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const exactPinSoakGateId = 'exact-pin-three-day-soak';
 const immutableRevision = /^[0-9a-f]{40}$/u;
+const isoDate = /^\d{4}-\d{2}-\d{2}$/u;
+const allowedGateStatuses = new Set(['pass', 'waived', 'blocked', 'not-started']);
+const allowedWaiverKinds = new Set(['maintainer-authorized-skip']);
+const requiredGateIds = new Set([
+  'p14b-live-hybrid',
+  'retirement-scope',
+  'crate-provenance',
+  'production-qmc-library',
+  exactPinSoakGateId,
+  'production-credential-primary',
+  'production-account-mutation-hybrid',
+]);
+const retainedLegacyCredentialResponsibility = 'legacy-session-migration-rollback-slot';
 
 function requireString(value, label) {
-  if (typeof value !== 'string' || value.length === 0) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`${label} must be a non-empty string`);
   }
 }
 
-export function validateP14cRecord(record) {
+function requireIsoDate(value, label) {
+  requireString(value, label);
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (
+    !isoDate.test(value) ||
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw new Error(`${label} must be an ISO calendar date`);
+  }
+}
+
+function requireEvidenceFile(value, label, root) {
+  requireString(value, label);
+  const normalized = value.replaceAll('\\', '/');
+  if (
+    path.posix.isAbsolute(normalized) ||
+    path.posix.normalize(normalized) !== normalized ||
+    !normalized.startsWith('docs/migration/')
+  ) {
+    throw new Error(`${label} must be a repository-relative docs/migration path`);
+  }
+  const resolved = path.resolve(root, ...normalized.split('/'));
+  const relative = path.relative(root, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`${label} escapes the repository`);
+  }
+  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+    throw new Error(`${label} does not exist: ${normalized}`);
+  }
+}
+
+function requireUniqueStrings(entries, label) {
+  const seen = new Set();
+  for (const entry of entries) {
+    if (typeof entry !== 'string' || entry.trim().length === 0) {
+      throw new Error(`${label} contains an invalid entry`);
+    }
+    if (seen.has(entry)) {
+      throw new Error(`${label} contains duplicate entry ${entry}`);
+    }
+    seen.add(entry);
+  }
+  return seen;
+}
+
+export function validateP14cRecord(record, options = {}) {
+  const root = path.resolve(options.root ?? repositoryRoot);
   if (record?.schemaVersion !== 1 || record?.phase !== 'P14-C') {
     throw new Error('P14-C readiness record has an unsupported schema or phase');
   }
@@ -24,6 +84,18 @@ export function validateP14cRecord(record) {
   if (!immutableRevision.test(record.cutoverBaselinePin)) {
     throw new Error('P14-C cutover baseline pin must be an immutable 40-character SHA');
   }
+  if (typeof record.cutoverAuthorized !== 'boolean') {
+    throw new Error('P14-C cutoverAuthorized must be a boolean');
+  }
+  if (!['intree', 'qmapi'].includes(record.defaultBackend)) {
+    throw new Error('P14-C defaultBackend must be intree or qmapi');
+  }
+  if (record.cutoverAuthorized && record.defaultBackend !== 'qmapi') {
+    throw new Error('P14-C authorized cutover must use the qmapi backend');
+  }
+  if (!record.cutoverAuthorized && record.defaultBackend !== 'intree') {
+    throw new Error('P14-C unauthorized cutover must keep the intree backend');
+  }
   if (!Array.isArray(record.gates) || record.gates.length === 0) {
     throw new Error('P14-C readiness record must contain gates');
   }
@@ -31,9 +103,29 @@ export function validateP14cRecord(record) {
   const ids = new Set();
   for (const gate of record.gates) {
     requireString(gate?.id, 'gate id');
+    if (!requiredGateIds.has(gate.id)) {
+      throw new Error(`unsupported P14-C gate ${gate.id}`);
+    }
     requireString(gate?.status, `gate ${gate.id} status`);
+    if (!allowedGateStatuses.has(gate.status)) {
+      throw new Error(`gate ${gate.id} has unsupported status ${gate.status}`);
+    }
+    requireEvidenceFile(gate.evidence, `evidence for gate ${gate.id}`, root);
     if (ids.has(gate.id)) throw new Error(`duplicate P14-C gate: ${gate.id}`);
     ids.add(gate.id);
+    if (gate.status === 'waived') {
+      requireString(gate.waivedBy, `waivedBy for gate ${gate.id}`);
+      requireIsoDate(gate.waivedOn, `waivedOn for gate ${gate.id}`);
+      requireString(gate.waiverKind, `waiverKind for gate ${gate.id}`);
+      if (!allowedWaiverKinds.has(gate.waiverKind)) {
+        throw new Error(`gate ${gate.id} has unsupported waiverKind ${gate.waiverKind}`);
+      }
+    }
+  }
+  for (const id of requiredGateIds) {
+    if (!ids.has(id)) {
+      throw new Error(`P14-C readiness record is missing required gate ${id}`);
+    }
   }
 
   const exactPinSoakGates = record.gates.filter((gate) => gate.id === exactPinSoakGateId);
@@ -41,34 +133,49 @@ export function validateP14cRecord(record) {
     throw new Error(`P14-C readiness record must contain exactly one ${exactPinSoakGateId} gate`);
   }
   const [exactPinSoakGate] = exactPinSoakGates;
-  requireString(exactPinSoakGate.evidence, `evidence for gate ${exactPinSoakGateId}`);
   requireString(exactPinSoakGate.appliesToPin, `target pin for gate ${exactPinSoakGateId}`);
+  if (!immutableRevision.test(exactPinSoakGate.appliesToPin)) {
+    throw new Error(`target pin for gate ${exactPinSoakGateId} must be immutable`);
+  }
 
+  const responsibilitySets = {};
   for (const name of ['retireAfterGates', 'keep']) {
     const entries = record.responsibilities?.[name];
     if (!Array.isArray(entries) || entries.length === 0) {
       throw new Error(`P14-C responsibilities.${name} must be a non-empty array`);
     }
-    if (entries.some((entry) => typeof entry !== 'string' || entry.length === 0)) {
-      throw new Error(`P14-C responsibilities.${name} contains an invalid entry`);
-    }
+    responsibilitySets[name] = requireUniqueStrings(entries, `P14-C responsibilities.${name}`);
   }
   const pending = record.responsibilities?.pendingProductionReplacement;
   if (!Array.isArray(pending)) {
     throw new Error('P14-C responsibilities.pendingProductionReplacement must be an array');
   }
-  if (pending.some((entry) => typeof entry !== 'string' || entry.length === 0)) {
+  const pendingSet = requireUniqueStrings(
+    pending,
+    'P14-C responsibilities.pendingProductionReplacement',
+  );
+  for (const entry of responsibilitySets.retireAfterGates) {
+    if (responsibilitySets.keep.has(entry) || pendingSet.has(entry)) {
+      throw new Error(`P14-C responsibility ${entry} appears in incompatible lists`);
+    }
+  }
+  for (const entry of responsibilitySets.keep) {
+    if (pendingSet.has(entry)) {
+      throw new Error(`P14-C responsibility ${entry} appears in incompatible lists`);
+    }
+  }
+  if (!responsibilitySets.keep.has(retainedLegacyCredentialResponsibility)) {
     throw new Error(
-      'P14-C responsibilities.pendingProductionReplacement contains an invalid entry',
+      `P14-C responsibilities.keep must retain ${retainedLegacyCredentialResponsibility}`,
     );
+  }
+  if (record.cutoverAuthorized && pending.length > 0) {
+    throw new Error('P14-C cutover cannot be authorized with pending production replacements');
   }
 
   const blockers = record.gates.filter(
     (gate) => gate.status !== 'pass' && gate.status !== 'waived',
   );
-  for (const gate of record.gates.filter((gate) => gate.status === 'waived')) {
-    requireString(gate?.evidence, `waiver evidence for gate ${gate.id}`);
-  }
   if (exactPinSoakGate.appliesToPin !== record.targetPin) {
     const mismatch = {
       ...exactPinSoakGate,
@@ -89,10 +196,18 @@ export function validateP14cRecord(record) {
   if (record.cutoverAuthorized && historicalCutoverBlockers.length > 0) {
     throw new Error('P14-C cutover cannot be authorized while gates are open');
   }
+  if (!record.cutoverAuthorized) {
+    blockers.push({
+      id: 'cutover-authorization',
+      status: 'blocked',
+      reason: 'maintainer authorization has not been recorded',
+    });
+  }
   return blockers;
 }
 
 export function assertP14cPreparationGuards({
+  root = repositoryRoot,
   record,
   providerManifest,
   coreManifest,
@@ -101,7 +216,7 @@ export function assertP14cPreparationGuards({
   credentialSource,
   accountSource,
 }) {
-  const blockers = validateP14cRecord(record);
+  const blockers = validateP14cRecord(record, { root });
   const reviewingAPostCutoverPin =
     record.cutoverAuthorized && record.targetPin !== record.cutoverBaselinePin;
   const preparationBlockers = reviewingAPostCutoverPin
@@ -154,6 +269,7 @@ export function inspectP14cReadiness(root = repositoryRoot) {
     readFileSync(path.join(root, 'docs/migration/p14c-readiness.json'), 'utf8'),
   );
   const blockers = assertP14cPreparationGuards({
+    root,
     record,
     providerManifest: readFileSync(
       path.join(root, 'crates/yaqmc-provider-qqmusic/Cargo.toml'),
