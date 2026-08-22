@@ -3,7 +3,7 @@
 ## Scope
 
 This record covers YAQMC's GPL-3.0-or-later adoption, repository LICENSE, package/crate metadata, corresponding-source
-policy, and every contribution or imported asset distributed with the work. It is a release and P14 integration gate;
+policy, and every contribution or imported asset distributed with the work. It is a release gate;
 it is not proof that any person has approved, owns, or may relicense any contribution.
 
 ## Full rights audit requirement
@@ -20,17 +20,17 @@ extraction without authorization are release blockers. Corresponding-source deli
 but it does not cure missing copyright permission.
 
 The complete audit state is in
-[docs/migration/provenance-ledger.json](docs/migration/provenance-ledger.json) and
-[docs/migration/provenance-audit.md](docs/migration/provenance-audit.md).
+[docs/release/provenance-ledger.json](docs/release/provenance-ledger.json) and
+[docs/release/provenance.md](docs/release/provenance.md).
 The typed maintainer-approval digest is
-[docs/migration/licensing-consent-record.json](docs/migration/licensing-consent-record.json).
-
-This YAQMC-tree record does **not** authorize a Cargo link of the private `qm-api-rs` (`qqmusic-api`) crate.
+[docs/release/licensing-consent-record.json](docs/release/licensing-consent-record.json).
+The linked `qm-api-rs` (`qqmusic-api`) crate is covered by its separate
+[provenance record](docs/release/qm-api-rs-provenance.md).
 
 ## Maintainer records
 
 The entries below remain required evidence for rights the named maintainers actually control. They do **not** by
-themselves clear external MIT notices or unlinked private crates. Record an immutable evidence reference (for example, a
+themselves clear external notices or linked dependencies. Record an immutable evidence reference (for example, a
 signed commit or GitHub issue/PR comment URL) and date beside each approval.
 
 | Required approver | Status   | Evidence reference                                                        | Recorded date | Limited scope                               |
@@ -41,6 +41,6 @@ signed commit or GitHub issue/PR comment URL) and date beside each approval.
 ## Current status
 
 **In-tree ledger: pass.** `npm run provenance:enforce` is the machine check for this tree. Unused names that were
-previously recorded as ports (miaosic, `mzj3920/qqmusic-decrypt`, official QQ Music Electron ASAR, and the unlinked
-`qm-api-rs` crate) are out of this ledger. QMCDecode remains as an independent MIT adaptation with file/range
+previously recorded as ports (miaosic, `mzj3920/qqmusic-decrypt`, and official QQ Music Electron ASAR) are out of
+the in-tree ledger. QMCDecode remains as an independent MIT adaptation with file/range
 mappings in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

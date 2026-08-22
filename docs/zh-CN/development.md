@@ -18,7 +18,7 @@ Node 版本同时钉在 `package.json`、`package-lock.json` 与 `.node-version`
 
 ## 私有生产依赖
 
-P14-C 后，生产提供器无条件链接私有 crate `qqmusic-api`：
+生产提供器无条件链接私有 crate `qqmusic-api`：
 `https://github.com/YAQMC/qm-api-rs.git`，精确 revision 为
 `476b37e3135560dff132e9ba8996e068af706458`。本机 Git 必须已能读取该仓库
 （例如 Git Credential Manager 或已有 SSH/HTTPS 凭据）。禁止把 token 写进

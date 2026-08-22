@@ -18,7 +18,7 @@ The removed legacy desktop workflow is not a supported build path. CI package ar
 Every CI run performs frontend formatting, documentation, lint, TypeScript,
 Vitest and script checks; builds the Electron host on Linux and Windows; runs
 Rust fmt, clippy and workspace tests; validates contracts; checks the
-unconditional private `qm-api-rs` git pin; explicitly enforces P14-C readiness
+unconditional private `qm-api-rs` git pin; explicitly enforces provider readiness
 and provenance; and scans for secrets on Linux and Windows. `rust-quality` and
 package jobs may rewrite Git `insteadOf` for `github.com/YAQMC/qm-api-rs` when
 `QM_API_RS_TOKEN` is present (`CARGO_NET_GIT_FETCH_WITH_CLI=true`). A missing
@@ -69,7 +69,7 @@ AppImage, immutable build identity, checksums, current testing/acceptance
 instructions, collector, and verifier. CI runs the verifier's identity-only
 gate before upload; it is not mixed into draft release assets.
 
-The release workflow fails before packaging unless the pin, P14-C, and
+The release workflow fails before packaging unless the pin, provider readiness, and
 provenance gates pass. It checks out the exact private dependency revision,
 builds revision-bound YAQMC and `qm-api-rs` source archives, and writes
 `CORRESPONDING-SOURCE-MANIFEST.json`. Assembly verifies those archive hashes,

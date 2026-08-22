@@ -7,7 +7,7 @@ import test from 'node:test';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
 const validator = path.join(repositoryRoot, 'scripts', 'validate-provenance-ledger.mjs');
-const committedLedger = path.join(repositoryRoot, 'docs', 'migration', 'provenance-ledger.json');
+const committedLedger = path.join(repositoryRoot, 'docs', 'release', 'provenance-ledger.json');
 const revision = '0123456789abcdef0123456789abcdef01234567';
 
 function passingLedger() {

@@ -134,10 +134,10 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
     path.join(correspondingSource, yaqmcSource),
     storedZip({
       [`YAQMC-${releaseCommit}/LICENSE`]: 'GPL-3.0-or-later\n',
-      [`YAQMC-${releaseCommit}/docs/migration/p14c-readiness.json`]: readinessRecord,
-      [`YAQMC-${releaseCommit}/docs/migration/provenance-ledger.json`]: provenanceLedger,
-      [`YAQMC-${releaseCommit}/docs/migration/provenance-audit.md`]: provenanceAudit,
-      [`YAQMC-${releaseCommit}/docs/migration/p14-qm-api-rs-provenance.md`]: qmApiProvenance,
+      [`YAQMC-${releaseCommit}/docs/release/provider-readiness.json`]: readinessRecord,
+      [`YAQMC-${releaseCommit}/docs/release/provenance-ledger.json`]: provenanceLedger,
+      [`YAQMC-${releaseCommit}/docs/release/provenance.md`]: provenanceAudit,
+      [`YAQMC-${releaseCommit}/docs/release/qm-api-rs-provenance.md`]: qmApiProvenance,
     }),
   );
   writeFileSync(
@@ -157,20 +157,17 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
       p14c: {
         status: 'READY',
         targetPin: QM_API_RS_REV,
-        readinessRecord: 'docs/migration/p14c-readiness.json',
+        readinessRecord: 'docs/release/provider-readiness.json',
         readinessSha256: sha256Text(readinessRecord),
       },
       provenance: {
         status: 'PASS',
-        ledger: 'docs/migration/provenance-ledger.json',
+        ledger: 'docs/release/provenance-ledger.json',
         ledgerSha256: sha256Text(provenanceLedger),
-        evidence: [
-          'docs/migration/provenance-audit.md',
-          'docs/migration/p14-qm-api-rs-provenance.md',
-        ],
+        evidence: ['docs/release/provenance.md', 'docs/release/qm-api-rs-provenance.md'],
         evidenceSha256: {
-          'docs/migration/provenance-audit.md': sha256Text(provenanceAudit),
-          'docs/migration/p14-qm-api-rs-provenance.md': sha256Text(qmApiProvenance),
+          'docs/release/provenance.md': sha256Text(provenanceAudit),
+          'docs/release/qm-api-rs-provenance.md': sha256Text(qmApiProvenance),
         },
       },
       components: [

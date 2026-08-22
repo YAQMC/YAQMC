@@ -44,9 +44,9 @@ function requireEvidenceFile(value, label, root) {
   if (
     path.posix.isAbsolute(normalized) ||
     path.posix.normalize(normalized) !== normalized ||
-    !normalized.startsWith('docs/migration/')
+    !normalized.startsWith('docs/release/')
   ) {
-    throw new Error(`${label} must be a repository-relative docs/migration path`);
+    throw new Error(`${label} must be a repository-relative docs/release path`);
   }
   const resolved = path.resolve(root, ...normalized.split('/'));
   const relative = path.relative(root, resolved);
@@ -266,7 +266,7 @@ export function assertP14cPreparationGuards({
 
 export function inspectP14cReadiness(root = repositoryRoot) {
   const record = JSON.parse(
-    readFileSync(path.join(root, 'docs/migration/p14c-readiness.json'), 'utf8'),
+    readFileSync(path.join(root, 'docs/release/provider-readiness.json'), 'utf8'),
   );
   const blockers = assertP14cPreparationGuards({
     root,

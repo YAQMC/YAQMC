@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inspectP14cReadiness } from './p14c-readiness.mjs';
@@ -161,12 +161,9 @@ export function createCorrespondingSourceBundle(options = {}) {
     runGit,
   });
 
-  const readinessRecord = 'docs/migration/p14c-readiness.json';
-  const provenanceLedger = 'docs/migration/provenance-ledger.json';
-  const provenanceEvidence = [
-    'docs/migration/provenance-audit.md',
-    'docs/migration/p14-qm-api-rs-provenance.md',
-  ];
+  const readinessRecord = 'docs/release/provider-readiness.json';
+  const provenanceLedger = 'docs/release/provenance-ledger.json';
+  const provenanceEvidence = ['docs/release/provenance.md', 'docs/release/qm-api-rs-provenance.md'];
   const manifest = {
     schemaVersion: 1,
     license: 'GPL-3.0-or-later',

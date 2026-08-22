@@ -163,24 +163,3 @@ test('execution helper skips non-Linux and never invokes a real builder in scrip
   assert.match(linuxSpawns[0][1].join(' '), /electron-builder[\\/]cli\.js/);
   assert.match(linuxSpawns[0][1].join(' '), /--linux AppImage deb rpm tar\.gz --x64/);
 });
-
-test('checklist doc does not claim the clean-VM matrix green', () => {
-  const doc = readFileSync(
-    path.join(repositoryRoot, 'docs', 'migration', 'pack03-linux.md'),
-    'utf8',
-  );
-  assert.match(doc, /LIVE VERIFY \/ clean-VM pending/);
-  assert.match(doc, /PACK-03 is not\s+green/);
-  assert.match(doc, /updater-bearing per\s+plan §32/);
-  assert.match(doc, /libayatana-appindicator/);
-  assert.match(doc, /non-fatal/);
-  assert.match(doc, /Unsigned \(\*\*R-9\*\*\)/);
-  assert.match(doc, /Upgrade \(install A then B\)/);
-  assert.match(doc, /AppImage/);
-  assert.match(doc, /\bdeb\b/);
-  assert.match(doc, /\brpm\b/);
-  assert.match(doc, /tar\.gz/);
-  assert.match(doc, /x64/);
-  assert.match(doc, /arm64/);
-  assert.doesNotMatch(doc, /matrix is green/i);
-});

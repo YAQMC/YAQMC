@@ -22,7 +22,7 @@ function usage() {
 function parseArgs(args) {
   const options = {
     enforce: false,
-    ledger: path.join(repositoryRoot, 'docs', 'migration', 'provenance-ledger.json'),
+    ledger: path.join(repositoryRoot, 'docs', 'release', 'provenance-ledger.json'),
   };
 
   for (let index = 0; index < args.length; index += 1) {

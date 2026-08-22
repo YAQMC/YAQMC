@@ -14,7 +14,7 @@
  *    snapshot_revision strictly monotonic; drop stale session_id completions).
  * 3. Repeat a rapid-seek storm (plan §15.6: 50 seeks in 2 s) plus isolated seeks.
  * 4. p95 = percentile of (settledTimestamp - uiEventTimestamp) over the sample.
- * 5. Write the number into docs/migration/perf-baseline.md Seek round-trip p95
+ * 5. Write the number into artifacts/perf-baseline.md Seek round-trip p95
  *    (or the generator snapshot). Leave the cell PENDING until that capture.
  *
  * Run: node scripts/migration/play02-seek-p95.mjs

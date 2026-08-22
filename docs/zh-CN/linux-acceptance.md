@@ -1,49 +1,67 @@
-# Linux 验收证据
+# Linux 验收
 
 > **简体中文** | [English](../linux-acceptance.md)
 
-本账本区分迁移前历史观测和仍需 Arch Linux 测试者执行的当前 Electron 最终 AppImage 验收。
-采集完成只会生成 `verification: pending`，不能自行宣告通过。
+本协议只适用于当前已打包的 Electron AppImage。编译和打包通过不能证明
+Linux 原生运行、合成器集成或多窗口行为。
 
-## 2026-08-10 迁移前原生 Wayland 基线
+## 测试包
 
-| 字段     | 值                                                                 |
-| -------- | ------------------------------------------------------------------ |
-| 压缩包   | `YAQMC-linux-report-20260810T162727Z-baseline.zip`                 |
-| 时间     | 2026-08-10 16:27:27 UTC                                            |
-| SHA-256  | `FD8D672EA8A2D62E608B5BB1EA0AFCEAB489586E31B9454332CA38D08971DE00` |
-| 系统     | Arch rolling / `7.1.6-zen1-1-zen`                                  |
-| 桌面     | Hyprland / Wayland（`wayland-1`）                                  |
-| 实际后端 | `wayland-native`                                                   |
-| GPU      | Intel Raptor Lake-S UHD + NVIDIA RTX 4060 Max-Q                    |
-| 音频     | Rodio/CPAL ALSA → PipeWire                                         |
-| 时长     | 50.379 秒                                                          |
+使用 workflow 的扁平
+`YAQMC-linux-x64-tester-<commit>` artifact，其中包含精确 AppImage、
+`BUILD-IDENTITY.json`、`SHA256SUMS`、测试说明、采集器和验证器。
+仓库 checkout 不能替代二进制身份。
 
-压缩包解压前验证过路径，无绝对路径、盘符、NUL 或 `..` 穿越；解压前后摘要一致。它只证明已退役宿主
-当时创建了原生 Wayland 主窗并完成 MPRIS 2.2、托盘和音频初始化；不验证当前 Electron host。
+从解压目录启动前执行：
 
-它不证明旧 bundle 的精确 Git/工作流/最终 AppImage 身份，也没有分阶段记录播放、seek、性能、全屏几何
-恢复或歌词锁定。旧报告的生命周期 CPU 与 RSS 不能当瞬时性能或唯一内存。
+```bash
+sha256sum -c SHA256SUMS
+node verify-lyrics-acceptance.mjs \
+  --platform linux \
+  --identity-only \
+  --build-identity "$PWD/BUILD-IDENTITY.json"
+```
 
-## 最终 AppImage 协议
+## 必需模式
 
-使用 workflow 的扁平 `YAQMC-linux-x64-tester-<commit>` artifact，其中应包含最终 AppImage、`BUILD-IDENTITY.json`、
-`SHA256SUMS`、测试说明、采集器和验证器。先执行 `sha256sum -c` 与 identity-only 验证，再依次采集：
+按顺序采集到同一个绝对路径 `YAQMC_ACCEPTANCE_ROOT`：
 
 1. `auto`，不设置 YAQMC 图形 override；
-2. `native-wayland`，提供 `YAQMC_LINUX_RENDERER=native-wayland` 且必须报告 `wayland-native`；
-3. `x11`，在 Wayland 会话可报告 `xwayland`；
-4. 只有前面的原生图形故障才允许 `software`，并保留两份报告。
+2. `native-wayland`，必须报告 `display_backend="wayland-native"`；
+3. `x11`，在 X11 会话可报告 `x11`，在 Wayland 会话可报告 `xwayland`；
+4. 仅当前面的原生模式复现图形故障时才运行 `software`，并保留两份报告。
 
-每次必须按顺序记录：`startup-idle`、`playback`、`seek-pause-resume`、`main-scroll-resize`、
-`lyrics-normal`、`lyrics-focus`、`lyrics-fullscreen`、`desktop-lyrics`、`island-lyrics`、
-`both-surfaces`、`shutdown`。
+每次必需运行均按顺序记录：
 
-全屏用 Escape 退出并确认呈现层和窗口几何恢复。两个悬浮歌词窗都要先用窗口上的独立图标解锁，再锁定
-并用托盘/设置恢复，证明方便路径与兜底路径都有效。Windows 软件模式不能替代任何 Linux 模式。
+1. `startup-idle`
+2. `playback`
+3. `seek-pause-resume`
+4. `main-scroll-resize`
+5. `lyrics-normal`
+6. `lyrics-focus`
+7. `lyrics-fullscreen`
+8. `desktop-lyrics`
+9. `island-lyrics`
+10. `both-surfaces`
+11. `shutdown`
 
-测试者需返回压缩包、SHA-256、发行版/内核、合成器、显示器、缩放/DPR、音频观测和可见缺陷。压缩包
-完成校验并记录 verdict 后，最终验收才关闭。
+全屏阶段用 `Esc` 退出，并确认之前的呈现状态和窗口几何恢复。两个悬浮歌词
+窗口都要检查锁定后的直接解锁，以及托盘/设置恢复路径。另需记录托盘、
+MPRIS、音频输出、显示器缩放/DPR 和所有可见渲染缺陷。
 
-Plugin API v2、Color Field、场景视频和插件 Worker 会随 Linux 编译，但在最终 AppImage 留下桌面记录之前，
-不算已关闭的 Linux GUI 账本。
+必需模式目录齐全后执行：
+
+```bash
+node verify-lyrics-acceptance.mjs \
+  --platform linux \
+  --root "$YAQMC_ACCEPTANCE_ROOT" \
+  --build-identity "$PWD/BUILD-IDENTITY.json"
+tar -C "$(dirname "$YAQMC_ACCEPTANCE_ROOT")" \
+  -czf YAQMC-linux-acceptance.tar.gz \
+  "$(basename "$YAQMC_ACCEPTANCE_ROOT")"
+sha256sum YAQMC-linux-acceptance.tar.gz
+```
+
+QQ 音乐账号操作属于独立 LIVE 检查，必须使用获授权账号和已脱敏证据。
+只有返回压缩包、摘要、精确安装包身份、环境和 verdict 均完成复核，最终验收
+才关闭。采集器输出 `verification: pending` 不能算通过。

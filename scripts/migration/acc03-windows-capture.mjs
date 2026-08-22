@@ -8,7 +8,7 @@
  *   $env:YAQMC_CORE_BIN="$env:CARGO_TARGET_DIR\debug\yaqmc-core.exe"
  *   node scripts/migration/acc03-windows-capture.mjs
  *
- * Writes docs/migration/acc03-windows-last.json (gitignored). Does not invent
+ * Writes artifacts/acc03-windows-last.json (gitignored). Does not invent
  * PLAY-02 p95. Does not run the P12 second 4h soak. BASE-03 pre-migration cells stay
  * PENDING unless that snapshot already has numbers.
  */
@@ -312,7 +312,7 @@ async function main() {
     killTree(child.pid);
   }
 
-  const out = path.join(repoRoot, 'docs', 'migration', 'acc03-windows-last.json');
+  const out = path.join(repoRoot, 'artifacts', 'acc03-windows-last.json');
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }

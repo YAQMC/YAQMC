@@ -9,22 +9,22 @@
     {
       "id": "p14b-live-hybrid",
       "status": "pass",
-      "evidence": "docs/migration/p14b-live-verify.md"
+      "evidence": "docs/release/provider-readiness.md"
     },
     {
       "id": "retirement-scope",
       "status": "pass",
-      "evidence": "docs/migration/p14c-readiness.md"
+      "evidence": "docs/release/provider-readiness.md"
     },
     {
       "id": "crate-provenance",
       "status": "pass",
-      "evidence": "docs/migration/p14-qm-api-rs-provenance.md"
+      "evidence": "docs/release/qm-api-rs-provenance.md"
     },
     {
       "id": "production-qmc-library",
       "status": "pass",
-      "evidence": "docs/migration/p14b-live-verify.md"
+      "evidence": "docs/release/provider-readiness.md"
     },
     {
       "id": "exact-pin-three-day-soak",
@@ -34,17 +34,17 @@
       "waivedOn": "2026-08-22",
       "waiverKind": "maintainer-authorized-skip",
       "reissuedFrom": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
-      "evidence": "docs/migration/p14c-readiness.md"
+      "evidence": "docs/release/provider-readiness.md"
     },
     {
       "id": "production-credential-primary",
       "status": "pass",
-      "evidence": "docs/migration/p14c-implementation.md"
+      "evidence": "docs/release/provider-readiness.md"
     },
     {
       "id": "production-account-mutation-hybrid",
       "status": "pass",
-      "evidence": "docs/migration/p14c-implementation.md"
+      "evidence": "docs/release/provider-readiness.md"
     }
   ],
   "responsibilities": {

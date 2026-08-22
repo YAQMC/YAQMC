@@ -22,7 +22,6 @@ import {
 } from '../migration/ci03-arm64.mjs';
 
 const SCRIPT = path.join(repositoryRoot, 'scripts', 'migration', 'ci03-arm64.mjs');
-const DOC = path.join(repositoryRoot, 'docs', 'migration', 'ci03-arm64.md');
 
 test('CI-03 assist prints arm64 triples and does not execute cargo', () => {
   const result = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
@@ -86,23 +85,4 @@ test('CI-03 script source never spawns cargo or electron-builder', () => {
   assert.match(source, /aarch64-pc-windows-msvc/);
   assert.match(source, /ubuntu-24\.04-arm/);
   assert.match(source, /aarch64-unknown-linux-gnu/);
-});
-
-test('CI-03 doc records cross-build, native ARM runner, PACK-01, and pending boot-test', () => {
-  const doc = readFileSync(DOC, 'utf8');
-  assert.match(doc, /aarch64-pc-windows-msvc/);
-  assert.match(doc, /ubuntu-24\.04-arm/);
-  assert.match(doc, /aarch64-unknown-linux-gnu/);
-  assert.match(doc, /electron-builder\.yml/);
-  assert.match(doc, /--win --arm64/);
-  assert.match(doc, /--linux --arm64/);
-  assert.match(doc, /boot-test pending/i);
-  assert.match(doc, /hardware pending/i);
-  assert.match(doc, /CI-03 is not green/);
-  assert.match(doc, /does \*\*not\*\*\s+run cargo/i);
-  assert.doesNotMatch(doc, /boot-test green/i);
-  assert.match(doc, /Electron stays \*\*43\.4\.0\*\*/);
-  assert.match(doc, /32 MiB protocol hard cap/);
-  assert.match(doc, /Provenance remains \*\*BLOCKED\*\*/);
-  assert.match(doc, /qm-api-rs/);
 });

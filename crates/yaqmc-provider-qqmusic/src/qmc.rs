@@ -1,7 +1,7 @@
 // QMC media-key validation and production decryption through the pinned
 // library adapter. The former in-tree Map/RC4/TEA implementation was retired
-// at the P14-C cutover; its synthetic and real-file evidence is archived in
-// docs/migration/p14b-live-verify.md.
+// at the production provider cutover; its synthetic and real-file evidence is
+// recorded in docs/release/provider-readiness.md.
 
 use std::{fmt, sync::Arc};
 use thiserror::Error;

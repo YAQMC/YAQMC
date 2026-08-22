@@ -2,8 +2,7 @@
 
 > **简体中文** | [English](../README.md)
 
-这里是 YAQMC 面向用户、测试者和贡献者的公开文档。`docs/plans/` 与 `docs/superpowers/` 中的文件是开发
-过程记录，不属于用户指南，也不代表所有计划都已经交付。
+这里是 YAQMC 面向用户、测试者、贡献者和发布维护者的公开文档。
 
 ## 从这里开始
 
@@ -26,7 +25,7 @@
 - [日志系统](logging.md)、[诊断快照与诊断包](diagnostics.md)、
   [GitHub Issue 报告](issue-reporting.md)与[安全与隐私](security.md)
 - [CI、缓存与可下载产物](ci.md)
-- [Electron 迁移执行档案](../migration/README.md)
+- [发布与合规记录](../release/README.md)
 
 ## 验收记录
 

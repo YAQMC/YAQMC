@@ -97,7 +97,7 @@ test('rejects dirty source checkouts before reading mutable worktree metadata', 
         outputDir: path.join(scratch, 'out'),
         runGit: (repository, args) =>
           args[0] === 'status' && repository === repositoryRoot
-            ? ' M docs/migration/p14c-readiness.json\n'
+            ? ' M docs/release/provider-readiness.json\n'
             : runGit(repository, args),
         runProvenanceGate: () => {},
       }),

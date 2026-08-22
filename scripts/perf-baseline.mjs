@@ -70,7 +70,7 @@ function usage() {
 function options(argv) {
   const result = {
     input: 'scripts/perf-baseline.snapshot.json',
-    output: 'docs/migration/perf-baseline.md',
+    output: 'artifacts/perf-baseline.md',
     toolchainObservations: null,
     repositoryRoot: defaultRepositoryRoot,
     help: false,
