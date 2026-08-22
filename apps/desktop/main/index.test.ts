@@ -75,7 +75,8 @@ describe('host boot wiring', () => {
     expect(source).toContain('coreTempEnv(qaSandbox)');
     expect(source).not.toContain('yaqmc-electron-e2e');
     expect(source).not.toContain('yaqmc-ui-perf-diag');
-    expect(source).toContain('${VITE_DEV_ORIGIN}/?provider=fake');
+    expect(source).toContain("const search = e2e && !e2eNative ? '?provider=fake' : ''");
+    expect(source).toContain('uiDiagnostics=1');
     expect(source).toContain('?surface=${kind}');
     expect(source).toContain('?unlockSurface=${kind}');
     expect(source).toContain("YAQMC_E2E_NATIVE === '1'");

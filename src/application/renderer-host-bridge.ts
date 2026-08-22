@@ -32,12 +32,19 @@ function readRendererApi(): ElectronRendererApi | undefined {
   return undefined;
 }
 
-export function selectHostBridge(search: string = window.location.search): HostBridge {
+export function selectHostBridge(
+  search: string = window.location.search,
+  buildType: string = __YAQMC_BUILD_TYPE__,
+): HostBridge {
   const windowRole = windowRoleFromSearch(search);
   const parameters = new URLSearchParams(search);
   if (parameters.get('provider') === 'fake') {
     return createFakeBridge({ windowRole });
   }
   const api = readRendererApi();
-  return api ? createElectronBridge(api, windowRole) : createFakeBridge({ windowRole });
+  if (api) return createElectronBridge(api, windowRole);
+  if (buildType === 'release') {
+    throw new Error('Electron preload bridge is unavailable in the release renderer');
+  }
+  return createFakeBridge({ windowRole });
 }

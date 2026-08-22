@@ -101,10 +101,14 @@ describe('selectHostBridge', () => {
   });
 
   it('falls back to createFakeBridge outside Electron', async () => {
-    const bridge = selectHostBridge('?unlockSurface=island');
+    const bridge = selectHostBridge('?unlockSurface=island', 'development');
     expect(bridge.kind).toBe('fake');
     expect(bridge.windowRole).toBe('unlock-island');
     await expect(bridge.dialog?.pickSave()).resolves.toBe(null);
     await expect(bridge.dialog?.pickFile({ kind: 'background-image' })).resolves.toBe(null);
+  });
+
+  it('fails closed instead of showing fixture data when a release preload is missing', () => {
+    expect(() => selectHostBridge('', 'release')).toThrow(/preload bridge is unavailable/);
   });
 });

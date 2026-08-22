@@ -39,6 +39,7 @@ import {
   surfaceVisualActive,
 } from '../application/lyrics-surface-visual';
 import { installPlaybackUiProbe } from '../application/playback-ui-probe';
+import { uiDiagnosticsEnabled } from '../application/ui-diagnostics';
 import { usePlatformDiagnosticsRuntime } from '../application/platform-integration';
 import type { LyricDocument, LyricLine, LyricWord } from '../domain/music';
 import { joinArtistNames } from '../utils/format';
@@ -118,7 +119,6 @@ function fontFamily(settings: LyricSurfaceSettings): string {
 function useSurfaceHover(interactive: boolean, rootRef: { current: HTMLElement | null }) {
   const [hovered, setHovered] = useState(false);
   const leaveTimer = useRef<number | null>(null);
-  const hoverReady = useRef(false);
 
   const cancelLeave = () => {
     if (leaveTimer.current !== null) {
@@ -127,7 +127,7 @@ function useSurfaceHover(interactive: boolean, rootRef: { current: HTMLElement |
     }
   };
   const confirmPointer = (clientX: number, clientY: number) => {
-    if (!interactive || !hoverReady.current) return false;
+    if (!interactive) return false;
     if (!pointerInsideSurface(rootRef.current, clientX, clientY)) return false;
     cancelLeave();
     setHovered(true);
@@ -136,7 +136,7 @@ function useSurfaceHover(interactive: boolean, rootRef: { current: HTMLElement |
   const onPointerEnter = (event: { clientX: number; clientY: number }) => {
     confirmPointer(event.clientX, event.clientY);
     cancelLeave();
-    if (interactive && hoverReady.current) setHovered(true);
+    if (interactive) setHovered(true);
   };
   const onPointerMove = (event: { clientX: number; clientY: number }) => {
     confirmPointer(event.clientX, event.clientY);
@@ -154,15 +154,12 @@ function useSurfaceHover(interactive: boolean, rootRef: { current: HTMLElement |
     }, 90);
   };
 
-  useEffect(() => {
-    const readyTimer = window.setTimeout(() => {
-      hoverReady.current = true;
-    }, 120);
-    return () => {
-      window.clearTimeout(readyTimer);
+  useEffect(
+    () => () => {
       if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
-    };
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!interactive || !hovered) return;
@@ -498,7 +495,11 @@ export function IslandSurface(props: SurfaceProps) {
 export function LyricsSurfaceApp({ kind }: { kind: SurfaceKind }) {
   usePlatformDiagnosticsRuntime();
   usePreferencesRuntime(false);
-  useEffect(() => installPlaybackUiProbe({ heartbeat: false }), []);
+  const uiDiagnostics = uiDiagnosticsEnabled();
+  useEffect(
+    () => (uiDiagnostics ? installPlaybackUiProbe({ heartbeat: false }) : undefined),
+    [uiDiagnostics],
+  );
   useEffect(() => subscribeSurfaceVisualActive(() => undefined), []);
   useEffect(() => {
     document.documentElement.dataset.surfaceCommits = String(

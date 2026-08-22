@@ -11,6 +11,7 @@ import {
   electronBuilderArgs,
   isElectronCoreCross,
   parseElectronPackageArgs,
+  packagingEnvironment,
   planElectronPackage,
   stageElectronArtifacts,
 } from './package-electron.mjs';
@@ -38,10 +39,28 @@ test('package-electron dry-run prints cargo, stage-core, and --publish never', (
   ]);
   assert.ok(plan.stageCore.includes('--rust-target'));
   assert.ok(plan.stageCore.includes('x86_64-pc-windows-msvc'));
+  assert.deepEqual(plan.frontendBuild, ['npm', 'run', 'ci:frontend-build']);
   assert.equal(plan.publish, 'never');
   assert.ok(plan.electronBuilder.includes('--publish'));
   assert.ok(plan.electronBuilder.includes('never'));
   assert.equal(plan.cross, false);
+});
+
+test('production packaging strips QA launch state without dropping package configuration', () => {
+  const env = packagingEnvironment({
+    PATH: 'toolchain',
+    YAQMC_PREBUILT_FRONTEND: '1',
+    YAQMC_ELECTRON_E2E: '1',
+    YAQMC_DESKTOP_SMOKE: '1',
+    YAQMC_UI_PERF_DIAG: '1',
+    YAQMC_QA_ROOT: 'D:\\tmp\\qa',
+  });
+  assert.equal(env.PATH, 'toolchain');
+  assert.equal(env.YAQMC_PREBUILT_FRONTEND, '1');
+  assert.equal(env.YAQMC_ELECTRON_E2E, undefined);
+  assert.equal(env.YAQMC_DESKTOP_SMOKE, undefined);
+  assert.equal(env.YAQMC_UI_PERF_DIAG, undefined);
+  assert.equal(env.YAQMC_QA_ROOT, undefined);
 });
 
 test('Windows arm64 is treated as a core cross-compile', () => {

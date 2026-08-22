@@ -15,6 +15,7 @@ import { verifyFrontendDist } from './verify-frontend-dist.mjs';
 import { verifyBinaryFile } from './verify-binary-arch.mjs';
 import { sha256File, writeBuildInfo } from './write-build-info.mjs';
 import { findCoreBinary, stageCore } from '../stage-core.mjs';
+import { stripQaLaunchFlags } from '../qa-runtime.mjs';
 
 export const ELECTRON_OUTPUT_DIR_NAME = 'release-electron';
 
@@ -74,6 +75,7 @@ export function planElectronPackage({ os, arch, target, cross }) {
   return {
     cargo: ['cargo', ...cargoBuildArgs(target)],
     clientBuild: ['npm', 'run', 'build', '-w', '@yaqmc/client'],
+    frontendBuild: ['npm', 'run', 'ci:frontend-build'],
     desktopBuild: ['npm', 'run', 'build', '-w', '@yaqmc/desktop'],
     stageCore: ['node', 'scripts/stage-core.mjs', '--profile', 'release', '--rust-target', target],
     electronBuilder: ['electron-builder', ...electronBuilderArgs({ os, arch })],
@@ -144,10 +146,14 @@ export function stageElectronArtifacts({
   return destDir;
 }
 
+export function packagingEnvironment(env = process.env) {
+  return stripQaLaunchFlags(env);
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repositoryRoot,
-    env: process.env,
+    env: options.env ?? packagingEnvironment(),
     encoding: 'utf8',
     shell: true,
   });
@@ -169,18 +175,20 @@ function main() {
   }
   const cross = options.cross === 'true' || isElectronCoreCross({ os: osName, arch });
   const plan = planElectronPackage({ os: osName, arch, target, cross });
+  const packageEnv = packagingEnvironment();
 
   if (options.dryRun) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
     return;
   }
 
-  if (process.env.YAQMC_PREBUILT_FRONTEND === '1') {
+  const usePrebuiltFrontend = packageEnv.YAQMC_PREBUILT_FRONTEND === '1';
+  if (usePrebuiltFrontend) {
     const info = verifyFrontendDist();
     process.stdout.write(`Using prebuilt frontend dist for ${info.gitSha}\n`);
   }
 
-  run(plan.cargo[0], plan.cargo.slice(1));
+  run(plan.cargo[0], plan.cargo.slice(1), { env: packageEnv });
   const coreBinary = findCoreBinary({
     repoRoot: repositoryRoot,
     profile: 'release',
@@ -188,8 +196,13 @@ function main() {
   });
   verifyBinaryFile(coreBinary, target);
 
-  run(plan.clientBuild[0], plan.clientBuild.slice(1));
-  run(plan.desktopBuild[0], plan.desktopBuild.slice(1));
+  run(plan.clientBuild[0], plan.clientBuild.slice(1), { env: packageEnv });
+  if (!usePrebuiltFrontend) {
+    run(plan.frontendBuild[0], plan.frontendBuild.slice(1), { env: packageEnv });
+    const info = verifyFrontendDist();
+    process.stdout.write(`Built frontend dist for ${info.gitSha}\n`);
+  }
+  run(plan.desktopBuild[0], plan.desktopBuild.slice(1), { env: packageEnv });
   stageCore({ repoRoot: repositoryRoot, profile: 'release', rustTarget: target });
 
   const desktopRoot = path.join(repositoryRoot, 'apps', 'desktop');
@@ -201,7 +214,7 @@ function main() {
     );
     builderArgs.splice(builderArgs.indexOf('--config') + 2, 0, '--config', override);
   }
-  run('npx', ['electron-builder', ...builderArgs], { cwd: desktopRoot });
+  run('npx', ['electron-builder', ...builderArgs], { cwd: desktopRoot, env: packageEnv });
 
   const staged = stageElectronArtifacts({
     os: osName,
