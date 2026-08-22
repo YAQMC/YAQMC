@@ -53,8 +53,9 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
 win:
   icon: resources/icon.ico
-  # Unsigned (R-9). Skip rcedit/winCodeSign so local --dir pack does not fetch GitHub.
-  signAndEditExecutable: false
+  # Unsigned (R-9), but retain rcedit so the configured YAQMC icon and metadata
+  # are embedded in Windows executables instead of Electron's default icon.
+  signExecutable: false
   target:
     - target: nsis
       arch:
