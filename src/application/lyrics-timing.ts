@@ -14,6 +14,9 @@ export const emptyLyricCursor: LyricCursor = {
   word: null,
 };
 
+/** The view moves just before a vocal starts, while lyric activation stays exact. */
+export const LYRIC_SCROLL_PREROLL_MS = 520;
+
 function effectiveLineEnd(document: LyricDocument, lineIndex: number): number {
   const line = document.lines[lineIndex];
   if (!line) return 0;
@@ -54,6 +57,32 @@ export function nextLyricBoundaryMs(
   if (!Number.isFinite(nextBoundary)) return null;
   const rawBoundary = nextBoundary + offsetMs;
   return Number.isFinite(rawBoundary) ? rawBoundary : null;
+}
+
+/**
+ * The next scheduled display update. It includes a scroll-only boundary before
+ * the next line, but keeps `nextLyricBoundaryMs` reserved for actual lyric
+ * timing transitions.
+ */
+export function nextLyricPresentationBoundaryMs(
+  document: LyricDocument | null,
+  rawPositionMs: number,
+): number | null {
+  const lyricBoundary = nextLyricBoundaryMs(document, rawPositionMs);
+  if (!document || document.syncMode === 'unsynchronized' || !Number.isFinite(rawPositionMs)) {
+    return lyricBoundary;
+  }
+
+  const lyricTimeMs = rawPositionMs - document.metadata.offsetMs;
+  let nextBoundary = lyricBoundary;
+  for (const line of document.lines) {
+    if (line.startMs === null) continue;
+    const boundary = line.startMs - LYRIC_SCROLL_PREROLL_MS;
+    if (!Number.isFinite(boundary) || boundary <= lyricTimeMs) continue;
+    const rawBoundary = boundary + document.metadata.offsetMs;
+    if (nextBoundary === null || rawBoundary < nextBoundary) nextBoundary = rawBoundary;
+  }
+  return nextBoundary;
 }
 
 export function selectLyricCursor(
@@ -118,6 +147,32 @@ export function lastSungLineIndex(document: LyricDocument | null, rawPositionMs:
   return last;
 }
 
+/**
+ * Selects the line that should be centered in the viewport. This intentionally
+ * differs from `selectLyricCursor`: only the camera leads, never the text.
+ */
+export function lyricScrollTargetLineIndex(
+  document: LyricDocument | null,
+  rawPositionMs: number,
+): number {
+  if (!document || document.syncMode === 'unsynchronized') return -1;
+  const lyricTimeMs = rawPositionMs - document.metadata.offsetMs;
+  const current = selectLyricCursor(document, rawPositionMs);
+  let nearestFuture: { index: number; startMs: number } | null = null;
+
+  for (const [index, line] of document.lines.entries()) {
+    if (line.startMs === null || line.startMs <= lyricTimeMs) continue;
+    if (!nearestFuture || line.startMs < nearestFuture.startMs) {
+      nearestFuture = { index, startMs: line.startMs };
+    }
+  }
+
+  if (nearestFuture && nearestFuture.startMs - lyricTimeMs <= LYRIC_SCROLL_PREROLL_MS) {
+    return nearestFuture.index;
+  }
+  return current.lineIndex >= 0 ? current.lineIndex : lastSungLineIndex(document, rawPositionMs);
+}
+
 export function lyricInterludeRemainingMs(
   document: LyricDocument | null,
   rawPositionMs: number,
@@ -128,7 +183,7 @@ export function lyricInterludeRemainingMs(
 }
 
 /**
- * Resolves an intentional musical break using the same prefix-end model as AMLL:
+ * Resolves an intentional musical break with a running latest-end boundary:
  * a gap begins only after every earlier timed line has ended, so overlapping or
  * delayed vocal lines cannot accidentally produce an interlude marker.
  */
@@ -152,8 +207,12 @@ export function activeLyricInterlude(
       return { startMs: latestEndMs, endMs: current.startMs, anchorLineIndex };
     }
     const endMs = effectiveLineEnd(document, current.index);
-    if (Number.isFinite(endMs) && endMs > latestEndMs) latestEndMs = endMs;
-    anchorLineIndex = current.index;
+    if (Number.isFinite(endMs) && endMs > latestEndMs) {
+      latestEndMs = endMs;
+      // In overlapping passages, anchor the marker after the line that truly
+      // finishes last, rather than after the line that merely starts last.
+      anchorLineIndex = current.index;
+    }
   }
   return null;
 }
@@ -161,6 +220,17 @@ export function activeLyricInterlude(
 export function wordProgress(word: LyricWord, positionMs: number): number {
   const duration = Math.max(1, word.endMs - word.startMs);
   return Math.max(0, Math.min(1, (positionMs - word.startMs) / duration));
+}
+
+/**
+ * A symmetric, eased emphasis envelope for a word already in progress. It is
+ * zero at both timing boundaries, which lets a seek or pause resume without a
+ * visible snap, and peaks once around the middle of the word.
+ */
+export function wordMotionIntensity(progress: number): number {
+  const clamped = Math.max(0, Math.min(1, progress));
+  const eased = clamped * clamped * (3 - 2 * clamped);
+  return Math.sin(eased * Math.PI);
 }
 
 export function lyricScrollBehavior(reducedMotion: boolean): ScrollBehavior {

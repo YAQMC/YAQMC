@@ -5,9 +5,12 @@ import {
   lastSungLineIndex,
   lyricInterludeRemainingMs,
   lyricScrollBehavior,
+  lyricScrollTargetLineIndex,
   MIN_INTERLUDE_GAP_MS,
   nextLyricBoundaryMs,
+  nextLyricPresentationBoundaryMs,
   selectLyricCursor,
+  wordMotionIntensity,
   wordProgress,
 } from './lyrics-timing';
 
@@ -119,6 +122,20 @@ describe('lyrics timing', () => {
     });
   });
 
+  it('anchors an interlude after the overlapping line that ends last', () => {
+    const lyrics = document([
+      line({ id: 'lead', text: 'Lead', startMs: 1_000, endMs: 10_000 }),
+      line({ id: 'response', text: 'Response', startMs: 3_000, endMs: 4_000 }),
+      line({ id: 'next', text: 'Next', startMs: 15_000, endMs: 16_000 }),
+    ]);
+
+    expect(activeLyricInterlude(lyrics, 12_000)).toEqual({
+      startMs: 10_000,
+      endMs: 15_000,
+      anchorLineIndex: 0,
+    });
+  });
+
   it('tracks the last sung line through timed gaps', () => {
     const lyrics = document([
       line({ id: 'one', text: 'One', startMs: 1_000, endMs: 2_000 }),
@@ -130,6 +147,18 @@ describe('lyrics timing', () => {
     expect(lastSungLineIndex(lyrics, 3_500)).toBe(0);
     expect(lastSungLineIndex(lyrics, 5_500)).toBe(1);
     expect(lastSungLineIndex(null, 3_500)).toBe(-1);
+  });
+
+  it('moves the view just before the next vocal without advancing the lyric cursor', () => {
+    const lyrics = document([
+      line({ id: 'one', text: 'One', startMs: 1_000, endMs: 4_000 }),
+      line({ id: 'two', text: 'Two', startMs: 5_000, endMs: 6_000 }),
+    ]);
+
+    expect(lyricScrollTargetLineIndex(lyrics, 4_479)).toBe(0);
+    expect(lyricScrollTargetLineIndex(lyrics, 4_480)).toBe(1);
+    expect(selectLyricCursor(lyrics, 4_480).lineIndex).toBe(-1);
+    expect(nextLyricPresentationBoundaryMs(lyrics, 4_000)).toBe(4_480);
   });
 
   it('keeps translated text associated with its normalized line', () => {
@@ -159,6 +188,14 @@ describe('lyrics timing', () => {
     expect(wordProgress(word, 500)).toBe(0);
     expect(wordProgress(word, 1_500)).toBe(0.5);
     expect(wordProgress(word, 2_500)).toBe(1);
+  });
+
+  it('uses a symmetric eased envelope for word motion', () => {
+    expect(wordMotionIntensity(-1)).toBe(0);
+    expect(wordMotionIntensity(0)).toBe(0);
+    expect(wordMotionIntensity(0.5)).toBeCloseTo(1);
+    expect(wordMotionIntensity(1)).toBeCloseTo(0);
+    expect(wordMotionIntensity(2)).toBeCloseTo(0);
   });
 
   it('disables animated lyric scrolling for reduced motion', () => {
