@@ -251,7 +251,7 @@ test('gate evidence must stay inside the repository and exist', () => {
           gate.id === 'retirement-scope' ? { ...gate, evidence: '../outside.md' } : gate,
         ),
       }),
-    /repository-relative docs\/migration path/,
+    /repository-relative docs\/release path/,
   );
   assert.throws(
     () =>

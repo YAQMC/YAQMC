@@ -30,6 +30,7 @@ apps/desktop/resources/core/core.sha256
 apps/desktop/resources/core/manifest.json
 
 # Local acceptance reports
+artifacts/perf-baseline.md
 artifacts/soak-last.json
 artifacts/acc03-windows-last.json
 
