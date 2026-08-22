@@ -281,11 +281,13 @@ describe('createLyricsSurfaces controller', () => {
     expect(surfaces.create('desktop')).toBe(desktop);
     expect(surfaces.create('desktop')).toBe(desktop);
     surfaces.show('island');
+    surfaces.show('desktop');
     surfaces.hide('desktop');
     surfaces.lock('island', true);
 
     expect(createWindow).toHaveBeenCalledTimes(2);
     expect(desktop.hide).toHaveBeenCalledTimes(1);
+    expect(desktop.showInactive).toHaveBeenCalledTimes(1);
     expect(island.showInactive).toHaveBeenCalledTimes(1);
     expect(island.show).not.toHaveBeenCalled();
     expect(island.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
@@ -296,6 +298,22 @@ describe('createLyricsSurfaces controller', () => {
     expect(surfaces.isVisible('island')).toBe(true);
     expect(surfaces.isLocked('island')).toBe(true);
     expect(surfaces.isLocked('desktop')).toBe(false);
+  });
+
+  it('does not repeat unchanged native visibility and lock operations', () => {
+    const window = mockWindow();
+    const surfaces = createLyricsSurfaces({ createWindow: () => window, preloadPath: PRELOAD });
+
+    surfaces.show('desktop');
+    surfaces.show('desktop');
+    surfaces.lock('desktop', true);
+    surfaces.lock('desktop', true);
+    surfaces.hide('desktop');
+    surfaces.hide('desktop');
+
+    expect(window.showInactive).toHaveBeenCalledTimes(1);
+    expect(window.setIgnoreMouseEvents).toHaveBeenCalledTimes(1);
+    expect(window.hide).toHaveBeenCalledTimes(1);
   });
 
   it('reapplies native lock after hide/show and notifies overlay bounds', () => {

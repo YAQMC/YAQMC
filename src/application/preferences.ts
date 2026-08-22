@@ -609,13 +609,18 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     persist(persistedSlice(get()));
   },
   setSurfaceInteractionLocal: (kind, interaction) => {
-    set((state) => ({
-      surfaces: {
-        ...state.surfaces,
-        [kind]: { ...state.surfaces[kind], interaction },
-      },
-      persistenceError: null,
-    }));
+    set((state) => {
+      if (state.surfaces[kind].interaction === interaction) {
+        return state.persistenceError === null ? state : { persistenceError: null };
+      }
+      return {
+        surfaces: {
+          ...state.surfaces,
+          [kind]: { ...state.surfaces[kind], interaction },
+        },
+        persistenceError: null,
+      };
+    });
   },
   setManagedBackground: (reference, dataUri) => {
     set((state) => ({

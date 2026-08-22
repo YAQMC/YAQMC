@@ -525,8 +525,11 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
   return {
     create,
     show(kind) {
-      visible.add(kind);
       const existing = live(kind);
+      if (existing && visible.has(kind)) {
+        return;
+      }
+      visible.add(kind);
       const window = existing ?? create(kind);
       showLyricsSurface(window);
       if (!existing) {
@@ -542,7 +545,9 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
       }
     },
     hide(kind) {
-      visible.delete(kind);
+      if (!visible.delete(kind)) {
+        return;
+      }
       const window = live(kind);
       if (!window) {
         return;
@@ -552,6 +557,9 @@ export function createLyricsSurfaces(deps: LyricsSurfaceDeps): LyricsSurfaces {
     lock(kind, nextLocked) {
       const window = live(kind);
       if (!window) {
+        return;
+      }
+      if (locked.has(kind) === nextLocked) {
         return;
       }
       if (nextLocked) {
