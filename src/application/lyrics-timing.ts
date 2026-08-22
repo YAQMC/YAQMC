@@ -89,7 +89,16 @@ export function lyricCursorKey(document: LyricDocument | null, positionMs: numbe
   return `${cursor.lineIndex}:${cursor.wordIndex}`;
 }
 
+// A normal vocal pause is often one bar or less. Only surface an interlude
+// treatment for a clearly intentional musical break.
 export const MIN_INTERLUDE_GAP_MS = 4_000;
+
+export interface LyricInterlude {
+  startMs: number;
+  endMs: number;
+  /** The displayed line immediately before the inserted dot marker, or -1 for an intro. */
+  anchorLineIndex: number;
+}
 
 function timedLines(document: LyricDocument): { index: number; startMs: number }[] {
   const timed: { index: number; startMs: number }[] = [];
@@ -113,31 +122,38 @@ export function lyricInterludeRemainingMs(
   document: LyricDocument | null,
   rawPositionMs: number,
 ): number | null {
+  const interlude = activeLyricInterlude(document, rawPositionMs);
+  if (!interlude) return null;
+  return interlude.endMs - (rawPositionMs - (document?.metadata.offsetMs ?? 0));
+}
+
+/**
+ * Resolves an intentional musical break using the same prefix-end model as AMLL:
+ * a gap begins only after every earlier timed line has ended, so overlapping or
+ * delayed vocal lines cannot accidentally produce an interlude marker.
+ */
+export function activeLyricInterlude(
+  document: LyricDocument | null,
+  rawPositionMs: number,
+): LyricInterlude | null {
   if (!document || document.syncMode === 'unsynchronized') return null;
   const positionMs = rawPositionMs - document.metadata.offsetMs;
-  const timed = timedLines(document);
-  if (timed.length === 0) return null;
+  const timed = timedLines(document).sort((left, right) => left.startMs - right.startMs);
+  let latestEndMs = 0;
+  let anchorLineIndex = -1;
 
-  const first = timed[0];
-  if (!first) return null;
-  if (positionMs < first.startMs && first.startMs >= MIN_INTERLUDE_GAP_MS) {
-    return first.startMs - positionMs;
-  }
-
-  for (let entry = 1; entry < timed.length; entry += 1) {
-    const previous = timed[entry - 1];
-    const current = timed[entry];
-    if (!previous || !current) continue;
-    const previousEnd = effectiveLineEnd(document, previous.index);
-    if (!Number.isFinite(previousEnd)) continue;
-    const gapMs = current.startMs - previousEnd;
+  for (const current of timed) {
+    const gapMs = current.startMs - latestEndMs;
     if (
       gapMs >= MIN_INTERLUDE_GAP_MS &&
-      positionMs >= previousEnd &&
+      positionMs >= latestEndMs &&
       positionMs < current.startMs
     ) {
-      return current.startMs - positionMs;
+      return { startMs: latestEndMs, endMs: current.startMs, anchorLineIndex };
     }
+    const endMs = effectiveLineEnd(document, current.index);
+    if (Number.isFinite(endMs) && endMs > latestEndMs) latestEndMs = endMs;
+    anchorLineIndex = current.index;
   }
   return null;
 }

@@ -211,6 +211,37 @@ export function centerLyricLine(
   if (!scrollArea || !content || lineIndex < 0) return;
   const line = content.querySelector<HTMLElement>(`[data-line-index="${lineIndex}"]`);
   if (!line) return;
+  centerLyricElement(scrollArea, content, line, lineIndex, reducedMotion, options);
+}
+
+export function centerLyricInterlude(
+  scrollArea: HTMLDivElement | null,
+  content: HTMLDivElement | null,
+  anchorLineIndex: number,
+  reducedMotion: boolean,
+  options: { followAnchor?: number; force?: boolean; onArrive?: () => void } = {},
+): void {
+  if (!scrollArea || !content) return;
+  const marker = content.querySelector<HTMLElement>(`[data-interlude-anchor="${anchorLineIndex}"]`);
+  if (!marker) return;
+  centerLyricElement(
+    scrollArea,
+    content,
+    marker,
+    Math.max(0, anchorLineIndex + 1),
+    reducedMotion,
+    options,
+  );
+}
+
+function centerLyricElement(
+  scrollArea: HTMLDivElement,
+  content: HTMLDivElement,
+  line: HTMLElement,
+  targetLineIndex: number,
+  reducedMotion: boolean,
+  options: { followAnchor?: number; force?: boolean; onArrive?: () => void },
+): void {
   const areaRect = scrollArea.getBoundingClientRect();
   const previousContentVisibility = line.style.getPropertyValue('content-visibility');
   line.style.setProperty('content-visibility', 'visible');
@@ -237,6 +268,6 @@ export function centerLyricLine(
   springScrollTo(scrollArea, content, target, {
     force: options.force,
     onArrive: options.onArrive,
-    targetLineIndex: lineIndex,
+    targetLineIndex,
   });
 }

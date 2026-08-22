@@ -241,7 +241,13 @@ export function LyricsScene({
   const secondaryFontPx = resolveSecondaryFontSizePx(primaryFontPx);
   // A user-selected solid background is the actual lyric backdrop; otherwise
   // the artwork palette is the best stable proxy before image pixels are drawn.
-  const ink = coverInk(appearance.baseColor ?? palette?.primary ?? bindings.artworkColor);
+  const backgroundInkSource =
+    (scene.background.source === 'gradient' ? scene.background.gradient?.from : undefined) ??
+    (appearance.imageSource ? palette?.primary : undefined) ??
+    appearance.baseColor ??
+    palette?.primary ??
+    bindings.artworkColor;
+  const ink = coverInk(backgroundInkSource);
 
   useLayoutEffect(() => {
     const node = root.current;
@@ -267,12 +273,13 @@ export function LyricsScene({
   );
 
   useEffect(() => {
-    const identity = bindings.songId ?? bindings.artworkSrc ?? 'none';
+    const paletteSource = appearance.imageSource ?? bindings.artworkSrc;
+    const identity = bindings.songId ?? paletteSource ?? 'none';
     const generation = Date.now();
     let cancelled = false;
     void resolveArtworkPalette(
       identity,
-      bindings.artworkSrc,
+      paletteSource,
       bindings.artworkColor,
       generation,
     ).then((next) => {
@@ -281,7 +288,7 @@ export function LyricsScene({
     return () => {
       cancelled = true;
     };
-  }, [bindings.songId, bindings.artworkSrc, bindings.artworkColor]);
+  }, [appearance.imageSource, bindings.songId, bindings.artworkSrc, bindings.artworkColor]);
 
   useEffect(() => {
     let cancelled = false;
