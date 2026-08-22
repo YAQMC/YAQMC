@@ -5,7 +5,7 @@
 Search existing issues and pull requests first. Small, focused fixes may be submitted directly; discuss broad
 architecture, compatibility protocol, account mutations, or major UI work in an issue before implementation.
 
-Use Node.js 24.19.0, Rust 1.88 or newer, and the platform dependencies required by native audio and the selected package format. Install and run with:
+Use Node.js 26.7.0, Rust 1.88 or newer, and the platform dependencies required by native audio and the selected package format. Install and run with:
 
 ```powershell
 npm ci

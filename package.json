@@ -9,7 +9,7 @@
     "apps/*"
   ],
   "engines": {
-    "node": "24.19.0"
+    "node": "26.7.0"
   },
   "scripts": {
     "dev": "vite",

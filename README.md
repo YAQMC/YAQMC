@@ -163,7 +163,7 @@ QMC/MFLAC 解密与随机拖动已经通过外部样本验证。线上“臻品�
 
 ### 环境
 
-- 精确使用 Node.js 24.19.0 与其自带 npm
+- 精确使用 Node.js 26.7.0 与其自带 npm
 - Rust 1.88 或更高版本
 - Windows：MSVC 构建工具
 - Debian / Ubuntu：Rust 原生音频所需的 ALSA 开发包；生成 `.rpm` 时还需 `rpm` 与 `fakeroot`

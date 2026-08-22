@@ -62,7 +62,7 @@ function fixture() {
     schemaVersion: 2,
     capturedAt: '2026-08-16',
     toolchains: [
-      { id: 'node', name: 'Node.js', required: '24.19.0' },
+      { id: 'node', name: 'Node.js', required: '26.7.0' },
       { id: 'npm', name: 'npm', required: null },
       { id: 'rustc', name: 'rustc', required: '1.88.0' },
       { id: 'cargo', name: 'Cargo', required: '1.88.0' },
@@ -292,7 +292,7 @@ test('renders injected toolchain observations separately from project requiremen
 
   assert.equal(result.status, 0, result.stderr);
   const output = readFileSync(result.outputPath, 'utf8');
-  assert.match(output, /Node\.js\s*\|\s*24\.19\.0\s*\|\s*v24\.18\.0\s*\|\s*MISMATCH/);
+  assert.match(output, /Node\.js\s*\|\s*26\.7\.0\s*\|\s*v24\.18\.0\s*\|\s*MISMATCH/);
   assert.match(output, /npm\s*\|\s*NOT PINNED\s*\|\s*11\.11\.0\s*\|\s*RECORDED/);
   assert.match(output, /rustc\s*\|\s*1\.88\.0\s*\|\s*rustc 1\.90\.0 \(fixture\)\s*\|\s*MISMATCH/);
   assert.match(output, /Cargo\s*\|\s*1\.88\.0\s*\|\s*cargo 1\.88\.0 \(fixture\)\s*\|\s*MATCH/);

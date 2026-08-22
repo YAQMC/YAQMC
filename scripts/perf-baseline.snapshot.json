@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "capturedAt": "2026-08-16",
   "toolchains": [
-    { "id": "node", "name": "Node.js", "required": "24.19.0" },
+    { "id": "node", "name": "Node.js", "required": "26.7.0" },
     { "id": "npm", "name": "npm", "required": null },
     { "id": "rustc", "name": "rustc", "required": "1.88.0" },
     { "id": "cargo", "name": "Cargo", "required": "1.88.0" }
