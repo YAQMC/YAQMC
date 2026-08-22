@@ -432,6 +432,29 @@ describe('geometry persist, restore, and reset', () => {
     expect(desktop.show).not.toHaveBeenCalled();
   });
 
+  it('reapplies saved geometry after first surface mapping settles', async () => {
+    const desktop = mockWindow({ x: 0, y: 0, width: 1920, height: 1040 });
+    const settings = memorySettings({
+      'lyrics-surface-geometry:desktop': '{"x":80,"y":60,"width":780,"height":190}',
+    });
+    const clock = fakeClock();
+    const surfaces = createLyricsSurfaces({
+      preloadPath: PRELOAD,
+      createWindow: () => desktop,
+      settings,
+      clock,
+      getDisplayBounds: () => [PRIMARY],
+    });
+
+    surfaces.show('desktop');
+    await surfaces.restoreGeometry('desktop');
+    desktop.bounds = { x: 0, y: 0, width: 1920, height: 1040 };
+    clock.flush(LYRICS_SURFACE_GEOMETRY_DEBOUNCE_MS);
+    await vi.waitFor(() => {
+      expect(desktop.bounds).toEqual({ x: 80, y: 60, width: 780, height: 190 });
+    });
+  });
+
   it('debounces move/resize persist at 350 ms and writes the stable JSON blob', async () => {
     const desktop = mockWindow({ x: 10, y: 20, width: 940, height: 190 });
     const settings = memorySettings();

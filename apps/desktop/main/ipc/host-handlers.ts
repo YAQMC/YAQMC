@@ -449,6 +449,10 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     desktop: 'interactive',
     island: 'interactive',
   };
+  // An unlock pill persists directly through the host while the Main renderer
+  // may still reconcile its older passive preference. Remember that narrow
+  // hand-off so a stale reconcile cannot immediately relock the surface.
+  const pendingUnlock = new Set<LyricsSurfaceKind>();
 
   const syncUnlockOverlay = (kind: LyricsSurfaceKind, locked: boolean): void => {
     if (locked && deps.lyrics.get(kind) !== undefined) {
@@ -510,8 +514,13 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       return;
     }
     deps.lyrics.show(kind);
-    if (asSurfaceInteraction(config.interaction) === 'passive-locked') {
-      hostInteraction[kind] = 'passive-locked';
+    const requested = asSurfaceInteraction(config.interaction);
+    if (requested === 'passive-locked') {
+      if (!pendingUnlock.has(kind)) {
+        hostInteraction[kind] = 'passive-locked';
+      }
+    } else if (requested === 'interactive' && pendingUnlock.delete(kind)) {
+      hostInteraction[kind] = 'interactive';
     }
     applyNativeInteraction(kind);
   };
@@ -554,6 +563,9 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       if (!interaction) {
         return '';
       }
+      if (interaction === 'passive-locked') {
+        pendingUnlock.delete(kind);
+      }
       hostInteraction[kind] = interaction;
       applyNativeInteraction(kind);
       const value =
@@ -568,6 +580,7 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       if (!kind || !originMayUnlockKind(origin, kind)) {
         return;
       }
+      pendingUnlock.add(kind);
       hostInteraction[kind] = 'interactive';
       applyNativeInteraction(kind);
       await persistInteraction(kind, 'interactive', undefined);
@@ -579,6 +592,7 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
           deps.unlock.hide(kind);
           continue;
         }
+        pendingUnlock.add(kind);
         hostInteraction[kind] = 'interactive';
         applyNativeInteraction(kind);
         await persistInteraction(kind, 'interactive', undefined);

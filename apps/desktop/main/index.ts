@@ -409,9 +409,14 @@ const router = new IpcRouter({
     // diagnostics_open_log_folder / diagnostics_reveal_bundle: host-owned OS folder APIs.
     folders: {
       logDir: () => coreDataPaths().logDir,
-      openPath: (target) => shell.openPath(target),
+      // E2E validates the IPC contract against an isolated QA profile. Do not
+      // launch a real desktop file manager there: on headless/portal-backed
+      // Linux sessions it can leave Electron's IPC reply unresolved.
+      openPath: (target) => (e2e ? Promise.resolve('') : shell.openPath(target)),
       showItemInFolder: (target) => {
-        shell.showItemInFolder(target);
+        if (!e2e) {
+          shell.showItemInFolder(target);
+        }
       },
       exists: (target) => existsSync(target),
     },
