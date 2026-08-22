@@ -60,7 +60,7 @@ const samplePreview = {
 };
 
 const sampleBundle = {
-  path: 'C:\\Users\\demo\\AppData\\Local\\Velune\\YAQMC\\logs\\YAQMC-diagnostics-20260814-133000.zip',
+  path: 'C:\\Users\\demo\\AppData\\Local\\org.yaqmc.desktop\\logs\\YAQMC-diagnostics-20260814-133000.zip',
   bytes: 4096,
   sha256: 'a'.repeat(64),
   redaction: {

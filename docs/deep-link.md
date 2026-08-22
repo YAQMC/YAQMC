@@ -6,6 +6,10 @@ All external URIs are untrusted input. YAQMC currently has no QQ Music takeover 
 Windows 22.52 client did not provide a verified public entity scheme. See
 [official interoperability evidence](qqmusic-official-interoperability.md).
 
+The packaged application registers no custom URI scheme and does not parse
+launch arguments into catalog or playback commands. “Deep link” therefore
+describes a deferred capability, not a hidden or partially supported feature.
+
 Any future implementation must be opt-in and reversible; allowlist exact schemes, actions, entities, lengths, and
 identifier syntax; normalize only to provider domain references; and reject unknown or injection-like values. URI
 content must never become a shell argument, filesystem path, HTML fragment, SQL statement, or arbitrary host/Core

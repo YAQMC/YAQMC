@@ -1,5 +1,10 @@
 # HUMAN 台账 — 从 PLAY-01 起（含交接已测）
 
+> **P15 历史覆盖说明（2026-08-22）：** 本文件只保留当时的 HUMAN 证据，文中
+> “Current Status” 与阶段门禁不是当前结论。最终验收台账见
+> [`acceptance-final.md`](acceptance-final.md)，收尾状态见
+> [`p15-closeout.md`](p15-closeout.md)。
+
 工作会话从交接 **§13 / PLAY-01** 起算（本聊天 2026-08-18 21:06 起：先工作树，再测卡住的播放器）。  
 **以前的也计入：** [`HANDOFF_2026-08-18.md`](HANDOFF_2026-08-18.md) **§4** 里、PLAY-01 之前已经 PASS-HUMAN 的宿主操作（Windows，`1d6b535` 当时）。那份交接的 **§5 失败格子和 HEAD 不要当今天的现状**。
 

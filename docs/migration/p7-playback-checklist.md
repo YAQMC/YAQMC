@@ -1,5 +1,10 @@
 # PLAY-01 Electron playback/catalog parity checklist
 
+> **P15 historical overlay (2026-08-22):** this checklist is preserved as P7
+> evidence and no longer defines current migration status. Use
+> [`acceptance-final.md`](acceptance-final.md) and
+> [`p15-closeout.md`](p15-closeout.md).
+
 Source: `YAQMC_ELECTRON_MIGRATION_PLAN.md` §36 rows whose **Phase proven** is P7. Verification method key: **A** = automated, **M** = manual, **L** = LIVE VERIFY (real QQ account, maintainer-only).
 
 This document is a checklist only. Per-cell Win/Linux boxes stay empty (no dated

@@ -130,7 +130,7 @@ test('prints electron-builder --linux flags from the yml and POSIX install comma
   assert.match(report.commands.packLinuxArm64, /--linux AppImage deb rpm tar.gz --arm64/);
 });
 
-test('dry-run does not fail when this host cannot produce Linux artifacts', () => {
+test('execution helper skips non-Linux and never invokes a real builder in script tests', () => {
   const spawned = [];
   const result = executeLinuxPack({
     repoRoot: repositoryRoot,
@@ -146,15 +146,22 @@ test('dry-run does not fail when this host cannot produce Linux artifacts', () =
   assert.equal(spawned.length, 0);
   assert.match(result.reason, /Linux builder/);
 
-  const cli = spawnSync(process.execPath, [SCRIPT, '--execute'], { encoding: 'utf8' });
-  assert.equal(cli.status, 0, cli.stderr);
-  const payload = JSON.parse(cli.stdout);
-  if (process.platform === 'win32') {
-    assert.equal(payload.execute.skipped, true);
-    assert.equal(payload.execute.status, 0);
-  } else {
-    assert.equal(payload.execute.ok, true);
-  }
+  const linuxSpawns = [];
+  const linux = executeLinuxPack({
+    repoRoot: repositoryRoot,
+    platform: 'linux',
+    spawn: (...args) => {
+      linuxSpawns.push(args);
+      return { status: 0, stdout: 'packed', stderr: '' };
+    },
+  });
+  assert.equal(linux.attempted, true);
+  assert.equal(linux.skipped, false);
+  assert.equal(linux.status, 0);
+  assert.equal(linux.produced, true);
+  assert.equal(linuxSpawns.length, 1);
+  assert.match(linuxSpawns[0][1].join(' '), /electron-builder[\\/]cli\.js/);
+  assert.match(linuxSpawns[0][1].join(' '), /--linux AppImage deb rpm tar\.gz --x64/);
 });
 
 test('checklist doc does not claim the clean-VM matrix green', () => {

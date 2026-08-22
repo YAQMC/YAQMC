@@ -1,5 +1,5 @@
 name: Linux 兼容性报告
-description: 报告 AppImage/deb/rpm、Wayland/X11、WebKitGTK、托盘、媒体键或音频问题。
+description: 报告 AppImage/deb/rpm、Wayland/X11、Chromium/Ozone、托盘、媒体键或音频问题。
 title: '[Linux] '
 labels:
   - bug
@@ -34,8 +34,8 @@ body:
   - type: input
     id: graphics
     attributes:
-      label: GPU、驱动与 WebKitGTK
-      placeholder: Intel i915 + NVIDIA 610.xx / WebKitGTK 2.xx
+      label: GPU、驱动、合成器与 Chromium/Ozone 后端
+      placeholder: Intel i915 + NVIDIA 610.xx / KWin 6.x / xwayland
   - type: input
     id: audio
     attributes:

@@ -135,7 +135,8 @@ Core 使用 `yaqmc.YYYY-MM-DD.log` 按日滚动，最多保留 7 个；Electron 
    `diagnostics_log_frontend` 一次性发送整批，即使突发交互也只产生几次
    IPC。
 
-实际测量记录在 [windows-acceptance.md](windows-acceptance.md)。
+历史测量保留在 [windows-acceptance.md](windows-acceptance.md)；最终 Electron
+发布证据统一写入[最终验收清单](../migration/acceptance-final.md)。
 
 ## 明确不做
 

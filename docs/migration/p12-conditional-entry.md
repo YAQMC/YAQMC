@@ -1,5 +1,11 @@
 # P12 conditional-entry waiver (2026-08-20)
 
+> **P15 historical overlay (2026-08-22):** this waiver records the conditions
+> that applied when P12 began; its instructions not to start P13–P15 are
+> superseded. Current acceptance and closeout state live in
+> [`acceptance-final.md`](acceptance-final.md) and
+> [`p15-closeout.md`](p15-closeout.md).
+
 This is a **maintainer decision**, not a P11 exit and not a product FAIL.
 
 GitHub Actions org quota is exhausted. **CI-01..04** and **UPD-01** therefore

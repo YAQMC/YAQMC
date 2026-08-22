@@ -146,7 +146,9 @@ The pipeline is designed around three constraints:
    most 400 ms before invoking `diagnostics_log_frontend` with the batch, so
    even a burst of user interactions produces a handful of IPCs.
 
-Measurements are captured in [windows-acceptance.md](windows-acceptance.md).
+Historical measurements are retained in
+[windows-acceptance.md](windows-acceptance.md); release-wide Electron evidence
+belongs in the [final acceptance tracker](migration/acceptance-final.md).
 
 ## What the logger will not do
 

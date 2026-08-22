@@ -6,14 +6,23 @@ YAQMC 是 Electron 桌面应用。React 负责展示，Rust Core 负责 QQ 音�
 系统媒体控制以及窗口策略。浏览器层不会持有播放 URL、Cookie、vkey/ekey 或操作系统凭据。
 
 ```text
-React 主界面 / 歌词窗口 / 本地 API / 托盘 / 系统媒体面板
-                         │
-                         ▼
-              唯一权威 PlayerService（Rust）
-                         │
-             ┌───────────┴───────────┐
-             ▼                       ▼
-      QQ 音乐提供器与缓存        Rodio / CPAL 音频引擎
+沙箱化 React renderer（主窗口 / 歌词 / 歌词岛 / OAuth）
+        │ contextBridge：按窗口角色限制 API
+        ▼
+Electron preload + Main
+窗口 · 托盘 · 快捷键 · 更新器 · 对话框 · Core supervisor
+        │ 子进程 stdio 上的 framed protocol v1
+        ▼
+yaqmc-core
+ProviderRegistry ── QQMusicProvider ── 精确 pin 的 qm-api-rs + 保留的 hybrid
+        │
+        ├── PlayerService ── MediaPreparer / HTTP Range 缓存 ── AudioEngine（Rodio / CPAL）
+        ├── StorageService ── SQLite、设置、历史、队列、缓存索引
+        ├── CredentialStore ── 操作系统 keychain / credential vault
+        ├── LocalApiService ── 认证后的 127.0.0.1 HTTP + SSE
+        └── SystemMediaIntegration ── MPRIS 2.2 / SMTC
+
+纯浏览器 Vite：React ── FakeMusicProvider + 模拟 player adapter
 ```
 
 ## 责任边界
