@@ -28,3 +28,19 @@ build/packaging/release scripts. The release notes or a source manifest must ide
 archives.
 
 Do not publish a binary release if the required corresponding source is unavailable.
+
+The Electron release workflow enforces P14-C readiness and provenance before
+packaging. Its assembly job checks out the exact private pin with
+`persist-credentials: false`, runs
+`scripts/ci/corresponding-source.mjs`, and refuses to create a draft unless the
+two revision-bound source archives and `CORRESPONDING-SOURCE-MANIFEST.json`
+are present and hash-valid. Source generation rejects dirty YAQMC or
+`qm-api-rs` checkouts. The manifest hashes the P14-C readiness record,
+provenance ledger, and provenance evidence exactly as stored in the YAQMC
+archive; assembly reads those ZIP entries back, verifies their hashes and
+release decisions, and checks the dependency manifest and license entries.
+Assembly also requires downloaded package artifact directories to carry the
+same 40-character YAQMC commit as the source manifest and recomputes every
+file hash declared by their platform-specific build identity. The archive step
+uses `git archive`, so checkout metadata and authentication configuration are
+never included.

@@ -44,9 +44,10 @@ absolute path, drive prefix, NUL byte, or `..` traversal segment. Its digest mat
 
 ## Required final-AppImage protocol
 
-Use the flat `YAQMC-linux-x86_64` Electron workflow artifact. It contains the final AppImage,
-`BUILD-IDENTITY.json`, `SHA256SUMS`, `TESTING.md`, `ACCEPTANCE.md`, the collector, and the verifier. A repository
-checkout is neither required nor accepted as binary identity evidence.
+Use the flat `YAQMC-linux-x64-tester-<commit>` Electron workflow artifact. It
+contains the final AppImage, `BUILD-IDENTITY.json`, `SHA256SUMS`, `TESTING.md`,
+`ACCEPTANCE.md`, the collector, and the verifier. A repository checkout is
+neither required nor accepted as binary identity evidence.
 
 Before launch, from the extracted bundle directory:
 

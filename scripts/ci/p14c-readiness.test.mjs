@@ -90,9 +90,30 @@ test('cutover authorization fails closed while any non-overlay gate is open', ()
       validateP14cRecord({
         ...record,
         cutoverAuthorized: true,
-        gates: [...record.gates, { id: 'extra-open-gate', status: 'not-started', evidence: null }],
+        gates: record.gates.map((gate) =>
+          gate.id === 'retirement-scope' ? { ...gate, status: 'not-started' } : gate,
+        ),
       }),
     /cannot be authorized/,
+  );
+});
+
+test('the schema rejects unversioned gate identifiers', () => {
+  const record = currentPinQualifiedRecord();
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        gates: [
+          ...record.gates,
+          {
+            id: 'extra-open-gate',
+            status: 'not-started',
+            evidence: 'docs/migration/p14c-readiness.md',
+          },
+        ],
+      }),
+    /unsupported P14-C gate extra-open-gate/,
   );
 });
 
@@ -132,7 +153,7 @@ test('the exact-pin soak gate is mandatory', () => {
         ...record,
         gates: record.gates.filter((gate) => gate.id !== 'exact-pin-three-day-soak'),
       }),
-    /must contain exactly one exact-pin-three-day-soak gate/,
+    /missing required gate exact-pin-three-day-soak/,
   );
 });
 
@@ -193,5 +214,130 @@ test('duplicate exact-pin soak gates are rejected', () => {
   assert.throws(
     () => validateP14cRecord({ ...record, gates: [...record.gates, soakGate] }),
     /duplicate P14-C gate/,
+  );
+});
+
+test('unknown gate statuses and missing ordinary evidence fail schema validation', () => {
+  const record = currentPinQualifiedRecord();
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        gates: record.gates.map((gate) =>
+          gate.id === 'retirement-scope' ? { ...gate, status: 'green' } : gate,
+        ),
+      }),
+    /unsupported status green/,
+  );
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        gates: record.gates.map((gate) =>
+          gate.id === 'retirement-scope' ? { ...gate, evidence: '' } : gate,
+        ),
+      }),
+    /evidence for gate retirement-scope/,
+  );
+});
+
+test('gate evidence must stay inside the repository and exist', () => {
+  const record = currentPinQualifiedRecord();
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        gates: record.gates.map((gate) =>
+          gate.id === 'retirement-scope' ? { ...gate, evidence: '../outside.md' } : gate,
+        ),
+      }),
+    /repository-relative docs\/migration path/,
+  );
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        gates: record.gates.map((gate) =>
+          gate.id === 'retirement-scope'
+            ? { ...gate, evidence: 'docs/migration/does-not-exist.md' }
+            : gate,
+        ),
+      }),
+    /does not exist/,
+  );
+});
+
+test('a waiver requires maintainer identity, date, and an allowed waiver kind', () => {
+  const record = currentPinQualifiedRecord();
+  for (const [field, expected] of [
+    ['waivedBy', /waivedBy/],
+    ['waivedOn', /waivedOn/],
+    ['waiverKind', /waiverKind/],
+  ]) {
+    assert.throws(
+      () =>
+        validateP14cRecord({
+          ...record,
+          gates: record.gates.map((gate) => {
+            if (gate.id !== 'exact-pin-three-day-soak') return gate;
+            const changed = { ...gate };
+            delete changed[field];
+            return changed;
+          }),
+        }),
+      expected,
+    );
+  }
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        gates: record.gates.map((gate) =>
+          gate.id === 'exact-pin-three-day-soak' ? { ...gate, waiverKind: 'automatic' } : gate,
+        ),
+      }),
+    /unsupported waiverKind automatic/,
+  );
+});
+
+test('a waiver rejects an impossible calendar date', () => {
+  const record = currentRecord();
+  const soak = record.gates.find(({ id }) => id === 'exact-pin-three-day-soak');
+  soak.waivedOn = '2026-02-31';
+  assert.throws(() => validateP14cRecord(record), /ISO calendar date/);
+});
+
+test('backend and cutover authorization cannot form a false READY state', () => {
+  const record = currentPinQualifiedRecord();
+  assert.throws(
+    () => validateP14cRecord({ ...record, cutoverAuthorized: false }),
+    /unauthorized cutover must keep the intree backend/,
+  );
+  const blockers = validateP14cRecord({
+    ...record,
+    cutoverAuthorized: false,
+    defaultBackend: 'intree',
+  });
+  assert.deepEqual(
+    blockers.map((gate) => gate.id),
+    ['cutover-authorization'],
+  );
+});
+
+test('the legacy credential rollback slot remains explicit until cross-release retirement', () => {
+  const record = currentPinQualifiedRecord();
+  assert.ok(record.responsibilities.keep.includes('legacy-session-migration-rollback-slot'));
+  assert.throws(
+    () =>
+      validateP14cRecord({
+        ...record,
+        responsibilities: {
+          ...record.responsibilities,
+          keep: record.responsibilities.keep.filter(
+            (entry) => entry !== 'legacy-session-migration-rollback-slot',
+          ),
+        },
+      }),
+    /must retain legacy-session-migration-rollback-slot/,
   );
 });

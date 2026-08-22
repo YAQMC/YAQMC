@@ -1,12 +1,19 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repositoryRoot } from './repo.mjs';
 import { verifyFrontendDist } from './verify-frontend-dist.mjs';
 import { verifyBinaryFile } from './verify-binary-arch.mjs';
-import { sha256File } from './write-build-info.mjs';
+import { sha256File, writeBuildInfo } from './write-build-info.mjs';
 import { findCoreBinary, stageCore } from '../stage-core.mjs';
 
 export const ELECTRON_OUTPUT_DIR_NAME = 'release-electron';
@@ -88,9 +95,13 @@ export function stageElectronArtifacts({
   os: platform,
   arch,
   sourceDir,
+  buildInfo,
 }) {
   const outputRoot = sourceDir ?? path.join(repoRoot, ELECTRON_OUTPUT_DIR_NAME);
   const destDir = path.join(outputRoot, `YAQMC-electron-${platform}-${arch}`);
+  if (existsSync(destDir) && readdirSync(destDir).length > 0) {
+    throw new Error(`refusing to overwrite non-empty Electron package directory ${destDir}`);
+  }
   mkdirSync(destDir, { recursive: true });
   const copied = [];
   for (const name of electronArtifactNames({ os: platform, arch })) {
@@ -113,6 +124,20 @@ export function stageElectronArtifacts({
       copyFileSync(from, path.join(destDir, name));
       copied.push(name);
     }
+  }
+  if (buildInfo) {
+    const buildInfoName = `build-info-${platform}-${arch}.json`;
+    writeBuildInfo({
+      ...buildInfo,
+      outputPath: path.join(destDir, buildInfoName),
+      os: platform,
+      arch,
+      files: copied.map((name) => ({
+        name,
+        sha256: sha256File(path.join(destDir, name)),
+      })),
+    });
+    copied.push(buildInfoName);
   }
   const sums = copied.map((name) => `${sha256File(path.join(destDir, name))}  ${name}`).join('\n');
   writeFileSync(path.join(destDir, `SHA256SUMS-electron-${platform}-${arch}.txt`), `${sums}\n`);
@@ -178,7 +203,17 @@ function main() {
   }
   run('npx', ['electron-builder', ...builderArgs], { cwd: desktopRoot });
 
-  const staged = stageElectronArtifacts({ os: osName, arch });
+  const staged = stageElectronArtifacts({
+    os: osName,
+    arch,
+    buildInfo: {
+      target,
+      profile: process.env.YAQMC_BUILD_PROFILE || 'ci-release',
+      lto: process.env.CARGO_PROFILE_RELEASE_LTO || 'thin',
+      codegenUnits: Number(process.env.CARGO_PROFILE_RELEASE_CODEGEN_UNITS || 8),
+      bundles: electronArtifactNames({ os: osName, arch }),
+    },
+  });
   process.stdout.write(`Electron package complete: ${staged}\n`);
 }
 

@@ -32,7 +32,7 @@ Chromium/Ozone 白名单策略。运行时诊断同时探测已应用的 Ozone �
 
 ## Arch 测试流程
 
-只使用 GitHub Actions 解压后的 `YAQMC-linux-x86_64` artifact；仓库 checkout
+只使用 GitHub Actions 解压后的 `YAQMC-linux-x64-tester-<commit>` artifact；仓库 checkout
 既不需要，也不能作为二进制身份证据。在解压目录执行：
 
 ```bash

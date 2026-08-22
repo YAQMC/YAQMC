@@ -37,10 +37,25 @@
       "id": "electron-linux-updater"
     },
     {
+      "id": "electron-linux-tester"
+    },
+    {
+      "id": "electron-build-info"
+    },
+    {
       "id": "electron-release-checksums"
     },
     {
       "id": "electron-release-notes"
+    },
+    {
+      "id": "electron-corresponding-source-manifest"
+    },
+    {
+      "id": "electron-yaqmc-source"
+    },
+    {
+      "id": "electron-qm-api-rs-source"
     }
   ],
   "dataPaths": [

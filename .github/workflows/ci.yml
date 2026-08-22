@@ -55,6 +55,8 @@ jobs:
       - run: node scripts/ci/legacy-host-imports.mjs
       - run: node scripts/ci/electron-security-lint.mjs
       - run: node scripts/ci/qm-api-rs-access.mjs --check
+      - run: npm run p14c:enforce
+      - run: npm run provenance:enforce
       - run: npm run ci:test-scripts
 
   frontend-build:
@@ -215,6 +217,16 @@ jobs:
           --target ${{ matrix.target }}
           --os ${{ matrix.os }}
           --arch ${{ matrix.arch }}
+      - name: Stage and verify Linux x64 tester artifact
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        run: |
+          node scripts/ci/stage-linux-tester.mjs \
+            --package-dir release-electron/YAQMC-electron-linux-x64 \
+            --to release-electron/YAQMC-linux-x64-tester
+          node scripts/verify-lyrics-acceptance.mjs \
+            --platform linux \
+            --identity-only \
+            --build-identity "$PWD/release-electron/YAQMC-linux-x64-tester/BUILD-IDENTITY.json"
       - name: Job summary
         if: always()
         shell: bash
@@ -231,6 +243,14 @@ jobs:
         with:
           name: YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
           path: release-electron/YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - uses: actions/upload-artifact@v7
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        with:
+          name: YAQMC-linux-x64-tester-${{ github.sha }}
+          path: release-electron/YAQMC-linux-x64-tester
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

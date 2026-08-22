@@ -27,7 +27,7 @@
 
 ## 最终 AppImage 协议
 
-使用 workflow 的扁平 `YAQMC-linux-x86_64` artifact，其中应包含最终 AppImage、`BUILD-IDENTITY.json`、
+使用 workflow 的扁平 `YAQMC-linux-x64-tester-<commit>` artifact，其中应包含最终 AppImage、`BUILD-IDENTITY.json`、
 `SHA256SUMS`、测试说明、采集器和验证器。先执行 `sha256sum -c` 与 identity-only 验证，再依次采集：
 
 1. `auto`，不设置 YAQMC 图形 override；

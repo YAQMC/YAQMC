@@ -62,7 +62,8 @@
       "entitlement-quality-derivation",
       "home-discover-area-keep-paths",
       "provider-cache-artwork-and-wire-mapping",
-      "yaqmc-reqwest-transport-policy"
+      "yaqmc-reqwest-transport-policy",
+      "legacy-session-migration-rollback-slot"
     ]
   }
 }

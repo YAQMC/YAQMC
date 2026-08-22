@@ -1,5 +1,10 @@
 # CI-02: Electron package matrix jobs
 
+> **P15 historical-evidence overlay:** this phase record describes the former
+> dual-host CI period. The Tauri job and blocked-provenance statements below are
+> superseded. Use [`../ci.md`](../ci.md) and
+> [`p14c-readiness.md`](p14c-readiness.md) for current state.
+
 This checkpoint **adds** Electron package jobs to `.github/workflows/ci.yml`.
 It does **not** replace the Tauri `package` job (§33.2 coexistence through P12).
 

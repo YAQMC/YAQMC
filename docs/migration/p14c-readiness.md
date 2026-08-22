@@ -62,6 +62,12 @@ waiver below is an explicit maintainer decision, not evidence that the soak ran.
 The credential-primary and production G mutation slices are complete. Their
 code and test evidence is recorded in `p14c-implementation.md`.
 
+For binary distribution, readiness alone is insufficient. CI and the Electron
+release workflow also enforce the provenance ledger and attach exact YAQMC and
+`qm-api-rs` corresponding-source archives. Assembly verifies their manifest,
+hashes, pins, license-file inventory, and equality between the source commit
+and package artifact identities before drafting a release.
+
 ## Completed cutover changes
 
 After every gate passed in the JSON record, the cutover:
@@ -69,7 +75,8 @@ After every gate passed in the JSON record, the cutover:
 - Made the sanitized qm-api-rs integration unconditional for production and
   removed the temporary `qqmusic-qmapi` opt-in surface.
 - Removed the L/I/H in-tree network fallbacks; remove `lyrics-crypto` only
-  when no production or golden-corpus code references it.
+  from normal dependencies while retaining it as a dev dependency for the
+  golden-corpus cross-checks.
 - Kept `qmapi/qmc.rs` as the provider adapter and deleted the duplicated
   in-tree QMC cipher/key implementation once no golden or fallback path
   referenced it.

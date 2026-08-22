@@ -1,5 +1,10 @@
 # CI-04: Electron release workflow draft
 
+> **P15 historical-evidence overlay:** this is the initial dual-host release
+> checkpoint. The tagged Tauri workflow has since been removed, and current
+> Electron drafts require P14-C, provenance, and exact corresponding-source
+> gates. See [`../ci.md`](../ci.md).
+
 This checkpoint adds `.github/workflows/electron-release.yml`. It does **not**
 replace `.github/workflows/build.yml` (Tauri tagged releases stay live until
 P13).

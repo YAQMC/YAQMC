@@ -56,6 +56,20 @@ const CONTRACT = [
     'latest-linux.yml',
   ],
   [
+    'electron-linux-tester',
+    'scripts/ci/stage-linux-tester.mjs',
+    'Linux x64',
+    'Flat acceptance tester artifact',
+    'YAQMC-linux-x64-tester-{sha}',
+  ],
+  [
+    'electron-build-info',
+    'scripts/ci/package-electron.mjs',
+    'Windows/Linux',
+    'Per-platform build identity',
+    'build-info-{os}-{arch}.json',
+  ],
+  [
     'electron-release-checksums',
     'scripts/ci/assemble-electron-release.mjs',
     'Windows/Linux',
@@ -68,6 +82,27 @@ const CONTRACT = [
     'Windows/Linux',
     'Release notes',
     'RELEASE-NOTES-ELECTRON.md',
+  ],
+  [
+    'electron-corresponding-source-manifest',
+    'scripts/ci/corresponding-source.mjs',
+    'Windows/Linux',
+    'Corresponding-source manifest',
+    'CORRESPONDING-SOURCE-MANIFEST.json',
+  ],
+  [
+    'electron-yaqmc-source',
+    'scripts/ci/corresponding-source.mjs',
+    'Windows/Linux',
+    'YAQMC corresponding source',
+    'YAQMC-source-{sha}.zip',
+  ],
+  [
+    'electron-qm-api-rs-source',
+    'scripts/ci/corresponding-source.mjs',
+    'Windows/Linux',
+    'qm-api-rs corresponding source',
+    'qm-api-rs-source-{pin}.zip',
   ],
 ].map(([id, source, platform, kind, pattern]) =>
   Object.freeze({ id, source, platform, kind, pattern }),

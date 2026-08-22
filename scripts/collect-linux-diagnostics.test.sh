@@ -149,6 +149,10 @@ grep -F 'GDK_BACKEND=wayland' "$acceptance/native-wayland/launch-environment.txt
 grep -F 'DISPLAY=' "$acceptance/native-wayland/launch-environment.txt" >/dev/null
 grep -F 'GDK_BACKEND=x11' "$acceptance/x11/launch-environment.txt" >/dev/null
 grep -F 'YAQMC_LINUX_RENDERER=software' "$acceptance/software/launch-environment.txt" >/dev/null
+if grep -Eq 'WEBKIT_|LIBGL_ALWAYS_SOFTWARE|__NV_DISABLE_EXPLICIT_SYNC' "$acceptance/software/launch-environment.txt"; then
+  echo 'software mode leaked retired host renderer overrides' >&2
+  exit 1
+fi
 test -s "$test_root/shim-calls.log"
 
 interrupt_root="$test_root/interrupt"

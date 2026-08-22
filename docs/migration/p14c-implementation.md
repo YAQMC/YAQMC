@@ -7,7 +7,8 @@ fix verified on 2026-08-22.
 
 This record closes the two code prerequisites in `p14c-readiness.json`. The
 three-day soak at the `ffcc86c` cutover baseline was waived by the maintainer;
-that waiver was not reissued for `476b37e`. The provider feature split and
+the maintainer reissued that waiver for `476b37e` on 2026-08-22 as an explicit
+maintainer-authorized skip, not as soak evidence. The provider feature split and
 `qqmusic-qmapi` opt-in were removed, and `qqmusic-api` is now the unconditional
 production dependency.
 
@@ -54,6 +55,20 @@ The in-tree fixture transport remains active under Rust tests so the established
 reconciliation suite stays deterministic. Dedicated library-client tests verify
 the raw writer request shape, login context, cancellation, and write retry class;
 the production branch is compile-checked outside `cfg(test)`.
+
+## Release gate and corresponding source
+
+- CI and the tagged/manual Electron release workflow fail closed on the exact
+  dependency pin, the machine-readable P14-C record, and the provenance ledger.
+- The release assembly checks out `qm-api-rs` at the unconditional production
+  pin without persisting checkout credentials, then creates revision-bound
+  `git archive` ZIPs for YAQMC and `qm-api-rs`.
+- `CORRESPONDING-SOURCE-MANIFEST.json` binds the two origins, revisions,
+  licenses, archive hashes, readiness record, and provenance-ledger hash.
+  Assembly also requires every downloaded package artifact directory to carry
+  the same release SHA before it can create a draft.
+- `lyrics-crypto` is now a dev dependency only. It remains available to the
+  golden cross-checks but is not linked solely for the production provider.
 
 ## Verification
 
