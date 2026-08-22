@@ -28,7 +28,7 @@ Application appearance and lyric-surface appearance are separate domains. Main-w
 implicitly modify lyric text colors or lyric-window opacity. Compact previews explain theme, background, Desktop
 Lyrics, and Lyrics Island settings without becoming decorative hero content.
 
-The desktop target has a 1000×680 minimum Tauri window. Layouts also tighten at 1120px and reduced-height
+The desktop target opens at 1280×800 with a 1000×680 minimum Electron `BrowserWindow`. Layouts also tighten at 1120px and reduced-height
 windows. Windows and Linux should share information hierarchy and interaction behavior even when later
 native integrations differ.
 

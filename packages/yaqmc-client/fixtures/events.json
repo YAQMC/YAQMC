@@ -1,0 +1,350 @@
+{
+  "account://changed": {
+    "channel": "account://changed",
+    "kind": "event",
+    "payload": {
+      "signedIn": false
+    },
+    "seq": 9
+  },
+  "api://event": {
+    "channel": "api://event",
+    "kind": "event",
+    "payload": {
+      "data": {
+        "currentIndex": 0,
+        "currentQueueEntryId": "entry-0",
+        "historyCursor": 0,
+        "isMuted": false,
+        "isPlaying": false,
+        "lastSeekRevision": 2,
+        "playbackDurationMs": 10000,
+        "playbackHistory": [],
+        "playbackOrder": "sequential",
+        "playbackState": "paused",
+        "positionMs": 1200,
+        "primaryPlaybackMode": "sequential",
+        "queue": [
+          {
+            "album": {
+              "id": "album",
+              "title": "Album"
+            },
+            "artists": [
+              {
+                "id": "artist",
+                "name": "Artist"
+              }
+            ],
+            "artwork": {
+              "alt": "Cover",
+              "dominantColor": "#000000",
+              "src": "/cover.svg"
+            },
+            "availability": {
+              "status": "available"
+            },
+            "durationMs": 10000,
+            "id": "track-0",
+            "isFavorite": false,
+            "quality": "lossless",
+            "title": "track-0",
+            "trackNumber": 1
+          }
+        ],
+        "queueEntries": [
+          {
+            "id": "entry-0",
+            "track": {
+              "album": {
+                "id": "album",
+                "title": "Album"
+              },
+              "artists": [
+                {
+                  "id": "artist",
+                  "name": "Artist"
+                }
+              ],
+              "artwork": {
+                "alt": "Cover",
+                "dominantColor": "#000000",
+                "src": "/cover.svg"
+              },
+              "availability": {
+                "status": "available"
+              },
+              "durationMs": 10000,
+              "id": "track-0",
+              "isFavorite": false,
+              "quality": "lossless",
+              "title": "track-0",
+              "trackNumber": 1
+            }
+          }
+        ],
+        "repeat": "off",
+        "sessionId": 1,
+        "shuffle": false,
+        "shuffleCursor": 0,
+        "shuffleTraversal": [],
+        "snapshotRevision": 4,
+        "sourceGeneration": 1,
+        "upcomingQueueEntryIds": [
+          "entry-0"
+        ],
+        "volume": 0.72
+      },
+      "timestampMs": 1700000000000,
+      "type": "player.playback",
+      "version": 1
+    },
+    "seq": 1
+  },
+  "app://open-settings": {
+    "channel": "app://open-settings",
+    "kind": "event",
+    "payload": {
+      "section": "playback"
+    },
+    "seq": 11
+  },
+  "core://log": {
+    "channel": "core://log",
+    "kind": "event",
+    "payload": {
+      "level": "info",
+      "message": "host attached",
+      "target": "core.protocol"
+    },
+    "seq": 8
+  },
+  "host://command": {
+    "channel": "host://command",
+    "kind": "event",
+    "payload": {
+      "command": "raise"
+    },
+    "seq": 7
+  },
+  "host://core-status": {
+    "channel": "host://core-status",
+    "kind": "event",
+    "payload": {
+      "status": "ready"
+    },
+    "seq": 12
+  },
+  "host://update": {
+    "channel": "host://update",
+    "kind": "event",
+    "payload": {
+      "allowPrerelease": false,
+      "canInstall": true,
+      "channel": "latest",
+      "releaseUrl": "https://github.com/YAQMC/YAQMC/releases",
+      "state": "available",
+      "version": "1.2.3"
+    },
+    "seq": 13
+  },
+  "lyrics://document": {
+    "channel": "lyrics://document",
+    "kind": "event",
+    "payload": {
+      "lines": [
+        {
+          "endMs": 2000,
+          "id": "line-0",
+          "startMs": 0,
+          "text": "hello"
+        }
+      ],
+      "metadata": {
+        "offsetMs": 0,
+        "sourceLabel": "fixture"
+      },
+      "songId": "track-0",
+      "syncMode": "line",
+      "vocalists": []
+    },
+    "seq": 4
+  },
+  "lyrics://projection": {
+    "channel": "lyrics://projection",
+    "kind": "event",
+    "payload": {
+      "currentLine": {
+        "endMs": 2000,
+        "id": "line-0",
+        "startMs": 0,
+        "text": "hello"
+      },
+      "currentTrack": {
+        "album": {
+          "id": "album",
+          "title": "Album"
+        },
+        "artists": [
+          {
+            "id": "artist",
+            "name": "Artist"
+          }
+        ],
+        "artwork": {
+          "alt": "Cover",
+          "dominantColor": "#000000",
+          "src": "/cover.svg"
+        },
+        "availability": {
+          "status": "available"
+        },
+        "durationMs": 10000,
+        "id": "track-0",
+        "isFavorite": false,
+        "quality": "lossless",
+        "title": "track-0",
+        "trackNumber": 1
+      },
+      "isPlaying": false,
+      "lineIndex": 0,
+      "nextLine": {
+        "endMs": 4000,
+        "id": "line-1",
+        "startMs": 2000,
+        "text": "world"
+      },
+      "playbackDurationMs": 10000,
+      "playbackState": "paused",
+      "positionMs": 1200,
+      "sessionId": 1,
+      "syncMode": "line",
+      "timestampMs": 1700000000000,
+      "wordIndex": null
+    },
+    "seq": 3
+  },
+  "lyrics://surface-closed": {
+    "channel": "lyrics://surface-closed",
+    "kind": "event",
+    "payload": {
+      "surface": "lyrics-desktop"
+    },
+    "seq": 10
+  },
+  "lyrics://surface-interaction": {
+    "channel": "lyrics://surface-interaction",
+    "kind": "event",
+    "payload": {
+      "interaction": "passive-locked",
+      "kind": "desktop"
+    },
+    "seq": 11
+  },
+  "player://snapshot": {
+    "channel": "player://snapshot",
+    "kind": "event",
+    "payload": {
+      "currentIndex": 0,
+      "currentQueueEntryId": "entry-0",
+      "historyCursor": 0,
+      "isMuted": false,
+      "isPlaying": false,
+      "lastSeekRevision": 2,
+      "playbackDurationMs": 10000,
+      "playbackHistory": [],
+      "playbackOrder": "sequential",
+      "playbackState": "paused",
+      "positionMs": 1200,
+      "primaryPlaybackMode": "sequential",
+      "queue": [
+        {
+          "album": {
+            "id": "album",
+            "title": "Album"
+          },
+          "artists": [
+            {
+              "id": "artist",
+              "name": "Artist"
+            }
+          ],
+          "artwork": {
+            "alt": "Cover",
+            "dominantColor": "#000000",
+            "src": "/cover.svg"
+          },
+          "availability": {
+            "status": "available"
+          },
+          "durationMs": 10000,
+          "id": "track-0",
+          "isFavorite": false,
+          "quality": "lossless",
+          "title": "track-0",
+          "trackNumber": 1
+        }
+      ],
+      "queueEntries": [
+        {
+          "id": "entry-0",
+          "track": {
+            "album": {
+              "id": "album",
+              "title": "Album"
+            },
+            "artists": [
+              {
+                "id": "artist",
+                "name": "Artist"
+              }
+            ],
+            "artwork": {
+              "alt": "Cover",
+              "dominantColor": "#000000",
+              "src": "/cover.svg"
+            },
+            "availability": {
+              "status": "available"
+            },
+            "durationMs": 10000,
+            "id": "track-0",
+            "isFavorite": false,
+            "quality": "lossless",
+            "title": "track-0",
+            "trackNumber": 1
+          }
+        }
+      ],
+      "repeat": "off",
+      "sessionId": 1,
+      "shuffle": false,
+      "shuffleCursor": 0,
+      "shuffleTraversal": [],
+      "snapshotRevision": 4,
+      "sourceGeneration": 1,
+      "upcomingQueueEntryIds": [
+        "entry-0"
+      ],
+      "volume": 0.72
+    },
+    "seq": 2
+  },
+  "plugin://changed": {
+    "channel": "plugin://changed",
+    "kind": "event",
+    "payload": {
+      "enabled": true,
+      "pluginId": "example"
+    },
+    "seq": 5
+  },
+  "preferences://changed": {
+    "channel": "preferences://changed",
+    "kind": "event",
+    "payload": {
+      "key": "appearance.theme"
+    },
+    "seq": 6
+  }
+}

@@ -653,7 +653,7 @@ describe('Windows lyrics evidence verifier', () => {
       monitorId: '\\\\.\\DISPLAY1',
       visualBinaryPath: binaryPath,
       visualBinarySha256: sha256(binary),
-      visualBuildKind: 'tauri-no-bundle',
+      visualBuildKind: 'electron-local',
       provider: 'fake',
       fixtureSongId: 'quiet-light',
       interactionSequence: {
@@ -1101,8 +1101,8 @@ function writeLinuxMode(
       'wayland',
       mode === 'x11' ? 'x11' : mode === 'native-wayland' ? 'wayland' : '',
       mode === 'software' ? 'software' : 'auto',
-      mode === 'software' ? '1' : '',
-      mode === 'software' ? '1' : '',
+      '',
+      '',
     ].join('\t'),
   );
   writeFileSync(

@@ -1,13 +1,22 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
+import type { DiagnosticsHostPayload } from '@yaqmc/client';
 import { isNativeRuntime } from './native-player-runtime';
-import type { LogLevel } from './logger';
+import {
+  CONSOLE_FORWARD_SETTING_KEY,
+  parseConsoleForwardMode,
+  setConsoleForwardMode,
+  type ConsoleForwardMode,
+  type LogLevel,
+} from './logger';
 import type { PlatformDiagnostics } from './platform-integration';
+import { getYaqmcClient } from './yaqmc-runtime';
+
+const client = getYaqmcClient();
 
 /**
  * Frontend bindings for the Rust `diagnostics_*` and `issue_reporter_*` commands.
  *
- * Everything in this module talks to the native runtime through Tauri IPC and
+ * Everything in this module talks to the native runtime through YaqmcClient and
  * degrades gracefully when the app runs inside the Vite browser preview
  * (isNativeRuntime === false).
  */
@@ -126,6 +135,7 @@ export interface BundleExportOptions extends DiagnosticsRequest {
   overrideUnresolved?: boolean;
   description?: string;
   issueCategory?: string;
+  hostPayload?: DiagnosticsHostPayload;
 }
 
 const LOG_LEVELS: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace'];
@@ -138,11 +148,21 @@ export async function readDiagnosticsSnapshot(
   request: DiagnosticsRequest = {},
 ): Promise<DiagnosticsSnapshot | null> {
   if (!isNativeRuntime) return null;
-  return invoke<DiagnosticsSnapshot>('diagnostics_snapshot', { request });
+  return client.invoke('diagnostics_snapshot', { request }) as Promise<DiagnosticsSnapshot>;
+}
+
+export const DIAGNOSTICS_ZIP_DEFAULT_NAME = 'YAQMC-diagnostics.zip';
+
+export class DiagnosticsExportAbortedError extends Error {
+  constructor(message = 'Diagnostics export was cancelled') {
+    super(message);
+    this.name = 'DiagnosticsExportAbortedError';
+  }
 }
 
 export async function exportDiagnosticsBundle(
   options: BundleExportOptions,
+  destPath?: string,
 ): Promise<BundleExportResult> {
   const { includeLogs, overrideUnresolved, description, issueCategory, ...base } = options;
   const request = {
@@ -152,32 +172,58 @@ export async function exportDiagnosticsBundle(
     issueCategory,
     ...base,
   };
-  return invoke<BundleExportResult>('diagnostics_export_bundle', { request });
+  if (destPath) {
+    return client.invoke('diagnostics_export_bundle_to', { path: destPath, request });
+  }
+  const chosen = await client.host.dialog?.pickSave({
+    defaultPath: DIAGNOSTICS_ZIP_DEFAULT_NAME,
+  });
+  if (chosen == null) {
+    throw new DiagnosticsExportAbortedError();
+  }
+  if (typeof chosen !== 'string' || chosen.trim().length === 0) {
+    throw new Error('Diagnostics save dialog returned an invalid path');
+  }
+  return client.invoke('diagnostics_export_bundle_to', { path: chosen, request });
 }
 
 export async function revealDiagnosticBundle(path: string): Promise<void> {
   if (!isNativeRuntime) return;
-  await invoke('diagnostics_reveal_bundle', { path });
+  await client.invoke('diagnostics_reveal_bundle', { path });
 }
 
 export async function openLogFolder(): Promise<string> {
-  return invoke<string>('diagnostics_open_log_folder');
+  return client.invoke('diagnostics_open_log_folder');
 }
 
 export async function clearOldLogs(): Promise<number> {
-  return invoke<number>('diagnostics_clear_logs');
+  return client.invoke('diagnostics_clear_logs');
 }
 
 export async function currentLogLevel(): Promise<LogLevel> {
-  return invoke<LogLevel>('diagnostics_current_level');
+  return client.invoke('diagnostics_current_level');
 }
 
 export async function setLogLevel(level: LogLevel): Promise<LogLevel> {
-  return invoke<LogLevel>('diagnostics_set_log_level', { level });
+  return client.invoke('diagnostics_set_log_level', { level });
+}
+
+export async function currentConsoleForwardMode(): Promise<ConsoleForwardMode> {
+  if (!isNativeRuntime) return 'error';
+  const value = await client.invoke('app_settings_get', { key: CONSOLE_FORWARD_SETTING_KEY });
+  return parseConsoleForwardMode(value);
+}
+
+export async function setConsoleForwardPreference(
+  mode: ConsoleForwardMode,
+): Promise<ConsoleForwardMode> {
+  await client.invoke('app_settings_set', { key: CONSOLE_FORWARD_SETTING_KEY, value: mode });
+  setConsoleForwardMode(mode);
+  return mode;
 }
 
 export async function readRecentErrors(): Promise<ErrorRecord[]> {
-  return invoke<ErrorRecord[]>('diagnostics_recent_errors');
+  return client.invoke('diagnostics_recent_errors');
 }
 
 export function useDiagnosticsSnapshot(request: DiagnosticsRequest = {}) {

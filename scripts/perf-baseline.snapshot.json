@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 2,
+  "capturedAt": "2026-08-16",
+  "toolchains": [
+    { "id": "node", "name": "Node.js", "required": "24.19.0" },
+    { "id": "npm", "name": "npm", "required": null },
+    { "id": "rustc", "name": "rustc", "required": "1.88.0" },
+    { "id": "cargo", "name": "Cargo", "required": "1.88.0" }
+  ],
+  "runtimeFacts": {
+    "registeredProtocolMethods": 126,
+    "mainWindow": "1280×800 (minimum 1000×680)"
+  },
+  "releaseArtifacts": [
+    {
+      "id": "electron-windows-nsis"
+    },
+    {
+      "id": "electron-windows-portable"
+    },
+    {
+      "id": "electron-windows-updater"
+    },
+    {
+      "id": "electron-linux-appimage"
+    },
+    {
+      "id": "electron-linux-deb"
+    },
+    {
+      "id": "electron-linux-rpm"
+    },
+    {
+      "id": "electron-linux-tar"
+    },
+    {
+      "id": "electron-linux-updater"
+    },
+    {
+      "id": "electron-linux-tester"
+    },
+    {
+      "id": "electron-build-info"
+    },
+    {
+      "id": "electron-release-checksums"
+    },
+    {
+      "id": "electron-release-notes"
+    },
+    {
+      "id": "electron-corresponding-source-manifest"
+    },
+    {
+      "id": "electron-yaqmc-source"
+    },
+    {
+      "id": "electron-qm-api-rs-source"
+    }
+  ],
+  "dataPaths": [
+    {
+      "id": "windows-app-data",
+      "platform": "Windows",
+      "purpose": "App data",
+      "path": "%APPDATA%\\org.yaqmc.desktop",
+      "state": "source-verified"
+    },
+    {
+      "id": "windows-cache",
+      "platform": "Windows",
+      "purpose": "Cache",
+      "path": "%LOCALAPPDATA%\\org.yaqmc.desktop",
+      "state": "source-verified"
+    },
+    {
+      "id": "windows-logs",
+      "platform": "Windows",
+      "purpose": "Logs",
+      "path": "%LOCALAPPDATA%\\org.yaqmc.desktop\\logs",
+      "state": "source-verified"
+    },
+    {
+      "id": "windows-local-api-config",
+      "platform": "Windows",
+      "purpose": "Local API config",
+      "path": "%APPDATA%\\org.yaqmc.desktop\\local-api.json",
+      "state": "source-verified"
+    },
+    {
+      "id": "linux-app-data",
+      "platform": "Linux",
+      "purpose": "App data",
+      "path": "$XDG_DATA_HOME/org.yaqmc.desktop (fallback ~/.local/share/org.yaqmc.desktop)",
+      "state": "source-verified"
+    },
+    {
+      "id": "linux-cache",
+      "platform": "Linux",
+      "purpose": "Cache",
+      "path": "$XDG_CACHE_HOME/org.yaqmc.desktop (fallback ~/.cache/org.yaqmc.desktop)",
+      "state": "source-verified"
+    },
+    {
+      "id": "linux-logs",
+      "platform": "Linux",
+      "purpose": "Logs",
+      "path": "$XDG_DATA_HOME/org.yaqmc.desktop/logs (fallback ~/.local/share/org.yaqmc.desktop/logs)",
+      "state": "source-verified"
+    },
+    {
+      "id": "linux-local-api-config",
+      "platform": "Linux",
+      "purpose": "Local API config",
+      "path": "$XDG_CONFIG_HOME/org.yaqmc.desktop/local-api.json (fallback ~/.config/org.yaqmc.desktop/local-api.json)",
+      "state": "source-verified"
+    }
+  ],
+  "persistenceEntries": [
+    {
+      "id": "sqlite-library",
+      "store": "SQLite",
+      "key": "library.sqlite3 (WAL)",
+      "target": "Keep in place"
+    },
+    {
+      "id": "queue-state",
+      "store": "SQLite table",
+      "key": "queue_state singleton row (value_json)",
+      "target": "Keep in place"
+    },
+    {
+      "id": "audio-output-device",
+      "store": "app_settings",
+      "key": "audio-output-device",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "logging-level",
+      "store": "app_settings",
+      "key": "logging.level",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "preferred-quality",
+      "store": "app_settings",
+      "key": "preferred-quality",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "preferences-schema-version",
+      "store": "app_settings",
+      "key": "preferences-schema-version",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "ui-preferences",
+      "store": "app_settings",
+      "key": "ui-preferences-v1",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "lyrics-geometry-desktop",
+      "store": "app_settings",
+      "key": "lyrics-surface-geometry:desktop",
+      "target": "Keep exact key"
+    },
+    {
+      "id": "lyrics-geometry-island",
+      "store": "app_settings",
+      "key": "lyrics-surface-geometry:island",
+      "target": "Keep exact key"
+    }
+  ],
+  "keyring": {
+    "service": "org.yaqmc.desktop",
+    "legacyService": "dev.music-client.desktop",
+    "entries": ["qqmusic-session", "qqmusic-session-staging", "local-api-bearer-token"]
+  },
+  "measurements": {
+    "Windows:coldStartInteractiveMs": { "state": "pending" },
+    "Windows:warmStartInteractiveMs": { "state": "pending" },
+    "Windows:rssBootIdle60sMiB": { "state": "pending" },
+    "Windows:rssPlayback30mMiB": { "state": "pending" },
+    "Windows:cpuPausedPercent": { "state": "pending" },
+    "Windows:cpuPlayingPercent": { "state": "pending" },
+    "Windows:cpuSeekStormPercent": { "state": "pending" },
+    "Windows:seekRoundTripP95Ms": { "state": "pending" },
+    "Windows:installerSizeMiB": { "state": "pending" },
+    "Windows:installedSizeMiB": { "state": "pending" },
+    "Linux:coldStartInteractiveMs": { "state": "pending" },
+    "Linux:warmStartInteractiveMs": { "state": "pending" },
+    "Linux:rssBootIdle60sMiB": { "state": "pending" },
+    "Linux:rssPlayback30mMiB": { "state": "pending" },
+    "Linux:cpuPausedPercent": { "state": "pending" },
+    "Linux:cpuPlayingPercent": { "state": "pending" },
+    "Linux:cpuSeekStormPercent": { "state": "pending" },
+    "Linux:seekRoundTripP95Ms": { "state": "pending" },
+    "Linux:installerSizeMiB": { "state": "pending" },
+    "Linux:installedSizeMiB": { "state": "pending" }
+  }
+}

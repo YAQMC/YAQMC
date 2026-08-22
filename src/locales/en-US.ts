@@ -299,6 +299,11 @@ export const enUS = {
     favoritePending: 'Updating favorite for {{title}}',
     moreActions: 'More actions for {{title}}',
     addToQueue: 'Add to queue',
+    addToPlaylist: 'Add to playlist',
+    addToPlaylistPicker: 'Add {{title}} to a playlist',
+    addToPlaylistLoading: 'Loading playlists…',
+    addToPlaylistEmpty: 'No playlists you can add to.',
+    addToPlaylistLoadFailed: 'Playlists could not be loaded.',
     enableShuffle: 'Enable shuffle',
     disableShuffle: 'Disable shuffle and return to sequential playback',
     previous: 'Previous track',
@@ -685,7 +690,7 @@ export const enUS = {
     plugins: {
       title: 'Plugins',
       description:
-        'Install local YAQMC runtime plugins for styles, lyrics scenes, and isolated scripts. This is not a Tauri framework plugin list.',
+        'Install local YAQMC runtime plugins for styles, lyrics scenes, and isolated scripts. These are not Electron extensions.',
       install: 'Install from file',
       installDescription:
         'Accepts .yaqmc-plugin packages, or local .css / .js convenience imports.',
@@ -940,6 +945,12 @@ export const enUS = {
       logLevelInfo: 'Info',
       logLevelDebug: 'Debug',
       logLevelTrace: 'Trace',
+      consoleForward: 'Renderer console',
+      consoleForwardDescription:
+        'Packaged builds can copy console.error (and optionally console.warn) into the redacted frontend log. Off leaves them in DevTools only.',
+      consoleForwardError: 'Errors',
+      consoleForwardWarn: 'Errors and warnings',
+      consoleForwardOff: 'Off',
       levelChangeHint: 'The new level takes effect at the next application launch.',
       openFolder: 'Open log folder',
       openFolderDescription: 'Opens the platform application log directory in your file manager.',
@@ -1014,5 +1025,13 @@ export const enUS = {
     preferenceSaveFailed: 'Settings could not be saved to the desktop runtime.',
     imageFailed: 'The selected background image could not be prepared.',
     settingsFailed: 'The desktop runtime could not complete this settings operation.',
+  },
+  tray: {
+    'show-hide': 'Show / Hide',
+    'play-pause': 'Play / Pause',
+    previous: 'Previous',
+    next: 'Next',
+    settings: 'Settings',
+    quit: 'Quit',
   },
 } as const;

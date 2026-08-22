@@ -43,17 +43,19 @@ export function LyricsFullscreenTransport({ ref, artworkSource }: LyricsFullscre
 
   if (currentId === null) return null;
 
+  const durationMs = playbackDurationMs ?? currentDurationMs;
+
   return (
     <LyricsFullscreenTransportSurface
       ref={ref}
       currentId={currentId}
       currentTitle={currentTitle}
       currentArtistLabel={currentArtistLabel}
-      currentDurationMs={currentDurationMs}
+      currentDurationMs={durationMs}
       artworkSource={artworkSource}
       positionMs={positionMs}
       isPlaying={isPlaying}
-      playbackDurationMs={playbackDurationMs}
+      playbackDurationMs={durationMs}
       previous={previous}
       togglePlayback={togglePlayback}
       next={next}
@@ -197,7 +199,7 @@ function LyricsFullscreenTransportSurface({
       <span className="lyrics-fullscreen-transport__progress" aria-hidden="true">
         <span
           className="lyrics-fullscreen-transport__progress-fill"
-          style={{ width: `${progress}%` } as CSSProperties}
+          style={{ transform: `scaleX(${progress / 100})` } as CSSProperties}
         />
       </span>
     </div>

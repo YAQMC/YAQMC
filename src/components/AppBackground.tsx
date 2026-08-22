@@ -2,6 +2,7 @@ import { useBackgroundStyle } from '../application/preferences';
 import { useCurrentSong } from '../application/player-store';
 import { resolveArtworkSource } from '../application/artwork-resolver';
 import { useSafeArtworkSource } from '../application/artwork-source';
+import { useBlurredArtwork } from '../application/blurred-artwork';
 
 export function AppBackground() {
   const current = useCurrentSong();
@@ -15,6 +16,8 @@ export function AppBackground() {
         ? background.source
         : null;
   const safeSource = useSafeArtworkSource(desiredSource);
+  const preblurred = useBlurredArtwork(background.mode === 'artwork' ? safeSource : null);
+  const imageSrc = background.mode === 'artwork' ? (preblurred ?? safeSource) : safeSource;
   return (
     <div
       className="app-background"
@@ -26,8 +29,13 @@ export function AppBackground() {
       }}
       aria-hidden="true"
     >
-      {safeSource && (
-        <img key={safeSource} className="app-background__image" src={safeSource} alt="" />
+      {imageSrc && (
+        <img
+          className="app-background__image"
+          src={imageSrc}
+          alt=""
+          data-preblurred={preblurred ? true : undefined}
+        />
       )}
       <span className="app-background__tint" />
     </div>

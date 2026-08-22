@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import {
   GripHorizontal,
   Lock,
@@ -29,12 +28,24 @@ import {
 } from '../application/preferences';
 import { wordProgress } from '../application/lyrics-timing';
 import { shouldShowLyricSecondary } from '../application/lyrics-presentation';
-import { visibleSurfaceInteractionState } from '../application/lyrics-surface-interaction';
+import {
+  visibleSurfaceInteractionState,
+  pointerInsideSurface,
+} from '../application/lyrics-surface-interaction';
+import {
+  drivePercentageClock,
+  freezePercentageClock,
+  subscribeSurfaceVisualActive,
+  surfaceVisualActive,
+} from '../application/lyrics-surface-visual';
+import { installPlaybackUiProbe } from '../application/playback-ui-probe';
+import { usePlatformDiagnosticsRuntime } from '../application/platform-integration';
 import type { LyricDocument, LyricLine, LyricWord } from '../domain/music';
 import { joinArtistNames } from '../utils/format';
 import { IconButton } from '../components/ui/IconButton';
 import { resolveArtworkSource } from '../application/artwork-resolver';
 import { useSafeArtworkSource } from '../application/artwork-source';
+import { getYaqmcClient } from '../application/yaqmc-runtime';
 
 export interface SurfaceProps {
   kind: SurfaceKind;
@@ -51,12 +62,17 @@ export function LyricsUnlockControl({ kind }: { kind: SurfaceKind }) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
+  usePlatformDiagnosticsRuntime();
+  useEffect(() => {
+    getYaqmcClient();
+  }, []);
+
   const unlock = async () => {
     if (pending) return;
     setPending(true);
     setFailed(false);
     try {
-      await invoke('lyrics_surface_unlock', { kind });
+      await getYaqmcClient().invoke('lyrics_surface_unlock', { kind });
     } catch {
       setFailed(true);
     } finally {
@@ -68,7 +84,7 @@ export function LyricsUnlockControl({ kind }: { kind: SurfaceKind }) {
     <main className="lyrics-unlock-root">
       <button
         type="button"
-        className="lyrics-unlock-button"
+        className="lyrics-unlock-button yaqmc-no-drag"
         aria-label={t('unlockSurface', { name: t(kind) })}
         title={t('unlockSurface', { name: t(kind) })}
         data-failed={failed || undefined}
@@ -99,7 +115,7 @@ function fontFamily(settings: LyricSurfaceSettings): string {
   return '"Segoe UI Variable", "Segoe UI", "Noto Sans SC", system-ui, sans-serif';
 }
 
-function useSurfaceHover(interactive: boolean) {
+function useSurfaceHover(interactive: boolean, rootRef: { current: HTMLElement | null }) {
   const [hovered, setHovered] = useState(false);
   const leaveTimer = useRef<number | null>(null);
   const hoverReady = useRef(false);
@@ -110,16 +126,32 @@ function useSurfaceHover(interactive: boolean) {
       leaveTimer.current = null;
     }
   };
-  const onPointerEnter = () => {
+  const confirmPointer = (clientX: number, clientY: number) => {
+    if (!interactive || !hoverReady.current) return false;
+    if (!pointerInsideSurface(rootRef.current, clientX, clientY)) return false;
+    cancelLeave();
+    setHovered(true);
+    return true;
+  };
+  const onPointerEnter = (event: { clientX: number; clientY: number }) => {
+    confirmPointer(event.clientX, event.clientY);
     cancelLeave();
     if (interactive && hoverReady.current) setHovered(true);
   };
-  const onPointerMove = () => {
-    if (interactive && hoverReady.current) setHovered(true);
+  const onPointerMove = (event: { clientX: number; clientY: number }) => {
+    confirmPointer(event.clientX, event.clientY);
   };
-  const onPointerLeave = () => {
+  const onPointerLeave = (event: { clientX: number; clientY: number }) => {
+    const x = event.clientX;
+    const y = event.clientY;
     cancelLeave();
-    leaveTimer.current = window.setTimeout(() => setHovered(false), 90);
+    leaveTimer.current = window.setTimeout(() => {
+      if (pointerInsideSurface(rootRef.current, x, y)) {
+        setHovered(true);
+        return;
+      }
+      setHovered(false);
+    }, 90);
   };
 
   useEffect(() => {
@@ -132,7 +164,24 @@ function useSurfaceHover(interactive: boolean) {
     };
   }, []);
 
-  return { hovered: interactive && hovered, onPointerEnter, onPointerMove, onPointerLeave };
+  useEffect(() => {
+    if (!interactive || !hovered) return;
+    const onMove = (event: PointerEvent) => {
+      if (pointerInsideSurface(rootRef.current, event.clientX, event.clientY)) {
+        cancelLeave();
+        setHovered(true);
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [hovered, interactive, rootRef]);
+
+  return {
+    hovered: interactive && hovered,
+    onPointerEnter,
+    onPointerMove,
+    onPointerLeave,
+  };
 }
 
 function SurfaceWord({
@@ -150,26 +199,23 @@ function SurfaceWord({
 }) {
   const element = useRef<HTMLSpanElement>(null);
   useEffect(() => {
-    if (state !== 'current') return;
-    const updateProgress = () => {
-      const position =
-        estimatedSurfacePosition(projection) + presentationOffsetMs - documentOffsetMs;
-      element.current?.style.setProperty(
-        '--word-progress',
-        `${wordProgress(word, position) * 100}%`,
-      );
-    };
-    if (!projection.value.isPlaying) {
-      updateProgress();
+    if (state !== 'current') {
+      freezePercentageClock(element.current, '--word-progress', state === 'complete' ? 1 : 0);
       return;
     }
-    let frame = 0;
-    const update = () => {
-      updateProgress();
-      frame = window.requestAnimationFrame(update);
+    const apply = () => {
+      const position =
+        estimatedSurfacePosition(projection) + presentationOffsetMs - documentOffsetMs;
+      const progress = wordProgress(word, position);
+      const remaining = Math.max(0, word.endMs - position);
+      if (!projection.value.isPlaying || !surfaceVisualActive()) {
+        freezePercentageClock(element.current, '--word-progress', progress);
+        return;
+      }
+      drivePercentageClock(element.current, '--word-progress', progress, remaining);
     };
-    update();
-    return () => window.cancelAnimationFrame(frame);
+    apply();
+    return subscribeSurfaceVisualActive(apply);
   }, [documentOffsetMs, presentationOffsetMs, projection, state, word]);
   return (
     <span
@@ -239,26 +285,38 @@ function SurfaceControls({
   const { t: common } = useTranslation('common');
   const { t: surfaces } = useTranslation('settings', { keyPrefix: 'surfaces' });
   return (
-    <div className="lyrics-surface__controls">
-      <span className="lyrics-surface__drag" data-tauri-drag-region>
+    <div className="lyrics-surface__controls yaqmc-no-drag">
+      <span className="lyrics-surface__drag yaqmc-drag">
         <GripHorizontal size={15} />
       </span>
-      <IconButton label={t('previous')} size="small" onClick={() => void invoke('player_previous')}>
+      <IconButton
+        label={t('previous')}
+        size="small"
+        className="yaqmc-no-drag"
+        onClick={() => void getYaqmcClient().player.previous()}
+      >
         <SkipBack size={14} fill="currentColor" />
       </IconButton>
       <IconButton
         label={projection?.value.isPlaying ? common('pause') : common('play')}
         size="small"
-        onClick={() => void invoke('player_toggle')}
+        className="yaqmc-no-drag"
+        onClick={() => void getYaqmcClient().player.toggle()}
       >
         {projection?.value.isPlaying ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
       </IconButton>
-      <IconButton label={t('next')} size="small" onClick={() => void invoke('player_next')}>
+      <IconButton
+        label={t('next')}
+        size="small"
+        className="yaqmc-no-drag"
+        onClick={() => void getYaqmcClient().player.next()}
+      >
         <SkipForward size={14} fill="currentColor" />
       </IconButton>
       <IconButton
         label={surfaces('lock')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void setLyricsSurfaceInteraction(kind, 'passive-locked')}
       >
         <Lock size={14} />
@@ -266,6 +324,7 @@ function SurfaceControls({
       <IconButton
         label={navigation('settings')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void showLyricsSettings()}
       >
         <Settings2 size={14} />
@@ -273,6 +332,7 @@ function SurfaceControls({
       <IconButton
         label={common('close')}
         size="small"
+        className="yaqmc-no-drag"
         onClick={() => void closeLyricsSurface(kind)}
       >
         <X size={14} />
@@ -289,11 +349,18 @@ function EmptyLyric() {
 export function DesktopSurface(props: SurfaceProps) {
   const { settings, projection, document, current, next, wordIndex } = props;
   const interactive = settings.interaction === 'interactive';
-  const hover = useSurfaceHover(interactive);
+  const rootRef = useRef<HTMLElement | null>(null);
+  const hover = useSurfaceHover(interactive, rootRef);
   const interactionState = visibleSurfaceInteractionState(settings.interaction, hover.hovered);
+  const line = current ?? projection?.value.currentLine ?? null;
   return (
     <section
-      className="lyrics-surface lyrics-surface--desktop"
+      ref={rootRef}
+      className={
+        interactive
+          ? 'lyrics-surface lyrics-surface--desktop lyrics-surface--interactive'
+          : 'lyrics-surface lyrics-surface--desktop'
+      }
       data-interaction-state={interactionState}
       data-presentation-background={settings.backgroundOpacity > 0 || undefined}
       onPointerEnter={hover.onPointerEnter}
@@ -301,18 +368,12 @@ export function DesktopSurface(props: SurfaceProps) {
       onPointerLeave={hover.onPointerLeave}
     >
       {interactive && <SurfaceControls kind="desktop" projection={projection} />}
-      <div
-        className="lyrics-surface__drag-region"
-        data-tauri-drag-region={interactive ? true : undefined}
-      />
-      <div
-        className="desktop-lyrics__content"
-        data-tauri-drag-region={interactive ? true : undefined}
-      >
-        {current ? (
+      <div className="lyrics-surface__drag-region" />
+      <div className="desktop-lyrics__content">
+        {line ? (
           <>
             <SurfaceLine
-              line={current}
+              line={line}
               wordIndex={wordIndex}
               projection={projection}
               document={document}
@@ -339,33 +400,68 @@ export function DesktopSurface(props: SurfaceProps) {
 export function IslandSurface(props: SurfaceProps) {
   const { settings, projection, document, current, next, wordIndex } = props;
   const interactive = settings.interaction === 'interactive';
-  const hover = useSurfaceHover(interactive);
+  const rootRef = useRef<HTMLElement | null>(null);
+  const hover = useSurfaceHover(interactive, rootRef);
   const interactionState = visibleSurfaceInteractionState(settings.interaction, hover.hovered);
   const track = projection?.value.currentTrack;
   const artworkSource = useSafeArtworkSource(
     track ? resolveArtworkSource(track.artwork, 'small') : null,
   );
   const duration = projection?.value.playbackDurationMs ?? track?.durationMs ?? 0;
-  const progress =
-    duration > 0 ? Math.min(100, ((projection?.value.positionMs ?? 0) / duration) * 100) : 0;
+  const line = current ?? projection?.value.currentLine ?? null;
+  const progressRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const node = progressRef.current;
+    if (!node) return;
+    let timer: number | null = null;
+    const apply = () => {
+      const position = projection ? estimatedSurfacePosition(projection) : 0;
+      const progress = duration > 0 ? Math.min(1, position / duration) : 0;
+      freezePercentageClock(node, '--island-progress', progress);
+    };
+    const arm = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+      apply();
+      if (!projection?.value.isPlaying || !surfaceVisualActive()) return;
+      timer = window.setInterval(apply, 250);
+    };
+    arm();
+    const stopVisual = subscribeSurfaceVisualActive(arm);
+    return () => {
+      stopVisual();
+      if (timer !== null) window.clearInterval(timer);
+    };
+  }, [duration, projection]);
+
   return (
     <section
-      className="lyrics-surface lyrics-surface--island"
+      ref={rootRef}
+      className={
+        interactive
+          ? 'lyrics-surface lyrics-surface--island lyrics-surface--interactive'
+          : 'lyrics-surface lyrics-surface--island'
+      }
       data-interaction-state={interactionState}
       onPointerEnter={hover.onPointerEnter}
       onPointerMove={hover.onPointerMove}
       onPointerLeave={hover.onPointerLeave}
     >
-      <div className="island-card" data-tauri-drag-region={interactive ? true : undefined}>
-        {artworkSource && <img src={artworkSource} alt="" draggable={false} />}
+      <div className="island-card">
+        {artworkSource && (
+          <img src={artworkSource} alt="" draggable={false} referrerPolicy="no-referrer" />
+        )}
         <span
           className="island-card__state"
           data-playing={projection?.value.isPlaying || undefined}
         />
-        <div className="island-card__copy" data-tauri-drag-region={interactive ? true : undefined}>
-          {current ? (
+        <div className="island-card__copy">
+          {line ? (
             <SurfaceLine
-              line={current}
+              line={line}
               wordIndex={wordIndex}
               projection={projection}
               document={document}
@@ -393,17 +489,22 @@ export function IslandSurface(props: SurfaceProps) {
           </div>
         </div>
         {interactive && <SurfaceControls kind="island" projection={projection} />}
-        <span
-          className="island-card__progress"
-          style={{ '--island-progress': `${progress}%` } as CSSProperties}
-        />
+        <span ref={progressRef} className="island-card__progress" />
       </div>
     </section>
   );
 }
 
 export function LyricsSurfaceApp({ kind }: { kind: SurfaceKind }) {
+  usePlatformDiagnosticsRuntime();
   usePreferencesRuntime(false);
+  useEffect(() => installPlaybackUiProbe({ heartbeat: false }), []);
+  useEffect(() => subscribeSurfaceVisualActive(() => undefined), []);
+  useEffect(() => {
+    document.documentElement.dataset.surfaceCommits = String(
+      Number(document.documentElement.dataset.surfaceCommits ?? '0') + 1,
+    );
+  });
   const settings = usePreferencesStore((state) => state.surfaces[kind]);
   const runtime = useLyricsSurfaceRuntime();
   const projected = useProjectedLyrics(runtime.projection, runtime.document);

@@ -12,10 +12,23 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { useContext, type CSSProperties } from 'react';
+import {
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import type { TFunction } from 'i18next';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
-import { useCurrentSong, usePlayerStore, type PlaybackFailure } from '../application/player-store';
+import {
+  getEstimatedPositionMs,
+  useCurrentSong,
+  usePlayerStore,
+  type PlaybackFailure,
+} from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
@@ -32,6 +45,194 @@ function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   if (muted || volume === 0) return <VolumeX size={17} />;
   if (volume < 0.5) return <Volume1 size={17} />;
   return <Volume2 size={17} />;
+}
+
+function PlayerProgressSlider({
+  current,
+  t,
+}: {
+  current: ReturnType<typeof useCurrentSong>;
+  t: TFunction<'player'>;
+}) {
+  const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const isScrubbing = usePlayerStore((state) => state.isScrubbing);
+  const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
+  const pausedPositionMs = usePlayerStore((state) => (state.isPlaying ? null : state.positionMs));
+  const beginScrub = usePlayerStore((state) => state.beginScrub);
+  const previewScrub = usePlayerStore((state) => state.previewScrub);
+  const commitScrub = usePlayerStore((state) => state.commitScrub);
+  const dragging = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLSpanElement>(null);
+  const [draft, setDraft] = useState<number | null>(null);
+  const [visualMs, setVisualMs] = useState(() => getEstimatedPositionMs());
+  const duration = playbackDurationMs ?? current?.durationMs ?? 0;
+  const displayPosition = draft ?? visualMs;
+  const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
+
+  useEffect(() => {
+    if (pausedPositionMs === null) return;
+    if (!dragging.current) setVisualMs(pausedPositionMs);
+  }, [pausedPositionMs]);
+
+  useEffect(() => {
+    if (!isPlaying || isScrubbing) return;
+    let frame = 0;
+    let lastLabel = '';
+    let lastCommit = 0;
+    const tick = (now: number) => {
+      if (!dragging.current) {
+        const ms = getEstimatedPositionMs();
+        const node = inputRef.current;
+        if (node && document.documentElement.dataset.compositorProbe !== 'no-progress-raf') {
+          node.value = String(ms);
+          const max = Number(node.max) || 1;
+          node.style.setProperty('--range-progress', `${(ms / max) * 100}%`);
+        }
+        const label = formatDuration(ms);
+        if (timeRef.current && label !== lastLabel) {
+          timeRef.current.textContent = label;
+          lastLabel = label;
+        }
+        if (now - lastCommit >= 250) {
+          lastCommit = now;
+          setVisualMs(ms);
+        }
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [isPlaying, isScrubbing]);
+
+  const capture = (event: ReactPointerEvent<HTMLInputElement>) => {
+    dragging.current = true;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic Playwright/jsdom pointer events may not be capturable.
+    }
+    beginScrub();
+    setDraft(Number(event.currentTarget.value));
+  };
+  const release = (
+    event: ReactPointerEvent<HTMLInputElement> | ReactKeyboardEvent<HTMLInputElement>,
+  ) => {
+    dragging.current = false;
+    const next = Number(event.currentTarget.value);
+    setDraft(null);
+    setVisualMs(next);
+    commitScrub(next);
+  };
+
+  return (
+    <div className="player-progress">
+      <span ref={timeRef}>{formatDuration(displayPosition)}</span>
+      <input
+        ref={inputRef}
+        type="range"
+        min={0}
+        max={Math.max(duration, 1)}
+        step={1}
+        value={displayPosition}
+        onPointerDown={capture}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onKeyDown={(event) => {
+          dragging.current = true;
+          beginScrub();
+          setDraft(Number(event.currentTarget.value));
+        }}
+        onKeyUp={release}
+        onChange={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.target.value);
+          setDraft(next);
+          previewScrub(next);
+        }}
+        onInput={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.currentTarget.value);
+          setDraft(next);
+          previewScrub(next);
+        }}
+        disabled={!current}
+        aria-label={t('position')}
+        style={{ '--range-progress': `${progress}%` } as CSSProperties}
+      />
+      <span>{formatDuration(duration)}</span>
+    </div>
+  );
+}
+
+function PlayerVolumeSlider({ t }: { t: TFunction<'player'> }) {
+  const volume = usePlayerStore((state) => state.volume);
+  const isMuted = usePlayerStore((state) => state.isMuted);
+  const beginVolumeScrub = usePlayerStore((state) => state.beginVolumeScrub);
+  const setVolume = usePlayerStore((state) => state.setVolume);
+  const toggleMuted = usePlayerStore((state) => state.toggleMuted);
+  const dragging = useRef(false);
+  const [draft, setDraft] = useState<number | null>(null);
+  const shown = draft ?? (isMuted ? 0 : volume);
+  const volumeProgress = shown * 100;
+
+  const capture = (event: ReactPointerEvent<HTMLInputElement>) => {
+    dragging.current = true;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic Playwright/jsdom pointer events may not be capturable.
+    }
+    beginVolumeScrub();
+    setDraft(Number(event.currentTarget.value));
+  };
+  const release = (
+    event: ReactPointerEvent<HTMLInputElement> | ReactKeyboardEvent<HTMLInputElement>,
+  ) => {
+    dragging.current = false;
+    const next = Number(event.currentTarget.value);
+    setDraft(null);
+    setVolume(next);
+  };
+
+  return (
+    <div className="volume-control yaqmc-no-drag">
+      <IconButton label={isMuted ? t('unmute') : t('mute')} size="small" onClick={toggleMuted}>
+        <VolumeIcon muted={isMuted} volume={shown} />
+      </IconButton>
+      <input
+        type="range"
+        className="yaqmc-no-drag"
+        min={0}
+        max={1}
+        step={0.01}
+        value={shown}
+        onPointerDown={capture}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onKeyDown={(event) => {
+          dragging.current = true;
+          beginVolumeScrub();
+          setDraft(Number(event.currentTarget.value));
+        }}
+        onKeyUp={release}
+        onChange={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.target.value);
+          setDraft(next);
+          setVolume(next);
+        }}
+        onInput={(event) => {
+          if (!dragging.current) return;
+          const next = Number(event.currentTarget.value);
+          setDraft(next);
+          setVolume(next);
+        }}
+        aria-label={t('volume')}
+        style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
+      />
+    </div>
+  );
 }
 
 interface PlayerBarProps {
@@ -52,44 +253,19 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
     current?.id,
     current?.isFavorite ?? false,
   );
-  const {
-    positionMs,
-    isPlaying,
-    volume,
-    isMuted,
-    playbackState,
-    playbackDurationMs,
-    playbackError,
-    sourceSelection,
-    queueOpen,
-    lyricsOpen,
-    isScrubbing,
-    scrubPosition,
-    togglePlayback,
-    next,
-    previous,
-    seek,
-    beginScrub,
-    previewScrub,
-    commitScrub,
-    setVolume,
-    setQuality,
-    toggleMuted,
-    toggleQueue,
-    toggleLyrics,
-    openLyrics,
-  } = usePlayerStore();
-
-  const timelineDuration = playbackDurationMs ?? current?.durationMs ?? 0;
-  const previewStartMs =
-    sourceSelection?.preview && current?.playbackCapability?.status === 'preview'
-      ? current.playbackCapability.startMs
-      : 0;
-  const duration = Math.max(0, timelineDuration - previewStartMs);
-  const timelinePosition = isScrubbing ? scrubPosition : positionMs;
-  const displayPosition = Math.max(0, Math.min(timelinePosition - previewStartMs, duration));
-  const progress = duration === 0 ? 0 : (displayPosition / duration) * 100;
-  const volumeProgress = (isMuted ? 0 : volume) * 100;
+  const isPlaying = usePlayerStore((state) => state.isPlaying);
+  const playbackState = usePlayerStore((state) => state.playbackState);
+  const playbackError = usePlayerStore((state) => state.playbackError);
+  const sourceSelection = usePlayerStore((state) => state.sourceSelection);
+  const queueOpen = usePlayerStore((state) => state.queueOpen);
+  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
+  const togglePlayback = usePlayerStore((state) => state.togglePlayback);
+  const next = usePlayerStore((state) => state.next);
+  const previous = usePlayerStore((state) => state.previous);
+  const setQuality = usePlayerStore((state) => state.setQuality);
+  const toggleQueue = usePlayerStore((state) => state.toggleQueue);
+  const toggleLyrics = usePlayerStore((state) => state.toggleLyrics);
+  const openLyrics = usePlayerStore((state) => state.openLyrics);
   const playbackStatus = playbackLabel(playbackState, playbackError, t);
   const favoriteLabel = current
     ? favoritePending
@@ -213,30 +389,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             <SkipForward size={17} fill="currentColor" />
           </IconButton>
         </div>
-        <div className="player-progress">
-          <span>{formatDuration(displayPosition)}</span>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(duration, 1)}
-            step={1_000}
-            value={displayPosition}
-            onPointerDown={() => beginScrub()}
-            onPointerUp={(event) => commitScrub(Number(event.currentTarget.value) + previewStartMs)}
-            onPointerCancel={(event) =>
-              commitScrub(Number(event.currentTarget.value) + previewStartMs)
-            }
-            onChange={(event) => {
-              const next = Number(event.target.value) + previewStartMs;
-              if (isScrubbing) previewScrub(next);
-              else seek(next);
-            }}
-            disabled={!current}
-            aria-label={t('position')}
-            style={{ '--range-progress': `${progress}%` } as CSSProperties}
-          />
-          <span>{formatDuration(duration)}</span>
-        </div>
+        <PlayerProgressSlider current={current} t={t} />
       </div>
 
       <div className="player-bar__tools">
@@ -275,21 +428,7 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
             <Puzzle size={16} />
           </IconButton>
         ))}
-        <div className="volume-control">
-          <IconButton label={isMuted ? t('unmute') : t('mute')} size="small" onClick={toggleMuted}>
-            <VolumeIcon muted={isMuted} volume={volume} />
-          </IconButton>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={isMuted ? 0 : volume}
-            onChange={(event) => setVolume(Number(event.target.value))}
-            aria-label={t('volume')}
-            style={{ '--range-progress': `${volumeProgress}%` } as CSSProperties}
-          />
-        </div>
+        <PlayerVolumeSlider t={t} />
       </div>
     </footer>
   );

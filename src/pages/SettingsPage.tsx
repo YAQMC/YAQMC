@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { getYaqmcClient } from '../application/yaqmc-runtime';
 import {
   AlignLeft,
   Bug,
@@ -45,6 +45,7 @@ import {
   defaultPreferences,
   finishAppearancePreview,
   pickManagedBackgroundImage,
+  formatBackgroundPickerError,
   previewAppearance,
   restoreCommittedAppearance,
   usePreferencesStore,
@@ -64,16 +65,28 @@ import { buildMetadata, productMetadata, type ProductLink } from '../application
 import {
   clearOldLogs,
   currentLogLevel,
+  currentConsoleForwardMode,
+  DiagnosticsExportAbortedError,
   exportDiagnosticsBundle,
   openLogFolder,
   revealDiagnosticBundle,
+  setConsoleForwardPreference,
   setLogLevel,
   type BundleExportResult,
 } from '../application/diagnostics-runtime';
-import type { LogLevel } from '../application/logger';
+import {
+  isPackagedElectronMainRenderer,
+  type ConsoleForwardMode,
+  type LogLevel,
+} from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
 import { PluginManager } from '../components/PluginManager';
+import { SettingsUpdateSection } from '../components/SettingsUpdateSection';
+import {
+  SurfaceCapabilityBanner,
+  surfaceCapabilitiesFromDiagnostics,
+} from '../components/SurfaceCapabilityBanner';
 import { useMusicProvider } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
@@ -173,16 +186,32 @@ function RangeControl({
   label,
   output,
   onChange,
+  onPreview,
 }: {
   value: number;
   min: number;
   max: number;
   step?: number;
   label: string;
-  output: string;
+  output: string | ((value: number) => string);
   onChange: (value: number) => void;
+  onPreview?: (value: number) => void;
 }) {
-  const progress = ((value - min) / Math.max(1, max - min)) * 100;
+  const dragging = useRef(false);
+  const [draft, setDraft] = useState<number | null>(null);
+  const shown = draft ?? value;
+  const progress = ((shown - min) / Math.max(1, max - min)) * 100;
+  const outputLabel = typeof output === 'function' ? output(shown) : output;
+
+  const preview = (next: number) => {
+    setDraft(next);
+    onPreview?.(next);
+  };
+  const commit = (next: number) => {
+    setDraft(null);
+    onChange(next);
+  };
+
   return (
     <label className="settings-range">
       <input
@@ -190,12 +219,34 @@ function RangeControl({
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={shown}
         aria-label={label}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onPointerDown={() => {
+          dragging.current = true;
+        }}
+        onPointerUp={(event) => {
+          dragging.current = false;
+          commit(Number(event.currentTarget.value));
+        }}
+        onPointerCancel={(event) => {
+          dragging.current = false;
+          commit(Number(event.currentTarget.value));
+        }}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (dragging.current) {
+            preview(next);
+            return;
+          }
+          commit(next);
+        }}
+        onInput={(event) => {
+          if (!dragging.current) return;
+          preview(Number(event.currentTarget.value));
+        }}
         style={{ '--range-progress': `${progress}%` } as CSSProperties}
       />
-      <output>{output}</output>
+      <output>{outputLabel}</output>
     </label>
   );
 }
@@ -491,7 +542,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                 min={12}
                 max={kind === 'desktop' ? 64 : 34}
                 label={t('fontSize')}
-                output={t('fontSizeValue', { value: settings.fontSize })}
+                output={(value) => t('fontSizeValue', { value })}
                 onChange={(fontSize) => update({ fontSize })}
               />
             }
@@ -561,7 +612,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                 min={0}
                 max={100}
                 label={t('backgroundOpacity')}
-                output={`${settings.backgroundOpacity}%`}
+                output={(value) => `${value}%`}
                 onChange={(backgroundOpacity) => update({ backgroundOpacity })}
               />
             }
@@ -590,7 +641,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                       min={-100}
                       max={100}
                       label={t('offsetX')}
-                      output={`${settings.horizontalPosition}`}
+                      output={(value) => `${value}`}
                       onChange={(horizontalPosition) => update({ horizontalPosition })}
                     />
                     <RangeControl
@@ -598,7 +649,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
                       min={0}
                       max={160}
                       label={t('offsetY')}
-                      output={`${settings.verticalOffset}px`}
+                      output={(value) => `${value}px`}
                       onChange={(verticalOffset) => update({ verticalOffset })}
                     />
                   </div>
@@ -641,6 +692,8 @@ export function SettingsPage() {
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
   const [unlockingAll, setUnlockingAll] = useState(false);
   const [logLevel, setLogLevelState] = useState<LogLevel>('info');
+  const packagedConsoleForward = isPackagedElectronMainRenderer();
+  const [consoleForward, setConsoleForwardState] = useState<ConsoleForwardMode>('error');
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   const [diagnosticsMessage, setDiagnosticsMessage] = useState<string | null>(null);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
@@ -649,7 +702,8 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (!isNativeRuntime) return;
-    void invoke<SurfaceCapabilities>('lyrics_surface_capabilities')
+    void getYaqmcClient()
+      .invoke('lyrics_surface_capabilities')
       .then(setCapabilities)
       .catch(() => setCapabilities(null));
   }, []);
@@ -661,6 +715,13 @@ export function SettingsPage() {
       .catch(() => setLogLevelState('info'));
   }, []);
 
+  useEffect(() => {
+    if (!isNativeRuntime || !packagedConsoleForward) return;
+    void currentConsoleForwardMode()
+      .then(setConsoleForwardState)
+      .catch(() => setConsoleForwardState('error'));
+  }, [packagedConsoleForward]);
+
   const changeLogLevel = async (next: LogLevel) => {
     setDiagnosticsBusy(true);
     setDiagnosticsError(null);
@@ -668,6 +729,19 @@ export function SettingsPage() {
       const applied = await setLogLevel(next);
       setLogLevelState(applied);
       setDiagnosticsMessage(t('diagnostics.levelChangeHint'));
+    } catch (caught) {
+      setDiagnosticsError(String(caught));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  const changeConsoleForward = async (next: ConsoleForwardMode) => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsError(null);
+    try {
+      const applied = await setConsoleForwardPreference(next);
+      setConsoleForwardState(applied);
     } catch (caught) {
       setDiagnosticsError(String(caught));
     } finally {
@@ -716,6 +790,9 @@ export function SettingsPage() {
       setLastBundle(bundle);
       setDiagnosticsMessage(t('diagnostics.bundleExported', { path: bundle.path }));
     } catch (caught) {
+      if (caught instanceof DiagnosticsExportAbortedError) {
+        return;
+      }
       setDiagnosticsError(t('diagnostics.bundleFailed', { error: String(caught) }));
     } finally {
       setDiagnosticsBusy(false);
@@ -853,8 +930,8 @@ export function SettingsPage() {
     try {
       const image = await pickManagedBackgroundImage();
       if (image) preferences.setManagedBackground(image.reference, image.dataUri);
-    } catch {
-      setImageError(errors('imageFailed'));
+    } catch (error) {
+      setImageError(formatBackgroundPickerError(error, errors('imageFailed')));
     }
   };
   const regenerate = () => {
@@ -975,13 +1052,7 @@ export function SettingsPage() {
   const accountNeedsReauthentication =
     accountSnapshot.state === 'session-expired' ||
     accountSnapshot.state === 'reauthentication-required';
-  const rendererLabel = platform.diagnostics
-    ? platform.diagnostics.os === 'windows'
-      ? 'WebView2 / Tauri'
-      : platform.diagnostics.os === 'linux'
-        ? 'WebKitGTK / Tauri'
-        : 'Tauri WebView'
-    : t('about.browserPreview');
+  const rendererLabel = platform.diagnostics ? 'Electron / Chromium' : t('about.browserPreview');
   const aboutLinks: Array<{ id: ProductLink; label: string }> = [
     { id: 'repository', label: t('about.repository') },
     { id: 'releases', label: t('about.releases') },
@@ -1170,10 +1241,12 @@ export function SettingsPage() {
                   min={0}
                   max={100}
                   label={t('appearance.artworkInfluence')}
-                  output={`${preferences.appearance.artworkInfluence}%`}
-                  onChange={(artworkInfluence) =>
-                    preferences.updateAppearance({ artworkInfluence })
-                  }
+                  output={(value) => `${value}%`}
+                  onPreview={(artworkInfluence) => previewAppearance({ artworkInfluence })}
+                  onChange={(artworkInfluence) => {
+                    finishAppearancePreview();
+                    preferences.updateAppearance({ artworkInfluence });
+                  }}
                 />
               }
             />
@@ -1187,8 +1260,12 @@ export function SettingsPage() {
                 min={85}
                 max={100}
                 label={t('appearance.interfaceOpacity')}
-                output={`${preferences.appearance.surfaceOpacity}%`}
-                onChange={(surfaceOpacity) => preferences.updateAppearance({ surfaceOpacity })}
+                output={(value) => `${value}%`}
+                onPreview={(surfaceOpacity) => previewAppearance({ surfaceOpacity })}
+                onChange={(surfaceOpacity) => {
+                  finishAppearancePreview();
+                  preferences.updateAppearance({ surfaceOpacity });
+                }}
               />
             }
           />
@@ -1266,7 +1343,7 @@ export function SettingsPage() {
                 max={2_000}
                 step={50}
                 label={t('lyrics.timing')}
-                output={t('lyrics.timingValue', { value: preferences.lyrics.timingOffsetMs })}
+                output={(value) => t('lyrics.timingValue', { value })}
                 onChange={(timingOffsetMs) => preferences.updateLyrics({ timingOffsetMs })}
               />
             }
@@ -1291,11 +1368,9 @@ export function SettingsPage() {
           ) : undefined
         }
       >
-        {capabilities?.limitations.map((limitation) => (
-          <p className="settings-capability-note" key={limitation}>
-            {limitation}
-          </p>
-        ))}
+        <SurfaceCapabilityBanner
+          capabilities={surfaceCapabilitiesFromDiagnostics(platform.diagnostics) ?? capabilities}
+        />
         <div className="settings-card settings-card--surfaces">
           <SurfaceSettingsPanel
             kind="desktop"
@@ -1441,6 +1516,25 @@ export function SettingsPage() {
               />
             }
           />
+          {packagedConsoleForward ? (
+            <SettingRow
+              title={t('diagnostics.consoleForward')}
+              description={t('diagnostics.consoleForwardDescription')}
+              control={
+                <Select<ConsoleForwardMode>
+                  value={consoleForward}
+                  options={[
+                    { value: 'error', label: t('diagnostics.consoleForwardError') },
+                    { value: 'warn', label: t('diagnostics.consoleForwardWarn') },
+                    { value: 'off', label: t('diagnostics.consoleForwardOff') },
+                  ]}
+                  onChange={(value) => void changeConsoleForward(value)}
+                  disabled={!isNativeRuntime || diagnosticsBusy}
+                  ariaLabel={t('diagnostics.consoleForward')}
+                />
+              }
+            />
+          ) : null}
           <SettingRow
             title={t('diagnostics.openFolder')}
             description={t('diagnostics.openFolderDescription')}
@@ -1818,6 +1912,8 @@ export function SettingsPage() {
           </button>
         )}
       </SettingsSection>
+
+      <SettingsUpdateSection />
 
       <SettingsSection title={t('about.title')} description={t('about.description')}>
         <div className="settings-about">

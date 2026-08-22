@@ -227,6 +227,17 @@ components:
         src: { type: string }
         alt: { type: string }
         dominantColor: { type: string }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ArtworkVariant' }
+    ArtworkVariant:
+      type: object
+      additionalProperties: false
+      required: [src, width, height]
+      properties:
+        src: { type: string }
+        width: { type: integer, minimum: 0 }
+        height: { type: integer, minimum: 0 }
     Artist:
       type: object
       additionalProperties: false
@@ -265,7 +276,7 @@ components:
       additionalProperties: false
       required: [quality, codec, lossless]
       properties:
-        quality: { type: string, enum: [standard, high, lossless] }
+        quality: { type: string, enum: [standard, high, lossless, master] }
         codec: { type: string, enum: [mp3, aac, flac, alac, unknown] }
         bitrateKbps: { type: integer, minimum: 0 }
         sampleRateHz: { type: integer, minimum: 0 }
@@ -328,7 +339,7 @@ components:
         durationMs: { type: integer, minimum: 0 }
         trackNumber: { type: integer, minimum: 0 }
         isFavorite: { type: boolean }
-        quality: { type: string, enum: [standard, high, lossless] }
+        quality: { type: string, enum: [standard, high, lossless, master] }
         availability: { $ref: '#/components/schemas/Availability' }
         audioFormats:
           type: array
@@ -343,31 +354,88 @@ components:
         code: { type: string }
         message: { type: string }
         retryable: { type: boolean }
+    QualityCapabilityState:
+      type: object
+      additionalProperties: false
+      required: [quality, entitlement, resource, client, playable]
+      properties:
+        quality: { type: string, enum: [standard, high, lossless, master] }
+        entitlement: { type: string, enum: [allowed, denied, unknown] }
+        resource: { type: string, enum: [available, unavailable, unknown] }
+        client: { type: string, enum: [supported, unsupported, unknown] }
+        playable: { type: boolean }
+    PlaybackSourceSelection:
+      type: object
+      additionalProperties: false
+      required: [requestedQuality, resolvedQuality, preview]
+      properties:
+        requestedQuality: { type: string, enum: [automatic, standard, high, lossless, master] }
+        resolvedQuality: { type: string, enum: [standard, high, lossless, master] }
+        fallbackReason:
+          type: string
+          enum:
+            [
+              source-unavailable,
+              account-rights,
+              entitlement-unknown,
+              client-unsupported,
+              preview-only,
+            ]
+        preview: { type: boolean }
+        qualityCapabilities:
+          type: array
+          items: { $ref: '#/components/schemas/QualityCapabilityState' }
+    QueueEntry:
+      type: object
+      additionalProperties: false
+      required: [id, track]
+      properties:
+        id: { type: string }
+        track: { $ref: '#/components/schemas/Song' }
     PlayerSnapshot:
       type: object
       additionalProperties: false
       required:
         [
           queue,
+          queueEntries,
           currentIndex,
+          currentQueueEntryId,
           positionMs,
           isPlaying,
           volume,
           isMuted,
           repeat,
+          playbackOrder,
           shuffle,
+          primaryPlaybackMode,
+          shuffleTraversal,
+          shuffleCursor,
+          playbackHistory,
+          historyCursor,
+          upcomingQueueEntryIds,
           playbackState,
           playbackDurationMs,
+          sessionId,
+          snapshotRevision,
+          sourceGeneration,
+          lastSeekRevision,
+          sampledAtMs,
         ]
       properties:
         queue:
           type: array
           items: { $ref: '#/components/schemas/Song' }
+        queueEntries:
+          type: array
+          items: { $ref: '#/components/schemas/QueueEntry' }
         currentIndex:
           oneOf:
             - type: integer
               minimum: 0
             - type: 'null'
+        currentQueueEntryId:
+          oneOf: [{ type: string }, { type: 'null' }]
         positionMs: { type: integer, minimum: 0 }
         isPlaying: { type: boolean }
         volume: { type: number, minimum: 0, maximum: 1 }
@@ -376,6 +444,17 @@ components:
         shuffle: { type: boolean }
         playbackOrder: { $ref: '#/components/schemas/PlaybackOrder' }
         primaryPlaybackMode: { $ref: '#/components/schemas/PrimaryPlaybackMode' }
+        shuffleTraversal:
+          type: array
+          items: { type: string }
+        shuffleCursor: { type: integer, minimum: 0 }
+        playbackHistory:
+          type: array
+          items: { type: string }
+        historyCursor: { type: integer, minimum: 0 }
+        upcomingQueueEntryIds:
+          type: array
+          items: { type: string }
         playbackState:
           type: string
           enum:
@@ -393,19 +472,44 @@ components:
         playbackDurationMs:
           oneOf: [{ type: integer, minimum: 0 }, { type: 'null' }]
         playbackError: { $ref: '#/components/schemas/PlaybackFailure' }
+        sourceSelection: { $ref: '#/components/schemas/PlaybackSourceSelection' }
+        sessionId: { type: integer, minimum: 0 }
+        snapshotRevision: { type: integer, minimum: 0 }
+        sourceGeneration: { type: integer, minimum: 0 }
+        lastSeekRevision: { type: integer, minimum: 0 }
+        sampledAtMs: { type: integer, minimum: 0 }
     QueueSnapshot:
       type: object
       additionalProperties: false
-      required: [currentIndex, tracks]
+      required:
+        [
+          currentIndex,
+          currentQueueEntryId,
+          tracks,
+          entries,
+          playbackOrder,
+          shuffle,
+          upcomingQueueEntryIds,
+        ]
       properties:
         currentIndex:
           oneOf:
             - type: integer
               minimum: 0
             - type: 'null'
+        currentQueueEntryId:
+          oneOf: [{ type: string }, { type: 'null' }]
         tracks:
           type: array
           items: { $ref: '#/components/schemas/Song' }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/QueueEntry' }
+        playbackOrder: { $ref: '#/components/schemas/PlaybackOrder' }
+        shuffle: { type: boolean }
+        upcomingQueueEntryIds:
+          type: array
+          items: { type: string }
     LyricWord:
       type: object
       additionalProperties: false
@@ -462,10 +566,11 @@ components:
     CurrentLyricState:
       type: object
       additionalProperties: false
-      required: [songId, positionMs, lineIndex, wordIndex, line, word]
+      required: [songId, sessionId, positionMs, lineIndex, wordIndex, line, word]
       properties:
         songId:
           oneOf: [{ type: string }, { type: 'null' }]
+        sessionId: { type: integer, minimum: 0 }
         positionMs: { type: integer, minimum: 0 }
         lineIndex:
           oneOf: [{ type: integer, minimum: 0 }, { type: 'null' }]

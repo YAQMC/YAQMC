@@ -5,46 +5,47 @@
 The desktop runtime keeps transport, persistence, playback, and presentation independently replaceable:
 
 ```text
-React pages/components
-        |
-MusicProvider + optional AccountMusicProvider + player projection
-   |                                        |
-QQMusicProvider (main WebView/Tauri)         | player://snapshot + api://event
-FakeMusicProvider                            |
-   |                                        |
-QQMusicService ------------------------> PlayerService <-------- LocalApiService
-   |          account/auth/entitlement    queue/state machine       127.0.0.1 + SSE
-   |                                        |
-direct account transport + public HTTP   MediaPreparer
-   |                                        |
-QQ compatibility endpoints              HTTP Range source + bounded file cache
-                                            |
-                                      AudioEngine worker
-                                        Rodio / CPAL
+Sandboxed React renderers (main / lyrics / island / OAuth)
+        │ contextBridge: role-scoped API only
+        ▼
+Electron preload + Main
+windows · tray · shortcuts · updater · dialogs · Core supervisor
+        │ framed protocol v1 over child stdio
+        ▼
+yaqmc-core
+ProviderRegistry ── QQMusicProvider ── pinned qm-api-rs + retained hybrids
+        │
+        ├── PlayerService ── MediaPreparer / HTTP Range cache ── AudioEngine (Rodio / CPAL)
+        ├── StorageService ── SQLite metadata, settings, history, queue, cache index
+        ├── CredentialStore ── OS keychain / credential vault
+        ├── LocalApiService ── authenticated 127.0.0.1 HTTP + SSE
+        └── SystemMediaIntegration ── MPRIS 2.2 / SMTC
 
-StorageService: SQLite metadata, settings, history, queue state, and file-cache index
-CredentialStore: OS keychain/credential vault for provider sessions and the local API token
-Platform adapters: MPRIS 2.2 / SMTC / tray / shortcuts -> PlayerService
+Browser-only Vite: React ── FakeMusicProvider + simulated player adapter
 ```
 
 ## Ownership rules
 
 - UI code consumes normalized entities from `src/domain/music.ts`; it never handles provider DTOs, signed media
   URLs, cookies, QRC ciphertext, or cache paths.
-- `QQMusicService` owns endpoint calls, DTO tolerance, normalization, retry classification, entitlement decisions,
-  source selection, and session state. Account commands require both the `main-window` Tauri capability and a Rust
-  `main` caller-label check; lyric WebViews receive neither account data nor account command access.
+- `yaqmc-provider-api` owns the object-safe provider/account contracts, frozen wire DTOs, and provider registry.
+  `yaqmc-provider-qqmusic` owns endpoint calls, DTO tolerance, normalization, retry classification, entitlement
+  decisions, source selection, and session state. Electron Main enforces the main-window account ACL; lyric
+  renderers receive neither account data nor account methods.
 - `PlayerService` is the single owner of the active queue index, playback lifecycle, actual engine position,
   playback duration, volume, mute, repeat, shuffle, failure state, and lyric cursor.
 - `AudioEngine` is a synchronous command boundary backed by a dedicated thread that owns Rodio/CPAL objects.
   Neither React nor the async runtime owns the audio device.
 - `StorageService` owns all SQLite connections and cache file bookkeeping. Signed URLs are never database keys.
-- `LocalApiService` owns only listener configuration/lifecycle and authentication. HTTP and Tauri commands invoke
+- `LocalApiService` owns only listener configuration/lifecycle and authentication. HTTP and Core protocol methods invoke
   the same `PlayerService`; there is no second playback clock. The loopback API has no account or credential route.
+- `SystemMediaIntegration` is Core-owned. Electron injects an opaque optional Win32 HWND and its Tokio runtime handle,
+  then subscribes to the closed Core `HostCommand` bus before native callbacks are enabled. MPRIS/SMTC can request
+  raise or quit, but only Electron Main shows/focuses the window or exits the process.
 
 ## Data and event flow
 
-1. A page calls the public provider contract, or the account extension after an authenticated snapshot, and receives
+1. A page calls the public provider contract, or its account contract after an authenticated snapshot, and receives
    normalized catalog/account entities. Provider cursors and credentials never cross that boundary.
 2. A play intention sends normalized tracks to `PlayerService`.
 3. The player resolves a fresh provider source, reuses a complete cache entry or prepares an initial HTTP range,

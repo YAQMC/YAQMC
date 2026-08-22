@@ -1,6 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
 import { isNativeRuntime } from './native-player-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
+
+const client = getYaqmcClient();
 
 export type LocalApiRunState = 'disabled' | 'starting' | 'running' | 'error';
 
@@ -53,14 +55,15 @@ export function useLocalApiSettings(): LocalApiSettings {
 
   const refresh = useCallback(async () => {
     if (!isNativeRuntime) return;
-    const next = await run(() => invoke<LocalApiStatus>('local_api_status'));
+    const next = await run(() => client.invoke('local_api_status'));
     if (next) setStatus(next);
   }, [run]);
 
   useEffect(() => {
     if (!isNativeRuntime) return;
     let active = true;
-    void invoke<LocalApiStatus>('local_api_status')
+    void client
+      .invoke('local_api_status')
       .then((next) => {
         if (active) setStatus(next);
       })
@@ -74,7 +77,7 @@ export function useLocalApiSettings(): LocalApiSettings {
 
   const setEnabled = useCallback(
     async (enabled: boolean) => {
-      const next = await run(() => invoke<LocalApiStatus>('local_api_set_enabled', { enabled }));
+      const next = await run(() => client.invoke('local_api_set_enabled', { enabled }));
       if (next) setStatus(next);
       else await refresh();
     },
@@ -83,7 +86,7 @@ export function useLocalApiSettings(): LocalApiSettings {
 
   const setPort = useCallback(
     async (port: number) => {
-      const next = await run(() => invoke<LocalApiStatus>('local_api_set_port', { port }));
+      const next = await run(() => client.invoke('local_api_set_port', { port }));
       if (next) setStatus(next);
       else await refresh();
     },
@@ -91,12 +94,12 @@ export function useLocalApiSettings(): LocalApiSettings {
   );
 
   const revealToken = useCallback(async () => {
-    const revealed = await run(() => invoke<string>('local_api_reveal_token'));
+    const revealed = await run(() => client.invoke('local_api_reveal_token'));
     if (revealed) setToken(revealed);
   }, [run]);
 
   const regenerateToken = useCallback(async () => {
-    const next = await run(() => invoke<LocalApiStatus>('local_api_regenerate_token'));
+    const next = await run(() => client.invoke('local_api_regenerate_token'));
     if (next) {
       setStatus(next);
       setToken(null);

@@ -1,15 +1,18 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { isNativeRuntime } from './native-player-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
 
 const memoryCache = new Map<string, string>();
 const pendingCache = new Map<string, Promise<string>>();
 let cacheGeneration = 0;
+
+const CACHEABLE_ARTWORK_HOSTS = new Set(['y.gtimg.cn', 'qpic.y.qq.com', 'music-file.y.qq.com']);
 
 export function isCacheableArtworkSource(url: string): boolean {
   try {
     const parsed = new URL(url);
     return (
       parsed.protocol === 'https:' &&
-      (parsed.hostname === 'y.gtimg.cn' || parsed.hostname === 'qpic.y.qq.com') &&
+      CACHEABLE_ARTWORK_HOSTS.has(parsed.hostname) &&
       parsed.username === '' &&
       parsed.password === '' &&
       (parsed.port === '' || parsed.port === '443')
@@ -34,13 +37,14 @@ export function isCachedArtworkDataUri(value: unknown): value is string {
 }
 
 export function cachedArtworkSource(url: string): Promise<string> | null {
-  if (!isTauri() || !isCacheableArtworkSource(url)) return null;
+  if (!isNativeRuntime || !isCacheableArtworkSource(url)) return null;
   const existing = memoryCache.get(url);
   if (existing) return Promise.resolve(existing);
   const pending = pendingCache.get(url);
   if (pending) return pending;
   const requestGeneration = cacheGeneration;
-  const request = invoke<unknown>('qqmusic_cache_artwork', { url })
+  const request = getYaqmcClient()
+    .invoke('qqmusic_cache_artwork', { url })
     .then((value) => {
       if (!isCachedArtworkDataUri(value)) {
         throw new Error('The native artwork cache returned an invalid image payload');

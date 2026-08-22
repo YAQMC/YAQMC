@@ -1,6 +1,11 @@
-/* WebKitGTK/compositor path: preserve design hierarchy while avoiding the largest live blur
-   surfaces. Windows keeps the richer acrylic-like path. */
-:root[data-platform='linux'] .topbar {
+/* Live CSS blur / backdrop-filter on large surfaces re-rasterizes whenever a
+   playback overlay invalidates (progress clock, lyric cursor, vinyl transform).
+   Linux already avoided that path (WebKitGTK can also paint live blur as black).
+   Windows GPU/DWM HUMAN 2026-08-19: idle ~240 FPS, playing ~49, fullscreen/seek ~4.
+   Frosted artwork look on Windows comes from a one-time canvas pre-blur, not live
+   filter:blur. Do not disable Chromium hardware acceleration to mask this. */
+:root[data-platform='linux'] .topbar,
+:root[data-platform='windows'] .topbar {
   background: color-mix(in srgb, var(--bg-opaque) 96%, var(--surface));
   backdrop-filter: none;
 }
@@ -11,38 +16,75 @@
   transform: scale(1.02);
 }
 
-:root[data-platform='linux'] .lyrics-stage[data-background-mode='image'] .lyrics-stage__backdrop {
+:root[data-platform='windows'] .app-background[data-mode='artwork'] .app-background__image {
+  filter: saturate(0.84);
+}
+
+:root[data-platform='linux'] .lyrics-stage[data-background-mode='image'] .lyrics-stage__backdrop,
+:root[data-platform='windows'] .lyrics-stage[data-background-mode='image'] .lyrics-stage__backdrop {
   filter: none;
   opacity: var(--artwork-influence);
   transform: none;
+  inset: 0;
+}
+
+:root[data-platform='linux'] .lyrics-stage[data-background-mode='artwork'] .lyrics-stage__backdrop,
+:root[data-platform='windows']
+  .lyrics-stage[data-background-mode='artwork']
+  .lyrics-stage__backdrop,
+:root[data-platform='linux'] .lyrics-stage[data-background-mode='default'] .lyrics-stage__backdrop,
+:root[data-platform='windows']
+  .lyrics-stage[data-background-mode='default']
+  .lyrics-stage__backdrop {
+  filter: none;
+  transform: none;
+  inset: 0;
 }
 
 :root[data-platform='linux'] .lyrics-stage__follow,
 :root[data-platform='linux'] .lyrics-stage__instrumental,
 :root[data-platform='linux'] .lyrics-fullscreen-transport,
+:root[data-platform='linux']
+  .lyrics-stage[data-cover-layout='full']
+  .lyrics-stage__viewport::before,
 :root[data-platform='linux'] .lyrics-surface--desktop::before,
 :root[data-platform='linux'] .lyrics-surface--desktop::after,
-:root[data-platform='linux'] .island-card {
+:root[data-platform='linux'] .island-card,
+:root[data-platform='windows'] .lyrics-stage__follow,
+:root[data-platform='windows'] .lyrics-stage__instrumental,
+:root[data-platform='windows'] .lyrics-fullscreen-transport,
+:root[data-platform='windows']
+  .lyrics-stage[data-cover-layout='full']
+  .lyrics-stage__viewport::before,
+:root[data-platform='windows'] .lyrics-surface--desktop::before,
+:root[data-platform='windows'] .lyrics-surface--desktop::after,
+:root[data-platform='windows'] .island-card {
   backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
-:root[data-platform='linux'] .lyrics-fullscreen-transport {
+:root[data-platform='linux'] .lyrics-fullscreen-transport,
+:root[data-platform='windows'] .lyrics-fullscreen-transport {
   background: color-mix(in srgb, var(--bg-opaque) 94%, var(--surface));
 }
 
-:root[data-platform='linux'] .island-card {
+:root[data-platform='linux'] .island-card,
+:root[data-platform='windows'] .island-card {
   background: color-mix(in srgb, #10110f 92%, transparent);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
 }
 
 :root[data-platform='linux'] .lyrics-line,
-:root[data-platform='linux'] .lyrics-surface__line {
+:root[data-platform='linux'] .lyrics-surface__line,
+:root[data-platform='windows'] .lyrics-line,
+:root[data-platform='windows'] .lyrics-surface__line {
   contain: layout paint style;
 }
 
-/* Apple-like inactive-line blur is Windows-only. WebKitGTK can rasterize live filter:blur as black. */
 :root[data-platform='linux'] .lyrics-line:not([data-active]),
-:root[data-platform='linux'] .lyrics-line[data-active] {
+:root[data-platform='linux'] .lyrics-line[data-active],
+:root[data-platform='windows'] .lyrics-line:not([data-active]),
+:root[data-platform='windows'] .lyrics-line[data-active] {
   filter: none;
 }
 
@@ -70,4 +112,45 @@
 :root[data-platform='linux'][data-graphics-mode='software'] .lyrics-line[data-active],
 :root[data-platform='linux'][data-graphics-mode='safe'] .lyrics-line[data-active] {
   transform: translateX(7px);
+}
+
+/* Runtime A/B probes. Not a production visual mode. */
+:root[data-compositor-probe='no-backdrop'] .topbar,
+:root[data-compositor-probe='no-backdrop'] .lyrics-stage__follow,
+:root[data-compositor-probe='no-backdrop'] .lyrics-stage__instrumental,
+:root[data-compositor-probe='no-backdrop'] .lyrics-fullscreen-transport,
+:root[data-compositor-probe='no-backdrop']
+  .lyrics-stage[data-cover-layout='full']
+  .lyrics-stage__viewport::before,
+:root[data-compositor-probe='no-backdrop'] .lyrics-surface--desktop::before,
+:root[data-compositor-probe='no-backdrop'] .lyrics-surface--desktop::after,
+:root[data-compositor-probe='no-backdrop'] .island-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-compositor-probe='no-artwork-blur']
+  .app-background[data-mode='artwork']
+  .app-background__image,
+:root[data-compositor-probe='no-artwork-blur']
+  .lyrics-stage[data-background-mode='image']
+  .lyrics-stage__backdrop {
+  filter: none !important;
+}
+
+:root[data-compositor-probe='no-line-blur'] .lyrics-line:not([data-active]) {
+  filter: none !important;
+}
+
+:root[data-compositor-probe='no-enter-artwork'] .lyrics-stage__backdrop,
+:root[data-compositor-probe='no-enter-artwork'] .app-background__image {
+  visibility: hidden !important;
+}
+
+:root[data-compositor-probe='no-filters'] *,
+:root[data-compositor-probe='no-filters'] *::before,
+:root[data-compositor-probe='no-filters'] *::after {
+  filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }

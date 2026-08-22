@@ -14,8 +14,10 @@ const publicDocuments = [
   'authentication.md',
   'caching.md',
   'ci.md',
+  'data-locations.md',
   'design-system.md',
   'deep-link.md',
+  'development.md',
   'diagnostics.md',
   'discover.md',
   'entitlement.md',
@@ -65,6 +67,10 @@ const communityDocuments = [
   'SUPPORT.md',
   'SUPPORT-EN.md',
   'docs/README.md',
+  'docs/release/README.md',
+  'docs/release/provider-readiness.md',
+  'docs/release/provenance.md',
+  'docs/release/qm-api-rs-provenance.md',
   'docs/zh-CN/README.md',
 ];
 

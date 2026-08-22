@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
+import type { MethodName } from '@yaqmc/client';
+import { getYaqmcClient } from '../../application/yaqmc-runtime';
 import {
   PROVIDER_ERROR_CODES,
   ProviderError,
@@ -69,7 +70,10 @@ async function nativeRequest<T>(
 ): Promise<T> {
   throwIfAborted(signal);
   try {
-    const result = await invoke<T>(command, args);
+    const client = getYaqmcClient();
+    const result = (await (args === undefined
+      ? client.invoke(command as MethodName)
+      : client.invoke(command as MethodName, args as never))) as T;
     throwIfAborted(signal);
     return result;
   } catch (error) {

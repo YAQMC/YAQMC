@@ -1,4 +1,3 @@
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,10 +9,11 @@ import {
   Sun,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ThemePreference } from '../application/use-theme';
 import { isNativeRuntime } from '../application/native-player-runtime';
+import { getYaqmcClient } from '../application/yaqmc-runtime';
 import { IconButton } from './ui/IconButton';
 
 interface TopBarProps {
@@ -37,41 +37,22 @@ export function TopBar({
 }: TopBarProps) {
   const { t } = useTranslation('navigation');
   const [maximized, setMaximized] = useState(false);
+  const windowHost = () => getYaqmcClient().host.window;
 
-  useEffect(() => {
-    if (!isNativeRuntime) return;
-    let active = true;
-    const appWindow = getCurrentWindow();
-    void appWindow.isMaximized().then((value) => {
-      if (active) setMaximized(value);
-    });
-    let stop: (() => void) | null = null;
-    void appWindow
-      .onResized(async () => {
-        if (active) setMaximized(await appWindow.isMaximized());
-      })
-      .then((unlisten) => {
-        if (active) stop = unlisten;
-        else unlisten();
-      });
-    return () => {
-      active = false;
-      stop?.();
-    };
-  }, []);
-
-  const minimize = () => void getCurrentWindow().minimize();
-  const toggleMaximize = () => void getCurrentWindow().toggleMaximize();
-  const close = () => void getCurrentWindow().close();
+  const minimize = () => void windowHost().minimize();
+  const toggleMaximize = () => {
+    setMaximized((value) => !value);
+    void windowHost().toggleMaximize();
+  };
+  const close = () => void windowHost().close();
 
   return (
     <header className="topbar">
       <span
-        className="topbar__drag"
+        className={isNativeRuntime ? 'topbar__drag yaqmc-drag' : 'topbar__drag'}
         aria-hidden="true"
-        data-tauri-drag-region={isNativeRuntime || undefined}
       />
-      <div className="topbar__history">
+      <div className="topbar__history yaqmc-no-drag">
         <IconButton label={t('goBack')} size="small" disabled={!canGoBack} onClick={onBack}>
           <ChevronLeft size={18} />
         </IconButton>
@@ -84,7 +65,7 @@ export function TopBar({
           <ChevronRight size={18} />
         </IconButton>
       </div>
-      <div className="topbar__tools">
+      <div className="topbar__tools yaqmc-no-drag">
         <button type="button" className="search-trigger" onClick={onSearch}>
           <Search size={15} />
           <span>{t('searchShortcut')}</span>

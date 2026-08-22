@@ -1,6 +1,9 @@
 dist
+release-electron
 node_modules
-src-tauri/target
-src-tauri/gen/schemas
+playwright-report
+test-results
+blob-report
 package-lock.json
 GPT-Read-me.md
+packages/yaqmc-client/fixtures

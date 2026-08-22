@@ -3,7 +3,8 @@
 > [简体中文](zh-CN/lyrics-surfaces.md) | **English**
 
 The immersive in-app view remains the full lyrics experience. Desktop Lyrics and Lyrics Island are dedicated,
-lightweight Tauri WebViews. Both consume the same Rust `LyricSurfaceProjection` and normalized `LyricDocument`;
+lightweight Electron `BrowserWindow` renderers. Both consume the same Rust `LyricSurfaceProjection` and normalized
+`LyricDocument`;
 neither polls the local HTTP API or owns a playback clock.
 
 ```text
@@ -40,31 +41,32 @@ independent `locked`, `clickThrough`, `focusable`, and hover booleans as user-fa
 
 An interactive surface accepts pointer input, may be dragged, and reveals its editing controls on hover. An
 interactive Desktop Lyrics window is resizable. The hover state is presentation-only and does not recreate the
-WebView.
+renderer.
 
 A `passive-locked` surface is a desktop overlay, not an application window awaiting input. Before it is shown,
-the native manager applies:
+Electron Main applies:
 
 ```text
-set_focusable(false)
-set_ignore_cursor_events(true)
-set_resizable(false)
+setFocusable(false)
+setIgnoreMouseEvents(true)
+setResizable(false)
 ```
 
 Unlocking restores cursor events and focusability (plus Desktop Lyrics resizing) without calling `set_focus`.
-Because the passive surface itself cannot receive a pointer event, the native manager overlays a separate 42×42
-single-purpose unlock WebView at its upper-right corner. The lyric window remains fully click-through; only this
-small control accepts input. Its Tauri capability exposes only `lyrics_surface_unlock` and cannot read player,
-account, or preference-document state. Settings still provides per-surface **Unlock** and **Unlock all** actions,
+Because the passive surface itself cannot receive a pointer event, Electron Main overlays a separate 42×42
+single-purpose unlock `BrowserWindow` at its upper-right corner. The lyric window remains fully click-through; only
+this small control accepts input. Its sandboxed preload and window-role IPC ACL expose only
+`lyrics_surface_unlock` and cannot read player, account, or preference-document state. Settings still provides
+per-surface **Unlock** and **Unlock all** actions,
 and the tray keeps the global recovery action.
 
 Interaction changes use one serialized command that updates the native window policy and the canonical persisted
 preference together. The UI rolls back if that command fails, and ordinary preference writes preserve the
-canonical interaction fields, so a delayed event from another WebView cannot re-lock a surface that was just
-unlocked. Track, line, word, artwork, pause, and resume events only update WebView state and never focus or
+canonical interaction fields, so a delayed event from another renderer cannot re-lock a surface that was just
+unlocked. Track, line, word, artwork, pause, and resume events only update renderer state and never focus or
 recreate a surface.
 
-Windows currently satisfies the no-activate contract through Tauri/Wry's focusability and cursor-event APIs; no
+Windows currently satisfies the no-activate contract through Electron `BrowserWindow` focusability and cursor-event APIs; no
 custom window procedure, system hook, Explorer injection, or shell modification is installed. The auxiliary
 windows remain undecorated, shadowless, skipped in the taskbar, initially unfocused, and initially hidden. A
 restored locked window is constructed non-focusable, configured for click-through, and only then shown. The unlock
@@ -103,7 +105,7 @@ Locking does not move a window. Settings exposes an explicit position reset for 
 ## Removed taskbar-adjacent overlay
 
 The previous `lyrics-taskbar` work-area overlay has been removed. It was positioned near the Windows taskbar but
-was not part of the taskbar experience. Its toggle, WebView route, lifecycle, geometry, styles, translations, and
+was not part of the taskbar experience. Its toggle, renderer route, lifecycle, geometry, styles, translations, and
 capability entry no longer exist. SQLite migration v4 removes its saved geometry, and preference schema v2 drops
 the legacy configuration while safely accepting old documents during migration.
 
@@ -114,9 +116,9 @@ project will not use Explorer injection, shell hooks, or undocumented taskbar mo
 
 - Windows supports both surfaces, click-through, focusability, always-on-top, transparent windows, fullscreen
   detection, and multi-monitor geometry restoration.
-- Linux shares the state model and Tauri APIs. Exact click-through, topmost, transparency, and focus behavior may
+- Linux shares the state model and Electron host IPC. Exact click-through, topmost, transparency, and focus behavior may
   vary by X11/Wayland compositor. Linux runtime acceptance has not been performed and is not claimed.
 
 Each renderer interpolates active-word fill with `requestAnimationFrame` only while playback is active. Paused
-views update once and sleep. Surface memory is primarily the fixed cost of each WebView rather than duplicated
+views update once and sleep. Surface memory is primarily the fixed cost of each renderer rather than duplicated
 lyrics or playback engines.

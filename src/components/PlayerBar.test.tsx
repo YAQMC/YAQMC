@@ -279,7 +279,7 @@ describe('PlayerBar lyrics presentation entry', () => {
     },
   );
 
-  it('shows preview progress relative to the clip and seeks on the absolute lyric timeline', () => {
+  it('shows preview progress from Core playback duration, not the full-song catalog length', () => {
     const track = {
       ...qqTrack(),
       durationMs: 249_000,
@@ -288,8 +288,8 @@ describe('PlayerBar lyrics presentation entry', () => {
     usePlayerStore.setState({
       queue: [track],
       currentIndex: 0,
-      positionMs: 220_000,
-      playbackDurationMs: 249_000,
+      positionMs: 20_000,
+      playbackDurationMs: 49_000,
       sourceSelection: {
         requestedQuality: 'automatic',
         resolvedQuality: 'standard',
@@ -304,7 +304,142 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(screen.getByText('0:49')).toBeVisible();
     const slider = screen.getByRole('slider', { name: 'Playback position' });
     expect(slider).toHaveValue('20000');
+    fireEvent.pointerDown(slider);
     fireEvent.change(slider, { target: { value: '30000' } });
-    expect(usePlayerStore.getState().positionMs).toBe(230_000);
+    fireEvent.pointerUp(slider);
+    expect(usePlayerStore.getState().positionMs).toBe(30_000);
+  });
+
+  it('keeps the PlayerBar progress control as a native range with shared track geometry', () => {
+    usePlayerStore.setState({
+      queue: [qqTrack()],
+      currentIndex: 0,
+      positionMs: 20_000,
+      playbackDurationMs: 80_000,
+    });
+    const { container } = render(<PlayerBar />);
+    const row = container.querySelector('.player-progress');
+    const slider = screen.getByRole('slider', { name: 'Playback position' });
+    expect(row).not.toBeNull();
+    expect(row?.children).toHaveLength(3);
+    expect(row?.children[0]?.tagName).toBe('SPAN');
+    expect(row?.children[1]).toBe(slider);
+    expect(row?.children[2]?.tagName).toBe('SPAN');
+    expect(slider.tagName).toBe('INPUT');
+    expect(slider).toHaveAttribute('type', 'range');
+    expect(row?.querySelector('.player-progress__track')).toBeNull();
+    expect(row?.querySelector('.player-progress__fill')).toBeNull();
+    expect(slider.style.getPropertyValue('--range-progress')).toBe('25%');
+  });
+
+  it('does not seek when Chromium echoes a controlled position update', () => {
+    const track = {
+      ...qqTrack(),
+      durationMs: 249_000,
+      playbackCapability: { status: 'preview', startMs: 200_000, endMs: 249_000 } as const,
+    };
+    usePlayerStore.setState({
+      queue: [track],
+      currentIndex: 0,
+      positionMs: 20_000,
+      playbackDurationMs: 49_000,
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        fallbackReason: 'preview-only',
+        preview: true,
+      },
+    });
+
+    render(<PlayerBar />);
+    fireEvent.change(screen.getByRole('slider', { name: 'Playback position' }), {
+      target: { value: '30000' },
+    });
+    expect(usePlayerStore.getState().positionMs).toBe(20_000);
+  });
+
+  it('updates volume immediately while dragging', () => {
+    render(<PlayerBar />);
+    const slider = screen.getByRole('slider', { name: 'Volume' });
+    expect(slider).toHaveValue('0.72');
+    fireEvent.pointerDown(slider);
+    fireEvent.change(slider, { target: { value: '0.2' } });
+    expect(slider).toHaveValue('0.2');
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    fireEvent.pointerUp(slider);
+  });
+
+  it('does not set volume when Chromium echoes a controlled volume update', () => {
+    render(<PlayerBar />);
+    fireEvent.change(screen.getByRole('slider', { name: 'Volume' }), {
+      target: { value: '0.2' },
+    });
+    expect(usePlayerStore.getState().volume).toBe(0.72);
+  });
+
+  it('keeps the play control node across position ticks', async () => {
+    usePlayerStore.setState({
+      queue: [qqTrack()],
+      currentIndex: 0,
+      isPlaying: true,
+      playbackState: 'playing',
+      positionMs: 1_000,
+    });
+    const { container } = render(<PlayerBar />);
+    const play = container.querySelector('.player-controls__play');
+    expect(play).not.toBeNull();
+    await act(async () => {
+      usePlayerStore.setState({ positionMs: 12_000 });
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(undefined));
+      });
+    });
+    expect(container.querySelector('.player-controls__play')).toBe(play);
+  });
+
+  it('keeps progress and volume drafts while playback snapshots arrive', () => {
+    const track = {
+      ...qqTrack(),
+      durationMs: 249_000,
+    };
+    usePlayerStore.setState({
+      queue: [track],
+      currentIndex: 0,
+      isPlaying: true,
+      playbackState: 'playing',
+      positionMs: 20_000,
+      playbackDurationMs: 49_000,
+      volume: 0.72,
+    });
+    render(<PlayerBar />);
+    const progress = screen.getByRole('slider', { name: 'Playback position' });
+    const volume = screen.getByRole('slider', { name: 'Volume' });
+    fireEvent.pointerDown(progress);
+    fireEvent.change(progress, { target: { value: '30000' } });
+    fireEvent.pointerDown(volume);
+    fireEvent.change(volume, { target: { value: '0.2' } });
+    act(() => {
+      usePlayerStore.getState().applyExternalSnapshot({
+        queue: [track],
+        currentIndex: 0,
+        positionMs: 12_000,
+        isPlaying: true,
+        volume: 0.72,
+        isMuted: false,
+        repeat: 'off',
+        shuffle: false,
+        playbackState: 'playing',
+        playbackDurationMs: 49_000,
+        playbackError: null,
+        sessionId: 0,
+        snapshotRevision: 8,
+      });
+    });
+    expect(progress).toHaveValue('30000');
+    expect(volume).toHaveValue('0.2');
+    fireEvent.pointerUp(progress);
+    fireEvent.pointerUp(volume);
+    expect(usePlayerStore.getState().positionMs).toBe(30_000);
+    expect(usePlayerStore.getState().volume).toBe(0.2);
   });
 });

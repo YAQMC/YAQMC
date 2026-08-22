@@ -1,5 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { useEffect } from 'react';
 import {
   BUILTIN_CLASSIC_ID,
@@ -10,7 +8,8 @@ import {
   type LyricsPresetDefinition,
 } from './lyrics-preset';
 import { isNativeRuntime } from './native-player-runtime';
-import { isLinuxWebView } from './platform-integration';
+import { skipsLiveCssBlur } from './platform-integration';
+import { getYaqmcClient } from './yaqmc-runtime';
 import { usePlayerStore } from './player-store';
 import { primaryPlaybackMode } from './playback-mode';
 import { usePreferencesStore } from './preferences';
@@ -24,6 +23,8 @@ import {
   registerPluginSidebarAction,
   registerPluginTrackAction,
 } from './plugin-ui';
+
+const client = getYaqmcClient();
 
 export type PluginStatus =
   'installed' | 'disabled' | 'enabling' | 'active' | 'disabling' | 'failed' | 'incompatible';
@@ -196,7 +197,7 @@ self.WebAssembly = undefined;
 self.importScripts = function () { throw new Error('importScripts denied'); };
 self.eval = function () { throw new Error('eval denied'); };
 self.Function = function () { throw new Error('Function denied'); };
-self.__TAURI__ = undefined;
+self.yaqmc = undefined;
 self.document = undefined;
 var __yaqmcListeners = {};
 var __yaqmcSeq = 1;
@@ -400,7 +401,7 @@ function stopScripts(): void {
   workers = new Map();
   void Promise.all(
     [...runtimeTokens.values()].map((token) =>
-      invoke('plugin_runtime_stop', { token }).catch(() => undefined),
+      client.invoke('plugin_runtime_stop', { token }).catch(() => undefined),
     ),
   );
   runtimeTokens = new Map();
@@ -491,7 +492,7 @@ function applyBridgeSideEffect(
     const widgetId = typeof source.widgetId === 'string' ? source.widgetId : '';
     const property = typeof source.property === 'string' ? source.property : '';
     if (!widgetId || !/^(opacity|scale|rotation|blur)$/.test(property)) return;
-    if (property === 'blur' && isLinuxWebView()) return;
+    if (property === 'blur' && skipsLiveCssBlur()) return;
     const raw = source.value;
     const text =
       typeof raw === 'number' && Number.isFinite(raw)
@@ -509,7 +510,7 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
   stopScripts();
   for (const script of scripts) {
     try {
-      const token = await invoke<string>('plugin_runtime_start', { pluginId: script.pluginId });
+      const token = await client.invoke('plugin_runtime_start', { pluginId: script.pluginId });
       runtimeTokens.set(script.pluginId, token);
       const blob = new Blob([pluginWorkerBootstrap(script.source, script.pluginId)], {
         type: 'text/javascript',
@@ -529,10 +530,12 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
           logger.error('plugin.runtime.error', data.message ?? 'plugin runtime error', {
             pluginId: script.pluginId,
           });
-          void invoke('plugin_mark_failed', {
-            id: script.pluginId,
-            reason: data.message ?? 'plugin runtime error',
-          }).catch(() => undefined);
+          void client
+            .invoke('plugin_mark_failed', {
+              id: script.pluginId,
+              reason: data.message ?? 'plugin runtime error',
+            })
+            .catch(() => undefined);
           worker.terminate();
           workers.delete(script.pluginId);
           clearPluginUi(script.pluginId);
@@ -540,9 +543,14 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
         }
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
         const boundToken = runtimeTokens.get(script.pluginId);
-        void invoke('plugin_bridge', {
-          request: { token: boundToken, method: data.method, payload: data.payload ?? {} },
-        })
+        void client
+          .invoke('plugin_bridge', {
+            request: {
+              token: boundToken as string,
+              method: data.method,
+              payload: data.payload ?? {},
+            },
+          })
           .then((value) => {
             applyBridgeSideEffect(script, data.method ?? '', data.payload, value);
             worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: true, value });
@@ -558,17 +566,21 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
       };
       worker.onerror = (event) => {
         logger.error('plugin.runtime.error', event.message, { pluginId: script.pluginId });
-        void invoke('plugin_mark_failed', {
-          id: script.pluginId,
-          reason: event.message || 'plugin runtime error',
-        }).catch(() => undefined);
+        void client
+          .invoke('plugin_mark_failed', {
+            id: script.pluginId,
+            reason: event.message || 'plugin runtime error',
+          })
+          .catch(() => undefined);
         clearPluginUi(script.pluginId);
       };
       workers.set(script.pluginId, worker);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'plugin runtime failed to start';
       logger.error('plugin.runtime.error', reason, { pluginId: script.pluginId });
-      void invoke('plugin_mark_failed', { id: script.pluginId, reason }).catch(() => undefined);
+      void client
+        .invoke('plugin_mark_failed', { id: script.pluginId, reason })
+        .catch(() => undefined);
       clearPluginUi(script.pluginId);
     }
   }
@@ -616,26 +628,26 @@ function emitSceneLifecycle(selectedId: string): void {
 }
 
 export async function setPluginDeveloperMode(enabled: boolean): Promise<boolean> {
-  const next = await invoke<boolean>('plugin_set_developer_mode', { enabled });
+  const next = await client.invoke('plugin_set_developer_mode', { enabled });
   await applyPluginResources();
   return next;
 }
 
 export async function pluginHostDeveloperMode(): Promise<boolean> {
   if (!isNativeRuntime) return false;
-  const resources = await invoke<ActivePluginResources>('plugin_active_resources');
+  const resources = await client.invoke('plugin_active_resources');
   return resources.developerMode;
 }
 
 export async function choosePluginDirectory(): Promise<string | null> {
-  return invoke<string | null>('plugin_pick_directory');
+  return client.invoke('plugin_pick_directory');
 }
 
 export async function installUnpackedPlugin(
   path: string,
   options: { enable?: boolean; grant?: string[] } = {},
 ): Promise<PluginRecord> {
-  const record = await invoke<PluginRecord>('plugin_install_unpacked', {
+  const record = await client.invoke('plugin_install_unpacked', {
     request: { path, enable: options.enable ?? false, grant: options.grant ?? [] },
   });
   await applyPluginResources();
@@ -643,20 +655,20 @@ export async function installUnpackedPlugin(
 }
 
 export async function reloadPlugin(id: string): Promise<PluginRecord> {
-  const record = await invoke<PluginRecord>('plugin_reload', { id });
+  const record = await client.invoke('plugin_reload', { id });
   await applyPluginResources();
   return record;
 }
 
 export async function pluginSettingsGet(id: string): Promise<Record<string, unknown>> {
-  return invoke<Record<string, unknown>>('plugin_settings_get', { id });
+  return client.invoke('plugin_settings_get', { id });
 }
 
 export async function pluginSettingsSet(
   id: string,
   values: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const next = await invoke<Record<string, unknown>>('plugin_settings_set', {
+  const next = await client.invoke('plugin_settings_set', {
     request: { id, values },
   });
   emitToPlugin(id, 'settings.changed', next);
@@ -668,7 +680,7 @@ export async function readPluginAsset(
   path: string,
 ): Promise<{ mime: string; dataBase64: string } | null> {
   try {
-    return await invoke<{ mime: string; dataBase64: string }>('plugin_read_asset', {
+    return await client.invoke('plugin_read_asset', {
       pluginId,
       path,
     });
@@ -681,7 +693,7 @@ export async function applyPluginResources(): Promise<ActivePluginResources | nu
   if (!isNativeRuntime || applying) return null;
   applying = true;
   try {
-    const resources = await invoke<ActivePluginResources>('plugin_active_resources');
+    const resources = await client.invoke('plugin_active_resources');
     applyStyleSheets(resources.safeMode ? [] : resources.styles);
     applySceneSheets(resources.safeMode ? [] : resources.scenes);
     const presets = (resources.safeMode ? [] : resources.scenes)
@@ -704,20 +716,19 @@ export async function applyPluginResources(): Promise<ActivePluginResources | nu
 
 export async function listPlugins(): Promise<PluginRecord[]> {
   if (!isNativeRuntime) return [];
-  return invoke<PluginRecord[]>('plugin_list');
+  return client.invoke('plugin_list');
 }
 
 export async function inspectPluginPath(path: string): Promise<PluginInspectResult> {
-  return invoke<PluginInspectResult>('plugin_inspect_path', { path });
+  return client.invoke('plugin_inspect_path', { path });
 }
 
 export async function installPlugin(
   path: string,
   options: { enable?: boolean; grant?: string[] } = {},
 ): Promise<PluginRecord> {
-  const record = await invoke<PluginRecord>('plugin_install', {
-    request: { path, enable: options.enable ?? false, grant: options.grant ?? [] },
-  });
+  const request = { path, enable: options.enable ?? false, grant: options.grant ?? [] };
+  const record = await client.invoke('plugin_install_from', { request });
   await applyPluginResources();
   return record;
 }
@@ -727,7 +738,7 @@ export async function setPluginEnabled(
   enabled: boolean,
   grant: string[] = [],
 ): Promise<PluginRecord> {
-  const record = await invoke<PluginRecord>('plugin_set_enabled', {
+  const record = await client.invoke('plugin_set_enabled', {
     request: { id, enabled, grant },
   });
   await applyPluginResources();
@@ -735,24 +746,24 @@ export async function setPluginEnabled(
 }
 
 export async function uninstallPlugin(id: string, removeData: boolean): Promise<void> {
-  await invoke('plugin_uninstall', { request: { id, removeData } });
+  await client.invoke('plugin_uninstall', { request: { id, removeData } });
   await applyPluginResources();
 }
 
 export async function setPluginSafeMode(enabled: boolean): Promise<boolean> {
-  const next = await invoke<boolean>('plugin_set_safe_mode', { enabled });
+  const next = await client.invoke('plugin_set_safe_mode', { enabled });
   await applyPluginResources();
   return next;
 }
 
 export async function pluginHostSafeMode(): Promise<boolean> {
   if (!isNativeRuntime) return false;
-  const resources = await invoke<ActivePluginResources>('plugin_active_resources');
+  const resources = await client.invoke('plugin_active_resources');
   return resources.safeMode;
 }
 
 export async function choosePluginFile(): Promise<string | null> {
-  return invoke<string | null>('plugin_pick_package');
+  return (await client.host.dialog?.pickFile({ kind: 'plugin-package' })) ?? null;
 }
 
 export function pluginDiagnosticsText(record: PluginRecord): string {
@@ -778,11 +789,8 @@ export function usePluginHost(): void {
   useEffect(() => {
     if (!isNativeRuntime) return;
     void applyPluginResources();
-    let unlisten: (() => void) | undefined;
-    void listen('plugin://changed', () => {
+    const unlisten = client.on('plugin://changed', () => {
       void applyPluginResources();
-    }).then((fn) => {
-      unlisten = fn;
     });
     const unsubscribePlayer = usePlayerStore.subscribe((state, previous) => {
       const track = state.queue[state.currentIndex ?? -1];
@@ -868,7 +876,7 @@ export function usePluginHost(): void {
       }
     });
     return () => {
-      unlisten?.();
+      unlisten();
       unsubscribePlayer();
       unsubscribeLyrics();
       unsubscribePrefs();

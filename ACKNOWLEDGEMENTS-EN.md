@@ -24,9 +24,10 @@ Pinned versions of `wxuyu/QQMusicApi`, `RethinkQAQ/allmusic-qqmusicapi`, `tlyany
 commits, detected licenses, and boundaries are recorded in the
 [QQ Music provider ledger](docs/qqmusic-provider.md). Those projects do not endorse YAQMC.
 
-QMC/mflac interoperability also independently adapts permitted behavior from the MIT-licensed QMCDecode, Unlock
-Music, and miaosic projects. Reused dependencies, copyright notices, and complete license texts are in
+QMC/mflac interoperability independently adapts permitted behavior from the MIT-licensed QMCDecode project.
+`miaosic` was used only to corroborate EVkey/quality behavior and is not an in-tree
+implementation source. Reused copyright notices and complete license texts are in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Thanks also to the maintainers of Rust, Tauri, React, Rodio/CPAL, i18next, WebKitGTK, WebView2, and the broader open
-ecosystem on which YAQMC is built.
+Thanks also to the maintainers of Rust, Electron, Chromium, React, Rodio/CPAL, and i18next. We retain historical
+credit for the Tauri, WebKitGTK, and WebView2 maintainers whose work supported YAQMC's retired desktop host.

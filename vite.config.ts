@@ -17,6 +17,8 @@ function currentCommit(): string {
 
 export default defineConfig(({ command }) => ({
   plugins: [react()],
+  // Serve from `/` in development; package relative assets for the app:// protocol.
+  base: command === 'build' ? './' : '/',
   define: {
     __YAQMC_BUILD_COMMIT__: JSON.stringify(currentCommit()),
     __YAQMC_RELEASE_CHANNEL__: JSON.stringify(process.env.YAQMC_RELEASE_CHANNEL ?? 'development'),
@@ -27,14 +29,21 @@ export default defineConfig(({ command }) => ({
     host: '127.0.0.1',
     port: 1420,
     strictPort: true,
-    watch: {
-      ignored: ['**/src-tauri/**'],
-    },
   },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: true,
-    exclude: [...configDefaults.exclude, 'output/**', '.superpowers/**', 'scripts/**'],
+    exclude: [
+      ...configDefaults.exclude,
+      'output/**',
+      '.superpowers/**',
+      'scripts/**',
+      'packages/**/dist/**',
+      'apps/**',
+      'e2e/**',
+      'playwright.config.ts',
+      'playwright.electron.config.ts',
+    ],
   },
 }));

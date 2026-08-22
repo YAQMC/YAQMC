@@ -1,0 +1,29 @@
+{
+  "name": "@yaqmc/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "description": "YAQMC Electron desktop host.",
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "watch": "node ./scripts/build.mjs --watch",
+    "typecheck": "tsc -b --pretty false",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && node ./scripts/smoke.mjs",
+    "test": "vitest run --config ./vitest.config.ts",
+    "package": "electron-builder --projectDir . --config electron-builder.yml",
+    "pack:dir": "electron-builder --projectDir . --config electron-builder.yml --dir --x64 --publish never",
+    "pack:win": "electron-builder --projectDir . --config electron-builder.yml --win --x64 --publish never"
+  },
+  "dependencies": {
+    "@yaqmc/client": "*",
+    "electron-updater": "6.8.6"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "electron-builder": "26.15.7",
+    "esbuild": "^0.25.12"
+  }
+}

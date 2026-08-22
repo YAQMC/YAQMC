@@ -28,6 +28,11 @@
   visibility: hidden;
 }
 
+.app-shell[data-lyrics-fullscreen] > .content-shell *,
+.app-shell[data-lyrics-fullscreen] > .player-bar * {
+  animation: none !important;
+}
+
 .sidebar {
   position: relative;
   z-index: 10;
@@ -227,6 +232,14 @@
   position: absolute;
   z-index: 0;
   inset: 0;
+}
+
+.yaqmc-drag {
+  -webkit-app-region: drag;
+}
+
+.yaqmc-no-drag {
+  -webkit-app-region: no-drag;
 }
 
 .topbar__history,
@@ -549,6 +562,8 @@
   display: flex;
   align-items: center;
   width: 114px;
+  pointer-events: auto;
+  isolation: isolate;
 }
 
 .volume-control input {
@@ -563,11 +578,7 @@
   }
 
   .volume-control {
-    width: 30px;
-  }
-
-  .volume-control input {
-    display: none;
+    width: 88px;
   }
 }
 

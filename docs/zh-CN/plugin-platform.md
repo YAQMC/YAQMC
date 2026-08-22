@@ -2,7 +2,7 @@
 
 > **简体中文** | [English](../plugin-platform.md)
 
-YAQMC **运行时插件**是由 `ExtensionHost` 加载的用户安装包（`*.yaqmc-plugin`）。它们不是 Tauri 框架插件，也不是
+YAQMC **运行时插件**是由 `ExtensionHost` 加载的用户安装包（`*.yaqmc-plugin`）。它们不是 Electron 扩展，也不是
 原生 `dll` / `so` 模块。
 
 v1 以个性化为主：样式、歌词场景，以及隔离的脚本宿主。Plugin API v2 增加声明式设置、读写事件、安全 UI 插槽、可选的

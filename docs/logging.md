@@ -12,10 +12,10 @@ collected, and no external service is ever contacted for logging.
 ## Layers
 
 ```
-Frontend (React)           ─┐
-Rust core (Tauri commands) ─┤─▶ tracing_subscriber
-Platform adapters          ─┤        │
-Provider / audio / player  ─┘        ▼
+Frontend (React)           ── Electron IPC ─┐
+Rust Core server                            ├─▶ tracing_subscriber
+Platform adapters                           ┤        │
+Provider / audio / player                   ┘        ▼
                                  RedactingWriter
                                      │
                                      ▼
@@ -30,7 +30,9 @@ Provider / audio / player  ─┘        ▼
   queue, flushed every ~400 ms) and forwards them through the
   `diagnostics_log_frontend` command. The Rust command replays each entry into
   the same `tracing` targets so frontend events are indistinguishable from Rust
-  events in the final log file.
+  events in the final log file. Packaged Electron **main** windows also wrap
+  `console.error` (default) and optionally `console.warn` onto that same path
+  (`logging.consoleForward`; lyrics/unlock/OAuth windows are not hooked).
 - **Platform / provider / audio.** These modules use `tracing::info!` /
   `warn!` / `debug!` with structured fields (`tracing`'s key/value pairs). We
   deliberately avoid `{:?}` on large structs; every log line stays on a single
@@ -115,18 +117,18 @@ There is no analytics ID, no install ID, no fingerprint.
 
 ## Files, rotation, and location
 
-Logs are written by `tracing_appender::rolling::Builder::new()` under the
-Tauri app-log directory:
+Core logs are written by `tracing_appender::rolling::Builder::new()` under the
+directory resolved by `apps/desktop/main/core/paths.ts`. Electron Main's bounded
+`host.log` is written beside them:
 
-| Platform | Location                                              |
-| -------- | ----------------------------------------------------- |
-| Windows  | `%LOCALAPPDATA%\Velune\YAQMC\logs\yaqmc-current.log`  |
-| Linux    | `$XDG_DATA_HOME/Velune/YAQMC/logs/yaqmc-current.log`  |
-| Fallback | The Tauri path resolver `app_log_dir()` return value. |
+| Platform | Log directory                                     |
+| -------- | ------------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\org.yaqmc.desktop\logs`           |
+| Linux    | `$XDG_DATA_HOME/org.yaqmc.desktop/logs`           |
+| Fallback | Windows AppData fallback or `~/.local/share/...`. |
 
-The `yaqmc-current.log` file is followed by up to 7 rotated files
-(`yaqmc-current.log.YYYY-MM-DD`) written by `tracing-appender`'s daily
-rotation. `diagnostics_clear_logs` removes the rotated files.
+Core uses daily files named `yaqmc.YYYY-MM-DD.log` and retains at most seven.
+Electron Main rotates `host.log` to `host.log.1` at 256 KiB.
 
 Users can jump to this folder from **Settings → Diagnostics & logging → Open
 log folder**.
@@ -144,7 +146,8 @@ The pipeline is designed around three constraints:
    most 400 ms before invoking `diagnostics_log_frontend` with the batch, so
    even a burst of user interactions produces a handful of IPCs.
 
-Measurements are captured in [windows-acceptance.md](windows-acceptance.md).
+Runtime evidence belongs in the current [Windows acceptance](windows-acceptance.md)
+or [Linux acceptance](linux-acceptance.md) record for the tested package.
 
 ## What the logger will not do
 

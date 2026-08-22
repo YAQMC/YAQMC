@@ -11,7 +11,7 @@ Remove cookies, OAuth codes, tokens, vkeys/ekeys, signed URLs, real UINs, profil
 response bodies. If sensitive evidence is unavoidable, first describe its type in the private report and wait for a
 safe transfer method.
 
-High-priority scope includes OAuth/state bypass, secret disclosure, lyric-WebView privilege escalation, path
+High-priority scope includes OAuth/state bypass, secret disclosure, lyric-renderer privilege escalation, path
 traversal, arbitrary file/command access, local API authentication bypass, cross-account cache contamination,
 entitlement bypass, and build/update supply-chain defects. Tencent compatibility drift, expected subscription or
 regional restrictions, Wayland compositor limitations, and ordinary bugs without security impact are not security
@@ -25,4 +25,4 @@ response SLA is promised, but valid reports will be triaged and addressed withou
 Every external URI is untrusted. Official-client interoperability inspection has not verified a public QQ Music
 entity scheme, so YAQMC does not register or take over a guessed protocol. Any future handler must be explicit,
 reversible, and allowlist entity types, identifier syntax, and length. URI content must never enter a shell,
-filesystem path, SQL, HTML, or arbitrary Tauri command. See [deep-link security](docs/deep-link.md).
+filesystem path, SQL, HTML, or an arbitrary host/Core IPC method. See [deep-link security](docs/deep-link.md).

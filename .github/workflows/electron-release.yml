@@ -1,0 +1,215 @@
+name: Electron release
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Electron packaging matrix to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows
+          - linux
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: electron-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  YAQMC_BUILD_PROFILE: production
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+  CARGO_PROFILE_RELEASE_LTO: 'true'
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1'
+
+jobs:
+  release-gates:
+    name: P14-C, pin, and provenance release gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+      - run: node scripts/ci/qm-api-rs-access.mjs --check
+      - run: npm run p14c:enforce
+      - run: npm run provenance:enforce
+
+  frontend-build:
+    needs: [release-gates]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - run: npm ci
+      - run: npm run ci:frontend-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: yaqmc-frontend-dist-${{ github.sha }}
+          path: dist
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  electron-package-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.select.outputs.include }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+      - id: select
+        env:
+          YAQMC_EVENT_NAME: ${{ github.event_name == 'workflow_dispatch' && 'workflow_dispatch' || 'push' }}
+          YAQMC_TARGETS: ${{ inputs.targets || 'all' }}
+        run: node scripts/ci/select-electron-package-matrix.mjs
+
+  electron-package:
+    name: Electron package ${{ matrix.os }} ${{ matrix.arch }}
+    needs: [frontend-build, electron-package-matrix]
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.electron-package-matrix.outputs.include) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      YAQMC_PREBUILT_FRONTEND: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-packaging
+        with:
+          target: ${{ matrix.target }}
+          profile: ${{ env.YAQMC_BUILD_PROFILE }}
+          qm-api-rs-token: ${{ secrets.QM_API_RS_TOKEN }}
+      - name: Linux electron-builder packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm fakeroot
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: yaqmc-frontend-dist-${{ github.sha }}
+          path: dist
+      - name: Compile core, then pack Electron
+        run: >-
+          node scripts/ci/package-electron.mjs
+          --target ${{ matrix.target }}
+          --os ${{ matrix.os }}
+          --arch ${{ matrix.arch }}
+      - name: Stage and verify Linux x64 tester artifact
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        run: |
+          node scripts/ci/stage-linux-tester.mjs \
+            --package-dir release-electron/YAQMC-electron-linux-x64 \
+            --to release-electron/YAQMC-linux-x64-tester
+          node scripts/verify-lyrics-acceptance.mjs \
+            --platform linux \
+            --identity-only \
+            --build-identity "$PWD/release-electron/YAQMC-linux-x64-tester/BUILD-IDENTITY.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
+          path: release-electron/YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - uses: actions/upload-artifact@v7
+        if: matrix.os == 'linux' && matrix.arch == 'x64'
+        with:
+          name: YAQMC-linux-x64-tester-${{ github.sha }}
+          path: release-electron/YAQMC-linux-x64-tester
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
+
+  assemble:
+    name: Assemble Electron draft assets
+    needs: [electron-package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Checkout exact qm-api-rs corresponding source
+        uses: actions/checkout@v7
+        with:
+          repository: YAQMC/qm-api-rs
+          ref: 476b37e3135560dff132e9ba8996e068af706458
+          token: ${{ secrets.QM_API_RS_TOKEN }}
+          path: .corresponding-source/qm-api-rs
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+      - name: Build exact corresponding-source archives
+        run: >-
+          node scripts/ci/corresponding-source.mjs
+          --qm-api-rs-root .corresponding-source/qm-api-rs
+          --to corresponding-source
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: YAQMC-electron-*
+          path: packed
+          merge-multiple: false
+      - name: Flatten installers and updater metadata
+        run: >-
+          node scripts/ci/assemble-electron-release.mjs
+          --from packed
+          --source-from corresponding-source
+          --to assembled
+      - uses: actions/upload-artifact@v7
+        with:
+          name: YAQMC-electron-draft-${{ github.sha }}
+          path: assembled
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  github-release-draft:
+    name: Draft Electron GitHub Release
+    needs: [assemble]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: YAQMC-electron-draft-${{ github.sha }}
+          path: assembled
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="electron-draft-${GITHUB_RUN_ID}"
+          fi
+          gh release create "$tag" assembled/* \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "YAQMC Electron ${tag} (unsigned draft)" \
+            --notes-file assembled/RELEASE-NOTES-ELECTRON.md

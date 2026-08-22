@@ -1,0 +1,22 @@
+[package]
+name = "yaqmc-protocol"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+fixtures = []
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-std", "io-util", "rt", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "rt", "time"] }
+
+[[test]]
+name = "emit_fixtures"
+required-features = ["fixtures"]

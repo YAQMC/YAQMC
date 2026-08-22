@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HostBridge } from '@yaqmc/client';
 import type { Song } from '../domain/music';
 import { initialPlayerState, usePlayerStore } from './player-store';
 
@@ -34,21 +35,41 @@ interface TestNativeSnapshot {
 
 const nativeMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
-  listen: vi.fn(),
   unlisten: vi.fn(),
-  snapshotHandler: null as ((event: { payload: TestNativeSnapshot }) => void) | null,
+  snapshotHandler: null as ((payload: TestNativeSnapshot) => void) | null,
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: nativeMocks.invoke,
-  isTauri: () => true,
-}));
+vi.mock('./yaqmc-runtime', async () => {
+  const { YaqmcClient } = await import('@yaqmc/client');
+  const bridge = {
+    kind: 'electron' as const,
+    windowRole: 'main' as const,
+    window: {
+      minimize: async () => undefined,
+      toggleMaximize: async () => undefined,
+      close: async () => undefined,
+      setFullscreen: async () => undefined,
+    },
+    shell: {
+      openExternal: async () => undefined,
+    },
+    invoke: nativeMocks.invoke,
+    listen: (channel: string, handler: (payload: unknown) => void) => {
+      if (channel === 'player://snapshot') {
+        nativeMocks.snapshotHandler = handler as (payload: TestNativeSnapshot) => void;
+      }
+      return nativeMocks.unlisten;
+    },
+  };
+  const client = new YaqmcClient(bridge as HostBridge);
+  client.markReady();
+  return {
+    getHostBridge: () => bridge,
+    getYaqmcClient: () => client,
+  };
+});
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: nativeMocks.listen,
-}));
-
-import { useNativePlayerRuntime } from './native-player-runtime';
+import { isNativeRuntime, useNativePlayerRuntime } from './native-player-runtime';
 
 const track = (id: string): Song => ({
   id,
@@ -87,21 +108,18 @@ function RuntimeHarness() {
 describe('native player runtime', () => {
   beforeEach(() => {
     nativeMocks.invoke.mockReset();
-    nativeMocks.listen.mockReset();
     nativeMocks.unlisten.mockReset();
-    nativeMocks.snapshotHandler = null;
-    nativeMocks.listen.mockImplementation(
-      async (_event: string, handler: (event: { payload: TestNativeSnapshot }) => void) => {
-        nativeMocks.snapshotHandler = handler;
-        return nativeMocks.unlisten;
-      },
-    );
+    nativeMocks.invoke.mockResolvedValue(snapshot('current', 0));
     usePlayerStore.setState(initialPlayerState);
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('keeps isNativeRuntime as a boolean export for non-fake hosts', () => {
+    expect(isNativeRuntime).toBe(true);
   });
 
   it('discards the older initial invoke response when a snapshot event wins the race', async () => {
@@ -115,7 +133,7 @@ describe('native player runtime', () => {
     render(createElement(RuntimeHarness));
     await waitFor(() => expect(nativeMocks.snapshotHandler).not.toBeNull());
 
-    act(() => nativeMocks.snapshotHandler?.({ payload: snapshot('event-track', 4_000) }));
+    act(() => nativeMocks.snapshotHandler?.(snapshot('event-track', 4_000)));
     await act(async () => {
       resolveInitial?.(snapshot('stale-initial-track', 1_000));
       await Promise.resolve();
@@ -144,7 +162,7 @@ describe('native player runtime', () => {
       }),
     );
 
-    act(() => nativeMocks.snapshotHandler?.({ payload: snapshot('next', 0) }));
+    act(() => nativeMocks.snapshotHandler?.(snapshot('next', 0)));
     expect(usePlayerStore.getState().sourceSelection).toBeNull();
   });
 

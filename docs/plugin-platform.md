@@ -3,7 +3,7 @@
 > [简体中文](zh-CN/plugin-platform.md) | **English**
 
 YAQMC **runtime plugins** are user-installed `*.yaqmc-plugin` packages loaded by `ExtensionHost`. They are **not**
-Tauri framework plugins, and they are not native `dll` / `so` modules.
+Electron extensions, and they are not native `dll` / `so` modules.
 
 v1 is personalization-first: styles, lyrics scenes, and an isolated script host. Plugin API v2 adds declarative
 settings, read/control events, safe UI slots, optional scoped HTTPS via a host proxy, and Developer Mode. The same

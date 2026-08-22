@@ -1,24 +1,22 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TopBar } from './TopBar';
 
 const windowMocks = vi.hoisted(() => ({
-  isMaximized: vi.fn().mockResolvedValue(false),
   minimize: vi.fn().mockResolvedValue(undefined),
   toggleMaximize: vi.fn().mockResolvedValue(undefined),
   close: vi.fn().mockResolvedValue(undefined),
-  onResized: vi.fn().mockResolvedValue(() => undefined),
+  setFullscreen: vi.fn().mockResolvedValue(undefined),
 }));
 
 const nativeRuntime = vi.hoisted(() => ({ value: false }));
 
-vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({
-    isMaximized: windowMocks.isMaximized,
-    minimize: windowMocks.minimize,
-    toggleMaximize: windowMocks.toggleMaximize,
-    close: windowMocks.close,
-    onResized: windowMocks.onResized,
+vi.mock('../application/yaqmc-runtime', () => ({
+  getYaqmcClient: () => ({
+    host: {
+      window: windowMocks,
+      shell: { openExternal: async () => undefined },
+    },
   }),
 }));
 
@@ -46,19 +44,35 @@ function renderTopBar(native: boolean) {
 describe('TopBar', () => {
   beforeEach(() => {
     nativeRuntime.value = false;
+    windowMocks.minimize.mockClear();
+    windowMocks.toggleMaximize.mockClear();
+    windowMocks.close.mockClear();
   });
 
   it('keeps native window controls hidden outside the desktop runtime', () => {
     const { container } = renderTopBar(false);
     expect(screen.queryByLabelText('Minimize')).toBeNull();
-    expect(container.querySelector('[data-tauri-drag-region]')).toBeNull();
+    expect(container.querySelector('.yaqmc-drag')).toBeNull();
   });
 
-  it('renders self-drawn window controls and a drag region in the desktop runtime', () => {
+  it('renders self-drawn window controls and an Electron drag region in the desktop runtime', () => {
     const { container } = renderTopBar(true);
     expect(screen.getByLabelText('Minimize')).toBeInTheDocument();
     expect(screen.getByLabelText('Maximize')).toBeInTheDocument();
     expect(screen.getByLabelText('Close')).toBeInTheDocument();
-    expect(container.querySelector('[data-tauri-drag-region]')).not.toBeNull();
+    const drag = container.querySelector('.topbar__drag');
+    expect(drag).not.toBeNull();
+    expect(drag).toHaveClass('yaqmc-drag');
+  });
+
+  it('routes window chrome through YaqmcClient host.window', () => {
+    renderTopBar(true);
+    fireEvent.click(screen.getByLabelText('Minimize'));
+    fireEvent.click(screen.getByLabelText('Maximize'));
+    expect(screen.getByLabelText('Restore')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Close'));
+    expect(windowMocks.minimize).toHaveBeenCalledTimes(1);
+    expect(windowMocks.toggleMaximize).toHaveBeenCalledTimes(1);
+    expect(windowMocks.close).toHaveBeenCalledTimes(1);
   });
 });

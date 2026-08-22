@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "audit": {
+    "capturedAt": "2026-08-16",
+    "clearedAt": "2026-08-21",
+    "repository": {
+      "name": "YAQMC",
+      "origin": "https://github.com/YAQMC/YAQMC.git",
+      "auditHead": "aa1c10dce2662593391afc1adc1741d0d0529e3c",
+      "auditCommitCount": 331,
+      "historicalBase": {
+        "commit": "11ab586e8450356eb67e3fb6a6cee58b43641449",
+        "commitCount": 167,
+        "authors": {
+          "Mai-xiyu": 136,
+          "Osilvfe": 31
+        },
+        "cursorCoAuthorTrailers": 23,
+        "unsignedCommitCount": 167
+      },
+      "rootImport": {
+        "commit": "a4d1ee31708a55cf6f933778e5653b88ba74ed03",
+        "fileCount": 239,
+        "addedLineCount": 42769,
+        "binaryPathCount": 87,
+        "status": "original-maintainer-work"
+      }
+    },
+    "qmApiRs": {
+      "origin": "https://github.com/YAQMC/qm-api-rs",
+      "revision": "476b37e3135560dff132e9ba8996e068af706458",
+      "yaqmcPin": "476b37e3135560dff132e9ba8996e068af706458",
+      "linked": true,
+      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. Pin 476b37e adds tolerant clear-vkey parsing on top of the ffcc86c independent-implementation record."
+    }
+  },
+  "sources": [
+    {
+      "id": "yaqmc-root-import",
+      "kind": "original-work",
+      "origin": "https://github.com/YAQMC/YAQMC.git",
+      "revision": "a4d1ee31708a55cf6f933778e5653b88ba74ed03",
+      "license": "GPL-3.0-or-later",
+      "status": "verified",
+      "mappings": [
+        {
+          "target": "YAQMC tree introduced by Mai-xiyu in the root import (239 files). Later history rewrote the host; current binaries are maintainer screenshots, branding, and generated example plugins.",
+          "relation": "original-import"
+        }
+      ],
+      "evidence": ["git-object:a4d1ee31708a55cf6f933778e5653b88ba74ed03"],
+      "authorization": { "status": "not-required" }
+    },
+    {
+      "id": "yaqmc-branding-logo-import",
+      "kind": "original-work",
+      "origin": "https://github.com/YAQMC/YAQMC.git",
+      "revision": "c77f63df9b38990e8171d3f28bd992332d9c7922",
+      "license": "GPL-3.0-or-later",
+      "status": "verified",
+      "mappings": [
+        {
+          "target": "assets/yaqmc-logo.png",
+          "relation": "original branding first added by Mai-xiyu"
+        }
+      ],
+      "evidence": ["git-object:c77f63df9b38990e8171d3f28bd992332d9c7922"],
+      "authorization": { "status": "not-required" }
+    },
+    {
+      "id": "l1124-qqmusicapi",
+      "kind": "protocol-behavior-reference",
+      "origin": "https://github.com/L-1124/QQMusicApi",
+      "revision": "108617ffe80abefec6358717b9f4d3677550db10",
+      "license": "GPL-3.0-or-later",
+      "status": "verified",
+      "mappings": [
+        {
+          "target": "docs/qqmusic-provider.md authenticated interoperability ledger",
+          "relation": "protocol-behavior reference only; YAQMC copied no GPL implementation"
+        }
+      ],
+      "evidence": [
+        "git-revision-url:https://github.com/L-1124/QQMusicApi/blob/108617ffe80abefec6358717b9f4d3677550db10/LICENSE"
+      ],
+      "authorization": { "status": "not-required" }
+    },
+    {
+      "id": "gongjiehong-qmcdecode",
+      "kind": "behavioral-adaptation",
+      "origin": "https://github.com/gongjiehong/QMCDecode",
+      "revision": "aea76301a08678100ec677cb61a8458bc75662ec",
+      "license": "MIT",
+      "status": "verified",
+      "noticeStatus": "complete",
+      "scope": "current-linked-qm-api-rs-overlay",
+      "copyright": "Copyright (c) 2019 程序猿老龚 gjh.me",
+      "mappings": [
+        {
+          "target": "qm-api-rs@476b37e/src/qmc.rs Qmc2Map::decrypt_in_place",
+          "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMMapCipher.getMask/rotate, reached through the YAQMC provider adapter"
+        },
+        {
+          "target": "qm-api-rs@476b37e/src/qmc.rs Qmc2Rc4::decrypt_in_place",
+          "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMRC4Cipher segmented stream, reached through the YAQMC provider adapter"
+        },
+        {
+          "target": "qm-api-rs@476b37e/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
+          "relation": "independent Rust rewrite of QMCDecode/QMCKeyDecoder.swift and TeaCipher.swift ekey TEA unwrap, reached through the YAQMC provider adapter"
+        }
+      ],
+      "evidence": [
+        "git-revision-url:https://github.com/gongjiehong/QMCDecode/blob/aea76301a08678100ec677cb61a8458bc75662ec/LICENSE",
+        "sha256:6a95666edbaf48cea17b168c980dc22e325b6ee88b685ccdd347098cd3b8281d"
+      ],
+      "authorization": { "status": "not-required" }
+    }
+  ],
+  "contributors": [
+    {
+      "id": "mai-xiyu-yaqmc-history",
+      "name": "Mai-xiyu",
+      "commitCount": 136,
+      "consentStatus": "verified",
+      "rightsScope": "Rights actually controlled by Mai-xiyu in YAQMC, including the root import and branding. Does not speak for third-party MIT notices or the separately audited linked qm-api-rs dependency.",
+      "evidence": "sha256:92e5f1990f8b36992da9de37667492ef6807912aa8a55ec6edc30556382c178b"
+    },
+    {
+      "id": "osilvfe-yaqmc-history",
+      "name": "Osilvfe",
+      "commitCount": 31,
+      "consentStatus": "verified",
+      "rightsScope": "Rights actually controlled by Osilvfe in YAQMC. Does not speak for third-party MIT notices or the separately audited linked qm-api-rs dependency.",
+      "evidence": "sha256:92e5f1990f8b36992da9de37667492ef6807912aa8a55ec6edc30556382c178b"
+    }
+  ],
+  "assets": [
+    {
+      "id": "root-import-binary-paths",
+      "path": "Maintainer-authored screenshots and generated example plugins originating in the root import (artifacts/visual-qa*, examples/plugins/packages/*)",
+      "sourceId": "yaqmc-root-import",
+      "status": "verified",
+      "evidence": "git-object:a4d1ee31708a55cf6f933778e5653b88ba74ed03"
+    },
+    {
+      "id": "application-branding-logo",
+      "path": "assets/yaqmc-logo.png",
+      "sourceId": "yaqmc-branding-logo-import",
+      "status": "verified",
+      "evidence": "sha256:6ab743851934b0d634e4e74b74dd272a647910a37c74a38bbaec7a8d36159e9b"
+    },
+    {
+      "id": "application-icons",
+      "path": "apps/desktop/resources/*",
+      "sourceId": "yaqmc-branding-logo-import",
+      "status": "verified",
+      "evidence": "sha256:a371f812f0b85b7e0e8b81fd340e79d342d98afa811c5e57e46e0c22225a9007"
+    },
+    {
+      "id": "qmc-implementation-notice",
+      "path": "THIRD_PARTY_NOTICES.md",
+      "sourceId": "gongjiehong-qmcdecode",
+      "status": "verified",
+      "evidence": "sha256:6a95666edbaf48cea17b168c980dc22e325b6ee88b685ccdd347098cd3b8281d"
+    }
+  ],
+  "release": {
+    "decision": "pass",
+    "blockers": []
+  }
+}

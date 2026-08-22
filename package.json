@@ -2,7 +2,15 @@
   "name": "yaqmc",
   "private": true,
   "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": "24.19.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -11,6 +19,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:playwright": "playwright test",
+    "test:e2e:electron": "playwright test -c playwright.electron.config.ts",
     "docs:check": "node scripts/check-public-docs.mjs",
     "plugins:pack": "node scripts/pack-example-plugins.mjs",
     "plugin:build": "node scripts/build-plugin-examples.mjs",
@@ -23,12 +34,24 @@
     "ci:frontend-build": "tsc -b && vite build && node scripts/ci/write-frontend-build-info.mjs",
     "ci:package-metadata": "node scripts/ci/write-build-info.mjs",
     "ci:test-scripts": "node --test scripts/ci/*.test.mjs",
-    "tauri": "tauri"
+    "ci:verify-workspace": "node scripts/ci/verify-workspace-contract.mjs",
+    "provenance:report": "node scripts/validate-provenance-ledger.mjs",
+    "provenance:enforce": "node scripts/validate-provenance-ledger.mjs --enforce",
+    "p14c:report": "node scripts/ci/p14c-readiness.mjs",
+    "p14c:enforce": "node scripts/ci/p14c-readiness.mjs --enforce",
+    "perf:baseline": "node scripts/perf-baseline.mjs",
+    "contracts:update": "node scripts/update-contract-fixtures.mjs",
+    "contracts:check": "node scripts/update-contract-fixtures.mjs --check",
+    "dev:desktop": "node scripts/dev-desktop.mjs",
+    "stage-core": "node scripts/stage-core.mjs",
+    "sync-version": "node scripts/sync-version.mjs",
+    "p7:fake-playback": "node scripts/migration/p7-fake-playback.mjs",
+    "soak": "node scripts/soak-electron.mjs",
+    "perf:windows-gpu": "node scripts/migration/lyrics-multiwindow-gpu-profile.mjs",
+    "perf:lyrics-occlusion": "node scripts/migration/lyrics-occlusion-lifecycle-diag.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-dialog": "^2.7.2",
-    "@tauri-apps/plugin-opener": "^2.5.4",
+    "@yaqmc/client": "*",
     "i18next": "^26.3.6",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
@@ -39,7 +62,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@tauri-apps/cli": "^2.11.4",
+    "@playwright/test": "1.62.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.10.0",

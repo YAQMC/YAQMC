@@ -631,8 +631,8 @@ function validateManifestIdentity(manifest, checklist, commands, errors) {
   if (manifest?.releaseArtifact !== null) {
     errors.push('manifest.releaseArtifact: must be null for the local visual gate');
   }
-  if (manifest?.visualBuildKind !== 'tauri-no-bundle') {
-    errors.push('manifest.visualBuildKind: expected tauri-no-bundle');
+  if (manifest?.visualBuildKind !== 'electron-local') {
+    errors.push('manifest.visualBuildKind: expected electron-local');
   }
   for (const field of ['osVersion', 'appVersion', 'webview2Version', 'monitorId']) {
     if (typeof manifest?.[field] !== 'string' || manifest[field].trim() === '') {
@@ -1601,9 +1601,11 @@ function validateLinuxModeReport(root, mode, identity, errors) {
     }
     if (
       mode === 'software' &&
-      (row.graphics_mode !== 'software' || row.dmabuf_disabled !== '1' || row.software_gl !== '1')
+      (row.graphics_mode !== 'software' || row.dmabuf_disabled !== '' || row.software_gl !== '')
     ) {
-      errors.push(`${label}/process-samples.tsv:${index + 2}: software flags are incomplete`);
+      errors.push(
+        `${label}/process-samples.tsv:${index + 2}: software mode must use the Chromium host switch without legacy renderer overrides`,
+      );
     }
   }
   if (JSON.stringify(samplePhases) !== JSON.stringify(LINUX_PHASES)) {

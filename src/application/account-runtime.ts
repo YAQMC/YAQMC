@@ -23,6 +23,8 @@ import {
   type AccountMusicProvider,
   type MusicProvider,
 } from '../providers/music-provider';
+import { CHANNEL_HOST_CORE_STATUS } from '@yaqmc/client';
+import { getHostBridge, getYaqmcClient } from './yaqmc-runtime';
 
 export type AccountRuntimeError =
   'network' | 'authorization' | 'secure-store' | 'protocol' | 'unknown';
@@ -1839,8 +1841,17 @@ export function useAccountRuntime(provider: MusicProvider): void {
     void useAccountStore.getState().refreshSnapshot(provider);
     reconcileOwnershipTimers(provider);
     hydrateAuthenticatedFavoriteAuthority(provider);
+    const stopCoreStatus =
+      getHostBridge().kind === 'electron'
+        ? getYaqmcClient().on(CHANNEL_HOST_CORE_STATUS, (payload) => {
+            if (payload.status === 'ready') {
+              void useAccountStore.getState().refreshSnapshot(provider);
+            }
+          })
+        : undefined;
 
     return () => {
+      stopCoreStatus?.();
       window.removeEventListener('pagehide', release);
       unsubscribe();
       disposeOwnership(provider);

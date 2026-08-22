@@ -7,21 +7,30 @@
 
 ## 开发环境
 
-- Node.js 24 与 npm；
+- Node.js 24.19.0 与 npm；
 - Rust 1.88 或更高版本；
-- [Tauri 2 平台依赖](https://v2.tauri.app/start/prerequisites/)；
-- Windows 使用 MSVC/WebView2；Linux 使用 WebKitGTK 4.1、AppIndicator、ALSA 等构建依赖。
+- Windows 使用 MSVC；Linux 安装 Rust 原生音频与目标打包格式所需的系统依赖。
 
 ```powershell
 npm ci
-npm run tauri dev
+npm run dev:desktop
 ```
+
+完整的分层构建、打包与 QA profile 约束见[开发环境](docs/zh-CN/development.md)；
+升级、卸载与持久数据路径见[数据位置](docs/zh-CN/data-locations.md)。
 
 浏览器开发使用确定性 fake provider：
 
 ```powershell
 npm run dev
 ```
+
+私有 `qm-api-rs`（crate `qqmusic-api`）是当前无条件生产依赖，
+钉在 `476b37e3135560dff132e9ba8996e068af706458`。本地若在 `../qm-api-rs` 有
+检出，运行 `node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。不要
+把访问令牌写入仓库；干净的 CI 构建通过 `QM_API_RS_TOKEN` 让 Git fetch 该私有
+pin。生产边界和发布门禁见[提供器 readiness](docs/release/provider-readiness.md)
+与 [CI 文档](docs/zh-CN/ci.md)。
 
 ## 提交流程
 
@@ -35,17 +44,17 @@ npm run dev
 npm run docs:check
 npm run format:check
 npm run check
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
 ```
 
 Pull Request 应说明问题、方案、风险/回退、测试证据和界面截图（如适用）。不要把本机凭据或真实账号数据
 放入测试 fixture。
 
-CI（`.github/workflows/ci.yml`）会在 pull request 上构建 Windows x86_64 与 Linux x86_64 安装包，在
-`main` 推送和手动触发时构建完整 Windows/Linux 矩阵，并以 Actions artifact 保留 14 天。CI 使用 ThinLTO；
-带 tag 的生产包仍由 `build.yml` 使用仓库里的 Fat LTO。事件、缓存、产物命名与“构建通过 vs 运行时验证”
+CI（`.github/workflows/ci.yml`）会在 pull request 上构建 Windows x64 与 Linux x64 Electron 包，在
+`main` 推送和手动触发时扩展到 Windows/Linux 的 x64/arm64 矩阵，并以 Actions artifact 保留 14 天。
+CI 使用 ThinLTO；`v*` tag 的生产草稿由 `electron-release.yml` 使用仓库里的 Fat LTO。事件、缓存、产物命名与“构建通过 vs 运行时验证”
 见 [CI 文档](docs/zh-CN/ci.md)。也可以在 Actions 里对当前分支手动运行 **CI**。
 
 ## 安全与协议边界
@@ -61,4 +70,6 @@ CI（`.github/workflows/ci.yml`）会在 pull request 上构建 Windows x86_64 �
 建议使用简短命令式前缀，如 `fix:`、`feat:`、`docs:`、`test:`、`refactor:`。一个提交应能独立解释，
 且不破坏编译或测试。
 
-当前仓库未附带项目许可证；公开可见不等于自动授予复制、修改或分发权。
+贡献者必须有权提交其贡献，并按 [GPL-3.0-or-later](LICENSE) 提交。该许可证变更在合并或发布前所需的
+双维护者明确批准记录见 [LICENSING_CONSENT.md](LICENSING_CONSENT.md)；二进制发布的义务见
+[对应源代码交付政策](CORRESPONDING_SOURCE_POLICY.md)。
