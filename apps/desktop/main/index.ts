@@ -195,6 +195,9 @@ const desktopRoot = path.resolve(here, '../..');
 const repoRoot = path.resolve(desktopRoot, '../..');
 const harnessRoot = path.join(desktopRoot, 'harness');
 const viteDist = path.join(repoRoot, 'dist');
+const methodAclPath = app.isPackaged
+  ? path.join(process.resourcesPath, 'contract', 'methods.json')
+  : path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json');
 const preloadPath = path.join(here, '../preload/main.cjs');
 const lyricsPreloadPath = path.join(here, '../preload/lyrics-surface.cjs');
 const unlockPreloadPath = path.join(here, '../preload/unlock-overlay.cjs');
@@ -372,9 +375,7 @@ if (e2e) {
 }
 
 const router = new IpcRouter({
-  methods: loadMethodAclFromFile(
-    path.join(repoRoot, 'packages/yaqmc-client/fixtures/methods.json'),
-  ),
+  methods: loadMethodAclFromFile(methodAclPath),
   onDenied: ({ method, role }) => {
     writeHostLog(`acl denied method=${method} role=${role}`);
   },

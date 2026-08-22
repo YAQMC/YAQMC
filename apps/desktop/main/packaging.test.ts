@@ -41,6 +41,8 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).toContain('to: core');
     expect(yaml).toContain('from: ../../dist');
     expect(yaml).toContain('to: renderer');
+    expect(yaml).toContain('from: ../../packages/yaqmc-client/fixtures/methods.json');
+    expect(yaml).toContain('to: contract/methods.json');
     expect(yaml).toContain('oneClick: false');
     expect(yaml).toContain('perMachine: false');
     expect(yaml).toMatch(/target:\s*nsis|target: nsis/);
