@@ -1441,7 +1441,7 @@ impl QQMusicService {
         let mid = strip_entity_prefix(&song_id, "qqmusic:track:");
         // Include the normalized-document schema/parser revision so fixes do not
         // leave already-cached lyric documents permanently malformed.
-        let key = format!("qqmusic:lyrics:v2:{mid}");
+        let key = format!("qqmusic:lyrics:v3:{mid}");
         if let Some(document) = self
             .storage
             .get_json(&key, false)
@@ -4354,15 +4354,27 @@ fn parse_lrc_timed(raw: &str) -> Vec<(u64, String)> {
 }
 
 fn parse_lrc_timestamp(value: &str) -> Option<u64> {
-    let (minutes, seconds) = value.split_once(':')?;
-    let minutes = minutes.trim().parse::<u64>().ok()?;
-    let seconds = seconds.trim().parse::<f64>().ok()?;
-    if !seconds.is_finite() || seconds < 0.0 {
+    let parts = value.split(':').map(str::trim).collect::<Vec<_>>();
+    let (hours, minutes, seconds) = match parts.as_slice() {
+        [minutes, seconds] => (
+            0,
+            minutes.parse::<u64>().ok()?,
+            seconds.parse::<f64>().ok()?,
+        ),
+        [hours, minutes, seconds] => (
+            hours.parse::<u64>().ok()?,
+            minutes.parse::<u64>().ok()?,
+            seconds.parse::<f64>().ok()?,
+        ),
+        _ => return None,
+    };
+    if !seconds.is_finite() || seconds < 0.0 || minutes >= 60 || seconds >= 60.0 {
         return None;
     }
     Some(
-        minutes
-            .saturating_mul(60_000)
+        hours
+            .saturating_mul(3_600_000)
+            .saturating_add(minutes.saturating_mul(60_000))
             .saturating_add((seconds * 1_000.0).round() as u64),
     )
 }
@@ -5201,6 +5213,17 @@ mod tests {
         assert_eq!(document.lines.len(), 3);
         assert_eq!(document.lines[1].start_ms, Some(2_000));
         assert_eq!(document.lines[2].start_ms, Some(4_500));
+    }
+
+    #[test]
+    fn lrc_parser_supports_hour_minute_second_timestamps() {
+        let document =
+            parse_lrc_document("TRACK", "[00:00:00]Instrumental\n[01:02:03.25]Final cue")
+                .expect("three-part LRC timestamps parse");
+
+        assert_eq!(document.sync_mode, LyricSyncMode::Line);
+        assert_eq!(document.lines[0].start_ms, Some(0));
+        assert_eq!(document.lines[1].start_ms, Some(3_723_250));
     }
 
     #[test]

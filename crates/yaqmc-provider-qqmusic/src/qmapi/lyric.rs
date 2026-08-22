@@ -4,6 +4,7 @@
 //! directly and maps the result here.
 //! Library `lyric_parser` is not the wire document.
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use qqmusic_api::models::lyric::GetLyricResponse;
 use yaqmc_provider_api::LyricDocument;
 
@@ -17,17 +18,75 @@ pub(crate) fn lyric_document_from_qmapi(
     mid: &str,
     response: &GetLyricResponse,
 ) -> Option<LyricDocument> {
-    let lyric = response.lyric.trim();
-    if lyric.is_empty() {
-        return None;
-    }
-    let mut document = parse_qrc_document(mid, lyric).or_else(|| parse_lrc_document(mid, lyric))?;
+    let lyric = lyric_text(mid, "lyric", &response.lyric)?;
+    let mut document =
+        parse_qrc_document(mid, &lyric).or_else(|| parse_lrc_document(mid, &lyric))?;
+    let translation = lyric_text(mid, "trans", &response.trans);
+    let romanization = lyric_text(mid, "roma", &response.roma);
     attach_companion_lyrics(
         &mut document,
-        nonempty(response.trans.as_str()),
-        nonempty(response.roma.as_str()),
+        translation.as_deref(),
+        romanization.as_deref(),
     );
     Some(document)
+}
+
+fn lyric_text(mid: &str, field: &'static str, value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if let Some(decoded) = decode_base64_lyric(value) {
+        tracing::debug!(
+            target: "qqmusic.lyric",
+            mid,
+            field,
+            encoded_length = value.len(),
+            decoded_length = decoded.len(),
+            "decoded base64 lyric payload"
+        );
+        return Some(decoded);
+    }
+    if let Some(encoding) = opaque_lyric_encoding(value) {
+        tracing::warn!(
+            target: "qqmusic.lyric",
+            mid,
+            field,
+            encoding,
+            payload_length = value.len(),
+            "discarded opaque lyric payload instead of displaying it as plain text"
+        );
+        return None;
+    }
+    Some(value.to_owned())
+}
+
+fn decode_base64_lyric(value: &str) -> Option<String> {
+    let decoded = STANDARD.decode(value).ok()?;
+    let decoded = String::from_utf8(decoded).ok()?;
+    is_structured_lyric(&decoded).then_some(decoded)
+}
+
+fn is_structured_lyric(value: &str) -> bool {
+    let value = value.trim_start();
+    value.starts_with('[') || value.starts_with("<QrcInfos")
+}
+
+fn opaque_lyric_encoding(value: &str) -> Option<&'static str> {
+    if value.len() < 64 || value.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return None;
+    }
+    if value.len().is_multiple_of(2) && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Some("hex");
+    }
+    if value.len().is_multiple_of(4)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
+    {
+        return Some("base64");
+    }
+    None
 }
 
 pub(crate) async fn fetch_lyric_document(mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
@@ -55,11 +114,6 @@ pub(crate) async fn fetch_lyric_document(mid: &str) -> Result<Option<LyricDocume
             classification
         })?;
     Ok(lyric_document_from_qmapi(mid, &response))
-}
-
-fn nonempty(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
 }
 
 #[cfg(test)]
@@ -126,6 +180,36 @@ mod tests {
         let document = lyric_document_from_qmapi("TRACK", &response).expect("mapped");
         assert_eq!(document.lines[0].text, "你好世界");
         assert_eq!(document.lines[0].start_ms, Some(0));
+    }
+
+    #[test]
+    fn base64_encoded_lrc_is_decoded_before_document_normalization() {
+        let response = GetLyricResponse {
+            lyric: STANDARD.encode("[00:00:00]Instrumental\n[00:00:02.00]Second line"),
+            trans: STANDARD.encode("[00:00:00]Translated first line"),
+            roma: String::new(),
+            ..GetLyricResponse::default()
+        };
+
+        let document = lyric_document_from_qmapi("TRACK", &response).expect("decoded document");
+
+        assert_eq!(document.sync_mode, yaqmc_provider_api::LyricSyncMode::Line);
+        assert_eq!(document.lines.len(), 2);
+        assert_eq!(document.lines[0].text, "Instrumental");
+        assert_eq!(
+            document.lines[0].translation.as_deref(),
+            Some("Translated first line")
+        );
+    }
+
+    #[test]
+    fn opaque_base64_payload_is_not_displayed_as_plain_lyrics() {
+        let response = GetLyricResponse {
+            lyric: STANDARD.encode([0_u8; 48]),
+            ..GetLyricResponse::default()
+        };
+
+        assert!(lyric_document_from_qmapi("TRACK", &response).is_none());
     }
 
     #[test]
