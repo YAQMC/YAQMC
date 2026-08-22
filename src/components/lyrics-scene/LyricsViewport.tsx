@@ -1,52 +1,136 @@
-import {
-  Fragment,
-  memo,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react';
-import { AlignLeft, LocateFixed, Music2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { LyricPlayer } from '@applemusic-like-lyrics/react';
+import type { LyricLine as AmllLyricLine, LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
+import { AlignLeft, Music2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import {
-  emptyLyricCursor,
-  lastSungLineIndex,
-  activeLyricInterlude,
-  lyricScrollTargetLineIndex,
-  nextLyricPresentationBoundaryMs,
-  selectLyricCursor,
-  wordMotionIntensity,
-  wordProgress,
-  type LyricCursor,
-  type LyricInterlude,
-} from '../../application/lyrics-timing';
 import { shouldShowLyricSecondary } from '../../application/lyrics-presentation';
-import {
-  cancelScrollSpring,
-  centerLyricInterlude,
-  centerLyricLine,
-  lyricScrollBounds,
-  scrollStateFor,
-  setLyricOffset,
-} from '../../application/lyrics-scroll';
-import { logger } from '../../application/logger';
 import type { LyricWordEffect, SecondaryLyricVisibility } from '../../application/preferences';
-import type { LyricDocument, LyricLine, LyricWord } from '../../domain/music';
 import { usePlayerStore } from '../../application/player-store';
-import type { LyricsFollowState } from './types';
+import type { LyricDocument, LyricLine } from '../../domain/music';
 
-const CJK_RE = /^[\p{Unified_Ideograph}\u0800-\u9FFC]+$/u;
+import '@applemusic-like-lyrics/core/style.css';
 
-function isCjk(text: string): boolean {
-  return CJK_RE.test(text);
+interface AmllLyricModel {
+  lines: AmllLyricLine[];
+  sourceLineIndexes: number[];
 }
 
-function splitWordCharacters(text: string): string[] {
-  const normalized = text.normalize('NFC');
-  if (isCjk(normalized)) return Array.from(normalized);
-  return [normalized];
+function finiteLineEnd(line: LyricLine): number | null {
+  if (line.endMs !== null && Number.isFinite(line.endMs) && line.endMs >= (line.startMs ?? 0)) {
+    return line.endMs;
+  }
+  const wordEnd = line.words.reduce(
+    (latest, word) => (Number.isFinite(word.endMs) ? Math.max(latest, word.endMs) : latest),
+    Number.NEGATIVE_INFINITY,
+  );
+  return Number.isFinite(wordEnd) ? wordEnd : null;
+}
+
+function toAmllLyricModel(
+  document: LyricDocument,
+  translation: SecondaryLyricVisibility,
+  romanization: SecondaryLyricVisibility,
+): AmllLyricModel {
+  const lines: AmllLyricLine[] = [];
+  const sourceLineIndexes: number[] = [];
+
+  for (const [sourceIndex, sourceLine] of document.lines.entries()) {
+    if (sourceLine.startMs === null || !Number.isFinite(sourceLine.startMs)) continue;
+    const endMs = finiteLineEnd(sourceLine);
+    if (endMs === null) continue;
+    const words =
+      document.syncMode === 'word' && sourceLine.words.length > 0
+        ? sourceLine.words
+            .filter(
+              (word) =>
+                Number.isFinite(word.startMs) &&
+                Number.isFinite(word.endMs) &&
+                word.endMs >= word.startMs,
+            )
+            .map((word) => ({
+              startTime: Math.round(word.startMs),
+              endTime: Math.round(word.endMs),
+              word: word.text,
+            }))
+        : [];
+    const timedWords =
+      words.length > 0
+        ? words
+        : [
+            {
+              startTime: Math.round(sourceLine.startMs),
+              endTime: Math.round(endMs),
+              word: sourceLine.text,
+            },
+          ];
+
+    lines.push({
+      words: timedWords,
+      translatedLyric: shouldShowLyricSecondary(
+        translation,
+        sourceLine.translation,
+        sourceLine.text,
+        'translation',
+      )
+        ? (sourceLine.translation ?? '')
+        : '',
+      romanLyric: shouldShowLyricSecondary(
+        romanization,
+        sourceLine.romanization,
+        sourceLine.text,
+        'romanization',
+      )
+        ? (sourceLine.romanization ?? '')
+        : '',
+      startTime: Math.round(sourceLine.startMs),
+      endTime: Math.round(endMs),
+      isBG: false,
+      isDuet: sourceLine.vocalistId === 'response',
+    });
+    sourceLineIndexes.push(sourceIndex);
+  }
+
+  return { lines, sourceLineIndexes };
+}
+
+function lyricTimeMs(
+  getPositionMs: () => number,
+  presentationOffsetMs: number,
+  document: LyricDocument,
+): number {
+  return Math.max(
+    0,
+    Math.round(getPositionMs() + presentationOffsetMs - document.metadata.offsetMs),
+  );
+}
+
+/** AMLL expects frequent time updates; keep this clock independent from lyric-boundary renders. */
+function useAmllCurrentTime(
+  document: LyricDocument | null,
+  getPositionMs: () => number,
+  presentationOffsetMs: number,
+  timelineRevision: number,
+  isPlaying: boolean,
+): number {
+  const current = () => (document ? lyricTimeMs(getPositionMs, presentationOffsetMs, document) : 0);
+  const [currentTime, setCurrentTime] = useState(current);
+
+  useEffect(() => {
+    let frame: number | null = null;
+    const update = () => setCurrentTime(current());
+    const tick = () => {
+      update();
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    update();
+    if (isPlaying) frame = window.requestAnimationFrame(tick);
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [document, getPositionMs, isPlaying, presentationOffsetMs, timelineRevision]);
+
+  return currentTime;
 }
 
 function useReducedMotion(): boolean {
@@ -68,383 +152,6 @@ function useReducedMotion(): boolean {
   return reducedMotion;
 }
 
-interface LyricPosition {
-  cursor: LyricCursor;
-  lastSungLineIndex: number;
-  scrollTargetLineIndex: number;
-  interlude: LyricInterlude | null;
-}
-
-function useLyricCursor(
-  lyricDocument: LyricDocument | null,
-  getPositionMs: () => number,
-  presentationOffsetMs: number,
-  timelineRevision: number,
-  isPlaying: boolean,
-): LyricPosition {
-  const [position, setPosition] = useState<LyricPosition>({
-    cursor: emptyLyricCursor,
-    lastSungLineIndex: -1,
-    scrollTargetLineIndex: -1,
-    interlude: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    let generation = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const clearTimer = () => {
-      generation += 1;
-      if (timer === null) return;
-      clearTimeout(timer);
-      timer = null;
-    };
-
-    const update = () => {
-      clearTimer();
-      if (cancelled) return;
-      if (!lyricDocument) {
-        setPosition((previous) =>
-          previous.cursor === emptyLyricCursor &&
-          previous.lastSungLineIndex === -1 &&
-          previous.scrollTargetLineIndex === -1 &&
-          previous.interlude === null
-            ? previous
-            : {
-                cursor: emptyLyricCursor,
-                lastSungLineIndex: -1,
-                scrollTargetLineIndex: -1,
-                interlude: null,
-              },
-        );
-        return;
-      }
-
-      const rawPositionMs = getPositionMs() + presentationOffsetMs;
-      const nextCursor = selectLyricCursor(lyricDocument, rawPositionMs);
-      const nextLastSung = lastSungLineIndex(lyricDocument, rawPositionMs);
-      const nextScrollTarget = lyricScrollTargetLineIndex(lyricDocument, rawPositionMs);
-      const nextInterlude = activeLyricInterlude(lyricDocument, rawPositionMs);
-      setPosition((previous) =>
-        previous.cursor.lineIndex === nextCursor.lineIndex &&
-        previous.cursor.wordIndex === nextCursor.wordIndex &&
-        previous.cursor.line === nextCursor.line &&
-        previous.cursor.word === nextCursor.word &&
-        previous.lastSungLineIndex === nextLastSung &&
-        previous.scrollTargetLineIndex === nextScrollTarget &&
-        previous.interlude?.startMs === nextInterlude?.startMs &&
-        previous.interlude?.endMs === nextInterlude?.endMs &&
-        previous.interlude?.anchorLineIndex === nextInterlude?.anchorLineIndex
-          ? previous
-          : {
-              cursor: nextCursor,
-              lastSungLineIndex: nextLastSung,
-              scrollTargetLineIndex: nextScrollTarget,
-              interlude: nextInterlude,
-            },
-      );
-
-      // PLAY-03: keep the in-app clock while the document is hidden. Desktop
-      // lyrics already ignore visibility; main/surface windows also set
-      // backgroundThrottling: false.
-      if (!isPlaying) return;
-      const rawBoundary = nextLyricPresentationBoundaryMs(lyricDocument, rawPositionMs);
-      if (rawBoundary === null) return;
-      const delayMs = Math.min(500, Math.max(16, rawBoundary - rawPositionMs + 8));
-      const scheduledGeneration = ++generation;
-      timer = setTimeout(() => {
-        if (cancelled || scheduledGeneration !== generation) return;
-        timer = null;
-        update();
-      }, delayMs);
-    };
-
-    update();
-    return () => {
-      cancelled = true;
-      clearTimer();
-    };
-  }, [getPositionMs, isPlaying, lyricDocument, presentationOffsetMs, timelineRevision]);
-
-  return position;
-}
-
-function SyncedWord({
-  word,
-  state,
-  offsetMs,
-  isPlaying,
-  reducedMotion,
-  timelineRevision,
-  getPositionMs,
-  wordEffect,
-}: {
-  word: LyricWord;
-  state: 'future' | 'current' | 'complete';
-  offsetMs: number;
-  isPlaying: boolean;
-  reducedMotion: boolean;
-  timelineRevision: number;
-  getPositionMs: () => number;
-  wordEffect: LyricWordEffect;
-}) {
-  const element = useRef<HTMLSpanElement>(null);
-  const characters = useMemo(() => splitWordCharacters(word.text), [word.text]);
-  const jumping = wordEffect === 'jump';
-
-  useEffect(() => {
-    if (state !== 'current') return;
-    if (reducedMotion) return;
-    let frame: number | null = null;
-
-    const updateProgress = () => {
-      const progress = wordProgress(word, getPositionMs() - offsetMs);
-      const node = element.current;
-      if (!node) return;
-      node.style.setProperty('--word-progress', `${progress * 100}%`);
-      const wordMotion = wordMotionIntensity(progress);
-      node.style.setProperty('--word-lift', String(jumping ? 0 : wordMotion));
-      node.style.setProperty('--word-scale', String(jumping ? 1 : 1 + wordMotion * 0.018));
-      node.style.setProperty('--word-glow', String(wordMotion));
-      if (jumping) {
-        const charNodes = node.querySelectorAll<HTMLElement>('[data-char-index]');
-        charNodes.forEach((charNode, index) => {
-          const charProgress = Math.max(0, Math.min(1, progress * characters.length - index));
-          charNode.style.setProperty('--char-progress', String(charProgress));
-          const charMotion = wordMotionIntensity(charProgress);
-          charNode.style.setProperty('--char-lift', String(charMotion));
-          charNode.style.setProperty('--char-scale', String(1 + charMotion * 0.032));
-        });
-      }
-    };
-
-    const cancelFrame = () => {
-      if (frame === null) return;
-      window.cancelAnimationFrame(frame);
-      frame = null;
-    };
-
-    const updateFrame = () => {
-      frame = null;
-      updateProgress();
-      if (isPlaying) frame = window.requestAnimationFrame(updateFrame);
-    };
-
-    const start = () => {
-      updateProgress();
-      if (isPlaying && frame === null) frame = window.requestAnimationFrame(updateFrame);
-    };
-
-    start();
-    return () => {
-      cancelFrame();
-    };
-  }, [
-    characters.length,
-    getPositionMs,
-    isPlaying,
-    jumping,
-    offsetMs,
-    reducedMotion,
-    state,
-    timelineRevision,
-    word,
-  ]);
-
-  if (jumping) {
-    return (
-      <span
-        ref={element}
-        className="lyrics-word lyrics-word--jump"
-        data-state={state}
-        style={
-          {
-            '--word-progress':
-              state === 'complete' || (state === 'current' && reducedMotion) ? '100%' : '0%',
-            '--word-lift': '0',
-            '--word-scale': '1',
-            '--word-glow': '0',
-          } as CSSProperties
-        }
-      >
-        {characters.map((character, index) => (
-          <span
-            key={`${index}-${character}`}
-            data-char-index={index}
-            className="lyrics-char"
-            style={
-              {
-                '--char-progress':
-                  state === 'complete' || (state === 'current' && reducedMotion) ? '1' : '0',
-                '--char-lift': '0',
-                '--char-scale': '1',
-              } as CSSProperties
-            }
-          >
-            {character}
-          </span>
-        ))}
-      </span>
-    );
-  }
-
-  return (
-    <span
-      ref={element}
-      className="lyrics-word"
-      data-state={state}
-      style={
-        {
-          '--word-progress':
-            state === 'complete' || (state === 'current' && reducedMotion) ? '100%' : '0%',
-          '--word-lift': '0',
-          '--word-scale': '1',
-          '--word-glow': '0',
-        } as CSSProperties
-      }
-    >
-      <span className="lyrics-word__base">{word.text}</span>
-      <span className="lyrics-word__fill" aria-hidden="true">
-        {word.text}
-      </span>
-    </span>
-  );
-}
-
-interface LyricLineViewProps {
-  line: LyricLine;
-  lineIndex: number;
-  cursor: LyricCursor;
-  focusLineIndex: number;
-  lastSungLineIndex: number;
-  document: LyricDocument;
-  onSeek: (positionMs: number) => void;
-  presentationOffsetMs: number;
-  translation: SecondaryLyricVisibility;
-  romanization: SecondaryLyricVisibility;
-  wordEffect: LyricWordEffect;
-  isPlaying: boolean;
-  reducedMotion: boolean;
-  timelineRevision: number;
-  getPositionMs: () => number;
-}
-
-const LyricLineView = memo(
-  function LyricLineView({
-    line,
-    lineIndex,
-    cursor,
-    focusLineIndex,
-    lastSungLineIndex,
-    document,
-    onSeek,
-    presentationOffsetMs,
-    translation,
-    romanization,
-    wordEffect,
-    isPlaying,
-    reducedMotion,
-    timelineRevision,
-    getPositionMs,
-  }: LyricLineViewProps) {
-    const active = cursor.lineIndex === lineIndex;
-    const focused = focusLineIndex === lineIndex;
-    const complete =
-      !focused &&
-      (cursor.lineIndex > lineIndex ||
-        (cursor.lineIndex !== lineIndex && lastSungLineIndex >= lineIndex));
-    const vocalist = document.vocalists.find((candidate) => candidate.id === line.vocalistId);
-
-    return (
-      <button
-        type="button"
-        className="lyrics-line"
-        data-line-index={lineIndex}
-        data-scene-state={active ? 'active-line' : undefined}
-        data-active={focused || undefined}
-        data-complete={complete || undefined}
-        data-vocalist={line.vocalistId ?? undefined}
-        aria-disabled={line.startMs === null || undefined}
-        aria-label={line.text}
-        onClick={() =>
-          line.startMs !== null &&
-          onSeek(Math.max(0, line.startMs + document.metadata.offsetMs - presentationOffsetMs))
-        }
-        aria-current={active ? 'true' : undefined}
-      >
-        {vocalist && <span className="lyrics-line__vocalist">{vocalist.displayName}</span>}
-        <span className="lyrics-line__primary">
-          {document.syncMode === 'word' && line.words.length > 0
-            ? line.words.map((word, wordIndex) => {
-                const state =
-                  complete || (active && cursor.wordIndex > wordIndex)
-                    ? 'complete'
-                    : active && cursor.wordIndex === wordIndex
-                      ? 'current'
-                      : 'future';
-                return (
-                  <SyncedWord
-                    key={`${word.startMs}-${wordIndex}`}
-                    word={word}
-                    state={state}
-                    offsetMs={document.metadata.offsetMs - presentationOffsetMs}
-                    isPlaying={isPlaying}
-                    reducedMotion={reducedMotion}
-                    timelineRevision={timelineRevision}
-                    getPositionMs={getPositionMs}
-                    wordEffect={focused && wordEffect === 'jump' ? 'jump' : 'fill'}
-                  />
-                );
-              })
-            : line.text}
-        </span>
-        {shouldShowLyricSecondary(romanization, line.romanization, line.text, 'romanization') && (
-          <span className="lyrics-line__romanization">{line.romanization}</span>
-        )}
-        {shouldShowLyricSecondary(translation, line.translation, line.text, 'translation') && (
-          <span className="lyrics-line__translation">{line.translation}</span>
-        )}
-      </button>
-    );
-  },
-  (previous, next) => {
-    if (
-      previous.line !== next.line ||
-      previous.document !== next.document ||
-      previous.lineIndex !== next.lineIndex ||
-      previous.onSeek !== next.onSeek ||
-      previous.presentationOffsetMs !== next.presentationOffsetMs ||
-      previous.translation !== next.translation ||
-      previous.romanization !== next.romanization ||
-      previous.wordEffect !== next.wordEffect ||
-      previous.lastSungLineIndex !== next.lastSungLineIndex ||
-      previous.focusLineIndex !== next.focusLineIndex ||
-      previous.getPositionMs !== next.getPositionMs
-    ) {
-      return false;
-    }
-
-    const stateFor = (cursor: LyricCursor, lastSungLineIndex: number) => {
-      if (cursor.lineIndex === next.lineIndex) return 'active';
-      if (cursor.lineIndex > next.lineIndex || lastSungLineIndex >= next.lineIndex) {
-        return 'complete';
-      }
-      return 'future';
-    };
-    const previousState = stateFor(previous.cursor, previous.lastSungLineIndex);
-    const nextState = stateFor(next.cursor, next.lastSungLineIndex);
-    if (previousState !== nextState) return false;
-    if (nextState !== 'active') return true;
-    return (
-      previous.cursor.wordIndex === next.cursor.wordIndex &&
-      previous.isPlaying === next.isPlaying &&
-      previous.reducedMotion === next.reducedMotion &&
-      previous.timelineRevision === next.timelineRevision
-    );
-  },
-);
-
 function LyricsMessage({
   icon = 'lyrics',
   title,
@@ -463,55 +170,37 @@ function LyricsMessage({
   );
 }
 
-function InterludeDots({
-  anchorLineIndex,
-  interlude,
-  isPlaying,
-  getPositionMs,
+function StaticLyrics({
+  document,
+  align,
+  allowSeek,
+  seek,
   presentationOffsetMs,
 }: {
-  anchorLineIndex: number;
-  interlude: LyricInterlude;
-  isPlaying: boolean;
-  getPositionMs: () => number;
+  document: LyricDocument;
+  align: 'left' | 'center' | 'right';
+  allowSeek: boolean;
+  seek: (positionMs: number) => void;
   presentationOffsetMs: number;
 }) {
-  const dots = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    let frame: number | null = null;
-    const update = () => {
-      const elapsed = getPositionMs() + presentationOffsetMs - interlude.startMs;
-      const duration = Math.max(1, interlude.endMs - interlude.startMs);
-      const progress = Math.max(0, Math.min(1, elapsed / duration));
-      dots.current
-        ?.querySelectorAll<HTMLElement>('.lyrics-stage__instrumental-dot')
-        .forEach((dot, index) => {
-          // The dots never move. Each one settles into its darker foreground
-          // color as the musical break progresses from left to right.
-          const tone = Math.max(0, Math.min(1, progress * 3 - index));
-          dot.style.setProperty('--interlude-dot-tone', `${Math.round(18 + tone * 82)}%`);
-        });
-      if (isPlaying) frame = window.requestAnimationFrame(update);
-    };
-    update();
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-    };
-  }, [getPositionMs, interlude, isPlaying, presentationOffsetMs]);
-
   return (
-    <div
-      ref={dots}
-      className="lyrics-stage__instrumental"
-      data-interlude-anchor={anchorLineIndex}
-      data-playing={isPlaying || undefined}
-      aria-hidden="true"
-    >
-      <span className="lyrics-stage__instrumental-dots">
-        <span className="lyrics-stage__instrumental-dot" />
-        <span className="lyrics-stage__instrumental-dot" />
-        <span className="lyrics-stage__instrumental-dot" />
-      </span>
+    <div className="lyrics-stage__amll-static" data-align={align} style={{ textAlign: align }}>
+      {document.lines.map((line) => (
+        <button
+          key={line.id}
+          type="button"
+          className="lyrics-stage__static-line"
+          aria-label={line.text}
+          aria-disabled={line.startMs === null || undefined}
+          onClick={() =>
+            allowSeek &&
+            line.startMs !== null &&
+            seek(Math.max(0, line.startMs + document.metadata.offsetMs - presentationOffsetMs))
+          }
+        >
+          <span className="lyrics-stage__static-primary">{line.text}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -526,14 +215,14 @@ export function LyricsViewport({
   seek,
   translation,
   romanization,
-  wordEffect,
+  wordEffect: _wordEffect,
   followAnchor,
   align,
-  songId,
+  songId: _songId,
   editorGesture = false,
   allowSeek = true,
   onFollowStateChange,
-  layoutKey,
+  layoutKey: _layoutKey,
 }: {
   document: LyricDocument | null;
   status: 'idle' | 'loading' | 'ready' | 'error' | 'missing';
@@ -550,7 +239,7 @@ export function LyricsViewport({
   songId: string | null;
   editorGesture?: boolean;
   allowSeek?: boolean;
-  onFollowStateChange?: (state: LyricsFollowState) => void;
+  onFollowStateChange?: (state: 'active' | 'suspended') => void;
   layoutKey?: string;
 }) {
   const { t } = useTranslation('lyrics');
@@ -559,139 +248,19 @@ export function LyricsViewport({
   const runtimeRevision = usePlayerStore((state) => state.timelineRevision);
   const isPlaying = editorGesture ? isPlayingProp : runtimePlaying;
   const timelineRevision = editorGesture ? timelineRevisionProp : runtimeRevision;
-  const scrollArea = useRef<HTMLDivElement>(null);
-  const scrollContent = useRef<HTMLDivElement>(null);
-  const initialFollowContext = useRef<string | null>(null);
-  const [followState, setFollowState] = useState<LyricsFollowState>('active');
-  const {
-    cursor,
-    lastSungLineIndex: sungLineIndex,
-    scrollTargetLineIndex,
-    interlude,
-  } = useLyricCursor(document, getPositionMs, presentationOffsetMs, timelineRevision, isPlaying);
-  // In short gaps, retain the last sung line as the visual focus. A long
-  // musical break has its own marker and intentionally clears the focus.
-  const focusLineIndex = interlude ? -1 : cursor.lineIndex >= 0 ? cursor.lineIndex : sungLineIndex;
-  const targetLineIndex = interlude ? -1 : scrollTargetLineIndex;
-  const songContext = `${songId ?? 'none'}:${document?.songId ?? 'none'}`;
-  const followContext = `${songId ?? 'none'}:${document?.songId ?? 'none'}:${layoutKey ?? ''}`;
+  const currentTime = useAmllCurrentTime(
+    document,
+    getPositionMs,
+    presentationOffsetMs,
+    timelineRevision,
+    isPlaying,
+  );
+  const model = useMemo(
+    () => (document ? toAmllLyricModel(document, translation, romanization) : null),
+    [document, romanization, translation],
+  );
 
-  useEffect(() => {
-    initialFollowContext.current = null;
-    setFollowState('active');
-  }, [songContext]);
-
-  useEffect(() => {
-    onFollowStateChange?.(followState);
-  }, [followState, onFollowStateChange]);
-
-  const scrollToTarget = (force = false) => {
-    if (interlude) {
-      centerLyricInterlude(
-        scrollArea.current,
-        scrollContent.current,
-        interlude.anchorLineIndex,
-        reducedMotion,
-        {
-          followAnchor,
-          force,
-        },
-      );
-      return;
-    }
-    centerLyricLine(scrollArea.current, scrollContent.current, targetLineIndex, reducedMotion, {
-      followAnchor,
-      force,
-    });
-  };
-
-  useLayoutEffect(() => {
-    if (
-      initialFollowContext.current === followContext ||
-      followState !== 'active' ||
-      editorGesture ||
-      (targetLineIndex < 0 && !interlude)
-    ) {
-      return;
-    }
-
-    let frame: number | null = null;
-    const centerAfterLayout = () => {
-      frame = null;
-      const area = scrollArea.current;
-      const content = scrollContent.current;
-      if (!area || !content) return;
-      const areaHeight = area.clientHeight || area.getBoundingClientRect().height;
-      const contentHeight = content.getBoundingClientRect().height;
-      if (areaHeight <= 0 || contentHeight <= 0) return;
-
-      // A lyrics stage can mount while its enter transition and scene sizing are
-      // still settling. Wait for a real layout, then place the current line once;
-      // subsequent line changes continue through the regular spring path below.
-      if (interlude) {
-        centerLyricInterlude(area, content, interlude.anchorLineIndex, reducedMotion, {
-          followAnchor,
-          force: true,
-        });
-      } else {
-        centerLyricLine(area, content, targetLineIndex, reducedMotion, {
-          followAnchor,
-          force: true,
-        });
-      }
-      initialFollowContext.current = followContext;
-    };
-    const scheduleCenter = () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(centerAfterLayout);
-    };
-
-    if (typeof ResizeObserver !== 'function') return;
-
-    const observer = new ResizeObserver(scheduleCenter);
-    if (scrollArea.current) observer.observe(scrollArea.current);
-    if (scrollContent.current) observer.observe(scrollContent.current);
-    scheduleCenter();
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [
-    targetLineIndex,
-    interlude,
-    editorGesture,
-    followContext,
-    followState,
-    followAnchor,
-    reducedMotion,
-  ]);
-
-  useEffect(() => {
-    if (followState !== 'active' || editorGesture || (targetLineIndex < 0 && !interlude)) return;
-    scrollToTarget();
-    // The target is deliberately derived from the timing snapshot above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    songId,
-    targetLineIndex,
-    interlude,
-    followState,
-    editorGesture,
-    followAnchor,
-    reducedMotion,
-    layoutKey,
-  ]);
-
-  useEffect(() => () => cancelScrollSpring(scrollArea.current), []);
-
-  const resumeFollowing = () => {
-    setFollowState('active');
-    logger.info('lyrics.follow.resume', 'resumed current-line follow', {
-      songId,
-      lineIndex: targetLineIndex,
-    });
-    scrollToTarget(true);
-  };
+  useEffect(() => onFollowStateChange?.('active'), [onFollowStateChange]);
 
   if (status === 'idle') {
     return <LyricsMessage title={t('nothingPlaying')} detail={t('nothingPlayingDetail')} />;
@@ -706,99 +275,44 @@ export function LyricsViewport({
     return <LyricsMessage title={t('missing')} detail={t('missingDetail')} />;
   }
 
-  return (
-    <div
-      className="lyrics-stage__viewport"
-      data-align={align}
-      data-interlude={interlude ? '' : undefined}
-    >
-      <div
-        ref={scrollArea}
-        className="lyrics-stage__scroll"
-        data-follow={followState}
-        onWheel={(event) => {
-          if (!scrollArea.current || !scrollContent.current) return;
-          if (event.deltaY === 0 && event.deltaX === 0) return;
-          const state = scrollStateFor(scrollArea.current);
-          const target = Math.min(
-            Math.max(0, state.offset + event.deltaY),
-            lyricScrollBounds(scrollArea.current, scrollContent.current),
-          );
-          cancelScrollSpring(scrollArea.current);
-          setLyricOffset(scrollArea.current, scrollContent.current, target);
-          if (followState !== 'suspended') {
-            setFollowState('suspended');
-            logger.info('lyrics.follow.suspend', 'suspended current-line follow', {
-              songId,
-              reason: 'wheel',
-            });
-          }
-        }}
-      >
-        <div
-          ref={scrollContent}
-          className="lyrics-stage__scroll-content"
-          style={{ textAlign: align }}
-        >
-          <div className="lyrics-stage__spacer" />
-          {interlude?.anchorLineIndex === -1 && (
-            <InterludeDots
-              anchorLineIndex={-1}
-              interlude={interlude}
-              isPlaying={isPlaying}
-              getPositionMs={getPositionMs}
-              presentationOffsetMs={presentationOffsetMs}
-            />
-          )}
-          {document.lines.map((line, lineIndex) => (
-            <Fragment key={line.id}>
-              <LyricLineView
-                line={line}
-                lineIndex={lineIndex}
-                cursor={cursor}
-                focusLineIndex={focusLineIndex}
-                lastSungLineIndex={sungLineIndex}
-                document={document}
-                onSeek={(positionMs) => {
-                  if (!allowSeek) return;
-                  seek(positionMs);
-                  setFollowState('active');
-                }}
-                presentationOffsetMs={presentationOffsetMs}
-                translation={translation}
-                romanization={romanization}
-                wordEffect={wordEffect}
-                isPlaying={isPlaying}
-                reducedMotion={reducedMotion}
-                timelineRevision={timelineRevision}
-                getPositionMs={getPositionMs}
-              />
-              {interlude?.anchorLineIndex === lineIndex && (
-                <InterludeDots
-                  anchorLineIndex={lineIndex}
-                  interlude={interlude}
-                  isPlaying={isPlaying}
-                  getPositionMs={getPositionMs}
-                  presentationOffsetMs={presentationOffsetMs}
-                />
-              )}
-            </Fragment>
-          ))}
-          <div className="lyrics-stage__spacer" />
-        </div>
-      </div>
+  if (document.syncMode === 'unsynchronized' || !model || model.lines.length === 0) {
+    return (
+      <StaticLyrics
+        document={document}
+        align={align}
+        allowSeek={allowSeek}
+        seek={seek}
+        presentationOffsetMs={presentationOffsetMs}
+      />
+    );
+  }
 
-      {followState === 'suspended' && (
-        <button
-          type="button"
-          className="lyrics-stage__follow"
-          data-editor-interactive="true"
-          onClick={resumeFollowing}
-        >
-          <LocateFixed size={15} />
-          {t('follow')}
-        </button>
-      )}
+  const onLyricLineClick = (event: LyricLineMouseEvent) => {
+    if (!allowSeek) return;
+    const sourceIndex = model.sourceLineIndexes[event.lineIndex];
+    const sourceLine = sourceIndex === undefined ? undefined : document.lines[sourceIndex];
+    if (!sourceLine || sourceLine.startMs === null) return;
+    seek(Math.max(0, sourceLine.startMs + document.metadata.offsetMs - presentationOffsetMs));
+  };
+
+  return (
+    <div className="lyrics-stage__amll" data-align={align} data-follow="active">
+      <LyricPlayer
+        className="lyrics-stage__amll-player"
+        disabled={editorGesture}
+        lyricLines={model.lines}
+        currentTime={currentTime}
+        isSeeking={false}
+        playing={isPlaying}
+        alignAnchor="center"
+        alignPosition={Math.min(0.9, Math.max(0.1, followAnchor))}
+        enableSpring={!reducedMotion}
+        enableScale={!reducedMotion}
+        enableBlur={!reducedMotion}
+        hidePassedLines={false}
+        wordFadeWidth={0.5}
+        onLyricLineClick={onLyricLineClick}
+      />
     </div>
   );
 }

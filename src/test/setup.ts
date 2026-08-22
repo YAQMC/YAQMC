@@ -21,3 +21,20 @@ if (typeof window.matchMedia !== 'function') {
     }),
   });
 }
+
+// JSDOM does not implement layout observation. AMLL creates one as part of
+// the public lyric-player lifecycle, so provide the no-op browser surface that
+// tests need while individual layout tests remain free to replace it.
+if (typeof ResizeObserver === 'undefined') {
+  class TestResizeObserver implements ResizeObserver {
+    constructor(_callback: ResizeObserverCallback) {}
+    observe(_target: Element, _options?: ResizeObserverOptions) {}
+    unobserve(_target: Element) {}
+    disconnect() {}
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    configurable: true,
+    writable: true,
+    value: TestResizeObserver,
+  });
+}

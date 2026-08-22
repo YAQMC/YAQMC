@@ -11,8 +11,9 @@ YAQMC 是独立实现的非官方 QQ 音乐桌面客户端。感谢下面的个�
   `Flechazo/qmc` 在核对时没有仓库许可证，因此 YAQMC 只将其作为行为参考，未复制、vendoring 或改写其
   源代码；YAQMC 的 Rust 实现与测试独立完成。
 - **[amll-dev/applemusic-like-lyrics](https://github.com/amll-dev/applemusic-like-lyrics)** — 歌词时间轴、
-  间奏呈现与动态层次的行为/交互参考。上游为 `AGPL-3.0-only`；YAQMC 未使用其包或复制其源码，当前
-  渲染器依据自身领域模型独立实现。许可证决策见 [歌词文档](docs/lyrics.md#amll-decision)。
+  间奏呈现与动态层次的实现来源。YAQMC 使用官方发布的 `@applemusic-like-lyrics/core` 与
+  `@applemusic-like-lyrics/react` `0.5.2` 包；上游为 `AGPL-3.0-only`。许可证与发布义务见
+  [歌词文档](docs/lyrics.md#amll-decision)。
 - **OpenAI Codex / GPT-5.6 Sol** — 协助工程实现、测试设计、代码审查、文档整理和发布流程。
 
 ## 互操作研究

@@ -166,8 +166,7 @@ export function inspectLyricsCompositor(): LyricsCompositorInspect {
     document.querySelector('.lyrics-stage__disc-spin') ??
     document.querySelector('.lyrics-stage__disc');
   const viewport = document.querySelector('.lyrics-stage__viewport');
-  const activeLine = document.querySelector('.lyrics-line[data-active]');
-  const inactiveLine = document.querySelector('.lyrics-line:not([data-active])');
+  const lyricRenderer = document.querySelector('.amll-lyric-player');
   const animations = typeof document.getAnimations === 'function' ? document.getAnimations() : [];
   const stageStyle = stage ? getComputedStyle(stage) : null;
   const sceneStyle = scene ? getComputedStyle(scene) : null;
@@ -201,8 +200,8 @@ export function inspectLyricsCompositor(): LyricsCompositorInspect {
     discFilter: discStyle?.filter ?? '',
     discBoxShadow: discStyle?.boxShadow ?? '',
     viewportBeforeBackdrop: viewport ? getComputedStyle(viewport, '::before').backdropFilter : '',
-    activeLineFilter: activeLine ? getComputedStyle(activeLine).filter : '',
-    inactiveLineFilter: inactiveLine ? getComputedStyle(inactiveLine).filter : '',
+    activeLineFilter: lyricRenderer ? getComputedStyle(lyricRenderer).filter : '',
+    inactiveLineFilter: '',
     cssAnimationCount: animations.length,
     cssRunningCount: animations.filter((animation) => animation.playState === 'running').length,
     lyricsStage: useLyricsStageStore.getState().stage,
@@ -287,7 +286,7 @@ export function inspectHang(): LyricsHangInspect {
   const player = usePlayerStore.getState();
   const stage = useLyricsStageStore.getState();
   const scene = document.querySelector('.lyrics-scene');
-  const activeLine = document.querySelector('.lyrics-line[data-active]');
+  const lyricRenderer = document.querySelector('.amll-lyric-player');
   const animations =
     typeof document.getAnimations === 'function'
       ? document
@@ -325,15 +324,12 @@ export function inspectHang(): LyricsHangInspect {
       lyricsPerfCounters.lastPanelCommitAt === 0 ? -1 : now - lyricsPerfCounters.lastPanelCommitAt,
     longTasks,
     interpolation: {
-      activeLine: activeLine?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 80) ?? null,
+      activeLine: lyricRenderer?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 80) ?? null,
       sceneProgress:
         scene instanceof HTMLElement
           ? getComputedStyle(scene).getPropertyValue('--scene-progress')
           : '',
-      wordProgress:
-        activeLine instanceof HTMLElement
-          ? getComputedStyle(activeLine).getPropertyValue('--word-progress')
-          : '',
+      wordProgress: '',
       scenePlaybackState:
         scene instanceof HTMLElement ? (scene.dataset.playbackState ?? null) : null,
     },
@@ -459,7 +455,7 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
   const perSecond = 1_000 / elapsed;
   const artwork = document.querySelector('.app-background__image');
   const topbar = document.querySelector('.topbar');
-  const inactiveLine = document.querySelector('.lyrics-line:not([data-active])');
+  const lyricRenderer = document.querySelector('.amll-lyric-player');
   return {
     durationMs: elapsed,
     rafFrames,
@@ -485,7 +481,7 @@ export async function samplePlaybackUi(durationMs = 1_500): Promise<PlaybackUiPr
     artworkFilter: artwork ? getComputedStyle(artwork).filter : '',
     artworkPreblurred: artwork instanceof HTMLElement && artwork.dataset.preblurred === 'true',
     topbarBackdrop: topbar ? getComputedStyle(topbar).backdropFilter : '',
-    inactiveLineFilter: inactiveLine ? getComputedStyle(inactiveLine).filter : '',
+    inactiveLineFilter: lyricRenderer ? getComputedStyle(lyricRenderer).filter : '',
     lyrics: inspectLyricsCompositor(),
     rafStuck: wallClockTimedOut && rafFrames < 3,
     wallClockTimedOut,

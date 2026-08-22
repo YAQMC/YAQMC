@@ -8,6 +8,17 @@ unlicensed repositories, are recorded in
 [docs/qqmusic-provider.md](docs/qqmusic-provider.md) and are not reproduced
 here.
 
+## Apple Music-like Lyrics
+
+Source: <https://github.com/amll-dev/applemusic-like-lyrics>
+
+Packages: `@applemusic-like-lyrics/core` `0.5.2` and `@applemusic-like-lyrics/react` `0.5.2`
+
+License: GNU Affero General Public License version 3 only (`AGPL-3.0-only`). These official packages are used by
+the desktop lyric renderer without vendoring or local modification. The package license text and corresponding
+source are available from the upstream project; distributors of YAQMC must satisfy the GPLv3/AGPLv3 obligations
+described in [docs/lyrics.md](docs/lyrics.md#amll-decision).
+
 `mzj3920/qqmusic-decrypt`, AynaLivePlayer/miaosic, and official QQ Music Electron ASAR contents are **not**
 in-tree YAQMC sources. The `mzj3920` and ASAR claims were removed from the current private `qm-api-rs` pin;
 miaosic was protocol corroboration only.
