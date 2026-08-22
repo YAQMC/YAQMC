@@ -1665,13 +1665,18 @@ input[type='range']:disabled {
   scroll-margin-block: 40vh;
   scroll-snap-align: center;
   text-align: inherit;
+  opacity: 0.52;
+  scale: 0.985;
+  transform-origin: center;
   transition:
-    color 320ms var(--ease-out),
-    filter 320ms var(--ease-out);
+    color 280ms var(--ease-out),
+    filter 280ms var(--ease-out),
+    opacity 280ms var(--ease-out),
+    scale 340ms var(--ease-out);
 }
 
 .lyrics-line:not([data-active]) {
-  filter: blur(3px);
+  filter: blur(2.8px);
 }
 
 .lyrics-stage__scroll[data-follow='suspended'] .lyrics-line:not([data-active]) {
@@ -1683,9 +1688,18 @@ input[type='range']:disabled {
 }
 
 .lyrics-line[data-active] {
-  color: color-mix(in srgb, var(--lyrics-color) 62%, var(--lyrics-ink) 38%);
+  color: var(--lyrics-ink);
   content-visibility: visible;
   filter: none;
+  opacity: 1;
+  scale: 1;
+  text-shadow: 0 0 0.62em color-mix(in srgb, var(--lyrics-color) 28%, transparent);
+}
+
+.lyrics-line[data-complete] {
+  opacity: 0.68;
+  scale: 0.992;
+  filter: blur(1.4px);
 }
 
 .lyrics-line[data-vocalist='response'] {
@@ -1715,7 +1729,7 @@ input[type='range']:disabled {
   color: color-mix(in srgb, var(--lyrics-ink) 42%, transparent);
   font-family: var(--font-display);
   font-size: var(--lyrics-secondary-font-size);
-  font-weight: 520;
+  font-weight: 620;
   letter-spacing: -0.012em;
   line-height: 1.25;
 }
@@ -1727,14 +1741,14 @@ input[type='range']:disabled {
 
 .lyrics-line[data-active] .lyrics-line__romanization,
 .lyrics-line[data-active] .lyrics-line__translation {
-  color: color-mix(in srgb, var(--lyrics-color) 58%, var(--lyrics-ink) 42%);
+  color: color-mix(in srgb, var(--lyrics-ink) 76%, transparent);
+  font-weight: 650;
 }
 
 .lyrics-word {
   position: relative;
   display: inline-block;
   white-space: pre;
-  transition: --word-progress 70ms linear;
 }
 
 .lyrics-word--jump .lyrics-char {

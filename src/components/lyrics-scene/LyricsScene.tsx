@@ -218,6 +218,8 @@ export function LyricsScene({
   const { t: settings } = useTranslation('settings', { keyPrefix: 'lyricsPresets' });
   const root = useRef<HTMLDivElement>(null);
   const transportScrubbing = useRef(false);
+  const transportInput = useRef<HTMLInputElement>(null);
+  const transportElapsed = useRef<HTMLSpanElement>(null);
   const [sceneHeight, setSceneHeight] = useState(0);
   const [palette, setPalette] = useState<ArtworkPalette | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
@@ -225,15 +227,21 @@ export function LyricsScene({
   const [videoFailed, setVideoFailed] = useState(false);
   const [pluginVars, setPluginVars] = useState(pluginSceneCssVars());
   const [pluginState, setPluginState] = useState(pluginSceneDataState());
-  const ink = coverInk(bindings.artworkColor);
   const editor = mode === 'editor';
+  const runtimePlaying = usePlayerStore((state) => state.isPlaying);
+  const runtimeScrubbing = usePlayerStore((state) => state.isScrubbing);
+  const runtimeTimelineRevision = usePlayerStore((state) => state.timelineRevision);
   const scene = preset.scene;
   const [transportDraft, setTransportDraft] = useState<number | null>(null);
-  const transportPositionMs = transportDraft ?? bindings.positionMs;
+  const transportPositionMs =
+    transportDraft ?? (editor ? bindings.positionMs : bindings.getPositionMs());
   const progress =
     bindings.durationMs === 0 ? 0 : (transportPositionMs / Math.max(bindings.durationMs, 1)) * 100;
   const primaryFontPx = resolvePrimaryFontSizePx(preset.typography.fontScale, sceneHeight);
   const secondaryFontPx = resolveSecondaryFontSizePx(primaryFontPx);
+  // A user-selected solid background is the actual lyric backdrop; otherwise
+  // the artwork palette is the best stable proxy before image pixels are drawn.
+  const ink = coverInk(appearance.baseColor ?? palette?.primary ?? bindings.artworkColor);
 
   useLayoutEffect(() => {
     const node = root.current;
@@ -302,6 +310,40 @@ export function LyricsScene({
       cancelled = true;
     };
   }, [preset.pluginId, scene]);
+
+  useEffect(() => {
+    if (editor || !runtimePlaying || runtimeScrubbing) return;
+    let frame = 0;
+    let lastLabel = '';
+    const durationMs = Math.max(bindings.durationMs, 1);
+    const tick = () => {
+      if (!transportScrubbing.current) {
+        const positionMs = Math.max(0, Math.min(bindings.getPositionMs(), durationMs));
+        const progress = (positionMs / durationMs) * 100;
+        const input = transportInput.current;
+        if (input && document.documentElement.dataset.compositorProbe !== 'no-progress-raf') {
+          input.value = String(positionMs);
+          input.style.setProperty('--range-progress', `${progress}%`);
+        }
+        const label = formatDuration(positionMs);
+        if (transportElapsed.current && label !== lastLabel) {
+          transportElapsed.current.textContent = label;
+          lastLabel = label;
+        }
+        root.current?.style.setProperty('--scene-progress', String(progress / 100));
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    tick();
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    bindings.durationMs,
+    bindings.getPositionMs,
+    editor,
+    runtimePlaying,
+    runtimeScrubbing,
+    runtimeTimelineRevision,
+  ]);
 
   const style = {
     '--lyrics-color': bindings.artworkColor,
@@ -556,15 +598,21 @@ export function LyricsScene({
                 </IconButton>
               </div>
               <div className="lyrics-stage__progress">
-                <span>{formatDuration(transportPositionMs)}</span>
+                <span ref={transportElapsed}>{formatDuration(transportPositionMs)}</span>
                 <input
+                  ref={transportInput}
                   type="range"
                   min={0}
                   max={Math.max(bindings.durationMs, 1)}
-                  step={1_000}
+                  step={1}
                   value={transportPositionMs}
-                  onPointerDown={() => {
+                  onPointerDown={(event) => {
                     transportScrubbing.current = true;
+                    try {
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    } catch {
+                      // Synthetic pointer events and some embedded surfaces are not capturable.
+                    }
                     bindings.beginScrub?.();
                   }}
                   onPointerUp={(event) => {
@@ -587,10 +635,16 @@ export function LyricsScene({
                     (bindings.commitScrub ?? bindings.seek)(Number(event.currentTarget.value));
                   }}
                   onChange={(event) => {
-                    if (!transportScrubbing.current || !bindings.previewScrub) return;
+                    if (!transportScrubbing.current) return;
                     const next = Number(event.target.value);
                     setTransportDraft(next);
-                    bindings.previewScrub(next);
+                    bindings.previewScrub?.(next);
+                  }}
+                  onInput={(event) => {
+                    if (!transportScrubbing.current) return;
+                    const next = Number(event.currentTarget.value);
+                    setTransportDraft(next);
+                    bindings.previewScrub?.(next);
                   }}
                   aria-label={player('position')}
                   style={{ '--range-progress': `${progress}%` } as CSSProperties}

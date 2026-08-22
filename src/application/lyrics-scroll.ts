@@ -44,7 +44,22 @@ function clearLineWave(state: LyricScrollState): void {
 const SPRING_STIFFNESS = 120;
 const SPRING_DAMPING = 15;
 const SPRING_MASS = 1;
-const SPRING_STEP_SECONDS = 1 / 60;
+const DEFAULT_SPRING_STEP_SECONDS = 1 / 60;
+const MAX_SPRING_STEP_SECONDS = 1 / 20;
+
+export function lyricScrollSpringStepSeconds(
+  previousTimestamp: number | null,
+  timestamp: number,
+): number {
+  if (previousTimestamp === null || !Number.isFinite(timestamp)) {
+    return DEFAULT_SPRING_STEP_SECONDS;
+  }
+  const elapsed = (timestamp - previousTimestamp) / 1_000;
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return DEFAULT_SPRING_STEP_SECONDS;
+  // A hidden or briefly stalled renderer must catch up to the visual clock,
+  // but never take one huge, unstable integration step.
+  return Math.min(MAX_SPRING_STEP_SECONDS, elapsed);
+}
 
 export function setLyricOffset(
   scrollArea: HTMLDivElement,
@@ -60,14 +75,23 @@ export function lyricScrollBounds(scrollArea: HTMLDivElement, content: HTMLDivEl
   return Math.max(0, content.getBoundingClientRect().height - scrollArea.clientHeight);
 }
 
-const WAVE_MAX_PX = 22;
-const WAVE_CASCADE_MS = 45;
+const WAVE_MAX_PX = 30;
+const WAVE_MIN_TRAVEL_PX = 16;
+const WAVE_FULL_TRAVEL_PX = 120;
+const WAVE_CASCADE_MS = 44;
+
+export function lyricScrollWaveIntensity(travelPx: number): number {
+  if (!Number.isFinite(travelPx) || travelPx < WAVE_MIN_TRAVEL_PX) return 0;
+  return Math.min(1, (travelPx - WAVE_MIN_TRAVEL_PX) / (WAVE_FULL_TRAVEL_PX - WAVE_MIN_TRAVEL_PX));
+}
 
 function buildLineWave(
   content: HTMLDivElement,
   targetLineIndex: number,
   delta: number,
 ): LineWaveSpring[] {
+  const intensity = lyricScrollWaveIntensity(Math.abs(delta));
+  if (intensity === 0) return [];
   const lines = Array.from(content.querySelectorAll<HTMLElement>('[data-line-index]'));
   const springs: LineWaveSpring[] = [];
   for (const line of lines) {
@@ -78,7 +102,7 @@ function buildLineWave(
     // so the gap between adjacent lines flexes as the wave passes instead of staying rigid.
     const direction =
       delta > 0 ? (index < targetLineIndex ? -1 : 1) : index > targetLineIndex ? 1 : -1;
-    const amplitude = Math.min(distance, 2) * (WAVE_MAX_PX / 2);
+    const amplitude = Math.min(distance, 2) * (WAVE_MAX_PX / 2) * intensity;
     springs.push({
       element: line,
       position: direction * amplitude,
@@ -119,7 +143,7 @@ export function springScrollTo(
     document.documentElement.getAttribute('data-graphics-mode') !== 'software' &&
     document.documentElement.getAttribute('data-graphics-mode') !== 'safe';
   const wave =
-    waveEnabled && distance > 1
+    waveEnabled && lyricScrollWaveIntensity(distance) > 0
       ? buildLineWave(content, options.targetLineIndex ?? 0, targetOffset - state.offset)
       : null;
   state.wave = wave;
@@ -132,6 +156,7 @@ export function springScrollTo(
   let position = state.offset;
   let velocity = 0;
   let frame: number | null = null;
+  let previousTimestamp: number | null = null;
 
   const cancel = () => {
     if (frame !== null) window.cancelAnimationFrame(frame);
@@ -139,15 +164,17 @@ export function springScrollTo(
     settleLineWave(state);
   };
 
-  const step = () => {
+  const step = (timestamp: number) => {
     frame = null;
+    const stepSeconds = lyricScrollSpringStepSeconds(previousTimestamp, timestamp);
+    previousTimestamp = timestamp;
     const acceleration =
       (-SPRING_STIFFNESS * (position - targetOffset) - SPRING_DAMPING * velocity) / SPRING_MASS;
-    velocity += acceleration * SPRING_STEP_SECONDS;
-    position += velocity * SPRING_STEP_SECONDS;
+    velocity += acceleration * stepSeconds;
+    position += velocity * stepSeconds;
     setLyricOffset(scrollArea, content, position);
     if (state.wave) {
-      const stepMs = SPRING_STEP_SECONDS * 1000;
+      const stepMs = stepSeconds * 1000;
       for (const line of state.wave) {
         if (line.delayMs > 0) {
           line.delayMs -= stepMs;
@@ -155,8 +182,8 @@ export function springScrollTo(
         }
         const waveAcceleration =
           (-SPRING_STIFFNESS * line.position - SPRING_DAMPING * line.velocity) / SPRING_MASS;
-        line.velocity += waveAcceleration * SPRING_STEP_SECONDS;
-        line.position += line.velocity * SPRING_STEP_SECONDS;
+        line.velocity += waveAcceleration * stepSeconds;
+        line.position += line.velocity * stepSeconds;
         line.element.style.transform = `translate3d(0, ${line.position.toFixed(2)}px, 0)`;
       }
     }
@@ -171,7 +198,7 @@ export function springScrollTo(
   };
 
   state.spring = { frame, cancel };
-  step();
+  step(performance.now());
 }
 
 export function centerLyricLine(
