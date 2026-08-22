@@ -1,8 +1,8 @@
 //! Row H: library `user::get_vip_info` mapped through in-tree derivation.
 //!
 //! Quality-rights (`choose_source`, permitted qualities) stay in
-//! `entitlement.rs`. Under `qmapi` (non-test) `fetch_entitlement` calls
-//! library `vip_login_base` and falls back to in-tree HTTP on failure.
+//! `entitlement.rs`. In non-test builds, `fetch_entitlement` calls the
+//! library `vip_login_base` path directly.
 
 use qqmusic_api::models::user::UserVipInfoResponse;
 use qqmusic_api::Platform;
@@ -47,13 +47,29 @@ pub(crate) async fn fetch_account_entitlement(
     session: &SessionRecord,
 ) -> Result<AccountEntitlement, QQMusicError> {
     let credential = credential_from_session(session)?;
-    let client = qmapi_client_with(Some(credential.clone()), Some(Platform::Web))
-        .map_err(map_qmapi_error)?;
+    let client =
+        qmapi_client_with(Some(credential.clone()), Some(Platform::Web)).map_err(|error| {
+            let classification = map_qmapi_error(error);
+            tracing::warn!(
+                target: "qqmusic.entitlement",
+                classification = classification.code(),
+                "library client construction failed"
+            );
+            classification
+        })?;
     let info = client
         .user
         .get_vip_info(Some(&credential))
         .await
-        .map_err(map_qmapi_error)?;
+        .map_err(|error| {
+            let classification = map_qmapi_error(error);
+            tracing::warn!(
+                target: "qqmusic.entitlement",
+                classification = classification.code(),
+                "library get_vip_info failed"
+            );
+            classification
+        })?;
     Ok(account_entitlement_from_qmapi(&info))
 }
 

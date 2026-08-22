@@ -1397,17 +1397,32 @@ impl QQMusicAccountService {
             ));
         }
 
-        let summaries = self
+        let summaries = match self
             .fetch_all_collected_playlist_summaries(
                 context,
                 RetryClass::ReconciliationRead,
                 "account.playlist.collection.reconcile",
             )
-            .await;
+            .await
+        {
+            Ok(summaries) => summaries,
+            Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                return Err(QQMusicError::AuthenticationExpired);
+            }
+            Err(QQMusicError::Cancelled) => return Err(QQMusicError::Cancelled),
+            Err(_) => {
+                return Ok(playlist_mutation_result(
+                    request.client_operation_id.clone(),
+                    MutationStatus::OutcomeUnknown,
+                    None,
+                    Some(ProviderErrorCode::ProviderFailure),
+                    context.auth_revision,
+                ));
+            }
+        };
         let matching = summaries
-            .as_ref()
-            .ok()
-            .and_then(|items| items.iter().find(|item| item.id == request.playlist_id))
+            .iter()
+            .find(|item| item.id == request.playlist_id)
             .cloned();
         let confirmed = matching.is_some() == request.collected;
         if !confirmed {
@@ -1420,28 +1435,12 @@ impl QQMusicAccountService {
             ));
         }
 
-        let mut projection = self.projection_for(context)?;
-        projection
-            .playlists
-            .retain(|playlist| playlist.id != request.playlist_id);
-        if let Some(summary) = matching.clone() {
-            projection.playlists.push(summary);
-        }
-        projection.fetched_at_ms = self.clock.now_ms();
-        let operations = [
-            ProviderCacheMutation::DeleteKindPrefix {
-                kind: ACCOUNT_CACHE_KIND.to_owned(),
-                prefix: AccountCache::playlists_prefix(&context.epoch.scope),
-            },
-            cache_put(
-                &AccountCache::projection_key(&context.epoch.scope),
-                &projection,
-                u64::MAX,
-            )?,
-        ];
-        self.commit_cache(context, &operations).await?;
-        self.cursors.lock().await.clear();
-        self.refreshes.lock().await.clear();
+        let projection_update = match matching.clone() {
+            Some(summary) => PlaylistProjectionUpdate::Upsert(Box::new(summary)),
+            None => PlaylistProjectionUpdate::Delete(request.playlist_id.clone()),
+        };
+        self.commit_playlist_projection(context, projection_update)
+            .await?;
         Ok(playlist_mutation_result(
             request.client_operation_id.clone(),
             if accepted {
@@ -1852,15 +1851,9 @@ impl QQMusicAccountService {
         self.auth.ensure_current(&context.epoch).await?;
         let certainty = match write {
             Ok(true) => PlaylistWriteCertainty::Accepted,
-            Ok(false) => {
-                return Ok(playlist_mutation_result(
-                    request.client_operation_id.clone(),
-                    MutationStatus::Rejected,
-                    Some(before.summary),
-                    Some(ProviderErrorCode::ProviderFailure),
-                    context.auth_revision,
-                ));
-            }
+            // PlaylistDetailWrite uses false for the known no-change code. A
+            // readback distinguishes an idempotent success from rejection.
+            Ok(false) => PlaylistWriteCertainty::OutcomeUnknown,
             Err(QQMusicError::OutcomeUnknown) => PlaylistWriteCertainty::OutcomeUnknown,
             Err(error) => return Err(error),
         };
@@ -5355,6 +5348,170 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_uncollect_never_treats_a_failed_read_as_confirmed_absence() {
+        for case in ["offline", "authentication-expired", "cancelled"] {
+            let read_error = match case {
+                "offline" => QQMusicError::Offline,
+                "authentication-expired" => QQMusicError::AuthenticationExpired,
+                "cancelled" => QQMusicError::Cancelled,
+                _ => unreachable!(),
+            };
+            let fixture = AccountServiceFixture::authenticated([
+                TestReply::Error(QQMusicError::OutcomeUnknown),
+                TestReply::Error(read_error),
+            ])
+            .await;
+            enable_playlist_collection(&fixture).await;
+            seed_collected_playlist_projection(&fixture, &[7001]);
+
+            let result = fixture
+                .service
+                .set_playlist_collected(CollectPlaylistRequest {
+                    playlist_id: "qqmusic:playlist:7001".to_owned(),
+                    collected: false,
+                    client_operation_id: format!("playlist-uncollect-{case}"),
+                })
+                .await;
+
+            match case {
+                "offline" => assert_eq!(
+                    result.expect("offline read produces a typed result").status,
+                    MutationStatus::OutcomeUnknown
+                ),
+                "authentication-expired" => {
+                    assert!(matches!(result, Err(QQMusicError::AuthenticationExpired)));
+                    assert!(matches!(
+                        fixture.auth.snapshot().await.account,
+                        AccountState::ReauthenticationRequired { .. }
+                    ));
+                }
+                "cancelled" => assert!(matches!(result, Err(QQMusicError::Cancelled))),
+                _ => unreachable!(),
+            }
+            if case != "authentication-expired" {
+                assert!(projected_playlist_ids(&fixture)
+                    .iter()
+                    .any(|id| id == "qqmusic:playlist:7001"));
+            }
+            assert_eq!(fixture.transport.call_count(), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_uncollect_reconciles_only_after_a_complete_absent_read() {
+        let fixture = AccountServiceFixture::authenticated([
+            TestReply::Error(QQMusicError::OutcomeUnknown),
+            collected_playlist_page(&[]),
+        ])
+        .await;
+        enable_playlist_collection(&fixture).await;
+        seed_collected_playlist_projection(&fixture, &[7001]);
+
+        let result = fixture
+            .service
+            .set_playlist_collected(CollectPlaylistRequest {
+                playlist_id: "qqmusic:playlist:7001".to_owned(),
+                collected: false,
+                client_operation_id: "playlist-uncollect-confirmed-absent".to_owned(),
+            })
+            .await
+            .expect("complete absent read reconciles uncollect");
+
+        assert_eq!(result.status, MutationStatus::Reconciled);
+        assert!(!projected_playlist_ids(&fixture)
+            .iter()
+            .any(|id| id == "qqmusic:playlist:7001"));
+        assert_eq!(fixture.transport.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn concurrent_collection_projection_updates_do_not_overwrite_each_other() {
+        let write =
+            || body(r#"{"code":0,"req_0":{"code":0,"data":{"result":0,"v_failedPlaylistId":[]}}}"#);
+        let fixture = AccountServiceFixture::authenticated([
+            write(),
+            collected_playlist_page(&[7001]),
+            write(),
+            collected_playlist_page(&[7001, 7002]),
+        ])
+        .await;
+        enable_playlist_collection(&fixture).await;
+        let barrier = fixture
+            .service
+            .set_write_barrier(WriteBoundary::BeforeCacheCommit);
+
+        let first_service = Arc::clone(&fixture.service);
+        let first = tokio::spawn(async move {
+            first_service
+                .set_playlist_collected(CollectPlaylistRequest {
+                    playlist_id: "qqmusic:playlist:7001".to_owned(),
+                    collected: true,
+                    client_operation_id: "playlist-collect-concurrent-a".to_owned(),
+                })
+                .await
+        });
+        barrier.entered.notified().await;
+
+        let second_service = Arc::clone(&fixture.service);
+        let second = tokio::spawn(async move {
+            second_service
+                .set_playlist_collected(CollectPlaylistRequest {
+                    playlist_id: "qqmusic:playlist:7002".to_owned(),
+                    collected: true,
+                    client_operation_id: "playlist-collect-concurrent-b".to_owned(),
+                })
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                if fixture
+                    .transport
+                    .operation_count("account.playlist.collection.reconcile")
+                    .await
+                    == 2
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("second collection completes its readback");
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(50),
+                barrier.entered.notified()
+            )
+            .await
+            .is_err(),
+            "the second projection update must wait for the first commit lock"
+        );
+        barrier.release.notify_one();
+        assert_eq!(
+            first
+                .await
+                .expect("first collection joins")
+                .expect("first collection succeeds")
+                .status,
+            MutationStatus::Applied
+        );
+        barrier.entered.notified().await;
+        barrier.release.notify_one();
+        assert_eq!(
+            second
+                .await
+                .expect("second collection joins")
+                .expect("second collection succeeds")
+                .status,
+            MutationStatus::Applied
+        );
+
+        let projected = projected_playlist_ids(&fixture);
+        assert!(projected.iter().any(|id| id == "qqmusic:playlist:7001"));
+        assert!(projected.iter().any(|id| id == "qqmusic:playlist:7002"));
+    }
+
+    #[tokio::test]
     async fn offline_fallback_is_explicitly_stale_but_auth_expiry_is_not() {
         let fixture = AccountServiceFixture::authenticated([
             body(include_str!(
@@ -6304,6 +6461,95 @@ mod tests {
             .expect("seed owned playlist projection");
     }
 
+    async fn enable_playlist_collection(fixture: &AccountServiceFixture) {
+        let mut upgraded = fixture.session.clone();
+        upgraded.encrypted_uin = Some("SANITIZED_ENCRYPTED_UIN".to_owned());
+        fixture
+            .auth
+            .complete_confirmation(upgraded)
+            .await
+            .expect("enable collected-playlist operations");
+    }
+
+    fn collected_playlist_summary(provider_id: u64) -> AccountPlaylistSummary {
+        normalize_playlist_value_with_ownership(
+            &json!({
+                "id": provider_id,
+                "title": format!("Saved Public Playlist {provider_id}"),
+                "songnum": 4,
+                "nickname": "Public Curator"
+            }),
+            Some(PlaylistOwnership::Collected),
+        )
+        .expect("collected playlist summary")
+    }
+
+    fn collected_playlist_page(provider_ids: &[u64]) -> TestReply {
+        let playlists = provider_ids
+            .iter()
+            .map(|provider_id| {
+                json!({
+                    "id": provider_id,
+                    "title": format!("Saved Public Playlist {provider_id}"),
+                    "songnum": 4,
+                    "nickname": "Public Curator"
+                })
+            })
+            .collect::<Vec<_>>();
+        TestReply::Body(
+            serde_json::to_vec(&json!({
+                "code": 0,
+                "req_0": {
+                    "code": 0,
+                    "data": {
+                        "offset": 0,
+                        "total": playlists.len(),
+                        "v_list": playlists
+                    }
+                }
+            }))
+            .expect("collected playlist page serializes"),
+        )
+    }
+
+    fn seed_collected_playlist_projection(fixture: &AccountServiceFixture, provider_ids: &[u64]) {
+        let account = validated_account();
+        let projection = AccountLibraryProjection {
+            favorite_ids: Vec::new(),
+            playlists: provider_ids
+                .iter()
+                .map(|provider_id| collected_playlist_summary(*provider_id))
+                .collect(),
+            profile: account.profile,
+            entitlement: account.entitlement,
+            fetched_at_ms: 10_000,
+        };
+        fixture
+            .storage
+            .put_json(
+                &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                ACCOUNT_CACHE_KIND,
+                &projection,
+                u64::MAX,
+            )
+            .expect("seed collected playlist projection");
+    }
+
+    fn projected_playlist_ids(fixture: &AccountServiceFixture) -> Vec<String> {
+        fixture
+            .storage
+            .get_json::<AccountLibraryProjection>(
+                &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                true,
+            )
+            .expect("playlist projection lookup")
+            .expect("playlist projection")
+            .playlists
+            .into_iter()
+            .map(|playlist| playlist.id)
+            .collect()
+    }
+
     fn playlists_with_unique_new_playlist() -> TestReply {
         let mut value: Value = serde_json::from_str(include_str!(
             "../../tests/fixtures/qqmusic/account/playlists.json"
@@ -6658,6 +6904,79 @@ mod tests {
         assert_eq!(
             delete_request.pointer("/req/param/dirId"),
             Some(&json!(3001))
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn playlist_track_no_change_reconciles_idempotent_add_and_remove() {
+        let rejected = || {
+            body(include_str!(
+                "../../tests/fixtures/qqmusic/account/playlist-mutation-rejected.json"
+            ))
+        };
+        let add_fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            rejected(),
+            owned_playlist_detail_with_track_c(),
+        ])
+        .await;
+        let add_service = Arc::clone(&add_fixture.service);
+        let add = tokio::spawn(async move {
+            add_service
+                .add_playlist_track(playlist_track_request("playlist-add-idempotent"))
+                .await
+        });
+        tokio::time::advance(std::time::Duration::from_millis(300)).await;
+        let add = add
+            .await
+            .expect("idempotent add joins")
+            .expect("idempotent add reconciles");
+        assert_eq!(add.status, MutationStatus::Reconciled);
+        assert_eq!(
+            add_fixture
+                .transport
+                .operation_count("account.playlist.add.write")
+                .await,
+            1
+        );
+        assert_eq!(
+            add_fixture
+                .transport
+                .operation_count("account.playlist.add.reconcile")
+                .await,
+            1
+        );
+
+        let remove_fixture = AccountServiceFixture::authenticated([
+            owned_playlist_detail_with_title("Synthetic Owned Playlist"),
+            rejected(),
+            owned_playlist_detail_without_track_a(),
+        ])
+        .await;
+        let remove_service = Arc::clone(&remove_fixture.service);
+        let mut remove_request = playlist_track_request("playlist-remove-idempotent");
+        remove_request.track_id = "qqmusic:track:SANITIZED_TRACK_A".to_owned();
+        let remove =
+            tokio::spawn(async move { remove_service.remove_playlist_track(remove_request).await });
+        tokio::time::advance(std::time::Duration::from_millis(300)).await;
+        let remove = remove
+            .await
+            .expect("idempotent remove joins")
+            .expect("idempotent remove reconciles");
+        assert_eq!(remove.status, MutationStatus::Reconciled);
+        assert_eq!(
+            remove_fixture
+                .transport
+                .operation_count("account.playlist.remove.write")
+                .await,
+            1
+        );
+        assert_eq!(
+            remove_fixture
+                .transport
+                .operation_count("account.playlist.remove.reconcile")
+                .await,
+            1
         );
     }
 

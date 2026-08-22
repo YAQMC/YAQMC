@@ -1,7 +1,7 @@
 //! Row L: library lyric fetch/decrypt mapped through in-tree parsers (wire freeze).
 //!
-//! Under `qmapi` (non-test builds) `QQMusicClient::lyrics` calls library
-//! `get_lyric` then this mapper, and falls back to in-tree HTTP on failure.
+//! In non-test builds, `QQMusicClient::lyrics` calls library `get_lyric`
+//! directly and maps the result here.
 //! Library `lyric_parser` is not the wire document.
 
 use qqmusic_api::models::lyric::GetLyricResponse;
@@ -31,12 +31,29 @@ pub(crate) fn lyric_document_from_qmapi(
 }
 
 pub(crate) async fn fetch_lyric_document(mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
-    let client = qmapi_client().map_err(map_qmapi_error)?;
+    let client = qmapi_client().map_err(|error| {
+        let classification = map_qmapi_error(error);
+        tracing::warn!(
+            target: "qqmusic.lyric",
+            classification = classification.code(),
+            "library client construction failed"
+        );
+        classification
+    })?;
     let response = client
         .lyric
         .get_lyric(mid, 0, true, true, true, false)
         .await
-        .map_err(map_qmapi_error)?;
+        .map_err(|error| {
+            let classification = map_qmapi_error(error);
+            tracing::warn!(
+                target: "qqmusic.lyric",
+                mid,
+                classification = classification.code(),
+                "library get_lyric failed"
+            );
+            classification
+        })?;
     Ok(lyric_document_from_qmapi(mid, &response))
 }
 
@@ -84,8 +101,8 @@ mod tests {
             qrc_decrypt_matches_intree(LIBRARY_QRC_VECTOR),
             "QRC decrypt diverged; keep lyrics-crypto"
         );
-        // `QQMusicClient::lyrics` calls `fetch_lyric_document` when `qmapi` is on
-        // and this crate is not under `cfg(test)`, then falls back to in-tree HTTP.
+        // `QQMusicClient::lyrics` calls `fetch_lyric_document` directly when
+        // this crate is not under `cfg(test)`.
     }
 
     #[test]
