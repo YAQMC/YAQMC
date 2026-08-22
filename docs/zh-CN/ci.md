@@ -2,83 +2,67 @@
 
 > **简体中文** | [English](../ci.md)
 
-本文说明 YAQMC 的 GitHub Actions。它不能代替带 tag 的 GitHub Release。
+本文说明仅使用 Electron 的 GitHub Actions 流水线。Actions artifact 与草稿 Release 均未签名，且不能单独证明安装包已在目标硬件上启动。
 
 ## 工作流
 
-| 工作流   | 文件                          | 何时运行                            | 产出                                        |
-| -------- | ----------------------------- | ----------------------------------- | ------------------------------------------- |
-| CI       | `.github/workflows/ci.yml`    | pull request、推送 `main`、手动触发 | 质量门禁与未签名 Actions artifact           |
-| 桌面包   | `.github/workflows/build.yml` | `v*` tag 与手动触发                 | 生产配置安装包；仅 `v*` 会写 GitHub Release |
-| 项目网站 | `.github/workflows/pages.yml` | `main` 上文档/站点变更              | 仓库公开时的 GitHub Pages                   |
+| 工作流        | 文件                                     | 触发条件                            | 结果                                |
+| ------------- | ---------------------------------------- | ----------------------------------- | ----------------------------------- |
+| CI            | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact     |
+| Electron 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 生产配置安装包与草稿 GitHub Release |
 
-CI artifact **不是** GitHub Release，保留 **14 天**。打包成功不等于该架构已经在真机上跑过。
+已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
-## 事件与矩阵
+## 门禁与打包矩阵
 
-- **Pull request：** Prettier、ESLint、TypeScript、Vitest、文档、密钥扫描、Rust fmt/clippy/测试、一次前端生产构建，以及 Windows x86_64 与 Linux x86_64 安装包。
-- **推送 `main`：** 同样的质量门禁，外加完整 Windows/Linux 矩阵：Windows `x86_64` / `i686` / `aarch64`，Linux `x86_64` / `aarch64`。
-- **手动 `workflow_dispatch`：** 可选 `windows`、`linux` 或 `all`，以及 `ci` 或 `production` 优化配置。
+每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux 和 Windows 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查；核验无条件链接的私有 `qm-api-rs` 精确 git pin，显式执行提供器 readiness 与 provenance 门禁，并在 Linux/Windows 扫描密钥。`rust-quality` 与打包任务在存在 `QM_API_RS_TOKEN` 时可为 `github.com/YAQMC/qm-api-rs` 配置 git `insteadOf`（`CARGO_NET_GIT_FETCH_WITH_CLI=true`）；缺少 token 时不会配置重写，私有依赖无法获取则构建失败。
 
-过时的 pull request 运行会被取消。`main` 推送和手动打包中途不会被取消。
+- Pull request 打包 Windows x64 与 Linux x64。
+- 推送 `main` 打包 Windows x64/arm64 与 Linux x64/arm64。
+- 手动运行可选 `windows`、`linux` 或 `all`，以及 `ci` 或 `production` 优化配置。
+- Windows arm64 在 `windows-2025` 交叉编译；Linux arm64 使用 `ubuntu-22.04-arm`。
+- 不再构建或发布 Windows i686。
 
-## 前端复用
+过时的 pull request 运行会被取消；推送 `main`、tag 和手动打包不会中途取消。
 
-打包任务下载 `yaqmc-frontend-dist-<sha>`。`YAQMC_PREBUILT_FRONTEND=1` 时，`scripts/ci/tauri-before-build.mjs` 在核对 `dist/yaqmc-frontend-build.json` 与当前 commit 后跳过 Vite。本地 `tauri build` 仍会正常构建前端。
+## 构建与打包流程
 
-不要在操作系统之间上传 `node_modules`。
+`frontend-build` 上传 `yaqmc-frontend-dist-<sha>`。每个打包任务下载该精确产物，按目标三元组编译 `yaqmc-core`，暂存 Core 可执行文件，构建 Electron Main/预加载代码，再以禁止发布模式调用 electron-builder。
 
-## 原生编译
+Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
 
-每个目标先 `tauri build --no-bundle` 一次，校验 PE/ELF 架构，再 `tauri bundle`。Windows 产出 NSIS、MSI 和可执行文件的便携 ZIP。Linux 产出 AppImage、`.deb`、`.rpm` 以及动态链接的二进制 tar（不是静态便携包）。x86_64 AppImage 仍会做现有的 GDK 会话感知重打包。
+不要在任务间上传或复用 `node_modules`。
 
-暂存时只使用 `src-tauri/target/<triple>/release` 根目录下的 `yaqmc` / `yaqmc.exe`，再从旁边的 `bundle` 目录复制安装包，不会误捡 payload 里的同名二进制。Linux 打包会安装 `xdg-utils`，并设置 `APPIMAGE_EXTRACT_AND_RUN=1`，以便在缺少 `/usr/bin/xdg-open` 或 FUSE 的 ARM runner 上运行 linuxdeploy。
+## 优化与缓存
 
-## 优化配置
+常规 CI 包覆盖 release 配置，使用 ThinLTO 与八个 codegen unit：
 
-仓库里的 `[profile.release]` 仍是 Fat LTO（`lto = true`，`codegen-units = 1`），供本地 `tauri build` 和带 tag 的生产构建使用。
-
-常规 CI 打包设置：
-
-```
+```text
 CARGO_PROFILE_RELEASE_LTO=thin
 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8
 ```
 
-这仍是优化过的 release（关闭 debug assertion，`opt-level = "s"`），不是 debug 包。`build-info.json` 会记录 `profile`、`lto` 和 `codegenUnits`。手动选择 `production` 时使用仓库的 Fat LTO，并写进元数据。
+手动 `production` 与发布工作流使用 Fat LTO 和一个 codegen unit。每个打包
+artifact 都包含唯一的 `build-info-<os>-<arch>.json`，记录有效配置、LTO、
+codegen unit、Rust 目标、Node/Electron 版本与 Git 身份。Release 组装器在摊平
+资产前要求该 identity 与对应源码 commit 一致。
 
-本机 Windows x86_64 `--release` 编译（ThinLTO 使用独立 `CARGO_TARGET_DIR`）：
+Cargo 缓存按操作系统、Rust 目标、工具链类别、`Cargo.lock` 和配置类别分键。Pull request 可以恢复缓存，但只有 `main` 推送、tag 和手动运行会保存。恢复出的缓存是不可信输入，冷缓存构建仍必须成功。
 
-- Fat LTO / `codegen-units=1`：此前完整打包时原生编译约 3 分 47 秒，`yaqmc.exe` 约 12.1 MB。之后 `cargo clean --release` 因该可执行文件被占用而失败。
-- ThinLTO / `codegen-units=8`：141.7 秒，14.2 MB。这是 CI 打包的默认配置。
-- 关闭 LTO / `codegen-units=8`：107.4 秒，14.4 MB。编译更快，但本仓库未对比其运行时播放质量，因此 CI 仍使用 ThinLTO。
+## 产物与发布名
 
-## 缓存
+CI 从对应 `release-electron` 目录上传 `YAQMC-electron-<os>-<arch>-<sha>`，架构名使用 electron-builder 的 `x64` / `arm64`。
 
-Cargo 缓存按操作系统、目标三元组、工具链类别（打包用 `1.88`，质量检查用 `stable`）、`Cargo.lock` 和配置类别（`dev` / `ci-release` / `production`）分键。路径是 crates.io registry、git checkout 和 `src-tauri/target`。
+Linux x64 打包任务还会上传独立的扁平 artifact
+`YAQMC-linux-x64-tester-<sha>`，其中包含精确 AppImage、不可变 build
+identity、checksums、当前测试/验收说明、采集器和验证器。上传前 CI 会执行
+identity-only 校验；该测试包不会混入 Release 草稿资产。
 
-打包安装 Rust **1.88**。质量检查使用当前 stable 的 `rustfmt`/`clippy`，以便与本地 `cargo fmt` / `cargo clippy` 一致。
+发布工作流在打包前强制通过 pin、提供器 readiness 与 provenance 门禁。它检出私有依赖的精确 revision，生成绑定 revision 的 YAQMC 与 `qm-api-rs` 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，生成 `SHA256SUMS-electron.txt` 与 `RELEASE-NOTES-ELECTRON.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
 
-恢复出的缓存视为不可信输入。Pull request 和其他分支的推送可以恢复这些键，但不会写回。只有 `main` 推送和手动触发会保存。冷缓存必须仍能成功。
+## 构建通过与运行时验收
 
-要作废缓存，可改 `Cargo.lock` 或 `.github/actions/setup-packaging/action.yml` 里的键前缀。
-
-## 产物命名
-
-每个目标上传 `YAQMC-<os>-<arch>-<sha>`，内含带版本的文件、`build-info.json` 和 `SHA256SUMS-<os>-<arch>.txt`。架构名与现有发布约定一致：`x86_64`、`i686`、`aarch64`。
-
-## Runner
-
-- Windows x86_64 / i686：`windows-2025`
-- Windows aarch64：`windows-11-arm`（原生；不得把 x64 二进制标成 ARM）
-- Linux x86_64：`ubuntu-22.04`
-- Linux aarch64：`ubuntu-22.04-arm`
-
-ARM hosted runner 不可用时，该矩阵行应失败并给出 runner 错误，而不是静默发布错误架构。
-
-## 构建通过 vs 运行时验证
-
-CI 打包表示二进制已编译、架构检查通过、安装包已上传。这 **不** 表示已在该 OS/CPU 上启动过应用。本仓库维持运行时验证的桌面目标是 Windows x86_64。Linux 与 ARM 行在验收记录另有说明之前，只算打包检查。
+打包任务成功仅证明编译、安装包组装、元数据生成与上传完成；不证明启动、歌词悬浮窗、OAuth、keyring 连续性、媒体集成、更新器或各 OS/CPU 真机执行。后者必须有单独的硬件验收证据。
 
 ## 本地命令
 
@@ -86,6 +70,7 @@ CI 打包表示二进制已编译、架构检查通过、安装包已上传。�
 npm run ci:frontend-build
 npm run ci:test-scripts
 npm run ci:package-metadata
+npm run p14c:enforce
+npm run provenance:enforce
+npm run package -w @yaqmc/desktop -- --publish never
 ```
-
-未签名的 CI 产物不使用发行签名密钥。正式 tag 仍走 `.github/workflows/build.yml`。

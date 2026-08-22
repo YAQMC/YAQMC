@@ -2,8 +2,12 @@
 
 > [简体中文](zh-CN/platform-integration.md) | **English**
 
-All platform controls are thin adapters over the authoritative Rust `PlayerService`. Tauri commands, local HTTP,
+All platform controls are thin adapters over the authoritative Rust `PlayerService`. Electron IPC, local HTTP,
 tray actions, shortcuts, MPRIS and SMTC do not own independent queue or playback state.
+
+The native MPRIS/SMTC integration is Core-owned. Electron Main injects an opaque optional Win32 HWND and its Tokio
+runtime handle, and subscribes to the closed Core `HostCommand` bus before native callbacks are enabled. The Core
+dependency closure has no desktop-framework, renderer, raw-window-handle, provider, Node, Electron, or N-API edge.
 
 ## Linux MPRIS 2.2
 
@@ -13,21 +17,23 @@ Metadata contains a stable hashed D-Bus TrackId, title, artist list, album, dura
 playback URLs are never exported. CanGoNext/Previous/Play/Pause/Seek are projected from the real queue. Property
 changes are emitted by the server implementation, and an explicit player seek emits `Seeked` in microseconds.
 
-MPRIS `Raise` shows/focuses the main window and `Quit` exits. Media keys handled by the desktop environment reach
-the same service. The 2026-08-10 Arch/XWayland baseline proves that the MPRIS 2.2 service starts; no `playerctl` or
-desktop-shell command result was captured, so real controller acceptance remains pending.
+MPRIS `Raise` and `Quit` publish closed `HostCommand` values; the already-subscribed Electron host shows/focuses the
+main window or exits. Media keys handled by the desktop environment reach the same service. The 2026-08-10
+Arch/XWayland baseline proves that the MPRIS 2.2 service starts; no `playerctl` or desktop-shell command result was
+captured, so real controller acceptance remains a HUMAN/platform gate.
 
 ## Windows SMTC
 
-The Windows adapter binds System Media Transport Controls to the real main HWND. Play/pause/toggle/next/previous,
-stop, relative seek, absolute position and volume callbacks invoke `PlayerService`. Track metadata, duration,
-artwork, playback state and position are projected back to Windows. Position projection is throttled to avoid a
-high-frequency system signal stream.
+The Windows adapter receives the real main HWND as an opaque numeric host input. Play/pause/toggle/next/previous,
+stop, relative seek, absolute position and volume callbacks use the injected Tokio runtime handle to invoke
+`PlayerService`; `Raise`/`Quit` publish the same closed host commands as MPRIS. Track metadata, duration, artwork,
+playback state and position are projected back to Windows. Position projection remains throttled to avoid a
+high-frequency system signal stream. Actual SMTC hardware interaction remains a HUMAN/platform gate.
 
 ## Tray and close behavior
 
-The tray context menu provides Show, Play/Pause, Previous, Next, **Unlock lyric surfaces**, and Quit. Linux relies
-on the context menu because Tauri does not provide Linux tray click events. Windows double-click shows the window.
+The tray context menu provides Show, Play/Pause, Previous, Next, **Unlock lyric surfaces**, and Quit. Linux uses the
+context menu as the portable activation path. Windows double-click shows the window.
 
 Closing the main window defaults to hide-to-tray; Settings can switch to full quit. Auxiliary lyric windows keep
 their own close lifecycle. Locking an overlay makes its content window intentionally click-through while a tiny,

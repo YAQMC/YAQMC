@@ -11,15 +11,15 @@
 - [ ] `npm run docs:check`
 - [ ] `npm run format:check`
 - [ ] `npm run check`
-- [ ] `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`
-- [ ] `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
-- [ ] `cargo test --manifest-path src-tauri/Cargo.toml --all-targets`
+- [ ] `cargo fmt --all -- --check`
+- [ ] `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- [ ] `cargo test --workspace --all-targets --locked`
 - [ ] 行为变化有回归测试；界面变化有截图/无障碍检查（如适用）
 
 ## 安全与隐私
 
 - [ ] 未提交 Cookie、OAuth code、token、vkey/ekey、签名 URL、真实账号资料或原始诊断包
-- [ ] 未扩大 OAuth/歌词 WebView/Tauri capability 权限
+- [ ] 未扩大 OAuth/歌词窗口/preload IPC 权限或放宽 Electron 安全配置
 - [ ] 未实现会员、地区、版权、DRM 或 VMP 绕过
 
 ## 文档与发布影响

@@ -1,5 +1,5 @@
-import { isTauri } from '@tauri-apps/api/core';
 import { useEffect, useRef, useState } from 'react';
+import { isNativeRuntime } from './native-player-runtime';
 import {
   cachedArtworkSource,
   isCacheableArtworkSource,
@@ -49,8 +49,12 @@ interface ResolvedArtwork {
   source: string;
 }
 
-export function useSafeArtworkSource(source: string | null | undefined): string | null {
-  const native = isTauri();
+export function useSafeArtworkSource(
+  source: string | null | undefined,
+  options?: { pendingRemote?: 'allow' | 'hide' },
+): string | null {
+  const native = isNativeRuntime;
+  const hidePendingRemote = options?.pendingRemote === 'hide';
   const candidate = source?.trim() || null;
   const currentOrigin = globalThis.location?.origin ?? '';
   const classification = candidate ? classifyArtworkSource(candidate, currentOrigin) : null;
@@ -79,5 +83,6 @@ export function useSafeArtworkSource(source: string | null | undefined): string 
   if (!native) return candidate;
   if (classification?.kind === 'direct') return classification.source;
   if (cacheRequest && resolved?.requested === cacheRequest) return resolved.source;
+  if (classification?.kind === 'cache') return hidePendingRemote ? null : classification.source;
   return null;
 }

@@ -20,9 +20,9 @@ YAQMC 不渲染密码框、不读取腾讯页面中输入的凭据、不导入�
 当前规范化能力包括歌曲/专辑搜索、专辑详情、访客歌单、榜单、QRC/LRC、清晰 vkey、账号授权 EVkey、
 封面缓存；账号扩展包括 OAuth、资料、收藏、自建/收藏歌单、条件性最近播放、权益和播放 vkey。
 
-QQ 和微信登录在受限制无痕 WebView 打开 `graph.qq.com` 或 `open.weixin.qq.com`，只接受注册的
+QQ 和微信登录在受限制无痕 Electron `BrowserWindow` 打开 `graph.qq.com` 或 `open.weixin.qq.com`，只接受注册的
 `y.qq.com/portal/wx_redirect.html` 回调。Rust 校验 provider 类型、return URL、唯一 CSRF state 和 code，
-再交换会话。OAuth WebView 无账号命令权限、拒绝 popup，也不读取 cookie/password。手机号登录和浏览器
+再交换会话。OAuth 窗口无账号命令权限、拒绝 popup，也不读取 cookie/password。手机号登录和浏览器
 会话导入不支持。
 
 账号 transport 只允许精确审核的腾讯 HTTPS host，禁系统代理和自动重定向，响应 `Set-Cookie` 按秘密处理。

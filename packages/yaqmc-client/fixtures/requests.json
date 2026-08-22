@@ -1,0 +1,163 @@
+{
+  "auth_oauth_cancel": {
+    "id": 14,
+    "kind": "request",
+    "method": "auth_oauth_cancel",
+    "params": {
+      "attemptId": "attempt-0"
+    }
+  },
+  "auth_oauth_complete": {
+    "id": 13,
+    "kind": "request",
+    "method": "auth_oauth_complete",
+    "params": {
+      "attemptId": "attempt-0",
+      "callbackUrl": "https://example.invalid/callback"
+    }
+  },
+  "auth_oauth_prepare": {
+    "id": 12,
+    "kind": "request",
+    "method": "auth_oauth_prepare",
+    "params": {
+      "providerKind": "qq"
+    }
+  },
+  "core_ping": {
+    "id": 9,
+    "kind": "request",
+    "method": "core_ping"
+  },
+  "core_shutdown_prepare": {
+    "id": 11,
+    "kind": "request",
+    "method": "core_shutdown_prepare"
+  },
+  "diagnostics_export_bundle_to": {
+    "id": 15,
+    "kind": "request",
+    "method": "diagnostics_export_bundle_to",
+    "params": {
+      "path": "/tmp/YAQMC-diagnostics.zip",
+      "request": {
+        "includeLogs": true
+      }
+    }
+  },
+  "platform_attach": {
+    "id": 10,
+    "kind": "request",
+    "method": "platform_attach",
+    "params": {
+      "mainWindowHandle": "0000000000123456",
+      "platformKind": "windows"
+    }
+  },
+  "player_next": {
+    "id": 4,
+    "kind": "request",
+    "method": "player_next"
+  },
+  "player_play": {
+    "id": 2,
+    "kind": "request",
+    "method": "player_play"
+  },
+  "player_play_queue_entry": {
+    "id": 8,
+    "kind": "request",
+    "method": "player_play_queue_entry",
+    "params": {
+      "entryId": "entry-0"
+    }
+  },
+  "player_play_tracks": {
+    "id": 5,
+    "kind": "request",
+    "method": "player_play_tracks",
+    "params": {
+      "request": {
+        "shuffle": false,
+        "tracks": [
+          {
+            "album": {
+              "id": "album",
+              "title": "Album"
+            },
+            "artists": [
+              {
+                "id": "artist",
+                "name": "Artist"
+              }
+            ],
+            "artwork": {
+              "alt": "Cover",
+              "dominantColor": "#000000",
+              "src": "/cover.svg"
+            },
+            "availability": {
+              "status": "available"
+            },
+            "durationMs": 10000,
+            "id": "track-0",
+            "isFavorite": false,
+            "quality": "lossless",
+            "title": "track-0",
+            "trackNumber": 1
+          }
+        ]
+      }
+    }
+  },
+  "player_remove_queue_entry": {
+    "id": 7,
+    "kind": "request",
+    "method": "player_remove_queue_entry",
+    "params": {
+      "entryId": "entry-1"
+    }
+  },
+  "player_reorder_queue_entry": {
+    "id": 6,
+    "kind": "request",
+    "method": "player_reorder_queue_entry",
+    "params": {
+      "entryId": "entry-0",
+      "targetIndex": 0
+    }
+  },
+  "player_seek": {
+    "id": 3,
+    "kind": "request",
+    "method": "player_seek",
+    "params": {
+      "positionMs": 4800
+    }
+  },
+  "player_snapshot": {
+    "id": 1,
+    "kind": "request",
+    "method": "player_snapshot"
+  },
+  "plugin_install_from": {
+    "id": 17,
+    "kind": "request",
+    "method": "plugin_install_from",
+    "params": {
+      "request": {
+        "enable": false,
+        "grant": [],
+        "path": "/tmp/plugin.yaqmc-plugin"
+      }
+    }
+  },
+  "preferences_set_background_from": {
+    "id": 16,
+    "kind": "request",
+    "method": "preferences_set_background_from",
+    "params": {
+      "path": "/tmp/background.png"
+    }
+  }
+}

@@ -63,10 +63,10 @@ $commands = @(
   @{ Id = 'typecheck'; Display = 'npm run typecheck' },
   @{ Id = 'frontend-tests'; Display = 'npm test' },
   @{ Id = 'vite-build'; Display = 'npm run build' },
-  @{ Id = 'rustfmt'; Display = 'cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check' },
-  @{ Id = 'clippy'; Display = 'cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings' },
-  @{ Id = 'rust-tests'; Display = 'cargo test --manifest-path src-tauri/Cargo.toml --all-targets' },
-  @{ Id = 'local-release-binary'; Display = 'npm run tauri -- build --no-bundle' }
+  @{ Id = 'rustfmt'; Display = 'cargo fmt --all -- --check' },
+  @{ Id = 'clippy'; Display = 'cargo clippy --workspace --all-targets --locked -- -D warnings' },
+  @{ Id = 'rust-tests'; Display = 'cargo test --workspace --all-targets --locked' },
+  @{ Id = 'desktop-build'; Display = 'npm run build -w @yaqmc/desktop' }
 )
 
 # This fail-closed check documents and enforces that deterministic preflight never

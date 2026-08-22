@@ -1,11 +1,12 @@
 import { Check, Heart, Pause, Play } from 'lucide-react';
-import { useContext } from 'react';
+import { useContext, useRef } from 'react';
 import { useFavoriteState, useAccountStore } from '../application/account-runtime';
 import { usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import type { Song } from '../domain/music';
 import { isAccountMusicProvider } from '../providers/music-provider';
 import { formatDuration, joinArtistNames } from '../utils/format';
+import { useAddToPlaylistPicker } from './AddToPlaylistPicker';
 import { IconButton } from './ui/IconButton';
 import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import type { ContextMenuItem } from './ui/ContextMenu';
@@ -86,6 +87,8 @@ function TrackRow({
   const playTracks = usePlayerStore((state) => state.playTracks);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const addToQueue = usePlayerStore((state) => state.addToQueue);
+  const addToPlaylist = useAddToPlaylistPicker(track);
+  const actionsRef = useRef<HTMLSpanElement>(null);
   const { favorite, pending } = useFavoriteState(track.id, track.isFavorite);
   const playbackAction = active && isPlaying ? common('pause') : common('play');
   const favoriteLabel = pending
@@ -107,9 +110,22 @@ function TrackRow({
     }
     playTracks(tracks, track.id);
   };
+  const openAddToPlaylist = () => {
+    const bounds = actionsRef.current?.getBoundingClientRect();
+    addToPlaylist.openAt({
+      x: bounds ? Math.min(bounds.right, window.innerWidth - 16) : 24,
+      y: bounds ? bounds.bottom + 6 : 24,
+    });
+  };
   const contextItems: readonly ContextMenuItem[] = [
     { id: 'play', label: playbackAction, action: activateTrack },
     { id: 'queue', label: t('addToQueue'), action: () => addToQueue(track) },
+    {
+      id: 'add-to-playlist',
+      label: addToPlaylist.label,
+      disabled: !addToPlaylist.available,
+      action: openAddToPlaylist,
+    },
     {
       id: 'favorite',
       label: favoriteLabel,
@@ -177,7 +193,7 @@ function TrackRow({
       <span className="track-list__duration" role="cell">
         {formatDuration(track.durationMs)}
       </span>
-      <span className="track-list__actions track-row__actions" role="cell">
+      <span className="track-list__actions track-row__actions" role="cell" ref={actionsRef}>
         <IconButton
           label={favoriteLabel}
           size="small"
@@ -196,9 +212,13 @@ function TrackRow({
         </IconButton>
         <ActionMenu label={t('moreActions', { title: track.title })} size="small">
           <ActionMenuItem onClick={() => addToQueue(track)}>{t('addToQueue')}</ActionMenuItem>
+          <ActionMenuItem disabled={!addToPlaylist.available} onClick={openAddToPlaylist}>
+            {addToPlaylist.label}
+          </ActionMenuItem>
         </ActionMenu>
       </span>
       {contextMenu.menu}
+      {addToPlaylist.menu}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 > **简体中文** | [English](../playback.md)
 
-`src-tauri/src/player.rs` 中的 `PlayerService` 是桌面播放唯一事实源，负责队列、当前曲目、真实引擎
+`crates/yaqmc-core/src/player.rs` 中的 `PlayerService` 是桌面播放唯一事实源，负责队列、当前曲目、真实引擎
 进度/时长、播放状态、循环与随机模式、音量、歌词以及结构化错误。
 
 ## 原生音频引擎

@@ -2,7 +2,7 @@
 
 > [简体中文](zh-CN/playback.md) | **English**
 
-`PlayerService` in `src-tauri/src/player.rs` is the authoritative desktop player. It owns the queue, selected
+`PlayerService` in `crates/yaqmc-core/src/player.rs` is the authoritative desktop player. It owns the queue, selected
 track, actual engine position and duration, lifecycle state, repeat/shuffle semantics, volume/mute, current lyrics,
 and structured playback failure.
 
@@ -124,4 +124,5 @@ continues to expose player operations only and never account/session data.
 - queue, selected index, playback state, position, volume, mute, repeat, shuffle, and error state are restored from
   SQLite. A restored track remains paused until explicitly resumed.
 
-Tauri commands, synchronized lyrics, the React projection, and the loopback HTTP API all use this contract.
+Core protocol methods, the Electron renderer bridge, synchronized lyrics, the React projection, and the loopback
+HTTP API all use this contract.

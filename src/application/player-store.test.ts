@@ -4,6 +4,7 @@ import type { AccountMusicProvider } from '../providers/music-provider';
 import { resetAccountRuntimeForTest, useAccountStore } from './account-runtime';
 import { setPlayerCommandAdapter } from './player-command-adapter';
 import {
+  getEstimatedPositionMs,
   initialPlayerState,
   usePlayerStore,
   type AuthoritativePlayerSnapshot,
@@ -460,6 +461,33 @@ describe('player store', () => {
     expect(usePlayerStore.getState().timelineRevision).toBe(12);
   });
 
+  it('reuses queue object identity across position-only snapshots', () => {
+    const songs = [track('one'), track('two')];
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: songs,
+      currentIndex: 0,
+      positionMs: 1_000,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+      sessionId: 3,
+      snapshotRevision: 1,
+    });
+    const before = usePlayerStore.getState().queue;
+    usePlayerStore.getState().applyExternalSnapshot(
+      snapshot({
+        queue: [track('one'), track('two')],
+        positionMs: 1_250,
+        sessionId: 3,
+        snapshotRevision: 2,
+      }),
+    );
+    const after = usePlayerStore.getState();
+    expect(after.queue).toBe(before);
+    expect(after.positionMs).toBe(1_250);
+  });
+
   it.each([
     {
       label: 'seek',
@@ -595,6 +623,20 @@ describe('player store', () => {
     expect(usePlayerStore.getState().queue[1]?.id).toBe('two');
   });
 
+  it('keeps preview scrub local without broadcasting positionMs', () => {
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(snapshot({ sessionId: 3, snapshotRevision: 1, positionMs: 1_000 }));
+    usePlayerStore.getState().beginScrub();
+    usePlayerStore.getState().previewScrub(4_000);
+    expect(usePlayerStore.getState()).toMatchObject({
+      isScrubbing: true,
+      positionMs: 1_000,
+      scrubPosition: 4_000,
+    });
+    expect(getEstimatedPositionMs()).toBe(4_000);
+  });
+
   it('keeps the scrub thumb stable while native position events arrive', () => {
     usePlayerStore
       .getState()
@@ -607,7 +649,9 @@ describe('player store', () => {
         snapshot({ sessionId: 3, snapshotRevision: 1, positionMs: 1_250, lastSeekRevision: 0 }),
       );
     expect(usePlayerStore.getState().isScrubbing).toBe(true);
-    expect(usePlayerStore.getState().positionMs).toBe(4_000);
+    expect(usePlayerStore.getState().positionMs).toBe(1_000);
+    expect(usePlayerStore.getState().scrubPosition).toBe(4_000);
+    expect(getEstimatedPositionMs()).toBe(4_000);
     usePlayerStore.getState().commitScrub(4_000);
     usePlayerStore
       .getState()
@@ -616,5 +660,52 @@ describe('player store', () => {
       );
     expect(usePlayerStore.getState().isScrubbing).toBe(false);
     expect(usePlayerStore.getState().positionMs).toBe(4_000);
+  });
+
+  it('keeps optimistic volume while stale native snapshots arrive', () => {
+    setPlayerCommandAdapter(async () => {});
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(snapshot({ sessionId: 3, snapshotRevision: 1, volume: 0.72 }));
+    usePlayerStore.getState().setVolume(0.2);
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    expect(usePlayerStore.getState().isMuted).toBe(false);
+    expect(usePlayerStore.getState().isVolumeScrubbing).toBe(true);
+
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(
+        snapshot({ sessionId: 3, snapshotRevision: 2, volume: 0.72, isMuted: false }),
+      );
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    expect(usePlayerStore.getState().isVolumeScrubbing).toBe(true);
+
+    usePlayerStore
+      .getState()
+      .applyExternalSnapshot(
+        snapshot({ sessionId: 3, snapshotRevision: 3, volume: 0.2, isMuted: false }),
+      );
+    expect(usePlayerStore.getState().volume).toBe(0.2);
+    expect(usePlayerStore.getState().isVolumeScrubbing).toBe(false);
+  });
+
+  it('estimates playing position from a fresh Core sample timestamp instead of arrival time', () => {
+    const nowUnix = Date.now();
+    const observedAtMs = performance.now();
+    usePlayerStore.setState({
+      ...initialPlayerState,
+      queue: [track('one')],
+      currentIndex: 0,
+      positionMs: 1_000,
+      isPlaying: true,
+      playbackState: 'playing',
+      playbackDurationMs: 10_000,
+      observedAtMs,
+      sampledAtMs: nowUnix - 400,
+    });
+    expect(getEstimatedPositionMs(observedAtMs, nowUnix)).toBe(1_400);
+
+    usePlayerStore.setState({ sampledAtMs: nowUnix - 5_000 });
+    expect(getEstimatedPositionMs(observedAtMs, nowUnix)).toBe(1_000);
   });
 });

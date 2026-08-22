@@ -33,7 +33,7 @@ Cover layouts persist through the lyric preferences and as the selected [lyrics 
 
 The blurred background for Classic and Vinyl is produced once per artwork by an offscreen canvas
 using `stackblur-canvas`, then shown at full opacity behind a dark wash—the same cover fill used
-before the composer. Live CSS `filter: blur()` is avoided because WebKitGTK can rasterize large
+before the composer. Live CSS `filter: blur()` is avoided because large compositor-backed blur layers can rasterize
 blurred layers as black. Immersive factory blur is 0 so the raw cover fills the stage. Appearance
 color/image modes still override that fill.
 
@@ -79,7 +79,7 @@ Lyrics has three presentation layers over one renderer:
 
 - Normal keeps application navigation and PlayerBar visible.
 - Focus collapses navigation and expands both Lyrics and PlayerBar across the viewport.
-- Native fullscreen asks the main Tauri window to enter OS fullscreen and mounts the centered transport.
+- Native fullscreen asks Electron Main to call `BrowserWindow.setFullScreen` and mounts the centered transport.
 
 The request path is asynchronous and recoverable. Lyrics remains visible while a native transition is pending or
 when it fails, so the user can retry or exit. UI buttons and F11 use the same serialized native request boundary.

@@ -1,8 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useState } from 'react';
 import type { AudioQualityPreference, CatalogProviderCapabilities } from '../domain/music';
 import { clearArtworkMemoryCache } from './artwork-cache';
 import { isNativeRuntime } from './native-player-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
 
 export interface ProviderStatus {
   providerId: string;
@@ -59,10 +59,11 @@ export function useProviderSettings() {
     if (!isNativeRuntime) return;
     setError(null);
     try {
+      const client = getYaqmcClient();
       const [nextStatus, nextCache, nextDevices] = await Promise.all([
-        invoke<ProviderStatus>('qqmusic_status'),
-        invoke<CacheStats>('qqmusic_cache_stats'),
-        invoke<AudioOutputDevice[]>('audio_output_devices'),
+        client.invoke('qqmusic_status'),
+        client.invoke('qqmusic_cache_stats'),
+        client.invoke('audio_output_devices'),
       ]);
       setStatus(nextStatus);
       setCache(nextCache);
@@ -75,10 +76,11 @@ export function useProviderSettings() {
   useEffect(() => {
     if (!isNativeRuntime) return;
     let active = true;
+    const client = getYaqmcClient();
     void Promise.all([
-      invoke<ProviderStatus>('qqmusic_status'),
-      invoke<CacheStats>('qqmusic_cache_stats'),
-      invoke<AudioOutputDevice[]>('audio_output_devices'),
+      client.invoke('qqmusic_status'),
+      client.invoke('qqmusic_cache_stats'),
+      client.invoke('audio_output_devices'),
     ])
       .then(([nextStatus, nextCache, nextDevices]) => {
         if (!active) return;
@@ -98,7 +100,7 @@ export function useProviderSettings() {
     setBusy(true);
     setError(null);
     try {
-      setStatus(await invoke<ProviderStatus>('qqmusic_set_preferred_quality', { quality }));
+      setStatus(await getYaqmcClient().invoke('qqmusic_set_preferred_quality', { quality }));
     } catch (caught) {
       setError(message(caught));
     } finally {
@@ -110,7 +112,7 @@ export function useProviderSettings() {
     setBusy(true);
     setError(null);
     try {
-      setDevices(await invoke<AudioOutputDevice[]>('audio_set_output_device', { deviceId }));
+      setDevices(await getYaqmcClient().invoke('audio_set_output_device', { deviceId }));
     } catch (caught) {
       setError(message(caught));
     } finally {
@@ -122,7 +124,7 @@ export function useProviderSettings() {
     setBusy(true);
     setError(null);
     try {
-      setCache(await invoke<CacheStats>('qqmusic_clear_cache'));
+      setCache(await getYaqmcClient().invoke('qqmusic_clear_cache'));
       clearArtworkMemoryCache();
     } catch (caught) {
       setError(message(caught));

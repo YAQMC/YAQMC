@@ -30,6 +30,7 @@
   overflow: hidden;
   background: var(--bg-opaque);
   pointer-events: none;
+  contain: paint;
 }
 
 :root[data-material='translucent'] .app-background[data-mode='default'] {
@@ -57,6 +58,10 @@
 .app-background[data-mode='artwork'] .app-background__image {
   filter: blur(30px) saturate(0.84);
   transform: scale(1.04);
+}
+
+.app-background[data-mode='artwork'] .app-background__image[data-preblurred] {
+  filter: saturate(0.84);
 }
 
 .app-background[data-mode='image'][data-fit='contain'] .app-background__image {

@@ -24,7 +24,7 @@ QQ QRC / LRC / 假数据文档
 [歌词预设](lyrics-presets.md)保存。
 
 经典 / 黑胶的模糊背景仍用离屏 canvas（`stackblur-canvas`）生成静态模糊图，**铺满舞台且不降低透明度**，
-和加入编排器之前一样。刻意避开实时 CSS `filter: blur()`，因为 WebKitGTK 会把大尺寸模糊层栅格化成黑色。
+和加入编排器之前一样。刻意避开实时 CSS `filter: blur()`，因为大尺寸合成模糊层可能栅格化成黑块。
 沉浸工厂图的 blur 为 0，直接用原始封面铺底。外观里的纯色 / 自定义图片仍会覆盖这层封面。
 
 行强调使用封面感知墨色：控件、进度、逐字填充与已唱文字用纯墨色，当前行取封面色与墨色混合。主字号为
@@ -51,7 +51,7 @@ React 不在每次音频轮询时重排整份歌词。原生服务按真实位�
 
 - Normal：保留导航和 PlayerBar；
 - Focus：收起导航，歌词与 PlayerBar 占完整宽度；
-- 原生全屏：请求主 Tauri 窗口进入 OS fullscreen，使用居中 transport。
+- 原生全屏：请求 Electron Main 调用 `BrowserWindow.setFullScreen`，使用居中 transport。
 
 全屏请求异步串行且可恢复；pending/失败时歌词界面仍然可见。按钮和 F11 使用同一边界。Escape 逐层退出
 原生全屏、Focus、Lyrics。外部原生全屏变化由窗口事件协调，旧 snapshot 不能覆盖新状态。

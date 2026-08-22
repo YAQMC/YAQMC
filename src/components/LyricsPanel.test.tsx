@@ -6,6 +6,7 @@ import { resetLyricsArtworkFallbackForTests } from '../application/lyrics-artwor
 import { useLyricsStore } from '../application/lyrics-store';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
+import { resetLyricsStageForTests, useLyricsStageStore } from '../application/lyrics-stage-machine';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import {
   applyOverride,
@@ -26,9 +27,22 @@ const nativeArtworkMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: nativeArtworkMocks.invoke,
-  isTauri: () => true,
+vi.mock('../application/yaqmc-runtime', () => ({
+  getHostBridge: () => ({ kind: 'electron' }),
+  getYaqmcClient: () => ({
+    invoke: nativeArtworkMocks.invoke,
+    on: () => () => undefined,
+    bridge: { kind: 'electron' },
+    host: {
+      window: {
+        minimize: async () => undefined,
+        toggleMaximize: async () => undefined,
+        close: async () => undefined,
+        setFullscreen: async () => undefined,
+      },
+      shell: { openExternal: async () => undefined },
+    },
+  }),
 }));
 
 const safeArtwork = 'data:image/png;base64,AA==';
@@ -91,11 +105,6 @@ describe('LyricsPanel', () => {
   let previousPlatform: string | null;
   let previousGraphicsMode: string | null;
 
-  const setDocumentHidden = (hidden: boolean) => {
-    documentHidden = hidden;
-    document.dispatchEvent(new Event('visibilitychange'));
-  };
-
   const setReducedMotion = (matches: boolean) => {
     reducedMotion = matches;
     const event = { matches } as MediaQueryListEvent;
@@ -104,6 +113,7 @@ describe('LyricsPanel', () => {
 
   afterEach(() => {
     cleanup();
+    resetLyricsStageForTests();
     vi.clearAllTimers();
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -143,6 +153,7 @@ describe('LyricsPanel', () => {
   });
 
   beforeEach(() => {
+    resetLyricsStageForTests();
     resetLyricsArtworkFallbackForTests();
     nativeArtworkMocks.invoke.mockReset();
     nativeArtworkMocks.invoke.mockResolvedValue(safeArtwork);
@@ -237,6 +248,193 @@ describe('LyricsPanel', () => {
       expect(usePlayerStore.getState().positionMs).toBe(18_000);
     },
   );
+
+  it('enters the lyrics stage with a transform-only compositor animation', () => {
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    expect(stage).not.toBeNull();
+
+    let fromCss = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSKeyframesRule && rule.name === 'lyrics-stage-enter') {
+          fromCss = Array.from(rule.cssRules)
+            .map((keyframe) => keyframe.cssText)
+            .join(' ');
+        }
+      }
+    }
+    expect(fromCss).not.toBe('');
+    expect(fromCss).toMatch(/transform/);
+    expect(fromCss).not.toMatch(/opacity/);
+    expect(stage).toHaveAttribute('data-stage', 'entering');
+
+    act(() => {
+      const event = new Event('animationend');
+      Object.defineProperty(event, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(event);
+    });
+    expect(stage).toHaveAttribute('data-stage', 'open');
+    expect(useLyricsStageStore.getState().stage).toBe('open');
+  });
+
+  it('skips the lyrics enter animation when reduced motion is requested', () => {
+    reducedMotion = true;
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-stage', 'open');
+  });
+
+  it('exits the lyrics stage with the inverse transform-only compositor animation', () => {
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    expect(stage).not.toBeNull();
+
+    act(() => {
+      const enter = new Event('animationend');
+      Object.defineProperty(enter, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(enter);
+    });
+    expect(stage).toHaveAttribute('data-stage', 'open');
+
+    let exitCss = '';
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSKeyframesRule && rule.name === 'lyrics-stage-exit') {
+          exitCss = Array.from(rule.cssRules)
+            .map((keyframe) => keyframe.cssText)
+            .join(' ');
+        }
+      }
+    }
+    expect(exitCss).not.toBe('');
+    expect(exitCss).toMatch(/transform/);
+    expect(exitCss).toMatch(/translateY\(100%\)/);
+    expect(exitCss).not.toMatch(/opacity/);
+
+    act(() => {
+      usePlayerStore.getState().closePanels();
+    });
+    const exiting = container.querySelector('.lyrics-stage');
+    expect(exiting).toHaveAttribute('data-stage', 'exiting');
+
+    act(() => {
+      const exit = new Event('animationend');
+      Object.defineProperty(exit, 'animationName', { value: 'lyrics-stage-exit' });
+      exiting?.dispatchEvent(exit);
+    });
+    expect(container.querySelector('.lyrics-stage')).toBeNull();
+    expect(useLyricsStageStore.getState().stage).toBe('closed');
+  });
+
+  it('ignores a stale enter animationend after close has started exiting', () => {
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    const stage = container.querySelector('.lyrics-stage');
+    act(() => {
+      const enter = new Event('animationend');
+      Object.defineProperty(enter, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(enter);
+    });
+
+    act(() => {
+      usePlayerStore.getState().closePanels();
+    });
+    const exiting = container.querySelector('.lyrics-stage');
+    expect(exiting).toHaveAttribute('data-stage', 'exiting');
+    const exitGeneration = useLyricsStageStore.getState().generation;
+
+    act(() => {
+      const staleEnter = new Event('animationend');
+      Object.defineProperty(staleEnter, 'animationName', { value: 'lyrics-stage-enter' });
+      exiting?.dispatchEvent(staleEnter);
+    });
+
+    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-stage', 'exiting');
+    expect(useLyricsStageStore.getState()).toMatchObject({
+      stage: 'exiting',
+      generation: exitGeneration,
+    });
+  });
+
+  it('seeks a preview lyric line on the same file clock Core reports', () => {
+    const song = allSongs.find((candidate) => candidate.id === 'quiet-light');
+    if (!song) throw new Error('quiet-light fixture is missing');
+    usePlayerStore.setState({
+      queue: [
+        {
+          ...song,
+          durationMs: 193_000,
+          playbackCapability: { status: 'preview', startMs: 32_155, endMs: 66_974 },
+        },
+      ],
+      positionMs: 4_360,
+      playbackDurationMs: 60_000,
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        fallbackReason: 'preview-only',
+        preview: true,
+      },
+    });
+
+    render(<LyricsPanel {...presentationProps()} />);
+    expect(screen.getByRole('slider', { name: 'Playback position' })).toHaveValue('4360');
+    expect(screen.getByText('1:00')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /A quiet light across the floor/i }));
+
+    expect(usePlayerStore.getState().positionMs).toBe(18_000);
+  });
+
+  it('highlights lyrics from Core position without a try_begin shift', async () => {
+    const song = allSongs.find((candidate) => candidate.id === 'quiet-light');
+    if (!song) throw new Error('quiet-light fixture is missing');
+    usePlayerStore.setState({
+      queue: [
+        {
+          ...song,
+          durationMs: 193_000,
+          playbackCapability: { status: 'preview', startMs: 32_155, endMs: 66_974 },
+        },
+      ],
+      positionMs: 4_360,
+      playbackDurationMs: 60_000,
+      observedAtMs: performance.now(),
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        fallbackReason: 'preview-only',
+        preview: true,
+      },
+    });
+    useLyricsStore.setState({
+      songId: song.id,
+      status: 'ready',
+      document: lyricsBySong[song.id] ?? null,
+      error: null,
+    });
+
+    render(<LyricsPanel {...presentationProps()} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /The room keeps the shape of the evening/i }),
+      ).toHaveAttribute('aria-current', 'true'),
+    );
+    expect(
+      screen.getByRole('button', { name: /Nothing asks to be remembered/i }),
+    ).not.toHaveAttribute('aria-current');
+  });
 
   it('renders word timing as text rather than preformatted provider HTML', () => {
     render(<LyricsPanel {...presentationProps()} />);
@@ -471,31 +669,51 @@ describe('LyricsPanel', () => {
     },
   );
 
-  it.each([
-    { label: 'paused', hidden: false, isPlaying: false },
-    { label: 'hidden', hidden: true, isPlaying: true },
-  ])('retains no cursor timer or cursor frame while $label', ({ hidden, isPlaying }) => {
+  it('retains no cursor timer or cursor frame while paused', () => {
     vi.useFakeTimers();
     const requestFrame = vi.spyOn(window, 'requestAnimationFrame');
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
-    documentHidden = hidden;
     usePlayerStore.setState({
       positionMs: 1_100,
       observedAtMs: performance.now(),
-      isPlaying,
-      playbackState: isPlaying ? 'playing' : 'paused',
+      isPlaying: false,
+      playbackState: 'paused',
     });
     useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
 
-    render(<LyricsPanel {...presentationProps()} />);
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    act(() => {
+      const stage = container.querySelector('.lyrics-stage');
+      const event = new Event('animationend');
+      Object.defineProperty(event, 'animationName', { value: 'lyrics-stage-enter' });
+      stage?.dispatchEvent(event);
+    });
+    setTimeoutSpy.mockClear();
+    requestFrame.mockClear();
 
     expect(setTimeoutSpy.mock.calls.filter((call) => (call[1] as number) <= 600)).toHaveLength(0);
     expect(requestFrame).not.toHaveBeenCalled();
   });
 
-  it('corrects the cursor immediately on visibility restore and schedules one fresh timeout', () => {
+  it('keeps the lyric cursor timer while the document is hidden (PLAY-03)', () => {
     vi.useFakeTimers();
     const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+    documentHidden = true;
+    usePlayerStore.setState({
+      positionMs: 1_100,
+      observedAtMs: performance.now(),
+      isPlaying: true,
+      playbackState: 'playing',
+    });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+
+    render(<LyricsPanel {...presentationProps()} />);
+
+    expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 500)).toHaveLength(1);
+  });
+
+  it('moves the cursor on seek while hidden without waiting for visibility restore', () => {
+    vi.useFakeTimers();
     documentHidden = true;
     usePlayerStore.setState({
       positionMs: 1_100,
@@ -507,13 +725,11 @@ describe('LyricsPanel', () => {
     render(<LyricsPanel {...presentationProps()} />);
 
     act(() => usePlayerStore.getState().seek(5_500));
-    act(() => setDocumentHidden(false));
 
     expect(screen.getByRole('button', { name: 'Second line' })).toHaveAttribute(
       'aria-current',
       'true',
     );
-    expect(setTimeoutSpy.mock.calls.filter((call) => (call[1] as number) <= 600)).toHaveLength(1);
   });
 
   it('wakes a paused cursor immediately when timeline revision changes', () => {
@@ -635,7 +851,7 @@ describe('LyricsPanel', () => {
     expect(frames.size).toBe(0);
   });
 
-  it('does not write current-word progress or retain a frame while the document is hidden', () => {
+  it('writes current-word progress and keeps a frame while the document is hidden (PLAY-03)', () => {
     documentHidden = true;
     usePlayerStore.setState({
       positionMs: 2_000,
@@ -646,8 +862,8 @@ describe('LyricsPanel', () => {
     useLyricsStore.setState({ document: timedDocument({}, true), status: 'ready' });
     const { container } = render(<LyricsPanel {...presentationProps()} />);
 
-    expect(container.querySelector('.lyrics-word')).toHaveStyle({ '--word-progress': '0%' });
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(container.querySelector('.lyrics-word')).not.toHaveStyle({ '--word-progress': '0%' });
+    expect(requestAnimationFrame).toHaveBeenCalled();
   });
 
   it('does not commit for a content-equivalent ordinary native position snapshot', async () => {
@@ -833,6 +1049,22 @@ describe('LyricsPanel', () => {
     render(<LyricsPanel {...presentationProps()} />);
     const inactive = await screen.findByRole('button', { name: 'Second line' });
     expect(getComputedStyle(inactive).filter).toBe('none');
+  });
+
+  it('does not apply live inactive-line blur on Windows', async () => {
+    document.documentElement.setAttribute('data-platform', 'windows');
+    document.documentElement.removeAttribute('data-graphics-mode');
+    usePlayerStore.setState({ positionMs: 1_100, isPlaying: false, playbackState: 'paused' });
+    useLyricsStore.setState({ document: timedDocument(), status: 'ready' });
+    render(<LyricsPanel {...presentationProps()} />);
+    const inactive = await screen.findByRole('button', { name: 'Second line' });
+    expect(getComputedStyle(inactive).filter).toBe('none');
+  });
+
+  it('does not mount the lyrics stage while the panel is closed', () => {
+    usePlayerStore.setState({ lyricsOpen: false });
+    const { container } = render(<LyricsPanel {...presentationProps()} />);
+    expect(container.querySelector('.lyrics-stage')).toBeNull();
   });
 
   it.each(['software', 'safe'])(

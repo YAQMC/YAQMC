@@ -48,7 +48,7 @@ All paths recorded in SQLite are validated as safe relative cache paths before r
 clear removes only indexed, validated files and provider response rows; it does not remove settings, history, queue
 state, or OS-stored secrets.
 
-Artwork is fetched only from allowlisted HTTPS hosts, cached as bytes, and returned to the WebView as a data URI.
+Artwork is fetched only from allowlisted HTTPS hosts, cached as bytes, and returned to the renderer as a data URI.
 The frontend adds a small in-memory promise cache to coalesce concurrent requests and ignores results after an
 aborted view.
 

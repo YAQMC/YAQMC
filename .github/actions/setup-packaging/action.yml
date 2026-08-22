@@ -7,17 +7,21 @@ inputs:
   profile:
     description: Cache profile class (dev, ci-release, or production).
     required: true
+  qm-api-rs-token:
+    description: Optional PAT used to fetch the private qqmusic-api git pin.
+    required: false
+    default: ''
 
 runs:
   using: composite
   steps:
     - uses: actions/setup-node@v7
       with:
-        node-version: 24
+        node-version: 24.19.0
         cache: npm
     - uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: '1.88'
+        toolchain: '1.88.0'
         targets: ${{ inputs.target }}
         components: clippy, rustfmt
     - uses: actions/cache/restore@v4
@@ -26,8 +30,15 @@ runs:
           ~/.cargo/registry/index
           ~/.cargo/registry/cache
           ~/.cargo/git/db
-          src-tauri/target
-        key: cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ inputs.profile }}
+          target
+        key: cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ inputs.profile }}
         restore-keys: |
-          cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('src-tauri/Cargo.lock') }}-
+          cargo-${{ runner.os }}-${{ inputs.target }}-1.88-${{ hashFiles('Cargo.lock') }}-
           cargo-${{ runner.os }}-${{ inputs.target }}-1.88-
+    - name: Authenticate private qm-api-rs when the token is present
+      shell: bash
+      env:
+        CI: 'true'
+        CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        QM_API_RS_TOKEN: ${{ inputs.qm-api-rs-token }}
+      run: node scripts/ci/qm-api-rs-access.mjs --configure-git

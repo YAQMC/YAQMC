@@ -21,6 +21,7 @@ import {
 import { logger } from '../../application/logger';
 import type { LyricWordEffect, SecondaryLyricVisibility } from '../../application/preferences';
 import type { LyricDocument, LyricLine, LyricWord } from '../../domain/music';
+import { usePlayerStore } from '../../application/player-store';
 import type { LyricsFollowState } from './types';
 
 const CJK_RE = /^[\p{Unified_Ideograph}\u0800-\u9FFC]+$/u;
@@ -122,7 +123,10 @@ function useLyricCursor(
             },
       );
 
-      if (!isPlaying || globalThis.document.hidden) return;
+      // PLAY-03: keep the in-app clock while the document is hidden. Desktop
+      // lyrics already ignore visibility; main/surface windows also set
+      // backgroundThrottling: false.
+      if (!isPlaying) return;
       const rawBoundary = nextLyricBoundaryMs(lyricDocument, rawPositionMs);
       if (rawBoundary === null) return;
       const delayMs = Math.min(500, Math.max(16, rawBoundary - rawPositionMs + 8));
@@ -134,17 +138,10 @@ function useLyricCursor(
       }, delayMs);
     };
 
-    const handleVisibilityChange = () => {
-      clearTimer();
-      if (!globalThis.document.hidden) update();
-    };
-
     update();
-    globalThis.document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
       clearTimer();
-      globalThis.document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [getPositionMs, isPlaying, lyricDocument, presentationOffsetMs, timelineRevision]);
 
@@ -201,27 +198,18 @@ function SyncedWord({
 
     const updateFrame = () => {
       frame = null;
-      if (document.hidden) return;
       updateProgress();
-      frame = window.requestAnimationFrame(updateFrame);
+      if (isPlaying) frame = window.requestAnimationFrame(updateFrame);
     };
 
     const start = () => {
-      if (document.hidden) return;
       updateProgress();
       if (isPlaying && frame === null) frame = window.requestAnimationFrame(updateFrame);
     };
 
-    const handleVisibilityChange = () => {
-      cancelFrame();
-      if (!document.hidden) start();
-    };
-
     start();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelFrame();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [
     characters.length,
@@ -440,8 +428,8 @@ function LyricsMessage({
 export function LyricsViewport({
   document,
   status,
-  isPlaying,
-  timelineRevision,
+  isPlaying: isPlayingProp,
+  timelineRevision: timelineRevisionProp,
   presentationOffsetMs,
   getPositionMs,
   seek,
@@ -476,6 +464,10 @@ export function LyricsViewport({
 }) {
   const { t } = useTranslation('lyrics');
   const reducedMotion = useReducedMotion();
+  const runtimePlaying = usePlayerStore((state) => state.isPlaying);
+  const runtimeRevision = usePlayerStore((state) => state.timelineRevision);
+  const isPlaying = editorGesture ? isPlayingProp : runtimePlaying;
+  const timelineRevision = editorGesture ? timelineRevisionProp : runtimeRevision;
   const scrollArea = useRef<HTMLDivElement>(null);
   const scrollContent = useRef<HTMLDivElement>(null);
   const [followState, setFollowState] = useState<LyricsFollowState>('active');

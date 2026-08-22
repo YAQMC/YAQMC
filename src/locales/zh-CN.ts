@@ -300,6 +300,11 @@ export const zhCN = {
     favoritePending: '正在更新《{{title}}》的收藏状态',
     moreActions: '《{{title}}》的更多操作',
     addToQueue: '加入播放队列',
+    addToPlaylist: '添加到',
+    addToPlaylistPicker: '将《{{title}}》添加到歌单',
+    addToPlaylistLoading: '正在加载歌单…',
+    addToPlaylistEmpty: '没有可添加的自建歌单。',
+    addToPlaylistLoadFailed: '无法加载歌单。',
     enableShuffle: '开启随机播放',
     disableShuffle: '关闭随机播放并恢复顺序播放',
     previous: '上一首',
@@ -681,7 +686,7 @@ export const zhCN = {
     plugins: {
       title: '插件',
       description:
-        '安装本地 YAQMC 运行时插件，用于样式、歌词场景和隔离脚本。这不是 Tauri 框架插件列表。',
+        '安装本地 YAQMC 运行时插件，用于样式、歌词场景和隔离脚本。这些不是 Electron 扩展。',
       install: '从文件安装',
       installDescription: '支持 .yaqmc-plugin 包，以及本地 .css / .js 便捷导入。',
       installAction: '选择文件',
@@ -920,6 +925,12 @@ export const zhCN = {
       logLevelInfo: 'Info',
       logLevelDebug: 'Debug',
       logLevelTrace: 'Trace',
+      consoleForward: '渲染进程控制台',
+      consoleForwardDescription:
+        '打包构建可将 console.error（以及可选的 console.warn）写入已脱敏的前端日志。关闭后仅留在 DevTools。',
+      consoleForwardError: '仅错误',
+      consoleForwardWarn: '错误和警告',
+      consoleForwardOff: '关闭',
       levelChangeHint: '新级别将在下次启动 YAQMC 时生效。',
       openFolder: '打开日志文件夹',
       openFolderDescription: '在系统文件管理器中打开平台应用日志目录。',
@@ -990,5 +1001,13 @@ export const zhCN = {
     preferenceSaveFailed: '无法将设置保存到桌面运行时。',
     imageFailed: '无法处理所选背景图片。',
     settingsFailed: '桌面运行时无法完成此设置操作。',
+  },
+  tray: {
+    'show-hide': '显示 / 隐藏',
+    'play-pause': '播放 / 暂停',
+    previous: '上一首',
+    next: '下一首',
+    settings: '设置',
+    quit: '退出',
   },
 } satisfies TranslationShape<typeof enUS>;

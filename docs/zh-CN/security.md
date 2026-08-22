@@ -32,12 +32,12 @@
 优先使用结构化 tracing 字段，避免通过字符串插值 `tracing::info!("...{token}")`
 漏出敏感数据。
 
-`src-tauri/src/logging.rs` 的自动化测试把所有代表性敏感模式喂进
+`crates/yaqmc-core/src/logging.rs` 的自动化测试把所有代表性敏感模式喂进
 writer，断言输出只剩 `[REDACTED]`。
 
 ## 诊断包安全
 
-`src-tauri/src/diagnostics.rs::export_bundle` 会对每一个即将放入 ZIP
+`crates/yaqmc-core/src/diagnostics.rs::export_bundle` 会对每一个即将放入 ZIP
 的文本文件跑一遍第二次扫描。`RedactionReport` 写入
 `redaction-report.txt`，记录：
 
@@ -67,11 +67,10 @@ writer，断言输出只剩 `[REDACTED]`。
   不保存任何凭据、不调用 GitHub API。
 - **只由用户手动提交**：YAQMC 在用户默认浏览器中打开预填的 Issue Form，
   用户复查后自己点 Submit。
-- **限定 opener 权限**：`openIssueUrl` 先调 Rust 的 `validate_open_url`
-  校验，再调用 Tauri opener 插件，插件权限
-  (`capabilities/main-window.json`) 只允许
-  `https://github.com/YAQMC/YAQMC/issues/new*`。
-- **不访问浏览器 Cookie**：不读系统浏览器 Cookie 存储、不嵌套 WebView、
+- **限定 opener 权限**：`openIssueUrl` 先调 Core 的 `validate_open_url`
+  校验，再经过 `apps/desktop/main/open-external.ts` 中 Electron Main 的
+  `shell.openExternal` 白名单。
+- **不访问浏览器 Cookie**：不读系统浏览器 Cookie 存储、不嵌套浏览器界面、
   不做 DOM 自动化。
 
 ## 日志与诊断包的威胁面
@@ -80,8 +79,8 @@ writer，断言输出只剩 `[REDACTED]`。
   哨兵三层缓解。
 - 用户换凭据后又附了旧滚动日志：由同一次二次扫描缓解。
 - 用户无意间附错诊断包：由 SHA-256 展示与“定位诊断包”动作缓解。
-- 用户被引导打开伪装的 Reporter URL：不可能；opener 权限只允许固定的
-  GitHub Issues 路径。
+- 用户被引导打开伪装的 Reporter URL：由更窄的 Core Issue 前缀校验与
+  Electron Main HTTPS 白名单共同阻断。
 
 ## 协同披露
 

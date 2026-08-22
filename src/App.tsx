@@ -1,6 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AccountPlaylistDetail, Album, AreaFeed, MediaCollection, Playlist } from './domain/music';
+import type {
+  AccountPlaylistDetail,
+  Album,
+  AreaFeed,
+  HomeFeed,
+  MediaCollection,
+  Playlist,
+} from './domain/music';
 import { useCatalog } from './application/use-catalog';
 import { useGuessContinuation } from './application/use-guess-continuation';
 import { useTheme } from './application/use-theme';
@@ -34,6 +41,7 @@ import { SearchPage } from './pages/SearchPage';
 import { AppBackground } from './components/AppBackground';
 import { FpsOverlay } from './components/FpsOverlay';
 import { PluginNoticeHost } from './components/PluginNoticeHost';
+import { CoreStatusBanner } from './components/CoreStatusBanner';
 import { usePreferencesRuntime, usePreferencesStore } from './application/preferences';
 import {
   lyricsEscapeAction,
@@ -46,9 +54,11 @@ import {
   runAfterLyricsClose,
   toggleQueueAfterLyricsClose,
 } from './application/lyrics-presentation-actions';
-import { listen } from '@tauri-apps/api/event';
+import { useLyricsStageStore } from './application/lyrics-stage-machine';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
+import { getYaqmcClient } from './application/yaqmc-runtime';
 import { usePluginHost } from './application/plugin-runtime';
+import { installPlaybackUiProbe } from './application/playback-ui-probe';
 import './styles/index.css';
 
 const SettingsPage = lazy(async () => {
@@ -80,6 +90,17 @@ function collectEntities(collections: MediaCollection[]) {
   return { albums, playlists };
 }
 
+function homePlaylists(home: HomeFeed): Playlist[] {
+  return [
+    ...home.madeForYou,
+    ...collectEntities(home.recentlyPlayed).playlists,
+    ...[home.guessSonglist, home.dailySonglist, home.newSongSonglist].filter(
+      (playlist): playlist is Playlist => playlist !== null,
+    ),
+    ...home.recommendedSonglists,
+  ];
+}
+
 export default function App() {
   const { t } = useTranslation('pages');
   const provider = useMusicProvider();
@@ -90,10 +111,13 @@ export default function App() {
   usePlatformDiagnosticsRuntime();
   useGuessContinuation(provider);
   usePluginHost();
+  useEffect(() => installPlaybackUiProbe(), []);
   const catalog = useCatalog();
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);
   const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
+  const lyricsStage = useLyricsStageStore((state) => state.stage);
+  const lyricsSurfaceVisible = lyricsOpen || lyricsStage !== 'closed';
   const focusSidebarCollapsed = usePreferencesStore((state) => state.lyrics.focusSidebarCollapsed);
   const showFpsCounter = usePreferencesStore((state) => state.debug.showFpsCounter);
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
@@ -146,16 +170,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isNativeRuntime) return;
-    let active = true;
-    let unlisten: (() => void) | null = null;
-    void listen('app://open-settings', () => navigate({ page: 'settings' })).then((stop) => {
-      if (active) unlisten = stop;
-      else stop();
-    });
-    return () => {
-      active = false;
-      unlisten?.();
-    };
+    return getYaqmcClient().on('app://open-settings', () => navigate({ page: 'settings' }));
   }, [navigate]);
 
   const goBack = useCallback(() => {
@@ -293,11 +308,7 @@ export default function App() {
       ...recent.albums,
       ...catalog.library.savedAlbums,
     ];
-    const playlists = [
-      ...catalog.home.madeForYou,
-      ...recent.playlists,
-      ...catalog.library.savedPlaylists,
-    ];
+    const playlists = [...homePlaylists(catalog.home), ...catalog.library.savedPlaylists];
     return {
       albums: [...new Map(albums.map((album) => [album.id, album])).values()],
       playlists: [...new Map(playlists.map((playlist) => [playlist.id, playlist])).values()],
@@ -407,7 +418,9 @@ export default function App() {
         break;
       }
       case 'area':
-        pageContent = <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={navigate} />;
+        pageContent = (
+          <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={navigate} />
+        );
         break;
     }
   }
@@ -420,8 +433,8 @@ export default function App() {
       <div
         className="app-shell"
         data-provider-id={provider.id}
-        data-lyrics-focus={(lyricsOpen && focusSidebarCollapsed) || undefined}
-        data-lyrics-fullscreen={(lyricsOpen && fullscreen) || undefined}
+        data-lyrics-focus={(lyricsSurfaceVisible && focusSidebarCollapsed) || undefined}
+        data-lyrics-fullscreen={(lyricsSurfaceVisible && fullscreen) || undefined}
       >
         <Sidebar route={route} onNavigate={navigate} />
         <div className="content-shell">
@@ -445,6 +458,7 @@ export default function App() {
         </div>
         <PlayerBar onCloseLyrics={closeLyrics} onToggleQueue={toggleQueue} />
         <PluginNoticeHost />
+        <CoreStatusBanner />
         <QueuePanel />
         <LyricsPanel
           focus={focusSidebarCollapsed}

@@ -5,6 +5,7 @@ import i18n from './i18n';
 import { defaultPreferences, usePreferencesStore } from './application/preferences';
 import { resetAccountRuntimeForTest, useAccountStore } from './application/account-runtime';
 import { initialPlayerState, usePlayerStore } from './application/player-store';
+import { resetLyricsStageForTests } from './application/lyrics-stage-machine';
 import type { AppRoute } from './application/navigation';
 import { ProviderContext } from './application/provider-context';
 import {
@@ -211,12 +212,14 @@ describe('App TopBar history navigation', () => {
     port = new ControlledFullscreenPort();
     restorePort = setFullscreenPortForTests(port);
     usePlayerStore.setState(initialPlayerState);
+    resetLyricsStageForTests();
     usePreferencesStore.setState(defaultPreferences);
     resetAccountRuntimeForTest();
   });
 
   afterEach(() => {
     cleanup();
+    resetLyricsStageForTests();
     resetAccountRuntimeForTest();
     restorePort();
   });

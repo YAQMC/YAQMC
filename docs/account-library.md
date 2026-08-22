@@ -7,7 +7,7 @@ remain usable in guest mode and do not depend on this subsystem.
 
 ## Surfaces and state
 
-The main WebView exposes Favorites, Account playlists, Recently played when advertised, and owned-playlist detail.
+The main renderer exposes Favorites, Account playlists, Recently played when advertised, and owned-playlist detail.
 The sidebar's "Library" entry was removed because it duplicated the "Playlists" page (both rendered the account
 playlist grid); only the Playlists entry remains. The `AccountMusicProvider` contract is separate from
 `MusicProvider`, and `isAccountMusicProvider` gates account UI at runtime. Desktop Lyrics and Lyrics Island have no

@@ -2,12 +2,12 @@
 
 > **简体中文** | [English](../README.md)
 
-这里是 YAQMC 面向用户、测试者和贡献者的公开文档。`docs/plans/` 与 `docs/superpowers/` 中的文件是开发
-过程记录，不属于用户指南，也不代表所有计划都已经交付。
+这里是 YAQMC 面向用户、测试者、贡献者和发布维护者的公开文档。
 
 ## 从这里开始
 
 - [整体架构](architecture.md)
+- [开发环境](development.md)与[数据位置、升级及卸载](data-locations.md)
 - [播放系统](playback.md)与[渐进式流媒体](streaming.md)
 - [QQ 音乐提供器](qqmusic-provider.md)、[登录与安全存储](authentication.md)、
   [首页推荐](home-recommendations.md)、[发现页](discover.md)、[账号音乐库](account-library.md)、
@@ -25,6 +25,7 @@
 - [日志系统](logging.md)、[诊断快照与诊断包](diagnostics.md)、
   [GitHub Issue 报告](issue-reporting.md)与[安全与隐私](security.md)
 - [CI、缓存与可下载产物](ci.md)
+- [发布与合规记录](../release/README.md)
 
 ## 验收记录
 

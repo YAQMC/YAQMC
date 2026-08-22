@@ -1,21 +1,46 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type * as TauriCore from '@tauri-apps/api/core';
-import { defaultPreferences, type LyricSurfaceSettings } from '../application/preferences';
+import type { HostBridge } from '@yaqmc/client';
+import {
+  defaultPreferences,
+  usePreferencesStore,
+  type LyricSurfaceSettings,
+} from '../application/preferences';
 import type { LyricLine } from '../domain/music';
 import {
   DesktopSurface,
   IslandSurface,
+  LyricsSurfaceApp,
   LyricsUnlockControl,
   type SurfaceProps,
 } from './LyricsSurfaceApp';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
-  ...(await importOriginal<typeof TauriCore>()),
-  invoke: invokeMock,
-}));
+vi.mock('../application/yaqmc-runtime', async () => {
+  const { YaqmcClient } = await import('@yaqmc/client');
+  const bridge = {
+    kind: 'electron' as const,
+    windowRole: 'lyrics-desktop' as const,
+    window: {
+      minimize: async () => undefined,
+      toggleMaximize: async () => undefined,
+      close: async () => undefined,
+      setFullscreen: async () => undefined,
+    },
+    shell: {
+      openExternal: async () => undefined,
+    },
+    invoke: invokeMock,
+    listen: () => () => undefined,
+  };
+  const client = new YaqmcClient(bridge as HostBridge);
+  client.markReady();
+  return {
+    getHostBridge: () => bridge,
+    getYaqmcClient: () => client,
+  };
+});
 
 const line = (text: string): LyricLine => ({
   id: text,
@@ -44,6 +69,17 @@ function props(
 afterEach(() => {
   vi.useRealTimers();
   invokeMock.mockReset();
+  delete document.documentElement.dataset.platform;
+  delete document.documentElement.dataset.surfaceVisual;
+  delete document.documentElement.dataset.surfaceCommits;
+  delete document.documentElement.dataset.compositorProbe;
+  usePreferencesStore.setState({
+    ...defaultPreferences,
+    surfaces: {
+      desktop: { ...defaultPreferences.surfaces.desktop },
+      island: { ...defaultPreferences.surfaces.island },
+    },
+  });
 });
 
 describe('Passive Lyrics unlock control', () => {
@@ -70,13 +106,56 @@ describe('Desktop Lyrics interaction presentation', () => {
     const surface = container.querySelector('.lyrics-surface--desktop');
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-idle');
     expect(container.querySelector('.lyrics-surface__controls')).toBeInTheDocument();
+    expect(container.querySelector('.lyrics-surface__drag')).toHaveClass('yaqmc-drag');
+    expect(container.querySelector('.desktop-lyrics__content')).not.toHaveClass('yaqmc-drag');
 
     act(() => vi.advanceTimersByTime(121));
     fireEvent.pointerEnter(surface!);
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
-    fireEvent.pointerLeave(surface!);
+    fireEvent.pointerLeave(surface!, { clientX: 9_000, clientY: 9_000 });
     act(() => vi.advanceTimersByTime(90));
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-idle');
+  });
+
+  it('routes hover chrome controls through player and host surface commands', async () => {
+    invokeMock.mockImplementation(async (method: string, params?: { value?: string }) => {
+      if (method === 'lyrics_surface_set_interaction') {
+        return params?.value ?? '{"version":2}';
+      }
+      return undefined;
+    });
+    render(<DesktopSurface {...props('desktop')} />);
+
+    expect(screen.getByRole('button', { name: 'Previous track' })).toHaveClass('yaqmc-no-drag');
+    expect(screen.getByRole('button', { name: 'Play' })).toHaveClass('yaqmc-no-drag');
+    expect(screen.getByRole('button', { name: 'Next track' })).toHaveClass('yaqmc-no-drag');
+    expect(screen.getByRole('button', { name: 'Lock as passive overlay' })).toHaveClass(
+      'yaqmc-no-drag',
+    );
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveClass('yaqmc-no-drag');
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('yaqmc-no-drag');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous track' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next track' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('player_previous');
+      expect(invokeMock).toHaveBeenCalledWith('player_toggle');
+      expect(invokeMock).toHaveBeenCalledWith('player_next');
+      expect(invokeMock).toHaveBeenCalledWith('lyrics_surface_show_settings');
+      expect(invokeMock).toHaveBeenCalledWith('lyrics_surface_close', { kind: 'desktop' });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lock as passive overlay' }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        'lyrics_surface_set_interaction',
+        expect.objectContaining({ kind: 'desktop', interaction: 'passive-locked' }),
+      ),
+    );
   });
 
   it('renders no controls or drag region in passive locked mode', () => {
@@ -87,25 +166,116 @@ describe('Desktop Lyrics interaction presentation', () => {
     fireEvent.pointerEnter(surface!);
     expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(container.querySelector('[data-tauri-drag-region="true"]')).toBeNull();
+    expect(container.querySelector('.yaqmc-drag')).toBeNull();
+  });
+
+  it('does not remount controls after a stale interactive hydrate while locked', () => {
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      surfaces: {
+        ...defaultPreferences.surfaces,
+        desktop: {
+          ...defaultPreferences.surfaces.desktop,
+          enabled: true,
+          interaction: 'passive-locked',
+        },
+      },
+    });
+    const { container } = render(<LyricsSurfaceApp kind="desktop" />);
+    act(() => {
+      usePreferencesStore.getState().hydrate({
+        ...defaultPreferences,
+        surfaces: {
+          ...defaultPreferences.surfaces,
+          desktop: {
+            ...defaultPreferences.surfaces.desktop,
+            enabled: true,
+            interaction: 'interactive',
+          },
+        },
+      });
+    });
+    const surface = container.querySelector('.lyrics-surface--desktop');
+    fireEvent.pointerEnter(surface!);
+    fireEvent.pointerMove(surface!, { clientX: 48, clientY: 36 });
+    expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+    expect(surface).not.toHaveClass('lyrics-surface--interactive');
+    expect(container.querySelector('.lyrics-surface__controls')).toBeNull();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });
 
 describe('Lyrics Island passive mode', () => {
-  it('never hover-expands while locked and continues rendering lyric updates', () => {
-    const initial = props('island', { interaction: 'passive-locked' }, line('First line'));
-    const { container, rerender } = render(<IslandSurface {...initial} />);
-    const surface = container.querySelector('.lyrics-surface--island');
-    fireEvent.pointerEnter(surface!);
-    expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
-    expect(screen.getByText('First line')).toBeInTheDocument();
+  it('keeps Island hover after a leave that is still inside the expanded card', () => {
+    vi.useFakeTimers();
+    const { container } = render(<IslandSurface {...props('island')} />);
+    const surface = container.querySelector('.lyrics-surface--island') as HTMLElement;
+    surface.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 240,
+        bottom: 140,
+        width: 240,
+        height: 140,
+        toJSON: () => ({}),
+      }) as DOMRect;
 
-    rerender(
-      <IslandSurface
-        {...props('island', { interaction: 'passive-locked' }, line('Updated line'))}
-      />,
+    act(() => vi.advanceTimersByTime(121));
+    fireEvent.pointerEnter(surface, { clientX: 40, clientY: 50 });
+    expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
+    expect(container.querySelector('.lyrics-surface__controls')).toBeInTheDocument();
+
+    fireEvent.pointerLeave(surface, { clientX: 40, clientY: 50 });
+    act(() => vi.advanceTimersByTime(90));
+    expect(surface).toHaveAttribute('data-interaction-state', 'visible-interactive-hover');
+  });
+
+  it('keeps Island transport buttons out of the drag region and wired to Core/host', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    render(<IslandSurface {...props('island')} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous track' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next track' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('player_previous');
+      expect(invokeMock).toHaveBeenCalledWith('player_toggle');
+      expect(invokeMock).toHaveBeenCalledWith('player_next');
+      expect(invokeMock).toHaveBeenCalledWith('lyrics_surface_show_settings');
+      expect(invokeMock).toHaveBeenCalledWith('lyrics_surface_close', { kind: 'island' });
+    });
+    expect(screen.getByRole('button', { name: 'Lock as passive overlay' })).toHaveClass(
+      'yaqmc-no-drag',
     );
-    expect(screen.getByText('Updated line')).toBeInTheDocument();
-    expect(surface).toHaveAttribute('data-interaction-state', 'visible-passive-locked');
+  });
+});
+
+describe('overlay visual clock', () => {
+  it('does not start a display-rate rAF loop on Desktop Lyrics', () => {
+    vi.useFakeTimers();
+    const raf = vi.spyOn(window, 'requestAnimationFrame');
+    render(<LyricsSurfaceApp kind="desktop" />);
+    expect(raf).not.toHaveBeenCalled();
+    raf.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('applies host platform attributes so Windows overlay blur CSS can match', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'platform_diagnostics') {
+        return Promise.resolve({ os: 'windows', linux: null });
+      }
+      return Promise.resolve(null);
+    });
+    render(<LyricsSurfaceApp kind="desktop" />);
+    await waitFor(() => {
+      expect(document.documentElement.dataset.platform).toBe('windows');
+    });
   });
 });

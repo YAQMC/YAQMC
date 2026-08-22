@@ -61,9 +61,11 @@ export interface PlayerState {
   snapshotRevision: number;
   sourceGeneration: number;
   lastSeekRevision: number;
+  sampledAtMs: number;
   isScrubbing: boolean;
   scrubPosition: number;
   scrubAwaitingAckFrom: number | null;
+  isVolumeScrubbing: boolean;
 }
 
 interface PlayerActions {
@@ -80,6 +82,7 @@ interface PlayerActions {
   previewScrub: (positionMs: number) => void;
   commitScrub: (positionMs: number) => void;
   tick: (elapsedMs: number) => void;
+  beginVolumeScrub: () => void;
   setVolume: (volume: number) => void;
   toggleMuted: () => void;
   toggleShuffle: () => void;
@@ -129,6 +132,7 @@ export interface AuthoritativePlayerSnapshot {
   snapshotRevision?: number;
   sourceGeneration?: number;
   lastSeekRevision?: number;
+  sampledAtMs?: number;
 }
 
 export const initialPlayerState: PlayerState = {
@@ -161,9 +165,11 @@ export const initialPlayerState: PlayerState = {
   snapshotRevision: 0,
   sourceGeneration: 0,
   lastSeekRevision: 0,
+  sampledAtMs: 0,
   isScrubbing: false,
   scrubPosition: 0,
   scrubAwaitingAckFrom: null,
+  isVolumeScrubbing: false,
 };
 
 let localQueueEntrySequence = 0;
@@ -252,6 +258,26 @@ function fallbackOrderState(
     historyCursor: 0,
     upcomingQueueEntryIds: traversal.slice(1),
   };
+}
+
+function reuseQueueIfSameTracks(previous: Song[], incoming: Song[]): Song[] {
+  if (
+    previous.length === incoming.length &&
+    previous.every((song, index) => song.id === incoming[index]?.id)
+  ) {
+    return previous;
+  }
+  return incoming;
+}
+
+function reuseQueueEntriesIfSameIds(previous: QueueEntry[], incoming: QueueEntry[]): QueueEntry[] {
+  if (
+    previous.length === incoming.length &&
+    previous.every((entry, index) => entry.id === incoming[index]?.id)
+  ) {
+    return previous;
+  }
+  return incoming;
 }
 
 function normalizedEntries(
@@ -534,6 +560,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       set({
         positionMs: boundedPosition,
         observedAtMs: performance.now(),
+        sampledAtMs: Date.now(),
         timelineRevision: get().timelineRevision + 1,
         isScrubbing: false,
         scrubPosition: boundedPosition,
@@ -564,8 +591,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set({
       isScrubbing: true,
       scrubPosition: boundedPosition,
-      positionMs: boundedPosition,
-      observedAtMs: performance.now(),
     });
   },
 
@@ -578,6 +603,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       scrubPosition: boundedPosition,
       positionMs: boundedPosition,
       observedAtMs: performance.now(),
+      sampledAtMs: Date.now(),
       timelineRevision: state.timelineRevision + 1,
       scrubAwaitingAckFrom: state.lastSeekRevision,
     });
@@ -627,14 +653,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       };
     }),
 
+  beginVolumeScrub: () => {
+    set({ isVolumeScrubbing: true });
+  },
   setVolume: (volume) => {
     const boundedVolume = Math.max(0, Math.min(volume, 1));
+    set({ volume: boundedVolume, isMuted: false, isVolumeScrubbing: true });
     if (dispatchPlayerCommand({ type: 'setVolume', volume: boundedVolume })) return;
-    set({ volume: boundedVolume, isMuted: false });
+    set({ isVolumeScrubbing: false });
   },
   toggleMuted: () => {
+    set((state) => ({ isMuted: !state.isMuted, isVolumeScrubbing: true }));
     if (dispatchPlayerCommand({ type: 'toggleMuted' })) return;
-    set((state) => ({ isMuted: !state.isMuted }));
+    set({ isVolumeScrubbing: false });
   },
   toggleShuffle: () => {
     if (dispatchPlayerCommand({ type: 'toggleShuffle' })) return;
@@ -826,7 +857,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       const predictedPositionMs = current
         ? Math.max(0, Math.min(durationMs, state.positionMs + elapsedMs))
         : 0;
-      const queueEntries = normalizedEntries(snapshot, state);
+      const queue = reuseQueueIfSameTracks(state.queue, snapshot.queue);
+      const queueEntries = reuseQueueEntriesIfSameIds(
+        state.queueEntries,
+        normalizedEntries({ ...snapshot, queue }, state),
+      );
       const currentQueueEntryId =
         snapshot.currentQueueEntryId ?? queueEntries[snapshot.currentIndex]?.id ?? null;
       const previousTrackId = current?.id ?? null;
@@ -847,6 +882,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         sessionChanged ||
         state.isPlaying !== snapshot.isPlaying ||
         (!isScrubbing && Math.abs(snapshot.positionMs - predictedPositionMs) > 250);
+      const volumeCaughtUp =
+        Math.abs(snapshot.volume - state.volume) <= 0.005 && snapshot.isMuted === state.isMuted;
+      const isVolumeScrubbing = !sessionChanged && state.isVolumeScrubbing && !volumeCaughtUp;
 
       const playbackOrder = snapshot.playbackOrder ?? (snapshot.shuffle ? 'shuffle' : 'sequential');
       const shuffleTraversal = snapshot.shuffleTraversal ?? [];
@@ -861,6 +899,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
       return {
         ...snapshot,
+        queue,
         queueEntries,
         currentQueueEntryId,
         playbackOrder,
@@ -875,10 +914,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         snapshotRevision: incomingSession === 0 ? state.snapshotRevision : incomingRevision,
         sourceGeneration: snapshot.sourceGeneration ?? state.sourceGeneration,
         lastSeekRevision,
-        positionMs: isScrubbing ? state.scrubPosition : snapshot.positionMs,
+        sampledAtMs: snapshot.sampledAtMs ?? 0,
+        positionMs: isScrubbing ? state.positionMs : snapshot.positionMs,
         isScrubbing,
         scrubPosition: isScrubbing ? state.scrubPosition : snapshot.positionMs,
         scrubAwaitingAckFrom: isScrubbing ? state.scrubAwaitingAckFrom : null,
+        volume: isVolumeScrubbing ? state.volume : snapshot.volume,
+        isMuted: isVolumeScrubbing ? state.isMuted : snapshot.isMuted,
+        isVolumeScrubbing,
         observedAtMs: now,
         timelineRevision: state.timelineRevision + (discontinuity ? 1 : 0),
       };
@@ -889,11 +932,25 @@ export function useCurrentSong(): Song | null {
   return usePlayerStore((state) => state.queue[state.currentIndex] ?? null);
 }
 
-export function getEstimatedPositionMs(now = performance.now()): number {
+const UNIX_MS = 1_000_000_000_000;
+const SAMPLE_FRESH_MS = 2_000;
+
+export function getEstimatedPositionMs(now = performance.now(), nowUnix = Date.now()): number {
   const state = usePlayerStore.getState();
   const current = state.queue[state.currentIndex];
   if (!current) return 0;
   if (state.isScrubbing) return state.scrubPosition;
-  const elapsed = state.isPlaying ? Math.max(0, now - state.observedAtMs) : 0;
+  let elapsed = 0;
+  if (state.isPlaying) {
+    if (
+      state.sampledAtMs >= UNIX_MS &&
+      nowUnix - state.sampledAtMs >= 0 &&
+      nowUnix - state.sampledAtMs < SAMPLE_FRESH_MS
+    ) {
+      elapsed = nowUnix - state.sampledAtMs;
+    } else {
+      elapsed = Math.max(0, now - state.observedAtMs);
+    }
+  }
   return Math.min(state.playbackDurationMs ?? current.durationMs, state.positionMs + elapsed);
 }

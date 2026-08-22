@@ -38,7 +38,13 @@ export function Artwork({
       className={`artwork ${className}`.trim()}
       style={{ '--artwork-color': artwork.dominantColor } as CSSProperties}
     >
-      <img src={source} alt={artwork.alt} loading={loading} draggable={false} />
+      <img
+        src={source}
+        alt={artwork.alt}
+        loading={loading}
+        draggable={false}
+        referrerPolicy="no-referrer"
+      />
     </span>
   );
 }

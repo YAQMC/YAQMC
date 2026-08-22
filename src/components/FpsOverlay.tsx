@@ -1,5 +1,8 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useEffect, useRef, useState } from 'react';
+import { isNativeRuntime } from '../application/native-player-runtime';
+import { getYaqmcClient } from '../application/yaqmc-runtime';
+
+const client = getYaqmcClient();
 
 const SAMPLE_WINDOW_MS = 500;
 
@@ -56,8 +59,9 @@ export function FpsOverlay() {
       };
       setStats(next);
       longTasks.current = 0;
-      if (isTauri()) {
-        void invoke('debug_perf_sample', { sample: next })
+      if (isNativeRuntime) {
+        void client
+          .invoke('debug_perf_sample', { sample: next })
           .then(() => setReportError(null))
           .catch((error: unknown) => setReportError(String(error)));
       }

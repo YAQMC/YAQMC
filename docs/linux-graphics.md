@@ -2,65 +2,59 @@
 
 > [简体中文](zh-CN/linux-graphics.md) | **English**
 
-Tauri uses WebKitGTK on Linux. React scheduling, WebKitGTK/compositor behavior, window-backend selection, and audio
-buffering are separate failure domains and are logged separately.
+The Linux desktop host is Electron/Chromium. React scheduling, Chromium/Ozone,
+the compositor, window-backend selection, and audio buffering are separate
+failure domains and are reported separately.
 
-## Default policy
+## Startup policy
 
-`YAQMC_LINUX_RENDERER=auto` is implicit and sets no acceleration variables. YAQMC source does not force a GTK
-backend. Auto mode applies two targeted compatibility rules:
+`apps/desktop/main/linux-graphics.ts` is the only source of YAQMC Chromium
+graphics switches. Main applies its allowlisted result before Electron becomes
+ready:
 
-1. When an NVIDIA driver is detected and the tester has not set `__NV_DISABLE_EXPLICIT_SYNC` themselves, YAQMC
-   disables driver-level explicit sync so WebKitGTK falls back to implicit-sync DMA-BUF and keeps hardware
-   acceleration, avoiding the WebKit bug 317089 protocol-error disconnect on Hyprland/KWin.
-2. When Hyprland is detected without NVIDIA and the tester has not set `WEBKIT_DISABLE_DMABUF_RENDERER`, YAQMC
-   disables WebKitGTK's DMA-BUF renderer to avoid the same protocol error.
+| Mode                | Chromium switch                             | Policy                                                                                                |
+| ------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `auto` / unknown    | none                                        | Default; use Chromium's platform choice and probe the live backend.                                   |
+| `native-wayland`    | `--ozone-platform=wayland`                  | Explicit native-Wayland opt-in.                                                                       |
+| `x11`               | none                                        | Acceptance alias for the default X11/XWayland path; the collector rejects any other observed backend. |
+| `gpu-off`           | `--disable-gpu`                             | Explicit troubleshooting mode.                                                                        |
+| `software` / `safe` | `--disable-gpu`                             | Deprecated compatibility aliases for `gpu-off`.                                                       |
+| `vaapi-on`          | `--enable-features=VaapiVideoDecodeLinuxGL` | Explicit VA-API experiment; off by default.                                                           |
 
-The final AppImage repack replaces
-Tauri's generated unconditional `GDK_BACKEND=x11` assignment with this session-aware policy:
+`YAQMC_LINUX_RENDERER` remains a deprecated host-compatibility input for
+packaged acceptance tools. Core neither sets nor interprets renderer variables.
+Legacy GTK/WebKit graphics variables do not define the Electron policy.
 
-1. Preserve an explicit `GDK_BACKEND` chosen by the tester.
-2. Otherwise select Wayland when `XDG_SESSION_TYPE=wayland` and `WAYLAND_DISPLAY` is present.
-3. Otherwise select X11.
-
-The 2026-08-10 current Arch/Hyprland baseline followed that policy and reported `wayland-native`. An earlier
-pre-fix build reported XWayland; it is historical comparison evidence, not the current baseline.
-
-The Linux main window remains opaque. Platform CSS preserves layout, transforms, palette, and lyric interaction
-while reducing high-cost live backdrop blur, artwork blur, large shadows, and uncontained lyric-line paint. These
-source-level reductions are risk controls, not proof of a compositor performance fix. Plugin API v2 keeps that
-policy: inactive-line `filter: blur()` and scene widget blur are disabled on Linux; scene video is not decoded in
-`software` / `safe` modes. The WebKitGTK renderer strategy itself is unchanged.
+The live display backend is derived from the applied Ozone switch and client
+sockets observed under `/proc/self/fd`; `XDG_SESSION_TYPE` alone is not treated
+as proof. Diagnostics report `wayland-native`, `xwayland`, `x11`, or
+`unavailable`.
 
 ## Acceptance modes
 
-| Mode              | Environment change                                                  | Rule                                                |
-| ----------------- | ------------------------------------------------------------------- | --------------------------------------------------- |
-| `auto`            | NVIDIA: driver explicit sync off, DMABUF kept; Hyprland: DMABUF off | required first                                      |
-| `dmabuf`          | removes the DMABUF disable, forcing the native path                 | comparison mode; known-crash combos may still crash |
-| `native-wayland`  | `GDK_BACKEND=wayland`; `DISPLAY` cleared                            | required; must report `wayland-native`              |
-| `x11`             | `GDK_BACKEND=x11`                                                   | required controlled fallback comparison             |
-| `compositing-off` | disables WebKitGTK accelerated compositing                          | optional rendering comparison                       |
-| `software`        | `YAQMC_LINUX_RENDERER=software`, DMABUF off, software GL enabled    | conditional after a reproduced native bug           |
+The packaged Linux collector retains four stable evidence directory names:
 
-`baseline` is only a compatibility alias for `auto`, never a claim that the window is XWayland. Legacy one-off
-variables such as NVIDIA explicit-sync or compositing toggles are not canonical acceptance modes and cannot replace
-`auto`, `native-wayland`, or `x11` evidence.
+| Collector mode   | Required host input                                                | Acceptance role                                        |
+| ---------------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
+| `auto`           | no YAQMC graphics override                                         | first run                                              |
+| `native-wayland` | `YAQMC_LINUX_RENDERER=native-wayland`                              | must report `wayland-native`                           |
+| `x11`            | `YAQMC_LINUX_RENDERER=x11` plus the collector's compatibility hint | must report `x11` or `xwayland`                        |
+| `software`       | `YAQMC_LINUX_RENDERER=software`                                    | conditional comparison after a native graphics failure |
 
-Software mode is deliberately gated by `YAQMC_ALLOW_SOFTWARE=confirmed-native-failure`. It disables costly graphics
-paths but must preserve the translated UI surface and positioning transforms. A Windows software/safe run cannot
-satisfy this Linux gate.
+`baseline` is only an alias for `auto`. The conditional software run still
+requires `YAQMC_ALLOW_SOFTWARE=confirmed-native-failure`; it cannot replace a
+missing native run.
+
+Linux CSS retains layout, transforms, palette, and lyric interaction while
+reducing expensive live blur and large-shadow effects. The `software`/`safe`
+aliases also suppress scene-video decoding. These source-level controls reduce
+risk but do not prove compositor performance.
 
 ## Measurement boundary
 
-The old baseline's lifetime CPU and summed RSS cannot identify a rendering root cause: lifetime `%CPU` is not an
-instantaneous sample, RSS can double-count shared pages, and the report lacked phase labels and PSS. The new
-collector records per-phase process-tree rows, RSS/PSS where the kernel exposes it, CPU, threads, window state,
-reported backend, and graphics environment for:
-
-`startup-idle`, `playback`, `seek-pause-resume`, `main-scroll-resize`, `lyrics-normal`, `lyrics-focus`,
-`lyrics-fullscreen`, `desktop-lyrics`, `island-lyrics`, `both-surfaces`, and `shutdown`.
-
-Even those samples are diagnostics, not a frame-time benchmark. The tester must also report visible stutter, blank
-frames, incorrect geometry, fullscreen restore failures, lock/unlock behavior, and audio discontinuity. Preserve a
-failed native report before adding the conditional software comparison.
+The collector records phase-labelled process trees, CPU, RSS/PSS where
+available, threads, window state, observed backend, and graphics mode for
+startup, playback, seek/pause/resume, resize, lyrics, auxiliary surfaces, and
+shutdown. These samples are diagnostics, not frame-time benchmarks. Testers
+must separately record visible stutter, blank frames, geometry/fullscreen
+restoration, lock/unlock behavior, and audio discontinuity.

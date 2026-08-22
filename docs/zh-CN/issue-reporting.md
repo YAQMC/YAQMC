@@ -58,7 +58,7 @@ YAQMC 在文件管理器中定位 ZIP
 
 ## GitHub URL 预填
 
-Rust 侧在 `src-tauri/src/issue_reporter.rs::compose_url` 组装 URL，只
+Rust 侧在 `crates/yaqmc-core/src/issue_reporter.rs::compose_url` 组装 URL，只
 使用 GitHub Issue Form 官方支持的 query 参数：
 
 - `template=`：目标 Issue Form 文件。
@@ -80,7 +80,7 @@ Rust 侧在 `src-tauri/src/issue_reporter.rs::compose_url` 组装 URL，只
 - YAQMC 版本 + 短提交 SHA，
 - 构建通道 + 构建类型，
 - 操作系统 + 架构，
-- 渲染器（Windows 上 WebView2；Linux 上 `WebKitGTK <version>`），
+- Electron Main 提供的渲染器/host 身份（Electron/Chromium 与观测到的显示后端），
 - 音频后端 + 已选策略 + host，
 - provider 模式 + 连接 + 会员等级（不含密钥），
 - 日志级别 + Session ID，
@@ -117,24 +117,23 @@ Submit 按钮。
 
 ## 浏览器打开安全
 
-`openIssueUrl` 先在 Rust 侧调 `issue_reporter_validate_url`，再调用 Tauri
-opener 插件。Rust 侧校验：
+`openIssueUrl` 先在 Rust 侧调 `issue_reporter_validate_url`，再通过 Electron
+Main 的 `shell.openExternal` bridge 打开浏览器。Rust 侧校验：
 
 - URL 必须以 `https://github.com/YAQMC/YAQMC/issues/new` 开头，
 - 不允许出现空白字符，
 - 长度不超过 6 000。
 
-opener 权限声明位于 `src-tauri/capabilities/main-window.json`
-（`opener:allow-open-url` 附带 URL 白名单），只允许上述 GitHub Issues
-路径。两层检查都通过后浏览器才能拿到 URL。
+`apps/desktop/main/open-external.ts` 的白名单会独立限制外部 HTTPS 目标；
+更窄的 Core Issue 前缀校验和 Main 白名单都通过后浏览器才能拿到 URL。
 
 不使用 GitHub OAuth。YAQMC 不会读取浏览器 Cookie。如果用户在浏览器里
 本来就登录了 GitHub，浏览器会自动复用那次会话，仅此而已。
 
 ## 错误码
 
-关联到应用错误时会预填一个稳定错误码。分类定义在
-`src-tauri/src/error_codes.rs`，形如 `YAQMC-<DOMAIN>-<REASON>`，例如：
+关联到应用错误时会预填一个稳定错误码。Core `ErrorRecord` 与前端 logger
+携带的错误码形如 `YAQMC-<DOMAIN>-<REASON>`，例如：
 
 ```
 YAQMC-QQ-AUTH-COOKIES-INVALID

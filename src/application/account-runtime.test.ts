@@ -23,6 +23,35 @@ import {
   useAccountStore,
 } from './account-runtime';
 
+const coreStatusMocks = vi.hoisted(() => {
+  const listeners = new Set<(payload: { status: string }) => void>();
+  return {
+    kind: 'fake' as 'electron' | 'fake',
+    listeners,
+    emit(status: string) {
+      for (const listener of listeners) {
+        listener({ status });
+      }
+    },
+    reset() {
+      listeners.clear();
+      this.kind = 'fake';
+    },
+  };
+});
+
+vi.mock('./yaqmc-runtime', () => ({
+  getHostBridge: () => ({ kind: coreStatusMocks.kind }),
+  getYaqmcClient: () => ({
+    on: (_channel: string, handler: (payload: { status: string }) => void) => {
+      coreStatusMocks.listeners.add(handler);
+      return () => {
+        coreStatusMocks.listeners.delete(handler);
+      };
+    },
+  }),
+}));
+
 const capabilities = {
   qrLogin: true,
   favoriteRead: false,
@@ -254,6 +283,7 @@ function accountProvider(
 
 describe('account runtime', () => {
   beforeEach(() => {
+    coreStatusMocks.reset();
     resetAccountRuntimeForTest();
   });
 
@@ -307,6 +337,26 @@ describe('account runtime', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
+    expect(getAccountSnapshot).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('refreshes the account snapshot when Electron core-status becomes ready again', async () => {
+    coreStatusMocks.kind = 'electron';
+    const getAccountSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce(guestSnapshot())
+      .mockResolvedValue(authenticatedSnapshot());
+    const provider = accountProvider({ getAccountSnapshot });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('guest'));
+    expect(getAccountSnapshot).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      coreStatusMocks.emit('ready');
+    });
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('authenticated'));
     expect(getAccountSnapshot).toHaveBeenCalledTimes(2);
     unmount();
   });

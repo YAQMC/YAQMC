@@ -9,7 +9,7 @@
 - album and playlist/toplist lookup
 - normalized lyrics
 
-`AccountMusicProvider` is a separate runtime-checked extension for account snapshot/QR lifecycle, favorites,
+`ProviderAccount` is the account contract implemented by the native provider for account snapshot/QR lifecycle, favorites,
 account playlists, recent history, and typed mutations. Public Home/Search/Explore code depends only on
 `MusicProvider`; enabling account features cannot make catalog rendering require a session.
 
@@ -32,15 +32,15 @@ the provider response into full/preview/unavailable without exposing the URL to 
 
 ### QQMusicProvider
 
-The desktop default is a thin Tauri adapter. Rust owns HTTP, response parsing, artwork caching, lyrics decryption,
+The desktop default is a thin Electron/Core-protocol adapter. Rust owns HTTP, response parsing, artwork caching, lyrics decryption,
 source signing, secret storage, and error mapping. Abort signals prevent stale React results from winning after a
 new query even though an already-dispatched native command cannot cancel its underlying HTTP request.
 
 Public capabilities include search, album and artist metadata, playlist/toplist read, lyrics, word-timed lyrics,
 streaming, and quality selection. The native adapter also implements the account extension. Its capability snapshot
-is session-derived: QQ/WeChat OAuth launch is exposed only to the main WebView; favorites and owned-playlist
+is session-derived: QQ/WeChat OAuth launch is exposed only to the main renderer; favorites and owned-playlist
 operations require an authenticated account; recent history is called only when the provider advertises it. The
-remote authorization WebView has no account-command capability. Status remains
+remote authorization window has no account-command capability. Status remains
 `implemented; live account acceptance pending` until the explicit account acceptance gate completes.
 
 ### FakeMusicProvider

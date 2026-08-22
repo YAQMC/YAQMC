@@ -10,10 +10,10 @@ YAQMC 使用一条统一的日志流水线，用带脱敏的滚动日志文件�
 ## 分层
 
 ```
-前端 (React)               ─┐
-Rust 核心 (Tauri 命令)     ─┤─▶ tracing_subscriber
-平台适配器                 ─┤        │
-Provider / audio / player  ─┘        ▼
+前端 (React)               ── Electron IPC ─┐
+Rust Core server                            ├─▶ tracing_subscriber
+平台适配器                                  ┤        │
+Provider / audio / player                   ┘        ▼
                                  RedactingWriter
                                      │
                                      ▼
@@ -26,7 +26,9 @@ Provider / audio / player  ─┘        ▼
 - **前端**：`src/application/logger.ts` 会本地批处理事件（最多 128 条，
   最长约 400 ms 刷新一次），通过 `diagnostics_log_frontend` 命令发送。Rust
   端命令再把每一条重放到同一批 `tracing` target，前端与 Rust 事件在最终
-  日志中一致。
+  日志中一致。打包后的 Electron **主窗口**还会把 `console.error`（默认）
+  以及可选的 `console.warn` 接到同一条路径（`logging.consoleForward`；
+  歌词 / 解锁 / OAuth 窗口不挂钩）。
 - **Provider / 音频 / 播放器**：这些模块使用 `tracing::info!` / `warn!` /
   `debug!` 与结构化字段（`tracing` 的 key/value）。刻意避免 `{:?}` 打印
   庞大结构体，每一行日志都能在一屏内看完。
@@ -106,18 +108,18 @@ Session ID：
 
 ## 文件、滚动与位置
 
-日志由 `tracing_appender::rolling::Builder::new()` 写入 Tauri app-log
-目录：
+Core 日志由 `tracing_appender::rolling::Builder::new()` 写入
+`apps/desktop/main/core/paths.ts` 解析的目录；Electron Main 的有界
+`host.log` 与其同目录：
 
-| 平台     | 路径                                                 |
-| -------- | ---------------------------------------------------- |
-| Windows  | `%LOCALAPPDATA%\Velune\YAQMC\logs\yaqmc-current.log` |
-| Linux    | `$XDG_DATA_HOME/Velune/YAQMC/logs/yaqmc-current.log` |
-| 默认回退 | Tauri `app_log_dir()` 返回值。                       |
+| 平台     | 日志目录                                      |
+| -------- | --------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\org.yaqmc.desktop\logs`       |
+| Linux    | `$XDG_DATA_HOME/org.yaqmc.desktop/logs`       |
+| 默认回退 | Windows AppData 回退或 `~/.local/share/...`。 |
 
-当前日志为 `yaqmc-current.log`，`tracing-appender` 每日滚动最多保留 7 个
-`yaqmc-current.log.YYYY-MM-DD` 文件。`diagnostics_clear_logs` 只删除
-滚动文件。
+Core 使用 `yaqmc.YYYY-MM-DD.log` 按日滚动，最多保留 7 个；Electron Main
+在 `host.log` 达到 256 KiB 时滚动为 `host.log.1`。
 
 用户可以在 **设置 → 诊断与日志 → 打开日志文件夹** 直接跳到目录。
 
@@ -133,7 +135,8 @@ Session ID：
    `diagnostics_log_frontend` 一次性发送整批，即使突发交互也只产生几次
    IPC。
 
-实际测量记录在 [windows-acceptance.md](windows-acceptance.md)。
+运行证据应按被测安装包记录到当前 [Windows 验收](windows-acceptance.md)
+或 [Linux 验收](linux-acceptance.md)文档。
 
 ## 明确不做
 

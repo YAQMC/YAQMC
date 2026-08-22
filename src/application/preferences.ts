@@ -1,5 +1,3 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import i18n, { LOCALE_CACHE_KEY, resolveLocale, type LocalePreference } from '../i18n';
@@ -20,10 +18,11 @@ import {
   type LyricsPresetState,
 } from './lyrics-preset';
 import { logger } from './logger';
+import { isNativeRuntime } from './native-player-runtime';
+import { getYaqmcClient } from './yaqmc-runtime';
 
 const PREFERENCES_CACHE_KEY = 'yaqmc.preferences.v2';
 const LEGACY_PREFERENCES_CACHE_KEY = 'music-client.preferences.v1';
-const nativeRuntime = isTauri();
 
 export type SecondaryLyricVisibility = 'auto' | 'show' | 'hide';
 export type LyricFontSize = 'small' | 'medium' | 'large';
@@ -358,15 +357,110 @@ function writeCache(preferences: AppPreferences): void {
 }
 
 let persistGeneration = 0;
-function persist(preferences: AppPreferences): void {
-  writeCache(preferences);
-  if (!nativeRuntime) return;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistQueued: AppPreferences | null = null;
+let persistInFlight = false;
+
+export const PREFERENCES_PERSIST_DEBOUNCE_MS = 200;
+
+export function hasPendingPreferencePersist(): boolean {
+  return persistQueued !== null || persistInFlight;
+}
+
+/** Host-owned lock/unlock must survive an in-flight Main appearance persist. */
+export function mergePendingPersistSurfaceInteraction(incoming: AppPreferences): void {
+  if (!persistQueued) {
+    return;
+  }
+  persistQueued = {
+    ...persistQueued,
+    surfaces: {
+      desktop: {
+        ...persistQueued.surfaces.desktop,
+        interaction: incoming.surfaces.desktop.interaction,
+      },
+      island: {
+        ...persistQueued.surfaces.island,
+        interaction: incoming.surfaces.island.interaction,
+      },
+    },
+  };
+}
+
+/** A preferences snapshot cannot unlock a surface; only the host interaction event can. */
+export function mergeHydratedSurfaces(
+  current: AppPreferences['surfaces'],
+  incoming: AppPreferences['surfaces'],
+): AppPreferences['surfaces'] {
+  return {
+    desktop: {
+      ...incoming.desktop,
+      interaction:
+        current.desktop.interaction === 'passive-locked'
+          ? 'passive-locked'
+          : incoming.desktop.interaction,
+    },
+    island: {
+      ...incoming.island,
+      interaction:
+        current.island.interaction === 'passive-locked'
+          ? 'passive-locked'
+          : incoming.island.interaction,
+    },
+  };
+}
+
+export function flushPreferencesPersist(): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  const preferences = persistQueued;
+  persistQueued = null;
+  if (!preferences || !isNativeRuntime) {
+    return;
+  }
   const generation = ++persistGeneration;
-  void invoke('app_preferences_set', { value: JSON.stringify(preferences) }).catch((error) => {
-    if (generation === persistGeneration) {
-      usePreferencesStore.setState({ persistenceError: String(error) });
-    }
-  });
+  persistInFlight = true;
+  void getYaqmcClient()
+    .invoke('app_preferences_set', { value: JSON.stringify(preferences) })
+    .catch((error) => {
+      if (generation === persistGeneration) {
+        usePreferencesStore.setState({ persistenceError: String(error) });
+      }
+    })
+    .finally(() => {
+      if (generation === persistGeneration) {
+        persistInFlight = false;
+      }
+    });
+}
+
+export function resetPreferencesPersistForTest(): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  persistQueued = null;
+  persistInFlight = false;
+  persistGeneration = 0;
+}
+
+function persist(preferences: AppPreferences, options?: { immediate?: boolean }): void {
+  writeCache(preferences);
+  if (!isNativeRuntime) return;
+  persistQueued = preferences;
+  if (options?.immediate) {
+    flushPreferencesPersist();
+    return;
+  }
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+  }
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    flushPreferencesPersist();
+  }, PREFERENCES_PERSIST_DEBOUNCE_MS);
 }
 
 interface PreferencesState extends AppPreferences {
@@ -407,13 +501,13 @@ function persistedSlice(state: PreferencesState): AppPreferences {
 
 export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   ...initialPreferences,
-  hydrated: !nativeRuntime,
+  hydrated: !isNativeRuntime,
   persistenceError: null,
   backgroundImageData: null,
   backgroundImageMissing: false,
   setLocale: (locale) => {
     set({ locale, persistenceError: null });
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   updateAppearance: (patch) => {
     set((state) => ({
@@ -492,7 +586,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       }).system,
       persistenceError: null,
     }));
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   updateDebug: (patch) => {
     set((state) => ({
@@ -502,7 +596,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       }).debug,
       persistenceError: null,
     }));
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   updateSurface: (kind, patch) => {
     set((state) => ({
@@ -533,25 +627,31 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       backgroundImageData: dataUri,
       backgroundImageMissing: false,
     }));
-    persist(persistedSlice(get()));
+    persist(persistedSlice(get()), { immediate: true });
   },
   setBackgroundImageState: (backgroundImageData, backgroundImageMissing) =>
     set({ backgroundImageData, backgroundImageMissing }),
   hydrate: (preferences) => {
-    writeCache(preferences);
-    set({ ...preferences, hydrated: true, persistenceError: null });
+    const current = get();
+    const next = {
+      ...preferences,
+      surfaces: mergeHydratedSurfaces(current.surfaces, preferences.surfaces),
+    };
+    writeCache(next);
+    set({ ...next, hydrated: true, persistenceError: null });
   },
 }));
 
 let hydration: Promise<void> | null = null;
 export function hydratePreferences(): Promise<void> {
-  if (!nativeRuntime) return Promise.resolve();
-  hydration ??= invoke<string | null>('app_preferences_get')
+  if (!isNativeRuntime) return Promise.resolve();
+  hydration ??= getYaqmcClient()
+    .invoke('app_preferences_get')
     .then((value) => {
       const parsed = value ? JSON.parse(value) : null;
       const preferences = value ? normalizePreferences(parsed) : initialPreferences;
       usePreferencesStore.getState().hydrate(preferences);
-      if (!value || preferencesRequireMigration(parsed)) persist(preferences);
+      if (!value || preferencesRequireMigration(parsed)) persist(preferences, { immediate: true });
     })
     .catch((error) => {
       usePreferencesStore.setState({ hydrated: true, persistenceError: String(error) });
@@ -565,8 +665,27 @@ export interface ManagedBackgroundImage {
 }
 
 export async function pickManagedBackgroundImage(): Promise<ManagedBackgroundImage | null> {
-  if (!nativeRuntime) return null;
-  return invoke<ManagedBackgroundImage | null>('appearance_pick_background');
+  if (!isNativeRuntime) return null;
+  const client = getYaqmcClient();
+  const picked = await client.host.dialog?.pickFile({ kind: 'background-image' });
+  if (picked == null) return null;
+  if (typeof picked !== 'string' || picked.trim().length === 0) {
+    throw new Error('selected image path is missing');
+  }
+  return client.invoke('preferences_set_background_from', { path: picked });
+}
+
+const FILESYSTEM_PATH_IN_MESSAGE =
+  /(?:[A-Za-z]:[\\/]|\\\\|\/(?:Users|home|tmp)\/|\\Users\\|APPDATA)/i;
+
+/** Surface Core/host failure text when it is already generic; never show filesystem paths. */
+export function formatBackgroundPickerError(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 240 || FILESYSTEM_PATH_IN_MESSAGE.test(trimmed)) {
+    return fallback;
+  }
+  return trimmed;
 }
 
 function resolveSystemMode(): ResolvedColorMode {
@@ -672,26 +791,58 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
   }, []);
 
   useEffect(() => {
-    if (!nativeRuntime) return;
+    if (!isNativeRuntime) return;
     let active = true;
-    const listeners: UnlistenFn[] = [];
-    void listen<string>('preferences://changed', (event) => {
+    const client = getYaqmcClient();
+    const stopChanged = client.on('preferences://changed', (payload) => {
       if (!active) return;
       try {
-        usePreferencesStore.getState().hydrate(normalizePreferences(JSON.parse(event.payload)));
+        const incoming = normalizePreferences(JSON.parse(payload as unknown as string));
+        if (hasPendingPreferencePersist()) {
+          mergePendingPersistSurfaceInteraction(incoming);
+          return;
+        }
+        usePreferencesStore.getState().hydrate(incoming);
       } catch {
         // Invalid cross-window state is ignored; Rust validates persisted documents.
       }
-    }).then((unlisten) => (active ? listeners.push(unlisten) : unlisten()));
-    void listen<string>('lyrics://surface-closed', (event) => {
-      if (!active || !['desktop', 'island'].includes(event.payload)) return;
-      const kind = event.payload as SurfaceKind;
+    });
+    const stopInteraction = client.on('lyrics://surface-interaction', (payload) => {
+      if (!active) return;
+      const kind = payload?.kind;
+      const interaction = payload?.interaction;
+      if (kind !== 'desktop' && kind !== 'island') return;
+      if (interaction !== 'interactive' && interaction !== 'passive-locked') return;
+      usePreferencesStore.getState().setSurfaceInteractionLocal(kind, interaction);
+    });
+    const stopClosed = client.on('lyrics://surface-closed', (payload) => {
+      const kind = payload as unknown as string;
+      if (!active || !['desktop', 'island'].includes(kind)) return;
       const store = usePreferencesStore.getState();
-      if (store.surfaces[kind].enabled) store.updateSurface(kind, { enabled: false });
-    }).then((unlisten) => (active ? listeners.push(unlisten) : unlisten()));
+      if (store.surfaces[kind as SurfaceKind].enabled)
+        store.updateSurface(kind as SurfaceKind, { enabled: false });
+    });
     return () => {
       active = false;
-      listeners.forEach((unlisten) => unlisten());
+      stopChanged();
+      stopInteraction();
+      stopClosed();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeRuntime) return;
+    const flushHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPreferencesPersist();
+      }
+    };
+    document.addEventListener('visibilitychange', flushHidden);
+    window.addEventListener('pagehide', flushPreferencesPersist);
+    return () => {
+      document.removeEventListener('visibilitychange', flushHidden);
+      window.removeEventListener('pagehide', flushPreferencesPersist);
+      flushPreferencesPersist();
     };
   }, []);
 
@@ -705,7 +856,7 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
 
   useEffect(() => {
     if (
-      !nativeRuntime ||
+      !isNativeRuntime ||
       appearance.backgroundMode !== 'image' ||
       !appearance.backgroundImageReference
     ) {
@@ -713,9 +864,10 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
       return;
     }
     let active = true;
-    void invoke<ManagedBackgroundImage | null>('appearance_background_load', {
-      reference: appearance.backgroundImageReference,
-    })
+    void getYaqmcClient()
+      .invoke('appearance_background_load', {
+        reference: appearance.backgroundImageReference,
+      })
       .then((image) => {
         if (active) setBackgroundImageState(image?.dataUri ?? null, !image);
       })
@@ -728,11 +880,13 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
   }, [appearance.backgroundImageReference, appearance.backgroundMode, setBackgroundImageState]);
 
   useEffect(() => {
-    if (!nativeRuntime || !reconcileSurfaces || !hydrated) return;
+    if (!isNativeRuntime || !reconcileSurfaces || !hydrated) return;
     const timer = window.setTimeout(() => {
-      void invoke('lyrics_surfaces_reconcile', { surfaces }).catch((error) => {
-        usePreferencesStore.setState({ persistenceError: String(error) });
-      });
+      void getYaqmcClient()
+        .invoke('lyrics_surfaces_reconcile', { surfaces })
+        .catch((error) => {
+          usePreferencesStore.setState({ persistenceError: String(error) });
+        });
     }, 60);
     return () => window.clearTimeout(timer);
   }, [hydrated, reconcileSurfaces, surfaces]);

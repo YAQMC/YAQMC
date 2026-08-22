@@ -1,0 +1,93 @@
+# PACK-01: NSIS/portable + Linux AppImage/deb/rpm/tar.gz. Unsigned builds are expected (R-9).
+# UPD-01: GitHub Releases provider for electron-updater metadata. Local packs must
+# pass --publish never (do not draft a release from a maintainer laptop).
+appId: org.yaqmc.desktop
+productName: YAQMC
+copyright: GPL-3.0-or-later
+asar: true
+electronVersion: 43.4.0
+# Use the workspace-pinned Electron 43.4.0 dist (no GitHub re-download).
+electronDist: ../../node_modules/electron/dist
+forceCodeSigning: false
+publish:
+  provider: github
+  owner: YAQMC
+  repo: YAQMC
+directories:
+  output: ../../release-electron
+  buildResources: resources
+files:
+  - dist/main/**
+  - dist/preload/**
+  - harness/**
+  - '!dist/**/*.map'
+extraMetadata:
+  main: dist/main/index.js
+extraResources:
+  - from: resources/core
+    to: core
+    filter:
+      - '!**/*.md'
+      - '!**/.gitkeep'
+  # Vite renderer from the repo dist/ (YAQMC_PREBUILT_FRONTEND on CI). Packaged
+  # Main serves this from process.resourcesPath/renderer, not the ELEC-04 harness.
+  - from: ../../dist
+    to: renderer
+    filter:
+      - '**/*'
+      - '!**/*.map'
+# Binding amendment + SEC-02: Chromium sandbox stays enabled.
+# grantFileProtocolExtraPrivileges stays false so file:// cannot bypass sandbox.
+# EnableEmbeddedAsarIntegrityValidation is a Windows/macOS Electron feature, not a Linux anti-tamper claim.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+win:
+  icon: resources/icon.ico
+  # Unsigned (R-9). Skip rcedit/winCodeSign so local --dir pack does not fetch GitHub.
+  signAndEditExecutable: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+    - target: portable
+      arch:
+        - x64
+        - arm64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: YAQMC-windows-${arch}-setup.${ext}
+portable:
+  artifactName: YAQMC-windows-${arch}-portable.${ext}
+linux:
+  icon: resources
+  category: AudioVideo
+  artifactName: YAQMC-linux-${arch}.${ext}
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    - target: rpm
+      arch:
+        - x64
+        - arm64
+    - target: tar.gz
+      arch:
+        - x64
+        - arm64
+mac:
+  icon: resources/icon.icns

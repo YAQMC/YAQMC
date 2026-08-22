@@ -1,4 +1,11 @@
-import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { ChevronDown, Heart, Image } from 'lucide-react';
 import { useAccountStore, useFavoriteState } from '../application/account-runtime';
 import { useLyricsStore } from '../application/lyrics-store';
@@ -8,6 +15,14 @@ import {
   resolveLyricsPreset,
 } from '../application/lyrics-preset';
 import { getEstimatedPositionMs, usePlayerStore } from '../application/player-store';
+import {
+  LYRICS_STAGE_ENTER_ANIMATION,
+  LYRICS_STAGE_EXIT_ANIMATION,
+  LYRICS_STAGE_TRANSITION_MS,
+  useLyricsStageStore,
+  type LyricsStageState,
+} from '../application/lyrics-stage-machine';
+import { noteLyricsPanelCommit } from '../application/lyrics-perf-counters';
 import { ProviderContext } from '../application/provider-context';
 import { isAccountMusicProvider } from '../providers/music-provider';
 import { joinArtistNames } from '../utils/format';
@@ -48,7 +63,32 @@ interface LyricsPanelProps {
   onClose: () => void;
 }
 
-export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: LyricsPanelProps) {
+export function LyricsPanel(props: LyricsPanelProps) {
+  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
+  const stage = useLyricsStageStore((state) => state.stage);
+
+  useLayoutEffect(() => {
+    if (lyricsOpen) useLyricsStageStore.getState().requestOpen();
+    else useLyricsStageStore.getState().requestClose();
+  }, [lyricsOpen]);
+
+  if (stage === 'closed' && !lyricsOpen) return null;
+  return (
+    <LyricsPanelStage
+      {...props}
+      stageState={stage === 'closed' && lyricsOpen ? 'entering' : stage}
+    />
+  );
+}
+
+function LyricsPanelStage({
+  focus,
+  fullscreen,
+  fullscreenError,
+  onClose,
+  stageState,
+}: LyricsPanelProps & { stageState: LyricsStageState }) {
+  noteLyricsPanelCommit();
   const { t } = useTranslation('lyrics');
   const { t: player } = useTranslation('player');
   const provider = useContext(ProviderContext);
@@ -81,18 +121,10 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const currentIsFavorite = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.isFavorite ?? false,
   );
-  const currentPlaybackCapability = usePlayerStore(
-    (state) => state.queue[state.currentIndex]?.playbackCapability ?? null,
-  );
   const currentProvider = usePlayerStore(
     (state) => state.queue[state.currentIndex]?.provider ?? null,
   );
-  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
-  const isPlaying = usePlayerStore((state) => state.isPlaying);
-  const timelineRevision = usePlayerStore((state) => state.timelineRevision);
-  const positionMs = usePlayerStore((state) => state.positionMs);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
-  const sourceSelection = usePlayerStore((state) => state.sourceSelection);
   const seek = usePlayerStore((state) => state.seek);
   const beginScrub = usePlayerStore((state) => state.beginScrub);
   const previewScrub = usePlayerStore((state) => state.previewScrub);
@@ -138,7 +170,9 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
         'fullscreen',
       )
     : '';
-  const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null);
+  const safeArtworkSource = useSafeArtworkSource(currentArtworkSrc || null, {
+    pendingRemote: 'hide',
+  });
   useEffect(() => rememberLyricsArtwork(safeArtworkSource), [safeArtworkSource]);
   const sceneBackground = resolvedPreset.scene.background;
   const appearanceMode =
@@ -185,12 +219,6 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
   const transportRef = useRef<LyricsFullscreenTransportHandle>(null);
 
   const timelineDuration = playbackDurationMs ?? currentDurationMs;
-  const previewStartMs =
-    sourceSelection?.preview && currentPlaybackCapability?.status === 'preview'
-      ? currentPlaybackCapability.startMs
-      : 0;
-  const duration = Math.max(0, timelineDuration - previewStartMs);
-  const displayPosition = Math.max(0, Math.min(positionMs - previewStartMs, duration));
   const favoriteLabel = currentTrackId
     ? favoritePending
       ? player('favoritePending', { title: currentTitle })
@@ -208,13 +236,15 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     (accountSnapshot.state !== 'authenticated' ||
       (accountSnapshot.capabilities.favoriteWrite && hasWritableProviderReference));
 
-  const presentationKey = `${fullscreen}:${lyricsOpen}`;
+  const presentationKey = fullscreen ? 'fullscreen' : 'windowed';
   const [controlsPresentationKey, setControlsPresentationKey] = useState(presentationKey);
   const [controlsHidden, setControlsHidden] = useState(fullscreen);
   if (controlsPresentationKey !== presentationKey) {
     setControlsPresentationKey(presentationKey);
     setControlsHidden(fullscreen);
   }
+
+  useLayoutEffect(() => useLyricsStageStore.getState().registerSurface(), []);
 
   useEffect(() => {
     const stageElement = stage.current;
@@ -241,9 +271,37 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
       window.removeEventListener('keydown', handleKeyDown);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [fullscreen, lyricsOpen]);
+  }, [fullscreen]);
 
-  if (!lyricsOpen) return null;
+  useEffect(() => {
+    const stageElement = stage.current;
+    if (!stageElement) return;
+    const settle = (event: AnimationEvent) => {
+      if (event.target !== stageElement) return;
+      const raw = stageElement.dataset.stageGeneration;
+      const generation = raw === undefined ? undefined : Number(raw);
+      useLyricsStageStore
+        .getState()
+        .notifyTransitionFinished(
+          event.animationName,
+          Number.isFinite(generation) ? generation : undefined,
+        );
+    };
+    stageElement.addEventListener('animationend', settle);
+    return () => stageElement.removeEventListener('animationend', settle);
+  }, []);
+
+  useEffect(() => {
+    const generation = useLyricsStageStore.getState().generation;
+    if (stage.current) stage.current.dataset.stageGeneration = String(generation);
+    if (stageState !== 'entering' && stageState !== 'exiting') return;
+    const animationName =
+      stageState === 'entering' ? LYRICS_STAGE_ENTER_ANIMATION : LYRICS_STAGE_EXIT_ANIMATION;
+    const timer = window.setTimeout(() => {
+      useLyricsStageStore.getState().notifyTransitionFinished(animationName, generation);
+    }, LYRICS_STAGE_TRANSITION_MS + 80);
+    return () => window.clearTimeout(timer);
+  }, [stageState]);
 
   const style = {
     '--lyrics-font-scale': resolvedPreset.typography.fontScale,
@@ -272,18 +330,18 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
     artworkSrc: safeArtworkSource,
     artworkAlt: currentArtworkAlt,
     artworkColor: currentArtworkColor,
-    lyrics: lyricsOpen ? activeDocument : null,
+    lyrics: activeDocument,
     lyricsStatus,
-    isPlaying,
-    positionMs: displayPosition,
-    durationMs: duration,
-    timelineRevision,
+    isPlaying: usePlayerStore.getState().isPlaying,
+    positionMs: getEstimatedPositionMs(),
+    durationMs: timelineDuration,
+    timelineRevision: usePlayerStore.getState().timelineRevision,
     presentationOffsetMs,
     getPositionMs: getEstimatedPositionMs,
-    seek: (value) => seek(value + previewStartMs),
+    seek,
     beginScrub,
-    previewScrub: (value) => previewScrub(value + previewStartMs),
-    commitScrub: (value) => commitScrub(value + previewStartMs),
+    previewScrub,
+    commitScrub,
     togglePlayback,
     next,
     previous,
@@ -298,6 +356,7 @@ export function LyricsPanel({ focus, fullscreen, fullscreenError, onClose }: Lyr
       className="lyrics-stage"
       style={style}
       aria-label={t('region')}
+      data-stage={stageState}
       data-focus={focus || undefined}
       data-fullscreen={fullscreen || undefined}
       data-cover-layout={coverLayout}

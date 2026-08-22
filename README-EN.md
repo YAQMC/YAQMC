@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/build.yml/badge.svg" alt="Desktop build status"></a>
-  <img src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2">
+  <a href="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111" alt="React 19">
   <img src="https://img.shields.io/badge/Rust-1.88%2B-000?logo=rust&logoColor=white" alt="Rust 1.88 or newer">
 </p>
@@ -31,7 +31,7 @@
   are projections over the same state machine.
 - QQ Music discovery, search, albums, playlists/toplists, normalized QRC/LRC lyrics, and account-aware playback
   quality.
-- Restricted, embedded Tencent OAuth for QQ and WeChat. Passwords and WebView cookies are never copied into the
+- Restricted, embedded Tencent OAuth for QQ and WeChat. Passwords and OAuth-window cookies are never copied into the
   application; durable credentials stay in the operating-system secure store.
 - Desktop Lyrics and Lyrics Island with word timing, translation/romanization, click-through lock mode, and a
   dedicated on-surface unlock control.
@@ -46,14 +46,15 @@
 
 Tagged releases publish the package formats that each supported runner can build natively:
 
-| Platform | Architectures                     | Packages                                                |
-| -------- | --------------------------------- | ------------------------------------------------------- |
-| Windows  | x86_64 / AMD64, x86 / i686, ARM64 | NSIS `.exe`, WiX `.msi`, portable `.zip`                |
-| Linux    | x86_64 / AMD64, ARM64             | AppImage, Debian `.deb`, RPM `.rpm`, portable `.tar.gz` |
+| Platform | Architectures         | Packages                                                |
+| -------- | --------------------- | ------------------------------------------------------- |
+| Windows  | x64 / AMD64, ARM64    | NSIS `.exe`, portable `.exe`                            |
+| Linux    | x86_64 / AMD64, ARM64 | AppImage, Debian `.deb`, RPM `.rpm`, portable `.tar.gz` |
 
-AMD64 and x86_64 are two names for the same architecture; Windows “x32” is published as the i686/x86 build.
+AMD64, x86_64, and the release label x64 name the same architecture. Windows i686/x86 packages are no longer published.
 Release artifacts include SHA-256 checksums. Linux runtime acceptance remains host-specific—especially on native
-Wayland—so the x86_64 AppImage also ships with the diagnostics and acceptance bundle described in
+Wayland. The x86_64 AppImage and the revision-bound `YAQMC-linux-x64-tester-<commit>` bundle are separate artifacts;
+only the tester bundle contains the diagnostics collector, verifier, and acceptance documents described in
 [the Linux guide](docs/linux.md).
 
 ## Current status
@@ -69,7 +70,7 @@ verified.
 
 | Area                            | Windows                                    | Linux                                                      |
 | ------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
-| Desktop client and native audio | Implemented (WebView2, CPAL)               | Implemented (WebKitGTK, host ALSA route)                   |
+| Desktop client and native audio | Implemented (Electron/Chromium, CPAL)      | Implemented (Electron/Chromium, ALSA/CPAL)                 |
 | Media session                   | SMTC                                       | MPRIS 2.2                                                  |
 | Tray and close-to-tray          | Implemented                                | Implemented; presentation depends on desktop environment   |
 | Lyric overlays                  | Full positioning and interaction semantics | X11/XWayland supported; native Wayland reports limitations |
@@ -77,21 +78,24 @@ verified.
 
 ## Install prerequisites
 
-- Node.js 24 and npm
+- Node.js 24.19.0 exactly, with its bundled npm
 - Rust 1.88 or newer
-- [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/)
-- Windows: MSVC build tools and WebView2 Runtime
-- Debian/Ubuntu: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev`
+- Windows: MSVC build tools
+- Debian/Ubuntu: ALSA development files for native audio; `rpm` and `fakeroot` when producing RPM bundles
 
 ## Development
 
 ```powershell
 npm ci
-npm run tauri dev
+npm run dev:desktop
 ```
 
+Native Core links the exact private `qm-api-rs` production pin unconditionally;
+local Git must already have read access. See [development](docs/development.md)
+for authentication and environment details.
+
 Browser development intentionally uses the deterministic fake provider because credentials, native audio, cache,
-and QQ Music transport live behind Tauri:
+and QQ Music transport live behind the Electron desktop host:
 
 ```powershell
 npm run dev
@@ -103,14 +107,14 @@ deterministic UI evidence.
 ## Build locally
 
 ```powershell
-# Executable only; no installer
-npm run tauri -- build --no-bundle
+# Build and stage release Core, then frontend assets, Electron Main, and preload
+cargo build -p yaqmc-core --release --locked
+npm run stage-core -- --profile release
+npm run ci:frontend-build
+npm run build -w @yaqmc/desktop
 
-# Windows host
-npm run tauri -- build --bundles nsis,msi
-
-# Linux host
-npm run tauri -- build --bundles appimage,deb,rpm
+# Package the current platform without publishing
+npm run package -w @yaqmc/desktop -- --publish never
 ```
 
 Cross-architecture installer builds should use the corresponding Rust target or a native hosted runner; changing an
@@ -118,22 +122,18 @@ artifact filename does not change its architecture.
 
 ## Verification
 
-The release `generate_context!` requires `dist/` to exist, so run `npm run build` (or `npm run check`) once before
-running cargo commands directly.
-
 ```powershell
 npm run format:check
 npm run check
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --all-targets
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --all-targets --locked
 ```
 
-Four ignored Rust tests deliberately contact a live provider or audible native output. Run them only on a suitable
-host:
+Ignored Rust tests may contact a live provider or audible native output. Run them only on a suitable host:
 
 ```powershell
-cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture
+cargo test --workspace -- --ignored --nocapture
 ```
 
 ## Architecture
@@ -150,8 +150,9 @@ React UI / lyric surfaces / local API / tray / media sessions
   transport + cache              Rodio / CPAL
 ```
 
-Security-sensitive account commands are available only to the exact `main` WebView label and are checked again in
-Rust. OAuth windows have a Tencent-only navigation allowlist, reject popups, disable autofill/devtools, validate an
+Security-sensitive account commands are available only to the main renderer through the Electron Main IPC ACL and
+are checked again by Core. OAuth windows have a Tencent-only navigation allowlist, reject popups, disable
+autofill/devtools, validate an
 unpredictable state value, and accept only the registered QQ Music callback. Lyric unlock controls use a separate,
 single-command capability and cannot access account or player state.
 
@@ -161,15 +162,16 @@ single-command capability and cannot access account or player state.
 - `src/providers` — provider contract, QQ Music adapter, and fake provider
 - `src/application` — native-state projections and application coordination
 - `src/components`, `src/pages`, `src/surfaces` — desktop UI and lyric windows
-- `src-tauri/src/player.rs` — authoritative queue/playback state machine
-- `src-tauri/src/audio.rs` — native decoding/output and device switching
-- `src-tauri/src/streaming.rs` — seekable HTTP Range source
-- `src-tauri/src/system_media.rs` — MPRIS/SMTC adapters
-- `src-tauri/src/desktop_integration.rs` — tray, close behavior, and shortcuts
-- `src-tauri/src/platform.rs` — backend/capability diagnostics and export
+- `crates/yaqmc-core/src/player.rs` — authoritative queue/playback state machine
+- `crates/yaqmc-core/src/audio.rs` — native decoding/output and device switching
+- `crates/yaqmc-core/src/streaming.rs` — seekable HTTP Range source
+- `crates/yaqmc-core/src/system_media.rs` — Core-owned MPRIS/SMTC adapters
+- `apps/desktop/main` — Electron windows, tray, shortcuts, updater, dialogs, and Core process supervision
+- `apps/desktop/preload` — context-isolated renderer bridge
 - `scripts/collect-linux-diagnostics.sh` — privacy-bounded tester capture
 
 Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
+[development](docs/development.md), [data locations and uninstall](docs/data-locations.md),
 [streaming](docs/streaming.md), [platform integration](docs/platform-integration.md),
 [Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),
 [authentication](docs/authentication.md), [account library](docs/account-library.md),
@@ -199,5 +201,5 @@ complete, carefully scoped credits—including the no-source-reuse boundary for 
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 > [!NOTE]
-> The repository currently has no project license. Public source visibility does not itself grant permission to copy,
-> modify, or redistribute the project.
+> YAQMC is licensed under [GPL-3.0-or-later](LICENSE). Binary releases include corresponding source as described in
+> the [corresponding-source policy](CORRESPONDING_SOURCE_POLICY.md).

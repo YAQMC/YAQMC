@@ -20,20 +20,21 @@
   display: grid;
   width: 100%;
   height: 100%;
-  padding-right: 4px;
-  place-items: center end;
+  padding: 0;
+  place-items: stretch;
 }
 
 .lyrics-unlock-button {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 100%;
+  height: 100%;
   padding: 0;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
-  background: rgba(12, 13, 11, 0.9);
+  background: rgba(12, 13, 11, 0.92);
   color: #f1f3ec;
+  -webkit-app-region: no-drag;
   box-shadow: 0 7px 22px rgba(0, 0, 0, 0.34);
   transition:
     color var(--motion-fast),
@@ -72,6 +73,7 @@
   position: absolute;
   z-index: 0;
   inset: 0;
+  pointer-events: none;
 }
 
 .lyrics-surface__line {
@@ -127,10 +129,13 @@
 .surface-word > span:last-child {
   position: absolute;
   inset: 0;
-  width: var(--word-progress);
+  width: 100%;
   overflow: hidden;
   color: var(--surface-lyric-primary);
   white-space: pre;
+  transform: scaleX(var(--word-progress, 0%));
+  transform-origin: left center;
+  backface-visibility: hidden;
 }
 
 .surface-word[data-state='complete'] > span:first-child {
@@ -160,9 +165,14 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
   opacity: 0;
   transform: translateY(-3px);
+  -webkit-app-region: no-drag;
   transition:
     opacity var(--motion-base),
     transform var(--motion-base) var(--ease-out);
+}
+
+.lyrics-surface__controls .icon-button {
+  -webkit-app-region: no-drag;
 }
 
 .lyrics-surface[data-interaction-state='visible-interactive-hover'] .lyrics-surface__controls,
@@ -247,14 +257,6 @@
   cursor: default;
 }
 
-.lyrics-surface--desktop:is(
-    [data-interaction-state='visible-interactive-idle'],
-    [data-interaction-state='visible-interactive-hover']
-  )
-  .desktop-lyrics__content {
-  cursor: move;
-}
-
 .lyrics-surface[data-interaction-state='visible-passive-locked'] {
   pointer-events: none;
 }
@@ -285,14 +287,6 @@
   transition:
     height 220ms var(--ease-out),
     border-radius 220ms var(--ease-out);
-}
-
-.lyrics-surface--island:is(
-    [data-interaction-state='visible-interactive-idle'],
-    [data-interaction-state='visible-interactive-hover']
-  )
-  .island-card {
-  cursor: move;
 }
 
 .lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card {
@@ -401,22 +395,56 @@
   overflow: hidden;
   border-radius: var(--radius-round);
   background: rgba(255, 255, 255, 0.09);
+  --island-progress: 0%;
+}
+
+@property --island-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
 }
 
 .island-card__progress::after {
   display: block;
-  width: var(--island-progress);
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: var(--accent-primary);
   content: '';
+  transform: scaleX(var(--island-progress));
+  transform-origin: left center;
+  backface-visibility: hidden;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .island-card,
-  .island-card > img,
-  .island-card__expanded,
-  .lyrics-surface__controls {
-    transition: none;
-  }
+@property --word-progress {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+:root[data-compositor-probe='no-surface-anim'] .surface-word > span:last-child,
+:root[data-compositor-probe='no-surface-anim'] .island-card__progress::after {
+  transition: none !important;
+  transform: none !important;
+}
+
+:root[data-compositor-probe='no-island-expand'] .island-card,
+:root[data-compositor-probe='no-island-expand'] .island-card > img,
+:root[data-compositor-probe='no-island-expand'] .island-card__expanded {
+  transition: none !important;
+}
+
+:root[data-compositor-probe='no-surface-artwork'] .island-card > img {
+  visibility: hidden !important;
+}
+
+:root[data-surface-visual='idle'] .island-card,
+:root[data-surface-visual='idle'] .island-card > img,
+:root[data-surface-visual='idle'] .island-card__expanded,
+:root[data-surface-visual='idle'] .lyrics-surface__controls,
+:root[data-surface-visual='idle'] .surface-word > span:last-child,
+:root[data-surface-visual='idle'] .island-card__progress,
+:root[data-surface-visual='idle'] .island-card__progress::after {
+  transition: none !important;
+  animation: none !important;
 }
