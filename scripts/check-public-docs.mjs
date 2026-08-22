@@ -67,6 +67,10 @@ const communityDocuments = [
   'SUPPORT.md',
   'SUPPORT-EN.md',
   'docs/README.md',
+  'docs/release/README.md',
+  'docs/release/provider-readiness.md',
+  'docs/release/provenance.md',
+  'docs/release/qm-api-rs-provenance.md',
   'docs/zh-CN/README.md',
 ];
 

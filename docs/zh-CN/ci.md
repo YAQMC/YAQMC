@@ -15,7 +15,7 @@
 
 ## 门禁与打包矩阵
 
-每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux 和 Windows 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查；核验无条件链接的私有 `qm-api-rs` 精确 git pin，显式执行 P14-C readiness 与 provenance 门禁，并在 Linux/Windows 扫描密钥。`rust-quality` 与打包任务在存在 `QM_API_RS_TOKEN` 时可为 `github.com/YAQMC/qm-api-rs` 配置 git `insteadOf`（`CARGO_NET_GIT_FETCH_WITH_CLI=true`）；缺少 token 时不会配置重写，私有依赖无法获取则构建失败。
+每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux 和 Windows 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查；核验无条件链接的私有 `qm-api-rs` 精确 git pin，显式执行提供器 readiness 与 provenance 门禁，并在 Linux/Windows 扫描密钥。`rust-quality` 与打包任务在存在 `QM_API_RS_TOKEN` 时可为 `github.com/YAQMC/qm-api-rs` 配置 git `insteadOf`（`CARGO_NET_GIT_FETCH_WITH_CLI=true`）；缺少 token 时不会配置重写，私有依赖无法获取则构建失败。
 
 - Pull request 打包 Windows x64 与 Linux x64。
 - 推送 `main` 打包 Windows x64/arm64 与 Linux x64/arm64。
@@ -58,7 +58,7 @@ Linux x64 打包任务还会上传独立的扁平 artifact
 identity、checksums、当前测试/验收说明、采集器和验证器。上传前 CI 会执行
 identity-only 校验；该测试包不会混入 Release 草稿资产。
 
-发布工作流在打包前强制通过 pin、P14-C 与 provenance 门禁。它检出私有依赖的精确 revision，生成绑定 revision 的 YAQMC 与 `qm-api-rs` 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，生成 `SHA256SUMS-electron.txt` 与 `RELEASE-NOTES-ELECTRON.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
+发布工作流在打包前强制通过 pin、提供器 readiness 与 provenance 门禁。它检出私有依赖的精确 revision，生成绑定 revision 的 YAQMC 与 `qm-api-rs` 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，生成 `SHA256SUMS-electron.txt` 与 `RELEASE-NOTES-ELECTRON.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
 
 ## 构建通过与运行时验收
 

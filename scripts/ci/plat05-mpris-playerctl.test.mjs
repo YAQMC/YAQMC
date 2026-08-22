@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
@@ -16,7 +15,6 @@ import {
 } from '../migration/plat05-mpris-playerctl.mjs';
 
 const SCRIPT = path.join(repositoryRoot, 'scripts', 'migration', 'plat05-mpris-playerctl.mjs');
-const DOC = path.join(repositoryRoot, 'docs', 'migration', 'plat05-mpris.md');
 
 test('defaults to dry-run playerctl + dbus Raise/Quit and does not invent green', () => {
   const result = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
@@ -58,13 +56,4 @@ test('--execute is skipped on non-Linux hosts', () => {
   const report = plat05Report({ platform: 'win32', argv: [] });
   assert.equal(report.canExecute, false);
   assert.equal(report.hostPlatform, 'win32');
-});
-
-test('checklist doc does not claim MPRIS green', () => {
-  const doc = readFileSync(DOC, 'utf8');
-  assert.match(doc, /LIVE VERIFY pending/);
-  assert.match(doc, /PLAT-05 is not green/);
-  assert.match(doc, /org\.mpris\.MediaPlayer2\.yaqmc/);
-  assert.match(doc, /host:\/\/command/);
-  assert.doesNotMatch(doc, /matrix is green/i);
 });

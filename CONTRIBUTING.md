@@ -25,13 +25,12 @@ npm run dev:desktop
 npm run dev
 ```
 
-P14-C cutover 后，私有 `qm-api-rs`（crate `qqmusic-api`）是无条件生产依赖，
+私有 `qm-api-rs`（crate `qqmusic-api`）是当前无条件生产依赖，
 钉在 `476b37e3135560dff132e9ba8996e068af706458`。本地若在 `../qm-api-rs` 有
 检出，运行 `node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。不要
 把访问令牌写入仓库；干净的 CI 构建通过 `QM_API_RS_TOKEN` 让 Git fetch 该私有
-pin。详见
-[P14 入口门禁](docs/migration/p14-entry-gates.md) 与
-[P14-B](docs/migration/p14b-qmapi-backend.md)。
+pin。生产边界和发布门禁见[提供器 readiness](docs/release/provider-readiness.md)
+与 [CI 文档](docs/zh-CN/ci.md)。
 
 ## 提交流程
 

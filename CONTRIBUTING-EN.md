@@ -15,14 +15,13 @@ npm run dev:desktop
 See [development](docs/development.md) for the layered build, packaging, and QA-profile rules, and
 [data locations](docs/data-locations.md) for upgrade and uninstall behavior.
 
-Since the P14-C cutover, the private `qm-api-rs` crate (`qqmusic-api`) is the
-unconditional production dependency, pinned at
+The private `qm-api-rs` crate (`qqmusic-api`) is the current unconditional
+production dependency, pinned at
 `476b37e3135560dff132e9ba8996e068af706458`. A sibling checkout at `../qm-api-rs`
 is checked against that pin by `node scripts/ci/qm-api-rs-access.mjs --check`.
 Never commit an access token. Clean CI builds provide `QM_API_RS_TOKEN` so Git
-can fetch the private pin. See
-[P14 entry gates](docs/migration/p14-entry-gates.md) and
-[P14-B](docs/migration/p14b-qmapi-backend.md).
+can fetch the private pin. See [provider readiness](docs/release/provider-readiness.md)
+and [CI](docs/ci.md) for the production boundary and release gates.
 
 Before a pull request, run:
 

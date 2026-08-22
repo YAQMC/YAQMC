@@ -97,17 +97,3 @@ test('artifact names and silent per-user install/uninstall commands', () => {
   assert.equal(report.artifacts['nsis-x64'].name, 'YAQMC-windows-x64-setup.exe');
   assert.equal(report.date, '2026-08-17');
 });
-
-test('checklist doc does not claim the clean-VM matrix green', () => {
-  const doc = readFileSync(
-    path.join(repositoryRoot, 'docs', 'migration', 'pack02-windows.md'),
-    'utf8',
-  );
-  assert.match(doc, /LIVE VERIFY \/ clean-VM pending/);
-  assert.match(doc, /PACK-02 is not green/);
-  assert.match(doc, /oneClick: false/);
-  assert.match(doc, /perMachine: false/);
-  assert.match(doc, /Unsigned \(\*\*R-9\*\*\)/);
-  assert.match(doc, /Upgrade \(install A then B\)/);
-  assert.doesNotMatch(doc, /matrix is green/i);
-});

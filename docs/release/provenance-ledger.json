@@ -31,7 +31,7 @@
       "revision": "476b37e3135560dff132e9ba8996e068af706458",
       "yaqmcPin": "476b37e3135560dff132e9ba8996e068af706458",
       "linked": true,
-      "note": "Current dependency overlay only; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. YAQMC links qqmusic-api unconditionally. Pin 476b37e adds tolerant clear-vkey parsing on top of the ffcc86c independent-implementation record."
+      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. Pin 476b37e adds tolerant clear-vkey parsing on top of the ffcc86c independent-implementation record."
     }
   },
   "sources": [

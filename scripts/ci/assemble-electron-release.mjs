@@ -249,16 +249,13 @@ function validateCorrespondingSource(sourceDir) {
     manifest?.qmApiRsRevision !== QM_API_RS_REV ||
     manifest?.p14c?.status !== 'READY' ||
     manifest?.p14c?.targetPin !== QM_API_RS_REV ||
-    manifest?.p14c?.readinessRecord !== 'docs/migration/p14c-readiness.json' ||
+    manifest?.p14c?.readinessRecord !== 'docs/release/provider-readiness.json' ||
     !/^[0-9a-f]{64}$/u.test(manifest?.p14c?.readinessSha256 ?? '') ||
     manifest?.provenance?.status !== 'PASS' ||
-    manifest?.provenance?.ledger !== 'docs/migration/provenance-ledger.json' ||
+    manifest?.provenance?.ledger !== 'docs/release/provenance-ledger.json' ||
     !/^[0-9a-f]{64}$/u.test(manifest?.provenance?.ledgerSha256 ?? '') ||
     JSON.stringify(manifest?.provenance?.evidence) !==
-      JSON.stringify([
-        'docs/migration/provenance-audit.md',
-        'docs/migration/p14-qm-api-rs-provenance.md',
-      ]) ||
+      JSON.stringify(['docs/release/provenance.md', 'docs/release/qm-api-rs-provenance.md']) ||
     Object.keys(manifest?.provenance?.evidenceSha256 ?? {}).length !== 2 ||
     manifest.provenance.evidence.some(
       (file) => !/^[0-9a-f]{64}$/u.test(manifest.provenance.evidenceSha256[file] ?? ''),

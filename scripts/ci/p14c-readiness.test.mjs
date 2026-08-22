@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { formatP14cStatus, inspectP14cReadiness, validateP14cRecord } from './p14c-readiness.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const readinessPath = path.join(repositoryRoot, 'docs', 'migration', 'p14c-readiness.json');
+const readinessPath = path.join(repositoryRoot, 'docs', 'release', 'provider-readiness.json');
 
 function currentRecord() {
   return JSON.parse(readFileSync(readinessPath, 'utf8'));
@@ -109,7 +109,7 @@ test('the schema rejects unversioned gate identifiers', () => {
           {
             id: 'extra-open-gate',
             status: 'not-started',
-            evidence: 'docs/migration/p14c-readiness.md',
+            evidence: 'docs/release/provider-readiness.md',
           },
         ],
       }),
@@ -259,7 +259,7 @@ test('gate evidence must stay inside the repository and exist', () => {
         ...record,
         gates: record.gates.map((gate) =>
           gate.id === 'retirement-scope'
-            ? { ...gate, evidence: 'docs/migration/does-not-exist.md' }
+            ? { ...gate, evidence: 'docs/release/does-not-exist.md' }
             : gate,
         ),
       }),

@@ -22,7 +22,7 @@ export function soakSeconds(env = process.env) {
 }
 
 export function defaultReportPath(repositoryRoot = defaultRepositoryRoot) {
-  return path.join(repositoryRoot, 'docs', 'migration', 'soak-last.json');
+  return path.join(repositoryRoot, 'artifacts', 'soak-last.json');
 }
 
 function rssBytes() {
@@ -114,7 +114,7 @@ export async function runSoak(options = {}) {
     errors,
     notes: [
       `Default duration is ${DEFAULT_SOAK_SECONDS}s via YAQMC_SOAK_SECONDS (safe for CI/dev).`,
-      `Maintainer 4-h run: YAQMC_SOAK_SECONDS=${MAINTAINER_FOUR_HOUR_SECONDS} (see docs/migration/soak-p7.md).`,
+      `Maintainer 4-h run: YAQMC_SOAK_SECONDS=${MAINTAINER_FOUR_HOUR_SECONDS} (record the result with the platform acceptance evidence).`,
       'First 4-h report stays uncommitted (PENDING). This script does not start qm-api-rs.',
       'LIVE VERIFY real-account soak is maintainer-only and is not claimed green here.',
     ],

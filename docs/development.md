@@ -20,7 +20,7 @@ TypeScript failures.
 
 ## Private production dependency
 
-The P14-C production provider links the private `qqmusic-api` crate
+The production provider links the private `qqmusic-api` crate
 unconditionally from `https://github.com/YAQMC/qm-api-rs.git`, revision
 `476b37e3135560dff132e9ba8996e068af706458`. Local Git must already be able to
 read that repository (for example through Git Credential Manager or SSH/HTTPS

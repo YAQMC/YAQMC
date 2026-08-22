@@ -2,8 +2,7 @@
 
 > [简体中文](zh-CN/README.md) | **English**
 
-This directory contains the public engineering and operating documentation for YAQMC. Internal implementation
-plans under `docs/plans/` and `docs/superpowers/` are historical development records rather than user guidance.
+This directory contains the public user, tester, contributor, and release documentation for YAQMC.
 
 ## Start here
 
@@ -30,7 +29,7 @@ plans under `docs/plans/` and `docs/superpowers/` are historical development rec
 - [Logging](logging.md), [diagnostics](diagnostics.md),
   [Issue reporting](issue-reporting.md), and [security & privacy](security.md)
 - [CI, caches, and downloadable artifacts](ci.md)
-- [Electron migration execution archive](migration/README.md)
+- [Release and compliance records](release/README.md)
 
 ## Acceptance records
 

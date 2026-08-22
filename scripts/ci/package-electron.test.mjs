@@ -116,6 +116,10 @@ test('stages named Electron artifacts and checksums without unpacked trees', () 
     readFileSync(path.join(dest, 'YAQMC-windows-x64-setup.exe'), 'utf8'),
     'YAQMC-windows-x64-setup.exe',
   );
+  assert.equal(
+    readFileSync(path.join(dest, 'YAQMC-windows-x64-portable.exe'), 'utf8'),
+    'YAQMC-windows-x64-portable.exe',
+  );
   assert.equal(readFileSync(path.join(dest, 'latest.yml'), 'utf8'), 'version: 0.1.0\n');
   const buildInfo = JSON.parse(
     readFileSync(path.join(dest, 'build-info-windows-x64.json'), 'utf8'),
@@ -125,7 +129,7 @@ test('stages named Electron artifacts and checksums without unpacked trees', () 
   assert.equal(buildInfo.lto, 'thin');
   assert.deepEqual(
     buildInfo.files.map(({ name }) => name),
-    ['YAQMC-windows-x64-setup.exe', 'latest.yml'],
+    ['YAQMC-windows-x64-setup.exe', 'YAQMC-windows-x64-portable.exe', 'latest.yml'],
   );
   assert.ok(buildInfo.files.every(({ sha256 }) => /^[0-9a-f]{64}$/u.test(sha256)));
   const sums = readFileSync(path.join(dest, 'SHA256SUMS-electron-windows-x64.txt'), 'utf8');

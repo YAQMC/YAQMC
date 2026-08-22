@@ -2,7 +2,7 @@ node_modules/
 dist/
 coverage/
 output/
-release/
+/release/
 release-electron/
 corresponding-source/
 .corresponding-source/
@@ -29,9 +29,9 @@ apps/desktop/resources/core/yaqmc-core.exe
 apps/desktop/resources/core/core.sha256
 apps/desktop/resources/core/manifest.json
 
-# P7 soak report (noisy; first 4-h capture stays uncommitted)
-docs/migration/soak-last.json
-docs/migration/acc03-windows-last.json
+# Local acceptance reports
+artifacts/soak-last.json
+artifacts/acc03-windows-last.json
 
 # Example plugin entrypoints (root `dist/` would hide plug01 fixtures)
 !examples/plugins/script-network/dist/
