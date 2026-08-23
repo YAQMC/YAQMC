@@ -18,9 +18,23 @@ export interface ArtistSummary {
   name: string;
 }
 
+export interface ArtistPreview {
+  id: EntityId;
+  name: string;
+  artwork: Artwork;
+}
+
 export interface AlbumSummary {
   id: EntityId;
   title: string;
+}
+
+export interface AlbumPreview {
+  id: EntityId;
+  title: string;
+  artist: ArtistPreview;
+  artwork: Artwork;
+  releaseYear: number;
 }
 
 export type AudioQuality = 'standard' | 'high' | 'lossless' | 'master';
@@ -108,6 +122,15 @@ export interface Album {
   genre: string;
   description: string;
   tracks: Song[];
+}
+
+export interface Artist {
+  id: EntityId;
+  name: string;
+  artwork: Artwork;
+  description: string;
+  topSongs: Song[];
+  albums: AlbumPreview[];
 }
 
 export interface PlaylistOwner {

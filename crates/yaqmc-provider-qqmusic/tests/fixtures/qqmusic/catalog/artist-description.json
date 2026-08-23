@@ -1,0 +1,12 @@
+{
+  "code": 0,
+  "req_0": {
+    "code": 0,
+    "data": {
+      "singer_list": [{
+        "basic_info": { "singer_mid": "ARTIST_MID", "name": "Typed Artist" },
+        "ex_info": { "desc": "Typed artist biography" }
+      }]
+    }
+  }
+}

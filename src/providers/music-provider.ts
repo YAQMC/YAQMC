@@ -4,6 +4,7 @@ import type {
   AccountPlaylistSummary,
   AccountSnapshot,
   Album,
+  Artist,
   CollectPlaylistRequest,
   CreatePlaylistRequest,
   DeletePlaylistRequest,
@@ -32,7 +33,9 @@ export interface MusicProvider {
   getHome(signal?: AbortSignal, refresh?: boolean): Promise<HomeFeed>;
   getDiscover(signal?: AbortSignal, refresh?: boolean): Promise<DiscoverFeed>;
   getArea(encArea: string, signal?: AbortSignal): Promise<AreaFeed>;
+  getSong(id: EntityId, signal?: AbortSignal): Promise<Song>;
   getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album>;
+  getArtist(id: EntityId, signal?: AbortSignal): Promise<Artist>;
   getPlaylist(id: EntityId, signal?: AbortSignal): Promise<Playlist>;
   getLibrary(signal?: AbortSignal): Promise<LibrarySnapshot>;
   getLyrics(songId: EntityId, signal?: AbortSignal): Promise<LyricDocument | null>;

@@ -28,6 +28,21 @@ describe('FakeMusicProvider', () => {
     });
   });
 
+  it('looks up fixture songs and artists through the catalog detail boundary', async () => {
+    const song = await provider.getSong('quiet-light');
+    expect(song.title).toBe('Quiet Light');
+
+    const artist = await provider.getArtist('artist-mira-vale');
+    expect(artist.name).toBe('Mira Vale');
+    expect(artist.topSongs.map((candidate) => candidate.id)).toContain('quiet-light');
+    expect(artist.albums.map((candidate) => candidate.id)).toContain('album-afterglow');
+  });
+
+  it('reports unknown song and artist lookups as not-found provider errors', async () => {
+    await expect(provider.getSong('missing')).rejects.toMatchObject({ code: 'not-found' });
+    await expect(provider.getArtist('missing')).rejects.toMatchObject({ code: 'not-found' });
+  });
+
   it('remains a catalog-only provider', () => {
     expect(isAccountMusicProvider(provider)).toBe(false);
     expect(isAccountMusicProvider(new QQMusicProvider())).toBe(true);

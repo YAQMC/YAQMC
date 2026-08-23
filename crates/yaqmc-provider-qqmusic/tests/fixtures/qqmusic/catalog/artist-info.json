@@ -1,0 +1,18 @@
+{
+  "code": 0,
+  "req_0": {
+    "code": 0,
+    "data": {
+      "Status": 0,
+      "Info": {
+        "Singer": {
+          "SingerMid": "ARTIST_MID",
+          "Name": "Typed Artist",
+          "SingerPic": "https://y.gtimg.cn/music/photo_new/T001R300x300M000ARTIST_MID.jpg"
+        },
+        "BaseInfo": {}
+      },
+      "TabDetail": {}
+    }
+  }
+}

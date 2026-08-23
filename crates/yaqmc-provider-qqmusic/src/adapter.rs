@@ -321,8 +321,22 @@ impl api::MusicProvider for QQMusicService {
         map_output(value)
     }
 
+    async fn song(&self, id: String) -> api::ProviderResult<api::Song> {
+        let value = QQMusicService::song(self, id)
+            .await
+            .map_err(provider_error)?;
+        map_output(value)
+    }
+
     async fn album(&self, id: String) -> api::ProviderResult<api::Album> {
         let value = QQMusicService::album(self, id)
+            .await
+            .map_err(provider_error)?;
+        map_output(value)
+    }
+
+    async fn artist(&self, id: String) -> api::ProviderResult<api::Artist> {
+        let value = QQMusicService::artist(self, id)
             .await
             .map_err(provider_error)?;
         map_output(value)

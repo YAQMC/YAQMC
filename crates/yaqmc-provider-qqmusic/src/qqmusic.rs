@@ -34,11 +34,12 @@ mod redaction;
 mod transport;
 
 use yaqmc_provider_api::{
-    AlbumSummary, ArtistSummary, Artwork, AudioCodec, AudioFormat, AudioFormatInfo, AudioQuality,
-    CacheStats, CredentialStore, LyricDocument, LyricLine, LyricMetadata, LyricSyncMode, LyricWord,
-    PlaybackCapability, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
-    PlaybackSourceResolver, ProviderStorage, ProviderStorageExt, ProviderTrackReference,
-    ResolvedPlaybackSource, Song, SongAvailability, SpawnBlockingCredentialStore,
+    AlbumPreview, AlbumSummary, Artist, ArtistPreview, ArtistSummary, Artwork, AudioCodec,
+    AudioFormat, AudioFormatInfo, AudioQuality, CacheStats, CredentialStore, LyricDocument,
+    LyricLine, LyricMetadata, LyricSyncMode, LyricWord, PlaybackCapability, PlaybackEpochGuard,
+    PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver, ProviderStorage,
+    ProviderStorageExt, ProviderTrackReference, ResolvedPlaybackSource, Song, SongAvailability,
+    SpawnBlockingCredentialStore,
 };
 pub use yaqmc_provider_api::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
@@ -73,7 +74,6 @@ const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_MUSICS_URL: &str = "https://u.y.qq.com/cgi-bin/musics.fcg";
 const QQ_EVKEY_MODULE_KEY: &str = "music.vkey.GetEVkey.CgiGetEVkey";
 const QQ_SEARCH_URL: &str = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp";
-const QQ_ALBUM_URL: &str = "https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg";
 const QQ_PLAYLIST_URL: &str = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg";
 #[cfg(test)]
 const QQ_LRC_URL: &str = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
@@ -905,8 +905,48 @@ impl QQMusicService {
         }
     }
 
+    pub async fn song(&self, id: String) -> Result<Song, QQMusicError> {
+        let mid = catalog_entity_mid(&id, "qqmusic:track:")?;
+        let key = format!("qqmusic:track:{mid}");
+        if let Some(song) = self
+            .storage
+            .get_json::<Song>(&key, false)
+            .map_err(|_| QQMusicError::Storage)?
+        {
+            self.account
+                .remember_songs(std::slice::from_ref(&song))
+                .await;
+            return Ok(song);
+        }
+        let result = crate::qmapi::catalog::song(&self.client.catalog, &mid)
+            .await
+            .and_then(|raw| normalize_qm_song(raw, 1).ok_or(QQMusicError::NotFound));
+        match result {
+            Ok(song) => {
+                self.storage
+                    .put_json(&key, "metadata", &song, ENTITY_TTL_MS)
+                    .map_err(|_| QQMusicError::Storage)?;
+                self.account
+                    .remember_songs(std::slice::from_ref(&song))
+                    .await;
+                Ok(song)
+            }
+            Err(error) => {
+                let song = self
+                    .storage
+                    .get_json::<Song>(&key, true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .ok_or(error)?;
+                self.account
+                    .remember_songs(std::slice::from_ref(&song))
+                    .await;
+                Ok(song)
+            }
+        }
+    }
+
     pub async fn album(&self, id: String) -> Result<Album, QQMusicError> {
-        let mid = strip_entity_prefix(&id, "qqmusic:album:");
+        let mid = catalog_entity_mid(&id, "qqmusic:album:")?;
         let key = format!("qqmusic:album:{mid}");
         if let Some(album) = self
             .storage
@@ -916,7 +956,10 @@ impl QQMusicService {
             self.account.remember_songs(&album.tracks).await;
             return Ok(album);
         }
-        match self.client.album(mid).await {
+        let result = crate::qmapi::catalog::album(&self.client.catalog, &mid)
+            .await
+            .and_then(|catalog| normalize_qm_album(&mid, catalog));
+        match result {
             Ok(album) => {
                 self.storage
                     .put_json(&key, "metadata", &album, ENTITY_TTL_MS)
@@ -932,6 +975,40 @@ impl QQMusicService {
                     .ok_or(error)?;
                 self.account.remember_songs(&album.tracks).await;
                 Ok(album)
+            }
+        }
+    }
+
+    pub async fn artist(&self, id: String) -> Result<Artist, QQMusicError> {
+        let mid = catalog_entity_mid(&id, "qqmusic:artist:")?;
+        let key = format!("qqmusic:artist:{mid}");
+        if let Some(artist) = self
+            .storage
+            .get_json::<Artist>(&key, false)
+            .map_err(|_| QQMusicError::Storage)?
+        {
+            self.account.remember_songs(&artist.top_songs).await;
+            return Ok(artist);
+        }
+        let result = crate::qmapi::catalog::artist(&self.client.catalog, &mid)
+            .await
+            .and_then(|catalog| normalize_qm_artist(&mid, catalog));
+        match result {
+            Ok(artist) => {
+                self.storage
+                    .put_json(&key, "metadata", &artist, ENTITY_TTL_MS)
+                    .map_err(|_| QQMusicError::Storage)?;
+                self.account.remember_songs(&artist.top_songs).await;
+                Ok(artist)
+            }
+            Err(error) => {
+                let artist = self
+                    .storage
+                    .get_json::<Artist>(&key, true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .ok_or(error)?;
+                self.account.remember_songs(&artist.top_songs).await;
+                Ok(artist)
             }
         }
     }
@@ -1702,6 +1779,7 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
 struct QQMusicClient {
     http: Client,
     artwork_http: Client,
+    catalog: qqmusic_api::Client,
 }
 
 impl QQMusicClient {
@@ -1721,7 +1799,12 @@ impl QQMusicClient {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| QQMusicError::Offline)?;
-        Ok(Self { http, artwork_http })
+        let catalog = crate::qmapi::qmapi_client().map_err(crate::qmapi::cgi::map_qmapi_error)?;
+        Ok(Self {
+            http,
+            artwork_http,
+            catalog,
+        })
     }
 
     async fn search(
@@ -1814,47 +1897,6 @@ impl QQMusicClient {
             playlists: vec![],
             page,
             has_more,
-        })
-    }
-
-    async fn album(&self, mid: &str) -> Result<Album, QQMusicError> {
-        let album_mid = mid.to_owned();
-        let response: AlbumResponse = self
-            .send_json("album", || {
-                self.http
-                    .get(QQ_ALBUM_URL)
-                    .header(header::REFERER, "https://y.qq.com/")
-                    .query(&[
-                        ("albummid", album_mid.clone()),
-                        ("format", "json".to_owned()),
-                        ("platform", "yqq".to_owned()),
-                        ("needNewCode", "0".to_owned()),
-                    ])
-            })
-            .await?;
-        if response.code != 0 {
-            return Err(QQMusicError::NotFound);
-        }
-        let data = response.data.ok_or(QQMusicError::NotFound)?;
-        let tracks = data
-            .list
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, song)| normalize_old_song(song, index as u32 + 1))
-            .collect::<Vec<_>>();
-        let artist_mid = non_empty(data.singer_mid).unwrap_or_else(|| "unknown".to_owned());
-        Ok(Album {
-            id: album_id(mid),
-            title: clean_text(&data.name),
-            artist: ArtistSummary {
-                id: artist_id(&artist_mid),
-                name: clean_text(&data.singer_name),
-            },
-            artwork: artwork_for_album(mid, &data.name),
-            release_year: parse_year(&data.date),
-            genre: non_empty(clean_text(&data.genre)).unwrap_or_else(|| "Music".to_owned()),
-            description: clean_text(&data.description),
-            tracks,
         })
     }
 
@@ -3466,32 +3508,6 @@ struct NewPayDto {
     pay_month: u8,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct AlbumResponse {
-    #[serde(default)]
-    code: i32,
-    #[serde(default)]
-    data: Option<AlbumData>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct AlbumData {
-    #[serde(default)]
-    name: String,
-    #[serde(default, rename = "singername")]
-    singer_name: String,
-    #[serde(default, rename = "singermid")]
-    singer_mid: String,
-    #[serde(default, rename = "aDate")]
-    date: String,
-    #[serde(default)]
-    genre: String,
-    #[serde(default, rename = "desc")]
-    description: String,
-    #[serde(default)]
-    list: Vec<OldSongDto>,
-}
-
 #[derive(Clone, Debug, Default, Deserialize)]
 struct OldSongDto {
     #[serde(default, rename = "songid")]
@@ -3765,6 +3781,250 @@ fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
             media_id: Some(media_id),
         }),
     })
+}
+
+fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Option<Song> {
+    let song_mid = non_empty(raw.mid)?;
+    let album_mid = non_empty(raw.album.mid).unwrap_or_else(|| "unknown".to_owned());
+    let title = clean_text(if raw.title.trim().is_empty() {
+        &raw.name
+    } else {
+        &raw.title
+    });
+    if title.is_empty() {
+        return None;
+    }
+    let artists = raw
+        .singer
+        .into_iter()
+        .filter_map(|singer| {
+            let name = clean_text(&singer.name);
+            if name.is_empty() {
+                return None;
+            }
+            let mid = non_empty(singer.mid).unwrap_or_else(|| stable_component(&name));
+            Some(ArtistSummary {
+                id: artist_id(&mid),
+                name,
+            })
+        })
+        .collect::<Vec<_>>();
+    let album_title = clean_text(if raw.album.title.trim().is_empty() {
+        &raw.album.name
+    } else {
+        &raw.album.title
+    });
+    let formats = qm_audio_formats(&raw.file);
+    let quality = highest_quality(&formats);
+    let (availability, playback_capability) = qm_playability(&raw.file, &raw.pay);
+    let media_id = non_empty(raw.file.media_mid).unwrap_or_else(|| song_mid.clone());
+    Some(Song {
+        id: track_id(&song_mid),
+        title: title.clone(),
+        artists,
+        album: AlbumSummary {
+            id: album_id(&album_mid),
+            title: album_title,
+        },
+        artwork: artwork_for_album(&album_mid, &title),
+        duration_ms: u64::try_from(raw.interval)
+            .unwrap_or_default()
+            .saturating_mul(1_000),
+        track_number: u32::try_from(raw.index_album)
+            .ok()
+            .filter(|number| *number > 0)
+            .unwrap_or(fallback_track_number),
+        is_favorite: false,
+        quality,
+        availability,
+        audio_formats: formats,
+        playback_capability: Some(playback_capability),
+        provider: Some(ProviderTrackReference {
+            provider_id: "qqmusic".to_owned(),
+            track_id: song_mid,
+            numeric_id: (raw.id > 0).then_some(raw.id as u64),
+            album_id: Some(album_mid),
+            media_id: Some(media_id),
+        }),
+    })
+}
+
+fn normalize_qm_album(
+    mid: &str,
+    catalog: crate::qmapi::catalog::AlbumCatalog,
+) -> Result<Album, QQMusicError> {
+    let title = clean_text(if catalog.detail.base.name.trim().is_empty() {
+        &catalog.detail.base.title
+    } else {
+        &catalog.detail.base.name
+    });
+    if title.is_empty() {
+        return Err(QQMusicError::NotFound);
+    }
+    let singer = catalog
+        .singers
+        .into_iter()
+        .find(|singer| !singer.name.trim().is_empty());
+    let Some(singer) = singer else {
+        return Err(QQMusicError::NotFound);
+    };
+    let artist_mid = non_empty(singer.mid).unwrap_or_else(|| stable_component(&singer.name));
+    let tracks = catalog
+        .tracks
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, song)| normalize_qm_song(song, index as u32 + 1))
+        .collect::<Vec<_>>();
+    Ok(Album {
+        id: album_id(mid),
+        title: title.clone(),
+        artist: ArtistSummary {
+            id: artist_id(&artist_mid),
+            name: clean_text(&singer.name),
+        },
+        artwork: artwork_for_album(mid, &title),
+        release_year: parse_year(&catalog.detail.time_public),
+        genre: non_empty(clean_text(&catalog.detail.genre)).unwrap_or_else(|| "Music".to_owned()),
+        description: clean_text(&catalog.detail.desc),
+        tracks,
+    })
+}
+
+fn normalize_qm_artist(
+    mid: &str,
+    catalog: crate::qmapi::catalog::ArtistCatalog,
+) -> Result<Artist, QQMusicError> {
+    let singer = catalog.info.singer;
+    let name = clean_text(&singer.name);
+    if name.is_empty() {
+        return Err(QQMusicError::NotFound);
+    }
+    let singer_mid = non_empty(singer.mid).unwrap_or_else(|| mid.to_owned());
+    let artist_id = artist_id(&singer_mid);
+    let artwork = artwork_from_provider_url(&singer.singer_pic, &name, color_for(&singer_mid));
+    let artist_preview = ArtistPreview {
+        id: artist_id.clone(),
+        name: name.clone(),
+        artwork: artwork.clone(),
+    };
+    let top_songs = catalog
+        .top_songs
+        .into_iter()
+        .take(20)
+        .enumerate()
+        .filter_map(|(index, song)| normalize_qm_song(song, index as u32 + 1))
+        .collect::<Vec<_>>();
+    let albums = catalog
+        .albums
+        .into_iter()
+        .take(20)
+        .filter_map(|album| {
+            let album_mid = non_empty(album.base.mid)
+                .or_else(|| (album.base.id > 0).then(|| album.base.id.to_string()))?;
+            let title = clean_text(if album.base.name.trim().is_empty() {
+                &album.base.title
+            } else {
+                &album.base.name
+            });
+            (!title.is_empty()).then(|| AlbumPreview {
+                id: album_id(&album_mid),
+                title: title.clone(),
+                artist: artist_preview.clone(),
+                artwork: artwork_for_album(&album_mid, &title),
+                release_year: parse_year(&album.base.time_public),
+            })
+        })
+        .collect::<Vec<_>>();
+    let description = catalog
+        .description
+        .singer_list
+        .into_iter()
+        .next()
+        .map(|detail| clean_text(&detail.ex_info.desc))
+        .unwrap_or_default();
+    Ok(Artist {
+        id: artist_id,
+        name,
+        artwork,
+        description,
+        top_songs,
+        albums,
+    })
+}
+
+fn qm_audio_formats(file: &qqmusic_api::File) -> Vec<AudioFormatInfo> {
+    let mut formats = Vec::new();
+    if file.size_new.first().is_some_and(|size| *size > 0) {
+        formats.push(AudioFormatInfo {
+            quality: AudioQuality::Master,
+            codec: AudioCodec::Flac,
+            bitrate_kbps: None,
+            sample_rate_hz: None,
+            bit_depth: None,
+            lossless: true,
+        });
+    }
+    if file.size_128mp3 > 0 {
+        formats.push(format_info(
+            AudioQuality::Standard,
+            AudioCodec::Mp3,
+            128,
+            false,
+        ));
+    }
+    if file.size_192aac > 0 {
+        formats.push(format_info(AudioQuality::High, AudioCodec::Aac, 192, false));
+    }
+    if file.size_320mp3 > 0 {
+        formats.push(format_info(AudioQuality::High, AudioCodec::Mp3, 320, false));
+    }
+    if file.size_flac > 0 {
+        formats.push(format_info(
+            AudioQuality::Lossless,
+            AudioCodec::Flac,
+            0,
+            true,
+        ));
+    }
+    formats
+}
+
+fn qm_playability(
+    file: &qqmusic_api::File,
+    pay: &qqmusic_api::Pay,
+) -> (SongAvailability, PlaybackCapability) {
+    if pay.pay_play == 0 {
+        return (SongAvailability::Available, PlaybackCapability::Full);
+    }
+    let start = u64::try_from(file.try_begin).unwrap_or_default();
+    let end_candidate = u64::try_from(file.try_end).unwrap_or_default();
+    let end = if end_candidate > start {
+        end_candidate
+    } else {
+        start.saturating_add(60_000)
+    };
+    if file.size_try > 0 || end_candidate > start {
+        return (
+            SongAvailability::Available,
+            PlaybackCapability::Preview {
+                start_ms: start,
+                end_ms: end,
+            },
+        );
+    }
+    (
+        SongAvailability::EntitlementRequired {
+            required_tier: if pay.pay_month > 0 {
+                "QQ Music VIP"
+            } else {
+                "Account access"
+            }
+            .to_owned(),
+        },
+        PlaybackCapability::Unavailable {
+            reason: "entitlement".to_owned(),
+        },
+    )
 }
 
 fn normalize_old_song(raw: OldSongDto, fallback_track_number: u32) -> Option<Song> {
@@ -4549,6 +4809,25 @@ fn strip_entity_prefix<'a>(value: &'a str, prefix: &str) -> &'a str {
     value.strip_prefix(prefix).unwrap_or(value)
 }
 
+fn catalog_entity_mid<'a>(value: &'a str, prefix: &str) -> Result<&'a str, QQMusicError> {
+    let value = value.trim();
+    let mid = if let Some(mid) = value.strip_prefix(prefix) {
+        mid
+    } else if value.starts_with("qqmusic:") {
+        return Err(QQMusicError::InvalidRequest);
+    } else {
+        value
+    };
+    if mid.is_empty()
+        || !mid
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(QQMusicError::InvalidRequest);
+    }
+    Ok(mid)
+}
+
 fn stable_component(value: &str) -> String {
     value
         .chars()
@@ -5121,11 +5400,17 @@ mod tests {
 
     #[test]
     fn partial_album_fixture_preserves_official_preview_entitlement() {
-        let response: AlbumResponse =
+        let response: Value =
             serde_json::from_str(include_str!("../tests/fixtures/qqmusic/album-partial.json"))
                 .expect("partial fixture parses");
-        let song = normalize_old_song(response.data.expect("album").list.remove(0), 1)
-            .expect("partial song normalizes");
+        let raw: OldSongDto = serde_json::from_value(
+            response
+                .pointer("/data/list/0")
+                .cloned()
+                .expect("album song"),
+        )
+        .expect("song dto");
+        let song = normalize_old_song(raw, 1).expect("partial song normalizes");
         assert_eq!(
             song.playback_capability,
             Some(PlaybackCapability::Preview {
@@ -5134,6 +5419,20 @@ mod tests {
             })
         );
         assert!(matches!(song.availability, SongAvailability::Available));
+    }
+
+    #[test]
+    fn catalog_entity_ids_reject_empty_and_wrong_type_values() {
+        for value in ["", "   ", "qqmusic:album:ALBUM", "qqmusic:artist:ARTIST"] {
+            assert!(matches!(
+                catalog_entity_mid(value, "qqmusic:track:"),
+                Err(QQMusicError::InvalidRequest)
+            ));
+        }
+        assert_eq!(
+            catalog_entity_mid("qqmusic:track:TRACK", "qqmusic:track:").expect("track id"),
+            "TRACK"
+        );
     }
 
     #[test]

@@ -76,6 +76,21 @@ function testBridge(invoked: Array<{ method: MethodName; params: unknown }> = []
 }
 
 describe('YaqmcClient', () => {
+  it('exposes song and artist catalog detail invokes', async () => {
+    const invoked: Array<{ method: MethodName; params: unknown }> = [];
+    const client = new YaqmcClient(testBridge(invoked));
+    client.markReady();
+
+    await client.catalog.song('qqmusic:track:mid');
+    await client.catalog.artist('qqmusic:artist:mid');
+
+    expect(invoked).toEqual([
+      { method: 'qqmusic_song', params: { id: 'qqmusic:track:mid' } },
+      { method: 'qqmusic_artist', params: { id: 'qqmusic:artist:mid' } },
+    ]);
+    client.dispose();
+  });
+
   it('queues invokes until markReady', async () => {
     const invoked: Array<{ method: MethodName; params: unknown }> = [];
     const client = new YaqmcClient(testBridge(invoked));

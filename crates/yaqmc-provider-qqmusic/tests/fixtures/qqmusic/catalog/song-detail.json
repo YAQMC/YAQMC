@@ -1,0 +1,29 @@
+{
+  "code": 0,
+  "req_0": {
+    "code": 0,
+    "data": {
+      "track_info": {
+        "id": 101,
+        "mid": "SONG_MID",
+        "name": "Typed Song",
+        "title": "Typed Song",
+        "interval": 215,
+        "index_album": 1,
+        "singer": [{ "mid": "ARTIST_MID", "name": "Typed Artist" }],
+        "album": {
+          "mid": "ALBUM_MID",
+          "name": "Typed Album",
+          "title": "Typed Album",
+          "time_public": "2026-01-01"
+        },
+        "file": {
+          "media_mid": "MEDIA_MID",
+          "size_128mp3": 1024,
+          "size_flac": 4096
+        },
+        "pay": { "pay_play": 0 }
+      }
+    }
+  }
+}

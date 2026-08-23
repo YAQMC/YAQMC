@@ -9,6 +9,7 @@ import {
   type AccountSnapshot,
   type Album,
   type AreaFeed,
+  type Artist,
   type CollectPlaylistRequest,
   type CreatePlaylistRequest,
   type DeletePlaylistRequest,
@@ -98,8 +99,16 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
     return nativeRequest('qqmusic_area', { encArea }, signal);
   }
 
+  getSong(id: EntityId, signal?: AbortSignal): Promise<Song> {
+    return nativeRequest('qqmusic_song', { id }, signal);
+  }
+
   getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album> {
     return nativeRequest('qqmusic_album', { id }, signal);
+  }
+
+  getArtist(id: EntityId, signal?: AbortSignal): Promise<Artist> {
+    return nativeRequest('qqmusic_artist', { id }, signal);
   }
 
   getPlaylist(id: EntityId, signal?: AbortSignal): Promise<Playlist> {
