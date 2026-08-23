@@ -5,19 +5,21 @@
     "data": {
       "albumMid": "ALBUM_MID",
       "totalNum": 2,
-      "songList": [{
-        "songInfo": {
-          "id": 101,
-          "mid": "SONG_MID",
-          "name": "Typed Song",
-          "interval": 215,
-          "index_album": 1,
-          "singer": [{ "mid": "ARTIST_MID", "name": "Typed Artist" }],
-          "album": { "mid": "ALBUM_MID", "name": "Typed Album" },
-          "file": { "media_mid": "MEDIA_MID", "size_128mp3": 1024 },
-          "pay": { "pay_play": 0 }
+      "songList": [
+        {
+          "songInfo": {
+            "id": 101,
+            "mid": "SONG_MID",
+            "name": "Typed Song",
+            "interval": 215,
+            "index_album": 1,
+            "singer": [{ "mid": "ARTIST_MID", "name": "Typed Artist" }],
+            "album": { "mid": "ALBUM_MID", "name": "Typed Album" },
+            "file": { "media_mid": "MEDIA_MID", "size_128mp3": 1024 },
+            "pay": { "pay_play": 0 }
+          }
         }
-      }]
+      ]
     }
   }
 }

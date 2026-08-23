@@ -16,3 +16,4 @@ target
 
 # Untracked legacy Tauri tree
 /src-tauri/**
+/YAQMC_ELECTRON_MIGRATION_PLAN.md
