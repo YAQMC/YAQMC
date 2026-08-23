@@ -11,6 +11,7 @@ import type {
   AudioQualityPreference,
   BundleExportResult,
   CacheStats,
+  CatalogSearchKind,
   CollectPlaylistRequest,
   CreatePlaylistRequest,
   DebugPerfSample,
@@ -221,7 +222,7 @@ export type MethodParams = Exhaustive<{
   qqmusic_area: { encArea: string };
   qqmusic_guess_next: { limit: number };
   qqmusic_library: void;
-  qqmusic_search: { query: string; page: number; limit: number };
+  qqmusic_search: { query: string; kind: CatalogSearchKind; page: number; limit: number };
   qqmusic_song: { id: string };
   qqmusic_album: { id: string };
   qqmusic_artist: { id: string };

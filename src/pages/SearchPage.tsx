@@ -15,7 +15,13 @@ interface SearchPageProps {
   onNavigate: (route: AppRoute) => void;
 }
 
-const emptyResult: SearchResult = { query: '', songs: [], albums: [], playlists: [] };
+const emptyResult: SearchResult = {
+  kind: 'song',
+  query: '',
+  page: 1,
+  hasMore: false,
+  items: [],
+};
 
 type SearchState =
   | { status: 'idle'; query: ''; providerId: ''; result: SearchResult; error: null }
@@ -65,7 +71,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
     const generation = ++activeRequestGeneration.current;
     activeController.current = controller;
     void provider
-      .search(submittedQuery, controller.signal)
+      .search(submittedQuery, 'song', controller.signal)
       .then((next) => {
         if (controller.signal.aborted || generation !== activeRequestGeneration.current) return;
         setSearchState({
@@ -94,7 +100,8 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   }, [submittedQuery, errors, provider]);
 
   const { result, error } = searchState;
-  const hasResults = result.songs.length + result.albums.length + result.playlists.length > 0;
+  const songItems = result.kind === 'song' ? result.items : [];
+  const hasResults = songItems.length > 0;
   const stateMatchesInput =
     searchState.query === normalizedInput && searchState.providerId === provider.id;
   const displayedResultQuery =
@@ -131,7 +138,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
     const generation = activeRequestGeneration.current;
     setLoadingMore(true);
     try {
-      const next = await provider.search(requestedQuery, undefined, (result.page ?? 1) + 1, 20);
+      const next = await provider.search(requestedQuery, 'song', undefined, result.page + 1, 20);
       if (generation !== activeRequestGeneration.current || normalizedInput !== requestedQuery) {
         return;
       }
@@ -142,9 +149,8 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
         result: {
           ...next,
           query: requestedQuery,
-          songs: uniqueById([...result.songs, ...next.songs]),
-          albums: uniqueById([...result.albums, ...next.albums]),
-          playlists: uniqueById([...result.playlists, ...next.playlists]),
+          kind: 'song',
+          items: uniqueById([...songItems, ...(next.kind === 'song' ? next.items : [])]),
         },
         error: null,
       });
@@ -213,54 +219,14 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
             <p className="eyebrow">{t('resultsFor')}</p>
             <h1>“{displayedResultQuery}”</h1>
           </header>
-          {result.songs.length > 0 && (
+          {songItems.length > 0 && (
             <section className="content-section">
               <div className="section-heading">
                 <div>
                   <h2>{t('songs')}</h2>
                 </div>
               </div>
-              <TrackList tracks={result.songs} showAlbum compact />
-            </section>
-          )}
-          {result.albums.length > 0 && (
-            <section className="content-section">
-              <div className="section-heading">
-                <div>
-                  <h2>{t('albums')}</h2>
-                </div>
-              </div>
-              <div className="media-grid media-grid--four">
-                {result.albums.map((album) => (
-                  <MediaCard
-                    key={album.id}
-                    item={album}
-                    type="album"
-                    onOpen={() => onNavigate({ page: 'album', id: album.id })}
-                    onPlay={() => playTracks(album.tracks)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-          {result.playlists.length > 0 && (
-            <section className="content-section content-section--last">
-              <div className="section-heading">
-                <div>
-                  <h2>{t('playlists')}</h2>
-                </div>
-              </div>
-              <div className="media-grid media-grid--four">
-                {result.playlists.map((playlist) => (
-                  <MediaCard
-                    key={playlist.id}
-                    item={playlist}
-                    type="playlist"
-                    onOpen={() => onNavigate({ page: 'playlist', id: playlist.id })}
-                    onPlay={() => playTracks(playlist.tracks)}
-                  />
-                ))}
-              </div>
+              <TrackList tracks={songItems} showAlbum compact />
             </section>
           )}
           {result.hasMore && (

@@ -312,10 +312,11 @@ impl api::MusicProvider for QQMusicService {
     async fn search(
         &self,
         query: String,
+        kind: api::CatalogSearchKind,
         page: u32,
         limit: u32,
     ) -> api::ProviderResult<api::SearchResult> {
-        let value = QQMusicService::search(self, query, page, limit)
+        let value = QQMusicService::search(self, query, kind, page, limit)
             .await
             .map_err(provider_error)?;
         map_output(value)

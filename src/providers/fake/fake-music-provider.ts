@@ -1,10 +1,13 @@
 import {
   ProviderError,
   type Album,
+  type AlbumPreview,
   type Artist,
+  type CatalogSearchKind,
   type EntityId,
   type Playlist,
   type Song,
+  type SearchResult,
 } from '../../domain/music';
 import type { MusicProvider } from '../music-provider';
 import {
@@ -127,26 +130,75 @@ export class FakeMusicProvider implements MusicProvider {
     return clone(lyricsBySong[songId] ?? null);
   }
 
-  async search(query: string, signal?: AbortSignal) {
+  async search(
+    query: string,
+    kind: CatalogSearchKind,
+    signal?: AbortSignal,
+    page = 1,
+    limit = 20,
+  ): Promise<SearchResult> {
     throwIfAborted(signal);
     const normalized = normalizeQuery(query);
     if (!normalized) {
-      return { query: '', songs: [], albums: [], playlists: [] };
+      return {
+        kind,
+        query: '',
+        page: 1,
+        hasMore: false,
+        items: [],
+      } as SearchResult;
     }
 
     const includesQuery = (...values: string[]) =>
       values.some((value) => value.toLocaleLowerCase().includes(normalized));
 
+    const matches =
+      kind === 'song'
+        ? allSongs.filter((song) =>
+            includesQuery(
+              song.title,
+              song.album.title,
+              ...song.artists.map((artist) => artist.name),
+            ),
+          )
+        : kind === 'album'
+          ? albums
+              .filter((album) => includesQuery(album.title, album.artist.name, album.genre))
+              .map<AlbumPreview>((album) => ({
+                id: album.id,
+                title: album.title,
+                artist: {
+                  id: album.artist.id,
+                  name: album.artist.name,
+                  artwork: clone(album.artwork),
+                },
+                artwork: clone(album.artwork),
+                releaseYear: album.releaseYear,
+              }))
+          : allSongs
+              .flatMap((song) => song.artists)
+              .filter(
+                (artist, index, all) => all.findIndex((item) => item.id === artist.id) === index,
+              )
+              .filter((artist) => includesQuery(artist.name))
+              .map((artist) => ({
+                id: artist.id,
+                name: artist.name,
+                artwork: clone(
+                  albums.find((album) => album.artist.id === artist.id)?.artwork ??
+                    allSongs.find((song) => song.artists.some((item) => item.id === artist.id))!
+                      .artwork,
+                ),
+              }));
+    const start = Math.max(0, (Math.max(1, page) - 1) * Math.max(1, limit));
+    const items = matches.slice(start, start + Math.max(1, limit));
     return clone({
+      kind,
       query: query.trim(),
-      songs: allSongs.filter((song) =>
-        includesQuery(song.title, song.album.title, ...song.artists.map((artist) => artist.name)),
-      ),
-      albums: albums.filter((album) => includesQuery(album.title, album.artist.name, album.genre)),
-      playlists: playlists.filter((playlist) =>
-        includesQuery(playlist.title, playlist.description, playlist.owner.displayName),
-      ),
-    });
+      page: Math.max(1, page),
+      hasMore: start + items.length < matches.length,
+      items,
+    }) as SearchResult;
   }
 
   async getGuessNext(limit = 5, signal?: AbortSignal) {

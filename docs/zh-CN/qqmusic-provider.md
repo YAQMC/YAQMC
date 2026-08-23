@@ -17,7 +17,7 @@ YAQMC 不渲染密码框、不读取腾讯页面中输入的凭据、不导入�
 
 ## 公开与账号能力
 
-当前规范化能力包括歌曲/专辑搜索、专辑详情、访客歌单、榜单、QRC/LRC、清晰 vkey、账号授权 EVkey、
+当前规范化能力包括基于 pinned `qm-api-rs` `search_by_type` 的歌曲/歌手/专辑分类搜索、专辑详情、访客歌单、榜单、QRC/LRC、清晰 vkey、账号授权 EVkey、
 封面缓存；账号扩展包括 OAuth、资料、收藏、自建/收藏歌单、条件性最近播放、权益和播放 vkey。
 
 QQ 和微信登录在受限制无痕 Electron `BrowserWindow` 打开 `graph.qq.com` 或 `open.weixin.qq.com`，只接受注册的

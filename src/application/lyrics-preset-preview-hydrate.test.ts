@@ -29,16 +29,17 @@ describe('lyrics preset preview hydrate', () => {
     usePlayerStore.setState(initialPlayerState);
     useLyricsPresetPreviewStore.getState().reset();
     const search = vi.fn(async () => ({
+      kind: 'song' as const,
       query: PREVIEW_HYDRATE_QUERY,
-      songs: [hydratedSong],
-      albums: [],
-      playlists: [],
+      page: 1,
+      hasMore: false,
+      items: [hydratedSong],
     }));
     const getLyrics = vi.fn(async () => hydratedLyrics);
     const setFavorite = vi.fn();
     await hydrateLyricsPresetPreview({ search, getLyrics });
     const preview = useLyricsPresetPreviewStore.getState();
-    expect(search).toHaveBeenCalledWith(PREVIEW_HYDRATE_QUERY, undefined, 1, 8);
+    expect(search).toHaveBeenCalledWith(PREVIEW_HYDRATE_QUERY, 'song', undefined, 1, 8);
     expect(preview.song.id).toBe('qq:gem-together');
     expect(preview.artworkSrc).toBe(resolveArtworkSource(hydratedSong.artwork, 'fullscreen'));
     expect(preview.artworkSrc).toContain('large.jpg');

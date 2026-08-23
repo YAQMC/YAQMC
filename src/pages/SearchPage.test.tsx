@@ -22,10 +22,9 @@ function deferred<T>() {
 
 function resultFor(query: string): SearchResult {
   return {
+    kind: 'song',
     query,
-    songs: [{ ...allSongs[0]!, id: `track-${query}`, title: `${query} result` }],
-    albums: [],
-    playlists: [],
+    items: [{ ...allSongs[0]!, id: `track-${query}`, title: `${query} result` }],
     page: 1,
     hasMore: false,
   };
@@ -36,11 +35,10 @@ describe('SearchPage', () => {
 
   it('renders every song appended by pagination', async () => {
     const provider = new FakeMusicProvider();
-    vi.spyOn(provider, 'search').mockImplementation(async (query, _signal, page = 1) => ({
+    vi.spyOn(provider, 'search').mockImplementation(async (query, _kind, _signal, page = 1) => ({
+      kind: 'song',
       query,
-      songs: Array.from({ length: 8 }, (_, offset) => pagedSong((page - 1) * 8 + offset)),
-      albums: [],
-      playlists: [],
+      items: Array.from({ length: 8 }, (_, offset) => pagedSong((page - 1) * 8 + offset)),
       page,
       hasMore: page === 1,
     }));
@@ -66,7 +64,7 @@ describe('SearchPage', () => {
     const first = deferred<Awaited<ReturnType<FakeMusicProvider['search']>>>();
     const second = deferred<Awaited<ReturnType<FakeMusicProvider['search']>>>();
     const signals: AbortSignal[] = [];
-    vi.spyOn(provider, 'search').mockImplementation((query, signal) => {
+    vi.spyOn(provider, 'search').mockImplementation((query, _kind, signal) => {
       if (signal) signals.push(signal);
       return query === '邓紫棋' ? first.promise : second.promise;
     });
@@ -79,10 +77,14 @@ describe('SearchPage', () => {
 
     const input = screen.getByRole('textbox', { name: 'Search music' });
     fireEvent.change(input, { target: { value: '邓紫棋' } });
-    await waitFor(() => expect(provider.search).toHaveBeenCalledWith('邓紫棋', expect.anything()));
+    await waitFor(() =>
+      expect(provider.search).toHaveBeenCalledWith('邓紫棋', 'song', expect.anything()),
+    );
 
     fireEvent.change(input, { target: { value: '周杰伦' } });
-    await waitFor(() => expect(provider.search).toHaveBeenCalledWith('周杰伦', expect.anything()));
+    await waitFor(() =>
+      expect(provider.search).toHaveBeenCalledWith('周杰伦', 'song', expect.anything()),
+    );
     expect(signals[0]?.aborted).toBe(true);
     expect(screen.queryByText('邓紫棋 result')).not.toBeInTheDocument();
 

@@ -15,10 +15,16 @@ describe('FakeMusicProvider', () => {
   });
 
   it('searches normalized domain fields case-insensitively', async () => {
-    const result = await provider.search('  MIRA  ');
+    const result = await provider.search('  MIRA  ', 'song');
 
-    expect(result.songs.length).toBeGreaterThan(0);
-    expect(result.albums.map((album) => album.title)).toContain('Afterglow');
+    expect(result.kind).toBe('song');
+    expect(result.items.length).toBeGreaterThan(0);
+
+    const albums = await provider.search('  MIRA  ', 'album');
+    expect(albums.kind).toBe('album');
+    if (albums.kind === 'album') {
+      expect(albums.items.map((album) => album.title)).toContain('Afterglow');
+    }
   });
 
   it('reports unknown fixture entities as typed provider errors', async () => {

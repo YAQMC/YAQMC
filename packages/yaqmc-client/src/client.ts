@@ -87,8 +87,12 @@ export class YaqmcClient {
     area: (encArea: string) => this.invoke('qqmusic_area', { encArea }),
     guessNext: (limit: number) => this.invoke('qqmusic_guess_next', { limit }),
     library: () => this.invoke('qqmusic_library'),
-    search: (query: string, page: number, limit: number) =>
-      this.invoke('qqmusic_search', { query, page, limit }),
+    search: (
+      query: string,
+      kind: MethodParams['qqmusic_search']['kind'],
+      page: number,
+      limit: number,
+    ) => this.invoke('qqmusic_search', { query, kind, page, limit }),
     song: (id: string) => this.invoke('qqmusic_song', { id }),
     album: (id: string) => this.invoke('qqmusic_album', { id }),
     artist: (id: string) => this.invoke('qqmusic_artist', { id }),

@@ -952,7 +952,7 @@ async fn production_core_qq_live_or_blocked_login() {
     let public_search = session
         .request_result(
             "qqmusic_search",
-            Some(json!({ "query": "晴天", "page": 1, "limit": 5 })),
+            Some(json!({ "query": "晴天", "kind": "song", "page": 1, "limit": 5 })),
         )
         .await;
     match public_search {
