@@ -1,13 +1,22 @@
 import { Search, X } from 'lucide-react';
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePlayerStore } from '../application/player-store';
 import { useMusicProvider } from '../application/provider-context';
 import type { AppRoute } from '../application/navigation';
+import { useCatalogSearch } from '../application/use-catalog-search';
+import { EntityLink } from '../components/EntityLink';
 import { MediaCard } from '../components/MediaCard';
 import { TrackList } from '../components/TrackList';
+import { Artwork } from '../components/ui/Artwork';
 import { IconButton } from '../components/ui/IconButton';
-import type { HomeFeed, SearchResult } from '../domain/music';
+import type {
+  AlbumPreview,
+  ArtistPreview,
+  CatalogSearchKind,
+  HomeFeed,
+  Song,
+} from '../domain/music';
 
 interface SearchPageProps {
   initialQuery?: string;
@@ -15,27 +24,7 @@ interface SearchPageProps {
   onNavigate: (route: AppRoute) => void;
 }
 
-const emptyResult: SearchResult = {
-  kind: 'song',
-  query: '',
-  page: 1,
-  hasMore: false,
-  items: [],
-};
-
-type SearchState =
-  | { status: 'idle'; query: ''; providerId: ''; result: SearchResult; error: null }
-  | { status: 'loading'; query: string; providerId: string; result: SearchResult; error: null }
-  | { status: 'ready'; query: string; providerId: string; result: SearchResult; error: null }
-  | { status: 'error'; query: string; providerId: string; result: SearchResult; error: string };
-
-const idleSearchState: SearchState = {
-  status: 'idle',
-  query: '',
-  providerId: '',
-  result: emptyResult,
-  error: null,
-};
+const tabOrder: CatalogSearchKind[] = ['song', 'artist', 'album'];
 
 export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPageProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'search' });
@@ -43,130 +32,21 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   const provider = useMusicProvider();
   const playTracks = usePlayerStore((state) => state.playTracks);
   const [inputValue, setInputValue] = useState(initialQuery);
-  const [searchState, setSearchState] = useState<SearchState>(() => {
-    const query = initialQuery.trim();
-    return query
-      ? {
-          status: 'loading',
-          query,
-          providerId: provider.id,
-          result: { ...emptyResult, query },
-          error: null,
-        }
-      : idleSearchState;
-  });
-  const [loadingMore, setLoadingMore] = useState(false);
-  const normalizedInput = inputValue.trim();
-  const submittedQuery = useDeferredValue(normalizedInput);
   const inputRef = useRef<HTMLInputElement>(null);
-  const activeRequestGeneration = useRef(0);
-  const activeController = useRef<AbortController | null>(null);
+  const normalizedInput = inputValue.trim();
+  const search = useCatalogSearch({ provider, query: normalizedInput });
+  const category = search.categories[search.activeKind];
+  const categoryLabel = t(search.activeKind === 'song' ? 'songs' : `${search.activeKind}s`);
+  const searching = Boolean(
+    normalizedInput &&
+    (category.status === 'loading' || category.status === 'idle' || category.loadingMore),
+  );
 
   useEffect(() => inputRef.current?.focus(), []);
 
-  useEffect(() => {
-    if (!submittedQuery) return;
-
-    const controller = new AbortController();
-    const generation = ++activeRequestGeneration.current;
-    activeController.current = controller;
-    void provider
-      .search(submittedQuery, 'song', controller.signal)
-      .then((next) => {
-        if (controller.signal.aborted || generation !== activeRequestGeneration.current) return;
-        setSearchState({
-          status: 'ready',
-          query: submittedQuery,
-          providerId: provider.id,
-          result: { ...next, query: submittedQuery },
-          error: null,
-        });
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted || generation !== activeRequestGeneration.current) return;
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setSearchState({
-          status: 'error',
-          query: submittedQuery,
-          providerId: provider.id,
-          result: { ...emptyResult, query: submittedQuery },
-          error: searchErrorMessage(error, errors),
-        });
-      });
-    return () => {
-      controller.abort();
-      if (activeController.current === controller) activeController.current = null;
-    };
-  }, [submittedQuery, errors, provider]);
-
-  const { result, error } = searchState;
-  const songItems = result.kind === 'song' ? result.items : [];
-  const hasResults = songItems.length > 0;
-  const stateMatchesInput =
-    searchState.query === normalizedInput && searchState.providerId === provider.id;
-  const displayedResultQuery =
-    searchState.status === 'ready' && stateMatchesInput ? searchState.query : '';
-  const searching = Boolean(
-    normalizedInput && (searchState.status === 'loading' || !stateMatchesInput),
-  );
-  const canDisplayResult = searchState.status === 'ready' && stateMatchesInput;
-
-  const updateQuery = (value: string) => {
-    setInputValue(value);
-    const query = value.trim();
-    if (query === normalizedInput) return;
-    activeController.current?.abort();
-    activeController.current = null;
-    activeRequestGeneration.current += 1;
-    setLoadingMore(false);
-    setSearchState(
-      query
-        ? {
-            status: 'loading',
-            query,
-            providerId: provider.id,
-            result: { ...emptyResult, query },
-            error: null,
-          }
-        : idleSearchState,
-    );
-  };
-
-  const loadMore = async () => {
-    if (!canDisplayResult || !result.hasMore || loadingMore) return;
-    const requestedQuery = result.query;
-    const generation = activeRequestGeneration.current;
-    setLoadingMore(true);
-    try {
-      const next = await provider.search(requestedQuery, 'song', undefined, result.page + 1, 20);
-      if (generation !== activeRequestGeneration.current || normalizedInput !== requestedQuery) {
-        return;
-      }
-      setSearchState({
-        status: 'ready',
-        query: requestedQuery,
-        providerId: provider.id,
-        result: {
-          ...next,
-          query: requestedQuery,
-          kind: 'song',
-          items: uniqueById([...songItems, ...(next.kind === 'song' ? next.items : [])]),
-        },
-        error: null,
-      });
-    } catch (caught) {
-      if (generation === activeRequestGeneration.current && normalizedInput === requestedQuery) {
-        setSearchState({
-          status: 'error',
-          query: requestedQuery,
-          providerId: provider.id,
-          result: { ...emptyResult, query: requestedQuery },
-          error: searchErrorMessage(caught, errors),
-        });
-      }
-    } finally {
-      if (generation === activeRequestGeneration.current) setLoadingMore(false);
-    }
+  const moveTabFocus = (kind: CatalogSearchKind) => {
+    search.setActiveKind(kind);
+    document.getElementById(`search-tab-${kind}`)?.focus();
   };
 
   return (
@@ -176,12 +56,12 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
         <input
           ref={inputRef}
           value={inputValue}
-          onChange={(event) => updateQuery(event.target.value)}
+          onChange={(event) => setInputValue(event.target.value)}
           placeholder={t('placeholder')}
           aria-label={t('label')}
         />
         {inputValue && (
-          <IconButton label={t('clear')} size="small" onClick={() => updateQuery('')}>
+          <IconButton label={t('clear')} size="small" onClick={() => setInputValue('')}>
             <X size={16} />
           </IconButton>
         )}
@@ -200,69 +80,196 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
                 <h2>{t('browsePlaylists')}</h2>
               </div>
             </div>
-            <div className="media-grid media-grid--four">
-              {feed.madeForYou.map((playlist) => (
-                <MediaCard
-                  key={playlist.id}
-                  item={playlist}
-                  type="playlist"
-                  onOpen={() => onNavigate({ page: 'playlist', id: playlist.id })}
-                  onPlay={() => playTracks(playlist.tracks)}
-                />
-              ))}
-            </div>
+            {feed.madeForYou.length > 0 ? (
+              <div className="media-grid media-grid--four">
+                {feed.madeForYou.map((playlist) => (
+                  <MediaCard
+                    key={playlist.id}
+                    item={playlist}
+                    type="playlist"
+                    onOpen={() => onNavigate({ page: 'playlist', id: playlist.id })}
+                    onPlay={() => playTracks(playlist.tracks)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="search-page__placeholder">{t('noPlaylists')}</p>
+            )}
           </section>
         </>
-      ) : canDisplayResult && hasResults ? (
+      ) : (
         <div className="search-results">
           <header className="search-results__heading">
             <p className="eyebrow">{t('resultsFor')}</p>
-            <h1>“{displayedResultQuery}”</h1>
+            <h1>“{normalizedInput}”</h1>
           </header>
-          {songItems.length > 0 && (
-            <section className="content-section">
-              <div className="section-heading">
-                <div>
-                  <h2>{t('songs')}</h2>
-                </div>
+          <div className="search-tabs" role="tablist" aria-label={t('tabsLabel')}>
+            {tabOrder.map((kind) => {
+              const label = t(kind === 'song' ? 'songs' : `${kind}s`);
+              return (
+                <button
+                  key={kind}
+                  id={`search-tab-${kind}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={search.activeKind === kind}
+                  aria-controls="search-tabpanel"
+                  tabIndex={search.activeKind === kind ? 0 : -1}
+                  onClick={() => search.setActiveKind(kind)}
+                  onKeyDown={(event) => {
+                    const index = tabOrder.indexOf(kind);
+                    let nextIndex = index;
+                    if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabOrder.length;
+                    if (event.key === 'ArrowLeft')
+                      nextIndex = (index - 1 + tabOrder.length) % tabOrder.length;
+                    if (event.key === 'Home') nextIndex = 0;
+                    if (event.key === 'End') nextIndex = tabOrder.length - 1;
+                    if (nextIndex !== index) {
+                      event.preventDefault();
+                      moveTabFocus(tabOrder[nextIndex]!);
+                    } else if (event.key === 'Home' || event.key === 'End') {
+                      event.preventDefault();
+                    }
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <section
+            id="search-tabpanel"
+            role="tabpanel"
+            aria-labelledby={`search-tab-${search.activeKind}`}
+            aria-busy={
+              category.status === 'loading' || category.status === 'idle' || category.loadingMore
+            }
+            tabIndex={0}
+          >
+            {category.status === 'loading' || category.status === 'idle' ? (
+              <div className="empty-state" role="status" aria-live="polite">
+                <span>
+                  <Search size={24} />
+                </span>
+                <h2>{t('loadingCategory', { category: categoryLabel })}</h2>
               </div>
-              <TrackList tracks={songItems} showAlbum compact />
-            </section>
-          )}
-          {result.hasMore && (
-            <button
-              type="button"
-              className="button button--secondary search-results__more"
-              disabled={loadingMore}
-              onClick={() => void loadMore()}
-            >
-              {loadingMore ? t('loading') : t('loadMore')}
-            </button>
-          )}
+            ) : category.status === 'error' ? (
+              <div className="empty-state empty-state--error" role="alert">
+                <span>
+                  <Search size={24} />
+                </span>
+                <h2>{t('unavailable')}</h2>
+                <p>{searchErrorMessage(category.error, errors)}</p>
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => void search.retry()}
+                >
+                  {t('retry')}
+                </button>
+              </div>
+            ) : category.items.length === 0 ? (
+              <div className="empty-state">
+                <span>
+                  <Search size={24} />
+                </span>
+                <h2>{t('noMatches', { query: normalizedInput })}</h2>
+                <p>{t('emptyCategory', { category: categoryLabel.toLowerCase() })}</p>
+              </div>
+            ) : (
+              <>
+                {search.activeKind === 'song' && (
+                  <section className="content-section">
+                    <h2 className="search-results__category-heading">{categoryLabel}</h2>
+                    <TrackList tracks={category.items as Song[]} showAlbum compact />
+                  </section>
+                )}
+                {search.activeKind === 'artist' && (
+                  <PreviewGrid kind="artist" items={category.items as ArtistPreview[]} />
+                )}
+                {search.activeKind === 'album' && (
+                  <PreviewGrid kind="album" items={category.items as AlbumPreview[]} />
+                )}
+                {category.paginationError && (
+                  <div className="search-results__error" role="alert">
+                    <span>{t('paginationFailed', { category: categoryLabel.toLowerCase() })}</span>{' '}
+                    <button type="button" onClick={() => void search.retryLoadMore()}>
+                      {t('retry')}
+                    </button>
+                  </div>
+                )}
+                {category.hasMore && !category.paginationError && (
+                  <button
+                    type="button"
+                    className="button button--secondary search-results__more"
+                    disabled={category.loadingMore}
+                    onClick={() => void search.loadMore()}
+                  >
+                    {category.loadingMore
+                      ? t('loading')
+                      : t('loadMore', { category: categoryLabel.toLowerCase() })}
+                  </button>
+                )}
+              </>
+            )}
+          </section>
         </div>
-      ) : searchState.status === 'error' && stateMatchesInput ? (
-        <div className="empty-state empty-state--error">
-          <span>
-            <Search size={24} />
-          </span>
-          <h1>{t('unavailable')}</h1>
-          <p>{error}</p>
-        </div>
-      ) : searchState.status === 'ready' && stateMatchesInput ? (
-        <div className="empty-state">
-          <span>
-            <Search size={24} />
-          </span>
-          <h1>{t('noMatches', { query: displayedResultQuery })}</h1>
-          <p>{t('noMatchesHint')}</p>
-        </div>
-      ) : null}
+      )}
     </div>
   );
 }
 
-function uniqueById<T extends { id: string }>(items: T[]): T[] {
-  return [...new Map(items.map((item) => [item.id, item])).values()];
+function PreviewGrid({
+  kind,
+  items,
+}: {
+  kind: 'artist' | 'album';
+  items: ArtistPreview[] | AlbumPreview[];
+}) {
+  return (
+    <div className="catalog-preview-grid">
+      {items.map((item, index) =>
+        kind === 'artist' ? (
+          <article className="catalog-preview-card" key={`${kind}-${item.id.trim() || index}`}>
+            <EntityLink
+              entity="artist"
+              id={item.id}
+              className="catalog-preview-card__link"
+              ariaLabel={(item as ArtistPreview).name}
+            >
+              <Artwork artwork={(item as ArtistPreview).artwork} />
+              <strong>{(item as ArtistPreview).name}</strong>
+            </EntityLink>
+          </article>
+        ) : (
+          <article className="catalog-preview-card" key={`${kind}-${item.id.trim() || index}`}>
+            <EntityLink
+              entity="album"
+              id={item.id}
+              className="catalog-preview-card__link"
+              ariaLabel={(item as AlbumPreview).title}
+            >
+              <Artwork artwork={(item as AlbumPreview).artwork} />
+              <strong>{(item as AlbumPreview).title}</strong>
+            </EntityLink>
+            <EntityLink
+              entity="artist"
+              id={(item as AlbumPreview).artist.id}
+              className="catalog-preview-card__artist"
+              ariaLabel={(item as AlbumPreview).artist.name}
+            >
+              {(item as AlbumPreview).artist.name}
+            </EntityLink>
+            {(item as AlbumPreview).releaseYear > 0 && (
+              <span className="catalog-preview-card__year">
+                {(item as AlbumPreview).releaseYear}
+              </span>
+            )}
+          </article>
+        ),
+      )}
+    </div>
+  );
 }
 
 function searchErrorMessage(
