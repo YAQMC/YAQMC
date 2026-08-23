@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
@@ -70,7 +70,9 @@ describe('AlbumPage favorite projection', () => {
       </NavigationProvider>,
     );
 
-    fireEvent.click(view.container.querySelector('.detail-hero__artist')!);
+    const hero = view.container.querySelector<HTMLElement>('.detail-hero');
+    expect(hero).not.toBeNull();
+    fireEvent.click(within(hero!).getByRole('button', { name: album.artist.name }));
 
     expect(onNavigate).toHaveBeenCalledWith({ page: 'artist', id: album.artist.id });
   });
