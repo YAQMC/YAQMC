@@ -35,12 +35,12 @@ mod redaction;
 mod transport;
 
 use yaqmc_provider_api::{
-    AlbumPreview, AlbumSummary, Artist, ArtistPreview, ArtistSummary, Artwork, AudioCodec,
-    AudioFormat, AudioFormatInfo, AudioQuality, CacheStats, CatalogSearchKind, CredentialStore,
-    LyricDocument, LyricLine, LyricMetadata, LyricSyncMode, LyricWord, PlaybackCapability,
-    PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver,
-    ProviderStorage, ProviderStorageExt, ProviderTrackReference, ResolvedPlaybackSource,
-    SearchResult, Song, SongAvailability, SpawnBlockingCredentialStore,
+    AlbumPreview, AlbumSummary, Artist, ArtistCatalogKind, ArtistCatalogPage, ArtistPreview,
+    ArtistSummary, Artwork, AudioCodec, AudioFormat, AudioFormatInfo, AudioQuality, CacheStats,
+    CatalogSearchKind, CredentialStore, LyricDocument, LyricLine, LyricMetadata, LyricSyncMode,
+    LyricWord, PlaybackCapability, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
+    PlaybackSourceResolver, ProviderStorage, ProviderStorageExt, ProviderTrackReference,
+    ResolvedPlaybackSource, SearchResult, Song, SongAvailability, SpawnBlockingCredentialStore,
 };
 pub use yaqmc_provider_api::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
@@ -961,6 +961,64 @@ impl QQMusicService {
                     .ok_or(error)?;
                 self.account.remember_songs(&artist.top_songs).await;
                 Ok(artist)
+            }
+        }
+    }
+
+    pub async fn artist_catalog(
+        &self,
+        id: String,
+        kind: ArtistCatalogKind,
+        page: u32,
+        limit: u32,
+    ) -> Result<ArtistCatalogPage, QQMusicError> {
+        let mid = catalog_entity_mid(&id, "qqmusic:artist:")?;
+        let artist_id = entity_id("qqmusic:artist:", mid);
+        let page = page.max(1);
+        let limit = limit.clamp(1, 30);
+        let key = artist_catalog_cache_key(mid, kind, page, limit);
+        if let Some(result) = self
+            .storage
+            .get_json::<ArtistCatalogPage>(&key, false)
+            .map_err(|_| QQMusicError::Storage)?
+            .filter(|result| artist_catalog_result_matches(result, &artist_id, kind, page))
+        {
+            self.account
+                .remember_songs(artist_catalog_result_songs(&result))
+                .await;
+            return Ok(result);
+        }
+
+        let result = crate::qmapi::catalog::artist_catalog_page(
+            &self.client.catalog,
+            mid,
+            kind,
+            page,
+            limit,
+        )
+        .await
+        .map(|raw| normalize_qm_artist_catalog_page(mid, page, limit, raw));
+        match result {
+            Ok(result) => {
+                self.storage
+                    .put_json(&key, "metadata", &result, METADATA_TTL_MS)
+                    .map_err(|_| QQMusicError::Storage)?;
+                self.account
+                    .remember_songs(artist_catalog_result_songs(&result))
+                    .await;
+                Ok(result)
+            }
+            Err(error) => {
+                let result = self
+                    .storage
+                    .get_json::<ArtistCatalogPage>(&key, true)
+                    .map_err(|_| QQMusicError::Storage)?
+                    .filter(|result| artist_catalog_result_matches(result, &artist_id, kind, page))
+                    .ok_or(error)?;
+                self.account
+                    .remember_songs(artist_catalog_result_songs(&result))
+                    .await;
+                Ok(result)
             }
         }
     }
@@ -3819,6 +3877,84 @@ fn normalize_qm_album(
     })
 }
 
+fn normalize_qm_artist_album_preview(
+    raw: qqmusic_api::models::singer::AlbumBrief,
+    artist: ArtistPreview,
+) -> Option<AlbumPreview> {
+    let album_mid = valid_mid(&raw.base.mid).unwrap_or_default();
+    let title = clean_text(if raw.base.name.trim().is_empty() {
+        &raw.base.title
+    } else {
+        &raw.base.name
+    });
+    (!title.is_empty()).then(|| AlbumPreview {
+        id: entity_id("qqmusic:album:", &album_mid),
+        title: title.clone(),
+        artist,
+        artwork: artwork_for_album(&album_mid, &title),
+        release_year: parse_year(&raw.base.time_public),
+    })
+}
+
+fn normalize_qm_artist_catalog_page(
+    mid: &str,
+    page: u32,
+    limit: u32,
+    raw: crate::qmapi::catalog::ArtistCatalogPage,
+) -> ArtistCatalogPage {
+    let artist_id = entity_id("qqmusic:artist:", mid);
+    match raw {
+        crate::qmapi::catalog::ArtistCatalogPage::Songs { total, items } => {
+            let offset = page.saturating_sub(1).saturating_mul(limit);
+            ArtistCatalogPage::Song {
+                artist_id,
+                page,
+                has_more: search_has_more(total, page, limit),
+                items: items
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, song)| {
+                        normalize_qm_song(
+                            song,
+                            offset.saturating_add(index as u32).saturating_add(1),
+                        )
+                    })
+                    .collect(),
+            }
+        }
+        crate::qmapi::catalog::ArtistCatalogPage::Albums { total, items } => {
+            ArtistCatalogPage::Album {
+                artist_id: artist_id.clone(),
+                page,
+                has_more: search_has_more(total, page, limit),
+                items: items
+                    .into_iter()
+                    .filter_map(|album| {
+                        let name = clean_text(&album.singer_name);
+                        let singer = qqmusic_api::models::base::Singer {
+                            mid: mid.to_owned(),
+                            name: name.clone(),
+                            ..Default::default()
+                        };
+                        normalize_qm_artist_album_preview(
+                            album,
+                            ArtistPreview {
+                                id: artist_id.clone(),
+                                name: name.clone(),
+                                artwork: artwork_from_provider_url(
+                                    &singer.cover_url(500),
+                                    &name,
+                                    color_for(mid),
+                                ),
+                            },
+                        )
+                    })
+                    .collect(),
+            }
+        }
+    }
+}
+
 fn normalize_qm_artist(
     mid: &str,
     catalog: crate::qmapi::catalog::ArtistCatalog,
@@ -3849,21 +3985,7 @@ fn normalize_qm_artist(
         .albums
         .into_iter()
         .take(20)
-        .filter_map(|album| {
-            let album_mid = valid_mid(&album.base.mid).unwrap_or_default();
-            let title = clean_text(if album.base.name.trim().is_empty() {
-                &album.base.title
-            } else {
-                &album.base.name
-            });
-            (!title.is_empty()).then(|| AlbumPreview {
-                id: entity_id("qqmusic:album:", &album_mid),
-                title: title.clone(),
-                artist: artist_preview.clone(),
-                artwork: artwork_for_album(&album_mid, &title),
-                release_year: parse_year(&album.base.time_public),
-            })
-        })
+        .filter_map(|album| normalize_qm_artist_album_preview(album, artist_preview.clone()))
         .collect::<Vec<_>>();
     let description = catalog
         .description
@@ -4814,6 +4936,47 @@ fn search_cache_key(query: &str, kind: CatalogSearchKind, page: u32, limit: u32)
     )
 }
 
+fn artist_catalog_cache_key(mid: &str, kind: ArtistCatalogKind, page: u32, limit: u32) -> String {
+    format!(
+        "qqmusic:artist-catalog:v1:{}:{mid}:{page}:{limit}",
+        kind.as_str()
+    )
+}
+
+fn artist_catalog_result_matches(
+    result: &ArtistCatalogPage,
+    artist_id: &str,
+    kind: ArtistCatalogKind,
+    page: u32,
+) -> bool {
+    match (result, kind) {
+        (
+            ArtistCatalogPage::Song {
+                artist_id: cached_id,
+                page: cached_page,
+                ..
+            },
+            ArtistCatalogKind::Song,
+        )
+        | (
+            ArtistCatalogPage::Album {
+                artist_id: cached_id,
+                page: cached_page,
+                ..
+            },
+            ArtistCatalogKind::Album,
+        ) => cached_id == artist_id && *cached_page == page,
+        _ => false,
+    }
+}
+
+fn artist_catalog_result_songs(result: &ArtistCatalogPage) -> &[Song] {
+    match result {
+        ArtistCatalogPage::Song { items, .. } => items,
+        ArtistCatalogPage::Album { .. } => &[],
+    }
+}
+
 fn search_has_more(total_num: i64, page: u32, limit: u32) -> bool {
     i64::from(page).saturating_mul(i64::from(limit)) < total_num.max(0)
 }
@@ -5642,6 +5805,45 @@ mod tests {
             )
         );
         assert_ne!(song, artist);
+    }
+
+    #[test]
+    fn artist_catalog_cache_and_validation_are_scoped_to_the_exact_page() {
+        let song_key = artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Song, 2, 8);
+        assert_eq!(song_key, "qqmusic:artist-catalog:v1:song:ARTIST_MID:2:8");
+        assert_ne!(
+            song_key,
+            artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Album, 2, 8)
+        );
+        assert_ne!(
+            song_key,
+            artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Song, 3, 8)
+        );
+
+        let page = ArtistCatalogPage::Song {
+            artist_id: "qqmusic:artist:ARTIST_MID".to_owned(),
+            page: 2,
+            has_more: true,
+            items: Vec::new(),
+        };
+        assert!(artist_catalog_result_matches(
+            &page,
+            "qqmusic:artist:ARTIST_MID",
+            ArtistCatalogKind::Song,
+            2
+        ));
+        assert!(!artist_catalog_result_matches(
+            &page,
+            "qqmusic:artist:OTHER",
+            ArtistCatalogKind::Song,
+            2
+        ));
+        assert!(!artist_catalog_result_matches(
+            &page,
+            "qqmusic:artist:ARTIST_MID",
+            ArtistCatalogKind::Album,
+            2
+        ));
     }
 
     #[test]

@@ -88,9 +88,18 @@ pub struct SearchParams {
     pub limit: u32,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistCatalogParams {
+    pub id: String,
+    pub kind: yaqmc_provider_api::ArtistCatalogKind,
+    pub page: u32,
+    pub limit: u32,
+}
+
 #[cfg(test)]
 mod search_params_tests {
-    use super::SearchParams;
+    use super::{ArtistCatalogParams, SearchParams};
 
     #[test]
     fn typed_search_params_accept_lowercase_kind_and_camel_case_fields() {
@@ -104,6 +113,21 @@ mod search_params_tests {
         assert_eq!(params.kind, yaqmc_provider_api::CatalogSearchKind::Artist);
         assert_eq!(params.page, 2);
         assert_eq!(params.limit, 8);
+    }
+
+    #[test]
+    fn typed_artist_catalog_params_accept_the_frozen_shape() {
+        let params: ArtistCatalogParams = serde_json::from_value(serde_json::json!({
+            "id": "qqmusic:artist:mid",
+            "kind": "album",
+            "page": 3,
+            "limit": 20
+        }))
+        .expect("typed artist catalog params");
+        assert_eq!(params.id, "qqmusic:artist:mid");
+        assert_eq!(params.kind, yaqmc_provider_api::ArtistCatalogKind::Album);
+        assert_eq!(params.page, 3);
+        assert_eq!(params.limit, 20);
     }
 }
 

@@ -24,6 +24,16 @@ describe('QQMusicProvider', () => {
     expect(invoke).toHaveBeenCalledWith('qqmusic_library');
   });
 
+  it('forwards the typed artist catalog page without adding an upstream route', async () => {
+    await provider.getArtistCatalog('qqmusic:artist:mid', 'album', undefined, 2, 8);
+    expect(invoke).toHaveBeenCalledWith('qqmusic_artist_catalog', {
+      id: 'qqmusic:artist:mid',
+      kind: 'album',
+      page: 2,
+      limit: 8,
+    });
+  });
+
   it('keeps NamedRequest { request } shapes for account mutations', async () => {
     const request = {
       trackId: 'song-1',

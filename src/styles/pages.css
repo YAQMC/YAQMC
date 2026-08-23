@@ -441,13 +441,34 @@
 }
 
 .artist-page__albums {
-  margin-top: 2rem;
+  margin-top: 24px;
+}
+
+.artist-page__tabs {
+  margin-top: 32px;
+}
+
+.artist-page__tabpanel {
+  margin-top: 24px;
+}
+
+.artist-page__tabpanel[hidden] {
+  display: none;
+}
+
+.artist-page__tabpanel > h2 {
+  margin-bottom: 12px;
+}
+
+.artist-page__empty {
+  min-height: 260px;
 }
 
 .artist-page__album-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 1rem;
+  margin-top: 12px;
 }
 
 .artist-page__album-card {

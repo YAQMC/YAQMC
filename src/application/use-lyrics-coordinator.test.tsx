@@ -58,6 +58,7 @@ describe('useLyricsCoordinator', () => {
     getSong: vi.fn(),
     getAlbum: vi.fn(),
     getArtist: vi.fn(),
+    getArtistCatalog: vi.fn(),
     getPlaylist: vi.fn(),
     getLibrary: vi.fn(),
     getLyrics,

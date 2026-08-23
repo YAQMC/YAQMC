@@ -170,6 +170,26 @@ mod catalog_shape_tests {
         }))
         .is_err());
     }
+
+    #[test]
+    fn artist_catalog_page_serializes_the_discriminated_camel_case_shape() {
+        let page = ArtistCatalogPage::Album {
+            artist_id: "qqmusic:artist:mid".to_owned(),
+            page: 2,
+            has_more: true,
+            items: Vec::new(),
+        };
+        assert_eq!(
+            serde_json::to_value(page).expect("artist catalog page serializes"),
+            json!({
+                "kind": "album",
+                "artistId": "qqmusic:artist:mid",
+                "page": 2,
+                "hasMore": true,
+                "items": []
+            })
+        );
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -346,6 +366,43 @@ pub enum SearchResult {
     },
     Album {
         query: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<AlbumPreview>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArtistCatalogKind {
+    Song,
+    Album,
+}
+
+impl ArtistCatalogKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Song => "song",
+            Self::Album => "album",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ArtistCatalogPage {
+    Song {
+        #[serde(rename = "artistId")]
+        artist_id: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<Song>,
+    },
+    Album {
+        #[serde(rename = "artistId")]
+        artist_id: String,
         page: u32,
         #[serde(rename = "hasMore")]
         has_more: bool,

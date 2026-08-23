@@ -133,6 +133,24 @@ export interface Artist {
   albums: AlbumPreview[];
 }
 
+export type ArtistCatalogKind = 'song' | 'album';
+
+export type ArtistCatalogPage =
+  | {
+      kind: 'song';
+      artistId: EntityId;
+      page: number;
+      hasMore: boolean;
+      items: Song[];
+    }
+  | {
+      kind: 'album';
+      artistId: EntityId;
+      page: number;
+      hasMore: boolean;
+      items: AlbumPreview[];
+    };
+
 export interface PlaylistOwner {
   id: EntityId;
   displayName: string;

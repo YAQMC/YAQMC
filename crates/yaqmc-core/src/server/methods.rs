@@ -19,7 +19,7 @@ use yaqmc_provider_api::{
 
 use super::ops;
 use super::types::{
-    AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams,
+    ArtistCatalogParams, AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams,
     DiagnosticsExportToParams, EnabledParams, EncAreaParams, EntryIdParams, FrontendLogParams,
     IdParams, IndexParams, IssueReporterPreviewParams, LevelParams, LimitParams,
     LyricsDocumentParams, NamedRequest, OAuthCompleteParams, OAuthPrepareParams,
@@ -46,6 +46,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "qqmusic_song",
     "qqmusic_album",
     "qqmusic_artist",
+    "qqmusic_artist_catalog",
     "qqmusic_playlist",
     "qqmusic_lyrics",
     "qqmusic_cache_artwork",
@@ -384,6 +385,15 @@ async fn invoke_core(
         "qqmusic_artist" => {
             let IdParams { id } = parse(&params)?;
             provider(core.qq_music().artist(id).await)
+        }
+        "qqmusic_artist_catalog" => {
+            let ArtistCatalogParams {
+                id,
+                kind,
+                page,
+                limit,
+            } = parse(&params)?;
+            provider(core.qq_music().artist_catalog(id, kind, page, limit).await)
         }
         "qqmusic_playlist" => {
             let IdParams { id } = parse(&params)?;

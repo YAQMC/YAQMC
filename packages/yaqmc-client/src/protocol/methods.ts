@@ -6,6 +6,8 @@ import type {
   ActivePluginResources,
   Album,
   Artist,
+  ArtistCatalogKind,
+  ArtistCatalogPage,
   AreaFeed,
   AudioOutputDevice,
   AudioQualityPreference,
@@ -84,6 +86,7 @@ export const MIGRATED_METHOD_NAMES = [
   'qqmusic_song',
   'qqmusic_album',
   'qqmusic_artist',
+  'qqmusic_artist_catalog',
   'qqmusic_playlist',
   'qqmusic_lyrics',
   'qqmusic_cache_artwork',
@@ -226,6 +229,12 @@ export type MethodParams = Exhaustive<{
   qqmusic_song: { id: string };
   qqmusic_album: { id: string };
   qqmusic_artist: { id: string };
+  qqmusic_artist_catalog: {
+    id: string;
+    kind: ArtistCatalogKind;
+    page: number;
+    limit: number;
+  };
   qqmusic_playlist: { id: string };
   qqmusic_lyrics: { songId: string };
   qqmusic_cache_artwork: { url: string };
@@ -365,6 +374,7 @@ export type MethodResult = Exhaustive<{
   qqmusic_song: Song;
   qqmusic_album: Album;
   qqmusic_artist: Artist;
+  qqmusic_artist_catalog: ArtistCatalogPage;
   qqmusic_playlist: Playlist;
   qqmusic_lyrics: LyricDocument | null;
   qqmusic_cache_artwork: string;

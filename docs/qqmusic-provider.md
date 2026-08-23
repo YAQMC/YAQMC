@@ -25,6 +25,7 @@ account acceptance remains pending.
 | --------------------- | --------------------------------------------------------- | ------------------------------ |
 | typed catalog search  | pinned `qm-api-rs` `search.search_by_type`                | paginated songs/artists/albums |
 | typed catalog details | pinned `qm-api-rs` song/album/singer methods              | song/album/artist details      |
+| artist catalog pages  | pinned `qm-api-rs` `singer.get_songs_list/get_album_list` | paginated songs/albums         |
 | guest playlist detail | `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg` | playlist and tracks            |
 | current toplist       | `u.y.qq.com/cgi-bin/musicu.fcg`                           | home feed/toplist tracks       |
 | QRC lyrics            | `musicu.fcg`, `GetPlayLyricInfo`                          | word-timed `LyricDocument`     |
@@ -35,7 +36,8 @@ account acceptance remains pending.
 
 Search is category-tagged (`song`, `artist`, or `album`) and uses the pinned `qm-api-rs` typed boundary. Playlist
 discovery is supplied through the home/toplist and direct playlist lookup paths; playlist results are not part of the
-search contract.
+search contract. Artist pages request their full song and album sections through the pinned typed singer methods;
+the React and Electron layers do not construct upstream API routes.
 
 Requests use a five-second connect timeout and fifteen-second total timeout. Retryable transport/rate-limit cases
 are retried at most once. Partial DTOs use explicit defaults, but missing identity or impossible response structure

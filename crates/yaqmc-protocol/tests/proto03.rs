@@ -7,14 +7,14 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_119_method_single_source_of_truth() {
+fn registry_is_the_129_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 116 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 117 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
     assert!(method("lyrics_surface_unlock").is_some());
-    for name in ["qqmusic_song", "qqmusic_artist"] {
+    for name in ["qqmusic_song", "qqmusic_artist", "qqmusic_artist_catalog"] {
         let spec = method(name).expect(name);
         assert_eq!(spec.owner, MethodOwner::Core);
         assert_eq!(

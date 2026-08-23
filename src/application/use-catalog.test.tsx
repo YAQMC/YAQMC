@@ -21,6 +21,7 @@ describe('useCatalog', () => {
       getSong: vi.fn(),
       getAlbum: vi.fn(),
       getArtist: vi.fn(),
+      getArtistCatalog: vi.fn(),
       getPlaylist: vi.fn(),
       getLibrary: vi.fn().mockResolvedValue(librarySnapshot),
       getLyrics: vi.fn(),

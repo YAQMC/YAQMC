@@ -20,9 +20,15 @@ interface TrackListProps {
   tracks: Song[];
   showAlbum?: boolean;
   compact?: boolean;
+  titleTarget?: 'song' | 'album-first';
 }
 
-export function TrackList({ tracks, showAlbum = false, compact = false }: TrackListProps) {
+export function TrackList({
+  tracks,
+  showAlbum = false,
+  compact = false,
+  titleTarget = 'song',
+}: TrackListProps) {
   const { t } = useTranslation('player');
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
@@ -52,6 +58,7 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
             active={Boolean(track.id.trim()) && track.id === currentId}
             isPlaying={isPlaying}
             showAlbum={showAlbum}
+            titleTarget={titleTarget}
             pluginActions={pluginActions}
           />
         ))}
@@ -67,6 +74,7 @@ interface TrackRowProps {
   active: boolean;
   isPlaying: boolean;
   showAlbum: boolean;
+  titleTarget: 'song' | 'album-first';
   pluginActions: readonly { pluginId: string; pluginName: string; id: string; label: string }[];
 }
 
@@ -77,6 +85,7 @@ function TrackRow({
   active,
   isPlaying,
   showAlbum,
+  titleTarget,
   pluginActions,
 }: TrackRowProps) {
   const { t } = useTranslation('player');
@@ -92,6 +101,9 @@ function TrackRow({
   const actionsRef = useRef<HTMLSpanElement>(null);
   const { favorite, pending } = useFavoriteState(track.id, track.isFavorite);
   const hasUsableTrackId = track.id.trim().length > 0;
+  const hasUsableAlbumId = track.album.id.trim().length > 0;
+  const titleEntity = titleTarget === 'album-first' && hasUsableAlbumId ? 'album' : 'song';
+  const titleEntityId = titleEntity === 'album' ? track.album.id : track.id;
   const playbackAction = active && isPlaying ? common('pause') : common('play');
   const favoriteLabel = pending
     ? t('favoritePending', { title: track.title })
@@ -187,7 +199,7 @@ function TrackRow({
         )}
       </span>
       <span className="track-row__primary" role="cell">
-        <EntityLink entity="song" id={track.id} className="track-row__title">
+        <EntityLink entity={titleEntity} id={titleEntityId} className="track-row__title">
           {track.title}
         </EntityLink>
         <span className="track-row__artist">
