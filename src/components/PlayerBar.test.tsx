@@ -3,12 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
+import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import { ProviderContext } from '../application/provider-context';
 import { NavigationProvider } from '../application/navigation-context';
 import type { AccountSnapshot, FavoriteMutationResult } from '../domain/music';
 import { allSongs } from '../providers/fake/fixtures';
 import { qqMusicProvider } from '../providers/qqmusic/qq-music-provider';
+import i18n from '../i18n';
 import { PlayerBar } from './PlayerBar';
+
+const nativeRuntime = vi.hoisted(() => ({ value: true }));
+
+vi.mock('../application/native-player-runtime', () => ({
+  get isNativeRuntime() {
+    return nativeRuntime.value;
+  },
+}));
 
 function qqTrack() {
   return {
@@ -55,11 +65,14 @@ function deferred<T>() {
 }
 
 describe('PlayerBar lyrics presentation entry', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
+    nativeRuntime.value = true;
     resetAccountRuntimeForTest();
     usePlayerStore.setState(initialPlayerState);
+    usePreferencesStore.setState(defaultPreferences);
     setPlayerCommandAdapter(null);
+    await i18n.changeLanguage('en-US');
   });
 
   afterEach(() => {
@@ -151,6 +164,13 @@ describe('PlayerBar lyrics presentation entry', () => {
   });
 
   it('opens the lyrics page from the artwork without requesting fullscreen', () => {
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      surfaces: {
+        ...defaultPreferences.surfaces,
+        desktop: { ...defaultPreferences.surfaces.desktop, enabled: false },
+      },
+    });
     usePlayerStore.setState({ queue: [qqTrack()], currentIndex: 0 });
     render(<PlayerBar />);
 
@@ -159,6 +179,7 @@ describe('PlayerBar lyrics presentation entry', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open lyrics page' }));
 
     expect(usePlayerStore.getState()).toMatchObject({ lyricsOpen: true, queueOpen: false });
+    expect(usePreferencesStore.getState().surfaces.desktop.enabled).toBe(false);
   });
 
   it('routes the current title and artists while artwork still opens normal lyrics', () => {
@@ -213,15 +234,75 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(container.querySelector('button button')).toBeNull();
   });
 
-  it('delegates an open Lyrics panel to safe close without changing visibility directly', () => {
-    usePlayerStore.setState({ lyricsOpen: true });
-    const onCloseLyrics = vi.fn();
-    render(<PlayerBar onCloseLyrics={onCloseLyrics} />);
+  it('toggles desktop lyrics without changing normal lyrics visibility', () => {
+    const toggleLyrics = vi.fn();
+    usePlayerStore.setState({ lyricsOpen: true, toggleLyrics });
+    render(<PlayerBar />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show lyrics' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable desktop lyrics' }));
 
-    expect(onCloseLyrics).toHaveBeenCalledOnce();
+    expect(toggleLyrics).not.toHaveBeenCalled();
     expect(usePlayerStore.getState().lyricsOpen).toBe(true);
+    expect(usePreferencesStore.getState().surfaces.desktop.enabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Disable desktop lyrics' })).toHaveAttribute(
+      'data-active',
+      'true',
+    );
+  });
+
+  it('localizes the next-action label in both maintained locales', async () => {
+    render(<PlayerBar />);
+    expect(screen.getByRole('button', { name: 'Enable desktop lyrics' })).toBeInTheDocument();
+
+    await act(async () => {
+      await i18n.changeLanguage('zh-CN');
+    });
+    expect(screen.getByRole('button', { name: '启用桌面歌词' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '启用桌面歌词' }));
+    expect(screen.getByRole('button', { name: '停用桌面歌词' })).toBeInTheDocument();
+  });
+
+  it('preserves every desktop surface setting while toggling only enabled', () => {
+    const desktop = {
+      ...defaultPreferences.surfaces.desktop,
+      enabled: false,
+      interaction: 'passive-locked' as const,
+      alwaysOnTop: false,
+      hideInFullscreen: false,
+      lineMode: 'single' as const,
+      fontSize: 44,
+      fontMode: 'custom' as const,
+      customFontFamily: 'Test Sans',
+      alignment: 'left' as const,
+      primaryColor: '#102030',
+      secondaryColor: '#405060',
+      backgroundOpacity: 63,
+      horizontalPosition: 42,
+      verticalOffset: 119,
+      width: 'compact' as const,
+    };
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      surfaces: { ...defaultPreferences.surfaces, desktop },
+    });
+    render(<PlayerBar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable desktop lyrics' }));
+    expect(usePreferencesStore.getState().surfaces.desktop).toEqual({ ...desktop, enabled: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disable desktop lyrics' }));
+    expect(usePreferencesStore.getState().surfaces.desktop).toEqual({ ...desktop, enabled: false });
+  });
+
+  it('disables the microphone outside the native runtime but not when there is no song', () => {
+    const { unmount } = render(<PlayerBar />);
+    expect(screen.getByRole('button', { name: 'Enable desktop lyrics' })).toBeEnabled();
+
+    unmount();
+    nativeRuntime.value = false;
+    render(<PlayerBar />);
+    expect(screen.getByRole('button', { name: 'Enable desktop lyrics' })).toBeDisabled();
   });
 
   it('delegates Queue entry without changing panel state directly', () => {

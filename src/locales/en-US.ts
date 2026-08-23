@@ -345,6 +345,8 @@ export const enUS = {
     repeatOne: 'one',
     position: 'Playback position',
     showLyrics: 'Show lyrics',
+    enableDesktopLyrics: 'Enable desktop lyrics',
+    disableDesktopLyrics: 'Disable desktop lyrics',
     openLyrics: 'Open lyrics page',
     showQueue: 'Show queue',
     mute: 'Mute',
