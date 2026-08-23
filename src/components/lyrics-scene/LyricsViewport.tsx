@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LyricPlayer } from '@applemusic-like-lyrics/react';
 import type { LyricLine as AmllLyricLine, LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
 import { AlignLeft, Music2 } from 'lucide-react';
@@ -112,7 +112,10 @@ function useAmllCurrentTime(
   timelineRevision: number,
   isPlaying: boolean,
 ): number {
-  const current = () => (document ? lyricTimeMs(getPositionMs, presentationOffsetMs, document) : 0);
+  const current = useCallback(
+    () => (document ? lyricTimeMs(getPositionMs, presentationOffsetMs, document) : 0),
+    [document, getPositionMs, presentationOffsetMs],
+  );
   const [currentTime, setCurrentTime] = useState(current);
 
   useEffect(() => {
@@ -128,7 +131,7 @@ function useAmllCurrentTime(
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [document, getPositionMs, isPlaying, presentationOffsetMs, timelineRevision]);
+  }, [current, isPlaying, timelineRevision]);
 
   return currentTime;
 }
