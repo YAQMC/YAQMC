@@ -160,6 +160,11 @@ const METHODS: &[MethodSpec] = &[
     spec("qqmusic_song", MethodOwner::Core, OriginClass::Main),
     spec("qqmusic_album", MethodOwner::Core, OriginClass::Main),
     spec("qqmusic_artist", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "qqmusic_artist_catalog",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
     spec("qqmusic_playlist", MethodOwner::Core, OriginClass::Main),
     spec("qqmusic_lyrics", MethodOwner::Core, OriginClass::Main),
     spec(

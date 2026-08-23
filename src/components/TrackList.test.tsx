@@ -378,6 +378,35 @@ describe('TrackList favorite controls', () => {
     }
   });
 
+  it('supports an artist-page-only album-first title target with a song fallback', () => {
+    const onNavigate = vi.fn();
+    const albumTrack: Song = {
+      ...allSongs[0]!,
+      id: 'album-track',
+      title: 'Album-first track',
+      album: { id: 'album-target', title: 'Album target' },
+    };
+    const fallbackTrack: Song = {
+      ...albumTrack,
+      id: 'fallback-track',
+      title: 'Fallback track',
+      album: { id: '', title: 'Unknown album' },
+    };
+    render(
+      <NavigationProvider onNavigate={onNavigate}>
+        <TrackList tracks={[albumTrack, fallbackTrack]} titleTarget="album-first" />
+      </NavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Album-first track' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fallback track' }));
+    expect(onNavigate.mock.calls).toEqual([
+      [{ page: 'album', id: 'album-target' }],
+      [{ page: 'song', id: 'fallback-track' }],
+    ]);
+    expect(usePlayerStore.getState().queue).toEqual([]);
+  });
+
   it('keeps repeated artist button names equal to the visible artist name', () => {
     const first: Song = {
       ...allSongs[0]!,

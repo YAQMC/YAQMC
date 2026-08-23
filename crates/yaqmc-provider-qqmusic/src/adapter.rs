@@ -343,6 +343,19 @@ impl api::MusicProvider for QQMusicService {
         map_output(value)
     }
 
+    async fn artist_catalog(
+        &self,
+        id: String,
+        kind: api::ArtistCatalogKind,
+        page: u32,
+        limit: u32,
+    ) -> api::ProviderResult<api::ArtistCatalogPage> {
+        let value = QQMusicService::artist_catalog(self, id, kind, page, limit)
+            .await
+            .map_err(provider_error)?;
+        map_output(value)
+    }
+
     async fn playlist(&self, id: String) -> api::ProviderResult<api::Playlist> {
         let value = QQMusicService::playlist(self, id)
             .await

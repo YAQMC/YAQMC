@@ -213,6 +213,19 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "qqmusic_artist_catalog",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "qqmusic_playlist",
     "owner": "core",
     "requestCap": 1048576,

@@ -3,6 +3,8 @@ import {
   type Album,
   type AlbumPreview,
   type Artist,
+  type ArtistCatalogKind,
+  type ArtistCatalogPage,
   type CatalogSearchKind,
   type EntityId,
   type Playlist,
@@ -33,6 +35,13 @@ function clone<T>(value: T): T {
 
 function normalizeQuery(query: string): string {
   return query.trim().toLocaleLowerCase();
+}
+
+function normalizePageLimit(page: number, limit: number): { page: number; limit: number } {
+  return {
+    page: Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1,
+    limit: Number.isFinite(limit) ? Math.min(30, Math.max(1, Math.floor(limit))) : 20,
+  };
 }
 
 export class FakeMusicProvider implements MusicProvider {
@@ -109,6 +118,61 @@ export class FakeMusicProvider implements MusicProvider {
       topSongs: clone(topSongs.slice(0, 20)),
       albums: albumPreviews,
     };
+  }
+
+  async getArtistCatalog(
+    id: EntityId,
+    kind: ArtistCatalogKind,
+    signal?: AbortSignal,
+    page = 1,
+    limit = 20,
+  ): Promise<ArtistCatalogPage> {
+    throwIfAborted(signal);
+    const artistAlbums = albums.filter((album) => album.artist.id === id);
+    const artistSongs = allSongs.filter((song) => song.artists.some((artist) => artist.id === id));
+    if (artistAlbums.length === 0 && artistSongs.length === 0) {
+      throw new ProviderError('not-found', `Unknown fixture artist: ${id}`, false);
+    }
+
+    const normalized = normalizePageLimit(page, limit);
+    const start = (normalized.page - 1) * normalized.limit;
+    if (kind === 'song') {
+      const items = artistSongs.slice(start, start + normalized.limit);
+      return clone({
+        kind,
+        artistId: id,
+        page: normalized.page,
+        hasMore: start + items.length < artistSongs.length,
+        items,
+      });
+    }
+    if (kind === 'album') {
+      const summary =
+        artistAlbums[0]?.artist ?? artistSongs[0]?.artists.find((artist) => artist.id === id);
+      if (!summary) {
+        throw new ProviderError('not-found', `Unknown fixture artist: ${id}`, false);
+      }
+      const previews = artistAlbums.map<AlbumPreview>((album) => ({
+        id: album.id,
+        title: album.title,
+        artist: {
+          id: summary.id,
+          name: summary.name,
+          artwork: clone(album.artwork),
+        },
+        artwork: clone(album.artwork),
+        releaseYear: album.releaseYear,
+      }));
+      const items = previews.slice(start, start + normalized.limit);
+      return clone({
+        kind,
+        artistId: id,
+        page: normalized.page,
+        hasMore: start + items.length < previews.length,
+        items,
+      });
+    }
+    throw new ProviderError('invalid-request', `Unsupported artist catalog kind: ${kind}`, false);
   }
 
   async getPlaylist(id: EntityId, signal?: AbortSignal): Promise<Playlist> {

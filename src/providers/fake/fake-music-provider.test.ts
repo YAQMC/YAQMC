@@ -44,9 +44,31 @@ describe('FakeMusicProvider', () => {
     expect(artist.albums.map((candidate) => candidate.id)).toContain('album-afterglow');
   });
 
+  it('pages typed artist songs and albums independently', async () => {
+    const songs = await provider.getArtistCatalog('artist-mira-vale', 'song', undefined, 1, 1);
+    expect(songs).toMatchObject({
+      kind: 'song',
+      artistId: 'artist-mira-vale',
+      page: 1,
+    });
+    expect(songs.items).toHaveLength(1);
+
+    const albums = await provider.getArtistCatalog('artist-mira-vale', 'album', undefined, 1, 1);
+    expect(albums).toMatchObject({
+      kind: 'album',
+      artistId: 'artist-mira-vale',
+      page: 1,
+    });
+    expect(albums.items).toHaveLength(1);
+    expect(albums.items[0]?.id).toBe('album-afterglow');
+  });
+
   it('reports unknown song and artist lookups as not-found provider errors', async () => {
     await expect(provider.getSong('missing')).rejects.toMatchObject({ code: 'not-found' });
     await expect(provider.getArtist('missing')).rejects.toMatchObject({ code: 'not-found' });
+    await expect(provider.getArtistCatalog('missing', 'song')).rejects.toMatchObject({
+      code: 'not-found',
+    });
   });
 
   it('remains a catalog-only provider', () => {

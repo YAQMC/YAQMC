@@ -2,12 +2,13 @@
 
 use crate::{
     AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Album, AreaFeed, Artist,
-    AudioQualityPreference, CacheStats, CatalogProviderCapabilities, CatalogSearchKind,
-    CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest, DiscoverFeed,
-    FavoriteMutationRequest, FavoriteMutationResult, HomeFeed, LibrarySnapshot, LyricDocument,
-    OAuthLoginProvider, OAuthPrepareResult, Page, PlaybackSourceResolver, Playlist,
-    PlaylistMutationResult, PlaylistTrackMutationRequest, ProviderResult, ProviderStatus,
-    RemotePlayHistoryItem, RenamePlaylistRequest, SearchResult, Song,
+    ArtistCatalogKind, ArtistCatalogPage, AudioQualityPreference, CacheStats,
+    CatalogProviderCapabilities, CatalogSearchKind, CollectPlaylistRequest, CreatePlaylistRequest,
+    DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest, FavoriteMutationResult, HomeFeed,
+    LibrarySnapshot, LyricDocument, OAuthLoginProvider, OAuthPrepareResult, Page,
+    PlaybackSourceResolver, Playlist, PlaylistMutationResult, PlaylistTrackMutationRequest,
+    ProviderResult, ProviderStatus, RemotePlayHistoryItem, RenamePlaylistRequest, SearchResult,
+    Song,
 };
 use async_trait::async_trait;
 
@@ -114,6 +115,13 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
     async fn song(&self, id: String) -> ProviderResult<Song>;
     async fn album(&self, id: String) -> ProviderResult<Album>;
     async fn artist(&self, id: String) -> ProviderResult<Artist>;
+    async fn artist_catalog(
+        &self,
+        id: String,
+        kind: ArtistCatalogKind,
+        page: u32,
+        limit: u32,
+    ) -> ProviderResult<ArtistCatalogPage>;
     async fn playlist(&self, id: String) -> ProviderResult<Playlist>;
     async fn home(&self, refresh: bool) -> ProviderResult<HomeFeed>;
     async fn discover(&self, refresh: bool) -> ProviderResult<DiscoverFeed>;

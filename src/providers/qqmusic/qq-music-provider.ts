@@ -10,6 +10,8 @@ import {
   type Album,
   type AreaFeed,
   type Artist,
+  type ArtistCatalogKind,
+  type ArtistCatalogPage,
   type CatalogSearchKind,
   type CollectPlaylistRequest,
   type CreatePlaylistRequest,
@@ -110,6 +112,16 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
 
   getArtist(id: EntityId, signal?: AbortSignal): Promise<Artist> {
     return nativeRequest('qqmusic_artist', { id }, signal);
+  }
+
+  getArtistCatalog(
+    id: EntityId,
+    kind: ArtistCatalogKind,
+    signal?: AbortSignal,
+    page = 1,
+    limit = 20,
+  ): Promise<ArtistCatalogPage> {
+    return nativeRequest('qqmusic_artist_catalog', { id, kind, page, limit }, signal);
   }
 
   getPlaylist(id: EntityId, signal?: AbortSignal): Promise<Playlist> {

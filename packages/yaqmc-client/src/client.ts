@@ -96,6 +96,12 @@ export class YaqmcClient {
     song: (id: string) => this.invoke('qqmusic_song', { id }),
     album: (id: string) => this.invoke('qqmusic_album', { id }),
     artist: (id: string) => this.invoke('qqmusic_artist', { id }),
+    artistCatalog: (
+      id: string,
+      kind: MethodParams['qqmusic_artist_catalog']['kind'],
+      page: number,
+      limit: number,
+    ) => this.invoke('qqmusic_artist_catalog', { id, kind, page, limit }),
     playlist: (id: string) => this.invoke('qqmusic_playlist', { id }),
     lyrics: (songId: string) => this.invoke('qqmusic_lyrics', { songId }),
     cacheArtwork: (url: string) => this.invoke('qqmusic_cache_artwork', { url }),

@@ -8,6 +8,7 @@ use qqmusic_api::{models::base::Singer, Client};
 
 use crate::qmapi::cgi::map_qmapi_error;
 use crate::qqmusic::QQMusicError;
+use yaqmc_provider_api::ArtistCatalogKind;
 
 const TOP_ENTITY_LIMIT: i64 = 20;
 const ALBUM_TRACK_PAGE_SIZE: i64 = 100;
@@ -24,6 +25,58 @@ pub(crate) struct ArtistCatalog {
     pub description: qqmusic_api::models::singer::SingerDetailResponse,
     pub top_songs: Vec<qqmusic_api::Song>,
     pub albums: Vec<qqmusic_api::models::singer::AlbumBrief>,
+}
+
+pub(crate) enum ArtistCatalogPage {
+    Songs {
+        total: i64,
+        items: Vec<qqmusic_api::Song>,
+    },
+    Albums {
+        total: i64,
+        items: Vec<qqmusic_api::models::singer::AlbumBrief>,
+    },
+}
+
+pub(crate) async fn artist_catalog_page(
+    client: &Client,
+    mid: &str,
+    kind: ArtistCatalogKind,
+    page: u32,
+    limit: u32,
+) -> Result<ArtistCatalogPage, QQMusicError> {
+    let number = i64::from(limit);
+    let page = i64::from(page);
+    match kind {
+        ArtistCatalogKind::Song => {
+            let response = client
+                .singer
+                .get_songs_list(mid, number, page)
+                .await
+                .map_err(map_qmapi_error)?;
+            if response.singer_mid.trim() != mid {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            Ok(ArtistCatalogPage::Songs {
+                total: response.total_num,
+                items: response.song_list,
+            })
+        }
+        ArtistCatalogKind::Album => {
+            let response = client
+                .singer
+                .get_album_list(mid, number, page)
+                .await
+                .map_err(map_qmapi_error)?;
+            if response.singer_mid.trim() != mid {
+                return Err(QQMusicError::SchemaChanged);
+            }
+            Ok(ArtistCatalogPage::Albums {
+                total: response.total,
+                items: response.album_list,
+            })
+        }
+    }
 }
 
 pub(crate) async fn song(client: &Client, mid: &str) -> Result<qqmusic_api::Song, QQMusicError> {
@@ -123,6 +176,7 @@ mod tests {
 
     use async_trait::async_trait;
     use qqmusic_api::{ApiTransport, Client, Platform, TransportRequest, TransportResponse};
+    use yaqmc_provider_api::ArtistCatalogKind;
 
     #[derive(Default)]
     struct FixtureTransport {
@@ -211,14 +265,24 @@ mod tests {
                     }
                     ("musichall.song_list_server", "GetSingerSongList") => {
                         assert_eq!(req["param"]["singerMid"], "ARTIST_MID");
-                        assert_eq!(req["param"]["number"], 20);
-                        assert_eq!(req["param"]["begin"], 0);
+                        assert!(matches!(
+                            (
+                                req["param"]["number"].as_i64(),
+                                req["param"]["begin"].as_i64()
+                            ),
+                            (Some(20), Some(0)) | (Some(8), Some(8))
+                        ));
                         &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-songs.json")[..]
                     }
                     ("music.musichallAlbum.AlbumListServer", "GetAlbumList") => {
                         assert_eq!(req["param"]["singerMid"], "ARTIST_MID");
-                        assert_eq!(req["param"]["number"], 20);
-                        assert_eq!(req["param"]["begin"], 0);
+                        assert!(matches!(
+                            (
+                                req["param"]["number"].as_i64(),
+                                req["param"]["begin"].as_i64()
+                            ),
+                            (Some(20), Some(0)) | (Some(8), Some(8))
+                        ));
                         &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-albums.json")[..]
                     }
                     _ => panic!("unexpected typed catalog request {module}/{method}"),
@@ -256,11 +320,28 @@ mod tests {
         assert_eq!(artist.top_songs.len(), 1);
         assert_eq!(artist.albums.len(), 1);
 
+        let songs =
+            super::artist_catalog_page(&client, "ARTIST_MID", ArtistCatalogKind::Song, 2, 8)
+                .await
+                .expect("artist song page");
+        assert!(matches!(
+            songs,
+            super::ArtistCatalogPage::Songs { total: 1, items } if items.len() == 1
+        ));
+        let albums =
+            super::artist_catalog_page(&client, "ARTIST_MID", ArtistCatalogKind::Album, 2, 8)
+                .await
+                .expect("artist album page");
+        assert!(matches!(
+            albums,
+            super::ArtistCatalogPage::Albums { total: 1, items } if items.len() == 1
+        ));
+
         let calls = transport.calls();
-        assert_eq!(calls, (0..10).collect::<Vec<_>>());
+        assert_eq!(calls, (0..12).collect::<Vec<_>>());
 
         let requests = transport.requests();
-        assert_eq!(requests.len(), 10);
+        assert_eq!(requests.len(), 12);
         assert_eq!(requests[0]["req_0"]["module"], "music.pf_song_detail_svr");
         assert_eq!(requests[0]["req_0"]["method"], "get_song_detail_yqq");
         assert_eq!(requests[0]["req_0"]["param"]["song_mid"], "SONG_MID");
@@ -311,5 +392,11 @@ mod tests {
         assert_eq!(requests[9]["req_0"]["param"]["singerMid"], "ARTIST_MID");
         assert_eq!(requests[9]["req_0"]["param"]["number"], 20);
         assert_eq!(requests[9]["req_0"]["param"]["begin"], 0);
+        assert_eq!(requests[10]["req_0"]["method"], "GetSingerSongList");
+        assert_eq!(requests[10]["req_0"]["param"]["number"], 8);
+        assert_eq!(requests[10]["req_0"]["param"]["begin"], 8);
+        assert_eq!(requests[11]["req_0"]["method"], "GetAlbumList");
+        assert_eq!(requests[11]["req_0"]["param"]["number"], 8);
+        assert_eq!(requests[11]["req_0"]["param"]["begin"], 8);
     }
 }
