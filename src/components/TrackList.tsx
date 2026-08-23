@@ -14,6 +14,7 @@ import { useContextMenu } from './ui/use-context-menu';
 import { useTranslation } from 'react-i18next';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
+import { EntityLink } from './EntityLink';
 
 interface TrackListProps {
   tracks: Song[];
@@ -26,6 +27,16 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const pluginActions = usePluginUiSnapshot().track;
+  const artistCounts = new Map<string, number>();
+  for (const track of tracks) {
+    for (const artist of track.artists) {
+      const id = artist.id.trim();
+      if (id) artistCounts.set(id, (artistCounts.get(id) ?? 0) + 1);
+    }
+  }
+  const repeatedArtistIds = new Set(
+    [...artistCounts].filter(([, count]) => count > 1).map(([id]) => id),
+  );
 
   return (
     <div className={`track-list ${compact ? 'track-list--compact' : ''}`} role="table">
@@ -52,6 +63,7 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
             isPlaying={isPlaying}
             showAlbum={showAlbum}
             pluginActions={pluginActions}
+            repeatedArtistIds={repeatedArtistIds}
           />
         ))}
       </div>
@@ -67,6 +79,7 @@ interface TrackRowProps {
   isPlaying: boolean;
   showAlbum: boolean;
   pluginActions: readonly { pluginId: string; pluginName: string; id: string; label: string }[];
+  repeatedArtistIds: ReadonlySet<string>;
 }
 
 function TrackRow({
@@ -77,6 +90,7 @@ function TrackRow({
   isPlaying,
   showAlbum,
   pluginActions,
+  repeatedArtistIds,
 }: TrackRowProps) {
   const { t } = useTranslation('player');
   const { t: common } = useTranslation('common');
@@ -179,12 +193,34 @@ function TrackRow({
         </button>
       </span>
       <span className="track-row__primary" role="cell">
-        <span className="track-row__title">{track.title}</span>
-        <span className="track-row__artist">{joinArtistNames(track.artists)}</span>
+        <EntityLink entity="song" id={track.id} className="track-row__title">
+          {track.title}
+        </EntityLink>
+        <span className="track-row__artist">
+          {track.artists.map((artist, artistIndex) => (
+            <span key={`${artist.id}-${artistIndex}`}>
+              {artistIndex > 0 && ', '}
+              <EntityLink
+                entity="artist"
+                id={artist.id}
+                className="track-row__artist-link"
+                ariaLabel={
+                  repeatedArtistIds.has(artist.id.trim())
+                    ? `${artist.name} (${track.title})`
+                    : undefined
+                }
+              >
+                {artist.name}
+              </EntityLink>
+            </span>
+          ))}
+        </span>
       </span>
       {showAlbum && (
         <span className="track-row__album" role="cell">
-          {track.album.title}
+          <EntityLink entity="album" id={track.album.id} className="track-row__album-link">
+            {track.album.title}
+          </EntityLink>
         </span>
       )}
       <span className="track-list__quality track-row__quality" role="cell">

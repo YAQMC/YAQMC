@@ -595,7 +595,27 @@ input[type='range']:disabled {
   white-space: nowrap;
 }
 
+.entity-link {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.entity-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .track-row__title {
+  display: block;
+  width: 100%;
   color: var(--text);
   font-family: var(--font-display);
   font-size: var(--text-sm);
@@ -611,6 +631,11 @@ input[type='range']:disabled {
 .track-list__duration {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
+}
+
+.track-row__artist-link,
+.track-row__album-link {
+  display: inline;
 }
 
 .track-row__quality {

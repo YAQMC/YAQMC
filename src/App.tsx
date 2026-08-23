@@ -445,43 +445,46 @@ export default function App() {
       <AppBackground />
       <ApplicationContextMenu />
       {uiDiagnostics && showFpsCounter && <FpsOverlay />}
-      <div
-        className="app-shell"
-        data-provider-id={provider.id}
-        data-lyrics-focus={(lyricsSurfaceVisible && focusSidebarCollapsed) || undefined}
-        data-lyrics-fullscreen={(lyricsSurfaceVisible && fullscreen) || undefined}
-      >
-        <Sidebar route={route} onNavigate={navigate} />
-        <div className="content-shell">
-          <TopBar
-            canGoBack={history.index > 0}
-            canGoForward={history.index < history.entries.length - 1}
-            theme={theme}
-            onBack={goBack}
-            onForward={goForward}
-            onSearch={() => navigate({ page: 'search' })}
-            onToggleTheme={toggleTheme}
+      <NavigationProvider onNavigate={navigate}>
+        <div
+          className="app-shell"
+          data-provider-id={provider.id}
+          data-lyrics-focus={(lyricsSurfaceVisible && focusSidebarCollapsed) || undefined}
+          data-lyrics-fullscreen={(lyricsSurfaceVisible && fullscreen) || undefined}
+        >
+          <Sidebar route={route} onNavigate={navigate} />
+          <div className="content-shell">
+            <TopBar
+              canGoBack={history.index > 0}
+              canGoForward={history.index < history.entries.length - 1}
+              theme={theme}
+              onBack={goBack}
+              onForward={goForward}
+              onSearch={() => navigate({ page: 'search' })}
+              onToggleTheme={toggleTheme}
+            />
+            <main
+              className="main-content"
+              key={
+                route.page +
+                ('id' in route ? route.id : 'playlist' in route ? route.playlist.id : '')
+              }
+            >
+              {pageContent}
+            </main>
+          </div>
+          <PlayerBar onCloseLyrics={closeLyrics} onToggleQueue={toggleQueue} />
+          <PluginNoticeHost />
+          <CoreStatusBanner />
+          <QueuePanel />
+          <LyricsPanel
+            focus={focusSidebarCollapsed}
+            fullscreen={fullscreen}
+            fullscreenError={fullscreenError}
+            onClose={closeLyrics}
           />
-          <main
-            className="main-content"
-            key={
-              route.page + ('id' in route ? route.id : 'playlist' in route ? route.playlist.id : '')
-            }
-          >
-            <NavigationProvider onNavigate={navigate}>{pageContent}</NavigationProvider>
-          </main>
         </div>
-        <PlayerBar onCloseLyrics={closeLyrics} onToggleQueue={toggleQueue} />
-        <PluginNoticeHost />
-        <CoreStatusBanner />
-        <QueuePanel />
-        <LyricsPanel
-          focus={focusSidebarCollapsed}
-          fullscreen={fullscreen}
-          fullscreenError={fullscreenError}
-          onClose={closeLyrics}
-        />
-      </div>
+      </NavigationProvider>
     </div>
   );
 }

@@ -31,7 +31,7 @@ import {
 } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import { isAccountMusicProvider } from '../providers/music-provider';
-import { formatDuration, joinArtistNames } from '../utils/format';
+import { formatDuration } from '../utils/format';
 import { Artwork } from './ui/Artwork';
 import { IconButton } from './ui/IconButton';
 import { Select, type SelectOption } from './ui/Select';
@@ -40,6 +40,7 @@ import { useTranslation } from 'react-i18next';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
 import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } from '../domain/music';
+import { EntityLink } from './EntityLink';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   if (muted || volume === 0) return <VolumeX size={17} />;
@@ -333,8 +334,30 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
               />
             </button>
             <div className="player-bar__track-copy">
-              <strong data-yaqmc="track-title">{current.title}</strong>
-              <span>{joinArtistNames(current.artists)}</span>
+              <EntityLink
+                entity="song"
+                id={current.id}
+                className="player-bar__title-link"
+                ariaLabel={current.title}
+                dataYaqmc="track-title"
+              >
+                {current.title}
+              </EntityLink>
+              <span className="player-bar__artist-links">
+                {current.artists.map((artist, artistIndex) => (
+                  <span key={`${artist.id}-${artistIndex}`}>
+                    {artistIndex > 0 && ', '}
+                    <EntityLink
+                      entity="artist"
+                      id={artist.id}
+                      className="player-bar__artist-link"
+                      ariaLabel={artist.name}
+                    >
+                      {artist.name}
+                    </EntityLink>
+                  </span>
+                ))}
+              </span>
               {playbackState !== 'playing' && playbackState !== 'paused' && (
                 <small data-state={playbackState} title={playbackStatus || undefined}>
                   {playbackStatus}

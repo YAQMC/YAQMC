@@ -14,6 +14,7 @@ import type {
 import i18n from '../i18n';
 import { allSongs } from '../providers/fake/fixtures';
 import { QQMusicProvider, qqMusicProvider } from '../providers/qqmusic/qq-music-provider';
+import { NavigationProvider } from '../application/navigation-context';
 import { TrackList } from './TrackList';
 
 function qqTrack(): Song {
@@ -290,5 +291,65 @@ describe('TrackList favorite controls', () => {
     expect(screen.getByRole('menu', { name: `More actions for ${track.title}` })).toBeVisible();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('routes the song, each artist, and album without changing playback', () => {
+    const track: Song = {
+      ...allSongs[0]!,
+      id: 'song-link',
+      title: 'Linked Song',
+      artists: [
+        { id: 'artist-one', name: 'Artist One' },
+        { id: 'artist-two', name: 'Artist Two' },
+      ],
+      album: { id: 'album-link', title: 'Linked Album' },
+    };
+    const onNavigate = vi.fn();
+    const { container, rerender } = render(
+      <NavigationProvider onNavigate={onNavigate}>
+        <TrackList tracks={[track]} showAlbum />
+      </NavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Linked Song' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Artist One' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Artist Two' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Linked Album' }));
+
+    expect(onNavigate.mock.calls).toEqual([
+      [{ page: 'song', id: 'song-link' }],
+      [{ page: 'artist', id: 'artist-one' }],
+      [{ page: 'artist', id: 'artist-two' }],
+      [{ page: 'album', id: 'album-link' }],
+    ]);
+    expect(usePlayerStore.getState().queue).toEqual([]);
+    expect(container.querySelector('button button')).toBeNull();
+    expect(container.querySelector('button a')).toBeNull();
+
+    const blankTrack: Song = {
+      ...track,
+      id: ' ',
+      title: 'Plain Song',
+      artists: [
+        { id: ' ', name: 'Plain Artist' },
+        { id: '', name: 'Plain Guest' },
+      ],
+      album: { id: '', title: 'Plain Album' },
+    };
+    const before = usePlayerStore.getState();
+    rerender(
+      <NavigationProvider onNavigate={onNavigate}>
+        <TrackList tracks={[blankTrack]} showAlbum />
+      </NavigationProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Plain Song' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Plain Artist' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Plain Guest' })).toBeNull();
+    expect(screen.getByText('Plain Album')).toBeInTheDocument();
+    expect(usePlayerStore.getState()).toMatchObject({
+      queue: before.queue,
+      currentIndex: before.currentIndex,
+      isPlaying: before.isPlaying,
+    });
   });
 });
