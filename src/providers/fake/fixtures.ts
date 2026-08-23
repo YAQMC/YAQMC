@@ -340,9 +340,9 @@ export const areaFeeds: Record<string, AreaFeed> = {
     songlists: [playlists[1]!, playlists[2]!],
     playlists: [playlists[0]!, playlists[3]!, playlists[4]!],
     artists: [
-      { id: 'artist-1', name: 'Mira Vale', cover: albums[0]!.artwork.src },
-      { id: 'artist-2', name: 'Atlas Week', cover: albums[1]!.artwork.src },
-      { id: 'artist-3', name: 'Linnea', cover: albums[2]!.artwork.src },
+      { ...artists.mira, cover: albums[0]!.artwork.src },
+      { ...artists.atlas, cover: albums[1]!.artwork.src },
+      { ...artists.linnea, cover: albums[2]!.artwork.src },
     ],
   },
 };

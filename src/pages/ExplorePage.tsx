@@ -99,7 +99,7 @@ export function ExplorePage({ onNavigate }: ExplorePageProps) {
                     key={song.id}
                     item={song}
                     type="song"
-                    onOpen={() => playTracks([song])}
+                    onOpen={() => onNavigate({ page: 'song', id: song.id })}
                     onPlay={() => playTracks([song])}
                   />
                 ))}

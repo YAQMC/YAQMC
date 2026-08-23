@@ -1,10 +1,11 @@
+import { Fragment } from 'react';
 import { Play } from 'lucide-react';
 import type { Album, Playlist, Song } from '../domain/music';
 import { Artwork } from './ui/Artwork';
 import { useTranslation } from 'react-i18next';
 import type { ContextMenuItem } from './ui/ContextMenu';
 import { useContextMenu } from './ui/use-context-menu';
-import { joinArtistNames } from '../utils/format';
+import { EntityLink } from './EntityLink';
 
 interface MediaCardProps {
   item: Album | Playlist | Song;
@@ -18,7 +19,7 @@ interface MediaCardProps {
 
 function getSubtitle(item: Album | Playlist | Song, type: 'album' | 'playlist' | 'song'): string {
   if (type === 'song') {
-    return joinArtistNames((item as Song).artists);
+    return (item as Song).artists.map((artist) => artist.name).join(', ');
   }
 
   if (type === 'playlist') {
@@ -44,6 +45,45 @@ export function MediaCard({
     { id: 'play', label: t('playItem', { title: item.title }), action: onPlay },
   ];
   const contextMenu = useContextMenu(t('itemActions', { title: item.title }), items);
+  const displayTitle = title ?? item.title;
+  const metadata =
+    type === 'playlist' ? (
+      <>
+        <span className="media-card__title">{displayTitle}</span>
+        <span className="media-card__subtitle">{subtitle ?? getSubtitle(item, type)}</span>
+      </>
+    ) : (
+      <>
+        <EntityLink entity={type} id={item.id} className="media-card__title">
+          {displayTitle}
+        </EntityLink>
+        <span className="media-card__subtitle">
+          {subtitle ??
+            (type === 'song' ? (
+              (item as Song).artists.map((artist, index) => (
+                <Fragment key={`${artist.id || artist.name}-${index}`}>
+                  <EntityLink entity="artist" id={artist.id}>
+                    {artist.name}
+                  </EntityLink>
+                  {index < (item as Song).artists.length - 1 ? ', ' : null}
+                </Fragment>
+              ))
+            ) : (
+              <>
+                {(item as Album).releaseYear > 0 ? (
+                  <>
+                    <span>{(item as Album).releaseYear}</span>
+                    <span aria-hidden="true"> · </span>
+                  </>
+                ) : null}
+                <EntityLink entity="artist" id={(item as Album).artist.id}>
+                  {(item as Album).artist.name}
+                </EntityLink>
+              </>
+            ))}
+        </span>
+      </>
+    );
   return (
     <article
       className={`media-card media-card--${size}`}
@@ -68,10 +108,13 @@ export function MediaCard({
           <Play size={17} fill="currentColor" />
         </button>
       </div>
-      <button type="button" className="media-card__meta" onClick={onOpen}>
-        <span className="media-card__title">{title ?? item.title}</span>
-        <span className="media-card__subtitle">{subtitle ?? getSubtitle(item, type)}</span>
-      </button>
+      {type === 'playlist' ? (
+        <button type="button" className="media-card__meta" onClick={onOpen}>
+          {metadata}
+        </button>
+      ) : (
+        <div className="media-card__meta">{metadata}</div>
+      )}
       {contextMenu.menu}
     </article>
   );
