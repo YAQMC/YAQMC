@@ -64,13 +64,13 @@ describe('AlbumPage favorite projection', () => {
   it('navigates the album artist through the shared entity route', () => {
     const album = albums[0]!;
     const onNavigate = vi.fn();
-    render(
+    const view = render(
       <NavigationProvider onNavigate={onNavigate}>
         <AlbumPage album={album} />
       </NavigationProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: album.artist.name }));
+    fireEvent.click(view.container.querySelector('.detail-hero__artist')!);
 
     expect(onNavigate).toHaveBeenCalledWith({ page: 'artist', id: album.artist.id });
   });

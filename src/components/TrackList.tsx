@@ -27,16 +27,6 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const pluginActions = usePluginUiSnapshot().track;
-  const artistCounts = new Map<string, number>();
-  for (const track of tracks) {
-    for (const artist of track.artists) {
-      const id = artist.id.trim();
-      if (id) artistCounts.set(id, (artistCounts.get(id) ?? 0) + 1);
-    }
-  }
-  const repeatedArtistIds = new Set(
-    [...artistCounts].filter(([, count]) => count > 1).map(([id]) => id),
-  );
 
   return (
     <div className={`track-list ${compact ? 'track-list--compact' : ''}`} role="table">
@@ -63,7 +53,6 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
             isPlaying={isPlaying}
             showAlbum={showAlbum}
             pluginActions={pluginActions}
-            repeatedArtistIds={repeatedArtistIds}
           />
         ))}
       </div>
@@ -79,7 +68,6 @@ interface TrackRowProps {
   isPlaying: boolean;
   showAlbum: boolean;
   pluginActions: readonly { pluginId: string; pluginName: string; id: string; label: string }[];
-  repeatedArtistIds: ReadonlySet<string>;
 }
 
 function TrackRow({
@@ -90,7 +78,6 @@ function TrackRow({
   isPlaying,
   showAlbum,
   pluginActions,
-  repeatedArtistIds,
 }: TrackRowProps) {
   const { t } = useTranslation('player');
   const { t: common } = useTranslation('common');
@@ -200,16 +187,7 @@ function TrackRow({
           {track.artists.map((artist, artistIndex) => (
             <span key={`${artist.id}-${artistIndex}`}>
               {artistIndex > 0 && ', '}
-              <EntityLink
-                entity="artist"
-                id={artist.id}
-                className="track-row__artist-link"
-                ariaLabel={
-                  repeatedArtistIds.has(artist.id.trim())
-                    ? `${artist.name} (${track.title})`
-                    : undefined
-                }
-              >
+              <EntityLink entity="artist" id={artist.id} className="track-row__artist-link">
                 {artist.name}
               </EntityLink>
             </span>

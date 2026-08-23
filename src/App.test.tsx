@@ -49,7 +49,19 @@ vi.mock('./application/preferences', async (importOriginal) => {
 });
 
 vi.mock('./components/AppBackground', () => ({ AppBackground: () => null }));
-vi.mock('./components/PlayerBar', () => ({ PlayerBar: () => null }));
+vi.mock('./components/PlayerBar', async () => {
+  const { useNavigate } = await import('./application/navigation-context');
+  return {
+    PlayerBar: () => {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate?.({ page: 'search' })}>
+          Navigate from player bar
+        </button>
+      );
+    },
+  };
+});
 vi.mock('./components/QueuePanel', () => ({ QueuePanel: () => null }));
 vi.mock('./components/LyricsPanel', () => ({
   LyricsPanel: ({ fullscreen }: { fullscreen: boolean }) => (
@@ -280,6 +292,13 @@ describe('App TopBar history navigation', () => {
 
     port.failWrite = false;
     fireEvent.click(screen.getByTitle('Go forward'));
+    await waitFor(() => expect(screen.getByTestId('active-route')).toHaveTextContent('search'));
+  });
+
+  it('provides App navigation to the PlayerBar shell consumer', async () => {
+    renderApp();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate from player bar' }));
     await waitFor(() => expect(screen.getByTestId('active-route')).toHaveTextContent('search'));
   });
 
