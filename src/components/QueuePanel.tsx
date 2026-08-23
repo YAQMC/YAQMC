@@ -1,13 +1,20 @@
 import { GripVertical, Play, X } from 'lucide-react';
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { usePlayerStore, type QueueEntry } from '../application/player-store';
 import type { Song } from '../domain/music';
-import { formatDuration, joinArtistNames } from '../utils/format';
+import { formatDuration } from '../utils/format';
 import { useAddToPlaylistPicker } from './AddToPlaylistPicker';
 import { Artwork } from './ui/Artwork';
 import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import { IconButton } from './ui/IconButton';
 import { useTranslation } from 'react-i18next';
+import { EntityLink } from './EntityLink';
 
 interface PointerDrag {
   entryId: string;
@@ -212,8 +219,19 @@ export function QueuePanel() {
             <div className="queue-now__track" data-queue-entry-id={current.id}>
               <Artwork artwork={current.track.artwork} purpose="small" />
               <div>
-                <strong>{current.track.title}</strong>
-                <span>{joinArtistNames(current.track.artists)}</span>
+                <EntityLink entity="song" id={current.track.id} className="queue-now__title">
+                  <strong>{current.track.title}</strong>
+                </EntityLink>
+                <span className="queue-now__artists">
+                  {current.track.artists.map((artist, index) => (
+                    <Fragment key={`${artist.id}:${artist.name}:${index}`}>
+                      {index > 0 && <span aria-hidden="true">, </span>}
+                      <EntityLink entity="artist" id={artist.id} className="queue-now__artist">
+                        {artist.name}
+                      </EntityLink>
+                    </Fragment>
+                  ))}
+                </span>
               </div>
               <QueueNowPlayingMenu track={current.track} />
             </div>
@@ -260,17 +278,33 @@ export function QueuePanel() {
                     </button>
                     <button
                       type="button"
-                      className="queue-row__main"
+                      className="queue-row__play-button"
+                      aria-label={`${t('playNow')} ${entry.track.title}`}
                       onClick={() => playQueueEntry(entry.id)}
                     >
-                      <span className="queue-row__play">
+                      <span className="queue-row__play-icon">
                         <Play size={12} fill="currentColor" />
                       </span>
-                      <span>
-                        <strong>{entry.track.title}</strong>
-                        <small>{joinArtistNames(entry.track.artists)}</small>
-                      </span>
                     </button>
+                    <div className="queue-row__main">
+                      <EntityLink entity="song" id={entry.track.id} className="queue-row__title">
+                        <strong>{entry.track.title}</strong>
+                      </EntityLink>
+                      <small className="queue-row__artists">
+                        {entry.track.artists.map((artist, index) => (
+                          <Fragment key={`${artist.id}:${artist.name}:${index}`}>
+                            {index > 0 && <span aria-hidden="true">, </span>}
+                            <EntityLink
+                              entity="artist"
+                              id={artist.id}
+                              className="queue-row__artist"
+                            >
+                              {artist.name}
+                            </EntityLink>
+                          </Fragment>
+                        ))}
+                      </small>
+                    </div>
                     <span className="queue-row__duration">
                       {formatDuration(entry.track.durationMs)}
                     </span>

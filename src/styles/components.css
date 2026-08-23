@@ -818,6 +818,35 @@ input[type='range']:disabled {
   font-size: var(--text-xs);
 }
 
+.queue-now__title,
+.queue-now__artist {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.queue-now__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-now__artists {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-now__artist {
+  cursor: pointer;
+}
+
 .queue-next__heading {
   display: flex;
   align-items: baseline;
@@ -854,7 +883,7 @@ input[type='range']:disabled {
 .queue-row {
   position: relative;
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 35px 30px;
+  grid-template-columns: 16px 22px minmax(0, 1fr) 35px 30px;
   align-items: center;
   gap: 4px;
   min-height: 49px;
@@ -907,21 +936,49 @@ input[type='range']:disabled {
 
 .queue-row__main {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
-  padding: 0;
-  background: transparent;
   text-align: left;
 }
 
-.queue-row__main > span:last-child {
-  display: flex;
-  flex-direction: column;
+.queue-row__play-button {
+  display: grid;
+  width: 22px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  opacity: 0.65;
+}
+
+.queue-row:hover .queue-row__play-button,
+.queue-row__play-button:focus-visible {
+  opacity: 1;
+}
+
+.queue-row__play-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.queue-row__play-icon {
+  display: grid;
+  place-items: center;
+}
+
+.queue-row__title,
+.queue-row__artists {
+  display: block;
+  width: 100%;
   min-width: 0;
 }
 
 .queue-row__main strong,
-.queue-row__main small {
+.queue-row__title,
+.queue-row__artists {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -933,21 +990,10 @@ input[type='range']:disabled {
   font-weight: 560;
 }
 
-.queue-row__main small,
+.queue-row__artists,
 .queue-row__duration {
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
-}
-
-.queue-row__play {
-  display: none;
-  width: 18px;
-  color: var(--text);
-}
-
-.queue-row:hover .queue-row__play {
-  display: grid;
-  place-items: center;
 }
 
 .queue-row__duration {
