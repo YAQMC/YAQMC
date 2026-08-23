@@ -1,7 +1,7 @@
 //! Object-safe music-provider contracts derived from the current QQMusic service.
 
 use crate::{
-    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Album, AreaFeed,
+    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Album, AreaFeed, Artist,
     AudioQualityPreference, CacheStats, CatalogProviderCapabilities, CollectPlaylistRequest,
     CreatePlaylistRequest, DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest,
     FavoriteMutationResult, HomeFeed, LibrarySnapshot, LyricDocument, OAuthLoginProvider,
@@ -105,7 +105,9 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
         quality: AudioQualityPreference,
     ) -> ProviderResult<()>;
     async fn search(&self, query: String, page: u32, limit: u32) -> ProviderResult<SearchResult>;
+    async fn song(&self, id: String) -> ProviderResult<Song>;
     async fn album(&self, id: String) -> ProviderResult<Album>;
+    async fn artist(&self, id: String) -> ProviderResult<Artist>;
     async fn playlist(&self, id: String) -> ProviderResult<Playlist>;
     async fn home(&self, refresh: bool) -> ProviderResult<HomeFeed>;
     async fn discover(&self, refresh: bool) -> ProviderResult<DiscoverFeed>;

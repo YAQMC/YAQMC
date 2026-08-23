@@ -174,7 +174,33 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "qqmusic_song",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "qqmusic_album",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "qqmusic_artist",
     "owner": "core",
     "requestCap": 1048576,
     "responseCap": 1048576,

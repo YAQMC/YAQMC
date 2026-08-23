@@ -1,4 +1,11 @@
-import { ProviderError, type Album, type EntityId, type Playlist } from '../../domain/music';
+import {
+  ProviderError,
+  type Album,
+  type Artist,
+  type EntityId,
+  type Playlist,
+  type Song,
+} from '../../domain/music';
 import type { MusicProvider } from '../music-provider';
 import {
   albums,
@@ -50,6 +57,15 @@ export class FakeMusicProvider implements MusicProvider {
     return clone(area);
   }
 
+  async getSong(id: EntityId, signal?: AbortSignal): Promise<Song> {
+    throwIfAborted(signal);
+    const song = allSongs.find((candidate) => candidate.id === id);
+    if (!song) {
+      throw new ProviderError('not-found', `Unknown fixture song: ${id}`, false);
+    }
+    return clone(song);
+  }
+
   async getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album> {
     throwIfAborted(signal);
     const album = albums.find((candidate) => candidate.id === id);
@@ -57,6 +73,38 @@ export class FakeMusicProvider implements MusicProvider {
       throw new ProviderError('malformed-response', `Unknown fixture album: ${id}`, false);
     }
     return clone(album);
+  }
+
+  async getArtist(id: EntityId, signal?: AbortSignal): Promise<Artist> {
+    throwIfAborted(signal);
+    const artistAlbums = albums.filter((album) => album.artist.id === id);
+    const topSongs = allSongs.filter((song) => song.artists.some((artist) => artist.id === id));
+    if (artistAlbums.length === 0 && topSongs.length === 0) {
+      throw new ProviderError('not-found', `Unknown fixture artist: ${id}`, false);
+    }
+    const summary = artistAlbums[0]?.artist ?? topSongs[0]?.artists.find((artist) => artist.id === id);
+    if (!summary) {
+      throw new ProviderError('not-found', `Unknown fixture artist: ${id}`, false);
+    }
+    const albumPreviews = artistAlbums.map((album) => ({
+      id: album.id,
+      title: album.title,
+      artist: {
+        id: summary.id,
+        name: summary.name,
+        artwork: clone(album.artwork),
+      },
+      artwork: clone(album.artwork),
+      releaseYear: album.releaseYear,
+    }));
+    return {
+      id: summary.id,
+      name: summary.name,
+      artwork: clone(artistAlbums[0]?.artwork ?? topSongs[0]!.artwork),
+      description: `Offline fixture profile for ${summary.name}.`,
+      topSongs: clone(topSongs.slice(0, 20)),
+      albums: albumPreviews,
+    };
   }
 
   async getPlaylist(id: EntityId, signal?: AbortSignal): Promise<Playlist> {

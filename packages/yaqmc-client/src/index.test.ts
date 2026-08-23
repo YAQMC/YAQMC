@@ -37,11 +37,11 @@ describe('@yaqmc/client protocol mirror', () => {
     expect(FRAME_HARD_CAP_BYTES).toBe(32 * 1024 * 1024);
   });
 
-  it('mirrors 114 migrated methods plus 12 protocol-only methods', () => {
-    expect(MIGRATED_METHOD_NAMES).toHaveLength(114);
+  it('mirrors 116 migrated methods plus 12 protocol-only methods', () => {
+    expect(MIGRATED_METHOD_NAMES).toHaveLength(116);
     expect(PROTOCOL_ONLY_METHODS).toHaveLength(12);
-    expect(METHOD_NAMES).toHaveLength(126);
-    expect(new Set(METHOD_NAMES).size).toBe(126);
+    expect(METHOD_NAMES).toHaveLength(128);
+    expect(new Set(METHOD_NAMES).size).toBe(128);
   });
 
   it('mirrors ADR-004 core and host event channels', () => {

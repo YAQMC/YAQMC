@@ -1,0 +1,9 @@
+{
+  "code": 0,
+  "req_0": {
+    "code": 0,
+    "data": {
+      "session": { "uid": "fixture-uid", "sid": "fixture-sid" }
+    }
+  }
+}

@@ -5,6 +5,7 @@ import type {
   AccountSnapshot,
   ActivePluginResources,
   Album,
+  Artist,
   AreaFeed,
   AudioOutputDevice,
   AudioQualityPreference,
@@ -79,7 +80,9 @@ export const MIGRATED_METHOD_NAMES = [
   'qqmusic_guess_next',
   'qqmusic_library',
   'qqmusic_search',
+  'qqmusic_song',
   'qqmusic_album',
+  'qqmusic_artist',
   'qqmusic_playlist',
   'qqmusic_lyrics',
   'qqmusic_cache_artwork',
@@ -219,7 +222,9 @@ export type MethodParams = Exhaustive<{
   qqmusic_guess_next: { limit: number };
   qqmusic_library: void;
   qqmusic_search: { query: string; page: number; limit: number };
+  qqmusic_song: { id: string };
   qqmusic_album: { id: string };
+  qqmusic_artist: { id: string };
   qqmusic_playlist: { id: string };
   qqmusic_lyrics: { songId: string };
   qqmusic_cache_artwork: { url: string };
@@ -356,7 +361,9 @@ export type MethodResult = Exhaustive<{
   qqmusic_guess_next: Song[];
   qqmusic_library: LibrarySnapshot;
   qqmusic_search: SearchResult;
+  qqmusic_song: Song;
   qqmusic_album: Album;
+  qqmusic_artist: Artist;
   qqmusic_playlist: Playlist;
   qqmusic_lyrics: LyricDocument | null;
   qqmusic_cache_artwork: string;

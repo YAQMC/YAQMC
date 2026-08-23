@@ -89,7 +89,9 @@ export class YaqmcClient {
     library: () => this.invoke('qqmusic_library'),
     search: (query: string, page: number, limit: number) =>
       this.invoke('qqmusic_search', { query, page, limit }),
+    song: (id: string) => this.invoke('qqmusic_song', { id }),
     album: (id: string) => this.invoke('qqmusic_album', { id }),
+    artist: (id: string) => this.invoke('qqmusic_artist', { id }),
     playlist: (id: string) => this.invoke('qqmusic_playlist', { id }),
     lyrics: (songId: string) => this.invoke('qqmusic_lyrics', { songId }),
     cacheArtwork: (url: string) => this.invoke('qqmusic_cache_artwork', { url }),

@@ -5,6 +5,35 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ArtistPreview {
+    pub id: String,
+    pub name: String,
+    pub artwork: Artwork,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumPreview {
+    pub id: String,
+    pub title: String,
+    pub artist: ArtistPreview,
+    pub artwork: Artwork,
+    pub release_year: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Artist {
+    pub id: String,
+    pub name: String,
+    pub artwork: Artwork,
+    pub description: String,
+    pub top_songs: Vec<Song>,
+    pub albums: Vec<AlbumPreview>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Album {
     pub id: String,
     pub title: String,
@@ -14,6 +43,77 @@ pub struct Album {
     pub genre: String,
     pub description: String,
     pub tracks: Vec<Song>,
+}
+
+#[cfg(test)]
+mod catalog_shape_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn artwork() -> Artwork {
+        Artwork {
+            src: "/artwork/test.svg".to_owned(),
+            alt: "Test artwork".to_owned(),
+            dominant_color: "#000000".to_owned(),
+            variants: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn normalized_catalog_detail_shapes_use_the_frozen_camel_case_wire_names() {
+        let artist = Artist {
+            id: "qqmusic:artist:mid".to_owned(),
+            name: "Artist".to_owned(),
+            artwork: artwork(),
+            description: "Description".to_owned(),
+            top_songs: Vec::new(),
+            albums: vec![AlbumPreview {
+                id: "qqmusic:album:mid".to_owned(),
+                title: "Album".to_owned(),
+                artist: ArtistPreview {
+                    id: "qqmusic:artist:mid".to_owned(),
+                    name: "Artist".to_owned(),
+                    artwork: artwork(),
+                },
+                artwork: artwork(),
+                release_year: 2026,
+            }],
+        };
+
+        assert_eq!(
+            serde_json::to_value(&artist).expect("artist serializes"),
+            json!({
+                "id": "qqmusic:artist:mid",
+                "name": "Artist",
+                "artwork": {
+                    "src": "/artwork/test.svg",
+                    "alt": "Test artwork",
+                    "dominantColor": "#000000"
+                },
+                "description": "Description",
+                "topSongs": [],
+                "albums": [{
+                    "id": "qqmusic:album:mid",
+                    "title": "Album",
+                    "artist": {
+                        "id": "qqmusic:artist:mid",
+                        "name": "Artist",
+                        "artwork": {
+                            "src": "/artwork/test.svg",
+                            "alt": "Test artwork",
+                            "dominantColor": "#000000"
+                        }
+                    },
+                    "artwork": {
+                        "src": "/artwork/test.svg",
+                        "alt": "Test artwork",
+                        "dominantColor": "#000000"
+                    },
+                    "releaseYear": 2026
+                }]
+            })
+        );
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

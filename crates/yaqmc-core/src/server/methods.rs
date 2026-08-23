@@ -43,7 +43,9 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "qqmusic_guess_next",
     "qqmusic_library",
     "qqmusic_search",
+    "qqmusic_song",
     "qqmusic_album",
+    "qqmusic_artist",
     "qqmusic_playlist",
     "qqmusic_lyrics",
     "qqmusic_cache_artwork",
@@ -366,9 +368,17 @@ async fn invoke_core(
             let SearchParams { query, page, limit } = parse(&params)?;
             provider(core.qq_music().search(query, page, limit).await)
         }
+        "qqmusic_song" => {
+            let IdParams { id } = parse(&params)?;
+            provider(core.qq_music().song(id).await)
+        }
         "qqmusic_album" => {
             let IdParams { id } = parse(&params)?;
             provider(core.qq_music().album(id).await)
+        }
+        "qqmusic_artist" => {
+            let IdParams { id } = parse(&params)?;
+            provider(core.qq_music().artist(id).await)
         }
         "qqmusic_playlist" => {
             let IdParams { id } = parse(&params)?;
