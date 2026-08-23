@@ -352,4 +352,25 @@ describe('TrackList favorite controls', () => {
       isPlaying: before.isPlaying,
     });
   });
+
+  it('keeps repeated artist button names equal to the visible artist name', () => {
+    const first: Song = {
+      ...allSongs[0]!,
+      id: 'song-one',
+      title: 'Song One',
+      artists: [{ id: 'artist-shared', name: 'Artist' }],
+    };
+    const second: Song = {
+      ...first,
+      id: 'song-two',
+      title: 'Song Two',
+    };
+    render(
+      <NavigationProvider onNavigate={vi.fn()}>
+        <TrackList tracks={[first, second]} />
+      </NavigationProvider>,
+    );
+
+    expect(screen.getAllByRole('button', { name: 'Artist' })).toHaveLength(2);
+  });
 });
