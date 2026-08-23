@@ -5006,6 +5006,113 @@ mod tests {
         calls: Arc<AtomicUsize>,
     }
 
+    #[derive(Default)]
+    struct TypedSearchTransport {
+        requests: std::sync::Mutex<Vec<serde_json::Value>>,
+    }
+
+    impl TypedSearchTransport {
+        fn requests(&self) -> Vec<serde_json::Value> {
+            self.requests
+                .lock()
+                .expect("typed search request lock")
+                .clone()
+        }
+    }
+
+    fn typed_search_response(search_type: i64) -> Vec<u8> {
+        let body = match search_type {
+            0 => serde_json::json!({
+                "item_song": [{
+                    "id": 101,
+                    "mid": "SEARCH_SONG_MID",
+                    "name": "Search Song",
+                    "title": "Search Song",
+                    "interval": 180,
+                    "album": {"mid": "SEARCH_ALBUM_MID", "name": "Search Album"},
+                    "singer": [{"mid": "SEARCH_ARTIST_MID", "name": "Search Artist"}],
+                    "file": {},
+                    "pay": {"pay_play": 0}
+                }]
+            }),
+            1 => serde_json::json!({
+                "singer": [{
+                    "mid": "SEARCH_ARTIST_MID",
+                    "name": "Search Artist",
+                    "singer_pic": "https://y.gtimg.cn/music/photo_new/T001R500x500M000SEARCH_ARTIST_MID.jpg"
+                }]
+            }),
+            2 => serde_json::json!({
+                "item_album": [{
+                    "mid": "SEARCH_ALBUM_MID",
+                    "name": "Search Album",
+                    "title": "Search Album",
+                    "time_public": "2024-01-01",
+                    "pic": "https://y.gtimg.cn/music/photo_new/T002R500x500M000SEARCH_ALBUM_MID.jpg",
+                    "singer_list": [{"mid": "SEARCH_ARTIST_MID", "name": "Search Artist"}]
+                }]
+            }),
+            other => panic!("unexpected typed search type {other}"),
+        };
+        serde_json::to_vec(&serde_json::json!({
+            "code": 0,
+            "req_0": {
+                "code": 0,
+                "data": {
+                    "meta": {"sum": 17, "perpage": 8},
+                    "body": body
+                }
+            }
+        }))
+        .expect("typed search response JSON")
+    }
+
+    #[async_trait::async_trait]
+    impl qqmusic_api::ApiTransport for TypedSearchTransport {
+        async fn execute(
+            &self,
+            request: qqmusic_api::TransportRequest,
+        ) -> qqmusic_api::Result<qqmusic_api::TransportResponse> {
+            let qqmusic_api::HttpBody::Json(payload) = request.body else {
+                panic!("typed search request must use JSON body");
+            };
+            self.requests
+                .lock()
+                .expect("typed search request lock")
+                .push(payload.clone());
+            if payload.get("qimeiParams").is_some() {
+                return Ok(qqmusic_api::TransportResponse {
+                    status: 200,
+                    final_url: request.url,
+                    headers: Vec::new(),
+                    body: include_bytes!("../tests/fixtures/qqmusic/catalog/artist-qimei.json")
+                        .to_vec(),
+                });
+            }
+            let request_value = &payload["req_0"];
+            let module = request_value["module"].as_str().unwrap_or_default();
+            let method = request_value["method"].as_str().unwrap_or_default();
+            let search_type = request_value["param"]["search_type"].as_i64().unwrap_or(-1);
+            let body = if module == "music.search.SearchCgiService"
+                && method == "DoSearchForQQMusicMobile"
+            {
+                assert_eq!(request.url, "https://u.y.qq.com/cgi-bin/musicu.fcg");
+                typed_search_response(search_type)
+            } else if module == "music.getSession.session" && method == "GetSession" {
+                assert_eq!(request.url, "https://u.y.qq.com/cgi-bin/musicu.fcg");
+                include_bytes!("../tests/fixtures/qqmusic/catalog/artist-session.json").to_vec()
+            } else {
+                panic!("unexpected typed search request {module}/{method}");
+            };
+            Ok(qqmusic_api::TransportResponse {
+                status: 200,
+                final_url: request.url,
+                headers: Vec::new(),
+                body,
+            })
+        }
+    }
+
     #[async_trait::async_trait]
     impl QqTransport for RecordingAccountTransport {
         async fn execute(
@@ -5014,6 +5121,66 @@ mod tests {
         ) -> Result<TransportResponse, QQMusicError> {
             self.calls.fetch_add(1, Ordering::AcqRel);
             Err(QQMusicError::Protocol)
+        }
+    }
+
+    #[tokio::test]
+    async fn typed_search_uses_pinned_transport_params_and_maps_each_kind() {
+        let transport = Arc::new(TypedSearchTransport::default());
+        let catalog = qqmusic_api::Client::new_with_transport(
+            None,
+            Some(qqmusic_api::Platform::Web),
+            transport.clone(),
+        );
+        let client = QQMusicClient {
+            http: Client::new(),
+            artwork_http: Client::new(),
+            catalog,
+        };
+
+        let song = client
+            .search("MIRA", CatalogSearchKind::Song, 2, 8)
+            .await
+            .expect("song search");
+        let artist = client
+            .search("MIRA", CatalogSearchKind::Artist, 3, 7)
+            .await
+            .expect("artist search");
+        let album = client
+            .search("MIRA", CatalogSearchKind::Album, 1, 5)
+            .await
+            .expect("album search");
+
+        assert!(
+            matches!(song, SearchResult::Song { ref query, page: 2, has_more: true, items } if query == "MIRA" && items.len() == 1 && items[0].id == "qqmusic:track:SEARCH_SONG_MID")
+        );
+        assert!(
+            matches!(artist, SearchResult::Artist { ref query, page: 3, has_more: false, items } if query == "MIRA" && items.len() == 1 && items[0].id == "qqmusic:artist:SEARCH_ARTIST_MID")
+        );
+        assert!(
+            matches!(album, SearchResult::Album { ref query, page: 1, has_more: true, items } if query == "MIRA" && items.len() == 1 && items[0].id == "qqmusic:album:SEARCH_ALBUM_MID")
+        );
+
+        let search_requests = transport
+            .requests()
+            .into_iter()
+            .filter(|request| request["req_0"]["module"] == "music.search.SearchCgiService")
+            .collect::<Vec<_>>();
+        assert_eq!(search_requests.len(), 3);
+        for (request, (expected_type, expected_page, expected_limit)) in search_requests
+            .iter()
+            .zip([(0, 2, 8), (1, 3, 7), (2, 1, 5)])
+        {
+            let param = &request["req_0"]["param"];
+            assert_eq!(request["req_0"]["method"], "DoSearchForQQMusicMobile");
+            assert_eq!(param["query"], "MIRA");
+            assert_eq!(param["search_type"], expected_type);
+            assert_eq!(param["num_per_page"], expected_limit);
+            assert_eq!(param["page_num"], expected_page);
+            assert_eq!(param["highlight"], 1);
+            assert_eq!(param["grp"], 1);
+            assert_eq!(param["selectors"], serde_json::json!({}));
+            assert_eq!(param["vec_selectors"], serde_json::json!([]));
         }
     }
 

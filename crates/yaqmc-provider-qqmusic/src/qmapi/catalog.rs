@@ -127,11 +127,16 @@ mod tests {
     #[derive(Default)]
     struct FixtureTransport {
         calls: Mutex<Vec<usize>>,
+        requests: Mutex<Vec<serde_json::Value>>,
     }
 
     impl FixtureTransport {
         fn calls(&self) -> Vec<usize> {
             self.calls.lock().expect("fixture call lock").clone()
+        }
+
+        fn requests(&self) -> Vec<serde_json::Value> {
+            self.requests.lock().expect("fixture request lock").clone()
         }
     }
 
@@ -141,38 +146,83 @@ mod tests {
             &self,
             request: TransportRequest,
         ) -> qqmusic_api::Result<TransportResponse> {
-            // qm-api-rs encrypts request bodies before handing them to a custom
-            // transport, so this fixture transport dispatches by the deterministic
-            // call sequence instead of attempting to decode qimei credentials.
             let call_index = {
                 let mut calls = self.calls.lock().expect("fixture call lock");
                 let index = calls.len();
                 calls.push(index);
                 index
             };
-            let fixture = match call_index {
-                0 => &include_bytes!("../../tests/fixtures/qqmusic/catalog/song-detail.json")[..],
-                1 => &include_bytes!("../../tests/fixtures/qqmusic/catalog/album-detail.json")[..],
-                2 => {
-                    &include_bytes!("../../tests/fixtures/qqmusic/catalog/album-songs-page-1.json")
-                        [..]
+            let qqmusic_api::HttpBody::Json(payload) = request.body else {
+                panic!("typed catalog request must use JSON body");
+            };
+            self.requests
+                .lock()
+                .expect("fixture request lock")
+                .push(payload.clone());
+
+            let fixture = if payload.get("qimeiParams").is_some() {
+                assert_eq!(call_index, 4, "qimei request must follow album pages");
+                &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-qimei.json")[..]
+            } else {
+                assert_eq!(request.url, "https://u.y.qq.com/cgi-bin/musicu.fcg");
+                let req = &payload["req_0"];
+                let module = req["module"].as_str().unwrap_or_default();
+                let method = req["method"].as_str().unwrap_or_default();
+                match (module, method) {
+                    ("music.pf_song_detail_svr", "get_song_detail_yqq") => {
+                        assert_eq!(req["param"]["song_mid"], "SONG_MID");
+                        &include_bytes!("../../tests/fixtures/qqmusic/catalog/song-detail.json")[..]
+                    }
+                    ("music.musichallAlbum.AlbumInfoServer", "GetAlbumDetail") => {
+                        assert_eq!(req["param"]["albumMId"], "ALBUM_MID");
+                        &include_bytes!("../../tests/fixtures/qqmusic/catalog/album-detail.json")[..]
+                    }
+                    ("music.musichallAlbum.AlbumSongList", "GetAlbumSongList") => {
+                        assert_eq!(req["param"]["albumMid"], "ALBUM_MID");
+                        assert_eq!(req["param"]["num"], 100);
+                        assert!(matches!(req["param"]["begin"].as_i64(), Some(0 | 100)));
+                        if req["param"]["begin"] == 0 {
+                            &include_bytes!(
+                                "../../tests/fixtures/qqmusic/catalog/album-songs-page-1.json"
+                            )[..]
+                        } else {
+                            &include_bytes!(
+                                "../../tests/fixtures/qqmusic/catalog/album-songs-page-2.json"
+                            )[..]
+                        }
+                    }
+                    ("music.getSession.session", "GetSession") => {
+                        assert_eq!(call_index, 5);
+                        &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-session.json")
+                            [..]
+                    }
+                    ("music.UnifiedHomepage.UnifiedHomepageSrv", "GetHomepageHeader") => {
+                        assert_eq!(req["param"]["SingerMid"], "ARTIST_MID");
+                        &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-info.json")[..]
+                    }
+                    ("music.musichallSinger.SingerInfoInter", "GetSingerDetail") => {
+                        assert_eq!(
+                            req["param"]["singer_mids"],
+                            serde_json::json!(["ARTIST_MID"])
+                        );
+                        &include_bytes!(
+                            "../../tests/fixtures/qqmusic/catalog/artist-description.json"
+                        )[..]
+                    }
+                    ("musichall.song_list_server", "GetSingerSongList") => {
+                        assert_eq!(req["param"]["singerMid"], "ARTIST_MID");
+                        assert_eq!(req["param"]["number"], 20);
+                        assert_eq!(req["param"]["begin"], 0);
+                        &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-songs.json")[..]
+                    }
+                    ("music.musichallAlbum.AlbumListServer", "GetAlbumList") => {
+                        assert_eq!(req["param"]["singerMid"], "ARTIST_MID");
+                        assert_eq!(req["param"]["number"], 20);
+                        assert_eq!(req["param"]["begin"], 0);
+                        &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-albums.json")[..]
+                    }
+                    _ => panic!("unexpected typed catalog request {module}/{method}"),
                 }
-                3 => {
-                    &include_bytes!("../../tests/fixtures/qqmusic/catalog/album-songs-page-2.json")
-                        [..]
-                }
-                4 => &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-qimei.json")[..],
-                5 => {
-                    &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-session.json")[..]
-                }
-                6 => &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-info.json")[..],
-                7 => {
-                    &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-description.json")
-                        [..]
-                }
-                8 => &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-songs.json")[..],
-                9 => &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-albums.json")[..],
-                _ => panic!("unexpected typed catalog call index: {call_index}"),
             };
             Ok(TransportResponse {
                 status: 200,
@@ -208,5 +258,58 @@ mod tests {
 
         let calls = transport.calls();
         assert_eq!(calls, (0..10).collect::<Vec<_>>());
+
+        let requests = transport.requests();
+        assert_eq!(requests.len(), 10);
+        assert_eq!(requests[0]["req_0"]["module"], "music.pf_song_detail_svr");
+        assert_eq!(requests[0]["req_0"]["method"], "get_song_detail_yqq");
+        assert_eq!(requests[0]["req_0"]["param"]["song_mid"], "SONG_MID");
+        assert_eq!(
+            requests[1]["req_0"]["module"],
+            "music.musichallAlbum.AlbumInfoServer"
+        );
+        assert_eq!(requests[1]["req_0"]["method"], "GetAlbumDetail");
+        assert_eq!(requests[1]["req_0"]["param"]["albumMId"], "ALBUM_MID");
+        for (index, begin) in [(2, 0), (3, 100)] {
+            assert_eq!(
+                requests[index]["req_0"]["module"],
+                "music.musichallAlbum.AlbumSongList"
+            );
+            assert_eq!(requests[index]["req_0"]["method"], "GetAlbumSongList");
+            assert_eq!(requests[index]["req_0"]["param"]["albumMid"], "ALBUM_MID");
+            assert_eq!(requests[index]["req_0"]["param"]["num"], 100);
+            assert_eq!(requests[index]["req_0"]["param"]["begin"], begin);
+        }
+        assert!(requests[4].get("qimeiParams").is_some());
+        assert_eq!(requests[5]["req_0"]["module"], "music.getSession.session");
+        assert_eq!(requests[5]["req_0"]["method"], "GetSession");
+        assert_eq!(
+            requests[6]["req_0"]["module"],
+            "music.UnifiedHomepage.UnifiedHomepageSrv"
+        );
+        assert_eq!(requests[6]["req_0"]["method"], "GetHomepageHeader");
+        assert_eq!(requests[6]["req_0"]["param"]["SingerMid"], "ARTIST_MID");
+        assert_eq!(
+            requests[7]["req_0"]["module"],
+            "music.musichallSinger.SingerInfoInter"
+        );
+        assert_eq!(requests[7]["req_0"]["method"], "GetSingerDetail");
+        assert_eq!(
+            requests[7]["req_0"]["param"]["singer_mids"],
+            serde_json::json!(["ARTIST_MID"])
+        );
+        assert_eq!(requests[8]["req_0"]["module"], "musichall.song_list_server");
+        assert_eq!(requests[8]["req_0"]["method"], "GetSingerSongList");
+        assert_eq!(requests[8]["req_0"]["param"]["singerMid"], "ARTIST_MID");
+        assert_eq!(requests[8]["req_0"]["param"]["number"], 20);
+        assert_eq!(requests[8]["req_0"]["param"]["begin"], 0);
+        assert_eq!(
+            requests[9]["req_0"]["module"],
+            "music.musichallAlbum.AlbumListServer"
+        );
+        assert_eq!(requests[9]["req_0"]["method"], "GetAlbumList");
+        assert_eq!(requests[9]["req_0"]["param"]["singerMid"], "ARTIST_MID");
+        assert_eq!(requests[9]["req_0"]["param"]["number"], 20);
+        assert_eq!(requests[9]["req_0"]["param"]["begin"], 0);
     }
 }
