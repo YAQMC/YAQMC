@@ -91,6 +91,20 @@ describe('YaqmcClient', () => {
     client.dispose();
   });
 
+  it('sends the typed catalog search kind in the native payload', async () => {
+    const invoked: Array<{ method: MethodName; params: unknown }> = [];
+    const client = new YaqmcClient(testBridge(invoked));
+    client.markReady();
+
+    await client.catalog.search('MIRA', 'artist', 2, 8);
+
+    expect(invoked).toContainEqual({
+      method: 'qqmusic_search',
+      params: { query: 'MIRA', kind: 'artist', page: 2, limit: 8 },
+    });
+    client.dispose();
+  });
+
   it('queues invokes until markReady', async () => {
     const invoked: Array<{ method: MethodName; params: unknown }> = [];
     const client = new YaqmcClient(testBridge(invoked));

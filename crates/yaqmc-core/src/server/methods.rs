@@ -365,8 +365,13 @@ async fn invoke_core(
         }
         "qqmusic_library" => ok(core.qq_music().library()),
         "qqmusic_search" => {
-            let SearchParams { query, page, limit } = parse(&params)?;
-            provider(core.qq_music().search(query, page, limit).await)
+            let SearchParams {
+                query,
+                kind,
+                page,
+                limit,
+            } = parse(&params)?;
+            provider(core.qq_music().search(query, kind, page, limit).await)
         }
         "qqmusic_song" => {
             let IdParams { id } = parse(&params)?;

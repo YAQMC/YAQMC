@@ -23,6 +23,7 @@ import type {
   RemotePlayHistoryItem,
   RenamePlaylistRequest,
   SearchResult,
+  CatalogSearchKind,
   Song,
 } from '../domain/music';
 
@@ -39,7 +40,13 @@ export interface MusicProvider {
   getPlaylist(id: EntityId, signal?: AbortSignal): Promise<Playlist>;
   getLibrary(signal?: AbortSignal): Promise<LibrarySnapshot>;
   getLyrics(songId: EntityId, signal?: AbortSignal): Promise<LyricDocument | null>;
-  search(query: string, signal?: AbortSignal, page?: number, limit?: number): Promise<SearchResult>;
+  search(
+    query: string,
+    kind: CatalogSearchKind,
+    signal?: AbortSignal,
+    page?: number,
+    limit?: number,
+  ): Promise<SearchResult>;
   getGuessNext(limit?: number, signal?: AbortSignal): Promise<Song[]>;
 }
 

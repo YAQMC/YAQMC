@@ -10,10 +10,12 @@ export async function hydrateLyricsPresetPreview(
   signal?: AbortSignal,
 ): Promise<void> {
   try {
-    const result = await provider.search(PREVIEW_HYDRATE_QUERY, signal, 1, 8);
+    const result = await provider.search(PREVIEW_HYDRATE_QUERY, 'song', signal, 1, 8);
     if (signal?.aborted) return;
     const match =
-      result.songs.find((song) => song.title.includes('多远都要在一起')) ?? result.songs[0];
+      result.kind === 'song'
+        ? (result.items.find((song) => song.title.includes('多远都要在一起')) ?? result.items[0])
+        : undefined;
     if (!match) {
       useLyricsPresetPreviewStore.getState().fallback();
       return;

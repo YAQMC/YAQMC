@@ -227,14 +227,24 @@ export interface LibrarySnapshot {
   savedPlaylists: Playlist[];
 }
 
-export interface SearchResult {
-  query: string;
-  songs: Song[];
-  albums: Album[];
-  playlists: Playlist[];
-  page?: number;
-  hasMore?: boolean;
-}
+export type CatalogSearchKind = 'song' | 'artist' | 'album';
+
+export type SearchResult =
+  | { kind: 'song'; query: string; page: number; hasMore: boolean; items: Song[] }
+  | {
+      kind: 'artist';
+      query: string;
+      page: number;
+      hasMore: boolean;
+      items: ArtistPreview[];
+    }
+  | {
+      kind: 'album';
+      query: string;
+      page: number;
+      hasMore: boolean;
+      items: AlbumPreview[];
+    };
 
 export type LyricSyncMode = 'unsynchronized' | 'line' | 'word';
 

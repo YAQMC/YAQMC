@@ -114,6 +114,53 @@ mod catalog_shape_tests {
             })
         );
     }
+
+    #[test]
+    fn typed_search_result_serializes_kind_and_items_without_playlist_results() {
+        let result = SearchResult::Song {
+            query: "fixture".to_owned(),
+            page: 2,
+            has_more: true,
+            items: Vec::new(),
+        };
+        assert_eq!(
+            serde_json::to_value(result).expect("search result serializes"),
+            json!({
+                "kind": "song",
+                "query": "fixture",
+                "page": 2,
+                "hasMore": true,
+                "items": []
+            })
+        );
+    }
+
+    #[test]
+    fn typed_search_result_serializes_artist_and_album_item_tags() {
+        let artist = SearchResult::Artist {
+            query: "artist".to_owned(),
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        };
+        let album = SearchResult::Album {
+            query: "album".to_owned(),
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        };
+        assert_eq!(serde_json::to_value(artist).unwrap()["kind"], "artist");
+        assert_eq!(serde_json::to_value(album).unwrap()["kind"], "album");
+        assert!(serde_json::to_value(SearchResult::Song {
+            query: "song".to_owned(),
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        })
+        .unwrap()
+        .get("playlists")
+        .is_none());
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -253,15 +300,48 @@ pub struct LibrarySnapshot {
     pub saved_playlists: Vec<Playlist>,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CatalogSearchKind {
+    Song,
+    Artist,
+    Album,
+}
+
+impl CatalogSearchKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Song => "song",
+            Self::Artist => "artist",
+            Self::Album => "album",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchResult {
-    pub query: String,
-    pub songs: Vec<Song>,
-    pub albums: Vec<Album>,
-    pub playlists: Vec<Playlist>,
-    pub page: u32,
-    pub has_more: bool,
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum SearchResult {
+    Song {
+        query: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<Song>,
+    },
+    Artist {
+        query: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<ArtistPreview>,
+    },
+    Album {
+        query: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<AlbumPreview>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

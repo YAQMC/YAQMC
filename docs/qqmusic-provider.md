@@ -21,21 +21,21 @@ account acceptance remains pending.
 
 ## Current endpoint map
 
-| Capability            | Compatibility surface                                     | Normalized result           |
-| --------------------- | --------------------------------------------------------- | --------------------------- |
-| song search           | `c.y.qq.com/soso/fcgi-bin/client_search_cp`               | paginated songs             |
-| album search          | the same search surface with album type                   | paginated album summaries   |
-| album detail          | `c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg`          | album and tracks            |
-| guest playlist detail | `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg` | playlist and tracks         |
-| current toplist       | `u.y.qq.com/cgi-bin/musicu.fcg`                           | home feed/toplist tracks    |
-| QRC lyrics            | `musicu.fcg`, `GetPlayLyricInfo`                          | word-timed `LyricDocument`  |
-| LRC fallback          | `c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg`       | line/plain lyrics           |
-| clear playback source | `musicu.fcg` vkey response                                | allowlisted HTTPS media URL |
-| encrypted source      | `musics.fcg`, `GetEVkey/CgiGetEVkey`                      | URL + in-memory ekey        |
-| artwork               | `y.gtimg.cn` / `qpic.y.qq.com`                            | cached data URI             |
+| Capability            | Compatibility surface                                     | Normalized result              |
+| --------------------- | --------------------------------------------------------- | ------------------------------ |
+| typed catalog search  | pinned `qm-api-rs` `search.search_by_type`                | paginated songs/artists/albums |
+| album detail          | `c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg`          | album and tracks               |
+| guest playlist detail | `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg` | playlist and tracks            |
+| current toplist       | `u.y.qq.com/cgi-bin/musicu.fcg`                           | home feed/toplist tracks       |
+| QRC lyrics            | `musicu.fcg`, `GetPlayLyricInfo`                          | word-timed `LyricDocument`     |
+| LRC fallback          | `c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg`       | line/plain lyrics              |
+| clear playback source | `musicu.fcg` vkey response                                | allowlisted HTTPS media URL    |
+| encrypted source      | `musics.fcg`, `GetEVkey/CgiGetEVkey`                      | URL + in-memory ekey           |
+| artwork               | `y.gtimg.cn` / `qpic.y.qq.com`                            | cached data URI                |
 
-Search currently normalizes songs and albums. Playlist discovery is supplied through the home/toplist and direct
-playlist lookup paths; search does not fabricate a playlist block when the upstream response omits one.
+Search is category-tagged (`song`, `artist`, or `album`) and uses the pinned `qm-api-rs` typed boundary. Playlist
+discovery is supplied through the home/toplist and direct playlist lookup paths; playlist results are not part of the
+search contract.
 
 Requests use a five-second connect timeout and fifteen-second total timeout. Retryable transport/rate-limit cases
 are retried at most once. Partial DTOs use explicit defaults, but missing identity or impossible response structure

@@ -35,11 +35,11 @@ mod transport;
 
 use yaqmc_provider_api::{
     AlbumPreview, AlbumSummary, Artist, ArtistPreview, ArtistSummary, Artwork, AudioCodec,
-    AudioFormat, AudioFormatInfo, AudioQuality, CacheStats, CredentialStore, LyricDocument,
-    LyricLine, LyricMetadata, LyricSyncMode, LyricWord, PlaybackCapability, PlaybackEpochGuard,
-    PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver, ProviderStorage,
-    ProviderStorageExt, ProviderTrackReference, ResolvedPlaybackSource, Song, SongAvailability,
-    SpawnBlockingCredentialStore,
+    AudioFormat, AudioFormatInfo, AudioQuality, CacheStats, CatalogSearchKind, CredentialStore,
+    LyricDocument, LyricLine, LyricMetadata, LyricSyncMode, LyricWord, PlaybackCapability,
+    PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver,
+    ProviderStorage, ProviderStorageExt, ProviderTrackReference, ResolvedPlaybackSource,
+    SearchResult, Song, SongAvailability, SpawnBlockingCredentialStore,
 };
 pub use yaqmc_provider_api::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
@@ -73,7 +73,6 @@ pub use oauth::{url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OA
 const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_MUSICS_URL: &str = "https://u.y.qq.com/cgi-bin/musics.fcg";
 const QQ_EVKEY_MODULE_KEY: &str = "music.vkey.GetEVkey.CgiGetEVkey";
-const QQ_SEARCH_URL: &str = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp";
 const QQ_PLAYLIST_URL: &str = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg";
 #[cfg(test)]
 const QQ_LRC_URL: &str = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
@@ -233,17 +232,6 @@ pub struct LibrarySnapshot {
     pub favorite_songs: Vec<Song>,
     pub saved_albums: Vec<Album>,
     pub saved_playlists: Vec<Playlist>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchResult {
-    pub query: String,
-    pub songs: Vec<Song>,
-    pub albums: Vec<Album>,
-    pub playlists: Vec<Playlist>,
-    pub page: u32,
-    pub has_more: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -817,41 +805,24 @@ impl QQMusicService {
     pub async fn search(
         &self,
         query: String,
+        kind: CatalogSearchKind,
         page: u32,
         limit: u32,
     ) -> Result<SearchResult, QQMusicError> {
         let query = query.trim().to_owned();
         if query.is_empty() {
-            return Ok(SearchResult {
-                query,
-                songs: vec![],
-                albums: vec![],
-                playlists: vec![],
-                page: 1,
-                has_more: false,
-            });
+            return Ok(empty_search_result(query, kind));
         }
         let page = page.max(1);
         let limit = limit.clamp(1, 30);
-        let key = format!("qqmusic:search:{}:{page}:{limit}", stable_component(&query));
+        let key = search_cache_key(&query, kind, page, limit);
         if let Some(result) = self
             .storage
             .get_json::<SearchResult>(&key, false)
             .map_err(|_| QQMusicError::Storage)?
         {
             self.account
-                .remember_songs(
-                    result
-                        .songs
-                        .iter()
-                        .chain(result.albums.iter().flat_map(|album| album.tracks.iter()))
-                        .chain(
-                            result
-                                .playlists
-                                .iter()
-                                .flat_map(|playlist| playlist.tracks.iter()),
-                        ),
-                )
+                .remember_songs(search_result_songs(&result))
                 .await;
             return Ok(result);
         }
@@ -859,24 +830,13 @@ impl QQMusicService {
         self.storage
             .record_search("qqmusic", &query)
             .map_err(|_| QQMusicError::Storage)?;
-        match self.client.search(&query, page, limit).await {
+        match self.client.search(&query, kind, page, limit).await {
             Ok(result) => {
                 self.storage
                     .put_json(&key, "metadata", &result, METADATA_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
                 self.account
-                    .remember_songs(
-                        result
-                            .songs
-                            .iter()
-                            .chain(result.albums.iter().flat_map(|album| album.tracks.iter()))
-                            .chain(
-                                result
-                                    .playlists
-                                    .iter()
-                                    .flat_map(|playlist| playlist.tracks.iter()),
-                            ),
-                    )
+                    .remember_songs(search_result_songs(&result))
                     .await;
                 Ok(result)
             }
@@ -887,18 +847,7 @@ impl QQMusicService {
                     .map_err(|_| QQMusicError::Storage)?
                     .ok_or(error)?;
                 self.account
-                    .remember_songs(
-                        result
-                            .songs
-                            .iter()
-                            .chain(result.albums.iter().flat_map(|album| album.tracks.iter()))
-                            .chain(
-                                result
-                                    .playlists
-                                    .iter()
-                                    .flat_map(|playlist| playlist.tracks.iter()),
-                            ),
-                    )
+                    .remember_songs(search_result_songs(&result))
                     .await;
                 Ok(result)
             }
@@ -1810,94 +1759,63 @@ impl QQMusicClient {
     async fn search(
         &self,
         query: &str,
+        kind: CatalogSearchKind,
         page: u32,
         limit: u32,
     ) -> Result<SearchResult, QQMusicError> {
-        let song_query = query.to_owned();
-        let album_query = query.to_owned();
-        let song_request = || {
-            self.http
-                .get(QQ_SEARCH_URL)
-                .header(header::REFERER, "https://y.qq.com/")
-                .query(&[
-                    ("p", page.to_string()),
-                    ("n", limit.to_string()),
-                    ("w", song_query.clone()),
-                    ("format", "json".to_owned()),
-                    ("new_json", "1".to_owned()),
-                    ("t", "0".to_owned()),
-                ])
+        let search_type = match kind {
+            CatalogSearchKind::Song => qqmusic_api::SearchType::Song,
+            CatalogSearchKind::Artist => qqmusic_api::SearchType::Singer,
+            CatalogSearchKind::Album => qqmusic_api::SearchType::Album,
         };
-        let album_request = || {
-            self.http
-                .get(QQ_SEARCH_URL)
-                .header(header::REFERER, "https://y.qq.com/")
-                .query(&[
-                    ("p", page.to_string()),
-                    ("n", limit.min(12).to_string()),
-                    ("w", album_query.clone()),
-                    ("format", "json".to_owned()),
-                    ("new_json", "1".to_owned()),
-                    ("t", "8".to_owned()),
-                ])
-        };
-        let (song_response, album_response): (SearchResponse, SearchResponse) = tokio::try_join!(
-            self.send_json("search.songs", song_request),
-            self.send_json("search.albums", album_request)
-        )?;
-        if song_response.code != 0 || album_response.code != 0 {
-            return Err(QQMusicError::SchemaChanged);
+        let response = self
+            .catalog
+            .search
+            .search_by_type(
+                query,
+                search_type,
+                i64::from(limit),
+                i64::from(page),
+                &[],
+                None,
+                true,
+            )
+            .await
+            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
+        let has_more = response.nextpage > i64::from(page)
+            || i64::from(page).saturating_mul(i64::from(limit)) < response.total_num;
+        match kind {
+            CatalogSearchKind::Song => Ok(SearchResult::Song {
+                query: query.to_owned(),
+                page,
+                has_more,
+                items: response
+                    .song
+                    .into_iter()
+                    .filter_map(|item| normalize_qm_song(item.base, 1))
+                    .collect(),
+            }),
+            CatalogSearchKind::Artist => Ok(SearchResult::Artist {
+                query: query.to_owned(),
+                page,
+                has_more,
+                items: response
+                    .singer
+                    .into_iter()
+                    .filter_map(normalize_qm_artist_preview)
+                    .collect(),
+            }),
+            CatalogSearchKind::Album => Ok(SearchResult::Album {
+                query: query.to_owned(),
+                page,
+                has_more,
+                items: response
+                    .album
+                    .into_iter()
+                    .filter_map(normalize_qm_album_preview)
+                    .collect(),
+            }),
         }
-
-        let song_block = song_response.data.song.unwrap_or_default();
-        let songs = song_block
-            .list
-            .into_iter()
-            .filter_map(normalize_new_song)
-            .collect::<Vec<_>>();
-        let mut songs_by_album: HashMap<String, Vec<Song>> = HashMap::new();
-        for song in &songs {
-            songs_by_album
-                .entry(song.album.id.clone())
-                .or_default()
-                .push(song.clone());
-        }
-        let albums = album_response
-            .data
-            .album
-            .unwrap_or_default()
-            .list
-            .into_iter()
-            .filter_map(|album| {
-                let mid = non_empty(album.album_mid)?;
-                let id = album_id(&mid);
-                let artist_mid =
-                    non_empty(album.singer_mid).unwrap_or_else(|| "unknown".to_owned());
-                let artist_name = clean_text(&album.singer_name);
-                Some(Album {
-                    id: id.clone(),
-                    title: clean_text(&album.album_name),
-                    artist: ArtistSummary {
-                        id: artist_id(&artist_mid),
-                        name: artist_name,
-                    },
-                    artwork: artwork_for_album(&mid, &album.album_name),
-                    release_year: parse_year(&album.public_time),
-                    genre: "QQ Music".to_owned(),
-                    description: "Album metadata supplied by QQ Music.".to_owned(),
-                    tracks: songs_by_album.remove(&id).unwrap_or_default(),
-                })
-            })
-            .collect();
-        let has_more = u64::from(page).saturating_mul(u64::from(limit)) < song_block.total_num;
-        Ok(SearchResult {
-            query: query.to_owned(),
-            songs,
-            albums,
-            playlists: vec![],
-            page,
-            has_more,
-        })
     }
 
     async fn playlist(&self, diss_id: &str) -> Result<Playlist, QQMusicError> {
@@ -3388,50 +3306,6 @@ fn encrypted_musicfile(filename: &str, song_mid: &str) -> Result<String, QQMusic
     Ok(format!("{prefix}{song_mid}{extension}"))
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct SearchResponse {
-    #[serde(default)]
-    code: i32,
-    #[serde(default)]
-    data: SearchData,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct SearchData {
-    #[serde(default)]
-    song: Option<SearchSongBlock>,
-    #[serde(default)]
-    album: Option<SearchAlbumBlock>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct SearchSongBlock {
-    #[serde(default)]
-    list: Vec<NewSongDto>,
-    #[serde(default, rename = "totalnum")]
-    total_num: u64,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct SearchAlbumBlock {
-    #[serde(default)]
-    list: Vec<SearchAlbumDto>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-struct SearchAlbumDto {
-    #[serde(default, rename = "albumMID")]
-    album_mid: String,
-    #[serde(default, rename = "albumName")]
-    album_name: String,
-    #[serde(default, rename = "singerMID")]
-    singer_mid: String,
-    #[serde(default, rename = "singerName")]
-    singer_name: String,
-    #[serde(default, rename = "publicTime")]
-    public_time: String,
-}
-
 #[derive(Clone, Debug, Default, Deserialize)]
 struct NewSongDto {
     #[serde(default)]
@@ -3846,6 +3720,73 @@ fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Opti
             album_id: Some(album_mid),
             media_id: Some(media_id),
         }),
+    })
+}
+
+fn normalize_qm_artist_preview(
+    raw: qqmusic_api::models::search::SingerSearch,
+) -> Option<ArtistPreview> {
+    let name = clean_text(&raw.base.name);
+    if name.is_empty() {
+        return None;
+    }
+    let mid = non_empty(raw.base.mid.clone()).unwrap_or_default();
+    let source = non_empty(raw.pic).unwrap_or_else(|| raw.base.cover_url(500));
+    Some(ArtistPreview {
+        id: if mid.is_empty() {
+            String::new()
+        } else {
+            artist_id(&mid)
+        },
+        name: name.clone(),
+        artwork: artwork_from_provider_url(&source, &name, color_for(&mid)),
+    })
+}
+
+fn normalize_qm_album_preview(
+    raw: qqmusic_api::models::search::AlbumSearch,
+) -> Option<AlbumPreview> {
+    let mid = non_empty(raw.base.mid).unwrap_or_default();
+    let title = clean_text(if raw.base.name.trim().is_empty() {
+        &raw.base.title
+    } else {
+        &raw.base.name
+    });
+    if title.is_empty() {
+        return None;
+    }
+    let singer = raw
+        .singer_list
+        .into_iter()
+        .find(|singer| !singer.name.trim().is_empty())?;
+    let singer_mid = non_empty(singer.mid.clone()).unwrap_or_default();
+    let singer_name = clean_text(&singer.name);
+    let artist = ArtistPreview {
+        id: if singer_mid.is_empty() {
+            String::new()
+        } else {
+            artist_id(&singer_mid)
+        },
+        name: singer_name.clone(),
+        artwork: artwork_from_provider_url(
+            &singer.cover_url(500),
+            &singer_name,
+            color_for(&singer_mid),
+        ),
+    };
+    let artwork = non_empty(raw.pic)
+        .map(|pic| artwork_from_provider_url(&pic, &title, color_for(&mid)))
+        .unwrap_or_else(|| artwork_for_album(&mid, &title));
+    Some(AlbumPreview {
+        id: if mid.is_empty() {
+            String::new()
+        } else {
+            album_id(&mid)
+        },
+        title,
+        artist,
+        artwork,
+        release_year: parse_year(&raw.base.time_public),
     })
 }
 
@@ -4842,6 +4783,44 @@ fn stable_component(value: &str) -> String {
         .collect()
 }
 
+fn empty_search_result(query: String, kind: CatalogSearchKind) -> SearchResult {
+    match kind {
+        CatalogSearchKind::Song => SearchResult::Song {
+            query,
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        },
+        CatalogSearchKind::Artist => SearchResult::Artist {
+            query,
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        },
+        CatalogSearchKind::Album => SearchResult::Album {
+            query,
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        },
+    }
+}
+
+fn search_cache_key(query: &str, kind: CatalogSearchKind, page: u32, limit: u32) -> String {
+    format!(
+        "qqmusic:search:v2:{}:{}:{page}:{limit}",
+        kind.as_str(),
+        stable_component(query)
+    )
+}
+
+fn search_result_songs(result: &SearchResult) -> Vec<&Song> {
+    match result {
+        SearchResult::Song { items, .. } => items.iter().collect(),
+        SearchResult::Artist { .. } | SearchResult::Album { .. } => Vec::new(),
+    }
+}
+
 fn recent_history_fallback_eligible(error: &QQMusicError) -> bool {
     matches!(
         error,
@@ -5228,18 +5207,17 @@ mod tests {
 
     #[test]
     fn local_recent_history_replaces_older_remote_duplicates_and_keeps_time_order() {
-        let mut remote_song = normalize_new_song(
-            serde_json::from_str::<SearchResponse>(include_str!(
-                "../tests/fixtures/qqmusic/search-song.json"
-            ))
-            .expect("search fixture")
-            .data
-            .song
-            .expect("song block")
-            .list
-            .remove(0),
+        let fixture: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/qqmusic/search-song.json"))
+                .expect("search fixture");
+        let raw: NewSongDto = serde_json::from_value(
+            fixture
+                .pointer("/data/song/list/0")
+                .cloned()
+                .expect("song fixture"),
         )
-        .expect("song normalizes");
+        .expect("song DTO");
+        let mut remote_song = normalize_new_song(raw).expect("song normalizes");
         let mut local_song = remote_song.clone();
         local_song.title = "Locally remembered title".to_owned();
         let second_song = Song {
@@ -5376,10 +5354,16 @@ mod tests {
 
     #[test]
     fn sanitized_search_fixture_normalizes_provider_identity_and_formats() {
-        let response: SearchResponse =
+        let fixture: Value =
             serde_json::from_str(include_str!("../tests/fixtures/qqmusic/search-song.json"))
                 .expect("sanitized fixture parses");
-        let raw = response.data.song.expect("song block").list.remove(0);
+        let raw: NewSongDto = serde_json::from_value(
+            fixture
+                .pointer("/data/song/list/0")
+                .cloned()
+                .expect("song fixture"),
+        )
+        .expect("song DTO");
         let song = normalize_new_song(raw).expect("song normalizes");
         assert_eq!(song.id, "qqmusic:track:SANITIZED_TRACK_MID");
         assert_eq!(song.title, "Fixture & Song");
@@ -5396,6 +5380,49 @@ mod tests {
             .iter()
             .any(|format| format.codec == AudioCodec::Flac));
         assert_eq!(song.playback_capability, Some(PlaybackCapability::Full));
+    }
+
+    #[test]
+    fn typed_search_previews_use_only_real_mids_for_entity_ids() {
+        let artist: qqmusic_api::models::search::SingerSearch = serde_json::from_value(json!({
+            "mid": "ARTIST_MID",
+            "name": "Fixture Artist",
+            "pic": "https://y.gtimg.cn/music/photo_new/T001R500x500M000ARTIST_MID.jpg"
+        }))
+        .expect("singer search fixture");
+        assert_eq!(
+            normalize_qm_artist_preview(artist)
+                .expect("artist preview")
+                .id,
+            "qqmusic:artist:ARTIST_MID"
+        );
+
+        let missing_artist: qqmusic_api::models::search::SingerSearch =
+            serde_json::from_value(json!({ "name": "No Mid" }))
+                .expect("missing singer mid fixture");
+        assert!(normalize_qm_artist_preview(missing_artist)
+            .expect("artist preview")
+            .id
+            .is_empty());
+
+        let album: qqmusic_api::models::search::AlbumSearch = serde_json::from_value(json!({
+            "albumMID": "ALBUM_MID",
+            "albumName": "Fixture Album",
+            "singer_list": [{ "mid": "ARTIST_MID", "name": "Fixture Artist" }]
+        }))
+        .expect("album search fixture");
+        let preview = normalize_qm_album_preview(album).expect("album preview");
+        assert_eq!(preview.id, "qqmusic:album:ALBUM_MID");
+        assert_eq!(preview.artist.id, "qqmusic:artist:ARTIST_MID");
+    }
+
+    #[test]
+    fn typed_search_cache_key_is_v2_and_category_scoped() {
+        let song = search_cache_key("MIRA", CatalogSearchKind::Song, 2, 8);
+        let artist = search_cache_key("MIRA", CatalogSearchKind::Artist, 2, 8);
+        assert_eq!(song, "qqmusic:search:v2:song:MIRA:2:8");
+        assert_eq!(artist, "qqmusic:search:v2:artist:MIRA:2:8");
+        assert_ne!(song, artist);
     }
 
     #[test]
@@ -5614,12 +5641,11 @@ mod tests {
     async fn live_search_second_page_contract() {
         let client = QQMusicClient::new().expect("client");
         let result = client
-            .search("花田错", 2, 20)
+            .search("花田错", CatalogSearchKind::Song, 2, 20)
             .await
             .expect("second search page");
 
-        assert_eq!(result.page, 2);
-        assert!(!result.songs.is_empty());
+        assert!(matches!(result, SearchResult::Song { page: 2, items, .. } if !items.is_empty()));
     }
 
     #[tokio::test]
@@ -5637,10 +5663,15 @@ mod tests {
         )
         .expect("service");
         let result = service
-            .search("晴天".to_owned(), 1, 5)
+            .search("晴天".to_owned(), CatalogSearchKind::Song, 1, 5)
             .await
             .expect("live search");
-        let song = result.songs.first().expect("at least one song");
+        let song = match result {
+            SearchResult::Song { items, .. } => {
+                items.into_iter().next().expect("at least one song")
+            }
+            _ => panic!("song search returned another kind"),
+        };
         let album = service
             .album(song.album.id.clone())
             .await
@@ -5995,13 +6026,13 @@ mod tests {
             .await
             .expect("authenticated favorites page");
         let mut songs = page.items;
-        songs.extend(
-            service
-                .search("喜欢你".to_owned(), 1, 20)
-                .await
-                .expect("authenticated catalog search")
-                .songs,
-        );
+        let search_result = service
+            .search("喜欢你".to_owned(), CatalogSearchKind::Song, 1, 20)
+            .await
+            .expect("authenticated catalog search");
+        if let SearchResult::Song { items, .. } = search_result {
+            songs.extend(items);
+        }
         let preferred = match &snapshot.account {
             AccountState::Authenticated { entitlement, .. }
                 if entitlement

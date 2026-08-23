@@ -83,8 +83,28 @@ pub struct LimitParams {
 #[serde(rename_all = "camelCase")]
 pub struct SearchParams {
     pub query: String,
+    pub kind: yaqmc_provider_api::CatalogSearchKind,
     pub page: u32,
     pub limit: u32,
+}
+
+#[cfg(test)]
+mod search_params_tests {
+    use super::SearchParams;
+
+    #[test]
+    fn typed_search_params_accept_lowercase_kind_and_camel_case_fields() {
+        let params: SearchParams = serde_json::from_value(serde_json::json!({
+            "query": "MIRA",
+            "kind": "artist",
+            "page": 2,
+            "limit": 8
+        }))
+        .expect("typed search params");
+        assert_eq!(params.kind, yaqmc_provider_api::CatalogSearchKind::Artist);
+        assert_eq!(params.page, 2);
+        assert_eq!(params.limit, 8);
+    }
 }
 
 #[derive(Deserialize)]
