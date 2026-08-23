@@ -7,9 +7,10 @@ describe('EntityLink', () => {
   it('navigates valid IDs with a keyboard-accessible button and stops row propagation', () => {
     const onNavigate = vi.fn();
     const onRowClick = vi.fn();
+    const onRowKeyDown = vi.fn();
     render(
       <NavigationProvider onNavigate={onNavigate}>
-        <div onClick={onRowClick}>
+        <div onClick={onRowClick} onKeyDown={onRowKeyDown}>
           <EntityLink entity="song" id="song-1">
             Quiet Light
           </EntityLink>
@@ -22,7 +23,33 @@ describe('EntityLink', () => {
     fireEvent.click(link);
 
     expect(onNavigate).toHaveBeenCalledWith({ page: 'song', id: 'song-1' });
+    expect(onNavigate).toHaveBeenCalledOnce();
     expect(onRowClick).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(link, { key: 'ContextMenu' });
+    expect(onRowKeyDown).toHaveBeenCalledOnce();
+  });
+
+  it('lets context-menu key events bubble while click still navigates once', () => {
+    const onNavigate = vi.fn();
+    const onRowKeyDown = vi.fn();
+    render(
+      <NavigationProvider onNavigate={onNavigate}>
+        <div onKeyDown={onRowKeyDown}>
+          <EntityLink entity="artist" id="artist-1">
+            Mira Vale
+          </EntityLink>
+        </div>
+      </NavigationProvider>,
+    );
+
+    const link = screen.getByRole('button', { name: 'Mira Vale' });
+    fireEvent.keyDown(link, { key: 'F10', shiftKey: true });
+    fireEvent.click(link);
+
+    expect(onRowKeyDown).toHaveBeenCalledOnce();
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'artist', id: 'artist-1' });
+    expect(onNavigate).toHaveBeenCalledOnce();
   });
 
   it('keeps an empty or whitespace ID as plain text', () => {
