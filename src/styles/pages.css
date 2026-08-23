@@ -787,6 +787,107 @@
   margin-top: 38px;
 }
 
+.search-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-tabs button {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.search-tabs button:hover,
+.search-tabs button[aria-selected='true'] {
+  color: var(--text);
+}
+
+.search-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+}
+
+.search-tabs button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.search-results__category-heading {
+  margin-bottom: 12px;
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: 660;
+}
+
+.catalog-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: clamp(15px, 1.7vw, 24px);
+  margin-top: 28px;
+}
+
+.catalog-preview-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.catalog-preview-card__link {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.catalog-preview-card__link .artwork {
+  width: 100%;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.catalog-preview-card__link strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-preview-card__artist,
+.catalog-preview-card__year {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-preview-card__artist {
+  width: fit-content;
+}
+
+.catalog-preview-card__link:hover strong,
+.catalog-preview-card__artist:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.search-page__placeholder {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
 .search-results__more {
   display: flex;
   margin: 28px auto 0;
