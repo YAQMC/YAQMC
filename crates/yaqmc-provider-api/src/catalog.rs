@@ -160,6 +160,15 @@ mod catalog_shape_tests {
         .unwrap()
         .get("playlists")
         .is_none());
+
+        assert!(serde_json::from_value::<SearchResult>(json!({
+            "kind": "playlist",
+            "query": "playlist",
+            "page": 1,
+            "hasMore": false,
+            "items": []
+        }))
+        .is_err());
     }
 }
 

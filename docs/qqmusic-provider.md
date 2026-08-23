@@ -24,7 +24,7 @@ account acceptance remains pending.
 | Capability            | Compatibility surface                                     | Normalized result              |
 | --------------------- | --------------------------------------------------------- | ------------------------------ |
 | typed catalog search  | pinned `qm-api-rs` `search.search_by_type`                | paginated songs/artists/albums |
-| album detail          | `c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg`          | album and tracks               |
+| typed catalog details | pinned `qm-api-rs` song/album/singer methods              | song/album/artist details      |
 | guest playlist detail | `c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg` | playlist and tracks            |
 | current toplist       | `u.y.qq.com/cgi-bin/musicu.fcg`                           | home feed/toplist tracks       |
 | QRC lyrics            | `musicu.fcg`, `GetPlayLyricInfo`                          | word-timed `LyricDocument`     |

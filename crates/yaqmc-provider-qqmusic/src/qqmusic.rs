@@ -11,6 +11,7 @@ use reqwest::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::Sha256;
 use std::{
     collections::{BTreeMap, HashMap},
     path::PathBuf,
@@ -820,6 +821,7 @@ impl QQMusicService {
             .storage
             .get_json::<SearchResult>(&key, false)
             .map_err(|_| QQMusicError::Storage)?
+            .filter(|result| search_result_matches(result, &query, kind, page))
         {
             self.account
                 .remember_songs(search_result_songs(&result))
@@ -845,6 +847,7 @@ impl QQMusicService {
                     .storage
                     .get_json::<SearchResult>(&key, true)
                     .map_err(|_| QQMusicError::Storage)?
+                    .filter(|result| search_result_matches(result, &query, kind, page))
                     .ok_or(error)?;
                 self.account
                     .remember_songs(search_result_songs(&result))
@@ -1782,8 +1785,7 @@ impl QQMusicClient {
             )
             .await
             .map_err(crate::qmapi::cgi::map_qmapi_error)?;
-        let has_more = response.nextpage > i64::from(page)
-            || i64::from(page).saturating_mul(i64::from(limit)) < response.total_num;
+        let has_more = search_has_more(response.total_num, page, limit);
         match kind {
             CatalogSearchKind::Song => Ok(SearchResult::Song {
                 query: query.to_owned(),
@@ -3390,8 +3392,6 @@ struct OldSongDto {
     song_mid: String,
     #[serde(default, rename = "songname")]
     song_name: String,
-    #[serde(default, rename = "albumid")]
-    album_id: u64,
     #[serde(default, rename = "albummid")]
     album_mid: String,
     #[serde(default, rename = "albumname")]
@@ -3602,8 +3602,8 @@ pub(crate) fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
 }
 
 fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
-    let song_mid = non_empty(raw.mid)?;
-    let album_mid = non_empty(raw.album.mid).unwrap_or_else(|| "unknown".to_owned());
+    let song_mid = valid_mid(&raw.mid)?;
+    let album_mid = valid_mid(&raw.album.mid).unwrap_or_default();
     let title = clean_text(&non_empty(raw.title).unwrap_or(raw.name));
     if title.is_empty() {
         return None;
@@ -3616,9 +3616,9 @@ fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
             if name.is_empty() {
                 return None;
             }
-            let mid = non_empty(singer.mid).unwrap_or_else(|| stable_component(&name));
+            let mid = valid_mid(&singer.mid).unwrap_or_default();
             Some(ArtistSummary {
-                id: artist_id(&mid),
+                id: entity_id("qqmusic:artist:", &mid),
                 name,
             })
         })
@@ -3633,7 +3633,7 @@ fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
         title: title.clone(),
         artists,
         album: AlbumSummary {
-            id: album_id(&album_mid),
+            id: entity_id("qqmusic:album:", &album_mid),
             title: album_title,
         },
         artwork: artwork_for_album(&album_mid, &title),
@@ -3651,15 +3651,15 @@ fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
             provider_id: "qqmusic".to_owned(),
             track_id: song_mid,
             numeric_id: (raw.id > 0).then_some(raw.id),
-            album_id: Some(album_mid),
+            album_id: (!album_mid.is_empty()).then_some(album_mid),
             media_id: Some(media_id),
         }),
     })
 }
 
 fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Option<Song> {
-    let song_mid = non_empty(raw.mid)?;
-    let album_mid = non_empty(raw.album.mid).unwrap_or_else(|| "unknown".to_owned());
+    let song_mid = valid_mid(&raw.mid)?;
+    let album_mid = valid_mid(&raw.album.mid).unwrap_or_default();
     let title = clean_text(if raw.title.trim().is_empty() {
         &raw.name
     } else {
@@ -3676,9 +3676,9 @@ fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Opti
             if name.is_empty() {
                 return None;
             }
-            let mid = non_empty(singer.mid).unwrap_or_else(|| stable_component(&name));
+            let mid = valid_mid(&singer.mid).unwrap_or_default();
             Some(ArtistSummary {
-                id: artist_id(&mid),
+                id: entity_id("qqmusic:artist:", &mid),
                 name,
             })
         })
@@ -3697,7 +3697,7 @@ fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Opti
         title: title.clone(),
         artists,
         album: AlbumSummary {
-            id: album_id(&album_mid),
+            id: entity_id("qqmusic:album:", &album_mid),
             title: album_title,
         },
         artwork: artwork_for_album(&album_mid, &title),
@@ -3717,7 +3717,7 @@ fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Opti
             provider_id: "qqmusic".to_owned(),
             track_id: song_mid,
             numeric_id: (raw.id > 0).then_some(raw.id as u64),
-            album_id: Some(album_mid),
+            album_id: (!album_mid.is_empty()).then_some(album_mid),
             media_id: Some(media_id),
         }),
     })
@@ -3730,14 +3730,10 @@ fn normalize_qm_artist_preview(
     if name.is_empty() {
         return None;
     }
-    let mid = non_empty(raw.base.mid.clone()).unwrap_or_default();
+    let mid = valid_mid(&raw.base.mid).unwrap_or_default();
     let source = non_empty(raw.pic).unwrap_or_else(|| raw.base.cover_url(500));
     Some(ArtistPreview {
-        id: if mid.is_empty() {
-            String::new()
-        } else {
-            artist_id(&mid)
-        },
+        id: entity_id("qqmusic:artist:", &mid),
         name: name.clone(),
         artwork: artwork_from_provider_url(&source, &name, color_for(&mid)),
     })
@@ -3746,7 +3742,7 @@ fn normalize_qm_artist_preview(
 fn normalize_qm_album_preview(
     raw: qqmusic_api::models::search::AlbumSearch,
 ) -> Option<AlbumPreview> {
-    let mid = non_empty(raw.base.mid).unwrap_or_default();
+    let mid = valid_mid(&raw.base.mid).unwrap_or_default();
     let title = clean_text(if raw.base.name.trim().is_empty() {
         &raw.base.title
     } else {
@@ -3759,14 +3755,10 @@ fn normalize_qm_album_preview(
         .singer_list
         .into_iter()
         .find(|singer| !singer.name.trim().is_empty())?;
-    let singer_mid = non_empty(singer.mid.clone()).unwrap_or_default();
+    let singer_mid = valid_mid(&singer.mid).unwrap_or_default();
     let singer_name = clean_text(&singer.name);
     let artist = ArtistPreview {
-        id: if singer_mid.is_empty() {
-            String::new()
-        } else {
-            artist_id(&singer_mid)
-        },
+        id: entity_id("qqmusic:artist:", &singer_mid),
         name: singer_name.clone(),
         artwork: artwork_from_provider_url(
             &singer.cover_url(500),
@@ -3778,11 +3770,7 @@ fn normalize_qm_album_preview(
         .map(|pic| artwork_from_provider_url(&pic, &title, color_for(&mid)))
         .unwrap_or_else(|| artwork_for_album(&mid, &title));
     Some(AlbumPreview {
-        id: if mid.is_empty() {
-            String::new()
-        } else {
-            album_id(&mid)
-        },
+        id: entity_id("qqmusic:album:", &mid),
         title,
         artist,
         artwork,
@@ -3809,7 +3797,7 @@ fn normalize_qm_album(
     let Some(singer) = singer else {
         return Err(QQMusicError::NotFound);
     };
-    let artist_mid = non_empty(singer.mid).unwrap_or_else(|| stable_component(&singer.name));
+    let artist_mid = valid_mid(&singer.mid).unwrap_or_default();
     let tracks = catalog
         .tracks
         .into_iter()
@@ -3820,7 +3808,7 @@ fn normalize_qm_album(
         id: album_id(mid),
         title: title.clone(),
         artist: ArtistSummary {
-            id: artist_id(&artist_mid),
+            id: entity_id("qqmusic:artist:", &artist_mid),
             name: clean_text(&singer.name),
         },
         artwork: artwork_for_album(mid, &title),
@@ -3840,8 +3828,10 @@ fn normalize_qm_artist(
     if name.is_empty() {
         return Err(QQMusicError::NotFound);
     }
-    let singer_mid = non_empty(singer.mid).unwrap_or_else(|| mid.to_owned());
-    let artist_id = artist_id(&singer_mid);
+    let singer_mid = valid_mid(&singer.mid)
+        .or_else(|| valid_mid(mid))
+        .unwrap_or_default();
+    let artist_id = entity_id("qqmusic:artist:", &singer_mid);
     let artwork = artwork_from_provider_url(&singer.singer_pic, &name, color_for(&singer_mid));
     let artist_preview = ArtistPreview {
         id: artist_id.clone(),
@@ -3860,15 +3850,14 @@ fn normalize_qm_artist(
         .into_iter()
         .take(20)
         .filter_map(|album| {
-            let album_mid = non_empty(album.base.mid)
-                .or_else(|| (album.base.id > 0).then(|| album.base.id.to_string()))?;
+            let album_mid = valid_mid(&album.base.mid).unwrap_or_default();
             let title = clean_text(if album.base.name.trim().is_empty() {
                 &album.base.title
             } else {
                 &album.base.name
             });
             (!title.is_empty()).then(|| AlbumPreview {
-                id: album_id(&album_mid),
+                id: entity_id("qqmusic:album:", &album_mid),
                 title: title.clone(),
                 artist: artist_preview.clone(),
                 artwork: artwork_for_album(&album_mid, &title),
@@ -3972,8 +3961,8 @@ fn normalize_old_song(raw: OldSongDto, fallback_track_number: u32) -> Option<Son
     let formats = old_audio_formats(&raw);
     let quality = highest_quality(&formats);
     let (availability, playback_capability) = old_playability(&raw.pay, &raw.preview);
-    let song_mid = non_empty(raw.song_mid)?;
-    let album_mid = non_empty(raw.album_mid).unwrap_or_else(|| "unknown".to_owned());
+    let song_mid = valid_mid(&raw.song_mid)?;
+    let album_mid = valid_mid(&raw.album_mid).unwrap_or_default();
     let title = clean_text(&raw.song_name);
     if title.is_empty() {
         return None;
@@ -3986,9 +3975,9 @@ fn normalize_old_song(raw: OldSongDto, fallback_track_number: u32) -> Option<Son
             if name.is_empty() {
                 return None;
             }
-            let mid = non_empty(singer.mid).unwrap_or_else(|| stable_component(&name));
+            let mid = valid_mid(&singer.mid).unwrap_or_default();
             Some(ArtistSummary {
-                id: artist_id(&mid),
+                id: entity_id("qqmusic:artist:", &mid),
                 name,
             })
         })
@@ -3999,7 +3988,7 @@ fn normalize_old_song(raw: OldSongDto, fallback_track_number: u32) -> Option<Son
         title: title.clone(),
         artists,
         album: AlbumSummary {
-            id: album_id(&album_mid),
+            id: entity_id("qqmusic:album:", &album_mid),
             title: clean_text(&raw.album_name),
         },
         artwork: artwork_for_album(&album_mid, &title),
@@ -4017,7 +4006,7 @@ fn normalize_old_song(raw: OldSongDto, fallback_track_number: u32) -> Option<Son
             provider_id: "qqmusic".to_owned(),
             track_id: song_mid,
             numeric_id: (raw.song_id > 0).then_some(raw.song_id),
-            album_id: (raw.album_id > 0).then_some(album_mid),
+            album_id: (!album_mid.is_empty()).then_some(album_mid),
             media_id: Some(media_id),
         }),
     })
@@ -4625,14 +4614,15 @@ fn album_from_songs(summary: &AlbumSummary, artists: &[ArtistSummary], songs: Ve
         .id
         .strip_prefix("qqmusic:album:")
         .unwrap_or(&summary.id);
+    let mid = valid_mid(mid).unwrap_or_default();
     Album {
-        id: summary.id.clone(),
+        id: entity_id("qqmusic:album:", &mid),
         title: summary.title.clone(),
         artist: artists.first().cloned().unwrap_or_else(|| ArtistSummary {
-            id: "qqmusic:artist:unknown".to_owned(),
+            id: String::new(),
             name: "Various artists".to_owned(),
         }),
-        artwork: artwork_for_album(mid, &summary.title),
+        artwork: artwork_for_album(&mid, &summary.title),
         release_year: 0,
         genre: "QQ Music".to_owned(),
         description: "Live QQ Music catalog metadata.".to_owned(),
@@ -4731,15 +4721,19 @@ fn color_for(value: &str) -> String {
 }
 
 fn track_id(mid: &str) -> String {
-    format!("qqmusic:track:{mid}")
+    entity_id("qqmusic:track:", mid)
 }
 
 fn album_id(mid: &str) -> String {
-    format!("qqmusic:album:{mid}")
+    entity_id("qqmusic:album:", mid)
 }
 
-fn artist_id(mid: &str) -> String {
-    format!("qqmusic:artist:{mid}")
+fn entity_id(prefix: &str, mid: &str) -> String {
+    if mid.is_empty() {
+        String::new()
+    } else {
+        format!("{prefix}{mid}")
+    }
 }
 
 fn playlist_id(id: &str) -> String {
@@ -4759,14 +4753,20 @@ fn catalog_entity_mid<'a>(value: &'a str, prefix: &str) -> Result<&'a str, QQMus
     } else {
         value
     };
-    if mid.is_empty()
-        || !mid
+    valid_mid_ref(mid).ok_or(QQMusicError::InvalidRequest)
+}
+
+fn valid_mid(value: &str) -> Option<String> {
+    valid_mid_ref(value).map(str::to_owned)
+}
+
+fn valid_mid_ref(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()
+        && value
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-    {
-        return Err(QQMusicError::InvalidRequest);
-    }
-    Ok(mid)
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-')))
+    .then_some(value)
 }
 
 fn stable_component(value: &str) -> String {
@@ -4807,11 +4807,50 @@ fn empty_search_result(query: String, kind: CatalogSearchKind) -> SearchResult {
 }
 
 fn search_cache_key(query: &str, kind: CatalogSearchKind, page: u32, limit: u32) -> String {
+    let digest = Sha256::digest(query.as_bytes());
     format!(
-        "qqmusic:search:v2:{}:{}:{page}:{limit}",
+        "qqmusic:search:v2:{}:{digest:x}:{page}:{limit}",
         kind.as_str(),
-        stable_component(query)
     )
+}
+
+fn search_has_more(total_num: i64, page: u32, limit: u32) -> bool {
+    i64::from(page).saturating_mul(i64::from(limit)) < total_num.max(0)
+}
+
+fn search_result_matches(
+    result: &SearchResult,
+    query: &str,
+    kind: CatalogSearchKind,
+    page: u32,
+) -> bool {
+    match (result, kind) {
+        (
+            SearchResult::Song {
+                query: cached,
+                page: cached_page,
+                ..
+            },
+            CatalogSearchKind::Song,
+        )
+        | (
+            SearchResult::Artist {
+                query: cached,
+                page: cached_page,
+                ..
+            },
+            CatalogSearchKind::Artist,
+        )
+        | (
+            SearchResult::Album {
+                query: cached,
+                page: cached_page,
+                ..
+            },
+            CatalogSearchKind::Album,
+        ) => cached == query && *cached_page == page,
+        _ => false,
+    }
 }
 
 fn search_result_songs(result: &SearchResult) -> Vec<&Song> {
@@ -5420,9 +5459,102 @@ mod tests {
     fn typed_search_cache_key_is_v2_and_category_scoped() {
         let song = search_cache_key("MIRA", CatalogSearchKind::Song, 2, 8);
         let artist = search_cache_key("MIRA", CatalogSearchKind::Artist, 2, 8);
-        assert_eq!(song, "qqmusic:search:v2:song:MIRA:2:8");
-        assert_eq!(artist, "qqmusic:search:v2:artist:MIRA:2:8");
+        assert!(song.starts_with("qqmusic:search:v2:song:"));
+        assert!(artist.starts_with("qqmusic:search:v2:artist:"));
+        assert_ne!(
+            search_cache_key("中文。", CatalogSearchKind::Song, 1, 8),
+            search_cache_key("中文?", CatalogSearchKind::Song, 1, 8)
+        );
+        assert_ne!(
+            search_cache_key(&"a".repeat(81), CatalogSearchKind::Song, 1, 8),
+            search_cache_key(
+                &format!("{}b", "a".repeat(80)),
+                CatalogSearchKind::Song,
+                1,
+                8
+            )
+        );
         assert_ne!(song, artist);
+    }
+
+    #[test]
+    fn typed_search_has_more_uses_only_nonnegative_total_and_page_limit() {
+        assert!(!search_has_more(1, 1, 5));
+        assert!(search_has_more(6, 1, 5));
+        assert!(!search_has_more(-1, 1, 5));
+    }
+
+    #[test]
+    fn typed_search_cache_entries_require_exact_query_kind_and_page() {
+        let result = SearchResult::Song {
+            query: "中文。".to_owned(),
+            page: 3,
+            has_more: false,
+            items: Vec::new(),
+        };
+        assert!(search_result_matches(
+            &result,
+            "中文。",
+            CatalogSearchKind::Song,
+            3
+        ));
+        assert!(!search_result_matches(
+            &result,
+            "中文?",
+            CatalogSearchKind::Song,
+            3
+        ));
+        assert!(!search_result_matches(
+            &result,
+            "中文。",
+            CatalogSearchKind::Artist,
+            3
+        ));
+        assert!(!search_result_matches(
+            &result,
+            "中文。",
+            CatalogSearchKind::Song,
+            2
+        ));
+    }
+
+    #[test]
+    fn invalid_nested_mids_are_non_clickable_and_not_provider_album_refs() {
+        let raw: qqmusic_api::Song = serde_json::from_value(json!({
+            "mid": "SONG_MID",
+            "name": "Song",
+            "album": { "mid": "ALBUM.MID", "name": "Album" },
+            "singer": [{ "mid": "ARTIST.MID", "name": "Artist" }]
+        }))
+        .expect("song fixture");
+        let song = normalize_qm_song(raw, 1).expect("song normalizes");
+        assert!(song.album.id.is_empty());
+        assert!(song.artists[0].id.is_empty());
+        assert!(song.provider.expect("provider").album_id.is_none());
+
+        let raw: NewSongDto = serde_json::from_value(json!({
+            "mid": "SONG_MID",
+            "name": "Song",
+            "album": { "mid": "ALBUM.MID", "name": "Album" },
+            "singer": [{ "mid": "ARTIST.MID", "name": "Artist" }]
+        }))
+        .expect("new song fixture");
+        let song = normalize_new_song(raw).expect("new song normalizes");
+        assert!(song.album.id.is_empty());
+        assert!(song.artists[0].id.is_empty());
+        assert!(song.provider.expect("provider").album_id.is_none());
+
+        let raw: OldSongDto = serde_json::from_value(json!({
+            "songmid": "SONG_MID",
+            "songname": "Song",
+            "albummid": "ALBUM.MID",
+            "singer": [{ "mid": "ARTIST.MID", "name": "Artist" }]
+        }))
+        .expect("old song fixture");
+        let song = normalize_old_song(raw, 1).expect("old song normalizes");
+        assert!(song.album.id.is_empty());
+        assert!(song.artists[0].id.is_empty());
+        assert!(song.provider.expect("provider").album_id.is_none());
     }
 
     #[test]
