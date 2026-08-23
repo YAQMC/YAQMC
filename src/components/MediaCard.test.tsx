@@ -20,6 +20,37 @@ describe('MediaCard context actions', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  it('opens the article context menu from a focused song title link', () => {
+    const song = allSongs[0]!;
+    render(
+      <NavigationProvider onNavigate={vi.fn()}>
+        <MediaCard item={song} type="song" onOpen={vi.fn()} onPlay={vi.fn()} />
+      </NavigationProvider>,
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: song.title }), {
+      key: 'ContextMenu',
+    });
+
+    expect(screen.getByRole('menuitem', { name: `Open ${song.title}` })).toBeInTheDocument();
+  });
+
+  it('opens the article context menu from a focused song artist link', () => {
+    const song = allSongs[0]!;
+    render(
+      <NavigationProvider onNavigate={vi.fn()}>
+        <MediaCard item={song} type="song" onOpen={vi.fn()} onPlay={vi.fn()} />
+      </NavigationProvider>,
+    );
+
+    fireEvent.keyDown(screen.getByRole('button', { name: song.artists[0]!.name }), {
+      key: 'F10',
+      shiftKey: true,
+    });
+
+    expect(screen.getByRole('menuitem', { name: `Open ${song.title}` })).toBeInTheDocument();
+  });
+
   it('routes a song title and each artist independently', () => {
     const song = {
       ...allSongs[0]!,

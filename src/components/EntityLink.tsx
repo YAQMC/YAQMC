@@ -41,7 +41,6 @@ export function EntityLink({
         event.stopPropagation();
         navigate({ page: entity, id: normalizedId });
       }}
-      onKeyDown={(event) => event.stopPropagation()}
     >
       {children}
     </button>
