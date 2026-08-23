@@ -34,4 +34,27 @@ describe('ArtistPage', () => {
 
     expect(screen.queryByText(/About Mira Vale/)).not.toBeInTheDocument();
   });
+
+  it('keeps blank album IDs as unique plain text instead of links', async () => {
+    const artist = await new FakeMusicProvider().getArtist('artist-mira-vale');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const albums = artist.albums.map((album, index) => ({
+      ...album,
+      id: index === 0 ? '' : '   ',
+      title: `Blank Album ${index + 1}`,
+    }));
+
+    render(
+      <NavigationProvider onNavigate={vi.fn()}>
+        <ArtistPage artist={{ ...artist, albums }} />
+      </NavigationProvider>,
+    );
+
+    const albumSection = screen.getByRole('region', { name: 'Albums' });
+    expect(within(albumSection).getAllByText(/Blank Album/)).toHaveLength(albums.length);
+    expect(within(albumSection).queryAllByRole('button', { name: /Open / })).toHaveLength(0);
+    expect(consoleError.mock.calls.some(([message]) => String(message).includes('same key'))).toBe(
+      false,
+    );
+  });
 });

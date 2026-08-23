@@ -353,6 +353,31 @@ describe('TrackList favorite controls', () => {
     });
   });
 
+  it('does not offer actions or duplicate keys for blank track IDs', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const tracks = [
+      { ...allSongs[0]!, id: '', title: 'Blank Track' },
+      { ...allSongs[0]!, id: '   ', title: 'Whitespace Track' },
+    ];
+
+    const { container } = render(<TrackList tracks={tracks} />);
+
+    expect(container.querySelectorAll('.track-row')).toHaveLength(2);
+    expect(consoleError.mock.calls.some(([message]) => String(message).includes('same key'))).toBe(
+      false,
+    );
+    for (const title of ['Blank Track', 'Whitespace Track']) {
+      const row = screen.getByText(title).closest('.track-row');
+      expect(row).not.toBeNull();
+      expect(row).not.toHaveAttribute('tabindex');
+      expect(row?.querySelector('.track-row__actions')).toBeEmptyDOMElement();
+      expect(row?.querySelectorAll('button')).toHaveLength(0);
+      expect(screen.queryByRole('button', { name: new RegExp(`Play ${title}`) })).toBeNull();
+      expect(screen.queryByRole('button', { name: `More actions for ${title}` })).toBeNull();
+      expect(screen.queryByRole('button', { name: `Add ${title} to Favorites` })).toBeNull();
+    }
+  });
+
   it('keeps repeated artist button names equal to the visible artist name', () => {
     const first: Song = {
       ...allSongs[0]!,

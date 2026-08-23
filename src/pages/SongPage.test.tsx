@@ -125,4 +125,32 @@ describe('SongPage', () => {
       ),
     );
   });
+
+  it('keeps blank artist IDs as unique plain text instead of links', () => {
+    const song = {
+      ...allSongs[0]!,
+      artists: [
+        { id: '', name: 'Blank Artist One' },
+        { id: '   ', name: 'Blank Artist Two' },
+      ],
+    };
+    const onNavigate = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    render(
+      <NavigationProvider onNavigate={onNavigate}>
+        <SongPage song={song} />
+      </NavigationProvider>,
+    );
+
+    for (const name of ['Blank Artist One', 'Blank Artist Two']) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name })).toBeNull();
+      fireEvent.click(screen.getByText(name));
+    }
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(consoleError.mock.calls.some(([message]) => String(message).includes('same key'))).toBe(
+      false,
+    );
+  });
 });
