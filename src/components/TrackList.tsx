@@ -45,11 +45,11 @@ export function TrackList({ tracks, showAlbum = false, compact = false }: TrackL
       <div role="rowgroup">
         {tracks.map((track, index) => (
           <TrackRow
-            key={track.id}
+            key={track.id.trim() || `missing-track:${index}`}
             track={track}
             tracks={tracks}
             index={index}
-            active={track.id === currentId}
+            active={Boolean(track.id.trim()) && track.id === currentId}
             isPlaying={isPlaying}
             showAlbum={showAlbum}
             pluginActions={pluginActions}
@@ -91,6 +91,7 @@ function TrackRow({
   const addToPlaylist = useAddToPlaylistPicker(track);
   const actionsRef = useRef<HTMLSpanElement>(null);
   const { favorite, pending } = useFavoriteState(track.id, track.isFavorite);
+  const hasUsableTrackId = track.id.trim().length > 0;
   const playbackAction = active && isPlaying ? common('pause') : common('play');
   const favoriteLabel = pending
     ? t('favoritePending', { title: track.title })
@@ -118,66 +119,72 @@ function TrackRow({
       y: bounds ? bounds.bottom + 6 : 24,
     });
   };
-  const contextItems: readonly ContextMenuItem[] = [
-    { id: 'play', label: playbackAction, action: activateTrack },
-    { id: 'queue', label: t('addToQueue'), action: () => addToQueue(track) },
-    {
-      id: 'add-to-playlist',
-      label: addToPlaylist.label,
-      disabled: !addToPlaylist.available,
-      action: openAddToPlaylist,
-    },
-    {
-      id: 'favorite',
-      label: favoriteLabel,
-      disabled: !favoriteAvailable || pending,
-      action: () => {
-        if (accountProvider) return setFavorite(accountProvider, track, !favorite);
-      },
-    },
-    ...pluginActions.map((action) => ({
-      id: `plugin:${action.pluginId}:${action.id}`,
-      label: `${action.label}`,
-      action: () => dispatchPluginUiAction(action.pluginId, action.id, 'track'),
-    })),
-  ];
+  const contextItems: readonly ContextMenuItem[] = hasUsableTrackId
+    ? [
+        { id: 'play', label: playbackAction, action: activateTrack },
+        { id: 'queue', label: t('addToQueue'), action: () => addToQueue(track) },
+        {
+          id: 'add-to-playlist',
+          label: addToPlaylist.label,
+          disabled: !addToPlaylist.available,
+          action: openAddToPlaylist,
+        },
+        {
+          id: 'favorite',
+          label: favoriteLabel,
+          disabled: !favoriteAvailable || pending,
+          action: () => {
+            if (accountProvider) return setFavorite(accountProvider, track, !favorite);
+          },
+        },
+        ...pluginActions.map((action) => ({
+          id: `plugin:${action.pluginId}:${action.id}`,
+          label: `${action.label}`,
+          action: () => dispatchPluginUiAction(action.pluginId, action.id, 'track'),
+        })),
+      ]
+    : [];
   const contextMenu = useContextMenu(t('moreActions', { title: track.title }), contextItems);
 
   return (
     <div
       className="track-row"
       role="row"
-      tabIndex={0}
+      tabIndex={hasUsableTrackId ? 0 : undefined}
       data-active={active || undefined}
-      {...contextMenu.triggerProps}
+      {...(hasUsableTrackId ? contextMenu.triggerProps : {})}
     >
       <span className="track-list__number track-row__index" role="cell">
-        <button
-          type="button"
-          className="track-row__play-button"
-          onClick={activateTrack}
-          aria-label={t('trackAction', {
-            action: playbackAction,
-            title: track.title,
-            artist: joinArtistNames(track.artists),
-          })}
-        >
-          <span className="track-row__ordinal">{index + 1}</span>
-          <span className="track-row__play-icon">
-            {active && isPlaying ? (
-              <Pause size={14} fill="currentColor" />
-            ) : (
-              <Play size={14} fill="currentColor" />
-            )}
-          </span>
-          {active && isPlaying && (
-            <span className="now-playing-bars" aria-hidden="true">
-              <i />
-              <i />
-              <i />
+        {hasUsableTrackId ? (
+          <button
+            type="button"
+            className="track-row__play-button"
+            onClick={activateTrack}
+            aria-label={t('trackAction', {
+              action: playbackAction,
+              title: track.title,
+              artist: joinArtistNames(track.artists),
+            })}
+          >
+            <span className="track-row__ordinal">{index + 1}</span>
+            <span className="track-row__play-icon">
+              {active && isPlaying ? (
+                <Pause size={14} fill="currentColor" />
+              ) : (
+                <Play size={14} fill="currentColor" />
+              )}
             </span>
-          )}
-        </button>
+            {active && isPlaying && (
+              <span className="now-playing-bars" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            )}
+          </button>
+        ) : (
+          <span className="track-row__ordinal">{index + 1}</span>
+        )}
       </span>
       <span className="track-row__primary" role="cell">
         <EntityLink entity="song" id={track.id} className="track-row__title">
@@ -208,31 +215,35 @@ function TrackRow({
         {formatDuration(track.durationMs)}
       </span>
       <span className="track-list__actions track-row__actions" role="cell" ref={actionsRef}>
-        <IconButton
-          label={favoriteLabel}
-          size="small"
-          className="track-row__favorite-action"
-          active={favorite}
-          disabled={!favoriteAvailable || pending}
-          onClick={() => {
-            if (accountProvider) void setFavorite(accountProvider, track, !favorite);
-          }}
-        >
-          <Heart
-            className="track-row__favorite"
-            size={14}
-            fill={favorite ? 'currentColor' : 'none'}
-          />
-        </IconButton>
-        <ActionMenu label={t('moreActions', { title: track.title })} size="small">
-          <ActionMenuItem onClick={() => addToQueue(track)}>{t('addToQueue')}</ActionMenuItem>
-          <ActionMenuItem disabled={!addToPlaylist.available} onClick={openAddToPlaylist}>
-            {addToPlaylist.label}
-          </ActionMenuItem>
-        </ActionMenu>
+        {hasUsableTrackId && (
+          <>
+            <IconButton
+              label={favoriteLabel}
+              size="small"
+              className="track-row__favorite-action"
+              active={favorite}
+              disabled={!favoriteAvailable || pending}
+              onClick={() => {
+                if (accountProvider) void setFavorite(accountProvider, track, !favorite);
+              }}
+            >
+              <Heart
+                className="track-row__favorite"
+                size={14}
+                fill={favorite ? 'currentColor' : 'none'}
+              />
+            </IconButton>
+            <ActionMenu label={t('moreActions', { title: track.title })} size="small">
+              <ActionMenuItem onClick={() => addToQueue(track)}>{t('addToQueue')}</ActionMenuItem>
+              <ActionMenuItem disabled={!addToPlaylist.available} onClick={openAddToPlaylist}>
+                {addToPlaylist.label}
+              </ActionMenuItem>
+            </ActionMenu>
+          </>
+        )}
       </span>
-      {contextMenu.menu}
-      {addToPlaylist.menu}
+      {hasUsableTrackId && contextMenu.menu}
+      {hasUsableTrackId && addToPlaylist.menu}
     </div>
   );
 }

@@ -36,9 +36,9 @@ export function ArtistPage({ artist }: { artist: Artist }) {
       <section className="artist-page__albums" aria-labelledby="artist-albums">
         <h2 id="artist-albums">{t('albums')}</h2>
         <div className="artist-page__album-grid">
-          {artist.albums.map((album) => (
+          {artist.albums.map((album, index) => (
             <EntityLink
-              key={album.id}
+              key={album.id.trim() || `missing-album:${index}`}
               entity="album"
               id={album.id}
               className="artist-page__album-card"

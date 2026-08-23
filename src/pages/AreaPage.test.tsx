@@ -78,4 +78,30 @@ describe('AreaPage', () => {
       await expect(provider.getArtist(artist.id)).resolves.toMatchObject({ id: artist.id });
     }
   });
+
+  it('keeps blank artist IDs unique and non-navigable', () => {
+    const feed = areaFeeds['area-classic']!;
+    const onNavigate = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const artists = feed.artists.map((artist, index) => ({
+      ...artist,
+      id: index === 0 ? '' : '   ',
+      name: `Blank Artist ${index + 1}`,
+    }));
+
+    render(
+      <NavigationProvider onNavigate={onNavigate}>
+        <AreaPage feed={{ ...feed, artists }} onNavigate={onNavigate} />
+      </NavigationProvider>,
+    );
+
+    for (const artist of artists) {
+      expect(screen.getByText(artist.name)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: artist.name })).toBeNull();
+    }
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(consoleError.mock.calls.some(([message]) => String(message).includes('same key'))).toBe(
+      false,
+    );
+  });
 });

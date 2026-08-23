@@ -50,7 +50,7 @@ export function SongPage({ song }: { song: Song }) {
           <h1>{song.title}</h1>
           <div className="song-page__artists">
             {song.artists.map((artist, index) => (
-              <span key={artist.id}>
+              <span key={artist.id.trim() || `missing-artist:${index}`}>
                 {index > 0 && <span aria-hidden="true"> · </span>}
                 <EntityLink entity="artist" id={artist.id} className="detail-hero__artist">
                   {artist.name}

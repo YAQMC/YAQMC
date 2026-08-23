@@ -73,8 +73,11 @@ export function AreaPage({ feed, onNavigate }: AreaPageProps) {
             </div>
           </div>
           <div className="media-grid media-grid--four">
-            {feed.artists.map((artist) => (
-              <article key={artist.id} className="media-card">
+            {feed.artists.map((artist, index) => (
+              <article
+                key={artist.id.trim() || `missing-artist:${index}`}
+                className="media-card"
+              >
                 <div className="media-card__art">
                   <EntityLink entity="artist" id={artist.id} className="media-card__open">
                     <Artwork
