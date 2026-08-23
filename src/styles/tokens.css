@@ -40,13 +40,8 @@
   text-rendering: optimizeLegibility;
 
   --font-display:
-    'YAQMC Display',
-    'PingFang SC',
-    'SF Pro Display',
-    'Segoe UI Variable Display',
-    'Segoe UI Variable',
-    'Segoe UI',
-    sans-serif;
+    'YAQMC Display', 'PingFang SC', 'SF Pro Display', 'Segoe UI Variable Display',
+    'Segoe UI Variable', 'Segoe UI', sans-serif;
   --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;

@@ -82,7 +82,8 @@ export class FakeMusicProvider implements MusicProvider {
     if (artistAlbums.length === 0 && topSongs.length === 0) {
       throw new ProviderError('not-found', `Unknown fixture artist: ${id}`, false);
     }
-    const summary = artistAlbums[0]?.artist ?? topSongs[0]?.artists.find((artist) => artist.id === id);
+    const summary =
+      artistAlbums[0]?.artist ?? topSongs[0]?.artists.find((artist) => artist.id === id);
     if (!summary) {
       throw new ProviderError('not-found', `Unknown fixture artist: ${id}`, false);
     }
