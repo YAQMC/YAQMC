@@ -23,6 +23,8 @@ export default tseslint.config(
       'packages/*/dist',
       'apps/*/dist',
       'apps/*/dist/**',
+      '.worktrees/**',
+      'worktrees/**',
     ],
   },
   js.configs.recommended,
@@ -41,6 +43,13 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': [
         'error',
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
       ],
     },
   },

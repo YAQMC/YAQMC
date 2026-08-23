@@ -103,9 +103,7 @@ function SceneWidget({
       }}
       style={style}
     >
-      {editor && (
-        <div className="lyrics-scene__hit" data-editor-hit="" aria-hidden="true" />
-      )}
+      {editor && <div className="lyrics-scene__hit" data-editor-hit="" aria-hidden="true" />}
       {children}
     </div>
   );
@@ -214,6 +212,7 @@ export function LyricsScene({
   const runtimeScrubbing = usePlayerStore((state) => state.isScrubbing);
   const runtimeTimelineRevision = usePlayerStore((state) => state.timelineRevision);
   const scene = preset.scene;
+  const { durationMs, getPositionMs } = bindings;
   const [transportDraft, setTransportDraft] = useState<number | null>(null);
   const transportPositionMs =
     transportDraft ?? (editor ? bindings.positionMs : bindings.getPositionMs());
@@ -301,11 +300,11 @@ export function LyricsScene({
     if (editor || !runtimePlaying || runtimeScrubbing) return;
     let frame = 0;
     let lastLabel = '';
-    const durationMs = Math.max(bindings.durationMs, 1);
+    const maxDurationMs = Math.max(durationMs, 1);
     const tick = () => {
       if (!transportScrubbing.current) {
-        const positionMs = Math.max(0, Math.min(bindings.getPositionMs(), durationMs));
-        const progress = (positionMs / durationMs) * 100;
+        const positionMs = Math.max(0, Math.min(getPositionMs(), maxDurationMs));
+        const progress = (positionMs / maxDurationMs) * 100;
         const input = transportInput.current;
         if (input && document.documentElement.dataset.compositorProbe !== 'no-progress-raf') {
           input.value = String(positionMs);
@@ -323,8 +322,8 @@ export function LyricsScene({
     tick();
     return () => window.cancelAnimationFrame(frame);
   }, [
-    bindings.durationMs,
-    bindings.getPositionMs,
+    durationMs,
+    getPositionMs,
     editor,
     runtimePlaying,
     runtimeScrubbing,
