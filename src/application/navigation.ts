@@ -9,6 +9,8 @@ export type AppRoute =
   | { page: 'account-playlist'; playlist: AccountPlaylistSummary }
   | { page: 'account-recent' }
   | { page: 'settings' }
+  | { page: 'song'; id: EntityId }
+  | { page: 'artist'; id: EntityId }
   | { page: 'album'; id: EntityId }
   | { page: 'playlist'; id: EntityId }
   | { page: 'area'; encArea: string; title: string };

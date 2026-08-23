@@ -16,8 +16,17 @@ import {
 import type { AccountPlaylistDetail, AccountSnapshot } from './domain/music';
 import type { AccountMusicProvider, MusicProvider } from './providers/music-provider';
 import { fakeMusicProvider } from './providers/fake/fake-music-provider';
-import { allSongs, playlists } from './providers/fake/fixtures';
+import { allSongs, homeFeed, librarySnapshot, playlists } from './providers/fake/fixtures';
 import App from './App';
+
+const appCatalog = vi.hoisted(() => ({
+  value: {
+    status: 'loading' as 'loading' | 'ready',
+    home: null as typeof homeFeed | null,
+    library: null as typeof librarySnapshot | null,
+    message: null as string | null,
+  },
+}));
 
 vi.mock('./application/native-player-runtime', () => ({
   isNativeRuntime: false,
@@ -32,7 +41,7 @@ vi.mock('./application/use-theme', () => ({
   useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
 }));
 vi.mock('./application/use-catalog', () => ({
-  useCatalog: () => ({ status: 'loading', home: null, library: null, message: null }),
+  useCatalog: () => appCatalog.value,
 }));
 vi.mock('./application/preferences', async (importOriginal) => {
   const actual = await importOriginal<typeof PreferencesModule>();
@@ -66,6 +75,12 @@ vi.mock('./components/Sidebar', () => ({
         }
       >
         Navigate to account playlist
+      </button>
+      <button type="button" onClick={() => onNavigate({ page: 'song', id: 'quiet-light' })}>
+        Navigate to song
+      </button>
+      <button type="button" onClick={() => onNavigate({ page: 'artist', id: 'artist-mira-vale' })}>
+        Navigate to artist
       </button>
     </aside>
   ),
@@ -215,6 +230,7 @@ describe('App TopBar history navigation', () => {
     resetLyricsStageForTests();
     usePreferencesStore.setState(defaultPreferences);
     resetAccountRuntimeForTest();
+    appCatalog.value = { status: 'loading', home: null, library: null, message: null };
   });
 
   afterEach(() => {
@@ -222,6 +238,7 @@ describe('App TopBar history navigation', () => {
     resetLyricsStageForTests();
     resetAccountRuntimeForTest();
     restorePort();
+    appCatalog.value = { status: 'loading', home: null, library: null, message: null };
   });
 
   it('gates TopBar Back and Forward on confirmed fullscreen exit', async () => {
@@ -358,5 +375,26 @@ describe('App TopBar history navigation', () => {
       100,
       undefined,
     );
+  });
+
+  it('integrates song and artist routes through the active provider', async () => {
+    const getSong = vi.fn().mockResolvedValue(allSongs[0]!);
+    const getArtist = vi
+      .fn()
+      .mockResolvedValue(await fakeMusicProvider.getArtist('artist-mira-vale'));
+    const provider = Object.assign(Object.create(fakeMusicProvider) as MusicProvider, {
+      getSong,
+      getArtist,
+    });
+    appCatalog.value = { status: 'ready', home: homeFeed, library: librarySnapshot, message: null };
+    renderApp(provider);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to song' }));
+    expect(await screen.findByRole('heading', { name: 'Quiet Light' })).toBeVisible();
+    expect(getSong).toHaveBeenCalledWith('quiet-light', expect.any(AbortSignal));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to artist' }));
+    expect(await screen.findByRole('heading', { name: 'Mira Vale' })).toBeVisible();
+    expect(getArtist).toHaveBeenCalledWith('artist-mira-vale', expect.any(AbortSignal));
   });
 });
