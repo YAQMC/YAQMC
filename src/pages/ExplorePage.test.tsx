@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
@@ -106,5 +106,30 @@ describe('ExplorePage', () => {
       encArea: category.encArea,
       title: category.title,
     });
+  });
+
+  it('opens a new song without playing it, while explicit Play starts only that song', async () => {
+    const provider = new FakeMusicProvider();
+    const onNavigate = vi.fn();
+    usePlayerStore.setState({ playTracks: vi.fn() });
+
+    render(
+      <ProviderContext.Provider value={provider}>
+        <ExplorePage onNavigate={onNavigate} />
+      </ProviderContext.Provider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'New songs' })).toBeInTheDocument(),
+    );
+
+    const song = discoverFeed.newSongs!.tracks[0]!;
+    fireEvent.click(screen.getByRole('button', { name: `Open ${song.title}` }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'song', id: song.id });
+    expect(usePlayerStore.getState().playTracks).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: `Play ${song.title}` }));
+    expect(usePlayerStore.getState().playTracks).toHaveBeenCalledOnce();
+    expect(usePlayerStore.getState().playTracks).toHaveBeenCalledWith([song]);
   });
 });

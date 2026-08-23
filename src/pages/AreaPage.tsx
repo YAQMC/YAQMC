@@ -4,6 +4,7 @@ import type { AreaFeed } from '../domain/music';
 import type { AppRoute } from '../application/navigation';
 import { MediaCard } from '../components/MediaCard';
 import { Artwork } from '../components/ui/Artwork';
+import { EntityLink } from '../components/EntityLink';
 
 interface AreaPageProps {
   feed: AreaFeed;
@@ -75,14 +76,18 @@ export function AreaPage({ feed, onNavigate }: AreaPageProps) {
             {feed.artists.map((artist) => (
               <article key={artist.id} className="media-card">
                 <div className="media-card__art">
-                  <Artwork
-                    artwork={{ src: artist.cover, alt: artist.name, dominantColor: '#181818' }}
-                  />
+                  <EntityLink entity="artist" id={artist.id} className="media-card__open">
+                    <Artwork
+                      artwork={{ src: artist.cover, alt: artist.name, dominantColor: '#181818' }}
+                    />
+                  </EntityLink>
                 </div>
-                <button type="button" className="media-card__meta">
-                  <span className="media-card__title">{artist.name}</span>
+                <div className="media-card__meta">
+                  <EntityLink entity="artist" id={artist.id} className="media-card__title">
+                    {artist.name}
+                  </EntityLink>
                   <span className="media-card__subtitle">{t('artistLabel')}</span>
-                </button>
+                </div>
               </article>
             ))}
           </div>
