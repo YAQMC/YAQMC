@@ -938,6 +938,7 @@ async fn production_core_play01_controls_eos_seek_lyrics_and_local_api() {
 }
 
 #[tokio::test]
+#[ignore = "requires explicit LIVE authorization and production keyring access"]
 async fn production_core_qq_live_or_blocked_login() {
     let root = tempfile::tempdir().expect("live root");
     let mut session = spawn_core_with_platform_keyring(root.path()).await;

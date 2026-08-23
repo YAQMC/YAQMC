@@ -870,7 +870,7 @@ impl QQMusicService {
                 .await;
             return Ok(song);
         }
-        let result = crate::qmapi::catalog::song(&self.client.catalog, &mid)
+        let result = crate::qmapi::catalog::song(&self.client.catalog, mid)
             .await
             .and_then(|raw| normalize_qm_song(raw, 1).ok_or(QQMusicError::NotFound));
         match result {
@@ -908,9 +908,9 @@ impl QQMusicService {
             self.account.remember_songs(&album.tracks).await;
             return Ok(album);
         }
-        let result = crate::qmapi::catalog::album(&self.client.catalog, &mid)
+        let result = crate::qmapi::catalog::album(&self.client.catalog, mid)
             .await
-            .and_then(|catalog| normalize_qm_album(&mid, catalog));
+            .and_then(|catalog| normalize_qm_album(mid, catalog));
         match result {
             Ok(album) => {
                 self.storage
@@ -942,9 +942,9 @@ impl QQMusicService {
             self.account.remember_songs(&artist.top_songs).await;
             return Ok(artist);
         }
-        let result = crate::qmapi::catalog::artist(&self.client.catalog, &mid)
+        let result = crate::qmapi::catalog::artist(&self.client.catalog, mid)
             .await
-            .and_then(|catalog| normalize_qm_artist(&mid, catalog));
+            .and_then(|catalog| normalize_qm_artist(mid, catalog));
         match result {
             Ok(artist) => {
                 self.storage
