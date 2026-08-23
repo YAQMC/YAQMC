@@ -7,11 +7,14 @@ import type {
   HomeFeed,
   MediaCollection,
   Playlist,
+  Song,
 } from './domain/music';
 import { useCatalog } from './application/use-catalog';
 import { useGuessContinuation } from './application/use-guess-continuation';
 import { useTheme } from './application/use-theme';
 import type { AppRoute } from './application/navigation';
+import { NavigationProvider } from './application/navigation-context';
+import { useEntityDetail } from './application/use-entity-detail';
 import { usePlayerStore } from './application/player-store';
 import { isNativeRuntime, useNativePlayerRuntime } from './application/native-player-runtime';
 import { useLyricsCoordinator } from './application/use-lyrics-coordinator';
@@ -33,6 +36,8 @@ import { LoadingState } from './components/ui/LoadingState';
 import { RouteErrorBoundary } from './components/ui/RouteErrorBoundary';
 import { HomePage } from './pages/HomePage';
 import { AlbumPage } from './pages/AlbumPage';
+import { SongPage } from './pages/SongPage';
+import { ArtistPage } from './pages/ArtistPage';
 import { AreaPage } from './pages/AreaPage';
 import { PlaylistPage } from './pages/PlaylistPage';
 import { ExplorePage } from './pages/ExplorePage';
@@ -414,6 +419,14 @@ export default function App() {
         pageContent = <ProviderAlbumPage key={route.id} id={route.id} initial={album} />;
         break;
       }
+      case 'song': {
+        const song = catalog.home.radarSongs.find((candidate) => candidate.id === route.id);
+        pageContent = <ProviderSongPage key={route.id} id={route.id} initial={song} />;
+        break;
+      }
+      case 'artist':
+        pageContent = <ProviderArtistPage key={route.id} id={route.id} />;
+        break;
       case 'playlist': {
         const playlist = entities.playlists.find((candidate) => candidate.id === route.id);
         pageContent = <ProviderPlaylistPage key={route.id} id={route.id} initial={playlist} />;
@@ -455,7 +468,7 @@ export default function App() {
               route.page + ('id' in route ? route.id : 'playlist' in route ? route.playlist.id : '')
             }
           >
-            {pageContent}
+            <NavigationProvider onNavigate={navigate}>{pageContent}</NavigationProvider>
           </main>
         </div>
         <PlayerBar onCloseLyrics={closeLyrics} onToggleQueue={toggleQueue} />
@@ -574,6 +587,44 @@ function ProviderAlbumPage({ id, initial }: { id: string; initial?: Album }) {
     return <MissingEntity message={t('albumLoadFailed')} />;
   }
   return album ? <AlbumPage album={album} /> : <LoadingState label={t('loadingAlbum')} />;
+}
+
+function ProviderSongPage({ id, initial }: { id: string; initial?: Song }) {
+  const { t } = useTranslation('pages');
+  const provider = useMusicProvider();
+  const load = useCallback(
+    (entityId: string, signal: AbortSignal) => provider.getSong(entityId, signal),
+    [provider],
+  );
+  const resource = useEntityDetail(id, load, initial);
+
+  if (resource.status === 'error' && !resource.data) {
+    return <MissingEntity message={t('songLoadFailed')} />;
+  }
+  return resource.data ? (
+    <SongPage song={resource.data} />
+  ) : (
+    <LoadingState label={t('loadingSong')} />
+  );
+}
+
+function ProviderArtistPage({ id }: { id: string }) {
+  const { t } = useTranslation('pages');
+  const provider = useMusicProvider();
+  const load = useCallback(
+    (entityId: string, signal: AbortSignal) => provider.getArtist(entityId, signal),
+    [provider],
+  );
+  const resource = useEntityDetail(id, load);
+
+  if (resource.status === 'error' && !resource.data) {
+    return <MissingEntity message={t('artistLoadFailed')} />;
+  }
+  return resource.data ? (
+    <ArtistPage artist={resource.data} />
+  ) : (
+    <LoadingState label={t('loadingArtist')} />
+  );
 }
 
 function ProviderPlaylistPage({ id, initial }: { id: string; initial?: Playlist }) {

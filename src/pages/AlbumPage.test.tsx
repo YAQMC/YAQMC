@@ -1,10 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import i18n from '../i18n';
 import { albums } from '../providers/fake/fixtures';
 import { AlbumPage } from './AlbumPage';
+import { NavigationProvider } from '../application/navigation-context';
 
 describe('AlbumPage favorite projection', () => {
   beforeEach(async () => {
@@ -58,5 +59,19 @@ describe('AlbumPage favorite projection', () => {
 
     expect(usePlayerStore.getState().queue.slice(1)).toEqual(album.tracks);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('navigates the album artist through the shared entity route', () => {
+    const album = albums[0]!;
+    const onNavigate = vi.fn();
+    render(
+      <NavigationProvider onNavigate={onNavigate}>
+        <AlbumPage album={album} />
+      </NavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: album.artist.name }));
+
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'artist', id: album.artist.id });
   });
 });

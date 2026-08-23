@@ -7,6 +7,7 @@ import { TrackList } from '../components/TrackList';
 import { Artwork } from '../components/ui/Artwork';
 import { ActionMenu, ActionMenuItem } from '../components/ui/ActionMenu';
 import { useTranslation } from 'react-i18next';
+import { EntityLink } from '../components/EntityLink';
 
 interface AlbumPageProps {
   album: Album;
@@ -42,9 +43,9 @@ export function AlbumPage({ album }: AlbumPageProps) {
         <div className="detail-hero__copy">
           <p className="eyebrow">{t('eyebrow')}</p>
           <h1>{album.title}</h1>
-          <button type="button" className="detail-hero__artist">
+          <EntityLink entity="artist" id={album.artist.id} className="detail-hero__artist">
             {album.artist.name}
-          </button>
+          </EntityLink>
           <p className="detail-hero__description">{album.description}</p>
           <p className="detail-hero__meta">
             {releaseLabel} <span>·</span> {album.genre} <span>·</span>{' '}
