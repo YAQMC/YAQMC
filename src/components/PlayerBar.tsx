@@ -39,6 +39,8 @@ import { PlaybackModeControl } from './PlaybackModeControl';
 import { useTranslation } from 'react-i18next';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
+import { isNativeRuntime } from '../application/native-player-runtime';
+import { usePreferencesStore } from '../application/preferences';
 import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } from '../domain/music';
 import { EntityLink } from './EntityLink';
 
@@ -237,11 +239,10 @@ function PlayerVolumeSlider({ t }: { t: TFunction<'player'> }) {
 }
 
 interface PlayerBarProps {
-  onCloseLyrics?: () => void;
   onToggleQueue?: () => void;
 }
 
-export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
+export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
   const { t } = useTranslation('player');
   const { t: common } = useTranslation('common');
   const pluginBar = usePluginUiSnapshot().playerBar;
@@ -259,14 +260,14 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
   const playbackError = usePlayerStore((state) => state.playbackError);
   const sourceSelection = usePlayerStore((state) => state.sourceSelection);
   const queueOpen = usePlayerStore((state) => state.queueOpen);
-  const lyricsOpen = usePlayerStore((state) => state.lyricsOpen);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const next = usePlayerStore((state) => state.next);
   const previous = usePlayerStore((state) => state.previous);
   const setQuality = usePlayerStore((state) => state.setQuality);
   const toggleQueue = usePlayerStore((state) => state.toggleQueue);
-  const toggleLyrics = usePlayerStore((state) => state.toggleLyrics);
   const openLyrics = usePlayerStore((state) => state.openLyrics);
+  const desktopEnabled = usePreferencesStore((state) => state.surfaces.desktop.enabled);
+  const updateSurface = usePreferencesStore((state) => state.updateSurface);
   const playbackStatus = playbackLabel(playbackState, playbackError, t);
   const favoriteLabel = current
     ? favoritePending
@@ -426,10 +427,11 @@ export function PlayerBar({ onCloseLyrics, onToggleQueue }: PlayerBarProps) {
           disabled={!current || current.provider?.providerId !== 'qqmusic'}
         />
         <IconButton
-          label={t('showLyrics')}
+          label={desktopEnabled ? t('disableDesktopLyrics') : t('enableDesktopLyrics')}
           size="small"
-          active={lyricsOpen}
-          onClick={lyricsOpen && onCloseLyrics ? onCloseLyrics : toggleLyrics}
+          active={desktopEnabled}
+          disabled={!isNativeRuntime}
+          onClick={() => updateSurface('desktop', { enabled: !desktopEnabled })}
         >
           <Mic2 size={16} />
         </IconButton>

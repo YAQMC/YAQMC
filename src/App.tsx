@@ -473,7 +473,7 @@ export default function App() {
               {pageContent}
             </main>
           </div>
-          <PlayerBar onCloseLyrics={closeLyrics} onToggleQueue={toggleQueue} />
+          <PlayerBar onToggleQueue={toggleQueue} />
           <PluginNoticeHost />
           <CoreStatusBanner />
           <QueuePanel />
