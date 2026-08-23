@@ -1,14 +1,20 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
+import type { AppRoute } from '../application/navigation';
 import { initialPlayerState, usePlayerStore, type QueueEntry } from '../application/player-store';
 import type { Song } from '../domain/music';
+import { NavigationProvider } from '../application/navigation-context';
+import '../styles/components.css';
 import { QueuePanel } from './QueuePanel';
 
-const track = (id: string): Song => ({
+const track = (
+  id: string,
+  artists: Song['artists'] = [{ id: 'artist', name: 'Artist' }],
+): Song => ({
   id,
   title: id,
-  artists: [{ id: 'artist', name: 'Artist' }],
+  artists,
   album: { id: 'album', title: 'Album' },
   artwork: { src: '/cover.svg', alt: 'Cover', dominantColor: '#000' },
   durationMs: 10_000,
@@ -37,6 +43,14 @@ function openQueue(): QueueEntry[] {
   return entries;
 }
 
+function renderWithNavigation(onNavigate: (target: AppRoute) => void) {
+  return render(
+    <NavigationProvider onNavigate={onNavigate}>
+      <QueuePanel />
+    </NavigationProvider>,
+  );
+}
+
 describe('QueuePanel', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -47,6 +61,102 @@ describe('QueuePanel', () => {
   afterEach(() => {
     setPlayerCommandAdapter(null);
     cleanup();
+  });
+
+  it('routes now-playing title and every artist without issuing a player command', () => {
+    const nowPlaying = track('current-song', [
+      { id: 'current-artist-a', name: 'Current Artist A' },
+      { id: 'current-artist-b', name: 'Current Artist B' },
+    ]);
+    const entries = openQueue();
+    usePlayerStore.setState({
+      queue: [nowPlaying, ...entries.slice(1).map((entry) => entry.track)],
+      queueEntries: [{ ...entries[0]!, track: nowPlaying }, ...entries.slice(1)],
+    });
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    const onNavigate = vi.fn();
+    renderWithNavigation(onNavigate);
+
+    fireEvent.click(screen.getByRole('button', { name: 'current-song' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Current Artist A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Current Artist B' }));
+
+    expect(onNavigate).toHaveBeenNthCalledWith(1, { page: 'song', id: 'current-song' });
+    expect(onNavigate).toHaveBeenNthCalledWith(2, {
+      page: 'artist',
+      id: 'current-artist-a',
+    });
+    expect(onNavigate).toHaveBeenNthCalledWith(3, {
+      page: 'artist',
+      id: 'current-artist-b',
+    });
+    expect(commands).toEqual([]);
+  });
+
+  it('routes up-next title and every artist while play remains a durable entry action', () => {
+    const upNext = track('up-next-song', [
+      { id: 'up-next-artist-a', name: 'Up Next Artist A' },
+      { id: 'up-next-artist-b', name: 'Up Next Artist B' },
+    ]);
+    const entries = openQueue();
+    usePlayerStore.setState({
+      queue: [entries[0]!.track, upNext, ...entries.slice(2).map((entry) => entry.track)],
+      queueEntries: [entries[0]!, { ...entries[1]!, track: upNext }, ...entries.slice(2)],
+    });
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    const onNavigate = vi.fn();
+    renderWithNavigation(onNavigate);
+
+    fireEvent.click(screen.getByRole('button', { name: 'up-next-song' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Up Next Artist A' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Up Next Artist B' }));
+    expect(onNavigate).toHaveBeenNthCalledWith(1, { page: 'song', id: 'up-next-song' });
+    expect(onNavigate).toHaveBeenNthCalledWith(2, {
+      page: 'artist',
+      id: 'up-next-artist-a',
+    });
+    expect(onNavigate).toHaveBeenNthCalledWith(3, {
+      page: 'artist',
+      id: 'up-next-artist-b',
+    });
+    expect(commands).toEqual([]);
+
+    const playButton = screen.getByRole('button', { name: 'Play now up-next-song' });
+    expect(playButton).toBeVisible();
+    expect(getComputedStyle(playButton).opacity).toBe('0.65');
+    fireEvent.click(playButton);
+    expect(commands).toEqual([{ type: 'playQueueEntry', entryId: 'entry-two' }]);
+  });
+
+  it('keeps blank entity IDs as text and never nests entity controls', () => {
+    const blankIds = {
+      ...track('', [
+        { id: '', name: 'Blank ID Artist' },
+        { id: '   ', name: 'Whitespace ID Artist' },
+      ]),
+      title: 'blank-song',
+    };
+    const entries = openQueue();
+    usePlayerStore.setState({
+      queue: [entries[0]!.track, blankIds, ...entries.slice(2).map((entry) => entry.track)],
+      queueEntries: [entries[0]!, { ...entries[1]!, track: blankIds }, ...entries.slice(2)],
+    });
+    const onNavigate = vi.fn();
+    const { container } = renderWithNavigation(onNavigate);
+
+    expect(screen.queryByRole('button', { name: 'blank-song' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Blank ID Artist' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Whitespace ID Artist' })).not.toBeInTheDocument();
+    expect(container.querySelector('.queue-row__title')).toHaveProperty('tagName', 'SPAN');
+    expect(container.querySelector('.queue-row__artist')).toHaveProperty('tagName', 'SPAN');
+    expect(container.querySelector('button button')).not.toBeInTheDocument();
+    expect(container.querySelector('button a')).not.toBeInTheDocument();
   });
 
   it('opens a portalled menu above the panel and exposes capability-aware actions', () => {
