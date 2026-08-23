@@ -7,7 +7,6 @@ blob-report
 package-lock.json
 GPT-Read-me.md
 packages/yaqmc-client/fixtures
-crates/yaqmc-provider-qqmusic/tests/fixtures
 
 # Workspace scratch, worktrees, and generated Rust artifacts
 .superpowers/**
@@ -15,6 +14,5 @@ crates/yaqmc-provider-qqmusic/tests/fixtures
 worktrees/**
 target
 
-# Untracked legacy migration artifacts
+# Untracked legacy Tauri tree
 /src-tauri/**
-/YAQMC_ELECTRON_MIGRATION_PLAN.md
