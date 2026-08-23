@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LyricDocument, LyricLine } from '../domain/music';
-import {
-  nextLyricBoundaryMs,
-  selectLyricCursor,
-  wordProgress,
-} from './lyrics-timing';
+import { nextLyricBoundaryMs, selectLyricCursor, wordProgress } from './lyrics-timing';
 
 const line = (partial: Partial<LyricLine> & Pick<LyricLine, 'id' | 'text'>): LyricLine => ({
   startMs: null,
