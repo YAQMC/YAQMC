@@ -390,10 +390,26 @@
   white-space: nowrap;
 }
 
+.player-bar__title-link {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .player-bar__track-copy strong {
   color: var(--text);
   font-size: var(--text-sm);
   font-weight: 600;
+}
+
+.player-bar__artist-link {
+  display: inline;
+  color: inherit;
 }
 
 .player-bar__track-copy span {

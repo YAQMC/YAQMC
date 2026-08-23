@@ -9,21 +9,34 @@ interface EntityLinkProps {
   children: ReactNode;
   className?: string;
   ariaLabel?: string;
+  dataYaqmc?: string;
 }
 
-export function EntityLink({ entity, id, children, className, ariaLabel }: EntityLinkProps) {
+export function EntityLink({
+  entity,
+  id,
+  children,
+  className,
+  ariaLabel,
+  dataYaqmc,
+}: EntityLinkProps) {
   const navigate = useNavigate();
   const normalizedId = id?.trim() ?? '';
 
   if (!normalizedId || !navigate) {
-    return <span className={className}>{children}</span>;
+    return (
+      <span className={className} data-yaqmc={dataYaqmc}>
+        {children}
+      </span>
+    );
   }
 
   return (
     <button
       type="button"
-      className={className}
+      className={['entity-link', className].filter(Boolean).join(' ')}
       aria-label={ariaLabel}
+      data-yaqmc={dataYaqmc}
       onClick={(event) => {
         event.stopPropagation();
         navigate({ page: entity, id: normalizedId });

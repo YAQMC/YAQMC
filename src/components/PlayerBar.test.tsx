@@ -4,6 +4,7 @@ import { resetAccountRuntimeForTest, useAccountStore } from '../application/acco
 import { setPlayerCommandAdapter } from '../application/player-command-adapter';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
+import { NavigationProvider } from '../application/navigation-context';
 import type { AccountSnapshot, FavoriteMutationResult } from '../domain/music';
 import { allSongs } from '../providers/fake/fixtures';
 import { qqMusicProvider } from '../providers/qqmusic/qq-music-provider';
@@ -158,6 +159,58 @@ describe('PlayerBar lyrics presentation entry', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open lyrics page' }));
 
     expect(usePlayerStore.getState()).toMatchObject({ lyricsOpen: true, queueOpen: false });
+  });
+
+  it('routes the current title and artists while artwork still opens normal lyrics', () => {
+    const track = {
+      ...qqTrack(),
+      title: 'Linked Current Song',
+      artists: [
+        { id: 'artist-one', name: 'Artist One' },
+        { id: 'artist-two', name: 'Artist Two' },
+      ],
+    };
+    const onNavigate = vi.fn();
+    usePlayerStore.setState({ queue: [track], currentIndex: 0 });
+    render(
+      <NavigationProvider onNavigate={onNavigate}>
+        <PlayerBar />
+      </NavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Linked Current Song' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Artist One' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Artist Two' }));
+    expect(onNavigate.mock.calls).toEqual([
+      [{ page: 'song', id: track.id }],
+      [{ page: 'artist', id: 'artist-one' }],
+      [{ page: 'artist', id: 'artist-two' }],
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open lyrics page' }));
+    expect(onNavigate).toHaveBeenCalledTimes(3);
+    expect(usePlayerStore.getState()).toMatchObject({ lyricsOpen: true, queueOpen: false });
+  });
+
+  it('renders blank entity IDs as plain text in the player bar', () => {
+    const track = {
+      ...qqTrack(),
+      id: ' ',
+      title: 'Plain Current Song',
+      artists: [{ id: ' ', name: 'Plain Artist' }],
+    };
+    usePlayerStore.setState({ queue: [track], currentIndex: 0 });
+    const { container } = render(
+      <NavigationProvider onNavigate={vi.fn()}>
+        <PlayerBar />
+      </NavigationProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Plain Current Song' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Plain Artist' })).toBeNull();
+    expect(screen.getByText('Plain Current Song')).toBeInTheDocument();
+    expect(screen.getByText('Plain Artist')).toBeInTheDocument();
+    expect(container.querySelector('button button')).toBeNull();
   });
 
   it('delegates an open Lyrics panel to safe close without changing visibility directly', () => {
