@@ -36,6 +36,8 @@ export default defineConfig(({ command }) => ({
     css: true,
     exclude: [
       ...configDefaults.exclude,
+      '.worktrees/**',
+      'worktrees/**',
       'output/**',
       '.superpowers/**',
       'scripts/**',
