@@ -1659,6 +1659,30 @@
   user-select: text;
 }
 
+.token-control input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 9px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.token-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.token-actions .button {
+  height: 36px;
+  white-space: nowrap;
+}
+
 .settings-icon-button {
   display: grid;
   width: 31px;
@@ -1684,6 +1708,12 @@
   min-width: 104px;
   height: 36px;
   padding-inline: 11px;
+}
+
+.settings-token-recommendation {
+  margin: -2px 22px 14px;
+  color: var(--warning, #d7a44b);
+  font-size: var(--text-xs);
 }
 
 .settings-security-note {

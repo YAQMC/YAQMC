@@ -210,6 +210,7 @@ test.describe('PLAY-01 native renderer + production Core', () => {
     const { page } = session;
     const port = 19_592;
     await rendererInvoke(page, 'local_api_set_port', { port });
+    await rendererInvoke(page, 'local_api_regenerate_token');
     const status = await rendererInvoke<{ state?: string; enabled?: boolean }>(
       page,
       'local_api_set_enabled',

@@ -980,7 +980,11 @@ export const enUS = {
       portLabel: 'Local API port',
       copyAddress: 'Copy local API address',
       token: 'Bearer token',
-      tokenDescription: 'Protected endpoints require this secret in the Authorization header.',
+      tokenDescription:
+        'Optional. When set, protected endpoints require this secret in the Authorization header.',
+      saveToken: 'Save token',
+      tokenRecommendation:
+        'A bearer token is recommended to prevent other local applications from controlling playback.',
       hideToken: 'Hide bearer token',
       revealToken: 'Reveal bearer token',
       copyToken: 'Copy bearer token',
@@ -988,7 +992,7 @@ export const enUS = {
       regenerateConfirm:
         'Regenerate the bearer token? Existing local integrations will immediately lose access.',
       security:
-        'Anyone holding this token can inspect listening activity and control playback. The server has no LAN binding, CORS permission, arbitrary command endpoint, or request body above 16 KiB.',
+        'With no token, any local process can inspect listening activity and control playback. The server has no LAN binding, CORS permission, arbitrary command endpoint, or request body above 16 KiB.',
       refresh: 'Refresh status',
     },
     about: {

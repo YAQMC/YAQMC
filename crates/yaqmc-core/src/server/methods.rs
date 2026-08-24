@@ -104,6 +104,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "local_api_status",
     "local_api_set_enabled",
     "local_api_set_port",
+    "local_api_set_token",
     "local_api_reveal_token",
     "local_api_regenerate_token",
     "debug_perf_sample",
@@ -673,6 +674,14 @@ async fn invoke_core(
         "local_api_set_port" => {
             let PortParams { port } = parse(&params)?;
             cmd(ops::local_api_set_port(&core.local_api(), port).await)
+        }
+        "local_api_set_token" => {
+            let TokenParams { token } = parse(&params)?;
+            cmd(core
+                .local_api()
+                .set_token(token)
+                .await
+                .map_err(|error| error.to_string()))
         }
         "local_api_reveal_token" => ok(core.local_api().reveal_token().await),
         "local_api_regenerate_token" => cmd(core

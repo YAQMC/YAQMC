@@ -388,6 +388,7 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::Main,
     ),
     spec("local_api_set_port", MethodOwner::Core, OriginClass::Main),
+    spec("local_api_set_token", MethodOwner::Core, OriginClass::Main),
     spec(
         "local_api_reveal_token",
         MethodOwner::Core,

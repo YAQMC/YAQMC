@@ -846,6 +846,7 @@ async fn production_core_play01_controls_eos_seek_lyrics_and_local_api() {
     );
 
     let api_port = 19_591_u16;
+    session.request("local_api_regenerate_token", None).await;
     session
         .request("local_api_set_port", Some(json!({ "port": api_port })))
         .await;

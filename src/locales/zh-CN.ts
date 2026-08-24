@@ -960,14 +960,16 @@ export const zhCN = {
       portLabel: '本地 API 端口',
       copyAddress: '复制本地 API 地址',
       token: 'Bearer 令牌',
-      tokenDescription: '受保护接口要求在 Authorization 请求头中携带此密钥。',
+      tokenDescription: '可选。填写后，受保护接口要求在 Authorization 请求头中携带此密钥。',
+      saveToken: '保存令牌',
+      tokenRecommendation: '建议填写 Bearer 令牌，避免本机其他程序直接控制播放。',
       hideToken: '隐藏 Bearer 令牌',
       revealToken: '显示 Bearer 令牌',
       copyToken: '复制 Bearer 令牌',
       regenerate: '重新生成',
       regenerateConfirm: '要重新生成 Bearer 令牌吗？现有本地集成将立即失去访问权限。',
       security:
-        '持有此令牌的程序可读取收听活动并控制播放。服务不绑定局域网、不允许 CORS、没有任意命令接口，且请求正文不超过 16 KiB。',
+        '令牌留空时，任意本机程序都可读取收听活动并控制播放。服务不绑定局域网、不允许 CORS、没有任意命令接口，且请求正文不超过 16 KiB。',
       refresh: '刷新状态',
     },
     about: {

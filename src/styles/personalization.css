@@ -529,6 +529,10 @@
   .settings-row--token {
     grid-template-columns: 1fr;
   }
+
+  .token-actions {
+    justify-content: flex-start;
+  }
 }
 
 .lyrics-preset-picker {
