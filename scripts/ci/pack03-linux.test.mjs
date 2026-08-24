@@ -90,7 +90,7 @@ test('yml declares AppImage deb rpm tar.gz for x64 and arm64 without an updater 
   );
   assert.equal(pkg.devDependencies.electron, ELECTRON_VERSION);
   assert.equal(pkg.devDependencies['electron-builder'], BUILDER_VERSION);
-  assert.equal(pkg.dependencies?.['electron-updater'], '6.8.6');
+  assert.equal(pkg.dependencies?.['electron-updater'], '6.8.9');
 });
 
 test('prints electron-builder --linux flags from the yml and POSIX install commands', () => {

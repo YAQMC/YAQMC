@@ -13,7 +13,7 @@ describe('PACK-01 electron-builder', () => {
     }
   });
 
-  it('pins electron-builder exactly and electron-updater 6.8.6', () => {
+  it('pins electron-builder exactly and electron-updater 6.8.9', () => {
     const pkg = JSON.parse(readFileSync(path.join(desktopRoot, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
@@ -21,7 +21,7 @@ describe('PACK-01 electron-builder', () => {
     };
     expect(pkg.devDependencies?.electron).toBe('43.4.0');
     expect(pkg.devDependencies?.['electron-builder']).toBe('26.15.7');
-    expect(pkg.dependencies?.['electron-updater']).toBe('6.8.6');
+    expect(pkg.dependencies?.['electron-updater']).toBe('6.8.9');
     expect(pkg.scripts?.['pack:dir']).toContain('--dir');
     expect(pkg.scripts?.['pack:dir']).toContain('--publish never');
     expect(pkg.scripts?.['pack:win']).toBe(
