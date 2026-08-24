@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyAppearance,
   defaultPreferences,
   formatBackgroundPickerError,
   mergeHydratedSurfaces,
@@ -18,16 +19,50 @@ describe('preference persistence model', () => {
 
   it('clamps unsafe appearance and lyric-surface values', () => {
     const normalized = normalizePreferences({
-      appearance: { surfaceOpacity: 12, artworkInfluence: 500, primaryColor: 'broken' },
+      appearance: {
+        surfaceOpacity: 12,
+        artworkInfluence: 500,
+        interfaceFontScale: 500,
+        primaryColor: 'broken',
+      },
       lyrics: { timingOffsetMs: 8_000 },
       surfaces: { desktop: { fontSize: 500, backgroundOpacity: -4 } },
     });
     expect(normalized.appearance.surfaceOpacity).toBe(85);
     expect(normalized.appearance.artworkInfluence).toBe(100);
+    expect(normalized.appearance.interfaceFontScale).toBe(130);
+    expect(normalized.appearance.interfaceFontFamily).toBe('application');
     expect(normalized.appearance.primaryColor).toBe('#A8C95E');
     expect(normalized.lyrics.timingOffsetMs).toBe(2_000);
     expect(normalized.surfaces.desktop.fontSize).toBe(64);
     expect(normalized.surfaces.desktop.backgroundOpacity).toBe(0);
+  });
+
+  it('applies the normalized interface font scale as a root CSS variable', () => {
+    const appearance = normalizePreferences({
+      appearance: { interfaceFontScale: 120 },
+    }).appearance;
+
+    applyAppearance(appearance, 'dark');
+
+    expect(document.documentElement.style.getPropertyValue('--ui-font-scale')).toBe('1.2');
+  });
+
+  it('restricts interface fonts to curated stacks and applies the selected stack', () => {
+    const appearance = normalizePreferences({
+      appearance: { interfaceFontFamily: 'monospace' },
+    }).appearance;
+    expect(appearance.interfaceFontFamily).toBe('monospace');
+    expect(
+      normalizePreferences({ appearance: { interfaceFontFamily: 'untrusted-font' } }).appearance
+        .interfaceFontFamily,
+    ).toBe('application');
+
+    applyAppearance(appearance, 'dark');
+
+    expect(document.documentElement.style.getPropertyValue('--font-ui-text')).toContain(
+      'ui-monospace',
+    );
   });
 
   it('preserves independent UI locale and lyric presentation choices', () => {
@@ -44,6 +79,7 @@ describe('preference persistence model', () => {
       coverLayout: 'split',
       focusSidebarCollapsed: false,
       wordEffect: 'jump',
+      fontWeight: '700',
     });
   });
 
@@ -70,6 +106,44 @@ describe('preference persistence model', () => {
     expect(
       normalizePreferences({ version: 2, lyrics: { wordEffect: 'unknown' } }).lyrics.wordEffect,
     ).toBe('jump');
+  });
+
+  it('defaults and validates the global lyrics font weight', () => {
+    expect(normalizePreferences({ lyrics: { fontWeight: '600' } }).lyrics.fontWeight).toBe('600');
+    expect(normalizePreferences({ lyrics: { fontWeight: '550' } }).lyrics.fontWeight).toBe('700');
+
+    usePreferencesStore.setState(defaultPreferences);
+    usePreferencesStore.getState().updateLyrics({ fontWeight: '800' });
+    expect(usePreferencesStore.getState().lyrics.fontWeight).toBe('800');
+  });
+
+  it('normalizes and persists AMLL renderer settings', () => {
+    const normalized = normalizePreferences({
+      amll: {
+        enableSpring: false,
+        enableScale: false,
+        enableBlur: false,
+        hidePassedLines: true,
+        wordFadeWidth: 5,
+      },
+    });
+    expect(normalized.amll).toEqual({
+      enableSpring: false,
+      enableScale: false,
+      enableBlur: false,
+      hidePassedLines: true,
+      wordFadeWidth: 1,
+    });
+    expect(normalizePreferences({ amll: { wordFadeWidth: 0 } }).amll.wordFadeWidth).toBe(0.05);
+
+    usePreferencesStore.setState(defaultPreferences);
+    usePreferencesStore.getState().updateAmll({ enableSpring: false, wordFadeWidth: 0.75 });
+    expect(usePreferencesStore.getState().amll).toEqual({
+      ...defaultPreferences.amll,
+      enableSpring: false,
+      wordFadeWidth: 0.75,
+    });
+    expect(usePreferencesStore.getState().appearance).toEqual(defaultPreferences.appearance);
   });
 
   it('updates the lyrics focus-sidebar preference without changing appearance', () => {

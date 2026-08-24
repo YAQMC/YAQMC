@@ -141,6 +141,8 @@ function LyricsPanelStage({
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
   const wordEffect = usePreferencesStore((state) => state.lyrics.wordEffect);
+  const fontWeight = usePreferencesStore((state) => state.lyrics.fontWeight);
+  const amll = usePreferencesStore((state) => state.amll);
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
   const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
   const selectLyricsPreset = usePreferencesStore((state) => state.selectLyricsPreset);
@@ -348,6 +350,8 @@ function LyricsPanelStage({
     translation,
     romanization,
     wordEffect,
+    fontWeight,
+    amll,
   };
 
   return (

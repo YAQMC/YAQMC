@@ -4,7 +4,11 @@ import type { LyricLine as AmllLyricLine, LyricLineMouseEvent } from '@applemusi
 import { AlignLeft, Music2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { shouldShowLyricSecondary } from '../../application/lyrics-presentation';
-import type { LyricWordEffect, SecondaryLyricVisibility } from '../../application/preferences';
+import type {
+  AmllSettings,
+  LyricWordEffect,
+  SecondaryLyricVisibility,
+} from '../../application/preferences';
 import { usePlayerStore } from '../../application/player-store';
 import type { LyricDocument, LyricLine } from '../../domain/music';
 
@@ -218,7 +222,8 @@ export function LyricsViewport({
   seek,
   translation,
   romanization,
-  wordEffect: _wordEffect,
+  wordEffect,
+  amll,
   followAnchor,
   align,
   songId: _songId,
@@ -237,6 +242,7 @@ export function LyricsViewport({
   translation: SecondaryLyricVisibility;
   romanization: SecondaryLyricVisibility;
   wordEffect: LyricWordEffect;
+  amll: AmllSettings;
   followAnchor: number;
   align: 'left' | 'center' | 'right';
   songId: string | null;
@@ -299,7 +305,12 @@ export function LyricsViewport({
   };
 
   return (
-    <div className="lyrics-stage__amll" data-align={align} data-follow="active">
+    <div
+      className="lyrics-stage__amll"
+      data-align={align}
+      data-follow="active"
+      data-word-jump={wordEffect === 'jump' ? 'true' : 'false'}
+    >
       <LyricPlayer
         className="lyrics-stage__amll-player"
         disabled={editorGesture}
@@ -309,11 +320,11 @@ export function LyricsViewport({
         playing={isPlaying}
         alignAnchor="center"
         alignPosition={Math.min(0.9, Math.max(0.1, followAnchor))}
-        enableSpring={!reducedMotion}
-        enableScale={!reducedMotion}
-        enableBlur={!reducedMotion}
-        hidePassedLines={false}
-        wordFadeWidth={0.5}
+        enableSpring={amll.enableSpring && !reducedMotion}
+        enableScale={amll.enableScale && !reducedMotion}
+        enableBlur={amll.enableBlur && !reducedMotion}
+        hidePassedLines={amll.hidePassedLines}
+        wordFadeWidth={amll.wordFadeWidth}
         onLyricLineClick={onLyricLineClick}
       />
     </div>

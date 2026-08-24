@@ -26,23 +26,16 @@ import {
 import {
   applyOverride,
   clampFollowAnchor,
-  clampFontScale,
-  clampLineHeight,
-  FONT_SCALE_MAX,
-  FONT_SCALE_MIN,
   FOLLOW_ANCHOR_DEFAULT,
   factoryScene,
   hasBuiltinOverride,
   isBuiltinPresetId,
-  LINE_HEIGHT_MAX,
-  LINE_HEIGHT_MIN,
   listResolvedPresets,
   patchFromDefinition,
   resetOverride,
   resetSceneWidget,
   resetSceneWidgetPosition,
   resolveLyricsPreset,
-  resolvePrimaryFontSizePx,
   saveAsNewPreset,
   SCENE_WIDGET_IDS,
   COLOR_FIELD_POSITIONS,
@@ -265,6 +258,8 @@ export function LyricsPresetEditor({
   const translation = usePreferencesStore((state) => state.lyrics.translation);
   const romanization = usePreferencesStore((state) => state.lyrics.romanization);
   const wordEffect = usePreferencesStore((state) => state.lyrics.wordEffect);
+  const fontWeight = usePreferencesStore((state) => state.lyrics.fontWeight);
+  const amll = usePreferencesStore((state) => state.amll);
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
   const source = resolveLyricsPreset(lyricsPresets, presetId);
   const [draft, setDraft] = useState<LyricsPresetDefinition>(source);
@@ -563,9 +558,12 @@ export function LyricsPresetEditor({
       translation,
       romanization,
       wordEffect,
+      fontWeight,
+      amll,
     }),
     [
       artworkSrc,
+      amll,
       getPositionMs,
       preview.durationMs,
       preview.isPlaying,
@@ -579,6 +577,7 @@ export function LyricsPresetEditor({
       romanization,
       translation,
       wordEffect,
+      fontWeight,
     ],
   );
 
@@ -1010,59 +1009,6 @@ export function LyricsPresetEditor({
             </div>
 
             <div className="lyrics-composer-inspector">
-              <div className="lyrics-composer-section">
-                <h3>{t('typographySection')}</h3>
-                <ComposerRange
-                  label={t('fontSize')}
-                  min={FONT_SCALE_MIN}
-                  max={FONT_SCALE_MAX}
-                  step={0.01}
-                  value={draft.typography.fontScale}
-                  output={`${Math.round(draft.typography.fontScale * 100)}% · ${Math.round(resolvePrimaryFontSizePx(draft.typography.fontScale, fit.height))}px`}
-                  onGestureStart={beginSlider}
-                  onGestureEnd={endSlider}
-                  onChange={(value) =>
-                    assignDraft({
-                      ...draftRef.current,
-                      typography: {
-                        ...draftRef.current.typography,
-                        fontScale: clampFontScale(value),
-                      },
-                    })
-                  }
-                  onReset={() =>
-                    commit({
-                      ...draft,
-                      typography: { ...draft.typography, fontScale: 1 },
-                    })
-                  }
-                />
-                <ComposerRange
-                  label={t('lineSpacing')}
-                  min={LINE_HEIGHT_MIN}
-                  max={LINE_HEIGHT_MAX}
-                  step={0.01}
-                  value={draft.typography.lineHeight}
-                  output={draft.typography.lineHeight.toFixed(2)}
-                  onGestureStart={beginSlider}
-                  onGestureEnd={endSlider}
-                  onChange={(value) =>
-                    assignDraft({
-                      ...draftRef.current,
-                      typography: {
-                        ...draftRef.current.typography,
-                        lineHeight: clampLineHeight(value),
-                      },
-                    })
-                  }
-                  onReset={() =>
-                    commit({
-                      ...draft,
-                      typography: { ...draft.typography, lineHeight: 1.16 },
-                    })
-                  }
-                />
-              </div>
               <div className="lyrics-composer-section">
                 <h3>{t('backgroundSection')}</h3>
                 <label className="lyrics-preset-editor__select">

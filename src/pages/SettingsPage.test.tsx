@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
+import { resolveLyricsPreset } from '../application/lyrics-preset';
 import { ProviderContext } from '../application/provider-context';
 import type { AccountSnapshot } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
@@ -134,6 +135,29 @@ describe('SettingsPage account section', () => {
 
     fireEvent.change(picker, { target: { value: '#445566' } });
     expect(usePreferencesStore.getState().appearance.primaryColor).toBe('#445566');
+  });
+
+  it('adjusts and persists the interface font size separately from lyrics', async () => {
+    const account = accountProvider();
+    renderSettings(account.value);
+
+    const fontScale = screen.getByLabelText('Interface font size');
+    expect(fontScale).toHaveValue('100');
+
+    fireEvent.change(fontScale, { target: { value: '120' } });
+
+    expect(usePreferencesStore.getState().appearance.interfaceFontScale).toBe(120);
+    expect(usePreferencesStore.getState().lyrics.fontSize).toBe('medium');
+  });
+
+  it('selects a curated interface font without accepting a custom CSS value', () => {
+    const account = accountProvider();
+    renderSettings(account.value);
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Interface font' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Monospace' }));
+
+    expect(usePreferencesStore.getState().appearance.interfaceFontFamily).toBe('monospace');
   });
 
   it('opens the sanitized account dialog without starting login from Settings', () => {
@@ -278,18 +302,58 @@ describe('SettingsPage account section', () => {
     expect(screen.getByRole('radio', { name: 'Vinyl' })).toBeInTheDocument();
   });
 
-  it('switches the lyrics word effect between jump and fill', () => {
+  it('toggles lyrics word jump on and off', () => {
     const account = accountProvider();
     renderSettings(account.value);
 
-    const effect = screen.getByLabelText('Word highlight effect');
-    expect(effect).toHaveTextContent('Per-character jump');
+    const wordJump = screen.getByRole('switch', { name: 'Word jump' });
+    expect(wordJump).toBeChecked();
     expect(usePreferencesStore.getState().lyrics.wordEffect).toBe('jump');
 
-    fireEvent.click(effect);
-    fireEvent.click(screen.getByRole('option', { name: 'Gradual fill' }));
+    fireEvent.click(wordJump);
 
     expect(usePreferencesStore.getState().lyrics.wordEffect).toBe('fill');
-    expect(screen.getByLabelText('Word highlight effect')).toHaveTextContent('Gradual fill');
+    expect(wordJump).not.toBeChecked();
+  });
+
+  it('moves active-preset typography and lyrics weight into the settings page', () => {
+    const account = accountProvider();
+    renderSettings(account.value);
+
+    const fontSize = screen.getByRole('slider', { name: 'Lyrics font size' });
+    expect(Number.parseFloat(fontSize.style.getPropertyValue('--range-progress'))).toBeCloseTo(40);
+
+    fireEvent.change(fontSize, {
+      target: { value: '1.25' },
+    });
+    fireEvent.change(screen.getByRole('slider', { name: 'Lyrics line spacing' }), {
+      target: { value: '1.4' },
+    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Lyrics font weight' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Semibold (600)' }));
+
+    expect(resolveLyricsPreset(usePreferencesStore.getState().lyricsPresets).typography).toEqual({
+      fontScale: 1.25,
+      lineHeight: 1.4,
+    });
+    expect(usePreferencesStore.getState().lyrics.fontWeight).toBe('600');
+  });
+
+  it('updates AMLL renderer preferences from the lyrics settings', () => {
+    const account = accountProvider();
+    renderSettings(account.value);
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Spring scrolling' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Hide passed lines' }));
+    fireEvent.change(screen.getByRole('slider', { name: 'Word transition width' }), {
+      target: { value: '0.75' },
+    });
+
+    expect(usePreferencesStore.getState().amll).toEqual({
+      ...defaultPreferences.amll,
+      enableSpring: false,
+      hidePassedLines: true,
+      wordFadeWidth: 0.75,
+    });
   });
 });

@@ -26,30 +26,30 @@
 
 :root {
   color-scheme: dark;
-  font-family:
-    'YAQMC Text',
-    'PingFang SC',
-    'Segoe UI Variable',
-    'Segoe UI',
-    'Noto Sans SC',
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  --ui-font-scale: 1;
+  --font-ui-text:
+    'YAQMC Text', 'PingFang SC', 'Segoe UI Variable', 'Segoe UI', 'Noto Sans SC', system-ui,
+    -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui-display:
+    'YAQMC Display', 'PingFang SC', 'SF Pro Display', 'Segoe UI Variable Display',
+    'Segoe UI Variable', 'Segoe UI', sans-serif;
+  font-family: var(--font-ui-text);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  --font-display:
-    'YAQMC Display', 'PingFang SC', 'SF Pro Display', 'Segoe UI Variable Display',
-    'Segoe UI Variable', 'Segoe UI', sans-serif;
-  --text-2xs: 0.6875rem;
-  --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
-  --text-base: 0.875rem;
-  --text-md: 1rem;
-  --text-lg: 1.25rem;
-  --text-xl: 1.625rem;
-  --text-2xl: clamp(2.15rem, 4vw, 3.7rem);
+  --font-display: var(--font-ui-display);
+  --text-2xs: calc(0.6875rem * var(--ui-font-scale));
+  --text-xs: calc(0.75rem * var(--ui-font-scale));
+  --text-sm: calc(0.8125rem * var(--ui-font-scale));
+  --text-base: calc(0.875rem * var(--ui-font-scale));
+  --text-md: calc(1rem * var(--ui-font-scale));
+  --text-lg: calc(1.25rem * var(--ui-font-scale));
+  --text-xl: calc(1.625rem * var(--ui-font-scale));
+  --text-2xl: clamp(
+    calc(2.15rem * var(--ui-font-scale)),
+    calc(4vw * var(--ui-font-scale)),
+    calc(3.7rem * var(--ui-font-scale))
+  );
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;

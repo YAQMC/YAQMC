@@ -1690,7 +1690,7 @@ input[type='range']:disabled {
   height: 100%;
 }
 
-.lyrics-stage__amll .amll-lyric-player {
+.lyrics-scene .lyrics-stage__amll .amll-lyric-player.dom {
   --amll-lp-color: var(--lyrics-foreground, var(--lyrics-ink));
   --amll-lp-font-size: inherit;
   --amll-lp-hover-bg-color: color-mix(
@@ -1701,7 +1701,8 @@ input[type='range']:disabled {
   color: var(--lyrics-foreground, var(--lyrics-ink));
   font-family: var(--font-display);
   font-size: inherit;
-  font-weight: 700;
+  font-weight: var(--lyrics-font-weight, 700);
+  line-height: var(--lyrics-line-height, 1.16);
   letter-spacing: -0.038em;
   mix-blend-mode: normal;
 }
@@ -1712,6 +1713,17 @@ input[type='range']:disabled {
 
 .lyrics-stage__amll[data-align='right'] .amll-lyric-player {
   text-align: right;
+}
+
+/* AMLL creates word lift/glow animations with the Web Animations API. An
+ * important declaration wins over those animation effects, leaving its normal
+ * progressive word reveal intact when word jump is disabled. */
+.lyrics-stage__amll[data-word-jump='false'] .FmKaba_emphasize,
+.lyrics-stage__amll[data-word-jump='false'] .FmKaba_emphasize *,
+.lyrics-stage__amll[data-word-jump='false'] .FmKaba_emphasizeWrapper,
+.lyrics-stage__amll[data-word-jump='false'] .FmKaba_emphasizeWrapper * {
+  transform: none !important;
+  text-shadow: none !important;
 }
 
 .lyrics-stage__amll-static {
@@ -1735,7 +1747,7 @@ input[type='range']:disabled {
   color: color-mix(in srgb, var(--lyrics-foreground, var(--lyrics-ink)) 70%, transparent);
   font-family: var(--font-display);
   font-size: var(--lyrics-font-size, inherit);
-  font-weight: 700;
+  font-weight: var(--lyrics-font-weight, 700);
   letter-spacing: -0.038em;
   line-height: var(--lyrics-line-height, 1.16);
   text-align: inherit;
