@@ -1,7 +1,7 @@
 # Third-party notices
 
 YAQMC's production QMC/mflac decryptor delegates to the pinned `qm-api-rs`
-revision `476b37e3135560dff132e9ba8996e068af706458`, which independently
+revision `827233cb799bede84ee5033ec16450dc1d5e2587`, which independently
 adapts cipher behavior from the MIT-licensed project below. Upstream files were
 not vendored. Protocol-only research references, including GPL/LGPL and
 unlicensed repositories, are recorded in
