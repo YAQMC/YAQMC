@@ -25,9 +25,9 @@ interface LocalApiSettings {
   refresh: () => Promise<void>;
   setEnabled: (enabled: boolean) => Promise<void>;
   setPort: (port: number) => Promise<void>;
-  setToken: (token: string) => Promise<void>;
+  setToken: (token: string) => Promise<boolean>;
   revealToken: () => Promise<void>;
-  regenerateToken: () => Promise<void>;
+  regenerateToken: () => Promise<boolean>;
 }
 
 function errorMessage(error: unknown): string {
@@ -104,7 +104,10 @@ export function useLocalApiSettings(): LocalApiSettings {
       if (next) {
         setStatus(next);
         setRevealedToken(null);
-      } else await refresh();
+        return true;
+      }
+      await refresh();
+      return false;
     },
     [refresh, run],
   );
@@ -114,7 +117,10 @@ export function useLocalApiSettings(): LocalApiSettings {
     if (next) {
       setStatus(next);
       setRevealedToken(null);
-    } else await refresh();
+      return true;
+    }
+    await refresh();
+    return false;
   }, [refresh, run]);
 
   return {

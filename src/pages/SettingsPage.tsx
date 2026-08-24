@@ -713,6 +713,13 @@ export function SettingsPage() {
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [lastBundle, setLastBundle] = useState<BundleExportResult | null>(null);
   const [issueReporterOpen, setIssueReporterOpen] = useState(false);
+  const {
+    available: apiAvailable,
+    revealToken: revealApiToken,
+    status: apiStatus,
+    token: apiToken,
+  } = api;
+  const visibleTokenDraft = tokenTouched ? tokenDraft : (apiToken ?? '');
 
   useEffect(() => {
     if (!isNativeRuntime) return;
@@ -723,18 +730,9 @@ export function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (api.token !== null) {
-      setTokenDraft(api.token);
-    } else {
-      setTokenDraft('');
-    }
-    setTokenTouched(false);
-  }, [api.status?.tokenConfigured, api.token]);
-
-  useEffect(() => {
-    if (!api.available || !api.status || api.token !== null) return;
-    void api.revealToken();
-  }, [api.available, api.revealToken, api.status, api.token]);
+    if (!apiAvailable || !apiStatus || apiToken !== null) return;
+    void revealApiToken();
+  }, [apiAvailable, apiStatus, apiToken, revealApiToken]);
 
   useEffect(() => {
     if (!isNativeRuntime) return;
@@ -961,13 +959,19 @@ export function SettingsPage() {
     const parsed = Number(new FormData(event.currentTarget as HTMLFormElement).get('port'));
     if (Number.isInteger(parsed) && parsed >= 1_024 && parsed <= 65_535) void api.setPort(parsed);
   };
+  const saveToken = async () => {
+    if (await api.setToken(visibleTokenDraft)) {
+      setTokenDraft('');
+      setTokenTouched(false);
+    }
+  };
   const submitToken = (event: React.FormEvent) => {
     event.preventDefault();
-    void api.setToken(tokenDraft);
+    void saveToken();
   };
   const copyToken = async () => {
-    if (!tokenDraft) return;
-    await navigator.clipboard.writeText(tokenDraft);
+    if (!visibleTokenDraft) return;
+    await navigator.clipboard.writeText(visibleTokenDraft);
     setCopied('token');
     window.setTimeout(() => setCopied(null), 1_500);
   };
@@ -987,8 +991,11 @@ export function SettingsPage() {
       setImageError(formatBackgroundPickerError(error, errors('imageFailed')));
     }
   };
-  const regenerate = () => {
-    if (window.confirm(t('api.regenerateConfirm'))) void api.regenerateToken();
+  const regenerate = async () => {
+    if (window.confirm(t('api.regenerateConfirm')) && (await api.regenerateToken())) {
+      setTokenDraft('');
+      setTokenTouched(false);
+    }
   };
   const changeGlobalShortcuts = async (enabled: boolean) => {
     if (await platform.setGlobalShortcuts(enabled)) {
@@ -2051,7 +2058,7 @@ export function SettingsPage() {
               <form className="token-control" onSubmit={submitToken}>
                 <input
                   type={tokenVisible ? 'text' : 'password'}
-                  value={tokenDraft}
+                  value={visibleTokenDraft}
                   onChange={(event) => {
                     setTokenTouched(true);
                     setTokenDraft(event.target.value);
@@ -2077,7 +2084,7 @@ export function SettingsPage() {
                   type="button"
                   className="settings-icon-button"
                   onClick={() => void copyToken()}
-                  disabled={api.busy || !tokenDraft}
+                  disabled={api.busy || !visibleTokenDraft}
                   aria-label={t('api.copyToken')}
                 >
                   <Copy size={16} />
@@ -2090,7 +2097,7 @@ export function SettingsPage() {
                 <button
                   type="button"
                   className="button button--secondary"
-                  onClick={() => void api.setToken(tokenDraft)}
+                  onClick={() => void saveToken()}
                   disabled={api.busy || (!tokenTouched && api.status?.tokenConfigured)}
                 >
                   {t('api.saveToken')}
