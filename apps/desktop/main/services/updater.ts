@@ -10,7 +10,7 @@
  * - `autoDownload: false`
  * - `autoInstallOnAppQuit: false`
  * - `allowPrerelease` bound to `__YAQMC_RELEASE_CHANNEL__` (`nightly` → true)
- * - Windows unsigned (R-9): `verifyUpdateCodeSignature: false`
+ * - Windows keeps electron-updater's default publisher-signature verification
  * - Linux: AppImage can in-place install; deb / rpm / tar.gz only notify
  *
  * Launch check is deferred `CHECK_DELAY_MS` (30 s). Callers inject
@@ -61,8 +61,6 @@ export type ElectronUpdaterFlags = {
   autoDownload: false;
   autoInstallOnAppQuit: false;
   allowPrerelease: boolean;
-  /** Windows unsigned (R-9). See file header. */
-  verifyUpdateCodeSignature: false;
 };
 
 export function allowPrereleaseForChannel(channel: string): boolean {
@@ -70,15 +68,14 @@ export function allowPrereleaseForChannel(channel: string): boolean {
 }
 
 /**
- * Flags UPD-01 will apply on `electron-updater`. `verifyUpdateCodeSignature: false`
- * is required for unsigned Windows NSIS (R-9).
+ * Flags UPD-01 applies on `electron-updater`. Signature verification is not
+ * overridden, so the NsisUpdater default verifier remains active.
  */
 export function electronUpdaterFlags(channel: string): ElectronUpdaterFlags {
   return {
     autoDownload: false,
     autoInstallOnAppQuit: false,
     allowPrerelease: allowPrereleaseForChannel(channel),
-    verifyUpdateCodeSignature: false,
   };
 }
 

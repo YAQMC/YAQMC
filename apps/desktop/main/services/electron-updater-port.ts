@@ -3,8 +3,8 @@
  * Main bundle can keep the package external (do not esbuild-bundle it).
  *
  * Notify-only: never sets autoDownload / autoInstallOnAppQuit, never calls
- * quitAndInstall from check or download. Unsigned Windows (R-9):
- * verifyUpdateCodeSignature stays false.
+ * quitAndInstall from check or download. The default Windows publisher-signature
+ * verifier remains installed; this adapter never replaces or disables it.
  */
 
 import { createRequire } from 'node:module';
@@ -19,7 +19,6 @@ type ElectronUpdaterFlagsTarget = {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
   allowPrerelease: boolean;
-  verifyUpdateCodeSignature?: boolean;
 };
 
 type AutoUpdaterLike = ElectronUpdaterFlagsTarget & {
@@ -46,7 +45,6 @@ export function applyElectronUpdaterFlags(
   autoUpdater.autoDownload = flags.autoDownload;
   autoUpdater.autoInstallOnAppQuit = flags.autoInstallOnAppQuit;
   autoUpdater.allowPrerelease = flags.allowPrerelease;
-  autoUpdater.verifyUpdateCodeSignature = flags.verifyUpdateCodeSignature;
 }
 
 export function createElectronUpdaterPort(channel: string): UpdaterPort {

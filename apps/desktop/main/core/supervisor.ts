@@ -104,18 +104,27 @@ function cargoCoreCandidates(lookup: CoreBinaryLookup, name: string): string[] {
 export function resolveCoreLaunch(lookup: CoreBinaryLookup = {}): CoreLaunch | undefined {
   const env = lookup.env ?? process.env;
   const name = coreBinaryName();
-  if (env.YAQMC_CORE_BIN && existsSync(env.YAQMC_CORE_BIN)) {
+  const packaged = lookup.packaged === true;
+  if (!packaged && env.YAQMC_CORE_BIN && existsSync(env.YAQMC_CORE_BIN)) {
     return { binary: env.YAQMC_CORE_BIN, integrity: 'optional' };
   }
-  const packaged = lookup.packaged === true;
   if (packaged && lookup.resourcesPath) {
     const fromResources = path.join(lookup.resourcesPath, 'core', name);
     if (existsSync(fromResources)) {
       return { binary: fromResources, integrity: 'required' };
     }
   }
+  if (packaged) {
+    if (lookup.stagedDir) {
+      const staged = path.join(lookup.stagedDir, name);
+      if (existsSync(staged)) {
+        return { binary: staged, integrity: 'required' };
+      }
+    }
+    return undefined;
+  }
   const cargo = cargoCoreCandidates(lookup, name).find((candidate) => existsSync(candidate));
-  if (!packaged && cargo) {
+  if (cargo) {
     return { binary: cargo, integrity: 'optional' };
   }
   if (lookup.stagedDir) {
@@ -123,9 +132,6 @@ export function resolveCoreLaunch(lookup: CoreBinaryLookup = {}): CoreLaunch | u
     if (existsSync(staged)) {
       return { binary: staged, integrity: 'required' };
     }
-  }
-  if (cargo) {
-    return { binary: cargo, integrity: 'optional' };
   }
   return undefined;
 }

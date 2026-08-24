@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FRAME_HARD_CAP_BYTES } from '@yaqmc/client';
 import { applyElectronUpdaterFlags, noopUpdaterPort } from './electron-updater-port';
 import { electronUpdaterFlags } from './updater';
@@ -12,20 +12,19 @@ const source = readFileSync(
 );
 
 describe('electron-updater port', () => {
-  it('keeps notify-only flags and unsigned Windows (R-9)', () => {
+  it('keeps notify-only flags without disabling the default signature verifier', () => {
+    const signatureVerifier = vi.fn();
     const autoUpdater = {
       autoDownload: true,
       autoInstallOnAppQuit: true,
       allowPrerelease: true,
-      verifyUpdateCodeSignature: true,
+      verifyUpdateCodeSignature: signatureVerifier,
     };
     applyElectronUpdaterFlags(autoUpdater, 'latest');
-    expect(autoUpdater).toEqual({
-      autoDownload: false,
-      autoInstallOnAppQuit: false,
-      allowPrerelease: false,
-      verifyUpdateCodeSignature: false,
-    });
+    expect(autoUpdater.autoDownload).toBe(false);
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(false);
+    expect(autoUpdater.allowPrerelease).toBe(false);
+    expect(autoUpdater.verifyUpdateCodeSignature).toBe(signatureVerifier);
     expect(electronUpdaterFlags('nightly').allowPrerelease).toBe(true);
   });
 

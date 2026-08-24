@@ -2,14 +2,14 @@
 
 > **简体中文** | [English](../ci.md)
 
-本文说明仅使用 Electron 的 GitHub Actions 流水线。Actions artifact 与草稿 Release 均未签名，且不能单独证明安装包已在目标硬件上启动。
+本文说明仅使用 Electron 的 GitHub Actions 流水线。普通 CI 安装包不会发布，且可能未签名；发布工作流要求每个 Windows 安装器与 portable EXE 都经过 Authenticode 签名，Linux 发布格式仍不做代码签名。任何这类产物都不能单独证明安装包已在目标硬件上启动。
 
 ## 工作流
 
-| 工作流        | 文件                                     | 触发条件                            | 结果                                |
-| ------------- | ---------------------------------------- | ----------------------------------- | ----------------------------------- |
-| CI            | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact     |
-| Electron 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 生产配置安装包与草稿 GitHub Release |
+| 工作流        | 文件                                     | 触发条件                            | 结果                                                     |
+| ------------- | ---------------------------------------- | ----------------------------------- | -------------------------------------------------------- |
+| CI            | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                          |
+| Electron 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 经过签名门禁的 Windows 包、Linux 包与草稿 GitHub Release |
 
 已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
@@ -32,6 +32,21 @@
 Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
 
 不要在任务间上传或复用 `node_modules`。
+
+## Windows 发布签名
+
+`electron-release` 打包矩阵使用受保护的 `release-signing` environment。
+Windows 任务要求其中配置以下 environment secrets：
+
+- `WIN_CSC_LINK`：Base64 编码的 PFX/P12 证书，或 electron-builder 支持的其他证书引用；
+- `WIN_CSC_KEY_PASSWORD`：证书密码；
+- `YAQMC_WINDOWS_SIGNER_SUBJECT`：预期 Authenticode 证书的完整 Subject。
+
+发布任务会把 `electron-builder.release.yml` 叠加到普通构建配置上；
+`forceCodeSigning: true` 会在无法签名时直接终止任务。上传前，PowerShell
+通过 `Get-AuthenticodeSignature` 检查两个预期 EXE，要求状态为 `Valid`，并将
+签名者 Subject 与受保护值比较。更新器保留 electron-updater 默认的发行者签名
+校验。签名凭据只注入打包步骤，不提供给 `npm ci`、artifact 上传或组装任务。
 
 ## 优化与缓存
 
@@ -58,7 +73,7 @@ Linux x64 打包任务还会上传独立的扁平 artifact
 identity、checksums、当前测试/验收说明、采集器和验证器。上传前 CI 会执行
 identity-only 校验；该测试包不会混入 Release 草稿资产。
 
-发布工作流在打包前强制通过 pin、提供器 readiness 与 provenance 门禁。它检出私有依赖的精确 revision，生成绑定 revision 的 YAQMC 与 `qm-api-rs` 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，生成 `SHA256SUMS-electron.txt` 与 `RELEASE-NOTES-ELECTRON.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
+发布工作流在打包前强制通过 pin、提供器 readiness、provenance 与 Windows 签名门禁。它检出私有依赖的精确 revision，生成绑定 revision 的 YAQMC 与 `qm-api-rs` 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，生成 `SHA256SUMS-electron.txt` 与 `RELEASE-NOTES-ELECTRON.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
 
 ## 构建通过与运行时验收
 

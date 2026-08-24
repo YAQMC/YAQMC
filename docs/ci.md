@@ -2,14 +2,14 @@
 
 > [简体中文](zh-CN/ci.md) | **English**
 
-This page describes the Electron-only GitHub Actions pipeline. Actions artifacts and draft releases are unsigned and do not, by themselves, prove that a package was launched on its target hardware.
+This page describes the Electron-only GitHub Actions pipeline. Ordinary CI package artifacts are not published and may be unsigned. The release workflow requires Authenticode for every Windows installer and portable executable; Linux release formats remain unsigned. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
 
 ## Workflows
 
-| Workflow         | File                                     | Trigger                                          | Result                                                 |
-| ---------------- | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
-| CI               | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts          |
-| Electron release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | production-profile packages and a draft GitHub Release |
+| Workflow         | File                                     | Trigger                                          | Result                                                                    |
+| ---------------- | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------- |
+| CI               | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                             |
+| Electron release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | signer-gated Windows packages, Linux packages, and a draft GitHub Release |
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
@@ -41,6 +41,25 @@ Windows produces an NSIS installer and portable executable. Linux produces AppIm
 
 Do not upload or reuse `node_modules` between jobs.
 
+## Windows release signing
+
+The `electron-release` package matrix uses the protected `release-signing`
+environment. Its Windows jobs require these environment secrets:
+
+- `WIN_CSC_LINK`: a base64-encoded PFX/P12 certificate or another
+  electron-builder-supported certificate reference;
+- `WIN_CSC_KEY_PASSWORD`: the certificate password;
+- `YAQMC_WINDOWS_SIGNER_SUBJECT`: the complete expected Authenticode
+  certificate Subject.
+
+The release job layers `electron-builder.release.yml` over the normal builder
+configuration. `forceCodeSigning: true` aborts the job if signing is unavailable.
+Before upload, PowerShell verifies both expected EXEs with
+`Get-AuthenticodeSignature`, requires `Valid` status, and compares the signer
+Subject to the protected value. The updater keeps electron-updater's default
+publisher-signature verification enabled. Signing credentials are available
+only to the package step, not `npm ci`, artifact upload, or assembly jobs.
+
 ## Optimization and caches
 
 Normal CI packages override the release profile with ThinLTO and eight codegen units:
@@ -69,8 +88,8 @@ AppImage, immutable build identity, checksums, current testing/acceptance
 instructions, collector, and verifier. CI runs the verifier's identity-only
 gate before upload; it is not mixed into draft release assets.
 
-The release workflow fails before packaging unless the pin, provider readiness, and
-provenance gates pass. It checks out the exact private dependency revision,
+The release workflow fails before packaging unless the pin, provider readiness,
+provenance, and Windows signing gates pass. It checks out the exact private dependency revision,
 builds revision-bound YAQMC and `qm-api-rs` source archives, and writes
 `CORRESPONDING-SOURCE-MANIFEST.json`. Assembly verifies those archive hashes,
 flattens package assets, writes `SHA256SUMS-electron.txt` and

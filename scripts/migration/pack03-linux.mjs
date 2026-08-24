@@ -96,7 +96,9 @@ export function parseBuilderLinux(yaml) {
     ayatanaRpm: yaml.includes(TRAY_RECOMMENDS_RPM),
     webkitGtkDepends: /webkit2?gtk/i.test(yaml),
     hasElectronUpdater: /^\s*[^#\n]*electron-updater/m.test(yaml),
-    forceCodeSigningFalse: /^\s*forceCodeSigning:\s*false\s*$/m.test(yaml.replaceAll('\r', '')),
+    windowsSigningDisabled:
+      /^\s*forceCodeSigning:\s*false\s*$/m.test(yaml.replaceAll('\r', '')) ||
+      /^\s*signExecutable:\s*false\s*$/m.test(yaml.replaceAll('\r', '')),
     electronVersion: /^\s*electronVersion:\s*43\.4\.0\s*$/m.test(yaml.replaceAll('\r', '')),
   };
 }

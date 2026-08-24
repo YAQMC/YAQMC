@@ -82,7 +82,31 @@ export function urlMatchesOAuthAllowlist(url: string, allowlist: readonly string
 }
 
 export function isOAuthCallbackUrl(url: string, urlPrefix: string): boolean {
-  return url.startsWith(urlPrefix);
+  const candidate = parseUrl(url);
+  const expected = parseUrl(urlPrefix);
+  if (!candidate || !expected) {
+    return false;
+  }
+  if (
+    candidate.protocol !== expected.protocol ||
+    candidate.username !== expected.username ||
+    candidate.password !== expected.password ||
+    candidate.hostname !== expected.hostname ||
+    candidate.port !== expected.port ||
+    candidate.pathname !== expected.pathname ||
+    (expected.hash !== '' && candidate.hash !== expected.hash)
+  ) {
+    return false;
+  }
+  for (const key of new Set(expected.searchParams.keys())) {
+    if (
+      JSON.stringify(candidate.searchParams.getAll(key)) !==
+      JSON.stringify(expected.searchParams.getAll(key))
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function oauthWindowCreateOptions(input: {

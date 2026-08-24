@@ -1,6 +1,8 @@
-# PACK-01: NSIS/portable + Linux AppImage/deb/rpm/tar.gz. Unsigned builds are expected (R-9).
+# PACK-01: NSIS/portable + Linux AppImage/deb/rpm/tar.gz.
 # UPD-01: GitHub Releases provider for electron-updater metadata. Local packs must
 # pass --publish never (do not draft a release from a maintainer laptop).
+# Production Windows releases layer electron-builder.release.yml on top of this
+# base config and fail closed unless Authenticode signing succeeds.
 appId: org.yaqmc.desktop
 productName: YAQMC
 copyright: GPL-3.0-or-later
@@ -8,7 +10,6 @@ asar: true
 electronVersion: 43.4.0
 # Use the workspace-pinned Electron 43.4.0 dist (no GitHub re-download).
 electronDist: ../../node_modules/electron/dist
-forceCodeSigning: false
 publish:
   provider: github
   owner: YAQMC
@@ -53,9 +54,8 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
 win:
   icon: resources/icon.ico
-  # Unsigned (R-9), but retain rcedit so the configured YAQMC icon and metadata
-  # are embedded in Windows executables instead of Electron's default icon.
-  signExecutable: false
+  # Keep electron-updater's publisher verification enabled for signed NSIS updates.
+  verifyUpdateCodeSignature: true
   target:
     - target: nsis
       arch:

@@ -34,8 +34,8 @@ jobs:
     name: P14-C, pin, and provenance release gates
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 26.7.0
       - run: node scripts/ci/qm-api-rs-access.mjs --check
@@ -46,14 +46,14 @@ jobs:
     needs: [release-gates]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 26.7.0
           cache: npm
       - run: npm ci
       - run: npm run ci:frontend-build
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: yaqmc-frontend-dist-${{ github.sha }}
           path: dist
@@ -66,8 +66,8 @@ jobs:
     outputs:
       include: ${{ steps.select.outputs.include }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 26.7.0
       - id: select
@@ -79,6 +79,7 @@ jobs:
   electron-package:
     name: Electron package ${{ matrix.os }} ${{ matrix.arch }}
     needs: [frontend-build, electron-package-matrix]
+    environment: release-signing
     continue-on-error: false
     strategy:
       fail-fast: false
@@ -89,7 +90,7 @@ jobs:
     env:
       YAQMC_PREBUILT_FRONTEND: '1'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup-packaging
         with:
           target: ${{ matrix.target }}
@@ -99,16 +100,63 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm fakeroot
       - run: npm ci
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: yaqmc-frontend-dist-${{ github.sha }}
           path: dist
+      - name: Require Windows Authenticode credentials
+        if: matrix.os == 'windows'
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          YAQMC_WINDOWS_SIGNER_SUBJECT: ${{ secrets.YAQMC_WINDOWS_SIGNER_SUBJECT }}
+        run: |
+          $required = @('WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD', 'YAQMC_WINDOWS_SIGNER_SUBJECT')
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "The release-signing environment is missing required secret $name"
+            }
+          }
       - name: Compile core, then pack Electron
+        env:
+          WIN_CSC_LINK: ${{ matrix.os == 'windows' && secrets.WIN_CSC_LINK || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ matrix.os == 'windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
         run: >-
           node scripts/ci/package-electron.mjs
           --target ${{ matrix.target }}
           --os ${{ matrix.os }}
           --arch ${{ matrix.arch }}
+          --require-signing ${{ matrix.os == 'windows' && 'true' || 'false' }}
+      - name: Verify Windows Authenticode signer
+        if: matrix.os == 'windows'
+        shell: pwsh
+        env:
+          YAQMC_WINDOWS_SIGNER_SUBJECT: ${{ secrets.YAQMC_WINDOWS_SIGNER_SUBJECT }}
+        run: |
+          $artifactDir = Join-Path 'release-electron' 'YAQMC-electron-windows-${{ matrix.arch }}'
+          $expectedNames = @(
+            'YAQMC-windows-${{ matrix.arch }}-setup.exe',
+            'YAQMC-windows-${{ matrix.arch }}-portable.exe'
+          )
+          foreach ($name in $expectedNames) {
+            $file = Join-Path $artifactDir $name
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing signed release artifact $name"
+            }
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+              throw "Authenticode validation failed for $name with status $($signature.Status)"
+            }
+            if ($null -eq $signature.SignerCertificate -or -not [string]::Equals(
+              $signature.SignerCertificate.Subject,
+              $env:YAQMC_WINDOWS_SIGNER_SUBJECT,
+              [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+              throw "Authenticode signer identity mismatch for $name"
+            }
+            Write-Output "Verified Authenticode signature for $name"
+          }
       - name: Stage and verify Linux x64 tester artifact
         if: matrix.os == 'linux' && matrix.arch == 'x64'
         run: |
@@ -119,14 +167,14 @@ jobs:
             --platform linux \
             --identity-only \
             --build-identity "$PWD/release-electron/YAQMC-linux-x64-tester/BUILD-IDENTITY.json"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
           path: release-electron/YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: matrix.os == 'linux' && matrix.arch == 'x64'
         with:
           name: YAQMC-linux-x64-tester-${{ github.sha }}
@@ -134,7 +182,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
         with:
           path: |
@@ -149,16 +197,16 @@ jobs:
     needs: [electron-package]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Checkout exact qm-api-rs corresponding source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: YAQMC/qm-api-rs
           ref: 827233cb799bede84ee5033ec16450dc1d5e2587
           token: ${{ secrets.QM_API_RS_TOKEN }}
           path: .corresponding-source/qm-api-rs
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 26.7.0
       - name: Build exact corresponding-source archives
@@ -166,7 +214,7 @@ jobs:
           node scripts/ci/corresponding-source.mjs
           --qm-api-rs-root .corresponding-source/qm-api-rs
           --to corresponding-source
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: YAQMC-electron-*
           path: packed
@@ -177,7 +225,7 @@ jobs:
           --from packed
           --source-from corresponding-source
           --to assembled
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: YAQMC-electron-draft-${{ github.sha }}
           path: assembled
@@ -192,8 +240,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: YAQMC-electron-draft-${{ github.sha }}
           path: assembled
@@ -211,5 +259,5 @@ jobs:
           gh release create "$tag" assembled/* \
             --draft \
             --target "$GITHUB_SHA" \
-            --title "YAQMC Electron ${tag} (unsigned draft)" \
+            --title "YAQMC Electron ${tag} (draft)" \
             --notes-file assembled/RELEASE-NOTES-ELECTRON.md

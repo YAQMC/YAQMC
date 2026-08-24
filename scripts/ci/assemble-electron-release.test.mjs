@@ -213,7 +213,8 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
     readFileSync(path.join(dest, ELECTRON_RELEASE_NOTES_NAME), 'utf8'),
     ELECTRON_RELEASE_NOTES,
   );
-  assert.match(ELECTRON_RELEASE_NOTES, /unsigned/i);
+  assert.match(ELECTRON_RELEASE_NOTES, /Authenticode-signed/i);
+  assert.match(ELECTRON_RELEASE_NOTES, /publisher/i);
   assert.match(ELECTRON_RELEASE_NOTES, /i686/);
   assert.match(ELECTRON_RELEASE_NOTES, /Chromium\/Ozone/);
   assert.match(ELECTRON_RELEASE_NOTES, /org\.yaqmc\.desktop/);
@@ -253,6 +254,13 @@ test('Electron release workflow is the sole tagged desktop release workflow', ()
   assert.match(workflow, /^name: Electron release/m);
   assert.match(workflow, /tags:\s*\n\s+-\s+'v\*'/);
   assert.match(workflow, /node scripts\/ci\/package-electron\.mjs/);
+  assert.match(workflow, /environment:\s*release-signing/);
+  assert.match(workflow, /--require-signing/);
+  assert.match(workflow, /secrets\.WIN_CSC_LINK/);
+  assert.match(workflow, /secrets\.WIN_CSC_KEY_PASSWORD/);
+  assert.match(workflow, /secrets\.YAQMC_WINDOWS_SIGNER_SUBJECT/);
+  assert.match(workflow, /Get-AuthenticodeSignature/);
+  assert.match(workflow, /SignatureStatus\]::Valid/);
   assert.match(workflow, /npm run p14c:enforce/);
   assert.match(workflow, /npm run provenance:enforce/);
   assert.match(workflow, /node scripts\/ci\/corresponding-source\.mjs/);

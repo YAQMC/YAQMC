@@ -1,6 +1,7 @@
 /**
  * PACK-02: Windows NSIS + portable install / upgrade / uninstall script.
- * Prints pending clean-VM matrix. Does not run installers. Unsigned (R-9).
+ * Prints pending clean-VM matrix. Does not run installers. Local signing is
+ * credential-dependent; the production release workflow requires Authenticode.
  * Run: node scripts/migration/pack02-windows.mjs
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -53,7 +54,9 @@ export function parseBuilderNsis(yaml) {
     perMachineFalse: /^\s*perMachine:\s*false\s*$/m.test(yaml),
     nsisTarget: /target:\s*nsis/.test(yaml),
     portableTarget: /target:\s*portable/.test(yaml),
-    forceCodeSigningFalse: /^\s*forceCodeSigning:\s*false\s*$/m.test(yaml),
+    signingDisabled:
+      /^\s*forceCodeSigning:\s*false\s*$/m.test(yaml) ||
+      /^\s*signExecutable:\s*false\s*$/m.test(yaml),
     hasElectronUpdater: /^\s*electron-updater:/m.test(yaml),
   };
 }
@@ -89,8 +92,8 @@ export function pack02Report({
   return {
     id: PACK02_ID,
     date: now(),
-    unsigned: true,
-    risk: 'R-9',
+    localSigning: 'credential-dependent',
+    releaseSigning: 'required',
     electron: ELECTRON_VERSION,
     electronBuilder: BUILDER_VERSION,
     appId: APP_ID,
@@ -125,7 +128,7 @@ export function pack02Report({
     },
     notes: [
       'LIVE VERIFY / clean-VM pending. This script does not install, upgrade, or uninstall.',
-      'Unsigned (R-9).',
+      'Production release packages require Authenticode and a verified publisher identity.',
       'Do not bump Electron. electron-updater is notify-only (UPD-01); A→B rehearsal still pending.',
       'Do not start qm-api-rs. Provenance remains BLOCKED. 32 MiB protocol hard cap unchanged.',
     ],

@@ -62,7 +62,6 @@ describe('channel and flags', () => {
       autoDownload: false,
       autoInstallOnAppQuit: false,
       allowPrerelease: false,
-      verifyUpdateCodeSignature: false,
     });
     expect(electronUpdaterFlags('nightly').allowPrerelease).toBe(true);
   });
@@ -287,12 +286,12 @@ describe('wired status', () => {
     expect(source).not.toContain('quitAndInstall');
   });
 
-  it('does not import electron-updater in the state machine and documents unsigned Windows (R-9)', () => {
+  it('does not import electron-updater or disable signature verification in the state machine', () => {
     const source = readFileSync(updaterSourcePath, 'utf8');
     expect(source).not.toMatch(/from ['"]electron-updater['"]/);
     expect(source).not.toMatch(/require\(['"]electron-updater['"]\)/);
-    expect(source).toContain('verifyUpdateCodeSignature: false');
-    expect(source).toContain('R-9');
+    expect(source).not.toContain('verifyUpdateCodeSignature: false');
+    expect(source).toContain('default publisher-signature verification');
   });
 });
 
