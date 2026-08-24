@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import {
+  applyOverride,
   BUILTIN_CLASSIC_ID,
   defaultLyricsPresetState,
   resolveLyricsPreset,
@@ -35,7 +36,7 @@ afterEach(() => {
 });
 
 describe('LyricsPresetPicker', () => {
-  it('shows the three built-in presets and previews typography before persisting', () => {
+  it('shows the three built-in presets and keeps typography controls in Settings', () => {
     render(<LyricsPresetPicker />);
     expect(screen.getByRole('radio', { name: 'Classic' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: 'Immersive' })).toHaveAttribute(
@@ -48,29 +49,16 @@ describe('LyricsPresetPicker', () => {
     expect(screen.getByRole('heading', { name: 'Customize Classic' })).toBeInTheDocument();
     expect(screen.getByText('多远都要在一起 — G.E.M. 邓紫棋')).toBeInTheDocument();
 
-    const fontSize = screen.getByRole('slider', { name: 'Lyrics font size' });
-    fireEvent.input(fontSize, { target: { value: '1.25' } });
-    expect(usePreferencesStore.getState().lyricsPresets.overrides).toEqual({});
     const preview = document.querySelector('.lyrics-preset-preview') as HTMLElement | null;
-    expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1.25');
+    expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1');
     expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
     expect(document.querySelector('.amll-lyric-player')).not.toBeNull();
     const backdrop = document.querySelector('.lyrics-stage__backdrop') as HTMLElement | null;
     expect(backdrop?.style.backgroundImage).toContain('/artwork/gem-together.svg');
     expect(backdrop?.style.filter).toBe('');
     expect(backdrop?.style.opacity).toBe('1');
-
-    const lineSpacing = screen.getByRole('slider', { name: 'Lyrics line spacing' });
-    fireEvent.input(lineSpacing, { target: { value: '1.4' } });
-    expect(preview?.style.getPropertyValue('--lyrics-line-height')).toBe('1.4');
-    expect(document.querySelector('.amll-lyric-player')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply to this preset' }));
-    expect(
-      resolveLyricsPreset(usePreferencesStore.getState().lyricsPresets, BUILTIN_CLASSIC_ID)
-        .typography,
-    ).toEqual({ fontScale: 1.25, lineHeight: 1.4 });
+    expect(screen.queryByRole('slider', { name: 'Lyrics font size' })).toBeNull();
+    expect(screen.queryByRole('slider', { name: 'Lyrics line spacing' })).toBeNull();
   });
 
   it('keeps background kind, blur, influence, and opacity in the composer inspector', () => {
@@ -112,13 +100,12 @@ describe('LyricsPresetPicker', () => {
   });
 
   it('resets a built-in override without deleting custom presets', () => {
+    usePreferencesStore
+      .getState()
+      .updateLyricsPresets((current) =>
+        applyOverride(current, BUILTIN_CLASSIC_ID, { typography: { fontScale: 1.3 } }),
+      );
     render(<LyricsPresetPicker />);
-    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
-    fireEvent.input(screen.getByRole('slider', { name: 'Lyrics font size' }), {
-      target: { value: '1.3' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply to this preset' }));
     expect(usePreferencesStore.getState().lyricsPresets.overrides[BUILTIN_CLASSIC_ID]).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
@@ -130,77 +117,6 @@ describe('LyricsPresetPicker', () => {
     expect(
       resolveLyricsPreset(usePreferencesStore.getState().lyricsPresets).typography.fontScale,
     ).toBe(1);
-  });
-
-  it('makes 70% and 145% font scales differ on the editor canvas', () => {
-    const previous = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
-    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
-      configurable: true,
-      get() {
-        return (this as HTMLElement).classList.contains('lyrics-scene') ? 800 : 0;
-      },
-    });
-    try {
-      render(<LyricsPresetPicker />);
-      fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
-      const scene = () => document.querySelector<HTMLElement>('.lyrics-scene');
-      fireEvent.input(screen.getByRole('slider', { name: 'Lyrics font size' }), {
-        target: { value: '0.7' },
-      });
-      expect(scene()?.style.getPropertyValue('--lyrics-font-scale')).toBe('0.7');
-      expect(
-        Number.parseFloat(scene()?.style.getPropertyValue('--lyrics-font-size') ?? '0'),
-      ).toBeCloseTo(31.36, 2);
-      expect(document.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
-        '31.36px',
-      );
-      const gapAtSmallType = scene()?.style.getPropertyValue('--lyrics-line-gap');
-      fireEvent.input(screen.getByRole('slider', { name: 'Lyrics font size' }), {
-        target: { value: '1.45' },
-      });
-      const largePx = Number.parseFloat(
-        scene()?.style.getPropertyValue('--lyrics-font-size') ?? '0',
-      );
-      expect(largePx).toBeCloseTo(64.96, 2);
-      expect(largePx / 31.36).toBeGreaterThan(2);
-      expect(document.querySelector<HTMLElement>('[data-widget="lyrics"]')?.style.fontSize).toBe(
-        '64.96px',
-      );
-      expect(scene()?.style.getPropertyValue('--lyrics-line-gap')).toBe(gapAtSmallType);
-
-      fireEvent.input(screen.getByRole('slider', { name: 'Lyrics line spacing' }), {
-        target: { value: '1.05' },
-      });
-      const tightGap = Number.parseFloat(
-        scene()?.style.getPropertyValue('--lyrics-line-gap') ?? '0',
-      );
-      fireEvent.input(screen.getByRole('slider', { name: 'Lyrics line spacing' }), {
-        target: { value: '1.6' },
-      });
-      expect(scene()?.style.getPropertyValue('--lyrics-line-height')).toBe('1.6');
-      const looseGap = Number.parseFloat(
-        scene()?.style.getPropertyValue('--lyrics-line-gap') ?? '0',
-      );
-      expect(looseGap / tightGap).toBeGreaterThan(1.4);
-    } finally {
-      if (previous) Object.defineProperty(HTMLElement.prototype, 'clientHeight', previous);
-      else delete (HTMLElement.prototype as { clientHeight?: unknown }).clientHeight;
-    }
-  });
-
-  it('commits one undo step for a slider gesture', () => {
-    render(<LyricsPresetPicker />);
-    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
-    const fontSize = screen.getByRole('slider', { name: 'Lyrics font size' });
-    fireEvent.pointerDown(fontSize);
-    fireEvent.input(fontSize, { target: { value: '1.1' } });
-    fireEvent.input(fontSize, { target: { value: '1.25' } });
-    fireEvent.pointerUp(fontSize);
-    const preview = document.querySelector('.lyrics-preset-preview') as HTMLElement | null;
-    expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1.25');
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1');
-    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
   it('commits one undo step for a drag and saves inspector geometry into runtime resolve', () => {

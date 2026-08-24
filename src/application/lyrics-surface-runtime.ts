@@ -293,6 +293,7 @@ function currentPreferenceDocument(): AppPreferences {
     locale: state.locale,
     appearance: state.appearance,
     lyrics: state.lyrics,
+    amll: state.amll,
     lyricsPresets: state.lyricsPresets,
     surfaces: state.surfaces,
     system: state.system,

@@ -49,6 +49,7 @@ type SceneStyle = CSSProperties & {
   '--lyrics-font-size': string;
   '--lyrics-secondary-font-size': string;
   '--lyrics-line-height': string;
+  '--lyrics-font-weight': string;
   '--lyrics-line-gap': string;
   '--scene-progress': string;
   '--scene-duration': string;
@@ -342,6 +343,7 @@ export function LyricsScene({
     '--lyrics-font-size': cssPx(primaryFontPx),
     '--lyrics-secondary-font-size': cssPx(secondaryFontPx),
     '--lyrics-line-height': String(preset.typography.lineHeight),
+    '--lyrics-font-weight': String(bindings.fontWeight),
     '--lyrics-line-gap': `${lineGapFromLineHeight(preset.typography.lineHeight)}cqh`,
     '--scene-progress': String(Math.max(0, Math.min(1, progress / 100))),
     '--scene-duration': String(bindings.durationMs),
@@ -541,6 +543,7 @@ export function LyricsScene({
             translation={bindings.translation}
             romanization={bindings.romanization}
             wordEffect={bindings.wordEffect}
+            amll={bindings.amll}
             followAnchor={scene.lyrics.followAnchor}
             align={scene.lyrics.align}
             songId={bindings.songId}

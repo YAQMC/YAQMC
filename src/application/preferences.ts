@@ -35,6 +35,7 @@ export type SurfaceLineMode = 'single' | 'double';
 export type SurfaceAlignment = 'left' | 'center' | 'right';
 export type SurfaceWidth = 'compact' | 'regular' | 'wide';
 export type FontMode = 'system' | 'application' | 'custom';
+export type InterfaceFontFamily = 'application' | 'system' | 'serif' | 'monospace';
 export type CloseBehavior = 'hide-to-tray' | 'quit';
 
 export interface SystemSettings {
@@ -48,6 +49,10 @@ export interface DebugSettings {
 
 export interface AppearanceSettings {
   colorMode: ColorModePreference;
+  /** Whole-application interface type scale, expressed as a percentage. */
+  interfaceFontScale: number;
+  /** A curated, platform-safe interface font stack. */
+  interfaceFontFamily: InterfaceFontFamily;
   palette: PaletteId;
   primaryColor: string;
   secondaryColor: string;
@@ -61,6 +66,8 @@ export interface AppearanceSettings {
 }
 
 export type LyricWordEffect = 'fill' | 'jump';
+export const LYRIC_FONT_WEIGHTS = ['400', '500', '600', '700', '800', '900'] as const;
+export type LyricFontWeight = (typeof LYRIC_FONT_WEIGHTS)[number];
 
 export interface LyricDisplaySettings {
   translation: SecondaryLyricVisibility;
@@ -70,6 +77,16 @@ export interface LyricDisplaySettings {
   coverLayout: LyricCoverLayout;
   focusSidebarCollapsed: boolean;
   wordEffect: LyricWordEffect;
+  fontWeight: LyricFontWeight;
+}
+
+/** Settings forwarded to the official Apple Music-like Lyrics renderer. */
+export interface AmllSettings {
+  enableSpring: boolean;
+  enableScale: boolean;
+  enableBlur: boolean;
+  hidePassedLines: boolean;
+  wordFadeWidth: number;
 }
 
 export interface LyricSurfaceSettings {
@@ -95,6 +112,7 @@ export interface AppPreferences {
   locale: LocalePreference;
   appearance: AppearanceSettings;
   lyrics: LyricDisplaySettings;
+  amll: AmllSettings;
   lyricsPresets: LyricsPresetState;
   surfaces: Record<SurfaceKind, LyricSurfaceSettings>;
   system: SystemSettings;
@@ -124,6 +142,8 @@ export const defaultPreferences: AppPreferences = {
   locale: 'system',
   appearance: {
     colorMode: 'system',
+    interfaceFontScale: 100,
+    interfaceFontFamily: 'application',
     palette: 'default',
     primaryColor: '#A8C95E',
     secondaryColor: '#7FA3A0',
@@ -143,6 +163,14 @@ export const defaultPreferences: AppPreferences = {
     coverLayout: 'split',
     focusSidebarCollapsed: false,
     wordEffect: 'jump',
+    fontWeight: '700',
+  },
+  amll: {
+    enableSpring: true,
+    enableScale: true,
+    enableBlur: true,
+    hidePassedLines: false,
+    wordFadeWidth: 0.5,
   },
   lyricsPresets: defaultLyricsPresetState,
   surfaces: {
@@ -236,6 +264,9 @@ export function normalizePreferences(value: unknown): AppPreferences {
   const lyrics = (
     source.lyrics && typeof source.lyrics === 'object' ? source.lyrics : {}
   ) as Partial<LyricDisplaySettings>;
+  const amll = (
+    source.amll && typeof source.amll === 'object' ? source.amll : {}
+  ) as Partial<AmllSettings>;
   const surfaces = (
     source.surfaces && typeof source.surfaces === 'object' ? source.surfaces : {}
   ) as Partial<Record<SurfaceKind, LyricSurfaceSettings>>;
@@ -261,6 +292,12 @@ export function normalizePreferences(value: unknown): AppPreferences {
     locale: valueIn(source.locale, ['system', 'en-US', 'zh-CN'], 'system'),
     appearance: {
       colorMode: valueIn(appearance.colorMode, ['system', 'light', 'dark'], 'system'),
+      interfaceFontScale: numberInRange(appearance.interfaceFontScale, 100, 80, 130),
+      interfaceFontFamily: valueIn(
+        appearance.interfaceFontFamily,
+        ['application', 'system', 'serif', 'monospace'],
+        'application',
+      ),
       palette: valueIn(
         appearance.palette,
         ['default', 'ember', 'ocean', 'violet', 'sakura', 'mint', 'mono', 'custom'],
@@ -292,6 +329,18 @@ export function normalizePreferences(value: unknown): AppPreferences {
       focusSidebarCollapsed:
         typeof lyrics.focusSidebarCollapsed === 'boolean' ? lyrics.focusSidebarCollapsed : false,
       wordEffect: valueIn(lyrics.wordEffect, ['fill', 'jump'], 'jump'),
+      fontWeight:
+        typeof lyrics.fontWeight === 'string' &&
+        LYRIC_FONT_WEIGHTS.includes(lyrics.fontWeight as LyricFontWeight)
+          ? (lyrics.fontWeight as LyricFontWeight)
+          : '700',
+    },
+    amll: {
+      enableSpring: typeof amll.enableSpring === 'boolean' ? amll.enableSpring : true,
+      enableScale: typeof amll.enableScale === 'boolean' ? amll.enableScale : true,
+      enableBlur: typeof amll.enableBlur === 'boolean' ? amll.enableBlur : true,
+      hidePassedLines: typeof amll.hidePassedLines === 'boolean' ? amll.hidePassedLines : false,
+      wordFadeWidth: numberInRange(amll.wordFadeWidth, 0.5, 0.05, 1),
     },
     lyricsPresets,
     surfaces: {
@@ -315,6 +364,7 @@ export function preferencesRequireMigration(value: unknown): boolean {
     version?: unknown;
     surfaces?: Record<string, unknown>;
     system?: Record<string, unknown>;
+    amll?: Record<string, unknown>;
   };
   if (
     source.version !== 2 ||
@@ -322,7 +372,17 @@ export function preferencesRequireMigration(value: unknown): boolean {
     !(source as { lyricsPresets?: unknown }).lyricsPresets ||
     !source.system ||
     !['hide-to-tray', 'quit'].includes(String(source.system.closeBehavior)) ||
-    typeof source.system.globalShortcutsEnabled !== 'boolean'
+    typeof source.system.globalShortcutsEnabled !== 'boolean' ||
+    typeof source.amll?.enableSpring !== 'boolean' ||
+    typeof source.amll?.enableScale !== 'boolean' ||
+    typeof source.amll?.enableBlur !== 'boolean' ||
+    typeof source.amll?.hidePassedLines !== 'boolean' ||
+    typeof source.amll?.wordFadeWidth !== 'number' ||
+    !LYRIC_FONT_WEIGHTS.includes(
+      String(
+        (source as { lyrics?: Record<string, unknown> }).lyrics?.fontWeight,
+      ) as LyricFontWeight,
+    )
   ) {
     return true;
   }
@@ -473,6 +533,7 @@ interface PreferencesState extends AppPreferences {
   selectPalette: (palette: PaletteId) => void;
   resetAppearance: () => void;
   updateLyrics: (patch: Partial<LyricDisplaySettings>) => void;
+  updateAmll: (patch: Partial<AmllSettings>) => void;
   updateLyricsPresets: (
     recipe: LyricsPresetState | ((current: LyricsPresetState) => LyricsPresetState),
   ) => void;
@@ -492,6 +553,7 @@ function persistedSlice(state: PreferencesState): AppPreferences {
     locale: state.locale,
     appearance: state.appearance,
     lyrics: state.lyrics,
+    amll: state.amll,
     lyricsPresets: state.lyricsPresets,
     surfaces: state.surfaces,
     system: state.system,
@@ -557,6 +619,16 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
         persistenceError: null,
       };
     });
+    persist(persistedSlice(get()));
+  },
+  updateAmll: (patch) => {
+    set((state) => ({
+      amll: normalizePreferences({
+        ...persistedSlice(state),
+        amll: { ...state.amll, ...patch },
+      }).amll,
+      persistenceError: null,
+    }));
     persist(persistedSlice(get()));
   },
   updateLyricsPresets: (recipe) => {
@@ -738,6 +810,31 @@ export function applyAppearance(
   }
   root.style.setProperty('--custom-background-color', appearance.backgroundColor);
   root.style.setProperty('--artwork-influence', `${appearance.artworkInfluence / 100}`);
+  root.style.setProperty('--ui-font-scale', `${appearance.interfaceFontScale / 100}`);
+  const fonts: Record<InterfaceFontFamily, { text: string; display: string }> = {
+    application: {
+      text: "'YAQMC Text', 'PingFang SC', 'Segoe UI Variable', 'Segoe UI', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+      display:
+        "'YAQMC Display', 'PingFang SC', 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', sans-serif",
+    },
+    system: {
+      text: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif",
+      display:
+        "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif",
+    },
+    serif: {
+      text: "ui-serif, 'Noto Serif CJK SC', 'Songti SC', Georgia, serif",
+      display: "ui-serif, 'Noto Serif CJK SC', 'Songti SC', Georgia, serif",
+    },
+    monospace: {
+      text: "ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', 'Noto Sans Mono CJK SC', monospace",
+      display:
+        "ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', 'Noto Sans Mono CJK SC', monospace",
+    },
+  };
+  const font = fonts[appearance.interfaceFontFamily];
+  root.style.setProperty('--font-ui-text', font.text);
+  root.style.setProperty('--font-ui-display', font.display);
 }
 
 let appearancePreviewFrame: number | null = null;

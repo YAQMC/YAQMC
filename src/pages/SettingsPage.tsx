@@ -1,6 +1,5 @@
 import { getYaqmcClient } from '../application/yaqmc-runtime';
 import {
-  AlignLeft,
   Bug,
   Check,
   Copy,
@@ -51,12 +50,22 @@ import {
   usePreferencesStore,
   validatedColorPatch,
   type AppearanceSettings,
+  type InterfaceFontFamily,
+  type LyricFontWeight,
   type LyricSurfaceSettings,
-  type LyricWordEffect,
   type SecondaryLyricVisibility,
   type SurfaceKind,
 } from '../application/preferences';
-import { lyricsPresetDiagnostics } from '../application/lyrics-preset';
+import {
+  applyOverride,
+  FONT_SCALE_MAX,
+  FONT_SCALE_MIN,
+  LINE_HEIGHT_MAX,
+  LINE_HEIGHT_MIN,
+  lyricsPresetDiagnostics,
+  resolveLyricsPreset,
+  saveAsNewPreset,
+} from '../application/lyrics-preset';
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { useProviderSettings } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
@@ -201,7 +210,7 @@ function RangeControl({
   const dragging = useRef(false);
   const [draft, setDraft] = useState<number | null>(null);
   const shown = draft ?? value;
-  const progress = ((shown - min) / Math.max(1, max - min)) * 100;
+  const progress = ((shown - min) / Math.max(Number.EPSILON, max - min)) * 100;
   const outputLabel = typeof output === 'function' ? output(shown) : output;
 
   const preview = (next: number) => {
@@ -820,6 +829,12 @@ export function SettingsPage() {
     { value: 'light', label: t('appearance.modeLight') },
     { value: 'dark', label: t('appearance.modeDark') },
   ];
+  const interfaceFontOptions: readonly SelectOption<InterfaceFontFamily>[] = [
+    { value: 'application', label: t('appearance.interfaceFontApplication') },
+    { value: 'system', label: t('appearance.interfaceFontSystem') },
+    { value: 'serif', label: t('appearance.interfaceFontSerif') },
+    { value: 'monospace', label: t('appearance.interfaceFontMonospace') },
+  ];
   const paletteName = (id: PaletteId): string =>
     ({
       default: t('appearance.paletteDefault'),
@@ -854,10 +869,25 @@ export function SettingsPage() {
     { value: 'show', label: t('lyrics.show') },
     { value: 'hide', label: t('lyrics.hide') },
   ];
-  const wordEffectOptions: readonly SelectOption<LyricWordEffect>[] = [
-    { value: 'fill', label: t('lyrics.wordEffectFill') },
-    { value: 'jump', label: t('lyrics.wordEffectJump') },
+  const lyricFontWeightOptions: readonly SelectOption<LyricFontWeight>[] = [
+    { value: '400', label: t('lyrics.fontWeightRegular') },
+    { value: '500', label: t('lyrics.fontWeightMedium') },
+    { value: '600', label: t('lyrics.fontWeightSemibold') },
+    { value: '700', label: t('lyrics.fontWeightBold') },
+    { value: '800', label: t('lyrics.fontWeightExtrabold') },
+    { value: '900', label: t('lyrics.fontWeightBlack') },
   ];
+  const selectedLyricsPreset = resolveLyricsPreset(preferences.lyricsPresets);
+  const updateSelectedLyricsTypography = (patch: { fontScale?: number; lineHeight?: number }) => {
+    preferences.updateLyricsPresets((current) => {
+      const selected = resolveLyricsPreset(current);
+      if (selected.source === 'plugin') {
+        const fork = saveAsNewPreset(current, selected.id);
+        return applyOverride(fork.state, fork.id, { typography: patch });
+      }
+      return applyOverride(current, selected.id, { typography: patch });
+    });
+  };
   const qualityOptions: readonly SelectOption<AudioQualityPreference>[] = [
     { value: 'automatic', label: t('playback.qualityAutomatic') },
     { value: 'standard', label: t('playback.qualityStandard') },
@@ -1117,6 +1147,40 @@ export function SettingsPage() {
             }
           />
           <SettingRow
+            title={t('appearance.interfaceFontScale')}
+            description={t('appearance.interfaceFontScaleDescription')}
+            control={
+              <RangeControl
+                value={preferences.appearance.interfaceFontScale}
+                min={80}
+                max={130}
+                step={5}
+                label={t('appearance.interfaceFontScale')}
+                output={(value) => t('appearance.interfaceFontScaleValue', { value })}
+                onPreview={(interfaceFontScale) => previewAppearance({ interfaceFontScale })}
+                onChange={(interfaceFontScale) => {
+                  finishAppearancePreview();
+                  preferences.updateAppearance({ interfaceFontScale });
+                }}
+              />
+            }
+          />
+          <SettingRow
+            title={t('appearance.interfaceFontFamily')}
+            description={t('appearance.interfaceFontFamilyDescription')}
+            control={
+              <Select
+                value={preferences.appearance.interfaceFontFamily}
+                options={interfaceFontOptions}
+                onChange={(interfaceFontFamily) =>
+                  preferences.updateAppearance({ interfaceFontFamily })
+                }
+                ariaLabel={t('appearance.interfaceFontFamily')}
+                icon={Type}
+              />
+            }
+          />
+          <SettingRow
             title={t('appearance.palette')}
             description={t('appearance.paletteDescription')}
             control={
@@ -1323,15 +1387,117 @@ export function SettingsPage() {
             }
           />
           <SettingRow
-            title={t('lyrics.wordEffect')}
-            description={t('lyrics.wordEffectDescription')}
+            title={t('lyrics.wordJump')}
+            description={t('lyrics.wordJumpDescription')}
+            control={
+              <Toggle
+                checked={preferences.lyrics.wordEffect === 'jump'}
+                onChange={(enabled) =>
+                  preferences.updateLyrics({ wordEffect: enabled ? 'jump' : 'fill' })
+                }
+                label={t('lyrics.wordJump')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.fontSize')}
+            description={t('lyrics.fontSizeDescription')}
+            control={
+              <RangeControl
+                value={selectedLyricsPreset.typography.fontScale}
+                min={FONT_SCALE_MIN}
+                max={FONT_SCALE_MAX}
+                step={0.01}
+                label={t('lyrics.fontSize')}
+                output={(value) => t('lyrics.fontSizeValue', { value: Math.round(value * 100) })}
+                onChange={(fontScale) => updateSelectedLyricsTypography({ fontScale })}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.lineSpacing')}
+            description={t('lyrics.lineSpacingDescription')}
+            control={
+              <RangeControl
+                value={selectedLyricsPreset.typography.lineHeight}
+                min={LINE_HEIGHT_MIN}
+                max={LINE_HEIGHT_MAX}
+                step={0.01}
+                label={t('lyrics.lineSpacing')}
+                output={(value) => t('lyrics.lineSpacingValue', { value: value.toFixed(2) })}
+                onChange={(lineHeight) => updateSelectedLyricsTypography({ lineHeight })}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.fontWeight')}
+            description={t('lyrics.fontWeightDescription')}
             control={
               <Select
-                value={preferences.lyrics.wordEffect}
-                options={wordEffectOptions}
-                onChange={(wordEffect) => preferences.updateLyrics({ wordEffect })}
-                ariaLabel={t('lyrics.wordEffect')}
-                icon={AlignLeft}
+                value={preferences.lyrics.fontWeight}
+                options={lyricFontWeightOptions}
+                onChange={(fontWeight) => preferences.updateLyrics({ fontWeight })}
+                ariaLabel={t('lyrics.fontWeight')}
+                icon={Type}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.amllSpring')}
+            description={t('lyrics.amllSpringDescription')}
+            control={
+              <Toggle
+                checked={preferences.amll.enableSpring}
+                onChange={(enableSpring) => preferences.updateAmll({ enableSpring })}
+                label={t('lyrics.amllSpring')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.amllScale')}
+            description={t('lyrics.amllScaleDescription')}
+            control={
+              <Toggle
+                checked={preferences.amll.enableScale}
+                onChange={(enableScale) => preferences.updateAmll({ enableScale })}
+                label={t('lyrics.amllScale')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.amllBlur')}
+            description={t('lyrics.amllBlurDescription')}
+            control={
+              <Toggle
+                checked={preferences.amll.enableBlur}
+                onChange={(enableBlur) => preferences.updateAmll({ enableBlur })}
+                label={t('lyrics.amllBlur')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.amllHidePassedLines')}
+            description={t('lyrics.amllHidePassedLinesDescription')}
+            control={
+              <Toggle
+                checked={preferences.amll.hidePassedLines}
+                onChange={(hidePassedLines) => preferences.updateAmll({ hidePassedLines })}
+                label={t('lyrics.amllHidePassedLines')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.amllWordFadeWidth')}
+            description={t('lyrics.amllWordFadeWidthDescription')}
+            control={
+              <RangeControl
+                value={preferences.amll.wordFadeWidth}
+                min={0.05}
+                max={1}
+                step={0.05}
+                label={t('lyrics.amllWordFadeWidth')}
+                output={(value) => t('lyrics.amllWordFadeWidthValue', { value: value.toFixed(2) })}
+                onChange={(wordFadeWidth) => preferences.updateAmll({ wordFadeWidth })}
               />
             }
           />

@@ -85,6 +85,29 @@ describe('LyricsPanel', () => {
     expect(container.querySelector('.amll-lyric-player.dom')).toBeInTheDocument();
   });
 
+  it('passes the selected lyrics font weight into the scene CSS variables', () => {
+    usePreferencesStore.setState({
+      lyrics: { ...defaultPreferences.lyrics, fontWeight: '600' },
+    });
+    const { container } = render(<LyricsPanel {...props()} />);
+    const scene = container.querySelector<HTMLElement>('.lyrics-scene');
+
+    expect(scene).not.toBeNull();
+    expect(scene?.style.getPropertyValue('--lyrics-font-weight')).toBe('600');
+  });
+
+  it('marks the AMLL renderer when word jump is disabled', () => {
+    usePreferencesStore.setState({
+      lyrics: { ...defaultPreferences.lyrics, wordEffect: 'fill' },
+    });
+    const { container } = render(<LyricsPanel {...props()} />);
+
+    expect(container.querySelector('.lyrics-stage__amll')).toHaveAttribute(
+      'data-word-jump',
+      'false',
+    );
+  });
+
   it('keeps an accessible static fallback for unsynchronized lyrics', () => {
     useLyricsStore.setState({ document: unsynchronizedDocument(), status: 'ready' });
     render(<LyricsPanel {...props()} />);
