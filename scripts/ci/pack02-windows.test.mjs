@@ -27,8 +27,8 @@ test('PACK-02 assist prints a pending clean-VM matrix and does not invent green'
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.id, PACK02_ID);
-  assert.equal(payload.unsigned, true);
-  assert.equal(payload.risk, 'R-9');
+  assert.equal(payload.localSigning, 'credential-dependent');
+  assert.equal(payload.releaseSigning, 'required');
   assert.equal(payload.electron, ELECTRON_VERSION);
   assert.equal(payload.electronBuilder, BUILDER_VERSION);
   assert.equal(payload.appId, APP_ID);
@@ -70,7 +70,7 @@ test('pack:win is --win --x64 and NSIS stays per-user', () => {
   assert.equal(flags.perMachineFalse, true);
   assert.equal(flags.nsisTarget, true);
   assert.equal(flags.portableTarget, true);
-  assert.equal(flags.forceCodeSigningFalse, true);
+  assert.equal(flags.signingDisabled, false);
   assert.equal(flags.hasElectronUpdater, false);
   assert.equal(NSIS.oneClick, false);
   assert.equal(NSIS.perMachine, false);

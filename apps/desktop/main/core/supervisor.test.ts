@@ -211,6 +211,25 @@ describe('tryResolveCoreBinary', () => {
         cargoTargetDir: path.join(root, 'cargo'),
       }),
     ).toEqual({ binary: path.join(cargoDebug, name), integrity: 'optional' });
+
+    expect(
+      resolveCoreLaunch({
+        env: { YAQMC_CORE_BIN: envBin },
+        packaged: true,
+        resourcesPath,
+        cargoTargetDir: path.join(root, 'cargo'),
+      }),
+    ).toEqual({ binary: path.join(resourcesPath, 'core', name), integrity: 'required' });
+
+    const missingResources = path.join(root, 'missing-packaged-resources');
+    expect(
+      resolveCoreLaunch({
+        env: { YAQMC_CORE_BIN: envBin },
+        packaged: true,
+        resourcesPath: missingResources,
+        cargoTargetDir: path.join(root, 'cargo'),
+      }),
+    ).toBeUndefined();
   });
 });
 

@@ -11,6 +11,7 @@ import {
   electronBuilderArgs,
   isElectronCoreCross,
   parseElectronPackageArgs,
+  packagingBuildEnvironment,
   packagingEnvironment,
   planElectronPackage,
   stageElectronArtifacts,
@@ -63,6 +64,17 @@ test('production packaging strips QA launch state without dropping package confi
   assert.equal(env.YAQMC_QA_ROOT, undefined);
 });
 
+test('compile steps cannot inherit Windows signing credentials', () => {
+  const env = packagingBuildEnvironment({
+    PATH: 'toolchain',
+    WIN_CSC_LINK: 'certificate-material',
+    WIN_CSC_KEY_PASSWORD: 'certificate-password',
+  });
+  assert.equal(env.PATH, 'toolchain');
+  assert.equal(env.WIN_CSC_LINK, undefined);
+  assert.equal(env.WIN_CSC_KEY_PASSWORD, undefined);
+});
+
 test('Windows arm64 is treated as a core cross-compile', () => {
   assert.equal(isElectronCoreCross({ os: 'windows', arch: 'arm64' }), true);
   assert.equal(isElectronCoreCross({ os: 'windows', arch: 'x64' }), false);
@@ -91,6 +103,22 @@ test('Linux builder args request AppImage deb rpm tar.gz and never publish', () 
     '--target',
     'aarch64-unknown-linux-gnu',
   ]);
+});
+
+test('release Windows packages layer the fail-closed signing config', () => {
+  const args = electronBuilderArgs({ os: 'windows', arch: 'x64', requireSigning: true });
+  assert.deepEqual(args.slice(0, 6), [
+    '--projectDir',
+    '.',
+    '--config',
+    'electron-builder.yml',
+    '--config',
+    'electron-builder.release.yml',
+  ]);
+  assert.throws(
+    () => electronBuilderArgs({ os: 'linux', arch: 'x64', requireSigning: true }),
+    /only for Windows/,
+  );
 });
 
 test('parseElectronPackageArgs treats --dry-run as a boolean', () => {

@@ -18,6 +18,8 @@ import { findCoreBinary, stageCore } from '../stage-core.mjs';
 import { stripQaLaunchFlags } from '../qa-runtime.mjs';
 
 export const ELECTRON_OUTPUT_DIR_NAME = 'release-electron';
+export const ELECTRON_RELEASE_CONFIG = 'electron-builder.release.yml';
+export const WINDOWS_SIGNING_ENV_KEYS = ['WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD'];
 
 export function parseElectronPackageArgs(argv) {
   const options = { dryRun: false };
@@ -42,8 +44,14 @@ export function cargoBuildArgs(target) {
   return ['build', '-p', 'yaqmc-core', '--release', '--locked', '--target', target];
 }
 
-export function electronBuilderArgs({ os, arch }) {
+export function electronBuilderArgs({ os, arch, requireSigning = false }) {
   const args = ['--projectDir', '.', '--config', 'electron-builder.yml'];
+  if (requireSigning) {
+    if (os !== 'windows') {
+      throw new Error('release signing is supported only for Windows packages');
+    }
+    args.push('--config', ELECTRON_RELEASE_CONFIG);
+  }
   if (os === 'windows') {
     args.push('--win', 'nsis', 'portable', `--${arch}`);
   } else if (os === 'linux') {
@@ -70,7 +78,7 @@ export function electronArtifactNames({ os, arch }) {
   throw new Error(`unsupported Electron package OS ${os}`);
 }
 
-export function planElectronPackage({ os, arch, target, cross }) {
+export function planElectronPackage({ os, arch, target, cross, requireSigning = false }) {
   const resolvedCross = cross ?? isElectronCoreCross({ os, arch });
   return {
     cargo: ['cargo', ...cargoBuildArgs(target)],
@@ -78,8 +86,9 @@ export function planElectronPackage({ os, arch, target, cross }) {
     frontendBuild: ['npm', 'run', 'ci:frontend-build'],
     desktopBuild: ['npm', 'run', 'build', '-w', '@yaqmc/desktop'],
     stageCore: ['node', 'scripts/stage-core.mjs', '--profile', 'release', '--rust-target', target],
-    electronBuilder: ['electron-builder', ...electronBuilderArgs({ os, arch })],
+    electronBuilder: ['electron-builder', ...electronBuilderArgs({ os, arch, requireSigning })],
     publish: 'never',
+    signingRequired: requireSigning,
     cross: resolvedCross,
     outputDir: ELECTRON_OUTPUT_DIR_NAME,
   };
@@ -150,6 +159,14 @@ export function packagingEnvironment(env = process.env) {
   return stripQaLaunchFlags(env);
 }
 
+export function packagingBuildEnvironment(env = process.env) {
+  const sanitized = { ...packagingEnvironment(env) };
+  for (const key of WINDOWS_SIGNING_ENV_KEYS) {
+    delete sanitized[key];
+  }
+  return sanitized;
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repositoryRoot,
@@ -174,8 +191,23 @@ function main() {
     throw new Error('package-electron requires --os, --arch, and --target');
   }
   const cross = options.cross === 'true' || isElectronCoreCross({ os: osName, arch });
-  const plan = planElectronPackage({ os: osName, arch, target, cross });
+  const requireSigning = options['require-signing'] === 'true';
+  if (
+    options['require-signing'] !== undefined &&
+    options['require-signing'] !== 'true' &&
+    options['require-signing'] !== 'false'
+  ) {
+    throw new Error('package-electron --require-signing must be true or false');
+  }
+  const plan = planElectronPackage({
+    os: osName,
+    arch,
+    target,
+    cross,
+    requireSigning,
+  });
   const packageEnv = packagingEnvironment();
+  const buildEnv = packagingBuildEnvironment(packageEnv);
 
   if (options.dryRun) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
@@ -188,7 +220,7 @@ function main() {
     process.stdout.write(`Using prebuilt frontend dist for ${info.gitSha}\n`);
   }
 
-  run(plan.cargo[0], plan.cargo.slice(1), { env: packageEnv });
+  run(plan.cargo[0], plan.cargo.slice(1), { env: buildEnv });
   const coreBinary = findCoreBinary({
     repoRoot: repositoryRoot,
     profile: 'release',
@@ -196,13 +228,13 @@ function main() {
   });
   verifyBinaryFile(coreBinary, target);
 
-  run(plan.clientBuild[0], plan.clientBuild.slice(1), { env: packageEnv });
+  run(plan.clientBuild[0], plan.clientBuild.slice(1), { env: buildEnv });
   if (!usePrebuiltFrontend) {
-    run(plan.frontendBuild[0], plan.frontendBuild.slice(1), { env: packageEnv });
+    run(plan.frontendBuild[0], plan.frontendBuild.slice(1), { env: buildEnv });
     const info = verifyFrontendDist();
     process.stdout.write(`Built frontend dist for ${info.gitSha}\n`);
   }
-  run(plan.desktopBuild[0], plan.desktopBuild.slice(1), { env: packageEnv });
+  run(plan.desktopBuild[0], plan.desktopBuild.slice(1), { env: buildEnv });
   stageCore({ repoRoot: repositoryRoot, profile: 'release', rustTarget: target });
 
   const desktopRoot = path.join(repositoryRoot, 'apps', 'desktop');

@@ -19,7 +19,10 @@ export const ELECTRON_COMBINED_CHECKSUMS_NAME = 'SHA256SUMS-electron.txt';
 
 export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release draft
 
-This is an **unsigned** Electron host draft (**R-9**).
+Windows installers and portable executables in this draft are Authenticode-signed.
+The release workflow validates both signature status and the expected publisher
+identity before artifacts can be uploaded. Linux artifacts are not code-signed;
+use the published SHA-256 checksums for transport verification.
 
 - Windows i686 is not published.
 - App and keyring data stay under \`org.yaqmc.desktop\`.

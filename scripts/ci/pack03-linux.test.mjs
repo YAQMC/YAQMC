@@ -82,7 +82,7 @@ test('yml declares AppImage deb rpm tar.gz for x64 and arm64 without an updater 
   assert.equal(flags.updaterBearingAppImage, true);
   assert.equal(flags.webkitGtkDepends, false);
   assert.equal(flags.hasElectronUpdater, false);
-  assert.equal(flags.forceCodeSigningFalse, true);
+  assert.equal(flags.windowsSigningDisabled, false);
   assert.equal(flags.electronVersion, true);
 
   const pkg = JSON.parse(

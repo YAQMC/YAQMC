@@ -204,12 +204,35 @@ describe('oauth allowlist globs', () => {
     expect(urlMatchesOAuthAllowlist('javascript:alert(1)', allowlist)).toBe(false);
   });
 
-  it('treats callbackMatcher.urlPrefix as the capture signal', () => {
+  it('matches callback scheme, authority, path, and required query parameters structurally', () => {
     const callback = `${CALLBACK_PREFIX}?code=abc&state=1`;
     expect(isOAuthCallbackUrl(callback, CALLBACK_PREFIX)).toBe(true);
     expect(isOAuthCallbackUrl('https://evil.test/?next=' + CALLBACK_PREFIX, CALLBACK_PREFIX)).toBe(
       false,
     );
+    expect(isOAuthCallbackUrl(`${CALLBACK_PREFIX}.evil?code=abc&state=1`, CALLBACK_PREFIX)).toBe(
+      false,
+    );
+    expect(
+      isOAuthCallbackUrl(
+        'https://y.qq.com/portal/wx_redirect.html/extra?code=abc&state=1',
+        CALLBACK_PREFIX,
+      ),
+    ).toBe(false);
+    expect(
+      isOAuthCallbackUrl(
+        `${CALLBACK_PREFIX}?login_type=1&code=abc&state=1`,
+        `${CALLBACK_PREFIX}?login_type=1`,
+      ),
+    ).toBe(true);
+    expect(
+      isOAuthCallbackUrl(
+        `${CALLBACK_PREFIX}?login_type=2&code=abc&state=1`,
+        `${CALLBACK_PREFIX}?login_type=1`,
+      ),
+    ).toBe(false);
+    expect(isOAuthCallbackUrl('not a URL', CALLBACK_PREFIX)).toBe(false);
+    expect(isOAuthCallbackUrl(callback, 'not a URL')).toBe(false);
     expect(urlMatchesOAuthAllowlist(callback, allowlist)).toBe(true);
   });
 });

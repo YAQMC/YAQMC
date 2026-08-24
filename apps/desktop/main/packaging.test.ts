@@ -31,6 +31,10 @@ describe('PACK-01 electron-builder', () => {
 
   it('finalizes appId parity, targets, NSIS, extraResources, and sandbox fuses', () => {
     const yaml = readFileSync(path.join(desktopRoot, 'electron-builder.yml'), 'utf8');
+    const releaseYaml = readFileSync(
+      path.join(desktopRoot, 'electron-builder.release.yml'),
+      'utf8',
+    );
     expect(yaml).toContain('appId: org.yaqmc.desktop');
     expect(yaml).toContain('productName: YAQMC');
     expect(yaml).toContain('asar: true');
@@ -56,7 +60,12 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).toContain('enableNodeCliInspectArguments: false');
     expect(yaml).toContain('onlyLoadAppFromAsar: true');
     expect(yaml).toContain('grantFileProtocolExtraPrivileges: false');
-    expect(yaml).toContain('signExecutable: false');
+    expect(yaml).not.toContain('forceCodeSigning: false');
+    expect(yaml).not.toContain('signExecutable: false');
+    expect(yaml).toContain('verifyUpdateCodeSignature: true');
+    expect(releaseYaml).toContain('forceCodeSigning: true');
+    expect(releaseYaml).toContain('signExecutable: true');
+    expect(releaseYaml).toContain('verifyUpdateCodeSignature: true');
     expect(yaml).not.toContain('signAndEditExecutable: false');
     expect(yaml).toContain('provider: github');
     expect(yaml).toContain('owner: YAQMC');
