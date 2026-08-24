@@ -699,6 +699,9 @@ export function SettingsPage() {
   const preferences = usePreferencesStore();
   const uiDiagnostics = uiDiagnosticsEnabled();
   const [copied, setCopied] = useState<'endpoint' | 'token' | null>(null);
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [tokenTouched, setTokenTouched] = useState(false);
+  const [tokenVisible, setTokenVisible] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<SurfaceCapabilities | null>(null);
   const [unlockingAll, setUnlockingAll] = useState(false);
@@ -718,6 +721,20 @@ export function SettingsPage() {
       .then(setCapabilities)
       .catch(() => setCapabilities(null));
   }, []);
+
+  useEffect(() => {
+    if (api.token !== null) {
+      setTokenDraft(api.token);
+    } else {
+      setTokenDraft('');
+    }
+    setTokenTouched(false);
+  }, [api.status?.tokenConfigured, api.token]);
+
+  useEffect(() => {
+    if (!api.available || !api.status || api.token !== null) return;
+    void api.revealToken();
+  }, [api.available, api.revealToken, api.status, api.token]);
 
   useEffect(() => {
     if (!isNativeRuntime) return;
@@ -944,9 +961,13 @@ export function SettingsPage() {
     const parsed = Number(new FormData(event.currentTarget as HTMLFormElement).get('port'));
     if (Number.isInteger(parsed) && parsed >= 1_024 && parsed <= 65_535) void api.setPort(parsed);
   };
+  const submitToken = (event: React.FormEvent) => {
+    event.preventDefault();
+    void api.setToken(tokenDraft);
+  };
   const copyToken = async () => {
-    if (!api.token) return;
-    await navigator.clipboard.writeText(api.token);
+    if (!tokenDraft) return;
+    await navigator.clipboard.writeText(tokenDraft);
     setCopied('token');
     window.setTimeout(() => setCopied(null), 1_500);
   };
@@ -2002,7 +2023,7 @@ export function SettingsPage() {
                     min={1_024}
                     max={65_535}
                     defaultValue={api.status?.configuredPort ?? 19_532}
-                    disabled={api.busy || !api.status?.tokenConfigured}
+                    disabled={api.busy || !api.status}
                     aria-label={t('api.portLabel')}
                   />
                   <button className="button button--secondary" type="submit" disabled={api.busy}>
@@ -2027,22 +2048,36 @@ export function SettingsPage() {
                 <strong>{t('api.token')}</strong>
                 <span>{t('api.tokenDescription')}</span>
               </div>
-              <div className="token-control">
-                <code>{api.token ?? '••••••••••••••••••••••••••••••••'}</code>
-                <button
-                  type="button"
-                  className="settings-icon-button"
-                  onClick={() => void (api.token ? api.hideToken() : api.revealToken())}
+              <form className="token-control" onSubmit={submitToken}>
+                <input
+                  type={tokenVisible ? 'text' : 'password'}
+                  value={tokenDraft}
+                  onChange={(event) => {
+                    setTokenTouched(true);
+                    setTokenDraft(event.target.value);
+                  }}
+                  placeholder={t('api.token')}
+                  autoComplete="off"
+                  spellCheck={false}
                   disabled={api.busy}
-                  aria-label={api.token ? t('api.hideToken') : t('api.revealToken')}
-                >
-                  {api.token ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+                  aria-label={t('api.token')}
+                />
+                {api.status?.tokenConfigured && (
+                  <button
+                    type="button"
+                    className="settings-icon-button"
+                    onClick={() => setTokenVisible((visible) => !visible)}
+                    disabled={api.busy}
+                    aria-label={tokenVisible ? t('api.hideToken') : t('api.revealToken')}
+                  >
+                    {tokenVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="settings-icon-button"
                   onClick={() => void copyToken()}
-                  disabled={!api.token}
+                  disabled={api.busy || !tokenDraft}
                   aria-label={t('api.copyToken')}
                 >
                   <Copy size={16} />
@@ -2050,16 +2085,29 @@ export function SettingsPage() {
                 <span className="token-control__copied" aria-live="polite">
                   {copied === 'token' ? common('copied') : ''}
                 </span>
+              </form>
+              <div className="token-actions">
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  onClick={() => void api.setToken(tokenDraft)}
+                  disabled={api.busy || (!tokenTouched && api.status?.tokenConfigured)}
+                >
+                  {t('api.saveToken')}
+                </button>
+                <button
+                  type="button"
+                  className="button button--quiet token-regenerate"
+                  onClick={regenerate}
+                  disabled={api.busy}
+                >
+                  <RotateCcw size={14} /> {t('api.regenerate')}
+                </button>
               </div>
-              <button
-                type="button"
-                className="button button--quiet token-regenerate"
-                onClick={regenerate}
-                disabled={api.busy}
-              >
-                <RotateCcw size={14} /> {t('api.regenerate')}
-              </button>
             </div>
+            {!api.status?.tokenConfigured && (
+              <p className="settings-token-recommendation">{t('api.tokenRecommendation')}</p>
+            )}
             <div className="settings-security-note">
               <ShieldCheck size={17} />
               <p>{t('api.security')}</p>

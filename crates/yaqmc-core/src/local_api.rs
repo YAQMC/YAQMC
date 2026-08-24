@@ -203,21 +203,35 @@ impl LocalApiService {
         self.token.read().await.clone()
     }
 
-    pub async fn regenerate_token(self: &Arc<Self>) -> Result<LocalApiStatus, LocalApiError> {
+    pub async fn set_token(
+        self: &Arc<Self>,
+        token: String,
+    ) -> Result<LocalApiStatus, LocalApiError> {
+        let token = token.trim().to_owned();
         let should_restart = self.status.read().await.state == LocalApiRunState::Running;
-        let token = generate_token();
-        self.credentials.save(LOCAL_API_TOKEN_ACCOUNT, &token)?;
-        *self.token.write().await = token;
+
+        if token.is_empty() {
+            self.credentials.delete(LOCAL_API_TOKEN_ACCOUNT)?;
+        } else {
+            self.credentials.save(LOCAL_API_TOKEN_ACCOUNT, &token)?;
+        }
+        *self.token.write().await = token.clone();
+
         let mut status = self.status.write().await;
-        status.token_configured = true;
+        status.token_configured = !token.is_empty();
         status.last_error = None;
         drop(status);
+
         if should_restart {
             self.stop().await?;
             self.start().await
         } else {
             Ok(self.status().await)
         }
+    }
+
+    pub async fn regenerate_token(self: &Arc<Self>) -> Result<LocalApiStatus, LocalApiError> {
+        self.set_token(generate_token()).await
     }
 
     pub async fn start(self: &Arc<Self>) -> Result<LocalApiStatus, LocalApiError> {
@@ -233,15 +247,7 @@ impl LocalApiService {
         }
 
         let config = self.config.read().await.clone();
-        let token = match self.ensure_token().await {
-            Ok(token) => token,
-            Err(error) => {
-                let mut status = self.status.write().await;
-                status.state = LocalApiRunState::Error;
-                status.last_error = Some(error.to_string());
-                return Err(error);
-            }
-        };
+        let token = self.token.read().await.clone();
         {
             let mut status = self.status.write().await;
             status.state = LocalApiRunState::Starting;
@@ -281,23 +287,6 @@ impl LocalApiService {
             status.last_error = None;
         }
         Ok(self.status().await)
-    }
-
-    async fn ensure_token(&self) -> Result<String, LocalApiError> {
-        let current = self.token.read().await.clone();
-        if !current.is_empty() {
-            return Ok(current);
-        }
-        if let Some(stored) = self.credentials.load(LOCAL_API_TOKEN_ACCOUNT)? {
-            *self.token.write().await = stored.clone();
-            self.status.write().await.token_configured = true;
-            return Ok(stored);
-        }
-        let generated = generate_token();
-        self.credentials.save(LOCAL_API_TOKEN_ACCOUNT, &generated)?;
-        *self.token.write().await = generated.clone();
-        self.status.write().await.token_configured = true;
-        Ok(generated)
     }
 
     pub async fn stop(&self) -> Result<LocalApiStatus, LocalApiError> {
@@ -359,6 +348,9 @@ pub(crate) fn build_router(player: Arc<PlayerService>, token: String) -> Router 
 }
 
 async fn authorize(State(expected): State<Arc<String>>, request: Request, next: Next) -> Response {
+    if expected.is_empty() {
+        return next.run(request).await;
+    }
     let supplied = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -883,6 +875,7 @@ mod tests {
         assert_eq!(running.host, "127.0.0.1");
         assert_eq!(running.state, LocalApiRunState::Running);
         assert!(running.bound_port.is_some_and(|port| port > 0));
+        assert!(!running.token_configured);
 
         let stopped = service.set_enabled(false).await.expect("listener stops");
         assert_eq!(stopped.state, LocalApiRunState::Disabled);
@@ -959,6 +952,44 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn an_empty_token_removes_authentication_and_the_stored_credential() {
+        let directory = tempdir().expect("temp directory");
+        let credentials = Arc::new(MemoryCredentialStore::default());
+        let service = LocalApiService::new(
+            directory.path().join("local-api.json"),
+            Arc::new(PlayerService::new()),
+            credentials.clone(),
+        )
+        .expect("service loads");
+
+        service.regenerate_token().await.expect("token generates");
+        let status = service
+            .set_token("   ".to_owned())
+            .await
+            .expect("token clears");
+
+        assert!(!status.token_configured);
+        assert!(service.reveal_token().await.is_empty());
+        assert_eq!(
+            credentials
+                .load(LOCAL_API_TOKEN_ACCOUNT)
+                .expect("secure token loads"),
+            None
+        );
+
+        let router = build_router(Arc::new(PlayerService::new()), String::new());
+        let response = router
+            .oneshot(
+                Request::get("/v1/player")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("request succeeds");
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]

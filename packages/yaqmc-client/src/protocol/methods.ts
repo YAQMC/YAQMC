@@ -154,6 +154,7 @@ export const MIGRATED_METHOD_NAMES = [
   'local_api_status',
   'local_api_set_enabled',
   'local_api_set_port',
+  'local_api_set_token',
   'local_api_reveal_token',
   'local_api_regenerate_token',
   'debug_perf_sample',
@@ -310,6 +311,7 @@ export type MethodParams = Exhaustive<{
   local_api_status: void;
   local_api_set_enabled: { enabled: boolean };
   local_api_set_port: { port: number };
+  local_api_set_token: { token: string };
   local_api_reveal_token: void;
   local_api_regenerate_token: void;
   debug_perf_sample: { sample: DebugPerfSample };
@@ -442,6 +444,7 @@ export type MethodResult = Exhaustive<{
   local_api_status: LocalApiStatus;
   local_api_set_enabled: LocalApiStatus;
   local_api_set_port: LocalApiStatus;
+  local_api_set_token: LocalApiStatus;
   local_api_reveal_token: string;
   local_api_regenerate_token: LocalApiStatus;
   debug_perf_sample: void;

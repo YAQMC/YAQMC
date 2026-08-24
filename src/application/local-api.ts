@@ -25,8 +25,8 @@ interface LocalApiSettings {
   refresh: () => Promise<void>;
   setEnabled: (enabled: boolean) => Promise<void>;
   setPort: (port: number) => Promise<void>;
+  setToken: (token: string) => Promise<void>;
   revealToken: () => Promise<void>;
-  hideToken: () => void;
   regenerateToken: () => Promise<void>;
 }
 
@@ -36,7 +36,7 @@ function errorMessage(error: unknown): string {
 
 export function useLocalApiSettings(): LocalApiSettings {
   const [status, setStatus] = useState<LocalApiStatus | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setRevealedToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,14 +95,25 @@ export function useLocalApiSettings(): LocalApiSettings {
 
   const revealToken = useCallback(async () => {
     const revealed = await run(() => client.invoke('local_api_reveal_token'));
-    if (revealed) setToken(revealed);
+    if (revealed !== undefined) setRevealedToken(revealed);
   }, [run]);
+
+  const setToken = useCallback(
+    async (token: string) => {
+      const next = await run(() => client.invoke('local_api_set_token', { token }));
+      if (next) {
+        setStatus(next);
+        setRevealedToken(null);
+      } else await refresh();
+    },
+    [refresh, run],
+  );
 
   const regenerateToken = useCallback(async () => {
     const next = await run(() => client.invoke('local_api_regenerate_token'));
     if (next) {
       setStatus(next);
-      setToken(null);
+      setRevealedToken(null);
     } else await refresh();
   }, [refresh, run]);
 
@@ -115,8 +126,8 @@ export function useLocalApiSettings(): LocalApiSettings {
     refresh,
     setEnabled,
     setPort,
+    setToken,
     revealToken,
-    hideToken: () => setToken(null),
     regenerateToken,
   };
 }

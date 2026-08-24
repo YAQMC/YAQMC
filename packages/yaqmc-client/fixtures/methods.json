@@ -1120,6 +1120,19 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "local_api_set_token",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "local_api_reveal_token",
     "owner": "core",
     "requestCap": 1048576,
