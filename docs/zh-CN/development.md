@@ -20,7 +20,7 @@ Node 版本同时钉在 `package.json`、`package-lock.json` 与 `.node-version`
 
 生产提供器无条件链接私有 crate `qqmusic-api`：
 `https://github.com/YAQMC/qm-api-rs.git`，精确 revision 为
-`476b37e3135560dff132e9ba8996e068af706458`。本机 Git 必须已能读取该仓库
+`827233cb799bede84ee5033ec16450dc1d5e2587`。本机 Git 必须已能读取该仓库
 （例如 Git Credential Manager 或已有 SSH/HTTPS 凭据）。禁止把 token 写进
 仓库 URL、文件、Shell 历史或诊断日志。
 

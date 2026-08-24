@@ -22,7 +22,7 @@ TypeScript failures.
 
 The production provider links the private `qqmusic-api` crate
 unconditionally from `https://github.com/YAQMC/qm-api-rs.git`, revision
-`476b37e3135560dff132e9ba8996e068af706458`. Local Git must already be able to
+`827233cb799bede84ee5033ec16450dc1d5e2587`. Local Git must already be able to
 read that repository (for example through Git Credential Manager or SSH/HTTPS
 credentials). Never place a token in a repository URL, file, shell history, or
 diagnostic log.

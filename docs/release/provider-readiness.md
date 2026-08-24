@@ -1,7 +1,7 @@
 # Production provider readiness
 
 Status: **READY** for the production `qmapi` backend at exact `qm-api-rs`
-revision `476b37e3135560dff132e9ba8996e068af706458`.
+revision `827233cb799bede84ee5033ec16450dc1d5e2587`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run p14c:enforce` to verify the pin, provider boundary, evidence paths,
@@ -29,7 +29,8 @@ is maintained separately in
 [qm-api-rs-provenance.md](qm-api-rs-provenance.md).
 
 The exact-pin three-day soak is recorded as
-`maintainer-authorized-skip` by Osilvfe on 2026-08-22. This is a maintainer
-waiver, not evidence that an automated three-day soak ran or passed. A future
-pin change must update the readiness record and repeat or explicitly reissue
-the applicable decision.
+`maintainer-authorized-skip` by Osilvfe on 2026-08-24 for this security
+hardening pin. This is a maintainer waiver, not evidence that an automated
+three-day soak ran or passed. The pin was checked against YAQMC's Provider
+boundary with a clean compile and its offline qmapi test suite; live-service
+verification remains a separate release responsibility.

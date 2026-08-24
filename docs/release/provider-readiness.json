@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "phase": "P14-C",
-  "targetPin": "476b37e3135560dff132e9ba8996e068af706458",
+  "targetPin": "827233cb799bede84ee5033ec16450dc1d5e2587",
   "cutoverBaselinePin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
   "defaultBackend": "qmapi",
   "cutoverAuthorized": true,
@@ -29,11 +29,11 @@
     {
       "id": "exact-pin-three-day-soak",
       "status": "waived",
-      "appliesToPin": "476b37e3135560dff132e9ba8996e068af706458",
+      "appliesToPin": "827233cb799bede84ee5033ec16450dc1d5e2587",
       "waivedBy": "Osilvfe",
-      "waivedOn": "2026-08-22",
+      "waivedOn": "2026-08-24",
       "waiverKind": "maintainer-authorized-skip",
-      "reissuedFrom": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
+      "reissuedFrom": "476b37e3135560dff132e9ba8996e068af706458",
       "evidence": "docs/release/provider-readiness.md"
     },
     {

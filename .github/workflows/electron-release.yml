@@ -154,7 +154,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: YAQMC/qm-api-rs
-          ref: 476b37e3135560dff132e9ba8996e068af706458
+          ref: 827233cb799bede84ee5033ec16450dc1d5e2587
           token: ${{ secrets.QM_API_RS_TOKEN }}
           path: .corresponding-source/qm-api-rs
           persist-credentials: false

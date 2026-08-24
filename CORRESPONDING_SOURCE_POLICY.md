@@ -15,7 +15,7 @@ unresolved proprietary extraction; those remain separate release blockers.
 
 The source delivery must include the exact YAQMC source for the released commit and the exact linked `qm-api-rs`
 source resolved by the pinned revision
-`476b37e3135560dff132e9ba8996e068af706458` (or the revision recorded in that release's lockfile). Include the
+`827233cb799bede84ee5033ec16450dc1d5e2587` (or the revision recorded in that release's lockfile). Include the
 dependency's license files, manifests, lockfiles, and build scripts, together with YAQMC's manifests, lockfiles, and
 build/packaging/release scripts. The release notes or a source manifest must identify the YAQMC commit, the
 `qm-api-rs` revision, the provenance-ledger SHA-256 digest, evidence references, and hashes of the delivered
