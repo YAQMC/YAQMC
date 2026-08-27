@@ -297,7 +297,7 @@ export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
       value: quality,
       label,
       description: capability ? qualityCapabilityLabel(capability, t) : undefined,
-      disabled: capability ? !capability.playable : false,
+      disabled: capability ? qualityCapabilityDefinitelyUnavailable(capability) : false,
     };
   };
   const qualityOptions: readonly SelectOption<AudioQualityPreference>[] = [
@@ -533,6 +533,14 @@ function qualityCapabilityLabel(
     resource: t(`qualityResource.${capability.resource}`),
     client: t(`qualityClient.${capability.client}`),
   });
+}
+
+function qualityCapabilityDefinitelyUnavailable(capability: QualityCapabilityState): boolean {
+  return (
+    capability.entitlement === 'denied' ||
+    capability.resource === 'unavailable' ||
+    capability.client === 'unsupported'
+  );
 }
 
 function qualityLabel(quality: AudioQuality, t: TFunction<'player'>): string {

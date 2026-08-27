@@ -587,7 +587,7 @@ fn audio_worker(
 ) {
     let default_selection = OutputSelection::SystemDefault;
     let (mut device_sink, mut player, mut selected_output, mut resolved_output) =
-        match open_output(&default_selection, &snapshot) {
+        match open_output(&default_selection, &snapshot, None) {
             Ok(output) => output,
             Err(error) => {
                 let _ = ready.send(Err(error));
@@ -662,7 +662,47 @@ fn audio_worker(
                     }
                     let generation = source_generation.fetch_add(1, Ordering::AcqRel) + 1;
                     discard_pending_seeks(&pending_seek);
-                    let result = load_source(&player, &source);
+                    let result = decode_source(&source).and_then(|decoded| {
+                        let source_sample_rate = decoded.sample_rate;
+                        if source_sample_rate != resolved_output.sample_rate {
+                            match open_output(
+                                &selected_output,
+                                &snapshot,
+                                Some(source_sample_rate),
+                            ) {
+                                Ok((next_sink, next_player, selection, resolved)) => {
+                                    source
+                                        .epoch_guard
+                                        .validate()
+                                        .map_err(|_| AudioEngineError::SourceCancelled)?;
+                                    next_player.set_volume(current_volume);
+                                    device_sink = next_sink;
+                                    player = next_player;
+                                    selected_output = selection;
+                                    resolved_output = resolved;
+                                    recovery_attempts = 0;
+                                    snapshot
+                                        .lock()
+                                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                        .output_error = None;
+                                }
+                                Err(error) => {
+                                    tracing::warn!(
+                                        target: "audio",
+                                        error = %error,
+                                        source_sample_rate,
+                                        current_output_sample_rate = resolved_output.sample_rate,
+                                        "could not reopen output at the source sample rate; retaining the active output"
+                                    );
+                                }
+                            }
+                        }
+                        source
+                            .epoch_guard
+                            .validate()
+                            .map_err(|_| AudioEngineError::SourceCancelled)?;
+                        Ok(append_decoded_source(&player, decoded))
+                    });
                     let mut current = snapshot
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -1017,6 +1057,7 @@ fn audio_worker(
 fn open_output(
     selection: &OutputSelection,
     snapshot: &Arc<Mutex<AudioEngineSnapshot>>,
+    requested_sample_rate: Option<u32>,
 ) -> Result<
     (
         MixerDeviceSink,
@@ -1054,8 +1095,11 @@ fn open_output(
             config.sample_format()
         )
     });
-    let builder = DeviceSinkBuilder::from_device(device)
+    let mut builder = DeviceSinkBuilder::from_device(device)
         .map_err(|_| AudioEngineError::OutputDeviceOpenFailed)?;
+    if let Some(sample_rate) = requested_sample_rate.and_then(std::num::NonZeroU32::new) {
+        builder = builder.with_sample_rate(sample_rate);
+    }
     let output_snapshot = Arc::clone(snapshot);
     let interrupted_device = device_name.clone();
     let interrupted_selection = resolved_selection.kind();
@@ -1082,6 +1126,7 @@ fn open_output(
                 resolved_device = device_name,
                 driver,
                 host = host_name,
+                requested_sample_rate,
                 default_config = default_config.as_deref().unwrap_or("unavailable"),
                 error = %error,
                 "audio output stream creation failed"
@@ -1105,6 +1150,7 @@ fn open_output(
         driver = resolved.driver,
         host = resolved.host,
         sample_rate = resolved.sample_rate,
+        requested_sample_rate,
         channels = resolved.channels,
         sample_format = resolved.sample_format,
         default_config = default_config.as_deref().unwrap_or("unavailable"),
@@ -1133,44 +1179,51 @@ fn replace_output(
 > {
     let was_paused = current_player.is_paused();
     let position = current_player.get_pos();
-    let (sink, player, selection, resolved) = open_output(selection, snapshot)?;
-    let monitor = if let Some(source) = loaded_source {
+    let decoded = loaded_source.map(decode_source).transpose()?;
+    let requested_sample_rate = decoded.as_ref().map(|decoded| decoded.sample_rate);
+    let (sink, player, selection, resolved) =
+        open_output(selection, snapshot, requested_sample_rate)?;
+    player.set_volume(volume);
+    let monitor = if let Some((source, decoded)) = loaded_source.zip(decoded) {
         source
             .epoch_guard
-            .validate_and_run(|| {
-                let (_, monitor) = load_source_unchecked(&player, source)?;
-                if position > Duration::ZERO {
-                    player
-                        .try_seek(position)
-                        .map_err(|_| AudioEngineError::SeekUnsupported)?;
-                }
-                player.set_volume(volume);
-                if !was_paused {
-                    player.play();
-                }
-                Ok(monitor)
-            })
-            .map_err(|_| AudioEngineError::SourceCancelled)??
+            .validate()
+            .map_err(|_| AudioEngineError::SourceCancelled)?;
+        let (_, monitor) = append_decoded_source(&player, decoded);
+        if position > Duration::ZERO {
+            player
+                .try_seek(position)
+                .map_err(|_| AudioEngineError::SeekUnsupported)?;
+        }
+        if !was_paused {
+            player.play();
+        }
+        monitor
     } else {
         None
     };
     Ok((sink, player, monitor, selection, resolved))
 }
 
-fn load_source(
-    player: &Player,
+struct DecodedPlaybackSource {
+    source: Box<dyn Source + Send>,
+    metadata: AudioLoadMetadata,
+    monitor: Option<ProgressiveMonitor>,
+    sample_rate: u32,
+}
+
+fn decode_source(
     source: &PreparedPlaybackSource,
-) -> Result<(AudioLoadMetadata, Option<ProgressiveMonitor>), AudioEngineError> {
+) -> Result<DecodedPlaybackSource, AudioEngineError> {
     source
         .epoch_guard
-        .validate_and_run(|| load_source_unchecked(player, source))
+        .validate_and_run(|| decode_source_unchecked(source))
         .map_err(|_| AudioEngineError::SourceCancelled)?
 }
 
-fn load_source_unchecked(
-    player: &Player,
+fn decode_source_unchecked(
     source: &PreparedPlaybackSource,
-) -> Result<(AudioLoadMetadata, Option<ProgressiveMonitor>), AudioEngineError> {
+) -> Result<DecodedPlaybackSource, AudioEngineError> {
     tracing::debug!(
         target: "audio",
         format = source.format.as_str(),
@@ -1190,17 +1243,7 @@ fn load_source_unchecked(
                 );
                 AudioEngineError::DecoderUnsupported
             })?;
-            let duration = decoder.total_duration().map(duration_ms);
-            player.clear();
-            player.append(decoder);
-            player.pause();
-            Ok((
-                AudioLoadMetadata {
-                    duration_ms: duration,
-                    format: source.format,
-                },
-                None,
-            ))
+            Ok(decoded_playback_source(decoder, source.format, None))
         }
         PreparedPlaybackLocation::Progressive(progressive) => {
             let reader = progressive
@@ -1221,17 +1264,10 @@ fn load_source_unchecked(
                     );
                     AudioEngineError::DecoderUnsupported
                 })?;
-            let duration = decoder.total_duration().map(duration_ms);
-            let monitor = progressive.monitor();
-            player.clear();
-            player.append(decoder);
-            player.pause();
-            Ok((
-                AudioLoadMetadata {
-                    duration_ms: duration,
-                    format: source.format,
-                },
-                Some(monitor),
+            Ok(decoded_playback_source(
+                decoder,
+                source.format,
+                Some(progressive.monitor()),
             ))
         }
         PreparedPlaybackLocation::EncryptedLocal {
@@ -1259,17 +1295,7 @@ fn load_source_unchecked(
                     );
                     AudioEngineError::DecoderUnsupported
                 })?;
-            let duration = decoder.total_duration().map(duration_ms);
-            player.clear();
-            player.append(decoder);
-            player.pause();
-            Ok((
-                AudioLoadMetadata {
-                    duration_ms: duration,
-                    format: source.format,
-                },
-                None,
-            ))
+            Ok(decoded_playback_source(decoder, source.format, None))
         }
         PreparedPlaybackLocation::EncryptedProgressive { source, decryptor } => {
             let mut reader = DecryptingReader::new(
@@ -1294,20 +1320,56 @@ fn load_source_unchecked(
                     );
                     AudioEngineError::DecoderUnsupported
                 })?;
-            let duration = decoder.total_duration().map(duration_ms);
-            let monitor = source.monitor();
-            player.clear();
-            player.append(decoder);
-            player.pause();
-            Ok((
-                AudioLoadMetadata {
-                    duration_ms: duration,
-                    format: AudioFormat::Flac,
-                },
-                Some(monitor),
+            Ok(decoded_playback_source(
+                decoder,
+                AudioFormat::Flac,
+                Some(source.monitor()),
             ))
         }
     }
+}
+
+fn decoded_playback_source<S>(
+    source: S,
+    format: AudioFormat,
+    monitor: Option<ProgressiveMonitor>,
+) -> DecodedPlaybackSource
+where
+    S: Source + Send + 'static,
+{
+    let sample_rate = source.sample_rate().get();
+    let duration_ms = source.total_duration().map(duration_ms);
+    tracing::debug!(
+        target: "audio",
+        source_sample_rate = sample_rate,
+        source_channels = source.channels().get(),
+        "decoded media format"
+    );
+    DecodedPlaybackSource {
+        source: Box::new(source),
+        metadata: AudioLoadMetadata {
+            duration_ms,
+            format,
+        },
+        monitor,
+        sample_rate,
+    }
+}
+
+fn append_decoded_source(
+    player: &Player,
+    decoded: DecodedPlaybackSource,
+) -> (AudioLoadMetadata, Option<ProgressiveMonitor>) {
+    let DecodedPlaybackSource {
+        source,
+        metadata,
+        monitor,
+        ..
+    } = decoded;
+    player.clear();
+    player.append(source);
+    player.pause();
+    (metadata, monitor)
 }
 
 fn validate_decrypted_flac<Reader: Read + Seek>(
@@ -1826,13 +1888,17 @@ mod tests {
         let directory = tempfile::tempdir().expect("temp directory");
         let path = directory.path().join("fixture.wav");
         write_fixture_wav(&path, Duration::from_millis(750), 4).expect("write fixture");
-        let file = File::open(path).expect("open fixture");
+        let file = File::open(&path).expect("open fixture");
         let mut decoder = Decoder::try_from(file).expect("decode fixture");
         let duration = decoder.total_duration().expect("known duration");
         assert!((duration.as_millis() as i64 - 750).abs() <= 1);
+        assert_eq!(decoder.sample_rate().get(), 16_000);
         decoder
             .try_seek(Duration::from_millis(500))
             .expect("fixture is seekable");
+
+        let decoded = decode_source(&rodio_fixture_source(path, 750)).expect("prepare fixture");
+        assert_eq!(decoded.sample_rate, 16_000);
     }
 
     fn rodio_fixture_source(path: PathBuf, duration_ms: u64) -> PreparedPlaybackSource {
@@ -1865,6 +1931,12 @@ mod tests {
         engine
             .load(&rodio_fixture_source(path, 2_500))
             .expect("load fixture");
+        let resolved_sample_rate = engine
+            .output_devices()
+            .expect("list output devices")
+            .into_iter()
+            .find_map(|device| device.resolved_output.map(|output| output.sample_rate));
+        assert_eq!(resolved_sample_rate, Some(16_000));
         engine.play().expect("play");
         let started = Instant::now();
         let mut last = 0_u64;

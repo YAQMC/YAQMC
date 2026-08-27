@@ -141,6 +141,40 @@ describe('PlayerBar lyrics presentation entry', () => {
     expect(commands).toEqual([]);
   });
 
+  it('allows an unprobed higher quality to trigger on-demand source resolution', () => {
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    usePlayerStore.setState({
+      queue: [qqTrack()],
+      currentIndex: 0,
+      sourceSelection: {
+        requestedQuality: 'lossless',
+        resolvedQuality: 'lossless',
+        preview: false,
+        qualityCapabilities: [
+          {
+            quality: 'master',
+            entitlement: 'allowed',
+            resource: 'unknown',
+            client: 'supported',
+            playable: false,
+          },
+        ],
+      },
+    });
+    render(<PlayerBar />);
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Audio quality for the current track' }));
+    const master = screen.getByRole('option', { name: /Master quality/ });
+    expect(master).not.toHaveAttribute('aria-disabled', 'true');
+    expect(master).toHaveTextContent('Account: allowed · Resource: unknown · Client: supported');
+    fireEvent.click(master);
+
+    expect(commands).toEqual([{ type: 'setQuality', quality: 'master' }]);
+  });
+
   it('exposes authoritative shuffle as a reversible pressed toggle', () => {
     usePlayerStore.getState().playTracks([qqTrack(), { ...qqTrack(), id: 'second' }]);
     render(<PlayerBar />);
