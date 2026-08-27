@@ -1706,7 +1706,7 @@ impl PlaybackSourceResolver for QQMusicService {
         if failed.requested_quality != AudioQualityPreference::Automatic
             || !matches!(
                 failed.resolved_quality,
-                AudioQuality::Lossless | AudioQuality::Master
+                AudioQuality::Lossless | AudioQuality::HiRes | AudioQuality::Master
             )
             || song
                 .provider
@@ -3421,6 +3421,12 @@ struct NewFileDto {
     #[serde(default)]
     size_flac: u64,
     #[serde(default)]
+    size_hires: u64,
+    #[serde(default)]
+    hires_sample: u32,
+    #[serde(default)]
+    hires_bitdepth: u16,
+    #[serde(default)]
     size_new: Vec<u64>,
     #[serde(default)]
     size_try: u64,
@@ -3468,6 +3474,12 @@ struct OldSongDto {
     size_320: u64,
     #[serde(default, rename = "sizeflac")]
     size_flac: u64,
+    #[serde(default)]
+    size_hires: u64,
+    #[serde(default)]
+    hires_sample: u32,
+    #[serde(default)]
+    hires_bitdepth: u16,
     #[serde(default)]
     size_new: Vec<u64>,
     #[serde(default)]
@@ -4168,6 +4180,9 @@ fn new_audio_formats(file: &NewFileDto) -> Vec<AudioFormatInfo> {
             true,
         ));
     }
+    if file.size_hires > 0 {
+        formats.push(hi_res_format(file.hires_sample, file.hires_bitdepth));
+    }
     formats
 }
 
@@ -4202,7 +4217,21 @@ fn old_audio_formats(song: &OldSongDto) -> Vec<AudioFormatInfo> {
             true,
         ));
     }
+    if song.size_hires > 0 {
+        formats.push(hi_res_format(song.hires_sample, song.hires_bitdepth));
+    }
     formats
+}
+
+fn hi_res_format(sample_rate_hz: u32, bit_depth: u16) -> AudioFormatInfo {
+    AudioFormatInfo {
+        quality: AudioQuality::HiRes,
+        codec: AudioCodec::Flac,
+        bitrate_kbps: None,
+        sample_rate_hz: (sample_rate_hz > 0).then_some(sample_rate_hz),
+        bit_depth: (bit_depth > 0).then_some(bit_depth),
+        lossless: true,
+    }
 }
 
 fn format_info(
@@ -4227,6 +4256,11 @@ fn highest_quality(formats: &[AudioFormatInfo]) -> AudioQuality {
         .any(|format| format.quality == AudioQuality::Master)
     {
         AudioQuality::Master
+    } else if formats
+        .iter()
+        .any(|format| format.quality == AudioQuality::HiRes)
+    {
+        AudioQuality::HiRes
     } else if formats
         .iter()
         .any(|format| format.quality == AudioQuality::Lossless)
@@ -4339,6 +4373,18 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
         encrypted: true,
         client_supported: true,
     };
+    let hi_res = SourceCandidate {
+        filename: format!("RS01{media_mid}.flac"),
+        cache_label: "hi-res-flac",
+        format: AudioFormat::Flac,
+        codec: AudioCodec::Flac,
+        mime_type: "audio/flac",
+        bitrate_kbps: None,
+        quality: AudioQuality::HiRes,
+        preview: false,
+        encrypted: false,
+        client_supported: true,
+    };
     let encrypted_lossless = SourceCandidate {
         filename: format!("F0M0{media_mid}.mflac"),
         cache_label: "lossless-mflac",
@@ -4413,6 +4459,7 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
     };
     vec![
         master,
+        hi_res,
         encrypted_lossless,
         lossless,
         high,
@@ -5527,6 +5574,40 @@ mod tests {
     }
 
     #[test]
+    fn hi_res_candidate_uses_the_clear_rs01_flac_filename() {
+        let candidate = source_candidates("TRACK_MID", "MEDIA_MID")
+            .into_iter()
+            .find(|candidate| candidate.quality == AudioQuality::HiRes)
+            .expect("Hi-Res candidate");
+
+        assert_eq!(candidate.filename, "RS01MEDIA_MID.flac");
+        assert_eq!(candidate.format, AudioFormat::Flac);
+        assert!(!candidate.encrypted);
+    }
+
+    #[test]
+    fn native_catalog_hires_fields_preserve_sample_rate_and_bit_depth() {
+        let file: NewFileDto = serde_json::from_value(json!({
+            "size_hires": 42,
+            "hires_sample": 96_000,
+            "hires_bitdepth": 24
+        }))
+        .expect("Hi-Res file metadata");
+
+        assert_eq!(
+            new_audio_formats(&file),
+            vec![AudioFormatInfo {
+                quality: AudioQuality::HiRes,
+                codec: AudioCodec::Flac,
+                bitrate_kbps: None,
+                sample_rate_hz: Some(96_000),
+                bit_depth: Some(24),
+                lossless: true,
+            }]
+        );
+    }
+
+    #[test]
     fn encrypted_musicfile_uses_song_mid_and_preserves_format() {
         assert_eq!(
             encrypted_musicfile("AIM0INTERNAL_MID.mflac", "TRACK_MID").expect("valid filename"),
@@ -6545,6 +6626,13 @@ mod tests {
             AccountState::Authenticated { entitlement, .. }
                 if entitlement
                     .permitted_qualities
+                    .contains(&AudioQuality::HiRes) =>
+            {
+                AudioQualityPreference::HiRes
+            }
+            AccountState::Authenticated { entitlement, .. }
+                if entitlement
+                    .permitted_qualities
                     .contains(&AudioQuality::Lossless) =>
             {
                 AudioQualityPreference::Lossless
@@ -6553,6 +6641,7 @@ mod tests {
         };
         let requested_quality = match preferred {
             AudioQualityPreference::Master => AudioQuality::Master,
+            AudioQualityPreference::HiRes => AudioQuality::HiRes,
             AudioQualityPreference::Lossless => AudioQuality::Lossless,
             AudioQualityPreference::High => AudioQuality::High,
             AudioQualityPreference::Standard => AudioQuality::Standard,

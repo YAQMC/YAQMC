@@ -8,6 +8,7 @@ pub enum AudioQuality {
     Standard,
     High,
     Lossless,
+    HiRes,
     Master,
 }
 
@@ -42,6 +43,7 @@ pub enum AudioQualityPreference {
     Standard,
     High,
     Lossless,
+    HiRes,
     Master,
 }
 
@@ -51,6 +53,7 @@ impl AudioQualityPreference {
             Some("standard") => Self::Standard,
             Some("high") => Self::High,
             Some("lossless") => Self::Lossless,
+            Some("hi-res" | "hires") => Self::HiRes,
             Some("master") => Self::Master,
             _ => Self::Automatic,
         }
@@ -62,6 +65,7 @@ impl AudioQualityPreference {
             Self::Standard => "standard",
             Self::High => "high",
             Self::Lossless => "lossless",
+            Self::HiRes => "hi-res",
             Self::Master => "master",
         }
     }
@@ -72,6 +76,7 @@ impl AudioQualityPreference {
             Self::Standard => Some(AudioQuality::Standard),
             Self::High => Some(AudioQuality::High),
             Self::Lossless => Some(AudioQuality::Lossless),
+            Self::HiRes => Some(AudioQuality::HiRes),
             Self::Master => Some(AudioQuality::Master),
         }
     }

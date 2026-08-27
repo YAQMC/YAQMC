@@ -24,7 +24,8 @@ fallback. Guest playback is likewise treated conservatively as free/Standard unt
 | Standard   | Standard, then official preview                                             |
 | High       | High, Standard, then official preview                                       |
 | Lossless   | Lossless, High, Standard, then official preview                             |
-| Master     | Master, Lossless, High, Standard, then official preview                     |
+| Hi-Res     | Hi-Res, Lossless, High, Standard, then official preview                     |
+| Master     | Master, Hi-Res, Lossless, High, Standard, then official preview             |
 
 Automatic selecting Standard for a free account is the requested outcome, not a fallback. For explicit preferences:
 
@@ -35,7 +36,8 @@ Automatic selecting Standard for a free account is the requested outcome, not a 
 An excluded paid quality is removed before the single batched vkey request. Missing rights and a missing source remain
 distinct native errors when no lower or preview source can be selected.
 
-Master and encrypted lossless candidates use the account-bound `GetEVkey/CgiGetEVkey` path. A membership label is
+Hi-Res uses the clear `RS01…flac` candidate and is accepted only after the live vkey result proves that resource
+exists. Master and encrypted lossless candidates use the account-bound `GetEVkey/CgiGetEVkey` path. A membership label is
 not sufficient proof: YAQMC only reports the selected quality after both the normalized entitlement and the live
 source result permit it. The PlayerBar request applies only to the current song; advancing the queue returns to the
 persisted Settings preference.

@@ -28,6 +28,19 @@ use crate::qqmusic::{normalize_cdn_url, QQMusicError};
 pub(crate) const QMAP_UNPLAYABLE_RESULT: i64 = 104_003;
 const LIBRARY_FALLBACK_ORIGIN: &str = "https://isure.stream.qqmusic.qq.com/";
 
+#[derive(Debug)]
+struct HiResFileType;
+
+impl FileTypeLike for HiResFileType {
+    fn s(&self) -> &'static str {
+        "RS01"
+    }
+
+    fn e(&self) -> &'static str {
+        ".flac"
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn playback_location_from_qmapi(
     result: i64,
@@ -75,7 +88,9 @@ pub(crate) fn sanitize_qmapi_playback_url(url: &str) -> Result<String, QQMusicEr
 }
 
 fn clear_file_type(filename: &str) -> Option<&'static (dyn FileTypeLike + Send + Sync)> {
-    if filename.starts_with("F000") && filename.ends_with(".flac") {
+    if filename.starts_with("RS01") && filename.ends_with(".flac") {
+        Some(&HiResFileType)
+    } else if filename.starts_with("F000") && filename.ends_with(".flac") {
         Some(&SongFileType::Flac)
     } else if filename.starts_with("M800") && filename.ends_with(".mp3") {
         Some(&SongFileType::Mp3_320)
@@ -257,6 +272,7 @@ mod tests {
 
     #[test]
     fn clear_file_types_match_intree_candidate_prefixes() {
+        assert!(clear_file_type("RS01MEDIA.flac").is_some());
         assert!(clear_file_type("F000MEDIA.flac").is_some());
         assert!(clear_file_type("M800MEDIA.mp3").is_some());
         assert!(clear_file_type("M500MEDIA.mp3").is_some());

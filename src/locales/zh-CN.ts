@@ -392,6 +392,7 @@ export const zhCN = {
     qualityStandard: '标准',
     qualityHigh: '高品质',
     qualityLossless: '无损',
+    qualityHiRes: 'Hi-Res',
     qualityMaster: '臻品母带',
     qualityAutomaticResolved: '自动选择：当前为{{quality}}',
     qualityCapabilitySummary: '账号：{{entitlement}} · 资源：{{resource}} · 客户端：{{client}}',
@@ -842,6 +843,7 @@ export const zhCN = {
       qualityStandard: '标准',
       qualityHigh: '高品质',
       qualityLossless: '无损',
+      qualityHiRes: 'Hi-Res',
       qualityMaster: '臻品母带',
     },
     systemIntegration: {

@@ -908,6 +908,7 @@ export function SettingsPage() {
     { value: 'standard', label: t('playback.qualityStandard') },
     { value: 'high', label: t('playback.qualityHigh') },
     { value: 'lossless', label: t('playback.qualityLossless') },
+    { value: 'hi-res', label: t('playback.qualityHiRes') },
     { value: 'master', label: t('playback.qualityMaster') },
   ];
   const closeBehaviorOptions: readonly SelectOption<typeof preferences.system.closeBehavior>[] = [
@@ -934,6 +935,7 @@ export function SettingsPage() {
       : null;
   const qualityLabel = (quality: AudioQuality | null): string => {
     if (quality === 'master') return t('playback.qualityMaster');
+    if (quality === 'hi-res') return t('playback.qualityHiRes');
     if (quality === 'lossless') return t('playback.qualityLossless');
     if (quality === 'high') return t('playback.qualityHigh');
     if (quality === 'standard') return t('playback.qualityStandard');

@@ -11,10 +11,11 @@ fn playback_values_preserve_wire_shapes_and_preference_settings() {
             AudioQuality::Standard,
             AudioQuality::High,
             AudioQuality::Lossless,
+            AudioQuality::HiRes,
             AudioQuality::Master,
         ])
         .unwrap(),
-        serde_json::json!(["standard", "high", "lossless", "master"])
+        serde_json::json!(["standard", "high", "lossless", "hi-res", "master"])
     );
     assert_eq!(
         serde_json::to_value([
@@ -33,10 +34,18 @@ fn playback_values_preserve_wire_shapes_and_preference_settings() {
             AudioQualityPreference::Standard,
             AudioQualityPreference::High,
             AudioQualityPreference::Lossless,
+            AudioQualityPreference::HiRes,
             AudioQualityPreference::Master,
         ])
         .unwrap(),
-        serde_json::json!(["automatic", "standard", "high", "lossless", "master"])
+        serde_json::json!([
+            "automatic",
+            "standard",
+            "high",
+            "lossless",
+            "hi-res",
+            "master"
+        ])
     );
     assert_eq!(
         serde_json::to_value([
@@ -164,6 +173,8 @@ fn playback_values_preserve_wire_shapes_and_preference_settings() {
             "lossless",
         ),
         (Some("master"), AudioQualityPreference::Master, "master"),
+        (Some("hi-res"), AudioQualityPreference::HiRes, "hi-res"),
+        (Some("hires"), AudioQualityPreference::HiRes, "hi-res"),
         (
             Some("unrecognized"),
             AudioQualityPreference::Automatic,

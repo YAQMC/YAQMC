@@ -89,9 +89,9 @@ describe('PlayerBar lyrics presentation entry', () => {
     render(<PlayerBar />);
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Audio quality for the current track' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Master quality' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Hi-Res' }));
 
-    expect(commands).toEqual([{ type: 'setQuality', quality: 'master' }]);
+    expect(commands).toEqual([{ type: 'setQuality', quality: 'hi-res' }]);
   });
 
   it('maps the three quality capability axes and prevents unsupported selection', () => {

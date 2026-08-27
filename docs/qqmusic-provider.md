@@ -129,7 +129,8 @@ Preferred source order is:
 - Standard: 128 kbps MP3, AAC/M4A, official preview
 - High: 320 kbps MP3, 128 kbps MP3, AAC/M4A, official preview
 - Lossless: encrypted/clear FLAC, then the High chain
-- Master: authorized master mflac, then Lossless/High/Standard/preview
+- Hi-Res: clear `RS01…flac`, then Lossless/High/Standard/preview
+- Master: authorized master mflac, then Hi-Res/Lossless/High/Standard/preview
 
 The vkey response, not filename construction alone, decides whether a candidate exists. Resulting URLs must be
 HTTPS and end in an allowlisted `qqmusic.qq.com` or `tc.qq.com` host. URLs, cookie headers, and vkeys are never

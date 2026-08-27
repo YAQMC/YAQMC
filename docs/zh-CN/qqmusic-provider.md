@@ -36,8 +36,9 @@ QQ 和微信登录在受限制无痕 Electron `BrowserWindow` 打开 `graph.qq.c
 目录 availability 和播放 capability 分开：有完整权限时进入音质候选；付费歌曲有官方片段时可试听；
 仅目录标注为付费时仍可进入队列，由认证解析器最终允许、回退或拒绝。
 
-音质顺序：自动取已授权最高完整音源；标准为 MP3/AAC；高品质先 320k；无损先 FLAC；臻品先账号授权
-mflac，再向无损/高品质/标准/试听回退。实际 vkey/EVkey 响应决定候选存在，不能只拼文件名。
+音质顺序：自动取已授权最高完整音源；标准为 MP3/AAC；高品质先 320k；无损先 FLAC；Hi-Res 使用
+`RS01…flac`；臻品先账号授权 mflac，再向 Hi-Res/无损/高品质/标准/试听回退。实际 vkey/EVkey
+响应决定候选存在，不能只拼文件名。
 
 加密 `AIM0…mflac` / `F0M0…mflac` 只有当前规范化权益允许时才请求 `GetEVkey/CgiGetEVkey`。空/拒绝
 结果是 unavailable，不是权益证明。ekey 只在原生内存中使用并可清零；缓存保存密文，decoder 读取/seek

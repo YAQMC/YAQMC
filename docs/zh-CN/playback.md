@@ -14,7 +14,7 @@
 | ---------- | --------- | -------------------------------- |
 | MP3        | MP3       | 已启用并完成真实 QQ 曲目检查     |
 | AAC / M4A  | AAC       | 已启用，尚未完成原生验收         |
-| FLAC       | FLAC      | 已启用，需选择无损音质           |
+| FLAC       | FLAC      | 已启用，支持无损与 Hi-Res        |
 | QQ mflac   | 流式 FLAC | 仅用于账号已获 URL + ekey 的音源 |
 | WAV        | PCM WAV   | 已由确定性原生测试覆盖           |
 | ALAC       | 仅元数据  | 不声明可播放                     |
@@ -65,7 +65,7 @@ Player 快照还有单调递增的 `snapshotRevision`。React 投影会忽略更
 目录标注不是权益证明。解析器取目录格式、规范化账号权益和实际 vkey/evkey 响应的交集：
 
 - 自动：当前账号有权且实际可用的最高完整音质，然后才是官方试听；
-- 明确选择高品质/无损/臻品：可按顺序回退，并给出 `account-rights`、`source-unavailable` 或
+- 明确选择高品质/无损/Hi-Res/臻品：可按顺序回退，并给出 `account-rights`、`source-unavailable` 或
   `preview-only` 原因；
 - 权益未知时只允许标准音质；
 - PlayerBar 音质选择只作用于当前歌曲，下一首恢复设置页默认值。

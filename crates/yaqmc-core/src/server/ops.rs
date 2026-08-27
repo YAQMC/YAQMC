@@ -90,6 +90,7 @@ fn build_playback_section(snapshot: &PlayerSnapshot) -> PlaybackSection {
         crate::player::AudioQuality::Standard => "standard".to_owned(),
         crate::player::AudioQuality::High => "high".to_owned(),
         crate::player::AudioQuality::Lossless => "lossless".to_owned(),
+        crate::player::AudioQuality::HiRes => "hi-res".to_owned(),
         crate::player::AudioQuality::Master => "master".to_owned(),
     });
     PlaybackSection {

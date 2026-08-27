@@ -313,6 +313,7 @@ export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
     qualityOption('standard', t('qualityStandard')),
     qualityOption('high', t('qualityHigh')),
     qualityOption('lossless', t('qualityLossless')),
+    qualityOption('hi-res', t('qualityHiRes')),
     qualityOption('master', t('qualityMaster')),
   ];
 
@@ -547,5 +548,6 @@ function qualityLabel(quality: AudioQuality, t: TFunction<'player'>): string {
   if (quality === 'standard') return t('qualityStandard');
   if (quality === 'high') return t('qualityHigh');
   if (quality === 'lossless') return t('qualityLossless');
+  if (quality === 'hi-res') return t('qualityHiRes');
   return t('qualityMaster');
 }

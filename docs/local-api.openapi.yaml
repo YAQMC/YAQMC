@@ -277,7 +277,7 @@ components:
       additionalProperties: false
       required: [quality, codec, lossless]
       properties:
-        quality: { type: string, enum: [standard, high, lossless, master] }
+        quality: { type: string, enum: [standard, high, lossless, hi-res, master] }
         codec: { type: string, enum: [mp3, aac, flac, alac, unknown] }
         bitrateKbps: { type: integer, minimum: 0 }
         sampleRateHz: { type: integer, minimum: 0 }
@@ -340,7 +340,7 @@ components:
         durationMs: { type: integer, minimum: 0 }
         trackNumber: { type: integer, minimum: 0 }
         isFavorite: { type: boolean }
-        quality: { type: string, enum: [standard, high, lossless, master] }
+        quality: { type: string, enum: [standard, high, lossless, hi-res, master] }
         availability: { $ref: '#/components/schemas/Availability' }
         audioFormats:
           type: array
@@ -360,7 +360,7 @@ components:
       additionalProperties: false
       required: [quality, entitlement, resource, client, playable]
       properties:
-        quality: { type: string, enum: [standard, high, lossless, master] }
+        quality: { type: string, enum: [standard, high, lossless, hi-res, master] }
         entitlement: { type: string, enum: [allowed, denied, unknown] }
         resource: { type: string, enum: [available, unavailable, unknown] }
         client: { type: string, enum: [supported, unsupported, unknown] }
@@ -370,8 +370,9 @@ components:
       additionalProperties: false
       required: [requestedQuality, resolvedQuality, preview]
       properties:
-        requestedQuality: { type: string, enum: [automatic, standard, high, lossless, master] }
-        resolvedQuality: { type: string, enum: [standard, high, lossless, master] }
+        requestedQuality:
+          { type: string, enum: [automatic, standard, high, lossless, hi-res, master] }
+        resolvedQuality: { type: string, enum: [standard, high, lossless, hi-res, master] }
         fallbackReason:
           type: string
           enum:

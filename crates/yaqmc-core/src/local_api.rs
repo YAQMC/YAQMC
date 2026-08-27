@@ -771,7 +771,9 @@ mod tests {
             }
         }
         assert!(openapi_schema(openapi, "Song").contains("master"));
+        assert!(openapi_schema(openapi, "Song").contains("hi-res"));
         assert!(openapi_schema(openapi, "AudioFormatInfo").contains("master"));
+        assert!(openapi_schema(openapi, "AudioFormatInfo").contains("hi-res"));
     }
 
     fn openapi_schema(openapi: &str, name: &str) -> String {

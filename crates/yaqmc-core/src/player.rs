@@ -1422,7 +1422,7 @@ impl PlayerService {
                     == AudioQualityPreference::Automatic
                     && matches!(
                         prepared.selection.resolved_quality,
-                        AudioQuality::Lossless | AudioQuality::Master
+                        AudioQuality::Lossless | AudioQuality::HiRes | AudioQuality::Master
                     ) =>
             {
                 let failed_selection = prepared.selection.clone();

@@ -43,7 +43,10 @@ impl SourceCandidate {
 
     #[cfg(test)]
     fn test(name: &str, quality: AudioQuality, preview: bool) -> Self {
-        let (format, codec) = if matches!(quality, AudioQuality::Lossless | AudioQuality::Master) {
+        let (format, codec) = if matches!(
+            quality,
+            AudioQuality::Lossless | AudioQuality::HiRes | AudioQuality::Master
+        ) {
             (AudioFormat::Flac, AudioCodec::Flac)
         } else {
             (AudioFormat::Mp3, AudioCodec::Mp3)
@@ -75,12 +78,14 @@ fn rank(quality: AudioQuality) -> u8 {
         AudioQuality::Standard => 1,
         AudioQuality::High => 2,
         AudioQuality::Lossless => 3,
-        AudioQuality::Master => 4,
+        AudioQuality::HiRes => 4,
+        AudioQuality::Master => 5,
     }
 }
 
 fn candidate_matches_track(candidate: &SourceCandidate, formats: &[AudioFormatInfo]) -> bool {
     candidate.preview
+        || candidate.quality == AudioQuality::HiRes
         || formats.is_empty()
         || formats
             .iter()
@@ -93,6 +98,7 @@ fn quality_in_preference_order(preference: AudioQualityPreference, quality: Audi
         AudioQualityPreference::Standard => quality == AudioQuality::Standard,
         AudioQualityPreference::High => rank(quality) <= rank(AudioQuality::High),
         AudioQualityPreference::Lossless => rank(quality) <= rank(AudioQuality::Lossless),
+        AudioQualityPreference::HiRes => rank(quality) <= rank(AudioQuality::HiRes),
         AudioQualityPreference::Master => true,
     }
 }
@@ -124,6 +130,7 @@ pub(crate) fn quality_capabilities(
         AudioQuality::Standard,
         AudioQuality::High,
         AudioQuality::Lossless,
+        AudioQuality::HiRes,
         AudioQuality::Master,
     ]
     .into_iter()
@@ -214,7 +221,9 @@ pub(crate) fn choose_source(
     let requested_allowed =
         requested.is_none_or(|quality| entitlement.permitted_qualities.contains(&quality));
     let requested_has_format = requested.is_some_and(|quality| {
-        track_formats.is_empty() || track_formats.iter().any(|format| format.quality == quality)
+        quality == AudioQuality::HiRes
+            || track_formats.is_empty()
+            || track_formats.iter().any(|format| format.quality == quality)
     });
     let quality_capabilities =
         quality_capabilities(entitlement, track_formats, candidates, vkey_results);
@@ -367,6 +376,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
                 "standard" => Some(AudioQuality::Standard),
                 "high" => Some(AudioQuality::High),
                 "lossless" => Some(AudioQuality::Lossless),
+                "hi-res" | "hires" => Some(AudioQuality::HiRes),
                 "master" => Some(AudioQuality::Master),
                 _ => None,
             },
@@ -382,6 +392,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
             "standard" => Some(AudioQuality::Standard),
             "high" => Some(AudioQuality::High),
             "lossless" => Some(AudioQuality::Lossless),
+            "hi-res" | "hires" => Some(AudioQuality::HiRes),
             "master" => Some(AudioQuality::Master),
             _ => None,
         });
@@ -523,6 +534,7 @@ pub(crate) fn normalize_account_entitlement(payload: &Value) -> AccountEntitleme
                 AudioQuality::Lossless,
             ];
             if super_vip {
+                qualities.push(AudioQuality::HiRes);
                 qualities.push(AudioQuality::Master);
             }
             qualities
@@ -575,6 +587,7 @@ mod tests {
     fn all_candidates() -> Vec<SourceCandidate> {
         vec![
             candidate("master", AudioQuality::Master, false),
+            candidate("hi-res", AudioQuality::HiRes, false),
             candidate("lossless", AudioQuality::Lossless, false),
             candidate("high", AudioQuality::High, false),
             candidate("standard", AudioQuality::Standard, false),
@@ -587,6 +600,7 @@ mod tests {
             format(AudioQuality::Standard, AudioCodec::Mp3),
             format(AudioQuality::High, AudioCodec::Mp3),
             format(AudioQuality::Lossless, AudioCodec::Flac),
+            format(AudioQuality::HiRes, AudioCodec::Flac),
             format(AudioQuality::Master, AudioCodec::Flac),
         ]
     }
@@ -612,10 +626,25 @@ mod tests {
                     AudioQuality::Standard,
                     AudioQuality::High,
                     AudioQuality::Lossless,
+                    AudioQuality::HiRes,
                     AudioQuality::Master,
                 ]),
-                availability(&["master", "lossless", "high", "standard"]),
+                availability(&["master", "hi-res", "lossless", "high", "standard"]),
                 AudioQuality::Master,
+                None,
+            ),
+            (
+                "hi-res-never-upgrades-to-master",
+                AudioQualityPreference::HiRes,
+                entitlement(vec![
+                    AudioQuality::Standard,
+                    AudioQuality::High,
+                    AudioQuality::Lossless,
+                    AudioQuality::HiRes,
+                    AudioQuality::Master,
+                ]),
+                availability(&["master", "hi-res", "lossless", "high", "standard"]),
+                AudioQuality::HiRes,
                 None,
             ),
             (
@@ -1013,6 +1042,16 @@ mod tests {
         }));
 
         assert_eq!(entitlement.tier, EntitlementTier::SuperVip);
+        assert_eq!(
+            entitlement.permitted_qualities,
+            vec![
+                AudioQuality::Standard,
+                AudioQuality::High,
+                AudioQuality::Lossless,
+                AudioQuality::HiRes,
+                AudioQuality::Master
+            ]
+        );
     }
 
     #[test]
@@ -1027,11 +1066,20 @@ mod tests {
                     "family",
                     "untrusted-marketing-label"
                 ],
-                "permittedQualities": ["standard"]
+                "permittedQualities": ["standard", "hires", "hi-res"],
+                "observedMaximumQuality": "hires"
             }
         }));
 
         assert_eq!(entitlement.tier, EntitlementTier::GreenDiamond);
+        assert_eq!(
+            entitlement.permitted_qualities,
+            vec![AudioQuality::Standard, AudioQuality::HiRes]
+        );
+        assert_eq!(
+            entitlement.observed_maximum_quality,
+            Some(AudioQuality::HiRes)
+        );
         assert_eq!(
             entitlement.secondary_entitlements,
             vec![

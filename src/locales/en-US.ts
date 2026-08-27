@@ -391,6 +391,7 @@ export const enUS = {
     qualityStandard: 'Standard',
     qualityHigh: 'High',
     qualityLossless: 'Lossless',
+    qualityHiRes: 'Hi-Res',
     qualityMaster: 'Master quality',
     qualityAutomaticResolved: 'Automatic selection: currently {{quality}}',
     qualityCapabilitySummary:
@@ -855,6 +856,7 @@ export const enUS = {
       qualityStandard: 'Standard',
       qualityHigh: 'High',
       qualityLossless: 'Lossless',
+      qualityHiRes: 'Hi-Res',
       qualityMaster: 'Master quality',
     },
     systemIntegration: {

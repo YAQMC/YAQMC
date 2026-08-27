@@ -26,8 +26,8 @@ interface TestNativeSnapshot {
   playbackDurationMs: number | null;
   playbackError: null;
   sourceSelection?: {
-    requestedQuality: 'automatic' | 'standard' | 'high' | 'lossless' | 'master';
-    resolvedQuality: 'standard' | 'high' | 'lossless' | 'master';
+    requestedQuality: 'automatic' | 'standard' | 'high' | 'lossless' | 'hi-res' | 'master';
+    resolvedQuality: 'standard' | 'high' | 'lossless' | 'hi-res' | 'master';
     fallbackReason?: 'source-unavailable' | 'account-rights' | 'preview-only';
     preview: boolean;
   };

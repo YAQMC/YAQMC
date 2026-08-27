@@ -39,7 +39,7 @@ export interface AlbumPreview {
   releaseYear: number;
 }
 
-export type AudioQuality = 'standard' | 'high' | 'lossless' | 'master';
+export type AudioQuality = 'standard' | 'high' | 'lossless' | 'hi-res' | 'master';
 export type AudioQualityPreference = 'automatic' | AudioQuality;
 
 export type PlaybackFallbackReason =
