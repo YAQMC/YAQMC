@@ -73,6 +73,9 @@ portable:
 linux:
   icon: resources
   category: AudioVideo
+  maintainer: YAQMC contributors <64585305+Osilvfe@users.noreply.github.com>
+  executableName: yaqmc
+  syncDesktopName: true
   artifactName: YAQMC-linux-${arch}.${ext}
   target:
     - target: AppImage

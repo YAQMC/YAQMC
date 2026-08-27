@@ -15,13 +15,19 @@ describe('PACK-01 electron-builder', () => {
 
   it('pins electron-builder exactly and electron-updater 6.8.9', () => {
     const pkg = JSON.parse(readFileSync(path.join(desktopRoot, 'package.json'), 'utf8')) as {
+      author?: string;
       dependencies?: Record<string, string>;
+      desktopName?: string;
       devDependencies?: Record<string, string>;
+      homepage?: string;
       scripts?: Record<string, string>;
     };
     expect(pkg.devDependencies?.electron).toBe('43.4.0');
     expect(pkg.devDependencies?.['electron-builder']).toBe('26.15.7');
     expect(pkg.dependencies?.['electron-updater']).toBe('6.8.9');
+    expect(pkg.author).toBe('YAQMC contributors');
+    expect(pkg.homepage).toBe('https://github.com/YAQMC/YAQMC');
+    expect(pkg.desktopName).toBe('org.yaqmc.desktop');
     expect(pkg.scripts?.['pack:dir']).toContain('--dir');
     expect(pkg.scripts?.['pack:dir']).toContain('--publish never');
     expect(pkg.scripts?.['pack:win']).toBe(
@@ -56,6 +62,9 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).toContain('deb');
     expect(yaml).toContain('rpm');
     expect(yaml).toContain('tar.gz');
+    expect(yaml).toContain('executableName: yaqmc');
+    expect(yaml).toContain('syncDesktopName: true');
+    expect(yaml).toContain('maintainer: YAQMC contributors');
     expect(yaml).toContain('runAsNode: false');
     expect(yaml).toContain('enableNodeOptionsEnvironmentVariable: false');
     expect(yaml).toContain('enableNodeCliInspectArguments: false');

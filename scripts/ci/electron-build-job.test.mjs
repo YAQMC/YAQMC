@@ -30,8 +30,10 @@ test('rust-quality stays independent of the Electron build job', () => {
   const rustJob = workflow.split(/^ {2}rust-quality:/m)[1]?.split(/^ {2}[a-z]/m)[0] ?? '';
   assert.match(rustJob, /cargo clippy --workspace --all-targets --locked/);
   assert.match(rustJob, /node scripts\/ci\/qm-api-rs-access\.mjs --check/);
-  assert.match(rustJob, /libasound2-dev/);
-  assert.match(rustJob, /YAQMC_TEST_ALLOW_MISSING_AUDIO_OUTPUT/);
+  assert.match(rustJob, /libasound2-dev pulseaudio/);
+  assert.match(rustJob, /module-null-sink sink_name=yaqmc_ci/);
+  assert.match(rustJob, /Default Sink: yaqmc_ci/);
+  assert.doesNotMatch(rustJob, /YAQMC_TEST_ALLOW_MISSING_AUDIO_OUTPUT/);
   assert.doesNotMatch(rustJob, /QM_API_RS_TOKEN/);
   assert.doesNotMatch(rustJob, /--configure-git/);
   assert.match(rustJob, /CARGO_NET_GIT_FETCH_WITH_CLI/);

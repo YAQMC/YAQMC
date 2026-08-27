@@ -1926,17 +1926,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temp directory");
         let path = directory.path().join("clock.wav");
         write_fixture_wav(&path, Duration::from_millis(2_500), 7).expect("write fixture");
-        let engine = match RodioAudioEngine::open_default() {
-            Ok(engine) => engine,
-            Err(
-                AudioEngineError::OutputDeviceUnavailable
-                | AudioEngineError::OutputDeviceOpenFailed,
-            ) if std::env::var("YAQMC_TEST_ALLOW_MISSING_AUDIO_OUTPUT").as_deref() == Ok("1") => {
-                eprintln!("skipping physical audio clock test: no CI output device is available");
-                return;
-            }
-            Err(error) => panic!("default audio output opens: {error:?}"),
-        };
+        let engine = RodioAudioEngine::open_default().expect("default audio output opens");
         engine.set_volume(0.0).expect("mute fixture");
         engine
             .load(&rodio_fixture_source(path, 2_500))

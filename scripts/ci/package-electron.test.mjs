@@ -100,6 +100,7 @@ test('Windows arm64 is treated as a core cross-compile', () => {
 
 test('Linux builder args request AppImage deb rpm tar.gz and never publish', () => {
   const args = electronBuilderArgs({ os: 'linux', arch: 'x64' });
+  assert.ok(args.includes('--config.linux.artifactName=YAQMC-linux-x64.${ext}'));
   assert.ok(args.includes('--linux'));
   assert.ok(args.includes('AppImage'));
   assert.ok(args.includes('deb'));

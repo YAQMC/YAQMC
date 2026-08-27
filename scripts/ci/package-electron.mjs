@@ -51,7 +51,18 @@ export function electronBuilderArgs({ os, arch, requireSigning = false }) {
   if (os === 'windows') {
     args.push('--win', 'nsis', 'portable', `--${arch}`);
   } else if (os === 'linux') {
-    args.push('--linux', 'AppImage', 'deb', 'rpm', 'tar.gz', `--${arch}`);
+    // electron-builder expands ${arch} using each Linux target's native label
+    // (x86_64 for AppImage/RPM, amd64 for deb). Keep the public artifact
+    // contract stable by supplying our canonical x64/arm64 label explicitly.
+    args.push(
+      `--config.linux.artifactName=YAQMC-linux-${arch}.\${ext}`,
+      '--linux',
+      'AppImage',
+      'deb',
+      'rpm',
+      'tar.gz',
+      `--${arch}`,
+    );
   } else {
     throw new Error(`unsupported Electron package OS ${os}`);
   }
@@ -161,7 +172,7 @@ function run(command, args, options = {}) {
     cwd: options.cwd ?? repositoryRoot,
     env: options.env ?? packagingEnvironment(),
     encoding: 'utf8',
-    shell: true,
+    shell: process.platform === 'win32',
   });
   process.stdout.write(result.stdout || '');
   process.stderr.write(result.stderr || '');
