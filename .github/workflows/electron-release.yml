@@ -95,10 +95,11 @@ jobs:
         with:
           target: ${{ matrix.target }}
           profile: ${{ env.YAQMC_BUILD_PROFILE }}
-          qm-api-rs-token: ${{ secrets.QM_API_RS_TOKEN }}
       - name: Linux electron-builder packaging tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm fakeroot
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends libasound2-dev rpm fakeroot
       - run: npm ci
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -203,8 +204,14 @@ jobs:
         with:
           repository: YAQMC/qm-api-rs
           ref: 827233cb799bede84ee5033ec16450dc1d5e2587
-          token: ${{ secrets.QM_API_RS_TOKEN }}
           path: .corresponding-source/qm-api-rs
+          persist-credentials: false
+      - name: Checkout exact AMLL corresponding source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: amll-dev/applemusic-like-lyrics
+          ref: fd7ec2d597daa2a66a37ca5f3214d6757ec17cfa
+          path: .corresponding-source/applemusic-like-lyrics
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -213,6 +220,7 @@ jobs:
         run: >-
           node scripts/ci/corresponding-source.mjs
           --qm-api-rs-root .corresponding-source/qm-api-rs
+          --amll-root .corresponding-source/applemusic-like-lyrics
           --to corresponding-source
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:

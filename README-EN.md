@@ -103,15 +103,14 @@ npm ci
 npm run dev
 ```
 
-The complete Electron desktop requires local Git read access to the exact private `qm-api-rs` production pin:
+The complete Electron desktop fetches the exact public `qm-api-rs` production pin through Git:
 
 ```powershell
 npm run dev:desktop
 ```
 
-Without that access, the Rust workspace and native desktop cannot be built completely; this is not an npm or Cargo
-configuration error. Credentials, native audio, cache, and QQ Music transport exist only behind the Electron host.
-See [development](docs/development.md) for the full boundary and authentication details.
+Credentials, native audio, cache, and QQ Music transport exist only behind the Electron host. See
+[development](docs/development.md) for the pinned dependency and full boundary.
 
 In a native build, QQ Music guest mode is the default. Add `?provider=fake` to the application URL when recording
 deterministic UI evidence.

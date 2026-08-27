@@ -11,22 +11,19 @@
 - Rust 1.88 或更高版本；
 - Windows 使用 MSVC；Linux 安装 Rust 原生音频与目标打包格式所需的系统依赖。
 
-公开检出无需私有依赖即可运行 renderer 与确定性 fake provider：
+公开检出可以直接运行 renderer 与确定性 fake provider：
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-完整的 Electron 桌面端和 Rust workspace 还需要读取私有 `qm-api-rs`（crate `qqmusic-api`）。它是当前
-无条件生产依赖，
-钉在 `827233cb799bede84ee5033ec16450dc1d5e2587`。本地若在 `../qm-api-rs` 有
-检出，运行 `node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。不要
-把访问令牌写入仓库；干净的 CI 构建通过 `QM_API_RS_TOKEN` 让 Git fetch 该私有
-pin。生产边界和发布门禁见[提供器 readiness](docs/release/provider-readiness.md)
-与 [CI 文档](docs/zh-CN/ci.md)。
+完整的 Electron 桌面端和 Rust workspace 无条件链接公开 `qm-api-rs`（crate `qqmusic-api`），精确钉在
+`827233cb799bede84ee5033ec16450dc1d5e2587`。本地若在 `../qm-api-rs` 有检出，运行
+`node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。生产边界和发布门禁见
+[提供器 readiness](docs/release/provider-readiness.md)与 [CI 文档](docs/zh-CN/ci.md)。
 
-有读取权限后运行：
+运行完整桌面端：
 
 ```powershell
 npm run dev:desktop

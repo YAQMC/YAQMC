@@ -6,58 +6,16 @@ import { fileURLToPath } from 'node:url';
 import {
   QM_API_RS_GIT,
   QM_API_RS_REV,
-  QM_API_RS_TOKEN_ENV,
   assertProviderQmapiPin,
   checkAccess,
-  configureGitInsteadOf,
-  gitInsteadOfArgs,
   isPinnedQqmusicApiPackage,
-  sanitizeAccessToken,
 } from './qm-api-rs-access.mjs';
 
 const repositoryRoot = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 
-test('pins the audited private revision and refuses a dirty token', () => {
+test('pins the audited public production revision', () => {
   assert.equal(QM_API_RS_REV, '827233cb799bede84ee5033ec16450dc1d5e2587');
   assert.equal(QM_API_RS_GIT, 'https://github.com/YAQMC/qm-api-rs.git');
-  assert.equal(sanitizeAccessToken(''), '');
-  assert.throws(() => sanitizeAccessToken('abc@def'), /cannot be used/);
-  assert.deepEqual(gitInsteadOfArgs('test-token'), [
-    'config',
-    '--global',
-    'url.https://x-access-token:test-token@github.com/YAQMC/qm-api-rs.insteadOf',
-    QM_API_RS_GIT,
-  ]);
-});
-
-test('refuses to write git config unless CI explicitly opts in', () => {
-  assert.throws(
-    () => configureGitInsteadOf({ env: { [QM_API_RS_TOKEN_ENV]: 'test-token' } }),
-    /refusing to write git config/,
-  );
-  const skipped = configureGitInsteadOf({ env: { CI: 'true' } });
-  assert.equal(skipped.configured, false);
-  assert.match(skipped.reason, /unset/);
-});
-
-test('configures insteadOf without echoing the token through the git argv helper', () => {
-  const calls = [];
-  const result = configureGitInsteadOf({
-    env: { CI: 'true', [QM_API_RS_TOKEN_ENV]: 'test-token' },
-    runGit: (command, args) => {
-      calls.push([command, args]);
-      return '';
-    },
-  });
-  assert.equal(result.configured, true);
-  assert.equal(result.insteadOf, QM_API_RS_GIT);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][0], 'git');
-  assert.doesNotMatch(
-    JSON.stringify(calls[0][1].filter((part) => part !== calls[0][1][2])),
-    /test-token/,
-  );
-  assert.match(calls[0][1][2], /x-access-token:test-token@github.com\/YAQMC\/qm-api-rs/);
 });
 
 test('current provider manifest pins unconditional qqmusic-api at the production revision', () => {

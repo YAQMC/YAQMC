@@ -10,12 +10,29 @@ import {
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
-import { CORRESPONDING_SOURCE_MANIFEST, YAQMC_ORIGIN } from './corresponding-source.mjs';
+import {
+  AMLL_ORIGIN,
+  AMLL_REV,
+  AMLL_VERSION,
+  CORRESPONDING_SOURCE_MANIFEST,
+  YAQMC_ORIGIN,
+} from './corresponding-source.mjs';
 import { QM_API_RS_ORIGIN, QM_API_RS_REV } from './qm-api-rs-access.mjs';
 import { sha256File } from './write-build-info.mjs';
 
 export const ELECTRON_RELEASE_NOTES_NAME = 'RELEASE-NOTES-ELECTRON.md';
 export const ELECTRON_COMBINED_CHECKSUMS_NAME = 'SHA256SUMS-electron.txt';
+
+const expectedAmllPackages = [
+  {
+    name: '@applemusic-like-lyrics/core',
+    manifestPath: 'packages/core/package.json',
+  },
+  {
+    name: '@applemusic-like-lyrics/react',
+    manifestPath: 'packages/react/package.json',
+  },
+];
 
 export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release draft
 
@@ -29,8 +46,8 @@ use the published SHA-256 checksums for transport verification.
 - Linux graphics diagnostics use Chromium/Ozone modes; retired-host renderer overrides do not apply.
 - Updater metadata (\`latest.yml\`, \`latest-linux.yml\`) is the **x64** feed only.
   Arm64 installers may be attached; they are not in the updater channel yet.
-- Provider readiness and provenance are enforced before packaging. The exact YAQMC and
-  \`qm-api-rs\` corresponding-source archives are identified by
+- Provider readiness and provenance are enforced before packaging. The exact YAQMC,
+  \`qm-api-rs\`, and Apple Music-like Lyrics corresponding-source archives are identified by
   \`CORRESPONDING-SOURCE-MANIFEST.json\`.
 - This draft is not an A→B upgrade rehearsal.
 `;
@@ -201,6 +218,30 @@ function validateArchiveEvidence(sourceDir, manifest) {
       readZipEntry(archive, `${prefix}Cargo.toml`);
       continue;
     }
+    if (component.name === 'applemusic-like-lyrics') {
+      const rootManifest = JSON.parse(
+        readZipEntry(archive, `${prefix}package.json`).toString('utf8'),
+      );
+      readZipEntry(archive, `${prefix}pnpm-lock.yaml`);
+      readZipEntry(archive, `${prefix}packages/core/src/index.ts`);
+      readZipEntry(archive, `${prefix}packages/react/src/index.ts`);
+      if (rootManifest?.license !== 'AGPL-3.0-only') {
+        throw new Error('AMLL corresponding source must be AGPL-3.0-only');
+      }
+      for (const expected of expectedAmllPackages) {
+        const packageManifest = JSON.parse(
+          readZipEntry(archive, `${prefix}${expected.manifestPath}`).toString('utf8'),
+        );
+        if (
+          packageManifest?.name !== expected.name ||
+          packageManifest?.version !== AMLL_VERSION ||
+          packageManifest?.license !== 'AGPL-3.0-only'
+        ) {
+          throw new Error(`AMLL corresponding source has an invalid ${expected.name} manifest`);
+        }
+      }
+      continue;
+    }
 
     const evidence = new Map([
       [manifest.p14c.readinessRecord, manifest.p14c.readinessSha256],
@@ -246,10 +287,15 @@ function validateCorrespondingSource(sourceDir) {
   }
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   if (
-    manifest?.schemaVersion !== 1 ||
+    manifest?.schemaVersion !== 2 ||
     manifest?.license !== 'GPL-3.0-or-later' ||
     !/^[0-9a-f]{40}$/u.test(manifest?.releaseCommit ?? '') ||
     manifest?.qmApiRsRevision !== QM_API_RS_REV ||
+    manifest?.amll?.origin !== AMLL_ORIGIN ||
+    manifest?.amll?.revision !== AMLL_REV ||
+    manifest?.amll?.version !== AMLL_VERSION ||
+    manifest?.amll?.license !== 'AGPL-3.0-only' ||
+    JSON.stringify(manifest?.amll?.packages) !== JSON.stringify(expectedAmllPackages) ||
     manifest?.p14c?.status !== 'READY' ||
     manifest?.p14c?.targetPin !== QM_API_RS_REV ||
     manifest?.p14c?.readinessRecord !== 'docs/release/provider-readiness.json' ||
@@ -264,7 +310,7 @@ function validateCorrespondingSource(sourceDir) {
       (file) => !/^[0-9a-f]{64}$/u.test(manifest.provenance.evidenceSha256[file] ?? ''),
     ) ||
     !Array.isArray(manifest.components) ||
-    manifest.components.length !== 2
+    manifest.components.length !== 3
   ) {
     throw new Error('corresponding-source manifest is not release-ready');
   }
@@ -283,6 +329,14 @@ function validateCorrespondingSource(sourceDir) {
         origin: QM_API_RS_ORIGIN,
         revision: QM_API_RS_REV,
         archive: `qm-api-rs-source-${QM_API_RS_REV}.zip`,
+      },
+    ],
+    [
+      'applemusic-like-lyrics',
+      {
+        origin: AMLL_ORIGIN,
+        revision: AMLL_REV,
+        archive: `applemusic-like-lyrics-source-${AMLL_REV}.zip`,
       },
     ],
   ]);

@@ -12,7 +12,12 @@ import {
   assembleElectronRelease,
   electronDraftTag,
 } from './assemble-electron-release.mjs';
-import { CORRESPONDING_SOURCE_MANIFEST } from './corresponding-source.mjs';
+import {
+  AMLL_ORIGIN,
+  AMLL_REV,
+  AMLL_VERSION,
+  CORRESPONDING_SOURCE_MANIFEST,
+} from './corresponding-source.mjs';
 import { QM_API_RS_ORIGIN, QM_API_RS_REV } from './qm-api-rs-access.mjs';
 import { sha256File } from './write-build-info.mjs';
 
@@ -119,6 +124,7 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
   mkdirSync(correspondingSource);
   const yaqmcSource = `YAQMC-source-${releaseCommit}.zip`;
   const qmApiSource = `qm-api-rs-source-${QM_API_RS_REV}.zip`;
+  const amllSource = `applemusic-like-lyrics-source-${AMLL_REV}.zip`;
   const readinessRecord = `${JSON.stringify({
     cutoverAuthorized: true,
     defaultBackend: 'qmapi',
@@ -148,12 +154,48 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
     }),
   );
   writeFileSync(
+    path.join(correspondingSource, amllSource),
+    storedZip({
+      [`applemusic-like-lyrics-${AMLL_REV}/LICENSE`]: 'AGPL-3.0-only\n',
+      [`applemusic-like-lyrics-${AMLL_REV}/package.json`]: `${JSON.stringify({ license: 'AGPL-3.0-only' })}\n`,
+      [`applemusic-like-lyrics-${AMLL_REV}/pnpm-lock.yaml`]: 'lockfileVersion: 9\n',
+      [`applemusic-like-lyrics-${AMLL_REV}/packages/core/package.json`]: `${JSON.stringify({
+        name: '@applemusic-like-lyrics/core',
+        version: AMLL_VERSION,
+        license: 'AGPL-3.0-only',
+      })}\n`,
+      [`applemusic-like-lyrics-${AMLL_REV}/packages/core/src/index.ts`]: 'export {};\n',
+      [`applemusic-like-lyrics-${AMLL_REV}/packages/react/package.json`]: `${JSON.stringify({
+        name: '@applemusic-like-lyrics/react',
+        version: AMLL_VERSION,
+        license: 'AGPL-3.0-only',
+      })}\n`,
+      [`applemusic-like-lyrics-${AMLL_REV}/packages/react/src/index.ts`]: 'export {};\n',
+    }),
+  );
+  writeFileSync(
     path.join(correspondingSource, CORRESPONDING_SOURCE_MANIFEST),
     `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       license: 'GPL-3.0-or-later',
       releaseCommit,
       qmApiRsRevision: QM_API_RS_REV,
+      amll: {
+        origin: AMLL_ORIGIN,
+        revision: AMLL_REV,
+        version: AMLL_VERSION,
+        license: 'AGPL-3.0-only',
+        packages: [
+          {
+            name: '@applemusic-like-lyrics/core',
+            manifestPath: 'packages/core/package.json',
+          },
+          {
+            name: '@applemusic-like-lyrics/react',
+            manifestPath: 'packages/react/package.json',
+          },
+        ],
+      },
       p14c: {
         status: 'READY',
         targetPin: QM_API_RS_REV,
@@ -187,6 +229,14 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
           sha256: sha256File(path.join(correspondingSource, qmApiSource)),
           licenseFiles: ['LICENSE'],
         },
+        {
+          name: 'applemusic-like-lyrics',
+          origin: AMLL_ORIGIN,
+          revision: AMLL_REV,
+          archive: amllSource,
+          sha256: sha256File(path.join(correspondingSource, amllSource)),
+          licenseFiles: ['LICENSE'],
+        },
       ],
     })}\n`,
   );
@@ -209,6 +259,10 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
     readFileSync(path.join(dest, ELECTRON_COMBINED_CHECKSUMS_NAME), 'utf8'),
     new RegExp(`YAQMC-source-${releaseCommit}\\.zip`),
   );
+  assert.match(
+    readFileSync(path.join(dest, ELECTRON_COMBINED_CHECKSUMS_NAME), 'utf8'),
+    new RegExp(`applemusic-like-lyrics-source-${AMLL_REV}\\.zip`),
+  );
   assert.equal(
     readFileSync(path.join(dest, ELECTRON_RELEASE_NOTES_NAME), 'utf8'),
     ELECTRON_RELEASE_NOTES,
@@ -219,6 +273,7 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
   assert.match(ELECTRON_RELEASE_NOTES, /Chromium\/Ozone/);
   assert.match(ELECTRON_RELEASE_NOTES, /org\.yaqmc\.desktop/);
   assert.match(ELECTRON_RELEASE_NOTES, /corresponding-source/);
+  assert.match(ELECTRON_RELEASE_NOTES, /Apple Music-like Lyrics/);
   assert.doesNotMatch(ELECTRON_RELEASE_NOTES, /Provenance remains \*\*BLOCKED\*\*/);
 
   const manifestPath = path.join(correspondingSource, CORRESPONDING_SOURCE_MANIFEST);
@@ -254,6 +309,7 @@ test('Electron release workflow is the sole tagged desktop release workflow', ()
   assert.match(workflow, /^name: Electron release/m);
   assert.match(workflow, /tags:\s*\n\s+-\s+'v\*'/);
   assert.match(workflow, /node scripts\/ci\/package-electron\.mjs/);
+  assert.match(workflow, /libasound2-dev rpm fakeroot/);
   assert.match(workflow, /environment:\s*release-signing/);
   assert.match(workflow, /--require-signing/);
   assert.match(workflow, /secrets\.WIN_CSC_LINK/);
@@ -266,6 +322,8 @@ test('Electron release workflow is the sole tagged desktop release workflow', ()
   assert.match(workflow, /node scripts\/ci\/corresponding-source\.mjs/);
   assert.match(workflow, /repository: YAQMC\/qm-api-rs/);
   assert.match(workflow, new RegExp(`ref:\\s*${QM_API_RS_REV}`));
+  assert.match(workflow, /repository: amll-dev\/applemusic-like-lyrics/);
+  assert.match(workflow, new RegExp(`ref:\\s*${AMLL_REV}`));
   assert.match(workflow, /persist-credentials:\s*false/);
   assert.match(workflow, /--source-from corresponding-source/);
   assert.match(workflow, /node scripts\/ci\/stage-linux-tester\.mjs/);

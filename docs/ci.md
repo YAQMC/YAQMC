@@ -18,12 +18,9 @@ The removed legacy desktop workflow is not a supported build path. CI package ar
 Every CI run performs frontend formatting, documentation, lint, TypeScript,
 Vitest and script checks; builds the Electron host on Linux and Windows; runs
 Rust fmt, clippy and workspace tests; validates contracts; checks the
-unconditional private `qm-api-rs` git pin; explicitly enforces provider readiness
-and provenance; and scans for secrets on Linux and Windows. `rust-quality` and
-package jobs may rewrite Git `insteadOf` for `github.com/YAQMC/qm-api-rs` when
-`QM_API_RS_TOKEN` is present (`CARGO_NET_GIT_FETCH_WITH_CLI=true`). A missing
-token skips the rewrite; a build that needs and cannot fetch the private
-dependency fails.
+unconditional public `qm-api-rs` git pin; explicitly enforces provider readiness
+and provenance; and scans for secrets on Linux and Windows. Cargo fetches the exact public revision directly with
+`CARGO_NET_GIT_FETCH_WITH_CLI=true`.
 
 - Pull requests package Windows x64 and Linux x64.
 - Pushes to `main` package Windows x64/arm64 and Linux x64/arm64.
@@ -89,19 +86,17 @@ instructions, collector, and verifier. CI runs the verifier's identity-only
 gate before upload; it is not mixed into draft release assets.
 
 The release workflow fails before packaging unless the pin, provider readiness,
-provenance, and Windows signing gates pass. It checks out the exact private dependency revision,
-builds revision-bound YAQMC and `qm-api-rs` source archives, and writes
+provenance, and Windows signing gates pass. It checks out the exact dependency revisions,
+builds revision-bound YAQMC, `qm-api-rs`, and AMLL source archives, and writes
 `CORRESPONDING-SOURCE-MANIFEST.json`. Assembly verifies those archive hashes,
 flattens package assets, writes `SHA256SUMS-electron.txt` and
 `RELEASE-NOTES-ELECTRON.md`, and keeps only x64 updater feeds as `latest.yml`
 and `latest-linux.yml`. A `v*` push keeps that tag; a manual run uses
 `electron-draft-<run-id>`. Both create a draft release for maintainer review.
 
-The packaged renderer also uses the AGPL-licensed AMLL packages. The assembler
-does not yet attach their exact preferred-source archive; therefore a generated
-Electron draft is not publishable until the requirement in
-[the corresponding-source policy](../CORRESPONDING_SOURCE_POLICY.md) is automated
-and verified.
+The packaged renderer uses the AGPL-licensed AMLL packages. Assembly verifies their exact package version,
+license, revision, source entry points, archive hash, and the requirements in
+[the corresponding-source policy](../CORRESPONDING_SOURCE_POLICY.md).
 
 ## Build-accepted versus runtime-tested
 

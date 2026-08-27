@@ -20,7 +20,7 @@ TypeScript failures.
 
 ## Public checkout
 
-The public React renderer and its deterministic fake provider do not require the private production dependency:
+The React renderer and its deterministic fake provider do not build the native production dependency:
 
 ```powershell
 npm ci
@@ -30,19 +30,14 @@ npm run dev
 This mode supports UI, state-management, localization, and component work. It intentionally has no native audio,
 keyring, disk cache, tray, media session, or real QQ Music transport.
 
-## Native provider access
+## Native provider pin
 
-The production provider links the private `qqmusic-api` crate
+The production provider links the public `qqmusic-api` crate
 unconditionally from `https://github.com/YAQMC/qm-api-rs.git`, revision
-`827233cb799bede84ee5033ec16450dc1d5e2587`. Local Git must already be able to
-read that repository (for example through Git Credential Manager or SSH/HTTPS
-credentials). Never place a token in a repository URL, file, shell history, or
-diagnostic log.
+`827233cb799bede84ee5033ec16450dc1d5e2587`.
 
 Cargo is run with `CARGO_NET_GIT_FETCH_WITH_CLI=true` by the desktop developer
-launcher so configured Git credentials are honored. CI alone uses the
-`QM_API_RS_TOKEN` secret and a temporary `insteadOf` rewrite. The access helper
-must not configure global Git on a workstation:
+launcher. The access helper validates the manifest pin and any sibling checkout without modifying Git config:
 
 ```powershell
 node scripts/ci/qm-api-rs-access.mjs --check
@@ -50,9 +45,6 @@ node scripts/ci/qm-api-rs-access.mjs --check
 
 If a sibling `../qm-api-rs` checkout exists, that command also requires its
 HEAD to match the production pin.
-
-Without repository access, the Rust workspace and complete Electron desktop cannot build. This is a current source
-access limitation, not an npm, Cargo, or proxy configuration error.
 
 ## Full desktop run
 

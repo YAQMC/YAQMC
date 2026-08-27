@@ -12,6 +12,14 @@ const immutableRevision = /^[0-9a-f]{40}$/u;
 
 export const CORRESPONDING_SOURCE_MANIFEST = 'CORRESPONDING-SOURCE-MANIFEST.json';
 export const YAQMC_ORIGIN = 'https://github.com/YAQMC/YAQMC';
+export const AMLL_ORIGIN = 'https://github.com/amll-dev/applemusic-like-lyrics';
+export const AMLL_REV = 'fd7ec2d597daa2a66a37ca5f3214d6757ec17cfa';
+export const AMLL_VERSION = '0.5.2';
+
+const amllPackages = [
+  ['@applemusic-like-lyrics/core', 'packages/core/package.json'],
+  ['@applemusic-like-lyrics/react', 'packages/react/package.json'],
+];
 
 export function parseCorrespondingSourceArgs(argv) {
   const options = {};
@@ -89,6 +97,26 @@ function assertSourceShape(component, files, requiredFiles) {
   return licenseFiles.sort();
 }
 
+function assertAmllPackageManifests(repository, revision, runGit) {
+  for (const [expectedName, manifestPath] of amllPackages) {
+    let manifest;
+    try {
+      manifest = JSON.parse(trackedTextAt(repository, revision, manifestPath, runGit));
+    } catch (error) {
+      throw new Error(`AMLL package manifest is invalid: ${manifestPath}`, { cause: error });
+    }
+    if (
+      manifest?.name !== expectedName ||
+      manifest?.version !== AMLL_VERSION ||
+      manifest?.license !== 'AGPL-3.0-only'
+    ) {
+      throw new Error(
+        `AMLL package ${expectedName} must be version ${AMLL_VERSION} under AGPL-3.0-only`,
+      );
+    }
+  }
+}
+
 function archiveRepository({ repository, revision, prefix, output, runGit }) {
   if (existsSync(output)) {
     throw new Error(`refusing to overwrite corresponding-source archive ${output}`);
@@ -108,12 +136,16 @@ function archiveRepository({ repository, revision, prefix, output, runGit }) {
 export function createCorrespondingSourceBundle(options = {}) {
   const yaqmcRoot = path.resolve(options.yaqmcRoot ?? repositoryRoot);
   const qmApiRsRoot = path.resolve(options.qmApiRsRoot ?? path.join(yaqmcRoot, '..', 'qm-api-rs'));
+  const amllRoot = path.resolve(
+    options.amllRoot ?? path.join(yaqmcRoot, '..', 'applemusic-like-lyrics'),
+  );
   const outputDir = path.resolve(options.outputDir ?? path.join(yaqmcRoot, 'corresponding-source'));
   const runGit = options.runGit ?? defaultRunGit;
   const runProvenanceGate = options.runProvenanceGate ?? defaultRunProvenanceGate;
 
   assertCleanCheckout(yaqmcRoot, runGit);
   assertCleanCheckout(qmApiRsRoot, runGit);
+  assertCleanCheckout(amllRoot, runGit);
   runProvenanceGate(yaqmcRoot);
   const { record, blockers } = inspectP14cReadiness(yaqmcRoot);
   if (blockers.length > 0) {
@@ -124,14 +156,21 @@ export function createCorrespondingSourceBundle(options = {}) {
 
   const yaqmcRevision = repositoryRevision(yaqmcRoot, runGit);
   const qmApiRsRevision = repositoryRevision(qmApiRsRoot, runGit);
+  const amllRevision = repositoryRevision(amllRoot, runGit);
   if (qmApiRsRevision !== QM_API_RS_REV || record.targetPin !== qmApiRsRevision) {
     throw new Error(
       `qm-api-rs source revision ${qmApiRsRevision} does not match the production pin ${QM_API_RS_REV}`,
     );
   }
+  if (amllRevision !== AMLL_REV) {
+    throw new Error(
+      `AMLL source revision ${amllRevision} does not match the package pin ${AMLL_REV}`,
+    );
+  }
 
   const yaqmcFiles = trackedFilesAt(yaqmcRoot, yaqmcRevision, runGit);
   const qmApiRsFiles = trackedFilesAt(qmApiRsRoot, qmApiRsRevision, runGit);
+  const amllFiles = trackedFilesAt(amllRoot, amllRevision, runGit);
   const yaqmcLicenses = assertSourceShape('YAQMC', yaqmcFiles, [
     'Cargo.toml',
     'Cargo.lock',
@@ -140,12 +179,23 @@ export function createCorrespondingSourceBundle(options = {}) {
     '.github/workflows/electron-release.yml',
   ]);
   const qmApiRsLicenses = assertSourceShape('qm-api-rs', qmApiRsFiles, ['Cargo.toml']);
+  const amllLicenses = assertSourceShape('AMLL', amllFiles, [
+    'package.json',
+    'pnpm-lock.yaml',
+    'packages/core/package.json',
+    'packages/core/src/index.ts',
+    'packages/react/package.json',
+    'packages/react/src/index.ts',
+  ]);
+  assertAmllPackageManifests(amllRoot, amllRevision, runGit);
 
   mkdirSync(outputDir, { recursive: true });
   const yaqmcArchiveName = `YAQMC-source-${yaqmcRevision}.zip`;
   const qmApiRsArchiveName = `qm-api-rs-source-${qmApiRsRevision}.zip`;
+  const amllArchiveName = `applemusic-like-lyrics-source-${amllRevision}.zip`;
   const yaqmcArchive = path.join(outputDir, yaqmcArchiveName);
   const qmApiRsArchive = path.join(outputDir, qmApiRsArchiveName);
+  const amllArchive = path.join(outputDir, amllArchiveName);
   archiveRepository({
     repository: yaqmcRoot,
     revision: yaqmcRevision,
@@ -160,15 +210,29 @@ export function createCorrespondingSourceBundle(options = {}) {
     output: qmApiRsArchive,
     runGit,
   });
+  archiveRepository({
+    repository: amllRoot,
+    revision: amllRevision,
+    prefix: `applemusic-like-lyrics-${amllRevision}`,
+    output: amllArchive,
+    runGit,
+  });
 
   const readinessRecord = 'docs/release/provider-readiness.json';
   const provenanceLedger = 'docs/release/provenance-ledger.json';
   const provenanceEvidence = ['docs/release/provenance.md', 'docs/release/qm-api-rs-provenance.md'];
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     license: 'GPL-3.0-or-later',
     releaseCommit: yaqmcRevision,
     qmApiRsRevision,
+    amll: {
+      origin: AMLL_ORIGIN,
+      revision: amllRevision,
+      version: AMLL_VERSION,
+      license: 'AGPL-3.0-only',
+      packages: amllPackages.map(([name, manifestPath]) => ({ name, manifestPath })),
+    },
     p14c: {
       status: 'READY',
       targetPin: record.targetPin,
@@ -204,6 +268,14 @@ export function createCorrespondingSourceBundle(options = {}) {
         sha256: sha256File(qmApiRsArchive),
         licenseFiles: qmApiRsLicenses,
       },
+      {
+        name: 'applemusic-like-lyrics',
+        origin: AMLL_ORIGIN,
+        revision: amllRevision,
+        archive: amllArchiveName,
+        sha256: sha256File(amllArchive),
+        licenseFiles: amllLicenses,
+      },
     ],
   };
   const manifestPath = path.join(outputDir, CORRESPONDING_SOURCE_MANIFEST);
@@ -216,14 +288,15 @@ export function createCorrespondingSourceBundle(options = {}) {
 
 function main() {
   const args = parseCorrespondingSourceArgs(process.argv.slice(2));
-  if (!args['qm-api-rs-root'] || !args.to) {
+  if (!args['qm-api-rs-root'] || !args['amll-root'] || !args.to) {
     throw new Error(
-      'Usage: corresponding-source.mjs --qm-api-rs-root <checkout> --to <directory> [--yaqmc-root <checkout>]',
+      'Usage: corresponding-source.mjs --qm-api-rs-root <checkout> --amll-root <checkout> --to <directory> [--yaqmc-root <checkout>]',
     );
   }
   const result = createCorrespondingSourceBundle({
     yaqmcRoot: args['yaqmc-root'],
     qmApiRsRoot: args['qm-api-rs-root'],
+    amllRoot: args['amll-root'],
     outputDir: args.to,
   });
   process.stdout.write(`corresponding source: ${result.manifestPath}\n`);

@@ -18,7 +18,7 @@ Node 版本同时钉在 `package.json`、`package-lock.json` 与 `.node-version`
 
 ## 公开检出
 
-公开 React renderer 与确定性 fake provider 不需要私有生产依赖：
+React renderer 与确定性 fake provider 不会构建原生生产依赖：
 
 ```powershell
 npm ci
@@ -28,26 +28,20 @@ npm run dev
 该模式可用于界面、状态管理、本地化和组件开发；它有意不提供原生音频、keyring、磁盘缓存、托盘、
 系统媒体会话或真实 QQ 音乐传输。
 
-## 原生提供器访问
+## 原生提供器 pin
 
-生产提供器无条件链接私有 crate `qqmusic-api`：
+生产提供器无条件链接公开 crate `qqmusic-api`：
 `https://github.com/YAQMC/qm-api-rs.git`，精确 revision 为
-`827233cb799bede84ee5033ec16450dc1d5e2587`。本机 Git 必须已能读取该仓库
-（例如 Git Credential Manager 或已有 SSH/HTTPS 凭据）。禁止把 token 写进
-仓库 URL、文件、Shell 历史或诊断日志。
+`827233cb799bede84ee5033ec16450dc1d5e2587`。
 
-桌面开发启动器为 Cargo 设置 `CARGO_NET_GIT_FETCH_WITH_CLI=true`，使其使用
-现有 Git 凭据。只有 CI 才使用 `QM_API_RS_TOKEN` 与临时 `insteadOf` 重写；本机
-不得调用配置全局 Git 的模式：
+桌面开发启动器为 Cargo 设置 `CARGO_NET_GIT_FETCH_WITH_CLI=true`。访问辅助脚本只核对 manifest pin
+与可选的相邻 checkout，不修改 Git 配置：
 
 ```powershell
 node scripts/ci/qm-api-rs-access.mjs --check
 ```
 
 若存在相邻的 `../qm-api-rs` 检出，该命令还会要求其 HEAD 与生产 pin 完全一致。
-
-没有该仓库的读取权限时，Rust workspace 与完整 Electron 桌面端无法构建。这是当前源码访问边界，
-不是 npm、Cargo 或代理配置错误。
 
 ## 完整桌面端运行
 

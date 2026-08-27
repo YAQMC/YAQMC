@@ -31,21 +31,18 @@ references, and hashes of all delivered archives.
 Do not publish a binary release if the required corresponding source is unavailable.
 
 The Electron release workflow enforces provider readiness and provenance before
-packaging. Its assembly job checks out the exact private pin with
+packaging. Its assembly job checks out the exact `qm-api-rs` and AMLL revisions with
 `persist-credentials: false`, runs
-`scripts/ci/corresponding-source.mjs`, and refuses to create a draft unless the
-two revision-bound source archives and `CORRESPONDING-SOURCE-MANIFEST.json`
-are present and hash-valid. Source generation rejects dirty YAQMC or
-`qm-api-rs` checkouts. The manifest hashes the provider readiness record,
+`scripts/ci/corresponding-source.mjs`, and refuses to create a draft unless all
+three revision-bound source archives and `CORRESPONDING-SOURCE-MANIFEST.json`
+are present and hash-valid. Source generation rejects dirty YAQMC, `qm-api-rs`, or AMLL checkouts. The manifest
+records and validates both AMLL package manifests and hashes the provider readiness record,
 provenance ledger, and provenance evidence exactly as stored in the YAQMC
 archive; assembly reads those ZIP entries back, verifies their hashes and
-release decisions, and checks the dependency manifest and license entries.
+release decisions, and checks every dependency manifest, source entry point, and license entry.
 Assembly also requires downloaded package artifact directories to carry the
 same 40-character YAQMC commit as the source manifest and recomputes every
 file hash declared by their platform-specific build identity. The archive step
 uses `git archive`, so checkout metadata and authentication configuration are
-never included.
-
-The current assembler automates the YAQMC and `qm-api-rs` archives. Until it also attaches and verifies the exact
-AMLL preferred-source archive, an Electron draft produced by the workflow must not be published. A lockfile entry or
-link to an upstream repository is not a replacement for conveying the required corresponding source.
+never included. A lockfile entry or link to an upstream repository is not a replacement for conveying the required
+corresponding source.

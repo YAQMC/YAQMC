@@ -1,5 +1,5 @@
 /**
- * Access helper for the private `qm-api-rs` pin.
+ * Integrity helper for the public `qm-api-rs` production pin.
  *
  * The `qqmusic-api` dependency is unconditional since the production cutover; the
  * provider has no backend feature split and Core links it by default.
@@ -13,7 +13,6 @@ export const QM_API_RS_GIT = 'https://github.com/YAQMC/qm-api-rs.git';
 export const QM_API_RS_ORIGIN = 'https://github.com/YAQMC/qm-api-rs';
 export const QM_API_RS_REV = '827233cb799bede84ee5033ec16450dc1d5e2587';
 export const QM_API_RS_CRATE = 'qqmusic-api';
-export const QM_API_RS_TOKEN_ENV = 'QM_API_RS_TOKEN';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -23,34 +22,6 @@ export function defaultSiblingCheckout(root = repositoryRoot) {
 
 export function providerManifestPath(root = repositoryRoot) {
   return path.join(root, 'crates', 'yaqmc-provider-qqmusic', 'Cargo.toml');
-}
-
-export function sanitizeAccessToken(token) {
-  const value = String(token ?? '').trim();
-  if (!value) {
-    return '';
-  }
-  if (/[\s@"'\\]/.test(value)) {
-    throw new Error(
-      `${QM_API_RS_TOKEN_ENV} contains characters that cannot be used in a git insteadOf URL`,
-    );
-  }
-  return value;
-}
-
-export function insteadOfRewriteUrl(token) {
-  const safe = sanitizeAccessToken(token);
-  if (!safe) {
-    throw new Error(`${QM_API_RS_TOKEN_ENV} is required to configure git insteadOf`);
-  }
-  return `https://x-access-token:${safe}@github.com/YAQMC/qm-api-rs`;
-}
-
-export function gitInsteadOfArgs(token, scope = 'global') {
-  if (scope !== 'global' && scope !== 'local') {
-    throw new Error(`unsupported git config scope: ${scope}`);
-  }
-  return ['config', `--${scope}`, `url.${insteadOfRewriteUrl(token)}.insteadOf`, QM_API_RS_GIT];
 }
 
 export function assertProviderQmapiPin(manifestSource) {
@@ -130,36 +101,9 @@ export function checkAccess(options = {}) {
   };
 }
 
-export function configureGitInsteadOf(options = {}) {
-  const env = options.env ?? process.env;
-  const ci = env.CI === 'true' || env.YAQMC_QM_API_RS_CONFIGURE_GIT === '1';
-  if (!ci) {
-    throw new Error(
-      'refusing to write git config outside CI; set CI=true or YAQMC_QM_API_RS_CONFIGURE_GIT=1',
-    );
-  }
-  const token = sanitizeAccessToken(env[QM_API_RS_TOKEN_ENV]);
-  if (!token) {
-    return {
-      configured: false,
-      reason: `${QM_API_RS_TOKEN_ENV} unset; the unconditional qmapi pin cannot be fetched`,
-    };
-  }
-  const runGit = options.runGit ?? execFileSync;
-  runGit('git', gitInsteadOfArgs(token, options.scope ?? 'global'), {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  return { configured: true, insteadOf: QM_API_RS_GIT };
-}
-
 function main(argv = process.argv.slice(2)) {
-  if (argv.includes('--configure-git')) {
-    const result = configureGitInsteadOf();
-    process.stdout.write(
-      `${result.configured ? 'configured' : 'skipped'}: ${result.reason ?? QM_API_RS_GIT}\n`,
-    );
-    return;
+  if (argv.length > 0 && !argv.includes('--check')) {
+    throw new Error(`unsupported qm-api-rs access option: ${argv.join(' ')}`);
   }
   const checked = checkAccess();
   const sibling =

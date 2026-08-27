@@ -184,14 +184,14 @@ npm ci
 npm run dev
 ```
 
-完整 Electron 桌面端还需要本机 Git 有权读取私有 `qm-api-rs` 精确 pin：
+完整 Electron 桌面端会通过 Git 获取公开的 `qm-api-rs` 精确 pin：
 
 ```powershell
 npm run dev:desktop
 ```
 
-没有该权限时，Rust workspace 与原生桌面端不能完整构建；这不是 npm 或 Cargo 配置错误。账号、安全存储、
-缓存和原生音频也只存在于 Electron 桌面宿主。完整说明见[开发环境](docs/zh-CN/development.md)。
+账号、安全存储、缓存和原生音频只存在于 Electron 桌面宿主。依赖 pin 与完整说明见
+[开发环境](docs/zh-CN/development.md)。
 
 ### 构建
 

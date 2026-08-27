@@ -119,14 +119,10 @@ jobs:
       - run: npm run ci:verify-workspace
       - name: Check the unconditional qm-api-rs pin
         run: node scripts/ci/qm-api-rs-access.mjs --check
-      - name: Authenticate private qm-api-rs when the token is present
-        env:
-          CI: 'true'
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-          QM_API_RS_TOKEN: ${{ secrets.QM_API_RS_TOKEN }}
-        run: node scripts/ci/qm-api-rs-access.mjs --configure-git
       - name: Prepare frontend stub for cargo-only builds
         run: mkdir -p dist && printf '<!doctype html><html><body></body></html>' > dist/index.html
+      - name: Install Linux native audio headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
         env:
@@ -202,10 +198,11 @@ jobs:
         with:
           target: ${{ matrix.target }}
           profile: ${{ env.YAQMC_BUILD_PROFILE }}
-          qm-api-rs-token: ${{ secrets.QM_API_RS_TOKEN }}
       - name: Linux electron-builder packaging tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm fakeroot
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends libasound2-dev rpm fakeroot
       - run: npm ci
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
