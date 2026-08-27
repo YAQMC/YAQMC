@@ -5,23 +5,30 @@
 Search existing issues and pull requests first. Small, focused fixes may be submitted directly; discuss broad
 architecture, compatibility protocol, account mutations, or major UI work in an issue before implementation.
 
-Use Node.js 26.7.0, Rust 1.88 or newer, and the platform dependencies required by native audio and the selected package format. Install and run with:
+Use Node.js 26.7.0, Rust 1.88 or newer, and the platform dependencies required by native audio and the selected
+package format. A public checkout can run the deterministic fake-provider renderer without private dependencies:
 
 ```powershell
 npm ci
-npm run dev:desktop
+npm run dev
 ```
 
-See [development](docs/development.md) for the layered build, packaging, and QA-profile rules, and
-[data locations](docs/data-locations.md) for upgrade and uninstall behavior.
-
-The private `qm-api-rs` crate (`qqmusic-api`) is the current unconditional
-production dependency, pinned at
+The full Electron desktop and Rust workspace additionally require the private `qm-api-rs` crate (`qqmusic-api`).
+It is the current unconditional production dependency, pinned at
 `827233cb799bede84ee5033ec16450dc1d5e2587`. A sibling checkout at `../qm-api-rs`
 is checked against that pin by `node scripts/ci/qm-api-rs-access.mjs --check`.
 Never commit an access token. Clean CI builds provide `QM_API_RS_TOKEN` so Git
 can fetch the private pin. See [provider readiness](docs/release/provider-readiness.md)
 and [CI](docs/ci.md) for the production boundary and release gates.
+
+With read access configured, run:
+
+```powershell
+npm run dev:desktop
+```
+
+See [development](docs/development.md) for the layered build, packaging, and QA-profile rules, and
+[data locations](docs/data-locations.md) for upgrade and uninstall behavior.
 
 Before a pull request, run:
 

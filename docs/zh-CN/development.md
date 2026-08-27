@@ -16,7 +16,19 @@ Rust Core 进程。原生开发会构建三层；浏览器开发固定使用确�
 Node 版本同时钉在 `package.json`、`package-lock.json` 与 `.node-version`。
 解释 JavaScript/TypeScript 失败前先检查 `node --version`。
 
-## 私有生产依赖
+## 公开检出
+
+公开 React renderer 与确定性 fake provider 不需要私有生产依赖：
+
+```powershell
+npm ci
+npm run dev
+```
+
+该模式可用于界面、状态管理、本地化和组件开发；它有意不提供原生音频、keyring、磁盘缓存、托盘、
+系统媒体会话或真实 QQ 音乐传输。
+
+## 原生提供器访问
 
 生产提供器无条件链接私有 crate `qqmusic-api`：
 `https://github.com/YAQMC/qm-api-rs.git`，精确 revision 为
@@ -34,7 +46,10 @@ node scripts/ci/qm-api-rs-access.mjs --check
 
 若存在相邻的 `../qm-api-rs` 检出，该命令还会要求其 HEAD 与生产 pin 完全一致。
 
-## 第一次原生运行
+没有该仓库的读取权限时，Rust workspace 与完整 Electron 桌面端无法构建。这是当前源码访问边界，
+不是 npm、Cargo 或代理配置错误。
+
+## 完整桌面端运行
 
 ```powershell
 npm ci
@@ -44,15 +59,6 @@ npm run dev:desktop
 `dev:desktop` 会编译 debug `yaqmc-core`、暂存完整性清单、启动 Vite、监听
 Electron Main/preload 并启动 Electron。它不是 QA profile，可能使用正常应用
 数据目录。
-
-只做 renderer 开发时使用永久 fake-provider 路径：
-
-```powershell
-npm run dev
-```
-
-浏览器模式没有原生音频、keyring、磁盘缓存、托盘、系统媒体会话或真实 QQ 音乐
-传输。
 
 ## 接近发布配置的本机构建
 
@@ -73,7 +79,7 @@ npm run package -w @yaqmc/desktop -- --publish never
 ## 验证
 
 ```powershell
-npm run p14c:enforce
+npm run provider:enforce
 npm run provenance:enforce
 npm run format:check
 npm run docs:check

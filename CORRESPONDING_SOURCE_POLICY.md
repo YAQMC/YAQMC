@@ -13,13 +13,20 @@ unresolved proprietary extraction; those remain separate release blockers.
 
 ## Required source set
 
-The source delivery must include the exact YAQMC source for the released commit and the exact linked `qm-api-rs`
-source resolved by the pinned revision
-`827233cb799bede84ee5033ec16450dc1d5e2587` (or the revision recorded in that release's lockfile). Include the
-dependency's license files, manifests, lockfiles, and build scripts, together with YAQMC's manifests, lockfiles, and
-build/packaging/release scripts. The release notes or a source manifest must identify the YAQMC commit, the
-`qm-api-rs` revision, the provenance-ledger SHA-256 digest, evidence references, and hashes of the delivered
-archives.
+The source delivery must include:
+
+- the exact YAQMC source for the released commit;
+- the exact linked `qm-api-rs` source resolved by revision
+  `827233cb799bede84ee5033ec16450dc1d5e2587` (or the revision recorded in that release's lockfile); and
+- the preferred source form for the shipped `@applemusic-like-lyrics/core` and
+  `@applemusic-like-lyrics/react` packages. Version `0.5.2` maps to upstream commit
+  `fd7ec2d597daa2a66a37ca5f3214d6757ec17cfa` (`core-bundle@0.5.2`) and is licensed
+  `AGPL-3.0-only`.
+
+Include each dependency's license files, manifests, lockfiles, and build scripts, together with YAQMC's manifests,
+lockfiles, and build/packaging/release scripts. The release notes or source manifest must identify the YAQMC commit,
+the `qm-api-rs` revision, the AMLL version and source revision, the provenance-ledger SHA-256 digest, evidence
+references, and hashes of all delivered archives.
 
 Do not publish a binary release if the required corresponding source is unavailable.
 
@@ -38,3 +45,7 @@ same 40-character YAQMC commit as the source manifest and recomputes every
 file hash declared by their platform-specific build identity. The archive step
 uses `git archive`, so checkout metadata and authentication configuration are
 never included.
+
+The current assembler automates the YAQMC and `qm-api-rs` archives. Until it also attaches and verifies the exact
+AMLL preferred-source archive, an Electron draft produced by the workflow must not be published. A lockfile entry or
+link to an upstream repository is not a replacement for conveying the required corresponding source.

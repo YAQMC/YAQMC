@@ -66,6 +66,9 @@ const communityDocuments = [
   'SECURITY-EN.md',
   'SUPPORT.md',
   'SUPPORT-EN.md',
+  'CORRESPONDING_SOURCE_POLICY.md',
+  'LICENSING_CONSENT.md',
+  'THIRD_PARTY_NOTICES.md',
   'docs/README.md',
   'docs/release/README.md',
   'docs/release/provider-readiness.md',
@@ -80,6 +83,18 @@ const forbiddenPublicPlaceholders = [
   /\[PROJECT_NAME\]/u,
   /\$PROJECT_NAME_API_TOKEN/u,
   /GPT-Read-?me\.md/iu,
+];
+
+const forbiddenPublicContent = [
+  {
+    pattern: /[A-Z]:\\(?:Users|Downloads|Documents|YAQMC)(?:\\|\b)/iu,
+    label: 'workstation-specific absolute Windows path',
+  },
+  {
+    pattern: /\/(?:home|Users)\/[^/\s)]+/u,
+    label: 'workstation-specific absolute user path',
+  },
+  { pattern: /\bHANDOFF[_-]\d{4}/iu, label: 'internal handoff reference' },
 ];
 
 async function exists(filePath) {
@@ -130,10 +145,7 @@ async function checkMarkdownLinks(relativePath) {
       continue;
     }
 
-    let resolved = path.resolve(sourceDirectory, decodedTarget);
-    if (!(await exists(resolved)) && relativePath.startsWith('wiki/') && !path.extname(resolved)) {
-      resolved += '.md';
-    }
+    const resolved = path.resolve(sourceDirectory, decodedTarget);
     if (!(await exists(resolved))) {
       errors.push(`${relativePath}: missing local link target ${rawTarget}`);
     }
@@ -169,23 +181,44 @@ if (englishReadme.includes('](docs/zh-CN/')) {
   errors.push('README-EN.md: English documentation links must not target docs/zh-CN/');
 }
 
-const wikiFiles = [
-  'wiki/Home.md',
-  'wiki/_Sidebar.md',
-  'wiki/安装与更新.md',
-  'wiki/常见问题.md',
-  'wiki/Linux-测试.md',
-  'wiki/开发者入口.md',
-  'wiki/English.md',
-  'wiki/README.md',
-];
+if (!chineseReadme.includes('`v0.1.0-beta.6`') || !chineseReadme.includes('Electron `main`')) {
+  errors.push(
+    'README.md: must distinguish the current Electron tree from the latest legacy release',
+  );
+}
+if (!englishReadme.includes('`v0.1.0-beta.6`') || !englishReadme.includes('Electron `main`')) {
+  errors.push(
+    'README-EN.md: must distinguish the current Electron tree from the latest legacy release',
+  );
+}
 
-for (const relativePath of [
+const englishLyrics = await readFile(path.join(repositoryRoot, 'docs/lyrics.md'), 'utf8');
+const chineseLyrics = await readFile(path.join(repositoryRoot, 'docs/zh-CN/lyrics.md'), 'utf8');
+for (const [relativePath, contents] of [
+  ['docs/lyrics.md', englishLyrics],
+  ['docs/zh-CN/lyrics.md', chineseLyrics],
+]) {
+  for (const required of [
+    '@applemusic-like-lyrics/core',
+    '@applemusic-like-lyrics/react',
+    'AGPL-3.0-only',
+  ]) {
+    if (!contents.includes(required)) {
+      errors.push(`${relativePath}: missing current AMLL dependency fact ${required}`);
+    }
+  }
+}
+if (/没有使用[^\n]*AMLL/u.test(chineseLyrics)) {
+  errors.push('docs/zh-CN/lyrics.md: contradicts the lockfile-pinned AMLL dependency');
+}
+
+const publicMarkdownDocuments = [
   ...communityDocuments,
   ...publicDocuments.map((file) => `docs/${file}`),
   ...publicDocuments.map((file) => `docs/zh-CN/${file}`),
-  ...wikiFiles,
-]) {
+];
+
+for (const relativePath of publicMarkdownDocuments) {
   await requireFile(relativePath);
   if (await exists(path.join(repositoryRoot, relativePath))) {
     await checkMarkdownLinks(relativePath);
@@ -195,7 +228,23 @@ for (const relativePath of [
         errors.push(`${relativePath}: contains forbidden public placeholder ${forbidden}`);
       }
     }
+    for (const forbidden of forbiddenPublicContent) {
+      if (forbidden.pattern.test(contents)) {
+        errors.push(`${relativePath}: contains ${forbidden.label}`);
+      }
+    }
   }
+}
+
+for (const requiredCommunityFile of [
+  'LICENSE',
+  '.github/ISSUE_TEMPLATE/bug-report.yml',
+  '.github/ISSUE_TEMPLATE/feature-request.yml',
+  '.github/ISSUE_TEMPLATE/linux-compatibility.yml',
+  '.github/ISSUE_TEMPLATE/config.yml',
+  '.github/PULL_REQUEST_TEMPLATE.md',
+]) {
+  await requireFile(requiredCommunityFile);
 }
 
 for (const requiredSiteFile of [
@@ -214,6 +263,16 @@ if (!chineseSite.includes('lang="zh-CN"') || !chineseSite.includes('href="en/"')
 }
 if (!englishSite.includes('lang="en"') || !englishSite.includes('href="../"')) {
   errors.push('site/en/index.html: missing English language declaration or Chinese switch');
+}
+if (
+  !chineseSite.includes('v0.1.0-beta.6') ||
+  !englishSite.includes('v0.1.0-beta.6') ||
+  chineseSite.includes('/releases/latest') ||
+  englishSite.includes('/releases/latest')
+) {
+  errors.push(
+    'site: must explain the legacy latest release instead of linking it as the current Electron build',
+  );
 }
 
 if (errors.length > 0) {

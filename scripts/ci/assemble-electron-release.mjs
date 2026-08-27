@@ -29,7 +29,7 @@ use the published SHA-256 checksums for transport verification.
 - Linux graphics diagnostics use Chromium/Ozone modes; retired-host renderer overrides do not apply.
 - Updater metadata (\`latest.yml\`, \`latest-linux.yml\`) is the **x64** feed only.
   Arm64 installers may be attached; they are not in the updater channel yet.
-- P14-C readiness and provenance are enforced before packaging. The exact YAQMC and
+- Provider readiness and provenance are enforced before packaging. The exact YAQMC and
   \`qm-api-rs\` corresponding-source archives are identified by
   \`CORRESPONDING-SOURCE-MANIFEST.json\`.
 - This draft is not an A→B upgrade rehearsal.

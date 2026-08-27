@@ -5,6 +5,13 @@
 本文件记录用户可见变化。项目仍处于 `0.1.x` 测试阶段；未通过真实账号或 Linux 真机验收的能力会明确
 标为待验收，不会用自动化测试替代真实结论。
 
+## 未发布（Electron `main`）
+
+- 桌面宿主迁移到 Electron，播放事实源仍由独立 Rust Core 持有；
+- 下一版 Windows 目标为 x64/ARM64 的 NSIS 与 portable EXE，Linux 目标为 x64/ARM64 多格式包；
+- 加固 Core 完整性、OAuth 回调校验、Windows 签名门禁与 GitHub Actions 依赖固定；
+- 公开文档明确区分当前 Electron 源码与迁移前的 `v0.1.0-beta.6` 安装包，并修正 AMLL 依赖许可说明。
+
 ## 0.1.0-beta.6 — 2026-08-13
 
 ### 公开仓库准备

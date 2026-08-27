@@ -60,7 +60,7 @@ test('configures insteadOf without echoing the token through the git argv helper
   assert.match(calls[0][1][2], /x-access-token:test-token@github.com\/YAQMC\/qm-api-rs/);
 });
 
-test('current provider manifest pins unconditional qqmusic-api at the P14 rev', () => {
+test('current provider manifest pins unconditional qqmusic-api at the production revision', () => {
   const checked = checkAccess({
     root: repositoryRoot,
     sibling: path.join(os.tmpdir(), 'yaqmc-no-qm-api-rs-checkout'),
@@ -125,6 +125,6 @@ test('a sibling checkout at the wrong revision fails closed', () => {
         root: repositoryRoot,
         siblingRevision: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
       }),
-    /does not match the P14 pin/,
+    /does not match the production pin/,
   );
 });

@@ -17,7 +17,7 @@ does not imply endorsement, participation in a release, or support for YAQMC.
   `@applemusic-like-lyrics/core` and `@applemusic-like-lyrics/react` `0.5.2` packages, which are
   `AGPL-3.0-only`. See the [lyrics documentation](docs/lyrics.md#amll-decision) for licensing and distribution
   obligations.
-- **OpenAI Codex / GPT-5.6 Sol** — for assistance with implementation, test design, code review, documentation,
+- **OpenAI Codex** — for assistance with implementation, test design, code review, documentation,
   and release workflow.
 
 ## Interoperability research

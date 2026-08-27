@@ -67,5 +67,14 @@ React 不在每次音频轮询时重排整份歌词。原生服务按真实位�
 `y.gtimg.cn`、`qpic.y.qq.com` 经原生缓存，拒绝重定向、凭据、非 443、`music.tc.qq.com`、其他来源、
 非图片 MIME 和错误 IPC data URI。
 
-Windows 本机矩阵见 [Windows 验收](windows-acceptance.md)。YAQMC 没有使用 AGPL-3.0-only 的 AMLL 包或
-源码；当前渲染器依据自身领域模型独立实现。
+Windows 本机矩阵见 [Windows 验收](windows-acceptance.md)。
+
+## AMLL 依赖与许可证
+
+上游 [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics) 及其发布包采用
+`AGPL-3.0-only`。YAQMC 自有源码采用 `GPL-3.0-or-later`；GPLv3 第 13 节允许与 AGPLv3 代码组合，
+同时 AGPLv3 第 13 节的网络交互源码要求适用于整个组合。
+
+桌面 renderer 直接使用 lockfile 固定的 `@applemusic-like-lyrics/core` 与
+`@applemusic-like-lyrics/react` `0.5.2` 官方包。YAQMC 在组件边界适配自己的歌词领域模型，没有
+vendoring 或修改 AMLL 源码。分发者必须保留 AMLL 通知，并提供 GPLv3/AGPLv3 要求的完整对应源码。

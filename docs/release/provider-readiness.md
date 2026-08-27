@@ -4,7 +4,7 @@ Status: **READY** for the production `qmapi` backend at exact `qm-api-rs`
 revision `827233cb799bede84ee5033ec16450dc1d5e2587`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
-Run `npm run p14c:enforce` to verify the pin, provider boundary, evidence paths,
+Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
 and source-retirement guards.
 
 ## Verified boundary

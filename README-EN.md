@@ -25,6 +25,17 @@
 > entitlement checks. For encrypted media whose URL and ekey were issued by the service for the active account,
 > YAQMC decrypts only the authorized stream locally; it does not obtain unentitled content.
 
+## Release status
+
+> [!WARNING]
+> This document describes the unreleased Electron `main` branch. The latest public tag,
+> `v0.1.0-beta.6`, uses the retired desktop host; its package names, features, and limitations do not describe the
+> current tree. There is no public installer matching this document until a new Electron preview is released.
+
+The Electron line remains beta software. Windows has local native validation; Linux still needs broader testing on
+real desktop environments. Before downloading, read the release notes and confirm that the release explicitly says
+it is an Electron build.
+
 ## Highlights
 
 - Native playback owned by one Rust `PlayerService`; React, MPRIS/SMTC, tray controls, shortcuts, and the local API
@@ -44,7 +55,7 @@
 
 ## Downloads
 
-Tagged releases publish the package formats that each supported runner can build natively:
+Electron releases publish the package formats that each supported runner can build natively:
 
 | Platform | Architectures         | Packages                                                |
 | -------- | --------------------- | ------------------------------------------------------- |
@@ -85,21 +96,22 @@ verified.
 
 ## Development
 
+Every public contributor can run the deterministic fake-provider renderer:
+
 ```powershell
 npm ci
+npm run dev
+```
+
+The complete Electron desktop requires local Git read access to the exact private `qm-api-rs` production pin:
+
+```powershell
 npm run dev:desktop
 ```
 
-Native Core links the exact private `qm-api-rs` production pin unconditionally;
-local Git must already have read access. See [development](docs/development.md)
-for authentication and environment details.
-
-Browser development intentionally uses the deterministic fake provider because credentials, native audio, cache,
-and QQ Music transport live behind the Electron desktop host:
-
-```powershell
-npm run dev
-```
+Without that access, the Rust workspace and native desktop cannot be built completely; this is not an npm or Cargo
+configuration error. Credentials, native audio, cache, and QQ Music transport exist only behind the Electron host.
+See [development](docs/development.md) for the full boundary and authentication details.
 
 In a native build, QQ Music guest mode is the default. Add `?provider=fake` to the application URL when recording
 deterministic UI evidence.
@@ -194,7 +206,7 @@ The public engineering notes include [official-client interoperability evidence]
 ## Acknowledgements and project policy
 
 Special thanks to Flechazo for public QMC/MFLAC, Master-quality, and seekable-decryption research ideas, and to
-OpenAI Codex / GPT-5.6 Sol for engineering, testing, review, documentation, and release-workflow assistance. The
+OpenAI Codex for engineering, testing, review, documentation, and release-workflow assistance. The
 complete, carefully scoped credits—including the no-source-reuse boundary for unlicensed references—are in
 [ACKNOWLEDGEMENTS-EN.md](ACKNOWLEDGEMENTS-EN.md) and the
 [provider ledger](docs/qqmusic-provider.md). Reused copyright and license texts remain in
@@ -202,4 +214,5 @@ complete, carefully scoped credits—including the no-source-reuse boundary for 
 
 > [!NOTE]
 > YAQMC is licensed under [GPL-3.0-or-later](LICENSE). Binary releases include corresponding source as described in
-> the [corresponding-source policy](CORRESPONDING_SOURCE_POLICY.md).
+> the [corresponding-source policy](CORRESPONDING_SOURCE_POLICY.md). Packaged AMLL components are
+> `AGPL-3.0-only`; see [third-party notices](THIRD_PARTY_NOTICES.md).

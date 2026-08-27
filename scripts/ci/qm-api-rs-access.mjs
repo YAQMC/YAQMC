@@ -1,7 +1,7 @@
 /**
  * Access helper for the private `qm-api-rs` pin.
  *
- * The `qqmusic-api` dependency is unconditional since the P14-C cutover; the
+ * The `qqmusic-api` dependency is unconditional since the production cutover; the
  * provider has no backend feature split and Core links it by default.
  */
 import { execFileSync } from 'node:child_process';
@@ -56,10 +56,10 @@ export function gitInsteadOfArgs(token, scope = 'global') {
 export function assertProviderQmapiPin(manifestSource) {
   const defaultFeatures = manifestSource.match(/^default\s*=\s*\[([^\]]*)\]/m)?.[1] ?? '';
   if (defaultFeatures.trim() !== '') {
-    throw new Error('provider default features must be empty after the P14-C cutover');
+    throw new Error('provider default features must be empty after the production cutover');
   }
   if (/^qmapi\s*=\s*\[/m.test(manifestSource) || /^intree\s*=\s*\[/m.test(manifestSource)) {
-    throw new Error('provider backend feature split must be removed after the P14-C cutover');
+    throw new Error('provider backend feature split must be removed after the production cutover');
   }
   const dependency = manifestSource.match(
     new RegExp(`${QM_API_RS_CRATE}\\s*=\\s*\\{([^}]+)\\}`, 'm'),
@@ -75,7 +75,7 @@ export function assertProviderQmapiPin(manifestSource) {
     throw new Error(`${QM_API_RS_CRATE} must pin rev = "${QM_API_RS_REV}"`);
   }
   if (/optional\s*=\s*true/.test(body)) {
-    throw new Error(`${QM_API_RS_CRATE} must be unconditional after the P14-C cutover`);
+    throw new Error(`${QM_API_RS_CRATE} must be unconditional after the production cutover`);
   }
 }
 
@@ -108,7 +108,7 @@ export function readSiblingRevision(checkout, runGit = execFileSync) {
 export function assertSiblingMatchesPin(revision) {
   if (revision && revision !== QM_API_RS_REV) {
     throw new Error(
-      `qm-api-rs checkout HEAD ${revision} does not match the P14 pin ${QM_API_RS_REV}`,
+      `qm-api-rs checkout HEAD ${revision} does not match the production pin ${QM_API_RS_REV}`,
     );
   }
 }

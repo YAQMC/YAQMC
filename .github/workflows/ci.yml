@@ -55,7 +55,7 @@ jobs:
       - run: node scripts/ci/legacy-host-imports.mjs
       - run: node scripts/ci/electron-security-lint.mjs
       - run: node scripts/ci/qm-api-rs-access.mjs --check
-      - run: npm run p14c:enforce
+      - run: npm run provider:enforce
       - run: npm run provenance:enforce
       - run: npm run ci:test-scripts
 

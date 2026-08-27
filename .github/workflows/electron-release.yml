@@ -31,7 +31,7 @@ env:
 
 jobs:
   release-gates:
-    name: P14-C, pin, and provenance release gates
+    name: Provider pin and provenance release gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: 26.7.0
       - run: node scripts/ci/qm-api-rs-access.mjs --check
-      - run: npm run p14c:enforce
+      - run: npm run provider:enforce
       - run: npm run provenance:enforce
 
   frontend-build:

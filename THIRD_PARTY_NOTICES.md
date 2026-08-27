@@ -20,7 +20,7 @@ source are available from the upstream project; distributors of YAQMC must satis
 described in [docs/lyrics.md](docs/lyrics.md#amll-decision).
 
 `mzj3920/qqmusic-decrypt`, AynaLivePlayer/miaosic, and official QQ Music Electron ASAR contents are **not**
-in-tree YAQMC sources. The `mzj3920` and ASAR claims were removed from the current private `qm-api-rs` pin;
+in-tree YAQMC sources. The `mzj3920` and ASAR claims were removed from the current pinned `qm-api-rs` revision;
 miaosic was protocol corroboration only.
 
 ## QMCDecode
@@ -39,7 +39,7 @@ and redacts the media key before selecting
 `crates/yaqmc-provider-qqmusic/src/qmapi/qmc.rs`'s `QmapiQmcDecryptor`. That
 adapter delegates Map, segmented-RC4, and ekey processing to the pinned symbols
 above; the former duplicate in-tree cipher and TEA implementation was retired
-at the P14-C cutover.
+when the production provider cut over to the pinned dependency.
 
 MIT License
 

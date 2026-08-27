@@ -118,7 +118,7 @@ export function createCorrespondingSourceBundle(options = {}) {
   const { record, blockers } = inspectP14cReadiness(yaqmcRoot);
   if (blockers.length > 0) {
     throw new Error(
-      `P14-C corresponding-source gate is blocked: ${blockers.map((gate) => gate.id).join(', ')}`,
+      `Provider readiness corresponding-source gate is blocked: ${blockers.map((gate) => gate.id).join(', ')}`,
     );
   }
 

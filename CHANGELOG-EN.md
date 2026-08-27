@@ -2,6 +2,14 @@
 
 > [简体中文](CHANGELOG.md) | **English**
 
+## Unreleased (Electron `main`)
+
+- Migrated the desktop host to Electron while keeping the independent Rust Core as the playback authority.
+- The next Windows release targets x64/ARM64 NSIS and portable executables; Linux targets x64/ARM64 packages.
+- Hardened Core integrity, OAuth callback validation, Windows signing gates, and GitHub Actions dependency pins.
+- Public documentation now separates current Electron source from the pre-migration `v0.1.0-beta.6` packages and
+  accurately records the AMLL dependency license.
+
 ## 0.1.0-beta.6 — 2026-08-13
 
 Public-repository preparation adds a Chinese-first README, a separate English README, 20 bilingual public

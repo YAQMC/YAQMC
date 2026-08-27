@@ -37,7 +37,7 @@ test('the shipped record carries the current-pin waiver and has no blockers', ()
 test('the shipped record renders a readable ready report', () => {
   const { record, blockers } = inspectP14cReadiness();
   const report = formatP14cStatus(record, blockers);
-  assert.match(report, /^P14-C STATUS: READY$/m);
+  assert.match(report, /^PROVIDER READINESS STATUS: READY$/m);
   assert.match(report, /exact-pin-three-day-soak: waived/);
 });
 
@@ -69,7 +69,7 @@ test('the baseline-pinned waiver renders a readable blocked report', () => {
   };
   const blockers = validateP14cRecord(staleRecord);
   const report = formatP14cStatus(staleRecord, blockers);
-  assert.match(report, /^P14-C STATUS: BLOCKED$/m);
+  assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);
   assert.match(report, /exact-pin-three-day-soak: blocked/);
   assert.match(report, /not target 827233cb799bede84ee5033ec16450dc1d5e2587/);
 });
@@ -113,7 +113,7 @@ test('the schema rejects unversioned gate identifiers', () => {
           },
         ],
       }),
-    /unsupported P14-C gate extra-open-gate/,
+    /unsupported provider readiness gate extra-open-gate/,
   );
 });
 
@@ -213,7 +213,7 @@ test('duplicate exact-pin soak gates are rejected', () => {
   const soakGate = record.gates.find((gate) => gate.id === 'exact-pin-three-day-soak');
   assert.throws(
     () => validateP14cRecord({ ...record, gates: [...record.gates, soakGate] }),
-    /duplicate P14-C gate/,
+    /duplicate provider readiness gate/,
   );
 });
 
@@ -311,7 +311,7 @@ test('backend and cutover authorization cannot form a false READY state', () => 
   const record = currentPinQualifiedRecord();
   assert.throws(
     () => validateP14cRecord({ ...record, cutoverAuthorized: false }),
-    /unauthorized cutover must keep the intree backend/,
+    /unauthorized provider cutover must keep the intree backend/i,
   );
   const blockers = validateP14cRecord({
     ...record,

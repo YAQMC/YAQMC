@@ -97,6 +97,12 @@ flattens package assets, writes `SHA256SUMS-electron.txt` and
 and `latest-linux.yml`. A `v*` push keeps that tag; a manual run uses
 `electron-draft-<run-id>`. Both create a draft release for maintainer review.
 
+The packaged renderer also uses the AGPL-licensed AMLL packages. The assembler
+does not yet attach their exact preferred-source archive; therefore a generated
+Electron draft is not publishable until the requirement in
+[the corresponding-source policy](../CORRESPONDING_SOURCE_POLICY.md) is automated
+and verified.
+
 ## Build-accepted versus runtime-tested
 
 A green package job proves compilation, package assembly, metadata generation, and artifact upload. It does not prove startup, overlay behavior, OAuth, keyring continuity, media integration, updater behavior, or native execution on every OS/CPU. Those require separate hardware acceptance evidence.
@@ -107,7 +113,7 @@ A green package job proves compilation, package assembly, metadata generation, a
 npm run ci:frontend-build
 npm run ci:test-scripts
 npm run ci:package-metadata
-npm run p14c:enforce
+npm run provider:enforce
 npm run provenance:enforce
 npm run package -w @yaqmc/desktop -- --publish never
 ```

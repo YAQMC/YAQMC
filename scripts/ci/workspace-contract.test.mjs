@@ -193,7 +193,7 @@ test('allows the pinned qqmusic-api production dependency in the Core closure', 
   );
 });
 
-test('allows the P14 provider boundary in the Core dependency closure', () => {
+test('allows the production provider boundary in the Core dependency closure', () => {
   assert.doesNotThrow(() =>
     validateCoreDependencyClosure(
       metadataWithCoreClosure([

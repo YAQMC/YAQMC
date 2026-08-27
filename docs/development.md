@@ -18,7 +18,19 @@ The repository pins Node in `package.json`, `package-lock.json`, and
 `.node-version`. Check `node --version` before interpreting JavaScript or
 TypeScript failures.
 
-## Private production dependency
+## Public checkout
+
+The public React renderer and its deterministic fake provider do not require the private production dependency:
+
+```powershell
+npm ci
+npm run dev
+```
+
+This mode supports UI, state-management, localization, and component work. It intentionally has no native audio,
+keyring, disk cache, tray, media session, or real QQ Music transport.
+
+## Native provider access
 
 The production provider links the private `qqmusic-api` crate
 unconditionally from `https://github.com/YAQMC/qm-api-rs.git`, revision
@@ -39,7 +51,10 @@ node scripts/ci/qm-api-rs-access.mjs --check
 If a sibling `../qm-api-rs` checkout exists, that command also requires its
 HEAD to match the production pin.
 
-## First native run
+Without repository access, the Rust workspace and complete Electron desktop cannot build. This is a current source
+access limitation, not an npm, Cargo, or proxy configuration error.
+
+## Full desktop run
 
 ```powershell
 npm ci
@@ -49,15 +64,6 @@ npm run dev:desktop
 `dev:desktop` compiles a debug `yaqmc-core`, stages its integrity manifest,
 starts Vite, watches Electron Main/preload, and launches Electron. It does not
 enable a QA profile and may use the normal application data directories.
-
-For renderer-only work, use the permanent fake-provider path:
-
-```powershell
-npm run dev
-```
-
-Browser mode has no native audio, keyring, disk cache, tray, media-session, or
-real QQ Music transport.
 
 ## Release-shaped local build
 
@@ -80,7 +86,7 @@ artifact does not change its architecture. Local builds must always keep
 ## Verification
 
 ```powershell
-npm run p14c:enforce
+npm run provider:enforce
 npm run provenance:enforce
 npm run format:check
 npm run docs:check

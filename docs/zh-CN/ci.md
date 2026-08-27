@@ -75,6 +75,10 @@ identity-only 校验；该测试包不会混入 Release 草稿资产。
 
 发布工作流在打包前强制通过 pin、提供器 readiness、provenance 与 Windows 签名门禁。它检出私有依赖的精确 revision，生成绑定 revision 的 YAQMC 与 `qm-api-rs` 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，生成 `SHA256SUMS-electron.txt` 与 `RELEASE-NOTES-ELECTRON.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
 
+打包后的 renderer 还使用 AGPL 许可的 AMLL 包。目前组装器尚未附带其精确的首选源码归档；在
+[对应源代码交付政策](../../CORRESPONDING_SOURCE_POLICY.md)中的要求完成自动化并验证前，生成的
+Electron 草稿不能发布。
+
 ## 构建通过与运行时验收
 
 打包任务成功仅证明编译、安装包组装、元数据生成与上传完成；不证明启动、歌词悬浮窗、OAuth、keyring 连续性、媒体集成、更新器或各 OS/CPU 真机执行。后者必须有单独的硬件验收证据。
@@ -85,7 +89,7 @@ identity-only 校验；该测试包不会混入 Release 草稿资产。
 npm run ci:frontend-build
 npm run ci:test-scripts
 npm run ci:package-metadata
-npm run p14c:enforce
+npm run provider:enforce
 npm run provenance:enforce
 npm run package -w @yaqmc/desktop -- --publish never
 ```

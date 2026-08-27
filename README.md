@@ -24,16 +24,23 @@
 > YAQMC 与腾讯或 QQ 音乐没有从属或合作关系。项目不会绕过会员、地区限制或歌曲权限。对于服务端已按
 > 当前账号权益下发 URL 与 ekey 的加密音频，YAQMC 只在本地内存中解密播放，不获取未授权内容。
 
-## 先看这里
+## 发布状态
+
+> [!WARNING]
+> 本文档描述尚未发布的 Electron `main`。目前最新公开版本 `v0.1.0-beta.6` 使用已经退役的桌面宿主，
+> 其安装包名称、功能和限制均不能代表当前代码。新的 Electron 预览版发布前，没有与本文档完全对应的
+> 公开安装包。
+
+Electron 分支仍处于测试阶段。Windows 已完成本地原生验证；Linux 仍需在真实桌面环境中继续验收。
+每次下载前请先阅读对应 Release 说明，确认其中明确标注为 Electron 构建。
+
+## 安装
 
 如果你只是想安装软件，不需要阅读整份文档。
 
 1. 打开 [Releases](https://github.com/YAQMC/YAQMC/releases)。
-2. 按照自己的系统和处理器下载对应安装包。
+2. 先确认 Release 说明明确标注为 Electron 构建，再按系统和处理器下载。
 3. 安装后直接使用访客模式，或者在左下角登录 QQ 音乐账号。
-
-当前版本仍是测试版。Windows 已完成本地原生验证；Linux 安装包由 GitHub Actions 构建，仍需在真实
-Linux 桌面环境中继续验收。
 
 ### 我应该下载哪个文件？
 
@@ -170,19 +177,21 @@ QMC/MFLAC 解密与随机拖动已经通过外部样本验证。线上“臻品�
 
 ### 运行
 
+所有公开贡献者都可以先运行使用确定性假数据的 renderer：
+
 ```powershell
 npm ci
+npm run dev
+```
+
+完整 Electron 桌面端还需要本机 Git 有权读取私有 `qm-api-rs` 精确 pin：
+
+```powershell
 npm run dev:desktop
 ```
 
-原生 Core 无条件链接私有 `qm-api-rs` 精确 pin；本机 Git 必须已有读取权限。
-完整认证与环境说明见[开发环境](docs/zh-CN/development.md)。
-
-浏览器开发模式使用确定性的假数据提供器；账号、安全存储、缓存和原生音频只存在于 Electron 桌面宿主：
-
-```powershell
-npm run dev
-```
+没有该权限时，Rust workspace 与原生桌面端不能完整构建；这不是 npm 或 Cargo 配置错误。账号、安全存储、
+缓存和原生音频也只存在于 Electron 桌面宿主。完整说明见[开发环境](docs/zh-CN/development.md)。
 
 ### 构建
 
@@ -251,10 +260,11 @@ cargo test --workspace -- --ignored --nocapture
 - [鸣谢](ACKNOWLEDGEMENTS.md)与[第三方许可证](THIRD_PARTY_NOTICES.md)
 
 特别感谢 Flechazo 提供 QMC/MFLAC、臻品音质与流式解密链路的公开研究思路，也感谢
-OpenAI Codex / GPT-5.6 Sol 在工程实现、测试、审查、文档和发布流程中的协助。精确研究来源、许可证
+OpenAI Codex 在工程实现、测试、审查、文档和发布流程中的协助。精确研究来源、许可证
 边界和“未复制无许可证源码”的说明均集中在[鸣谢](ACKNOWLEDGEMENTS.md)与
 [QQ 音乐提供器文档](docs/zh-CN/qqmusic-provider.md)。
 
 > [!NOTE]
 > YAQMC 采用 [GPL-3.0-or-later](LICENSE) 许可证；二进制发布的对应源码按
-> [对应源代码交付政策](CORRESPONDING_SOURCE_POLICY.md)提供。
+> [对应源代码交付政策](CORRESPONDING_SOURCE_POLICY.md)提供。打包的 AMLL 组件采用
+> `AGPL-3.0-only`，具体边界见[第三方许可证](THIRD_PARTY_NOTICES.md)。

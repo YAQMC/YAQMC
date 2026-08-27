@@ -261,7 +261,7 @@ test('Electron release workflow is the sole tagged desktop release workflow', ()
   assert.match(workflow, /secrets\.YAQMC_WINDOWS_SIGNER_SUBJECT/);
   assert.match(workflow, /Get-AuthenticodeSignature/);
   assert.match(workflow, /SignatureStatus\]::Valid/);
-  assert.match(workflow, /npm run p14c:enforce/);
+  assert.match(workflow, /npm run provider:enforce/);
   assert.match(workflow, /npm run provenance:enforce/);
   assert.match(workflow, /node scripts\/ci\/corresponding-source\.mjs/);
   assert.match(workflow, /repository: YAQMC\/qm-api-rs/);
