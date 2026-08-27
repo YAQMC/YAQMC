@@ -127,6 +127,16 @@ where
         "host attached"
     );
 
+    if let Err(error) = core.local_api().start_if_enabled().await {
+        // A persisted bind failure must remain visible through local_api_status,
+        // but it must not prevent the desktop host from attaching.
+        tracing::warn!(
+            target: "local_api",
+            error = %error,
+            "failed to restore the enabled local API listener"
+        );
+    }
+
     // Electron composition point: position/EOS fan-out lives here.
     core.player()
         .start_clock_on_runtime(&tokio::runtime::Handle::current());

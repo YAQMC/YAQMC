@@ -352,6 +352,34 @@ async fn protocol_e2e_covers_handshake_storms_and_shutdown_ack() {
 }
 
 #[tokio::test]
+async fn enabled_local_api_listener_is_restored_after_core_restart() {
+    let root = tempfile::tempdir().expect("local API restart root");
+    let config_dir = root.path().join("config");
+    std::fs::create_dir_all(&config_dir).expect("local API config dir");
+    std::fs::write(
+        config_dir.join("local-api.json"),
+        r#"{"enabled":true,"port":0}"#,
+    )
+    .expect("local API config");
+
+    let mut session = spawn_core(root.path()).await;
+    let first = session.request("local_api_status", None).await;
+    assert_eq!(first["enabled"], true);
+    assert_eq!(first["state"], "running");
+    assert_eq!(first["configuredPort"], 0);
+    assert!(first["boundPort"].as_u64().is_some_and(|port| port > 0));
+    session.shutdown().await;
+
+    let mut restarted = spawn_core(root.path()).await;
+    let second = restarted.request("local_api_status", None).await;
+    assert_eq!(second["enabled"], true);
+    assert_eq!(second["state"], "running");
+    assert_eq!(second["configuredPort"], 0);
+    assert!(second["boundPort"].as_u64().is_some_and(|port| port > 0));
+    restarted.shutdown().await;
+}
+
+#[tokio::test]
 async fn kill_core_during_playback_restores_queue_without_duplicates() {
     let root = tempfile::tempdir().expect("kill root");
     let mut session = spawn_core(root.path()).await;
