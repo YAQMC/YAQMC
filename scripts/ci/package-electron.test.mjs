@@ -20,6 +20,14 @@ import {
 const SCRIPT = path.join(repositoryRoot, 'scripts', 'ci', 'package-electron.mjs');
 const WORKFLOW = path.join(repositoryRoot, '.github', 'workflows', 'ci.yml');
 
+test('Node 26 approves only the reviewed pinned install scripts', () => {
+  const rootPackage = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'));
+  assert.deepEqual(rootPackage.allowScripts, {
+    'esbuild@0.25.12': true,
+    'electron-winstaller@5.4.0': true,
+  });
+});
+
 test('package-electron dry-run prints cargo, stage-core, and --publish never', () => {
   const result = spawnSync(
     process.execPath,
@@ -107,14 +115,13 @@ test('Linux builder args request AppImage deb rpm tar.gz and never publish', () 
 
 test('release Windows packages layer the fail-closed signing config', () => {
   const args = electronBuilderArgs({ os: 'windows', arch: 'x64', requireSigning: true });
-  assert.deepEqual(args.slice(0, 6), [
+  assert.deepEqual(args.slice(0, 4), [
     '--projectDir',
     '.',
     '--config',
-    'electron-builder.yml',
-    '--config',
     'electron-builder.release.yml',
   ]);
+  assert.equal(args.filter((arg) => arg === '--config').length, 1);
   assert.throws(
     () => electronBuilderArgs({ os: 'linux', arch: 'x64', requireSigning: true }),
     /only for Windows/,

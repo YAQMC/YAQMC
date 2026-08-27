@@ -1,13 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  writeFileSync,
-} from 'node:fs';
-import os from 'node:os';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repositoryRoot } from './repo.mjs';
@@ -45,12 +37,16 @@ export function cargoBuildArgs(target) {
 }
 
 export function electronBuilderArgs({ os, arch, requireSigning = false }) {
-  const args = ['--projectDir', '.', '--config', 'electron-builder.yml'];
+  const args = [
+    '--projectDir',
+    '.',
+    '--config',
+    requireSigning ? ELECTRON_RELEASE_CONFIG : 'electron-builder.yml',
+  ];
   if (requireSigning) {
     if (os !== 'windows') {
       throw new Error('release signing is supported only for Windows packages');
     }
-    args.push('--config', ELECTRON_RELEASE_CONFIG);
   }
   if (os === 'windows') {
     args.push('--win', 'nsis', 'portable', `--${arch}`);
@@ -92,13 +88,6 @@ export function planElectronPackage({ os, arch, target, cross, requireSigning = 
     cross: resolvedCross,
     outputDir: ELECTRON_OUTPUT_DIR_NAME,
   };
-}
-
-export function writeElectronDistOverride(cross, directory = os.tmpdir()) {
-  if (!cross) return null;
-  const file = path.join(directory, 'yaqmc-electron-builder-cross.json');
-  writeFileSync(file, `${JSON.stringify({ electronDist: null }, null, 2)}\n`);
-  return file;
 }
 
 export function stageElectronArtifacts({
@@ -238,15 +227,10 @@ function main() {
   stageCore({ repoRoot: repositoryRoot, profile: 'release', rustTarget: target });
 
   const desktopRoot = path.join(repositoryRoot, 'apps', 'desktop');
-  const builderArgs = [...plan.electronBuilder.slice(1)];
-  if (cross) {
-    const override = writeElectronDistOverride(
-      true,
-      mkdtempSync(path.join(os.tmpdir(), 'yaqmc-eb-')),
-    );
-    builderArgs.splice(builderArgs.indexOf('--config') + 2, 0, '--config', override);
-  }
-  run('npx', ['electron-builder', ...builderArgs], { cwd: desktopRoot, env: packageEnv });
+  run('npx', ['electron-builder', ...plan.electronBuilder.slice(1)], {
+    cwd: desktopRoot,
+    env: packageEnv,
+  });
 
   const staged = stageElectronArtifacts({
     os: osName,

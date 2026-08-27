@@ -1,5 +1,6 @@
 # Production-only overlay. The release workflow supplies WIN_CSC_LINK and
 # WIN_CSC_KEY_PASSWORD from the protected release-signing environment.
+extends: ./electron-builder.yml
 forceCodeSigning: true
 win:
   signExecutable: true

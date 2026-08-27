@@ -31,6 +31,7 @@ test('rust-quality stays independent of the Electron build job', () => {
   assert.match(rustJob, /cargo clippy --workspace --all-targets --locked/);
   assert.match(rustJob, /node scripts\/ci\/qm-api-rs-access\.mjs --check/);
   assert.match(rustJob, /libasound2-dev/);
+  assert.match(rustJob, /YAQMC_TEST_ALLOW_MISSING_AUDIO_OUTPUT/);
   assert.doesNotMatch(rustJob, /QM_API_RS_TOKEN/);
   assert.doesNotMatch(rustJob, /--configure-git/);
   assert.match(rustJob, /CARGO_NET_GIT_FETCH_WITH_CLI/);

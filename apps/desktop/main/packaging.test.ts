@@ -39,6 +39,7 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).toContain('productName: YAQMC');
     expect(yaml).toContain('asar: true');
     expect(yaml).toContain('electronVersion: 43.4.0');
+    expect(yaml).not.toContain('electronDist:');
     expect(yaml).toContain('from: resources/core');
     expect(yaml).not.toContain('from: ../../output');
     expect(yaml).not.toMatch(/from:\s*output\b/);
@@ -64,6 +65,7 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).not.toContain('signExecutable: false');
     expect(yaml).toContain('verifyUpdateCodeSignature: true');
     expect(releaseYaml).toContain('forceCodeSigning: true');
+    expect(releaseYaml).toContain('extends: ./electron-builder.yml');
     expect(releaseYaml).toContain('signExecutable: true');
     expect(releaseYaml).toContain('verifyUpdateCodeSignature: true');
     expect(yaml).not.toContain('signAndEditExecutable: false');
