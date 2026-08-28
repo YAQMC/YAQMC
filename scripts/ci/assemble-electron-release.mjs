@@ -36,7 +36,7 @@ const expectedAmllPackages = [
 
 export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release draft
 
-Windows installers and portable executables in this draft are Authenticode-signed.
+Windows installers and portable executables, when included, are Authenticode-signed.
 The release workflow validates both signature status and the expected publisher
 identity before artifacts can be uploaded. Linux artifacts are not code-signed;
 use the published SHA-256 checksums for transport verification.

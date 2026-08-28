@@ -268,6 +268,7 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
     ELECTRON_RELEASE_NOTES,
   );
   assert.match(ELECTRON_RELEASE_NOTES, /Authenticode-signed/i);
+  assert.match(ELECTRON_RELEASE_NOTES, /when included/i);
   assert.match(ELECTRON_RELEASE_NOTES, /publisher/i);
   assert.match(ELECTRON_RELEASE_NOTES, /i686/);
   assert.match(ELECTRON_RELEASE_NOTES, /Chromium\/Ozone/);
