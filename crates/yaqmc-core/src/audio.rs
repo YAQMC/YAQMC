@@ -4,8 +4,9 @@ use crate::{
     streaming::{ProgressiveMonitor, ProgressiveSource},
 };
 use rodio::{
-    cpal::traits::HostTrait, decoder::DecoderBuilder, Decoder, Device, DeviceSinkBuilder,
-    DeviceTrait, MixerDeviceSink, Player, Source,
+    cpal::{traits::HostTrait, StreamError},
+    decoder::DecoderBuilder,
+    Decoder, Device, DeviceSinkBuilder, DeviceTrait, MixerDeviceSink, Player, Source,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -28,6 +29,7 @@ pub const AUDIO_OUTPUT_DEVICE_SETTING: &str = "audio-output-device";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_OUTPUT_ID: &str = "system:default";
 const OUTPUT_RECOVERY_INTERVAL: Duration = Duration::from_secs(2);
+const OUTPUT_UNDERRUN_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_OUTPUT_RECOVERY_ATTEMPTS: usize = 5;
 /// Rodio only writes `Player::get_pos()` from mixer `periodic_access`. If the
 /// CPAL stream stops pulling without an error callback, the atomic pause flag
@@ -75,6 +77,13 @@ impl OutputSelection {
 
 fn recovery_selection(selection: &OutputSelection) -> OutputSelection {
     selection.clone()
+}
+
+fn output_stream_error_interrupts_playback(error: &StreamError) -> bool {
+    // CPAL reports an underrun as a possible glitch while keeping the stream
+    // valid. Treating it as device loss creates a false fatal UI state and a
+    // rebuild loop, especially for high-rate progressive FLAC sources.
+    !matches!(error, StreamError::BufferUnderrun)
 }
 
 struct PlayheadWatch {
@@ -1103,8 +1112,24 @@ fn open_output(
     let output_snapshot = Arc::clone(snapshot);
     let interrupted_device = device_name.clone();
     let interrupted_selection = resolved_selection.kind();
+    let mut last_underrun_log = Instant::now()
+        .checked_sub(OUTPUT_UNDERRUN_LOG_INTERVAL)
+        .unwrap_or_else(Instant::now);
     let mut sink = builder
         .with_error_callback(move |error| {
+            if !output_stream_error_interrupts_playback(&error) {
+                if last_underrun_log.elapsed() >= OUTPUT_UNDERRUN_LOG_INTERVAL {
+                    last_underrun_log = Instant::now();
+                    tracing::warn!(
+                        target: "audio",
+                        error = %error,
+                        selection = interrupted_selection,
+                        resolved_device = interrupted_device,
+                        "audio output buffer underrun; keeping the active stream"
+                    );
+                }
+                return;
+            }
             tracing::error!(
                 target: "audio",
                 error = %error,
@@ -2014,6 +2039,19 @@ mod tests {
             recovery_selection(&OutputSelection::SystemDefault),
             OutputSelection::SystemDefault
         );
+    }
+
+    #[test]
+    fn buffer_underrun_does_not_impersonate_a_missing_output_device() {
+        assert!(!output_stream_error_interrupts_playback(
+            &StreamError::BufferUnderrun
+        ));
+        assert!(output_stream_error_interrupts_playback(
+            &StreamError::DeviceNotAvailable
+        ));
+        assert!(output_stream_error_interrupts_playback(
+            &StreamError::StreamInvalidated
+        ));
     }
 
     #[test]
