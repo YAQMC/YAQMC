@@ -674,37 +674,22 @@ fn audio_worker(
                     let result = decode_source(&source).and_then(|decoded| {
                         let source_sample_rate = decoded.sample_rate;
                         if source_sample_rate != resolved_output.sample_rate {
-                            match open_output(
-                                &selected_output,
-                                &snapshot,
-                                Some(source_sample_rate),
-                            ) {
-                                Ok((next_sink, next_player, selection, resolved)) => {
-                                    source
-                                        .epoch_guard
-                                        .validate()
-                                        .map_err(|_| AudioEngineError::SourceCancelled)?;
-                                    next_player.set_volume(current_volume);
-                                    device_sink = next_sink;
-                                    player = next_player;
-                                    selected_output = selection;
-                                    resolved_output = resolved;
-                                    recovery_attempts = 0;
-                                    snapshot
-                                        .lock()
-                                        .unwrap_or_else(|poisoned| poisoned.into_inner())
-                                        .output_error = None;
-                                }
-                                Err(error) => {
-                                    tracing::warn!(
-                                        target: "audio",
-                                        error = %error,
-                                        source_sample_rate,
-                                        current_output_sample_rate = resolved_output.sample_rate,
-                                        "could not reopen output at the source sample rate; retaining the active output"
-                                    );
-                                }
-                            }
+                            let (next_sink, next_player, selection, resolved) =
+                                open_output(&selected_output, &snapshot, Some(source_sample_rate))?;
+                            source
+                                .epoch_guard
+                                .validate()
+                                .map_err(|_| AudioEngineError::SourceCancelled)?;
+                            next_player.set_volume(current_volume);
+                            device_sink = next_sink;
+                            player = next_player;
+                            selected_output = selection;
+                            resolved_output = resolved;
+                            recovery_attempts = 0;
+                            snapshot
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                .output_error = None;
                         }
                         source
                             .epoch_guard
