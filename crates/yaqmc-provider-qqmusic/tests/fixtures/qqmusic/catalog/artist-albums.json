@@ -9,7 +9,8 @@
         {
           "albumMid": "ALBUM_MID",
           "albumName": "Typed Album",
-          "publishDate": "2026-01-01"
+          "publishDate": "2026-01-01",
+          "tags": null
         }
       ]
     }

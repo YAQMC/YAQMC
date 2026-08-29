@@ -933,7 +933,7 @@ impl QQMusicService {
 
     pub async fn artist(&self, id: String) -> Result<Artist, QQMusicError> {
         let mid = catalog_entity_mid(&id, "qqmusic:artist:")?;
-        let key = format!("qqmusic:artist:{mid}");
+        let key = artist_cache_key(mid);
         if let Some(artist) = self
             .storage
             .get_json::<Artist>(&key, false)
@@ -3941,6 +3941,7 @@ fn normalize_qm_artist_catalog_page(
                 has_more: search_has_more(total, page, limit),
                 items: items
                     .into_iter()
+                    .take(limit as usize)
                     .filter_map(|album| {
                         let name = clean_text(&album.singer_name);
                         let singer = qqmusic_api::models::base::Singer {
@@ -3972,6 +3973,7 @@ fn normalize_qm_artist(
     catalog: crate::qmapi::catalog::ArtistCatalog,
 ) -> Result<Artist, QQMusicError> {
     let singer = catalog.info.singer;
+    let base_info = catalog.info.base_info;
     let name = clean_text(&singer.name);
     if name.is_empty() {
         return Err(QQMusicError::NotFound);
@@ -3980,7 +3982,17 @@ fn normalize_qm_artist(
         .or_else(|| valid_mid(mid))
         .unwrap_or_default();
     let artist_id = entity_id("qqmusic:artist:", &singer_mid);
-    let artwork = artwork_from_provider_url(&singer.singer_pic, &name, color_for(&singer_mid));
+    let artwork_source = non_empty(singer.singer_pic)
+        .or_else(|| non_empty(base_info.avatar))
+        .unwrap_or_else(|| {
+            qqmusic_api::models::base::Singer {
+                mid: singer_mid.clone(),
+                pmid: singer.singer_pmid,
+                ..Default::default()
+            }
+            .cover_url(500)
+        });
+    let artwork = artwork_from_provider_url(&artwork_source, &name, color_for(&singer_mid));
     let artist_preview = ArtistPreview {
         id: artist_id.clone(),
         name: name.clone(),
@@ -4985,9 +4997,13 @@ fn search_cache_key(query: &str, kind: CatalogSearchKind, page: u32, limit: u32)
 
 fn artist_catalog_cache_key(mid: &str, kind: ArtistCatalogKind, page: u32, limit: u32) -> String {
     format!(
-        "qqmusic:artist-catalog:v1:{}:{mid}:{page}:{limit}",
+        "qqmusic:artist-catalog:v2:{}:{mid}:{page}:{limit}",
         kind.as_str()
     )
+}
+
+fn artist_cache_key(mid: &str) -> String {
+    format!("qqmusic:artist:v2:{mid}")
 }
 
 fn artist_catalog_result_matches(
@@ -5867,6 +5883,53 @@ mod tests {
     }
 
     #[test]
+    fn artist_normalization_uses_the_homepage_avatar_when_singer_pic_is_empty() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/qqmusic/catalog/artist-info.json"
+        ))
+        .expect("artist info fixture parses");
+        let info = serde_json::from_value(
+            fixture
+                .pointer("/req_0/data")
+                .cloned()
+                .expect("artist info payload"),
+        )
+        .expect("homepage header model");
+        let description = serde_json::from_value(json!({
+            "singer_list": [{
+                "basic_info": { "singer_mid": "ARTIST_MID", "name": "Typed Artist" },
+                "ex_info": { "desc": "Typed biography" }
+            }]
+        }))
+        .expect("artist description model");
+        let album = serde_json::from_value(json!({
+            "albumMid": "ALBUM_MID",
+            "albumName": "Typed Album",
+            "publishDate": "2026-01-01",
+            "tags": []
+        }))
+        .expect("artist album model");
+
+        let artist = normalize_qm_artist(
+            "ARTIST_MID",
+            crate::qmapi::catalog::ArtistCatalog {
+                info,
+                description,
+                top_songs: Vec::new(),
+                albums: vec![album],
+            },
+        )
+        .expect("artist normalizes");
+
+        assert_eq!(
+            artist.artwork.src,
+            "https://y.gtimg.cn/music/common/upload/t_celebrity_certification/2077625.jpg"
+        );
+        assert_eq!(artist.albums.len(), 1);
+        assert_eq!(artist.description, "Typed biography");
+    }
+
+    #[test]
     fn typed_search_cache_key_is_v2_and_category_scoped() {
         let song = search_cache_key("MIRA", CatalogSearchKind::Song, 2, 8);
         let artist = search_cache_key("MIRA", CatalogSearchKind::Artist, 2, 8);
@@ -5891,7 +5954,11 @@ mod tests {
     #[test]
     fn artist_catalog_cache_and_validation_are_scoped_to_the_exact_page() {
         let song_key = artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Song, 2, 8);
-        assert_eq!(song_key, "qqmusic:artist-catalog:v1:song:ARTIST_MID:2:8");
+        assert_eq!(song_key, "qqmusic:artist-catalog:v2:song:ARTIST_MID:2:8");
+        assert_eq!(
+            artist_cache_key("ARTIST_MID"),
+            "qqmusic:artist:v2:ARTIST_MID"
+        );
         assert_ne!(
             song_key,
             artist_catalog_cache_key("ARTIST_MID", ArtistCatalogKind::Album, 2, 8)

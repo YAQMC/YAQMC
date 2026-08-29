@@ -8,9 +8,11 @@
         "Singer": {
           "SingerMid": "ARTIST_MID",
           "Name": "Typed Artist",
-          "SingerPic": "https://y.gtimg.cn/music/photo_new/T001R300x300M000ARTIST_MID.jpg"
+          "SingerPic": ""
         },
-        "BaseInfo": {}
+        "BaseInfo": {
+          "Avatar": "http://y.gtimg.cn/music/common/upload/t_celebrity_certification/2077625.jpg"
+        }
       },
       "TabDetail": {}
     }

@@ -26,6 +26,7 @@ export function ArtistPage({ artist }: { artist: Artist }) {
   const activeSection = selection.artistId === artist.id ? selection.section : 'top';
   const activeKind = activeSection === 'top' ? null : activeSection;
   const catalog = useArtistCatalog({ provider, artistId: artist.id, activeKind });
+  const description = artist.description.trim();
 
   const selectSection = (section: ArtistSection) => {
     setSelection({ artistId: artist.id, section });
@@ -38,23 +39,27 @@ export function ArtistPage({ artist }: { artist: Artist }) {
   return (
     <div className="page detail-page artist-page">
       <section
-        className="detail-hero"
+        className="detail-hero artist-page__hero"
         style={{ '--detail-color': artist.artwork.dominantColor } as CSSProperties}
       >
         <Artwork
           artwork={artist.artwork}
-          className="detail-hero__art"
+          className="detail-hero__art artist-page__avatar"
           loading="eager"
           purpose="large"
         />
         <div className="detail-hero__copy">
           <p className="eyebrow">{t('eyebrow')}</p>
           <h1>{artist.name}</h1>
-          {artist.description.trim() && (
-            <p className="detail-hero__description">{artist.description}</p>
-          )}
         </div>
       </section>
+
+      {description && (
+        <section className="artist-page__bio" aria-labelledby="artist-biography-heading">
+          <h2 id="artist-biography-heading">{t('description', { name: artist.name })}</h2>
+          <p>{description}</p>
+        </section>
+      )}
 
       <div className="search-tabs artist-page__tabs" role="tablist" aria-label={t('tabsLabel')}>
         {tabOrder.map((section) => (

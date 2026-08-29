@@ -1,10 +1,16 @@
 //! Typed qm-api-rs catalog boundary.
 //!
 //! This module intentionally exposes only the pinned library model values to
-//! the parent provider.  Request construction, upstream routes, and response
-//! wire DTOs remain owned by qm-api-rs.
+//! the parent provider. Request construction and upstream routes remain owned
+//! by qm-api-rs; the album-list boundary adds a narrow compatibility decoder
+//! for the production endpoint's nullable `tags` field.
 
-use qqmusic_api::{models::base::Singer, Client};
+use qqmusic_api::{
+    models::{base::Singer, singer::AlbumBrief},
+    CgiOptions, Client,
+};
+use serde::{de::Error as _, Deserialize, Deserializer};
+use serde_json::{json, Value};
 
 use crate::qmapi::cgi::map_qmapi_error;
 use crate::qqmusic::QQMusicError;
@@ -38,6 +44,64 @@ pub(crate) enum ArtistCatalogPage {
     },
 }
 
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct SingerAlbumListResponse {
+    singer_mid: String,
+    total: i64,
+    #[serde(deserialize_with = "deserialize_album_list")]
+    album_list: Vec<AlbumBrief>,
+}
+
+fn deserialize_album_list<'de, D>(deserializer: D) -> Result<Vec<AlbumBrief>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    let entries = match value {
+        Value::Null => return Ok(Vec::new()),
+        Value::Array(entries) => entries,
+        _ => return Err(D::Error::custom("albumList must be an array or null")),
+    };
+
+    entries
+        .into_iter()
+        .map(|mut entry| {
+            // The production endpoint currently returns `tags: null`. The
+            // pinned qm-api-rs `AlbumBrief` expects an array, and its lenient
+            // JSONPath conversion otherwise discards the entire album page.
+            if let Some(object) = entry.as_object_mut() {
+                if object.get("tags").is_some_and(Value::is_null) {
+                    object.insert("tags".to_owned(), Value::Array(Vec::new()));
+                }
+            }
+            serde_json::from_value(entry).map_err(D::Error::custom)
+        })
+        .collect()
+}
+
+async fn artist_album_list(
+    client: &Client,
+    mid: &str,
+    number: i64,
+    page: i64,
+) -> Result<SingerAlbumListResponse, QQMusicError> {
+    client
+        .cgi(
+            "music.musichallAlbum.AlbumListServer",
+            "GetAlbumList",
+            json!({
+                "singerMid": mid,
+                "order": 1,
+                "number": number,
+                "begin": (page - 1) * number,
+            }),
+            &CgiOptions::default(),
+        )
+        .await
+        .map_err(map_qmapi_error)
+}
+
 pub(crate) async fn artist_catalog_page(
     client: &Client,
     mid: &str,
@@ -63,11 +127,7 @@ pub(crate) async fn artist_catalog_page(
             })
         }
         ArtistCatalogKind::Album => {
-            let response = client
-                .singer
-                .get_album_list(mid, number, page)
-                .await
-                .map_err(map_qmapi_error)?;
+            let response = artist_album_list(client, mid, number, page).await?;
             if response.singer_mid.trim() != mid {
                 return Err(QQMusicError::SchemaChanged);
             }
@@ -156,11 +216,7 @@ pub(crate) async fn artist(client: &Client, mid: &str) -> Result<ArtistCatalog, 
         .get_songs_list(mid, TOP_ENTITY_LIMIT, 1)
         .await
         .map_err(map_qmapi_error)?;
-    let albums = client
-        .singer
-        .get_album_list(mid, TOP_ENTITY_LIMIT, 1)
-        .await
-        .map_err(map_qmapi_error)?;
+    let albums = artist_album_list(client, mid, TOP_ENTITY_LIMIT, 1).await?;
 
     Ok(ArtistCatalog {
         info,

@@ -55,6 +55,18 @@ describe('ArtistPage', () => {
     expect(screen.queryByText(/About Mira Vale/)).not.toBeInTheDocument();
   });
 
+  it('renders a round artist portrait and a separately labelled biography', async () => {
+    const provider = new FakeMusicProvider();
+    const artist = await provider.getArtist('artist-mira-vale');
+    renderArtist(provider, artist);
+
+    const portrait = screen.getByRole('img', { name: artist.artwork.alt });
+    expect(portrait.parentElement).toHaveClass('artist-page__avatar');
+    expect(screen.getByRole('region', { name: `About ${artist.name}` })).toHaveTextContent(
+      artist.description,
+    );
+  });
+
   it('loads only the selected full catalog and reuses ready tabs', async () => {
     const provider = new FakeMusicProvider();
     const artist = await provider.getArtist('artist-mira-vale');
