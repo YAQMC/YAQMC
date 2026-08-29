@@ -1,4 +1,4 @@
-import { Search, X } from 'lucide-react';
+import { LoaderCircle, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePlayerStore } from '../application/player-store';
@@ -15,6 +15,7 @@ import type {
   ArtistPreview,
   CatalogSearchKind,
   HomeFeed,
+  PlaylistPreview,
   Song,
 } from '../domain/music';
 
@@ -24,7 +25,7 @@ interface SearchPageProps {
   onNavigate: (route: AppRoute) => void;
 }
 
-const tabOrder: CatalogSearchKind[] = ['song', 'artist', 'album'];
+const tabOrder: CatalogSearchKind[] = ['song', 'artist', 'album', 'playlist'];
 
 export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPageProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'search' });
@@ -33,9 +34,11 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   const playTracks = usePlayerStore((state) => state.playTracks);
   const [inputValue, setInputValue] = useState(initialQuery);
   const inputRef = useRef<HTMLInputElement>(null);
+  const loadMoreTargetRef = useRef<HTMLDivElement>(null);
   const normalizedInput = inputValue.trim();
   const search = useCatalogSearch({ provider, query: normalizedInput });
   const category = search.categories[search.activeKind];
+  const loadMore = search.loadMore;
   const categoryLabel = t(search.activeKind === 'song' ? 'songs' : `${search.activeKind}s`);
   const searching = Boolean(
     normalizedInput &&
@@ -43,6 +46,37 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
   );
 
   useEffect(() => inputRef.current?.focus(), []);
+
+  useEffect(() => {
+    const target = loadMoreTargetRef.current;
+    if (
+      !target ||
+      !normalizedInput ||
+      category.status !== 'ready' ||
+      !category.hasMore ||
+      category.loadingMore ||
+      category.paginationError !== null ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      { rootMargin: '360px 0px' },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [
+    category.hasMore,
+    category.loadingMore,
+    category.paginationError,
+    category.status,
+    normalizedInput,
+    loadMore,
+  ]);
 
   const moveTabFocus = (kind: CatalogSearchKind) => {
     search.setActiveKind(kind);
@@ -190,28 +224,32 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
                 {search.activeKind === 'album' && (
                   <PreviewGrid kind="album" items={category.items as AlbumPreview[]} />
                 )}
-                {category.paginationError && (
-                  <div className="search-results__error" role="alert">
-                    <span>{t('paginationFailed', { category: categoryLabel.toLowerCase() })}</span>{' '}
-                    <button type="button" onClick={() => void search.retryLoadMore()}>
-                      {t('retry')}
-                    </button>
-                  </div>
-                )}
-                {category.hasMore && !category.paginationError && (
-                  <button
-                    type="button"
-                    className="button button--secondary search-results__more"
-                    disabled={category.loadingMore}
-                    onClick={() => void search.loadMore()}
-                  >
-                    {category.loadingMore
-                      ? t('loading')
-                      : t('loadMore', { category: categoryLabel.toLowerCase() })}
-                  </button>
+                {search.activeKind === 'playlist' && (
+                  <PreviewGrid kind="playlist" items={category.items as PlaylistPreview[]} />
                 )}
               </>
             )}
+            {category.status === 'ready' && category.paginationError !== null && (
+              <div className="search-results__error" role="alert">
+                <span>{t('paginationFailed', { category: categoryLabel.toLowerCase() })}</span>{' '}
+                <button type="button" onClick={() => void search.retryLoadMore()}>
+                  {t('retry')}
+                </button>
+              </div>
+            )}
+            {category.status === 'ready' &&
+              category.hasMore &&
+              category.paginationError === null && (
+                <div
+                  ref={loadMoreTargetRef}
+                  className="search-results__sentinel"
+                  data-yaqmc="search-load-sentinel"
+                  role={category.loadingMore ? 'status' : undefined}
+                  aria-label={category.loadingMore ? t('loading') : undefined}
+                >
+                  {category.loadingMore && <LoaderCircle size={20} aria-hidden="true" />}
+                </div>
+              )}
           </section>
         </div>
       )}
@@ -223,9 +261,10 @@ function PreviewGrid({
   kind,
   items,
 }: {
-  kind: 'artist' | 'album';
-  items: ArtistPreview[] | AlbumPreview[];
+  kind: 'artist' | 'album' | 'playlist';
+  items: ArtistPreview[] | AlbumPreview[] | PlaylistPreview[];
 }) {
+  const { t } = useTranslation('pages', { keyPrefix: 'search' });
   return (
     <div className="catalog-preview-grid">
       {items.map((item, index) =>
@@ -241,7 +280,7 @@ function PreviewGrid({
               <strong>{(item as ArtistPreview).name}</strong>
             </EntityLink>
           </article>
-        ) : (
+        ) : kind === 'album' ? (
           <article className="catalog-preview-card" key={`${kind}-${item.id.trim() || index}`}>
             <EntityLink
               entity="album"
@@ -265,6 +304,26 @@ function PreviewGrid({
                 {(item as AlbumPreview).releaseYear}
               </span>
             )}
+          </article>
+        ) : (
+          <article className="catalog-preview-card" key={`${kind}-${item.id.trim() || index}`}>
+            <EntityLink
+              entity="playlist"
+              id={item.id}
+              className="catalog-preview-card__link"
+              ariaLabel={(item as PlaylistPreview).title}
+            >
+              <Artwork artwork={(item as PlaylistPreview).artwork} />
+              <strong>{(item as PlaylistPreview).title}</strong>
+            </EntityLink>
+            {(item as PlaylistPreview).creator && (
+              <span className="catalog-preview-card__artist">
+                {(item as PlaylistPreview).creator}
+              </span>
+            )}
+            <span className="catalog-preview-card__year">
+              {t('playlistTrackCount', { count: (item as PlaylistPreview).trackCount })}
+            </span>
           </article>
         ),
       )}

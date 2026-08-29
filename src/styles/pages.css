@@ -949,6 +949,24 @@
   margin: 28px auto 0;
 }
 
+.search-results__sentinel {
+  display: grid;
+  min-height: 48px;
+  margin-top: 16px;
+  place-items: center;
+  color: var(--text-tertiary);
+}
+
+.search-results__sentinel svg {
+  animation: search-results-spin 0.8s linear infinite;
+}
+
+@keyframes search-results-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .search-results__error {
   margin-top: 14px;
   color: var(--danger);

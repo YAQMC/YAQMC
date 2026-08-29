@@ -1,9 +1,15 @@
-import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import { NavigationProvider } from '../application/navigation-context';
-import type { AlbumPreview, ArtistPreview, SearchResult, Song } from '../domain/music';
+import type {
+  AlbumPreview,
+  ArtistPreview,
+  PlaylistPreview,
+  SearchResult,
+  Song,
+} from '../domain/music';
 import { FakeMusicProvider } from '../providers/fake/fake-music-provider';
 import { allSongs, homeFeed } from '../providers/fake/fixtures';
 import { SearchPage } from './SearchPage';
@@ -55,6 +61,17 @@ function albumResult(query: string): SearchResult {
   return { kind: 'album', query, items: [item], page: 1, hasMore: false };
 }
 
+function playlistResult(query: string): SearchResult {
+  const item: PlaylistPreview = {
+    id: 'playlist-1',
+    title: 'Playlist result',
+    creator: 'Playlist creator',
+    artwork: { src: '', alt: 'Playlist result', dominantColor: '#000' },
+    trackCount: 42,
+  };
+  return { kind: 'playlist', query, items: [item], page: 1, hasMore: false };
+}
+
 function emptyIdResults(query: string): SearchResult {
   return {
     kind: 'artist',
@@ -72,9 +89,36 @@ function emptyIdResults(query: string): SearchResult {
 }
 
 describe('SearchPage', () => {
-  beforeEach(() => usePlayerStore.setState(initialPlayerState));
+  const intersectionCallbacks: IntersectionObserverCallback[] = [];
 
-  it('renders every song appended by pagination', async () => {
+  beforeEach(() => {
+    usePlayerStore.setState(initialPlayerState);
+    intersectionCallbacks.length = 0;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class MockIntersectionObserver implements IntersectionObserver {
+        readonly root = null;
+        readonly rootMargin = '';
+        readonly scrollMargin = '';
+        readonly thresholds = [];
+
+        constructor(callback: IntersectionObserverCallback) {
+          intersectionCallbacks.push(callback);
+        }
+
+        disconnect() {}
+        observe() {}
+        takeRecords() {
+          return [];
+        }
+        unobserve() {}
+      },
+    );
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('automatically appends the next page when the bottom sentinel intersects', async () => {
     const provider = new FakeMusicProvider();
     vi.spyOn(provider, 'search').mockImplementation(async (query, _kind, _signal, page = 1) => ({
       kind: 'song',
@@ -94,10 +138,24 @@ describe('SearchPage', () => {
       target: { value: 'page' },
     });
     await waitFor(() => expect(container.querySelectorAll('.track-row')).toHaveLength(8));
+    await waitFor(() => expect(intersectionCallbacks).toHaveLength(1));
+    expect(screen.queryByRole('button', { name: /Load more/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Load more songs' }));
+    act(() => {
+      intersectionCallbacks[0]?.(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    });
     await waitFor(() => expect(container.querySelectorAll('.track-row')).toHaveLength(16));
     expect(screen.getByText('Page track 15')).toBeInTheDocument();
+    expect(provider.search).toHaveBeenLastCalledWith(
+      'page',
+      'song',
+      expect.any(AbortSignal),
+      2,
+      20,
+    );
   });
 
   it('keeps the latest query authoritative when an aborted older request resolves last', async () => {
@@ -190,6 +248,7 @@ describe('SearchPage', () => {
     vi.spyOn(provider, 'search').mockImplementation(async (query, kind) => {
       if (kind === 'artist') return artistResult(query);
       if (kind === 'album') return albumResult(query);
+      if (kind === 'playlist') return playlistResult(query);
       return resultFor(query);
     });
 
@@ -228,14 +287,26 @@ describe('SearchPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Songs' }));
     await screen.findByText('needle result');
     expect(provider.search).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Playlists' }));
+    await screen.findByText('Playlist result');
+    expect(provider.search).toHaveBeenLastCalledWith(
+      'needle',
+      'playlist',
+      expect.any(AbortSignal),
+      1,
+      20,
+    );
+    expect(provider.search).toHaveBeenCalledTimes(3);
   });
 
-  it('uses exact artist and album routes without adding preview play controls', async () => {
+  it('uses exact artist, album, and playlist routes without adding preview play controls', async () => {
     const provider = new FakeMusicProvider();
     const onNavigate = vi.fn();
     vi.spyOn(provider, 'search').mockImplementation(async (query, kind) => {
       if (kind === 'artist') return artistResult(query);
       if (kind === 'album') return albumResult(query);
+      if (kind === 'playlist') return playlistResult(query);
       return resultFor(query);
     });
 
@@ -262,9 +333,16 @@ describe('SearchPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Album artist' }));
     expect(onNavigate).toHaveBeenCalledWith({ page: 'album', id: 'album-1' });
     expect(onNavigate).toHaveBeenCalledWith({ page: 'artist', id: 'artist-1' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Playlists' }));
+    await screen.findByText('Playlist result');
+    expect(screen.getByText('Playlist creator')).toBeInTheDocument();
+    expect(screen.getByText('42 tracks')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Playlist result' }));
+    expect(onNavigate).toHaveBeenCalledWith({ page: 'playlist', id: 'playlist-1' });
   });
 
-  it('keeps invalid preview IDs semantic and exposes only the three search categories', async () => {
+  it('keeps invalid preview IDs semantic and exposes all four search categories', async () => {
     const provider = new FakeMusicProvider();
     const onNavigate = vi.fn();
     vi.spyOn(provider, 'search').mockImplementation(async (query, kind) => {
@@ -290,6 +368,23 @@ describe('SearchPage', () => {
           hasMore: false,
         };
       }
+      if (kind === 'playlist') {
+        return {
+          kind: 'playlist',
+          query,
+          items: [
+            {
+              id: ' ',
+              title: 'No playlist ID',
+              creator: '',
+              artwork: { src: '', alt: 'No playlist ID', dominantColor: '#000' },
+              trackCount: 0,
+            },
+          ],
+          page: 1,
+          hasMore: false,
+        };
+      }
       return resultFor(query);
     });
     render(
@@ -300,10 +395,10 @@ describe('SearchPage', () => {
       </ProviderContext.Provider>,
     );
     const input = screen.getByRole('textbox', { name: 'Search music' });
-    expect(input).toHaveAttribute('placeholder', 'Search songs, artists, and albums');
+    expect(input).toHaveAttribute('placeholder', 'Search songs, artists, albums, and playlists');
     fireEvent.change(input, { target: { value: 'needle' } });
     await waitFor(() => expect(provider.search).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('tab', { name: 'Playlists' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Playlists' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Artists' }));
     await screen.findByText('No artist ID');
@@ -315,6 +410,10 @@ describe('SearchPage', () => {
     await screen.findByText('No album ID');
     expect(screen.queryByRole('button', { name: 'No album ID' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'No album artist ID' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Playlists' }));
+    await screen.findByText('No playlist ID');
+    expect(screen.queryByRole('button', { name: 'No playlist ID' })).not.toBeInTheDocument();
   });
 
   it('supports roving Arrow/Home/End tab focus including preventDefault at boundaries', async () => {
@@ -324,7 +423,9 @@ describe('SearchPage', () => {
         ? resultFor(query)
         : kind === 'artist'
           ? artistResult(query)
-          : albumResult(query),
+          : kind === 'album'
+            ? albumResult(query)
+            : playlistResult(query),
     );
     render(
       <ProviderContext.Provider value={provider}>
@@ -352,13 +453,13 @@ describe('SearchPage', () => {
     expect(artistsTab).toHaveAttribute('aria-selected', 'true');
 
     fireEvent.keyDown(artistsTab, { key: 'End' });
-    const albumsTab = screen.getByRole('tab', { name: 'Albums' });
-    expect(document.activeElement).toBe(albumsTab);
-    const end = createEvent.keyDown(albumsTab, { key: 'End' });
+    const playlistsTab = screen.getByRole('tab', { name: 'Playlists' });
+    expect(document.activeElement).toBe(playlistsTab);
+    const end = createEvent.keyDown(playlistsTab, { key: 'End' });
     const endPreventDefault = vi.spyOn(end, 'preventDefault');
-    fireEvent(albumsTab, end);
+    fireEvent(playlistsTab, end);
     expect(endPreventDefault).toHaveBeenCalled();
-    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'search-tab-album');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'search-tab-playlist');
   });
 
   it('does not emit duplicate-key warnings for repeated initial previews', async () => {

@@ -25,6 +25,12 @@ describe('FakeMusicProvider', () => {
     if (albums.kind === 'album') {
       expect(albums.items.map((album) => album.title)).toContain('Afterglow');
     }
+
+    const playlistResult = await provider.search('  NIGHT  ', 'playlist');
+    expect(playlistResult.kind).toBe('playlist');
+    if (playlistResult.kind === 'playlist') {
+      expect(playlistResult.items.map((playlist) => playlist.title)).toContain('Night Drive');
+    }
   });
 
   it('reports unknown fixture entities as typed provider errors', async () => {

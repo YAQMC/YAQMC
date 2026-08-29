@@ -39,8 +39,9 @@ use yaqmc_provider_api::{
     ArtistSummary, Artwork, AudioCodec, AudioFormat, AudioFormatInfo, AudioQuality, CacheStats,
     CatalogSearchKind, CredentialStore, LyricDocument, LyricLine, LyricMetadata, LyricSyncMode,
     LyricWord, PlaybackCapability, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
-    PlaybackSourceResolver, ProviderStorage, ProviderStorageExt, ProviderTrackReference,
-    ResolvedPlaybackSource, SearchResult, Song, SongAvailability, SpawnBlockingCredentialStore,
+    PlaybackSourceResolver, PlaylistPreview, ProviderStorage, ProviderStorageExt,
+    ProviderTrackReference, ResolvedPlaybackSource, SearchResult, Song, SongAvailability,
+    SpawnBlockingCredentialStore,
 };
 pub use yaqmc_provider_api::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
@@ -1824,10 +1825,26 @@ impl QQMusicClient {
         page: u32,
         limit: u32,
     ) -> Result<SearchResult, QQMusicError> {
+        if kind == CatalogSearchKind::Playlist {
+            let response =
+                crate::qmapi::catalog::playlist_search(&self.catalog, query, page, limit).await?;
+            return Ok(SearchResult::Playlist {
+                query: query.to_owned(),
+                page,
+                has_more: search_has_more(response.total, page, limit),
+                items: response
+                    .items
+                    .into_iter()
+                    .filter_map(normalize_qm_playlist_preview)
+                    .collect(),
+            });
+        }
+
         let search_type = match kind {
             CatalogSearchKind::Song => qqmusic_api::SearchType::Song,
             CatalogSearchKind::Artist => qqmusic_api::SearchType::Singer,
             CatalogSearchKind::Album => qqmusic_api::SearchType::Album,
+            CatalogSearchKind::Playlist => unreachable!("playlist search returns above"),
         };
         let response = self
             .catalog
@@ -1875,6 +1892,7 @@ impl QQMusicClient {
                     .filter_map(normalize_qm_album_preview)
                     .collect(),
             }),
+            CatalogSearchKind::Playlist => unreachable!("playlist search returns above"),
         }
     }
 
@@ -3848,6 +3866,24 @@ fn normalize_qm_album_preview(
     })
 }
 
+fn normalize_qm_playlist_preview(
+    raw: crate::qmapi::catalog::PlaylistSearchItem,
+) -> Option<PlaylistPreview> {
+    let id = raw.id.trim().parse::<u64>().ok().filter(|id| *id > 0)?;
+    let title = clean_text(&raw.title);
+    if title.is_empty() {
+        return None;
+    }
+    let id_text = id.to_string();
+    Some(PlaylistPreview {
+        id: format!("qqmusic:playlist:{id}"),
+        title: title.clone(),
+        creator: clean_text(&raw.creator),
+        artwork: artwork_from_provider_url(&raw.artwork_url, &title, color_for(&id_text)),
+        track_count: raw.track_count,
+    })
+}
+
 fn normalize_qm_album(
     mid: &str,
     catalog: crate::qmapi::catalog::AlbumCatalog,
@@ -4984,13 +5020,24 @@ fn empty_search_result(query: String, kind: CatalogSearchKind) -> SearchResult {
             has_more: false,
             items: Vec::new(),
         },
+        CatalogSearchKind::Playlist => SearchResult::Playlist {
+            query,
+            page: 1,
+            has_more: false,
+            items: Vec::new(),
+        },
     }
 }
 
 fn search_cache_key(query: &str, kind: CatalogSearchKind, page: u32, limit: u32) -> String {
     let digest = Sha256::digest(query.as_bytes());
+    let version = if kind == CatalogSearchKind::Playlist {
+        "v3"
+    } else {
+        "v2"
+    };
     format!(
-        "qqmusic:search:v2:{}:{digest:x}:{page}:{limit}",
+        "qqmusic:search:{version}:{}:{digest:x}:{page}:{limit}",
         kind.as_str(),
     )
 }
@@ -5074,6 +5121,14 @@ fn search_result_matches(
                 ..
             },
             CatalogSearchKind::Album,
+        )
+        | (
+            SearchResult::Playlist {
+                query: cached,
+                page: cached_page,
+                ..
+            },
+            CatalogSearchKind::Playlist,
         ) => cached == query && *cached_page == page,
         _ => false,
     }
@@ -5082,7 +5137,9 @@ fn search_result_matches(
 fn search_result_songs(result: &SearchResult) -> Vec<&Song> {
     match result {
         SearchResult::Song { items, .. } => items.iter().collect(),
-        SearchResult::Artist { .. } | SearchResult::Album { .. } => Vec::new(),
+        SearchResult::Artist { .. }
+        | SearchResult::Album { .. }
+        | SearchResult::Playlist { .. } => Vec::new(),
     }
 }
 
@@ -5278,6 +5335,15 @@ mod tests {
                     "singer_list": [{"mid": "SEARCH_ARTIST_MID", "name": "Search Artist"}]
                 }]
             }),
+            3 => serde_json::json!({
+                "item_songlist": [{
+                    "dissid": "987654",
+                    "dissname": "Search <em>Playlist</em>",
+                    "logo": "https://y.gtimg.cn/music/photo_new/T002R500x500M000SEARCH_PLAYLIST.jpg",
+                    "songnum": 42,
+                    "nickname": "Search Creator"
+                }]
+            }),
             other => panic!("unexpected typed search type {other}"),
         };
         serde_json::to_vec(&serde_json::json!({
@@ -5376,6 +5442,10 @@ mod tests {
             .search("MIRA", CatalogSearchKind::Album, 1, 5)
             .await
             .expect("album search");
+        let playlist = client
+            .search("MIRA", CatalogSearchKind::Playlist, 4, 6)
+            .await
+            .expect("playlist search");
 
         assert!(
             matches!(song, SearchResult::Song { ref query, page: 2, has_more: true, items } if query == "MIRA" && items.len() == 1 && items[0].id == "qqmusic:track:SEARCH_SONG_MID")
@@ -5386,16 +5456,19 @@ mod tests {
         assert!(
             matches!(album, SearchResult::Album { ref query, page: 1, has_more: true, items } if query == "MIRA" && items.len() == 1 && items[0].id == "qqmusic:album:SEARCH_ALBUM_MID")
         );
+        assert!(
+            matches!(playlist, SearchResult::Playlist { ref query, page: 4, has_more: false, items } if query == "MIRA" && items.len() == 1 && items[0].id == "qqmusic:playlist:987654" && items[0].title == "Search Playlist" && items[0].track_count == 42)
+        );
 
         let search_requests = transport
             .requests()
             .into_iter()
             .filter(|request| request["req_0"]["module"] == "music.search.SearchCgiService")
             .collect::<Vec<_>>();
-        assert_eq!(search_requests.len(), 3);
+        assert_eq!(search_requests.len(), 4);
         for (request, (expected_type, expected_page, expected_limit)) in search_requests
             .iter()
-            .zip([(0, 2, 8), (1, 3, 7), (2, 1, 5)])
+            .zip([(0, 2, 8), (1, 3, 7), (2, 1, 5), (3, 4, 6)])
         {
             let param = &request["req_0"]["param"];
             assert_eq!(request["req_0"]["method"], "DoSearchForQQMusicMobile");
@@ -5930,11 +6003,13 @@ mod tests {
     }
 
     #[test]
-    fn typed_search_cache_key_is_v2_and_category_scoped() {
+    fn typed_search_cache_key_is_versioned_and_category_scoped() {
         let song = search_cache_key("MIRA", CatalogSearchKind::Song, 2, 8);
         let artist = search_cache_key("MIRA", CatalogSearchKind::Artist, 2, 8);
+        let playlist = search_cache_key("MIRA", CatalogSearchKind::Playlist, 2, 8);
         assert!(song.starts_with("qqmusic:search:v2:song:"));
         assert!(artist.starts_with("qqmusic:search:v2:artist:"));
+        assert!(playlist.starts_with("qqmusic:search:v3:playlist:"));
         assert_ne!(
             search_cache_key("中文。", CatalogSearchKind::Song, 1, 8),
             search_cache_key("中文?", CatalogSearchKind::Song, 1, 8)
@@ -5949,6 +6024,7 @@ mod tests {
             )
         );
         assert_ne!(song, artist);
+        assert_ne!(song, playlist);
     }
 
     #[test]
@@ -6295,6 +6371,23 @@ mod tests {
             .expect("second search page");
 
         assert!(matches!(result, SearchResult::Song { page: 2, items, .. } if !items.is_empty()));
+    }
+
+    #[tokio::test]
+    #[ignore = "opt-in current QQ Music network contract check"]
+    async fn live_playlist_search_contract() {
+        let client = QQMusicClient::new().expect("client");
+        let result = client
+            .search("周杰伦", CatalogSearchKind::Playlist, 1, 20)
+            .await
+            .expect("playlist search");
+
+        assert!(
+            matches!(result, SearchResult::Playlist { page: 1, items, .. }
+            if !items.is_empty()
+                && items.iter().all(|item| item.id.starts_with("qqmusic:playlist:"))
+                && items.iter().all(|item| !item.title.contains("<em>")))
+        );
     }
 
     #[tokio::test]

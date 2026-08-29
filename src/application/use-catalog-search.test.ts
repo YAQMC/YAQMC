@@ -6,6 +6,7 @@ import type {
   AlbumPreview,
   ArtistPreview,
   CatalogSearchKind,
+  PlaylistPreview,
   SearchResult,
   Song,
 } from '../domain/music';
@@ -38,6 +39,14 @@ const album = (id: string): AlbumPreview => ({
   releaseYear: 2024,
 });
 
+const playlist = (id: string): PlaylistPreview => ({
+  id,
+  title: id,
+  creator: `creator-${id}`,
+  artwork: { src: '', alt: id, dominantColor: '#000' },
+  trackCount: 20,
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -61,7 +70,13 @@ function rejectingDeferred<T>() {
 function result<K extends CatalogSearchKind>(
   kind: K,
   query: string,
-  items: K extends 'song' ? Song[] : K extends 'artist' ? ArtistPreview[] : AlbumPreview[],
+  items: K extends 'song'
+    ? Song[]
+    : K extends 'artist'
+      ? ArtistPreview[]
+      : K extends 'album'
+        ? AlbumPreview[]
+        : PlaylistPreview[],
   page = 1,
   hasMore = false,
 ): SearchResult {
@@ -394,9 +409,14 @@ describe('useCatalogSearch', () => {
             ? result('artist', query, [artist('artist-1')], 1, true)
             : result('artist', query, [artist('artist-1'), artist('artist-2')], 2, false);
         }
+        if (kind === 'album') {
+          return page === 1
+            ? result('album', query, [album('album-1')], 1, true)
+            : result('album', query, [album('album-1'), album('album-2')], 2, false);
+        }
         return page === 1
-          ? result('album', query, [album('album-1')], 1, true)
-          : result('album', query, [album('album-1'), album('album-2')], 2, false);
+          ? result('playlist', query, [playlist('playlist-1')], 1, true)
+          : result('playlist', query, [playlist('playlist-1'), playlist('playlist-2')], 2, false);
       },
     );
     const provider = createProvider(search);
@@ -421,6 +441,15 @@ describe('useCatalogSearch', () => {
     await act(async () => value.loadMore());
     expect(search).toHaveBeenLastCalledWith('needle', 'album', expect.any(AbortSignal), 2, 20);
     expect(value.categories.album.items.map((item) => item.id)).toEqual(['album-1', 'album-2']);
+
+    act(() => value.setActiveKind('playlist'));
+    await vi.waitFor(() => expect(value.categories.playlist.status).toBe('ready'));
+    await act(async () => value.loadMore());
+    expect(search).toHaveBeenLastCalledWith('needle', 'playlist', expect.any(AbortSignal), 2, 20);
+    expect(value.categories.playlist.items.map((item) => item.id)).toEqual([
+      'playlist-1',
+      'playlist-2',
+    ]);
     view.unmount();
   });
 

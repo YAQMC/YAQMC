@@ -23,6 +23,16 @@ pub struct AlbumPreview {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlaylistPreview {
+    pub id: String,
+    pub title: String,
+    pub creator: String,
+    pub artwork: Artwork,
+    pub track_count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Artist {
     pub id: String,
     pub name: String,
@@ -116,7 +126,7 @@ mod catalog_shape_tests {
     }
 
     #[test]
-    fn typed_search_result_serializes_kind_and_items_without_playlist_results() {
+    fn typed_search_result_serializes_kind_and_items() {
         let result = SearchResult::Song {
             query: "fixture".to_owned(),
             page: 2,
@@ -136,7 +146,7 @@ mod catalog_shape_tests {
     }
 
     #[test]
-    fn typed_search_result_serializes_artist_and_album_item_tags() {
+    fn typed_search_result_serializes_all_item_tags() {
         let artist = SearchResult::Artist {
             query: "artist".to_owned(),
             page: 1,
@@ -149,8 +159,23 @@ mod catalog_shape_tests {
             has_more: false,
             items: Vec::new(),
         };
+        let playlist = SearchResult::Playlist {
+            query: "playlist".to_owned(),
+            page: 1,
+            has_more: false,
+            items: vec![PlaylistPreview {
+                id: "qqmusic:playlist:1".to_owned(),
+                title: "Playlist".to_owned(),
+                creator: "Creator".to_owned(),
+                artwork: artwork(),
+                track_count: 12,
+            }],
+        };
         assert_eq!(serde_json::to_value(artist).unwrap()["kind"], "artist");
         assert_eq!(serde_json::to_value(album).unwrap()["kind"], "album");
+        let playlist = serde_json::to_value(playlist).unwrap();
+        assert_eq!(playlist["kind"], "playlist");
+        assert_eq!(playlist["items"][0]["trackCount"], 12);
         assert!(serde_json::to_value(SearchResult::Song {
             query: "song".to_owned(),
             page: 1,
@@ -168,7 +193,7 @@ mod catalog_shape_tests {
             "hasMore": false,
             "items": []
         }))
-        .is_err());
+        .is_ok());
     }
 
     #[test]
@@ -335,6 +360,7 @@ pub enum CatalogSearchKind {
     Song,
     Artist,
     Album,
+    Playlist,
 }
 
 impl CatalogSearchKind {
@@ -343,6 +369,7 @@ impl CatalogSearchKind {
             Self::Song => "song",
             Self::Artist => "artist",
             Self::Album => "album",
+            Self::Playlist => "playlist",
         }
     }
 }
@@ -370,6 +397,13 @@ pub enum SearchResult {
         #[serde(rename = "hasMore")]
         has_more: bool,
         items: Vec<AlbumPreview>,
+    },
+    Playlist {
+        query: String,
+        page: u32,
+        #[serde(rename = "hasMore")]
+        has_more: bool,
+        items: Vec<PlaylistPreview>,
     },
 }
 

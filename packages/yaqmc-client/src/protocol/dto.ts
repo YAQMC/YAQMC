@@ -39,6 +39,14 @@ export interface AlbumPreview {
   releaseYear: number;
 }
 
+export interface PlaylistPreview {
+  id: EntityId;
+  title: string;
+  creator: string;
+  artwork: Artwork;
+  trackCount: number;
+}
+
 export type AudioQuality = 'standard' | 'high' | 'lossless' | 'hi-res' | 'master';
 export type AudioQualityPreference = 'automatic' | AudioQuality;
 
@@ -245,7 +253,7 @@ export interface LibrarySnapshot {
   savedPlaylists: Playlist[];
 }
 
-export type CatalogSearchKind = 'song' | 'artist' | 'album';
+export type CatalogSearchKind = 'song' | 'artist' | 'album' | 'playlist';
 
 export type SearchResult =
   | { kind: 'song'; query: string; page: number; hasMore: boolean; items: Song[] }
@@ -262,6 +270,13 @@ export type SearchResult =
       page: number;
       hasMore: boolean;
       items: AlbumPreview[];
+    }
+  | {
+      kind: 'playlist';
+      query: string;
+      page: number;
+      hasMore: boolean;
+      items: PlaylistPreview[];
     };
 
 export type LyricSyncMode = 'unsynchronized' | 'line' | 'word';

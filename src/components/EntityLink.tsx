@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from '../application/navigation-context';
 
-type EntityKind = 'song' | 'artist' | 'album';
+type EntityKind = 'song' | 'artist' | 'album' | 'playlist';
 
 interface EntityLinkProps {
   entity: EntityKind;

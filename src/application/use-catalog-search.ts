@@ -3,6 +3,7 @@ import type {
   ArtistPreview,
   AlbumPreview,
   CatalogSearchKind,
+  PlaylistPreview,
   SearchResult,
   Song,
 } from '../domain/music';
@@ -12,7 +13,7 @@ export type SearchCategoryStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface SearchCategoryState {
   status: SearchCategoryStatus;
-  items: Array<Song | ArtistPreview | AlbumPreview>;
+  items: Array<Song | ArtistPreview | AlbumPreview | PlaylistPreview>;
   page: number;
   hasMore: boolean;
   error: unknown | null;
@@ -70,6 +71,7 @@ function emptyCategories(): Record<CatalogSearchKind, SearchCategoryState> {
     song: emptyCategory(),
     artist: emptyCategory(),
     album: emptyCategory(),
+    playlist: emptyCategory(),
   };
 }
 
@@ -147,7 +149,7 @@ function reduce(state: CatalogSearchState, action: SearchAction): CatalogSearchS
   return { ...state, categories };
 }
 
-function uniqueById(items: Array<Song | ArtistPreview | AlbumPreview>) {
+function uniqueById(items: Array<Song | ArtistPreview | AlbumPreview | PlaylistPreview>) {
   const seen = new Set<string>();
   return items.filter((item) => {
     const id = item.id.trim();
@@ -166,6 +168,8 @@ function deduplicateResult(result: SearchResult): SearchResult {
       return { ...result, items: uniqueById(result.items) as ArtistPreview[] };
     case 'album':
       return { ...result, items: uniqueById(result.items) as AlbumPreview[] };
+    case 'playlist':
+      return { ...result, items: uniqueById(result.items) as PlaylistPreview[] };
   }
 }
 

@@ -105,12 +105,12 @@ mod search_params_tests {
     fn typed_search_params_accept_lowercase_kind_and_camel_case_fields() {
         let params: SearchParams = serde_json::from_value(serde_json::json!({
             "query": "MIRA",
-            "kind": "artist",
+            "kind": "playlist",
             "page": 2,
             "limit": 8
         }))
         .expect("typed search params");
-        assert_eq!(params.kind, yaqmc_provider_api::CatalogSearchKind::Artist);
+        assert_eq!(params.kind, yaqmc_provider_api::CatalogSearchKind::Playlist);
         assert_eq!(params.page, 2);
         assert_eq!(params.limit, 8);
     }

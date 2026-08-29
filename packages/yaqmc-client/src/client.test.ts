@@ -101,11 +101,11 @@ describe('YaqmcClient', () => {
     const client = new YaqmcClient(testBridge(invoked));
     client.markReady();
 
-    await client.catalog.search('MIRA', 'artist', 2, 8);
+    await client.catalog.search('MIRA', 'playlist', 2, 8);
 
     expect(invoked).toContainEqual({
       method: 'qqmusic_search',
-      params: { query: 'MIRA', kind: 'artist', page: 2, limit: 8 },
+      params: { query: 'MIRA', kind: 'playlist', page: 2, limit: 8 },
     });
     client.dispose();
   });

@@ -8,6 +8,7 @@ import {
   type CatalogSearchKind,
   type EntityId,
   type Playlist,
+  type PlaylistPreview,
   type Song,
   type SearchResult,
 } from '../../domain/music';
@@ -239,21 +240,33 @@ export class FakeMusicProvider implements MusicProvider {
                 artwork: clone(album.artwork),
                 releaseYear: album.releaseYear,
               }))
-          : allSongs
-              .flatMap((song) => song.artists)
-              .filter(
-                (artist, index, all) => all.findIndex((item) => item.id === artist.id) === index,
-              )
-              .filter((artist) => includesQuery(artist.name))
-              .map((artist) => ({
-                id: artist.id,
-                name: artist.name,
-                artwork: clone(
-                  albums.find((album) => album.artist.id === artist.id)?.artwork ??
-                    allSongs.find((song) => song.artists.some((item) => item.id === artist.id))!
-                      .artwork,
-                ),
-              }));
+          : kind === 'playlist'
+            ? playlists
+                .filter((playlist) =>
+                  includesQuery(playlist.title, playlist.description, playlist.owner.displayName),
+                )
+                .map<PlaylistPreview>((playlist) => ({
+                  id: playlist.id,
+                  title: playlist.title,
+                  creator: playlist.owner.displayName,
+                  artwork: clone(playlist.artwork),
+                  trackCount: playlist.tracks.length,
+                }))
+            : allSongs
+                .flatMap((song) => song.artists)
+                .filter(
+                  (artist, index, all) => all.findIndex((item) => item.id === artist.id) === index,
+                )
+                .filter((artist) => includesQuery(artist.name))
+                .map((artist) => ({
+                  id: artist.id,
+                  name: artist.name,
+                  artwork: clone(
+                    albums.find((album) => album.artist.id === artist.id)?.artwork ??
+                      allSongs.find((song) => song.artists.some((item) => item.id === artist.id))!
+                        .artwork,
+                  ),
+                }));
     const start = Math.max(0, (Math.max(1, page) - 1) * Math.max(1, limit));
     const items = matches.slice(start, start + Math.max(1, limit));
     return clone({
