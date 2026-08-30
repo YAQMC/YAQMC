@@ -1,5 +1,5 @@
 import { Play } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AppRoute } from '../application/navigation';
 import { usePlayerStore } from '../application/player-store';
@@ -84,7 +84,10 @@ export function ExplorePage({ onNavigate }: ExplorePageProps) {
     providerId: provider.id,
     tab: selectedTabByProvider.get(provider.id) ?? 'featured',
   }));
-  const tabs = state.status === 'ready' ? discoverTabs(state.discover) : [];
+  const tabs = useMemo(
+    () => (state.status === 'ready' ? discoverTabs(state.discover) : []),
+    [state],
+  );
   const rememberedTab = selectedTabByProvider.get(provider.id);
   const requestedTab =
     rememberedTab ?? (selection.providerId === provider.id ? selection.tab : 'featured');
