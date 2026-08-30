@@ -6,16 +6,16 @@
     "repository": {
       "name": "YAQMC",
       "origin": "https://github.com/YAQMC/YAQMC.git",
-      "auditHead": "aa1c10dce2662593391afc1adc1741d0d0529e3c",
+      "auditHead": "453c3f2480836f49cbc6ac34a76f57010d285f08",
       "auditCommitCount": 331,
       "historicalBase": {
-        "commit": "11ab586e8450356eb67e3fb6a6cee58b43641449",
+        "commit": "8df07163c17a97d8c6401c518bf4d35c3e637fcb",
         "commitCount": 167,
         "authors": {
           "Mai-xiyu": 136,
           "Osilvfe": 31
         },
-        "cursorCoAuthorTrailers": 23,
+        "cursorCoAuthorTrailers": 0,
         "unsignedCommitCount": 167
       },
       "rootImport": {
