@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pluginsRoot = path.join(root, 'examples', 'plugins');
 const outDir = path.join(pluginsRoot, 'packages');
-const runtimeDirs = new Set(['styles', 'scenes', 'dist', 'assets']);
+const runtimeDirs = new Set(['styles', 'scenes', 'dist', 'assets', 'component']);
+const providerOnly = process.argv.includes('--provider-example');
 
 function dosDateTime(date) {
   const year = Math.max(date.getFullYear() - 1980, 0);
@@ -107,7 +108,7 @@ function zipStore(files) {
   return Buffer.concat([...locals, ...centrals, end]);
 }
 
-const pluginDirs = [
+const legacyPluginDirs = [
   'style-sakura',
   'style-night',
   'scene-pack',
@@ -118,8 +119,9 @@ const pluginDirs = [
   'ink-core',
   'ink-accent',
 ];
+const pluginDirs = providerOnly ? ['provider-catalog-rust'] : legacyPluginDirs;
 
-await rm(outDir, { recursive: true, force: true });
+if (!providerOnly) await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 for (const directory of pluginDirs) {

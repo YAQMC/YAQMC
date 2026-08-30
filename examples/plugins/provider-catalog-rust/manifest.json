@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 2,
+  "id": "dev.yaqmc.example.catalog",
+  "name": "YAQMC read-only catalog example",
+  "description": "A deterministic Rust Provider Component with no network or account access.",
+  "version": "1.0.0",
+  "apiVersion": 3,
+  "authors": ["YAQMC contributors"],
+  "license": "GPL-3.0-or-later",
+  "entrypoints": {
+    "component": "component/provider.wasm"
+  },
+  "provider": {
+    "id": "dev.yaqmc.example.catalog",
+    "name": "YAQMC Component Example",
+    "witVersion": "0.1.0",
+    "world": "provider",
+    "capabilities": ["provider.catalog"]
+  },
+  "permissions": ["provider.catalog"]
+}

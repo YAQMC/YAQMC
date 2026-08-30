@@ -1,0 +1,23 @@
+[package]
+name = "yaqmc-provider-catalog-example"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.88"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dlmalloc = { version = "=0.2.11", default-features = false, features = ["global"] }
+wit-bindgen = { version = "=0.46.0", default-features = false, features = ["macros", "realloc"] }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+# Keep guest-only dependencies out of the YAQMC host workspace and its MSRV checks.
+[workspace]
