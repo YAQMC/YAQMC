@@ -877,6 +877,23 @@
   outline-offset: -2px;
 }
 
+.explore-page__tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.explore-page__tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.explore-page__tabpanel:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+
 .search-results__category-heading {
   margin-bottom: 12px;
   color: var(--text);
