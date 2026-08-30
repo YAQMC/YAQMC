@@ -48,90 +48,113 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function useProviderSettings() {
-  const [status, setStatus] = useState<ProviderStatus | null>(null);
-  const [cache, setCache] = useState<CacheStats | null>(null);
+interface ProviderScopedValue<T> {
+  providerId: string;
+  value: T;
+}
+
+export function useProviderSettings(providerId: string) {
+  const [statusState, setStatusState] = useState<ProviderScopedValue<ProviderStatus> | null>(null);
+  const [cacheState, setCacheState] = useState<ProviderScopedValue<CacheStats> | null>(null);
   const [devices, setDevices] = useState<AudioOutputDevice[]>([]);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorState, setErrorState] = useState<ProviderScopedValue<string> | null>(null);
+  const status = statusState?.providerId === providerId ? statusState.value : null;
+  const cache = cacheState?.providerId === providerId ? cacheState.value : null;
+  const error = errorState?.providerId === providerId ? errorState.value : null;
 
   const refresh = useCallback(async () => {
     if (!isNativeRuntime) return;
-    setError(null);
+    setErrorState(null);
     try {
       const client = getYaqmcClient();
       const [nextStatus, nextCache, nextDevices] = await Promise.all([
-        client.invoke('qqmusic_status'),
-        client.invoke('qqmusic_cache_stats'),
+        client.invoke('provider_status', { providerId }),
+        client.invoke('provider_cache_stats', { providerId }),
         client.invoke('audio_output_devices'),
       ]);
-      setStatus(nextStatus);
-      setCache(nextCache);
+      setStatusState({ providerId, value: nextStatus });
+      setCacheState({ providerId, value: nextCache });
       setDevices(nextDevices);
     } catch (caught) {
-      setError(message(caught));
+      setErrorState({ providerId, value: message(caught) });
     }
-  }, []);
+  }, [providerId]);
 
   useEffect(() => {
     if (!isNativeRuntime) return;
     let active = true;
     const client = getYaqmcClient();
     void Promise.all([
-      client.invoke('qqmusic_status'),
-      client.invoke('qqmusic_cache_stats'),
+      client.invoke('provider_status', { providerId }),
+      client.invoke('provider_cache_stats', { providerId }),
       client.invoke('audio_output_devices'),
     ])
       .then(([nextStatus, nextCache, nextDevices]) => {
         if (!active) return;
-        setStatus(nextStatus);
-        setCache(nextCache);
+        setStatusState({ providerId, value: nextStatus });
+        setCacheState({ providerId, value: nextCache });
         setDevices(nextDevices);
       })
       .catch((caught: unknown) => {
-        if (active) setError(message(caught));
+        if (active) setErrorState({ providerId, value: message(caught) });
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [providerId]);
 
-  const setQuality = useCallback(async (quality: AudioQualityPreference) => {
-    setBusy(true);
-    setError(null);
-    try {
-      setStatus(await getYaqmcClient().invoke('qqmusic_set_preferred_quality', { quality }));
-    } catch (caught) {
-      setError(message(caught));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const setQuality = useCallback(
+    async (quality: AudioQualityPreference) => {
+      setBusy(true);
+      setErrorState(null);
+      try {
+        setStatusState({
+          providerId,
+          value: await getYaqmcClient().invoke('provider_set_preferred_quality', {
+            providerId,
+            quality,
+          }),
+        });
+      } catch (caught) {
+        setErrorState({ providerId, value: message(caught) });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [providerId],
+  );
 
-  const setOutputDevice = useCallback(async (deviceId: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      setDevices(await getYaqmcClient().invoke('audio_set_output_device', { deviceId }));
-    } catch (caught) {
-      setError(message(caught));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const setOutputDevice = useCallback(
+    async (deviceId: string) => {
+      setBusy(true);
+      setErrorState(null);
+      try {
+        setDevices(await getYaqmcClient().invoke('audio_set_output_device', { deviceId }));
+      } catch (caught) {
+        setErrorState({ providerId, value: message(caught) });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [providerId],
+  );
 
   const clearCache = useCallback(async () => {
     setBusy(true);
-    setError(null);
+    setErrorState(null);
     try {
-      setCache(await getYaqmcClient().invoke('qqmusic_clear_cache'));
+      setCacheState({
+        providerId,
+        value: await getYaqmcClient().invoke('provider_clear_cache', { providerId }),
+      });
       clearArtworkMemoryCache();
     } catch (caught) {
-      setError(message(caught));
+      setErrorState({ providerId, value: message(caught) });
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [providerId]);
 
   return {
     available: isNativeRuntime,

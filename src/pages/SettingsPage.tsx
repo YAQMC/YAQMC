@@ -97,7 +97,7 @@ import {
   SurfaceCapabilityBanner,
   surfaceCapabilitiesFromDiagnostics,
 } from '../components/SurfaceCapabilityBanner';
-import { useMusicProvider } from '../application/provider-context';
+import { useMusicProvider, useMusicProviderSelection } from '../application/provider-context';
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
 import { isAccountMusicProvider } from '../providers/music-provider';
@@ -687,9 +687,22 @@ export function SettingsPage() {
   const { t: common } = useTranslation('common');
   const { t: errors } = useTranslation('errors');
   const api = useLocalApiSettings();
-  const provider = useProviderSettings();
   const musicProvider = useMusicProvider();
+  const provider = useProviderSettings(musicProvider.id);
+  const providerSelection = useMusicProviderSelection();
   const accountProvider = isAccountMusicProvider(musicProvider) ? musicProvider : null;
+  const providerOptions = useMemo(
+    () =>
+      providerSelection.providers.map((candidate) => ({
+        value: candidate.id,
+        label: candidate.displayName,
+        disabled: !candidate.available,
+      })),
+    [providerSelection.providers],
+  );
+  const providerSupportsPlayback =
+    providerSelection.providers.find((candidate) => candidate.id === providerSelection.activeId)
+      ?.capabilities?.playback ?? true;
   const accountSnapshot = useAccountStore((state) => state.snapshot);
   const accountBusy = useAccountStore((state) => state.busy);
   const accountError = useAccountStore((state) => state.error);
@@ -1044,13 +1057,13 @@ export function SettingsPage() {
     if (accountError) {
       switch (accountError) {
         case 'network':
-          return t('account.networkMessage');
+          return t('account.networkMessage', { provider: musicProvider.displayName });
         case 'authorization':
           return t('account.reauthMessage');
         case 'secure-store':
           return t('account.secureStoreMessage');
         case 'protocol':
-          return t('account.protocolMessage');
+          return t('account.protocolMessage', { provider: musicProvider.displayName });
         case 'unknown':
           return t('account.unknownMessage');
       }
@@ -1064,17 +1077,17 @@ export function SettingsPage() {
       case 'starting-login':
       case 'waiting-for-scan':
       case 'waiting-for-confirmation':
-        return t('account.authorizingMessage');
+        return t('account.authorizingMessage', { provider: musicProvider.displayName });
       case 'authenticated':
         return t('account.authenticatedMessage');
       case 'expired':
         return t('account.expiredMessage');
       case 'rejected':
-        return t('account.rejectedMessage');
+        return t('account.rejectedMessage', { provider: musicProvider.displayName });
       case 'network-error':
-        return t('account.networkMessage');
+        return t('account.networkMessage', { provider: musicProvider.displayName });
       case 'protocol-error':
-        return t('account.protocolMessage');
+        return t('account.protocolMessage', { provider: musicProvider.displayName });
       case 'session-expired':
       case 'reauthentication-required':
         return t('account.reauthMessage');
@@ -1612,7 +1625,7 @@ export function SettingsPage() {
                 onChange={(quality) => void provider.setQuality(quality)}
                 ariaLabel={t('playback.qualityLabel')}
                 icon={Music2}
-                disabled={!provider.available || provider.busy}
+                disabled={!provider.available || provider.busy || !providerSupportsPlayback}
               />
             }
           />
@@ -1880,6 +1893,20 @@ export function SettingsPage() {
         }
       >
         <div className="settings-card">
+          <SettingRow
+            title={t('account.provider')}
+            description={t('account.providerDescription')}
+            control={
+              <Select
+                value={providerSelection.activeId}
+                options={providerOptions}
+                onChange={providerSelection.selectProvider}
+                ariaLabel={t('account.providerLabel')}
+                icon={Music2}
+                disabled={providerOptions.length < 2}
+              />
+            }
+          />
           <div className="settings-account-profile">
             {accountAvatarUrl ? (
               <img
@@ -1951,7 +1978,7 @@ export function SettingsPage() {
           </dl>
           <div className="settings-security-note">
             <ShieldCheck size={17} />
-            <p>{t('account.security')}</p>
+            <p>{t('account.security', { provider: musicProvider.displayName })}</p>
           </div>
         </div>
       </SettingsSection>

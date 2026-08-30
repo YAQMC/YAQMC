@@ -13,18 +13,19 @@ use serde_json::{json, Value};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use yaqmc_provider_api::{
-    AccountCapabilities, AccountPlaylistDetail, AccountPlaylistSummary, AccountProvider,
-    AccountSnapshot, AccountState, Album, AreaFeed, Artist, ArtistCatalogKind, ArtistCatalogPage,
-    AudioQualityPreference, CacheStats, CatalogProvider, CatalogProviderCapabilities,
-    CatalogSearchKind, CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest,
-    DiscoverFeed, FavoriteMutationRequest, FavoriteMutationResult, HomeFeed, LibrarySnapshot,
-    LyricDocument, LyricsProvider, OAuthCallbackMatcher, OAuthLoginProvider, OAuthPrepareResult,
-    OpaquePlaybackSource, Page, PlaybackEpoch, PlaybackEpochClock, PlaybackEpochGuard,
-    PlaybackLocation, PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
-    PlaybackSourceSelection, Playlist, PlaylistMutationResult, PlaylistTrackMutationRequest,
-    ProviderAccount, ProviderCapabilities, ProviderCommandError, ProviderResult, ProviderStatus,
-    RecommendationBatch, RecommendationProvider, RecommendationRequest, RemotePlayHistoryItem,
-    RenamePlaylistRequest, ResolvedPlaybackSource, SearchResult, Song,
+    AccountCapabilities, AccountLoginFlow, AccountLoginMethodDescriptor, AccountPlaylistDetail,
+    AccountPlaylistSummary, AccountProvider, AccountSnapshot, AccountState, Album, AreaFeed,
+    Artist, ArtistCatalogKind, ArtistCatalogPage, AudioQualityPreference, CacheStats,
+    CatalogProvider, CatalogProviderCapabilities, CatalogSearchKind, CollectPlaylistRequest,
+    CreatePlaylistRequest, DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest,
+    FavoriteMutationResult, HomeFeed, LibrarySnapshot, LyricDocument, LyricsProvider,
+    OAuthCallbackMatcher, OAuthLoginProvider, OAuthPrepareResult, OpaquePlaybackSource, Page,
+    PlaybackEpoch, PlaybackEpochClock, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
+    PlaybackSourceProvider, PlaybackSourceResolver, PlaybackSourceSelection, Playlist,
+    PlaylistMutationResult, PlaylistTrackMutationRequest, ProviderAccount, ProviderCapabilities,
+    ProviderCommandError, ProviderResult, ProviderStatus, RecommendationBatch,
+    RecommendationProvider, RecommendationRequest, RemotePlayHistoryItem, RenamePlaylistRequest,
+    ResolvedPlaybackSource, SearchResult, Song,
 };
 
 use crate::plugin::{
@@ -128,6 +129,7 @@ impl ComponentProviderAdapter {
 
     pub fn registry_capabilities(self: &Arc<Self>) -> ProviderCapabilities {
         ProviderCapabilities {
+            display_name: Some(self.display_name.clone()),
             catalog: self
                 .declared
                 .contains(&ProviderCapability::Catalog)
@@ -269,6 +271,78 @@ impl ComponentProviderAdapter {
     ) -> FavoriteMutationResult {
         result.auth_revision = self.account_generation.load(Ordering::Acquire);
         result
+    }
+
+    async fn prepare_component_oauth_login(
+        &self,
+        method_id: &str,
+    ) -> ProviderResult<OAuthPrepareResult> {
+        if !valid_account_login_method_id(method_id) {
+            return Err(ProviderCommandError::invalid_request(
+                "account login method is invalid",
+            ));
+        }
+        let host = self.host.as_ref().ok_or_else(|| {
+            ProviderCommandError::adapter("provider authorization host is unavailable")
+        })?;
+        let attempt_id = component_random_token(host, "oauth_")?;
+        let state = component_random_token(host, "state_")?;
+        self.advance_account_generation();
+        let prepared: ComponentOAuthPrepare = self
+            .call_account_scoped(
+                ProviderCapability::Account,
+                "account.auth.prepare-oauth",
+                &json!({
+                    "loginProvider": method_id,
+                    "attemptId": attempt_id,
+                    "state": state
+                }),
+            )
+            .await?;
+        if prepared.navigation_allowlist.is_empty() || prepared.navigation_allowlist.len() > 16 {
+            return Err(ProviderCommandError::invalid_request(
+                "provider authorization navigation allowlist is invalid",
+            ));
+        }
+        let authorize_url = validate_component_oauth_url(host, &prepared.url)?;
+        if !oauth_state_matches(&authorize_url, &state) {
+            return Err(ProviderCommandError::invalid_request(
+                "provider authorization state is invalid",
+            ));
+        }
+        for allowed in &prepared.navigation_allowlist {
+            validate_component_oauth_url(host, allowed)?;
+        }
+        if !prepared
+            .navigation_allowlist
+            .iter()
+            .any(|allowed| prepared.url.starts_with(allowed))
+        {
+            return Err(ProviderCommandError::invalid_request(
+                "provider authorization URL is outside its navigation allowlist",
+            ));
+        }
+        validate_component_oauth_url(host, &prepared.callback_matcher.url_prefix)?;
+        self.oauth_attempts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(
+                attempt_id.clone(),
+                ComponentOAuthAttempt {
+                    state,
+                    callback_prefix: prepared.callback_matcher.url_prefix.clone(),
+                    created_at_ms: component_now_ms(),
+                },
+            );
+        Ok(OAuthPrepareResult {
+            attempt_id,
+            url: prepared.url,
+            navigation_allowlist: prepared.navigation_allowlist,
+            callback_matcher: OAuthCallbackMatcher {
+                url_prefix: prepared.callback_matcher.url_prefix,
+            },
+            snapshot: self.account_snapshot().await,
+        })
     }
 
     fn catalog_capability_projection(&self) -> CatalogProviderCapabilities {
@@ -888,9 +962,31 @@ impl PlaybackSourceProvider for ComponentProviderAdapter {
     }
 }
 
+#[async_trait]
 impl AccountProvider for ComponentProviderAdapter {
     fn provider_account(&self) -> &dyn ProviderAccount {
         self
+    }
+
+    async fn account_login_methods(&self) -> ProviderResult<Vec<AccountLoginMethodDescriptor>> {
+        let methods: Vec<AccountLoginMethodDescriptor> = self
+            .call_account_scoped(
+                ProviderCapability::Account,
+                "account.auth.login-methods",
+                &json!({}),
+            )
+            .await?;
+        validate_account_login_methods(methods)
+    }
+
+    async fn account_prepare_login(&self, method_id: &str) -> ProviderResult<OAuthPrepareResult> {
+        let methods = self.account_login_methods().await?;
+        if !methods.iter().any(|method| method.id == method_id) {
+            return Err(ProviderCommandError::invalid_request(
+                "account login method is unavailable",
+            ));
+        }
+        self.prepare_component_oauth_login(method_id).await
     }
 }
 
@@ -1089,67 +1185,7 @@ impl ProviderAccount for ComponentProviderAdapter {
         &self,
         provider: OAuthLoginProvider,
     ) -> ProviderResult<OAuthPrepareResult> {
-        let host = self.host.as_ref().ok_or_else(|| {
-            ProviderCommandError::adapter("provider authorization host is unavailable")
-        })?;
-        let attempt_id = component_random_token(host, "oauth_")?;
-        let state = component_random_token(host, "state_")?;
-        self.advance_account_generation();
-        let prepared: ComponentOAuthPrepare = self
-            .call_account_scoped(
-                ProviderCapability::Account,
-                "account.auth.prepare-oauth",
-                &json!({
-                    "loginProvider": provider.as_str(),
-                    "attemptId": attempt_id,
-                    "state": state
-                }),
-            )
-            .await?;
-        if prepared.navigation_allowlist.is_empty() || prepared.navigation_allowlist.len() > 16 {
-            return Err(ProviderCommandError::invalid_request(
-                "provider authorization navigation allowlist is invalid",
-            ));
-        }
-        let authorize_url = validate_component_oauth_url(host, &prepared.url)?;
-        if !oauth_state_matches(&authorize_url, &state) {
-            return Err(ProviderCommandError::invalid_request(
-                "provider authorization state is invalid",
-            ));
-        }
-        for allowed in &prepared.navigation_allowlist {
-            validate_component_oauth_url(host, allowed)?;
-        }
-        if !prepared
-            .navigation_allowlist
-            .iter()
-            .any(|allowed| prepared.url.starts_with(allowed))
-        {
-            return Err(ProviderCommandError::invalid_request(
-                "provider authorization URL is outside its navigation allowlist",
-            ));
-        }
-        validate_component_oauth_url(host, &prepared.callback_matcher.url_prefix)?;
-        self.oauth_attempts
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(
-                attempt_id.clone(),
-                ComponentOAuthAttempt {
-                    state,
-                    callback_prefix: prepared.callback_matcher.url_prefix.clone(),
-                    created_at_ms: component_now_ms(),
-                },
-            );
-        Ok(OAuthPrepareResult {
-            attempt_id,
-            url: prepared.url,
-            navigation_allowlist: prepared.navigation_allowlist,
-            callback_matcher: OAuthCallbackMatcher {
-                url_prefix: prepared.callback_matcher.url_prefix,
-            },
-            snapshot: self.account_snapshot().await,
-        })
+        self.prepare_component_oauth_login(provider.as_str()).await
     }
 
     async fn complete_oauth_login(
@@ -1283,15 +1319,41 @@ fn unsupported(operation: &str) -> ProviderCommandError {
     }
 }
 
+fn valid_account_login_method_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
+        })
+}
+
+fn validate_account_login_methods(
+    methods: Vec<AccountLoginMethodDescriptor>,
+) -> ProviderResult<Vec<AccountLoginMethodDescriptor>> {
+    if methods.len() > 16 {
+        return Err(invalid_response(
+            "the provider returned too many account login methods",
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for method in &methods {
+        if !valid_account_login_method_id(&method.id)
+            || method.label.trim().is_empty()
+            || method.label.len() > 80
+            || method.flow != AccountLoginFlow::OAuth
+            || !seen.insert(method.id.as_str())
+        {
+            return Err(invalid_response(
+                "the provider returned an invalid account login method",
+            ));
+        }
+    }
+    Ok(methods)
+}
+
 fn map_runtime_error(error: ComponentRuntimeError) -> ProviderCommandError {
     match error {
-        ComponentRuntimeError::Guest(message) => {
-            serde_json::from_str(&message).unwrap_or(ProviderCommandError {
-                code: "provider-operation-failed".to_owned(),
-                message: "the provider rejected the operation".to_owned(),
-                retryable: false,
-            })
-        }
+        ComponentRuntimeError::Guest(message) => sanitize_guest_error(&message),
         ComponentRuntimeError::Deadline => ProviderCommandError {
             code: "provider-timeout".to_owned(),
             message: "the provider operation timed out".to_owned(),
@@ -1326,6 +1388,92 @@ fn map_runtime_error(error: ComponentRuntimeError) -> ProviderCommandError {
             message: "the provider sandbox rejected the operation".to_owned(),
             retryable: false,
         },
+    }
+}
+
+fn sanitize_guest_error(raw: &str) -> ProviderCommandError {
+    let code = serde_json::from_str::<ProviderCommandError>(raw)
+        .ok()
+        .map(|error| error.code)
+        .unwrap_or_default();
+    let (code, message, retryable) = match code.as_str() {
+        "offline" | "network" => ("offline", "the provider is offline", true),
+        "timeout" | "provider-timeout" => {
+            ("provider-timeout", "the provider operation timed out", true)
+        }
+        "rate-limited" => ("rate-limited", "the provider rate limit was reached", true),
+        "authentication-expired" => (
+            "authentication-expired",
+            "the provider authorization expired",
+            false,
+        ),
+        "authorization-rejected" => (
+            "authorization-rejected",
+            "the provider rejected authorization",
+            false,
+        ),
+        "entitlement-unavailable" | "entitlement-insufficient" => (
+            "entitlement-insufficient",
+            "the account cannot access this media",
+            false,
+        ),
+        "entitlement-unknown" => (
+            "entitlement-unknown",
+            "the provider could not determine media access",
+            false,
+        ),
+        "client-unsupported" => (
+            "client-unsupported",
+            "the media format is unsupported",
+            false,
+        ),
+        "song-unavailable" | "unavailable" | "not-found" => (
+            "song-unavailable",
+            "the requested provider item is unavailable",
+            false,
+        ),
+        "url-expired" => ("url-expired", "the media source expired", true),
+        "range-unsupported" => (
+            "range-unsupported",
+            "the media source does not support bounded reads",
+            false,
+        ),
+        "response-too-large" => (
+            "response-too-large",
+            "the provider response exceeded its limit",
+            false,
+        ),
+        "cancelled" | "provider-cancelled" => (
+            "provider-cancelled",
+            "the provider operation was cancelled",
+            false,
+        ),
+        "invalid-request" => ("invalid-request", "the provider request was invalid", false),
+        "unsupported-operation" => (
+            "unsupported-operation",
+            "the provider does not support this operation",
+            false,
+        ),
+        "mutation-in-progress" => (
+            "mutation-in-progress",
+            "a provider mutation is already in progress",
+            true,
+        ),
+        "storage-failure" => (
+            "storage-failure",
+            "the provider could not access its private storage",
+            false,
+        ),
+        _ => (
+            "provider-operation-failed",
+            "the provider rejected the operation",
+            false,
+        ),
+    };
+    ProviderCommandError {
+        code: code.to_owned(),
+        message: message.to_owned(),
+        retryable,
     }
 }
 
@@ -1446,6 +1594,23 @@ mod tests {
             manifest::PluginManifest,
         },
     };
+
+    #[test]
+    fn guest_errors_never_echo_component_secrets_or_urls() {
+        let raw = serde_json::json!({
+            "code": "authentication-expired",
+            "message": "Authorization: Bearer secret https://signed.invalid/media?token=secret",
+            "retryable": true
+        })
+        .to_string();
+        let error = sanitize_guest_error(&raw);
+        let wire = serde_json::to_string(&error).expect("error serializes");
+        assert_eq!(error.code, "authentication-expired");
+        assert!(!error.retryable);
+        assert!(!wire.contains("secret"));
+        assert!(!wire.contains("https://"));
+        assert!(!wire.contains("Authorization"));
+    }
 
     fn manifest() -> PluginManifest {
         PluginManifest::parse(

@@ -26,10 +26,15 @@ use super::types::{
     IdParams, IndexParams, IssueReporterPreviewParams, LevelParams, LyricsDocumentParams,
     NamedRequest, OAuthCompleteParams, OAuthPrepareParams, OptionalAttemptParams, PathParams,
     PlaylistTracksParams, PluginIdParams, PluginMarkFailedParams, PluginReadAssetParams,
-    PortParams, PrimaryModeParams, QualityParams, RecordErrorRequest, ReferenceParams,
-    ReorderParams, RepeatParams, SampleParams, SearchParams, SeekParams, SettingKeyParams,
-    SettingWriteParams, ShareSongParams, SongIdParams, StatisticsRangeParams, TokenParams,
-    TrackParams, TracksParams, UrlParams, ValueParams, VolumeParams,
+    PortParams, PrimaryModeParams, ProviderAreaParams, ProviderArtistCatalogParams,
+    ProviderAttemptParams, ProviderAuthHeartbeatParams, ProviderCursorPageParams,
+    ProviderEntityParams, ProviderIdParams, ProviderNamedRequest, ProviderOAuthCompleteParams,
+    ProviderOAuthPrepareParams, ProviderOptionalAttemptParams, ProviderPlaylistTracksParams,
+    ProviderQualityParams, ProviderRefreshParams, ProviderSearchParams, ProviderUrlParams,
+    QualityParams, RecordErrorRequest, ReferenceParams, ReorderParams, RepeatParams, SampleParams,
+    SearchParams, SeekParams, SettingKeyParams, SettingWriteParams, ShareSongParams, SongIdParams,
+    StatisticsRangeParams, TokenParams, TrackParams, TracksParams, UrlParams, ValueParams,
+    VolumeParams,
 };
 use super::HostDispatchHooks;
 
@@ -38,6 +43,43 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "platform_export_diagnostics",
     "audio_output_devices",
     "audio_set_output_device",
+    "provider_list",
+    "provider_status",
+    "provider_home",
+    "provider_discover",
+    "provider_area",
+    "provider_library",
+    "provider_search",
+    "provider_song",
+    "provider_album",
+    "provider_artist",
+    "provider_artist_catalog",
+    "provider_playlist",
+    "provider_lyrics",
+    "provider_recommendation_next",
+    "provider_cache_artwork",
+    "provider_set_preferred_quality",
+    "provider_set_current_quality",
+    "provider_account_login_methods",
+    "provider_account_snapshot",
+    "provider_favorite_songs",
+    "provider_account_playlists",
+    "provider_account_playlist_tracks",
+    "provider_account_recently_played",
+    "provider_set_favorite",
+    "provider_create_playlist",
+    "provider_rename_playlist",
+    "provider_add_playlist_track",
+    "provider_remove_playlist_track",
+    "provider_delete_playlist",
+    "provider_set_playlist_collected",
+    "provider_auth_start",
+    "provider_auth_heartbeat",
+    "provider_auth_cancel",
+    "provider_auth_refresh",
+    "provider_sign_out",
+    "provider_cache_stats",
+    "provider_clear_cache",
     "qqmusic_status",
     "qqmusic_home",
     "qqmusic_discover",
@@ -148,6 +190,9 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "auth_oauth_prepare",
     "auth_oauth_complete",
     "auth_oauth_cancel",
+    "provider_auth_oauth_prepare",
+    "provider_auth_oauth_complete",
+    "provider_auth_oauth_cancel",
     "app_settings_get",
     "app_settings_set",
     "app_settings_remove",
@@ -261,6 +306,10 @@ fn provider<T: Serialize>(result: ProviderResult<T>) -> Result<Value, DispatchEr
     }
 }
 
+fn provider_command<T>(result: ProviderResult<T>) -> Result<T, DispatchError> {
+    result.map_err(provider_error)
+}
+
 fn provider_error(error: ProviderCommandError) -> DispatchError {
     DispatchError::Command {
         message: error.message.clone(),
@@ -355,6 +404,385 @@ async fn invoke_core(
                 &core.storage(),
                 &device_id,
             ))
+        }
+        "provider_list" => ok(core.providers().descriptors()),
+        "provider_status" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            ok(catalog.catalog_status().await)
+        }
+        "provider_home" => {
+            let ProviderRefreshParams {
+                provider_id,
+                refresh,
+            } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_home(refresh).await)
+        }
+        "provider_discover" => {
+            let ProviderRefreshParams {
+                provider_id,
+                refresh,
+            } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_discover(refresh).await)
+        }
+        "provider_area" => {
+            let ProviderAreaParams {
+                provider_id,
+                enc_area,
+            } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_area(enc_area).await)
+        }
+        "provider_library" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            ok(catalog.catalog_library())
+        }
+        "provider_search" => {
+            let ProviderSearchParams {
+                provider_id,
+                query,
+                kind,
+                page,
+                limit,
+            } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_search(query, kind, page, limit).await)
+        }
+        "provider_song" => {
+            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_song(id).await)
+        }
+        "provider_album" => {
+            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_album(id).await)
+        }
+        "provider_artist" => {
+            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_artist(id).await)
+        }
+        "provider_artist_catalog" => {
+            let ProviderArtistCatalogParams {
+                provider_id,
+                id,
+                kind,
+                page,
+                limit,
+            } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_artist_page(id, kind, page, limit).await)
+        }
+        "provider_playlist" => {
+            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_playlist(id).await)
+        }
+        "provider_lyrics" => {
+            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let lyrics = provider_command(core.providers().require_lyrics_provider(&provider_id))?;
+            provider(lyrics.lyrics_for_song(id).await)
+        }
+        "provider_recommendation_next" => {
+            let ProviderNamedRequest::<yaqmc_provider_api::RecommendationRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            provider(
+                core.providers()
+                    .recommendation_next(&provider_id, request)
+                    .await,
+            )
+        }
+        "provider_cache_artwork" => {
+            let ProviderUrlParams { provider_id, url } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_artwork_data_uri(url).await)
+        }
+        "provider_set_preferred_quality" => {
+            let ProviderQualityParams {
+                provider_id,
+                quality,
+            } = parse(&params)?;
+            let playback =
+                provider_command(core.providers().require_playback_provider(&provider_id))?;
+            provider(
+                ops::provider_set_preferred_quality(
+                    &provider_id,
+                    playback.as_ref(),
+                    &core.player(),
+                    quality,
+                )
+                .await,
+            )
+        }
+        "provider_set_current_quality" => {
+            let ProviderQualityParams {
+                provider_id,
+                quality,
+            } = parse(&params)?;
+            let playback =
+                provider_command(core.providers().require_playback_provider(&provider_id))?;
+            provider(
+                ops::provider_set_current_quality(
+                    &provider_id,
+                    playback.as_ref(),
+                    &core.player(),
+                    quality,
+                )
+                .await,
+            )
+        }
+        "provider_account_login_methods" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            let account =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(account.account_login_methods().await)
+        }
+        "provider_account_snapshot" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            ok(capability.provider_account().account_snapshot().await)
+        }
+        "provider_favorite_songs" => {
+            let ProviderCursorPageParams {
+                provider_id,
+                cursor,
+                limit,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(
+                capability
+                    .provider_account()
+                    .favorite_songs(cursor, limit)
+                    .await,
+            )
+        }
+        "provider_account_playlists" => {
+            let ProviderCursorPageParams {
+                provider_id,
+                cursor,
+                limit,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(
+                capability
+                    .provider_account()
+                    .account_playlists(cursor, limit)
+                    .await,
+            )
+        }
+        "provider_account_playlist_tracks" => {
+            let ProviderPlaylistTracksParams {
+                provider_id,
+                playlist,
+                cursor,
+                limit,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(
+                capability
+                    .provider_account()
+                    .account_playlist_tracks(playlist, cursor, limit)
+                    .await,
+            )
+        }
+        "provider_account_recently_played" => {
+            let ProviderCursorPageParams {
+                provider_id,
+                cursor,
+                limit,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(
+                capability
+                    .provider_account()
+                    .account_recently_played(cursor, limit)
+                    .await,
+            )
+        }
+        "provider_set_favorite" => {
+            let ProviderNamedRequest::<FavoriteMutationRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.provider_account().set_favorite(request).await)
+        }
+        "provider_create_playlist" => {
+            let ProviderNamedRequest::<CreatePlaylistRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.provider_account().create_playlist(request).await)
+        }
+        "provider_rename_playlist" => {
+            let ProviderNamedRequest::<RenamePlaylistRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.provider_account().rename_playlist(request).await)
+        }
+        "provider_add_playlist_track" => {
+            let ProviderNamedRequest::<PlaylistTrackMutationRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(
+                capability
+                    .provider_account()
+                    .add_playlist_track(request)
+                    .await,
+            )
+        }
+        "provider_remove_playlist_track" => {
+            let ProviderNamedRequest::<PlaylistTrackMutationRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(
+                capability
+                    .provider_account()
+                    .remove_playlist_track(request)
+                    .await,
+            )
+        }
+        "provider_delete_playlist" => {
+            let ProviderNamedRequest::<DeletePlaylistRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.provider_account().delete_playlist(request).await)
+        }
+        "provider_set_playlist_collected" => {
+            let ProviderNamedRequest::<CollectPlaylistRequest> {
+                provider_id,
+                request,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(
+                capability
+                    .provider_account()
+                    .set_playlist_collected(request)
+                    .await,
+            )
+        }
+        "provider_auth_start" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            core.continuation()
+                .end(ContinuationTerminalReason::AccountChanged)
+                .await;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.provider_account().start_qr_login().await)
+        }
+        "provider_auth_heartbeat" => {
+            let ProviderAuthHeartbeatParams {
+                provider_id,
+                attempt_id,
+                owner_lease_id,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            let account = capability.provider_account();
+            let result = if account.is_oauth_login(&attempt_id).await
+                && !host.oauth_window_is_live(&attempt_id)
+            {
+                account.cancel_oauth_login(&attempt_id).await
+            } else {
+                account.heartbeat_qr_login(attempt_id, owner_lease_id).await
+            };
+            core.continuation()
+                .validate_account_generation(&provider_id)
+                .await;
+            provider(result)
+        }
+        "provider_auth_cancel" => {
+            let ProviderAttemptParams {
+                provider_id,
+                attempt_id,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            let result = capability
+                .provider_account()
+                .cancel_qr_login(attempt_id.clone())
+                .await;
+            host.close_oauth_window(&attempt_id);
+            core.continuation()
+                .validate_account_generation(&provider_id)
+                .await;
+            provider(result)
+        }
+        "provider_auth_refresh" => {
+            let ProviderOptionalAttemptParams {
+                provider_id,
+                attempt_id,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            let result = capability
+                .provider_account()
+                .refresh_qr_login(attempt_id)
+                .await;
+            core.continuation()
+                .validate_account_generation(&provider_id)
+                .await;
+            provider(result)
+        }
+        "provider_sign_out" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            core.continuation()
+                .end(ContinuationTerminalReason::AccountChanged)
+                .await;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.provider_account().sign_out().await)
+        }
+        "provider_cache_stats" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_cache_stats())
+        }
+        "provider_clear_cache" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            let catalog =
+                provider_command(core.providers().require_catalog_provider(&provider_id))?;
+            provider(catalog.catalog_clear_cache())
         }
         "qqmusic_status" => ok(core.qq_music().status().await),
         "qqmusic_home" => {
@@ -934,6 +1362,53 @@ async fn invoke_core(
             let result = ops::auth_oauth_cancel(core.qq_music().as_ref(), &attempt_id).await;
             core.continuation()
                 .validate_account_generation("qqmusic")
+                .await;
+            provider(result)
+        }
+        "provider_auth_oauth_prepare" => {
+            let ProviderOAuthPrepareParams {
+                provider_id,
+                method_id,
+            } = parse(&params)?;
+            core.continuation()
+                .end(ContinuationTerminalReason::AccountChanged)
+                .await;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.account_prepare_login(&method_id).await)
+        }
+        "provider_auth_oauth_complete" => {
+            let ProviderOAuthCompleteParams {
+                provider_id,
+                attempt_id,
+                callback_url,
+            } = parse(&params)?;
+            let callback_url = reqwest::Url::parse(&callback_url)
+                .map_err(|error| DispatchError::InvalidParams(error.to_string()))?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            let result = capability
+                .provider_account()
+                .complete_oauth_login(&attempt_id, callback_url)
+                .await;
+            core.continuation()
+                .validate_account_generation(&provider_id)
+                .await;
+            provider(result)
+        }
+        "provider_auth_oauth_cancel" => {
+            let ProviderAttemptParams {
+                provider_id,
+                attempt_id,
+            } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            let result = capability
+                .provider_account()
+                .cancel_oauth_login(&attempt_id)
+                .await;
+            core.continuation()
+                .validate_account_generation(&provider_id)
                 .await;
             provider(result)
         }

@@ -123,6 +123,10 @@ impl ComponentHostServices {
         }
     }
 
+    pub(crate) fn runtime_handle(&self) -> tokio::runtime::Handle {
+        self.inner.runtime.clone()
+    }
+
     pub fn remove_plugin_data(&self, plugin_id: &str, provider_id: &str) -> Result<(), String> {
         let namespace = namespace_id(plugin_id, provider_id);
         let _filesystem = self

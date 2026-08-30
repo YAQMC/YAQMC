@@ -305,6 +305,10 @@ impl api::MusicProvider for QQMusicService {
         "qqmusic"
     }
 
+    fn display_name(&self) -> &str {
+        "QQ Music"
+    }
+
     fn account(&self) -> &dyn api::ProviderAccount {
         self
     }

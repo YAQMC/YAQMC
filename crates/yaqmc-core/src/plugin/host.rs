@@ -21,7 +21,7 @@ use crate::plugin::{
     scanner::{css_is_blocked, ScanReport},
     PLUGIN_STORAGE_QUOTA,
 };
-use yaqmc_provider_api::ProviderRegistry;
+use yaqmc_provider_api::{ProviderCapabilitySummary, ProviderRegistry};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -212,6 +212,7 @@ struct ProviderRuntimeState {
     registry: Option<Arc<ProviderRegistry>>,
     host_services: Option<ComponentHostServices>,
     active: HashMap<String, ActiveComponentProvider>,
+    restore_accounts_on_activation: bool,
 }
 
 struct ActiveComponentProvider {
@@ -369,8 +370,70 @@ impl ExtensionHost {
             runtime.registry = Some(registry);
             runtime.host_services = host_services;
         }
+        self.register_installed_provider_descriptors();
         self.reconcile_provider_plugins();
         Ok(())
+    }
+
+    fn register_installed_provider_descriptors(&self) {
+        let registry = self
+            .provider_runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .registry
+            .clone();
+        let Some(registry) = registry else { return };
+        let providers = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .records
+            .values()
+            .filter_map(|(_, manifest, _)| {
+                let provider = manifest.provider.as_ref()?;
+                let has = |capability| provider.capabilities.contains(&capability);
+                Some((
+                    provider.id.clone(),
+                    provider
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| manifest.name.clone()),
+                    ProviderCapabilitySummary {
+                        catalog: has(crate::plugin::manifest::ProviderCapability::Catalog),
+                        playback: has(crate::plugin::manifest::ProviderCapability::Playback),
+                        recommendations: has(
+                            crate::plugin::manifest::ProviderCapability::Recommendation,
+                        ),
+                        lyrics: has(crate::plugin::manifest::ProviderCapability::Lyrics),
+                        share: false,
+                        account: has(crate::plugin::manifest::ProviderCapability::Account),
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
+        for (id, name, capabilities) in providers {
+            let _ = registry.register_inactive(id, name, capabilities);
+        }
+    }
+
+    pub async fn restore_provider_accounts(&self) {
+        let (registry, provider_ids) = {
+            let mut runtime = self
+                .provider_runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            runtime.restore_accounts_on_activation = true;
+            let Some(registry) = runtime.registry.clone() else {
+                return;
+            };
+            let provider_ids = registry.provider_ids().collect::<Vec<_>>();
+            (registry, provider_ids)
+        };
+        for provider_id in provider_ids {
+            if let Ok(account) = registry.require_account_provider(provider_id.as_str()) {
+                account.provider_account().restore_session().await;
+            }
+        }
     }
 
     fn reconcile_provider_plugins(&self) {
@@ -464,7 +527,7 @@ impl ExtensionHost {
                 return Ok(());
             }
         }
-        let (registry, host_services) = {
+        let (registry, host_services, restore_account) = {
             let runtime = self
                 .provider_runtime
                 .lock()
@@ -474,6 +537,7 @@ impl ExtensionHost {
                     HostError::from("the plugin provider registry is not attached")
                 })?,
                 runtime.host_services.clone(),
+                runtime.restore_accounts_on_activation,
             )
         };
         let provider = manifest
@@ -503,6 +567,9 @@ impl ExtensionHost {
                     .and_then(|(_, origin)| origin)
             })
             .collect::<HashSet<_>>();
+        let runtime_handle = host_services
+            .as_ref()
+            .map(ComponentHostServices::runtime_handle);
         let host = host_services
             .map(|services| services.for_plugin(&manifest.id, &provider.id, allowed_origins));
         let adapter = ComponentProviderAdapter::from_manifest_with_host(&manifest, &bytes, host)
@@ -518,9 +585,19 @@ impl ExtensionHost {
                 id.to_owned(),
                 ActiveComponentProvider {
                     provider_id: adapter.provider_id().to_owned(),
-                    adapter,
+                    adapter: Arc::clone(&adapter),
                 },
             );
+        if restore_account {
+            if let (Some(runtime_handle), Ok(account)) = (
+                runtime_handle,
+                registry.require_account_provider(adapter.provider_id()),
+            ) {
+                runtime_handle.spawn(async move {
+                    account.provider_account().restore_session().await;
+                });
+            }
+        }
         Ok(())
     }
 
@@ -1253,6 +1330,12 @@ impl ExtensionHost {
                 .and_then(|(_, manifest, _)| manifest.provider.as_ref())
                 .map(|provider| provider.id.clone())
         };
+        let provider_registry = self
+            .provider_runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .registry
+            .clone();
         if remove_data {
             let services = self
                 .provider_runtime
@@ -1274,6 +1357,9 @@ impl ExtensionHost {
         inner.records.remove(id);
         inner.host.style_order.retain(|candidate| candidate != id);
         inner.runtimes.retain(|_, runtime| runtime.plugin_id != id);
+        if let (Some(registry), Some(provider_id)) = (provider_registry, provider_id.as_deref()) {
+            registry.forget_inactive(provider_id);
+        }
         let plugin_root = self.root.join(id);
         let _ = fs::remove_dir_all(&plugin_root);
         if remove_data {
@@ -2018,6 +2104,53 @@ mod tests {
             .expect("failed record");
         assert_eq!(failed.status, PluginStatus::Failed);
         assert!(!failed.enabled);
+    }
+
+    #[tokio::test]
+    async fn account_components_restore_at_startup_and_after_reenable() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().join("plugins")).expect("host");
+        let registry = provider_registry(root.path());
+        let credentials: Arc<dyn CredentialStore> =
+            Arc::new(crate::credentials::MemoryCredentialStore::default());
+        host.attach_provider_runtime(
+            Arc::clone(&registry),
+            credentials,
+            root.path().join("component-cache"),
+            tokio::runtime::Handle::current(),
+        )
+        .expect("attach");
+        let inspection = account_component_inspection();
+        let grants = inspection.manifest.requested_permission_keys();
+        let record = host
+            .install_inspection(inspection, true, &grants, "test")
+            .expect("install");
+        host.finish_provider_transition(record).expect("activate");
+
+        let account = registry
+            .require_account_provider("provider.host-probe")
+            .expect("account capability");
+        let initial_generation = account.provider_account().account_generation();
+        host.restore_provider_accounts().await;
+        assert_eq!(
+            account.provider_account().account_generation(),
+            initial_generation + 1
+        );
+
+        host.set_enabled("dev.example.host-probe", false)
+            .expect("disable");
+        host.set_enabled("dev.example.host-probe", true)
+            .expect("reenable");
+        let restored = registry
+            .require_account_provider("provider.host-probe")
+            .expect("restored account capability");
+        for _ in 0..32 {
+            if restored.provider_account().account_generation() > initial_generation {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(restored.provider_account().account_generation() > initial_generation);
     }
 
     #[tokio::test]

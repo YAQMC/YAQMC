@@ -64,6 +64,128 @@ pub struct NamedRequest<T> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderNamedRequest<T> {
+    pub provider_id: String,
+    pub request: T,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderIdParams {
+    pub provider_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderEntityParams {
+    pub provider_id: String,
+    pub id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderRefreshParams {
+    pub provider_id: String,
+    pub refresh: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderAreaParams {
+    pub provider_id: String,
+    pub enc_area: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderSearchParams {
+    pub provider_id: String,
+    pub query: String,
+    pub kind: yaqmc_provider_api::CatalogSearchKind,
+    pub page: u32,
+    pub limit: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderArtistCatalogParams {
+    pub provider_id: String,
+    pub id: String,
+    pub kind: yaqmc_provider_api::ArtistCatalogKind,
+    pub page: u32,
+    pub limit: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderUrlParams {
+    pub provider_id: String,
+    pub url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCursorPageParams {
+    pub provider_id: String,
+    pub cursor: Option<String>,
+    pub limit: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPlaylistTracksParams {
+    pub provider_id: String,
+    pub playlist: yaqmc_provider_api::AccountPlaylistSummary,
+    pub cursor: Option<String>,
+    pub limit: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderQualityParams {
+    pub provider_id: String,
+    pub quality: yaqmc_provider_api::AudioQualityPreference,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderAuthHeartbeatParams {
+    pub provider_id: String,
+    pub attempt_id: String,
+    pub owner_lease_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderAttemptParams {
+    pub provider_id: String,
+    pub attempt_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderOptionalAttemptParams {
+    pub provider_id: String,
+    pub attempt_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderOAuthPrepareParams {
+    pub provider_id: String,
+    pub method_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderOAuthCompleteParams {
+    pub provider_id: String,
+    pub attempt_id: String,
+    pub callback_url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatisticsRangeParams {
     pub range: StatisticsRange,
 }

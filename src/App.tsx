@@ -17,7 +17,7 @@ import { useEntityDetail } from './application/use-entity-detail';
 import { usePlayerStore } from './application/player-store';
 import { isNativeRuntime, useNativePlayerRuntime } from './application/native-player-runtime';
 import { useLyricsCoordinator } from './application/use-lyrics-coordinator';
-import { useMusicProvider } from './application/provider-context';
+import { useMusicProvider, useMusicProviderSelection } from './application/provider-context';
 import {
   accountPlaylistDetailToPlaylist,
   type AccountListResource,
@@ -116,6 +116,7 @@ function homePlaylists(home: HomeFeed): Playlist[] {
 export default function App() {
   const { t } = useTranslation('pages');
   const provider = useMusicProvider();
+  const providerSelection = useMusicProviderSelection();
   const accountProvider = isAccountMusicProvider(provider) ? provider : null;
   useNativePlayerRuntime();
   useLyricsCoordinator();
@@ -189,8 +190,15 @@ export default function App() {
     if (!isNativeRuntime) return;
     const client = getYaqmcClient();
     const openSong = (payload: { providerId: string; entityId: string }) => {
-      const nextRoute = catalogSongRouteFromDeepLink(provider.id, payload);
-      if (nextRoute) navigate(nextRoute);
+      const available = providerSelection.providers.some(
+        (candidate) => candidate.id === payload.providerId && candidate.available,
+      );
+      if (!available) return;
+      const nextRoute = catalogSongRouteFromDeepLink(payload.providerId, payload);
+      if (nextRoute) {
+        providerSelection.selectProvider(payload.providerId);
+        navigate(nextRoute);
+      }
     };
     const unsubscribe = client.on(CHANNEL_APP_OPEN_CATALOG_SONG, openSong);
     void client
@@ -200,7 +208,7 @@ export default function App() {
       })
       .catch(() => undefined);
     return unsubscribe;
-  }, [navigate, provider.id]);
+  }, [navigate, providerSelection]);
 
   const goBack = useCallback(() => {
     void runAfterLyricsClose(() => {
@@ -418,6 +426,7 @@ export default function App() {
     pageContent = (
       <AccountPlaylistRoute
         id={route.playlist.id}
+        providerLabel={provider.displayName}
         resource={accountPlaylistDetails[route.playlist.id] ?? { status: 'idle' }}
         onRetry={() => {
           if (accountProvider) void loadAccountPlaylist(accountProvider, route.playlist, true);
@@ -537,12 +546,14 @@ function MissingEntity({ message }: { message: string }) {
 
 function AccountPlaylistRoute({
   id,
+  providerLabel,
   resource,
   onRetry,
   onLoadMore,
   onDeleted,
 }: {
   id: string;
+  providerLabel: string;
   resource: LibraryResource<AccountPlaylistDetail>;
   onRetry: () => void;
   onLoadMore: () => void;
@@ -574,7 +585,7 @@ function AccountPlaylistRoute({
         )}
         <PlaylistPage
           key={id}
-          playlist={accountPlaylistDetailToPlaylist(detail)}
+          playlist={accountPlaylistDetailToPlaylist(detail, providerLabel)}
           accountSummary={detail.summary}
           hasMore={resource.status === 'ready' && resource.nextCursor !== null}
           loadingMore={resource.status === 'loading'}

@@ -105,6 +105,7 @@ impl std::error::Error for AclDenied {}
 
 #[derive(Clone, Copy)]
 enum OriginClass {
+    Host,
     Main,
     /// Main-window renderer continuation only. Used by dialog-split IO
     /// (`*_to` / `*_from`): the host owns the picker, not the Core write.
@@ -114,6 +115,7 @@ enum OriginClass {
 }
 
 const HOST_AND_MAIN: &[WindowOrigin] = &[WindowOrigin::Host, WindowOrigin::Main];
+const HOST_ONLY: &[WindowOrigin] = &[WindowOrigin::Host];
 const MAIN_RENDERER: &[WindowOrigin] = &[WindowOrigin::Main];
 const HOST_MAIN_AND_SURFACES: &[WindowOrigin] = &[
     WindowOrigin::Host,
@@ -156,6 +158,128 @@ const METHODS: &[MethodSpec] = &[
         MethodOwner::Core,
         OriginClass::Main,
     ),
+    spec("provider_list", MethodOwner::Core, OriginClass::Main),
+    spec("provider_status", MethodOwner::Core, OriginClass::Main),
+    spec("provider_home", MethodOwner::Core, OriginClass::Main),
+    spec("provider_discover", MethodOwner::Core, OriginClass::Main),
+    spec("provider_area", MethodOwner::Core, OriginClass::Main),
+    spec("provider_library", MethodOwner::Core, OriginClass::Main),
+    spec("provider_search", MethodOwner::Core, OriginClass::Main),
+    spec("provider_song", MethodOwner::Core, OriginClass::Main),
+    spec("provider_album", MethodOwner::Core, OriginClass::Main),
+    spec("provider_artist", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "provider_artist_catalog",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec("provider_playlist", MethodOwner::Core, OriginClass::Main),
+    spec("provider_lyrics", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "provider_recommendation_next",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_cache_artwork",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_set_preferred_quality",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_set_current_quality",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_account_login_methods",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_account_snapshot",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_favorite_songs",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_account_playlists",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_account_playlist_tracks",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_account_recently_played",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_set_favorite",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_create_playlist",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_rename_playlist",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_add_playlist_track",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_remove_playlist_track",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_delete_playlist",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_set_playlist_collected",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec("provider_auth_start", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "provider_auth_oauth_start",
+        MethodOwner::Host,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_auth_heartbeat",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec("provider_auth_cancel", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "provider_auth_refresh",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec("provider_sign_out", MethodOwner::Core, OriginClass::Main),
+    spec("provider_cache_stats", MethodOwner::Core, OriginClass::Main),
+    spec("provider_clear_cache", MethodOwner::Core, OriginClass::Main),
     spec("qqmusic_status", MethodOwner::Core, OriginClass::Main),
     spec("qqmusic_home", MethodOwner::Core, OriginClass::Main),
     spec("qqmusic_discover", MethodOwner::Core, OriginClass::Main),
@@ -508,9 +632,24 @@ const METHODS: &[MethodSpec] = &[
         MethodOwner::Core,
         OriginClass::Main,
     ),
-    spec("auth_oauth_prepare", MethodOwner::Core, OriginClass::Main),
-    spec("auth_oauth_complete", MethodOwner::Core, OriginClass::Main),
-    spec("auth_oauth_cancel", MethodOwner::Core, OriginClass::Main),
+    spec("auth_oauth_prepare", MethodOwner::Core, OriginClass::Host),
+    spec("auth_oauth_complete", MethodOwner::Core, OriginClass::Host),
+    spec("auth_oauth_cancel", MethodOwner::Core, OriginClass::Host),
+    spec(
+        "provider_auth_oauth_prepare",
+        MethodOwner::Core,
+        OriginClass::Host,
+    ),
+    spec(
+        "provider_auth_oauth_complete",
+        MethodOwner::Core,
+        OriginClass::Host,
+    ),
+    spec(
+        "provider_auth_oauth_cancel",
+        MethodOwner::Core,
+        OriginClass::Host,
+    ),
     spec("app_settings_get", MethodOwner::Core, OriginClass::Main),
     spec("app_settings_set", MethodOwner::Core, OriginClass::Main),
     spec("app_settings_remove", MethodOwner::Core, OriginClass::Main),
@@ -543,6 +682,9 @@ pub const PROTOCOL_ONLY_METHODS: &[&str] = &[
     "auth_oauth_prepare",
     "auth_oauth_complete",
     "auth_oauth_cancel",
+    "provider_auth_oauth_prepare",
+    "provider_auth_oauth_complete",
+    "provider_auth_oauth_cancel",
     "app_settings_get",
     "app_settings_set",
     "app_settings_remove",
@@ -566,6 +708,7 @@ const fn spec(name: &'static str, owner: MethodOwner, origins: OriginClass) -> M
 
 const fn origin_slice(origins: OriginClass) -> &'static [WindowOrigin] {
     match origins {
+        OriginClass::Host => HOST_ONLY,
         OriginClass::Main => HOST_AND_MAIN,
         OriginClass::MainRenderer => MAIN_RENDERER,
         OriginClass::Surfaces => HOST_MAIN_AND_SURFACES,

@@ -143,7 +143,7 @@ where
     // Restore the account session after bootstrap. Electron must
     // await it before the request loop: `account://changed` is unused, so a
     // first snapshot that still sees guest stays guest after restart.
-    core.qq_music().restore_session().await;
+    core.plugins().restore_provider_accounts().await;
 
     let core = Arc::new(core);
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();

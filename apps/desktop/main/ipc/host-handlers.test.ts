@@ -894,6 +894,95 @@ describe('IpcRouter host intercepts', () => {
     expect(createWindow).not.toHaveBeenCalled();
   });
 
+  it('keeps provider OAuth preparation and callback authority inside Host', async () => {
+    const prepared = {
+      attemptId: 'attempt-provider-0',
+      url: 'https://accounts.example.com/authorize?client_id=1',
+      navigationAllowlist: ['https://accounts.example.com/**'],
+      callbackMatcher: { urlPrefix: 'https://accounts.example.com/callback?state=opaque' },
+    };
+    const snapshot = {
+      state: 'guest',
+      profile: null,
+      entitlement: null,
+      revision: 2,
+      capabilities: {
+        qrLogin: false,
+        favoriteRead: false,
+        favoriteWrite: false,
+        playlistRead: false,
+        playlistWrite: false,
+        recentHistoryRead: false,
+      },
+    };
+    const oauthWindow = {
+      webContents: {
+        on: vi.fn(),
+        setWindowOpenHandler: vi.fn(),
+      },
+      loadURL: vi.fn(),
+      close: vi.fn(),
+      on: vi.fn(),
+    };
+    const createWindow = vi.fn<OAuthHostDeps['createWindow']>(() => oauthWindow);
+    const fromPartition = vi.fn<OAuthHostDeps['fromPartition']>(() => ({
+      partition: 'provider-oauth-session',
+    }));
+    const invoke = vi.fn<OAuthHostDeps['invoke']>(async (method) => {
+      if (method === 'provider_auth_oauth_prepare') return prepared;
+      if (method === 'provider_account_snapshot') return snapshot;
+      return { ok: true };
+    });
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      oauth: { createWindow, fromPartition, isPackaged: true, invoke },
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(
+      router.invoke(1, {
+        method: 'provider_auth_oauth_start',
+        params: { providerId: 'plugin.example', methodId: 'browser-oauth' },
+      }),
+    ).resolves.toEqual({ ok: true, result: snapshot });
+    expect(invoke).toHaveBeenCalledWith('provider_auth_oauth_prepare', {
+      providerId: 'plugin.example',
+      methodId: 'browser-oauth',
+    });
+    expect(fromPartition).toHaveBeenCalledWith('oauth:plugin.example:attempt-provider-0', {
+      cache: false,
+    });
+    expect(invoke).toHaveBeenCalledWith('provider_account_snapshot', {
+      providerId: 'plugin.example',
+    });
+    expect(oauthWindow.loadURL).toHaveBeenCalledWith(prepared.url);
+
+    await expect(
+      router.invoke(1, {
+        method: 'provider_auth_oauth_start',
+        params: { providerId: '../escape', methodId: 'browser-oauth' },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { message: 'provider_auth_oauth_start requires providerId and methodId' },
+    });
+    await expect(
+      router.invoke(2, {
+        method: 'provider_auth_oauth_start',
+        params: { providerId: 'plugin.example', methodId: 'browser-oauth' },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: hostDenied('provider_auth_oauth_start', 'lyrics-desktop'),
+    });
+  });
+
   it('leaves qqmusic_auth_oauth_start unimplemented until OAuth deps are injected', async () => {
     const handlers = createHostHandlers({
       openExternal: vi.fn(),

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import { create } from 'zustand';
 import type {
   AccountLoginMethod,
@@ -868,7 +868,10 @@ async function loadAccountPlaylistResource(
   }
 }
 
-export function accountPlaylistDetailToPlaylist(detail: AccountPlaylistDetail): Playlist {
+export function accountPlaylistDetailToPlaylist(
+  detail: AccountPlaylistDetail,
+  providerLabel = 'QQ Music',
+): Playlist {
   return {
     id: detail.summary.id,
     title: detail.summary.title,
@@ -877,7 +880,7 @@ export function accountPlaylistDetailToPlaylist(detail: AccountPlaylistDetail): 
     artwork: detail.summary.artwork,
     updatedLabel:
       detail.summary.updatedAtMs === null || detail.summary.updatedAtMs === 0
-        ? 'QQ Music'
+        ? providerLabel
         : String(new Date(detail.summary.updatedAtMs).getUTCFullYear()),
     tracks: detail.tracks.items,
   };
@@ -1827,6 +1830,10 @@ export async function runTemporaryPlaylistAcceptance(
 }
 
 export function useAccountRuntime(provider: MusicProvider): void {
+  useLayoutEffect(() => {
+    resetAccountProjection();
+  }, [provider]);
+
   useEffect(() => {
     if (!isAccountMusicProvider(provider)) return;
     const controller = new AbortController();
@@ -1869,13 +1876,17 @@ export function releaseAccountDialogOwnership(provider: AccountMusicProvider): v
 }
 
 export function resetAccountRuntimeForTest(): void {
+  runtimeAbortController?.abort();
+  runtimeAbortController = null;
+  runtimeProvider = null;
+  resetAccountProjection();
+}
+
+function resetAccountProjection(): void {
   ++requestGeneration;
   invalidateLibraryRequests();
   accountPlaylistGenerations.clear();
   clearOwnershipTimers();
-  runtimeAbortController?.abort();
-  runtimeAbortController = null;
-  runtimeProvider = null;
   blockedAttempts.clear();
   cancellationRequests.clear();
   favoriteMutationVersion = 0;

@@ -38,6 +38,7 @@ import {
 import { type LyricsUnlockKind, type LyricsUnlockOverlays } from '../windows/lyrics-unlock';
 import {
   openOAuthWindow,
+  openProviderOAuthWindow,
   type OAuthWindowCreateOptions,
   type OAuthWindowLike,
 } from '../windows/oauth-window';
@@ -198,6 +199,21 @@ export function loginProviderFromParams(params: unknown): AccountLoginMethod | u
     return loginProvider;
   }
   return undefined;
+}
+
+export function providerOAuthFromParams(
+  params: unknown,
+): { providerId: string; methodId: string } | undefined {
+  if (!params || typeof params !== 'object') return undefined;
+  const { providerId, methodId } = params as {
+    providerId?: unknown;
+    methodId?: unknown;
+  };
+  const validId = (value: unknown) =>
+    typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/u.test(value);
+  return validId(providerId) && validId(methodId)
+    ? { providerId: providerId as string, methodId: methodId as string }
+    : undefined;
 }
 
 function defaultPathFromParams(params: unknown, fallback: string): string {
@@ -870,6 +886,24 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         auth_oauth_cancel: (cancelParams) => oauth.invoke('auth_oauth_cancel', cancelParams),
       });
       return oauth.invoke('qqmusic_account_snapshot');
+    };
+    handlers.provider_auth_oauth_start = async (params) => {
+      const input = providerOAuthFromParams(params);
+      if (!input) {
+        throw new Error('provider_auth_oauth_start requires providerId and methodId');
+      }
+      await openProviderOAuthWindow(input, {
+        createWindow: oauth.createWindow,
+        fromPartition: oauth.fromPartition,
+        isPackaged: oauth.isPackaged,
+        provider_auth_oauth_prepare: (prepareParams) =>
+          oauth.invoke('provider_auth_oauth_prepare', prepareParams) as Promise<OAuthPrepareResult>,
+        provider_auth_oauth_complete: (completeParams) =>
+          oauth.invoke('provider_auth_oauth_complete', completeParams),
+        provider_auth_oauth_cancel: (cancelParams) =>
+          oauth.invoke('provider_auth_oauth_cancel', cancelParams),
+      });
+      return oauth.invoke('provider_account_snapshot', { providerId: input.providerId });
     };
   }
 

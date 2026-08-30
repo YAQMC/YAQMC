@@ -468,7 +468,13 @@ export interface AccountCapabilities {
   recentHistoryRead: boolean;
 }
 
-export type AccountLoginMethod = 'qq' | 'wechat';
+export type AccountLoginMethod = string;
+
+export interface AccountLoginMethodDescriptor {
+  id: AccountLoginMethod;
+  label: string;
+  flow: 'oauth';
+}
 
 export type AccountState =
   | { state: 'guest'; profile: null; entitlement: null }

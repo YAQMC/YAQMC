@@ -496,6 +496,22 @@ impl ProviderCommandError {
 
 pub type ProviderResult<T> = Result<T, ProviderCommandError>;
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AccountLoginFlow {
+    OAuth,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountLoginMethodDescriptor {
+    /// Provider-scoped stable identifier. It is opaque outside the provider
+    /// boundary and is never interpreted as an upstream platform route.
+    pub id: String,
+    pub label: String,
+    pub flow: AccountLoginFlow,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum OAuthLoginProvider {

@@ -57,12 +57,39 @@ export type OAuthWindowDeps = {
   auth_oauth_cancel: (params: { attemptId: string }) => Promise<unknown>;
 };
 
+export type ProviderOAuthWindowDeps = {
+  createWindow: (options: OAuthWindowCreateOptions) => OAuthWindowLike;
+  fromPartition: (partition: string, options?: { cache: boolean }) => unknown;
+  isPackaged: boolean;
+  provider_auth_oauth_prepare: (params: {
+    providerId: string;
+    methodId: string;
+  }) => Promise<OAuthPrepareResult>;
+  provider_auth_oauth_complete: (params: {
+    providerId: string;
+    attemptId: string;
+    callbackUrl: string;
+  }) => Promise<unknown>;
+  provider_auth_oauth_cancel: (params: {
+    providerId: string;
+    attemptId: string;
+  }) => Promise<unknown>;
+};
+
 export function oauthWindowLabel(attemptId: string): string {
   return `${OAUTH_WINDOW_PREFIX}${attemptId}`;
 }
 
 export function oauthPartitionName(attemptId: string): string {
   return `${OAUTH_PARTITION_PREFIX}${attemptId}`;
+}
+
+export function providerOAuthWindowLabel(providerId: string, attemptId: string): string {
+  return `provider-oauth-${providerId}-${attemptId}`;
+}
+
+export function providerOAuthPartitionName(providerId: string, attemptId: string): string {
+  return `${OAUTH_PARTITION_PREFIX}${providerId}:${attemptId}`;
 }
 
 export function oauthWindowTitle(kind: AccountLoginMethod): string {
@@ -165,6 +192,34 @@ export async function openOAuthWindow(
   return { attemptId };
 }
 
+export async function openProviderOAuthWindow(
+  input: { providerId: string; methodId: string },
+  deps: ProviderOAuthWindowDeps,
+): Promise<{ attemptId: string }> {
+  const prepared = await deps.provider_auth_oauth_prepare(input);
+  const attemptId = prepared.attemptId;
+  let window: OAuthWindowLike | undefined;
+  try {
+    const session = deps.fromPartition(providerOAuthPartitionName(input.providerId, attemptId), {
+      cache: false,
+    });
+    window = deps.createWindow(
+      oauthWindowCreateOptions({
+        title: `${input.methodId} — YAQMC`,
+        session,
+        isPackaged: deps.isPackaged,
+      }),
+    );
+    attachProviderOAuthWindowGuards(window, input.providerId, prepared, deps);
+    void window.loadURL(prepared.url);
+  } catch (error) {
+    void deps.provider_auth_oauth_cancel({ providerId: input.providerId, attemptId });
+    window?.close();
+    throw error;
+  }
+  return { attemptId };
+}
+
 function attachOAuthWindowGuards(
   window: OAuthWindowLike,
   prepared: OAuthPrepareResult,
@@ -205,6 +260,45 @@ function attachOAuthWindowGuards(
   });
 }
 
+function attachProviderOAuthWindowGuards(
+  window: OAuthWindowLike,
+  providerId: string,
+  prepared: OAuthPrepareResult,
+  deps: Pick<
+    ProviderOAuthWindowDeps,
+    'provider_auth_oauth_complete' | 'provider_auth_oauth_cancel'
+  >,
+): void {
+  let phase: 'open' | 'completing' | 'finished' = 'open';
+  const attemptId = prepared.attemptId;
+  const allowlist = prepared.navigationAllowlist;
+  const callbackPrefix = prepared.callbackMatcher.urlPrefix;
+  const onNavigate = (event: OAuthNavigationEvent, url: string): void => {
+    if (isOAuthCallbackUrl(url, callbackPrefix)) {
+      event.preventDefault();
+      if (phase !== 'open') return;
+      phase = 'completing';
+      void deps
+        .provider_auth_oauth_complete({ providerId, attemptId, callbackUrl: url })
+        .finally(() => {
+          phase = 'finished';
+          window.close();
+        });
+      return;
+    }
+    if (!urlMatchesOAuthAllowlist(url, allowlist)) event.preventDefault();
+  };
+
+  window.webContents.on('will-navigate', onNavigate);
+  window.webContents.on('will-redirect', onNavigate);
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.on('closed', () => {
+    if (phase !== 'open') return;
+    phase = 'finished';
+    void deps.provider_auth_oauth_cancel({ providerId, attemptId });
+  });
+}
+
 function globMatchesUrl(glob: string, href: string, parsed: URL): boolean {
   if (glob.endsWith('/**')) {
     const base = parseUrl(glob.slice(0, -3));
@@ -216,7 +310,18 @@ function globMatchesUrl(glob: string, href: string, parsed: URL): boolean {
     );
   }
   if (glob.endsWith('**')) {
-    return href.startsWith(glob.slice(0, -2));
+    const prefix = glob.slice(0, -2);
+    const base = parseUrl(prefix);
+    return (
+      base !== undefined &&
+      parsed.protocol === base.protocol &&
+      parsed.hostname === base.hostname &&
+      parsed.port === base.port &&
+      (prefix.endsWith('/')
+        ? parsed.pathname.startsWith(base.pathname)
+        : parsed.pathname === base.pathname) &&
+      href.startsWith(prefix)
+    );
   }
   return href === glob;
 }

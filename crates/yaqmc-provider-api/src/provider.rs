@@ -1,14 +1,14 @@
 //! Object-safe music-provider contracts derived from the current QQMusic service.
 
 use crate::{
-    AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot, Album, AreaFeed, Artist,
-    ArtistCatalogKind, ArtistCatalogPage, AudioQualityPreference, CacheStats,
-    CatalogProviderCapabilities, CatalogSearchKind, CollectPlaylistRequest, CreatePlaylistRequest,
-    DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest, FavoriteMutationResult, HomeFeed,
-    LibrarySnapshot, LyricDocument, OAuthLoginProvider, OAuthPrepareResult, Page,
-    PlaybackSourceResolver, Playlist, PlaylistMutationResult, PlaylistTrackMutationRequest,
-    ProviderResult, ProviderStatus, RemotePlayHistoryItem, RenamePlaylistRequest, SearchResult,
-    ShareTarget, Song,
+    AccountLoginMethodDescriptor, AccountPlaylistDetail, AccountPlaylistSummary, AccountSnapshot,
+    Album, AreaFeed, Artist, ArtistCatalogKind, ArtistCatalogPage, AudioQualityPreference,
+    CacheStats, CatalogProviderCapabilities, CatalogSearchKind, CollectPlaylistRequest,
+    CreatePlaylistRequest, DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest,
+    FavoriteMutationResult, HomeFeed, LibrarySnapshot, LyricDocument, OAuthLoginProvider,
+    OAuthPrepareResult, Page, PlaybackSourceResolver, Playlist, PlaylistMutationResult,
+    PlaylistTrackMutationRequest, ProviderResult, ProviderStatus, RemotePlayHistoryItem,
+    RenamePlaylistRequest, SearchResult, ShareTarget, Song,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -198,8 +198,11 @@ pub trait ShareProvider: Send + Sync {
 /// Optional account capability. It deliberately wraps the existing account
 /// contract so catalog-only providers do not have to implement login or
 /// mutation methods.
+#[async_trait]
 pub trait AccountProvider: Send + Sync {
     fn provider_account(&self) -> &dyn ProviderAccount;
+    async fn account_login_methods(&self) -> ProviderResult<Vec<AccountLoginMethodDescriptor>>;
+    async fn account_prepare_login(&self, method_id: &str) -> ProviderResult<OAuthPrepareResult>;
 }
 
 #[async_trait]
@@ -207,6 +210,9 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
     /// Stable runtime ID. The registry validates and owns a copy, so providers
     /// loaded from configuration or plugins do not require leaked static data.
     fn id(&self) -> &str;
+    fn display_name(&self) -> &str {
+        self.id()
+    }
     fn account(&self) -> &dyn ProviderAccount;
     fn media_http_client(&self) -> reqwest::Client;
     fn capabilities(&self) -> CatalogProviderCapabilities;

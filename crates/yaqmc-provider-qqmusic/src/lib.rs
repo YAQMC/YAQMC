@@ -197,6 +197,48 @@ mod tests {
             .expect("unregister")
             .is_some());
         assert!(!registry.contains("plugin.example"));
+        let disabled = registry
+            .descriptors()
+            .into_iter()
+            .find(|provider| provider.provider_id == "plugin.example")
+            .expect("disabled provider descriptor");
+        assert!(!disabled.available);
+        assert!(disabled.capabilities.recommendations);
+        assert_eq!(
+            registry
+                .recommendation_next(
+                    "plugin.example",
+                    RecommendationRequest {
+                        kind: yaqmc_provider_api::RecommendationKind::Guess,
+                        limit: 5,
+                        cursor: None,
+                        seeds: Vec::new(),
+                    },
+                )
+                .await
+                .expect_err("disabled provider cannot be invoked")
+                .code,
+            "provider-unavailable"
+        );
+
+        let recommendation: Arc<dyn RecommendationProvider> = Arc::new(StaticRecommendations);
+        registry
+            .register_capabilities(
+                "plugin.example",
+                ProviderCapabilities {
+                    display_name: Some("Example provider".to_owned()),
+                    recommendations: Some(recommendation),
+                    ..ProviderCapabilities::default()
+                },
+            )
+            .expect("re-enable provider");
+        let restored = registry
+            .descriptors()
+            .into_iter()
+            .find(|provider| provider.provider_id == "plugin.example")
+            .expect("restored provider descriptor");
+        assert!(restored.available);
+        assert_eq!(restored.display_name, "Example provider");
         assert_eq!(
             registry.unregister("qqmusic").unwrap_err(),
             ProviderRegistryError::ProtectedDefault(

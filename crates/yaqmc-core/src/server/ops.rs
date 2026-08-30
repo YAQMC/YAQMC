@@ -27,7 +27,7 @@ use crate::storage::StorageService;
 use crate::CoreHandle;
 use yaqmc_provider_api::{
     AccountSnapshot, AudioQualityPreference, MusicProvider, OAuthLoginProvider, OAuthPrepareResult,
-    ProviderCommandError, ProviderResult, ProviderStatus,
+    PlaybackSourceProvider, ProviderCommandError, ProviderResult, ProviderStatus,
 };
 
 use super::types::{
@@ -284,13 +284,29 @@ pub async fn qqmusic_set_preferred_quality(
     player: &PlayerService,
     quality: AudioQualityPreference,
 ) -> ProviderResult<ProviderStatus> {
+    let status = provider.set_preferred_quality(quality).await?;
+    reload_provider_track(player, "qqmusic").await?;
+    Ok(status)
+}
+
+pub async fn provider_set_preferred_quality(
+    provider_id: &str,
+    provider: &dyn PlaybackSourceProvider,
+    player: &PlayerService,
+    quality: AudioQualityPreference,
+) -> ProviderResult<ProviderStatus> {
+    let status = provider.playback_set_preferred_quality(quality).await?;
+    reload_provider_track(player, provider_id).await?;
+    Ok(status)
+}
+
+async fn reload_provider_track(player: &PlayerService, provider_id: &str) -> ProviderResult<()> {
     let current = player.current_track().await;
-    let current_is_qqmusic = current
+    let current_matches = current
         .as_ref()
         .and_then(|song| song.provider.as_ref())
-        .is_some_and(|reference| reference.provider_id == "qqmusic");
-    let status = provider.set_preferred_quality(quality).await?;
-    if current_is_qqmusic {
+        .is_some_and(|reference| reference.provider_id == provider_id);
+    if current_matches {
         player
             .reload_current()
             .await
@@ -300,7 +316,7 @@ pub async fn qqmusic_set_preferred_quality(
                 retryable: true,
             })?;
     }
-    Ok(status)
+    Ok(())
 }
 
 pub async fn qqmusic_set_current_quality(
@@ -316,6 +332,36 @@ pub async fn qqmusic_set_current_quality(
         .map(|reference| reference.track_id)
         .ok_or_else(|| ProviderCommandError::invalid_request("the QQ Music request was invalid"))?;
     provider.set_current_quality(track_id, quality).await?;
+    player
+        .reload_current()
+        .await
+        .map_err(|error| ProviderCommandError {
+            code: "player-reload-failed".to_owned(),
+            message: error.to_string(),
+            retryable: true,
+        })
+}
+
+pub async fn provider_set_current_quality(
+    provider_id: &str,
+    provider: &dyn PlaybackSourceProvider,
+    player: &PlayerService,
+    quality: AudioQualityPreference,
+) -> ProviderResult<PlayerSnapshot> {
+    let track_id = player
+        .current_track()
+        .await
+        .and_then(|song| song.provider)
+        .filter(|reference| reference.provider_id == provider_id)
+        .map(|reference| reference.track_id)
+        .ok_or_else(|| {
+            ProviderCommandError::invalid_request(
+                "the selected provider is not playing the current track",
+            )
+        })?;
+    provider
+        .playback_set_current_quality(track_id, quality)
+        .await?;
     player
         .reload_current()
         .await

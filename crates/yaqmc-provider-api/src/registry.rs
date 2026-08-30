@@ -1,15 +1,17 @@
 //! Runtime-ID provider registry and legacy capability façade.
 
 use crate::{
-    AccountProvider, Album, AreaFeed, Artist, ArtistCatalogKind, ArtistCatalogPage,
-    AudioQualityPreference, CacheStats, CatalogProvider, CatalogProviderCapabilities,
-    CatalogSearchKind, DiscoverFeed, HomeFeed, LibrarySnapshot, LyricDocument, LyricsProvider,
-    MusicProvider, PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
-    PlaybackSourceSelection, Playlist, ProviderAccount, ProviderCommandError, ProviderResult,
-    ProviderStatus, RecommendationBatch, RecommendationProvider, RecommendationRequest,
-    ResolvedPlaybackSource, SearchResult, ShareProvider, ShareTarget, Song,
+    AccountLoginFlow, AccountLoginMethodDescriptor, AccountProvider, Album, AreaFeed, Artist,
+    ArtistCatalogKind, ArtistCatalogPage, AudioQualityPreference, CacheStats, CatalogProvider,
+    CatalogProviderCapabilities, CatalogSearchKind, DiscoverFeed, HomeFeed, LibrarySnapshot,
+    LyricDocument, LyricsProvider, MusicProvider, PlaybackSourceError, PlaybackSourceProvider,
+    PlaybackSourceResolver, PlaybackSourceSelection, Playlist, ProviderAccount,
+    ProviderCommandError, ProviderResult, ProviderStatus, RecommendationBatch,
+    RecommendationProvider, RecommendationRequest, ResolvedPlaybackSource, SearchResult,
+    ShareProvider, ShareTarget, Song,
 };
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
     collections::HashMap,
@@ -18,6 +20,27 @@ use std::{
 };
 
 pub const MAX_PROVIDER_ID_BYTES: usize = 64;
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCapabilitySummary {
+    pub catalog: bool,
+    pub playback: bool,
+    pub recommendations: bool,
+    pub lyrics: bool,
+    pub share: bool,
+    pub account: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderDescriptor {
+    pub provider_id: String,
+    pub display_name: String,
+    pub is_default: bool,
+    pub available: bool,
+    pub capabilities: ProviderCapabilitySummary,
+}
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ProviderId(String);
@@ -271,9 +294,41 @@ impl ShareProvider for LegacyCapabilityAdapter {
     }
 }
 
+#[async_trait]
 impl AccountProvider for LegacyCapabilityAdapter {
     fn provider_account(&self) -> &dyn ProviderAccount {
         self.provider.account()
+    }
+
+    async fn account_login_methods(&self) -> ProviderResult<Vec<AccountLoginMethodDescriptor>> {
+        Ok(vec![
+            AccountLoginMethodDescriptor {
+                id: "qq".to_owned(),
+                label: "QQ".to_owned(),
+                flow: AccountLoginFlow::OAuth,
+            },
+            AccountLoginMethodDescriptor {
+                id: "wechat".to_owned(),
+                label: "WeChat".to_owned(),
+                flow: AccountLoginFlow::OAuth,
+            },
+        ])
+    }
+
+    async fn account_prepare_login(
+        &self,
+        method_id: &str,
+    ) -> ProviderResult<crate::OAuthPrepareResult> {
+        let method = match method_id {
+            "qq" => crate::OAuthLoginProvider::Qq,
+            "wechat" => crate::OAuthLoginProvider::Wechat,
+            _ => {
+                return Err(ProviderCommandError::invalid_request(
+                    "account login method is unavailable",
+                ));
+            }
+        };
+        self.provider.prepare_oauth_login(method).await
     }
 }
 
@@ -284,6 +339,7 @@ impl AccountProvider for LegacyCapabilityAdapter {
 /// in one change.
 #[derive(Default)]
 pub struct ProviderCapabilities {
+    pub display_name: Option<String>,
     pub catalog: Option<Arc<dyn CatalogProvider>>,
     pub playback: Option<Arc<dyn PlaybackSourceProvider>>,
     pub recommendations: Option<Arc<dyn RecommendationProvider>>,
@@ -305,6 +361,7 @@ impl ProviderCapabilities {
 
 pub struct MusicProviderCapabilityFacade {
     id: ProviderId,
+    display_name: String,
     catalog: Option<Arc<dyn CatalogProvider>>,
     playback: Option<Arc<dyn PlaybackSourceProvider>>,
     recommendations: Option<Arc<dyn RecommendationProvider>>,
@@ -332,11 +389,13 @@ impl fmt::Debug for MusicProviderCapabilityFacade {
 
 impl MusicProviderCapabilityFacade {
     fn from_legacy(id: ProviderId, provider: Arc<dyn MusicProvider>) -> Self {
+        let display_name = provider.display_name().to_owned();
         let adapter = Arc::new(LegacyCapabilityAdapter {
             provider: Arc::clone(&provider),
         });
         Self {
             id,
+            display_name,
             catalog: Some(adapter.clone()),
             playback: Some(adapter.clone()),
             recommendations: Some(adapter.clone()),
@@ -348,8 +407,12 @@ impl MusicProviderCapabilityFacade {
     }
 
     fn from_capabilities(id: ProviderId, capabilities: ProviderCapabilities) -> Self {
+        let display_name = capabilities
+            .display_name
+            .unwrap_or_else(|| id.as_str().to_owned());
         Self {
             id,
+            display_name,
             catalog: capabilities.catalog,
             playback: capabilities.playback,
             recommendations: capabilities.recommendations,
@@ -362,6 +425,27 @@ impl MusicProviderCapabilityFacade {
 
     pub fn id(&self) -> &ProviderId {
         &self.id
+    }
+
+    pub fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
+    pub fn descriptor(&self, is_default: bool, available: bool) -> ProviderDescriptor {
+        ProviderDescriptor {
+            provider_id: self.id.to_string(),
+            display_name: self.display_name.clone(),
+            is_default,
+            available,
+            capabilities: ProviderCapabilitySummary {
+                catalog: self.catalog.is_some(),
+                playback: self.playback.is_some(),
+                recommendations: self.recommendations.is_some(),
+                lyrics: self.lyrics.is_some(),
+                share: self.share.is_some(),
+                account: self.account.is_some(),
+            },
+        }
     }
 
     pub fn catalog(&self) -> Option<&dyn CatalogProvider> {
@@ -399,10 +483,19 @@ impl MusicProviderCapabilityFacade {
     fn catalog_arc(&self) -> Option<Arc<dyn CatalogProvider>> {
         self.catalog.as_ref().map(Arc::clone)
     }
+
+    fn lyrics_arc(&self) -> Option<Arc<dyn LyricsProvider>> {
+        self.lyrics.as_ref().map(Arc::clone)
+    }
+
+    fn account_arc(&self) -> Option<Arc<dyn AccountProvider>> {
+        self.account.as_ref().map(Arc::clone)
+    }
 }
 
 pub struct ProviderRegistry {
     providers: RwLock<HashMap<ProviderId, Arc<MusicProviderCapabilityFacade>>>,
+    inactive: RwLock<HashMap<ProviderId, ProviderDescriptor>>,
     default_id: ProviderId,
 }
 
@@ -431,6 +524,7 @@ impl ProviderRegistry {
         }
         Ok(Self {
             providers: RwLock::new(registry),
+            inactive: RwLock::new(HashMap::new()),
             default_id,
         })
     }
@@ -449,6 +543,44 @@ impl ProviderRegistry {
         let mut ids = self.read_providers().keys().cloned().collect::<Vec<_>>();
         ids.sort();
         ids.into_iter()
+    }
+
+    pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
+        let providers = self.read_providers();
+        let mut descriptors = providers
+            .values()
+            .map(|provider| provider.descriptor(provider.id() == &self.default_id, true))
+            .collect::<Vec<_>>();
+        descriptors.extend(self.read_inactive().values().cloned());
+        descriptors.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
+        descriptors
+    }
+
+    pub fn register_inactive(
+        &self,
+        id: impl AsRef<str>,
+        display_name: impl Into<String>,
+        capabilities: ProviderCapabilitySummary,
+    ) -> Result<(), ProviderRegistryError> {
+        let id = ProviderId::parse(id).map_err(ProviderRegistryError::InvalidId)?;
+        if self.read_providers().contains_key(&id) {
+            return Ok(());
+        }
+        self.write_inactive().insert(
+            id.clone(),
+            ProviderDescriptor {
+                provider_id: id.to_string(),
+                display_name: display_name.into(),
+                is_default: id == self.default_id,
+                available: false,
+                capabilities,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn forget_inactive(&self, id: &str) {
+        self.write_inactive().remove(id);
     }
 
     pub fn default_id(&self) -> &ProviderId {
@@ -480,7 +612,9 @@ impl ProviderRegistry {
         if providers.contains_key(&id) {
             return Err(ProviderRegistryError::DuplicateId(id));
         }
-        providers.insert(id, Arc::clone(&facade));
+        providers.insert(id.clone(), Arc::clone(&facade));
+        drop(providers);
+        self.write_inactive().remove(&id);
         Ok(facade)
     }
 
@@ -493,7 +627,12 @@ impl ProviderRegistry {
                 self.default_id.clone(),
             ));
         }
-        Ok(self.write_providers().remove(id))
+        let removed = self.write_providers().remove(id);
+        if let Some(provider) = &removed {
+            self.write_inactive()
+                .insert(provider.id().clone(), provider.descriptor(false, false));
+        }
+        Ok(removed)
     }
 
     pub fn contains(&self, id: &str) -> bool {
@@ -505,6 +644,37 @@ impl ProviderRegistry {
             .and_then(|provider| provider.catalog_arc())
     }
 
+    pub fn require_catalog_provider(&self, id: &str) -> ProviderResult<Arc<dyn CatalogProvider>> {
+        let provider = self.require_provider(id)?;
+        provider
+            .catalog_arc()
+            .ok_or_else(|| unsupported_provider_capability("catalog"))
+    }
+
+    pub fn require_lyrics_provider(&self, id: &str) -> ProviderResult<Arc<dyn LyricsProvider>> {
+        let provider = self.require_provider(id)?;
+        provider
+            .lyrics_arc()
+            .ok_or_else(|| unsupported_provider_capability("lyrics"))
+    }
+
+    pub fn require_playback_provider(
+        &self,
+        id: &str,
+    ) -> ProviderResult<Arc<dyn PlaybackSourceProvider>> {
+        let provider = self.require_provider(id)?;
+        provider
+            .playback_arc()
+            .ok_or_else(|| unsupported_provider_capability("playback"))
+    }
+
+    pub fn require_account_provider(&self, id: &str) -> ProviderResult<Arc<dyn AccountProvider>> {
+        let provider = self.require_provider(id)?;
+        provider
+            .account_arc()
+            .ok_or_else(|| unsupported_provider_capability("account"))
+    }
+
     pub async fn remember_songs(&self, id: &str, songs: &[Song]) {
         if let Some(provider) = self.catalog_provider(id) {
             provider.catalog_remember_songs(songs).await;
@@ -512,9 +682,7 @@ impl ProviderRegistry {
     }
 
     pub async fn share_song(&self, provider_id: &str, id: String) -> ProviderResult<ShareTarget> {
-        let provider = self.capabilities(provider_id).ok_or_else(|| {
-            ProviderCommandError::invalid_request("music provider is unavailable")
-        })?;
+        let provider = self.require_provider(provider_id)?;
         let share = provider.share().ok_or_else(|| ProviderCommandError {
             code: "unsupported-operation".to_owned(),
             message: "this music provider does not support sharing".to_owned(),
@@ -537,9 +705,7 @@ impl ProviderRegistry {
         provider_id: &str,
         request: RecommendationRequest,
     ) -> ProviderResult<RecommendationBatch> {
-        let provider = self.capabilities(provider_id).ok_or_else(|| {
-            ProviderCommandError::invalid_request("music provider is unavailable")
-        })?;
+        let provider = self.require_provider(provider_id)?;
         let recommendations = provider
             .recommendations()
             .ok_or_else(|| ProviderCommandError {
@@ -548,6 +714,14 @@ impl ProviderRegistry {
                 retryable: false,
             })?;
         recommendations.recommendation_next(request).await
+    }
+
+    fn require_provider(&self, id: &str) -> ProviderResult<Arc<MusicProviderCapabilityFacade>> {
+        self.capabilities(id).ok_or_else(|| ProviderCommandError {
+            code: "provider-unavailable".to_owned(),
+            message: "music provider is unavailable".to_owned(),
+            retryable: false,
+        })
     }
 
     fn playback_for_song(
@@ -582,6 +756,30 @@ impl ProviderRegistry {
         self.providers
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn read_inactive(
+        &self,
+    ) -> std::sync::RwLockReadGuard<'_, HashMap<ProviderId, ProviderDescriptor>> {
+        self.inactive
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn write_inactive(
+        &self,
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<ProviderId, ProviderDescriptor>> {
+        self.inactive
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+fn unsupported_provider_capability(capability: &str) -> ProviderCommandError {
+    ProviderCommandError {
+        code: "unsupported-operation".to_owned(),
+        message: format!("this music provider does not support {capability}"),
+        retryable: false,
     }
 }
 

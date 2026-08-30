@@ -1,9 +1,6 @@
-import type { MethodName } from '@yaqmc/client';
-import { getYaqmcClient } from '../../application/yaqmc-runtime';
 import {
-  PROVIDER_ERROR_CODES,
-  ProviderError,
   type AccountLoginMethod,
+  type AccountLoginMethodDescriptor,
   type AccountPlaylistDetail,
   type AccountPlaylistSummary,
   type AccountSnapshot,
@@ -27,7 +24,6 @@ import {
   type Playlist,
   type PlaylistMutationResult,
   type PlaylistTrackMutationRequest,
-  type ProviderErrorCode,
   type RemotePlayHistoryItem,
   type RenamePlaylistRequest,
   type SearchResult,
@@ -35,57 +31,7 @@ import {
   type Song,
 } from '../../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../music-provider';
-
-interface NativeProviderError {
-  code?: string;
-  message?: string;
-  retryable?: boolean;
-}
-
-const providerErrorCodes = new Set<ProviderErrorCode>(PROVIDER_ERROR_CODES);
-
-function isProviderErrorCode(value: unknown): value is ProviderErrorCode {
-  return typeof value === 'string' && providerErrorCodes.has(value as ProviderErrorCode);
-}
-
-function abortError(): DOMException {
-  return new DOMException('The provider request was cancelled.', 'AbortError');
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw abortError();
-}
-
-function providerError(error: unknown): ProviderError {
-  const value = error as NativeProviderError | null;
-  if (value && typeof value === 'object' && isProviderErrorCode(value.code)) {
-    return new ProviderError(
-      value.code,
-      typeof value.message === 'string' ? value.message : 'QQ Music request failed.',
-      Boolean(value.retryable),
-    );
-  }
-  return new ProviderError('provider-failure', 'QQ Music request failed.', false);
-}
-
-async function nativeRequest<T>(
-  command: string,
-  args: Record<string, unknown> | undefined,
-  signal?: AbortSignal,
-): Promise<T> {
-  throwIfAborted(signal);
-  try {
-    const client = getYaqmcClient();
-    const result = (await (args === undefined
-      ? client.invoke(command as MethodName)
-      : client.invoke(command as MethodName, args as never))) as T;
-    throwIfAborted(signal);
-    return result;
-  } catch (error) {
-    throwIfAborted(signal);
-    throw providerError(error);
-  }
-}
+import { nativeProviderRequest as nativeRequest } from '../native/native-request';
 
 export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
   readonly id = 'qqmusic';
@@ -153,6 +99,13 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
 
   getAccountSnapshot(signal?: AbortSignal): Promise<AccountSnapshot> {
     return nativeRequest('qqmusic_account_snapshot', undefined, signal);
+  }
+
+  getLoginMethods(): Promise<AccountLoginMethodDescriptor[]> {
+    return Promise.resolve([
+      { id: 'qq', label: 'QQ', flow: 'oauth' },
+      { id: 'wechat', label: 'WeChat', flow: 'oauth' },
+    ]);
   }
 
   startWebLogin(method: AccountLoginMethod, signal?: AbortSignal): Promise<AccountSnapshot> {

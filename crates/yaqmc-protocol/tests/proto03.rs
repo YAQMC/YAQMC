@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_138_method_single_source_of_truth() {
+fn registry_is_the_179_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 125 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 163 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -27,6 +27,31 @@ fn registry_is_the_138_method_single_source_of_truth() {
         assert!(method(name).is_some(), "{name}");
         assert_eq!(method(name).expect(name).owner, MethodOwner::Core);
     }
+}
+
+#[test]
+fn oauth_launch_details_are_host_only() {
+    for name in [
+        "auth_oauth_prepare",
+        "auth_oauth_complete",
+        "auth_oauth_cancel",
+        "provider_auth_oauth_prepare",
+        "provider_auth_oauth_complete",
+        "provider_auth_oauth_cancel",
+    ] {
+        let spec = method(name).expect(name);
+        assert_eq!(spec.owner, MethodOwner::Core);
+        assert_eq!(spec.allowed_origins, [WindowOrigin::Host].as_slice());
+        authorize(WindowOrigin::Host, name).expect("trusted Electron host");
+        assert!(
+            authorize(WindowOrigin::Main, name).is_err(),
+            "{name} renderer"
+        );
+    }
+
+    let start = method("provider_auth_oauth_start").expect("host OAuth start");
+    assert_eq!(start.owner, MethodOwner::Host);
+    assert!(start.allows(WindowOrigin::Main));
 }
 
 #[test]

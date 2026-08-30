@@ -464,6 +464,12 @@ export interface AccountCapabilities {
 
 export type AccountLoginMethod = 'qq' | 'wechat';
 
+export interface AccountLoginMethodDescriptor {
+  id: string;
+  label: string;
+  flow: 'oauth';
+}
+
 export type AccountState =
   | { state: 'guest'; profile: null; entitlement: null }
   | { state: 'restoring-session'; profile: null; entitlement: null }
@@ -669,6 +675,38 @@ export interface ProviderStatus {
   message: string;
   preferredQuality: AudioQualityPreference;
   capabilities: CatalogProviderCapabilities;
+}
+
+export interface ProviderCapabilitySummary {
+  catalog: boolean;
+  playback: boolean;
+  recommendations: boolean;
+  lyrics: boolean;
+  share: boolean;
+  account: boolean;
+}
+
+export interface ProviderDescriptor {
+  providerId: string;
+  displayName: string;
+  isDefault: boolean;
+  available: boolean;
+  capabilities: ProviderCapabilitySummary;
+}
+
+export type RecommendationKind = 'guess' | 'radar';
+
+export interface RecommendationRequest {
+  kind: RecommendationKind;
+  limit: number;
+  cursor: string | null;
+  seeds: Array<{ trackId: string; numericId: number | null }>;
+}
+
+export interface RecommendationBatch {
+  songs: Song[];
+  nextCursor: string | null;
+  ended: boolean;
 }
 
 export interface CacheStats {

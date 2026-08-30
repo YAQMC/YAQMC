@@ -247,7 +247,7 @@ describe('SettingsPage account section', () => {
     });
     const { container } = renderSettings(account.value);
 
-    expect(screen.getByText('QQ Music returned an unexpected response.')).toBeInTheDocument();
+    expect(screen.getByText('Account Test returned an unexpected response.')).toBeInTheDocument();
     expect(container.textContent).not.toContain('private-attempt-id');
   });
 

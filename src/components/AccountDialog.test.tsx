@@ -147,22 +147,22 @@ describe('AccountDialog', () => {
   beforeEach(() => resetAccountRuntimeForTest());
 
   it.each([
-    ['guest', 'Choose QQ or WeChat to authorize QQ Music'],
+    ['guest', 'Choose an authorization method for Account Test'],
     ['restoring-session', 'Restoring your account session'],
     ['starting-login', 'Opening the official authorization window'],
-    ['waiting-for-confirmation', 'Complete sign-in in the official authorization window'],
+    ['waiting-for-confirmation', 'Complete sign-in in the provider authorization window'],
     ['expired', 'This authorization attempt expired'],
-    ['rejected', 'QQ Music rejected this sign-in'],
+    ['rejected', 'Account Test rejected this sign-in'],
     ['cancelled', 'Sign-in was cancelled'],
-    ['network-error', 'QQ Music could not be reached'],
-    ['protocol-error', 'QQ Music returned an unexpected response'],
+    ['network-error', 'Account Test could not be reached'],
+    ['protocol-error', 'Account Test returned an unexpected response'],
     ['authenticated', 'Signed in as Synthetic Listener'],
-    ['session-expired', 'Your QQ Music session expired'],
+    ['session-expired', 'Your Account Test session expired'],
     ['reauthentication-required', 'Authorize this account again'],
     ['secure-store-unavailable', 'The secure credential store is unavailable'],
   ] as const)('renders the %s state without raw native errors', (state, message) => {
     const { unmount } = renderDialog(stateSnapshot(state));
-    expect(screen.getByRole('dialog', { name: 'QQ Music sign in' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Account Test sign in' })).toBeInTheDocument();
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Close' })).toBeVisible();
     expect(document.body.textContent).not.toContain('private native detail');
@@ -174,7 +174,7 @@ describe('AccountDialog', () => {
     if (waiting.state !== 'waiting-for-scan') throw new Error('invalid test fixture');
     const { container, unmount, cancelQrLogin } = renderDialog(waiting, waiting.qrImageDataUri);
 
-    expect(screen.getByRole('img', { name: 'Scan with QQ to sign in' })).toHaveAttribute(
+    expect(screen.getByRole('img', { name: 'Scan to sign in to Account Test' })).toHaveAttribute(
       'src',
       'data:image/png;base64,AA==',
     );
@@ -187,8 +187,10 @@ describe('AccountDialog', () => {
 
   it('refuses a non-data QR projection even when the native state is waiting', () => {
     renderDialog(stateSnapshot('waiting-for-scan'), 'https://untrusted.example/qr.png');
-    expect(screen.queryByRole('img', { name: 'Scan with QQ to sign in' })).not.toBeInTheDocument();
-    expect(screen.getByText('QQ Music returned an unexpected response.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('img', { name: 'Scan to sign in to Account Test' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Account Test returned an unexpected response.')).toBeInTheDocument();
   });
 
   it('routes QQ and WeChat OAuth, cancel, and close through the account store', async () => {
@@ -212,6 +214,28 @@ describe('AccountDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(useAccountStore.getState().displayedQrImageDataUri).toBeNull();
     expect(waiting.cancelQrLogin).toHaveBeenCalledOnce();
+  });
+
+  it('renders provider-declared login methods without assuming QQ routes', async () => {
+    const account = provider();
+    const getLoginMethods = vi
+      .fn()
+      .mockResolvedValue([
+        { id: 'browser-oauth', label: 'Continue with Example ID', flow: 'oauth' },
+      ]);
+    Object.assign(account.value, { getLoginMethods });
+    useAccountStore.setState({ snapshot: stateSnapshot('guest'), dialogOpen: true });
+    const view = render(
+      <ProviderContext.Provider value={account.value}>
+        <AccountDialog />
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with Example ID' }));
+    expect(getLoginMethods).toHaveBeenCalledOnce();
+    expect(account.startWebLogin).toHaveBeenCalledWith('browser-oauth', undefined);
+    expect(screen.queryByRole('button', { name: 'Continue with QQ' })).not.toBeInTheDocument();
+    view.unmount();
   });
 
   it('contains keyboard focus and closes on Escape', () => {

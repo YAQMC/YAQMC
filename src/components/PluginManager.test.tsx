@@ -66,7 +66,9 @@ describe('PluginManager', () => {
       'true',
     );
     expect(
-      screen.getByText('Safe Mode is on. Third-party styles, scenes, and scripts are unloaded.'),
+      screen.getByText(
+        'Safe Mode is on. Third-party styles, scenes, scripts, and providers are unloaded.',
+      ),
     ).toBeInTheDocument();
     expect(setPluginSafeMode).toHaveBeenCalledWith(true);
   });
@@ -77,7 +79,9 @@ describe('PluginManager', () => {
     expect(await screen.findByRole('button', { name: /leave safe mode/i })).toBeInTheDocument();
     await waitFor(() => {
       expect(
-        screen.getByText('Safe Mode is on. Third-party styles, scenes, and scripts are unloaded.'),
+        screen.getByText(
+          'Safe Mode is on. Third-party styles, scenes, scripts, and providers are unloaded.',
+        ),
       ).toBeInTheDocument();
     });
   });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   releaseAccountDialogOwnership,
@@ -6,8 +6,13 @@ import {
   type AccountRuntimeError,
 } from '../application/account-runtime';
 import { useMusicProvider } from '../application/provider-context';
-import type { AccountSnapshot } from '../domain/music';
+import type { AccountLoginMethodDescriptor, AccountSnapshot } from '../domain/music';
 import { isAccountMusicProvider } from '../providers/music-provider';
+
+const FALLBACK_LOGIN_METHODS: readonly AccountLoginMethodDescriptor[] = [
+  { id: 'qq', label: 'QQ', flow: 'oauth' },
+  { id: 'wechat', label: 'WeChat', flow: 'oauth' },
+];
 
 function isOwnedState(snapshot: AccountSnapshot): boolean {
   return (
@@ -29,6 +34,7 @@ function stateMessage(
   snapshot: AccountSnapshot,
   error: AccountRuntimeError | null,
   t: (key: string, options?: Record<string, unknown>) => string,
+  providerName: string,
 ): string {
   if (error) {
     return t(
@@ -41,33 +47,34 @@ function stateMessage(
           unknown: 'errorUnknown',
         } satisfies Record<AccountRuntimeError, string>
       )[error],
+      { provider: providerName },
     );
   }
   switch (snapshot.state) {
     case 'guest':
-      return t('guest');
+      return t('guest', { provider: providerName });
     case 'restoring-session':
       return t('restoring');
     case 'starting-login':
       return t('starting');
     case 'waiting-for-scan':
-      return t('waitingScan');
+      return t('waitingScan', { provider: providerName });
     case 'waiting-for-confirmation':
       return t('waitingConfirmation');
     case 'expired':
       return t('expired');
     case 'rejected':
-      return t('rejected');
+      return t('rejected', { provider: providerName });
     case 'cancelled':
       return t('cancelled');
     case 'network-error':
-      return t('networkError');
+      return t('networkError', { provider: providerName });
     case 'protocol-error':
-      return t('protocolError');
+      return t('protocolError', { provider: providerName });
     case 'authenticated':
       return t('authenticated', { nickname: snapshot.profile.nickname });
     case 'session-expired':
-      return t('sessionExpired');
+      return t('sessionExpired', { provider: providerName });
     case 'reauthentication-required':
       return t('reauth');
     case 'secure-store-unavailable':
@@ -90,6 +97,31 @@ export function AccountDialog() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const accountProvider = isAccountMusicProvider(provider) ? provider : null;
+  const [loadedLoginMethods, setLoadedLoginMethods] = useState<{
+    provider: NonNullable<typeof accountProvider>;
+    methods: readonly AccountLoginMethodDescriptor[];
+  } | null>(null);
+  const loginMethods = accountProvider?.getLoginMethods
+    ? loadedLoginMethods?.provider === accountProvider
+      ? loadedLoginMethods.methods
+      : []
+    : FALLBACK_LOGIN_METHODS;
+
+  useEffect(() => {
+    if (!dialogOpen || !accountProvider?.getLoginMethods) return;
+    const controller = new AbortController();
+    void accountProvider
+      .getLoginMethods(controller.signal)
+      .then((methods) => {
+        if (!controller.signal.aborted)
+          setLoadedLoginMethods({ provider: accountProvider, methods });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setLoadedLoginMethods({ provider: accountProvider, methods: [] });
+      });
+    return () => controller.abort();
+  }, [accountProvider, dialogOpen]);
 
   useEffect(() => {
     if (dialogOpen) closeRef.current?.focus();
@@ -165,7 +197,7 @@ export function AccountDialog() {
         <header className="account-dialog__header">
           <div>
             <p>{t('eyebrow')}</p>
-            <h2 id="account-dialog-title">{t('title')}</h2>
+            <h2 id="account-dialog-title">{t('title', { provider: provider.displayName })}</h2>
           </div>
           <button
             ref={closeRef}
@@ -180,35 +212,35 @@ export function AccountDialog() {
         <div className="account-dialog__body">
           {qrImage && (
             <div className="account-dialog__qr">
-              <img src={qrImage} alt={t('scanAlt')} />
+              <img src={qrImage} alt={t('scanAlt', { provider: provider.displayName })} />
             </div>
           )}
-          <p role="status">{stateMessage(snapshot, effectiveError, t)}</p>
-          {canStart && <small className="account-dialog__notice">{t('oauthNotice')}</small>}
+          <p role="status">{stateMessage(snapshot, effectiveError, t, provider.displayName)}</p>
+          {canStart && (
+            <small className="account-dialog__notice">
+              {t('oauthNotice', { provider: provider.displayName })}
+            </small>
+          )}
           {busy && <small>{t('busy')}</small>}
         </div>
 
         <footer className="account-dialog__actions">
-          {canStart && (
-            <button
-              type="button"
-              className="button button--primary"
-              disabled={busy}
-              onClick={() => void startLogin(accountProvider, 'qq')}
-            >
-              {t('signInQq')}
-            </button>
-          )}
-          {canStart && (
-            <button
-              type="button"
-              className="button button--secondary"
-              disabled={busy}
-              onClick={() => void startLogin(accountProvider, 'wechat')}
-            >
-              {t('signInWechat')}
-            </button>
-          )}
+          {canStart &&
+            loginMethods.map((method, index) => (
+              <button
+                key={method.id}
+                type="button"
+                className={`button ${index === 0 ? 'button--primary' : 'button--secondary'}`}
+                disabled={busy}
+                onClick={() => void startLogin(accountProvider, method.id)}
+              >
+                {method.id === 'qq'
+                  ? t('signInQq')
+                  : method.id === 'wechat'
+                    ? t('signInWechat')
+                    : method.label}
+              </button>
+            ))}
           {waiting && (
             <button
               type="button"

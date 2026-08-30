@@ -1,5 +1,6 @@
 import type {
   AccountLoginMethod,
+  AccountLoginMethodDescriptor,
   AccountPlaylistDetail,
   AccountPlaylistSummary,
   AccountSnapshot,
@@ -59,6 +60,9 @@ import type {
   PluginUninstallRequest,
   PrimaryPlaybackMode,
   ProviderStatus,
+  ProviderDescriptor,
+  RecommendationBatch,
+  RecommendationRequest,
   RecordErrorRequest,
   RemotePlayHistoryItem,
   RenamePlaylistRequest,
@@ -88,6 +92,44 @@ export const MIGRATED_METHOD_NAMES = [
   'deep_link_take_pending',
   'audio_output_devices',
   'audio_set_output_device',
+  'provider_list',
+  'provider_status',
+  'provider_home',
+  'provider_discover',
+  'provider_area',
+  'provider_library',
+  'provider_search',
+  'provider_song',
+  'provider_album',
+  'provider_artist',
+  'provider_artist_catalog',
+  'provider_playlist',
+  'provider_lyrics',
+  'provider_recommendation_next',
+  'provider_cache_artwork',
+  'provider_set_preferred_quality',
+  'provider_set_current_quality',
+  'provider_account_login_methods',
+  'provider_account_snapshot',
+  'provider_favorite_songs',
+  'provider_account_playlists',
+  'provider_account_playlist_tracks',
+  'provider_account_recently_played',
+  'provider_set_favorite',
+  'provider_create_playlist',
+  'provider_rename_playlist',
+  'provider_add_playlist_track',
+  'provider_remove_playlist_track',
+  'provider_delete_playlist',
+  'provider_set_playlist_collected',
+  'provider_auth_start',
+  'provider_auth_oauth_start',
+  'provider_auth_heartbeat',
+  'provider_auth_cancel',
+  'provider_auth_refresh',
+  'provider_sign_out',
+  'provider_cache_stats',
+  'provider_clear_cache',
   'qqmusic_status',
   'qqmusic_home',
   'qqmusic_discover',
@@ -214,6 +256,9 @@ export const PROTOCOL_ONLY_METHODS = [
   'auth_oauth_prepare',
   'auth_oauth_complete',
   'auth_oauth_cancel',
+  'provider_auth_oauth_prepare',
+  'provider_auth_oauth_complete',
+  'provider_auth_oauth_cancel',
   'app_settings_get',
   'app_settings_set',
   'app_settings_remove',
@@ -240,6 +285,69 @@ export type MethodParams = Exhaustive<{
   deep_link_take_pending: void;
   audio_output_devices: void;
   audio_set_output_device: { deviceId: string };
+  provider_list: void;
+  provider_status: { providerId: string };
+  provider_home: { providerId: string; refresh: boolean };
+  provider_discover: { providerId: string; refresh: boolean };
+  provider_area: { providerId: string; encArea: string };
+  provider_library: { providerId: string };
+  provider_search: {
+    providerId: string;
+    query: string;
+    kind: CatalogSearchKind;
+    page: number;
+    limit: number;
+  };
+  provider_song: { providerId: string; id: string };
+  provider_album: { providerId: string; id: string };
+  provider_artist: { providerId: string; id: string };
+  provider_artist_catalog: {
+    providerId: string;
+    id: string;
+    kind: ArtistCatalogKind;
+    page: number;
+    limit: number;
+  };
+  provider_playlist: { providerId: string; id: string };
+  provider_lyrics: { providerId: string; id: string };
+  provider_recommendation_next: { providerId: string; request: RecommendationRequest };
+  provider_cache_artwork: { providerId: string; url: string };
+  provider_set_preferred_quality: { providerId: string; quality: AudioQualityPreference };
+  provider_set_current_quality: { providerId: string; quality: AudioQualityPreference };
+  provider_account_login_methods: { providerId: string };
+  provider_account_snapshot: { providerId: string };
+  provider_favorite_songs: { providerId: string; cursor: string | null; limit: number };
+  provider_account_playlists: { providerId: string; cursor: string | null; limit: number };
+  provider_account_playlist_tracks: {
+    providerId: string;
+    playlist: AccountPlaylistSummary;
+    cursor: string | null;
+    limit: number;
+  };
+  provider_account_recently_played: {
+    providerId: string;
+    cursor: string | null;
+    limit: number;
+  };
+  provider_set_favorite: { providerId: string; request: FavoriteMutationRequest };
+  provider_create_playlist: { providerId: string; request: CreatePlaylistRequest };
+  provider_rename_playlist: { providerId: string; request: RenamePlaylistRequest };
+  provider_add_playlist_track: { providerId: string; request: PlaylistTrackMutationRequest };
+  provider_remove_playlist_track: { providerId: string; request: PlaylistTrackMutationRequest };
+  provider_delete_playlist: { providerId: string; request: DeletePlaylistRequest };
+  provider_set_playlist_collected: { providerId: string; request: CollectPlaylistRequest };
+  provider_auth_start: { providerId: string };
+  provider_auth_oauth_start: { providerId: string; methodId: string };
+  provider_auth_heartbeat: {
+    providerId: string;
+    attemptId: string;
+    ownerLeaseId: string;
+  };
+  provider_auth_cancel: { providerId: string; attemptId: string };
+  provider_auth_refresh: { providerId: string; attemptId: string | null };
+  provider_sign_out: { providerId: string };
+  provider_cache_stats: { providerId: string };
+  provider_clear_cache: { providerId: string };
   qqmusic_status: void;
   qqmusic_home: { refresh: boolean };
   qqmusic_discover: { refresh: boolean };
@@ -376,6 +484,13 @@ export type MethodParams = Exhaustive<{
   auth_oauth_prepare: { providerKind: AccountLoginMethod };
   auth_oauth_complete: { attemptId: string; callbackUrl: string };
   auth_oauth_cancel: { attemptId: string };
+  provider_auth_oauth_prepare: { providerId: string; methodId: string };
+  provider_auth_oauth_complete: {
+    providerId: string;
+    attemptId: string;
+    callbackUrl: string;
+  };
+  provider_auth_oauth_cancel: { providerId: string; attemptId: string };
   app_settings_get: { key: string };
   app_settings_set: { key: string; value: string };
   app_settings_remove: { key: string };
@@ -394,6 +509,44 @@ export type MethodResult = Exhaustive<{
   deep_link_take_pending: OpenCatalogSongPayload | null;
   audio_output_devices: AudioOutputDevice[];
   audio_set_output_device: AudioOutputDevice[];
+  provider_list: ProviderDescriptor[];
+  provider_status: ProviderStatus;
+  provider_home: HomeFeed;
+  provider_discover: DiscoverFeed;
+  provider_area: AreaFeed;
+  provider_library: LibrarySnapshot;
+  provider_search: SearchResult;
+  provider_song: Song;
+  provider_album: Album;
+  provider_artist: Artist;
+  provider_artist_catalog: ArtistCatalogPage;
+  provider_playlist: Playlist;
+  provider_lyrics: LyricDocument | null;
+  provider_recommendation_next: RecommendationBatch;
+  provider_cache_artwork: string;
+  provider_set_preferred_quality: ProviderStatus;
+  provider_set_current_quality: PlayerSnapshot;
+  provider_account_login_methods: AccountLoginMethodDescriptor[];
+  provider_account_snapshot: AccountSnapshot;
+  provider_favorite_songs: Page<Song>;
+  provider_account_playlists: Page<AccountPlaylistSummary>;
+  provider_account_playlist_tracks: AccountPlaylistDetail;
+  provider_account_recently_played: Page<RemotePlayHistoryItem>;
+  provider_set_favorite: FavoriteMutationResult;
+  provider_create_playlist: PlaylistMutationResult;
+  provider_rename_playlist: PlaylistMutationResult;
+  provider_add_playlist_track: PlaylistMutationResult;
+  provider_remove_playlist_track: PlaylistMutationResult;
+  provider_delete_playlist: PlaylistMutationResult;
+  provider_set_playlist_collected: PlaylistMutationResult;
+  provider_auth_start: AccountSnapshot;
+  provider_auth_oauth_start: AccountSnapshot;
+  provider_auth_heartbeat: AccountSnapshot;
+  provider_auth_cancel: AccountSnapshot;
+  provider_auth_refresh: AccountSnapshot;
+  provider_sign_out: AccountSnapshot;
+  provider_cache_stats: CacheStats;
+  provider_clear_cache: CacheStats;
   qqmusic_status: ProviderStatus;
   qqmusic_home: HomeFeed;
   qqmusic_discover: DiscoverFeed;
@@ -517,6 +670,9 @@ export type MethodResult = Exhaustive<{
   auth_oauth_prepare: OAuthPrepareResult;
   auth_oauth_complete: AccountSnapshot;
   auth_oauth_cancel: AccountSnapshot;
+  provider_auth_oauth_prepare: OAuthPrepareResult;
+  provider_auth_oauth_complete: AccountSnapshot;
+  provider_auth_oauth_cancel: AccountSnapshot;
   app_settings_get: string | null;
   app_settings_set: void;
   app_settings_remove: void;

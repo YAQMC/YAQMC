@@ -10,11 +10,15 @@ import {
   oauthWindowLabel,
   oauthWindowTitle,
   openOAuthWindow,
+  openProviderOAuthWindow,
+  providerOAuthPartitionName,
+  providerOAuthWindowLabel,
   urlMatchesOAuthAllowlist,
   type OAuthNavigationEvent,
   type OAuthWindowCreateOptions,
   type OAuthWindowDeps,
   type OAuthWindowLike,
+  type ProviderOAuthWindowDeps,
 } from './oauth-window';
 
 const CALLBACK_PREFIX = 'https://y.qq.com/portal/wx_redirect.html';
@@ -135,6 +139,38 @@ function depsFor(
   };
 }
 
+function providerDepsFor(window: MockOAuthWindow) {
+  const session = { partition: 'mock-provider-oauth-session' };
+  let captured: OAuthWindowCreateOptions | undefined;
+  const createWindow = vi.fn((options: OAuthWindowCreateOptions) => {
+    captured = options;
+    return window;
+  });
+  const fromPartition = vi.fn<ProviderOAuthWindowDeps['fromPartition']>(() => session);
+  const prepare = vi.fn(async () => PREPARED);
+  const complete = vi.fn(async () => ({ ok: true }));
+  const cancel = vi.fn(async () => ({ ok: true }));
+  return {
+    createWindow,
+    fromPartition,
+    prepare,
+    complete,
+    cancel,
+    options: () => {
+      if (!captured) throw new Error('createWindow was not called');
+      return captured;
+    },
+    deps: {
+      createWindow,
+      fromPartition,
+      isPackaged: true,
+      provider_auth_oauth_prepare: prepare,
+      provider_auth_oauth_complete: complete,
+      provider_auth_oauth_cancel: cancel,
+    } satisfies ProviderOAuthWindowDeps,
+  };
+}
+
 describe('oauth partition and construction', () => {
   it('uses an ephemeral oauth: partition, no preload, and 480×640', async () => {
     const window = mockWindow();
@@ -202,6 +238,7 @@ describe('oauth allowlist globs', () => {
     expect(urlMatchesOAuthAllowlist('https://evil.test/', allowlist)).toBe(false);
     expect(urlMatchesOAuthAllowlist('file:///etc/passwd', allowlist)).toBe(false);
     expect(urlMatchesOAuthAllowlist('javascript:alert(1)', allowlist)).toBe(false);
+    expect(urlMatchesOAuthAllowlist(`${CALLBACK_PREFIX}.evil?code=abc`, allowlist)).toBe(false);
   });
 
   it('matches callback scheme, authority, path, and required query parameters structurally', () => {
@@ -234,6 +271,58 @@ describe('oauth allowlist globs', () => {
     expect(isOAuthCallbackUrl('not a URL', CALLBACK_PREFIX)).toBe(false);
     expect(isOAuthCallbackUrl(callback, 'not a URL')).toBe(false);
     expect(urlMatchesOAuthAllowlist(callback, allowlist)).toBe(true);
+  });
+});
+
+describe('provider-scoped oauth lifecycle', () => {
+  it('binds the ephemeral partition and Core calls to provider and attempt IDs', async () => {
+    const window = mockWindow();
+    const harness = providerDepsFor(window);
+    await openProviderOAuthWindow(
+      { providerId: 'plugin.example', methodId: 'browser-oauth' },
+      harness.deps,
+    );
+
+    expect(harness.prepare).toHaveBeenCalledWith({
+      providerId: 'plugin.example',
+      methodId: 'browser-oauth',
+    });
+    expect(harness.fromPartition).toHaveBeenCalledWith('oauth:plugin.example:attempt-0', {
+      cache: false,
+    });
+    expect(providerOAuthPartitionName('plugin.example', 'attempt-0')).not.toMatch(/^persist:/u);
+    expect(providerOAuthWindowLabel('plugin.example', 'attempt-0')).toBe(
+      'provider-oauth-plugin.example-attempt-0',
+    );
+    expect(harness.options().webPreferences).not.toHaveProperty('preload');
+
+    const callback = `${CALLBACK_PREFIX}?code=provider-code`;
+    window.emitRedirect(callback);
+    await vi.waitFor(() =>
+      expect(harness.complete).toHaveBeenCalledWith({
+        providerId: 'plugin.example',
+        attemptId: 'attempt-0',
+        callbackUrl: callback,
+      }),
+    );
+    expect(harness.cancel).not.toHaveBeenCalled();
+  });
+
+  it('cancels only the matching provider attempt when the user closes', async () => {
+    const window = mockWindow();
+    const harness = providerDepsFor(window);
+    await openProviderOAuthWindow(
+      { providerId: 'plugin.example', methodId: 'browser-oauth' },
+      harness.deps,
+    );
+    window.emitClosed();
+    await vi.waitFor(() =>
+      expect(harness.cancel).toHaveBeenCalledWith({
+        providerId: 'plugin.example',
+        attemptId: 'attempt-0',
+      }),
+    );
+    expect(harness.complete).not.toHaveBeenCalled();
   });
 });
 
