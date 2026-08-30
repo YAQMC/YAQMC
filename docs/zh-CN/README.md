@@ -19,8 +19,8 @@
 
 ## 贡献者
 
-- 先读[开发环境](development.md)、[整体架构](architecture.md)、[设计系统](design-system.md)和
-  [国际化](i18n.md)
+- 先读[下一阶段功能路线图](roadmap.md)、[开发环境](development.md)、[整体架构](architecture.md)、
+  [设计系统](design-system.md)和[国际化](i18n.md)
 - 核心边界：[音乐提供器契约](provider-contract.md)、[QQ 音乐提供器](qqmusic-provider.md)、
   [播放权益](entitlement.md)、[持久化与缓存](caching.md)和[桌面平台集成](platform-integration.md)
 - 互操作：[QQ 音乐封面证据](qqmusic-artwork.md)、

@@ -20,7 +20,7 @@ This directory contains the public user, tester, contributor, and release docume
 
 ## Contributors
 
-- Start with [development](development.md), [architecture](architecture.md),
+- Start with the [feature roadmap](roadmap.md), [development](development.md), [architecture](architecture.md),
   [design system](design-system.md), and [internationalization](i18n.md)
 - Core boundaries: [provider contract](provider-contract.md), [QQ Music provider](qqmusic-provider.md),
   [entitlement](entitlement.md), [caching](caching.md), and [platform integration](platform-integration.md)

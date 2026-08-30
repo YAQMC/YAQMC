@@ -46,6 +46,7 @@ const publicDocuments = [
   'qqmusic-provider.md',
   'qqmusic-artwork.md',
   'qqmusic-official-interoperability.md',
+  'roadmap.md',
   'security.md',
   'streaming.md',
   'windows-acceptance.md',
