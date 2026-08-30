@@ -141,9 +141,7 @@ impl ContinuationProviderSource for ProviderRegistry {
     }
 
     async fn remember_songs(&self, provider_id: &str, songs: &[Song]) {
-        if let Some(provider) = self.provider(provider_id) {
-            provider.remember_songs(songs).await;
-        }
+        ProviderRegistry::remember_songs(self, provider_id, songs).await;
     }
 }
 

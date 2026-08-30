@@ -35,8 +35,26 @@ mod tests {
     use yaqmc_core::{credentials::MemoryCredentialStore, storage::StorageService};
     use yaqmc_provider_api::{
         AlbumSummary, Artwork, AudioQuality, CredentialStore, PlaybackSourceError,
-        PlaybackSourceResolver, ProviderRegistry, ProviderTrackReference, Song, SongAvailability,
+        PlaybackSourceResolver, ProviderCapabilities, ProviderRegistry, ProviderRegistryError,
+        ProviderTrackReference, RecommendationBatch, RecommendationProvider, RecommendationRequest,
+        Song, SongAvailability,
     };
+
+    struct StaticRecommendations;
+
+    #[async_trait::async_trait]
+    impl RecommendationProvider for StaticRecommendations {
+        async fn recommendation_next(
+            &self,
+            _request: RecommendationRequest,
+        ) -> yaqmc_provider_api::ProviderResult<RecommendationBatch> {
+            Ok(RecommendationBatch {
+                songs: Vec::new(),
+                next_cursor: None,
+                ended: true,
+            })
+        }
+    }
 
     #[test]
     fn builtin_provider_projects_every_legacy_capability_under_a_runtime_id() {
@@ -56,9 +74,9 @@ mod tests {
         assert_eq!(
             registry
                 .provider_ids()
-                .map(|id| id.as_str())
+                .map(|id| id.to_string())
                 .collect::<Vec<_>>(),
-            vec!["qqmusic"]
+            vec!["qqmusic".to_owned()]
         );
         let capabilities = registry.capabilities("qqmusic").expect("capability façade");
         assert_eq!(capabilities.id().as_str(), "qqmusic");
@@ -66,7 +84,7 @@ mod tests {
         assert!(capabilities.playback().is_some());
         assert!(capabilities.recommendations().is_some());
         assert!(capabilities.lyrics().is_some());
-        let legacy = capabilities.legacy_provider();
+        let legacy = capabilities.legacy_provider().expect("legacy provider");
         assert!(std::ptr::eq(
             capabilities
                 .account()
@@ -123,5 +141,67 @@ mod tests {
             registry.resolve(&song).await,
             Err(PlaybackSourceError::TrackUnavailable)
         ));
+    }
+
+    #[tokio::test]
+    async fn plugin_capabilities_register_and_unregister_without_replacing_default() {
+        let root = tempfile::tempdir().expect("temporary provider root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("provider storage"),
+        );
+        let credentials: Arc<dyn CredentialStore> = Arc::new(MemoryCredentialStore::default());
+        let provider =
+            create_intree_provider(storage, credentials, root.path().join("fixture-media"))
+                .expect("built-in provider");
+        let registry = ProviderRegistry::new("qqmusic", [provider]).expect("runtime registry");
+        let recommendation: Arc<dyn RecommendationProvider> = Arc::new(StaticRecommendations);
+
+        let facade = registry
+            .register_capabilities(
+                "plugin.example",
+                ProviderCapabilities {
+                    recommendations: Some(recommendation),
+                    ..ProviderCapabilities::default()
+                },
+            )
+            .expect("register plugin provider");
+        assert_eq!(facade.id().as_str(), "plugin.example");
+        assert!(facade.catalog().is_none());
+        assert!(facade.recommendations().is_some());
+        assert!(facade.legacy_provider().is_none());
+        assert!(registry.contains("plugin.example"));
+        assert_eq!(
+            registry
+                .provider_ids()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>(),
+            vec!["plugin.example".to_owned(), "qqmusic".to_owned()]
+        );
+        let request = RecommendationRequest {
+            kind: yaqmc_provider_api::RecommendationKind::Guess,
+            limit: 5,
+            cursor: None,
+            seeds: Vec::new(),
+        };
+        assert!(
+            registry
+                .recommendation_next("plugin.example", request)
+                .await
+                .expect("plugin recommendation")
+                .ended
+        );
+
+        assert!(registry
+            .unregister("plugin.example")
+            .expect("unregister")
+            .is_some());
+        assert!(!registry.contains("plugin.example"));
+        assert_eq!(
+            registry.unregister("qqmusic").unwrap_err(),
+            ProviderRegistryError::ProtectedDefault(
+                yaqmc_provider_api::ProviderId::parse("qqmusic").expect("id")
+            )
+        );
     }
 }

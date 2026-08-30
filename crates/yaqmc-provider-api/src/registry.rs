@@ -10,7 +10,12 @@ use crate::{
     ResolvedPlaybackSource, SearchResult, ShareProvider, ShareTarget, Song,
 };
 use async_trait::async_trait;
-use std::{borrow::Borrow, collections::HashMap, fmt, sync::Arc};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    fmt,
+    sync::{Arc, RwLock},
+};
 
 pub const MAX_PROVIDER_ID_BYTES: usize = 64;
 
@@ -94,6 +99,8 @@ pub enum ProviderRegistryError {
     InvalidId(ProviderIdError),
     DuplicateId(ProviderId),
     MissingDefault(ProviderId),
+    EmptyCapabilities,
+    ProtectedDefault(ProviderId),
 }
 
 impl fmt::Display for ProviderRegistryError {
@@ -104,6 +111,15 @@ impl fmt::Display for ProviderRegistryError {
             Self::DuplicateId(id) => write!(formatter, "duplicate music provider id: {id}"),
             Self::MissingDefault(id) => {
                 write!(formatter, "default music provider is missing: {id}")
+            }
+            Self::EmptyCapabilities => {
+                formatter.write_str("a music provider must expose at least one capability")
+            }
+            Self::ProtectedDefault(id) => {
+                write!(
+                    formatter,
+                    "the default music provider cannot be removed: {id}"
+                )
             }
         }
     }
@@ -266,16 +282,81 @@ impl AccountProvider for LegacyCapabilityAdapter {
 /// Every view is present for a legacy provider. Future provider instances can
 /// make capabilities optional without forcing existing Core consumers to move
 /// in one change.
+#[derive(Default)]
+pub struct ProviderCapabilities {
+    pub catalog: Option<Arc<dyn CatalogProvider>>,
+    pub playback: Option<Arc<dyn PlaybackSourceProvider>>,
+    pub recommendations: Option<Arc<dyn RecommendationProvider>>,
+    pub lyrics: Option<Arc<dyn LyricsProvider>>,
+    pub share: Option<Arc<dyn ShareProvider>>,
+    pub account: Option<Arc<dyn AccountProvider>>,
+}
+
+impl ProviderCapabilities {
+    pub fn is_empty(&self) -> bool {
+        self.catalog.is_none()
+            && self.playback.is_none()
+            && self.recommendations.is_none()
+            && self.lyrics.is_none()
+            && self.share.is_none()
+            && self.account.is_none()
+    }
+}
+
 pub struct MusicProviderCapabilityFacade {
     id: ProviderId,
-    adapter: LegacyCapabilityAdapter,
+    catalog: Option<Arc<dyn CatalogProvider>>,
+    playback: Option<Arc<dyn PlaybackSourceProvider>>,
+    recommendations: Option<Arc<dyn RecommendationProvider>>,
+    lyrics: Option<Arc<dyn LyricsProvider>>,
+    share: Option<Arc<dyn ShareProvider>>,
+    account: Option<Arc<dyn AccountProvider>>,
+    legacy_provider: Option<Arc<dyn MusicProvider>>,
+}
+
+impl fmt::Debug for MusicProviderCapabilityFacade {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MusicProviderCapabilityFacade")
+            .field("id", &self.id)
+            .field("catalog", &self.catalog.is_some())
+            .field("playback", &self.playback.is_some())
+            .field("recommendations", &self.recommendations.is_some())
+            .field("lyrics", &self.lyrics.is_some())
+            .field("share", &self.share.is_some())
+            .field("account", &self.account.is_some())
+            .field("legacy", &self.legacy_provider.is_some())
+            .finish()
+    }
 }
 
 impl MusicProviderCapabilityFacade {
     fn from_legacy(id: ProviderId, provider: Arc<dyn MusicProvider>) -> Self {
+        let adapter = Arc::new(LegacyCapabilityAdapter {
+            provider: Arc::clone(&provider),
+        });
         Self {
             id,
-            adapter: LegacyCapabilityAdapter { provider },
+            catalog: Some(adapter.clone()),
+            playback: Some(adapter.clone()),
+            recommendations: Some(adapter.clone()),
+            lyrics: Some(adapter.clone()),
+            share: Some(adapter.clone()),
+            account: Some(adapter),
+            legacy_provider: Some(provider),
+        }
+    }
+
+    fn from_capabilities(id: ProviderId, capabilities: ProviderCapabilities) -> Self {
+        Self {
+            id,
+            catalog: capabilities.catalog,
+            playback: capabilities.playback,
+            recommendations: capabilities.recommendations,
+            lyrics: capabilities.lyrics,
+            share: capabilities.share,
+            account: capabilities.account,
+            legacy_provider: None,
         }
     }
 
@@ -284,36 +365,44 @@ impl MusicProviderCapabilityFacade {
     }
 
     pub fn catalog(&self) -> Option<&dyn CatalogProvider> {
-        Some(&self.adapter)
+        self.catalog.as_deref()
     }
 
     pub fn playback(&self) -> Option<&dyn PlaybackSourceProvider> {
-        Some(&self.adapter)
+        self.playback.as_deref()
     }
 
     pub fn recommendations(&self) -> Option<&dyn RecommendationProvider> {
-        Some(&self.adapter)
+        self.recommendations.as_deref()
     }
 
     pub fn lyrics(&self) -> Option<&dyn LyricsProvider> {
-        Some(&self.adapter)
+        self.lyrics.as_deref()
     }
 
     pub fn share(&self) -> Option<&dyn ShareProvider> {
-        Some(&self.adapter)
+        self.share.as_deref()
     }
 
     pub fn account(&self) -> Option<&dyn AccountProvider> {
-        Some(&self.adapter)
+        self.account.as_deref()
     }
 
-    pub fn legacy_provider(&self) -> Arc<dyn MusicProvider> {
-        Arc::clone(&self.adapter.provider)
+    pub fn legacy_provider(&self) -> Option<Arc<dyn MusicProvider>> {
+        self.legacy_provider.as_ref().map(Arc::clone)
+    }
+
+    fn playback_arc(&self) -> Option<Arc<dyn PlaybackSourceProvider>> {
+        self.playback.as_ref().map(Arc::clone)
+    }
+
+    fn catalog_arc(&self) -> Option<Arc<dyn CatalogProvider>> {
+        self.catalog.as_ref().map(Arc::clone)
     }
 }
 
 pub struct ProviderRegistry {
-    providers: HashMap<ProviderId, MusicProviderCapabilityFacade>,
+    providers: RwLock<HashMap<ProviderId, Arc<MusicProviderCapabilityFacade>>>,
     default_id: ProviderId,
 }
 
@@ -326,7 +415,10 @@ impl ProviderRegistry {
         let mut registry = HashMap::new();
         for provider in providers {
             let id = ProviderId::parse(provider.id()).map_err(ProviderRegistryError::InvalidId)?;
-            let facade = MusicProviderCapabilityFacade::from_legacy(id.clone(), provider);
+            let facade = Arc::new(MusicProviderCapabilityFacade::from_legacy(
+                id.clone(),
+                provider,
+            ));
             if registry.insert(id.clone(), facade).is_some() {
                 return Err(ProviderRegistryError::DuplicateId(id));
             }
@@ -338,23 +430,25 @@ impl ProviderRegistry {
             return Err(ProviderRegistryError::MissingDefault(default_id));
         }
         Ok(Self {
-            providers: registry,
+            providers: RwLock::new(registry),
             default_id,
         })
     }
 
     pub fn provider(&self, id: &str) -> Option<Arc<dyn MusicProvider>> {
-        self.providers
+        self.read_providers()
             .get(id)
-            .map(MusicProviderCapabilityFacade::legacy_provider)
+            .and_then(|provider| provider.legacy_provider())
     }
 
-    pub fn capabilities(&self, id: &str) -> Option<&MusicProviderCapabilityFacade> {
-        self.providers.get(id)
+    pub fn capabilities(&self, id: &str) -> Option<Arc<MusicProviderCapabilityFacade>> {
+        self.read_providers().get(id).map(Arc::clone)
     }
 
-    pub fn provider_ids(&self) -> impl Iterator<Item = &ProviderId> {
-        self.providers.keys()
+    pub fn provider_ids(&self) -> impl Iterator<Item = ProviderId> {
+        let mut ids = self.read_providers().keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
     }
 
     pub fn default_id(&self) -> &ProviderId {
@@ -362,10 +456,59 @@ impl ProviderRegistry {
     }
 
     pub fn default_provider(&self) -> Arc<dyn MusicProvider> {
-        self.providers
+        self.read_providers()
             .get(&self.default_id)
             .expect("ProviderRegistry validates its default provider")
             .legacy_provider()
+            .expect("ProviderRegistry default is a legacy provider")
+    }
+
+    pub fn register_capabilities(
+        &self,
+        id: impl AsRef<str>,
+        capabilities: ProviderCapabilities,
+    ) -> Result<Arc<MusicProviderCapabilityFacade>, ProviderRegistryError> {
+        if capabilities.is_empty() {
+            return Err(ProviderRegistryError::EmptyCapabilities);
+        }
+        let id = ProviderId::parse(id).map_err(ProviderRegistryError::InvalidId)?;
+        let facade = Arc::new(MusicProviderCapabilityFacade::from_capabilities(
+            id.clone(),
+            capabilities,
+        ));
+        let mut providers = self.write_providers();
+        if providers.contains_key(&id) {
+            return Err(ProviderRegistryError::DuplicateId(id));
+        }
+        providers.insert(id, Arc::clone(&facade));
+        Ok(facade)
+    }
+
+    pub fn unregister(
+        &self,
+        id: &str,
+    ) -> Result<Option<Arc<MusicProviderCapabilityFacade>>, ProviderRegistryError> {
+        if id == self.default_id.as_str() {
+            return Err(ProviderRegistryError::ProtectedDefault(
+                self.default_id.clone(),
+            ));
+        }
+        Ok(self.write_providers().remove(id))
+    }
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.read_providers().contains_key(id)
+    }
+
+    pub fn catalog_provider(&self, id: &str) -> Option<Arc<dyn CatalogProvider>> {
+        self.capabilities(id)
+            .and_then(|provider| provider.catalog_arc())
+    }
+
+    pub async fn remember_songs(&self, id: &str, songs: &[Song]) {
+        if let Some(provider) = self.catalog_provider(id) {
+            provider.catalog_remember_songs(songs).await;
+        }
     }
 
     pub async fn share_song(&self, provider_id: &str, id: String) -> ProviderResult<ShareTarget> {
@@ -407,23 +550,45 @@ impl ProviderRegistry {
         recommendations.recommendation_next(request).await
     }
 
-    fn provider_for_song(
+    fn playback_for_song(
         &self,
         song: &Song,
-    ) -> Result<Arc<dyn MusicProvider>, PlaybackSourceError> {
+    ) -> Result<Arc<dyn PlaybackSourceProvider>, PlaybackSourceError> {
         match song.provider.as_ref() {
             Some(reference) => self
-                .provider(&reference.provider_id)
+                .capabilities(&reference.provider_id)
+                .and_then(|provider| provider.playback_arc())
                 .ok_or(PlaybackSourceError::TrackUnavailable),
-            None => Ok(self.default_provider()),
+            None => self
+                .capabilities(self.default_id.as_str())
+                .and_then(|provider| provider.playback_arc())
+                .ok_or(PlaybackSourceError::TrackUnavailable),
         }
+    }
+
+    fn read_providers(
+        &self,
+    ) -> std::sync::RwLockReadGuard<'_, HashMap<ProviderId, Arc<MusicProviderCapabilityFacade>>>
+    {
+        self.providers
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn write_providers(
+        &self,
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<ProviderId, Arc<MusicProviderCapabilityFacade>>>
+    {
+        self.providers
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
 #[async_trait]
 impl PlaybackSourceResolver for ProviderRegistry {
     async fn resolve(&self, song: &Song) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
-        self.provider_for_song(song)?.resolve(song).await
+        self.playback_for_song(song)?.resolve(song).await
     }
 
     async fn resolve_client_fallback(
@@ -431,7 +596,7 @@ impl PlaybackSourceResolver for ProviderRegistry {
         song: &Song,
         failed: &PlaybackSourceSelection,
     ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
-        self.provider_for_song(song)?
+        self.playback_for_song(song)?
             .resolve_client_fallback(song, failed)
             .await
     }
