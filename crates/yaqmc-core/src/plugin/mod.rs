@@ -8,6 +8,7 @@ pub mod manifest;
 pub mod network;
 pub mod package;
 pub mod permissions;
+pub mod provider;
 pub mod scanner;
 pub mod settings;
 

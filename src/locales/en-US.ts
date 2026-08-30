@@ -843,10 +843,11 @@ export const enUS = {
       deniedList: 'QQ credentials, local files, shell, raw fetch, wildcard network',
       safeMode: 'Safe Mode',
       safeModeDescription:
-        'Disables third-party styles, scenes, and scripts without deleting packages.',
+        'Disables third-party styles, scenes, scripts, and providers without deleting packages.',
       enterSafeMode: 'Enter Safe Mode',
       leaveSafeMode: 'Leave Safe Mode',
-      safeModeActive: 'Safe Mode is on. Third-party styles, scenes, and scripts are unloaded.',
+      safeModeActive:
+        'Safe Mode is on. Third-party styles, scenes, scripts, and providers are unloaded.',
       typescriptRequiresBuild:
         'TypeScript plugins must be built to dist/main.js with the Plugin SDK.',
       uninstallConfirm: 'Uninstall {{name}}?',
@@ -856,6 +857,10 @@ export const enUS = {
       scenesCount: '{{count}} scenes',
       scriptYes: 'script',
       scriptNo: 'no script',
+      componentYes: 'WASM component',
+      componentNo: 'no WASM component',
+      provider: 'Provider',
+      circuitOpen: 'sandbox circuit open after {{count}} consecutive faults',
       permissions: 'Permissions',
       none: 'None',
       copyDiagnostics: 'Copy plugin diagnostics',
@@ -888,6 +893,11 @@ export const enUS = {
         ui_sidebar: 'Add sidebar commands',
         ui_notify: 'Show notifications',
         network_origin: 'HTTPS network: {{origin}}',
+        provider_catalog: 'Provide catalog and discovery data',
+        provider_playback: 'Resolve playable sources',
+        provider_recommendation: 'Provide recommendations',
+        provider_lyrics: 'Provide lyrics',
+        provider_account: 'Manage this provider instance account',
       },
     },
     playback: {

@@ -95,6 +95,9 @@ impl CoreServices {
             ProviderRegistry::new("qqmusic", [Arc::clone(&qq_music)])
                 .map_err(CoreBootstrapError::from_error)?,
         );
+        plugins
+            .attach_provider_registry(Arc::clone(&providers))
+            .map_err(CoreBootstrapError::from_error)?;
         let audio = inputs.audio;
         if let Ok(Some(device_id)) = storage.get_setting(AUDIO_OUTPUT_DEVICE_SETTING) {
             if let Err(error) = audio.set_output_device(&device_id) {

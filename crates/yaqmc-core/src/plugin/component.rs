@@ -289,6 +289,55 @@ fn invoke_sync(
 }
 
 #[cfg(test)]
+pub(crate) fn static_test_component(response: &str) -> String {
+    let length = response.len();
+    let response = response.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        r#"(component
+            (core module $module
+                (memory (export "memory") 1)
+                (global $heap (mut i32) (i32.const 4096))
+                (data (i32.const 1024) "{response}")
+                (func (export "realloc")
+                    (param i32 i32 i32 i32) (result i32)
+                    (local $result i32)
+                    global.get $heap
+                    local.tee $result
+                    local.get 3
+                    i32.add
+                    global.set $heap
+                    local.get $result)
+                (func (export "invoke")
+                    (param i32 i32 i32 i32 i32 i32) (result i32)
+                    i32.const 0
+                    i32.const 0
+                    i32.store
+                    i32.const 0
+                    i32.const 1024
+                    i32.store offset=4
+                    i32.const 0
+                    i32.const {length}
+                    i32.store offset=8
+                    i32.const 0))
+            (core instance $instance (instantiate $module))
+            (core func $invoke (alias core export $instance "invoke"))
+            (core func $realloc (alias core export $instance "realloc"))
+            (alias core export $instance "memory" (core memory $memory))
+            (type $invoke-type
+                (func
+                    (param "capability" string)
+                    (param "operation" string)
+                    (param "payload-json" string)
+                    (result (result string (error string)))))
+            (func (export "invoke") (type $invoke-type)
+                (canon lift (core func $invoke)
+                    (memory $memory)
+                    (realloc $realloc))))"#,
+        length = length
+    )
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -298,6 +347,26 @@ mod tests {
             ProviderComponent::load(b"not wasm", [ProviderCapability::Catalog]),
             Err(ComponentRuntimeError::InvalidComponent)
         ));
+    }
+
+    #[tokio::test]
+    async fn invokes_the_frozen_wit_envelope() {
+        let source = static_test_component(r#"{"ok":true}"#);
+        let mut config = Config::new();
+        config.wasm_component_model(true);
+        let engine = Engine::new(&config).expect("test engine");
+        if let Err(error) = Component::new(&engine, source.as_bytes()) {
+            panic!("static component must parse: {error:#}");
+        }
+        let component = ProviderComponent::load(source.as_bytes(), [ProviderCapability::Catalog])
+            .expect("static component compiles");
+        assert_eq!(
+            component
+                .invoke(ProviderCapability::Catalog, "search", "{}")
+                .await,
+            Ok(r#"{"ok":true}"#.to_owned())
+        );
+        assert_eq!(component.consecutive_faults(), 0);
     }
 
     #[tokio::test]

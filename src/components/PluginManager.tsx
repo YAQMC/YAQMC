@@ -47,7 +47,12 @@ function permissionLabel(
 }
 
 function isSensitivePermission(permission: string): boolean {
-  return permission === 'player.control' || permission.startsWith('network:');
+  return (
+    permission === 'player.control' ||
+    permission === 'provider.playback' ||
+    permission === 'provider.account' ||
+    permission.startsWith('network:')
+  );
 }
 
 function capabilityChips(plugin: PluginRecord): string[] {
@@ -55,6 +60,8 @@ function capabilityChips(plugin: PluginRecord): string[] {
   if (plugin.entrypoints.styles) chips.push('Styles');
   if (plugin.entrypoints.scenes) chips.push('Scenes');
   if (plugin.entrypoints.script) chips.push('Script');
+  if (plugin.entrypoints.component) chips.push('WASM Component');
+  if (plugin.provider) chips.push(...plugin.provider.capabilities);
   if (plugin.permissions.some((item) => item.startsWith('ui.'))) chips.push('UI');
   if (plugin.permissions.some((item) => item.startsWith('network:'))) chips.push('Network');
   return chips;
@@ -353,6 +360,12 @@ export function PluginManager() {
             SHA-256: <code>{inspect.sha256}</code>
           </p>
           <p>{t('unsigned')}</p>
+          {inspect.manifest.provider && (
+            <p>
+              {t('provider')}: {inspect.manifest.provider.id} · WIT{' '}
+              {inspect.manifest.provider.witVersion} · {inspect.manifest.provider.world}
+            </p>
+          )}
           <ul>
             {inspect.permissions.map((permission) => (
               <li key={permission}>
@@ -441,7 +454,18 @@ export function PluginManager() {
             {t('entrypoints')}: {t('stylesCount', { count: details.entrypoints.styles })} ·{' '}
             {t('scenesCount', { count: details.entrypoints.scenes })} ·{' '}
             {details.entrypoints.script ? t('scriptYes') : t('scriptNo')}
+            {' · '}
+            {details.entrypoints.component ? t('componentYes') : t('componentNo')}
           </p>
+          {details.provider && (
+            <p>
+              {t('provider')}: {details.provider.id} · WIT {details.provider.witVersion} ·{' '}
+              {details.provider.world}
+              {details.provider.circuitOpen
+                ? ` · ${t('circuitOpen', { count: details.provider.consecutiveFaults })}`
+                : ''}
+            </p>
+          )}
           <p>
             {t('permissions')}: {details.permissions.join(', ') || t('none')}
           </p>

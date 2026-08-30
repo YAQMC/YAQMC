@@ -47,7 +47,15 @@ export interface PluginRecord {
   packageSha256: string;
   source: string;
   unsigned: boolean;
-  entrypoints: { styles: number; scenes: number; script: boolean };
+  entrypoints: { styles: number; scenes: number; script: boolean; component?: boolean };
+  provider?: {
+    id: string;
+    witVersion: string;
+    world: string;
+    capabilities: string[];
+    circuitOpen: boolean;
+    consecutiveFaults: number;
+  } | null;
   permissions: string[];
   grantedPermissions: string[];
   riskRating: string;
@@ -102,6 +110,13 @@ export interface PluginInspectResult {
     apiVersion?: number;
     manifestVersion?: number;
     description?: string;
+    entrypoints?: { component?: string };
+    provider?: {
+      id: string;
+      witVersion: string;
+      world: string;
+      capabilities: string[];
+    };
   };
   permissions: string[];
   styleScan: PluginScanReport;

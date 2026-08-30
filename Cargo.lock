@@ -5395,6 +5395,7 @@ dependencies = [
  "tracing-subscriber",
  "wasmtime",
  "wasmtime-wasi",
+ "wat",
  "windows-sys 0.61.2",
  "yaqmc-protocol",
  "yaqmc-provider-api",

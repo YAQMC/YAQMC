@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -15,9 +15,11 @@ use crate::plugin::{
     manifest::{is_plugin_id, parse_semver, PluginManifest},
     package::{extract_to, inspect_package, sha256_bytes, PackageInspection},
     permissions::PluginPermission,
+    provider::ComponentProviderAdapter,
     scanner::{css_is_blocked, ScanReport},
     PLUGIN_STORAGE_QUOTA,
 };
+use yaqmc_provider_api::ProviderRegistry;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -47,6 +49,8 @@ pub struct PluginRecord {
     pub source: String,
     pub unsigned: bool,
     pub entrypoints: EntrypointSummary,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderEntrypointSummary>,
     pub permissions: Vec<String>,
     pub granted_permissions: Vec<String>,
     pub risk_rating: String,
@@ -106,6 +110,18 @@ pub struct EntrypointSummary {
     pub styles: usize,
     pub scenes: usize,
     pub script: bool,
+    pub component: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderEntrypointSummary {
+    pub id: String,
+    pub wit_version: String,
+    pub world: String,
+    pub capabilities: Vec<String>,
+    pub circuit_open: bool,
+    pub consecutive_faults: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -185,7 +201,19 @@ struct RateBucket {
 pub struct ExtensionHost {
     root: PathBuf,
     inner: Mutex<HostInner>,
+    provider_runtime: Mutex<ProviderRuntimeState>,
     runtime_seq: AtomicU64,
+}
+
+#[derive(Default)]
+struct ProviderRuntimeState {
+    registry: Option<Arc<ProviderRegistry>>,
+    active: HashMap<String, ActiveComponentProvider>,
+}
+
+struct ActiveComponentProvider {
+    provider_id: String,
+    adapter: Arc<ComponentProviderAdapter>,
 }
 
 struct HostInner {
@@ -291,8 +319,235 @@ impl ExtensionHost {
                 settings,
                 rates: HashMap::new(),
             }),
+            provider_runtime: Mutex::new(ProviderRuntimeState::default()),
             runtime_seq: AtomicU64::new(1),
         })
+    }
+
+    pub fn attach_provider_registry(
+        &self,
+        registry: Arc<ProviderRegistry>,
+    ) -> Result<(), HostError> {
+        {
+            let mut runtime = self
+                .provider_runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if runtime.registry.is_some() {
+                return Err(HostError::from(
+                    "the plugin provider registry is already attached",
+                ));
+            }
+            runtime.registry = Some(registry);
+        }
+        self.reconcile_provider_plugins();
+        Ok(())
+    }
+
+    fn reconcile_provider_plugins(&self) {
+        let desired = {
+            let inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if inner.host.safe_mode {
+                Vec::new()
+            } else {
+                inner
+                    .records
+                    .iter()
+                    .filter(|(_, (state, manifest, _))| state.enabled && manifest.api_version == 3)
+                    .map(|(id, _)| id.clone())
+                    .collect::<Vec<_>>()
+            }
+        };
+        let desired_set = desired.iter().cloned().collect::<HashSet<_>>();
+        let active = self
+            .provider_runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .active
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for id in active {
+            if !desired_set.contains(&id) {
+                if let Err(error) = self.deactivate_provider_plugin(&id) {
+                    tracing::warn!(target: "plugin.provider", plugin_id = %id, error = %error, "provider plugin could not be deactivated cleanly");
+                }
+            }
+        }
+        for id in desired {
+            if let Err(error) = self.activate_provider_plugin(&id) {
+                let reason = error.to_string();
+                let _ = self.deactivate_provider_plugin(&id);
+                let _ = self.mark_provider_failed_state(&id, &reason);
+                tracing::error!(target: "plugin.provider", plugin_id = %id, error = %error, "provider plugin activation failed");
+            }
+        }
+    }
+
+    fn reconcile_provider_plugin(
+        &self,
+        id: &str,
+        enabled: bool,
+    ) -> Result<PluginRecord, HostError> {
+        let transition = if enabled {
+            self.activate_provider_plugin(id)
+        } else {
+            self.deactivate_provider_plugin(id)
+        };
+        if let Err(error) = transition {
+            let reason = error.to_string();
+            let _ = self.deactivate_provider_plugin(id);
+            let _ = self.mark_provider_failed_state(id, &reason);
+            return Err(error);
+        }
+        self.record(id)
+    }
+
+    fn activate_provider_plugin(&self, id: &str) -> Result<(), HostError> {
+        let (manifest, dir, granted, enabled) = {
+            let inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let Some((state, manifest, dir)) = inner.records.get(id) else {
+                return Err(HostError::from("the plugin is not installed"));
+            };
+            (
+                manifest.clone(),
+                dir.clone(),
+                state.granted_permissions.clone(),
+                state.enabled && !inner.host.safe_mode,
+            )
+        };
+        if manifest.api_version != 3 || !enabled {
+            return Ok(());
+        }
+        {
+            let runtime = self
+                .provider_runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(active) = runtime.active.get(id) {
+                active.adapter.component().enable();
+                return Ok(());
+            }
+        }
+        let registry = self
+            .provider_runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .registry
+            .clone()
+            .ok_or_else(|| HostError::from("the plugin provider registry is not attached"))?;
+        let provider = manifest
+            .provider
+            .as_ref()
+            .ok_or_else(|| HostError::from("the provider declaration is missing"))?;
+        for capability in &provider.capabilities {
+            if !granted
+                .iter()
+                .any(|permission| permission == capability.as_str())
+            {
+                return Err(HostError::from("the provider capability was not granted"));
+            }
+        }
+        let component_path = manifest
+            .entrypoints
+            .component
+            .as_ref()
+            .ok_or_else(|| HostError::from("the provider component entrypoint is missing"))?;
+        let bytes = fs::read(dir.join(component_path))
+            .map_err(|_| HostError::from("the provider component entrypoint is missing"))?;
+        let adapter = ComponentProviderAdapter::from_manifest(&manifest, &bytes)
+            .map_err(|error| HostError::from(error.to_string()))?;
+        registry
+            .register_capabilities(adapter.provider_id(), adapter.registry_capabilities())
+            .map_err(|error| HostError::from(error.to_string()))?;
+        self.provider_runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .active
+            .insert(
+                id.to_owned(),
+                ActiveComponentProvider {
+                    provider_id: adapter.provider_id().to_owned(),
+                    adapter,
+                },
+            );
+        Ok(())
+    }
+
+    fn deactivate_provider_plugin(&self, id: &str) -> Result<(), HostError> {
+        let (registry, active) = {
+            let mut runtime = self
+                .provider_runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            (runtime.registry.clone(), runtime.active.remove(id))
+        };
+        let Some(active) = active else {
+            return Ok(());
+        };
+        active.adapter.component().disable();
+        if let Some(registry) = registry {
+            registry
+                .unregister(&active.provider_id)
+                .map_err(|error| HostError::from(error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    fn mark_provider_failed_state(&self, id: &str, reason: &str) -> Result<(), HostError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some((state, manifest, dir)) = inner.records.get_mut(id) else {
+            return Ok(());
+        };
+        state.enabled = false;
+        state.status = PluginStatus::Failed;
+        state.status_reason = Some(reason.to_owned());
+        persist_state(&self.root, state, manifest, dir.clone())
+    }
+
+    fn record(&self, id: &str) -> Result<PluginRecord, HostError> {
+        let inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (state, manifest, _) = inner
+            .records
+            .get(id)
+            .ok_or_else(|| HostError::from("the plugin is not installed"))?;
+        Ok(self.decorate_record(to_record(state, manifest, inner.host.safe_mode)))
+    }
+
+    fn decorate_record(&self, mut record: PluginRecord) -> PluginRecord {
+        if let Some(provider) = record.provider.as_mut() {
+            if let Some(active) = self
+                .provider_runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .active
+                .get(&record.id)
+            {
+                provider.circuit_open = active.adapter.component().circuit_open();
+                provider.consecutive_faults = active.adapter.component().consecutive_faults();
+            }
+        }
+        record
+    }
+
+    fn finish_provider_transition(&self, record: PluginRecord) -> Result<PluginRecord, HostError> {
+        if record.api_version == 3 {
+            self.reconcile_provider_plugin(&record.id, record.enabled)
+        } else {
+            Ok(record)
+        }
     }
 
     pub fn mark_clean_exit(&self) {
@@ -314,7 +569,9 @@ impl ExtensionHost {
         inner
             .records
             .values()
-            .map(|(state, manifest, _)| to_record(state, manifest, inner.host.safe_mode))
+            .map(|(state, manifest, _)| {
+                self.decorate_record(to_record(state, manifest, inner.host.safe_mode))
+            })
             .collect()
     }
 
@@ -336,6 +593,9 @@ impl ExtensionHost {
                     }
                     if record.entrypoints.script {
                         kinds.push("script".into());
+                    }
+                    if record.entrypoints.component {
+                        kinds.push("component".into());
                     }
                     kinds
                 },
@@ -378,7 +638,10 @@ impl ExtensionHost {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         inner.host.safe_mode = enabled;
-        write_json(&self.root.join("host.json"), &inner.host)
+        write_json(&self.root.join("host.json"), &inner.host)?;
+        drop(inner);
+        self.reconcile_provider_plugins();
+        Ok(())
     }
 
     pub fn install(
@@ -394,7 +657,8 @@ impl ExtensionHost {
                 "the style entrypoint uses blocked remote or filesystem CSS",
             ));
         }
-        self.install_inspection(inspection, enable, grant, "local-file")
+        let record = self.install_inspection(inspection, enable, grant, "local-file")?;
+        self.finish_provider_transition(record)
     }
 
     pub fn install_loose_css(&self, path: &Path) -> Result<PluginRecord, HostError> {
@@ -498,7 +762,7 @@ impl ExtensionHost {
         let mut record = self.install_inspection(inspection, enable, grant, "unpacked")?;
         self.set_unpacked_path(&record.id, path)?;
         record.unpacked_path = Some(path.display().to_string());
-        Ok(record)
+        self.finish_provider_transition(record)
     }
 
     fn set_unpacked_path(&self, id: &str, path: &Path) -> Result<(), HostError> {
@@ -748,10 +1012,13 @@ impl ExtensionHost {
         };
         state.status_reason = None;
         persist_state(&self.root, state, stored_manifest, dir.clone())?;
-        Ok(to_record(state, stored_manifest, safe_mode))
+        let record = to_record(state, stored_manifest, safe_mode);
+        drop(inner);
+        self.finish_provider_transition(record)
     }
 
     pub fn mark_failed(&self, id: &str, reason: &str) -> Result<PluginRecord, HostError> {
+        let _ = self.deactivate_provider_plugin(id);
         let mut inner = self
             .inner
             .lock()
@@ -930,6 +1197,7 @@ impl ExtensionHost {
     }
 
     pub fn uninstall(&self, id: &str, remove_data: bool) -> Result<(), HostError> {
+        self.deactivate_provider_plugin(id)?;
         let mut inner = self
             .inner
             .lock()
@@ -1232,7 +1500,9 @@ impl ExtensionHost {
 }
 
 fn permission_key_sensitive(key: &str) -> bool {
-    key == "player.control" || key.starts_with("network:")
+    crate::plugin::permissions::parse_permission(key)
+        .map(|(permission, _)| permission.sensitive())
+        .unwrap_or(true)
 }
 
 fn scene_css_path(scene_path: &str) -> String {
@@ -1361,7 +1631,23 @@ fn to_record(state: &PluginStateFile, manifest: &PluginManifest, safe_mode: bool
             styles: manifest.entrypoints.styles.len(),
             scenes: manifest.entrypoints.scenes.len(),
             script: manifest.entrypoints.script.is_some(),
+            component: manifest.entrypoints.component.is_some(),
         },
+        provider: manifest
+            .provider
+            .as_ref()
+            .map(|provider| ProviderEntrypointSummary {
+                id: provider.id.clone(),
+                wit_version: provider.wit_version.clone(),
+                world: provider.world.clone(),
+                capabilities: provider
+                    .capabilities
+                    .iter()
+                    .map(|capability| capability.as_str().to_owned())
+                    .collect(),
+                circuit_open: false,
+                consecutive_faults: 0,
+            }),
         permissions: manifest.requested_permission_keys(),
         granted_permissions: state.granted_permissions.clone(),
         risk_rating: if state.script_scan.severity.is_some() {
@@ -1443,8 +1729,9 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::package::PackageFile;
     use crate::plugin::scanner::ScanReport;
+    use crate::plugin::{component::static_test_component, package::PackageFile};
+    use yaqmc_provider_api::{CredentialStore, ProviderRegistry};
 
     fn style_inspection(id: &str) -> PackageInspection {
         let manifest = PluginManifest::parse(
@@ -1480,6 +1767,140 @@ mod tests {
             style_scan: ScanReport::default(),
             script_scan: ScanReport::default(),
         }
+    }
+
+    fn component_inspection(plugin_id: &str, provider_id: &str) -> PackageInspection {
+        let manifest = PluginManifest::parse(
+            format!(
+                r#"{{
+                    "manifestVersion": 2,
+                    "id": "{plugin_id}",
+                    "name": "Catalog Component",
+                    "version": "1.0.0",
+                    "apiVersion": 3,
+                    "entrypoints": {{ "component": "component/provider.wasm" }},
+                    "provider": {{
+                        "id": "{provider_id}",
+                        "witVersion": "0.1.0",
+                        "world": "provider",
+                        "capabilities": ["provider.catalog"]
+                    }},
+                    "permissions": ["provider.catalog"]
+                }}"#
+            )
+            .as_bytes(),
+        )
+        .expect("component manifest");
+        let component = wat::parse_str(static_test_component("{}"))
+            .expect("component fixture compiles to binary");
+        PackageInspection {
+            sha256: sha256_bytes(&component),
+            compressed_bytes: component.len() as u64,
+            expanded_bytes: component.len() as u64,
+            file_count: 2,
+            files: vec![
+                PackageFile {
+                    path: "manifest.json".into(),
+                    bytes: serde_json::to_vec(&manifest).expect("manifest bytes"),
+                },
+                PackageFile {
+                    path: "component/provider.wasm".into(),
+                    bytes: component,
+                },
+            ],
+            manifest,
+            style_scan: ScanReport::default(),
+            script_scan: ScanReport::default(),
+        }
+    }
+
+    fn provider_registry(root: &Path) -> Arc<ProviderRegistry> {
+        let storage = Arc::new(
+            crate::storage::StorageService::open(root.join("data"), root.join("cache"))
+                .expect("storage"),
+        );
+        let credentials: Arc<dyn CredentialStore> =
+            Arc::new(crate::credentials::MemoryCredentialStore::default());
+        let provider = yaqmc_provider_qqmusic::create_intree_provider(
+            storage,
+            credentials,
+            root.join("fixtures"),
+        )
+        .expect("built-in provider");
+        Arc::new(ProviderRegistry::new("qqmusic", [provider]).expect("registry"))
+    }
+
+    #[test]
+    fn component_provider_lifecycle_is_atomic_with_extension_host_state() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().join("plugins")).expect("host");
+        let registry = provider_registry(root.path());
+        host.attach_provider_registry(Arc::clone(&registry))
+            .expect("attach");
+
+        let record = host
+            .install_inspection(
+                component_inspection("dev.example.component", "plugin.example"),
+                true,
+                &[],
+                "test",
+            )
+            .expect("install");
+        host.finish_provider_transition(record).expect("activate");
+        assert!(registry.contains("plugin.example"));
+        assert!(host.active_resources().scripts.is_empty());
+
+        host.set_enabled("dev.example.component", false)
+            .expect("disable");
+        assert!(!registry.contains("plugin.example"));
+        host.set_enabled("dev.example.component", true)
+            .expect("reenable");
+        assert!(registry.contains("plugin.example"));
+
+        host.set_safe_mode(true).expect("safe mode");
+        assert!(!registry.contains("plugin.example"));
+        host.set_safe_mode(false).expect("leave safe mode");
+        assert!(registry.contains("plugin.example"));
+
+        host.uninstall("dev.example.component", true)
+            .expect("uninstall");
+        assert!(!registry.contains("plugin.example"));
+    }
+
+    #[test]
+    fn duplicate_component_provider_id_fails_closed_without_replacing_owner() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().join("plugins")).expect("host");
+        let registry = provider_registry(root.path());
+        host.attach_provider_registry(Arc::clone(&registry))
+            .expect("attach");
+        let first = host
+            .install_inspection(
+                component_inspection("dev.example.first", "plugin.shared"),
+                true,
+                &[],
+                "test",
+            )
+            .expect("first install");
+        host.finish_provider_transition(first)
+            .expect("first activate");
+        let second = host
+            .install_inspection(
+                component_inspection("dev.example.second", "plugin.shared"),
+                true,
+                &[],
+                "test",
+            )
+            .expect("second install");
+        assert!(host.finish_provider_transition(second).is_err());
+        assert!(registry.contains("plugin.shared"));
+        let failed = host
+            .list()
+            .into_iter()
+            .find(|record| record.id == "dev.example.second")
+            .expect("failed record");
+        assert_eq!(failed.status, PluginStatus::Failed);
+        assert!(!failed.enabled);
     }
 
     #[test]
