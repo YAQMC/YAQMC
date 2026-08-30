@@ -2687,47 +2687,19 @@ impl QQMusicClient {
         let Some(session) = session else {
             return self.general_newsongs().await;
         };
-        let payload = json!({
-            "comm": { "ct": 24, "cv": 0 },
-            "req_1": {
-                "module": "music.radioProxy.MbTrackRadioSvr",
-                "method": "get_radio_track",
-                "param": { "id": 99, "num": limit, "from": 0, "scene": 0, "song_ids": [] }
-            }
-        });
-        let response: Value = self
-            .send_json("recommend.guess", || {
-                self.musicu_request(&payload, Some(session))
-            })
-            .await?;
-        if response["code"].as_i64() != Some(0) || response["req_1"]["code"].as_i64() != Some(0) {
-            tracing::warn!(
-                target: "qqmusic",
-                top_code = response["code"].as_i64(),
-                req_code = response["req_1"]["code"].as_i64(),
-                "recommend.guess returned a non-zero code"
-            );
-            return Err(QQMusicError::SchemaChanged);
-        }
-        let data = &response["req_1"]["data"];
-        let tracks = data["tracks"].as_array();
-        let Some(tracks) = tracks else {
-            tracing::debug!(
-                target: "qqmusic",
-                shape = shape_for_value(data),
-                "recommend.guess response has no tracks array"
-            );
-            return Ok(Vec::new());
-        };
-        let songs = tracks
-            .iter()
-            .filter_map(|raw| {
-                serde_json::from_value::<NewSongDto>(raw.clone())
-                    .ok()
-                    .and_then(normalize_new_song)
-            })
-            .collect();
-        Ok(songs)
+        let credential = crate::qmapi::credential::credential_from_uin_and_cookie(
+            &session.uin,
+            &session.cookie_header,
+            None,
+            unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
+        )?;
+        let tracks =
+            crate::qmapi::recommend::guess(&self.catalog, &credential, limit, 0, &[]).await?;
+        Ok(tracks
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, raw)| normalize_qm_song(raw, index as u32 + 1))
+            .collect())
     }
 
     async fn radar_recommend(
@@ -2735,44 +2707,17 @@ impl QQMusicClient {
         session: &QQSession,
         entrance_ids: &[u64],
     ) -> Result<Vec<Song>, QQMusicError> {
-        let payload = json!({
-            "comm": { "ct": 24, "cv": 0 },
-            "req_1": {
-                "module": "music.recommend.TrackRelationServer",
-                "method": "GetRadarSong",
-                "param": {
-                    "Page": 1,
-                    "ReqType": 0,
-                    "FavSongs": [],
-                    "EntranceSongs": entrance_ids.iter().map(|id| json!(id)).collect::<Vec<_>>()
-                }
-            }
-        });
-        let response: Value = self
-            .send_json("recommend.radar", || {
-                self.musicu_request(&payload, Some(session))
-            })
-            .await?;
-        if response["code"].as_i64() != Some(0) || response["req_1"]["code"].as_i64() != Some(0) {
-            return Err(QQMusicError::SchemaChanged);
-        }
-        let data = &response["req_1"]["data"];
-        let vec_songs = data["VecSongs"].as_array();
-        let Some(vec_songs) = vec_songs else {
-            tracing::debug!(
-                target: "qqmusic",
-                shape = shape_for_value(data),
-                "recommend.radar response has no VecSongs array"
-            );
-            return Ok(Vec::new());
-        };
-        let songs = vec_songs
-            .iter()
-            .filter_map(|entry| {
-                serde_json::from_value::<NewSongDto>(entry["Track"].clone())
-                    .ok()
-                    .and_then(normalize_new_song)
-            })
+        let credential = crate::qmapi::credential::credential_from_uin_and_cookie(
+            &session.uin,
+            &session.cookie_header,
+            None,
+            unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
+        )?;
+        let songs = crate::qmapi::recommend::radar(&self.catalog, &credential, 1, entrance_ids)
+            .await?
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, raw)| normalize_qm_song(raw, index as u32 + 1))
             .filter(|song| {
                 let Some(numeric_id) = song.provider.as_ref().and_then(|p| p.numeric_id) else {
                     return true;

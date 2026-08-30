@@ -15,6 +15,7 @@ pub(crate) mod credential;
 pub(crate) mod entitlement;
 pub(crate) mod lyric;
 pub(crate) mod qmc;
+pub(crate) mod recommend;
 pub(crate) mod transport;
 pub(crate) mod vkey;
 

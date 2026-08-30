@@ -28,10 +28,10 @@
     },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
-      "revision": "827233cb799bede84ee5033ec16450dc1d5e2587",
-      "yaqmcPin": "827233cb799bede84ee5033ec16450dc1d5e2587",
+      "revision": "2ef9182732e02db23788175dbe5b7d9d937e328f",
+      "yaqmcPin": "2ef9182732e02db23788175dbe5b7d9d937e328f",
       "linked": true,
-      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. Pin 827233c adds credential, transport, MQTT, parser, pagination, and CI hardening while retaining the QMC implementation from the ffcc86c independent-implementation record."
+      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. Pin 2ef9182 retains the credential, transport, MQTT, parser, pagination, and CI hardening baseline, adds typed Guess and Radar continuation requests, and retains the QMC implementation from the ffcc86c independent-implementation record."
     }
   },
   "sources": [
@@ -97,15 +97,15 @@
       "copyright": "Copyright (c) 2019 程序猿老龚 gjh.me",
       "mappings": [
         {
-          "target": "qm-api-rs@827233c/src/qmc.rs Qmc2Map::decrypt_in_place",
+          "target": "qm-api-rs@2ef9182/src/qmc.rs Qmc2Map::decrypt_in_place",
           "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMMapCipher.getMask/rotate, reached through the YAQMC provider adapter"
         },
         {
-          "target": "qm-api-rs@827233c/src/qmc.rs Qmc2Rc4::decrypt_in_place",
+          "target": "qm-api-rs@2ef9182/src/qmc.rs Qmc2Rc4::decrypt_in_place",
           "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMRC4Cipher segmented stream, reached through the YAQMC provider adapter"
         },
         {
-          "target": "qm-api-rs@827233c/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
+          "target": "qm-api-rs@2ef9182/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
           "relation": "independent Rust rewrite of QMCDecode/QMCKeyDecoder.swift and TeaCipher.swift ekey TEA unwrap, reached through the YAQMC provider adapter"
         }
       ],

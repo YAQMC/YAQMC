@@ -17,28 +17,36 @@ function currentPinQualifiedRecord() {
   return {
     ...record,
     gates: record.gates.map((gate) =>
-      gate.id === 'exact-pin-three-day-soak' ? { ...gate, appliesToPin: record.targetPin } : gate,
+      gate.id === 'exact-pin-three-day-soak'
+        ? {
+            ...gate,
+            status: 'waived',
+            appliesToPin: record.targetPin,
+            waivedBy: 'Test Maintainer',
+            waivedOn: '2026-08-30',
+            waiverKind: 'maintainer-authorized-skip',
+          }
+        : gate,
     ),
   };
 }
 
-test('the shipped record carries the current-pin waiver and has no blockers', () => {
+test('the shipped record keeps the new exact-pin soak pending', () => {
   const { record, blockers } = inspectP14cReadiness();
   assert.equal(record.cutoverAuthorized, true);
   assert.equal(record.defaultBackend, 'qmapi');
   assert.deepEqual(record.responsibilities.pendingProductionReplacement, []);
-  assert.deepEqual(blockers, []);
   assert.deepEqual(
-    record.gates.filter((gate) => gate.status === 'waived').map((gate) => gate.appliesToPin),
-    [record.targetPin],
+    blockers.map((gate) => [gate.id, gate.status]),
+    [['exact-pin-three-day-soak', 'not-started']],
   );
 });
 
-test('the shipped record renders a readable ready report', () => {
+test('the shipped record renders a readable pending report', () => {
   const { record, blockers } = inspectP14cReadiness();
   const report = formatP14cStatus(record, blockers);
-  assert.match(report, /^PROVIDER READINESS STATUS: READY$/m);
-  assert.match(report, /exact-pin-three-day-soak: waived/);
+  assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);
+  assert.match(report, /exact-pin-three-day-soak: not-started/);
 });
 
 test('a waiver pinned to the cutover baseline blocks the current target pin', () => {
@@ -71,7 +79,7 @@ test('the baseline-pinned waiver renders a readable blocked report', () => {
   const report = formatP14cStatus(staleRecord, blockers);
   assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);
   assert.match(report, /exact-pin-three-day-soak: blocked/);
-  assert.match(report, /not target 827233cb799bede84ee5033ec16450dc1d5e2587/);
+  assert.match(report, /not target 2ef9182732e02db23788175dbe5b7d9d937e328f/);
 });
 
 test('a current-pin waiver produces a structurally ready fixture', () => {
@@ -301,7 +309,7 @@ test('a waiver requires maintainer identity, date, and an allowed waiver kind', 
 });
 
 test('a waiver rejects an impossible calendar date', () => {
-  const record = currentRecord();
+  const record = currentPinQualifiedRecord();
   const soak = record.gates.find(({ id }) => id === 'exact-pin-three-day-soak');
   soak.waivedOn = '2026-02-31';
   assert.throws(() => validateP14cRecord(record), /ISO calendar date/);

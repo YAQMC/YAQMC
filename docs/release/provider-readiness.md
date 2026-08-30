@@ -1,7 +1,8 @@
 # Production provider readiness
 
-Status: **READY** for the production `qmapi` backend at exact `qm-api-rs`
-revision `827233cb799bede84ee5033ec16450dc1d5e2587`.
+Status: **READY-AUTO / SOAK PENDING** for the production `qmapi` backend at
+exact `qm-api-rs` revision
+`2ef9182732e02db23788175dbe5b7d9d937e328f`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
@@ -28,9 +29,10 @@ favorite mutation reconciliation before cutover. The crate provenance record
 is maintained separately in
 [qm-api-rs-provenance.md](qm-api-rs-provenance.md).
 
-The exact-pin three-day soak is recorded as
-`maintainer-authorized-skip` by Osilvfe on 2026-08-24 for this security
-hardening pin. This is a maintainer waiver, not evidence that an automated
-three-day soak ran or passed. The pin was checked against YAQMC's Provider
-boundary with a clean compile and its offline qmapi test suite; live-service
-verification remains a separate release responsibility.
+The previous exact-pin waiver applied only to revision
+`827233cb799bede84ee5033ec16450dc1d5e2587`; it is not carried forward. The
+current pin adds typed Guess and Radar continuation requests without changing
+the QMC implementation. Its automatic Rust and provider-boundary checks must
+pass before the implementation checkpoint, while the three-day soak remains
+`not-started`. Live-service verification and any new waiver require an explicit
+maintainer decision after the implementation report.

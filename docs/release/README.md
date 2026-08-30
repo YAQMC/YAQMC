@@ -4,7 +4,7 @@ This directory contains the small set of records required to review and
 reproduce a YAQMC release. It is not a project diary or a migration archive.
 
 - [Provider readiness](provider-readiness.md) documents the production QQ Music
-  provider boundary, the exact dependency pin, and the maintainer soak waiver.
+  provider boundary, the exact dependency pin, and its current soak status.
 - [YAQMC provenance](provenance.md) explains the in-tree provenance gate and
   links its machine-readable [ledger](provenance-ledger.json).
 - [qm-api-rs provenance](qm-api-rs-provenance.md) records the separately
