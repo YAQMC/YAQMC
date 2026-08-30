@@ -11,7 +11,9 @@ use zip::ZipArchive;
 use crate::plugin::{
     manifest::{is_safe_package_path, PluginManifest},
     scanner::{scan_css, scan_script, ScanReport},
-    MAX_COMPRESSED_BYTES, MAX_EXPANDED_BYTES, MAX_FILE_BYTES, MAX_FILE_COUNT,
+    COMPONENT_MAX_BYTES, COMPONENT_MAX_COMPRESSED_BYTES, COMPONENT_MAX_EXPANDED_BYTES,
+    COMPONENT_MAX_FILE_BYTES, COMPONENT_MAX_FILE_COUNT, LEGACY_MAX_COMPRESSED_BYTES,
+    LEGACY_MAX_EXPANDED_BYTES, LEGACY_MAX_FILE_BYTES, LEGACY_MAX_FILE_COUNT, MAX_COMPRESSION_RATIO,
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -30,7 +32,33 @@ pub enum PackageError {
     Manifest(String),
     #[error("a plugin entrypoint is missing from the package")]
     MissingEntrypoint,
+    #[error("a provider plugin contains a native binary")]
+    NativeBinary,
+    #[error("the provider component is not a valid WebAssembly component")]
+    InvalidComponent,
 }
+
+#[derive(Clone, Copy)]
+struct PackageLimits {
+    compressed: u64,
+    expanded: u64,
+    files: usize,
+    file: u64,
+}
+
+const LEGACY_LIMITS: PackageLimits = PackageLimits {
+    compressed: LEGACY_MAX_COMPRESSED_BYTES,
+    expanded: LEGACY_MAX_EXPANDED_BYTES,
+    files: LEGACY_MAX_FILE_COUNT,
+    file: LEGACY_MAX_FILE_BYTES,
+};
+
+const COMPONENT_LIMITS: PackageLimits = PackageLimits {
+    compressed: COMPONENT_MAX_COMPRESSED_BYTES,
+    expanded: COMPONENT_MAX_EXPANDED_BYTES,
+    files: COMPONENT_MAX_FILE_COUNT,
+    file: COMPONENT_MAX_FILE_BYTES,
+};
 
 #[derive(Clone, Debug)]
 pub struct PackageFile {
@@ -55,20 +83,20 @@ pub fn inspect_package(path: &Path) -> Result<PackageInspection, PackageError> {
     if metadata.is_dir() {
         return inspect_directory(path);
     }
-    if metadata.len() > MAX_COMPRESSED_BYTES {
+    if metadata.len() > COMPONENT_MAX_COMPRESSED_BYTES {
         return Err(PackageError::Oversize);
     }
     let sha256 = sha256_file(path)?;
     let file = File::open(path).map_err(|_| PackageError::Unreadable)?;
     let mut archive = ZipArchive::new(file).map_err(|_| PackageError::Unreadable)?;
-    if archive.len() > MAX_FILE_COUNT {
+    if archive.len() > COMPONENT_MAX_FILE_COUNT {
         return Err(PackageError::Oversize);
     }
     let mut expanded = 0_u64;
     let mut seen = HashSet::new();
     let mut files = Vec::new();
     for index in 0..archive.len() {
-        let mut entry = archive
+        let entry = archive
             .by_index(index)
             .map_err(|_| PackageError::Unreadable)?;
         if entry.is_symlink()
@@ -89,21 +117,24 @@ pub fn inspect_package(path: &Path) -> Result<PackageInspection, PackageError> {
         if !is_safe_package_path(&name) || !is_jail_path(Path::new(&name)) {
             return Err(PackageError::UnsafePath);
         }
-        if !seen.insert(name.clone()) {
+        if !seen.insert(name.to_ascii_lowercase()) {
             return Err(PackageError::UnsafePath);
         }
-        if entry.size() > MAX_FILE_BYTES {
+        if entry.size() > COMPONENT_MAX_FILE_BYTES
+            || compression_ratio_exceeded(entry.size(), entry.compressed_size())
+        {
             return Err(PackageError::Oversize);
         }
         expanded = expanded.saturating_add(entry.size());
-        if expanded > MAX_EXPANDED_BYTES {
+        if expanded > COMPONENT_MAX_EXPANDED_BYTES {
             return Err(PackageError::Oversize);
         }
         let mut bytes = Vec::new();
         entry
+            .take(COMPONENT_MAX_FILE_BYTES + 1)
             .read_to_end(&mut bytes)
             .map_err(|_| PackageError::Unreadable)?;
-        if bytes.len() as u64 > MAX_FILE_BYTES {
+        if bytes.len() as u64 > COMPONENT_MAX_FILE_BYTES {
             return Err(PackageError::Oversize);
         }
         files.push(PackageFile { path: name, bytes });
@@ -114,12 +145,14 @@ pub fn inspect_package(path: &Path) -> Result<PackageInspection, PackageError> {
         .ok_or(PackageError::MissingManifest)?;
     let manifest = PluginManifest::parse(&manifest_file.bytes)
         .map_err(|error| PackageError::Manifest(error.to_string()))?;
+    validate_package_shape(&manifest, &files, metadata.len(), expanded)?;
     for path in manifest
         .entrypoints
         .styles
         .iter()
         .chain(manifest.entrypoints.scenes.iter())
         .chain(manifest.entrypoints.script.iter())
+        .chain(manifest.entrypoints.component.iter())
     {
         if !files.iter().any(|file| file.path == *path) {
             return Err(PackageError::MissingEntrypoint);
@@ -158,7 +191,7 @@ pub fn inspect_directory(root: &Path) -> Result<PackageInspection, PackageError>
     let mut files = Vec::new();
     let mut expanded = 0_u64;
     collect_directory(root, root, &mut files, &mut expanded)?;
-    if files.len() > MAX_FILE_COUNT {
+    if files.len() > COMPONENT_MAX_FILE_COUNT {
         return Err(PackageError::Oversize);
     }
     finish_inspection(files, sha256_directory(root)?, expanded)
@@ -204,12 +237,32 @@ fn collect_directory(
         if !is_safe_package_path(&relative) || !is_jail_path(Path::new(&relative)) {
             continue;
         }
-        let bytes = fs::read(&path).map_err(|_| PackageError::Unreadable)?;
-        if bytes.len() as u64 > MAX_FILE_BYTES {
+        let size = fs::metadata(&path)
+            .map_err(|_| PackageError::Unreadable)?
+            .len();
+        if size > COMPONENT_MAX_FILE_BYTES {
+            return Err(PackageError::Oversize);
+        }
+        let input = File::open(&path).map_err(|_| PackageError::Unreadable)?;
+        let mut bytes = Vec::new();
+        input
+            .take(COMPONENT_MAX_FILE_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| PackageError::Unreadable)?;
+        if bytes.len() as u64 > COMPONENT_MAX_FILE_BYTES {
             return Err(PackageError::Oversize);
         }
         *expanded = expanded.saturating_add(bytes.len() as u64);
-        if *expanded > MAX_EXPANDED_BYTES {
+        if *expanded > COMPONENT_MAX_EXPANDED_BYTES {
+            return Err(PackageError::Oversize);
+        }
+        if files
+            .iter()
+            .any(|file| file.path.eq_ignore_ascii_case(&relative))
+        {
+            return Err(PackageError::UnsafePath);
+        }
+        if files.len() >= COMPONENT_MAX_FILE_COUNT {
             return Err(PackageError::Oversize);
         }
         files.push(PackageFile {
@@ -243,12 +296,14 @@ fn finish_inspection(
         .ok_or(PackageError::MissingManifest)?;
     let manifest = PluginManifest::parse(&manifest_file.bytes)
         .map_err(|error| PackageError::Manifest(error.to_string()))?;
+    validate_package_shape(&manifest, &files, expanded, expanded)?;
     for path in manifest
         .entrypoints
         .styles
         .iter()
         .chain(manifest.entrypoints.scenes.iter())
         .chain(manifest.entrypoints.script.iter())
+        .chain(manifest.entrypoints.component.iter())
     {
         if !files.iter().any(|file| file.path == *path) {
             return Err(PackageError::MissingEntrypoint);
@@ -343,6 +398,79 @@ fn merge_scan(target: &mut ScanReport, next: ScanReport) {
     };
 }
 
+fn validate_package_shape(
+    manifest: &PluginManifest,
+    files: &[PackageFile],
+    compressed: u64,
+    expanded: u64,
+) -> Result<(), PackageError> {
+    let component_package = manifest.manifest_version == 2 && manifest.api_version == 3;
+    let limits = if component_package {
+        COMPONENT_LIMITS
+    } else {
+        LEGACY_LIMITS
+    };
+    if compressed > limits.compressed
+        || expanded > limits.expanded
+        || files.len() > limits.files
+        || files
+            .iter()
+            .any(|file| file.bytes.len() as u64 > limits.file)
+    {
+        return Err(PackageError::Oversize);
+    }
+    if !component_package {
+        return Ok(());
+    }
+
+    if files.iter().any(|file| is_native_binary(file)) {
+        return Err(PackageError::NativeBinary);
+    }
+    let component_path = manifest
+        .entrypoints
+        .component
+        .as_deref()
+        .ok_or(PackageError::InvalidComponent)?;
+    let component = files
+        .iter()
+        .find(|file| file.path == component_path)
+        .ok_or(PackageError::MissingEntrypoint)?;
+    if component.bytes.len() as u64 > COMPONENT_MAX_BYTES
+        || !is_component_binary(&component.bytes)
+        || files
+            .iter()
+            .any(|file| file.path.ends_with(".wasm") && file.path != component_path)
+    {
+        return Err(PackageError::InvalidComponent);
+    }
+    Ok(())
+}
+
+fn compression_ratio_exceeded(expanded: u64, compressed: u64) -> bool {
+    expanded > 0 && (compressed == 0 || expanded > compressed.saturating_mul(MAX_COMPRESSION_RATIO))
+}
+
+fn is_component_binary(bytes: &[u8]) -> bool {
+    bytes.len() >= 8
+        && bytes[..4] == [0, b'a', b's', b'm']
+        && bytes[4..8] == [0x0d, 0x00, 0x01, 0x00]
+}
+
+fn is_native_binary(file: &PackageFile) -> bool {
+    let path = file.path.to_ascii_lowercase();
+    let forbidden_extension = [".exe", ".dll", ".so", ".dylib", ".node"]
+        .iter()
+        .any(|extension| path.ends_with(extension));
+    let bytes = &file.bytes;
+    let forbidden_magic = bytes.starts_with(b"MZ")
+        || bytes.starts_with(b"\x7fELF")
+        || bytes.starts_with(&[0xfe, 0xed, 0xfa, 0xce])
+        || bytes.starts_with(&[0xfe, 0xed, 0xfa, 0xcf])
+        || bytes.starts_with(&[0xcf, 0xfa, 0xed, 0xfe])
+        || bytes.starts_with(&[0xca, 0xfe, 0xba, 0xbe]);
+    forbidden_extension || forbidden_magic
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,6 +493,21 @@ mod tests {
         path
     }
 
+    fn write_binary_zip(files: &[(&str, &[u8])]) -> PathBuf {
+        let directory = tempfile::tempdir().expect("temp");
+        let path = directory.path().join("plugin.yaqmc-plugin");
+        let file = File::create(&path).expect("zip");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        for (name, contents) in files {
+            zip.start_file(*name, options).expect("entry");
+            zip.write_all(contents).expect("write");
+        }
+        zip.finish().expect("finish");
+        std::mem::forget(directory);
+        path
+    }
+
     fn manifest() -> &'static str {
         r#"{
             "manifestVersion": 1,
@@ -373,6 +516,24 @@ mod tests {
             "version": "1.0.0",
             "apiVersion": 1,
             "entrypoints": { "styles": ["styles/main.css"] }
+        }"#
+    }
+
+    fn provider_manifest() -> &'static str {
+        r#"{
+            "manifestVersion": 2,
+            "id": "dev.example.catalog",
+            "name": "Example catalog",
+            "version": "1.0.0",
+            "apiVersion": 3,
+            "entrypoints": { "component": "component/provider.wasm" },
+            "provider": {
+                "id": "dev.example.catalog",
+                "witVersion": "0.1.0",
+                "world": "provider",
+                "capabilities": ["provider.catalog"]
+            },
+            "permissions": ["provider.catalog"]
         }"#
     }
 
@@ -491,7 +652,7 @@ mod tests {
         zip.write_all(manifest().as_bytes()).expect("write");
         zip.start_file("styles/main.css", options).expect("css");
         zip.write_all(b"x{}").expect("write");
-        for index in 0..=MAX_FILE_COUNT {
+        for index in 0..=LEGACY_MAX_FILE_COUNT {
             zip.start_file(format!("pad/{index}.txt"), options)
                 .expect("pad");
             zip.write_all(b".").expect("write");
@@ -499,5 +660,49 @@ mod tests {
         zip.finish().expect("finish");
         std::mem::forget(directory);
         assert_eq!(inspect_package(&path).unwrap_err(), PackageError::Oversize);
+    }
+
+    #[test]
+    fn component_packages_use_v3_shape_and_reject_native_payloads() {
+        let component_header = [0, b'a', b's', b'm', 0x0d, 0, 1, 0];
+        let path = write_binary_zip(&[
+            ("manifest.json", provider_manifest().as_bytes()),
+            ("component/provider.wasm", &component_header),
+        ]);
+        let inspection = inspect_package(&path).expect("v3 package");
+        assert_eq!(inspection.manifest.api_version, 3);
+
+        let path = write_binary_zip(&[
+            ("manifest.json", provider_manifest().as_bytes()),
+            ("component/provider.wasm", &component_header),
+            ("bin/helper.dll", b"MZfake"),
+        ]);
+        assert_eq!(
+            inspect_package(&path).unwrap_err(),
+            PackageError::NativeBinary
+        );
+    }
+
+    #[test]
+    fn core_modules_and_case_colliding_paths_are_rejected() {
+        let core_module_header = [0, b'a', b's', b'm', 1, 0, 0, 0];
+        let path = write_binary_zip(&[
+            ("manifest.json", provider_manifest().as_bytes()),
+            ("component/provider.wasm", &core_module_header),
+        ]);
+        assert_eq!(
+            inspect_package(&path).unwrap_err(),
+            PackageError::InvalidComponent
+        );
+
+        let path = write_binary_zip(&[
+            ("manifest.json", manifest().as_bytes()),
+            ("styles/main.css", b"a{}"),
+            ("STYLES/MAIN.CSS", b"b{}"),
+        ]);
+        assert_eq!(
+            inspect_package(&path).unwrap_err(),
+            PackageError::UnsafePath
+        );
     }
 }

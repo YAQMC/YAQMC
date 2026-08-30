@@ -2,11 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;
 
-use crate::plugin::permissions::{parse_permission, PluginPermission};
+use crate::plugin::permissions::{parse_permission, permission_allowed_for_api, PluginPermission};
 
-pub const CURRENT_MANIFEST_VERSION: u32 = 1;
-pub const CURRENT_API_VERSION: u32 = 2;
+pub const LEGACY_MANIFEST_VERSION: u32 = 1;
+pub const CURRENT_MANIFEST_VERSION: u32 = 2;
+pub const CURRENT_API_VERSION: u32 = 3;
 pub const MIN_API_VERSION: u32 = 1;
+pub const PROVIDER_WIT_VERSION: &str = "0.1.0";
+pub const PROVIDER_WIT_WORLD: &str = "provider";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn api_supported(version: u32) -> bool {
@@ -39,6 +42,8 @@ pub struct PluginManifest {
     pub architectures: Vec<String>,
     #[serde(default)]
     pub entrypoints: PluginEntrypoints,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderPluginManifest>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
     #[serde(default, skip_serializing_if = "indexmap_empty")]
@@ -72,6 +77,55 @@ pub struct PluginEntrypoints {
     pub scenes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ProviderCapability {
+    #[serde(rename = "provider.catalog")]
+    Catalog,
+    #[serde(rename = "provider.playback")]
+    Playback,
+    #[serde(rename = "provider.recommendation")]
+    Recommendation,
+    #[serde(rename = "provider.lyrics")]
+    Lyrics,
+    #[serde(rename = "provider.account")]
+    Account,
+}
+
+impl ProviderCapability {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Catalog => "provider.catalog",
+            Self::Playback => "provider.playback",
+            Self::Recommendation => "provider.recommendation",
+            Self::Lyrics => "provider.lyrics",
+            Self::Account => "provider.account",
+        }
+    }
+
+    pub fn permission(self) -> PluginPermission {
+        match self {
+            Self::Catalog => PluginPermission::ProviderCatalog,
+            Self::Playback => PluginPermission::ProviderPlayback,
+            Self::Recommendation => PluginPermission::ProviderRecommendation,
+            Self::Lyrics => PluginPermission::ProviderLyrics,
+            Self::Account => PluginPermission::ProviderAccount,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPluginManifest {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub wit_version: String,
+    pub world: String,
+    pub capabilities: Vec<ProviderCapability>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -80,12 +134,16 @@ pub enum ManifestError {
     InvalidJson,
     #[error("unsupported plugin manifest version")]
     UnsupportedManifestVersion,
+    #[error("the plugin manifest and API versions are incompatible")]
+    ManifestApiMismatch,
     #[error("the plugin id is invalid")]
     InvalidId,
     #[error("the plugin version is not valid semver")]
     InvalidVersion,
     #[error("a plugin entrypoint path is malformed")]
     MalformedEntrypoint,
+    #[error("the provider component declaration is invalid")]
+    InvalidProvider,
     #[error("the plugin requests an unknown or forbidden permission")]
     UnknownPermission,
 }
@@ -99,7 +157,10 @@ impl PluginManifest {
     }
 
     pub fn validate(&self) -> Result<(), ManifestError> {
-        if self.manifest_version != CURRENT_MANIFEST_VERSION {
+        if !matches!(
+            self.manifest_version,
+            LEGACY_MANIFEST_VERSION | CURRENT_MANIFEST_VERSION
+        ) {
             return Err(ManifestError::UnsupportedManifestVersion);
         }
         if !is_plugin_id(&self.id) {
@@ -113,8 +174,13 @@ impl PluginManifest {
         }
         validate_entrypoints(&self.entrypoints)?;
         for permission in &self.permissions {
-            parse_permission(permission).map_err(|_| ManifestError::UnknownPermission)?;
+            let (permission, _) =
+                parse_permission(permission).map_err(|_| ManifestError::UnknownPermission)?;
+            if !permission_allowed_for_api(permission, self.api_version) {
+                return Err(ManifestError::UnknownPermission);
+            }
         }
+        self.validate_runtime_shape()?;
         for (dependency, range) in &self.dependencies {
             if !is_plugin_id(dependency) || range.trim().is_empty() {
                 return Err(ManifestError::InvalidId);
@@ -124,6 +190,58 @@ impl PluginManifest {
             if !is_plugin_id(conflict) {
                 return Err(ManifestError::InvalidId);
             }
+        }
+        Ok(())
+    }
+
+    fn validate_runtime_shape(&self) -> Result<(), ManifestError> {
+        if self.manifest_version == LEGACY_MANIFEST_VERSION {
+            if self.api_version == 3
+                || self.entrypoints.component.is_some()
+                || self.provider.is_some()
+            {
+                return Err(ManifestError::ManifestApiMismatch);
+            }
+            return Ok(());
+        }
+
+        if self.api_version != 3
+            || self.entrypoints.component.is_none()
+            || self.entrypoints.script.is_some()
+            || !self.entrypoints.styles.is_empty()
+            || !self.entrypoints.scenes.is_empty()
+        {
+            return Err(ManifestError::ManifestApiMismatch);
+        }
+        let provider = self
+            .provider
+            .as_ref()
+            .ok_or(ManifestError::InvalidProvider)?;
+        if !is_plugin_id(&provider.id)
+            || provider
+                .name
+                .as_ref()
+                .is_some_and(|name| name.trim().is_empty() || name.len() > 80)
+            || provider.wit_version != PROVIDER_WIT_VERSION
+            || provider.world != PROVIDER_WIT_WORLD
+            || provider.capabilities.is_empty()
+        {
+            return Err(ManifestError::InvalidProvider);
+        }
+        let capabilities = provider
+            .capabilities
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if capabilities.len() != provider.capabilities.len() {
+            return Err(ManifestError::InvalidProvider);
+        }
+        let requested = self.requested_permissions();
+        if capabilities
+            .iter()
+            .any(|capability| !requested.contains(&capability.permission()))
+        {
+            return Err(ManifestError::InvalidProvider);
         }
         Ok(())
     }
@@ -247,6 +365,7 @@ fn validate_entrypoints(entrypoints: &PluginEntrypoints) -> Result<(), ManifestE
         .iter()
         .chain(entrypoints.scenes.iter())
         .chain(entrypoints.script.iter())
+        .chain(entrypoints.component.iter())
     {
         if !is_safe_package_path(path) || !seen.insert(path.replace('\\', "/")) {
             return Err(ManifestError::MalformedEntrypoint);
@@ -254,6 +373,11 @@ fn validate_entrypoints(entrypoints: &PluginEntrypoints) -> Result<(), ManifestE
     }
     if let Some(script) = &entrypoints.script {
         if !script.ends_with(".js") {
+            return Err(ManifestError::MalformedEntrypoint);
+        }
+    }
+    if let Some(component) = &entrypoints.component {
+        if !component.ends_with(".wasm") {
             return Err(ManifestError::MalformedEntrypoint);
         }
     }
@@ -323,6 +447,25 @@ mod tests {
         .to_owned()
     }
 
+    fn valid_provider_json() -> String {
+        r#"{
+            "manifestVersion": 2,
+            "id": "dev.example.catalog",
+            "name": "Example catalog",
+            "version": "1.0.0",
+            "apiVersion": 3,
+            "entrypoints": { "component": "component/provider.wasm" },
+            "provider": {
+                "id": "dev.example.catalog",
+                "witVersion": "0.1.0",
+                "world": "provider",
+                "capabilities": ["provider.catalog"]
+            },
+            "permissions": ["provider.catalog"]
+        }"#
+        .to_owned()
+    }
+
     #[test]
     fn parses_a_valid_compositional_manifest() {
         let manifest = PluginManifest::parse(valid_json().as_bytes()).expect("valid");
@@ -375,5 +518,56 @@ mod tests {
     fn engine_requirement_accepts_current_app() {
         assert!(engine_matches(">=0.1.0", "0.1.0"));
         assert!(!engine_matches(">=9.0.0", "0.1.0"));
+    }
+
+    #[test]
+    fn provider_v3_requires_a_component_matching_permissions_and_frozen_wit() {
+        let manifest = PluginManifest::parse(valid_provider_json().as_bytes()).expect("v3");
+        assert_eq!(manifest.manifest_version, 2);
+        assert_eq!(manifest.api_version, 3);
+        assert_eq!(
+            manifest.provider.as_ref().expect("provider").capabilities,
+            vec![ProviderCapability::Catalog]
+        );
+        assert!(api_supported(3));
+
+        let missing_permission = valid_provider_json().replace(
+            r#""permissions": ["provider.catalog"]"#,
+            r#""permissions": []"#,
+        );
+        assert_eq!(
+            PluginManifest::parse(missing_permission.as_bytes()).unwrap_err(),
+            ManifestError::InvalidProvider
+        );
+        let wrong_wit = valid_provider_json().replace("0.1.0", "0.2.0");
+        assert_eq!(
+            PluginManifest::parse(wrong_wit.as_bytes()).unwrap_err(),
+            ManifestError::InvalidProvider
+        );
+    }
+
+    #[test]
+    fn legacy_and_component_runtime_shapes_cannot_be_mixed() {
+        let legacy_api_three = valid_json().replace("\"apiVersion\": 1", "\"apiVersion\": 3");
+        assert_eq!(
+            PluginManifest::parse(legacy_api_three.as_bytes()).unwrap_err(),
+            ManifestError::ManifestApiMismatch
+        );
+        let component_script = valid_provider_json().replace(
+            r#""component": "component/provider.wasm""#,
+            r#""component": "component/provider.wasm", "script": "dist/main.js""#,
+        );
+        assert_eq!(
+            PluginManifest::parse(component_script.as_bytes()).unwrap_err(),
+            ManifestError::ManifestApiMismatch
+        );
+        let legacy_provider_permission = valid_json().replace(
+            r#""entrypoints": { "styles": ["styles/main.css"] }"#,
+            r#""entrypoints": { "styles": ["styles/main.css"] }, "permissions": ["provider.catalog"]"#,
+        );
+        assert_eq!(
+            PluginManifest::parse(legacy_provider_permission.as_bytes()).unwrap_err(),
+            ManifestError::UnknownPermission
+        );
     }
 }

@@ -17,6 +17,11 @@ pub enum PluginPermission {
     UiSidebar,
     UiNotify,
     Network,
+    ProviderCatalog,
+    ProviderPlayback,
+    ProviderRecommendation,
+    ProviderLyrics,
+    ProviderAccount,
 }
 
 pub const V1_PERMISSIONS: &[PluginPermission] = &[
@@ -38,10 +43,19 @@ pub const V2_PERMISSIONS: &[PluginPermission] = &[
     PluginPermission::Network,
 ];
 
+pub const V3_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::PluginStorage,
+    PluginPermission::Network,
+    PluginPermission::ProviderCatalog,
+    PluginPermission::ProviderPlayback,
+    PluginPermission::ProviderRecommendation,
+    PluginPermission::ProviderLyrics,
+    PluginPermission::ProviderAccount,
+];
+
 const RESERVED: &[&str] = &[
     "network",
     "filesystem",
-    "provider",
     "account",
     "native",
     "shell",
@@ -74,6 +88,11 @@ impl PluginPermission {
             Self::UiSidebar => "ui.sidebar",
             Self::UiNotify => "ui.notify",
             Self::Network => "network",
+            Self::ProviderCatalog => "provider.catalog",
+            Self::ProviderPlayback => "provider.playback",
+            Self::ProviderRecommendation => "provider.recommendation",
+            Self::ProviderLyrics => "provider.lyrics",
+            Self::ProviderAccount => "provider.account",
         }
     }
 
@@ -93,12 +112,20 @@ impl PluginPermission {
             Self::UiSidebar => "Add sidebar commands",
             Self::UiNotify => "Show notifications",
             Self::Network => "Scoped HTTPS network access",
+            Self::ProviderCatalog => "Provide catalog and discovery data",
+            Self::ProviderPlayback => "Resolve playable sources",
+            Self::ProviderRecommendation => "Provide recommendations",
+            Self::ProviderLyrics => "Provide lyrics",
+            Self::ProviderAccount => "Manage this provider instance account",
         }
     }
 
     #[allow(dead_code)]
     pub fn sensitive(self) -> bool {
-        matches!(self, Self::PlayerControl | Self::Network)
+        matches!(
+            self,
+            Self::PlayerControl | Self::Network | Self::ProviderPlayback | Self::ProviderAccount
+        )
     }
 }
 
@@ -123,12 +150,25 @@ pub fn parse_permission(
     {
         return Err(PermissionError::Reserved);
     }
-    for permission in V1_PERMISSIONS.iter().chain(V2_PERMISSIONS.iter()) {
+    for permission in V1_PERMISSIONS
+        .iter()
+        .chain(V2_PERMISSIONS.iter())
+        .chain(V3_PERMISSIONS.iter())
+    {
         if permission.as_str() == value {
             return Ok((*permission, None));
         }
     }
     Err(PermissionError::Unknown)
+}
+
+pub fn permission_allowed_for_api(permission: PluginPermission, api_version: u32) -> bool {
+    match api_version {
+        1 => V1_PERMISSIONS.contains(&permission),
+        2 => V1_PERMISSIONS.contains(&permission) || V2_PERMISSIONS.contains(&permission),
+        3 => V3_PERMISSIONS.contains(&permission),
+        _ => false,
+    }
 }
 
 pub fn parse_https_origin(value: &str) -> Result<String, PermissionError> {
@@ -259,5 +299,24 @@ mod tests {
         assert!(is_blocked_ip("10.0.0.1".parse().unwrap()));
         assert!(is_blocked_ip("169.254.169.254".parse().unwrap()));
         assert!(!is_blocked_ip("1.1.1.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn provider_capabilities_are_v3_only_and_sensitive_where_required() {
+        assert_eq!(
+            parse_permission("provider.catalog").unwrap(),
+            (PluginPermission::ProviderCatalog, None)
+        );
+        assert!(permission_allowed_for_api(
+            PluginPermission::ProviderCatalog,
+            3
+        ));
+        assert!(!permission_allowed_for_api(
+            PluginPermission::ProviderCatalog,
+            2
+        ));
+        assert!(PluginPermission::ProviderPlayback.sensitive());
+        assert!(PluginPermission::ProviderAccount.sensitive());
+        assert!(!PluginPermission::ProviderCatalog.sensitive());
     }
 }

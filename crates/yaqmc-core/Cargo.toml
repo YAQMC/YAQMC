@@ -32,6 +32,8 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wasmtime = { version = "=36.0.14", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+wasmtime-wasi = { version = "=36.0.14", default-features = false }
 yaqmc-protocol = { path = "../yaqmc-protocol" }
 yaqmc-provider-api = { path = "../yaqmc-provider-api" }
 yaqmc-provider-qqmusic = { path = "../yaqmc-provider-qqmusic" }

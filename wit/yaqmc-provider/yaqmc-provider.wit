@@ -1,0 +1,14 @@
+package yaqmc:provider@0.1.0;
+
+/// Frozen provider guest contract for Plugin API v3.
+///
+/// The host validates `capability` against the manifest before dispatch. Each
+/// operation has a versioned JSON request/response schema documented by YAQMC;
+/// using one envelope keeps ABI evolution independent from application DTOs.
+world provider {
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
