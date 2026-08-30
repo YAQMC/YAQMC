@@ -1387,16 +1387,53 @@ impl PlayerService {
         };
         self.publish("player.playback", &buffering);
 
-        let mut prepared = match self.preparer.prepare(resolved).await {
-            Ok(source) => source,
+        let mut failed_selection = resolved.selection.clone();
+        let preparation = match self.preparer.prepare(resolved).await {
+            Ok(source) => Ok(source),
             Err(PlaybackSourceError::UrlExpired) if allow_runtime_expiry_retry => {
                 let refreshed = match self.resolver.resolve(&song).await {
                     Ok(source) => source,
                     Err(error) => return self.fail_load(generation, &error).await,
                 };
-                match self.preparer.prepare(refreshed).await {
+                if generation != self.load_generation.load(Ordering::Acquire) {
+                    return Ok(self.snapshot().await);
+                }
+                failed_selection = refreshed.selection.clone();
+                self.preparer.prepare(refreshed).await
+            }
+            Err(error) => Err(error),
+        };
+        let mut prepared = match preparation {
+            Ok(source) => source,
+            Err(error)
+                if matches!(
+                    error,
+                    PlaybackSourceError::DecryptionFailed | PlaybackSourceError::DecoderUnsupported
+                ) && automatic_client_fallback_candidate(&failed_selection) =>
+            {
+                tracing::warn!(
+                    target: "player.source",
+                    failed_quality = ?failed_selection.resolved_quality,
+                    "automatic encrypted source failed during media preparation; trying one clear fallback"
+                );
+                let fallback = match self
+                    .resolver
+                    .resolve_client_fallback(&song, &failed_selection)
+                    .await
+                {
                     Ok(source) => source,
-                    Err(error) => return self.fail_load(generation, &error).await,
+                    Err(fallback_error) => {
+                        return self.fail_load(generation, &fallback_error).await
+                    }
+                };
+                if generation != self.load_generation.load(Ordering::Acquire) {
+                    return Ok(self.snapshot().await);
+                }
+                match self.preparer.prepare(fallback).await {
+                    Ok(source) => source,
+                    Err(fallback_error) => {
+                        return self.fail_load(generation, &fallback_error).await
+                    }
                 }
             }
             Err(error) => return self.fail_load(generation, &error).await,
@@ -1418,12 +1455,7 @@ impl PlayerService {
                 if matches!(
                     error,
                     AudioEngineError::DecryptionFailed | AudioEngineError::DecoderUnsupported
-                ) && prepared.selection.requested_quality
-                    == AudioQualityPreference::Automatic
-                    && matches!(
-                        prepared.selection.resolved_quality,
-                        AudioQuality::Lossless | AudioQuality::HiRes | AudioQuality::Master
-                    ) =>
+                ) && automatic_client_fallback_candidate(&prepared.selection) =>
             {
                 let failed_selection = prepared.selection.clone();
                 tracing::warn!(
@@ -2123,6 +2155,14 @@ impl PlayerService {
     }
 }
 
+fn automatic_client_fallback_candidate(selection: &PlaybackSourceSelection) -> bool {
+    selection.requested_quality == AudioQualityPreference::Automatic
+        && matches!(
+            selection.resolved_quality,
+            AudioQuality::Lossless | AudioQuality::HiRes | AudioQuality::Master
+        )
+}
+
 fn source_failure(error: &PlaybackSourceError) -> PlaybackFailure {
     let (code, message, retryable) = match error {
         PlaybackSourceError::UrlUnavailable => (
@@ -2552,6 +2592,37 @@ mod tests {
         remaining_failures: AtomicUsize,
     }
 
+    struct FailFirstEncryptedPrepare {
+        remaining_failures: AtomicUsize,
+    }
+
+    impl FailFirstEncryptedPrepare {
+        fn new() -> Self {
+            Self {
+                remaining_failures: AtomicUsize::new(1),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl MediaPreparer for FailFirstEncryptedPrepare {
+        async fn prepare(
+            &self,
+            source: crate::media::ResolvedPlaybackSource,
+        ) -> Result<crate::audio::PreparedPlaybackSource, PlaybackSourceError> {
+            if self
+                .remaining_failures
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |remaining| {
+                    remaining.checked_sub(1)
+                })
+                .is_ok()
+            {
+                return Err(PlaybackSourceError::DecryptionFailed);
+            }
+            crate::media::PassthroughMediaPreparer.prepare(source).await
+        }
+    }
+
     impl FailFirstEncryptedLoadAudioEngine {
         fn new() -> Self {
             Self {
@@ -2794,6 +2865,78 @@ mod tests {
                 .as_ref()
                 .and_then(|selection| selection.fallback_reason),
             Some(PlaybackFallbackReason::ClientUnsupported)
+        );
+    }
+
+    #[tokio::test]
+    async fn automatic_quality_falls_back_once_after_encrypted_prepare_failure() {
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let player = PlayerService::with_runtime(
+            Arc::new(crate::audio::TestAudioEngine::default()),
+            Arc::new(ClientFallbackResolver {
+                requested_quality: AudioQualityPreference::Automatic,
+                fallback_calls: Arc::clone(&fallback_calls),
+            }),
+            Arc::new(FailFirstEncryptedPrepare::new()),
+        );
+
+        let snapshot = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("automatic-encrypted-prepare", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("automatic playback uses its clear fallback");
+
+        assert!(snapshot.is_playing);
+        assert_eq!(fallback_calls.load(Ordering::Acquire), 1);
+        assert_eq!(
+            snapshot
+                .source_selection
+                .as_ref()
+                .map(|selection| selection.resolved_quality),
+            Some(AudioQuality::High)
+        );
+        assert_eq!(
+            snapshot
+                .source_selection
+                .as_ref()
+                .and_then(|selection| selection.fallback_reason),
+            Some(PlaybackFallbackReason::ClientUnsupported)
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_lossless_does_not_hide_an_encrypted_prepare_failure() {
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let player = PlayerService::with_runtime(
+            Arc::new(crate::audio::TestAudioEngine::default()),
+            Arc::new(ClientFallbackResolver {
+                requested_quality: AudioQualityPreference::Lossless,
+                fallback_calls: Arc::clone(&fallback_calls),
+            }),
+            Arc::new(FailFirstEncryptedPrepare::new()),
+        );
+
+        let result = player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("explicit-encrypted-prepare", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(fallback_calls.load(Ordering::Acquire), 0);
+        assert_eq!(
+            player
+                .snapshot()
+                .await
+                .playback_error
+                .as_ref()
+                .map(|failure| failure.code.as_str()),
+            Some("media-decryption-failed")
         );
     }
 
