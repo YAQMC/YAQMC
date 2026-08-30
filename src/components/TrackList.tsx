@@ -16,12 +16,14 @@ import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
 import { EntityLink } from './EntityLink';
 import { useSongShareActions } from '../application/use-song-share-actions';
+import type { ContinuationKind } from '@yaqmc/client';
 
 interface TrackListProps {
   tracks: Song[];
   showAlbum?: boolean;
   compact?: boolean;
   titleTarget?: 'song' | 'album-first';
+  continuation?: { providerId: string; kind: ContinuationKind };
 }
 
 export function TrackList({
@@ -29,6 +31,7 @@ export function TrackList({
   showAlbum = false,
   compact = false,
   titleTarget = 'song',
+  continuation,
 }: TrackListProps) {
   const { t } = useTranslation('player');
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id);
@@ -61,6 +64,7 @@ export function TrackList({
             showAlbum={showAlbum}
             titleTarget={titleTarget}
             pluginActions={pluginActions}
+            continuation={continuation}
           />
         ))}
       </div>
@@ -77,6 +81,7 @@ interface TrackRowProps {
   showAlbum: boolean;
   titleTarget: 'song' | 'album-first';
   pluginActions: readonly { pluginId: string; pluginName: string; id: string; label: string }[];
+  continuation?: { providerId: string; kind: ContinuationKind };
 }
 
 function TrackRow({
@@ -88,6 +93,7 @@ function TrackRow({
   showAlbum,
   titleTarget,
   pluginActions,
+  continuation,
 }: TrackRowProps) {
   const { t } = useTranslation('player');
   const { t: common } = useTranslation('common');
@@ -96,6 +102,7 @@ function TrackRow({
   const snapshot = useAccountStore((state) => state.snapshot);
   const setFavorite = useAccountStore((state) => state.setFavorite);
   const playTracks = usePlayerStore((state) => state.playTracks);
+  const startContinuation = usePlayerStore((state) => state.startContinuation);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const addToQueue = usePlayerStore((state) => state.addToQueue);
   const addToPlaylist = useAddToPlaylistPicker(track);
@@ -124,7 +131,18 @@ function TrackRow({
       togglePlayback();
       return;
     }
-    playTracks(tracks, track.id);
+    if (continuation) {
+      const remainingTracks = tracks.slice(index);
+      startContinuation(
+        continuation.providerId,
+        continuation.kind,
+        remainingTracks,
+        track.id,
+        continuation.kind === 'radar' ? [track.id] : [],
+      );
+    } else {
+      playTracks(tracks, track.id);
+    }
   };
   const openAddToPlaylist = () => {
     const bounds = actionsRef.current?.getBoundingClientRect();

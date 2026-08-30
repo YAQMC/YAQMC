@@ -75,12 +75,6 @@ pub struct EncAreaParams {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LimitParams {
-    pub limit: u32,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SearchParams {
     pub query: String,
     pub kind: yaqmc_provider_api::CatalogSearchKind,

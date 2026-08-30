@@ -15,7 +15,7 @@ describe('MusicProviderRegistry', () => {
     expect(registry.ids()).toEqual([runtimeId]);
     expect(registry.active.catalog).toBe(provider);
     expect(registry.active.lyrics).toBe(provider);
-    expect(registry.active.recommendations).toBe(provider);
+    expect(registry.active.recommendations).toBe(true);
     expect(registry.active.account).toBeNull();
     expect(registry.active.legacyProvider).toBe(provider);
     expect(registry.get('plugin/path')).toBeNull();

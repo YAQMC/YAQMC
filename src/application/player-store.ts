@@ -7,6 +7,7 @@ import type {
 } from '../domain/music';
 import { applyPrimaryPlaybackMode, type PrimaryPlaybackMode } from './playback-mode';
 import { dispatchPlayerCommand } from './player-command-adapter';
+import type { ContinuationKind } from '@yaqmc/client';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 export type PlaybackOrder = 'sequential' | 'shuffle';
@@ -56,7 +57,6 @@ export interface PlayerState {
   timelineRevision: number;
   queueOpen: boolean;
   lyricsOpen: boolean;
-  guessSessionActive: boolean;
   sessionId: number;
   snapshotRevision: number;
   sourceGeneration: number;
@@ -71,6 +71,13 @@ export interface PlayerState {
 interface PlayerActions {
   hydrateQueue: (tracks: Song[]) => void;
   playTracks: (tracks: Song[], startAtId?: EntityId, shuffle?: boolean) => void;
+  startContinuation: (
+    providerId: string,
+    kind: ContinuationKind,
+    tracks: Song[],
+    startAtId?: EntityId,
+    seedTrackIds?: EntityId[],
+  ) => void;
   playFromQueue: (index: number) => void;
   playQueueEntry: (entryId: string) => void;
   playNextQueueEntry: (entryId: string) => void;
@@ -101,8 +108,6 @@ interface PlayerActions {
   removeQueueEntry: (entryId: string) => void;
   reorderQueueEntry: (entryId: string, targetIndex: number) => void;
   applyExternalSnapshot: (snapshot: AuthoritativePlayerSnapshot) => void;
-  startGuessSession: () => void;
-  endGuessSession: () => void;
 }
 
 export type PlayerStore = PlayerState & PlayerActions;
@@ -160,7 +165,6 @@ export const initialPlayerState: PlayerState = {
   timelineRevision: 0,
   queueOpen: false,
   lyricsOpen: false,
-  guessSessionActive: false,
   sessionId: 0,
   snapshotRevision: 0,
   sourceGeneration: 0,
@@ -408,9 +412,25 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       sourceSelection: null,
       observedAtMs: performance.now(),
       timelineRevision: state.timelineRevision + 1,
-      guessSessionActive: false,
       ...fallbackOrderState(queueEntries, currentQueueEntryId, playbackOrder),
     }));
+  },
+
+  startContinuation: (providerId, kind, tracks, startAtId, seedTrackIds) => {
+    if (tracks.every((track) => track.availability.status === 'unavailable')) return;
+    if (
+      dispatchPlayerCommand({
+        type: 'startContinuation',
+        providerId,
+        kind,
+        tracks,
+        startAtId,
+        seedTrackIds,
+      })
+    ) {
+      return;
+    }
+    get().playTracks(tracks, startAtId, false);
   },
 
   playFromQueue: (index) => {
@@ -730,9 +750,6 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   toggleLyrics: () => set((state) => ({ lyricsOpen: !state.lyricsOpen, queueOpen: false })),
   openLyrics: () => set({ lyricsOpen: true, queueOpen: false }),
   closePanels: () => set({ queueOpen: false, lyricsOpen: false }),
-
-  startGuessSession: () => set({ guessSessionActive: true }),
-  endGuessSession: () => set({ guessSessionActive: false }),
 
   addToQueue: (song) => {
     if (dispatchPlayerCommand({ type: 'addToQueue', song })) return;

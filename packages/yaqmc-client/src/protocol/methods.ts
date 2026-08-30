@@ -15,6 +15,8 @@ import type {
   CacheStats,
   CatalogSearchKind,
   CollectPlaylistRequest,
+  ContinuationSnapshot,
+  ContinuationStartRequest,
   CreatePlaylistRequest,
   DebugPerfSample,
   DeletePlaylistRequest,
@@ -85,7 +87,6 @@ export const MIGRATED_METHOD_NAMES = [
   'qqmusic_home',
   'qqmusic_discover',
   'qqmusic_area',
-  'qqmusic_guess_next',
   'qqmusic_library',
   'qqmusic_search',
   'qqmusic_song',
@@ -118,6 +119,9 @@ export const MIGRATED_METHOD_NAMES = [
   'qqmusic_sign_out',
   'qqmusic_cache_stats',
   'qqmusic_clear_cache',
+  'continuation_snapshot',
+  'continuation_start',
+  'continuation_end',
   'player_snapshot',
   'player_hydrate_queue',
   'player_play_tracks',
@@ -232,7 +236,6 @@ export type MethodParams = Exhaustive<{
   qqmusic_home: { refresh: boolean };
   qqmusic_discover: { refresh: boolean };
   qqmusic_area: { encArea: string };
-  qqmusic_guess_next: { limit: number };
   qqmusic_library: void;
   qqmusic_search: { query: string; kind: CatalogSearchKind; page: number; limit: number };
   qqmusic_song: { id: string };
@@ -274,6 +277,9 @@ export type MethodParams = Exhaustive<{
   qqmusic_sign_out: void;
   qqmusic_cache_stats: void;
   qqmusic_clear_cache: void;
+  continuation_snapshot: void;
+  continuation_start: NamedRequest<ContinuationStartRequest>;
+  continuation_end: void;
   player_snapshot: void;
   player_hydrate_queue: { tracks: Song[] };
   player_play_tracks: NamedRequest<PlayTracksRequest>;
@@ -381,7 +387,6 @@ export type MethodResult = Exhaustive<{
   qqmusic_home: HomeFeed;
   qqmusic_discover: DiscoverFeed;
   qqmusic_area: AreaFeed;
-  qqmusic_guess_next: Song[];
   qqmusic_library: LibrarySnapshot;
   qqmusic_search: SearchResult;
   qqmusic_song: Song;
@@ -414,6 +419,9 @@ export type MethodResult = Exhaustive<{
   qqmusic_sign_out: AccountSnapshot;
   qqmusic_cache_stats: CacheStats;
   qqmusic_clear_cache: CacheStats;
+  continuation_snapshot: ContinuationSnapshot;
+  continuation_start: ContinuationSnapshot;
+  continuation_end: ContinuationSnapshot;
   player_snapshot: PlayerSnapshot;
   player_hydrate_queue: PlayerSnapshot;
   player_play_tracks: PlayerSnapshot;

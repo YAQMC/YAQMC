@@ -116,6 +116,22 @@ describe('TrackList favorite controls', () => {
     expect(track.isFavorite).toBe(originalFavorite);
   });
 
+  it('starts radar continuation at the clicked row and keeps only following section tracks', () => {
+    const tracks = [
+      qqTrack(),
+      { ...qqTrack(), id: 'radar-two' },
+      { ...qqTrack(), id: 'radar-three' },
+    ];
+    tracks[1]!.title = 'Radar Two';
+    tracks[2]!.title = 'Radar Three';
+    render(<TrackList tracks={tracks} continuation={{ providerId: 'qqmusic', kind: 'radar' }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Play Radar Two/ }));
+
+    expect(usePlayerStore.getState().queue).toEqual(tracks.slice(1));
+    expect(usePlayerStore.getState().currentIndex).toBe(0);
+  });
+
   it('opens sign-in for a guest without sending a favorite write', () => {
     const track = allSongs[0]!;
     const setFavorite = vi.spyOn(qqMusicProvider, 'setFavorite');

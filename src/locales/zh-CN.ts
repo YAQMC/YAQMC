@@ -352,6 +352,7 @@ export const zhCN = {
     shareUnavailable: '当前音乐源不支持歌曲分享。',
     sharePublicUnavailable: '这首歌没有可用的公开 HTTPS 链接。',
     shareFailed: '无法生成或复制歌曲分享内容。',
+    continuationStopped: '推荐续播多次重试后仍无法恢复，已停止自动续播。',
     addToPlaylist: '添加到',
     addToPlaylistPicker: '将《{{title}}》添加到歌单',
     addToPlaylistLoading: '正在加载歌单…',

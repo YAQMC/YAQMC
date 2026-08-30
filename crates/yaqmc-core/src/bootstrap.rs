@@ -36,6 +36,7 @@ pub(crate) struct CoreServices {
     pub qq_music: Arc<dyn MusicProvider>,
     pub audio: Arc<dyn AudioEngine>,
     pub player: Arc<PlayerService>,
+    pub continuation: Arc<crate::continuation::ContinuationService>,
     pub local_api: Arc<LocalApiService>,
     pub system_media: Mutex<Option<Arc<SystemMediaIntegration>>>,
     pub runtime: tokio::runtime::Handle,
@@ -116,6 +117,11 @@ impl CoreServices {
             resolver,
             preparer,
         ));
+        let continuation = crate::continuation::ContinuationService::new(
+            Arc::clone(&player),
+            Arc::clone(&providers),
+        );
+        continuation.start_monitor(&inputs.runtime);
         if let Ok(Some(snapshot)) = storage.load_queue::<PlayerSnapshot>() {
             let qq_music = Arc::clone(&qq_music);
             let player = Arc::clone(&player);
@@ -143,6 +149,7 @@ impl CoreServices {
             qq_music,
             audio,
             player,
+            continuation,
             local_api,
             system_media: Mutex::new(None),
             runtime: inputs.runtime,

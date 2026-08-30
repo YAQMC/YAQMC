@@ -6,6 +6,7 @@ use yaqmc_protocol::{
     authorize, AclDenied, CoreError, ErrorCode, MethodOwner, PlatformAttach, WindowOrigin,
 };
 
+use crate::continuation::{ContinuationStartRequest, ContinuationTerminalReason};
 use crate::player::PlayTracksRequest;
 use crate::plugin::api::{
     PluginBridgeRequest, PluginEnableRequest, PluginInstallRequest, PluginSettingsWrite,
@@ -21,13 +22,13 @@ use super::ops;
 use super::types::{
     ArtistCatalogParams, AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams,
     DiagnosticsExportToParams, EnabledParams, EncAreaParams, EntryIdParams, FrontendLogParams,
-    IdParams, IndexParams, IssueReporterPreviewParams, LevelParams, LimitParams,
-    LyricsDocumentParams, NamedRequest, OAuthCompleteParams, OAuthPrepareParams,
-    OptionalAttemptParams, PathParams, PlaylistTracksParams, PluginIdParams,
-    PluginMarkFailedParams, PluginReadAssetParams, PortParams, PrimaryModeParams, QualityParams,
-    RecordErrorRequest, ReferenceParams, ReorderParams, RepeatParams, SampleParams, SearchParams,
-    SeekParams, SettingKeyParams, SettingWriteParams, ShareSongParams, SongIdParams, TokenParams,
-    TrackParams, TracksParams, UrlParams, ValueParams, VolumeParams,
+    IdParams, IndexParams, IssueReporterPreviewParams, LevelParams, LyricsDocumentParams,
+    NamedRequest, OAuthCompleteParams, OAuthPrepareParams, OptionalAttemptParams, PathParams,
+    PlaylistTracksParams, PluginIdParams, PluginMarkFailedParams, PluginReadAssetParams,
+    PortParams, PrimaryModeParams, QualityParams, RecordErrorRequest, ReferenceParams,
+    ReorderParams, RepeatParams, SampleParams, SearchParams, SeekParams, SettingKeyParams,
+    SettingWriteParams, ShareSongParams, SongIdParams, TokenParams, TrackParams, TracksParams,
+    UrlParams, ValueParams, VolumeParams,
 };
 use super::HostDispatchHooks;
 
@@ -40,7 +41,6 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "qqmusic_home",
     "qqmusic_discover",
     "qqmusic_area",
-    "qqmusic_guess_next",
     "qqmusic_library",
     "qqmusic_search",
     "qqmusic_song",
@@ -72,6 +72,9 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "qqmusic_sign_out",
     "qqmusic_cache_stats",
     "qqmusic_clear_cache",
+    "continuation_snapshot",
+    "continuation_start",
+    "continuation_end",
     "player_snapshot",
     "player_hydrate_queue",
     "player_play_tracks",
@@ -362,10 +365,6 @@ async fn invoke_core(
             let EncAreaParams { enc_area } = parse(&params)?;
             provider(core.qq_music().area(enc_area).await)
         }
-        "qqmusic_guess_next" => {
-            let LimitParams { limit } = parse(&params)?;
-            provider(core.qq_music().guess_next(limit).await)
-        }
         "qqmusic_library" => ok(core.qq_music().library()),
         "qqmusic_search" => {
             let SearchParams {
@@ -484,44 +483,82 @@ async fn invoke_core(
             let NamedRequest::<CollectPlaylistRequest> { request } = parse(&params)?;
             provider(core.qq_music().set_playlist_collected(request).await)
         }
-        "qqmusic_auth_start" => provider(core.qq_music().start_qr_login().await),
+        "qqmusic_auth_start" => {
+            core.continuation()
+                .end(ContinuationTerminalReason::AccountChanged)
+                .await;
+            provider(core.qq_music().start_qr_login().await)
+        }
         "qqmusic_auth_heartbeat" => {
             let AuthHeartbeatParams {
                 attempt_id,
                 owner_lease_id,
             } = parse(&params)?;
             let live = host.oauth_window_is_live(&attempt_id);
-            provider(
-                ops::qqmusic_auth_heartbeat(
-                    core.qq_music().as_ref(),
-                    attempt_id,
-                    owner_lease_id,
-                    live,
-                )
-                .await,
+            let result = ops::qqmusic_auth_heartbeat(
+                core.qq_music().as_ref(),
+                attempt_id,
+                owner_lease_id,
+                live,
             )
+            .await;
+            core.continuation()
+                .validate_account_generation("qqmusic")
+                .await;
+            provider(result)
         }
         "qqmusic_auth_cancel" => {
             let AttemptIdParams { attempt_id } = parse(&params)?;
             let result = core.qq_music().cancel_qr_login(attempt_id.clone()).await;
             host.close_oauth_window(&attempt_id);
+            core.continuation()
+                .validate_account_generation("qqmusic")
+                .await;
             provider(result)
         }
         "qqmusic_auth_refresh" => {
             let OptionalAttemptParams { attempt_id } = parse(&params)?;
-            provider(core.qq_music().refresh_qr_login(attempt_id).await)
+            let result = core.qq_music().refresh_qr_login(attempt_id).await;
+            core.continuation()
+                .validate_account_generation("qqmusic")
+                .await;
+            provider(result)
         }
-        "qqmusic_sign_out" => provider(core.qq_music().sign_out().await),
+        "qqmusic_sign_out" => {
+            core.continuation()
+                .end(ContinuationTerminalReason::AccountChanged)
+                .await;
+            provider(core.qq_music().sign_out().await)
+        }
         "qqmusic_cache_stats" => provider(core.qq_music().cache_stats()),
         "qqmusic_clear_cache" => provider(core.qq_music().clear_cache()),
+        "continuation_snapshot" => ok(core.continuation().snapshot().await),
+        "continuation_start" => {
+            let NamedRequest::<ContinuationStartRequest> { request } = parse(&params)?;
+            cmd(core
+                .continuation()
+                .start(request)
+                .await
+                .map_err(|error| error.to_string()))
+        }
+        "continuation_end" => ok(core
+            .continuation()
+            .end(ContinuationTerminalReason::Explicit)
+            .await),
         "player_snapshot" => ok(core.player().snapshot().await),
         "player_hydrate_queue" => {
             let TracksParams { tracks } = parse(&params)?;
+            core.continuation()
+                .end(ContinuationTerminalReason::QueueReplaced)
+                .await;
             core.qq_music().remember_songs(&tracks).await;
             ok(core.player().hydrate_queue(tracks).await)
         }
         "player_play_tracks" => {
             let NamedRequest::<PlayTracksRequest> { request } = parse(&params)?;
+            core.continuation()
+                .end(ContinuationTerminalReason::QueueReplaced)
+                .await;
             core.qq_music().remember_songs(&request.tracks).await;
             cmd(core
                 .player()
@@ -844,6 +881,9 @@ async fn invoke_core(
         }
         "auth_oauth_prepare" => {
             let OAuthPrepareParams { provider_kind } = parse(&params)?;
+            core.continuation()
+                .end(ContinuationTerminalReason::AccountChanged)
+                .await;
             provider(ops::auth_oauth_prepare(core.qq_music().as_ref(), provider_kind).await)
         }
         "auth_oauth_complete" => {
@@ -853,13 +893,20 @@ async fn invoke_core(
             } = parse(&params)?;
             let callback_url = reqwest::Url::parse(&callback_url)
                 .map_err(|error| DispatchError::InvalidParams(error.to_string()))?;
-            provider(
-                ops::auth_oauth_complete(core.qq_music().as_ref(), &attempt_id, callback_url).await,
-            )
+            let result =
+                ops::auth_oauth_complete(core.qq_music().as_ref(), &attempt_id, callback_url).await;
+            core.continuation()
+                .validate_account_generation("qqmusic")
+                .await;
+            provider(result)
         }
         "auth_oauth_cancel" => {
             let AttemptIdParams { attempt_id } = parse(&params)?;
-            provider(ops::auth_oauth_cancel(core.qq_music().as_ref(), &attempt_id).await)
+            let result = ops::auth_oauth_cancel(core.qq_music().as_ref(), &attempt_id).await;
+            core.continuation()
+                .validate_account_generation("qqmusic")
+                .await;
+            provider(result)
         }
         "app_settings_get" => {
             let SettingKeyParams { key } = parse(&params)?;

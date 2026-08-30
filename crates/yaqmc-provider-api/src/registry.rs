@@ -6,8 +6,8 @@ use crate::{
     CatalogSearchKind, DiscoverFeed, HomeFeed, LibrarySnapshot, LyricDocument, LyricsProvider,
     MusicProvider, PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
     PlaybackSourceSelection, Playlist, ProviderAccount, ProviderCommandError, ProviderResult,
-    ProviderStatus, RecommendationProvider, ResolvedPlaybackSource, SearchResult, ShareProvider,
-    ShareTarget, Song,
+    ProviderStatus, RecommendationBatch, RecommendationProvider, RecommendationRequest,
+    ResolvedPlaybackSource, SearchResult, ShareProvider, ShareTarget, Song,
 };
 use async_trait::async_trait;
 use std::{borrow::Borrow, collections::HashMap, fmt, sync::Arc};
@@ -233,8 +233,11 @@ impl PlaybackSourceProvider for LegacyCapabilityAdapter {
 
 #[async_trait]
 impl RecommendationProvider for LegacyCapabilityAdapter {
-    async fn recommendation_next(&self, limit: u32) -> ProviderResult<Vec<Song>> {
-        self.provider.guess_next(limit).await
+    async fn recommendation_next(
+        &self,
+        request: RecommendationRequest,
+    ) -> ProviderResult<RecommendationBatch> {
+        self.provider.recommendation_next(request).await
     }
 }
 
@@ -375,6 +378,33 @@ impl ProviderRegistry {
             retryable: false,
         })?;
         share.share_song(id).await
+    }
+
+    pub fn account_generation(&self, provider_id: &str) -> Option<u64> {
+        let provider = self.capabilities(provider_id)?;
+        Some(
+            provider
+                .account()
+                .map_or(0, |account| account.provider_account().account_generation()),
+        )
+    }
+
+    pub async fn recommendation_next(
+        &self,
+        provider_id: &str,
+        request: RecommendationRequest,
+    ) -> ProviderResult<RecommendationBatch> {
+        let provider = self.capabilities(provider_id).ok_or_else(|| {
+            ProviderCommandError::invalid_request("music provider is unavailable")
+        })?;
+        let recommendations = provider
+            .recommendations()
+            .ok_or_else(|| ProviderCommandError {
+                code: "unsupported-operation".to_owned(),
+                message: "this music provider does not support recommendations".to_owned(),
+                retryable: false,
+            })?;
+        recommendations.recommendation_next(request).await
     }
 
     fn provider_for_song(

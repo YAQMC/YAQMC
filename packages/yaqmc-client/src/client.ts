@@ -80,12 +80,18 @@ export class YaqmcClient {
     projection: () => this.invoke('lyrics_surface_projection'),
   };
 
+  readonly continuation = {
+    snapshot: () => this.invoke('continuation_snapshot'),
+    start: (request: MethodParams['continuation_start']['request']) =>
+      this.invoke('continuation_start', { request }),
+    end: () => this.invoke('continuation_end'),
+  };
+
   readonly catalog = {
     status: () => this.invoke('qqmusic_status'),
     home: (refresh: boolean) => this.invoke('qqmusic_home', { refresh }),
     discover: (refresh: boolean) => this.invoke('qqmusic_discover', { refresh }),
     area: (encArea: string) => this.invoke('qqmusic_area', { encArea }),
-    guessNext: (limit: number) => this.invoke('qqmusic_guess_next', { limit }),
     library: () => this.invoke('qqmusic_library'),
     search: (
       query: string,

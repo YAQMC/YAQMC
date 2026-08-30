@@ -1,5 +1,8 @@
 import { useEffect } from 'react';
+import type { ContinuationSnapshot } from '@yaqmc/client';
 import type { PlaybackSourceSelection, Song } from '../domain/music';
+import i18n from '../i18n';
+import { pushPluginNotice } from './plugin-notifications';
 import { getHostBridge, getYaqmcClient } from './yaqmc-runtime';
 import { setPlayerCommandAdapter, type PlayerCommand } from './player-command-adapter';
 import {
@@ -62,6 +65,15 @@ async function invokePlayerCommand(command: PlayerCommand): Promise<void> {
         tracks: command.tracks,
         startAtId: command.startAtId ?? null,
         shuffle: command.shuffle ?? null,
+      });
+      return;
+    case 'startContinuation':
+      await client.continuation.start({
+        providerId: command.providerId,
+        kind: command.kind,
+        tracks: command.tracks,
+        startAtId: command.startAtId ?? null,
+        seedTrackIds: command.seedTrackIds ?? [],
       });
       return;
     case 'playFromQueue':
@@ -131,6 +143,7 @@ export function useNativePlayerRuntime(): void {
     if (!isNativeRuntime) return;
     let active = true;
     let receivedSnapshotEvent = false;
+    let continuationNotificationRevision = 0;
     const client = getYaqmcClient();
 
     setPlayerCommandAdapter(invokePlayerCommand);
@@ -140,6 +153,24 @@ export function useNativePlayerRuntime(): void {
         receivedSnapshotEvent = true;
         usePlayerStore.getState().applyExternalSnapshot(toAuthoritativeSnapshot(payload));
       }
+    });
+    const unlistenApi = client.on('api://event', (event) => {
+      if (!active || event.type !== 'continuation.changed') return;
+      const snapshot = event.data as Partial<ContinuationSnapshot>;
+      const revision = snapshot.notificationRevision ?? 0;
+      if (
+        revision <= continuationNotificationRevision ||
+        snapshot.terminalReason !== 'provider-error'
+      ) {
+        return;
+      }
+      continuationNotificationRevision = revision;
+      pushPluginNotice({
+        pluginId: 'app.continuation',
+        pluginName: 'YAQMC',
+        level: 'warning',
+        message: i18n.t('player:continuationStopped'),
+      });
     });
 
     void client.player
@@ -153,6 +184,7 @@ export function useNativePlayerRuntime(): void {
     return () => {
       active = false;
       unlisten();
+      unlistenApi();
       setPlayerCommandAdapter(null);
     };
   }, []);

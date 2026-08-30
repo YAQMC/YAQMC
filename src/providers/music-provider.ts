@@ -60,16 +60,11 @@ export interface LyricsMusicProvider {
   getLyrics(songId: EntityId, signal?: AbortSignal): Promise<LyricDocument | null>;
 }
 
-export interface RecommendationMusicProvider {
-  getGuessNext(limit?: number, signal?: AbortSignal): Promise<Song[]>;
-}
-
 export interface ShareMusicProvider {
   getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget>;
 }
 
-export interface MusicProvider
-  extends CatalogMusicProvider, LyricsMusicProvider, RecommendationMusicProvider {
+export interface MusicProvider extends CatalogMusicProvider, LyricsMusicProvider {
   readonly id: string;
   readonly displayName: string;
 }
@@ -169,7 +164,8 @@ export interface MusicProviderCapabilityFacade {
   readonly id: string;
   readonly catalog: CatalogMusicProvider;
   readonly lyrics: LyricsMusicProvider;
-  readonly recommendations: RecommendationMusicProvider;
+  /** Recommendation fetching is Core-owned; this is capability metadata only. */
+  readonly recommendations: boolean;
   readonly share: ShareMusicProvider | null;
   readonly account: AccountMusicProvider | null;
   readonly legacyProvider: MusicProvider;
@@ -182,7 +178,7 @@ export function createMusicProviderCapabilityFacade(
     id: provider.id,
     catalog: provider,
     lyrics: provider,
-    recommendations: provider,
+    recommendations: true,
     share: isShareMusicProvider(provider) ? provider : null,
     account: isAccountMusicProvider(provider) ? provider : null,
     legacyProvider: provider,

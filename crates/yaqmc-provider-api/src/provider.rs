@@ -11,9 +11,44 @@ use crate::{
     ShareTarget, Song,
 };
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RecommendationKind {
+    Guess,
+    Radar,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationSeed {
+    pub track_id: String,
+    pub numeric_id: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationRequest {
+    pub kind: RecommendationKind,
+    pub limit: u32,
+    pub cursor: Option<String>,
+    pub seeds: Vec<RecommendationSeed>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationBatch {
+    pub songs: Vec<Song>,
+    pub next_cursor: Option<String>,
+    pub ended: bool,
+}
 
 #[async_trait]
 pub trait ProviderAccount: Send + Sync {
+    /// Monotonic identity generation. Login attempts, account switches, logout,
+    /// and credential replacement advance it; passive snapshot revisions do not.
+    fn account_generation(&self) -> u64;
     async fn account_snapshot(&self) -> AccountSnapshot;
     async fn favorite_songs(
         &self,
@@ -144,7 +179,10 @@ pub trait PlaybackSourceProvider: PlaybackSourceResolver + Send + Sync {
 
 #[async_trait]
 pub trait RecommendationProvider: Send + Sync {
-    async fn recommendation_next(&self, limit: u32) -> ProviderResult<Vec<Song>>;
+    async fn recommendation_next(
+        &self,
+        request: RecommendationRequest,
+    ) -> ProviderResult<RecommendationBatch>;
 }
 
 #[async_trait]
@@ -205,7 +243,10 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
     async fn area(&self, enc_area: String) -> ProviderResult<AreaFeed>;
     fn library(&self) -> LibrarySnapshot;
     async fn lyrics(&self, song_id: String) -> ProviderResult<Option<LyricDocument>>;
-    async fn guess_next(&self, limit: u32) -> ProviderResult<Vec<Song>>;
+    async fn recommendation_next(
+        &self,
+        request: RecommendationRequest,
+    ) -> ProviderResult<RecommendationBatch>;
     async fn share_song(&self, id: String) -> ProviderResult<ShareTarget>;
     async fn artwork_data_uri(&self, url: String) -> ProviderResult<String>;
     fn cache_stats(&self) -> ProviderResult<CacheStats>;

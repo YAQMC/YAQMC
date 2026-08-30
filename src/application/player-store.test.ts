@@ -155,6 +155,29 @@ describe('player store', () => {
     expect(commands).toEqual([{ type: 'playTracks', tracks, startAtId: undefined, shuffle: true }]);
   });
 
+  it('sends one atomic Core continuation intent without mutating renderer session state', () => {
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    const tracks = [track('one'), track('two')];
+
+    usePlayerStore.getState().startContinuation('qqmusic', 'radar', tracks, 'two', ['two']);
+
+    expect(commands).toEqual([
+      {
+        type: 'startContinuation',
+        providerId: 'qqmusic',
+        kind: 'radar',
+        tracks,
+        startAtId: 'two',
+        seedTrackIds: ['two'],
+      },
+    ]);
+    expect(usePlayerStore.getState().queue).toEqual([]);
+    expect(usePlayerStore.getState()).not.toHaveProperty('guessSessionActive');
+  });
+
   it('toggles a stable shuffle traversal back to canonical sequential order', () => {
     usePlayerStore
       .getState()

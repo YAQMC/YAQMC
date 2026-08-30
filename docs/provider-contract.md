@@ -27,6 +27,13 @@ will not be forced to implement login or account mutations. The legacy
 account playlists, recent history, and typed mutations. Public Home/Search/Explore code depends only on
 `MusicProvider`; enabling account features cannot make catalog rendering require a session.
 
+`RecommendationProvider` accepts a structured kind, bounded batch size, opaque cursor, and normalized seed track
+references, and returns songs plus the next cursor and an explicit end marker. Core also snapshots the provider's
+monotonic account generation so a login, logout, or account replacement invalidates every in-flight batch. An
+accountless provider uses the stable guest generation `0`; lack of an account capability never disables its
+recommendations. Upstream route names, request JSON, credentials, and provider-specific response DTOs remain behind
+the pinned adapter.
+
 All values crossing into React use `src/domain/music.ts`. Song identity distinguishes the provider track MID,
 numeric song ID, album MID/ID, and media MID; those identifiers are not treated as interchangeable.
 

@@ -571,6 +571,42 @@ export interface PlayTracksRequest {
   shuffle?: boolean | null;
 }
 
+export type ContinuationKind = 'guess' | 'radar';
+export type ContinuationRequestState = 'idle' | 'fetching' | 'retrying';
+export type ContinuationTerminalReason =
+  | 'explicit'
+  | 'queue-replaced'
+  | 'provider-changed'
+  | 'account-changed'
+  | 'stopped'
+  | 'provider-ended'
+  | 'empty-batches'
+  | 'seen-limit'
+  | 'provider-error';
+
+export interface ContinuationStartRequest {
+  providerId: string;
+  kind: ContinuationKind;
+  tracks: Song[];
+  startAtId?: EntityId | null;
+  seedTrackIds?: EntityId[];
+}
+
+export interface ContinuationSnapshot {
+  active: boolean;
+  sessionId: number | null;
+  providerId: string | null;
+  kind: ContinuationKind | null;
+  accountGeneration: number | null;
+  cursor: string | null;
+  seenCount: number;
+  consecutiveEmptyBatches: number;
+  requestState: ContinuationRequestState;
+  terminalReason: ContinuationTerminalReason | null;
+  lastErrorCode: string | null;
+  notificationRevision: number;
+}
+
 export type RepeatMode = 'off' | 'all' | 'one';
 export type PlaybackOrder = 'sequential' | 'shuffle';
 export type PrimaryPlaybackMode = 'sequential' | 'shuffle' | 'repeat-one';

@@ -129,10 +129,6 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
     return nativeRequest('qqmusic_playlist', { id }, signal);
   }
 
-  getGuessNext(limit = 5, signal?: AbortSignal): Promise<Song[]> {
-    return nativeRequest('qqmusic_guess_next', { limit }, signal);
-  }
-
   getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
     return nativeRequest('catalog_share_song', { providerId: this.id, id }, signal);
   }

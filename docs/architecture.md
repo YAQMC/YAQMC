@@ -16,6 +16,7 @@ yaqmc-core
 ProviderRegistry ── QQMusicProvider ── pinned qm-api-rs + retained hybrids
         │
         ├── PlayerService ── MediaPreparer / HTTP Range cache ── AudioEngine (Rodio / CPAL)
+        ├── ContinuationService ── typed RecommendationProvider batches
         ├── StorageService ── SQLite metadata, settings, history, queue, cache index
         ├── CredentialStore ── OS keychain / credential vault
         ├── LocalApiService ── authenticated 127.0.0.1 HTTP + SSE
@@ -34,6 +35,8 @@ Browser-only Vite: React ── FakeMusicProvider + simulated player adapter
   renderers receive neither account data nor account methods.
 - `PlayerService` is the single owner of the active queue index, playback lifecycle, actual engine position,
   playback duration, volume, mute, repeat, shuffle, failure state, and lyric cursor.
+- `ContinuationService` owns guess/radar sessions, cursors, deduplication, prefetch, bounded retry, and stale-response
+  rejection. It observes `PlayerService` events and atomically appends through the player; React holds no session truth.
 - `AudioEngine` is a synchronous command boundary backed by a dedicated thread that owns Rodio/CPAL objects.
   Neither React nor the async runtime owns the audio device.
 - `StorageService` owns all SQLite connections and cache file bookkeeping. Signed URLs are never database keys.
@@ -47,13 +50,16 @@ Browser-only Vite: React ── FakeMusicProvider + simulated player adapter
 
 1. A page calls the public provider contract, or its account contract after an authenticated snapshot, and receives
    normalized catalog/account entities. Provider cursors and credentials never cross that boundary.
-2. A play intention sends normalized tracks to `PlayerService`.
+2. A normal play intention sends normalized tracks to `PlayerService`. A guess/radar play intention starts one Core
+   continuation session with normalized tracks and provider-owned seed identifiers.
 3. The player resolves a fresh provider source, reuses a complete cache entry or prepares an initial HTTP range,
    then asks the audio worker to decode and play it while remaining ranges fill the bounded cache.
 4. The player's 50 ms poll reads Rodio's actual position and end state. Position events are throttled to 250 ms;
    track, playback, queue, mode, error, lyric-line, and lyric-word transitions emit only on change.
 5. React projects `player://snapshot`. The local API publishes the same state as JSON and SSE.
-6. Queue/mode/volume/track transitions persist a `PlayerSnapshot` in SQLite and restore on the next launch.
+6. While a continuation is active, Core prefetches typed provider batches near the queue tail and discards every
+   response whose session, request, provider, or account generation is stale.
+7. Queue/mode/volume/track transitions persist a `PlayerSnapshot` in SQLite and restore on the next launch.
 
 Account login is a separate lifecycle. The main account dialog owns a native QR lease and heartbeat; loss of that
 owner cancels polling. A confirmed candidate is validated, written to a staging keyring slot, read back, validated

@@ -161,19 +161,6 @@
       "main"
     ],
     "mainWindowOnly": true,
-    "name": "qqmusic_guess_next",
-    "owner": "core",
-    "requestCap": 1048576,
-    "responseCap": 1048576,
-    "timeoutClass": "standard",
-    "timeoutMs": 30000
-  },
-  {
-    "allowedOrigins": [
-      "host",
-      "main"
-    ],
-    "mainWindowOnly": true,
     "name": "qqmusic_library",
     "owner": "core",
     "requestCap": 1048576,
@@ -578,6 +565,45 @@
     ],
     "mainWindowOnly": true,
     "name": "qqmusic_clear_cache",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "continuation_snapshot",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "continuation_start",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "continuation_end",
     "owner": "core",
     "requestCap": 1048576,
     "responseCap": 1048576,

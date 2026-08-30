@@ -17,6 +17,11 @@
 `ProviderAccount` 是原生提供器实现的账号契约，负责账号快照/OAuth 生命周期、收藏、账号歌单、
 最近播放和类型化写操作。公开 Home/Search/Explore 只依赖 `MusicProvider`，账号功能失败不能拖垮访客目录。
 
+`RecommendationProvider` 接收结构化推荐类型、受限批量、opaque cursor 和规范化 seed 歌曲引用，返回歌曲、
+下一 cursor 与明确结束标记。Core 同时固定提供器的单调账号代次；登录、退出或换号后，所有飞行中的旧批次
+都会失效。无账号能力的提供器使用稳定访客代次 `0`，不会因此失去推荐能力。上游路由名、请求 JSON、凭据和
+提供器专用响应 DTO 保留在固定版本的适配器边界之后。
+
 进入 React 的值统一使用 `src/domain/music.ts`。QQ 的歌曲 MID、数字 song ID、album MID/ID 和 media MID
 不是同一个标识，不能互换。
 

@@ -124,5 +124,23 @@ continues to expose player operations only and never account/session data.
 - queue, selected index, playback state, position, volume, mute, repeat, shuffle, and error state are restored from
   SQLite. A restored track remains paused until explicitly resumed.
 
+## Recommendation continuation
+
+`ContinuationService` is a Core sibling of `PlayerService`; it is not renderer player state. Guess and radar share
+one state machine but retain distinct typed seeds and cursors. Prefetch begins with at most two playable recommended
+entries remaining, requests five songs, and appends only if a continuation-owned queue entry still exists. This
+single guarded player mutation prevents a delayed response from contaminating a replacement queue.
+
+Responses are checked against session ID, request generation, provider ID, and account generation, then deduplicated
+by provider plus track ID. Three empty deduplicated batches, an explicit provider end, a 500-track seen limit, or a
+terminal error closes the session. Only network/rate-limit failures receive bounded jittered retries. If the queue
+reaches native EOS before a batch arrives, the guarded append delegates resumption to the normal Core `next`
+transition; no renderer timer or synthetic duration check advances playback.
+
+Pause, seek, reorder, manual append, Shuffle, and Repeat All preserve the session. Repeat One pauses prefetch. Queue
+replacement, explicit Stop, provider/account replacement, or sign-out closes it. The protocol
+publishes a projection for diagnostics and a single warning revision on exhausted provider failures; credentials and
+upstream request details never enter that projection.
+
 Core protocol methods, the Electron renderer bridge, synchronized lyrics, the React projection, and the loopback
 HTTP API all use this contract.

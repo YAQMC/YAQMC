@@ -45,12 +45,21 @@ Each section uses the signed-in session when available and a general fallback ot
 The feed can return a page without any songlist card; the loader keeps paging and, if the personalized feed yields
 nothing, falls back to the general playlist read so the section is never empty.
 
-## Continuous guess-you-like
+## Continuous recommendations
 
-Tapping the guess-you-like card starts a "guess session" tracked in the player store. When the last track of the
-current batch finishes, `useGuessContinuation` requests the next batch through the `qqmusic_guess_next` command,
-appends it to the queue, and plays the first appended track. The session ends when the provider returns no more songs.
-Playing anything else resets the flag.
+Playing the **Guess you like** card or the **Because you listen to** section starts a recommendation session owned by
+Rust Core. Selecting a radar row starts at that song and keeps the rows that follow it. React sends one typed start
+intent; it does not observe end-of-stream or fetch recommendation pages.
+
+`ContinuationService` prefetches five songs when at most two playable recommendation entries remain after the current
+track. It validates the session, request, provider, and account generations before atomically appending a response,
+deduplicates by provider plus track ID, and bounds the session to 500 seen tracks. Network and rate-limit failures use
+bounded jittered retries while the existing queue keeps playing. The session stops on explicit stop, queue/provider/
+account replacement, provider completion, three deduplicated empty batches, or exhausted retries. Pause, seek, queue
+reorder, manual append, Shuffle, and Repeat All preserve it; Repeat One suppresses prefetch until that mode is left.
+
+QQ recommendation paging is exposed to YAQMC only through the pinned `qm-api-rs` typed API. Upstream request routes,
+credentials, cursors, and raw response shapes do not cross into React or Electron Main.
 
 ## Caching and refresh
 

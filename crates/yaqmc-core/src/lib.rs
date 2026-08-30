@@ -2,6 +2,7 @@
 
 pub mod app_preferences;
 pub mod audio;
+pub mod continuation;
 pub mod credentials;
 pub mod diagnostics;
 pub mod fullscreen_watch;
@@ -204,6 +205,10 @@ impl CoreHandle {
 
     pub fn player(&self) -> Arc<crate::player::PlayerService> {
         Arc::clone(&self.services.player)
+    }
+
+    pub fn continuation(&self) -> Arc<crate::continuation::ContinuationService> {
+        Arc::clone(&self.services.continuation)
     }
 
     pub fn local_api(&self) -> Arc<crate::local_api::LocalApiService> {

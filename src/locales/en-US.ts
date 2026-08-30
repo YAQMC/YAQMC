@@ -351,6 +351,7 @@ export const enUS = {
     shareUnavailable: 'Sharing is not supported by this music provider.',
     sharePublicUnavailable: 'This song has no public HTTPS link.',
     shareFailed: 'Could not prepare or copy the song share content.',
+    continuationStopped: 'Automatic recommendations stopped after the provider could not recover.',
     addToPlaylist: 'Add to playlist',
     addToPlaylistPicker: 'Add {{title}} to a playlist',
     addToPlaylistLoading: 'Loading playlists…',

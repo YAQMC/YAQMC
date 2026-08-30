@@ -279,11 +279,6 @@ export class FakeMusicProvider implements MusicProvider {
     }) as SearchResult;
   }
 
-  async getGuessNext(limit = 5, signal?: AbortSignal) {
-    throwIfAborted(signal);
-    return clone(allSongs.slice(0, limit));
-  }
-
   async getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
     const song = await this.getSong(id, signal);
     return {

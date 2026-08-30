@@ -17,6 +17,7 @@ yaqmc-core
 ProviderRegistry ── QQMusicProvider ── 精确 pin 的 qm-api-rs + 保留的 hybrid
         │
         ├── PlayerService ── MediaPreparer / HTTP Range 缓存 ── AudioEngine（Rodio / CPAL）
+        ├── ContinuationService ── 类型化 RecommendationProvider 批次
         ├── StorageService ── SQLite、设置、历史、队列、缓存索引
         ├── CredentialStore ── 操作系统 keychain / credential vault
         ├── LocalApiService ── 认证后的 127.0.0.1 HTTP + SSE
@@ -32,6 +33,8 @@ ProviderRegistry ── QQMusicProvider ── 精确 pin 的 qm-api-rs + 保留
 - `src/application`：React 状态投影、偏好设置、播放与登录运行时协调。
 - `src/components`、`src/pages`、`src/surfaces`：主窗口和歌词窗口。
 - `crates/yaqmc-core/src/player.rs`：队列、当前曲目、进度、循环/随机、音量、错误与歌词时钟的唯一事实源。
+- `crates/yaqmc-core/src/continuation.rs`：猜你喜欢/雷达会话、cursor、去重、预取、有界重试与过期响应丢弃；
+  只通过 `PlayerService` 原子追加，React 不保存会话事实。
 - `crates/yaqmc-core/src/audio.rs`：解码、输出设备和 seek。
 - `crates/yaqmc-core/src/streaming.rs`：HTTP Range、稀疏缓存和授权 mflac 读取。
 - `crates/yaqmc-provider-api`：对象安全的目录/账号 trait、冻结 wire DTO 与 provider registry。
@@ -42,10 +45,11 @@ ProviderRegistry ── QQMusicProvider ── 精确 pin 的 qm-api-rs + 保留
 
 1. React 通过 `MusicProvider` 请求公开目录；账号页面通过 `ProviderAccount` 契约访问。
 2. Rust 校验地址、请求和响应，把上游 DTO 转成稳定领域类型。
-3. 播放请求进入 `PlayerService`，由提供器按当前账号权益解析一次性音源。
+3. 普通播放请求进入 `PlayerService`；猜你喜欢/雷达播放请求同时建立一个 Core 推荐会话，并携带提供器 seed。
 4. 缓存/Range 层向音频线程提供 `Read + Seek`；加密 mflac 只在读取时于内存解密。
 5. 原生播放快照投影到 React、MPRIS/SMTC、本地 API、托盘与歌词窗口；这些适配器不拥有独立状态。
-6. 队列、模式、音量和选中曲目写入 SQLite；账号秘密只进入操作系统安全存储。
+6. 推荐会话接近队尾时由 Core 预取类型化批次；会话、请求、提供器或账号代次不匹配的响应全部丢弃。
+7. 队列、模式、音量和选中曲目写入 SQLite；账号秘密只进入操作系统安全存储。
 
 ## 并发与故障边界
 

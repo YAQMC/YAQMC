@@ -1152,6 +1152,48 @@ impl PlayerService {
         .expect("queue append cannot fail")
     }
 
+    /// Atomically appends tracks only while at least one continuation-owned
+    /// queue entry still exists. A concurrent queue replacement therefore
+    /// cannot receive a stale recommendation response.
+    pub(crate) async fn append_tracks_if_queue_contains(
+        &self,
+        expected_entry_ids: &[String],
+        tracks: Vec<Song>,
+    ) -> Option<PlayerSnapshot> {
+        if tracks.is_empty() {
+            return Some(self.snapshot().await);
+        }
+        let (snapshot, resume_ended) = {
+            let mut core = self.core.write().await;
+            if !expected_entry_ids
+                .iter()
+                .any(|expected| core.queue_entry_ids.contains(expected))
+            {
+                return None;
+            }
+            let count = tracks.len();
+            let resume_ended =
+                core.playback_state == PlaybackState::Ended && core.repeat != RepeatMode::One;
+            core.queue.extend(tracks);
+            core.queue_entry_ids
+                .extend((0..count).map(|_| new_queue_entry_id()));
+            core.queue_materially_changed();
+            (self.stamped(core.snapshot()), resume_ended)
+        };
+        self.publish("queue.changed", &snapshot);
+        if resume_ended {
+            match self.next().await {
+                Ok(resumed) => Some(resumed),
+                Err(error) => {
+                    tracing::warn!(target: "player.eos", %error, "late continuation append could not resume playback");
+                    Some(snapshot)
+                }
+            }
+        } else {
+            Some(snapshot)
+        }
+    }
+
     pub async fn remove_from_queue(&self, index: usize) -> Result<PlayerSnapshot, PlayerError> {
         let (snapshot, reload, became_empty) = {
             let mut core = self.core.write().await;
@@ -2152,6 +2194,10 @@ impl PlayerService {
             timestamp_ms: unix_timestamp_ms(),
             data,
         });
+    }
+
+    pub(crate) fn publish_api_event<T: Serialize>(&self, event_type: &str, value: &T) {
+        self.publish(event_type, value);
     }
 }
 

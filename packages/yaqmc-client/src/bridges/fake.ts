@@ -6,7 +6,13 @@ import type {
   WindowRole,
 } from '../bridge';
 import { CHANNEL_PLAYER_SNAPSHOT, type ChannelName, type ChannelPayload } from '../protocol/events';
-import type { HomeFeed, PlayerSnapshot, PlayTracksRequest, Song } from '../protocol/dto';
+import type {
+  ContinuationSnapshot,
+  HomeFeed,
+  PlayerSnapshot,
+  PlayTracksRequest,
+  Song,
+} from '../protocol/dto';
 import type { MethodName, MethodParams, MethodResult } from '../protocol/methods';
 
 export interface FakeCatalog {
@@ -61,6 +67,20 @@ export function createFakeBridge(options?: {
   windowRole?: WindowRole;
 }): HostBridge {
   let snapshot = emptySnapshot();
+  let continuation: ContinuationSnapshot = {
+    active: false,
+    sessionId: null,
+    providerId: null,
+    kind: null,
+    accountGeneration: null,
+    cursor: null,
+    seenCount: 0,
+    consecutiveEmptyBatches: 0,
+    requestState: 'idle',
+    terminalReason: null,
+    lastErrorCode: null,
+    notificationRevision: 0,
+  };
   const listeners = new Map<ChannelName, Set<(payload: never) => void>>();
 
   function emit<C extends ChannelName>(channel: C, payload: ChannelPayload[C]): void {
@@ -106,6 +126,44 @@ export function createFakeBridge(options?: {
         snapshot = { ...snapshot, isPlaying: true, playbackState: 'playing' };
         return publish() as MethodResult[M];
       }
+      case 'continuation_snapshot':
+        return continuation as MethodResult[M];
+      case 'continuation_start': {
+        const request = (args as MethodParams['continuation_start']).request;
+        hydrate(request.tracks);
+        const currentIndex = request.startAtId
+          ? request.tracks.findIndex((track) => track.id === request.startAtId)
+          : 0;
+        snapshot = {
+          ...snapshot,
+          currentIndex: currentIndex >= 0 ? currentIndex : 0,
+          currentQueueEntryId: `entry-${currentIndex >= 0 ? currentIndex : 0}`,
+          isPlaying: true,
+          playbackState: 'playing',
+        };
+        continuation = {
+          ...continuation,
+          active: true,
+          sessionId: (continuation.sessionId ?? 0) + 1,
+          providerId: request.providerId,
+          kind: request.kind,
+          accountGeneration: 0,
+          cursor: request.kind === 'guess' ? String(request.tracks.length) : '2',
+          seenCount: request.tracks.length,
+          terminalReason: null,
+          lastErrorCode: null,
+        };
+        publish();
+        return continuation as MethodResult[M];
+      }
+      case 'continuation_end':
+        continuation = {
+          ...continuation,
+          active: false,
+          requestState: 'idle',
+          terminalReason: 'explicit',
+        };
+        return continuation as MethodResult[M];
       case 'player_play':
       case 'player_toggle':
         snapshot = {

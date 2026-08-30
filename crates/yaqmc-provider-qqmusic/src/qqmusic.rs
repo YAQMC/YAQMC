@@ -552,6 +552,10 @@ impl QQMusicService {
         self.auth.snapshot().await
     }
 
+    pub(crate) fn account_generation(&self) -> u64 {
+        self.auth.generation()
+    }
+
     pub async fn favorite_songs(
         &self,
         cursor: Option<String>,
@@ -1552,11 +1556,36 @@ impl QQMusicService {
         }
     }
 
-    pub async fn guess_next(&self, limit: u32) -> Result<Vec<Song>, QQMusicError> {
+    pub(crate) async fn guess_recommendation_page(
+        &self,
+        limit: u32,
+        offset: u32,
+        seed_song_ids: &[u64],
+    ) -> Result<Vec<Song>, QQMusicError> {
         let session = self.auth.current_session().await.map(QQSession::from);
         self.client
-            .guess_recommend(session.as_ref(), limit.clamp(1, 30))
+            .guess_recommend_page(session.as_ref(), limit.clamp(1, 30), offset, seed_song_ids)
             .await
+    }
+
+    pub(crate) async fn radar_next_with_context(
+        &self,
+        page: u32,
+        limit: u32,
+        entrance_ids: &[u64],
+    ) -> Result<Vec<Song>, QQMusicError> {
+        let session = self
+            .auth
+            .current_session()
+            .await
+            .map(QQSession::from)
+            .ok_or(QQMusicError::AuthenticationExpired)?;
+        let mut songs = self
+            .client
+            .radar_recommend_page(&session, page.max(1), entrance_ids)
+            .await?;
+        songs.truncate(limit.clamp(1, 30) as usize);
+        Ok(songs)
     }
 
     pub async fn artwork_data_uri(&self, url: String) -> Result<String, QQMusicError> {
@@ -2684,8 +2713,24 @@ impl QQMusicClient {
         session: Option<&QQSession>,
         limit: u32,
     ) -> Result<Vec<Song>, QQMusicError> {
+        self.guess_recommend_page(session, limit, 0, &[]).await
+    }
+
+    async fn guess_recommend_page(
+        &self,
+        session: Option<&QQSession>,
+        limit: u32,
+        offset: u32,
+        seed_song_ids: &[u64],
+    ) -> Result<Vec<Song>, QQMusicError> {
         let Some(session) = session else {
-            return self.general_newsongs().await;
+            return Ok(self
+                .general_newsongs()
+                .await?
+                .into_iter()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .collect());
         };
         let credential = crate::qmapi::credential::credential_from_uin_and_cookie(
             &session.uin,
@@ -2693,8 +2738,14 @@ impl QQMusicClient {
             None,
             unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
         )?;
-        let tracks =
-            crate::qmapi::recommend::guess(&self.catalog, &credential, limit, 0, &[]).await?;
+        let tracks = crate::qmapi::recommend::guess(
+            &self.catalog,
+            &credential,
+            limit,
+            offset,
+            seed_song_ids,
+        )
+        .await?;
         Ok(tracks
             .into_iter()
             .enumerate()
@@ -2707,13 +2758,22 @@ impl QQMusicClient {
         session: &QQSession,
         entrance_ids: &[u64],
     ) -> Result<Vec<Song>, QQMusicError> {
+        self.radar_recommend_page(session, 1, entrance_ids).await
+    }
+
+    async fn radar_recommend_page(
+        &self,
+        session: &QQSession,
+        page: u32,
+        entrance_ids: &[u64],
+    ) -> Result<Vec<Song>, QQMusicError> {
         let credential = crate::qmapi::credential::credential_from_uin_and_cookie(
             &session.uin,
             &session.cookie_header,
             None,
             unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
         )?;
-        let songs = crate::qmapi::recommend::radar(&self.catalog, &credential, 1, entrance_ids)
+        let songs = crate::qmapi::recommend::radar(&self.catalog, &credential, page, entrance_ids)
             .await?
             .into_iter()
             .enumerate()

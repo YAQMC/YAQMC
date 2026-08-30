@@ -10,7 +10,6 @@ import type {
   Song,
 } from './domain/music';
 import { useCatalog } from './application/use-catalog';
-import { useGuessContinuation } from './application/use-guess-continuation';
 import { useTheme } from './application/use-theme';
 import type { AppRoute } from './application/navigation';
 import { NavigationProvider } from './application/navigation-context';
@@ -117,7 +116,6 @@ export default function App() {
   useLyricsCoordinator();
   usePreferencesRuntime(true);
   usePlatformDiagnosticsRuntime();
-  useGuessContinuation(provider);
   usePluginHost();
   const uiDiagnostics = uiDiagnosticsEnabled();
   useEffect(() => (uiDiagnostics ? installPlaybackUiProbe() : undefined), [uiDiagnostics]);

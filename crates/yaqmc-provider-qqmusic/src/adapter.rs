@@ -72,6 +72,10 @@ fn share_target_for_song(song: api::Song) -> api::ProviderResult<api::ShareTarge
 
 #[async_trait]
 impl api::ProviderAccount for QQMusicService {
+    fn account_generation(&self) -> u64 {
+        QQMusicService::account_generation(self)
+    }
+
     async fn account_snapshot(&self) -> api::AccountSnapshot {
         map_output(QQMusicService::account_snapshot(self).await)
             .expect("QQMusic account snapshot and provider-api DTOs share the frozen wire schema")
@@ -425,10 +429,50 @@ impl api::MusicProvider for QQMusicService {
             .map_err(provider_error)
     }
 
-    async fn guess_next(&self, limit: u32) -> api::ProviderResult<Vec<api::Song>> {
-        QQMusicService::guess_next(self, limit)
-            .await
-            .map_err(provider_error)
+    async fn recommendation_next(
+        &self,
+        request: api::RecommendationRequest,
+    ) -> api::ProviderResult<api::RecommendationBatch> {
+        let limit = request.limit.clamp(1, 30);
+        let cursor = request
+            .cursor
+            .as_deref()
+            .unwrap_or(match request.kind {
+                api::RecommendationKind::Guess => "0",
+                api::RecommendationKind::Radar => "1",
+            })
+            .parse::<u32>()
+            .map_err(|_| {
+                api::ProviderCommandError::invalid_request("recommendation cursor is invalid")
+            })?;
+        let seed_ids = request
+            .seeds
+            .iter()
+            .filter_map(|seed| seed.numeric_id)
+            .collect::<Vec<_>>();
+        let songs = match request.kind {
+            api::RecommendationKind::Guess => {
+                QQMusicService::guess_recommendation_page(self, limit, cursor, &seed_ids).await
+            }
+            api::RecommendationKind::Radar => {
+                if seed_ids.is_empty() {
+                    return Err(api::ProviderCommandError::invalid_request(
+                        "radar recommendations require a numeric entrance track",
+                    ));
+                }
+                QQMusicService::radar_next_with_context(self, cursor.max(1), limit, &seed_ids).await
+            }
+        }
+        .map_err(provider_error)?;
+        let next_cursor = match request.kind {
+            api::RecommendationKind::Guess => cursor.saturating_add(songs.len() as u32),
+            api::RecommendationKind::Radar => cursor.max(1).saturating_add(1),
+        };
+        Ok(api::RecommendationBatch {
+            songs,
+            next_cursor: Some(next_cursor.to_string()),
+            ended: false,
+        })
     }
 
     async fn share_song(&self, id: String) -> api::ProviderResult<api::ShareTarget> {

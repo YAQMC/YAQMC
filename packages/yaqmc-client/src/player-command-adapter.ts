@@ -1,5 +1,6 @@
 import type {
   AudioQualityPreference,
+  ContinuationKind,
   EntityId,
   PrimaryPlaybackMode,
   RepeatMode,
@@ -9,6 +10,14 @@ import type {
 export type PlayerCommand =
   | { type: 'hydrateQueue'; tracks: Song[] }
   | { type: 'playTracks'; tracks: Song[]; startAtId?: EntityId; shuffle?: boolean }
+  | {
+      type: 'startContinuation';
+      providerId: string;
+      kind: ContinuationKind;
+      tracks: Song[];
+      startAtId?: EntityId;
+      seedTrackIds?: EntityId[];
+    }
   | { type: 'playFromQueue'; index: number }
   | { type: 'playQueueEntry'; entryId: string }
   | { type: 'playNextQueueEntry'; entryId: string }

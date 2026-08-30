@@ -63,7 +63,6 @@ describe('useLyricsCoordinator', () => {
     getLibrary: vi.fn(),
     getLyrics,
     search: vi.fn(),
-    getGuessNext: vi.fn(),
   } satisfies MusicProvider;
 
   function wrapper({ children }: { children: ReactNode }) {

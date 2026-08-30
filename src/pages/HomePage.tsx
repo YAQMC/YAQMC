@@ -1,4 +1,7 @@
 import { usePlayerStore } from '../application/player-store';
+import { ProviderContext } from '../application/provider-context';
+import { Play } from 'lucide-react';
+import { useContext } from 'react';
 import type { AppRoute } from '../application/navigation';
 import type { HomeFeed } from '../domain/music';
 import { MediaCard } from '../components/MediaCard';
@@ -12,8 +15,10 @@ interface HomePageProps {
 
 export function HomePage({ feed, onNavigate }: HomePageProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'home' });
+  const { t: common } = useTranslation('common');
+  const provider = useContext(ProviderContext);
   const playTracks = usePlayerStore((state) => state.playTracks);
-  const startGuessSession = usePlayerStore((state) => state.startGuessSession);
+  const startContinuation = usePlayerStore((state) => state.startContinuation);
 
   return (
     <div className="page home-page">
@@ -33,12 +38,14 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
               title={t('guessYouLike')}
               subtitle={t('playImmediately')}
               onOpen={() => {
-                playTracks(feed.guessSonglist!.tracks);
-                startGuessSession();
+                if (provider) {
+                  startContinuation(provider.id, 'guess', feed.guessSonglist!.tracks);
+                }
               }}
               onPlay={() => {
-                playTracks(feed.guessSonglist!.tracks);
-                startGuessSession();
+                if (provider) {
+                  startContinuation(provider.id, 'guess', feed.guessSonglist!.tracks);
+                }
               }}
             />
           )}
@@ -78,8 +85,26 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
                   : t('radarSongs')}
               </h2>
             </div>
+            <button
+              type="button"
+              disabled={!provider}
+              onClick={() => {
+                const first = feed.radarSongs[0];
+                if (provider && first) {
+                  startContinuation(provider.id, 'radar', feed.radarSongs, first.id, [first.id]);
+                }
+              }}
+            >
+              <Play size={14} aria-hidden="true" />
+              {common('play')}
+            </button>
           </div>
-          <TrackList tracks={feed.radarSongs} showAlbum compact />
+          <TrackList
+            tracks={feed.radarSongs}
+            showAlbum
+            compact
+            continuation={provider ? { providerId: provider.id, kind: 'radar' } : undefined}
+          />
         </section>
       )}
 

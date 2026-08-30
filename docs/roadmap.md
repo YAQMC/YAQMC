@@ -7,6 +7,18 @@ Discover tabs, and Provider plugins. It defines dependencies, boundaries, accept
 release-date commitment. A feature may be described as complete in release notes only after its acceptance criteria
 are met.
 
+## Implementation status
+
+- [x] P0 — composable provider capabilities, runtime-safe provider IDs, and typed `qm-api-rs` recommendation APIs.
+- [x] P1 — accessible Discover tabs plus provider-neutral sharing and fail-closed Electron deep links.
+- [x] P2 — Core-owned guess/radar continuation with bounded prefetch, retry, deduplication, and stale-response guards.
+- [ ] P3 — local listening statistics.
+- [ ] P4/P5 — sandboxed Provider plugin runtime and lifecycle/UI integration.
+- [ ] P6 — release closure and separately authorized HUMAN/LIVE acceptance.
+
+Checked items have passed their automated local gates. They do not imply production-account, GUI, LIVE, packaging,
+or final maintainer acceptance.
+
 ## 1. Goals and non-goals
 
 This roadmap delivers five capabilities:
@@ -59,7 +71,7 @@ The following are out of scope:
 - Automated tests never use a maintainer production account. Real-account, GUI, LIVE, and final release acceptance
   require separate maintainer authorization after the implementation report.
 
-## 3. Current baseline and gaps
+## 3. Baseline captured before implementation
 
 - Sharing: there is no song-share action or custom URI scheme. The current `shell.openExternal` bridge only accepts
   fixed product links.
