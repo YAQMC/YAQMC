@@ -29,10 +29,7 @@ import type {
   Song,
 } from '../domain/music';
 
-export interface MusicProvider {
-  readonly id: string;
-  readonly displayName: string;
-
+export interface CatalogMusicProvider {
   getHome(signal?: AbortSignal, refresh?: boolean): Promise<HomeFeed>;
   getDiscover(signal?: AbortSignal, refresh?: boolean): Promise<DiscoverFeed>;
   getArea(encArea: string, signal?: AbortSignal): Promise<AreaFeed>;
@@ -56,7 +53,20 @@ export interface MusicProvider {
     page?: number,
     limit?: number,
   ): Promise<SearchResult>;
+}
+
+export interface LyricsMusicProvider {
+  getLyrics(songId: EntityId, signal?: AbortSignal): Promise<LyricDocument | null>;
+}
+
+export interface RecommendationMusicProvider {
   getGuessNext(limit?: number, signal?: AbortSignal): Promise<Song[]>;
+}
+
+export interface MusicProvider
+  extends CatalogMusicProvider, LyricsMusicProvider, RecommendationMusicProvider {
+  readonly id: string;
+  readonly displayName: string;
 }
 
 export interface AccountMusicProvider {
@@ -142,4 +152,26 @@ export function isAccountMusicProvider(
     'deletePlaylist',
     'setPlaylistCollected',
   ].every((method) => typeof candidate[method as keyof AccountMusicProvider] === 'function');
+}
+
+export interface MusicProviderCapabilityFacade {
+  readonly id: string;
+  readonly catalog: CatalogMusicProvider;
+  readonly lyrics: LyricsMusicProvider;
+  readonly recommendations: RecommendationMusicProvider;
+  readonly account: AccountMusicProvider | null;
+  readonly legacyProvider: MusicProvider;
+}
+
+export function createMusicProviderCapabilityFacade(
+  provider: MusicProvider,
+): MusicProviderCapabilityFacade {
+  return Object.freeze({
+    id: provider.id,
+    catalog: provider,
+    lyrics: provider,
+    recommendations: provider,
+    account: isAccountMusicProvider(provider) ? provider : null,
+    legacyProvider: provider,
+  });
 }

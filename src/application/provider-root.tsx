@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { AccountDialog } from '../components/AccountDialog';
 import type { MusicProvider } from '../providers/music-provider';
+import { MusicProviderRegistry } from '../providers/provider-registry';
 import { useAccountRuntime } from './account-runtime';
-import { ProviderContext } from './provider-context';
+import { ProviderContext, ProviderRegistryContext } from './provider-context';
 
 interface MusicProviderRootProps {
   provider: MusicProvider;
@@ -11,10 +12,13 @@ interface MusicProviderRootProps {
 
 export function MusicProviderRoot({ provider, children }: MusicProviderRootProps) {
   useAccountRuntime(provider);
+  const registry = useMemo(() => new MusicProviderRegistry(provider.id, [provider]), [provider]);
   return (
-    <ProviderContext value={provider}>
-      {children}
-      <AccountDialog />
-    </ProviderContext>
+    <ProviderRegistryContext value={registry}>
+      <ProviderContext value={registry.active.legacyProvider}>
+        {children}
+        <AccountDialog />
+      </ProviderContext>
+    </ProviderRegistryContext>
   );
 }

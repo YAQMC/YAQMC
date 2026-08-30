@@ -2,12 +2,32 @@
 
 > **简体中文** | [English](../provider-contract.md)
 
+当前 `MusicProvider` 作为兼容契约保留；Core 逐步迁移到可组合能力视图：
+
+- `CatalogProvider`：规范化目录、主页、发现页、封面和缓存；
+- `PlaybackSourceProvider`：音源解析与音质选择；
+- `RecommendationProvider`：推荐续播批次；
+- `LyricsProvider`：规范化歌词；
+- `AccountProvider`：对现有 `ProviderAccount` 的可选封装。
+
+兼容 façade 把内置 QQ provider 投影到上述全部能力，不改变用户可见行为。后续仅提供目录的平台不再被迫实现
+登录和账号写操作。只有 Core 消费方完成迁移后才删除旧 `MusicProvider`。
+
 `MusicProvider` 只暴露规范化公开目录操作：主页/访客音乐库、分页搜索、专辑与歌单/榜单详情、歌词。
 `ProviderAccount` 是原生提供器实现的账号契约，负责账号快照/OAuth 生命周期、收藏、账号歌单、
 最近播放和类型化写操作。公开 Home/Search/Explore 只依赖 `MusicProvider`，账号功能失败不能拖垮访客目录。
 
 进入 React 的值统一使用 `src/domain/music.ts`。QQ 的歌曲 MID、数字 song ID、album MID/ID 和 media MID
 不是同一个标识，不能互换。
+
+## Provider 标识与路由
+
+`ProviderRegistry` 现在持有经过验证的运行时 ID，不再借用 `&'static str`。ID 长度为 1–64 字节，只允许
+小写 ASCII 字母、数字、点、下划线和连字符；斜杠、冒号、空白、大写字母和控制字符在注册前即被拒绝。
+因此配置或插件可以提供动态 ID，同时不能把路径形状的输入带进注册表。
+
+没有 provider reference 的旧歌曲仍使用默认 provider。若歌曲明确指定未知或已停用 provider，则以
+`TrackUnavailable` 失败；不能回退到默认 provider，也不能跨平台用同名歌曲替代。
 
 ## 播放元数据
 

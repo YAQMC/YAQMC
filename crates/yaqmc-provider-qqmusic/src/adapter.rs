@@ -267,7 +267,7 @@ impl api::ProviderAccount for QQMusicService {
 
 #[async_trait]
 impl api::MusicProvider for QQMusicService {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "qqmusic"
     }
 

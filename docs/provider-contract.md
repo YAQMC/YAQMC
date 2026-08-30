@@ -2,6 +2,20 @@
 
 > [简体中文](zh-CN/provider-contract.md) | **English**
 
+The current `MusicProvider` remains the compatibility contract while Core migrates
+to composable capability views:
+
+- `CatalogProvider` for normalized catalog, Home, Discover, artwork, and cache operations
+- `PlaybackSourceProvider` for source resolution and quality selection
+- `RecommendationProvider` for continuation batches
+- `LyricsProvider` for normalized lyrics
+- `AccountProvider` as an optional wrapper around the existing `ProviderAccount`
+
+The compatibility façade projects the built-in QQ provider into all five views,
+so this migration changes no user-visible behavior. New catalog-only providers
+will not be forced to implement login or account mutations. The legacy
+`MusicProvider` is removed only after all Core consumers have moved.
+
 `MusicProvider` exposes public catalog operations rather than upstream payloads:
 
 - home feed and guest library snapshot
@@ -15,6 +29,19 @@ account playlists, recent history, and typed mutations. Public Home/Search/Explo
 
 All values crossing into React use `src/domain/music.ts`. Song identity distinguishes the provider track MID,
 numeric song ID, album MID/ID, and media MID; those identifiers are not treated as interchangeable.
+
+## Provider identity and routing
+
+`ProviderRegistry` owns validated runtime IDs instead of borrowing `&'static str`.
+IDs are 1–64 bytes and use lowercase ASCII letters, digits, dots, underscores,
+or hyphens; slash, colon, whitespace, uppercase, and control characters are
+rejected before registration. This permits configuration/plugin-backed IDs
+without leaking strings or accepting path-shaped identifiers.
+
+Songs without a provider reference retain the legacy default-provider behavior.
+A song that explicitly names an unknown or disabled provider fails closed as
+`TrackUnavailable`; it is never resolved through the default provider or a
+same-named track on another platform.
 
 ## Normalized playback metadata
 
