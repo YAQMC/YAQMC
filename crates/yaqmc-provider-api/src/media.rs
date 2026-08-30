@@ -152,9 +152,28 @@ pub trait EncryptedMedia: Send + Sync + fmt::Debug {
     fn create_decryptor(&self) -> Result<Arc<dyn MediaDecryptor>, PlaybackSourceError>;
 }
 
+/// Core-only byte source used by sandboxed provider components. Implementations
+/// retain every URL, credential handle, and request header behind this object;
+/// renderer-facing DTOs can therefore never serialize media authority.
+#[async_trait]
+pub trait OpaquePlaybackSource: Send + Sync + fmt::Debug {
+    fn content_length(&self) -> u64;
+
+    /// Read exactly the requested byte range unless cancellation or an error
+    /// occurs. Callers bound `length`, so implementations never return an
+    /// unbounded provider response.
+    async fn read_range(
+        &self,
+        offset: u64,
+        length: usize,
+        cancellation: CancellationToken,
+    ) -> Result<Vec<u8>, PlaybackSourceError>;
+}
+
 #[derive(Clone, Debug)]
 pub enum PlaybackLocation {
     Local(PathBuf),
+    Opaque(Arc<dyn OpaquePlaybackSource>),
     Http {
         url: String,
         headers: Vec<(String, String)>,

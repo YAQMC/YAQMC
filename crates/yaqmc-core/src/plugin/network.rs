@@ -35,6 +35,17 @@ struct TransportResponse {
     status: u16,
     location: Option<String>,
     body: Vec<u8>,
+    content_range: Option<String>,
+    content_length: Option<u64>,
+    mime_type: Option<String>,
+}
+
+pub(crate) struct ComponentMediaChunk {
+    pub status: u16,
+    pub body: Vec<u8>,
+    pub content_range: Option<String>,
+    pub content_length: Option<u64>,
+    pub mime_type: Option<String>,
 }
 
 #[async_trait]
@@ -87,11 +98,25 @@ impl NetworkTransport for ReqwestTransport {
             .get(reqwest::header::LOCATION)
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
+        let content_range = response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let content_length = response.content_length();
+        let mime_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
         if status.is_redirection() {
             return Ok(TransportResponse {
                 status: status.as_u16(),
                 location,
                 body: Vec::new(),
+                content_range,
+                content_length,
+                mime_type,
             });
         }
         if response
@@ -111,6 +136,9 @@ impl NetworkTransport for ReqwestTransport {
             status: status.as_u16(),
             location,
             body,
+            content_range,
+            content_length,
+            mime_type,
         })
     }
 }
@@ -138,6 +166,54 @@ pub(crate) async fn proxy_component_request(
     .await
 }
 
+pub(crate) async fn proxy_component_media_range(
+    allowed_origins: &HashSet<String>,
+    payload: &Value,
+    credential_headers: &[ComponentCredentialHeader],
+    offset: u64,
+    length: usize,
+) -> Result<ComponentMediaChunk, String> {
+    if length == 0 || length > COMPONENT_MAX_RESPONSE_BODY {
+        return Err("component media range is invalid".to_owned());
+    }
+    if payload
+        .get("method")
+        .and_then(Value::as_str)
+        .is_some_and(|method| !method.eq_ignore_ascii_case("GET"))
+        || payload
+            .get("body")
+            .and_then(Value::as_str)
+            .is_some_and(|body| !body.is_empty())
+    {
+        return Err("component media requests must use GET without a body".to_owned());
+    }
+    let end = offset
+        .checked_add(length as u64)
+        .and_then(|value| value.checked_sub(1))
+        .ok_or_else(|| "component media range is invalid".to_owned())?;
+    let internal_headers = [
+        ("accept-encoding".to_owned(), "identity".to_owned()),
+        ("range".to_owned(), format!("bytes={offset}-{end}")),
+    ];
+    let response = proxy_raw_request_with(
+        allowed_origins,
+        payload,
+        length,
+        credential_headers,
+        &internal_headers,
+        &SystemResolver,
+        &ReqwestTransport,
+    )
+    .await?;
+    Ok(ComponentMediaChunk {
+        status: response.status,
+        body: response.body,
+        content_range: response.content_range,
+        content_length: response.content_length,
+        mime_type: response.mime_type,
+    })
+}
+
 async fn proxy_request_with_limit(
     allowed_origins: &HashSet<String>,
     payload: &Value,
@@ -162,6 +238,32 @@ async fn proxy_request_with(
     resolver: &dyn AddressResolver,
     transport: &dyn NetworkTransport,
 ) -> Result<Value, String> {
+    let response = proxy_raw_request_with(
+        allowed_origins,
+        payload,
+        response_limit,
+        credential_headers,
+        &[],
+        resolver,
+        transport,
+    )
+    .await?;
+    Ok(json!({
+        "ok": (200..300).contains(&response.status),
+        "status": response.status,
+        "body": String::from_utf8_lossy(&response.body),
+    }))
+}
+
+async fn proxy_raw_request_with(
+    allowed_origins: &HashSet<String>,
+    payload: &Value,
+    response_limit: usize,
+    credential_headers: &[ComponentCredentialHeader],
+    internal_headers: &[(String, String)],
+    resolver: &dyn AddressResolver,
+    transport: &dyn NetworkTransport,
+) -> Result<TransportResponse, String> {
     let method = payload
         .get("method")
         .and_then(Value::as_str)
@@ -203,6 +305,7 @@ async fn proxy_request_with(
         let addresses = resolver.resolve(&host, port).await?;
         validate_resolved_addresses(&addresses)?;
         let mut hop_headers = headers.clone();
+        hop_headers.extend_from_slice(internal_headers);
         for credential in credential_headers {
             if credential.origin != origin {
                 return Err("component credential cannot follow a cross-origin redirect".into());
@@ -244,11 +347,7 @@ async fn proxy_request_with(
         if response.body.len() > response_limit {
             return Err("plugin network response is too large".into());
         }
-        return Ok(json!({
-            "ok": (200..300).contains(&response.status),
-            "status": response.status,
-            "body": String::from_utf8_lossy(&response.body),
-        }));
+        return Ok(response);
     }
 }
 
@@ -419,6 +518,9 @@ mod tests {
                 status: 200,
                 location: None,
                 body: b"ok".to_vec(),
+                content_range: None,
+                content_length: Some(2),
+                mime_type: None,
             }])),
             pinned: Mutex::new(Vec::new()),
             headers: Mutex::new(Vec::new()),
@@ -453,6 +555,9 @@ mod tests {
                 status: 302,
                 location: Some("https://cdn.example.com/private".to_owned()),
                 body: Vec::new(),
+                content_range: None,
+                content_length: Some(0),
+                mime_type: None,
             }])),
             pinned: Mutex::new(Vec::new()),
             headers: Mutex::new(Vec::new()),
@@ -481,6 +586,9 @@ mod tests {
                 status: 302,
                 location: Some("https://other.example.com/path".to_owned()),
                 body: Vec::new(),
+                content_range: None,
+                content_length: Some(0),
+                mime_type: None,
             }])),
             pinned: Mutex::new(Vec::new()),
             headers: Mutex::new(Vec::new()),
@@ -505,6 +613,9 @@ mod tests {
                 status: 200,
                 location: None,
                 body: b"oversized".to_vec(),
+                content_range: None,
+                content_length: Some(9),
+                mime_type: None,
             }])),
             pinned: Mutex::new(Vec::new()),
             headers: Mutex::new(Vec::new()),
@@ -532,6 +643,9 @@ mod tests {
                 status: 200,
                 location: None,
                 body: b"ok".to_vec(),
+                content_range: None,
+                content_length: Some(2),
+                mime_type: None,
             }])),
             pinned: Mutex::new(Vec::new()),
             headers: Mutex::new(Vec::new()),
@@ -579,5 +693,46 @@ mod tests {
         .unwrap_err();
         assert!(error.contains("cross-origin"));
         assert!(transport.headers.lock().expect("headers").is_empty());
+    }
+
+    #[tokio::test]
+    async fn media_ranges_remain_binary_and_use_only_host_injected_range_headers() {
+        let resolver = FakeResolver {
+            answers: Mutex::new(VecDeque::from([vec![public_address()]])),
+        };
+        let transport = FakeTransport {
+            responses: Mutex::new(VecDeque::from([TransportResponse {
+                status: 206,
+                location: None,
+                body: vec![0xff, 0x00, 0x7f],
+                content_range: Some("bytes 3-5/9".to_owned()),
+                content_length: Some(3),
+                mime_type: Some("audio/mpeg".to_owned()),
+            }])),
+            pinned: Mutex::new(Vec::new()),
+            headers: Mutex::new(Vec::new()),
+        };
+        let internal = [
+            ("accept-encoding".to_owned(), "identity".to_owned()),
+            ("range".to_owned(), "bytes=3-5".to_owned()),
+        ];
+        let response = proxy_raw_request_with(
+            &allowed(&["https://media.example.com"]),
+            &json!({ "url": "https://media.example.com/song" }),
+            3,
+            &[],
+            &internal,
+            &resolver,
+            &transport,
+        )
+        .await
+        .expect("media range");
+        assert_eq!(response.body, vec![0xff, 0x00, 0x7f]);
+        assert_eq!(response.content_range.as_deref(), Some("bytes 3-5/9"));
+        assert_eq!(response.mime_type.as_deref(), Some("audio/mpeg"));
+        assert_eq!(
+            transport.headers.lock().expect("headers").as_slice(),
+            &[internal.to_vec()]
+        );
     }
 }

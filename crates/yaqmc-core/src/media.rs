@@ -1,6 +1,6 @@
 use crate::{
     audio::{PreparedPlaybackLocation, PreparedPlaybackSource},
-    storage::{StorageError, StorageService},
+    storage::{CachedFile, StorageError, StorageService},
     streaming::{prepare_progressive, ProgressiveError, ProgressivePreparation},
 };
 #[cfg(any(test, feature = "test-support"))]
@@ -10,10 +10,14 @@ use reqwest::{header::HeaderMap, Client};
 #[cfg(any(test, feature = "test-support"))]
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 pub use yaqmc_provider_api::media::{
-    AudioFormat, EncryptedMedia, MediaDecryptor, PlaybackEpochClock, PlaybackEpochGuard,
-    PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver, ResolvedPlaybackSource,
+    AudioFormat, EncryptedMedia, MediaDecryptor, OpaquePlaybackSource, PlaybackEpochClock,
+    PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError, PlaybackSourceResolver,
+    ResolvedPlaybackSource,
 };
+
+const OPAQUE_MEDIA_CHUNK_BYTES: usize = 1024 * 1024;
 
 #[async_trait]
 pub trait MediaPreparer: Send + Sync {
@@ -69,6 +73,20 @@ impl MediaPreparer for CachedMediaPreparer {
                     return Err(PlaybackSourceError::TrackUnavailable);
                 }
                 PreparedPlaybackLocation::Local(path)
+            }
+            PlaybackLocation::Opaque(opaque) => {
+                let cached = prepare_opaque_media(
+                    opaque,
+                    Arc::clone(&self.storage),
+                    &source.cache_key,
+                    source.format.extension(),
+                    source.mime_type.as_deref(),
+                    source.content_length,
+                    source_limit,
+                    &source.epoch_guard,
+                )
+                .await?;
+                PreparedPlaybackLocation::Local(cached.path)
             }
             PlaybackLocation::Http { url, headers } => {
                 let mut request_headers = HeaderMap::new();
@@ -274,6 +292,80 @@ impl MediaPreparer for CachedMediaPreparer {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn prepare_opaque_media(
+    opaque: Arc<dyn OpaquePlaybackSource>,
+    storage: Arc<StorageService>,
+    cache_key: &str,
+    extension: &str,
+    mime_type: Option<&str>,
+    advertised_length: Option<u64>,
+    max_bytes: u64,
+    guard: &PlaybackEpochGuard,
+) -> Result<CachedFile, PlaybackSourceError> {
+    if let Some(cached) = storage
+        .lookup_cached_file(cache_key)
+        .map_err(map_storage_error)?
+    {
+        return Ok(cached);
+    }
+    let content_length = opaque.content_length();
+    if content_length == 0 {
+        return Err(PlaybackSourceError::TrackUnavailable);
+    }
+    if content_length > max_bytes {
+        return Err(PlaybackSourceError::ResponseTooLarge);
+    }
+    if advertised_length.is_some_and(|length| length != content_length) {
+        return Err(PlaybackSourceError::RangeUnsupported);
+    }
+
+    let temporary = storage
+        .progressive_temp_path(cache_key, extension)
+        .map_err(map_storage_error)?;
+    let result = async {
+        let mut file = tokio::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)
+            .await
+            .map_err(|_| PlaybackSourceError::CacheFailure)?;
+        let mut offset = 0_u64;
+        while offset < content_length {
+            guard.validate()?;
+            let requested =
+                usize::try_from((content_length - offset).min(OPAQUE_MEDIA_CHUNK_BYTES as u64))
+                    .map_err(|_| PlaybackSourceError::ResponseTooLarge)?;
+            let cancellation = guard.cancellation_token();
+            let bytes = tokio::select! {
+                _ = cancellation.cancelled() => Err(PlaybackSourceError::Cancelled),
+                result = opaque.read_range(offset, requested, cancellation.clone()) => result,
+            }?;
+            if bytes.len() != requested {
+                return Err(PlaybackSourceError::RangeUnsupported);
+            }
+            file.write_all(&bytes)
+                .await
+                .map_err(|_| PlaybackSourceError::CacheFailure)?;
+            offset = offset.saturating_add(bytes.len() as u64);
+        }
+        file.flush()
+            .await
+            .map_err(|_| PlaybackSourceError::CacheFailure)?;
+        file.sync_data()
+            .await
+            .map_err(|_| PlaybackSourceError::CacheFailure)?;
+        drop(file);
+        guard.validate()?;
+        storage
+            .promote_progressive(cache_key, &temporary, extension, content_length, mime_type)
+            .map_err(map_storage_error)
+    }
+    .await;
+    let _ = tokio::fs::remove_file(&temporary).await;
+    result
+}
+
 fn parse_headers(headers: Vec<(String, String)>) -> Result<HeaderMap, PlaybackSourceError> {
     let mut parsed = HeaderMap::new();
     for (name, value) in headers {
@@ -375,8 +467,54 @@ impl MediaPreparer for PassthroughMediaPreparer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::playback_types::PlaybackEpoch;
+    use crate::playback_types::{
+        AudioQuality, AudioQualityPreference, PlaybackEpoch, PlaybackSourceSelection,
+    };
+    use std::sync::Mutex;
     use tokio_util::sync::CancellationToken;
+
+    struct MemoryOpaqueSource {
+        bytes: Arc<Vec<u8>>,
+        ranges: Mutex<Vec<(u64, usize)>>,
+    }
+
+    impl std::fmt::Debug for MemoryOpaqueSource {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter
+                .debug_struct("MemoryOpaqueSource")
+                .field("content_length", &self.bytes.len())
+                .finish()
+        }
+    }
+
+    #[async_trait]
+    impl OpaquePlaybackSource for MemoryOpaqueSource {
+        fn content_length(&self) -> u64 {
+            self.bytes.len() as u64
+        }
+
+        async fn read_range(
+            &self,
+            offset: u64,
+            length: usize,
+            cancellation: CancellationToken,
+        ) -> Result<Vec<u8>, PlaybackSourceError> {
+            if cancellation.is_cancelled() {
+                return Err(PlaybackSourceError::Cancelled);
+            }
+            let start =
+                usize::try_from(offset).map_err(|_| PlaybackSourceError::RangeUnsupported)?;
+            let end = start
+                .checked_add(length)
+                .filter(|end| *end <= self.bytes.len())
+                .ok_or(PlaybackSourceError::RangeUnsupported)?;
+            self.ranges
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push((offset, length));
+            Ok(self.bytes[start..end].to_vec())
+        }
+    }
 
     #[test]
     fn invalid_content_type_maps_to_cache_failure() {
@@ -417,5 +555,66 @@ mod tests {
         );
         clock.replace(Some(PlaybackEpoch::new(2, "test-account-2")));
         assert_eq!(guard.validate(), Err(PlaybackSourceError::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn opaque_sources_are_chunked_and_materialized_inside_core() {
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let bytes = Arc::new(vec![0x5a; OPAQUE_MEDIA_CHUNK_BYTES + 17]);
+        let opaque = Arc::new(MemoryOpaqueSource {
+            bytes: Arc::clone(&bytes),
+            ranges: Mutex::new(Vec::new()),
+        });
+        let source = ResolvedPlaybackSource {
+            cache_key: "component:test-source".to_owned(),
+            location: PlaybackLocation::Opaque(opaque.clone()),
+            format: AudioFormat::Wav,
+            mime_type: Some("audio/wav".to_owned()),
+            quality_label: "component-test".to_owned(),
+            bitrate_kbps: None,
+            sample_rate_hz: None,
+            bit_depth: None,
+            content_length: Some(bytes.len() as u64),
+            supports_range: true,
+            expires_at_ms: None,
+            timeline_offset_ms: 0,
+            timeline_end_ms: None,
+            is_preview: false,
+            selection: PlaybackSourceSelection {
+                requested_quality: AudioQualityPreference::Automatic,
+                resolved_quality: AudioQuality::Standard,
+                fallback_reason: None,
+                preview: false,
+                quality_capabilities: Vec::new(),
+            },
+            epoch_guard: PlaybackEpochGuard::unrestricted(),
+        };
+        let prepared = CachedMediaPreparer::new(reqwest::Client::new(), storage)
+            .prepare(source)
+            .await
+            .expect("opaque source materializes");
+        let PreparedPlaybackLocation::Local(path) = prepared.location else {
+            panic!("opaque source must become a Core-local cache file")
+        };
+        assert_eq!(std::fs::read(path).expect("cached bytes"), *bytes);
+        assert_eq!(
+            opaque
+                .ranges
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_slice(),
+            &[
+                (0, OPAQUE_MEDIA_CHUNK_BYTES),
+                (OPAQUE_MEDIA_CHUNK_BYTES as u64, 17)
+            ]
+        );
+        assert_eq!(
+            format!("{opaque:?}"),
+            format!("MemoryOpaqueSource {{ content_length: {} }}", bytes.len())
+        );
     }
 }

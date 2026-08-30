@@ -487,7 +487,7 @@ fn component_network_request(
         .map_err(|_| "component network response could not be encoded".to_owned())
 }
 
-fn component_credential_headers(
+pub(crate) fn component_credential_headers(
     host: &ComponentHostContext,
     allow_credentials: bool,
     payload: &serde_json::Value,
