@@ -91,9 +91,9 @@ export function ExplorePage({ onNavigate }: ExplorePageProps) {
   const activeTab = tabs.includes(requestedTab) ? requestedTab : (tabs[0] ?? null);
 
   useEffect(() => {
-    if (!activeTab) return;
+    if (!activeTab || !rememberedTab || tabs.includes(rememberedTab)) return;
     selectedTabByProvider.set(provider.id, activeTab);
-  }, [activeTab, provider.id]);
+  }, [activeTab, provider.id, rememberedTab, tabs]);
 
   const selectTab = (tab: DiscoverTab) => {
     selectedTabByProvider.set(provider.id, tab);
