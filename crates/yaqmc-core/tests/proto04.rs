@@ -143,6 +143,52 @@ fn player_group_dispatch_round_trips_a_snapshot() {
 }
 
 #[test]
+fn statistics_dispatch_round_trips_snapshot_export_and_clear_notification() {
+    let (root, runtime, core, host) = boot();
+    runtime.block_on(async {
+        let snapshot = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "statistics_snapshot",
+            Some(json!({ "range": "30-days" })),
+        )
+        .await
+        .expect("statistics snapshot");
+        assert_eq!(snapshot["range"], "30-days");
+        assert_eq!(snapshot["recordCount"], 0);
+
+        let path = root.path().join("statistics.json");
+        let exported = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "statistics_export_to",
+            Some(json!({
+                "request": {
+                    "range": "all-time",
+                    "format": "json",
+                    "path": path
+                }
+            })),
+        )
+        .await
+        .expect("statistics export");
+        assert_eq!(exported["sessionCount"], 0);
+        assert!(path.is_file());
+
+        let mut events = core.player().subscribe();
+        let cleared = dispatch(&core, &host, WindowOrigin::Main, "statistics_clear", None)
+            .await
+            .expect("statistics clear");
+        assert_eq!(cleared["deletedSessions"], 0);
+        let changed = events.try_recv().expect("statistics changed event");
+        assert_eq!(changed.event_type, "statistics.changed");
+        assert_eq!(changed.data["revision"], cleared["revision"]);
+    });
+}
+
+#[test]
 fn dispatch_rejects_oversize_method_payloads_without_raising_the_hard_cap() {
     let (_root, runtime, core, host) = boot();
     runtime.block_on(async {

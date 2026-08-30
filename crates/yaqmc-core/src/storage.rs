@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 #[cfg(any(test, feature = "test-support"))]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -19,6 +20,12 @@ use thiserror::Error;
 use tokio::{fs as async_fs, io::AsyncWriteExt, sync::Semaphore};
 pub use yaqmc_provider_api::storage::{CacheStats, ProviderCacheMutation};
 use yaqmc_provider_api::storage::{ProviderStorage, ProviderStorageError};
+
+use crate::statistics::{
+    ListeningArtist, ListeningDisplaySnapshot, ListeningOutcome, ListeningSessionRecord,
+    StatisticsDailyTotal, StatisticsDimensionTotal, StatisticsEntityTotal, StatisticsRange,
+    StatisticsSnapshot,
+};
 
 const MEDIA_CACHE_LIMIT: u64 = 256 * 1024 * 1024;
 const ARTWORK_CACHE_LIMIT: u64 = 64 * 1024 * 1024;
@@ -61,6 +68,7 @@ struct CacheRow {
 
 pub struct StorageService {
     connection: Mutex<Connection>,
+    database_path: PathBuf,
     cache_root: PathBuf,
     download_guard: Semaphore,
     #[cfg(any(test, feature = "test-support"))]
@@ -82,8 +90,8 @@ impl StorageService {
         fs::create_dir_all(&data_root).map_err(|_| StorageError::Initialize)?;
         fs::create_dir_all(&cache_root).map_err(|_| StorageError::Initialize)?;
         cleanup_partial_files(&cache_root);
-        let connection = Connection::open(data_root.join("library.sqlite3"))
-            .map_err(|_| StorageError::Initialize)?;
+        let database_path = data_root.join("library.sqlite3");
+        let connection = Connection::open(&database_path).map_err(|_| StorageError::Initialize)?;
         connection
             .pragma_update(None, "journal_mode", "WAL")
             .map_err(|_| StorageError::Initialize)?;
@@ -93,6 +101,7 @@ impl StorageService {
         migrate(&connection)?;
         Ok(Self {
             connection: Mutex::new(connection),
+            database_path,
             cache_root,
             download_guard: Semaphore::new(4),
             #[cfg(any(test, feature = "test-support"))]
@@ -508,6 +517,345 @@ impl StorageService {
             )
             .map_err(|_| StorageError::Database)?;
         Ok(())
+    }
+
+    pub(crate) fn recover_listening_sessions(&self, now_ms: u64) -> Result<u64, StorageError> {
+        let changed = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .execute(
+                "UPDATE listening_sessions
+                 SET outcome = 'stopped',
+                     ended_at_ms = CASE
+                       WHEN updated_at_ms < started_at_ms THEN started_at_ms
+                       ELSE updated_at_ms
+                     END,
+                     updated_at_ms = ?1
+                 WHERE outcome = 'in-progress'",
+                params![sqlite_i64(now_ms)],
+            )
+            .map_err(|_| StorageError::Database)?;
+        Ok(changed as u64)
+    }
+
+    pub(crate) fn upsert_listening_session(
+        &self,
+        record: &ListeningSessionRecord,
+    ) -> Result<(), StorageError> {
+        let display_json =
+            serde_json::to_string(&record.display).map_err(|_| StorageError::Database)?;
+        let mut connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let transaction = connection
+            .transaction()
+            .map_err(|_| StorageError::Database)?;
+        transaction
+            .execute(
+                "INSERT INTO listening_sessions(
+                   session_id, provider_id, track_id, album_id, title, album_title,
+                   display_json, started_at_ms, ended_at_ms, listened_ms,
+                   playable_duration_ms, outcome, source_context, requested_quality,
+                   resolved_quality, preview, error_code, updated_at_ms
+                 ) VALUES (
+                   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                   ?14, ?15, ?16, ?17, ?18
+                 )
+                 ON CONFLICT(session_id) DO UPDATE SET
+                   ended_at_ms = excluded.ended_at_ms,
+                   listened_ms = excluded.listened_ms,
+                   playable_duration_ms = excluded.playable_duration_ms,
+                   outcome = excluded.outcome,
+                   requested_quality = excluded.requested_quality,
+                   resolved_quality = excluded.resolved_quality,
+                   preview = excluded.preview,
+                   error_code = excluded.error_code,
+                   updated_at_ms = excluded.updated_at_ms",
+                params![
+                    record.session_id,
+                    record.provider_id,
+                    record.track_id,
+                    record.display.album_id,
+                    record.display.title,
+                    record.display.album_title,
+                    display_json,
+                    sqlite_i64(record.started_at_ms),
+                    record.ended_at_ms.map(sqlite_i64),
+                    sqlite_i64(record.listened_ms),
+                    record.playable_duration_ms.map(sqlite_i64),
+                    record.outcome.as_str(),
+                    record.source_context,
+                    record.requested_quality,
+                    record.resolved_quality,
+                    i64::from(record.preview),
+                    record.error_code,
+                    sqlite_i64(record.updated_at_ms),
+                ],
+            )
+            .map_err(|_| StorageError::Database)?;
+        for (ordinal, artist) in record.display.artists.iter().enumerate() {
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO listening_session_artists(
+                       session_id, artist_id, artist_name, ordinal
+                     ) VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        record.session_id,
+                        artist.id,
+                        artist.name,
+                        ordinal.min(i64::MAX as usize) as i64
+                    ],
+                )
+                .map_err(|_| StorageError::Database)?;
+        }
+        transaction.commit().map_err(|_| StorageError::Database)
+    }
+
+    pub(crate) fn clear_listening_sessions(&self) -> Result<u64, StorageError> {
+        let mut connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let transaction = connection
+            .transaction()
+            .map_err(|_| StorageError::Database)?;
+        let count: i64 = transaction
+            .query_row("SELECT COUNT(*) FROM listening_sessions", [], |row| {
+                row.get(0)
+            })
+            .map_err(|_| StorageError::Database)?;
+        transaction
+            .execute("DELETE FROM listening_sessions", [])
+            .map_err(|_| StorageError::Database)?;
+        transaction.commit().map_err(|_| StorageError::Database)?;
+        Ok(count.max(0) as u64)
+    }
+
+    pub(crate) fn statistics_snapshot(
+        &self,
+        range: StatisticsRange,
+        now_ms: u64,
+    ) -> Result<StatisticsSnapshot, StorageError> {
+        let cutoff = range.cutoff_ms(now_ms);
+        let connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let filter = "outcome <> 'in-progress' AND (?1 = 0 OR ended_at_ms >= ?1)";
+        let summary_sql = format!(
+            "SELECT
+               COALESCE(SUM(CASE WHEN outcome IN ('completed', 'qualified') THEN listened_ms ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN outcome IN ('completed', 'qualified') THEN 1 ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN outcome = 'completed' THEN 1 ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN outcome = 'skipped' THEN 1 ELSE 0 END), 0),
+               COUNT(*)
+             FROM listening_sessions WHERE {filter}"
+        );
+        let summary: (i64, i64, i64, i64, i64) = connection
+            .query_row(&summary_sql, params![sqlite_i64(cutoff)], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .map_err(|_| StorageError::Database)?;
+        let qualified_play_count = summary.1.max(0) as u64;
+        let skipped_count = summary.3.max(0) as u64;
+        let skip_denominator = qualified_play_count.saturating_add(skipped_count);
+        let skip_rate = if skip_denominator == 0 {
+            0.0
+        } else {
+            skipped_count as f64 / skip_denominator as f64
+        };
+        let top_songs = query_entity_totals(
+            &connection,
+            &format!(
+                "SELECT provider_id, track_id, MAX(title), MAX(album_title),
+                        SUM(listened_ms), COUNT(*)
+                 FROM listening_sessions
+                 WHERE {filter} AND outcome IN ('completed', 'qualified')
+                 GROUP BY provider_id, track_id
+                 ORDER BY SUM(listened_ms) DESC, COUNT(*) DESC, MAX(title) ASC
+                 LIMIT 20"
+            ),
+            cutoff,
+        )?;
+        let top_albums = query_entity_totals(
+            &connection,
+            &format!(
+                "SELECT provider_id, album_id, MAX(album_title), '',
+                        SUM(listened_ms), COUNT(*)
+                 FROM listening_sessions
+                 WHERE {filter} AND outcome IN ('completed', 'qualified')
+                   AND album_id IS NOT NULL AND album_id <> ''
+                 GROUP BY provider_id, album_id
+                 ORDER BY SUM(listened_ms) DESC, COUNT(*) DESC, MAX(album_title) ASC
+                 LIMIT 20"
+            ),
+            cutoff,
+        )?;
+        let top_artists = query_entity_totals(
+            &connection,
+            "SELECT sessions.provider_id, artists.artist_id, MAX(artists.artist_name), '',
+                        SUM(sessions.listened_ms), COUNT(*)
+                 FROM listening_sessions AS sessions
+                 JOIN listening_session_artists AS artists
+                   ON artists.session_id = sessions.session_id
+                 WHERE sessions.outcome <> 'in-progress'
+                   AND (?1 = 0 OR sessions.ended_at_ms >= ?1)
+                   AND sessions.outcome IN ('completed', 'qualified')
+                   AND artists.artist_id <> ''
+                 GROUP BY sessions.provider_id, artists.artist_id
+                 ORDER BY SUM(sessions.listened_ms) DESC, COUNT(*) DESC,
+                          MAX(artists.artist_name) ASC
+                 LIMIT 20",
+            cutoff,
+        )?;
+        let daily = query_daily_totals(&connection, cutoff)?;
+        let qualities = query_dimension_totals(&connection, cutoff, "resolved_quality")?;
+        let providers = query_dimension_totals(&connection, cutoff, "provider_id")?;
+        let database_bytes = database_disk_bytes(&self.database_path);
+        Ok(StatisticsSnapshot {
+            range,
+            from_ms: cutoff,
+            to_ms: now_ms,
+            qualified_listening_ms: summary.0.max(0) as u64,
+            qualified_play_count,
+            completed_count: summary.2.max(0) as u64,
+            skipped_count,
+            skip_rate,
+            record_count: summary.4.max(0) as u64,
+            database_bytes,
+            top_songs,
+            top_artists,
+            top_albums,
+            daily,
+            qualities,
+            providers,
+        })
+    }
+
+    pub(crate) fn listening_sessions_for_export(
+        &self,
+        range: StatisticsRange,
+        now_ms: u64,
+    ) -> Result<Vec<ListeningSessionRecord>, StorageError> {
+        let cutoff = range.cutoff_ms(now_ms);
+        let connection = self
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut artists_by_session: HashMap<String, Vec<ListeningArtist>> = HashMap::new();
+        {
+            let mut statement = connection
+                .prepare(
+                    "SELECT artists.session_id, artists.artist_id, artists.artist_name
+                     FROM listening_session_artists AS artists
+                     JOIN listening_sessions AS sessions ON sessions.session_id = artists.session_id
+                     WHERE sessions.outcome <> 'in-progress'
+                       AND (?1 = 0 OR sessions.ended_at_ms >= ?1)
+                     ORDER BY artists.session_id, artists.ordinal",
+                )
+                .map_err(|_| StorageError::Database)?;
+            let rows = statement
+                .query_map(params![sqlite_i64(cutoff)], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        ListeningArtist {
+                            id: row.get(1)?,
+                            name: row.get(2)?,
+                        },
+                    ))
+                })
+                .map_err(|_| StorageError::Database)?;
+            for row in rows {
+                let (session_id, artist) = row.map_err(|_| StorageError::Database)?;
+                artists_by_session
+                    .entry(session_id)
+                    .or_default()
+                    .push(artist);
+            }
+        }
+        let mut statement = connection
+            .prepare(
+                "SELECT session_id, provider_id, track_id, display_json, started_at_ms,
+                        ended_at_ms, listened_ms, playable_duration_ms, outcome,
+                        source_context, requested_quality, resolved_quality, preview,
+                        error_code, updated_at_ms
+                 FROM listening_sessions
+                 WHERE outcome <> 'in-progress' AND (?1 = 0 OR ended_at_ms >= ?1)
+                 ORDER BY ended_at_ms ASC, session_id ASC",
+            )
+            .map_err(|_| StorageError::Database)?;
+        let rows = statement
+            .query_map(params![sqlite_i64(cutoff)], |row| {
+                let outcome = row.get::<_, String>(8)?;
+                let display_json = row.get::<_, String>(3)?;
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    display_json,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, Option<i64>>(7)?,
+                    outcome,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, i64>(12)?,
+                    row.get::<_, Option<String>>(13)?,
+                    row.get::<_, i64>(14)?,
+                ))
+            })
+            .map_err(|_| StorageError::Database)?;
+        let mut sessions = Vec::new();
+        for row in rows {
+            let (
+                session_id,
+                provider_id,
+                track_id,
+                display_json,
+                started_at_ms,
+                ended_at_ms,
+                listened_ms,
+                playable_duration_ms,
+                outcome,
+                source_context,
+                requested_quality,
+                resolved_quality,
+                preview,
+                error_code,
+                updated_at_ms,
+            ) = row.map_err(|_| StorageError::Database)?;
+            let mut display: ListeningDisplaySnapshot =
+                serde_json::from_str(&display_json).map_err(|_| StorageError::Database)?;
+            display.artists = artists_by_session.remove(&session_id).unwrap_or_default();
+            sessions.push(ListeningSessionRecord {
+                session_id,
+                provider_id,
+                track_id,
+                display,
+                started_at_ms: started_at_ms.max(0) as u64,
+                ended_at_ms: ended_at_ms.map(|value| value.max(0) as u64),
+                listened_ms: listened_ms.max(0) as u64,
+                playable_duration_ms: playable_duration_ms.map(|value| value.max(0) as u64),
+                outcome: ListeningOutcome::parse(&outcome).ok_or(StorageError::Database)?,
+                source_context,
+                requested_quality,
+                resolved_quality,
+                preview: preview != 0,
+                error_code,
+                updated_at_ms: updated_at_ms.max(0) as u64,
+            });
+        }
+        Ok(sessions)
     }
 
     #[allow(clippy::too_many_arguments)] // Explicit cache policy keeps call sites auditable.
@@ -1201,7 +1549,154 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
                 .map_err(|_| StorageError::Database)?;
         }
     }
+    if version < 6 {
+        connection
+            .execute_batch(
+                "BEGIN;
+                 CREATE TABLE IF NOT EXISTS listening_sessions (
+                   session_id TEXT PRIMARY KEY,
+                   provider_id TEXT NOT NULL,
+                   track_id TEXT NOT NULL,
+                   album_id TEXT,
+                   title TEXT NOT NULL,
+                   album_title TEXT NOT NULL,
+                   display_json TEXT NOT NULL,
+                   started_at_ms INTEGER NOT NULL CHECK(started_at_ms >= 0),
+                   ended_at_ms INTEGER,
+                   listened_ms INTEGER NOT NULL CHECK(listened_ms >= 0),
+                   playable_duration_ms INTEGER,
+                   outcome TEXT NOT NULL CHECK(outcome IN (
+                     'in-progress', 'completed', 'qualified', 'skipped', 'stopped', 'error'
+                   )),
+                   source_context TEXT NOT NULL,
+                   requested_quality TEXT,
+                   resolved_quality TEXT,
+                   preview INTEGER NOT NULL CHECK(preview IN (0, 1)),
+                   error_code TEXT,
+                   updated_at_ms INTEGER NOT NULL CHECK(updated_at_ms >= 0)
+                 );
+                 CREATE TABLE IF NOT EXISTS listening_session_artists (
+                   session_id TEXT NOT NULL REFERENCES listening_sessions(session_id)
+                     ON DELETE CASCADE,
+                   artist_id TEXT NOT NULL,
+                   artist_name TEXT NOT NULL,
+                   ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+                   PRIMARY KEY(session_id, ordinal)
+                 );
+                 CREATE INDEX IF NOT EXISTS listening_sessions_end_time
+                   ON listening_sessions(ended_at_ms DESC);
+                 CREATE INDEX IF NOT EXISTS listening_sessions_provider_track
+                   ON listening_sessions(provider_id, track_id, ended_at_ms DESC);
+                 CREATE INDEX IF NOT EXISTS listening_sessions_album
+                   ON listening_sessions(provider_id, album_id, ended_at_ms DESC);
+                 CREATE INDEX IF NOT EXISTS listening_session_artists_artist
+                   ON listening_session_artists(artist_id, session_id);
+                 PRAGMA user_version = 6;
+                 COMMIT;",
+            )
+            .map_err(|_| StorageError::Database)?;
+    }
     Ok(())
+}
+
+fn query_entity_totals(
+    connection: &Connection,
+    sql: &str,
+    cutoff: u64,
+) -> Result<Vec<StatisticsEntityTotal>, StorageError> {
+    let mut statement = connection
+        .prepare(sql)
+        .map_err(|_| StorageError::Database)?;
+    let rows = statement
+        .query_map(params![sqlite_i64(cutoff)], |row| {
+            Ok(StatisticsEntityTotal {
+                provider_id: row.get(0)?,
+                id: row.get(1)?,
+                title: row.get(2)?,
+                subtitle: row.get(3)?,
+                listened_ms: row.get::<_, i64>(4)?.max(0) as u64,
+                play_count: row.get::<_, i64>(5)?.max(0) as u64,
+            })
+        })
+        .map_err(|_| StorageError::Database)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|_| StorageError::Database)
+}
+
+fn query_daily_totals(
+    connection: &Connection,
+    cutoff: u64,
+) -> Result<Vec<StatisticsDailyTotal>, StorageError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT (ended_at_ms / 86400000) * 86400000,
+                    SUM(listened_ms), COUNT(*)
+             FROM listening_sessions
+             WHERE outcome IN ('completed', 'qualified')
+               AND (?1 = 0 OR ended_at_ms >= ?1)
+             GROUP BY ended_at_ms / 86400000
+             ORDER BY ended_at_ms / 86400000 ASC",
+        )
+        .map_err(|_| StorageError::Database)?;
+    let rows = statement
+        .query_map(params![sqlite_i64(cutoff)], |row| {
+            Ok(StatisticsDailyTotal {
+                day_start_ms: row.get::<_, i64>(0)?.max(0) as u64,
+                listened_ms: row.get::<_, i64>(1)?.max(0) as u64,
+                play_count: row.get::<_, i64>(2)?.max(0) as u64,
+            })
+        })
+        .map_err(|_| StorageError::Database)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|_| StorageError::Database)
+}
+
+fn query_dimension_totals(
+    connection: &Connection,
+    cutoff: u64,
+    dimension: &str,
+) -> Result<Vec<StatisticsDimensionTotal>, StorageError> {
+    let dimension = match dimension {
+        "resolved_quality" => "COALESCE(resolved_quality, 'unknown')",
+        "provider_id" => "provider_id",
+        _ => return Err(StorageError::Database),
+    };
+    let sql = format!(
+        "SELECT {dimension}, SUM(listened_ms), COUNT(*)
+         FROM listening_sessions
+         WHERE outcome IN ('completed', 'qualified')
+           AND (?1 = 0 OR ended_at_ms >= ?1)
+         GROUP BY {dimension}
+         ORDER BY SUM(listened_ms) DESC, {dimension} ASC"
+    );
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|_| StorageError::Database)?;
+    let rows = statement
+        .query_map(params![sqlite_i64(cutoff)], |row| {
+            Ok(StatisticsDimensionTotal {
+                key: row.get(0)?,
+                listened_ms: row.get::<_, i64>(1)?.max(0) as u64,
+                play_count: row.get::<_, i64>(2)?.max(0) as u64,
+            })
+        })
+        .map_err(|_| StorageError::Database)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|_| StorageError::Database)
+}
+
+fn database_disk_bytes(path: &Path) -> u64 {
+    let sidecar = |suffix: &str| {
+        let mut value = path.as_os_str().to_os_string();
+        value.push(suffix);
+        PathBuf::from(value)
+    };
+    [path.to_path_buf(), sidecar("-wal"), sidecar("-shm")]
+        .into_iter()
+        .filter_map(|candidate| fs::metadata(candidate).ok())
+        .fold(0_u64, |total, metadata| {
+            total.saturating_add(metadata.len())
+        })
 }
 
 fn cache_limit(kind: &str) -> u64 {
@@ -1297,7 +1792,7 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("migration version");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         storage
             .put_json("qq:search:test", "metadata", &vec!["one", "two"], 60_000)
             .expect("cache write");
@@ -1307,6 +1802,67 @@ mod tests {
             .expect("cache hit");
         assert_eq!(value, vec!["one", "two"]);
         assert_eq!(storage.stats().expect("stats").metadata_entries, 1);
+    }
+
+    #[test]
+    fn statistics_queries_remain_interactive_with_one_hundred_thousand_sessions() {
+        let (_root, storage) = storage();
+        {
+            let connection = storage
+                .connection
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            connection
+                .execute_batch(
+                    "WITH digits(n) AS (
+                       VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)
+                     ), generated(n) AS (
+                       SELECT a.n + b.n * 10 + c.n * 100 + d.n * 1000 + e.n * 10000
+                       FROM digits a, digits b, digits c, digits d, digits e
+                     )
+                     INSERT INTO listening_sessions(
+                       session_id, provider_id, track_id, album_id, title, album_title,
+                       display_json, started_at_ms, ended_at_ms, listened_ms,
+                       playable_duration_ms, outcome, source_context, requested_quality,
+                       resolved_quality, preview, error_code, updated_at_ms
+                     )
+                     SELECT printf('session-%06d', n), 'qqmusic', printf('track-%04d', n % 1000),
+                            printf('album-%03d', n % 100), printf('Track %04d', n % 1000),
+                            printf('Album %03d', n % 100),
+                            '{\"title\":\"Track\",\"albumId\":null,\"albumTitle\":\"Album\",\"artists\":[]}',
+                            1700000000000 + n * 1000, 1700000030000 + n * 1000,
+                            30000, 180000, 'qualified', 'queue', 'automatic',
+                            CASE n % 3 WHEN 0 THEN 'high' WHEN 1 THEN 'lossless' ELSE 'standard' END,
+                            0, NULL, 1700000030000 + n * 1000
+                     FROM generated;
+                     INSERT INTO listening_session_artists(
+                       session_id, artist_id, artist_name, ordinal
+                     )
+                     SELECT session_id,
+                            printf('artist-%03d', CAST(substr(session_id, 9) AS INTEGER) % 200),
+                            printf('Artist %03d', CAST(substr(session_id, 9) AS INTEGER) % 200),
+                            0
+                     FROM listening_sessions;",
+                )
+                .expect("statistics fixture seed");
+        }
+
+        let started = std::time::Instant::now();
+        let snapshot = storage
+            .statistics_snapshot(StatisticsRange::AllTime, u64::MAX)
+            .expect("statistics query");
+        let elapsed = started.elapsed();
+
+        assert_eq!(snapshot.record_count, 100_000);
+        assert_eq!(snapshot.qualified_play_count, 100_000);
+        assert_eq!(snapshot.top_songs.len(), 20);
+        assert_eq!(snapshot.top_artists.len(), 20);
+        assert_eq!(snapshot.top_albums.len(), 20);
+        assert!(snapshot.database_bytes > 0);
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "100k statistics query took {elapsed:?}"
+        );
     }
 
     #[test]

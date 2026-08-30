@@ -87,6 +87,25 @@ export class YaqmcClient {
     end: () => this.invoke('continuation_end'),
   };
 
+  readonly statistics = {
+    snapshot: (range: MethodParams['statistics_snapshot']['range']) =>
+      this.invoke('statistics_snapshot', { range }),
+    clear: () => this.invoke('statistics_clear'),
+    export: async (
+      range: MethodParams['statistics_snapshot']['range'],
+      format: MethodParams['statistics_export_to']['request']['format'],
+    ) => {
+      const path = await this.host.dialog?.pickSave({
+        kind: format === 'json' ? 'statistics-json' : 'statistics-csv',
+        defaultPath: `YAQMC-statistics.${format}`,
+      });
+      if (!path) return null;
+      return this.invoke('statistics_export_to', {
+        request: { range, format, path },
+      });
+    },
+  };
+
   readonly catalog = {
     status: () => this.invoke('qqmusic_status'),
     home: (refresh: boolean) => this.invoke('qqmusic_home', { refresh }),

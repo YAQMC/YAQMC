@@ -12,7 +12,7 @@ This directory contains the public user, tester, contributor, and release docume
   [membership](account-membership.md), [home recommendations](home-recommendations.md), and
   [Discover](discover.md)
 - Listening: [playback](playback.md), [progressive streaming](streaming.md),
-  [audio quality](audio-quality.md), and [artwork](artwork.md)
+  [audio quality](audio-quality.md), [listening statistics](listening-statistics.md), and [artwork](artwork.md)
 - Lyrics: [lyrics](lyrics.md), [desktop surfaces](lyrics-surfaces.md),
   [presets](lyrics-presets.md), and [composer](lyrics-composer.md)
 - Help: [Issue reporting](issue-reporting.md), [diagnostics](diagnostics.md), and

@@ -12,7 +12,7 @@ are met.
 - [x] P0 — composable provider capabilities, runtime-safe provider IDs, and typed `qm-api-rs` recommendation APIs.
 - [x] P1 — accessible Discover tabs plus provider-neutral sharing and fail-closed Electron deep links.
 - [x] P2 — Core-owned guess/radar continuation with bounded prefetch, retry, deduplication, and stale-response guards.
-- [ ] P3 — local listening statistics.
+- [x] P3 — local listening statistics.
 - [ ] P4/P5 — sandboxed Provider plugin runtime and lifecycle/UI integration.
 - [ ] P6 — release closure and separately authorized HUMAN/LIVE acceptance.
 

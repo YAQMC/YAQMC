@@ -97,6 +97,14 @@ describe('selectHostBridge', () => {
     expect(invoke).toHaveBeenCalledWith('dialog.pickSave', {
       defaultPath: 'YAQMC-diagnostics.zip',
     });
+    await bridge.dialog?.pickSave({
+      kind: 'statistics-json',
+      defaultPath: 'YAQMC-statistics.json',
+    });
+    expect(invoke).toHaveBeenCalledWith('dialog.pickSave', {
+      kind: 'statistics-json',
+      defaultPath: 'YAQMC-statistics.json',
+    });
     expect(invoke).toHaveBeenCalledWith('dialog.pickFile', { kind: 'plugin-package' });
   });
 

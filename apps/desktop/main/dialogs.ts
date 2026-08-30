@@ -81,6 +81,14 @@ export const DIAGNOSTICS_ZIP_FILTERS: DialogFileFilter[] = [
   { name: 'ZIP archive', extensions: ['zip'] },
 ];
 
+export const STATISTICS_JSON_FILTERS: DialogFileFilter[] = [
+  { name: 'JSON document', extensions: ['json'] },
+];
+
+export const STATISTICS_CSV_FILTERS: DialogFileFilter[] = [
+  { name: 'CSV document', extensions: ['csv'] },
+];
+
 export const BACKGROUND_IMAGE_FILTERS: DialogFileFilter[] = [
   { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] },
 ];
@@ -90,11 +98,19 @@ export const PLUGIN_PACKAGE_FILTERS: DialogFileFilter[] = [
   { name: 'All files', extensions: ['*'] },
 ];
 
-export const PATH_PICKER_KINDS = ['diagnostics-zip', 'background-image', 'plugin-package'] as const;
+export const PATH_PICKER_KINDS = [
+  'diagnostics-zip',
+  'statistics-json',
+  'statistics-csv',
+  'background-image',
+  'plugin-package',
+] as const;
 export type PathPickerKind = (typeof PATH_PICKER_KINDS)[number];
 
 const FILTERS_BY_KIND: Record<PathPickerKind, DialogFileFilter[]> = {
   'diagnostics-zip': DIAGNOSTICS_ZIP_FILTERS,
+  'statistics-json': STATISTICS_JSON_FILTERS,
+  'statistics-csv': STATISTICS_CSV_FILTERS,
   'background-image': BACKGROUND_IMAGE_FILTERS,
   'plugin-package': PLUGIN_PACKAGE_FILTERS,
 };
@@ -110,6 +126,20 @@ export function resolveDiagnosticsSavePath(filePath: string, downloadsDir: strin
     return withZip;
   }
   return path.join(downloadsDir, withZip);
+}
+
+export function resolveStatisticsSavePath(
+  filePath: string,
+  downloadsDir: string,
+  format: 'json' | 'csv',
+): string {
+  const trimmed = filePath.trim();
+  const extension = new RegExp(`\\.${format}$`, 'i');
+  const withExtension = extension.test(trimmed) ? trimmed : `${trimmed}.${format}`;
+  if (path.isAbsolute(withExtension) || downloadsDir.length === 0) {
+    return withExtension;
+  }
+  return path.join(downloadsDir, withExtension);
 }
 
 export function filtersFor(kind: PathPickerKind): DialogFileFilter[] {

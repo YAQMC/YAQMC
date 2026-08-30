@@ -51,9 +51,10 @@ export function createElectronBridge(
     shell: invokeShell(api),
     dialog: {
       pickSave: (options) =>
-        api.invoke('dialog.pickSave', { defaultPath: options?.defaultPath }) as Promise<
-          string | null
-        >,
+        api.invoke('dialog.pickSave', {
+          ...(options?.kind === undefined ? {} : { kind: options.kind }),
+          ...(options?.defaultPath === undefined ? {} : { defaultPath: options.defaultPath }),
+        }) as Promise<string | null>,
       pickFile: (options) => api.invoke('dialog.pickFile', options) as Promise<string | null>,
     },
     invoke: (method, ...params) => invokeThrough(api.invoke.bind(api), method, params),

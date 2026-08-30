@@ -37,6 +37,7 @@ pub(crate) struct CoreServices {
     pub audio: Arc<dyn AudioEngine>,
     pub player: Arc<PlayerService>,
     pub continuation: Arc<crate::continuation::ContinuationService>,
+    pub statistics: Arc<crate::statistics::StatisticsService>,
     pub local_api: Arc<LocalApiService>,
     pub system_media: Mutex<Option<Arc<SystemMediaIntegration>>>,
     pub runtime: tokio::runtime::Handle,
@@ -117,6 +118,9 @@ impl CoreServices {
             resolver,
             preparer,
         ));
+        let statistics = crate::statistics::StatisticsService::new(Arc::clone(&storage))
+            .map_err(CoreBootstrapError::from_error)?;
+        player.set_event_observer(statistics.clone());
         let continuation = crate::continuation::ContinuationService::new(
             Arc::clone(&player),
             Arc::clone(&providers),
@@ -150,6 +154,7 @@ impl CoreServices {
             audio,
             player,
             continuation,
+            statistics,
             local_api,
             system_media: Mutex::new(None),
             runtime: inputs.runtime,

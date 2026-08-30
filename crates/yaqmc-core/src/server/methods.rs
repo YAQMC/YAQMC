@@ -12,6 +12,7 @@ use crate::plugin::api::{
     PluginBridgeRequest, PluginEnableRequest, PluginInstallRequest, PluginSettingsWrite,
     PluginUninstallRequest,
 };
+use crate::statistics::{StatisticsChanged, StatisticsExportRequest};
 use crate::CoreHandle;
 use yaqmc_provider_api::{
     CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest, FavoriteMutationRequest,
@@ -27,8 +28,8 @@ use super::types::{
     PlaylistTracksParams, PluginIdParams, PluginMarkFailedParams, PluginReadAssetParams,
     PortParams, PrimaryModeParams, QualityParams, RecordErrorRequest, ReferenceParams,
     ReorderParams, RepeatParams, SampleParams, SearchParams, SeekParams, SettingKeyParams,
-    SettingWriteParams, ShareSongParams, SongIdParams, TokenParams, TrackParams, TracksParams,
-    UrlParams, ValueParams, VolumeParams,
+    SettingWriteParams, ShareSongParams, SongIdParams, StatisticsRangeParams, TokenParams,
+    TrackParams, TracksParams, UrlParams, ValueParams, VolumeParams,
 };
 use super::HostDispatchHooks;
 
@@ -119,6 +120,8 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "diagnostics_recent_errors",
     "diagnostics_record_error",
     "diagnostics_log_frontend",
+    "statistics_snapshot",
+    "statistics_clear",
     "issue_reporter_preview",
     "issue_reporter_validate_url",
     "plugin_list",
@@ -149,6 +152,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "app_settings_set",
     "app_settings_remove",
     "diagnostics_export_bundle_to",
+    "statistics_export_to",
     "preferences_set_background_from",
     "plugin_install_from",
 ];
@@ -765,6 +769,30 @@ async fn invoke_core(
             ops::diagnostics_log_frontend(&core.logging(), entries);
             Ok(Value::Null)
         }
+        "statistics_snapshot" => {
+            let StatisticsRangeParams { range } = parse(&params)?;
+            cmd(core
+                .statistics()
+                .snapshot(range)
+                .map_err(|error| error.to_string()))
+        }
+        "statistics_clear" => {
+            let result = core
+                .statistics()
+                .clear()
+                .map_err(|error| DispatchError::Command {
+                    message: error.to_string(),
+                    retryable: false,
+                    details: None,
+                })?;
+            core.player().publish_api_event(
+                "statistics.changed",
+                &StatisticsChanged {
+                    revision: result.revision,
+                },
+            );
+            ok(result)
+        }
         "issue_reporter_preview" => {
             let IssueReporterPreviewParams { draft, request } = parse(&params)?;
             ok(ops::issue_reporter_preview(core, host, draft, request).await)
@@ -869,6 +897,7 @@ async fn invoke_core(
         "core_ping" => ok(json!({})),
         "platform_attach" => apply_platform_attach(core, parse(&params)?),
         "core_shutdown_prepare" => {
+            core.statistics().shutdown();
             let snapshot = core.player().snapshot().await;
             core.storage()
                 .save_queue(&snapshot)
@@ -923,6 +952,13 @@ async fn invoke_core(
         "diagnostics_export_bundle_to" => {
             let DiagnosticsExportToParams { path, request } = parse(&params)?;
             cmd(ops::diagnostics_export_bundle_to(core, host, path, request).await)
+        }
+        "statistics_export_to" => {
+            let NamedRequest::<StatisticsExportRequest> { request } = parse(&params)?;
+            cmd(core
+                .statistics()
+                .export(request)
+                .map_err(|error| error.to_string()))
         }
         "preferences_set_background_from" => {
             let PathParams { path } = parse(&params)?;

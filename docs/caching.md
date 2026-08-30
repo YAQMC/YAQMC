@@ -14,6 +14,7 @@ foreign keys are enabled at open. Current tables cover:
 - application settings
 - recent searches (bounded to 100)
 - playback history (bounded to 2,000)
+- local listening sessions (user-clearable; separate from playback history)
 - one persisted queue/player snapshot
 - account pages and one complete account-library projection under an opaque per-session scope
 

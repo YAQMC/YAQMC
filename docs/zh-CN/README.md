@@ -11,7 +11,7 @@
 - 浏览与账号：[登录与安全存储](authentication.md)、[账号音乐库](account-library.md)、
   [会员模型](account-membership.md)、[首页推荐](home-recommendations.md)和[发现页](discover.md)
 - 播放：[播放系统](playback.md)、[渐进式流媒体](streaming.md)、[音质分类](audio-quality.md)和
-  [封面选择](artwork.md)
+  [收听统计](listening-statistics.md)、[封面选择](artwork.md)
 - 歌词：[歌词架构](lyrics.md)、[桌面歌词 / 歌词岛](lyrics-surfaces.md)、
   [歌词预设](lyrics-presets.md)和[歌词编排器](lyrics-composer.md)
 - 求助：[GitHub Issue 报告](issue-reporting.md)、[诊断快照与诊断包](diagnostics.md)和

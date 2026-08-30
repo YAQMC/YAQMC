@@ -66,6 +66,11 @@ import type {
   SearchResult,
   ShareTarget,
   Song,
+  StatisticsClearResult,
+  StatisticsExportRequest,
+  StatisticsExportResult,
+  StatisticsRange,
+  StatisticsSnapshot,
   SurfaceCapabilities,
   SurfaceInteraction,
   SurfaceRuntimeMap,
@@ -177,6 +182,8 @@ export const MIGRATED_METHOD_NAMES = [
   'diagnostics_recent_errors',
   'diagnostics_record_error',
   'diagnostics_log_frontend',
+  'statistics_snapshot',
+  'statistics_clear',
   'issue_reporter_preview',
   'issue_reporter_validate_url',
   'plugin_list',
@@ -211,6 +218,7 @@ export const PROTOCOL_ONLY_METHODS = [
   'app_settings_set',
   'app_settings_remove',
   'diagnostics_export_bundle_to',
+  'statistics_export_to',
   'preferences_set_background_from',
   'plugin_install_from',
 ] as const;
@@ -339,6 +347,8 @@ export type MethodParams = Exhaustive<{
   diagnostics_recent_errors: void;
   diagnostics_record_error: NamedRequest<RecordErrorRequest>;
   diagnostics_log_frontend: { entries: FrontendLogEntry[] };
+  statistics_snapshot: { range: StatisticsRange };
+  statistics_clear: void;
   issue_reporter_preview: { draft: IssueDraft; request: DiagnosticsRequest };
   issue_reporter_validate_url: { url: string };
   plugin_list: void;
@@ -370,6 +380,7 @@ export type MethodParams = Exhaustive<{
   app_settings_set: { key: string; value: string };
   app_settings_remove: { key: string };
   diagnostics_export_bundle_to: { path: string; request: DiagnosticsBundleRequest };
+  statistics_export_to: NamedRequest<StatisticsExportRequest>;
   preferences_set_background_from: { path: string };
   plugin_install_from: NamedRequest<PluginInstallRequest>;
 }>;
@@ -477,6 +488,8 @@ export type MethodResult = Exhaustive<{
   diagnostics_recent_errors: ErrorRecord[];
   diagnostics_record_error: void;
   diagnostics_log_frontend: void;
+  statistics_snapshot: StatisticsSnapshot;
+  statistics_clear: StatisticsClearResult;
   issue_reporter_preview: IssuePreview;
   issue_reporter_validate_url: void;
   plugin_list: PluginRecord[];
@@ -508,6 +521,7 @@ export type MethodResult = Exhaustive<{
   app_settings_set: void;
   app_settings_remove: void;
   diagnostics_export_bundle_to: BundleExportResult;
+  statistics_export_to: StatisticsExportResult;
   preferences_set_background_from: ManagedBackgroundImage;
   plugin_install_from: PluginRecord;
 }>;

@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_135_method_single_source_of_truth() {
+fn registry_is_the_138_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 123 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 125 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -94,6 +94,8 @@ fn core_rechecks_acl_and_rejects_origin_spoofing() {
     assert!(authorize(WindowOrigin::LyricsDesktopUnlock, "plugin_list").is_err());
     authorize(WindowOrigin::Main, "diagnostics_export_bundle_to").expect("export continuation");
     assert!(authorize(WindowOrigin::Host, "diagnostics_export_bundle_to").is_err());
+    authorize(WindowOrigin::Main, "statistics_export_to").expect("statistics export continuation");
+    assert!(authorize(WindowOrigin::Host, "statistics_export_to").is_err());
     assert!(authorize(WindowOrigin::Host, "preferences_set_background_from").is_err());
     assert!(authorize(WindowOrigin::Host, "plugin_install_from").is_err());
     authorize(WindowOrigin::Host, "platform_attach").expect("host-internal attach stays host+main");
@@ -134,6 +136,7 @@ fn account_and_plugin_methods_are_main_window_only() {
 fn dialog_split_io_methods_are_core_owned_main_only_with_default_caps() {
     for name in [
         "diagnostics_export_bundle_to",
+        "statistics_export_to",
         "preferences_set_background_from",
         "plugin_install_from",
     ] {
@@ -164,6 +167,12 @@ fn dialog_split_io_methods_are_core_owned_main_only_with_default_caps() {
     assert_eq!(
         method("diagnostics_export_bundle_to")
             .expect("export to")
+            .timeout_class,
+        TimeoutClass::Long
+    );
+    assert_eq!(
+        method("statistics_export_to")
+            .expect("statistics export to")
             .timeout_class,
         TimeoutClass::Long
     );

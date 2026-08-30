@@ -73,6 +73,11 @@ const SettingsPage = lazy(async () => {
   return { default: module.SettingsPage };
 });
 
+const StatisticsPage = lazy(async () => {
+  const module = await import('./pages/StatisticsPage');
+  return { default: module.StatisticsPage };
+});
+
 interface NavigationHistory {
   entries: AppRoute[];
   index: number;
@@ -368,6 +373,20 @@ export default function App() {
       >
         <Suspense fallback={<LoadingState label={t('loadingSettings')} />}>
           <SettingsPage />
+        </Suspense>
+      </RouteErrorBoundary>
+    );
+  } else if (route.page === 'statistics') {
+    pageContent = (
+      <RouteErrorBoundary
+        fallback={
+          <p className="settings-error" role="alert">
+            {t('pageLoadFailed')}
+          </p>
+        }
+      >
+        <Suspense fallback={<LoadingState label={t('statistics.loading')} />}>
+          <StatisticsPage />
         </Suspense>
       </RouteErrorBoundary>
     );

@@ -1,4 +1,14 @@
-import { Clock3, Compass, Heart, Home, ListMusic, Puzzle, Search, Settings } from 'lucide-react';
+import {
+  BarChart3,
+  Clock3,
+  Compass,
+  Heart,
+  Home,
+  ListMusic,
+  Puzzle,
+  Search,
+  Settings,
+} from 'lucide-react';
 import { useAccountStore } from '../application/account-runtime';
 import { isPrimaryRoute, type AppRoute } from '../application/navigation';
 import { useMusicProvider } from '../application/provider-context';
@@ -89,6 +99,15 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
         </button>
 
         <p className="sidebar__section-label">{t('application')}</p>
+        <button
+          type="button"
+          className="sidebar__item"
+          data-active={isPrimaryRoute(route, 'statistics') || undefined}
+          onClick={() => onNavigate({ page: 'statistics' })}
+        >
+          <BarChart3 size={18} />
+          <span>{t('statistics')}</span>
+        </button>
         <button
           type="button"
           className="sidebar__item"

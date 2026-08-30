@@ -970,6 +970,66 @@ export interface BundleExportResult {
   manifest: BundleManifest;
 }
 
+export type StatisticsRange = '7-days' | '30-days' | '365-days' | 'all-time';
+export type StatisticsExportFormat = 'json' | 'csv';
+
+export interface StatisticsEntityTotal {
+  providerId: string;
+  id: string;
+  title: string;
+  subtitle: string;
+  listenedMs: number;
+  playCount: number;
+}
+
+export interface StatisticsDailyTotal {
+  dayStartMs: number;
+  listenedMs: number;
+  playCount: number;
+}
+
+export interface StatisticsDimensionTotal {
+  key: string;
+  listenedMs: number;
+  playCount: number;
+}
+
+export interface StatisticsSnapshot {
+  range: StatisticsRange;
+  fromMs: number;
+  toMs: number;
+  qualifiedListeningMs: number;
+  qualifiedPlayCount: number;
+  completedCount: number;
+  skippedCount: number;
+  skipRate: number;
+  recordCount: number;
+  databaseBytes: number;
+  topSongs: StatisticsEntityTotal[];
+  topArtists: StatisticsEntityTotal[];
+  topAlbums: StatisticsEntityTotal[];
+  daily: StatisticsDailyTotal[];
+  qualities: StatisticsDimensionTotal[];
+  providers: StatisticsDimensionTotal[];
+}
+
+export interface StatisticsExportRequest {
+  range: StatisticsRange;
+  format: StatisticsExportFormat;
+  path: string;
+}
+
+export interface StatisticsExportResult {
+  path: string;
+  bytes: number;
+  sessionCount: number;
+}
+
+export interface StatisticsClearResult {
+  deletedSessions: number;
+  revision: number;
+}
+
 export interface RecordErrorRequest {
   code: string;
   domain: string;

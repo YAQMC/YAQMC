@@ -1354,6 +1354,32 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "statistics_snapshot",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "statistics_clear",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "issue_reporter_preview",
     "owner": "core",
     "requestCap": 1048576,
@@ -1744,6 +1770,18 @@
     ],
     "mainWindowOnly": true,
     "name": "diagnostics_export_bundle_to",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "long",
+    "timeoutMs": 120000
+  },
+  {
+    "allowedOrigins": [
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "statistics_export_to",
     "owner": "core",
     "requestCap": 1048576,
     "responseCap": 1048576,

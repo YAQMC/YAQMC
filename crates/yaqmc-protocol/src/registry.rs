@@ -454,6 +454,8 @@ const METHODS: &[MethodSpec] = &[
         MethodOwner::Core,
         OriginClass::Main,
     ),
+    spec("statistics_snapshot", MethodOwner::Core, OriginClass::Main),
+    spec("statistics_clear", MethodOwner::Core, OriginClass::Main),
     spec(
         "issue_reporter_preview",
         MethodOwner::Core,
@@ -518,6 +520,11 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::MainRenderer,
     ),
     spec(
+        "statistics_export_to",
+        MethodOwner::Core,
+        OriginClass::MainRenderer,
+    ),
+    spec(
         "preferences_set_background_from",
         MethodOwner::Core,
         OriginClass::MainRenderer,
@@ -540,6 +547,7 @@ pub const PROTOCOL_ONLY_METHODS: &[&str] = &[
     "app_settings_set",
     "app_settings_remove",
     "diagnostics_export_bundle_to",
+    "statistics_export_to",
     "preferences_set_background_from",
     "plugin_install_from",
 ];
@@ -573,6 +581,7 @@ const fn timeout_class(name: &str) -> TimeoutClass {
         || const_eq(name, "plugin_install_unpacked")
         || const_eq(name, "plugin_reload")
         || const_eq(name, "diagnostics_export_bundle_to")
+        || const_eq(name, "statistics_export_to")
         || const_eq(name, "platform_export_diagnostics")
     {
         TimeoutClass::Long

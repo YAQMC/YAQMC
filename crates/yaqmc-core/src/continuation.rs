@@ -284,11 +284,17 @@ impl ContinuationService {
         self.end(ContinuationTerminalReason::Explicit).await;
         let started_snapshot = self
             .player
-            .play_tracks(PlayTracksRequest {
-                tracks: request.tracks,
-                start_at_id: request.start_at_id,
-                shuffle: Some(false),
-            })
+            .play_tracks_with_context(
+                PlayTracksRequest {
+                    tracks: request.tracks,
+                    start_at_id: request.start_at_id,
+                    shuffle: Some(false),
+                },
+                match request.kind {
+                    ContinuationKind::Guess => "recommendation-guess",
+                    ContinuationKind::Radar => "recommendation-radar",
+                },
+            )
             .await
             .map_err(|error| ContinuationError::Player(error.to_string()))?;
         let player_snapshot = self.player.snapshot().await;

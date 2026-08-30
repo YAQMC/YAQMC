@@ -18,6 +18,7 @@ const LONG_METHODS = new Set([
   'plugin_install_unpacked',
   'plugin_reload',
   'diagnostics_export_bundle_to',
+  'statistics_export_to',
   'platform_export_diagnostics',
 ]);
 

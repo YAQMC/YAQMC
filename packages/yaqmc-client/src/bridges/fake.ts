@@ -193,6 +193,29 @@ export function createFakeBridge(options?: {
       }
       case 'core_ping':
         return { ok: true } as MethodResult[M];
+      case 'statistics_snapshot': {
+        const range = (args as MethodParams['statistics_snapshot']).range;
+        return {
+          range,
+          fromMs: 0,
+          toMs: 0,
+          qualifiedListeningMs: 0,
+          qualifiedPlayCount: 0,
+          completedCount: 0,
+          skippedCount: 0,
+          skipRate: 0,
+          recordCount: 0,
+          databaseBytes: 0,
+          topSongs: [],
+          topArtists: [],
+          topAlbums: [],
+          daily: [],
+          qualities: [],
+          providers: [],
+        } as MethodResult[M];
+      }
+      case 'statistics_clear':
+        return { deletedSessions: 0, revision: 0 } as MethodResult[M];
       default:
         throw new Error(`${method} is not implemented on the fake bridge`);
     }

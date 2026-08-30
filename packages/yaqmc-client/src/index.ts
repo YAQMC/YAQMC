@@ -3,6 +3,7 @@ export {
   type HostDialogBridge,
   type HostKind,
   type HostOpenFileKind,
+  type HostSaveFileKind,
   type HostShellBridge,
   type HostWindowBridge,
   type InvokeArgs,

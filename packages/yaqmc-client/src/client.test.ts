@@ -110,6 +110,41 @@ describe('YaqmcClient', () => {
     client.dispose();
   });
 
+  it('uses the typed statistics namespace and host-authorized export path', async () => {
+    const invoked: Array<{ method: MethodName; params: unknown }> = [];
+    const bridge = testBridge(invoked);
+    const pickSave = vi.fn(async () => 'D:\\exports\\YAQMC-statistics.csv');
+    Object.defineProperty(bridge, 'dialog', {
+      value: { pickSave, pickFile: vi.fn(async () => null) },
+    });
+    const client = new YaqmcClient(bridge);
+    client.markReady();
+
+    await client.statistics.snapshot('30-days');
+    await client.statistics.export('30-days', 'csv');
+    await client.statistics.clear();
+
+    expect(pickSave).toHaveBeenCalledWith({
+      kind: 'statistics-csv',
+      defaultPath: 'YAQMC-statistics.csv',
+    });
+    expect(invoked).toEqual([
+      { method: 'statistics_snapshot', params: { range: '30-days' } },
+      {
+        method: 'statistics_export_to',
+        params: {
+          request: {
+            range: '30-days',
+            format: 'csv',
+            path: 'D:\\exports\\YAQMC-statistics.csv',
+          },
+        },
+      },
+      { method: 'statistics_clear', params: undefined },
+    ]);
+    client.dispose();
+  });
+
   it('queues invokes until markReady', async () => {
     const invoked: Array<{ method: MethodName; params: unknown }> = [];
     const client = new YaqmcClient(testBridge(invoked));

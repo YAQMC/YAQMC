@@ -225,6 +225,37 @@ pub struct ApiEvent {
     pub data: Value,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlaybackTransitionReason {
+    Completed,
+    Skipped,
+    QueueReplaced,
+    Recovery,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackLifecycleEvent {
+    pub from_session_id: u64,
+    pub reason: PlaybackTransitionReason,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackContextEvent {
+    pub source_context: String,
+}
+
+pub struct ObserverFollowupEvent {
+    pub event_type: &'static str,
+    pub data: Value,
+}
+
+pub trait PlayerEventObserver: Send + Sync {
+    fn observe(&self, event: &ApiEvent) -> Option<ObserverFollowupEvent>;
+}
+
 #[derive(Debug, Error)]
 pub enum PlayerError {
     #[error("the queue is empty")]
@@ -436,6 +467,7 @@ pub struct PlayerService {
     audio: Arc<dyn AudioEngine>,
     resolver: Arc<dyn PlaybackSourceResolver>,
     preparer: Arc<dyn MediaPreparer>,
+    event_observer: Mutex<Option<Arc<dyn PlayerEventObserver>>>,
 }
 
 impl PlayerService {
@@ -462,6 +494,7 @@ impl PlayerService {
             audio,
             resolver,
             preparer,
+            event_observer: Mutex::new(None),
         }
     }
 
@@ -477,6 +510,13 @@ impl PlayerService {
 
     pub fn subscribe(&self) -> broadcast::Receiver<ApiEvent> {
         self.events.subscribe()
+    }
+
+    pub(crate) fn set_event_observer(&self, observer: Arc<dyn PlayerEventObserver>) {
+        *self
+            .event_observer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(observer);
     }
 
     pub async fn snapshot(&self) -> PlayerSnapshot {
@@ -675,6 +715,14 @@ impl PlayerService {
         &self,
         request: PlayTracksRequest,
     ) -> Result<PlayerSnapshot, PlayerError> {
+        self.play_tracks_with_context(request, "direct").await
+    }
+
+    pub(crate) async fn play_tracks_with_context(
+        &self,
+        request: PlayTracksRequest,
+        source_context: &str,
+    ) -> Result<PlayerSnapshot, PlayerError> {
         let tracks: Vec<_> = request
             .tracks
             .into_iter()
@@ -683,6 +731,13 @@ impl PlayerService {
         if tracks.is_empty() {
             return Err(PlayerError::NoPlayableTracks);
         }
+        self.publish_transition(PlaybackTransitionReason::QueueReplaced);
+        self.publish(
+            "player.context",
+            &PlaybackContextEvent {
+                source_context: source_context.to_owned(),
+            },
+        );
         let index = request
             .start_at_id
             .as_deref()
@@ -719,6 +774,7 @@ impl PlayerService {
         if index >= self.core.read().await.queue.len() {
             return Err(PlayerError::IndexOutOfRange(index));
         }
+        self.publish_transition(PlaybackTransitionReason::Skipped);
         self.load_index(index, true, 0).await
     }
 
@@ -734,6 +790,7 @@ impl PlayerService {
                 ),
             )
         };
+        self.publish_transition(PlaybackTransitionReason::Recovery);
         self.load_index(index, autoplay, position_ms).await
     }
 
@@ -836,6 +893,7 @@ impl PlayerService {
 
     pub async fn next(&self) -> Result<PlayerSnapshot, PlayerError> {
         let candidates = self.next_candidates().await?;
+        self.publish_transition(PlaybackTransitionReason::Skipped);
         self.load_candidates(candidates).await
     }
 
@@ -863,6 +921,7 @@ impl PlayerService {
                     current.saturating_sub(1)
                 }
             };
+            self.publish_transition(PlaybackTransitionReason::Skipped);
             self.load_index(target, true, 0).await
         }
     }
@@ -1195,7 +1254,7 @@ impl PlayerService {
     }
 
     pub async fn remove_from_queue(&self, index: usize) -> Result<PlayerSnapshot, PlayerError> {
-        let (snapshot, reload, became_empty) = {
+        let (snapshot, reload, became_empty, removed_current) = {
             let mut core = self.core.write().await;
             if index >= core.queue.len() {
                 return Err(PlayerError::IndexOutOfRange(index));
@@ -1221,8 +1280,20 @@ impl PlayerService {
             let reload =
                 removed_current.then_some((core.current_index.expect("non-empty queue"), autoplay));
             core.queue_materially_changed();
-            (core.snapshot(), reload, core.queue.is_empty())
+            (
+                core.snapshot(),
+                reload,
+                core.queue.is_empty(),
+                removed_current,
+            )
         };
+        if removed_current {
+            self.publish_transition(if became_empty {
+                PlaybackTransitionReason::QueueReplaced
+            } else {
+                PlaybackTransitionReason::Skipped
+            });
+        }
         self.publish("queue.changed", &snapshot);
         if became_empty {
             self.load_generation.fetch_add(1, Ordering::AcqRel);
@@ -1241,6 +1312,7 @@ impl PlayerService {
             .await
             .index_of_entry(entry_id)
             .ok_or_else(|| PlayerError::QueueEntryNotFound(entry_id.to_owned()))?;
+        self.publish_transition(PlaybackTransitionReason::Skipped);
         self.load_index(index, true, 0).await
     }
 
@@ -1853,6 +1925,7 @@ impl PlayerService {
             self.transition_running.store(false, Ordering::Release);
             return;
         }
+        self.publish_transition(PlaybackTransitionReason::Completed);
         let repeat = self.core.read().await.repeat;
         let result = if repeat == RepeatMode::One {
             let index = {
@@ -2141,6 +2214,8 @@ impl PlayerService {
                                 .store(false, Ordering::Release);
                             return;
                         }
+                        recovery_service
+                            .publish_transition(PlaybackTransitionReason::Recovery);
                         tracing::info!(target: "stream.range", position_ms, session = recovery_session, "re-resolving an expired progressive media URL once");
                         if let Err(error) = recovery_service
                             .load_index_with_policy(
@@ -2188,12 +2263,41 @@ impl PlayerService {
 
     fn publish<T: Serialize>(&self, event_type: &str, value: &T) {
         let data = serde_json::to_value(value).unwrap_or_else(|_| json!({}));
-        let _ = self.events.send(ApiEvent {
+        let event = ApiEvent {
             version: 1,
             event_type: event_type.to_owned(),
             timestamp_ms: unix_timestamp_ms(),
             data,
-        });
+        };
+        let observer = self
+            .event_observer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let followup = observer.and_then(|observer| observer.observe(&event));
+        let _ = self.events.send(event);
+        if let Some(followup) = followup {
+            let _ = self.events.send(ApiEvent {
+                version: 1,
+                event_type: followup.event_type.to_owned(),
+                timestamp_ms: unix_timestamp_ms(),
+                data: followup.data,
+            });
+        }
+    }
+
+    fn publish_transition(&self, reason: PlaybackTransitionReason) {
+        let from_session_id = self.session_id.load(Ordering::Acquire);
+        if from_session_id == 0 {
+            return;
+        }
+        self.publish(
+            "player.transition",
+            &PlaybackLifecycleEvent {
+                from_session_id,
+                reason,
+            },
+        );
     }
 
     pub(crate) fn publish_api_event<T: Serialize>(&self, event_type: &str, value: &T) {

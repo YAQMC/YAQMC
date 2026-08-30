@@ -15,6 +15,9 @@ import {
   pickSave,
   PLUGIN_PACKAGE_FILTERS,
   resolveDiagnosticsSavePath,
+  resolveStatisticsSavePath,
+  STATISTICS_CSV_FILTERS,
+  STATISTICS_JSON_FILTERS,
   type OpenDialogResult,
   type SaveDialogResult,
 } from './dialogs';
@@ -29,12 +32,22 @@ function openDialog(result: OpenDialogResult) {
   return vi.fn(async (): Promise<OpenDialogResult> => result);
 }
 
-describe('typed filters for the three §27.4 flows', () => {
-  it('covers diagnostics zip, background image, and plugin package', () => {
-    expect(PATH_PICKER_KINDS).toEqual(['diagnostics-zip', 'background-image', 'plugin-package']);
+describe('typed filters for the §27.4 flows', () => {
+  it('covers diagnostics, statistics, background, and plugin paths', () => {
+    expect(PATH_PICKER_KINDS).toEqual([
+      'diagnostics-zip',
+      'statistics-json',
+      'statistics-csv',
+      'background-image',
+      'plugin-package',
+    ]);
     expect(filtersFor('diagnostics-zip')).toEqual(DIAGNOSTICS_ZIP_FILTERS);
     expect(DIAGNOSTICS_ZIP_FILTERS).toEqual([{ name: 'ZIP archive', extensions: ['zip'] }]);
     expect(DIAGNOSTICS_ZIP_DEFAULT_NAME).toBe('YAQMC-diagnostics.zip');
+    expect(filtersFor('statistics-json')).toEqual(STATISTICS_JSON_FILTERS);
+    expect(STATISTICS_JSON_FILTERS).toEqual([{ name: 'JSON document', extensions: ['json'] }]);
+    expect(filtersFor('statistics-csv')).toEqual(STATISTICS_CSV_FILTERS);
+    expect(STATISTICS_CSV_FILTERS).toEqual([{ name: 'CSV document', extensions: ['csv'] }]);
 
     expect(filtersFor('background-image')).toEqual(BACKGROUND_IMAGE_FILTERS);
     expect(BACKGROUND_IMAGE_FILTERS).toEqual([
@@ -46,6 +59,20 @@ describe('typed filters for the three §27.4 flows', () => {
       { name: 'YAQMC Plugin', extensions: ['yaqmc-plugin', 'css', 'js', 'ts'] },
       { name: 'All files', extensions: ['*'] },
     ]);
+  });
+});
+
+describe('resolveStatisticsSavePath', () => {
+  it('uses Downloads for relative paths and appends only the selected format', () => {
+    const downloads = path.join(os.tmpdir(), 'yaqmc-downloads');
+    const absolute = path.join(os.tmpdir(), 'statistics.json');
+    expect(resolveStatisticsSavePath(absolute, downloads, 'json')).toBe(absolute);
+    expect(resolveStatisticsSavePath('listening', downloads, 'json')).toBe(
+      path.join(downloads, 'listening.json'),
+    );
+    expect(resolveStatisticsSavePath('listening', downloads, 'csv')).toBe(
+      path.join(downloads, 'listening.csv'),
+    );
   });
 });
 

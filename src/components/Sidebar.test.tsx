@@ -32,6 +32,7 @@ describe('Sidebar navigation', () => {
       ['Favorites', { page: 'favorites' }],
       ['Playlists', { page: 'account-playlists' }],
       ['Recently played', { page: 'account-recent' }],
+      ['Statistics', { page: 'statistics' }],
       ['Settings', { page: 'settings' }],
     ];
 
@@ -39,6 +40,14 @@ describe('Sidebar navigation', () => {
       fireEvent.click(screen.getByRole('button', { name }));
       expect(onNavigate).toHaveBeenLastCalledWith(route);
     }
+  });
+
+  it('marks the statistics destination active', () => {
+    renderSidebar({ page: 'statistics' });
+    expect(screen.getByRole('button', { name: 'Statistics' })).toHaveAttribute(
+      'data-active',
+      'true',
+    );
   });
 
   it('keeps the playlists destination active on an account detail route', () => {

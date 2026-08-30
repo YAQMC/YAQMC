@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 use crate::diagnostics::{DiagnosticsHostPayload, LyricsPresetSection};
 use crate::logging::LogLevel;
+use crate::statistics::StatisticsRange;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,6 +60,12 @@ pub struct DebugPerfSample {
 #[serde(rename_all = "camelCase")]
 pub struct NamedRequest<T> {
     pub request: T,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsRangeParams {
+    pub range: StatisticsRange,
 }
 
 #[derive(Deserialize)]

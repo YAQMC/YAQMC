@@ -673,6 +673,48 @@ describe('IpcRouter host intercepts', () => {
     );
   });
 
+  it('authorizes a statistics export once for the choosing window and format', async () => {
+    const exportPath = path.join(os.tmpdir(), 'YAQMC-statistics.json');
+    const dialogs = mockDialogs({
+      save: { canceled: false, filePath: exportPath },
+      open: { canceled: true, filePaths: [] },
+    });
+    const coreInvoke = vi.fn(async () => ({ path: exportPath, bytes: 12, sessionCount: 1 }));
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+      dialogs,
+      coreInvoke,
+    });
+    const request = {
+      request: { range: '30-days', format: 'json', path: exportPath },
+    };
+
+    await expect(
+      handlers[DIALOG_PICK_SAVE]?.({ kind: 'statistics-json' }, 1, 'main'),
+    ).resolves.toBe(exportPath);
+    expect(dialogs.showSaveDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [{ name: 'JSON document', extensions: ['json'] }],
+      }),
+    );
+    await expect(handlers.statistics_export_to?.(request, 2, 'main')).rejects.toThrow(
+      'not authorized',
+    );
+    await expect(handlers.statistics_export_to?.(request, 1, 'main')).resolves.toEqual({
+      path: exportPath,
+      bytes: 12,
+      sessionCount: 1,
+    });
+    expect(coreInvoke).toHaveBeenCalledWith('statistics_export_to', request, 'main');
+    await expect(handlers.statistics_export_to?.(request, 1, 'main')).rejects.toThrow(
+      'not authorized',
+    );
+  });
+
   it('opens the Core log folder via shell.openPath and reveals existing zips', async () => {
     const logDir = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-logs-'));
     const openPath = vi.fn(async () => '');

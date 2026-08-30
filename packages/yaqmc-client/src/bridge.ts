@@ -22,10 +22,11 @@ export interface HostShellBridge {
 }
 
 export type HostOpenFileKind = 'background-image' | 'plugin-package';
+export type HostSaveFileKind = 'diagnostics-zip' | 'statistics-json' | 'statistics-csv';
 
 /** Extra host IPC (`dialog.pickSave` / `dialog.pickFile`); not inventory MethodNames. */
 export interface HostDialogBridge {
-  pickSave(opts?: { defaultPath?: string }): Promise<string | null>;
+  pickSave(opts?: { kind?: HostSaveFileKind; defaultPath?: string }): Promise<string | null>;
   pickFile(opts: { kind: HostOpenFileKind }): Promise<string | null>;
 }
 

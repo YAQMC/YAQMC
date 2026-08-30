@@ -63,6 +63,9 @@ vi.mock('./components/PlayerBar', async () => {
   };
 });
 vi.mock('./components/QueuePanel', () => ({ QueuePanel: () => null }));
+vi.mock('./pages/StatisticsPage', () => ({
+  StatisticsPage: () => <h1>Statistics route content</h1>,
+}));
 vi.mock('./components/LyricsPanel', () => ({
   LyricsPanel: ({ fullscreen }: { fullscreen: boolean }) => (
     <output data-testid="lyrics-presentation-mode">{fullscreen ? 'fullscreen' : 'windowed'}</output>
@@ -93,6 +96,9 @@ vi.mock('./components/Sidebar', () => ({
       </button>
       <button type="button" onClick={() => onNavigate({ page: 'artist', id: 'artist-mira-vale' })}>
         Navigate to artist
+      </button>
+      <button type="button" onClick={() => onNavigate({ page: 'statistics' })}>
+        Navigate to statistics
       </button>
     </aside>
   ),
@@ -300,6 +306,14 @@ describe('App TopBar history navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Navigate from player bar' }));
     await waitFor(() => expect(screen.getByTestId('active-route')).toHaveTextContent('search'));
+  });
+
+  it('opens the local Statistics route without waiting for catalog data', async () => {
+    appCatalog.value = { status: 'loading', home: null, library: null, message: null };
+    renderApp();
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to statistics' }));
+    expect(await screen.findByRole('heading', { name: 'Statistics route content' })).toBeVisible();
+    expect(screen.getByTestId('active-route')).toHaveTextContent('statistics');
   });
 
   it('enters and exits fullscreen through F11 and Escape without changing playback', async () => {

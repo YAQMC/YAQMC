@@ -12,12 +12,12 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import {
   DIAGNOSTICS_ZIP_DEFAULT_NAME,
-  DIAGNOSTICS_ZIP_FILTERS,
   filtersFor,
   pickDirectory,
   pickFile,
   pickSave,
   resolveDiagnosticsSavePath,
+  resolveStatisticsSavePath,
   type PathPickerKind,
   type ShowOpenDialog,
   type ShowSaveDialog,
@@ -210,7 +210,9 @@ function defaultPathFromParams(params: unknown, fallback: string): string {
   return fallback;
 }
 
-function openFileKindFromParams(params: unknown): Exclude<PathPickerKind, 'diagnostics-zip'> {
+function openFileKindFromParams(
+  params: unknown,
+): Extract<PathPickerKind, 'background-image' | 'plugin-package'> {
   const kind =
     params && typeof params === 'object' && 'kind' in params
       ? (params as { kind?: unknown }).kind
@@ -219,6 +221,18 @@ function openFileKindFromParams(params: unknown): Exclude<PathPickerKind, 'diagn
     return kind;
   }
   throw new Error('dialog.pickFile requires a supported kind');
+}
+
+function saveFileKindFromParams(
+  params: unknown,
+): Extract<PathPickerKind, 'diagnostics-zip' | 'statistics-json' | 'statistics-csv'> {
+  const kind =
+    params && typeof params === 'object' && 'kind' in params
+      ? (params as { kind?: unknown }).kind
+      : undefined;
+  if (kind === undefined || kind === 'diagnostics-zip') return 'diagnostics-zip';
+  if (kind === 'statistics-json' || kind === 'statistics-csv') return kind;
+  throw new Error('dialog.pickSave requires a supported kind');
 }
 
 export type LyricsSurfaceCapabilities = {
@@ -457,6 +471,16 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
   // may still reconcile its older passive preference. Remember that narrow
   // hand-off so a stale reconcile cannot immediately relock the surface.
   const pendingUnlock = new Set<LyricsSurfaceKind>();
+  const authorizedStatisticsExports = new Map<string, number>();
+  const exportPathKey = (target: string): string => {
+    const resolved = path.resolve(target);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  const statisticsAuthorizationKey = (
+    webContentsId: number,
+    target: string,
+    format: 'json' | 'csv',
+  ): string => `${webContentsId}\0${format}\0${exportPathKey(target)}`;
 
   const syncUnlockOverlay = (kind: LyricsSurfaceKind, locked: boolean): void => {
     if (locked && deps.lyrics.get(kind) !== undefined) {
@@ -633,19 +657,39 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       const kind = openFileKindFromParams(params);
       return pickFile(showOpenDialog, { filters: filtersFor(kind) });
     };
-    handlers[DIALOG_PICK_SAVE] = async (params) => {
+    handlers[DIALOG_PICK_SAVE] = async (params, webContentsId) => {
       const downloads = deps.downloadsDir?.() ?? '';
+      const kind = saveFileKindFromParams(params);
+      const format = kind === 'statistics-json' ? 'json' : kind === 'statistics-csv' ? 'csv' : null;
+      const fallback = format ? `YAQMC-statistics.${format}` : DIAGNOSTICS_ZIP_DEFAULT_NAME;
+      const initialPath = defaultPathFromParams(params, fallback);
       const chosen = await pickSave(showSaveDialog, {
-        filters: DIAGNOSTICS_ZIP_FILTERS,
-        defaultPath: resolveDiagnosticsSavePath(
-          defaultPathFromParams(params, DIAGNOSTICS_ZIP_DEFAULT_NAME),
-          downloads,
-        ),
+        filters: filtersFor(kind),
+        defaultPath: format
+          ? resolveStatisticsSavePath(initialPath, downloads, format)
+          : resolveDiagnosticsSavePath(initialPath, downloads),
       });
       if (chosen === null) {
         return null;
       }
-      return resolveDiagnosticsSavePath(chosen, downloads);
+      const resolved = format
+        ? resolveStatisticsSavePath(chosen, downloads, format)
+        : resolveDiagnosticsSavePath(chosen, downloads);
+      if (format) {
+        if (webContentsId === undefined) {
+          throw new Error('statistics save dialog requires a renderer window');
+        }
+        const now = Date.now();
+        for (const [key, expiresAt] of authorizedStatisticsExports) {
+          if (expiresAt <= now) authorizedStatisticsExports.delete(key);
+        }
+        if (authorizedStatisticsExports.size >= 16) authorizedStatisticsExports.clear();
+        authorizedStatisticsExports.set(
+          statisticsAuthorizationKey(webContentsId, resolved, format),
+          now + 5 * 60_000,
+        );
+      }
+      return resolved;
     };
   }
 
@@ -709,6 +753,30 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
       return invokeWithHostPayload('diagnostics_export_bundle_to', next, origin);
     };
   }
+
+  handlers.statistics_export_to = async (params, webContentsId, origin) => {
+    const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
+    const request =
+      record.request && typeof record.request === 'object'
+        ? (record.request as Record<string, unknown>)
+        : {};
+    const target = typeof request.path === 'string' ? request.path : '';
+    const format = request.format === 'json' || request.format === 'csv' ? request.format : null;
+    const key =
+      target && format && webContentsId !== undefined
+        ? statisticsAuthorizationKey(webContentsId, target, format)
+        : '';
+    const expiresAt = key ? authorizedStatisticsExports.get(key) : undefined;
+    if (!key || expiresAt === undefined || expiresAt <= Date.now()) {
+      if (key) authorizedStatisticsExports.delete(key);
+      throw new Error('statistics export path was not authorized by the save dialog');
+    }
+    authorizedStatisticsExports.delete(key);
+    if (!deps.coreInvoke) {
+      throw new Error('statistics export requires the Core bridge');
+    }
+    return deps.coreInvoke('statistics_export_to', params, origin);
+  };
 
   if (deps.coreInvoke && deps.dataDir) {
     const dataDir = deps.dataDir;

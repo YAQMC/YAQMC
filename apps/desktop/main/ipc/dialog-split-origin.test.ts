@@ -21,6 +21,7 @@ const methods = loadMethodAclFromFile(path.join(fixturesRoot, 'methods.json'));
 
 const DIALOG_SPLIT_IO = [
   'diagnostics_export_bundle_to',
+  'statistics_export_to',
   'preferences_set_background_from',
   'plugin_install_from',
 ] as const;

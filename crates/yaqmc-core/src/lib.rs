@@ -17,6 +17,7 @@ pub mod playback_types;
 pub mod player;
 pub mod plugin;
 pub mod server;
+pub mod statistics;
 pub mod storage;
 pub mod streaming;
 pub mod system_media;
@@ -171,6 +172,7 @@ impl CoreHandle {
 
     pub fn shutdown(&self) {
         if !self.is_shutdown.swap(true, Ordering::AcqRel) {
+            self.services.statistics.shutdown();
             self.shutdown_state.send_replace(true);
         }
     }
@@ -209,6 +211,10 @@ impl CoreHandle {
 
     pub fn continuation(&self) -> Arc<crate::continuation::ContinuationService> {
         Arc::clone(&self.services.continuation)
+    }
+
+    pub fn statistics(&self) -> Arc<crate::statistics::StatisticsService> {
+        Arc::clone(&self.services.statistics)
     }
 
     pub fn local_api(&self) -> Arc<crate::local_api::LocalApiService> {
