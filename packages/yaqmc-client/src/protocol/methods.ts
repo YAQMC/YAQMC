@@ -61,6 +61,7 @@ import type {
   RenamePlaylistRequest,
   RepeatMode,
   SearchResult,
+  ShareTarget,
   Song,
   SurfaceCapabilities,
   SurfaceInteraction,
@@ -89,6 +90,7 @@ export const MIGRATED_METHOD_NAMES = [
   'qqmusic_artist_catalog',
   'qqmusic_playlist',
   'qqmusic_lyrics',
+  'catalog_share_song',
   'qqmusic_cache_artwork',
   'qqmusic_set_preferred_quality',
   'qqmusic_set_current_quality',
@@ -238,6 +240,7 @@ export type MethodParams = Exhaustive<{
   };
   qqmusic_playlist: { id: string };
   qqmusic_lyrics: { songId: string };
+  catalog_share_song: { providerId: string; id: string };
   qqmusic_cache_artwork: { url: string };
   qqmusic_set_preferred_quality: { quality: AudioQualityPreference };
   qqmusic_set_current_quality: { quality: AudioQualityPreference };
@@ -379,6 +382,7 @@ export type MethodResult = Exhaustive<{
   qqmusic_artist_catalog: ArtistCatalogPage;
   qqmusic_playlist: Playlist;
   qqmusic_lyrics: LyricDocument | null;
+  catalog_share_song: ShareTarget;
   qqmusic_cache_artwork: string;
   qqmusic_set_preferred_quality: ProviderStatus;
   qqmusic_set_current_quality: PlayerSnapshot;

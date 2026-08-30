@@ -11,6 +11,7 @@ import {
   type PlaylistPreview,
   type Song,
   type SearchResult,
+  type ShareTarget,
 } from '../../domain/music';
 import type { MusicProvider } from '../music-provider';
 import {
@@ -281,6 +282,18 @@ export class FakeMusicProvider implements MusicProvider {
   async getGuessNext(limit = 5, signal?: AbortSignal) {
     throwIfAborted(signal);
     return clone(allSongs.slice(0, limit));
+  }
+
+  async getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
+    const song = await this.getSong(id, signal);
+    return {
+      providerId: this.id,
+      entityKind: 'song',
+      entityId: song.id,
+      title: song.title,
+      artists: song.artists.map((artist) => artist.name),
+      album: song.album.title || undefined,
+    };
   }
 }
 

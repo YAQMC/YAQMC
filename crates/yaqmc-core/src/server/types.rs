@@ -145,6 +145,13 @@ pub struct SongIdParams {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ShareSongParams {
+    pub provider_id: String,
+    pub id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UrlParams {
     pub url: String,
 }

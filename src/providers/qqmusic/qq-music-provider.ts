@@ -31,6 +31,7 @@ import {
   type RemotePlayHistoryItem,
   type RenamePlaylistRequest,
   type SearchResult,
+  type ShareTarget,
   type Song,
 } from '../../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../music-provider';
@@ -130,6 +131,10 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
 
   getGuessNext(limit = 5, signal?: AbortSignal): Promise<Song[]> {
     return nativeRequest('qqmusic_guess_next', { limit }, signal);
+  }
+
+  getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
+    return nativeRequest('catalog_share_song', { providerId: this.id, id }, signal);
   }
 
   getLibrary(signal?: AbortSignal): Promise<LibrarySnapshot> {

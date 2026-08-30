@@ -8,7 +8,7 @@ use crate::{
     LibrarySnapshot, LyricDocument, OAuthLoginProvider, OAuthPrepareResult, Page,
     PlaybackSourceResolver, Playlist, PlaylistMutationResult, PlaylistTrackMutationRequest,
     ProviderResult, ProviderStatus, RemotePlayHistoryItem, RenamePlaylistRequest, SearchResult,
-    Song,
+    ShareTarget, Song,
 };
 use async_trait::async_trait;
 
@@ -152,6 +152,11 @@ pub trait LyricsProvider: Send + Sync {
     async fn lyrics_for_song(&self, song_id: String) -> ProviderResult<Option<LyricDocument>>;
 }
 
+#[async_trait]
+pub trait ShareProvider: Send + Sync {
+    async fn share_song(&self, id: String) -> ProviderResult<ShareTarget>;
+}
+
 /// Optional account capability. It deliberately wraps the existing account
 /// contract so catalog-only providers do not have to implement login or
 /// mutation methods.
@@ -201,6 +206,7 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
     fn library(&self) -> LibrarySnapshot;
     async fn lyrics(&self, song_id: String) -> ProviderResult<Option<LyricDocument>>;
     async fn guess_next(&self, limit: u32) -> ProviderResult<Vec<Song>>;
+    async fn share_song(&self, id: String) -> ProviderResult<ShareTarget>;
     async fn artwork_data_uri(&self, url: String) -> ProviderResult<String>;
     fn cache_stats(&self) -> ProviderResult<CacheStats>;
     fn clear_cache(&self) -> ProviderResult<CacheStats>;

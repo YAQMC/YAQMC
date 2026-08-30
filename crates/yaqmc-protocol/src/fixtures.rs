@@ -486,6 +486,15 @@ fn requests() -> Value {
             })),
             origin: None,
         }),
+        "catalog_share_song": to_value(&CoreMessage::Request {
+            id: 18,
+            method: "catalog_share_song".to_owned(),
+            params: Some(json!({
+                "providerId": "qqmusic",
+                "id": "qqmusic:track:001X3HEN1oK0Jr"
+            })),
+            origin: None,
+        }),
     })
 }
 
@@ -506,6 +515,18 @@ fn responses() -> Value {
                 "url": "https://example.invalid/authorize",
                 "navigationAllowlist": ["https://example.invalid/*"],
                 "callbackMatcher": { "urlPrefix": "https://example.invalid/callback" }
+            })),
+        }),
+        "catalog_share_song": to_value(&CoreMessage::Response {
+            id: 18,
+            body: ResponseBody::success(json!({
+                "providerId": "qqmusic",
+                "entityKind": "song",
+                "entityId": "qqmusic:track:001X3HEN1oK0Jr",
+                "title": "Quiet Light",
+                "artists": ["Mira Vale"],
+                "album": "Paper Sun",
+                "canonicalHttpsUrl": "https://y.qq.com/n/ryqq/songDetail/001X3HEN1oK0Jr"
             })),
         }),
         "hostDenied": to_value(&CoreMessage::Response {

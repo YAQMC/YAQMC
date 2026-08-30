@@ -27,6 +27,8 @@ import { ProviderContext } from '../application/provider-context';
 import { isAccountMusicProvider } from '../providers/music-provider';
 import { joinArtistNames } from '../utils/format';
 import { IconButton } from './ui/IconButton';
+import { ActionMenu } from './ui/ActionMenu';
+import { SongShareMenuItems } from './SongShareActions';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '../application/preferences';
 import { applySceneBackdrop, resolveLyricsAppearance } from '../application/lyrics-appearance';
@@ -95,6 +97,7 @@ function LyricsPanelStage({
   const accountProvider = provider && isAccountMusicProvider(provider) ? provider : null;
   const accountSnapshot = useAccountStore((state) => state.snapshot);
   const setFavorite = useAccountStore((state) => state.setFavorite);
+  const currentTrack = usePlayerStore((state) => state.queue[state.currentIndex]);
   const currentTrackId = usePlayerStore((state) => state.queue[state.currentIndex]?.id ?? null);
   const currentTitle = usePlayerStore((state) => state.queue[state.currentIndex]?.title ?? '');
   const currentArtistLabel = usePlayerStore((state) =>
@@ -416,6 +419,11 @@ function LyricsPanelStage({
         >
           <Heart size={18} fill={favorite ? 'currentColor' : 'none'} />
         </IconButton>
+        {currentTrack && (
+          <ActionMenu label={player('moreActions', { title: currentTrack.title })} size="large">
+            <SongShareMenuItems song={currentTrack} />
+          </ActionMenu>
+        )}
       </div>
     </section>
   );

@@ -167,6 +167,7 @@ const METHODS: &[MethodSpec] = &[
     ),
     spec("qqmusic_playlist", MethodOwner::Core, OriginClass::Main),
     spec("qqmusic_lyrics", MethodOwner::Core, OriginClass::Main),
+    spec("catalog_share_song", MethodOwner::Core, OriginClass::Main),
     spec(
         "qqmusic_cache_artwork",
         MethodOwner::Core,

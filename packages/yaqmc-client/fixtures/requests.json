@@ -24,6 +24,15 @@
       "providerKind": "qq"
     }
   },
+  "catalog_share_song": {
+    "id": 18,
+    "kind": "request",
+    "method": "catalog_share_song",
+    "params": {
+      "id": "qqmusic:track:001X3HEN1oK0Jr",
+      "providerId": "qqmusic"
+    }
+  },
   "core_ping": {
     "id": 9,
     "kind": "request",

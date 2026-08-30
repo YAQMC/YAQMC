@@ -26,8 +26,8 @@ use super::types::{
     OptionalAttemptParams, PathParams, PlaylistTracksParams, PluginIdParams,
     PluginMarkFailedParams, PluginReadAssetParams, PortParams, PrimaryModeParams, QualityParams,
     RecordErrorRequest, ReferenceParams, ReorderParams, RepeatParams, SampleParams, SearchParams,
-    SeekParams, SettingKeyParams, SettingWriteParams, SongIdParams, TokenParams, TrackParams,
-    TracksParams, UrlParams, ValueParams, VolumeParams,
+    SeekParams, SettingKeyParams, SettingWriteParams, ShareSongParams, SongIdParams, TokenParams,
+    TrackParams, TracksParams, UrlParams, ValueParams, VolumeParams,
 };
 use super::HostDispatchHooks;
 
@@ -49,6 +49,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "qqmusic_artist_catalog",
     "qqmusic_playlist",
     "qqmusic_lyrics",
+    "catalog_share_song",
     "qqmusic_cache_artwork",
     "qqmusic_set_preferred_quality",
     "qqmusic_set_current_quality",
@@ -403,6 +404,10 @@ async fn invoke_core(
         "qqmusic_lyrics" => {
             let SongIdParams { song_id } = parse(&params)?;
             provider(core.qq_music().lyrics(song_id).await)
+        }
+        "catalog_share_song" => {
+            let ShareSongParams { provider_id, id } = parse(&params)?;
+            provider(core.providers().share_song(&provider_id, id).await)
         }
         "qqmusic_cache_artwork" => {
             let UrlParams { url } = parse(&params)?;

@@ -11,6 +11,7 @@ import { EntityLink } from '../components/EntityLink';
 import { Artwork } from '../components/ui/Artwork';
 import { ActionMenu, ActionMenuItem } from '../components/ui/ActionMenu';
 import { IconButton } from '../components/ui/IconButton';
+import { SongShareMenuItems } from '../components/SongShareActions';
 
 export function SongPage({ song }: { song: Song }) {
   const { t } = useTranslation('pages', { keyPrefix: 'song' });
@@ -89,6 +90,7 @@ export function SongPage({ song }: { song: Song }) {
             </IconButton>
             <ActionMenu label={t('more')} className="detail-hero__icon-action">
               <ActionMenuItem onClick={() => addToQueue(song)}>{t('addToQueue')}</ActionMenuItem>
+              <SongShareMenuItems song={song} />
             </ActionMenu>
           </div>
         </div>

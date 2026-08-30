@@ -14,6 +14,22 @@
       "url": "https://example.invalid/authorize"
     }
   },
+  "catalog_share_song": {
+    "id": 18,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "album": "Paper Sun",
+      "artists": [
+        "Mira Vale"
+      ],
+      "canonicalHttpsUrl": "https://y.qq.com/n/ryqq/songDetail/001X3HEN1oK0Jr",
+      "entityId": "qqmusic:track:001X3HEN1oK0Jr",
+      "entityKind": "song",
+      "providerId": "qqmusic",
+      "title": "Quiet Light"
+    }
+  },
   "core_ping": {
     "id": 9,
     "kind": "response",

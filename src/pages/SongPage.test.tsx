@@ -46,6 +46,29 @@ describe('SongPage', () => {
     expect(usePlayerStore.getState().queue).toEqual([song, song]);
   });
 
+  it('copies the provider-neutral YAQMC song link from the song menu', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const song = allSongs[0]!;
+
+    render(
+      <ProviderContext.Provider value={fakeMusicProvider}>
+        <SongPage song={song} />
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'More song actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy YAQMC link' }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(`yaqmc://catalog/fake/song?id=${song.id}`),
+    );
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
   it('enables favorite action only for an account-capable provider and routes through the store', async () => {
     const setFavorite = vi.fn().mockResolvedValue({
       clientOperationId: 'favorite-op',

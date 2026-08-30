@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
 import { EntityLink } from './EntityLink';
+import { useSongShareActions } from '../application/use-song-share-actions';
 
 interface TrackListProps {
   tracks: Song[];
@@ -98,6 +99,7 @@ function TrackRow({
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const addToQueue = usePlayerStore((state) => state.addToQueue);
   const addToPlaylist = useAddToPlaylistPicker(track);
+  const share = useSongShareActions(track);
   const actionsRef = useRef<HTMLSpanElement>(null);
   const { favorite, pending } = useFavoriteState(track.id, track.isFavorite);
   const hasUsableTrackId = track.id.trim().length > 0;
@@ -148,6 +150,24 @@ function TrackRow({
           action: () => {
             if (accountProvider) return setFavorite(accountProvider, track, !favorite);
           },
+        },
+        {
+          id: 'share-public-link',
+          label: t('copyPublicSongLink'),
+          disabled: !share.available,
+          action: () => share.copy('public-link'),
+        },
+        {
+          id: 'share-yaqmc-link',
+          label: t('copyYaqmcSongLink'),
+          disabled: !share.available,
+          action: () => share.copy('yaqmc-link'),
+        },
+        {
+          id: 'share-text',
+          label: t('copySongText'),
+          disabled: !share.available,
+          action: () => share.copy('text'),
         },
         ...pluginActions.map((action) => ({
           id: `plugin:${action.pluginId}:${action.id}`,
@@ -249,6 +269,15 @@ function TrackRow({
               <ActionMenuItem onClick={() => addToQueue(track)}>{t('addToQueue')}</ActionMenuItem>
               <ActionMenuItem disabled={!addToPlaylist.available} onClick={openAddToPlaylist}>
                 {addToPlaylist.label}
+              </ActionMenuItem>
+              <ActionMenuItem disabled={!share.available} onClick={() => share.copy('public-link')}>
+                {t('copyPublicSongLink')}
+              </ActionMenuItem>
+              <ActionMenuItem disabled={!share.available} onClick={() => share.copy('yaqmc-link')}>
+                {t('copyYaqmcSongLink')}
+              </ActionMenuItem>
+              <ActionMenuItem disabled={!share.available} onClick={() => share.copy('text')}>
+                {t('copySongText')}
               </ActionMenuItem>
             </ActionMenu>
           </>

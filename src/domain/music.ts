@@ -121,6 +121,16 @@ export interface Song {
   provider?: ProviderTrackReference;
 }
 
+export interface ShareTarget {
+  providerId: string;
+  entityKind: 'song';
+  entityId: EntityId;
+  title: string;
+  artists: string[];
+  album?: string;
+  canonicalHttpsUrl?: string;
+}
+
 export interface Album {
   id: EntityId;
   title: string;

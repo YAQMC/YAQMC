@@ -43,6 +43,8 @@ import { isNativeRuntime } from '../application/native-player-runtime';
 import { usePreferencesStore } from '../application/preferences';
 import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } from '../domain/music';
 import { EntityLink } from './EntityLink';
+import { ActionMenu } from './ui/ActionMenu';
+import { SongShareMenuItems } from './SongShareActions';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   if (muted || volume === 0) return <VolumeX size={17} />;
@@ -385,6 +387,9 @@ export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
             >
               <Heart size={15} fill={favorite ? 'currentColor' : 'none'} />
             </IconButton>
+            <ActionMenu label={t('moreActions', { title: current.title })} size="small">
+              <SongShareMenuItems song={current} />
+            </ActionMenu>
           </>
         ) : (
           <div className="player-bar__empty">{t('choose')}</div>

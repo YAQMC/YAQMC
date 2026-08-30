@@ -5,8 +5,9 @@ use crate::{
     AudioQualityPreference, CacheStats, CatalogProvider, CatalogProviderCapabilities,
     CatalogSearchKind, DiscoverFeed, HomeFeed, LibrarySnapshot, LyricDocument, LyricsProvider,
     MusicProvider, PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
-    PlaybackSourceSelection, Playlist, ProviderAccount, ProviderResult, ProviderStatus,
-    RecommendationProvider, ResolvedPlaybackSource, SearchResult, Song,
+    PlaybackSourceSelection, Playlist, ProviderAccount, ProviderCommandError, ProviderResult,
+    ProviderStatus, RecommendationProvider, ResolvedPlaybackSource, SearchResult, ShareProvider,
+    ShareTarget, Song,
 };
 use async_trait::async_trait;
 use std::{borrow::Borrow, collections::HashMap, fmt, sync::Arc};
@@ -244,6 +245,13 @@ impl LyricsProvider for LegacyCapabilityAdapter {
     }
 }
 
+#[async_trait]
+impl ShareProvider for LegacyCapabilityAdapter {
+    async fn share_song(&self, id: String) -> ProviderResult<ShareTarget> {
+        self.provider.share_song(id).await
+    }
+}
+
 impl AccountProvider for LegacyCapabilityAdapter {
     fn provider_account(&self) -> &dyn ProviderAccount {
         self.provider.account()
@@ -285,6 +293,10 @@ impl MusicProviderCapabilityFacade {
     }
 
     pub fn lyrics(&self) -> Option<&dyn LyricsProvider> {
+        Some(&self.adapter)
+    }
+
+    pub fn share(&self) -> Option<&dyn ShareProvider> {
         Some(&self.adapter)
     }
 
@@ -351,6 +363,18 @@ impl ProviderRegistry {
             .get(&self.default_id)
             .expect("ProviderRegistry validates its default provider")
             .legacy_provider()
+    }
+
+    pub async fn share_song(&self, provider_id: &str, id: String) -> ProviderResult<ShareTarget> {
+        let provider = self.capabilities(provider_id).ok_or_else(|| {
+            ProviderCommandError::invalid_request("music provider is unavailable")
+        })?;
+        let share = provider.share().ok_or_else(|| ProviderCommandError {
+            code: "unsupported-operation".to_owned(),
+            message: "this music provider does not support sharing".to_owned(),
+            retryable: false,
+        })?;
+        share.share_song(id).await
     }
 
     fn provider_for_song(

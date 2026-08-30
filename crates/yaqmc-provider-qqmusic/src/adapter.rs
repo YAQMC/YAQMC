@@ -40,6 +40,36 @@ fn local_oauth_provider(provider: api::OAuthLoginProvider) -> qqmusic::OAuthLogi
     }
 }
 
+fn share_target_for_song(song: api::Song) -> api::ProviderResult<api::ShareTarget> {
+    let entity_id = song.id.trim();
+    let title = song.title.trim();
+    if entity_id.is_empty() || entity_id.len() > 256 || title.is_empty() {
+        return Err(api::ProviderCommandError::invalid_request(
+            "the song cannot be shared",
+        ));
+    }
+    let provider = song
+        .provider
+        .as_ref()
+        .filter(|provider| provider.provider_id == "qqmusic");
+    let canonical_https_url =
+        provider.and_then(|provider| qqmusic_api::canonical_song_url(&provider.track_id));
+    Ok(api::ShareTarget {
+        provider_id: "qqmusic".to_owned(),
+        entity_kind: api::ShareEntityKind::Song,
+        entity_id: entity_id.to_owned(),
+        title: title.to_owned(),
+        artists: song
+            .artists
+            .into_iter()
+            .map(|artist| artist.name.trim().to_owned())
+            .filter(|name| !name.is_empty())
+            .collect(),
+        album: (!song.album.title.trim().is_empty()).then(|| song.album.title.trim().to_owned()),
+        canonical_https_url,
+    })
+}
+
 #[async_trait]
 impl api::ProviderAccount for QQMusicService {
     async fn account_snapshot(&self) -> api::AccountSnapshot {
@@ -401,6 +431,13 @@ impl api::MusicProvider for QQMusicService {
             .map_err(provider_error)
     }
 
+    async fn share_song(&self, id: String) -> api::ProviderResult<api::ShareTarget> {
+        let song = QQMusicService::song(self, id)
+            .await
+            .map_err(provider_error)?;
+        share_target_for_song(map_output(song)?)
+    }
+
     async fn artwork_data_uri(&self, url: String) -> api::ProviderResult<String> {
         QQMusicService::artwork_data_uri(self, url)
             .await
@@ -417,5 +454,65 @@ impl api::MusicProvider for QQMusicService {
 
     async fn remember_songs(&self, songs: &[api::Song]) {
         QQMusicService::remember_songs(self, songs).await;
+    }
+}
+
+#[cfg(test)]
+mod share_tests {
+    use super::*;
+
+    fn song(track_id: &str) -> api::Song {
+        api::Song {
+            id: "qqmusic:track:001X3HEN1oK0Jr".to_owned(),
+            title: "Quiet Light".to_owned(),
+            artists: vec![api::ArtistSummary {
+                id: "qqmusic:artist:test".to_owned(),
+                name: "Mira Vale".to_owned(),
+            }],
+            album: api::AlbumSummary {
+                id: "qqmusic:album:test".to_owned(),
+                title: "Paper Sun".to_owned(),
+            },
+            artwork: api::Artwork {
+                src: "/cover.svg".to_owned(),
+                alt: "Cover".to_owned(),
+                dominant_color: "#000000".to_owned(),
+                variants: Vec::new(),
+            },
+            duration_ms: 120_000,
+            track_number: 1,
+            is_favorite: false,
+            quality: api::AudioQuality::High,
+            availability: api::SongAvailability::Available,
+            audio_formats: Vec::new(),
+            playback_capability: None,
+            provider: Some(api::ProviderTrackReference {
+                provider_id: "qqmusic".to_owned(),
+                track_id: track_id.to_owned(),
+                numeric_id: None,
+                album_id: None,
+                media_id: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn share_target_uses_the_pinned_public_link_helper() {
+        let target = share_target_for_song(song("001X3HEN1oK0Jr")).expect("share target");
+        assert_eq!(target.provider_id, "qqmusic");
+        assert_eq!(target.entity_kind, api::ShareEntityKind::Song);
+        assert_eq!(target.entity_id, "qqmusic:track:001X3HEN1oK0Jr");
+        assert_eq!(
+            target.canonical_https_url.as_deref(),
+            Some("https://y.qq.com/n/ryqq/songDetail/001X3HEN1oK0Jr")
+        );
+    }
+
+    #[test]
+    fn invalid_provider_track_id_keeps_text_and_internal_link_metadata_only() {
+        let target = share_target_for_song(song("../escape")).expect("text target");
+        assert_eq!(target.canonical_https_url, None);
+        assert_eq!(target.title, "Quiet Light");
+        assert_eq!(target.artists, ["Mira Vale"]);
     }
 }

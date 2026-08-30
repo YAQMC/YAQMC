@@ -25,6 +25,7 @@ import type {
   RemotePlayHistoryItem,
   RenamePlaylistRequest,
   SearchResult,
+  ShareTarget,
   CatalogSearchKind,
   Song,
 } from '../domain/music';
@@ -61,6 +62,10 @@ export interface LyricsMusicProvider {
 
 export interface RecommendationMusicProvider {
   getGuessNext(limit?: number, signal?: AbortSignal): Promise<Song[]>;
+}
+
+export interface ShareMusicProvider {
+  getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget>;
 }
 
 export interface MusicProvider
@@ -154,11 +159,18 @@ export function isAccountMusicProvider(
   ].every((method) => typeof candidate[method as keyof AccountMusicProvider] === 'function');
 }
 
+export function isShareMusicProvider(
+  provider: MusicProvider,
+): provider is MusicProvider & ShareMusicProvider {
+  return typeof (provider as Partial<ShareMusicProvider>).getSongShareTarget === 'function';
+}
+
 export interface MusicProviderCapabilityFacade {
   readonly id: string;
   readonly catalog: CatalogMusicProvider;
   readonly lyrics: LyricsMusicProvider;
   readonly recommendations: RecommendationMusicProvider;
+  readonly share: ShareMusicProvider | null;
   readonly account: AccountMusicProvider | null;
   readonly legacyProvider: MusicProvider;
 }
@@ -171,6 +183,7 @@ export function createMusicProviderCapabilityFacade(
     catalog: provider,
     lyrics: provider,
     recommendations: provider,
+    share: isShareMusicProvider(provider) ? provider : null,
     account: isAccountMusicProvider(provider) ? provider : null,
     legacyProvider: provider,
   });
