@@ -34,7 +34,7 @@ keyring, disk cache, tray, media session, or real QQ Music transport.
 
 The production provider links the public `qqmusic-api` crate
 unconditionally from `https://github.com/YAQMC/qm-api-rs.git`, revision
-`2ef9182732e02db23788175dbe5b7d9d937e328f`.
+`bec1d0f245e36da0a8b052053d7b4dcb4893b90d`.
 
 Cargo is run with `CARGO_NET_GIT_FETCH_WITH_CLI=true` by the desktop developer
 launcher. The access helper validates the manifest pin and any sibling checkout without modifying Git config:

@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS** at production revision
-`2ef9182732e02db23788175dbe5b7d9d937e328f`.
+`bec1d0f245e36da0a8b052053d7b4dcb4893b90d`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -15,12 +15,12 @@ source-to-target mappings are present in the crate and mirrored in
 recorded as a protocol and API-shape reference, not incorporated source.
 Former port and extracted-client source claims were removed before this pin.
 
-The 2026-08-30 review extends the previously reviewed credential, transport,
-MQTT, parser, pagination, and CI hardening baseline with typed Guess and Radar
-continuation request models. The delta is limited to recommendation models,
-module methods, contract tests, and public documentation. It does not modify
-`src/qmc.rs`; the existing QMC source mappings and blob evidence therefore
-remain applicable.
+The 2026-08-30 review retains the previously reviewed credential, transport,
+MQTT, parser, pagination, typed recommendation, and CI hardening baseline. The
+new delta adds a pure `canonical_song_url` helper, strict identifier validation,
+contract tests, and public documentation. It performs no network request and
+does not modify `src/qmc.rs`; the existing QMC source mappings and blob evidence
+therefore remain applicable.
 
 Immutable evidence and mappings are recorded in
 [provenance-ledger.json](provenance-ledger.json), including the crate license,
