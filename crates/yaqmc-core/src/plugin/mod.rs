@@ -3,6 +3,7 @@
 pub mod api;
 pub mod bridge;
 pub mod component;
+pub mod component_host;
 pub mod host;
 pub mod manifest;
 pub mod network;

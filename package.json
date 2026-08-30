@@ -26,6 +26,7 @@
     "plugins:pack": "node scripts/pack-example-plugins.mjs",
     "plugin:build": "node scripts/build-plugin-examples.mjs",
     "plugin:build:provider-example": "node scripts/build-provider-component-example.mjs",
+    "plugin:build:host-fixture": "node scripts/build-provider-component-example.mjs host-fixture",
     "plugin:verify:provider-example": "npm run plugin:build:provider-example && cargo run --quiet -p yaqmc-core --example verify-provider-component -- examples/plugins/provider-catalog-rust/component/provider.wasm",
     "plugin:pack:provider-example": "npm run plugin:verify:provider-example && npm run plugin:validate && node scripts/pack-example-plugins.mjs --provider-example",
     "plugin:validate": "node scripts/validate-example-plugins.mjs",

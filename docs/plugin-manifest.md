@@ -2,8 +2,14 @@
 
 > [简体中文](zh-CN/plugin-manifest.md) | **English**
 
-`manifest.json` is compositional. A plugin is not a single `"type": "style"`. It may expose styles, scenes, and/or a
-script entrypoint together.
+`manifest.json` has two deliberately separate runtime shapes:
+
+- manifest v1 / Plugin API v1-v2 composes styles, scenes, and an isolated script;
+- manifest v2 / Plugin API v3 describes one sandboxed Provider Component.
+
+The two shapes cannot be mixed in one package.
+
+## Legacy compositional manifest
 
 ```json
 {
@@ -22,28 +28,68 @@ script entrypoint together.
 }
 ```
 
-## Required vs optional
+Required fields are `manifestVersion`, `id`, `name`, `version`, and `apiVersion`. Optional fields include description,
+authors, homepage, repository, license, engines, platforms, architectures, entrypoints, permissions, dependencies,
+conflicts, `settingsSchema`, and reserved `signatures`.
 
-Required: `manifestVersion`, `id`, `name`, `version`, `apiVersion`.
+Plugin IDs use reverse DNS, for example `dev.example.plugin`. Versions are semver. `apiVersion` is independent from
+the package version and `manifestVersion`. The host understands API versions `1`, `2`, and `3`. Incompatible packages
+may remain installed and disabled with an explanation; they are never partially activated.
 
-Optional: description, authors, homepage, repository, license, engines, platforms, architectures, entrypoints,
-permissions, dependencies, conflicts, `settingsSchema`, reserved `signatures`.
+## Provider Component manifest
 
-Plugin IDs are reverse-DNS, for example `dev.example.plugin`. Versions are semver (`1.0.0` or `0.0.0-local`).
+```json
+{
+  "manifestVersion": 2,
+  "id": "dev.example.catalog",
+  "name": "Example catalog",
+  "version": "1.0.0",
+  "apiVersion": 3,
+  "entrypoints": { "component": "component/provider.wasm" },
+  "provider": {
+    "id": "dev.example.catalog",
+    "name": "Example platform",
+    "witVersion": "0.1.0",
+    "world": "provider",
+    "capabilities": ["provider.catalog"]
+  },
+  "permissions": ["provider.catalog"]
+}
+```
 
-`apiVersion` is independent from the package version and from `manifestVersion`. The host understands API versions
-`1` and `2`. Incompatible packages may remain installed and disabled with an explanation; they are never partially
-activated. Do not bump `manifestVersion` merely because Plugin API evolved.
+API v3 currently freezes `yaqmc:provider@0.1.0`. Its exported `invoke` envelope uses versioned JSON operation
+schemas. The host validates and re-scopes responses before they enter Core. Provider capabilities are granted
+separately:
+
+- `provider.catalog`
+- `provider.playback`
+- `provider.recommendation`
+- `provider.lyrics`
+- `provider.account`
+
+The selected WIT world must exactly match the requested host imports:
+
+| World                      | Host imports                                  | Required manifest permissions                                   |
+| -------------------------- | --------------------------------------------- | --------------------------------------------------------------- |
+| `provider`                 | none                                          | provider capabilities only                                      |
+| `provider-storage`         | utilities, private KV/cache                   | `plugin.storage`                                                |
+| `provider-network`         | utilities, exact-origin HTTPS proxy           | one or more `network:https://…` entries                         |
+| `provider-network-storage` | utilities, private KV/cache, HTTPS proxy      | `plugin.storage` and one or more exact origins                  |
+| `provider-account`         | utilities, storage, HTTPS, credential handles | `provider.account`, `plugin.storage`, and exact network origins |
+
+Using a broader world without the corresponding permissions is rejected. Asking for storage or network while
+selecting a world that cannot import it is rejected too. API v3 does not expose network wildcards, raw sockets,
+filesystem paths, environment variables, native libraries, HTML, shell, or subprocess entrypoints.
 
 ## Dependencies and conflicts
 
-`dependencies` maps plugin IDs to a version range (`^1.2.0` or `>=1.2.0`). v1 does not download missing plugins.
-Activation is blocked when a dependency is missing, too old, or part of a cycle.
-
-`conflicts` lists plugin IDs that cannot be active together. YAQMC reports the reason; it does not try to solve
-conflicts automatically.
+`dependencies` maps plugin IDs to version ranges. YAQMC does not download missing dependencies. Activation is blocked
+when a dependency is missing, too old, or part of a cycle. `conflicts` lists plugins that cannot be active together;
+YAQMC reports the reason without attempting automatic resolution.
 
 ## Entrypoint paths
 
-Paths are relative to the package root. `..`, absolute paths, Windows drive prefixes, hidden components, and duplicate
-entrypoints are rejected.
+Paths are relative to the package root. Parent traversal, absolute paths, Windows drive prefixes, hidden components,
+case-insensitive collisions, and duplicate entrypoints are rejected. Provider packages must contain exactly one
+Component Model binary at the declared `.wasm` entrypoint. Core Wasm modules and PE/ELF/Mach-O/native executable
+payloads are rejected.

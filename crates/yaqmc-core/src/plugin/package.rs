@@ -423,7 +423,7 @@ fn validate_package_shape(
         return Ok(());
     }
 
-    if files.iter().any(|file| is_native_binary(file)) {
+    if files.iter().any(is_native_binary) {
         return Err(PackageError::NativeBinary);
     }
     let component_path = manifest

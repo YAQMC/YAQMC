@@ -96,7 +96,12 @@ impl CoreServices {
                 .map_err(CoreBootstrapError::from_error)?,
         );
         plugins
-            .attach_provider_registry(Arc::clone(&providers))
+            .attach_provider_runtime(
+                Arc::clone(&providers),
+                Arc::clone(&credentials),
+                config.paths.cache_dir.join("plugin-components"),
+                inputs.runtime.clone(),
+            )
             .map_err(CoreBootstrapError::from_error)?;
         let audio = inputs.audio;
         if let Ok(Some(device_id)) = storage.get_setting(AUDIO_OUTPUT_DEVICE_SETTING) {

@@ -117,6 +117,40 @@ impl ProviderCapability {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProviderWorld {
+    Isolated,
+    Storage,
+    Network,
+    NetworkStorage,
+    Account,
+}
+
+impl ProviderWorld {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "provider" => Some(Self::Isolated),
+            "provider-storage" => Some(Self::Storage),
+            "provider-network" => Some(Self::Network),
+            "provider-network-storage" => Some(Self::NetworkStorage),
+            "provider-account" => Some(Self::Account),
+            _ => None,
+        }
+    }
+
+    pub fn has_storage(self) -> bool {
+        matches!(self, Self::Storage | Self::NetworkStorage | Self::Account)
+    }
+
+    pub fn has_network(self) -> bool {
+        matches!(self, Self::Network | Self::NetworkStorage | Self::Account)
+    }
+
+    pub fn has_credentials(self) -> bool {
+        matches!(self, Self::Account)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderPluginManifest {
@@ -223,11 +257,11 @@ impl PluginManifest {
                 .as_ref()
                 .is_some_and(|name| name.trim().is_empty() || name.len() > 80)
             || provider.wit_version != PROVIDER_WIT_VERSION
-            || provider.world != PROVIDER_WIT_WORLD
             || provider.capabilities.is_empty()
         {
             return Err(ManifestError::InvalidProvider);
         }
+        let world = ProviderWorld::parse(&provider.world).ok_or(ManifestError::InvalidProvider)?;
         let capabilities = provider
             .capabilities
             .iter()
@@ -240,6 +274,15 @@ impl PluginManifest {
         if capabilities
             .iter()
             .any(|capability| !requested.contains(&capability.permission()))
+        {
+            return Err(ManifestError::InvalidProvider);
+        }
+        let requests_storage = requested.contains(&PluginPermission::PluginStorage);
+        let requests_network = requested.contains(&PluginPermission::Network);
+        let has_account = capabilities.contains(&ProviderCapability::Account);
+        if world.has_storage() != requests_storage
+            || world.has_network() != requests_network
+            || world.has_credentials() != has_account
         {
             return Err(ManifestError::InvalidProvider);
         }
@@ -542,6 +585,60 @@ mod tests {
         let wrong_wit = valid_provider_json().replace("0.1.0", "0.2.0");
         assert_eq!(
             PluginManifest::parse(wrong_wit.as_bytes()).unwrap_err(),
+            ManifestError::InvalidProvider
+        );
+    }
+
+    #[test]
+    fn provider_world_imports_exactly_match_granted_host_authority() {
+        let mut value: serde_json::Value =
+            serde_json::from_str(&valid_provider_json()).expect("fixture json");
+        value["provider"]["world"] = serde_json::json!("provider-network-storage");
+        value["permissions"] = serde_json::json!([
+            "provider.catalog",
+            "plugin.storage",
+            "network:https://api.example.com"
+        ]);
+        let manifest =
+            PluginManifest::parse(serde_json::to_vec(&value).expect("encode").as_slice())
+                .expect("network and storage world");
+        let world =
+            ProviderWorld::parse(&manifest.provider.expect("provider").world).expect("known world");
+        assert!(world.has_network());
+        assert!(world.has_storage());
+        assert!(!world.has_credentials());
+
+        value["permissions"] = serde_json::json!(["provider.catalog", "plugin.storage"]);
+        assert_eq!(
+            PluginManifest::parse(serde_json::to_vec(&value).unwrap().as_slice()).unwrap_err(),
+            ManifestError::InvalidProvider
+        );
+        value["provider"]["world"] = serde_json::json!("provider-unknown");
+        assert_eq!(
+            PluginManifest::parse(serde_json::to_vec(&value).unwrap().as_slice()).unwrap_err(),
+            ManifestError::InvalidProvider
+        );
+    }
+
+    #[test]
+    fn credential_imports_are_exclusive_to_account_capability() {
+        let mut value: serde_json::Value =
+            serde_json::from_str(&valid_provider_json()).expect("fixture json");
+        value["provider"]["world"] = serde_json::json!("provider-account");
+        value["provider"]["capabilities"] =
+            serde_json::json!(["provider.catalog", "provider.account"]);
+        value["permissions"] = serde_json::json!([
+            "provider.catalog",
+            "provider.account",
+            "plugin.storage",
+            "network:https://accounts.example.com"
+        ]);
+        PluginManifest::parse(serde_json::to_vec(&value).unwrap().as_slice())
+            .expect("account world");
+
+        value["provider"]["capabilities"] = serde_json::json!(["provider.catalog"]);
+        assert_eq!(
+            PluginManifest::parse(serde_json::to_vec(&value).unwrap().as_slice()).unwrap_err(),
             ManifestError::InvalidProvider
         );
     }

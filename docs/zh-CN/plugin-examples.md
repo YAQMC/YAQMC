@@ -6,6 +6,7 @@
 
 源码在 `examples/plugins/`。已打包的 `*.yaqmc-plugin` 在
 [`examples/plugins/packages/`](../../examples/plugins/packages/)。可用 `npm run plugins:pack` 重新打包。
+Rust Provider Component 使用独立的可复现 target，并用 `npm run plugin:pack:provider-example` 构建和打包。
 
 ## 下载
 
@@ -18,6 +19,7 @@
 | [Studio](../../examples/plugins/packages/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin)         | 铬框 + 两个场景 + 书签脚本                  | 样式 + 场景 + 脚本 + 全部 v1 权限                                             |
 | [Ink core](../../examples/plugins/packages/dev.yaqmc.example.ink-core-1.0.0.yaqmc-plugin)     | 设置共享 `--yaqmc-*`                        | 仅样式变量                                                                    |
 | [Ink accent](../../examples/plugins/packages/dev.yaqmc.example.ink-accent-1.0.0.yaqmc-plugin) | 把这些变量用到铬框                          | 样式选择器。**依赖 Ink core**                                                 |
+| [只读目录](../../examples/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin)      | 增加确定性的示例音乐平台                    | API v3 `provider.catalog`；无网络、账号、存储或 renderer 权限                 |
 
 `player.pause`、`player.toggle`、`player.next`、`player.previous` 走同一条隔离桥和 PlayerService。示例**不会自动调用**它们，以免抢走队列。它们会调用 `seek` 和 `play`，因此书签恢复/继续播放是可以听见、看见的真实控制。
 
@@ -31,9 +33,10 @@
 先启用 **Ink core** 再启用 **Ink accent**。Sakura 与 Night 不能同时启用。
 
 v2 示例源码在 `examples/plugins/script-actions`（设置 + 右键/播放栏）和 `examples/plugins/script-network`
-（仅 `https://example.com` 的宿主代理请求）。用 `npm run plugin:pack` 打包。敌对探测夹具位于
-`tests/fixtures/plugins/hostile`，不要作为用户插件启用。
+（仅 `https://example.com` 的宿主代理请求）。用 `npm run plugin:pack` 打包。Provider Component 源码位于
+`examples/plugins/provider-catalog-rust`，同一个包可用于受支持的 Windows/Linux 架构且不含原生二进制。敌对探测夹具仅用于
+自动测试，不要作为用户插件启用。
 
 ## 未包含
 
-插件市场、远程更新、Provider 插件、原生模块、HTML 入口、任意 `fetch`。
+插件市场、远程更新、原生模块、HTML 入口、任意 `fetch`、播放/账号 Provider 示例和已验证发行方声明。

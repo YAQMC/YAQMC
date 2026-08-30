@@ -5,7 +5,35 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const exampleRoot = path.join(root, 'examples', 'plugins', 'provider-catalog-rust');
+const builds = {
+  example: {
+    root: path.join(root, 'examples', 'plugins', 'provider-catalog-rust'),
+    artifact: 'yaqmc_provider_catalog_example.wasm',
+    destination: path.join(
+      root,
+      'examples',
+      'plugins',
+      'provider-catalog-rust',
+      'component',
+      'provider.wasm',
+    ),
+  },
+  'host-fixture': {
+    root: path.join(root, 'crates', 'yaqmc-core', 'tests', 'fixtures', 'component-host-guest'),
+    artifact: 'yaqmc_component_host_guest.wasm',
+    destination: path.join(
+      root,
+      'crates',
+      'yaqmc-core',
+      'tests',
+      'fixtures',
+      'component-host-guest.wasm',
+    ),
+  },
+};
+const build = builds[process.argv[2] ?? 'example'];
+if (!build) throw new Error('unknown Provider Component build target');
+const exampleRoot = build.root;
 const manifestPath = path.join(exampleRoot, 'Cargo.toml');
 const target = 'wasm32-wasip2';
 
@@ -35,14 +63,8 @@ await run('cargo', [
   manifestPath,
 ]);
 
-const source = path.join(
-  exampleRoot,
-  'target',
-  target,
-  'release',
-  'yaqmc_provider_catalog_example.wasm',
-);
-const destination = path.join(exampleRoot, 'component', 'provider.wasm');
+const source = path.join(exampleRoot, 'target', target, 'release', build.artifact);
+const destination = build.destination;
 await mkdir(path.dirname(destination), { recursive: true });
 await copyFile(source, destination);
 process.stdout.write(`built ${path.relative(root, destination)}\n`);

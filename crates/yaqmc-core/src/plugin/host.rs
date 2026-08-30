@@ -11,7 +11,9 @@ use std::{
 };
 use thiserror::Error;
 
+use crate::credentials::CredentialStore;
 use crate::plugin::{
+    component_host::ComponentHostServices,
     manifest::{is_plugin_id, parse_semver, PluginManifest},
     package::{extract_to, inspect_package, sha256_bytes, PackageInspection},
     permissions::PluginPermission,
@@ -208,6 +210,7 @@ pub struct ExtensionHost {
 #[derive(Default)]
 struct ProviderRuntimeState {
     registry: Option<Arc<ProviderRegistry>>,
+    host_services: Option<ComponentHostServices>,
     active: HashMap<String, ActiveComponentProvider>,
 }
 
@@ -328,6 +331,31 @@ impl ExtensionHost {
         &self,
         registry: Arc<ProviderRegistry>,
     ) -> Result<(), HostError> {
+        self.attach_provider_state(registry, None)
+    }
+
+    pub fn attach_provider_runtime(
+        &self,
+        registry: Arc<ProviderRegistry>,
+        credentials: Arc<dyn CredentialStore>,
+        cache_root: PathBuf,
+        runtime: tokio::runtime::Handle,
+    ) -> Result<(), HostError> {
+        let services = ComponentHostServices::open(
+            self.root.join("component-data"),
+            cache_root,
+            credentials,
+            runtime,
+        )
+        .map_err(HostError::from)?;
+        self.attach_provider_state(registry, Some(services))
+    }
+
+    fn attach_provider_state(
+        &self,
+        registry: Arc<ProviderRegistry>,
+        host_services: Option<ComponentHostServices>,
+    ) -> Result<(), HostError> {
         {
             let mut runtime = self
                 .provider_runtime
@@ -339,6 +367,7 @@ impl ExtensionHost {
                 ));
             }
             runtime.registry = Some(registry);
+            runtime.host_services = host_services;
         }
         self.reconcile_provider_plugins();
         Ok(())
@@ -435,13 +464,18 @@ impl ExtensionHost {
                 return Ok(());
             }
         }
-        let registry = self
-            .provider_runtime
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .registry
-            .clone()
-            .ok_or_else(|| HostError::from("the plugin provider registry is not attached"))?;
+        let (registry, host_services) = {
+            let runtime = self
+                .provider_runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            (
+                runtime.registry.clone().ok_or_else(|| {
+                    HostError::from("the plugin provider registry is not attached")
+                })?,
+                runtime.host_services.clone(),
+            )
+        };
         let provider = manifest
             .provider
             .as_ref()
@@ -461,7 +495,17 @@ impl ExtensionHost {
             .ok_or_else(|| HostError::from("the provider component entrypoint is missing"))?;
         let bytes = fs::read(dir.join(component_path))
             .map_err(|_| HostError::from("the provider component entrypoint is missing"))?;
-        let adapter = ComponentProviderAdapter::from_manifest(&manifest, &bytes)
+        let allowed_origins = granted
+            .iter()
+            .filter_map(|permission| {
+                crate::plugin::permissions::parse_permission(permission)
+                    .ok()
+                    .and_then(|(_, origin)| origin)
+            })
+            .collect::<HashSet<_>>();
+        let host = host_services
+            .map(|services| services.for_plugin(&manifest.id, &provider.id, allowed_origins));
+        let adapter = ComponentProviderAdapter::from_manifest_with_host(&manifest, &bytes, host)
             .map_err(|error| HostError::from(error.to_string()))?;
         registry
             .register_capabilities(adapter.provider_id(), adapter.registry_capabilities())
@@ -1198,6 +1242,31 @@ impl ExtensionHost {
 
     pub fn uninstall(&self, id: &str, remove_data: bool) -> Result<(), HostError> {
         self.deactivate_provider_plugin(id)?;
+        let provider_id = {
+            let inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            inner
+                .records
+                .get(id)
+                .and_then(|(_, manifest, _)| manifest.provider.as_ref())
+                .map(|provider| provider.id.clone())
+        };
+        if remove_data {
+            let services = self
+                .provider_runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .host_services
+                .clone();
+            if let (Some(services), Some(provider_id)) = (services, provider_id.as_deref()) {
+                if let Err(error) = services.remove_plugin_data(id, provider_id) {
+                    let _ = self.activate_provider_plugin(id);
+                    return Err(HostError::from(error));
+                }
+            }
+        }
         let mut inner = self
             .inner
             .lock()
@@ -1730,7 +1799,9 @@ fn now_ms() -> u64 {
 mod tests {
     use super::*;
     use crate::plugin::scanner::ScanReport;
-    use crate::plugin::{component::static_test_component, package::PackageFile};
+    use crate::plugin::{
+        component::static_test_component, manifest::ProviderCapability, package::PackageFile,
+    };
     use yaqmc_provider_api::{CredentialStore, ProviderRegistry};
 
     fn style_inspection(id: &str) -> PackageInspection {
@@ -1793,6 +1864,52 @@ mod tests {
         .expect("component manifest");
         let component = wat::parse_str(static_test_component("{}"))
             .expect("component fixture compiles to binary");
+        PackageInspection {
+            sha256: sha256_bytes(&component),
+            compressed_bytes: component.len() as u64,
+            expanded_bytes: component.len() as u64,
+            file_count: 2,
+            files: vec![
+                PackageFile {
+                    path: "manifest.json".into(),
+                    bytes: serde_json::to_vec(&manifest).expect("manifest bytes"),
+                },
+                PackageFile {
+                    path: "component/provider.wasm".into(),
+                    bytes: component,
+                },
+            ],
+            manifest,
+            style_scan: ScanReport::default(),
+            script_scan: ScanReport::default(),
+        }
+    }
+
+    fn account_component_inspection() -> PackageInspection {
+        let manifest = PluginManifest::parse(
+            br#"{
+                "manifestVersion": 2,
+                "id": "dev.example.host-probe",
+                "name": "Host Probe Component",
+                "version": "1.0.0",
+                "apiVersion": 3,
+                "entrypoints": { "component": "component/provider.wasm" },
+                "provider": {
+                    "id": "provider.host-probe",
+                    "witVersion": "0.1.0",
+                    "world": "provider-account",
+                    "capabilities": ["provider.catalog", "provider.account"]
+                },
+                "permissions": [
+                    "provider.catalog",
+                    "provider.account",
+                    "plugin.storage",
+                    "network:https://api.example.com"
+                ]
+            }"#,
+        )
+        .expect("account component manifest");
+        let component = include_bytes!("../../tests/fixtures/component-host-guest.wasm").to_vec();
         PackageInspection {
             sha256: sha256_bytes(&component),
             compressed_bytes: component.len() as u64,
@@ -1901,6 +2018,74 @@ mod tests {
             .expect("failed record");
         assert_eq!(failed.status, PluginStatus::Failed);
         assert!(!failed.enabled);
+    }
+
+    #[tokio::test]
+    async fn component_host_authority_is_revoked_across_disable_and_remove_data() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().join("plugins")).expect("host");
+        let registry = provider_registry(root.path());
+        let credentials: Arc<dyn CredentialStore> =
+            Arc::new(crate::credentials::MemoryCredentialStore::default());
+        host.attach_provider_runtime(
+            Arc::clone(&registry),
+            credentials,
+            root.path().join("component-cache"),
+            tokio::runtime::Handle::current(),
+        )
+        .expect("attach");
+        let grants = account_component_inspection()
+            .manifest
+            .requested_permission_keys();
+        let record = host
+            .install_inspection(account_component_inspection(), true, &grants, "test")
+            .expect("install");
+        host.finish_provider_transition(record).expect("activate");
+        let first = host
+            .provider_runtime
+            .lock()
+            .expect("runtime")
+            .active
+            .get("dev.example.host-probe")
+            .expect("active")
+            .adapter
+            .component()
+            .clone();
+        assert_eq!(
+            first
+                .invoke(ProviderCapability::Catalog, "test.storage", "retained")
+                .await,
+            Ok("retained".to_owned())
+        );
+
+        host.set_enabled("dev.example.host-probe", false)
+            .expect("disable");
+        assert_eq!(
+            first
+                .invoke(ProviderCapability::Catalog, "test.storage", "blocked")
+                .await,
+            Err(crate::plugin::component::ComponentRuntimeError::Disabled)
+        );
+        host.set_enabled("dev.example.host-probe", true)
+            .expect("re-enable");
+        assert!(registry.contains("provider.host-probe"));
+
+        let services = host
+            .provider_runtime
+            .lock()
+            .expect("runtime")
+            .host_services
+            .clone()
+            .expect("host services");
+        host.uninstall("dev.example.host-probe", true)
+            .expect("uninstall and remove data");
+        let recovered = services.for_plugin(
+            "dev.example.host-probe",
+            "provider.host-probe",
+            HashSet::from(["https://api.example.com".to_owned()]),
+        );
+        assert_eq!(recovered.kv_get("probe").expect("kv"), None);
+        assert!(!registry.contains("provider.host-probe"));
     }
 
     #[test]

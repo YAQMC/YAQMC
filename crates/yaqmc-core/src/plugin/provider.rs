@@ -13,7 +13,8 @@ use yaqmc_provider_api::{
 
 use crate::plugin::{
     component::{ComponentRuntimeError, ProviderComponent},
-    manifest::{PluginManifest, ProviderCapability},
+    component_host::ComponentHostContext,
+    manifest::{PluginManifest, ProviderCapability, ProviderWorld},
 };
 
 const MAX_CATALOG_VALUE_DEPTH: usize = 64;
@@ -42,6 +43,14 @@ impl ComponentProviderAdapter {
         manifest: &PluginManifest,
         component_bytes: &[u8],
     ) -> Result<Arc<Self>, ComponentProviderError> {
+        Self::from_manifest_with_host(manifest, component_bytes, None)
+    }
+
+    pub fn from_manifest_with_host(
+        manifest: &PluginManifest,
+        component_bytes: &[u8],
+        host: Option<ComponentHostContext>,
+    ) -> Result<Arc<Self>, ComponentProviderError> {
         let provider = manifest
             .provider
             .as_ref()
@@ -51,7 +60,14 @@ impl ComponentProviderAdapter {
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
-        let component = ProviderComponent::load(component_bytes, declared.iter().copied())?;
+        let world =
+            ProviderWorld::parse(&provider.world).ok_or(ComponentProviderError::MissingProvider)?;
+        let component = ProviderComponent::load_with_host(
+            component_bytes,
+            declared.iter().copied(),
+            world,
+            host,
+        )?;
         Ok(Arc::new(Self {
             provider_id: provider.id.clone(),
             display_name: provider
@@ -295,13 +311,13 @@ fn map_runtime_error(error: ComponentRuntimeError) -> ProviderCommandError {
             message: "the provider was disabled after repeated sandbox faults".to_owned(),
             retryable: false,
         },
-        ComponentRuntimeError::Disabled | ComponentRuntimeError::Cancelled => {
-            ProviderCommandError {
-                code: "provider-unavailable".to_owned(),
-                message: "the provider is disabled".to_owned(),
-                retryable: false,
-            }
-        }
+        ComponentRuntimeError::Disabled
+        | ComponentRuntimeError::Cancelled
+        | ComponentRuntimeError::HostUnavailable => ProviderCommandError {
+            code: "provider-unavailable".to_owned(),
+            message: "the provider is disabled".to_owned(),
+            retryable: false,
+        },
         ComponentRuntimeError::CapabilityDenied => ProviderCommandError {
             code: "unsupported-operation".to_owned(),
             message: "the provider capability was not granted".to_owned(),

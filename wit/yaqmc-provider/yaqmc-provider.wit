@@ -1,11 +1,85 @@
 package yaqmc:provider@0.1.0;
 
+/// Non-sensitive host utilities. Messages are length-bounded and redacted by
+/// the host; random output is capped per call.
+interface utilities {
+  log: func(level: string, message: string);
+  monotonic-millis: func() -> u64;
+  random-bytes: func(length: u32) -> result<list<u8>, string>;
+}
+
+/// Plugin-private bounded data. Keys never become host paths.
+interface storage {
+  kv-get: func(key: string) -> result<option<string>, string>;
+  kv-set: func(key: string, value: string) -> result<bool, string>;
+  kv-delete: func(key: string) -> result<bool, string>;
+  cache-get: func(key: string) -> result<option<list<u8>>, string>;
+  cache-put: func(key: string, value: list<u8>) -> result<bool, string>;
+  cache-delete: func(key: string) -> result<bool, string>;
+}
+
+/// Exact-origin HTTPS proxy. The request and response use the documented JSON
+/// envelope so protocol revisions do not expose raw sockets to guests.
+interface network {
+  request: func(request-json: string) -> result<string, string>;
+}
+
+/// Write-only credential handles. Secrets can be attached to a Host network
+/// request but cannot be read back or enumerated by a component.
+interface credentials {
+  create: func(origin: string, secret: string) -> result<string, string>;
+  delete: func(handle: string) -> result<bool, string>;
+}
+
 /// Frozen provider guest contract for Plugin API v3.
 ///
 /// The host validates `capability` against the manifest before dispatch. Each
 /// operation has a versioned JSON request/response schema documented by YAQMC;
 /// using one envelope keeps ABI evolution independent from application DTOs.
 world provider {
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-storage {
+  import utilities;
+  import storage;
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-network {
+  import utilities;
+  import network;
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-network-storage {
+  import utilities;
+  import storage;
+  import network;
+  export invoke: func(
+    capability: string,
+    operation: string,
+    payload-json: string,
+  ) -> result<string, string>;
+}
+
+world provider-account {
+  import utilities;
+  import storage;
+  import network;
+  import credentials;
   export invoke: func(
     capability: string,
     operation: string,

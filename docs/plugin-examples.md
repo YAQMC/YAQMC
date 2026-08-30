@@ -7,6 +7,8 @@ Install from Settings → Plugins → Choose file. There is no marketplace.
 
 Source lives in `examples/plugins/`. Packed `*.yaqmc-plugin` files are in
 [`examples/plugins/packages/`](../examples/plugins/packages/). Rebuild them with `npm run plugins:pack`.
+The Rust Provider Component has a separate reproducible target and pack command:
+`npm run plugin:pack:provider-example`.
 
 ## Downloads
 
@@ -19,6 +21,7 @@ Source lives in `examples/plugins/`. Packed `*.yaqmc-plugin` files are in
 | [Studio](../examples/plugins/packages/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin)                | Chrome + two scenes + bookmark script                   | Style + scene + script + every v1 permission                                                                   |
 | [Ink core](../examples/plugins/packages/dev.yaqmc.example.ink-core-1.0.0.yaqmc-plugin)            | Sets shared `--yaqmc-*` tokens                          | Style tokens only                                                                                              |
 | [Ink accent](../examples/plugins/packages/dev.yaqmc.example.ink-accent-1.0.0.yaqmc-plugin)        | Applies those tokens to chrome                          | Style selectors. **Requires Ink core** (`dependencies`)                                                        |
+| [Read-only catalog](../examples/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin)    | Adds a deterministic example music platform             | API v3 `provider.catalog`; no network, account, storage, or renderer access                                    |
 
 `player.pause`, `player.toggle`, `player.next`, and `player.previous` are on the same isolated bridge and go through
 PlayerService. The examples do **not** fire them automatically; that would steal the queue. They do call `seek` and
@@ -35,8 +38,11 @@ Enable **Ink core** before **Ink accent**. Sakura and Night cannot be active tog
 
 v2 example sources: `examples/plugins/script-actions` (settings + context/player-bar actions) and
 `examples/plugins/script-network` (host-proxied `https://example.com` only). Pack with `npm run plugin:pack`.
-The hostile probe lives in `tests/fixtures/plugins/hostile` and must not be enabled as a user plugin.
+The Provider Component source is in `examples/plugins/provider-catalog-rust`. Install the same package on supported
+Windows or Linux architectures; it contains no native binary. Hostile probes live under test fixtures and must not
+be enabled as user plugins.
 
 ## Not included
 
-Marketplace, remote updates, Provider plugins, native modules, HTML entrypoints, and raw `fetch`.
+Marketplace, remote updates, native modules, HTML entrypoints, raw `fetch`, playback/account Provider examples, and
+verified-publisher claims.

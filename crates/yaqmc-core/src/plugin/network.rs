@@ -13,6 +13,13 @@ const REQUEST_TIMEOUT_SECS: u64 = 10;
 
 const ALLOWED_REQUEST_HEADERS: &[&str] = &["accept", "content-type", "user-agent"];
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ComponentCredentialHeader {
+    pub origin: String,
+    pub name: String,
+    pub value: String,
+}
+
 #[derive(Clone)]
 struct PinnedRequest {
     method: reqwest::Method,
@@ -115,11 +122,20 @@ pub async fn proxy_request(
     proxy_request_with_limit(allowed_origins, payload, LEGACY_MAX_RESPONSE_BODY).await
 }
 
-pub async fn proxy_component_request(
+pub(crate) async fn proxy_component_request(
     allowed_origins: &HashSet<String>,
     payload: &Value,
+    credential_headers: &[ComponentCredentialHeader],
 ) -> Result<Value, String> {
-    proxy_request_with_limit(allowed_origins, payload, COMPONENT_MAX_RESPONSE_BODY).await
+    proxy_request_with(
+        allowed_origins,
+        payload,
+        COMPONENT_MAX_RESPONSE_BODY,
+        credential_headers,
+        &SystemResolver,
+        &ReqwestTransport,
+    )
+    .await
 }
 
 async fn proxy_request_with_limit(
@@ -131,6 +147,7 @@ async fn proxy_request_with_limit(
         allowed_origins,
         payload,
         response_limit,
+        &[],
         &SystemResolver,
         &ReqwestTransport,
     )
@@ -141,6 +158,7 @@ async fn proxy_request_with(
     allowed_origins: &HashSet<String>,
     payload: &Value,
     response_limit: usize,
+    credential_headers: &[ComponentCredentialHeader],
     resolver: &dyn AddressResolver,
     transport: &dyn NetworkTransport,
 ) -> Result<Value, String> {
@@ -184,13 +202,20 @@ async fn proxy_request_with(
         let port = parsed.port_or_known_default().unwrap_or(443);
         let addresses = resolver.resolve(&host, port).await?;
         validate_resolved_addresses(&addresses)?;
+        let mut hop_headers = headers.clone();
+        for credential in credential_headers {
+            if credential.origin != origin {
+                return Err("component credential cannot follow a cross-origin redirect".into());
+            }
+            hop_headers.push((credential.name.clone(), credential.value.clone()));
+        }
         let response = transport
             .send(PinnedRequest {
                 method: method.clone(),
                 url: parsed.clone(),
                 host,
                 addresses,
-                headers: headers.clone(),
+                headers: hop_headers,
                 body: if method == reqwest::Method::GET || method == reqwest::Method::HEAD {
                     String::new()
                 } else {
@@ -225,6 +250,19 @@ async fn proxy_request_with(
             "body": String::from_utf8_lossy(&response.body),
         }));
     }
+}
+
+pub(crate) fn component_request_origin(payload: &Value) -> Result<String, String> {
+    let url = payload
+        .get("url")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "network url is required".to_owned())?;
+    if url.len() > MAX_URL_BYTES {
+        return Err("plugin network url is too long".into());
+    }
+    let parsed = reqwest::Url::parse(url).map_err(|_| "network url is invalid".to_owned())?;
+    deny_url(&parsed)?;
+    origin_of(&parsed)
 }
 
 fn validate_headers(value: Option<&Value>) -> Result<Vec<(String, String)>, String> {
@@ -331,12 +369,14 @@ mod tests {
     struct FakeTransport {
         responses: Mutex<VecDeque<TransportResponse>>,
         pinned: Mutex<Vec<Vec<SocketAddr>>>,
+        headers: Mutex<Vec<Vec<(String, String)>>>,
     }
 
     #[async_trait]
     impl NetworkTransport for FakeTransport {
         async fn send(&self, request: PinnedRequest) -> Result<TransportResponse, String> {
             self.pinned.lock().expect("pinned").push(request.addresses);
+            self.headers.lock().expect("headers").push(request.headers);
             self.responses
                 .lock()
                 .expect("responses")
@@ -381,11 +421,13 @@ mod tests {
                 body: b"ok".to_vec(),
             }])),
             pinned: Mutex::new(Vec::new()),
+            headers: Mutex::new(Vec::new()),
         };
         let result = proxy_request_with(
             &allowed(&["https://api.example.com"]),
             &json!({ "url": "https://api.example.com/v1" }),
             1024,
+            &[],
             &resolver,
             &transport,
         )
@@ -413,11 +455,13 @@ mod tests {
                 body: Vec::new(),
             }])),
             pinned: Mutex::new(Vec::new()),
+            headers: Mutex::new(Vec::new()),
         };
         let error = proxy_request_with(
             &allowed(&["https://api.example.com", "https://cdn.example.com"]),
             &json!({ "url": "https://api.example.com/start" }),
             1024,
+            &[],
             &resolver,
             &transport,
         )
@@ -439,11 +483,13 @@ mod tests {
                 body: Vec::new(),
             }])),
             pinned: Mutex::new(Vec::new()),
+            headers: Mutex::new(Vec::new()),
         };
         let error = proxy_request_with(
             &allowed(&["https://api.example.com"]),
             &json!({ "url": "https://api.example.com/start" }),
             4,
+            &[],
             &resolver,
             &transport,
         )
@@ -461,16 +507,77 @@ mod tests {
                 body: b"oversized".to_vec(),
             }])),
             pinned: Mutex::new(Vec::new()),
+            headers: Mutex::new(Vec::new()),
         };
         let error = proxy_request_with(
             &allowed(&["https://api.example.com"]),
             &json!({ "url": "https://api.example.com/start" }),
             4,
+            &[],
             &resolver,
             &transport,
         )
         .await
         .unwrap_err();
         assert!(error.contains("too large"));
+    }
+
+    #[tokio::test]
+    async fn credential_headers_are_bound_to_the_exact_request_origin() {
+        let resolver = FakeResolver {
+            answers: Mutex::new(VecDeque::from([vec![public_address()]])),
+        };
+        let transport = FakeTransport {
+            responses: Mutex::new(VecDeque::from([TransportResponse {
+                status: 200,
+                location: None,
+                body: b"ok".to_vec(),
+            }])),
+            pinned: Mutex::new(Vec::new()),
+            headers: Mutex::new(Vec::new()),
+        };
+        let credential = ComponentCredentialHeader {
+            origin: "https://api.example.com".to_owned(),
+            name: "authorization".to_owned(),
+            value: "Bearer synthetic".to_owned(),
+        };
+        proxy_request_with(
+            &allowed(&["https://api.example.com"]),
+            &json!({ "url": "https://api.example.com/v1" }),
+            1024,
+            std::slice::from_ref(&credential),
+            &resolver,
+            &transport,
+        )
+        .await
+        .expect("same-origin credential request");
+        assert_eq!(
+            transport.headers.lock().expect("headers").as_slice(),
+            &[vec![(
+                "authorization".to_owned(),
+                "Bearer synthetic".to_owned()
+            )]]
+        );
+
+        let resolver = FakeResolver {
+            answers: Mutex::new(VecDeque::from([vec![public_address()]])),
+        };
+        let transport = FakeTransport {
+            responses: Mutex::new(VecDeque::new()),
+            pinned: Mutex::new(Vec::new()),
+            headers: Mutex::new(Vec::new()),
+        };
+        let error = proxy_request_with(
+            &allowed(&["https://cdn.example.com"]),
+            &json!({ "url": "https://cdn.example.com/v1" }),
+            1024,
+            &[credential],
+            &resolver,
+            &transport,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("cross-origin"));
+        assert!(transport.headers.lock().expect("headers").is_empty());
     }
 }
