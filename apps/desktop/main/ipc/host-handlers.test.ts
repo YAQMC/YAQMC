@@ -1153,4 +1153,40 @@ describe('IpcRouter host intercepts', () => {
   it('leaves the 32 MiB hard cap unchanged', () => {
     expect(FRAME_HARD_CAP_BYTES).toBe(32 * 1024 * 1024);
   });
+
+  it('exposes registration status and consumes pending deep links only from the main window', async () => {
+    const takePendingDeepLink = vi
+      .fn()
+      .mockReturnValueOnce({ providerId: 'qqmusic', entityId: 'qqmusic:track:001' })
+      .mockReturnValue(null);
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32' }),
+      showMainAndOpenSettings: vi.fn(),
+      deepLinkStatus: () => ({ supported: true, registered: true, error: null }),
+      takePendingDeepLink,
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(router.invoke(1, { method: 'deep_link_status' })).resolves.toEqual({
+      ok: true,
+      result: { supported: true, registered: true, error: null },
+    });
+    await expect(router.invoke(1, { method: 'deep_link_take_pending' })).resolves.toEqual({
+      ok: true,
+      result: { providerId: 'qqmusic', entityId: 'qqmusic:track:001' },
+    });
+    await expect(router.invoke(1, { method: 'deep_link_take_pending' })).resolves.toEqual({
+      ok: true,
+      result: null,
+    });
+    await expect(router.invoke(2, { method: 'deep_link_take_pending' })).resolves.toEqual({
+      ok: false,
+      error: hostDenied('deep_link_take_pending', 'lyrics-desktop'),
+    });
+  });
 });

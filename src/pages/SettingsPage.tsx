@@ -1669,6 +1669,24 @@ export function SettingsPage() {
             }
           />
           <SettingRow
+            title={t('systemIntegration.deepLinks')}
+            description={
+              platform.deepLinks?.error
+                ? t('systemIntegration.deepLinksError')
+                : platform.deepLinks?.registered
+                  ? t('systemIntegration.deepLinksRegistered')
+                  : t('systemIntegration.deepLinksUnavailable')
+            }
+            control={
+              <Toggle
+                checked={preferences.system.deepLinksEnabled}
+                label={t('systemIntegration.deepLinks')}
+                disabled={!isNativeRuntime || platform.deepLinks?.supported === false}
+                onChange={(deepLinksEnabled) => preferences.updateSystem({ deepLinksEnabled })}
+              />
+            }
+          />
+          <SettingRow
             title={t('systemIntegration.platformBackend')}
             description={t('systemIntegration.platformBackendDescription')}
             control={

@@ -1,19 +1,33 @@
-# External URI and deep-link security
+# Song sharing and deep links
 
 > [简体中文](zh-CN/deep-link.md) | **English**
 
-All external URIs are untrusted input. YAQMC currently has no QQ Music takeover handler because the installed
-Windows 22.52 client did not provide a verified public entity scheme. See
-[official interoperability evidence](qqmusic-official-interoperability.md).
+The song page, Player Bar, lyrics page, and track menus expose the same provider-neutral share actions:
 
-The packaged application registers no custom URI scheme and does not parse
-launch arguments into catalog or playback commands. “Deep link” therefore
-describes a deferred capability, not a hidden or partially supported feature.
+- **Copy public song link** uses only the HTTPS URL returned by the provider. YAQMC does not construct a provider
+  website route in React. If the provider has no public URL, the app explains the unavailable action instead of
+  guessing a link.
+- **Copy YAQMC link** creates
+  `yaqmc://catalog/<provider>/song?id=<percent-encoded-id>`.
+- **Copy song and artist** is the text-only fallback and never presents itself as a clickable URL.
 
-Any future implementation must be opt-in and reversible; allowlist exact schemes, actions, entities, lengths, and
-identifier syntax; normalize only to provider domain references; and reject unknown or injection-like values. URI
-content must never become a shell argument, filesystem path, HTML fragment, SQL statement, or arbitrary host/Core
-IPC command. Auxiliary lyrics renderers must not receive this capability.
+Installed desktop builds register the `yaqmc` protocol. A valid link focuses the existing main window (or opens one
+instance) and navigates to song details. It never starts playback, signs in, changes an account, opens a lyrics
+surface, or forwards input to an external shell. The integration can be disabled under **Settings → Desktop
+integration**; the same page reports whether the operating system accepted protocol registration. Development and
+portable builds do not register themselves as the system handler, avoiding a stale temporary executable path.
 
-The About page asks Electron Main to call `shell.openExternal`; the allowlist in
-`apps/desktop/main/open-external.ts` restricts it to configured YAQMC links. It does not accept user-supplied URLs.
+## Accepted grammar
+
+Electron Main accepts only the exact catalog-song shape above. The parser limits the complete URI to 2,048 bytes and
+the decoded entity ID to 256 bytes. It rejects credentials, ports, fragments, unknown or repeated query parameters,
+control characters, invalid percent escapes, unsupported entities, and invalid provider IDs. Windows/Linux
+`second-instance`, macOS `open-url`, and cold-start arguments all use this one pure parser.
+
+External URIs remain untrusted input. A parsed value becomes only a typed “open song details” renderer event; it does
+not become a shell argument, filesystem path, HTML fragment, SQL statement, or arbitrary host/Core command. Auxiliary
+lyrics windows do not receive this event. Product links opened from About remain separately allowlisted by
+`apps/desktop/main/open-external.ts`.
+
+Implementation follows Electron's [Deep Links](https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app)
+single-instance guidance.

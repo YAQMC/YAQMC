@@ -20,6 +20,7 @@ export { createFakeBridge, type FakeCatalog } from './bridges/fake';
 export {
   CHANNEL_ACCOUNT_CHANGED,
   CHANNEL_API_EVENT,
+  CHANNEL_APP_OPEN_CATALOG_SONG,
   CHANNEL_APP_OPEN_SETTINGS,
   CHANNEL_CORE_LOG,
   CHANNEL_HOST_COMMAND,
@@ -40,6 +41,7 @@ export {
   type CoreStatus,
   type CoreStatusPayload,
   type HostChannelName,
+  type OpenCatalogSongPayload,
   type UpdatePayload,
   type UpdateState,
 } from './protocol/events';

@@ -38,6 +38,25 @@
       "ok": true
     }
   },
+  "deep_link_status": {
+    "id": 19,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "error": null,
+      "registered": true,
+      "supported": true
+    }
+  },
+  "deep_link_take_pending": {
+    "id": 20,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "entityId": "qqmusic:track:001X3HEN1oK0Jr",
+      "providerId": "qqmusic"
+    }
+  },
   "hostDenied": {
     "error": {
       "code": "host.denied",

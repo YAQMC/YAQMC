@@ -144,6 +144,12 @@ const METHODS: &[MethodSpec] = &[
         MethodOwner::Host,
         OriginClass::Main,
     ),
+    spec("deep_link_status", MethodOwner::Host, OriginClass::Main),
+    spec(
+        "deep_link_take_pending",
+        MethodOwner::Host,
+        OriginClass::Main,
+    ),
     spec("audio_output_devices", MethodOwner::Core, OriginClass::Main),
     spec(
         "audio_set_output_device",

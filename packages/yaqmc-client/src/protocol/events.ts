@@ -14,6 +14,7 @@ export const CHANNEL_ACCOUNT_CHANGED = 'account://changed';
 export const CHANNEL_LYRICS_SURFACE_CLOSED = 'lyrics://surface-closed';
 export const CHANNEL_LYRICS_SURFACE_INTERACTION = 'lyrics://surface-interaction';
 export const CHANNEL_APP_OPEN_SETTINGS = 'app://open-settings';
+export const CHANNEL_APP_OPEN_CATALOG_SONG = 'app://open-catalog-song';
 
 export const CORE_EVENT_CHANNELS = [
   CHANNEL_API_EVENT,
@@ -31,6 +32,7 @@ export const HOST_EVENT_CHANNELS = [
   CHANNEL_LYRICS_SURFACE_CLOSED,
   CHANNEL_LYRICS_SURFACE_INTERACTION,
   CHANNEL_APP_OPEN_SETTINGS,
+  CHANNEL_APP_OPEN_CATALOG_SONG,
   CHANNEL_HOST_CORE_STATUS,
   CHANNEL_HOST_UPDATE,
 ] as const;
@@ -82,6 +84,11 @@ export interface OpenSettingsPayload {
   section: string;
 }
 
+export interface OpenCatalogSongPayload {
+  providerId: string;
+  entityId: string;
+}
+
 export type CoreStatus = 'down' | 'restarting' | 'ready' | 'safe-mode';
 
 export interface CoreStatusPayload {
@@ -120,6 +127,7 @@ export interface ChannelPayload {
   [CHANNEL_LYRICS_SURFACE_CLOSED]: LyricsSurfaceClosedPayload;
   [CHANNEL_LYRICS_SURFACE_INTERACTION]: LyricsSurfaceInteractionPayload;
   [CHANNEL_APP_OPEN_SETTINGS]: OpenSettingsPayload;
+  [CHANNEL_APP_OPEN_CATALOG_SONG]: OpenCatalogSongPayload;
   [CHANNEL_HOST_CORE_STATUS]: CoreStatusPayload;
   [CHANNEL_HOST_UPDATE]: UpdatePayload;
 }

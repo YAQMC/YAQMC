@@ -14,6 +14,7 @@
     "lyrics://surface-closed",
     "lyrics://surface-interaction",
     "app://open-settings",
+    "app://open-catalog-song",
     "host://core-status",
     "host://update"
   ]

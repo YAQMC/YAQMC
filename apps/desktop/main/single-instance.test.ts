@@ -29,7 +29,8 @@ describe('single instance lock', () => {
   });
 
   it('focuses, restores, and shows the main window on a second launch', () => {
-    let secondInstance: (() => void) | undefined;
+    let secondInstance:
+      ((event: unknown, commandLine: string[], workingDirectory: string) => void) | undefined;
     const electronApp: SingleInstanceApp = {
       requestSingleInstanceLock: () => true,
       quit: vi.fn(),
@@ -40,14 +41,37 @@ describe('single instance lock', () => {
     const window = mockWindow({ isMinimized: () => true });
     expect(acquireSingleInstanceLock(electronApp, () => window)).toBe(true);
     expect(electronApp.quit).not.toHaveBeenCalled();
-    secondInstance?.();
+    secondInstance?.({}, [], 'C:\\');
     expect(window.restore).toHaveBeenCalledTimes(1);
     expect(window.show).toHaveBeenCalledTimes(1);
     expect(window.focus).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards the second launch command line before focusing the window', () => {
+    let secondInstance: ((...args: unknown[]) => void) | undefined;
+    const electronApp: SingleInstanceApp = {
+      requestSingleInstanceLock: () => true,
+      quit: vi.fn(),
+      on: (_event, listener) => {
+        secondInstance = listener as (...args: unknown[]) => void;
+      },
+    };
+    const onSecondInstance = vi.fn();
+    const window = mockWindow();
+    acquireSingleInstanceLock(electronApp, () => window, onSecondInstance);
+
+    secondInstance?.({}, ['YAQMC.exe', 'yaqmc://catalog/qqmusic/song?id=track'], 'C:\\');
+
+    expect(onSecondInstance).toHaveBeenCalledWith([
+      'YAQMC.exe',
+      'yaqmc://catalog/qqmusic/song?id=track',
+    ]);
+    expect(window.focus).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores a second launch when the main window is gone', () => {
-    let secondInstance: (() => void) | undefined;
+    let secondInstance:
+      ((event: unknown, commandLine: string[], workingDirectory: string) => void) | undefined;
     const electronApp: SingleInstanceApp = {
       requestSingleInstanceLock: () => true,
       quit: vi.fn(),
@@ -56,6 +80,6 @@ describe('single instance lock', () => {
       },
     };
     expect(acquireSingleInstanceLock(electronApp, () => undefined)).toBe(true);
-    expect(() => secondInstance?.()).not.toThrow();
+    expect(() => secondInstance?.({}, [], 'C:\\')).not.toThrow();
   });
 });

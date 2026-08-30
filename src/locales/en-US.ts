@@ -882,6 +882,11 @@ export const enUS = {
       shortcutsDescription: 'Ctrl+Alt+Space toggles playback; Ctrl+Alt+Left/Right changes tracks.',
       shortcutsUnsupported:
         'Native Wayland does not provide this X11-backed shortcut path; use MPRIS media keys.',
+      deepLinks: 'Open YAQMC song links',
+      deepLinksRegistered: 'The yaqmc:// protocol is registered for song-detail navigation.',
+      deepLinksUnavailable:
+        'Protocol registration is unavailable in this build or operating system.',
+      deepLinksError: 'The operating system rejected yaqmc:// protocol registration.',
       platformBackend: 'Detected platform backend',
       platformBackendDescription:
         'Reports the actual window backend and system-media adapter, not only the desktop session.',

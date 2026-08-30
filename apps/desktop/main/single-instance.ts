@@ -1,7 +1,10 @@
 export type SingleInstanceApp = {
   requestSingleInstanceLock(): boolean;
   quit(): void;
-  on(event: 'second-instance', listener: (...args: unknown[]) => void): unknown;
+  on(
+    event: 'second-instance',
+    listener: (event: unknown, commandLine: string[], workingDirectory: string) => void,
+  ): unknown;
 };
 
 export type MainWindowLike = {
@@ -19,12 +22,14 @@ export type MainWindowLike = {
 export function acquireSingleInstanceLock(
   electronApp: SingleInstanceApp,
   getMainWindow: () => MainWindowLike | undefined,
+  onSecondInstance?: (commandLine: readonly string[]) => void,
 ): boolean {
   if (!electronApp.requestSingleInstanceLock()) {
     electronApp.quit();
     return false;
   }
-  electronApp.on('second-instance', () => {
+  electronApp.on('second-instance', (_event, commandLine) => {
+    onSecondInstance?.(commandLine);
     const window = getMainWindow();
     if (!window || window.isDestroyed()) {
       return;

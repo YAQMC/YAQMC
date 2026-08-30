@@ -62,6 +62,8 @@ import {
 import { useLyricsStageStore } from './application/lyrics-stage-machine';
 import { usePlatformDiagnosticsRuntime } from './application/platform-integration';
 import { getYaqmcClient } from './application/yaqmc-runtime';
+import { CHANNEL_APP_OPEN_CATALOG_SONG } from '@yaqmc/client';
+import { catalogSongRouteFromDeepLink } from './application/deep-link-navigation';
 import { usePluginHost } from './application/plugin-runtime';
 import { installPlaybackUiProbe } from './application/playback-ui-probe';
 import { uiDiagnosticsEnabled } from './application/ui-diagnostics';
@@ -179,6 +181,23 @@ export default function App() {
     if (!isNativeRuntime) return;
     return getYaqmcClient().on('app://open-settings', () => navigate({ page: 'settings' }));
   }, [navigate]);
+
+  useEffect(() => {
+    if (!isNativeRuntime) return;
+    const client = getYaqmcClient();
+    const openSong = (payload: { providerId: string; entityId: string }) => {
+      const nextRoute = catalogSongRouteFromDeepLink(provider.id, payload);
+      if (nextRoute) navigate(nextRoute);
+    };
+    const unsubscribe = client.on(CHANNEL_APP_OPEN_CATALOG_SONG, openSong);
+    void client
+      .invoke('deep_link_take_pending')
+      .then((pending) => {
+        if (pending) openSong(pending);
+      })
+      .catch(() => undefined);
+    return unsubscribe;
+  }, [navigate, provider.id]);
 
   const goBack = useCallback(() => {
     void runAfterLyricsClose(() => {

@@ -43,6 +43,16 @@
     "kind": "request",
     "method": "core_shutdown_prepare"
   },
+  "deep_link_status": {
+    "id": 19,
+    "kind": "request",
+    "method": "deep_link_status"
+  },
+  "deep_link_take_pending": {
+    "id": 20,
+    "kind": "request",
+    "method": "deep_link_take_pending"
+  },
   "diagnostics_export_bundle_to": {
     "id": 15,
     "kind": "request",

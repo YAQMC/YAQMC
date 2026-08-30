@@ -57,6 +57,32 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "deep_link_status",
+    "owner": "host",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "deep_link_take_pending",
+    "owner": "host",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "audio_output_devices",
     "owner": "core",
     "requestCap": 1048576,

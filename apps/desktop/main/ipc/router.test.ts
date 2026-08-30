@@ -141,6 +141,8 @@ describe('IpcRouter', () => {
     expect(eventAllowed('unlock-desktop', 'host://core-status')).toBe(true);
     expect(eventAllowed('unlock-island', 'host://core-status')).toBe(true);
     expect(eventAllowed('unlock-desktop', 'player://snapshot')).toBe(false);
+    expect(eventAllowed('lyrics-desktop', 'app://open-catalog-song')).toBe(false);
+    expect(eventAllowed('unlock-desktop', 'app://open-catalog-song')).toBe(false);
   });
 
   it('returns host.denied for unknown methods without calling core', async () => {

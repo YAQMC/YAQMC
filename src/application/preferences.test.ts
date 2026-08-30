@@ -15,6 +15,10 @@ describe('preference persistence model', () => {
     const normalized = normalizePreferences({ version: 99, locale: 'fr-FR' });
     expect(normalized.version).toBe(2);
     expect(normalized.locale).toBe('system');
+    expect(normalized.system.deepLinksEnabled).toBe(true);
+    expect(
+      normalizePreferences({ system: { deepLinksEnabled: false } }).system.deepLinksEnabled,
+    ).toBe(false);
   });
 
   it('clamps unsafe appearance and lyric-surface values', () => {
@@ -250,7 +254,11 @@ describe('preference persistence model', () => {
         version: 2,
         system: { closeBehavior: 'quit', globalShortcutsEnabled: true },
       }).system,
-    ).toEqual({ closeBehavior: 'quit', globalShortcutsEnabled: true });
+    ).toEqual({
+      closeBehavior: 'quit',
+      globalShortcutsEnabled: true,
+      deepLinksEnabled: true,
+    });
     expect(
       normalizePreferences({ system: { closeBehavior: 'invalid', globalShortcutsEnabled: 'yes' } })
         .system,

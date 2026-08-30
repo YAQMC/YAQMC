@@ -18,6 +18,7 @@ import type {
   CreatePlaylistRequest,
   DebugPerfSample,
   DeletePlaylistRequest,
+  DeepLinkRegistrationStatus,
   DesktopIntegrationStatus,
   DiagnosticsBundleRequest,
   DiagnosticsRequest,
@@ -69,12 +70,15 @@ import type {
   Page,
 } from './dto';
 import type { PlatformAttach } from './types';
+import type { OpenCatalogSongPayload } from './events';
 
 export const MIGRATED_METHOD_NAMES = [
   'platform_diagnostics',
   'platform_export_diagnostics',
   'system_integration_status',
   'system_shortcuts_set_enabled',
+  'deep_link_status',
+  'deep_link_take_pending',
   'audio_output_devices',
   'audio_set_output_device',
   'qqmusic_status',
@@ -220,6 +224,8 @@ export type MethodParams = Exhaustive<{
   platform_export_diagnostics: void;
   system_integration_status: void;
   system_shortcuts_set_enabled: { enabled: boolean };
+  deep_link_status: void;
+  deep_link_take_pending: void;
   audio_output_devices: void;
   audio_set_output_device: { deviceId: string };
   qqmusic_status: void;
@@ -367,6 +373,8 @@ export type MethodResult = Exhaustive<{
   platform_export_diagnostics: string;
   system_integration_status: DesktopIntegrationStatus;
   system_shortcuts_set_enabled: DesktopIntegrationStatus;
+  deep_link_status: DeepLinkRegistrationStatus;
+  deep_link_take_pending: OpenCatalogSongPayload | null;
   audio_output_devices: AudioOutputDevice[];
   audio_set_output_device: AudioOutputDevice[];
   qqmusic_status: ProviderStatus;

@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CHANNEL_APP_OPEN_SETTINGS,
+  CHANNEL_APP_OPEN_CATALOG_SONG,
   CHANNEL_HOST_CORE_STATUS,
   CHANNEL_LYRICS_DOCUMENT,
   CHANNEL_LYRICS_PROJECTION,
@@ -76,6 +77,14 @@ import {
 } from './services/tray';
 import { localeFromPreferences, trayLabelsForLocale } from './services/tray-i18n';
 import { acquireSingleInstanceLock } from './single-instance';
+import {
+  deepLinkFromArgv,
+  DeepLinkInbox,
+  deepLinksEnabledFromPreferences,
+  parseYaqmcDeepLink,
+  registerYaqmcDeepLinkProtocol,
+  type CatalogSongDeepLink,
+} from './deep-link';
 import { subscribeSurfaceAutoHide } from './windows/surface-auto-hide';
 import {
   createLyricsSurfaces,
@@ -238,6 +247,12 @@ let playerSnapshotHits = 0;
 let uiPerfDiagStarted = false;
 let uiPerfMainLoaded = false;
 let uiPerfCoreReady = false;
+let deepLinkRendererReady = false;
+let preferencesResolvedForDeepLinks = !app.isPackaged;
+const deepLinkInbox = new DeepLinkInbox(deepLinkFromArgv(process.argv));
+const deepLinkRegistration = registerYaqmcDeepLinkProtocol(app, {
+  packaged: app.isPackaged && !smoke && !e2e && !process.env.PORTABLE_EXECUTABLE_FILE,
+});
 
 function writeHostLog(message: string): void {
   try {
@@ -458,6 +473,8 @@ const router = new IpcRouter({
       };
     },
     setShortcutsEnabled: (enabled) => shortcutSession.setEnabled(enabled),
+    deepLinkStatus: () => deepLinkRegistration,
+    takePendingDeepLink,
     updater: {
       check: () => requireUpdater().check(),
       download: () => requireUpdater().download(),
@@ -649,6 +666,28 @@ function emitOpenSettings(): void {
   }
   raiseHostMainWindow(mainWindow);
   fanoutEvent(CHANNEL_APP_OPEN_SETTINGS, null);
+}
+
+function acceptDeepLink(target: CatalogSongDeepLink): void {
+  deepLinkInbox.offer(target);
+  raiseHostMainWindow(mainWindow);
+  flushPendingDeepLink();
+}
+
+function flushPendingDeepLink(): void {
+  if (!deepLinkRendererReady) return;
+  const target = consumePendingDeepLink();
+  if (target) fanoutEvent(CHANNEL_APP_OPEN_CATALOG_SONG, target);
+}
+
+function takePendingDeepLink(): CatalogSongDeepLink | null {
+  deepLinkRendererReady = true;
+  return consumePendingDeepLink();
+}
+
+function consumePendingDeepLink(): CatalogSongDeepLink | null {
+  if (!preferencesResolvedForDeepLinks) return null;
+  return deepLinkInbox.take(deepLinksEnabledFromPreferences(lastPreferencesRaw));
 }
 
 function sendPlatformAttach(): void {
@@ -914,6 +953,8 @@ function fanoutEvent(channel: string, payload: unknown): void {
     closeToTray = rememberCloseToTray(payload, closeToTray);
     applyTrayLabelsFromPreferences(payload);
     applyShortcutsFromPreferences(payload);
+    preferencesResolvedForDeepLinks = true;
+    flushPendingDeepLink();
   }
   router.fanout(channel, payload, (id, eventFrame) => {
     webContents.fromId(id)?.send(EVENT_CHANNEL, eventFrame);
@@ -937,9 +978,13 @@ function cacheCloseToTrayPreference(): void {
       closeToTray = rememberCloseToTray(raw, closeToTray);
       applyTrayLabelsFromPreferences(raw);
       applyShortcutsFromPreferences(raw);
+      preferencesResolvedForDeepLinks = true;
+      flushPendingDeepLink();
     })
     .catch(() => {
       // FACT: preference read deferred / failed → keep default hide-to-tray.
+      preferencesResolvedForDeepLinks = true;
+      flushPendingDeepLink();
     });
 }
 
@@ -1075,13 +1120,26 @@ ipcMain.handle(INVOKE_CHANNEL, async (event, request: InvokeRequest) => {
   return router.invoke(event.sender.id, request);
 });
 
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  const target = parseYaqmcDeepLink(url);
+  if (target) acceptDeepLink(target);
+});
+
 if (
-  acquireSingleInstanceLock(app, () => {
-    if (e2e) {
-      e2eSecondInstanceHits += 1;
-    }
-    return mainWindow;
-  })
+  acquireSingleInstanceLock(
+    app,
+    () => {
+      if (e2e) {
+        e2eSecondInstanceHits += 1;
+      }
+      return mainWindow;
+    },
+    (commandLine) => {
+      const target = deepLinkFromArgv(commandLine);
+      if (target) acceptDeepLink(target);
+    },
+  )
 ) {
   app.whenReady().then(async () => {
     applySessionSecurity(session.defaultSession);

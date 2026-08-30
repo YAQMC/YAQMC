@@ -13,13 +13,13 @@ use crate::envelope::{
 };
 use crate::registry::{methods, MethodOwner, TimeoutClass, PROTOCOL_ONLY_METHODS};
 use crate::{
-    ErrorCode, CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_SETTINGS,
-    CHANNEL_CORE_LOG, CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS, CHANNEL_HOST_UPDATE,
-    CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED,
-    CHANNEL_LYRICS_SURFACE_INTERACTION, CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PLUGIN_CHANGED,
-    CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS, DEFAULT_METHOD_PAYLOAD_BYTES,
-    FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT, HOST_EVENT_CHANNELS, PROTOCOL_VERSION,
-    SHUTDOWN_TIMEOUT,
+    ErrorCode, CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_APP_OPEN_CATALOG_SONG,
+    CHANNEL_APP_OPEN_SETTINGS, CHANNEL_CORE_LOG, CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS,
+    CHANNEL_HOST_UPDATE, CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION,
+    CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_LYRICS_SURFACE_INTERACTION, CHANNEL_PLAYER_SNAPSHOT,
+    CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS,
+    DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT, HOST_EVENT_CHANNELS,
+    PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
 };
 
 pub fn contract_fixtures_dir() -> PathBuf {
@@ -257,13 +257,21 @@ fn events() -> Value {
             channel: CHANNEL_APP_OPEN_SETTINGS.to_owned(),
             payload: json!({ "section": "playback" }),
         }),
-        CHANNEL_HOST_CORE_STATUS: to_value(&CoreMessage::Event {
+        CHANNEL_APP_OPEN_CATALOG_SONG: to_value(&CoreMessage::Event {
             seq: 12,
+            channel: CHANNEL_APP_OPEN_CATALOG_SONG.to_owned(),
+            payload: json!({
+                "providerId": "qqmusic",
+                "entityId": "qqmusic:track:001X3HEN1oK0Jr"
+            }),
+        }),
+        CHANNEL_HOST_CORE_STATUS: to_value(&CoreMessage::Event {
+            seq: 13,
             channel: CHANNEL_HOST_CORE_STATUS.to_owned(),
             payload: json!({ "status": "ready" }),
         }),
         CHANNEL_HOST_UPDATE: to_value(&CoreMessage::Event {
-            seq: 13,
+            seq: 14,
             channel: CHANNEL_HOST_UPDATE.to_owned(),
             payload: json!({
                 "state": "available",
@@ -495,6 +503,18 @@ fn requests() -> Value {
             })),
             origin: None,
         }),
+        "deep_link_status": to_value(&CoreMessage::Request {
+            id: 19,
+            method: "deep_link_status".to_owned(),
+            params: None,
+            origin: None,
+        }),
+        "deep_link_take_pending": to_value(&CoreMessage::Request {
+            id: 20,
+            method: "deep_link_take_pending".to_owned(),
+            params: None,
+            origin: None,
+        }),
     })
 }
 
@@ -527,6 +547,21 @@ fn responses() -> Value {
                 "artists": ["Mira Vale"],
                 "album": "Paper Sun",
                 "canonicalHttpsUrl": "https://y.qq.com/n/ryqq/songDetail/001X3HEN1oK0Jr"
+            })),
+        }),
+        "deep_link_status": to_value(&CoreMessage::Response {
+            id: 19,
+            body: ResponseBody::success(json!({
+                "supported": true,
+                "registered": true,
+                "error": null
+            })),
+        }),
+        "deep_link_take_pending": to_value(&CoreMessage::Response {
+            id: 20,
+            body: ResponseBody::success(json!({
+                "providerId": "qqmusic",
+                "entityId": "qqmusic:track:001X3HEN1oK0Jr"
             })),
         }),
         "hostDenied": to_value(&CoreMessage::Response {

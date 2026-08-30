@@ -1,16 +1,29 @@
-# 外部 URI 与 Deep link 安全
+# 歌曲分享与 Deep link
 
 > **简体中文** | [English](../deep-link.md)
 
-所有外部 URI 都是不可信输入。当前没有 QQ 音乐接管处理器，因为本机 Windows 22.52 官方客户端没有提供
-已验证的公开实体 scheme。证据见[官方客户端互操作](qqmusic-official-interoperability.md)。
+歌曲页、Player Bar、歌词页和曲目菜单提供一致的提供器中立分享动作：
 
-打包应用没有注册自定义 URI scheme，也不会把启动参数解析成目录或播放命令。因此
-“Deep link”是明确延期的能力，不是隐藏或部分可用的功能。
+- **复制歌曲公开链接**只使用提供器返回的 HTTPS URL。React 不拼接平台网站路由；提供器没有公开 URL
+  时，应用会说明该动作不可用，而不是猜测链接。
+- **复制 YAQMC 链接**生成
+  `yaqmc://catalog/<provider>/song?id=<percent-encoded-id>`。
+- **复制歌曲与歌手**是纯文本降级，不会伪装成可点击链接。
 
-未来实现必须由用户主动开启且可以完整回滚；精确白名单 scheme、动作、实体、长度和标识符语法；只规范化
-成提供器领域引用；拒绝未知或注入式输入。URI 内容绝不能成为 Shell 参数、文件路径、HTML 片段、SQL 或
-任意 host/Core IPC 命令。歌词辅助渲染器不能获得这一能力。
+安装版桌面应用会注册 `yaqmc` 协议。有效链接只会聚焦已有主窗口（或启动唯一实例）并导航到歌曲详情，
+不会自动播放、登录、修改账号、打开歌词辅助窗口或把输入交给外部 Shell。可在**设置 → 桌面集成**中关闭
+Deep link；同一位置会显示操作系统是否接受协议注册。开发构建与 portable 版本不会把自己注册成系统处理器，
+避免协议指向已经清理的临时可执行文件。
 
-关于页请求 Electron Main 调用 `shell.openExternal`；`apps/desktop/main/open-external.ts` 的白名单只允许
-集中配置的 YAQMC 链接，不接收用户输入 URL。
+## 允许的格式
+
+Electron Main 只接受上面的目录歌曲格式。解析器把完整 URI 限制为 2,048 字节，把解码后的实体 ID 限制为
+256 字节，并拒绝凭据、端口、片段、未知或重复查询参数、控制字符、错误百分号编码、不支持的实体和非法
+provider ID。Windows/Linux 的 `second-instance`、macOS 的 `open-url` 与冷启动参数共用同一个纯解析器。
+
+外部 URI 始终是不可信输入。解析结果只会变成类型化的“打开歌曲详情”渲染事件，不会成为 Shell 参数、
+文件路径、HTML 片段、SQL 或任意 host/Core 命令。歌词辅助窗口不会收到该事件。关于页打开的产品链接仍由
+`apps/desktop/main/open-external.ts` 单独执行白名单校验。
+
+实现遵循 Electron 官方的 [Deep Links](https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app)
+single-instance 指南。

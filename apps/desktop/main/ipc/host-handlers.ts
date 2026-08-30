@@ -1,8 +1,10 @@
 import type {
   AccountLoginMethod,
   CoreStatusPayload,
+  DeepLinkRegistrationStatus,
   DiagnosticsHostPayload,
   OAuthPrepareResult,
+  OpenCatalogSongPayload,
   WindowRole,
 } from '@yaqmc/client';
 import { attachHostPayloadToExportParams } from '../diagnostics-host-payload';
@@ -437,6 +439,8 @@ export type HostHandlerDeps = {
   platformFacts?: () => HostPlatformFacts;
   /** Host-owned FACT shortcuts. Throws on unsupported enable or total registration failure. */
   setShortcutsEnabled?: (enabled: boolean) => unknown;
+  deepLinkStatus?: () => DeepLinkRegistrationStatus;
+  takePendingDeepLink?: () => OpenCatalogSongPayload | null;
   /** Core data dir; used to hydrate managed background `dataUri` after stdio. */
   dataDir?: () => string;
   updater?: HostUpdaterDeps;
@@ -735,6 +739,13 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
         return desktopIntegrationFromFacts(platformFacts());
       };
     }
+  }
+
+  if (deps.deepLinkStatus) {
+    handlers.deep_link_status = async () => deps.deepLinkStatus!();
+  }
+  if (deps.takePendingDeepLink) {
+    handlers.deep_link_take_pending = async () => deps.takePendingDeepLink!();
   }
 
   if (deps.updater) {

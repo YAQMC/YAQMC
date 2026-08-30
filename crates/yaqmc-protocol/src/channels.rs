@@ -11,6 +11,7 @@ pub const CHANNEL_PREFERENCES_CHANGED: &str = "preferences://changed";
 pub const CHANNEL_LYRICS_SURFACE_CLOSED: &str = "lyrics://surface-closed";
 pub const CHANNEL_LYRICS_SURFACE_INTERACTION: &str = "lyrics://surface-interaction";
 pub const CHANNEL_APP_OPEN_SETTINGS: &str = "app://open-settings";
+pub const CHANNEL_APP_OPEN_CATALOG_SONG: &str = "app://open-catalog-song";
 pub const CHANNEL_HOST_COMMAND: &str = "host://command";
 pub const CHANNEL_HOST_CORE_STATUS: &str = "host://core-status";
 pub const CHANNEL_HOST_UPDATE: &str = "host://update";
@@ -35,6 +36,7 @@ pub const HOST_EVENT_CHANNELS: &[&str] = &[
     CHANNEL_LYRICS_SURFACE_CLOSED,
     CHANNEL_LYRICS_SURFACE_INTERACTION,
     CHANNEL_APP_OPEN_SETTINGS,
+    CHANNEL_APP_OPEN_CATALOG_SONG,
     CHANNEL_HOST_CORE_STATUS,
     CHANNEL_HOST_UPDATE,
 ];

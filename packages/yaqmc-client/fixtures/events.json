@@ -101,6 +101,15 @@
     },
     "seq": 1
   },
+  "app://open-catalog-song": {
+    "channel": "app://open-catalog-song",
+    "kind": "event",
+    "payload": {
+      "entityId": "qqmusic:track:001X3HEN1oK0Jr",
+      "providerId": "qqmusic"
+    },
+    "seq": 12
+  },
   "app://open-settings": {
     "channel": "app://open-settings",
     "kind": "event",
@@ -133,7 +142,7 @@
     "payload": {
       "status": "ready"
     },
-    "seq": 12
+    "seq": 13
   },
   "host://update": {
     "channel": "host://update",
@@ -146,7 +155,7 @@
       "state": "available",
       "version": "1.2.3"
     },
-    "seq": 13
+    "seq": 14
   },
   "lyrics://document": {
     "channel": "lyrics://document",

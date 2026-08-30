@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { DeepLinkRegistrationStatus } from '@yaqmc/client';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
 
@@ -117,6 +118,7 @@ export function usePlatformIntegration() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [deepLinks, setDeepLinks] = useState<DeepLinkRegistrationStatus | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isNativeRuntime) return;
@@ -134,6 +136,14 @@ export function usePlatformIntegration() {
     void readPlatformDiagnostics()
       .then((value) => {
         if (active) setDiagnostics(value);
+      })
+      .catch((caught) => {
+        if (active) setError(String(caught));
+      });
+    void client
+      .invoke('deep_link_status')
+      .then((value) => {
+        if (active) setDeepLinks(value);
       })
       .catch((caught) => {
         if (active) setError(String(caught));
@@ -181,6 +191,7 @@ export function usePlatformIntegration() {
     busy,
     error,
     exportPath,
+    deepLinks,
     refresh,
     setGlobalShortcuts,
     exportDiagnostics,

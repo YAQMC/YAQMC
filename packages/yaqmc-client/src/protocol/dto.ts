@@ -683,6 +683,12 @@ export interface DesktopIntegrationStatus {
   shortcutError: string | null;
 }
 
+export interface DeepLinkRegistrationStatus {
+  supported: boolean;
+  registered: boolean;
+  error: string | null;
+}
+
 export interface PlatformDiagnostics {
   generatedAtUnixMs: number;
   appName: string;

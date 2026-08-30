@@ -12,6 +12,10 @@ publish:
   provider: github
   owner: YAQMC
   repo: YAQMC
+protocols:
+  - name: YAQMC catalog links
+    schemes:
+      - yaqmc
 directories:
   output: ../../release-electron
   buildResources: resources
