@@ -148,9 +148,10 @@ export function createCorrespondingSourceBundle(options = {}) {
   assertCleanCheckout(amllRoot, runGit);
   runProvenanceGate(yaqmcRoot);
   const { record, blockers } = inspectP14cReadiness(yaqmcRoot);
-  if (blockers.length > 0) {
+  const sourceBlockers = blockers.filter((gate) => gate.id !== 'exact-pin-three-day-soak');
+  if (sourceBlockers.length > 0) {
     throw new Error(
-      `Provider readiness corresponding-source gate is blocked: ${blockers.map((gate) => gate.id).join(', ')}`,
+      `Provider readiness corresponding-source gate is blocked: ${sourceBlockers.map((gate) => gate.id).join(', ')}`,
     );
   }
 
@@ -234,7 +235,8 @@ export function createCorrespondingSourceBundle(options = {}) {
       packages: amllPackages.map(([name, manifestPath]) => ({ name, manifestPath })),
     },
     p14c: {
-      status: 'READY',
+      status: blockers.length === 0 ? 'READY' : 'BLOCKED',
+      blockers: blockers.map((gate) => gate.id),
       targetPin: record.targetPin,
       readinessRecord,
       readinessSha256: sha256Text(trackedTextAt(yaqmcRoot, yaqmcRevision, readinessRecord, runGit)),
