@@ -11,10 +11,11 @@
 - [x] P1 —— 可访问的发现页标签、提供器中立分享，以及 fail-closed Electron 深链。
 - [x] P2 —— Core 持有的猜你喜欢/雷达续播，包含有界预取、重试、去重和过期响应守卫。
 - [x] P3 —— 本机收听统计。
-- [ ] P4/P5 —— 沙箱化 Provider 插件运行时，以及生命周期/UI 集成。
-- [ ] P6 —— 发行收尾，以及另行授权的 HUMAN/LIVE 验收。
+- [x] P4/P5 —— 沙箱化 Provider 插件运行时，以及生命周期/UI 集成。
+- [x] P6 自动收尾 —— 本机 Windows 及原生 Linux/Windows CI 可复现证据。
 
-已勾选项目只代表本机自动门禁通过，不代表生产账号、GUI、LIVE、打包或维护者最终签收。
+已勾选项目只代表自动实现门禁通过，不代表可发布、生产账号、GUI、LIVE、打包或维护者最终签收。精确依赖固定的
+三日 Provider soak 仍为 `not-started`；见 [Provider Component v3 自动收尾](../release/provider-component-v3.md)。
 
 ## 1. 目标与非目标
 
@@ -402,8 +403,11 @@ HTML 设置页；设置继续使用声明式 schema 和安全 UI 插槽。
 ### P6：发布收口
 
 - 更新双语用户/开发者文档、OpenAPI/协议 fixture、第三方许可和 release provenance。
-- 完成本地 Windows/Linux 自动矩阵并生成可复现证据。
+- 完成本机 Windows 自动矩阵及原生 Linux/Windows CI 矩阵，并生成可复现证据。
 - 实现方先报告自动检查和已知限制；是否执行真实账号、GUI、LIVE、打包和最终 HUMAN 签收由维护者随后决定。
+
+自动收尾证据：[Provider Component v3](../release/provider-component-v3.md)。发布就绪仍被精确依赖固定的三日
+Provider soak 阻断；该记录不代表 GUI、LIVE、真实账号、打包或 HUMAN 通过。
 
 ## 11. 测试与质量门槛
 

@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-31T22:51:56+08:00",
+  "automaticImplementationStatus": "pass",
+  "releaseReadiness": "blocked",
+  "implementation": {
+    "commit": "c04f7ce5d4ba494f1d41367f4bee8f3b249b308c",
+    "commitCount": 438,
+    "witPackage": "yaqmc:provider@0.1.0",
+    "protocolFixture": "wit/yaqmc-provider/protocol-v0.1.json"
+  },
+  "toolchain": {
+    "node": "26.7.0",
+    "npm": "11.19.0",
+    "rustcLocal": "1.97.1",
+    "rustMsrv": "1.88.0",
+    "componentTarget": "wasm32-wasip2"
+  },
+  "automaticVerification": {
+    "windowsLocal": [
+      {
+        "command": "npm run format:check",
+        "status": "pass"
+      },
+      {
+        "command": "npm run docs:check",
+        "status": "pass",
+        "result": "46 bilingual technical pages"
+      },
+      {
+        "command": "npm run lint",
+        "status": "pass"
+      },
+      {
+        "command": "npm run typecheck",
+        "status": "pass"
+      },
+      {
+        "command": "npm test",
+        "status": "pass",
+        "result": "95 files, 706 tests"
+      },
+      {
+        "command": "npm run test -w @yaqmc/client",
+        "status": "pass",
+        "result": "6 files, 21 tests"
+      },
+      {
+        "command": "npm run test -w @yaqmc/desktop",
+        "status": "pass",
+        "result": "43 files, 356 passed, 2 skipped"
+      },
+      {
+        "command": "npm run ci:test-scripts",
+        "status": "pass",
+        "result": "198 tests"
+      },
+      {
+        "command": "npm run build",
+        "status": "pass"
+      },
+      {
+        "command": "npm run build -w @yaqmc/desktop && npm run release:bundle:check",
+        "status": "pass",
+        "result": "13 renderer files and 8 desktop files scanned clean"
+      },
+      {
+        "command": "npm run contracts:check",
+        "status": "pass"
+      },
+      {
+        "command": "npm run provenance:enforce",
+        "status": "pass"
+      },
+      {
+        "command": "npm run ci:verify-workspace",
+        "status": "pass"
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1 -SelfTest; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1",
+        "status": "pass"
+      },
+      {
+        "command": "bash scripts/check-secrets.sh --self-test && bash scripts/check-secrets.sh",
+        "status": "pass"
+      }
+    ],
+    "rustMsrv": [
+      {
+        "command": "cargo +1.88.0 fmt --all -- --check",
+        "status": "pass"
+      },
+      {
+        "command": "cargo +1.88.0 check --workspace --all-targets --locked",
+        "status": "pass"
+      },
+      {
+        "command": "cargo +1.88.0 clippy --workspace --all-targets --locked -- -D warnings",
+        "status": "pass"
+      },
+      {
+        "command": "cargo +1.88.0 test --workspace --all-targets --locked",
+        "status": "pass",
+        "note": "LIVE tests remain ignored by design"
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "examples/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin",
+      "bytes": 24248,
+      "sha256": "c2c4d4ed24385c29be270f5de9790f04b4c81ec5a52e5c810607e55b1456aea2"
+    },
+    {
+      "path": "examples/plugins/packages/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin",
+      "bytes": 241889,
+      "sha256": "01297f93fab5356c8d95bf52a7167d810f50939b797c46703a3c993e88fe2480"
+    }
+  ],
+  "releaseBundle": {
+    "status": "pass",
+    "scanner": "scripts/ci/verify-release-bundle.mjs",
+    "rendererFiles": 13,
+    "desktopFiles": 8,
+    "qaMarkerExcluded": true
+  },
+  "ci": {
+    "runId": 33404019843,
+    "url": "https://github.com/YAQMC/YAQMC/actions/runs/33404019843",
+    "commit": "c04f7ce5d4ba494f1d41367f4bee8f3b249b308c",
+    "status": "success",
+    "linuxAutomaticMatrix": "pass",
+    "windowsAutomaticMatrix": "pass",
+    "electronPackaging": "skipped"
+  },
+  "releaseGates": {
+    "providerReadiness": "blocked",
+    "exactPinThreeDaySoak": "not-started",
+    "exactQmApiRsPin": "bec1d0f245e36da0a8b052053d7b4dcb4893b90d"
+  },
+  "maintainerGates": {
+    "gui": "not-run-awaiting-maintainer-decision",
+    "live": "not-run-awaiting-maintainer-decision",
+    "realAccount": "not-run-awaiting-maintainer-decision",
+    "packaging": "not-run-awaiting-maintainer-decision",
+    "humanAcceptance": "not-run-awaiting-maintainer-decision"
+  }
+}

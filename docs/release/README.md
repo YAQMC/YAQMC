@@ -5,6 +5,10 @@ reproduce a YAQMC release. It is not a project diary or a migration archive.
 
 - [Provider readiness](provider-readiness.md) documents the production QQ Music
   provider boundary, the exact dependency pin, and its current soak status.
+- [Provider Component v3 automatic closure](provider-component-v3.md) records
+  the reproducible P4-P6 implementation result and links its machine-readable
+  [evidence](provider-component-v3.json). It explicitly does not authorize a
+  release while the provider soak remains open.
 - [YAQMC provenance](provenance.md) explains the in-tree provenance gate and
   links its machine-readable [ledger](provenance-ledger.json).
 - [qm-api-rs provenance](qm-api-rs-provenance.md) records the separately

@@ -13,11 +13,12 @@ are met.
 - [x] P1 — accessible Discover tabs plus provider-neutral sharing and fail-closed Electron deep links.
 - [x] P2 — Core-owned guess/radar continuation with bounded prefetch, retry, deduplication, and stale-response guards.
 - [x] P3 — local listening statistics.
-- [ ] P4/P5 — sandboxed Provider plugin runtime and lifecycle/UI integration.
-- [ ] P6 — release closure and separately authorized HUMAN/LIVE acceptance.
+- [x] P4/P5 — sandboxed Provider plugin runtime and lifecycle/UI integration.
+- [x] P6 automatic closure — reproducible Windows-local plus native Linux/Windows CI evidence.
 
-Checked items have passed their automated local gates. They do not imply production-account, GUI, LIVE, packaging,
-or final maintainer acceptance.
+Checked items have passed their automatic implementation gates. They do not imply release readiness,
+production-account, GUI, LIVE, packaging, or final maintainer acceptance. The exact-pin three-day provider soak is
+still `not-started`; see [Provider Component v3 automatic closure](release/provider-component-v3.md).
 
 ## 1. Goals and non-goals
 
@@ -452,9 +453,13 @@ Exit: end-to-end examples, cross-provider queues, account isolation, circuit bre
 ### P6: release closure
 
 - Update bilingual user/developer docs, OpenAPI/protocol fixtures, third-party licenses, and release provenance.
-- Complete local Windows/Linux automated matrices and produce reproducible evidence.
+- Complete the local Windows automatic matrix plus native Linux and Windows CI matrices, and produce reproducible
+  evidence.
 - The implementer reports automated results and unexecuted HUMAN/LIVE items first. The maintainer then decides whether
   to authorize real-account, GUI, LIVE, packaging, and final HUMAN acceptance.
+
+Automatic closure evidence: [Provider Component v3](release/provider-component-v3.md). Release readiness remains
+blocked by the exact-pin three-day provider soak; no GUI, LIVE, real-account, packaging, or HUMAN result is implied.
 
 ## 11. Test and quality gates
 
