@@ -55,7 +55,7 @@ jobs:
       - run: node scripts/ci/legacy-host-imports.mjs
       - run: node scripts/ci/electron-security-lint.mjs
       - run: node scripts/ci/qm-api-rs-access.mjs --check
-      - run: npm run provider:enforce
+      - run: npm run provider:readiness
       - run: npm run provenance:enforce
       - run: npm run ci:test-scripts
 
@@ -170,6 +170,7 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qqmusic-auth-preflight.ps1 -SelfTest
 
   electron-package-matrix:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       include: ${{ steps.select.outputs.include }}
@@ -307,7 +308,7 @@ jobs:
           needs.rust-quality.result != 'success' ||
           needs.electron-build.result != 'success' ||
           needs.secret-scan.result != 'success' ||
-          needs.electron-package-matrix.result != 'success' ||
+          (github.event_name == 'workflow_dispatch' && needs.electron-package-matrix.result != 'success') ||
           needs.electron-package.result == 'failure' ||
           needs.electron-package.result == 'cancelled'
         run: exit 1

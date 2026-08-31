@@ -49,7 +49,8 @@ test('frontend-quality runs desktop tests and Electron security greps', () => {
   assert.match(frontendJob, /node scripts\/ci\/legacy-host-imports\.mjs/);
   assert.match(frontendJob, /node scripts\/ci\/electron-security-lint\.mjs/);
   assert.match(frontendJob, /node scripts\/ci\/qm-api-rs-access\.mjs --check/);
-  assert.match(frontendJob, /npm run provider:enforce/);
+  assert.match(frontendJob, /npm run provider:readiness/);
+  assert.doesNotMatch(frontendJob, /npm run provider:enforce/);
   assert.match(frontendJob, /npm run provenance:enforce/);
   assert.match(frontendJob, /npm run typecheck(?! -w)/);
   assert.match(frontendJob, /npm run format:check/);

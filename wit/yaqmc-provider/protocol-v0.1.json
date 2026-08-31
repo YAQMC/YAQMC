@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "witPackage": "yaqmc:provider@0.1.0",
+  "envelope": {
+    "export": "invoke",
+    "arguments": ["capability", "operation", "payload-json"],
+    "result": "result<string,string>",
+    "payloadEncoding": "json"
+  },
+  "worlds": {
+    "provider": [],
+    "provider-storage": ["utilities", "storage"],
+    "provider-network": ["utilities", "network"],
+    "provider-network-storage": ["utilities", "storage", "network"],
+    "provider-account": ["utilities", "storage", "network", "credentials"]
+  },
+  "capabilities": {
+    "provider.catalog": {
+      "sensitive": false,
+      "operations": [
+        "catalog.album",
+        "catalog.area",
+        "catalog.artist",
+        "catalog.artist-page",
+        "catalog.artwork-data-uri",
+        "catalog.discover",
+        "catalog.home",
+        "catalog.playlist",
+        "catalog.search",
+        "catalog.song"
+      ]
+    },
+    "provider.playback": {
+      "sensitive": true,
+      "operations": [
+        "playback.resolve",
+        "playback.resolve-client-fallback",
+        "playback.set-current-quality",
+        "playback.set-preferred-quality"
+      ]
+    },
+    "provider.recommendation": {
+      "sensitive": false,
+      "operations": ["recommendation.next"]
+    },
+    "provider.lyrics": {
+      "sensitive": false,
+      "operations": ["lyrics.get"]
+    },
+    "provider.account": {
+      "sensitive": true,
+      "operations": [
+        "account.add-playlist-track",
+        "account.auth.cancel-oauth",
+        "account.auth.cancel-qr",
+        "account.auth.complete-oauth",
+        "account.auth.heartbeat-qr",
+        "account.auth.login-methods",
+        "account.auth.prepare-oauth",
+        "account.auth.refresh-qr",
+        "account.auth.start-qr",
+        "account.create-playlist",
+        "account.delete-playlist",
+        "account.favorite-songs",
+        "account.playlist-tracks",
+        "account.playlists",
+        "account.recently-played",
+        "account.remove-playlist-track",
+        "account.rename-playlist",
+        "account.restore-session",
+        "account.set-favorite",
+        "account.set-playlist-collected",
+        "account.sign-out",
+        "account.snapshot"
+      ]
+    }
+  },
+  "errorEnvelope": {
+    "encoding": "json",
+    "required": ["code", "message", "retryable"],
+    "secretValuesAllowed": false
+  },
+  "sampleInvocations": [
+    {
+      "request": {
+        "capability": "provider.catalog",
+        "operation": "catalog.discover",
+        "payload": {}
+      },
+      "response": {
+        "charts": [],
+        "newSongs": null,
+        "newAlbums": [],
+        "popularSonglists": [],
+        "categories": [],
+        "podcasts": [],
+        "newMvs": [],
+        "featured": []
+      }
+    },
+    {
+      "request": {
+        "capability": "provider.playback",
+        "operation": "playback.resolve",
+        "payload": { "song": { "id": "example-song", "quality": "lossless" } }
+      },
+      "response": {
+        "source": { "kind": "cache", "key": "example-audio-v1" },
+        "cacheKey": "example-song:standard",
+        "format": "wav",
+        "mimeType": "audio/wav",
+        "qualityLabel": "standard",
+        "contentLength": 8044,
+        "isPreview": false,
+        "selection": {
+          "requestedQuality": "lossless",
+          "resolvedQuality": "standard",
+          "fallbackReason": "source-unavailable",
+          "preview": false,
+          "qualityCapabilities": []
+        }
+      }
+    },
+    {
+      "request": {
+        "capability": "provider.recommendation",
+        "operation": "recommendation.next",
+        "payload": { "seedSongId": "example-song", "cursor": null }
+      },
+      "response": { "songs": [], "nextCursor": null, "ended": true }
+    },
+    {
+      "request": {
+        "capability": "provider.lyrics",
+        "operation": "lyrics.get",
+        "payload": { "songId": "example-song" }
+      },
+      "response": {
+        "songId": "example-song",
+        "syncMode": "unsynchronized",
+        "metadata": { "sourceLabel": "Provider Component example", "offsetMs": 0 },
+        "vocalists": [],
+        "lines": []
+      }
+    },
+    {
+      "request": {
+        "capability": "provider.account",
+        "operation": "account.snapshot",
+        "payload": {}
+      },
+      "response": { "state": "guest", "profile": null, "entitlement": null }
+    }
+  ],
+  "sampleErrors": [
+    {
+      "case": "capability-revoked",
+      "error": {
+        "code": "permission-denied",
+        "message": "the provider capability is not granted",
+        "retryable": false
+      }
+    }
+  ],
+  "hostLifecycle": [
+    {
+      "event": "provider-disabled",
+      "result": "cancel calls, revoke opaque sources, retain unavailable queue entries"
+    },
+    {
+      "event": "provider-re-enabled",
+      "result": "new generation, restore provider-scoped routes and queue eligibility"
+    },
+    {
+      "event": "account-generation-changed",
+      "result": "discard stale account and recommendation completions"
+    }
+  ]
+}

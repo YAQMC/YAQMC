@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveArtworkSource } from './artwork-resolver';
 import { hydrateLyricsPresetPreview, PREVIEW_HYDRATE_QUERY } from './lyrics-preset-preview-hydrate';
-import { previewFixtureSong, useLyricsPresetPreviewStore } from './lyrics-preset-preview';
+import { previewSampleSong, useLyricsPresetPreviewStore } from './lyrics-preset-preview';
 import { initialPlayerState, usePlayerStore } from './player-store';
 import type { LyricDocument, Song } from '../domain/music';
 
 const hydratedSong: Song = {
-  ...previewFixtureSong,
-  id: 'qq:gem-together',
+  ...previewSampleSong,
+  id: 'qq:preview-song',
   artwork: {
     src: 'https://y.gtimg.cn/music/photo_new/small.jpg',
     alt: 'Album cover',
@@ -17,11 +17,11 @@ const hydratedSong: Song = {
 };
 
 const hydratedLyrics: LyricDocument = {
-  songId: 'qq:gem-together',
+  songId: 'qq:preview-song',
   syncMode: 'word',
   metadata: { sourceLabel: 'test', offsetMs: 0 },
   vocalists: [],
-  lines: [{ id: 'one', text: '多远都要在一起', startMs: 0, endMs: 1000, words: [] }],
+  lines: [{ id: 'one', text: '一起听见', startMs: 0, endMs: 1000, words: [] }],
 };
 
 describe('lyrics preset preview hydrate', () => {
@@ -40,16 +40,16 @@ describe('lyrics preset preview hydrate', () => {
     await hydrateLyricsPresetPreview({ search, getLyrics });
     const preview = useLyricsPresetPreviewStore.getState();
     expect(search).toHaveBeenCalledWith(PREVIEW_HYDRATE_QUERY, 'song', undefined, 1, 8);
-    expect(preview.song.id).toBe('qq:gem-together');
+    expect(preview.song.id).toBe('qq:preview-song');
     expect(preview.artworkSrc).toBe(resolveArtworkSource(hydratedSong.artwork, 'fullscreen'));
     expect(preview.artworkSrc).toContain('large.jpg');
-    expect(preview.lyrics.songId).toBe('qq:gem-together');
+    expect(preview.lyrics.songId).toBe('qq:preview-song');
     expect(preview.offline).toBe(false);
     expect(usePlayerStore.getState().queue).toEqual(initialPlayerState.queue);
     expect(setFavorite).not.toHaveBeenCalled();
   });
 
-  it('keeps the local fixture when hydrate fails', async () => {
+  it('keeps the built-in sample when hydrate fails', async () => {
     useLyricsPresetPreviewStore.getState().reset();
     await hydrateLyricsPresetPreview({
       search: vi.fn(async () => {
@@ -58,8 +58,8 @@ describe('lyrics preset preview hydrate', () => {
       getLyrics: vi.fn(),
     });
     const preview = useLyricsPresetPreviewStore.getState();
-    expect(preview.song.id).toBe(previewFixtureSong.id);
+    expect(preview.song.id).toBe(previewSampleSong.id);
     expect(preview.offline).toBe(true);
-    expect(preview.artworkSrc).toBe('/artwork/gem-together.svg');
+    expect(preview.artworkSrc).toBe('/artwork/preset-preview.svg');
   });
 });

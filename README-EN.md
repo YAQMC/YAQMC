@@ -47,7 +47,9 @@ it is an Electron build.
 - Desktop Lyrics and Lyrics Island with word timing, translation/romanization, click-through lock mode, and a
   dedicated on-surface unlock control.
 - English and Simplified Chinese UI, light/dark themes, configurable primary and secondary colors, custom
-  backgrounds, native output-device selection, and optional local [example plugins](docs/plugin-examples.md).
+  backgrounds, native output-device selection, and optional local [example plugins](docs/plugin-examples.md), including
+  capability-sandboxed API v3 music-platform Components. All examples are disabled by default and are unverified local
+  sideloads.
 - Seekable HTTP Range streaming, bounded cache, queue persistence, one-time signed-URL recovery, and an optional
   authenticated loopback API bound to `127.0.0.1`.
 - A current-track quality menu in PlayerBar, with Settings remaining the default for later tracks. Account-entitled

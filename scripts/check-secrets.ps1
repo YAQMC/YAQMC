@@ -37,7 +37,8 @@ function Test-SafeValue {
   # Environment-variable and angle-bracket placeholders are references, not values.
   if ($candidate -match '^\$(?:\{)?[A-Za-z_][A-Za-z0-9_]*(?:\})?$' -or
       $candidate -match '^%[A-Za-z_][A-Za-z0-9_]*%$' -or
-      $candidate -match '^<[A-Za-z_][A-Za-z0-9_.-]*>$') {
+      $candidate -match '^<[A-Za-z_][A-Za-z0-9_.-]*>$' -or
+      $candidate -match '^[A-Za-z_][A-Za-z0-9_:]*\(') {
     return $true
   }
 
@@ -82,7 +83,7 @@ function Get-RepositoryCandidatePaths {
   $repositoryRoot = Split-Path -Parent $PSScriptRoot
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = 'git.exe'
-  $startInfo.Arguments = 'ls-files -z --cached --others --exclude-standard -- README.md docs tests/fixtures'
+  $startInfo.Arguments = 'ls-files -z --cached --others --exclude-standard -- README.md README-EN.md docs tests/fixtures examples/plugins wit :(exclude)examples/plugins/packages/** :(exclude)examples/plugins/**/component/**'
   $startInfo.WorkingDirectory = $repositoryRoot
   $startInfo.UseShellExecute = $false
   $startInfo.RedirectStandardOutput = $true

@@ -30,8 +30,8 @@ This directory contains the public user, tester, contributor, and release docume
 
 ## Plugin authors
 
-- [Platform](plugin-platform.md), [manifest](plugin-manifest.md), [security](plugin-security.md), and
-  [development](plugin-development.md)
+- [Platform](plugin-platform.md), [manifest](plugin-manifest.md), [Provider Component API](provider-component-api.md),
+  [security](plugin-security.md), and [development](plugin-development.md)
 - [Example plugins](plugin-examples.md), [style API](plugin-style-api.md), and
   [scene API](plugin-scene-api.md)
 

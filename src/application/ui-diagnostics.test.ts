@@ -7,8 +7,8 @@ describe('renderer UI diagnostics gate', () => {
     expect(uiDiagnosticsEnabled('?provider=fake', 'release')).toBe(false);
   });
 
-  it('allows only an explicit QA query in a release renderer', () => {
-    expect(uiDiagnosticsEnabled('?uiDiagnostics=1', 'release')).toBe(true);
+  it('cannot enable diagnostics through a release query', () => {
+    expect(uiDiagnosticsEnabled('?uiDiagnostics=1', 'release')).toBe(false);
     expect(uiDiagnosticsEnabled('?uiDiagnostics=0', 'release')).toBe(false);
   });
 

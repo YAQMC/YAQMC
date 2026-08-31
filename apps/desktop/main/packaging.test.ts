@@ -44,6 +44,7 @@ describe('PACK-01 electron-builder', () => {
     expect(yaml).toContain('appId: org.yaqmc.desktop');
     expect(yaml).toContain('productName: YAQMC');
     expect(yaml).toContain('asar: true');
+    expect(yaml).not.toContain('harness/**');
     expect(yaml).toContain('electronVersion: 43.4.0');
     expect(yaml).toMatch(/protocols:[\s\S]*schemes:[\s\S]*- yaqmc/);
     expect(yaml).not.toContain('electronDist:');

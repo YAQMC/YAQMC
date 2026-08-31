@@ -13,6 +13,8 @@
 - 所有 `/v1` 路由需要认证，公开 `/health` 只返回服务/版本状态；
 - 不启用 CORS，请求体上限 16 KiB，JSON 拒绝未知字段；
 - 不存在通用命令、shell、文件路径、插件执行或不受限的宿主 IPC 端点；
+- Provider Component API v3 不是 HTTP 接口；目录、播放、推荐、歌词和账号 Component 调用只走 Electron/Core
+  framed protocol，本 OpenAPI 不增加插件或账号路由；
 - 停止使用 Axum graceful shutdown，退出应用也会释放端口。
 - 宿主崩溃后，残留的 `yaqmc-core` 可能继续占用端口 `19532`。Core 会写入 `{data}/core.pid`；Electron 监督器仅在进程映像名为 `yaqmc-core` / `yaqmc-core.exe` 时结束该 PID，不会扫描全部 TCP 监听。PID 被其他进程复用时不会误杀。
 

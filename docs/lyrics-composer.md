@@ -61,12 +61,12 @@ Save semantics match Settings:
 
 ## Preview data
 
-Opening the composer paints the local G.E.M. fixture immediately (多远都要在一起 / G.E.M. 邓紫棋).
+Opening the composer paints the product-owned local sample immediately (一起听见 / YAQMC Studio).
 A background read-only search may replace lyrics and artwork through `ArtworkResolver`
 (`large` / `fullscreen`). Failure keeps the fixture and shows **Using local preview data**.
 The composer never writes favorites, playlists, history, or the PlayerStore queue.
 
-Preset JSON does not store G.E.M. title, artist, artwork URL, or lyric text.
+Preset JSON does not store the sample title, artist, artwork URL, or lyric text.
 
 ## Follow current line
 

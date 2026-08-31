@@ -26,6 +26,12 @@
         "status": "original-maintainer-work"
       }
     },
+    "releaseOverlay": {
+      "capturedAt": "2026-08-31",
+      "implementationHead": "79bf4daaaed048b8428adb1cc2ed56ceb20d601f",
+      "implementationCommitCount": 437,
+      "note": "P4/P5 Provider Component implementation overlay. The historical auditHead remains a frozen provenance snapshot rather than being relabeled as a new full-history audit."
+    },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
       "revision": "bec1d0f245e36da0a8b052053d7b4dcb4893b90d",
@@ -65,6 +71,30 @@
         }
       ],
       "evidence": ["git-object:c77f63df9b38990e8171d3f28bd992332d9c7922"],
+      "authorization": { "status": "not-required" }
+    },
+    {
+      "id": "yaqmc-provider-component-examples",
+      "kind": "original-work",
+      "origin": "https://github.com/YAQMC/YAQMC.git",
+      "revision": "79bf4daaaed048b8428adb1cc2ed56ceb20d601f",
+      "license": "GPL-3.0-or-later",
+      "status": "verified",
+      "mappings": [
+        {
+          "target": "wit/yaqmc-provider/** and crates/yaqmc-core/src/plugin Provider Component host",
+          "relation": "maintainer-authored API v3 WIT and Wasmtime host boundary"
+        },
+        {
+          "target": "examples/plugins/provider-catalog-rust/** and examples/plugins/provider-platform-rust/**",
+          "relation": "maintainer-authored reproducible Rust Provider Component examples"
+        },
+        {
+          "target": "examples/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin and dev.yaqmc.example.platform-1.0.0.yaqmc-plugin",
+          "relation": "deterministically generated packages from the source at this revision"
+        }
+      ],
+      "evidence": ["git-object:79bf4daaaed048b8428adb1cc2ed56ceb20d601f"],
       "authorization": { "status": "not-required" }
     },
     {
@@ -111,7 +141,7 @@
       ],
       "evidence": [
         "git-revision-url:https://github.com/gongjiehong/QMCDecode/blob/aea76301a08678100ec677cb61a8458bc75662ec/LICENSE",
-        "sha256:6a95666edbaf48cea17b168c980dc22e325b6ee88b685ccdd347098cd3b8281d"
+        "sha256:aa53ae62a7603fd5575e0ecf643be7356067d724cb2a13b74d813eb1f0e5983b"
       ],
       "authorization": { "status": "not-required" }
     }
@@ -137,10 +167,24 @@
   "assets": [
     {
       "id": "root-import-binary-paths",
-      "path": "Maintainer-authored screenshots and generated example plugins originating in the root import (artifacts/visual-qa*, examples/plugins/packages/*)",
+      "path": "Maintainer-authored screenshots and legacy generated example packages originating in the root import; excludes the later API v3 Provider Component packages",
       "sourceId": "yaqmc-root-import",
       "status": "verified",
       "evidence": "git-object:a4d1ee31708a55cf6f933778e5653b88ba74ed03"
+    },
+    {
+      "id": "provider-catalog-example-package",
+      "path": "examples/plugins/packages/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin",
+      "sourceId": "yaqmc-provider-component-examples",
+      "status": "verified",
+      "evidence": "sha256:c2c4d4ed24385c29be270f5de9790f04b4c81ec5a52e5c810607e55b1456aea2"
+    },
+    {
+      "id": "provider-platform-example-package",
+      "path": "examples/plugins/packages/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin",
+      "sourceId": "yaqmc-provider-component-examples",
+      "status": "verified",
+      "evidence": "sha256:01297f93fab5356c8d95bf52a7167d810f50939b797c46703a3c993e88fe2480"
     },
     {
       "id": "application-branding-logo",
@@ -161,7 +205,7 @@
       "path": "THIRD_PARTY_NOTICES.md",
       "sourceId": "gongjiehong-qmcdecode",
       "status": "verified",
-      "evidence": "sha256:6a95666edbaf48cea17b168c980dc22e325b6ee88b685ccdd347098cd3b8281d"
+      "evidence": "sha256:aa53ae62a7603fd5575e0ecf643be7356067d724cb2a13b74d813eb1f0e5983b"
     }
   ],
   "release": {

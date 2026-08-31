@@ -59,7 +59,6 @@ export const enUS = {
       inactive: 'Inactive',
       unknown: 'Unknown',
     },
-    offlineFixtures: 'Offline fixtures',
     openSettings: 'Open application settings',
     providerActive: '{{provider}} active',
     goBack: 'Go back',

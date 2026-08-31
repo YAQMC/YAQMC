@@ -23,6 +23,22 @@ described in [docs/lyrics.md](docs/lyrics.md#amll-decision).
 in-tree YAQMC sources. The `mzj3920` and ASAR claims were removed from the current pinned `qm-api-rs` revision;
 miaosic was protocol corroboration only.
 
+## Rust Provider Component examples
+
+The optional, unsigned API v3 example packages under `examples/plugins/packages/` contain WebAssembly Components
+built from the checked-in Rust sources and lockfiles. They are not built into the YAQMC desktop executable. The
+complete platform example directly uses:
+
+| Package       | Version   | Upstream                                          | License declared by the crate                      |
+| ------------- | --------- | ------------------------------------------------- | -------------------------------------------------- |
+| `dlmalloc`    | `0.2.11`  | <https://github.com/alexcrichton/dlmalloc-rs>     | MIT or Apache-2.0                                  |
+| `serde_json`  | `1.0.145` | <https://github.com/serde-rs/json>                | MIT or Apache-2.0                                  |
+| `wit-bindgen` | `0.46.0`  | <https://github.com/bytecodealliance/wit-bindgen> | Apache-2.0 with LLVM exception, Apache-2.0, or MIT |
+
+The example `Cargo.lock` files are the authoritative transitive resolutions. Source distributions retain those
+lockfiles and the project GPL notice; distributors should preserve the upstream license choices applicable to the
+exact resolved crates.
+
 ## QMCDecode
 
 Source: <https://github.com/gongjiehong/QMCDecode>

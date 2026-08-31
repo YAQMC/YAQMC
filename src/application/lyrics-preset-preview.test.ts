@@ -1,32 +1,32 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  PREVIEW_FIXTURE_SONG_ID,
-  previewFixtureLyrics,
-  previewFixtureSong,
-} from './lyrics-preset-preview-fixture';
+  PREVIEW_SAMPLE_SONG_ID,
+  previewSampleLyrics,
+  previewSampleSong,
+} from './lyrics-preset-preview-sample';
 import { useLyricsPresetPreviewStore } from './lyrics-preset-preview';
 import { initialPlayerState, usePlayerStore } from './player-store';
 
-describe('lyrics preset preview fixture', () => {
+describe('lyrics preset preview sample', () => {
   afterEach(() => {
     useLyricsPresetPreviewStore.getState().reset();
     usePlayerStore.setState(initialPlayerState);
   });
 
-  it('is a local G.E.M. design fixture with timed lyrics and no network source', () => {
-    expect(previewFixtureSong.id).toBe(PREVIEW_FIXTURE_SONG_ID);
-    expect(previewFixtureSong.title).toBe('多远都要在一起');
-    expect(previewFixtureSong.artists[0]?.name).toContain('G.E.M.');
-    expect(previewFixtureSong.artwork.src.startsWith('/artwork/')).toBe(true);
-    expect(previewFixtureLyrics.syncMode).toBe('word');
-    expect(previewFixtureLyrics.lines.length).toBeGreaterThan(3);
-    expect(previewFixtureLyrics.lines.every((line) => line.words.length > 0)).toBe(true);
+  it('is product-owned local preview content with word timing and no network source', () => {
+    expect(previewSampleSong.id).toBe(PREVIEW_SAMPLE_SONG_ID);
+    expect(previewSampleSong.title).toBe('一起听见');
+    expect(previewSampleSong.artists[0]?.name).toBe('YAQMC Studio');
+    expect(previewSampleSong.artwork.src.startsWith('/artwork/')).toBe(true);
+    expect(previewSampleLyrics.syncMode).toBe('word');
+    expect(previewSampleLyrics.lines.length).toBeGreaterThan(3);
+    expect(previewSampleLyrics.lines.every((line) => line.words.length > 0)).toBe(true);
   });
 
   it('plays an isolated timeline without mutating the real queue', () => {
     usePlayerStore.setState({
       ...initialPlayerState,
-      queue: [previewFixtureSong],
+      queue: [previewSampleSong],
       currentIndex: 0,
       isPlaying: false,
     });
@@ -37,7 +37,7 @@ describe('lyrics preset preview fixture', () => {
       positionMs: 1_200,
     });
     expect(usePlayerStore.getState().queue.map((track) => track.id)).toEqual([
-      PREVIEW_FIXTURE_SONG_ID,
+      PREVIEW_SAMPLE_SONG_ID,
     ]);
     expect(usePlayerStore.getState().isPlaying).toBe(false);
   });

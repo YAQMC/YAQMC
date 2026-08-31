@@ -2,9 +2,10 @@
 
 > [简体中文](zh-CN/plugin-development.md) | **English**
 
-Write TypeScript against `@yaqmc/plugin-sdk` (`sdk/plugin`). Build to JavaScript. The production host executes
-`dist/main.js` only. Raw TypeScript is recognized on import so YAQMC can explain that a build/package step is
-required; it is not executed as JavaScript.
+Legacy API v1-v2 plugins are written in TypeScript against `@yaqmc/plugin-sdk` (`sdk/plugin`) and built to JavaScript.
+The legacy production host executes `dist/main.js` only. Raw TypeScript is recognized on import so YAQMC can explain
+that a build/package step is required; it is not executed as JavaScript. API v3 music providers are a separate
+WebAssembly Component shape and never execute in the renderer Worker.
 
 ```ts
 import { definePlugin } from '@yaqmc/plugin-sdk';
@@ -44,8 +45,28 @@ Read events: `track.changed`, `playback.stateChanged`, `playback.position`, `pla
 `scene.changed`, `settings.changed`, `ui.action`. Position is coalesced (~4 Hz). `player.control` operations go
 through `PlayerService` and inherit the session-safe seek mailbox. Plugin seeks are rate-limited (4/s).
 
-Build examples with `npm run plugin:build`, validate with `npm run plugin:validate`, and pack with
-`npm run plugin:pack` (or `npm run plugins:pack` after a build). Runtime still executes `dist/main.js` only.
+Build legacy examples with `npm run plugin:build`, validate with `npm run plugin:validate`, and pack with
+`npm run plugin:pack` (or `npm run plugins:pack` after a build).
+
+## Provider Components
+
+Provider plugins target the frozen `yaqmc:provider@0.1.0` WIT package as a `wasm32-wasip2` `cdylib`. The manifest
+declares exactly one Component entrypoint, capability permissions, and a WIT world whose imports match those grants.
+Use the read-only [`provider-catalog-rust`](../examples/plugins/provider-catalog-rust/) example for the smallest
+starting point. The complete [`provider-platform-rust`](../examples/plugins/provider-platform-rust/) example shows
+catalog, playback, recommendations, Discover, lyrics, private storage, and an isolated synthetic account.
+
+```text
+rustup target add wasm32-wasip2
+npm run plugin:pack:provider-example
+npm run plugin:verify:provider-platform-example
+```
+
+The complete example uses pinned guest dependencies and produces one architecture-neutral package. Playback returns
+a Host request/cache recipe, never a filesystem path or signed URL to React. Account code receives only opaque,
+plugin-scoped credential handles. Adding a capability, storage, account access, or a network origin to an update
+requires the user to approve the new permissions before activation. See [manifest](plugin-manifest.md),
+[platform](plugin-platform.md), and [security](plugin-security.md) for the frozen contract and limits.
 
 ## Settings
 

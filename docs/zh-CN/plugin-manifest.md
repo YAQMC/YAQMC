@@ -65,6 +65,9 @@ Core 前校验并强制重写 provider 作用域。以下能力分别授权：
 - `provider.lyrics`
 - `provider.account`
 
+完整操作清单和错误信封冻结在 [Provider Component API](provider-component-api.md) 及其机器可读 fixture 中。未知操作
+fail closed；操作不能借用另一个已声明 capability 的权限。
+
 WIT world 必须与申请的 Host imports 精确匹配：
 
 | World                      | Host imports                        | 清单必须申请的权限                                     |

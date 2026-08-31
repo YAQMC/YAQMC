@@ -24,11 +24,18 @@ Granted only after review:
 `style.register`, plus v2 `ui.contextMenu`, `ui.playerBar`, `ui.sidebar`, `ui.notify`, and scoped
 `network:https://host`.
 
-Hard-denied: `network`, `network:*`, `filesystem`, `provider`, `account`, `native`, `shell`, QQ cookies / `qm_keyst` /
-`qrsig` / OAuth secrets / ekey / local HTTP bearer tokens, arbitrary host IPC, and native `dll`/`so` loading.
+For legacy API v1-v2, bare `provider` and `account` remain reserved and denied. API v3 uses only the explicit
+`provider.catalog`, `provider.playback`, `provider.recommendation`, `provider.lyrics`, and `provider.account`
+capabilities declared by a manifest v2 Component. A `provider-account` world additionally requires private storage
+and exact HTTPS origins; it receives write-only credential handles rather than secret values.
 
-`player.control` and `network:https://…` are sensitive. Updates that expand permissions require a new approval.
-The install review lists added and removed permissions when a package updates an already-installed plugin.
+Hard-denied for every API: `network`, `network:*`, `filesystem`, `native`, `shell`, QQ cookies / `qm_keyst` / `qrsig` /
+OAuth secrets / ekey / local HTTP bearer tokens, arbitrary host IPC, and native `dll`/`so` loading.
+
+`player.control`, `network:https://…`, `provider.playback`, and `provider.account` are sensitive. Every added Provider
+capability, `plugin.storage`, or exact origin is independently checked on update; omitting any new grant rejects the
+update. Revoking a grant cancels the Component context and existing opaque playback sources immediately. The install
+review lists added and removed permissions when a package updates an already-installed plugin.
 Network requests are host-proxied: HTTPS only, origin allowlist, DNS private-IP rejection, redirect revalidation,
 no YAQMC credentials, body/response/timeout/rate limits.
 
@@ -37,8 +44,8 @@ no YAQMC credentials, body/response/timeout/rate limits.
 Archives are inspected before extract: path jail, symlink rejection, size/file-count limits, SHA-256 of the package,
 staging directory, then atomic replace. Nothing executes from the ZIP.
 
-v1 plugins are **Unsigned / local**. SHA-256 matching itself is integrity, not publisher trust. Do not show
-“Verified”.
+All current user plugins, including API v3 Components, are **Unsigned / local**. SHA-256 matching itself is integrity,
+not publisher trust. Do not show “Verified”.
 
 ## Scanner
 

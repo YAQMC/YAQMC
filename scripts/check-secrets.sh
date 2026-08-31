@@ -37,6 +37,9 @@ is_safe_value() {
   while [[ "$candidate" == *'`' ]]; do
     candidate="${candidate%?}"
   done
+  if [[ "$candidate" =~ ^[A-Za-z_][A-Za-z0-9_:]*\( ]]; then
+    return 0
+  fi
   case "$candidate" in
     ""|'[REDACTED]'|'%5BREDACTED%5D'|redacted|SECRET|SANITIZED_*|'$'*|'%'*'%'|'<'*'>'|'{'|'['|'(') return 0 ;;
     *) return 1 ;;
@@ -144,7 +147,10 @@ else
   cd "$repo_root"
   while IFS= read -r -d '' path; do
     scan_file "$repo_root/$path" "$path" || failed=1
-  done < <(git ls-files -z --cached --others --exclude-standard -- README.md docs tests/fixtures)
+  done < <(git ls-files -z --cached --others --exclude-standard -- \
+    README.md README-EN.md docs tests/fixtures examples/plugins wit \
+    ':(exclude)examples/plugins/packages/**' \
+    ':(exclude)examples/plugins/**/component/**')
 fi
 
 if [[ "$failed" -ne 0 ]]; then

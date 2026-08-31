@@ -217,6 +217,9 @@ test('CI uses the Electron package job as the only desktop package path', () => 
   assert.doesNotMatch(workflow, /node scripts\/ci\/package-native\.mjs/);
   assert.match(workflow, /node scripts\/ci\/package-electron\.mjs/);
   assert.match(workflow, /node scripts\/ci\/select-electron-package-matrix\.mjs/);
+  const packageMatrixJob =
+    workflow.split(/^ {2}electron-package-matrix:/m)[1]?.split(/^ {2}[a-z]/m)[0] ?? '';
+  assert.match(packageMatrixJob, /if: github\.event_name == 'workflow_dispatch'/);
   assert.match(
     workflow,
     /YAQMC-electron-\$\{\{ matrix\.os \}\}-\$\{\{ matrix\.arch \}\}-\$\{\{ github\.sha \}\}/,

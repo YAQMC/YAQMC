@@ -36,6 +36,10 @@ Component 不会获得宿主路径。
 停用 Provider 插件会取消调用、撤销 Host context 并注销 provider；重新启用会创建新 context。卸载会先停用，仅在用户选择
 时删除私有数据。激活期间异常退出会让下一次启动进入安全模式。
 
+队列条目和目录路由会保留自己的 `providerId`。平台停用或移除后，Core 拒绝其音源，自动遍历会跳过，renderer 显示确定的
+不可用状态，而不会把曲目 ID 交给另一个平台。用户仍可移除或重排该条目。重新启用同一 provider 后，链接、播放资格和
+provider 私有账号状态恢复，不需要重写队列。
+
 ## 限制
 
 | 边界           | API v1-v2 | API v3 Provider Component |
@@ -66,7 +70,11 @@ Provider Component 使用冻结的 `yaqmc:provider@0.1.0` WIT 和 WASI 0.2 Compo
 
 能力与 world 的精确映射见[清单参考](plugin-manifest.md)。
 
+`provider.playback` 只能返回精确 origin 的 HTTPS 配方或 Host 受管缓存 key。Core 解析并流式消费不透明音源；签名 URL、
+请求 Header、凭据和 Host 路径都不会序列化进 renderer 协议。`provider.account` 绑定到声明它的 provider 实例及其哈希
+存储域，不能检查或覆盖内置 QQ 音乐账号。
+
 ## 明确不实现
 
 本版本不含插件市场、远程更新、已验证发行方签名、原生模块、任意设置 HTML 或云同步。`network:*` 通配被拒绝。旧版
-打包示例和只读 Rust Provider Component 见[示例插件](plugin-examples.md)。
+打包示例以及只读/完整 Rust Provider Component 见[示例插件](plugin-examples.md)。

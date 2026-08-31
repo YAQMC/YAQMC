@@ -16,15 +16,22 @@ CSS 与 Scene Schema 不执行 JavaScript。场景 CSS 限定在 `[data-yaqmc-pl
 `scene.register`、`style.register`，以及 v2 的 `ui.contextMenu`、`ui.playerBar`、`ui.sidebar`、`ui.notify` 和
 `network:https://host`。
 
-明确拒绝：`network`、`network:*`、`filesystem`、`provider`、`account`、`native`、`shell`，以及 QQ cookie / `qm_keyst` / `qrsig` /
-OAuth 密钥 / ekey / 本地 HTTP bearer、任意宿主 IPC、原生 `dll`/`so`。
+旧版 API v1-v2 的裸 `provider` 和 `account` 仍是保留并拒绝的权限。API v3 只允许 manifest v2 Component 明确声明
+`provider.catalog`、`provider.playback`、`provider.recommendation`、`provider.lyrics` 和 `provider.account`。
+`provider-account` world 还必须声明私有存储和精确 HTTPS origin；它拿到的是只写凭据句柄，不是密钥值。
 
-`player.control` 与 `network:https://…` 属于敏感权限。权限扩张必须重新批准。更新已安装插件时，审核界面会列出新增和移除的权限。网络请求由宿主代理：仅 HTTPS、来源白名单、
+所有 API 都明确拒绝：`network`、`network:*`、`filesystem`、`native`、`shell`，以及 QQ cookie / `qm_keyst` /
+`qrsig` / OAuth 密钥 / ekey / 本地 HTTP bearer、任意宿主 IPC、原生 `dll`/`so`。
+
+`player.control`、`network:https://…`、`provider.playback` 和 `provider.account` 属于敏感权限。更新时每个新增 Provider
+能力、`plugin.storage` 或精确 origin 都会独立校验；漏批任何一项都会拒绝更新。撤销后会立即取消 Component context 和
+既有不透明音源。更新已安装插件时，审核界面会列出新增和移除的权限。网络请求由宿主代理：仅 HTTPS、来源白名单、
 拒绝解析到私网 IP、重定向逐跳校验、不附带 YAQMC 凭据，并限制体积/超时/速率。
 
 安装前会检查路径越狱、符号链接、体积与文件数、包 SHA-256，先解压到暂存目录再原子替换。ZIP 内的代码不会被执行。
 
-v1 插件标记为**未签名 / 本地插件**。SHA-256 只表示完整性，不表示发行方可信，界面不得显示“已验证”。
+当前所有用户插件（包括 API v3 Component）都标记为**未签名 / 本地插件**。SHA-256 只表示完整性，不表示发行方可信，
+界面不得显示“已验证”。
 
 扫描器会标记 fetch、`eval`、旧宿主全局对象、远程 `@import` 等（低/中/高）。扫描通过不等于安全。高风险远程 CSS 会阻止样式激活。
 

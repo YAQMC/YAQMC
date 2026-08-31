@@ -65,7 +65,6 @@ export const zhCN = {
       inactive: '未开通',
       unknown: '状态未知',
     },
-    offlineFixtures: '离线样例',
     openSettings: '打开应用设置',
     providerActive: '{{provider}} 已启用',
     goBack: '后退',

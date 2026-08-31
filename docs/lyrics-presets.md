@@ -68,16 +68,16 @@ Normalized 0–1 scene coordinates, not editor pixels:
 - Metadata extras: `align`, title/artist scale
 - Background: `source` (`color` | `artwork` | `image`), fit, fallback color, opacity, influence, blur
 
-Bindings are data, not stored G.E.M. strings: artwork = current track artwork, lyrics = current
-track lyrics, transport = playback.
+Bindings are data, not stored sample strings: artwork = current track artwork, lyrics = current track lyrics,
+transport = playback.
 
-## Preview fixture
+## Built-in preview sample
 
-The editor uses a local design fixture first, then may hydrate read-only QQ search results:
+The editor uses product-owned local preview content first, then may hydrate read-only provider search results:
 
-- Title: 多远都要在一起
-- Artist: G.E.M. 邓紫棋
-- Artwork: `/artwork/gem-together.svg` until hydrate succeeds through ArtworkResolver
+- Title: 一起听见
+- Artist: YAQMC Studio
+- Artwork: `/artwork/preset-preview.svg` until hydrate succeeds through ArtworkResolver
 - Timed lines with word timing, translation, and romanization
 
 Play / pause / seek drive an isolated preview timeline. Opening the editor does not replace the

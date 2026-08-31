@@ -15,10 +15,11 @@
   "main": "./dist/main/index.js",
   "scripts": {
     "build": "node ./scripts/build.mjs",
+    "build:qa": "node ./scripts/build.mjs --qa",
     "watch": "node ./scripts/build.mjs --watch",
     "typecheck": "tsc -b --pretty false",
     "start": "npm run build && electron .",
-    "smoke": "npm run build && node ./scripts/smoke.mjs",
+    "smoke": "npm run build:qa && node ./scripts/smoke.mjs",
     "test": "vitest run --config ./vitest.config.ts",
     "package": "electron-builder --projectDir . --config electron-builder.yml",
     "pack:dir": "electron-builder --projectDir . --config electron-builder.yml --dir --x64 --publish never",

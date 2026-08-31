@@ -39,6 +39,11 @@ Disabling a Provider plugin cancels calls, revokes its Host context, and unregis
 a new context. Uninstalling deactivates first and removes private data only when the user selects that option. An
 unclean activation enters safe mode on the next launch.
 
+Queue entries and catalog routes retain their `providerId`. If that provider is disabled or removed, Core refuses its
+source, automatic traversal skips it, and the renderer shows a deterministic unavailable state instead of sending the
+track ID to another platform. Queue removal/reordering remains available. Re-enabling the same provider restores
+links, playback eligibility, and provider-scoped account state without rewriting the queue.
+
 ## Limits
 
 | Bound              | API v1-v2 | API v3 Provider Component |
@@ -72,8 +77,13 @@ manifest selects a WIT world whose imports must exactly match the user's grants:
 
 See the exact capability/world mapping in [the manifest reference](plugin-manifest.md).
 
+The `provider.playback` result is either an exact-origin HTTPS recipe or a key in the Host-managed cache. Core resolves
+and streams that opaque source; signed URLs, request headers, credentials, and host paths are not serialized into the
+renderer protocol. `provider.account` is bound to the declaring provider instance and its hashed storage namespace,
+so it cannot inspect or overwrite the built-in QQ Music account.
+
 ## Deliberately not implemented
 
 Marketplace, remote updates, verified-publisher signing, native modules, arbitrary settings HTML, and cloud sync are
-not part of this release. `network:*` wildcards are rejected. Packed legacy examples and the read-only Rust Provider
-Component are listed in [example plugins](plugin-examples.md).
+not part of this release. `network:*` wildcards are rejected. Packed legacy examples plus read-only and complete Rust
+Provider Components are listed in [example plugins](plugin-examples.md).

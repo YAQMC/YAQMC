@@ -47,14 +47,14 @@ describe('LyricsPresetPicker', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     expect(screen.getByRole('heading', { name: 'Customize Classic' })).toBeInTheDocument();
-    expect(screen.getByText('多远都要在一起 — G.E.M. 邓紫棋')).toBeInTheDocument();
+    expect(screen.getByText('一起听见 — YAQMC Studio')).toBeInTheDocument();
 
     const preview = document.querySelector('.lyrics-preset-preview') as HTMLElement | null;
     expect(preview?.style.getPropertyValue('--lyrics-font-scale')).toBe('1');
     expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
     expect(document.querySelector('.amll-lyric-player')).not.toBeNull();
     const backdrop = document.querySelector('.lyrics-stage__backdrop') as HTMLElement | null;
-    expect(backdrop?.style.backgroundImage).toContain('/artwork/gem-together.svg');
+    expect(backdrop?.style.backgroundImage).toContain('/artwork/preset-preview.svg');
     expect(backdrop?.style.filter).toBe('');
     expect(backdrop?.style.opacity).toBe('1');
     expect(screen.queryByRole('slider', { name: 'Lyrics font size' })).toBeNull();
@@ -77,7 +77,7 @@ describe('LyricsPresetPicker', () => {
     expect(screen.getByRole('slider', { name: 'Artwork influence' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Background opacity' })).toBeInTheDocument();
     expect(document.querySelector('.lyrics-stage__backdrop')).toHaveStyle({
-      backgroundImage: 'url("/artwork/gem-together.svg")',
+      backgroundImage: 'url("/artwork/preset-preview.svg")',
       opacity: '1',
     });
   });
@@ -223,7 +223,7 @@ describe('LyricsPresetPicker', () => {
     expect(document.querySelector('[data-lyrics-scene]')).not.toBeNull();
     expect(document.querySelector('.lyrics-stage__disc')).not.toBeNull();
     expect(document.querySelector('.lyrics-stage__backdrop')).toHaveStyle({
-      backgroundImage: 'url("/artwork/gem-together.svg")',
+      backgroundImage: 'url("/artwork/preset-preview.svg")',
       opacity: '1',
     });
   });

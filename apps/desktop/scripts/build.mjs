@@ -1,10 +1,17 @@
 import { execFileSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import * as esbuild from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyReleaseBundle } from '../../../scripts/ci/verify-release-bundle.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const watch = process.argv.includes('--watch');
+const qa = watch || process.argv.includes('--qa');
+
+if (!watch) {
+  rmSync(path.join(root, 'dist'), { recursive: true, force: true });
+}
 
 function currentCommit() {
   const environmentCommit = process.env.GITHUB_SHA ?? process.env.VITE_GIT_COMMIT;
@@ -20,10 +27,12 @@ function currentCommit() {
 }
 
 function buildDefines() {
+  const buildType = watch ? 'development' : qa ? 'qa' : 'release';
   return {
     __YAQMC_BUILD_COMMIT__: JSON.stringify(currentCommit()),
     __YAQMC_RELEASE_CHANNEL__: JSON.stringify(process.env.YAQMC_RELEASE_CHANNEL ?? 'development'),
-    __YAQMC_BUILD_TYPE__: JSON.stringify(watch ? 'development' : 'release'),
+    __YAQMC_BUILD_TYPE__: JSON.stringify(buildType),
+    __YAQMC_QA_BUILD__: JSON.stringify(qa),
   };
 }
 
@@ -36,6 +45,8 @@ const mainOptions = {
   outfile: 'dist/main/index.js',
   external: ['electron', 'electron-updater'],
   sourcemap: true,
+  minifySyntax: !qa,
+  treeShaking: true,
   logLevel: 'info',
   define: buildDefines(),
 };
@@ -56,6 +67,8 @@ function preloadOptions(entryPoint, outfile) {
     outfile,
     external: ['electron'],
     sourcemap: true,
+    minifySyntax: !qa,
+    treeShaking: true,
     logLevel: 'info',
     define: buildDefines(),
   };
@@ -72,5 +85,9 @@ if (watch) {
   await esbuild.build(mainOptions);
   for (const [entryPoint, outfile] of preloadEntries) {
     await esbuild.build(preloadOptions(entryPoint, outfile));
+  }
+  if (!qa) {
+    verifyReleaseBundle({ desktopDir: path.join(root, 'dist') });
+    process.stdout.write('desktop release bundle clean\n');
   }
 }

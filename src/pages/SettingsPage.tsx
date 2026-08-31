@@ -70,7 +70,6 @@ import { isNativeRuntime } from '../application/native-player-runtime';
 import { useProviderSettings } from '../application/provider-settings';
 import { usePlatformIntegration } from '../application/platform-integration';
 import { openProductLink } from '../application/external-links';
-import { uiDiagnosticsEnabled } from '../application/ui-diagnostics';
 import { buildMetadata, productMetadata, type ProductLink } from '../application/product-metadata';
 import {
   clearOldLogs,
@@ -710,7 +709,7 @@ export function SettingsPage() {
   const signOut = useAccountStore((state) => state.signOut);
   const platform = usePlatformIntegration();
   const preferences = usePreferencesStore();
-  const uiDiagnostics = uiDiagnosticsEnabled();
+  const uiDiagnostics = __YAQMC_QA_BUILD__;
   const [copied, setCopied] = useState<'endpoint' | 'token' | null>(null);
   const [tokenDraft, setTokenDraft] = useState('');
   const [tokenTouched, setTokenTouched] = useState(false);

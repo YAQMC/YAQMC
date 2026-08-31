@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: 'YAQMC Local API'
   version: 1.0.0
-  description: Loopback-only playback and synchronized-lyrics API. Bearer authentication applies only when a token is configured in Settings.
+  description: Loopback-only playback and synchronized-lyrics API. Bearer authentication applies only when a token is configured in Settings. Provider Component v3 uses the framed Core protocol and is intentionally not exposed as HTTP.
 servers:
   - url: http://127.0.0.1:19532
 security:

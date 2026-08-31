@@ -14,7 +14,7 @@ test('pull requests only pack Electron smoke targets', () => {
   assert.ok(selected.every((row) => row.smoke));
 });
 
-test('main pushes pack the full Electron matrix without i686', () => {
+test('release-style pushes select the full Electron matrix without i686', () => {
   const selected = selectElectronPackageMatrix({ eventName: 'push' });
   assert.equal(selected.length, ELECTRON_PACKAGE_TARGETS.length);
   assert.equal(selected.length, 4);

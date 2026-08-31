@@ -3,9 +3,7 @@ import { mkdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { LyricsSurfaceKind, LyricsSurfaces } from './lyrics-surfaces';
 import type { LyricsUnlockOverlays } from './lyrics-unlock';
-
-export const OVERLAY_VISUAL_DOCUMENT_GUARD =
-  'if (!document.documentElement.dataset.surface && !document.documentElement.dataset.surfaceUnlock) return;';
+export { OVERLAY_VISUAL_DOCUMENT_GUARD } from './surface-visual-document';
 
 const SAMPLE_MS = 1_200;
 

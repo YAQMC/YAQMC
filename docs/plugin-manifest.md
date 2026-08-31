@@ -67,6 +67,10 @@ separately:
 - `provider.lyrics`
 - `provider.account`
 
+The complete operation inventory and error envelope are frozen in the
+[Provider Component API](provider-component-api.md) and its machine-readable fixture. Unknown operations fail closed;
+an operation cannot borrow authority from another declared capability.
+
 The selected WIT world must exactly match the requested host imports:
 
 | World                      | Host imports                                  | Required manifest permissions                                   |

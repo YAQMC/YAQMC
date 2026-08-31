@@ -62,7 +62,6 @@ import { ExplorePage } from './pages/ExplorePage';
 import { LibraryPage } from './pages/LibraryPage';
 import { SearchPage } from './pages/SearchPage';
 import { AppBackground } from './components/AppBackground';
-import { FpsOverlay } from './components/FpsOverlay';
 import { PluginNoticeHost } from './components/PluginNoticeHost';
 import { CoreStatusBanner } from './components/CoreStatusBanner';
 import { usePreferencesRuntime, usePreferencesStore } from './application/preferences';
@@ -83,9 +82,14 @@ import { getYaqmcClient } from './application/yaqmc-runtime';
 import { CHANNEL_APP_OPEN_CATALOG_SONG } from '@yaqmc/client';
 import { catalogSongRouteFromDeepLink } from './application/deep-link-navigation';
 import { usePluginHost } from './application/plugin-runtime';
-import { installPlaybackUiProbe } from './application/playback-ui-probe';
-import { uiDiagnosticsEnabled } from './application/ui-diagnostics';
 import './styles/index.css';
+
+const ApplicationPlaybackDiagnostics = __YAQMC_QA_BUILD__
+  ? lazy(async () => {
+      const module = await import('./development/PlaybackDiagnostics');
+      return { default: module.ApplicationPlaybackDiagnostics };
+    })
+  : null;
 
 const SettingsPage = lazy(async () => {
   const module = await import('./pages/SettingsPage');
@@ -152,8 +156,6 @@ export default function App() {
   usePreferencesRuntime(true);
   usePlatformDiagnosticsRuntime();
   usePluginHost();
-  const uiDiagnostics = uiDiagnosticsEnabled();
-  useEffect(() => (uiDiagnostics ? installPlaybackUiProbe() : undefined), [uiDiagnostics]);
   const catalog = useCatalog();
   const { theme, toggleTheme } = useTheme();
   const hydrateQueue = usePlayerStore((state) => state.hydrateQueue);
@@ -161,7 +163,6 @@ export default function App() {
   const lyricsStage = useLyricsStageStore((state) => state.stage);
   const lyricsSurfaceVisible = lyricsOpen || lyricsStage !== 'closed';
   const focusSidebarCollapsed = usePreferencesStore((state) => state.lyrics.focusSidebarCollapsed);
-  const showFpsCounter = usePreferencesStore((state) => state.debug.showFpsCounter);
   const updateLyrics = usePreferencesStore((state) => state.updateLyrics);
   const fullscreen = useLyricsPresentationStore((state) => state.fullscreen);
   const fullscreenPending = useLyricsPresentationStore((state) => state.pending);
@@ -566,7 +567,11 @@ export default function App() {
     <div className="application-frame">
       <AppBackground />
       <ApplicationContextMenu />
-      {uiDiagnostics && showFpsCounter && <FpsOverlay />}
+      {ApplicationPlaybackDiagnostics && (
+        <Suspense fallback={null}>
+          <ApplicationPlaybackDiagnostics />
+        </Suspense>
+      )}
       <NavigationProvider onNavigate={navigate}>
         <div
           className="app-shell"

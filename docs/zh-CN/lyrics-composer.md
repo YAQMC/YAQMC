@@ -49,11 +49,11 @@ effectivePrimary = fontBase × fontScale
 
 ## 预览数据
 
-打开编排器立即绘制本地 G.E.M. 设计夹具（多远都要在一起 / G.E.M. 邓紫棋）。后台只读搜索可通过
+打开编排器立即绘制项目自有的本地示例（一起听见 / YAQMC Studio）。后台只读搜索可通过
 `ArtworkResolver`（`large` / `fullscreen`）替换歌词与封面。失败则保留夹具并显示**离线预览**。
 编排器不会写入收藏、歌单、历史或 PlayerStore 队列。
 
-预设 JSON 不保存 G.E.M. 的标题、艺人、封面 URL 或歌词正文。
+预设 JSON 不保存示例的标题、艺人、封面 URL 或歌词正文。
 
 ## 跟随当前行
 

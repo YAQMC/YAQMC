@@ -590,8 +590,7 @@ pub(crate) fn static_test_component(response: &str) -> String {
             (func (export "invoke") (type $invoke-type)
                 (canon lift (core func $invoke)
                     (memory $memory)
-                    (realloc $realloc))))"#,
-        length = length
+                    (realloc $realloc))))"#
     )
 }
 

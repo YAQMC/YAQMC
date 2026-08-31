@@ -22,7 +22,6 @@ directories:
 files:
   - dist/main/**
   - dist/preload/**
-  - harness/**
   - '!dist/**/*.map'
 extraMetadata:
   main: dist/main/index.js

@@ -63,7 +63,7 @@ import {
 import { createHostLog, type HostLog } from './host-log';
 import { linuxGraphicsDiagnostics, linuxGraphicsSwitches } from './linux-graphics';
 import { mergeChromiumFeatureList, windowsOcclusionSwitches } from './windows/windows-occlusion';
-import { OVERLAY_VISUAL_DOCUMENT_GUARD, runUiPerfDiagSequence } from './windows/ui-perf-diag';
+import { OVERLAY_VISUAL_DOCUMENT_GUARD } from './windows/surface-visual-document';
 import { createElectronUpdaterPort, noopUpdaterPort } from './services/electron-updater-port';
 import { createUpdater, type UpdaterHandle } from './services/updater';
 import { APP_SCHEME, appIndexUrl, serveAppUrl } from './protocol';
@@ -192,18 +192,21 @@ applyLinuxGraphicsSwitches();
 applyWindowsOcclusionSwitches();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const smoke = process.env.YAQMC_DESKTOP_SMOKE === '1';
+const smoke = __YAQMC_QA_BUILD__ && process.env.YAQMC_DESKTOP_SMOKE === '1';
 /** Local Playwright `_electron` (FE-06 follow-up). Not the smoke harness; not CI. */
-const e2e = process.env.YAQMC_ELECTRON_E2E === '1';
-const e2eNative = e2e && process.env.YAQMC_E2E_NATIVE === '1';
-const rendererDiagnostics = !app.isPackaged || e2e || process.env.YAQMC_UI_PERF_DIAG === '1';
-const qaSandbox: QaSandboxPaths | null = requireQaSandboxFromEnv(process.env);
+const e2e = __YAQMC_QA_BUILD__ && process.env.YAQMC_ELECTRON_E2E === '1';
+const e2eNative = __YAQMC_QA_BUILD__ && e2e && process.env.YAQMC_E2E_NATIVE === '1';
+const rendererDiagnostics =
+  __YAQMC_QA_BUILD__ && (!app.isPackaged || e2e || process.env.YAQMC_UI_PERF_DIAG === '1');
+const qaSandbox: QaSandboxPaths | null = __YAQMC_QA_BUILD__
+  ? requireQaSandboxFromEnv(process.env)
+  : null;
 if (qaSandbox) {
   app.setPath('userData', qaSandbox.electronUserData);
 }
 const desktopRoot = path.resolve(here, '../..');
 const repoRoot = path.resolve(desktopRoot, '../..');
-const harnessRoot = path.join(desktopRoot, 'harness');
+const harnessRoot = __YAQMC_QA_BUILD__ ? path.join(desktopRoot, 'harness') : '';
 const viteDist = path.join(repoRoot, 'dist');
 const methodAclPath = app.isPackaged
   ? path.join(process.resourcesPath, 'contract', 'methods.json')
@@ -251,7 +254,11 @@ let deepLinkRendererReady = false;
 let preferencesResolvedForDeepLinks = !app.isPackaged;
 const deepLinkInbox = new DeepLinkInbox(deepLinkFromArgv(process.argv));
 const deepLinkRegistration = registerYaqmcDeepLinkProtocol(app, {
-  packaged: app.isPackaged && !smoke && !e2e && !process.env.PORTABLE_EXECUTABLE_FILE,
+  packaged:
+    app.isPackaged &&
+    !(__YAQMC_QA_BUILD__ && smoke) &&
+    !(__YAQMC_QA_BUILD__ && e2e) &&
+    !process.env.PORTABLE_EXECUTABLE_FILE,
 });
 
 function writeHostLog(message: string): void {
@@ -263,7 +270,7 @@ function writeHostLog(message: string): void {
 }
 
 function diagnosticsSearch(search: string): string {
-  if (!rendererDiagnostics) return search;
+  if (!__YAQMC_QA_BUILD__ || !rendererDiagnostics) return search;
   return `${search}${search.includes('?') ? '&' : '?'}uiDiagnostics=1`;
 }
 
@@ -272,7 +279,7 @@ function rendererPageUrl(search: string): string | null {
   if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
     return `${VITE_DEV_ORIGIN}/${resolvedSearch}`;
   }
-  return rendererDiagnostics ? appIndexUrl(resolvedSearch) : null;
+  return __YAQMC_QA_BUILD__ && rendererDiagnostics ? appIndexUrl(resolvedSearch) : null;
 }
 
 const lyricsUnlock = createLyricsUnlockOverlays({
@@ -312,7 +319,7 @@ const shortcutSession = createGlobalShortcutSession({
   },
 });
 
-if (e2e) {
+if (__YAQMC_QA_BUILD__ && e2e) {
   (
     globalThis as {
       __YAQMC_E2E__?: {
@@ -435,9 +442,10 @@ const router = new IpcRouter({
       // E2E validates the IPC contract against an isolated QA profile. Do not
       // launch a real desktop file manager there: on headless/portal-backed
       // Linux sessions it can leave Electron's IPC reply unresolved.
-      openPath: (target) => (e2e ? Promise.resolve('') : shell.openPath(target)),
+      openPath: (target) =>
+        __YAQMC_QA_BUILD__ && e2e ? Promise.resolve('') : shell.openPath(target),
       showItemInFolder: (target) => {
-        if (!e2e) {
+        if (!(__YAQMC_QA_BUILD__ && e2e)) {
           shell.showItemInFolder(target);
         }
       },
@@ -447,7 +455,7 @@ const router = new IpcRouter({
       createWindow: (options) =>
         createOAuthBrowserWindow(options as ConstructorParameters<typeof BrowserWindow>[0]),
       fromPartition: (partition, options) => {
-        if (smoke) {
+        if (__YAQMC_QA_BUILD__ && smoke) {
           return {};
         }
         const oauthSession = session.fromPartition(partition, options);
@@ -487,7 +495,10 @@ const router = new IpcRouter({
 });
 
 const updaterHandle = createUpdater({
-  port: smoke ? noopUpdaterPort() : createElectronUpdaterPort(updaterReleaseChannel()),
+  port:
+    __YAQMC_QA_BUILD__ && smoke
+      ? noopUpdaterPort()
+      : createElectronUpdaterPort(updaterReleaseChannel()),
   emit: (channel, payload) => {
     writeHostLog(`updater ${payload.state}`);
     fanoutEvent(channel, payload);
@@ -509,26 +520,32 @@ function packagedRendererRoot(): string | undefined {
 }
 
 function rendererRoot(): string {
-  if (smoke) {
+  if (__YAQMC_QA_BUILD__ && smoke) {
     return harnessRoot;
   }
   const packaged = packagedRendererRoot();
   if (packaged) {
     return packaged;
   }
+  if (app.isPackaged) {
+    throw new Error('packaged renderer resources are unavailable');
+  }
   if (existsSync(path.join(viteDist, 'index.html'))) {
     return viteDist;
   }
-  return harnessRoot;
+  if (__YAQMC_QA_BUILD__) {
+    return harnessRoot;
+  }
+  throw new Error('release renderer resources are unavailable');
 }
 
 function mainWindowUrl(root: string): string {
   if (!app.isPackaged && process.env.YAQMC_VITE_DEV === '1') {
-    const search = e2e && !e2eNative ? '?provider=fake' : '';
+    const search = __YAQMC_QA_BUILD__ && e2e && !e2eNative ? '?provider=fake' : '';
     return `${VITE_DEV_ORIGIN}/${diagnosticsSearch(search)}`;
   }
   if (!app.isPackaged && root === viteDist) {
-    return appIndexUrl(diagnosticsSearch('?provider=fake'));
+    return appIndexUrl(diagnosticsSearch(__YAQMC_QA_BUILD__ ? '?provider=fake' : ''));
   }
   return appIndexUrl(diagnosticsSearch(''));
 }
@@ -646,7 +663,7 @@ function invokeOAuthCore(method: string, params?: unknown, origin?: string): Pro
 }
 
 function createOAuthBrowserWindow(options: ConstructorParameters<typeof BrowserWindow>[0]) {
-  if (smoke) {
+  if (__YAQMC_QA_BUILD__ && smoke) {
     throw new Error('oauth BrowserWindow is disabled during YAQMC_DESKTOP_SMOKE');
   }
   return new BrowserWindow(options);
@@ -661,7 +678,7 @@ function quitFromHostCommand(): void {
 }
 
 function emitOpenSettings(): void {
-  if (e2e) {
+  if (__YAQMC_QA_BUILD__ && e2e) {
     e2eOpenSettingsHits += 1;
   }
   raiseHostMainWindow(mainWindow);
@@ -698,7 +715,7 @@ function sendPlatformAttach(): void {
   }
   const attach = buildPlatformAttach({
     platform: process.platform,
-    smoke,
+    smoke: __YAQMC_QA_BUILD__ && smoke,
     nativeWayland,
     getNativeWindowHandle: () => window.getNativeWindowHandle(),
   });
@@ -767,7 +784,7 @@ function bindOverlayVisibilityThrottle(window: BrowserWindow, role: string): voi
 function maybeStartUiPerfDiag(): void {
   // Pref/playback mutations from this sequence stay on the QA sandbox Core
   // (`YAQMC_QA_ROOT`). The flag is a QA launch flag; Main fail-closes without a sandbox.
-  if (process.env.YAQMC_UI_PERF_DIAG !== '1') {
+  if (!__YAQMC_QA_BUILD__ || process.env.YAQMC_UI_PERF_DIAG !== '1') {
     return;
   }
   if (uiPerfDiagStarted || !uiPerfMainLoaded || !uiPerfCoreReady) {
@@ -785,38 +802,42 @@ function maybeStartUiPerfDiag(): void {
     process.env.YAQMC_UI_PERF_DIAG_OUT ??
     path.join(repoRoot, 'output', 'lyrics-occlusion-lifecycle.json');
   writeHostLog(`ui-perf-diag start variant=${process.env.YAQMC_WINDOWS_OCCLUSION ?? 'auto'}`);
-  void runUiPerfDiagSequence({
-    variant: process.env.YAQMC_WINDOWS_OCCLUSION ?? 'auto',
-    switches: [...switches],
-    outputPath,
-    log: writeHostLog,
-    mainWindow: () => mainWindow,
-    lyrics: lyricsSurfaces,
-    unlock: lyricsUnlock,
-    invokeCore: async (method, params) => {
-      const client = supervisor?.client;
-      if (!client) {
-        throw new Error('core supervisor is not running');
+  void import('./windows/ui-perf-diag')
+    .then(({ runUiPerfDiagSequence }) =>
+      runUiPerfDiagSequence({
+        variant: process.env.YAQMC_WINDOWS_OCCLUSION ?? 'auto',
+        switches: [...switches],
+        outputPath,
+        log: writeHostLog,
+        mainWindow: () => mainWindow,
+        lyrics: lyricsSurfaces,
+        unlock: lyricsUnlock,
+        invokeCore: async (method, params) => {
+          const client = supervisor?.client;
+          if (!client) {
+            throw new Error('core supervisor is not running');
+          }
+          return params === undefined ? client.invoke(method) : client.invoke(method, params);
+        },
+        snapshotHits: () => playerSnapshotHits,
+        setMainBackgroundThrottling: (enabled) => {
+          if (!mainWindow || mainWindow.isDestroyed()) {
+            return;
+          }
+          mainWindow.webContents.setBackgroundThrottling(enabled);
+          writeHostLog(
+            `ui-perf-diag main-throttle contents=${String(mainWindow.webContents.id)} enabled=${String(enabled)}`,
+          );
+        },
+        quit: () => quitWith(0),
+      }),
+    )
+    .catch((error: unknown) => {
+      writeHostLog(`ui-perf-diag failed ${String(error)}`);
+      if (process.env.YAQMC_UI_PERF_DIAG_QUIT === '1') {
+        quitWith(1);
       }
-      return params === undefined ? client.invoke(method) : client.invoke(method, params);
-    },
-    snapshotHits: () => playerSnapshotHits,
-    setMainBackgroundThrottling: (enabled) => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        return;
-      }
-      mainWindow.webContents.setBackgroundThrottling(enabled);
-      writeHostLog(
-        `ui-perf-diag main-throttle contents=${String(mainWindow.webContents.id)} enabled=${String(enabled)}`,
-      );
-    },
-    quit: () => quitWith(0),
-  }).catch((error: unknown) => {
-    writeHostLog(`ui-perf-diag failed ${String(error)}`);
-    if (process.env.YAQMC_UI_PERF_DIAG_QUIT === '1') {
-      quitWith(1);
-    }
-  });
+    });
 }
 
 function createLyricsBrowserWindow(options: LyricsSurfaceCreateOptions) {
@@ -885,7 +906,7 @@ function createMainWindow(root: string): BrowserWindow {
     height: 800,
     minWidth: 1000,
     minHeight: 680,
-    show: !smoke,
+    show: !(__YAQMC_QA_BUILD__ && smoke),
     frame: false,
     icon: path.join(
       desktopRoot,
@@ -909,7 +930,7 @@ function createMainWindow(root: string): BrowserWindow {
   mainWindow = window;
   writeHostLog('window main created');
   window.on('close', (event) => {
-    if (smoke || stopping) {
+    if ((__YAQMC_QA_BUILD__ && smoke) || stopping) {
       return;
     }
     if (shouldHideInsteadOfClose({ closeToTray, trayActive: trayHandle !== undefined })) {
@@ -942,7 +963,7 @@ function fanoutEvent(channel: string, payload: unknown): void {
   if (channel === CHANNEL_PLAYER_SNAPSHOT) {
     playerSnapshotHits += 1;
   }
-  if (e2e && channel === CHANNEL_PLAYER_SNAPSHOT) {
+  if (__YAQMC_QA_BUILD__ && e2e && channel === CHANNEL_PLAYER_SNAPSHOT) {
     const view = e2eViewFromPlayerPayload(payload);
     if (view) {
       e2eLastPlayerSnapshot = view;
@@ -1031,7 +1052,7 @@ function startSupervisor(): Promise<void> {
   const paths = coreDataPaths();
   // Rotating host.log lives in the Core log dir (DIAG leftover, §27.1).
   hostLog = createHostLog({ logDir: paths.logDir });
-  if (e2e && process.env.YAQMC_E2E_CORE !== '1') {
+  if (__YAQMC_QA_BUILD__ && e2e && process.env.YAQMC_E2E_CORE !== '1') {
     writeHostLog('supervisor skip: YAQMC_ELECTRON_E2E (set YAQMC_E2E_CORE=1 to spawn)');
     return Promise.resolve();
   }
@@ -1045,7 +1066,7 @@ function startSupervisor(): Promise<void> {
   });
   if (!launch) {
     writeHostLog('supervisor skip: yaqmc-core binary not found');
-    if (smoke) {
+    if (__YAQMC_QA_BUILD__ && smoke) {
       throw new Error(
         'yaqmc-core binary was not found (set YAQMC_CORE_BIN or stage resources/core)',
       );
@@ -1075,14 +1096,17 @@ function applyTrayLabelsFromPreferences(raw: unknown): void {
 }
 
 function applyShortcutsFromPreferences(raw: unknown): void {
-  if (smoke) {
+  if (__YAQMC_QA_BUILD__ && smoke) {
     return;
   }
   shortcutSession.applyPreference(shortcutsEnabledFromPreferences(raw));
 }
 
 function installTrayAndShortcuts(): void {
-  if (smoke || (e2e && process.env.YAQMC_E2E_TRAY !== '1')) {
+  if (
+    (__YAQMC_QA_BUILD__ && smoke) ||
+    (__YAQMC_QA_BUILD__ && e2e && process.env.YAQMC_E2E_TRAY !== '1')
+  ) {
     return;
   }
   try {
@@ -1130,7 +1154,7 @@ if (
   acquireSingleInstanceLock(
     app,
     () => {
-      if (e2e) {
+      if (__YAQMC_QA_BUILD__ && e2e) {
         e2eSecondInstanceHits += 1;
       }
       return mainWindow;
@@ -1161,10 +1185,10 @@ if (
     createMainWindow(root);
     sendPlatformAttach();
     installTrayAndShortcuts();
-    if (!smoke && app.isPackaged) {
+    if (!(__YAQMC_QA_BUILD__ && smoke) && app.isPackaged) {
       updaterHandle?.scheduleLaunchCheck();
     }
-    if (smoke && mainWindow) {
+    if (__YAQMC_QA_BUILD__ && smoke && mainWindow) {
       mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
         console.error(`harness failed to load: ${code} ${description}`);
         quitWith(1);

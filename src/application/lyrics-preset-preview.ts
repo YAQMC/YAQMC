@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import type { LyricDocument, Song } from '../domain/music';
 import {
-  previewFixtureLyrics,
-  previewFixtureSong,
-  PREVIEW_FIXTURE_SONG_ID,
-} from './lyrics-preset-preview-fixture';
+  previewSampleLyrics,
+  previewSampleSong,
+  PREVIEW_SAMPLE_SONG_ID,
+} from './lyrics-preset-preview-sample';
 import { logger } from './logger';
 
 interface LyricsPresetPreviewState {
@@ -27,16 +27,16 @@ interface LyricsPresetPreviewState {
   reset: () => void;
 }
 
-const fixtureArtwork = previewFixtureSong.artwork.src;
+const sampleArtwork = previewSampleSong.artwork.src;
 
 export const useLyricsPresetPreviewStore = create<LyricsPresetPreviewState>((set, get) => ({
-  songId: PREVIEW_FIXTURE_SONG_ID,
-  song: previewFixtureSong,
-  lyrics: previewFixtureLyrics,
-  artworkSrc: fixtureArtwork,
+  songId: PREVIEW_SAMPLE_SONG_ID,
+  song: previewSampleSong,
+  lyrics: previewSampleLyrics,
+  artworkSrc: sampleArtwork,
   positionMs: 0,
   isPlaying: false,
-  durationMs: previewFixtureSong.durationMs,
+  durationMs: previewSampleSong.durationMs,
   timelineRevision: 0,
   offline: false,
   play: () => {
@@ -71,36 +71,36 @@ export const useLyricsPresetPreviewStore = create<LyricsPresetPreviewState>((set
       song,
       lyrics,
       artworkSrc,
-      durationMs: song.durationMs || previewFixtureSong.durationMs,
+      durationMs: song.durationMs || previewSampleSong.durationMs,
       offline: false,
     });
     logger.info('lyrics.preview.hydrate', 'hydrated preset preview', { songId: song.id });
   },
   fallback: () => {
     set({
-      songId: PREVIEW_FIXTURE_SONG_ID,
-      song: previewFixtureSong,
-      lyrics: previewFixtureLyrics,
-      artworkSrc: fixtureArtwork,
-      durationMs: previewFixtureSong.durationMs,
+      songId: PREVIEW_SAMPLE_SONG_ID,
+      song: previewSampleSong,
+      lyrics: previewSampleLyrics,
+      artworkSrc: sampleArtwork,
+      durationMs: previewSampleSong.durationMs,
       offline: true,
     });
     logger.warn('lyrics.preview.fallback', 'using local preview data', {
-      songId: PREVIEW_FIXTURE_SONG_ID,
+      songId: PREVIEW_SAMPLE_SONG_ID,
     });
   },
   reset: () =>
     set({
-      songId: PREVIEW_FIXTURE_SONG_ID,
-      song: previewFixtureSong,
-      lyrics: previewFixtureLyrics,
-      artworkSrc: fixtureArtwork,
+      songId: PREVIEW_SAMPLE_SONG_ID,
+      song: previewSampleSong,
+      lyrics: previewSampleLyrics,
+      artworkSrc: sampleArtwork,
       positionMs: 0,
       isPlaying: false,
-      durationMs: previewFixtureSong.durationMs,
+      durationMs: previewSampleSong.durationMs,
       timelineRevision: 0,
       offline: false,
     }),
 }));
 
-export { previewFixtureLyrics, previewFixtureSong, PREVIEW_FIXTURE_SONG_ID };
+export { previewSampleLyrics, previewSampleSong, PREVIEW_SAMPLE_SONG_ID };

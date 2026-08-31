@@ -8,6 +8,8 @@ export function uiDiagnosticsEnabled(
   search: string = window.location.search,
   buildType: string = __YAQMC_BUILD_TYPE__,
 ): boolean {
-  if (buildType !== 'release') return true;
-  return new URLSearchParams(search).get(UI_DIAGNOSTICS_QUERY_KEY) === '1';
+  if (buildType === 'release') return false;
+  return (
+    buildType === 'development' || new URLSearchParams(search).get(UI_DIAGNOSTICS_QUERY_KEY) === '1'
+  );
 }

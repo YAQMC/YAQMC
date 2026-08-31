@@ -15,6 +15,7 @@ use yaqmc_core::{
         host::ExtensionHost,
         package::{inspect_package, PackageError},
         permissions::PluginPermission,
+        COMPONENT_MAX_COMPRESSED_BYTES,
     },
     storage::StorageService,
 };
@@ -288,7 +289,11 @@ fn plugin_host_persists_safety_and_enforces_runtime_and_package_contracts() {
     );
 
     let oversized = root.path().join("oversized.yaqmc-plugin");
-    fs::write(&oversized, vec![0_u8; 8 * 1024 * 1024 + 1]).expect("oversized package writes");
+    let oversized_file = File::create(&oversized).expect("oversized package creates");
+    oversized_file
+        .set_len(COMPONENT_MAX_COMPRESSED_BYTES + 1)
+        .expect("oversized package length sets");
+    drop(oversized_file);
     assert_eq!(
         inspect_package(&oversized).unwrap_err(),
         PackageError::Oversize

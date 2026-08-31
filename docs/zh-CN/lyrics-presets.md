@@ -48,11 +48,11 @@ effectivePrimary = fontBase × fontScale
 ## 组件图
 
 归一化 0–1 场景坐标，不是编辑器像素。组件种类：`background`、`artwork`、`metadata`、`lyrics`、
-`transport`。绑定是数据而不是写死的 G.E.M. 字符串。
+`transport`。绑定是数据，而不是写死的示例字符串。
 
 ## 预览夹具
 
-打开编排器先画本地 G.E.M. 设计夹具（多远都要在一起 / G.E.M. 邓紫棋），再尝试只读 QQ 搜索 +
+打开编排器先绘制项目自有的本地示例（一起听见 / YAQMC Studio），再尝试只读提供器搜索 +
 `ArtworkResolver`。失败则保留夹具并显示离线预览。不会写入播放队列、收藏、歌单或历史。
 
 预览画幅：**桌面 16:9** 与 **当前窗口**。

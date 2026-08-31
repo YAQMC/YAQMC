@@ -114,8 +114,9 @@
           <p class="eyebrow">Example plugins</p>
           <h2 id="plugins-title">Download, then install from Settings. Not enabled by default.</h2>
           <p>
-            These <code>*.yaqmc-plugin</code> packages actually restyle chrome, add lyrics scenes,
-            or restore seek. Open YAQMC → Settings → Plugins → Choose file. There is no marketplace.
+            These <code>*.yaqmc-plugin</code> packages can change the UI or add a music platform
+            through a capability-sandboxed API v3 Component. Open YAQMC → Settings → Plugins →
+            Choose file. There is no marketplace; every package is an unverified local sideload.
           </p>
         </div>
         <div class="download-list">
@@ -141,6 +142,17 @@
           >
           <a href="../plugins/dev.yaqmc.example.ink-accent-1.0.0.yaqmc-plugin" download
             ><strong>Ink accent</strong><span>Requires Ink core; applies tokens to chrome</span></a
+          >
+          <a href="../plugins/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin" download
+            ><strong>Read-only catalog</strong
+            ><span>API v3 Component; no network, account, or storage grant</span></a
+          >
+          <a href="../plugins/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin" download
+            ><strong>Complete platform</strong
+            ><span
+              >Catalog, Discover, playback, recommendations, lyrics, and an isolated synthetic
+              account</span
+            ></a
           >
         </div>
       </section>

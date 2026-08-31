@@ -19,8 +19,10 @@ claim.
 
 The ledger covers the YAQMC Git history and root import, named contributors,
 branding and generated asset groups, current third-party notices, and sources
-that contributed in-tree behavior. It records a frozen in-tree audit snapshot
-plus the current linked dependency overlay.
+that contributed in-tree behavior. It records a frozen in-tree audit snapshot,
+the current linked dependency overlay, and a revision-bound P4/P5 Provider
+Component implementation overlay with deterministic package hashes. The newer
+overlay does not silently relabel the historical snapshot as a full re-audit.
 
 Maintainer approvals cover only rights each maintainer controls. Third-party
 notices remain governed by [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md),

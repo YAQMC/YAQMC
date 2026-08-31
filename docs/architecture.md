@@ -13,7 +13,11 @@ windows · tray · shortcuts · updater · dialogs · Core supervisor
         │ framed protocol v1 over child stdio
         ▼
 yaqmc-core
-ProviderRegistry ── QQMusicProvider ── pinned qm-api-rs + retained hybrids
+ProviderRegistry
+        ├── QQMusicProvider ── pinned qm-api-rs + retained hybrids
+        └── ExtensionHost ── Wasmtime Provider Component (`yaqmc:provider@0.1.0`)
+                              └── WIT-selected Host imports
+                                  exact-origin HTTPS · private storage/cache · credential handles
         │
         ├── PlayerService ── MediaPreparer / HTTP Range cache ── AudioEngine (Rodio / CPAL)
         ├── ContinuationService ── typed RecommendationProvider batches
@@ -22,7 +26,8 @@ ProviderRegistry ── QQMusicProvider ── pinned qm-api-rs + retained hybri
         ├── LocalApiService ── authenticated 127.0.0.1 HTTP + SSE
         └── SystemMediaIntegration ── MPRIS 2.2 / SMTC
 
-Browser-only Vite: React ── FakeMusicProvider + simulated player adapter
+QA-only Vite dev server: React ── FakeMusicProvider + simulated adapter
+Release renderer: NativeApplication only; fake data and QA hooks are rejected by the bundle scanner
 ```
 
 ## Ownership rules
@@ -33,6 +38,12 @@ Browser-only Vite: React ── FakeMusicProvider + simulated player adapter
   `yaqmc-provider-qqmusic` owns endpoint calls, DTO tolerance, normalization, retry classification, entitlement
   decisions, source selection, and session state. Electron Main enforces the main-window account ACL; lyric
   renderers receive neither account data nor account methods.
+- `ExtensionHost` owns Provider Component install/enable state, capability grants, generations, fault budgets, and
+  Wasmtime instances. The manifest selects one frozen WIT world. Network, storage, cache, and credential operations
+  remain Host calls; the guest receives neither ambient filesystem/network access nor credential values.
+- Component playback returns a bounded recipe. Core turns that recipe into an opaque `Read + Seek` source; signed
+  URLs, headers, cache paths, and credential handles never enter renderer IPC. Account storage and credentials are
+  namespaced by provider instance and cannot overlap the built-in QQ Music account.
 - `PlayerService` is the single owner of the active queue index, playback lifecycle, actual engine position,
   playback duration, volume, mute, repeat, shuffle, failure state, and lyric cursor.
 - `ContinuationService` owns guess/radar sessions, cursors, deduplication, prefetch, bounded retry, and stale-response
@@ -66,9 +77,10 @@ owner cancels polling. A confirmed candidate is validated, written to a staging 
 again, promoted to the active slot, read back, and only then published. One lifecycle mutex plus generation/scope
 checks prevent logout or a replacement session from accepting stale completions.
 
-Browser-only Vite development composes `FakeMusicProvider` and the existing simulated adapter because native IPC,
-audio, secure storage, and disk caches do not exist there. The fake path is intentional and permanent; native
-builds select QQ Music unless `?provider=fake` is explicitly supplied.
+The Vite development server composes `FakeMusicProvider` only for deterministic local QA because native IPC, audio,
+secure storage, and disk caches do not exist there. It is not a browser product target. Production Vite and Electron
+Main use separate release build semantics; a checked release-bundle gate rejects fake entities, Playwright/E2E hooks,
+diagnostic query switches, harness paths, and non-product artwork before packaging.
 
 ## Failure boundaries
 
@@ -79,6 +91,8 @@ builds select QQ Music unless `?provider=fake` is explicitly supplied.
 - Generation IDs discard stale load completions during rapid track changes.
 - Account reads and writes capture an authentication generation plus opaque cache scope. Logout or account
   replacement cancels transport and prevents stale projection/cache commits.
+- Disabling a Component cancels its calls, revokes its opaque sources, and leaves its queue/routes explicitly
+  unavailable. Re-enabling the same provider ID creates a new generation and restores only that provider's state.
 - A missing output device starts an `UnavailableAudioEngine` so catalog/settings/cache features still work and
   playback returns a stable device error instead of crashing the application.
 - Cache writes use random `.part` files and atomic rename. Startup removes abandoned partial files.

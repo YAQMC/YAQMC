@@ -1,11 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Warm geometric gem over a dusk field">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" role="img" aria-label="Warm geometric mark over a dusk field">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#2a1c2c"/>
       <stop offset="0.55" stop-color="#6a3148"/>
       <stop offset="1" stop-color="#d17a62"/>
     </linearGradient>
-    <linearGradient id="gem" x1="0.2" y1="0" x2="0.8" y2="1">
+    <linearGradient id="mark" x1="0.2" y1="0" x2="0.8" y2="1">
       <stop offset="0" stop-color="#ffe3c2"/>
       <stop offset="0.45" stop-color="#f0a07a"/>
       <stop offset="1" stop-color="#c45c6a"/>
@@ -13,7 +13,7 @@
   </defs>
   <rect width="640" height="640" fill="url(#sky)"/>
   <circle cx="470" cy="168" r="86" fill="#f6d7a4" opacity=".55"/>
-  <path d="M320 96 468 286 320 544 172 286Z" fill="url(#gem)"/>
+  <path d="M320 96 468 286 320 544 172 286Z" fill="url(#mark)"/>
   <path d="M320 96 392 286 320 544 248 286Z" fill="#fff" opacity=".16"/>
   <path d="M0 470c110-38 214 8 320-18s214-54 320 4v184H0Z" fill="#1b141c"/>
 </svg>

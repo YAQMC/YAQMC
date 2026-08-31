@@ -20,7 +20,8 @@ describe('host boot wiring', () => {
     expect(source).toContain("from './host-commands'");
     expect(source).toContain("from './linux-graphics'");
     expect(source).toContain("from './windows/windows-occlusion'");
-    expect(source).toContain("from './windows/ui-perf-diag'");
+    expect(source).toContain("from './windows/surface-visual-document'");
+    expect(source).toContain("import('./windows/ui-perf-diag')");
     expect(source).toContain('lyrics-surface.cjs');
     expect(source).toContain('unlock-overlay.cjs');
     expect(source).toContain('createTray');
@@ -61,21 +62,22 @@ describe('host boot wiring', () => {
     expect(source).toContain("process.env.YAQMC_DESKTOP_SMOKE === '1'");
     expect(source).toContain('installTrayAndShortcuts');
     expect(source).toContain("YAQMC_E2E_TRAY !== '1'");
-    expect(source).toMatch(
-      /if \(smoke \|\| \(e2e && process\.env\.YAQMC_E2E_TRAY !== '1'\)\) \{\s*return;/,
-    );
+    expect(source).toContain('(__YAQMC_QA_BUILD__ && smoke) ||');
+    expect(source).toContain("(__YAQMC_QA_BUILD__ && e2e && process.env.YAQMC_E2E_TRAY !== '1')");
   });
 
   it('isolates Playwright _electron from the smoke harness and live profile', () => {
     expect(source).toContain("process.env.YAQMC_ELECTRON_E2E === '1'");
     expect(source).toContain('requireQaSandboxFromEnv');
-    expect(source).toContain("process.env.YAQMC_UI_PERF_DIAG !== '1'");
+    expect(source).toContain("!__YAQMC_QA_BUILD__ || process.env.YAQMC_UI_PERF_DIAG !== '1'");
     expect(source).toContain('qaSandbox.electronUserData');
     expect(source).toContain('qaSandbox.corePaths');
     expect(source).toContain('coreTempEnv(qaSandbox)');
     expect(source).not.toContain('yaqmc-electron-e2e');
     expect(source).not.toContain('yaqmc-ui-perf-diag');
-    expect(source).toContain("const search = e2e && !e2eNative ? '?provider=fake' : ''");
+    expect(source).toContain(
+      "const search = __YAQMC_QA_BUILD__ && e2e && !e2eNative ? '?provider=fake' : ''",
+    );
     expect(source).toContain('uiDiagnostics=1');
     expect(source).toContain('?surface=${kind}');
     expect(source).toContain('?unlockSurface=${kind}');
@@ -242,6 +244,7 @@ describe('host boot wiring', () => {
     expect(source).toContain("process.resourcesPath, 'renderer'");
     expect(source).toContain('packagedRendererRoot');
     expect(source).toContain('!app.isPackaged && root === viteDist');
+    expect(source).toContain("throw new Error('packaged renderer resources are unavailable')");
     expect(source).not.toContain(
       "if (root === viteDist) {\n    return appIndexUrl('?provider=fake');",
     );

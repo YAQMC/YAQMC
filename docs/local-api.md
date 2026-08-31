@@ -19,6 +19,8 @@ integrations, and future companion applications. It is not a public or LAN serve
   service/version status.
 - CORS is not enabled. Requests are limited to 16 KiB and JSON bodies reject unknown fields.
 - There is no generic command, shell, filesystem-path, plugin-execution, or unrestricted host-IPC endpoint.
+- Provider Component API v3 is not an HTTP surface. Catalog, playback, recommendation, lyrics, and account Component
+  calls stay on the framed Electron/Core protocol; no plugin or account route is added to this OpenAPI document.
 - Duplicate starts are idempotent. Stop uses Axum graceful shutdown, releases the port, and is also called on
   application exit. Bind failures are retained as status for the Settings UI.
 - A leftover `yaqmc-core` can keep port `19532` bound after a host crash. Core writes `{data}/core.pid`; the

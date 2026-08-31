@@ -29,7 +29,7 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
   const authenticated = accountSnapshot.state === 'authenticated';
   const accountProfile = authenticated ? accountSnapshot.profile : null;
   const accountEntitlement = authenticated ? accountSnapshot.entitlement : null;
-  const providerLabel = provider.id === 'qqmusic' ? t('qqGuest') : t('offlineFixtures');
+  const providerLabel = provider.id === 'qqmusic' ? t('qqGuest') : provider.displayName;
   const profileLabel = accountProfile?.nickname ?? t('listener');
   const profileInitial = Array.from(profileLabel.trim())[0] ?? 'L';
   const avatarUrl = safeAccountAvatarUrl(accountProfile?.avatarUrl);

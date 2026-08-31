@@ -91,7 +91,8 @@ Linux 用户：
 - 可以分别设置主色与副色，应用内标志会自动跟随这两种颜色。
 - 托盘、任务栏和安装包使用固定的 YAQMC 原生标志。
 - 支持自定义背景、字体和歌词样式。
-- 可从[示例插件](docs/zh-CN/plugin-examples.md)安装本地 `*.yaqmc-plugin`（样式、歌词场景、隔离脚本）。默认不启用。
+- 可从[示例插件](docs/zh-CN/plugin-examples.md)安装本地 `*.yaqmc-plugin`：旧版样式/歌词场景/隔离脚本，以及受 Wasmtime
+  能力沙箱约束的 API v3 音乐平台 Component。全部默认不启用，当前均为未验证发行方的本地旁加载包。
 
 ## 第一次使用
 

@@ -9,7 +9,7 @@ import {
   Unlock,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   closeLyricsSurface,
@@ -38,8 +38,6 @@ import {
   subscribeSurfaceVisualActive,
   surfaceVisualActive,
 } from '../application/lyrics-surface-visual';
-import { installPlaybackUiProbe } from '../application/playback-ui-probe';
-import { uiDiagnosticsEnabled } from '../application/ui-diagnostics';
 import { usePlatformDiagnosticsRuntime } from '../application/platform-integration';
 import type { LyricDocument, LyricLine, LyricWord } from '../domain/music';
 import { joinArtistNames } from '../utils/format';
@@ -47,6 +45,13 @@ import { IconButton } from '../components/ui/IconButton';
 import { resolveArtworkSource } from '../application/artwork-resolver';
 import { useSafeArtworkSource } from '../application/artwork-source';
 import { getYaqmcClient } from '../application/yaqmc-runtime';
+
+const SurfacePlaybackDiagnostics = __YAQMC_QA_BUILD__
+  ? lazy(async () => {
+      const module = await import('../development/PlaybackDiagnostics');
+      return { default: module.SurfacePlaybackDiagnostics };
+    })
+  : null;
 
 export interface SurfaceProps {
   kind: SurfaceKind;
@@ -495,11 +500,6 @@ export function IslandSurface(props: SurfaceProps) {
 export function LyricsSurfaceApp({ kind }: { kind: SurfaceKind }) {
   usePlatformDiagnosticsRuntime();
   usePreferencesRuntime(false);
-  const uiDiagnostics = uiDiagnosticsEnabled();
-  useEffect(
-    () => (uiDiagnostics ? installPlaybackUiProbe({ heartbeat: false }) : undefined),
-    [uiDiagnostics],
-  );
   useEffect(() => subscribeSurfaceVisualActive(() => undefined), []);
   useEffect(() => {
     document.documentElement.dataset.surfaceCommits = String(
@@ -528,6 +528,11 @@ export function LyricsSurfaceApp({ kind }: { kind: SurfaceKind }) {
   };
   return (
     <main className="lyrics-surface-root" data-kind={kind} style={style}>
+      {SurfacePlaybackDiagnostics && (
+        <Suspense fallback={null}>
+          <SurfacePlaybackDiagnostics />
+        </Suspense>
+      )}
       {kind === 'desktop' ? (
         <DesktopSurface key={settings.interaction} {...props} />
       ) : (
