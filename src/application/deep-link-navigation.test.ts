@@ -8,7 +8,7 @@ describe('deep link navigation command', () => {
         providerId: 'qqmusic',
         entityId: 'qqmusic:track:001',
       }),
-    ).toEqual({ page: 'song', id: 'qqmusic:track:001' });
+    ).toEqual({ page: 'song', id: 'qqmusic:track:001', providerId: 'qqmusic' });
   });
 
   it('rejects unavailable providers and unsafe entity IDs', () => {

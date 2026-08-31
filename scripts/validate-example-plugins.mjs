@@ -15,7 +15,34 @@ const plugins = [
   'ink-core',
   'ink-accent',
 ];
-const providerPlugins = ['provider-catalog-rust'];
+const providerPlugins = [
+  {
+    directory: 'provider-catalog-rust',
+    world: 'provider',
+    capabilities: ['provider.catalog'],
+    permissions: ['provider.catalog'],
+  },
+  {
+    directory: 'provider-platform-rust',
+    world: 'provider-account',
+    capabilities: [
+      'provider.catalog',
+      'provider.playback',
+      'provider.recommendation',
+      'provider.lyrics',
+      'provider.account',
+    ],
+    permissions: [
+      'provider.catalog',
+      'provider.playback',
+      'provider.recommendation',
+      'provider.lyrics',
+      'provider.account',
+      'plugin.storage',
+      'network:https://accounts.example.com',
+    ],
+  },
+];
 
 let failed = false;
 for (const directory of plugins) {
@@ -40,7 +67,8 @@ for (const directory of plugins) {
   process.stdout.write(`ok ${manifest.id} api=${manifest.apiVersion}\n`);
 }
 
-for (const directory of providerPlugins) {
+for (const expected of providerPlugins) {
+  const { directory } = expected;
   const manifestPath = path.join(root, 'examples', 'plugins', directory, 'manifest.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   if (manifest.manifestVersion !== 2 || manifest.apiVersion !== 3) {
@@ -48,22 +76,26 @@ for (const directory of providerPlugins) {
     failed = true;
   }
   if (
-    manifest.provider?.world !== 'provider' ||
+    manifest.provider?.world !== expected.world ||
     manifest.provider?.witVersion !== '0.1.0' ||
-    !manifest.provider?.capabilities?.includes('provider.catalog')
+    JSON.stringify(manifest.provider?.capabilities) !== JSON.stringify(expected.capabilities)
   ) {
     process.stderr.write(`${directory}: frozen provider WIT declaration is missing\n`);
+    failed = true;
+  }
+  if (JSON.stringify(manifest.permissions) !== JSON.stringify(expected.permissions)) {
+    process.stderr.write(
+      `${directory}: capability permissions do not match the example contract\n`,
+    );
     failed = true;
   }
   if (
     manifest.permissions?.some(
       (permission) =>
-        permission === 'network' ||
-        permission === 'network:*' ||
-        permission.startsWith('network:https://'),
+        permission === 'network' || permission === 'network:*' || permission.includes('*'),
     )
   ) {
-    process.stderr.write(`${directory}: the read-only example must not request network access\n`);
+    process.stderr.write(`${directory}: wildcard network access is not allowed\n`);
     failed = true;
   }
   if (manifest.entrypoints?.component !== 'component/provider.wasm') {

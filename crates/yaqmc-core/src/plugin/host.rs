@@ -2017,6 +2017,61 @@ mod tests {
         }
     }
 
+    fn expanded_component_inspection() -> PackageInspection {
+        let manifest = PluginManifest::parse(
+            br#"{
+                "manifestVersion": 2,
+                "id": "dev.example.permission-expansion",
+                "name": "Expanded Provider Component",
+                "version": "1.1.0",
+                "apiVersion": 3,
+                "entrypoints": { "component": "component/provider.wasm" },
+                "provider": {
+                    "id": "provider.permission-expansion",
+                    "witVersion": "0.1.0",
+                    "world": "provider-account",
+                    "capabilities": [
+                        "provider.catalog",
+                        "provider.playback",
+                        "provider.recommendation",
+                        "provider.lyrics",
+                        "provider.account"
+                    ]
+                },
+                "permissions": [
+                    "provider.catalog",
+                    "provider.playback",
+                    "provider.recommendation",
+                    "provider.lyrics",
+                    "provider.account",
+                    "plugin.storage",
+                    "network:https://accounts.example.com"
+                ]
+            }"#,
+        )
+        .expect("expanded component manifest");
+        let component = include_bytes!("../../tests/fixtures/component-host-guest.wasm").to_vec();
+        PackageInspection {
+            sha256: sha256_bytes(&component),
+            compressed_bytes: component.len() as u64,
+            expanded_bytes: component.len() as u64,
+            file_count: 2,
+            files: vec![
+                PackageFile {
+                    path: "manifest.json".into(),
+                    bytes: serde_json::to_vec(&manifest).expect("manifest bytes"),
+                },
+                PackageFile {
+                    path: "component/provider.wasm".into(),
+                    bytes: component,
+                },
+            ],
+            manifest,
+            style_scan: ScanReport::default(),
+            script_scan: ScanReport::default(),
+        }
+    }
+
     fn provider_registry(root: &Path) -> Arc<ProviderRegistry> {
         let storage = Arc::new(
             crate::storage::StorageService::open(root.join("data"), root.join("cache"))
@@ -2450,6 +2505,47 @@ mod tests {
         assert!(error.to_string().contains("explicitly accepted"));
         host.install_inspection(next, true, &["player.control".into()], "test")
             .expect("granted");
+    }
+
+    #[test]
+    fn every_provider_capability_and_origin_expansion_requires_reauthorization() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");
+        let baseline = component_inspection(
+            "dev.example.permission-expansion",
+            "provider.permission-expansion",
+        );
+        host.install_inspection(baseline, true, &["provider.catalog".to_owned()], "test")
+            .expect("baseline install");
+        host.set_enabled("dev.example.permission-expansion", false)
+            .expect("disable baseline");
+
+        let update = expanded_component_inspection();
+        let requested = update.manifest.requested_permission_keys();
+        let added = [
+            "provider.playback",
+            "provider.recommendation",
+            "provider.lyrics",
+            "provider.account",
+            "plugin.storage",
+            "network:https://accounts.example.com",
+        ];
+        for missing in added {
+            let grants = requested
+                .iter()
+                .filter(|permission| permission.as_str() != missing)
+                .cloned()
+                .collect::<Vec<_>>();
+            let error = host
+                .install_inspection(update.clone(), true, &grants, "test")
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("explicitly accepted"),
+                "{missing} expansion must require a fresh grant"
+            );
+        }
+        host.install_inspection(update, true, &requested, "test")
+            .expect("all expanded permissions granted");
     }
 
     #[test]

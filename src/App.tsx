@@ -1,4 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
   AccountPlaylistDetail,
@@ -11,20 +20,30 @@ import type {
 } from './domain/music';
 import { useCatalog } from './application/use-catalog';
 import { useTheme } from './application/use-theme';
-import type { AppRoute } from './application/navigation';
+import {
+  isProviderCatalogRoute,
+  scopeCatalogRoute,
+  type AppRoute,
+  type ProviderCatalogRoute,
+} from './application/navigation';
 import { NavigationProvider } from './application/navigation-context';
 import { useEntityDetail } from './application/use-entity-detail';
 import { usePlayerStore } from './application/player-store';
 import { isNativeRuntime, useNativePlayerRuntime } from './application/native-player-runtime';
 import { useLyricsCoordinator } from './application/use-lyrics-coordinator';
-import { useMusicProvider, useMusicProviderSelection } from './application/provider-context';
+import {
+  ProviderContext,
+  ProviderRegistryContext,
+  useMusicProvider,
+  useMusicProviderSelection,
+} from './application/provider-context';
 import {
   accountPlaylistDetailToPlaylist,
   type AccountListResource,
   type LibraryResource,
   useAccountStore,
 } from './application/account-runtime';
-import { isAccountMusicProvider } from './providers/music-provider';
+import { isAccountMusicProvider, type MusicProvider } from './providers/music-provider';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
@@ -86,10 +105,19 @@ interface NavigationHistory {
 const initialRoute: AppRoute = { page: 'home' };
 
 function routesEqual(first: AppRoute, second: AppRoute): boolean {
-  return (
-    first.page === second.page &&
-    ('id' in first ? first.id === ('id' in second ? second.id : '') : true)
-  );
+  if (first.page !== second.page) return false;
+  if (isProviderCatalogRoute(first) && isProviderCatalogRoute(second)) {
+    if (first.providerId !== second.providerId) return false;
+    if (first.page === 'area' && second.page === 'area') {
+      return first.encArea === second.encArea && first.title === second.title;
+    }
+    return 'id' in first && 'id' in second && first.id === second.id;
+  }
+  if (first.page === 'search' && second.page === 'search') return first.query === second.query;
+  if (first.page === 'account-playlist' && second.page === 'account-playlist') {
+    return first.playlist.id === second.playlist.id;
+  }
+  return true;
 }
 
 function collectEntities(collections: MediaCollection[]) {
@@ -116,6 +144,7 @@ function homePlaylists(home: HomeFeed): Playlist[] {
 export default function App() {
   const { t } = useTranslation('pages');
   const provider = useMusicProvider();
+  const providerRegistry = useContext(ProviderRegistryContext);
   const providerSelection = useMusicProviderSelection();
   const accountProvider = isAccountMusicProvider(provider) ? provider : null;
   useNativePlayerRuntime();
@@ -154,18 +183,22 @@ export default function App() {
   const [history, setHistory] = useState<NavigationHistory>({ entries: [initialRoute], index: 0 });
   const route = history.entries[history.index] ?? initialRoute;
 
-  const navigate = useCallback((nextRoute: AppRoute) => {
-    void runAfterLyricsClose(() => {
-      setHistory((current) => {
-        const active = current.entries[current.index] ?? initialRoute;
-        if (routesEqual(active, nextRoute)) return current;
-        return {
-          entries: [...current.entries.slice(0, current.index + 1), nextRoute],
-          index: current.index + 1,
-        };
+  const navigate = useCallback(
+    (nextRoute: AppRoute) => {
+      const scopedRoute = scopeCatalogRoute(nextRoute, provider.id);
+      void runAfterLyricsClose(() => {
+        setHistory((current) => {
+          const active = current.entries[current.index] ?? initialRoute;
+          if (routesEqual(active, scopedRoute)) return current;
+          return {
+            entries: [...current.entries.slice(0, current.index + 1), scopedRoute],
+            index: current.index + 1,
+          };
+        });
       });
-    });
-  }, []);
+    },
+    [provider.id],
+  );
 
   const toggleLyricsFullscreen = useCallback(() => {
     const presentation = useLyricsPresentationStore.getState();
@@ -369,6 +402,18 @@ export default function App() {
     [accountProvider, loadNext],
   );
 
+  const catalogRoute = isProviderCatalogRoute(route) ? route : null;
+  const catalogRouteProviderId = catalogRoute?.providerId ?? provider.id;
+  const catalogRouteProvider = catalogRoute
+    ? catalogRouteProviderId === provider.id
+      ? provider
+      : (providerRegistry?.get(catalogRouteProviderId)?.legacyProvider ?? null)
+    : null;
+  const catalogRouteNavigate = useCallback(
+    (nextRoute: AppRoute) => navigate(scopeCatalogRoute(nextRoute, catalogRouteProviderId)),
+    [catalogRouteProviderId, navigate],
+  );
+
   let pageContent;
   if (route.page === 'settings') {
     pageContent = (
@@ -437,6 +482,55 @@ export default function App() {
         onDeleted={() => navigate({ page: 'account-playlists' })}
       />
     );
+  } else if (catalogRoute && !catalogRouteProvider) {
+    const providerLabel =
+      providerSelection.providers.find((candidate) => candidate.id === catalogRouteProviderId)
+        ?.displayName ?? catalogRouteProviderId;
+    pageContent = <MissingEntity message={t('providerUnavailable', { provider: providerLabel })} />;
+  } else if (
+    catalogRoute &&
+    catalogRouteProvider?.id === provider.id &&
+    catalog.status === 'loading'
+  ) {
+    pageContent = <LoadingState />;
+  } else if (
+    catalogRoute &&
+    catalogRouteProvider?.id === provider.id &&
+    catalog.status === 'error'
+  ) {
+    pageContent = (
+      <div className="empty-state empty-state--error">
+        <h1>{t('musicUnavailable')}</h1>
+        <p>{catalog.message}</p>
+      </div>
+    );
+  } else if (catalogRoute && catalogRouteProvider) {
+    const activeCatalog = catalogRouteProvider.id === provider.id && catalog.status === 'ready';
+    pageContent = (
+      <ProviderCatalogPage
+        key={`${catalogRouteProvider.id}:${catalogRoute.page}:${
+          'id' in catalogRoute ? catalogRoute.id : catalogRoute.encArea
+        }`}
+        route={catalogRoute}
+        provider={catalogRouteProvider}
+        initialAlbum={
+          activeCatalog && catalogRoute.page === 'album'
+            ? entities.albums.find((candidate) => candidate.id === catalogRoute.id)
+            : undefined
+        }
+        initialSong={
+          activeCatalog && catalogRoute.page === 'song'
+            ? catalog.home.radarSongs.find((candidate) => candidate.id === catalogRoute.id)
+            : undefined
+        }
+        initialPlaylist={
+          activeCatalog && catalogRoute.page === 'playlist'
+            ? entities.playlists.find((candidate) => candidate.id === catalogRoute.id)
+            : undefined
+        }
+        onNavigate={catalogRouteNavigate}
+      />
+    );
   } else if (catalog.status === 'loading') {
     pageContent = <LoadingState />;
   } else if (catalog.status === 'error') {
@@ -459,28 +553,11 @@ export default function App() {
       case 'explore':
         pageContent = <ExplorePage onNavigate={navigate} />;
         break;
-      case 'album': {
-        const album = entities.albums.find((candidate) => candidate.id === route.id);
-        pageContent = <ProviderAlbumPage key={route.id} id={route.id} initial={album} />;
-        break;
-      }
-      case 'song': {
-        const song = catalog.home.radarSongs.find((candidate) => candidate.id === route.id);
-        pageContent = <ProviderSongPage key={route.id} id={route.id} initial={song} />;
-        break;
-      }
+      case 'album':
+      case 'song':
       case 'artist':
-        pageContent = <ProviderArtistPage key={route.id} id={route.id} />;
-        break;
-      case 'playlist': {
-        const playlist = entities.playlists.find((candidate) => candidate.id === route.id);
-        pageContent = <ProviderPlaylistPage key={route.id} id={route.id} initial={playlist} />;
-        break;
-      }
+      case 'playlist':
       case 'area':
-        pageContent = (
-          <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={navigate} />
-        );
         break;
     }
   }
@@ -531,6 +608,49 @@ export default function App() {
         </div>
       </NavigationProvider>
     </div>
+  );
+}
+
+function ProviderCatalogPage({
+  route,
+  provider,
+  initialAlbum,
+  initialSong,
+  initialPlaylist,
+  onNavigate,
+}: {
+  route: ProviderCatalogRoute;
+  provider: MusicProvider;
+  initialAlbum?: Album;
+  initialSong?: Song;
+  initialPlaylist?: Playlist;
+  onNavigate: (route: AppRoute) => void;
+}) {
+  let content;
+  switch (route.page) {
+    case 'album':
+      content = <ProviderAlbumPage id={route.id} initial={initialAlbum} />;
+      break;
+    case 'song':
+      content = <ProviderSongPage id={route.id} initial={initialSong} />;
+      break;
+    case 'artist':
+      content = <ProviderArtistPage id={route.id} />;
+      break;
+    case 'playlist':
+      content = <ProviderPlaylistPage id={route.id} initial={initialPlaylist} />;
+      break;
+    case 'area':
+      content = (
+        <ProviderAreaPage encArea={route.encArea} title={route.title} onNavigate={onNavigate} />
+      );
+      break;
+  }
+
+  return (
+    <ProviderContext value={provider}>
+      <NavigationProvider onNavigate={onNavigate}>{content}</NavigationProvider>
+    </ProviderContext>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { usePlayerStore, type QueueEntry } from '../application/player-store';
+import { useMusicProviderAvailability } from '../application/provider-context';
 import type { Song } from '../domain/music';
 import { formatDuration } from '../utils/format';
 import { useAddToPlaylistPicker } from './AddToPlaylistPicker';
@@ -29,7 +30,7 @@ function legacyEntries(queue: QueueEntry['track'][]): QueueEntry[] {
   return queue.map((track, index) => ({ id: `legacy:${index}:${track.id}`, track }));
 }
 
-function QueueNowPlayingMenu({ track }: { track: Song }) {
+function QueueNowPlayingMenu({ track, available }: { track: Song; available: boolean }) {
   const { t } = useTranslation('queue');
   const addToPlaylist = useAddToPlaylistPicker(track);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -41,7 +42,7 @@ function QueueNowPlayingMenu({ track }: { track: Song }) {
           {t('currentItem')}
         </ActionMenuItem>
         <ActionMenuItem
-          disabled={!addToPlaylist.available}
+          disabled={!available || !addToPlaylist.available}
           onClick={() => {
             const bounds = menuRef.current?.getBoundingClientRect();
             addToPlaylist.openAt({
@@ -63,11 +64,13 @@ function QueueEntryOverflow({
   onPlayNow,
   onPlayNext,
   onRemove,
+  available,
 }: {
   entry: QueueEntry;
   onPlayNow: () => void;
   onPlayNext: () => void;
   onRemove: () => void;
+  available: boolean;
 }) {
   const { t } = useTranslation('queue');
   const addToPlaylist = useAddToPlaylistPicker(entry.track);
@@ -76,10 +79,14 @@ function QueueEntryOverflow({
   return (
     <div ref={menuRef}>
       <ActionMenu label={t('moreActions', { title: entry.track.title })} size="small">
-        <ActionMenuItem onClick={onPlayNow}>{t('playNow')}</ActionMenuItem>
-        <ActionMenuItem onClick={onPlayNext}>{t('playNext')}</ActionMenuItem>
+        <ActionMenuItem disabled={!available} onClick={onPlayNow}>
+          {t('playNow')}
+        </ActionMenuItem>
+        <ActionMenuItem disabled={!available} onClick={onPlayNext}>
+          {t('playNext')}
+        </ActionMenuItem>
         <ActionMenuItem
-          disabled={!addToPlaylist.available}
+          disabled={!available || !addToPlaylist.available}
           onClick={() => {
             const bounds = menuRef.current?.getBoundingClientRect();
             addToPlaylist.openAt({
@@ -100,6 +107,7 @@ function QueueEntryOverflow({
 export function QueuePanel() {
   const { t } = useTranslation('queue');
   const { t: common } = useTranslation('common');
+  const providerAvailable = useMusicProviderAvailability();
   const queue = usePlayerStore((state) => state.queue);
   const authoritativeEntries = usePlayerStore((state) => state.queueEntries);
   const currentIndex = usePlayerStore((state) => state.currentIndex);
@@ -120,6 +128,7 @@ export function QueuePanel() {
     (authoritativeEntries.length === 0 || currentQueueEntryId !== null);
   const currentId = currentQueueEntryId ?? entries[currentIndex]?.id ?? null;
   const current = entries.find((entry) => entry.id === currentId) ?? null;
+  const currentAvailable = current ? providerAvailable(current.track.provider?.providerId) : false;
   const fallbackUpcoming = entries.slice(Math.max(0, currentIndex + 1)).map((entry) => entry.id);
   const visibleUpcomingIds = hasAuthoritativeTraversal ? upcomingQueueEntryIds : fallbackUpcoming;
   const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
@@ -216,24 +225,41 @@ export function QueuePanel() {
         {current && (
           <section className="queue-now">
             <p className="context-panel__label">{t('nowPlaying')}</p>
-            <div className="queue-now__track" data-queue-entry-id={current.id}>
+            <div
+              className="queue-now__track"
+              data-queue-entry-id={current.id}
+              data-provider-unavailable={!currentAvailable || undefined}
+            >
               <Artwork artwork={current.track.artwork} purpose="small" />
               <div>
-                <EntityLink entity="song" id={current.track.id} className="queue-now__title">
+                <EntityLink
+                  entity="song"
+                  id={currentAvailable ? current.track.id : null}
+                  providerId={current.track.provider?.providerId}
+                  className="queue-now__title"
+                >
                   <strong>{current.track.title}</strong>
                 </EntityLink>
                 <span className="queue-now__artists">
                   {current.track.artists.map((artist, index) => (
                     <Fragment key={`${artist.id}:${artist.name}:${index}`}>
                       {index > 0 && <span aria-hidden="true">, </span>}
-                      <EntityLink entity="artist" id={artist.id} className="queue-now__artist">
+                      <EntityLink
+                        entity="artist"
+                        id={currentAvailable ? artist.id : null}
+                        providerId={current.track.provider?.providerId}
+                        className="queue-now__artist"
+                      >
                         {artist.name}
                       </EntityLink>
                     </Fragment>
                   ))}
                 </span>
+                {!currentAvailable && (
+                  <span className="queue-provider-unavailable">{t('providerUnavailable')}</span>
+                )}
               </div>
-              <QueueNowPlayingMenu track={current.track} />
+              <QueueNowPlayingMenu track={current.track} available={currentAvailable} />
             </div>
           </section>
         )}
@@ -252,6 +278,7 @@ export function QueuePanel() {
             <div className="queue-list">
               {upNext.map((entry) => {
                 const canonicalIndex = entries.findIndex((candidate) => candidate.id === entry.id);
+                const available = providerAvailable(entry.track.provider?.providerId);
                 const isDragged = draggedEntryId === entry.id;
                 const isDropTarget = dropTargetEntryId === entry.id && draggedEntryId !== entry.id;
                 return (
@@ -261,6 +288,7 @@ export function QueuePanel() {
                     data-queue-entry-id={entry.id}
                     data-dragging={isDragged || undefined}
                     data-drop-target={isDropTarget || undefined}
+                    data-provider-unavailable={!available || undefined}
                   >
                     <button
                       type="button"
@@ -280,6 +308,7 @@ export function QueuePanel() {
                       type="button"
                       className="queue-row__play-button"
                       aria-label={`${t('playNow')} ${entry.track.title}`}
+                      disabled={!available}
                       onClick={() => playQueueEntry(entry.id)}
                     >
                       <span className="queue-row__play-icon">
@@ -287,7 +316,12 @@ export function QueuePanel() {
                       </span>
                     </button>
                     <div className="queue-row__main">
-                      <EntityLink entity="song" id={entry.track.id} className="queue-row__title">
+                      <EntityLink
+                        entity="song"
+                        id={available ? entry.track.id : null}
+                        providerId={entry.track.provider?.providerId}
+                        className="queue-row__title"
+                      >
                         <strong>{entry.track.title}</strong>
                       </EntityLink>
                       <small className="queue-row__artists">
@@ -296,7 +330,8 @@ export function QueuePanel() {
                             {index > 0 && <span aria-hidden="true">, </span>}
                             <EntityLink
                               entity="artist"
-                              id={artist.id}
+                              id={available ? artist.id : null}
+                              providerId={entry.track.provider?.providerId}
                               className="queue-row__artist"
                             >
                               {artist.name}
@@ -304,6 +339,11 @@ export function QueuePanel() {
                           </Fragment>
                         ))}
                       </small>
+                      {!available && (
+                        <small className="queue-provider-unavailable">
+                          {t('providerUnavailable')}
+                        </small>
+                      )}
                     </div>
                     <span className="queue-row__duration">
                       {formatDuration(entry.track.durationMs)}
@@ -313,6 +353,7 @@ export function QueuePanel() {
                       onPlayNow={() => playQueueEntry(entry.id)}
                       onPlayNext={() => playNextQueueEntry(entry.id)}
                       onRemove={() => removeQueueEntry(entry.id)}
+                      available={available}
                     />
                     <span className="queue-row__canonical-position" aria-hidden="true">
                       {canonicalIndex + 1}

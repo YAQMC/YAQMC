@@ -870,6 +870,19 @@ input[type='range']:disabled {
   cursor: pointer;
 }
 
+.queue-now__track[data-provider-unavailable] .artwork,
+.queue-row[data-provider-unavailable] .queue-row__main,
+.queue-row[data-provider-unavailable] .queue-row__duration {
+  opacity: 0.55;
+}
+
+.queue-provider-unavailable {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
 .queue-next__heading {
   display: flex;
   align-items: baseline;
@@ -985,6 +998,12 @@ input[type='range']:disabled {
 .queue-row__play-button:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
+}
+
+.queue-row__play-button:disabled,
+.queue-row:hover .queue-row__play-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.24;
 }
 
 .queue-row__play-icon {

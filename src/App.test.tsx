@@ -7,7 +7,11 @@ import { resetAccountRuntimeForTest, useAccountStore } from './application/accou
 import { initialPlayerState, usePlayerStore } from './application/player-store';
 import { resetLyricsStageForTests } from './application/lyrics-stage-machine';
 import type { AppRoute } from './application/navigation';
-import { ProviderContext } from './application/provider-context';
+import {
+  ProviderContext,
+  ProviderRegistryContext,
+  ProviderSelectionContext,
+} from './application/provider-context';
 import {
   setFullscreenPortForTests,
   useLyricsPresentationStore,
@@ -16,6 +20,7 @@ import {
 import type { AccountPlaylistDetail, AccountSnapshot } from './domain/music';
 import type { AccountMusicProvider, MusicProvider } from './providers/music-provider';
 import { fakeMusicProvider } from './providers/fake/fake-music-provider';
+import { MusicProviderRegistry } from './providers/provider-registry';
 import { allSongs, homeFeed, librarySnapshot, playlists } from './providers/fake/fixtures';
 import App from './App';
 
@@ -93,6 +98,18 @@ vi.mock('./components/Sidebar', () => ({
       </button>
       <button type="button" onClick={() => onNavigate({ page: 'song', id: 'quiet-light' })}>
         Navigate to song
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onNavigate({
+            page: 'song',
+            id: 'plugin-song',
+            providerId: 'plugin.example',
+          })
+        }
+      >
+        Navigate to plugin song
       </button>
       <button type="button" onClick={() => onNavigate({ page: 'artist', id: 'artist-mira-vale' })}>
         Navigate to artist
@@ -429,5 +446,58 @@ describe('App TopBar history navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Navigate to artist' }));
     expect(await screen.findByRole('heading', { name: 'Mira Vale' })).toBeVisible();
     expect(getArtist).toHaveBeenCalledWith('artist-mira-vale', expect.any(AbortSignal));
+  });
+
+  it('keeps provider-scoped pages unavailable until their provider is restored', async () => {
+    const activeProvider = Object.assign(Object.create(fakeMusicProvider) as MusicProvider, {
+      id: 'qqmusic',
+      displayName: 'QQ Music',
+    });
+    const getSong = vi.fn().mockResolvedValue(allSongs[0]!);
+    const pluginProvider = Object.assign(Object.create(fakeMusicProvider) as MusicProvider, {
+      id: 'plugin.example',
+      displayName: 'Example Platform',
+      getSong,
+    });
+    appCatalog.value = { status: 'ready', home: homeFeed, library: librarySnapshot, message: null };
+    const tree = (available: boolean) => (
+      <ProviderRegistryContext
+        value={
+          new MusicProviderRegistry(
+            'qqmusic',
+            available ? [activeProvider, pluginProvider] : [activeProvider],
+          )
+        }
+      >
+        <ProviderSelectionContext
+          value={{
+            activeId: 'qqmusic',
+            providers: [
+              { id: 'qqmusic', displayName: 'QQ Music', available: true },
+              { id: 'plugin.example', displayName: 'Example Platform', available },
+            ],
+            selectProvider: vi.fn(),
+          }}
+        >
+          <ProviderContext value={activeProvider}>
+            <App />
+          </ProviderContext>
+        </ProviderSelectionContext>
+      </ProviderRegistryContext>
+    );
+    const view = render(tree(false));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Navigate to plugin song' }));
+    expect(await screen.findByRole('heading', { name: 'This item is unavailable' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'Example Platform is disabled or no longer installed. Re-enable it to restore this page.',
+      ),
+    ).toBeVisible();
+    expect(getSong).not.toHaveBeenCalled();
+
+    view.rerender(tree(true));
+    expect(await screen.findByRole('heading', { name: 'Quiet Light' })).toBeVisible();
+    expect(getSong).toHaveBeenCalledWith('plugin-song', expect.any(AbortSignal));
   });
 });

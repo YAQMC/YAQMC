@@ -53,3 +53,20 @@ export function useMusicProviderSelection(): MusicProviderSelection {
   }
   throw new Error('useMusicProviderSelection must be used inside MusicProviderRoot');
 }
+
+export function useMusicProviderAvailability(): (providerId: string | null | undefined) => boolean {
+  const selection = useContext(ProviderSelectionContext);
+  const legacyProvider = useContext(ProviderContext);
+
+  return (providerId) => {
+    const normalizedId = providerId?.trim() ?? '';
+    if (!normalizedId) return true;
+    if (selection) {
+      return selection.providers.some(
+        (candidate) => candidate.id === normalizedId && candidate.available,
+      );
+    }
+    if (legacyProvider) return legacyProvider.id === normalizedId;
+    return true;
+  };
+}

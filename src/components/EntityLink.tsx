@@ -6,6 +6,7 @@ type EntityKind = 'song' | 'artist' | 'album' | 'playlist';
 interface EntityLinkProps {
   entity: EntityKind;
   id: string | null | undefined;
+  providerId?: string;
   children: ReactNode;
   className?: string;
   ariaLabel?: string;
@@ -15,6 +16,7 @@ interface EntityLinkProps {
 export function EntityLink({
   entity,
   id,
+  providerId,
   children,
   className,
   ariaLabel,
@@ -39,7 +41,11 @@ export function EntityLink({
       data-yaqmc={dataYaqmc}
       onClick={(event) => {
         event.stopPropagation();
-        navigate({ page: entity, id: normalizedId });
+        navigate(
+          providerId
+            ? { page: entity, id: normalizedId, providerId }
+            : { page: entity, id: normalizedId },
+        );
       }}
     >
       {children}

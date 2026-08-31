@@ -24,6 +24,8 @@ GPT-Read-me.md
 /target/
 examples/plugins/provider-catalog-rust/target/
 examples/plugins/provider-catalog-rust/component/provider.wasm
+examples/plugins/provider-platform-rust/target/
+examples/plugins/provider-platform-rust/component/provider.wasm
 crates/yaqmc-core/tests/fixtures/component-host-guest/target/
 
 # Staged Electron core binary (scripts/stage-core.mjs)

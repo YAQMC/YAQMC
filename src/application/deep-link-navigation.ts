@@ -18,7 +18,7 @@ export function catalogSongRouteFromDeepLink(
   ) {
     return null;
   }
-  return { page: 'song', id: entityId };
+  return { page: 'song', id: entityId, providerId };
 }
 
 function hasControlCharacters(value: string): boolean {

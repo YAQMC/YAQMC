@@ -9,6 +9,10 @@ const pluginsRoot = path.join(root, 'examples', 'plugins');
 const outDir = path.join(pluginsRoot, 'packages');
 const runtimeDirs = new Set(['styles', 'scenes', 'dist', 'assets', 'component']);
 const providerOnly = process.argv.includes('--provider-example');
+const providerPlatformOnly = process.argv.includes('--provider-platform-example');
+if (providerOnly && providerPlatformOnly) {
+  throw new Error('choose only one Provider Component example');
+}
 
 function dosDateTime(date) {
   const year = Math.max(date.getFullYear() - 1980, 0);
@@ -119,9 +123,13 @@ const legacyPluginDirs = [
   'ink-core',
   'ink-accent',
 ];
-const pluginDirs = providerOnly ? ['provider-catalog-rust'] : legacyPluginDirs;
+const pluginDirs = providerOnly
+  ? ['provider-catalog-rust']
+  : providerPlatformOnly
+    ? ['provider-platform-rust']
+    : legacyPluginDirs;
 
-if (!providerOnly) await rm(outDir, { recursive: true, force: true });
+if (!providerOnly && !providerPlatformOnly) await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 for (const directory of pluginDirs) {

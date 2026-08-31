@@ -18,6 +18,18 @@ const builds = {
       'provider.wasm',
     ),
   },
+  'platform-example': {
+    root: path.join(root, 'examples', 'plugins', 'provider-platform-rust'),
+    artifact: 'yaqmc_provider_platform_example.wasm',
+    destination: path.join(
+      root,
+      'examples',
+      'plugins',
+      'provider-platform-rust',
+      'component',
+      'provider.wasm',
+    ),
+  },
   'host-fixture': {
     root: path.join(root, 'crates', 'yaqmc-core', 'tests', 'fixtures', 'component-host-guest'),
     artifact: 'yaqmc_component_host_guest.wasm',

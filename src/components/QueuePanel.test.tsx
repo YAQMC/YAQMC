@@ -5,6 +5,7 @@ import type { AppRoute } from '../application/navigation';
 import { initialPlayerState, usePlayerStore, type QueueEntry } from '../application/player-store';
 import type { Song } from '../domain/music';
 import { NavigationProvider } from '../application/navigation-context';
+import { ProviderSelectionContext } from '../application/provider-context';
 import '../styles/components.css';
 import { QueuePanel } from './QueuePanel';
 
@@ -157,6 +158,101 @@ describe('QueuePanel', () => {
     expect(container.querySelector('.queue-row__artist')).toHaveProperty('tagName', 'SPAN');
     expect(container.querySelector('button button')).not.toBeInTheDocument();
     expect(container.querySelector('button a')).not.toBeInTheDocument();
+  });
+
+  it('keeps unavailable provider entries removable but blocks playback and entity routing', () => {
+    const entries = openQueue();
+    const current = {
+      ...entries[0]!.track,
+      provider: { providerId: 'qqmusic', trackId: entries[0]!.track.id },
+    };
+    const pluginTrack = {
+      ...entries[1]!.track,
+      id: 'plugin-song',
+      title: 'Plugin song',
+      artists: [{ id: 'plugin-artist', name: 'Plugin Artist' }],
+      provider: { providerId: 'plugin.example', trackId: 'plugin-song' },
+    };
+    usePlayerStore.setState({
+      queue: [current, pluginTrack, ...entries.slice(2).map((entry) => entry.track)],
+      queueEntries: [
+        { ...entries[0]!, track: current },
+        { ...entries[1]!, track: pluginTrack },
+        ...entries.slice(2),
+      ],
+    });
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    const onNavigate = vi.fn();
+    const selectProvider = vi.fn();
+    const providers = (pluginAvailable: boolean) => ({
+      activeId: 'qqmusic',
+      providers: [
+        { id: 'qqmusic', displayName: 'QQ Music', available: true },
+        {
+          id: 'plugin.example',
+          displayName: 'Example Platform',
+          available: pluginAvailable,
+        },
+      ],
+      selectProvider,
+    });
+    const view = render(
+      <ProviderSelectionContext value={providers(false)}>
+        <NavigationProvider onNavigate={onNavigate}>
+          <QueuePanel />
+        </NavigationProvider>
+      </ProviderSelectionContext>,
+    );
+
+    const unavailableRow = screen
+      .getByText('Plugin song')
+      .closest<HTMLElement>('[data-queue-entry-id]')!;
+    expect(unavailableRow).toHaveAttribute('data-provider-unavailable', 'true');
+    expect(within(unavailableRow).getByText('Music provider unavailable')).toBeVisible();
+    expect(within(unavailableRow).queryByRole('button', { name: 'Plugin song' })).toBeNull();
+    expect(within(unavailableRow).queryByRole('button', { name: 'Plugin Artist' })).toBeNull();
+    const playButton = within(unavailableRow).getByRole('button', {
+      name: 'Play now Plugin song',
+    });
+    expect(playButton).toBeDisabled();
+    fireEvent.click(playButton);
+    expect(commands).toEqual([]);
+
+    fireEvent.click(within(unavailableRow).getByRole('button', { name: /queue actions/i }));
+    expect(screen.getByRole('menuitem', { name: 'Play now' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Play next' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Remove from queue' })).toBeEnabled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'current' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      page: 'song',
+      id: 'current',
+      providerId: 'qqmusic',
+    });
+
+    view.rerender(
+      <ProviderSelectionContext value={providers(true)}>
+        <NavigationProvider onNavigate={onNavigate}>
+          <QueuePanel />
+        </NavigationProvider>
+      </ProviderSelectionContext>,
+    );
+    const restoredRow = screen
+      .getByText('Plugin song')
+      .closest<HTMLElement>('[data-queue-entry-id]')!;
+    expect(restoredRow).not.toHaveAttribute('data-provider-unavailable');
+    fireEvent.click(within(restoredRow).getByRole('button', { name: 'Plugin song' }));
+    expect(onNavigate).toHaveBeenLastCalledWith({
+      page: 'song',
+      id: 'plugin-song',
+      providerId: 'plugin.example',
+    });
+    fireEvent.click(within(restoredRow).getByRole('button', { name: 'Play now Plugin song' }));
+    expect(commands).toEqual([{ type: 'playQueueEntry', entryId: 'entry-two' }]);
   });
 
   it('opens a portalled menu above the panel and exposes capability-aware actions', () => {

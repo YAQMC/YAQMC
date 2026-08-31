@@ -81,6 +81,7 @@ export const zhCN = {
   pages: {
     musicUnavailable: '音乐暂时不可用',
     itemUnavailable: '此项目不可用',
+    providerUnavailable: '{{provider}} 已停用或不再安装；重新启用后可恢复此页面。',
     albumLoadFailed: '无法从当前服务加载这张专辑。',
     songLoadFailed: '无法从当前服务加载这首歌曲。',
     artistLoadFailed: '无法从当前服务加载这位歌手。',
@@ -487,6 +488,7 @@ export const zhCN = {
     move: '调整《{{title}}》的队列位置',
     shuffleTraversal: '随机顺序',
     repeatOneActive: '单曲循环中',
+    providerUnavailable: '音乐平台不可用',
   },
   lyrics: {
     region: '同步歌词',

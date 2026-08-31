@@ -75,6 +75,8 @@ export const enUS = {
   pages: {
     musicUnavailable: 'Music is unavailable',
     itemUnavailable: 'This item is unavailable',
+    providerUnavailable:
+      '{{provider}} is disabled or no longer installed. Re-enable it to restore this page.',
     albumLoadFailed: 'This album could not be loaded from the active provider.',
     songLoadFailed: 'This song could not be loaded from the active provider.',
     artistLoadFailed: 'This artist could not be loaded from the active provider.',
@@ -487,6 +489,7 @@ export const enUS = {
     move: 'Move {{title}} in queue',
     shuffleTraversal: 'Shuffle order',
     repeatOneActive: 'Repeating this track',
+    providerUnavailable: 'Music provider unavailable',
   },
   lyrics: {
     region: 'Synchronized lyrics',

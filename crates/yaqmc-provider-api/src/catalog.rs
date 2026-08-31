@@ -215,6 +215,19 @@ mod catalog_shape_tests {
             })
         );
     }
+
+    #[test]
+    fn account_login_flow_uses_the_frozen_oauth_wire_value() {
+        assert_eq!(
+            serde_json::to_value(AccountLoginFlow::OAuth).expect("login flow serializes"),
+            json!("oauth")
+        );
+        assert_eq!(
+            serde_json::from_value::<AccountLoginFlow>(json!("oauth"))
+                .expect("login flow deserializes"),
+            AccountLoginFlow::OAuth
+        );
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -499,6 +512,7 @@ pub type ProviderResult<T> = Result<T, ProviderCommandError>;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AccountLoginFlow {
+    #[serde(rename = "oauth")]
     OAuth,
 }
 

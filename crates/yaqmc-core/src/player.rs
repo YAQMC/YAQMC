@@ -2732,6 +2732,10 @@ mod tests {
         calls: Arc<AtomicUsize>,
     }
 
+    struct ProviderAwareResolver {
+        calls: Arc<Mutex<Vec<String>>>,
+    }
+
     struct ClientFallbackResolver {
         requested_quality: AudioQualityPreference,
         fallback_calls: Arc<AtomicUsize>,
@@ -2863,6 +2867,28 @@ mod tests {
         ) -> Result<crate::media::ResolvedPlaybackSource, PlaybackSourceError> {
             self.calls.fetch_add(1, Ordering::AcqRel);
             Ok(resolved(song))
+        }
+    }
+
+    #[async_trait]
+    impl PlaybackSourceResolver for ProviderAwareResolver {
+        async fn resolve(
+            &self,
+            song: &Song,
+        ) -> Result<crate::media::ResolvedPlaybackSource, PlaybackSourceError> {
+            self.calls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(song.id.clone());
+            if song
+                .provider
+                .as_ref()
+                .is_some_and(|provider| provider.provider_id == "plugin.disabled")
+            {
+                Err(PlaybackSourceError::TrackUnavailable)
+            } else {
+                Ok(resolved(song))
+            }
         }
     }
 
@@ -3149,6 +3175,66 @@ mod tests {
             Err(PlayerError::NoPlayableTracks)
         ));
         assert_eq!(resolver_calls.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn next_skips_a_track_whose_provider_became_unavailable() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let player = PlayerService::with_runtime(
+            Arc::new(crate::audio::TestAudioEngine::default()),
+            Arc::new(ProviderAwareResolver {
+                calls: Arc::clone(&calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        );
+        let mut first = song("qq-first", 10_000);
+        first.provider = Some(ProviderTrackReference {
+            provider_id: "qqmusic".to_owned(),
+            track_id: first.id.clone(),
+            numeric_id: None,
+            album_id: None,
+            media_id: None,
+        });
+        let mut disabled = song("plugin-disabled", 10_000);
+        disabled.provider = Some(ProviderTrackReference {
+            provider_id: "plugin.disabled".to_owned(),
+            track_id: disabled.id.clone(),
+            numeric_id: None,
+            album_id: None,
+            media_id: None,
+        });
+        let mut last = song("qq-last", 10_000);
+        last.provider = Some(ProviderTrackReference {
+            provider_id: "qqmusic".to_owned(),
+            track_id: last.id.clone(),
+            numeric_id: None,
+            album_id: None,
+            media_id: None,
+        });
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![first, disabled, last],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("first provider track plays");
+
+        let advanced = player
+            .next()
+            .await
+            .expect("available provider track is found");
+
+        assert_eq!(advanced.current_index, Some(2));
+        assert_eq!(advanced.queue[2].id, "qq-last");
+        assert_eq!(advanced.playback_state, PlaybackState::Playing);
+        assert!(advanced.playback_error.is_none());
+        assert_eq!(
+            *calls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+            vec!["qq-first", "plugin-disabled", "qq-last"]
+        );
     }
 
     #[tokio::test]
