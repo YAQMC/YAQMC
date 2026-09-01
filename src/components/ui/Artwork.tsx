@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { Artwork as ArtworkModel } from '../../domain/music';
 import { resolveArtworkSource, type ArtworkPurpose } from '../../application/artwork-resolver';
 import { useSafeArtworkSource } from '../../application/artwork-source';
@@ -8,6 +8,7 @@ interface ArtworkProps {
   className?: string;
   loading?: 'eager' | 'lazy';
   purpose?: ArtworkPurpose;
+  fallback?: ReactNode;
 }
 
 export function Artwork({
@@ -15,6 +16,7 @@ export function Artwork({
   className = '',
   loading = 'lazy',
   purpose = 'medium',
+  fallback,
 }: ArtworkProps) {
   const requested = resolveArtworkSource(artwork, purpose);
   const source = useSafeArtworkSource(requested, { pendingRemote: 'hide' });
@@ -24,7 +26,7 @@ export function Artwork({
       className={`artwork ${className}`.trim()}
       style={{ '--artwork-color': artwork.dominantColor } as CSSProperties}
     >
-      {source && (
+      {source ? (
         <img
           src={source}
           alt={artwork.alt}
@@ -32,6 +34,8 @@ export function Artwork({
           draggable={false}
           referrerPolicy="no-referrer"
         />
+      ) : (
+        fallback
       )}
     </span>
   );

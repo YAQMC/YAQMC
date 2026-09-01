@@ -1,6 +1,6 @@
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Play } from 'lucide-react';
-import type { Album, Playlist, Song } from '../domain/music';
+import type { Album, Artwork as ArtworkModel, Playlist, Song } from '../domain/music';
 import { Artwork } from './ui/Artwork';
 import { useTranslation } from 'react-i18next';
 import type { ContextMenuItem } from './ui/ContextMenu';
@@ -15,6 +15,8 @@ interface MediaCardProps {
   size?: 'regular' | 'wide' | 'hero';
   title?: string;
   subtitle?: string;
+  artwork?: ArtworkModel;
+  artworkFallback?: ReactNode;
 }
 
 function getSubtitle(item: Album | Playlist | Song, type: 'album' | 'playlist' | 'song'): string {
@@ -38,6 +40,8 @@ export function MediaCard({
   size = 'regular',
   title,
   subtitle,
+  artwork,
+  artworkFallback,
 }: MediaCardProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'home' });
   const items: readonly ContextMenuItem[] = [
@@ -97,7 +101,7 @@ export function MediaCard({
           onClick={onOpen}
           aria-label={t('openItem', { title: item.title })}
         >
-          <Artwork artwork={item.artwork} />
+          <Artwork artwork={artwork ?? item.artwork} fallback={artworkFallback} />
         </button>
         <button
           type="button"

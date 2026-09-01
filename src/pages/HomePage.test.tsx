@@ -23,4 +23,38 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Provider supplied daily title' }));
     expect(onNavigate).toHaveBeenCalledWith({ page: 'playlist', id: daily.id });
   });
+
+  it('uses the first daily track artwork for the middle recommendation card', () => {
+    const feed = structuredClone(homeFeed);
+    const daily = feed.dailySonglist!;
+    const expectedSource = daily.tracks[0]!.artwork.src;
+
+    render(<HomePage feed={feed} onNavigate={vi.fn()} />);
+
+    const open = screen.getByRole('button', { name: `Open ${daily.title}` });
+    expect(open.querySelector('img')).toHaveAttribute('src', expectedSource);
+  });
+
+  it('renders a stable English date cover when daily tracks have no artwork', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 1, 12, 0, 0));
+    try {
+      const feed = structuredClone(homeFeed);
+      const daily = feed.dailySonglist!;
+      daily.tracks = daily.tracks.map((track) => ({
+        ...track,
+        artwork: { ...track.artwork, src: '', variants: [] },
+      }));
+
+      render(<HomePage feed={feed} onNavigate={vi.fn()} />);
+
+      const open = screen.getByRole('button', { name: `Open ${daily.title}` });
+      expect(open.querySelector('img')).toBeNull();
+      expect(open).toHaveTextContent('SEP');
+      expect(open).toHaveTextContent('01');
+      expect(open).toHaveTextContent('DAILY MIX');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

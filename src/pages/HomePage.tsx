@@ -4,6 +4,7 @@ import { Play } from 'lucide-react';
 import { useContext } from 'react';
 import type { AppRoute } from '../application/navigation';
 import type { HomeFeed } from '../domain/music';
+import { resolveArtworkSource } from '../application/artwork-resolver';
 import { MediaCard } from '../components/MediaCard';
 import { TrackList } from '../components/TrackList';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +20,14 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
   const provider = useContext(ProviderContext);
   const playTracks = usePlayerStore((state) => state.playTracks);
   const startContinuation = usePlayerStore((state) => state.startContinuation);
+  const daily = feed.dailySonglist;
+  const dailyTrackArtwork = daily?.tracks.find((track) =>
+    Boolean(resolveArtworkSource(track.artwork, 'medium').trim()),
+  )?.artwork;
+  const dailyArtwork =
+    daily && !dailyTrackArtwork
+      ? { ...daily.artwork, src: '', variants: [], alt: `${daily.title} daily mix` }
+      : dailyTrackArtwork;
 
   return (
     <div className="page home-page">
@@ -50,13 +59,15 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
             />
           )}
 
-          {feed.dailySonglist && (
+          {daily && (
             <MediaCard
-              item={feed.dailySonglist}
+              item={daily}
               type="playlist"
-              subtitle={t('trackCount', { count: feed.dailySonglist.tracks.length })}
-              onOpen={() => onNavigate({ page: 'playlist', id: feed.dailySonglist!.id })}
-              onPlay={() => playTracks(feed.dailySonglist!.tracks)}
+              artwork={dailyArtwork}
+              artworkFallback={<DailyMixArtwork />}
+              subtitle={t('trackCount', { count: daily.tracks.length })}
+              onOpen={() => onNavigate({ page: 'playlist', id: daily.id })}
+              onPlay={() => playTracks(daily.tracks)}
             />
           )}
 
@@ -129,5 +140,32 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
         </section>
       )}
     </div>
+  );
+}
+
+const ENGLISH_MONTHS = [
+  'JAN',
+  'FEB',
+  'MAR',
+  'APR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AUG',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DEC',
+] as const;
+
+function DailyMixArtwork({ date = new Date() }: { date?: Date }) {
+  const month = ENGLISH_MONTHS[date.getMonth()] ?? 'DAY';
+  const day = String(date.getDate()).padStart(2, '0');
+  return (
+    <span className="daily-mix-artwork" aria-hidden="true">
+      <span className="daily-mix-artwork__month">{month}</span>
+      <span className="daily-mix-artwork__day">{day}</span>
+      <span className="daily-mix-artwork__label">DAILY MIX</span>
+    </span>
   );
 }
