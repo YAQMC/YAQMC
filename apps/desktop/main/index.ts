@@ -78,6 +78,7 @@ import {
 } from './services/tray';
 import { localeFromPreferences, trayLabelsForLocale } from './services/tray-i18n';
 import { acquireSingleInstanceLock } from './single-instance';
+import { createClipboardDeepLinkMonitor } from './clipboard-deep-link';
 import {
   deepLinkFromArgv,
   DeepLinkInbox,
@@ -261,6 +262,12 @@ const deepLinkRegistration = registerYaqmcDeepLinkProtocol(app, {
     !(__YAQMC_QA_BUILD__ && e2e) &&
     !process.env.PORTABLE_EXECUTABLE_FILE,
 });
+const clipboardDeepLinkMonitor = createClipboardDeepLinkMonitor({
+  readText: () => clipboard.readText(),
+  enabled: () =>
+    preferencesResolvedForDeepLinks && deepLinksEnabledFromPreferences(lastPreferencesRaw),
+  accept: acceptDeepLink,
+});
 
 function writeHostLog(message: string): void {
   try {
@@ -406,7 +413,10 @@ if (__YAQMC_QA_BUILD__ && e2e) {
 
 const hostHandlers = createHostHandlers({
   openExternal: (url) => shell.openExternal(url),
-  writeClipboardText: (text) => clipboard.writeText(text),
+  writeClipboardText: (text) => {
+    clipboard.writeText(text);
+    clipboardDeepLinkMonitor.noteSelfWrite(text);
+  },
   lyrics: lyricsSurfaces,
   unlock: lyricsUnlock,
   capabilities: () =>
@@ -1143,6 +1153,7 @@ function installTrayAndShortcuts(): void {
 }
 
 function teardownHostChrome(): void {
+  clipboardDeepLinkMonitor.stop();
   shortcutSession.dispose();
   trayHandle?.destroy();
   trayHandle = undefined;
@@ -1184,6 +1195,9 @@ if (
       });
     });
     createMainWindow(root);
+    if (!(__YAQMC_QA_BUILD__ && (smoke || e2e))) {
+      clipboardDeepLinkMonitor.start();
+    }
     try {
       await startSupervisor();
     } catch (error) {

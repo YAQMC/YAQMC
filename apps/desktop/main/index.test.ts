@@ -20,6 +20,7 @@ describe('host boot wiring', () => {
     expect(source).toContain("from './host-commands'");
     expect(source).toContain("from './linux-graphics'");
     expect(source).toContain("from './windows/windows-occlusion'");
+    expect(source).toContain("from './clipboard-deep-link'");
     expect(source).toContain("from './windows/surface-visual-document'");
     expect(source).toContain("import('./windows/ui-perf-diag')");
     expect(source).toContain('lyrics-surface.cjs');
@@ -58,6 +59,10 @@ describe('host boot wiring', () => {
     expect(source).toContain('window.minimize');
     expect(source).toContain('host.coreStatus');
     expect(source).toContain('hostWindowChrome');
+    expect(source).toContain('clipboardDeepLinkMonitor.noteSelfWrite(text)');
+    expect(source).toContain('clipboardDeepLinkMonitor.start()');
+    expect(source).toContain('clipboardDeepLinkMonitor.stop()');
+    expect(source).toContain('preferencesResolvedForDeepLinks && deepLinksEnabledFromPreferences');
   });
 
   it('skips tray and shortcuts during YAQMC_DESKTOP_SMOKE', () => {
