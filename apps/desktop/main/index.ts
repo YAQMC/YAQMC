@@ -267,17 +267,18 @@ const clipboardDeepLinkMonitor = createClipboardDeepLinkMonitor({
   readText: () => clipboard.readText(),
   accept: acceptDeepLink,
 });
+const clipboardDeepLinkFallbackAllowed = !(__YAQMC_QA_BUILD__ && (smoke || e2e));
 
 function reconcileClipboardDeepLinkMonitor(): void {
   const window = mainWindow;
-  clipboardDeepLinkMonitor.setActive(
-    preferencesResolvedForDeepLinks &&
+  const focused = window !== undefined && !window.isDestroyed() && window.isFocused();
+  clipboardDeepLinkMonitor.setEnabled(
+    clipboardDeepLinkFallbackAllowed &&
+      preferencesResolvedForDeepLinks &&
       deepLinksEnabledFromPreferences(lastPreferencesRaw) &&
-      clipboardDeepLinksEnabledFromPreferences(lastPreferencesRaw) &&
-      window !== undefined &&
-      !window.isDestroyed() &&
-      window.isFocused(),
+      clipboardDeepLinksEnabledFromPreferences(lastPreferencesRaw),
   );
+  clipboardDeepLinkMonitor.setFocused(focused);
 }
 
 function writeHostLog(message: string): void {
@@ -956,8 +957,8 @@ function createMainWindow(root: string): BrowserWindow {
   mainWindow = window;
   writeHostLog('window main created');
   window.on('focus', reconcileClipboardDeepLinkMonitor);
-  window.on('blur', () => clipboardDeepLinkMonitor.setActive(false));
-  window.on('hide', () => clipboardDeepLinkMonitor.setActive(false));
+  window.on('blur', () => clipboardDeepLinkMonitor.setFocused(false));
+  window.on('hide', () => clipboardDeepLinkMonitor.setFocused(false));
   window.on('close', (event) => {
     if ((__YAQMC_QA_BUILD__ && smoke) || stopping) {
       return;
@@ -969,7 +970,7 @@ function createMainWindow(root: string): BrowserWindow {
   });
   window.on('closed', () => {
     writeHostLog('window main closed');
-    clipboardDeepLinkMonitor.setActive(false);
+    clipboardDeepLinkMonitor.setFocused(false);
     router.unregisterWindow(contentsId);
     if (mainWindow === window) {
       mainWindow = undefined;
@@ -1171,7 +1172,8 @@ function installTrayAndShortcuts(): void {
 }
 
 function teardownHostChrome(): void {
-  clipboardDeepLinkMonitor.stop();
+  clipboardDeepLinkMonitor.setEnabled(false);
+  clipboardDeepLinkMonitor.setFocused(false);
   shortcutSession.dispose();
   trayHandle?.destroy();
   trayHandle = undefined;
@@ -1213,10 +1215,7 @@ if (
       });
     });
     createMainWindow(root);
-    if (!(__YAQMC_QA_BUILD__ && (smoke || e2e))) {
-      clipboardDeepLinkMonitor.start();
-      reconcileClipboardDeepLinkMonitor();
-    }
+    reconcileClipboardDeepLinkMonitor();
     try {
       await startSupervisor();
     } catch (error) {

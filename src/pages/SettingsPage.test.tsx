@@ -170,7 +170,7 @@ describe('SettingsPage account section', () => {
     expect(fallback).toBeDisabled();
     expect(
       screen.getByText(
-        'While YAQMC is focused, open newly copied valid yaqmc:// song links. Existing and background clipboard contents are ignored.',
+        'Checks once when YAQMC regains focus. Opens each valid yaqmc:// song target only once per app session and ignores links copied by YAQMC.',
       ),
     ).toBeInTheDocument();
   });

@@ -1,35 +1,31 @@
 import { parseYaqmcDeepLink, type CatalogSongDeepLink } from './deep-link';
 
-export const CLIPBOARD_DEEP_LINK_POLL_INTERVAL_MS = 1_000;
-export const SELF_SHARE_SUPPRESSION_MS = 5_000;
-
 const MAX_CLIPBOARD_CANDIDATE_CHARS = 2_048;
 
 type ClipboardDeepLinkMonitorDeps = {
   readText: () => string;
   accept: (target: CatalogSongDeepLink) => void;
-  now?: () => number;
-  pollIntervalMs?: number;
 };
 
 class ClipboardDeepLinkTracker {
   #initialized = false;
   #lastCandidate: string | null = null;
-  #selfWrite: { value: string; expiresAt: number } | null = null;
+  readonly #consumedTargets = new Set<string>();
 
   baseline(value: string): void {
     this.#initialized = true;
     this.#lastCandidate = clipboardCandidate(value);
   }
 
-  noteSelfWrite(value: string, now = Date.now()): void {
-    if (!parseCandidate(value)) return;
+  noteSelfWrite(value: string): void {
+    const target = parseCandidate(value);
+    if (!target) return;
     this.#initialized = true;
     this.#lastCandidate = value;
-    this.#selfWrite = { value, expiresAt: now + SELF_SHARE_SUPPRESSION_MS };
+    this.#consumedTargets.add(targetKey(target));
   }
 
-  observe(value: string, now = Date.now()): CatalogSongDeepLink | null {
+  observe(value: string): CatalogSongDeepLink | null {
     const candidate = clipboardCandidate(value);
     if (!this.#initialized) {
       this.#initialized = true;
@@ -40,32 +36,27 @@ class ClipboardDeepLinkTracker {
     this.#lastCandidate = candidate;
     if (!candidate) return null;
 
-    const selfWrite = this.#selfWrite;
-    if (selfWrite && now >= selfWrite.expiresAt) {
-      this.#selfWrite = null;
-    } else if (selfWrite?.value === candidate) {
-      return null;
-    }
-    return parseCandidate(candidate);
+    const target = parseCandidate(candidate);
+    if (!target) return null;
+    const key = targetKey(target);
+    if (this.#consumedTargets.has(key)) return null;
+    this.#consumedTargets.add(key);
+    return target;
   }
 }
 
 export function createClipboardDeepLinkMonitor(deps: ClipboardDeepLinkMonitorDeps): {
-  start: () => void;
-  stop: () => void;
-  setActive: (active: boolean) => void;
+  setEnabled: (enabled: boolean) => void;
+  setFocused: (focused: boolean) => void;
   noteSelfWrite: (value: string) => void;
 } {
   const tracker = new ClipboardDeepLinkTracker();
-  const now = deps.now ?? Date.now;
-  const pollIntervalMs = deps.pollIntervalMs ?? CLIPBOARD_DEEP_LINK_POLL_INTERVAL_MS;
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let started = false;
-  let active = false;
+  let enabled = false;
+  let focused = false;
   let baselineRequired = true;
 
-  const poll = (): void => {
-    if (!started || !active) return;
+  const inspectOnFocus = (): void => {
+    if (!enabled || !focused) return;
     let value: string;
     try {
       value = deps.readText();
@@ -77,7 +68,7 @@ export function createClipboardDeepLinkMonitor(deps: ClipboardDeepLinkMonitorDep
       baselineRequired = false;
       return;
     }
-    const target = tracker.observe(value, now());
+    const target = tracker.observe(value);
     if (!target) return;
     try {
       deps.accept(target);
@@ -87,28 +78,18 @@ export function createClipboardDeepLinkMonitor(deps: ClipboardDeepLinkMonitorDep
   };
 
   return {
-    start: () => {
-      if (started) return;
-      started = true;
-      timer = setInterval(poll, pollIntervalMs);
-      timer.unref?.();
-      poll();
-    },
-    stop: () => {
-      if (!started) return;
-      started = false;
-      active = false;
-      if (timer !== undefined) clearInterval(timer);
-      timer = undefined;
+    setEnabled: (nextEnabled) => {
+      if (enabled === nextEnabled) return;
+      enabled = nextEnabled;
       baselineRequired = true;
+      if (enabled && focused) inspectOnFocus();
     },
-    setActive: (nextActive) => {
-      if (active === nextActive) return;
-      active = nextActive;
-      baselineRequired = true;
-      if (active) poll();
+    setFocused: (nextFocused) => {
+      if (focused === nextFocused) return;
+      focused = nextFocused;
+      if (focused && enabled) inspectOnFocus();
     },
-    noteSelfWrite: (value) => tracker.noteSelfWrite(value, now()),
+    noteSelfWrite: (value) => tracker.noteSelfWrite(value),
   };
 }
 
@@ -125,4 +106,8 @@ function clipboardCandidate(value: string): string | null {
 
 function parseCandidate(value: string): CatalogSongDeepLink | null {
   return clipboardCandidate(value) ? parseYaqmcDeepLink(value) : null;
+}
+
+function targetKey(target: CatalogSongDeepLink): string {
+  return `${target.providerId}\u0000${target.entityId}`;
 }

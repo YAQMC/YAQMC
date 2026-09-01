@@ -60,12 +60,13 @@ describe('host boot wiring', () => {
     expect(source).toContain('host.coreStatus');
     expect(source).toContain('hostWindowChrome');
     expect(source).toContain('clipboardDeepLinkMonitor.noteSelfWrite(text)');
-    expect(source).toContain('clipboardDeepLinkMonitor.start()');
-    expect(source).toContain('clipboardDeepLinkMonitor.stop()');
+    expect(source).toContain('clipboardDeepLinkMonitor.setEnabled(');
+    expect(source).toContain('clipboardDeepLinkMonitor.setFocused(focused)');
     expect(source).toContain('clipboardDeepLinksEnabledFromPreferences(lastPreferencesRaw)');
     expect(source).toContain("window.on('focus', reconcileClipboardDeepLinkMonitor)");
-    expect(source).toContain("window.on('blur', () => clipboardDeepLinkMonitor.setActive(false))");
-    expect(source).toContain("window.on('hide', () => clipboardDeepLinkMonitor.setActive(false))");
+    expect(source).toContain("window.on('blur', () => clipboardDeepLinkMonitor.setFocused(false))");
+    expect(source).toContain("window.on('hide', () => clipboardDeepLinkMonitor.setFocused(false))");
+    expect(source).not.toContain('setInterval(');
   });
 
   it('skips tray and shortcuts during YAQMC_DESKTOP_SMOKE', () => {

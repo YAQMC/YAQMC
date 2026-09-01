@@ -1,41 +1,62 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createClipboardDeepLinkMonitor, SELF_SHARE_SUPPRESSION_MS } from './clipboard-deep-link';
+import { describe, expect, it, vi } from 'vitest';
+import { createClipboardDeepLinkMonitor } from './clipboard-deep-link';
 
 const firstLink = 'yaqmc://catalog/qqmusic/song?id=qqmusic%3Atrack%3A000qgbM90wbOxx';
+const equivalentFirstLink = 'yaqmc://catalog/qqmusic/song?id=qqmusic:track:000qgbM90wbOxx';
 const secondLink = 'yaqmc://catalog/qqmusic/song?id=qqmusic%3Atrack%3A001';
 
-afterEach(() => vi.useRealTimers());
-
 describe('clipboard deep-link fallback', () => {
-  it('ignores startup contents and accepts each new valid link only once', () => {
-    vi.useFakeTimers();
-    let clipboard = firstLink;
+  it('reads only while enabled and focused, using the first read as a baseline', () => {
+    let clipboard = 'ordinary text';
+    const readText = vi.fn(() => clipboard);
+    const accept = vi.fn();
+    const monitor = createClipboardDeepLinkMonitor({ readText, accept });
+
+    monitor.setFocused(true);
+    expect(readText).not.toHaveBeenCalled();
+
+    monitor.setEnabled(true);
+    expect(readText).toHaveBeenCalledOnce();
+    expect(accept).not.toHaveBeenCalled();
+
+    monitor.setFocused(false);
+    clipboard = firstLink;
+    expect(readText).toHaveBeenCalledOnce();
+
+    monitor.setFocused(true);
+    expect(readText).toHaveBeenCalledTimes(2);
+    expect(accept).toHaveBeenCalledOnce();
+    monitor.setFocused(true);
+    expect(readText).toHaveBeenCalledTimes(2);
+
+    monitor.setEnabled(false);
+    monitor.setFocused(false);
+    monitor.setFocused(true);
+    expect(readText).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts a link copied in another app when YAQMC regains focus', () => {
+    let clipboard = 'ordinary text';
     const accept = vi.fn();
     const monitor = createClipboardDeepLinkMonitor({
       readText: () => clipboard,
       accept,
     });
 
-    monitor.start();
-    monitor.setActive(true);
-    vi.advanceTimersByTime(2_000);
-    expect(accept).not.toHaveBeenCalled();
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
+    monitor.setFocused(false);
+    clipboard = firstLink;
+    monitor.setFocused(true);
 
-    clipboard = secondLink;
-    vi.advanceTimersByTime(1_000);
     expect(accept).toHaveBeenCalledOnce();
     expect(accept).toHaveBeenCalledWith({
       providerId: 'qqmusic',
-      entityId: 'qqmusic:track:001',
+      entityId: 'qqmusic:track:000qgbM90wbOxx',
     });
-    vi.advanceTimersByTime(2_000);
-    expect(accept).toHaveBeenCalledOnce();
-    monitor.stop();
   });
 
-  it('suppresses a YAQMC link written by the app, including a quick copy-away and copy-back', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_000);
+  it('never parses the same song target twice during one app session', () => {
     let clipboard = 'ordinary text';
     const accept = vi.fn();
     const monitor = createClipboardDeepLinkMonitor({
@@ -43,57 +64,42 @@ describe('clipboard deep-link fallback', () => {
       accept,
     });
 
-    monitor.start();
-    monitor.setActive(true);
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
+    for (const value of [firstLink, 'ordinary text', equivalentFirstLink, firstLink]) {
+      monitor.setFocused(false);
+      clipboard = value;
+      monitor.setFocused(true);
+    }
+    expect(accept).toHaveBeenCalledOnce();
+
+    monitor.setFocused(false);
+    clipboard = secondLink;
+    monitor.setFocused(true);
+    expect(accept).toHaveBeenCalledTimes(2);
+  });
+
+  it('never parses a YAQMC link copied by YAQMC itself during the same session', () => {
+    let clipboard = 'ordinary text';
+    const accept = vi.fn();
+    const monitor = createClipboardDeepLinkMonitor({
+      readText: () => clipboard,
+      accept,
+    });
+
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
     monitor.noteSelfWrite(firstLink);
-    clipboard = firstLink;
-    vi.advanceTimersByTime(1_000);
-    clipboard = 'copy-away';
-    vi.advanceTimersByTime(1_000);
-    clipboard = firstLink;
-    vi.advanceTimersByTime(1_000);
-    expect(accept).not.toHaveBeenCalled();
+    for (const value of [firstLink, 'ordinary text', equivalentFirstLink, firstLink]) {
+      monitor.setFocused(false);
+      clipboard = value;
+      monitor.setFocused(true);
+    }
 
-    clipboard = 'copy-away-again';
-    vi.advanceTimersByTime(SELF_SHARE_SUPPRESSION_MS);
-    clipboard = firstLink;
-    vi.advanceTimersByTime(1_000);
-    expect(accept).toHaveBeenCalledOnce();
-    monitor.stop();
+    expect(accept).not.toHaveBeenCalled();
   });
 
-  it('ignores links copied while inactive and re-baselines before resuming', () => {
-    vi.useFakeTimers();
-    let clipboard = 'ordinary text';
-    const accept = vi.fn();
-    const readText = vi.fn(() => clipboard);
-    const monitor = createClipboardDeepLinkMonitor({
-      readText,
-      accept,
-    });
-
-    monitor.start();
-    monitor.setActive(true);
-    expect(readText).toHaveBeenCalledOnce();
-    monitor.setActive(false);
-    clipboard = firstLink;
-    vi.advanceTimersByTime(2_000);
-    expect(readText).toHaveBeenCalledOnce();
-    monitor.setActive(true);
-    expect(readText).toHaveBeenCalledTimes(2);
-    vi.advanceTimersByTime(2_000);
-    expect(accept).not.toHaveBeenCalled();
-
-    clipboard = 'ordinary text';
-    vi.advanceTimersByTime(1_000);
-    clipboard = firstLink;
-    vi.advanceTimersByTime(1_000);
-    expect(accept).toHaveBeenCalledOnce();
-    monitor.stop();
-  });
-
-  it('does not replay an accepted link after the main window loses and regains focus', () => {
-    vi.useFakeTimers();
+  it('does not replay the current link after repeated window switches', () => {
     let clipboard = 'ordinary text';
     const accept = vi.fn();
     const monitor = createClipboardDeepLinkMonitor({
@@ -101,22 +107,20 @@ describe('clipboard deep-link fallback', () => {
       accept,
     });
 
-    monitor.start();
-    monitor.setActive(true);
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
+    monitor.setFocused(false);
     clipboard = firstLink;
-    vi.advanceTimersByTime(1_000);
-    expect(accept).toHaveBeenCalledOnce();
+    monitor.setFocused(true);
+    for (let index = 0; index < 5; index += 1) {
+      monitor.setFocused(false);
+      monitor.setFocused(true);
+    }
 
-    monitor.setActive(false);
-    vi.advanceTimersByTime(2_000);
-    monitor.setActive(true);
-    vi.advanceTimersByTime(2_000);
     expect(accept).toHaveBeenCalledOnce();
-    monitor.stop();
   });
 
   it('fails closed for malformed, padded, and oversized clipboard text', () => {
-    vi.useFakeTimers();
     let clipboard = 'ordinary text';
     const accept = vi.fn();
     const monitor = createClipboardDeepLinkMonitor({
@@ -124,23 +128,22 @@ describe('clipboard deep-link fallback', () => {
       accept,
     });
 
-    monitor.start();
-    monitor.setActive(true);
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
     for (const value of [
       ` ${firstLink}`,
       `${firstLink}\n`,
       'yaqmc://invalid',
       `yaqmc:${'x'.repeat(3_000)}`,
     ]) {
+      monitor.setFocused(false);
       clipboard = value;
-      vi.advanceTimersByTime(1_000);
+      monitor.setFocused(true);
     }
     expect(accept).not.toHaveBeenCalled();
-    monitor.stop();
   });
 
-  it('recovers from clipboard read failures without treating the first readable value as new', () => {
-    vi.useFakeTimers();
+  it('recovers from read failures without treating the first readable value as new', () => {
     let fail = true;
     let clipboard = firstLink;
     const accept = vi.fn();
@@ -152,19 +155,20 @@ describe('clipboard deep-link fallback', () => {
       accept,
     });
 
-    monitor.start();
-    monitor.setActive(true);
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
+    monitor.setFocused(false);
     fail = false;
-    vi.advanceTimersByTime(1_000);
+    monitor.setFocused(true);
     expect(accept).not.toHaveBeenCalled();
+
+    monitor.setFocused(false);
     clipboard = secondLink;
-    vi.advanceTimersByTime(1_000);
+    monitor.setFocused(true);
     expect(accept).toHaveBeenCalledOnce();
-    monitor.stop();
   });
 
-  it('continues polling when navigation handling rejects one clipboard link', () => {
-    vi.useFakeTimers();
+  it('consumes a rejected navigation once and continues with later links', () => {
     let clipboard = 'ordinary text';
     const accept = vi
       .fn<(target: { providerId: string; entityId: string }) => void>()
@@ -176,13 +180,14 @@ describe('clipboard deep-link fallback', () => {
       accept,
     });
 
-    monitor.start();
-    monitor.setActive(true);
-    clipboard = firstLink;
-    vi.advanceTimersByTime(1_000);
-    clipboard = secondLink;
-    vi.advanceTimersByTime(1_000);
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
+    for (const value of [firstLink, 'ordinary text', firstLink, secondLink]) {
+      monitor.setFocused(false);
+      clipboard = value;
+      monitor.setFocused(true);
+    }
+
     expect(accept).toHaveBeenCalledTimes(2);
-    monitor.stop();
   });
 });

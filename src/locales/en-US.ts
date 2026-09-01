@@ -956,7 +956,7 @@ export const enUS = {
       deepLinksError: 'The operating system rejected yaqmc:// protocol registration.',
       clipboardDeepLinks: 'Clipboard link fallback',
       clipboardDeepLinksDescription:
-        'While YAQMC is focused, open newly copied valid yaqmc:// song links. Existing and background clipboard contents are ignored.',
+        'Checks once when YAQMC regains focus. Opens each valid yaqmc:// song target only once per app session and ignores links copied by YAQMC.',
       platformBackend: 'Detected platform backend',
       platformBackendDescription:
         'Reports the actual window backend and system-media adapter, not only the desktop session.',
