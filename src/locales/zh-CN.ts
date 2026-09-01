@@ -937,6 +937,9 @@ export const zhCN = {
       deepLinksRegistered: 'yaqmc:// 协议已注册，只用于导航到歌曲详情。',
       deepLinksUnavailable: '当前构建或操作系统无法注册该协议。',
       deepLinksError: '操作系统拒绝了 yaqmc:// 协议注册。',
+      clipboardDeepLinks: '剪贴板链接备用解析',
+      clipboardDeepLinksDescription:
+        '仅在 YAQMC 位于前台时打开新复制的有效 yaqmc:// 歌曲链接；忽略已有内容和后台复制的内容。',
       platformBackend: '检测到的平台后端',
       platformBackendDescription: '显示应用实际窗口后端和系统媒体适配器，而不只读取桌面会话名。',
       detecting: '正在检测…',

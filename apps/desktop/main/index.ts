@@ -80,6 +80,7 @@ import { localeFromPreferences, trayLabelsForLocale } from './services/tray-i18n
 import { acquireSingleInstanceLock } from './single-instance';
 import { createClipboardDeepLinkMonitor } from './clipboard-deep-link';
 import {
+  clipboardDeepLinksEnabledFromPreferences,
   deepLinkFromArgv,
   DeepLinkInbox,
   deepLinksEnabledFromPreferences,
@@ -264,10 +265,20 @@ const deepLinkRegistration = registerYaqmcDeepLinkProtocol(app, {
 });
 const clipboardDeepLinkMonitor = createClipboardDeepLinkMonitor({
   readText: () => clipboard.readText(),
-  enabled: () =>
-    preferencesResolvedForDeepLinks && deepLinksEnabledFromPreferences(lastPreferencesRaw),
   accept: acceptDeepLink,
 });
+
+function reconcileClipboardDeepLinkMonitor(): void {
+  const window = mainWindow;
+  clipboardDeepLinkMonitor.setActive(
+    preferencesResolvedForDeepLinks &&
+      deepLinksEnabledFromPreferences(lastPreferencesRaw) &&
+      clipboardDeepLinksEnabledFromPreferences(lastPreferencesRaw) &&
+      window !== undefined &&
+      !window.isDestroyed() &&
+      window.isFocused(),
+  );
+}
 
 function writeHostLog(message: string): void {
   try {
@@ -944,6 +955,9 @@ function createMainWindow(root: string): BrowserWindow {
   router.registerWindow(contentsId, 'main');
   mainWindow = window;
   writeHostLog('window main created');
+  window.on('focus', reconcileClipboardDeepLinkMonitor);
+  window.on('blur', () => clipboardDeepLinkMonitor.setActive(false));
+  window.on('hide', () => clipboardDeepLinkMonitor.setActive(false));
   window.on('close', (event) => {
     if ((__YAQMC_QA_BUILD__ && smoke) || stopping) {
       return;
@@ -955,6 +969,7 @@ function createMainWindow(root: string): BrowserWindow {
   });
   window.on('closed', () => {
     writeHostLog('window main closed');
+    clipboardDeepLinkMonitor.setActive(false);
     router.unregisterWindow(contentsId);
     if (mainWindow === window) {
       mainWindow = undefined;
@@ -990,6 +1005,7 @@ function fanoutEvent(channel: string, payload: unknown): void {
     applyTrayLabelsFromPreferences(payload);
     applyShortcutsFromPreferences(payload);
     preferencesResolvedForDeepLinks = true;
+    reconcileClipboardDeepLinkMonitor();
     flushPendingDeepLink();
   }
   router.fanout(channel, payload, (id, eventFrame) => {
@@ -1015,11 +1031,13 @@ function cacheCloseToTrayPreference(): void {
       applyTrayLabelsFromPreferences(raw);
       applyShortcutsFromPreferences(raw);
       preferencesResolvedForDeepLinks = true;
+      reconcileClipboardDeepLinkMonitor();
       flushPendingDeepLink();
     })
     .catch(() => {
       // FACT: preference read deferred / failed → keep default hide-to-tray.
       preferencesResolvedForDeepLinks = true;
+      reconcileClipboardDeepLinkMonitor();
       flushPendingDeepLink();
     });
 }
@@ -1197,6 +1215,7 @@ if (
     createMainWindow(root);
     if (!(__YAQMC_QA_BUILD__ && (smoke || e2e))) {
       clipboardDeepLinkMonitor.start();
+      reconcileClipboardDeepLinkMonitor();
     }
     try {
       await startSupervisor();

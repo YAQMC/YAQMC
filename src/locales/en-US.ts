@@ -954,6 +954,9 @@ export const enUS = {
       deepLinksUnavailable:
         'Protocol registration is unavailable in this build or operating system.',
       deepLinksError: 'The operating system rejected yaqmc:// protocol registration.',
+      clipboardDeepLinks: 'Clipboard link fallback',
+      clipboardDeepLinksDescription:
+        'While YAQMC is focused, open newly copied valid yaqmc:// song links. Existing and background clipboard contents are ignored.',
       platformBackend: 'Detected platform backend',
       platformBackendDescription:
         'Reports the actual window backend and system-media adapter, not only the desktop session.',

@@ -7,7 +7,6 @@ const MAX_CLIPBOARD_CANDIDATE_CHARS = 2_048;
 
 type ClipboardDeepLinkMonitorDeps = {
   readText: () => string;
-  enabled: () => boolean;
   accept: (target: CatalogSongDeepLink) => void;
   now?: () => number;
   pollIntervalMs?: number;
@@ -17,6 +16,11 @@ class ClipboardDeepLinkTracker {
   #initialized = false;
   #lastCandidate: string | null = null;
   #selfWrite: { value: string; expiresAt: number } | null = null;
+
+  baseline(value: string): void {
+    this.#initialized = true;
+    this.#lastCandidate = clipboardCandidate(value);
+  }
 
   noteSelfWrite(value: string, now = Date.now()): void {
     if (!parseCandidate(value)) return;
@@ -49,24 +53,34 @@ class ClipboardDeepLinkTracker {
 export function createClipboardDeepLinkMonitor(deps: ClipboardDeepLinkMonitorDeps): {
   start: () => void;
   stop: () => void;
+  setActive: (active: boolean) => void;
   noteSelfWrite: (value: string) => void;
 } {
   const tracker = new ClipboardDeepLinkTracker();
   const now = deps.now ?? Date.now;
   const pollIntervalMs = deps.pollIntervalMs ?? CLIPBOARD_DEEP_LINK_POLL_INTERVAL_MS;
   let timer: ReturnType<typeof setInterval> | undefined;
+  let started = false;
+  let active = false;
+  let baselineRequired = true;
 
   const poll = (): void => {
+    if (!started || !active) return;
     let value: string;
     try {
       value = deps.readText();
     } catch {
       return;
     }
+    if (baselineRequired) {
+      tracker.baseline(value);
+      baselineRequired = false;
+      return;
+    }
     const target = tracker.observe(value, now());
     if (!target) return;
     try {
-      if (deps.enabled()) deps.accept(target);
+      deps.accept(target);
     } catch {
       // Clipboard fallback must never destabilize the Electron main process.
     }
@@ -74,15 +88,25 @@ export function createClipboardDeepLinkMonitor(deps: ClipboardDeepLinkMonitorDep
 
   return {
     start: () => {
-      if (timer) return;
-      poll();
+      if (started) return;
+      started = true;
       timer = setInterval(poll, pollIntervalMs);
       timer.unref?.();
+      poll();
     },
     stop: () => {
-      if (!timer) return;
-      clearInterval(timer);
+      if (!started) return;
+      started = false;
+      active = false;
+      if (timer !== undefined) clearInterval(timer);
       timer = undefined;
+      baselineRequired = true;
+    },
+    setActive: (nextActive) => {
+      if (active === nextActive) return;
+      active = nextActive;
+      baselineRequired = true;
+      if (active) poll();
     },
     noteSelfWrite: (value) => tracker.noteSelfWrite(value, now()),
   };

@@ -1702,6 +1702,24 @@ export function SettingsPage() {
             }
           />
           <SettingRow
+            title={t('systemIntegration.clipboardDeepLinks')}
+            description={t('systemIntegration.clipboardDeepLinksDescription')}
+            control={
+              <Toggle
+                checked={preferences.system.clipboardDeepLinksEnabled}
+                label={t('systemIntegration.clipboardDeepLinks')}
+                disabled={
+                  !isNativeRuntime ||
+                  (!preferences.system.deepLinksEnabled &&
+                    !preferences.system.clipboardDeepLinksEnabled)
+                }
+                onChange={(clipboardDeepLinksEnabled) =>
+                  preferences.updateSystem({ clipboardDeepLinksEnabled })
+                }
+              />
+            }
+          />
+          <SettingRow
             title={t('systemIntegration.platformBackend')}
             description={t('systemIntegration.platformBackendDescription')}
             control={

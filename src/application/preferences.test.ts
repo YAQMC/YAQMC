@@ -16,9 +16,14 @@ describe('preference persistence model', () => {
     expect(normalized.version).toBe(2);
     expect(normalized.locale).toBe('system');
     expect(normalized.system.deepLinksEnabled).toBe(true);
+    expect(normalized.system.clipboardDeepLinksEnabled).toBe(false);
     expect(
       normalizePreferences({ system: { deepLinksEnabled: false } }).system.deepLinksEnabled,
     ).toBe(false);
+    expect(
+      normalizePreferences({ system: { clipboardDeepLinksEnabled: true } }).system
+        .clipboardDeepLinksEnabled,
+    ).toBe(true);
   });
 
   it('clamps unsafe appearance and lyric-surface values', () => {
@@ -258,11 +263,26 @@ describe('preference persistence model', () => {
       closeBehavior: 'quit',
       globalShortcutsEnabled: true,
       deepLinksEnabled: true,
+      clipboardDeepLinksEnabled: false,
     });
     expect(
       normalizePreferences({ system: { closeBehavior: 'invalid', globalShortcutsEnabled: 'yes' } })
         .system,
     ).toEqual(defaultPreferences.system);
+  });
+
+  it('updates clipboard deep-link fallback without changing other system settings', () => {
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      system: { ...defaultPreferences.system },
+    });
+
+    usePreferencesStore.getState().updateSystem({ clipboardDeepLinksEnabled: true });
+
+    expect(usePreferencesStore.getState().system).toEqual({
+      ...defaultPreferences.system,
+      clipboardDeepLinksEnabled: true,
+    });
   });
 
   it('normalizes debug preferences and keeps the FPS counter opt-in by default', () => {

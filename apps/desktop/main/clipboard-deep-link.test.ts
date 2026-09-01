@@ -13,11 +13,11 @@ describe('clipboard deep-link fallback', () => {
     const accept = vi.fn();
     const monitor = createClipboardDeepLinkMonitor({
       readText: () => clipboard,
-      enabled: () => true,
       accept,
     });
 
     monitor.start();
+    monitor.setActive(true);
     vi.advanceTimersByTime(2_000);
     expect(accept).not.toHaveBeenCalled();
 
@@ -40,11 +40,11 @@ describe('clipboard deep-link fallback', () => {
     const accept = vi.fn();
     const monitor = createClipboardDeepLinkMonitor({
       readText: () => clipboard,
-      enabled: () => true,
       accept,
     });
 
     monitor.start();
+    monitor.setActive(true);
     monitor.noteSelfWrite(firstLink);
     clipboard = firstLink;
     vi.advanceTimersByTime(1_000);
@@ -62,21 +62,25 @@ describe('clipboard deep-link fallback', () => {
     monitor.stop();
   });
 
-  it('consumes changes while disabled and never replays stale clipboard links', () => {
+  it('ignores links copied while inactive and re-baselines before resuming', () => {
     vi.useFakeTimers();
     let clipboard = 'ordinary text';
-    let enabled = false;
     const accept = vi.fn();
+    const readText = vi.fn(() => clipboard);
     const monitor = createClipboardDeepLinkMonitor({
-      readText: () => clipboard,
-      enabled: () => enabled,
+      readText,
       accept,
     });
 
     monitor.start();
+    monitor.setActive(true);
+    expect(readText).toHaveBeenCalledOnce();
+    monitor.setActive(false);
     clipboard = firstLink;
-    vi.advanceTimersByTime(1_000);
-    enabled = true;
+    vi.advanceTimersByTime(2_000);
+    expect(readText).toHaveBeenCalledOnce();
+    monitor.setActive(true);
+    expect(readText).toHaveBeenCalledTimes(2);
     vi.advanceTimersByTime(2_000);
     expect(accept).not.toHaveBeenCalled();
 
@@ -88,17 +92,40 @@ describe('clipboard deep-link fallback', () => {
     monitor.stop();
   });
 
+  it('does not replay an accepted link after the main window loses and regains focus', () => {
+    vi.useFakeTimers();
+    let clipboard = 'ordinary text';
+    const accept = vi.fn();
+    const monitor = createClipboardDeepLinkMonitor({
+      readText: () => clipboard,
+      accept,
+    });
+
+    monitor.start();
+    monitor.setActive(true);
+    clipboard = firstLink;
+    vi.advanceTimersByTime(1_000);
+    expect(accept).toHaveBeenCalledOnce();
+
+    monitor.setActive(false);
+    vi.advanceTimersByTime(2_000);
+    monitor.setActive(true);
+    vi.advanceTimersByTime(2_000);
+    expect(accept).toHaveBeenCalledOnce();
+    monitor.stop();
+  });
+
   it('fails closed for malformed, padded, and oversized clipboard text', () => {
     vi.useFakeTimers();
     let clipboard = 'ordinary text';
     const accept = vi.fn();
     const monitor = createClipboardDeepLinkMonitor({
       readText: () => clipboard,
-      enabled: () => true,
       accept,
     });
 
     monitor.start();
+    monitor.setActive(true);
     for (const value of [
       ` ${firstLink}`,
       `${firstLink}\n`,
@@ -122,11 +149,11 @@ describe('clipboard deep-link fallback', () => {
         if (fail) throw new Error('clipboard unavailable');
         return clipboard;
       },
-      enabled: () => true,
       accept,
     });
 
     monitor.start();
+    monitor.setActive(true);
     fail = false;
     vi.advanceTimersByTime(1_000);
     expect(accept).not.toHaveBeenCalled();
@@ -146,11 +173,11 @@ describe('clipboard deep-link fallback', () => {
       });
     const monitor = createClipboardDeepLinkMonitor({
       readText: () => clipboard,
-      enabled: () => true,
       accept,
     });
 
     monitor.start();
+    monitor.setActive(true);
     clipboard = firstLink;
     vi.advanceTimersByTime(1_000);
     clipboard = secondLink;

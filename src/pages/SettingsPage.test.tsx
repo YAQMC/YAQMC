@@ -161,6 +161,20 @@ describe('SettingsPage account section', () => {
     expect(usePreferencesStore.getState().appearance.interfaceFontFamily).toBe('monospace');
   });
 
+  it('shows clipboard deep-link parsing as an explicit opt-in desktop setting', () => {
+    const account = accountProvider();
+    renderSettings(account.value);
+
+    const fallback = screen.getByRole('switch', { name: 'Clipboard link fallback' });
+    expect(fallback).not.toBeChecked();
+    expect(fallback).toBeDisabled();
+    expect(
+      screen.getByText(
+        'While YAQMC is focused, open newly copied valid yaqmc:// song links. Existing and background clipboard contents are ignored.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('opens the sanitized account dialog without starting login from Settings', () => {
     const account = accountProvider();
     useAccountStore.setState({ snapshot: guestSnapshot() });

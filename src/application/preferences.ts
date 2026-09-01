@@ -42,6 +42,7 @@ export interface SystemSettings {
   closeBehavior: CloseBehavior;
   globalShortcutsEnabled: boolean;
   deepLinksEnabled: boolean;
+  clipboardDeepLinksEnabled: boolean;
 }
 
 export interface DebugSettings {
@@ -182,6 +183,7 @@ export const defaultPreferences: AppPreferences = {
     closeBehavior: 'hide-to-tray',
     globalShortcutsEnabled: false,
     deepLinksEnabled: true,
+    clipboardDeepLinksEnabled: false,
   },
   debug: {
     showFpsCounter: false,
@@ -355,6 +357,10 @@ export function normalizePreferences(value: unknown): AppPreferences {
         typeof system.globalShortcutsEnabled === 'boolean' ? system.globalShortcutsEnabled : false,
       deepLinksEnabled:
         typeof system.deepLinksEnabled === 'boolean' ? system.deepLinksEnabled : true,
+      clipboardDeepLinksEnabled:
+        typeof system.clipboardDeepLinksEnabled === 'boolean'
+          ? system.clipboardDeepLinksEnabled
+          : false,
     },
     debug: {
       showFpsCounter: typeof debug.showFpsCounter === 'boolean' ? debug.showFpsCounter : false,
@@ -378,6 +384,7 @@ export function preferencesRequireMigration(value: unknown): boolean {
     !['hide-to-tray', 'quit'].includes(String(source.system.closeBehavior)) ||
     typeof source.system.globalShortcutsEnabled !== 'boolean' ||
     typeof source.system.deepLinksEnabled !== 'boolean' ||
+    typeof source.system.clipboardDeepLinksEnabled !== 'boolean' ||
     typeof source.amll?.enableSpring !== 'boolean' ||
     typeof source.amll?.enableScale !== 'boolean' ||
     typeof source.amll?.enableBlur !== 'boolean' ||

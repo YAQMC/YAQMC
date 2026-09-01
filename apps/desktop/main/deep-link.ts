@@ -129,6 +129,14 @@ export function deepLinksEnabledFromPreferences(raw: unknown): boolean {
   return typeof enabled === 'boolean' ? enabled : true;
 }
 
+export function clipboardDeepLinksEnabledFromPreferences(raw: unknown): boolean {
+  const document = preferencesDocument(raw);
+  const system = document?.system;
+  if (!system || typeof system !== 'object') return false;
+  const enabled = (system as { clipboardDeepLinksEnabled?: unknown }).clipboardDeepLinksEnabled;
+  return typeof enabled === 'boolean' ? enabled : false;
+}
+
 function preferencesDocument(raw: unknown): Record<string, unknown> | null {
   if (typeof raw === 'string') {
     try {

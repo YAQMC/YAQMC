@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  clipboardDeepLinksEnabledFromPreferences,
   deepLinkFromArgv,
   deepLinksEnabledFromPreferences,
   DeepLinkInbox,
@@ -66,10 +67,17 @@ describe('YAQMC deep links', () => {
     expect(app.setAsDefaultProtocolClient).toHaveBeenCalledWith('yaqmc');
   });
 
-  it('defaults old preferences to enabled and honors an explicit disable', () => {
+  it('defaults protocol links on and clipboard fallback off for old preferences', () => {
     expect(deepLinksEnabledFromPreferences(undefined)).toBe(true);
     expect(deepLinksEnabledFromPreferences('{"system":{}}')).toBe(true);
     expect(deepLinksEnabledFromPreferences({ system: { deepLinksEnabled: false } })).toBe(false);
+    expect(clipboardDeepLinksEnabledFromPreferences(undefined)).toBe(false);
+    expect(clipboardDeepLinksEnabledFromPreferences('{"system":{}}')).toBe(false);
+    expect(
+      clipboardDeepLinksEnabledFromPreferences({
+        system: { clipboardDeepLinksEnabled: true },
+      }),
+    ).toBe(true);
   });
 
   it('delivers a cold or warm link once and drops it when disabled', () => {

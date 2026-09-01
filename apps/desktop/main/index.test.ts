@@ -62,7 +62,10 @@ describe('host boot wiring', () => {
     expect(source).toContain('clipboardDeepLinkMonitor.noteSelfWrite(text)');
     expect(source).toContain('clipboardDeepLinkMonitor.start()');
     expect(source).toContain('clipboardDeepLinkMonitor.stop()');
-    expect(source).toContain('preferencesResolvedForDeepLinks && deepLinksEnabledFromPreferences');
+    expect(source).toContain('clipboardDeepLinksEnabledFromPreferences(lastPreferencesRaw)');
+    expect(source).toContain("window.on('focus', reconcileClipboardDeepLinkMonitor)");
+    expect(source).toContain("window.on('blur', () => clipboardDeepLinkMonitor.setActive(false))");
+    expect(source).toContain("window.on('hide', () => clipboardDeepLinkMonitor.setActive(false))");
   });
 
   it('skips tray and shortcuts during YAQMC_DESKTOP_SMOKE', () => {
