@@ -54,7 +54,6 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
             <MediaCard
               item={feed.dailySonglist}
               type="playlist"
-              title={t('newSongs')}
               subtitle={t('trackCount', { count: feed.dailySonglist.tracks.length })}
               onOpen={() => onNavigate({ page: 'playlist', id: feed.dailySonglist!.id })}
               onPlay={() => playTracks(feed.dailySonglist!.tracks)}

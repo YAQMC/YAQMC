@@ -12,8 +12,10 @@ tappable playlist cards:
 
 - **Guess you like** (`guessSonglist`) — a radio-style personalized pick rendered with a distinct hero style. Tapping
   it starts playback immediately and opens a continuous guess session (see below).
-- **Daily 30** (`dailySonglist`) — a personalized daily mix (disstid `5505165762`) presented as a wide card that opens
-  the playlist page.
+- **Daily mix** (`dailySonglist`) — a personalized playlist presented as a wide card that opens the playlist page.
+  Its title, description, artwork, creator, and tracks come from the typed qm-api-rs songlist response. YAQMC does not
+  replace the provider title with a fixed “Daily 30” label; the displayed count is the number of tracks actually
+  returned.
 - **New song picks** (`newSongSonglist`) — the "新歌推荐" card from the official client's "为你打造" shelf; its feed
   `500/511` disstid resolves to thirty recent releases via `CgiGetDiss`. Presented as a wide card that opens the
   playlist page.
@@ -37,7 +39,7 @@ Each section uses the signed-in session when available and a general fallback ot
 | Section               | Authenticated source                                                                                             | Guest fallback                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | Guess you like        | `music.radioProxy.MbTrackRadioSvr/get_radio_track`                                                               | `newsong.NewSongServer/get_new_song_info`        |
-| Daily 30              | `CgiGetDiss` with disstid `5505165762`                                                                           | `newsong.NewSongServer/get_new_song_info`        |
+| Daily mix             | qm-api-rs `songlist.get_detail` with the signed-in credential                                                    | qm-api-rs anonymous songlist detail              |
 | New song picks        | feed `500/511` disstid, then `CgiGetDiss`                                                                        | `newsong.NewSongServer/get_new_song_info`        |
 | Recommended playlists | feed `500/0` dissid cards (paged)                                                                                | `music.playlist.PlaylistSquare/GetRecommendFeed` |
 | Radar                 | `music.recommend.TrackRelationServer/GetRadarSong` with `EntranceSongs` = numeric ids of recently listened songs | empty                                            |
@@ -63,7 +65,7 @@ credentials, cursors, and raw response shapes do not cross into React or Electro
 
 ## Caching and refresh
 
-The home feed is cached under `qqmusic:home:v3` for 15 minutes. The cache key is versioned so structural changes to
+The home feed is cached under `qqmusic:home:v4` for 15 minutes. The cache key is versioned so structural changes to
 the serialized feed invalidate stale copies. The home build is serialized under an async mutex so concurrent first
 loads cannot trip QQ Music rate limiting (`req_code 700000`). On startup the frontend loads the cached feed first for
 a fast first paint, then issues one forced refresh (`qqmusic_home` with `refresh=true`) so the latest personalized

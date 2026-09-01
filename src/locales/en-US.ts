@@ -141,7 +141,6 @@ export const enUS = {
       recommendedEyebrow: 'PICKED FOR YOU',
       recommendedSonglists: 'Recommended playlists',
       newSongsEyebrow: 'DAILY PICKS',
-      newSongs: 'Daily 30',
       newSongRecommendEyebrow: 'FRESH DROPS',
       newSongRecommend: 'New song picks',
       trackCount: '{{count}} tracks',

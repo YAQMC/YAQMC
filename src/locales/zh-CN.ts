@@ -146,7 +146,6 @@ export const zhCN = {
       recommendedEyebrow: '为你挑选',
       recommendedSonglists: '推荐歌单',
       newSongsEyebrow: '每日精选',
-      newSongs: '每日30首',
       newSongRecommendEyebrow: '最新发行',
       newSongRecommend: '新歌推荐',
       trackCount: '{{count}} 首',

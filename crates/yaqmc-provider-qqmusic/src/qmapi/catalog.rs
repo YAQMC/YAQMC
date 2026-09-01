@@ -19,6 +19,8 @@ use yaqmc_provider_api::ArtistCatalogKind;
 const TOP_ENTITY_LIMIT: i64 = 20;
 const ALBUM_TRACK_PAGE_SIZE: i64 = 100;
 const MAX_ALBUM_TRACK_PAGES: u32 = 100;
+const SONGLIST_TRACK_PAGE_SIZE: i64 = 100;
+const MAX_SONGLIST_TRACK_PAGES: u32 = 100;
 
 pub(crate) struct AlbumCatalog {
     pub detail: qqmusic_api::models::album::AlbumDetail,
@@ -252,6 +254,54 @@ pub(crate) async fn playlist_search(
             })
             .collect(),
     })
+}
+
+pub(crate) async fn songlist(
+    client: &Client,
+    id: i64,
+) -> Result<qqmusic_api::models::songlist::GetSonglistDetailResponse, QQMusicError> {
+    let mut response = client
+        .songlist
+        .get_detail(id, 0, SONGLIST_TRACK_PAGE_SIZE, 1, false, true, true)
+        .await
+        .map_err(map_qmapi_error)?;
+    let mut page = 1_u32;
+
+    loop {
+        let total = usize::try_from(response.total.max(0)).unwrap_or(usize::MAX);
+        let complete = if total > 0 {
+            response.songs.len() >= total
+        } else {
+            response.hasmore <= 0
+        };
+        if complete {
+            return Ok(response);
+        }
+        if page >= MAX_SONGLIST_TRACK_PAGES {
+            return Err(QQMusicError::SchemaChanged);
+        }
+
+        page = page.saturating_add(1);
+        let next = client
+            .songlist
+            .get_detail(
+                id,
+                0,
+                SONGLIST_TRACK_PAGE_SIZE,
+                i64::from(page),
+                false,
+                true,
+                true,
+            )
+            .await
+            .map_err(map_qmapi_error)?;
+        if next.songs.is_empty() {
+            return Err(QQMusicError::SchemaChanged);
+        }
+        response.total = response.total.max(next.total);
+        response.hasmore = next.hasmore;
+        response.songs.extend(next.songs);
+    }
 }
 
 pub(crate) async fn artist_catalog_page(
@@ -493,6 +543,15 @@ mod tests {
                         ));
                         &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-albums.json")[..]
                     }
+                    ("music.srfDissInfo.DissInfo", "CgiGetDiss") => {
+                        assert_eq!(req["param"]["disstid"], 5_505_165_762_i64);
+                        assert_eq!(req["param"]["song_num"], super::SONGLIST_TRACK_PAGE_SIZE);
+                        match req["param"]["song_begin"].as_i64() {
+                            Some(0) => &br#"{"code":0,"req_0":{"code":0,"subcode":0,"data":{"code":0,"subcode":0,"dirinfo":{"tid":5505165762,"dirName":"Provider daily title","picUrl":"https://y.gtimg.cn/provider-daily.jpg","desc":"Provider daily description","creator":{"musicid":10001,"nick":"Provider curator","encrypt_uin":"PUBLIC_CREATOR_ID"}},"songlist":[{"id":1,"mid":"DAILY_TRACK_1","title":"Daily track 1"}],"total_song_num":2}}}"#[..],
+                            Some(100) => &br#"{"code":0,"req_0":{"code":0,"data":{"code":0,"subcode":0,"songlist":[{"id":2,"mid":"DAILY_TRACK_2","title":"Daily track 2"}],"total_song_num":2,"hasmore":0}}}"#[..],
+                            begin => panic!("unexpected songlist page offset {begin:?}"),
+                        }
+                    }
                     _ => panic!("unexpected typed catalog request {module}/{method}"),
                 }
             };
@@ -544,12 +603,18 @@ mod tests {
             albums,
             super::ArtistCatalogPage::Albums { total: 1, items } if items.len() == 1
         ));
+        let daily = super::songlist(&client, 5_505_165_762)
+            .await
+            .expect("daily songlist");
+        assert_eq!(daily.info.base.title, "Provider daily title");
+        assert_eq!(daily.info.creator.nick, "Provider curator");
+        assert_eq!(daily.songs.len(), 2);
 
         let calls = transport.calls();
-        assert_eq!(calls, (0..12).collect::<Vec<_>>());
+        assert_eq!(calls, (0..14).collect::<Vec<_>>());
 
         let requests = transport.requests();
-        assert_eq!(requests.len(), 12);
+        assert_eq!(requests.len(), 14);
         assert_eq!(requests[0]["req_0"]["module"], "music.pf_song_detail_svr");
         assert_eq!(requests[0]["req_0"]["method"], "get_song_detail_yqq");
         assert_eq!(requests[0]["req_0"]["param"]["song_mid"], "SONG_MID");
@@ -606,5 +671,16 @@ mod tests {
         assert_eq!(requests[11]["req_0"]["method"], "GetAlbumList");
         assert_eq!(requests[11]["req_0"]["param"]["number"], 8);
         assert_eq!(requests[11]["req_0"]["param"]["begin"], 8);
+        assert_eq!(
+            requests[12]["req_0"]["module"],
+            "music.srfDissInfo.DissInfo"
+        );
+        assert_eq!(requests[12]["req_0"]["method"], "CgiGetDiss");
+        assert_eq!(
+            requests[12]["req_0"]["param"]["song_num"],
+            super::SONGLIST_TRACK_PAGE_SIZE
+        );
+        assert_eq!(requests[12]["req_0"]["param"]["song_begin"], 0);
+        assert_eq!(requests[13]["req_0"]["param"]["song_begin"], 100);
     }
 }

@@ -11,7 +11,9 @@
 
 - **猜你喜欢**（`guessSonglist`）——电台式个性化精选，用独特的 hero 样式渲染。点击立即开始播放，并开启
   连续猜你喜欢会话（见下文）。
-- **每日30首**（`dailySonglist`）——个性化每日精选（disstid `5505165762`），以宽卡片呈现，点击进入歌单页。
+- **每日精选**（`dailySonglist`）——个性化歌单，以宽卡片呈现，点击进入歌单页。标题、描述、封面、创建者和歌曲
+  均来自 qm-api-rs 的类型化歌单响应；YAQMC 不会再用固定的“每日30首”覆盖供应商标题，数量显示以实际返回的
+  歌曲数为准。
 - **新歌推荐**（`newSongSonglist`）——官方客户端“为你打造”楼层里的“新歌推荐”卡片；其 feed `500/511`
   disstid 通过 `CgiGetDiss` 解析为三十首近期新发行。以宽卡片呈现，点击进入歌单页。
 
@@ -32,7 +34,7 @@ hero 行下方，在有数据时展示两个区段：
 | 区段     | 登录态数据源                                                                                | 未登录降级                                       |
 | -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | 猜你喜欢 | `music.radioProxy.MbTrackRadioSvr/get_radio_track`                                          | `newsong.NewSongServer/get_new_song_info`        |
-| 每日30首 | 带 disstid `5505165762` 的 `CgiGetDiss`                                                     | `newsong.NewSongServer/get_new_song_info`        |
+| 每日精选 | 携带登录凭据的 qm-api-rs `songlist.get_detail`                                              | qm-api-rs 匿名歌单详情                           |
 | 新歌推荐 | feed `500/511` disstid，然后 `CgiGetDiss`                                                   | `newsong.NewSongServer/get_new_song_info`        |
 | 推荐歌单 | feed `500/0` dissid 卡片（翻页收集）                                                        | `music.playlist.PlaylistSquare/GetRecommendFeed` |
 | 雷达     | `music.recommend.TrackRelationServer/GetRadarSong`，`EntranceSongs` = 最近听过歌曲的数字 id | 空                                               |
@@ -56,7 +58,7 @@ QQ 推荐分页只通过固定版本的 `qm-api-rs` 类型化接口进入 YAQMC�
 
 ## 缓存与刷新
 
-首页 feed 以 `qqmusic:home:v3` 为 key 缓存 15 分钟。缓存 key 带版本号，序列化结构的变更会使旧缓存失效。
+首页 feed 以 `qqmusic:home:v4` 为 key 缓存 15 分钟。缓存 key 带版本号，序列化结构的变更会使旧缓存失效。
 首页构建在异步互斥锁下串行执行，避免并发首次加载触发 QQ 音乐限流（`req_code 700000`）。启动时前端先读取
 缓存以便快速首屏，然后主动发一次强制刷新（`qqmusic_home` 带 `refresh=true`），让最新个性化区段替换旧缓存；
 之后继续每 15 分钟定时刷新。

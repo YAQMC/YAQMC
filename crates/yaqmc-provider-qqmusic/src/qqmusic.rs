@@ -80,10 +80,11 @@ const QQ_PLAYLIST_URL: &str = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinf
 const QQ_LRC_URL: &str = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
 const DEFAULT_TOPLIST_ID: u64 = 62;
 const DISCOVER_TOPLIST_IDS: [u64; 8] = [26, 27, 4, 3, 5, 6, 62, 57];
+const QQ_DAILY_RECOMMENDATION_SONGLIST_ID: i64 = 5_505_165_762;
 const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
 const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
-const HOME_CACHE_KEY: &str = "qqmusic:home:v3";
+const HOME_CACHE_KEY: &str = "qqmusic:home:v4";
 const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v2";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1294,31 +1295,14 @@ impl QQMusicService {
                 Vec::new()
             }
         };
-        let daily_tracks = match self.client.daily_songs(session_ref).await {
-            Ok(tracks) => tracks,
+        let daily_songlist = match self.client.daily_songlist(session_ref).await {
+            Ok(playlist) if !playlist.tracks.is_empty() => Some(playlist),
+            Ok(_) => None,
             Err(error) => {
-                tracing::warn!(target: "qqmusic", %error, "home daily 30 failed; leaving the section empty");
-                Vec::new()
+                tracing::warn!(target: "qqmusic", %error, "home daily recommendation failed; leaving the section empty");
+                None
             }
         };
-        let daily_songlist = (!daily_tracks.is_empty()).then(|| {
-            let artwork = daily_tracks
-                .first()
-                .map(|song| song.artwork.clone())
-                .unwrap_or_else(|| artwork_from_provider_url("", "Daily 30", color_for("daily30")));
-            Playlist {
-                id: playlist_id("5505165762"),
-                title: "Daily 30".to_owned(),
-                description: "A personalized daily selection refreshed for you.".to_owned(),
-                owner: PlaylistOwner {
-                    id: "qqmusic".to_owned(),
-                    display_name: "QQ Music".to_owned(),
-                },
-                artwork,
-                updated_label: "Updated daily".to_owned(),
-                tracks: daily_tracks,
-            }
-        });
         let mut radar_entrance: Vec<(u64, String)> = Vec::new();
         if let Ok(history) = self.local_recent_history(10) {
             radar_entrance.extend(
@@ -2233,62 +2217,25 @@ impl QQMusicClient {
         Ok(playlists)
     }
 
-    async fn daily_songs(&self, session: Option<&QQSession>) -> Result<Vec<Song>, QQMusicError> {
-        match session {
-            Some(session) => self.personalized_daily_songs(session).await,
-            None => self.general_newsongs().await,
-        }
-    }
-
-    async fn personalized_daily_songs(
-        &self,
-        session: &QQSession,
-    ) -> Result<Vec<Song>, QQMusicError> {
-        const DAILY30_DISSID: u64 = 5_505_165_762;
-        let payload = json!({
-            "comm": { "ct": 24, "cv": 0 },
-            "req_1": {
-                "module": "music.srfDissInfo.DissInfo",
-                "method": "CgiGetDiss",
-                "param": {
-                    "disstid": DAILY30_DISSID,
-                    "dirid": 0,
-                    "tag": 1,
-                    "song_begin": 0,
-                    "song_num": 30,
-                    "userinfo": 1,
-                    "orderlist": 1,
-                    "onlysonglist": 1
-                }
-            }
-        });
-        let response: Value = self
-            .send_json("recommend.daily30", || {
-                self.musicu_request(&payload, Some(session))
-            })
-            .await?;
-        if response["code"].as_i64() != Some(0) || response["req_1"]["code"].as_i64() != Some(0) {
-            return Err(QQMusicError::SchemaChanged);
-        }
-        let data = &response["req_1"]["data"];
-        let songlist = data["songlist"].as_array();
-        let Some(songlist) = songlist else {
-            tracing::debug!(
-                target: "qqmusic",
-                shape = shape_for_value(data),
-                "recommend.daily30 response has no songlist array"
-            );
-            return Ok(Vec::new());
+    async fn daily_songlist(&self, session: Option<&QQSession>) -> Result<Playlist, QQMusicError> {
+        let authenticated_client;
+        let catalog = if let Some(session) = session {
+            let credential = crate::qmapi::credential::credential_from_uin_and_cookie(
+                &session.uin,
+                &session.cookie_header,
+                None,
+                unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
+            )?;
+            authenticated_client =
+                crate::qmapi::qmapi_client_with(Some(credential), Some(qqmusic_api::Platform::Web))
+                    .map_err(crate::qmapi::cgi::map_qmapi_error)?;
+            &authenticated_client
+        } else {
+            &self.catalog
         };
-        let songs = songlist
-            .iter()
-            .filter_map(|raw| {
-                serde_json::from_value::<NewSongDto>(raw.clone())
-                    .ok()
-                    .and_then(normalize_new_song)
-            })
-            .collect();
-        Ok(songs)
+        let response =
+            crate::qmapi::catalog::songlist(catalog, QQ_DAILY_RECOMMENDATION_SONGLIST_ID).await?;
+        normalize_qm_songlist(response, QQ_DAILY_RECOMMENDATION_SONGLIST_ID)
     }
 
     async fn new_song_recommend(
@@ -3753,6 +3700,47 @@ fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
             album_id: (!album_mid.is_empty()).then_some(album_mid),
             media_id: Some(media_id),
         }),
+    })
+}
+
+fn normalize_qm_songlist(
+    raw: qqmusic_api::models::songlist::GetSonglistDetailResponse,
+    requested_id: i64,
+) -> Result<Playlist, QQMusicError> {
+    if raw.code != 0 || raw.subcode != 0 {
+        return Err(QQMusicError::SchemaChanged);
+    }
+
+    let base = raw.info.base;
+    let creator = raw.info.creator;
+    let id = if base.id > 0 { base.id } else { requested_id };
+    let title = clean_text(&base.title);
+    if id <= 0 || title.is_empty() {
+        return Err(QQMusicError::SchemaChanged);
+    }
+
+    let creator_identity = non_empty(creator.encrypt_uin)
+        .or_else(|| (creator.musicid > 0).then(|| creator.musicid.to_string()));
+    let owner_id = creator_identity
+        .map(|identity| format!("qqmusic:user:{}", stable_component(&identity)))
+        .unwrap_or_else(|| "qqmusic".to_owned());
+    let id_text = id.to_string();
+    Ok(Playlist {
+        id: playlist_id(&id_text),
+        title: title.clone(),
+        description: clean_text(&base.desc),
+        owner: PlaylistOwner {
+            id: owner_id,
+            display_name: clean_text(&creator.nick),
+        },
+        artwork: artwork_from_provider_url(&base.picurl, &title, color_for(&id_text)),
+        updated_label: String::new(),
+        tracks: raw
+            .songs
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, song)| normalize_qm_song(song, index as u32 + 1))
+            .collect(),
     })
 }
 
@@ -5933,6 +5921,40 @@ mod tests {
     }
 
     #[test]
+    fn typed_daily_songlist_preserves_provider_metadata_and_actual_tracks() {
+        let mut response = qqmusic_api::models::songlist::GetSonglistDetailResponse::default();
+        response.info.base.id = QQ_DAILY_RECOMMENDATION_SONGLIST_ID;
+        response.info.base.title = "Synthetic listener's private daily mix".to_owned();
+        response.info.base.desc = "Provider supplied description".to_owned();
+        response.info.base.picurl =
+            "https://y.gtimg.cn/music/photo_new/T002R500x500M000ALBUM_MID.jpg".to_owned();
+        response.info.creator.musicid = 10_001;
+        response.info.creator.encrypt_uin = "PUBLIC_CREATOR_ID".to_owned();
+        response.info.creator.nick = "Provider curator".to_owned();
+        response.songs.push(
+            serde_json::from_value(json!({
+                "id": 1001,
+                "mid": "DAILY_TRACK_MID",
+                "name": "Provider track",
+                "title": "Provider track",
+                "interval": 180,
+                "singer": [{ "mid": "ARTIST_MID", "name": "Provider artist" }],
+                "album": { "mid": "ALBUM_MID", "name": "Provider album" },
+                "file": { "media_mid": "MEDIA_MID", "size_128mp3": 4096 }
+            }))
+            .expect("typed song fixture"),
+        );
+
+        let playlist = normalize_qm_songlist(response, 1).expect("songlist normalizes");
+
+        assert_eq!(playlist.title, "Synthetic listener's private daily mix");
+        assert_eq!(playlist.description, "Provider supplied description");
+        assert_eq!(playlist.owner.display_name, "Provider curator");
+        assert_eq!(playlist.tracks.len(), 1);
+        assert_eq!(playlist.tracks[0].title, "Provider track");
+    }
+
+    #[test]
     fn typed_search_previews_use_only_real_mids_for_entity_ids() {
         let artist: qqmusic_api::models::search::SingerSearch = serde_json::from_value(json!({
             "mid": "ARTIST_MID",
@@ -6456,16 +6478,23 @@ mod tests {
             .recommend_songlists(None, 6)
             .await
             .expect("songlists");
-        let newsongs = client.daily_songs(None).await.expect("newsongs");
+        let daily = client.daily_songlist(None).await.expect("daily songlist");
         assert!(!songlists.is_empty(), "expected recommended songlists");
-        assert!(!newsongs.is_empty(), "expected recommended new songs");
+        assert!(
+            !daily.tracks.is_empty(),
+            "expected daily recommendation songs"
+        );
+        assert!(
+            !daily.title.is_empty(),
+            "daily songlist carries its provider title"
+        );
         assert!(
             songlists.iter().all(|playlist| !playlist.title.is_empty()),
             "recommended songlists carry titles"
         );
         assert!(
-            newsongs.iter().all(|song| !song.title.is_empty()),
-            "recommended new songs carry titles"
+            daily.tracks.iter().all(|song| !song.title.is_empty()),
+            "daily recommendation songs carry titles"
         );
     }
 
@@ -6525,9 +6554,9 @@ mod tests {
             .await
             .expect("personalized songlists");
         let daily = client
-            .daily_songs(Some(&qq_session))
+            .daily_songlist(Some(&qq_session))
             .await
-            .expect("personalized daily songs");
+            .expect("personalized daily songlist");
         let guess = client
             .guess_recommend(Some(&qq_session), 10)
             .await
@@ -6546,7 +6575,7 @@ mod tests {
         eprintln!(
             "auth direct: songlists={} daily={} radar={} guess={}",
             songlists.len(),
-            daily.len(),
+            daily.tracks.len(),
             radar.len(),
             guess.len()
         );
@@ -6554,9 +6583,13 @@ mod tests {
             songlists.iter().all(|playlist| !playlist.title.is_empty()),
             "personalized songlists carry titles"
         );
-        assert!(!daily.is_empty(), "daily 30 songs resolve");
+        assert!(!daily.title.is_empty(), "daily songlist title resolves");
         assert!(
-            daily.iter().all(|song| !song.title.is_empty()),
+            !daily.tracks.is_empty(),
+            "daily recommendation songs resolve"
+        );
+        assert!(
+            daily.tracks.iter().all(|song| !song.title.is_empty()),
             "daily songs carry titles"
         );
         assert!(!radar.is_empty(), "radar songs resolve");
