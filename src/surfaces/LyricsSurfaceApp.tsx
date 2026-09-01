@@ -454,9 +454,11 @@ export function IslandSurface(props: SurfaceProps) {
       onPointerLeave={hover.onPointerLeave}
     >
       <div className="island-card">
-        {artworkSource && (
-          <img src={artworkSource} alt="" draggable={false} referrerPolicy="no-referrer" />
-        )}
+        <span className="island-card__artwork" aria-hidden="true">
+          {artworkSource && (
+            <img src={artworkSource} alt="" draggable={false} referrerPolicy="no-referrer" />
+          )}
+        </span>
         <span
           className="island-card__state"
           data-playing={projection?.value.isPlaying || undefined}

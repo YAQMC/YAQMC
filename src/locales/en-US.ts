@@ -1198,6 +1198,7 @@ export const enUS = {
   },
   tray: {
     'show-hide': 'Show / Hide',
+    'unlock-lyrics': 'Unlock lyrics overlays',
     'play-pause': 'Play / Pause',
     previous: 'Previous',
     next: 'Next',

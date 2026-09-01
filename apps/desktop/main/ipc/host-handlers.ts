@@ -483,9 +483,9 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     desktop: 'interactive',
     island: 'interactive',
   };
-  // An unlock pill persists directly through the host while the Main renderer
-  // may still reconcile its older passive preference. Remember that narrow
-  // hand-off so a stale reconcile cannot immediately relock the surface.
+  // Tray/settings unlock persists directly through the host while the Main
+  // renderer may still reconcile its older passive preference. Remember that
+  // narrow hand-off so a stale reconcile cannot immediately relock the surface.
   const pendingUnlock = new Set<LyricsSurfaceKind>();
   const authorizedStatisticsExports = new Map<string, number>();
   const exportPathKey = (target: string): string => {
@@ -498,22 +498,16 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     format: 'json' | 'csv',
   ): string => `${webContentsId}\0${format}\0${exportPathKey(target)}`;
 
-  const syncUnlockOverlay = (kind: LyricsSurfaceKind, locked: boolean): void => {
-    if (locked && deps.lyrics.get(kind) !== undefined) {
-      deps.unlock.show(kind);
-      const bounds = deps.lyrics.get(kind)?.getBounds?.();
-      if (bounds) {
-        deps.unlock.position(kind, bounds);
-      }
-      return;
-    }
+  const hideLegacyUnlockOverlay = (kind: LyricsSurfaceKind): void => {
     deps.unlock.hide(kind);
   };
 
   const applyNativeInteraction = (kind: LyricsSurfaceKind): void => {
     const locked = hostInteraction[kind] === 'passive-locked';
     deps.lyrics.lock(kind, locked);
-    syncUnlockOverlay(kind, locked);
+    // A locked surface is fully click-through. Recovery lives in the tray (and
+    // Settings), so no always-on-top unlock target can be clicked accidentally.
+    hideLegacyUnlockOverlay(kind);
     deps.emitSurfaceInteraction?.(kind, hostInteraction[kind]);
   };
 

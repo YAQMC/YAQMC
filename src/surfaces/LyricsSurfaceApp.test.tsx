@@ -205,6 +205,18 @@ describe('Desktop Lyrics interaction presentation', () => {
 });
 
 describe('Lyrics Island passive mode', () => {
+  it('reserves the artwork grid cell while artwork is unavailable', () => {
+    const { container } = render(<IslandSurface {...props('island')} />);
+    const card = container.querySelector('.island-card');
+    const artwork = container.querySelector('.island-card__artwork');
+    const copy = container.querySelector('.island-card__copy');
+
+    expect(card?.firstElementChild).toBe(artwork);
+    expect(artwork).toBeInTheDocument();
+    expect(artwork?.querySelector('img')).toBeNull();
+    expect(copy).toBeInTheDocument();
+  });
+
   it('keeps Island hover after a leave that is still inside the expanded card', () => {
     vi.useFakeTimers();
     const { container } = render(<IslandSurface {...props('island')} />);

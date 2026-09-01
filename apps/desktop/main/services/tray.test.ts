@@ -119,10 +119,11 @@ describe('tray icon path', () => {
 });
 
 describe('createTray', () => {
-  it('builds show/hide, play/pause, next, previous, settings, and quit', () => {
+  it('builds window, lyric recovery, playback, settings, and quit actions', () => {
     const trays: FakeTray[] = [];
     const { apis, template } = createApis(trays);
     const invokePlayer = vi.fn();
+    const unlockLyricsSurfaces = vi.fn();
     const openSettings = vi.fn();
     const quit = vi.fn();
     const window = mockWindow();
@@ -133,6 +134,7 @@ describe('createTray', () => {
       platform: 'win32',
       getMainWindow: () => window,
       invokePlayer,
+      unlockLyricsSurfaces,
       openSettings,
       quit,
     });
@@ -142,6 +144,7 @@ describe('createTray', () => {
     expect(trays[0]?.tooltip).toBe('YAQMC');
     expect(template.map((item) => item.id ?? item.type)).toEqual([
       'show-hide',
+      'unlock-lyrics',
       'separator',
       'play-pause',
       'previous',
@@ -152,6 +155,9 @@ describe('createTray', () => {
       'quit',
     ]);
     expect(template.find((item) => item.id === 'show-hide')?.label).toBe('Show / Hide');
+    expect(template.find((item) => item.id === 'unlock-lyrics')?.label).toBe(
+      'Unlock lyrics overlays',
+    );
     expect(template.find((item) => item.id === 'play-pause')?.label).toBe('Play / Pause');
     expect(template.find((item) => item.id === 'previous')?.label).toBe('Previous');
     expect(template.find((item) => item.id === 'next')?.label).toBe('Next');
@@ -162,6 +168,9 @@ describe('createTray', () => {
     clickMenu(template, 'next');
     clickMenu(template, 'previous');
     expect(invokePlayer.mock.calls).toEqual([['toggle'], ['next'], ['previous']]);
+
+    clickMenu(template, 'unlock-lyrics');
+    expect(unlockLyricsSurfaces).toHaveBeenCalledTimes(1);
 
     clickMenu(template, 'settings');
     expect(openSettings).toHaveBeenCalledTimes(1);
@@ -194,6 +203,7 @@ describe('createTray', () => {
       platform: 'linux',
       getMainWindow: () => window,
       invokePlayer: vi.fn(),
+      unlockLyricsSurfaces: vi.fn(),
       openSettings: vi.fn(),
       quit: vi.fn(),
     });
@@ -215,6 +225,7 @@ describe('createTray', () => {
       platform: 'win32',
       getMainWindow: () => window,
       invokePlayer: vi.fn(),
+      unlockLyricsSurfaces: vi.fn(),
       openSettings,
       quit: vi.fn(),
     });
@@ -234,6 +245,7 @@ describe('tray i18n dictionary', () => {
   it('maps every Electron tray menu id onto tray.* locale keys', () => {
     expect(TRAY_MENU_IDS).toEqual([
       'show-hide',
+      'unlock-lyrics',
       'play-pause',
       'previous',
       'next',
@@ -276,6 +288,7 @@ describe('tray i18n dictionary', () => {
       platform: 'win32',
       getMainWindow: () => mockWindow(),
       invokePlayer: vi.fn(),
+      unlockLyricsSurfaces: vi.fn(),
       openSettings: vi.fn(),
       quit: vi.fn(),
     });
@@ -283,6 +296,9 @@ describe('tray i18n dictionary', () => {
     expect(handle.applyLabels).toBe(handle.setLabels);
     handle.applyLabels(trayLabelsFromLocale(zhCN.tray));
     expect(template.find((item) => item.id === 'show-hide')?.label).toBe(zhCN.tray['show-hide']);
+    expect(template.find((item) => item.id === 'unlock-lyrics')?.label).toBe(
+      zhCN.tray['unlock-lyrics'],
+    );
     expect(template.find((item) => item.id === 'play-pause')?.label).toBe(zhCN.tray['play-pause']);
     expect(template.find((item) => item.id === 'previous')?.label).toBe(zhCN.tray.previous);
     expect(template.find((item) => item.id === 'next')?.label).toBe(zhCN.tray.next);
@@ -294,6 +310,7 @@ describe('tray i18n dictionary', () => {
     expect(template.find((item) => item.id === 'quit')?.label).toBe(enUS.tray.quit);
     expect(template.map((item) => item.id ?? item.type)).toEqual([
       'show-hide',
+      'unlock-lyrics',
       'separator',
       'play-pause',
       'previous',

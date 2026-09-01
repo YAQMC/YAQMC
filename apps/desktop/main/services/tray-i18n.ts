@@ -9,6 +9,7 @@
 
 export const TRAY_MENU_IDS = [
   'show-hide',
+  'unlock-lyrics',
   'play-pause',
   'previous',
   'next',
@@ -23,6 +24,7 @@ export type TrayLabels = Record<TrayMenuId, string>;
 /** i18next key path for each Electron tray menu id. */
 export const TRAY_I18N_KEYS = {
   'show-hide': 'tray.show-hide',
+  'unlock-lyrics': 'tray.unlock-lyrics',
   'play-pause': 'tray.play-pause',
   previous: 'tray.previous',
   next: 'tray.next',
@@ -33,6 +35,7 @@ export const TRAY_I18N_KEYS = {
 /** Default English — matches the current hardcoded `createTray` strings. */
 export const DEFAULT_TRAY_LABELS: TrayLabels = {
   'show-hide': 'Show / Hide',
+  'unlock-lyrics': 'Unlock lyrics overlays',
   'play-pause': 'Play / Pause',
   previous: 'Previous',
   next: 'Next',
@@ -43,6 +46,7 @@ export const DEFAULT_TRAY_LABELS: TrayLabels = {
 /** Must match `src/locales/zh-CN.ts` `tray.*`. Not the full locale tree. */
 export const ZH_CN_TRAY_LABELS: TrayLabels = {
   'show-hide': '显示 / 隐藏',
+  'unlock-lyrics': '解锁歌词浮层',
   'play-pause': '播放 / 暂停',
   previous: '上一首',
   next: '下一首',
@@ -53,6 +57,7 @@ export const ZH_CN_TRAY_LABELS: TrayLabels = {
 export function trayLabelsFromLocale(tray: TrayLabels): TrayLabels {
   return {
     'show-hide': tray['show-hide'],
+    'unlock-lyrics': tray['unlock-lyrics'],
     'play-pause': tray['play-pause'],
     previous: tray.previous,
     next: tray.next,

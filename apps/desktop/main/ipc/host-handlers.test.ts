@@ -375,13 +375,9 @@ describe('IpcRouter host intercepts', () => {
     expect(lyrics.show).toHaveBeenCalledWith('desktop');
     expect(lyrics.lock).toHaveBeenCalledWith('desktop', true);
     expect(lyrics.hide).toHaveBeenCalledWith('island');
-    expect(unlock.show).toHaveBeenCalledWith('desktop');
-    expect(unlock.position).toHaveBeenCalledWith('desktop', {
-      x: 80,
-      y: 40,
-      width: 940,
-      height: 190,
-    });
+    expect(unlock.show).not.toHaveBeenCalled();
+    expect(unlock.position).not.toHaveBeenCalled();
+    expect(unlock.hide).toHaveBeenCalledWith('desktop');
     expect(unlock.hide).toHaveBeenCalledWith('island');
 
     await expect(
@@ -512,7 +508,7 @@ describe('IpcRouter host intercepts', () => {
     ).resolves.toMatchObject({ ok: true });
     expect(lyrics.lock).toHaveBeenCalledWith('desktop', true);
     expect(lyrics.lock).not.toHaveBeenCalledWith('desktop', false);
-    expect(unlock.hide).not.toHaveBeenCalledWith('desktop');
+    expect(unlock.hide).toHaveBeenCalledWith('desktop');
 
     lyrics.lock.mockClear();
     await expect(

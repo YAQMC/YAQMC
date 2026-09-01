@@ -294,19 +294,29 @@
   border-radius: 25px;
 }
 
-.island-card > img {
+.island-card__artwork {
+  grid-column: 1;
+  grid-row: 1;
   align-self: start;
+  display: block;
   width: 46px;
   height: 46px;
+  overflow: hidden;
   border-radius: 16px;
-  object-fit: cover;
   transition:
     width 220ms var(--ease-out),
     height 220ms var(--ease-out),
     border-radius 220ms var(--ease-out);
 }
 
-.lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card > img {
+.island-card__artwork > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lyrics-surface--island[data-interaction-state='visible-interactive-hover'] .island-card__artwork {
   width: 56px;
   height: 56px;
   border-radius: 17px;
@@ -329,6 +339,8 @@
 }
 
 .island-card__copy {
+  grid-column: 2;
+  grid-row: 1;
   align-self: start;
   min-width: 0;
   padding-top: 5px;
@@ -429,17 +441,17 @@
 }
 
 :root[data-compositor-probe='no-island-expand'] .island-card,
-:root[data-compositor-probe='no-island-expand'] .island-card > img,
+:root[data-compositor-probe='no-island-expand'] .island-card__artwork,
 :root[data-compositor-probe='no-island-expand'] .island-card__expanded {
   transition: none !important;
 }
 
-:root[data-compositor-probe='no-surface-artwork'] .island-card > img {
+:root[data-compositor-probe='no-surface-artwork'] .island-card__artwork > img {
   visibility: hidden !important;
 }
 
 :root[data-surface-visual='idle'] .island-card,
-:root[data-surface-visual='idle'] .island-card > img,
+:root[data-surface-visual='idle'] .island-card__artwork,
 :root[data-surface-visual='idle'] .island-card__expanded,
 :root[data-surface-visual='idle'] .lyrics-surface__controls,
 :root[data-surface-visual='idle'] .surface-word > span:last-child,

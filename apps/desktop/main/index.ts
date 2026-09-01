@@ -403,95 +403,97 @@ if (__YAQMC_QA_BUILD__ && e2e) {
   };
 }
 
+const hostHandlers = createHostHandlers({
+  openExternal: (url) => shell.openExternal(url),
+  lyrics: lyricsSurfaces,
+  unlock: lyricsUnlock,
+  capabilities: () =>
+    lyricsSurfaceCapabilities({
+      platform: process.platform,
+      displayBackend: liveDisplayBackend(),
+    }),
+  showMainAndOpenSettings: emitOpenSettings,
+  emitSurfaceClosed: (kind: LyricsSurfaceKind) => {
+    fanoutEvent(CHANNEL_LYRICS_SURFACE_CLOSED, kind);
+  },
+  emitSurfaceInteraction: (kind: LyricsSurfaceKind, interaction) => {
+    fanoutEvent(CHANNEL_LYRICS_SURFACE_INTERACTION, { kind, interaction });
+  },
+  dialogs: {
+    showSaveDialog: (options) =>
+      mainWindow && !mainWindow.isDestroyed()
+        ? dialog.showSaveDialog(mainWindow, options)
+        : dialog.showSaveDialog(options),
+    showOpenDialog: (options) =>
+      mainWindow && !mainWindow.isDestroyed()
+        ? dialog.showOpenDialog(mainWindow, options)
+        : dialog.showOpenDialog(options),
+  },
+  downloadsDir: () => app.getPath('downloads'),
+  dataDir: () => coreDataPaths().dataDir,
+  // diagnostics_open_log_folder / diagnostics_reveal_bundle: host-owned OS folder APIs.
+  folders: {
+    logDir: () => coreDataPaths().logDir,
+    // E2E validates the IPC contract against an isolated QA profile. Do not
+    // launch a real desktop file manager there: on headless/portal-backed
+    // Linux sessions it can leave Electron's IPC reply unresolved.
+    openPath: (target) =>
+      __YAQMC_QA_BUILD__ && e2e ? Promise.resolve('') : shell.openPath(target),
+    showItemInFolder: (target) => {
+      if (!(__YAQMC_QA_BUILD__ && e2e)) {
+        shell.showItemInFolder(target);
+      }
+    },
+    exists: (target) => existsSync(target),
+  },
+  oauth: {
+    createWindow: (options) =>
+      createOAuthBrowserWindow(options as ConstructorParameters<typeof BrowserWindow>[0]),
+    fromPartition: (partition, options) => {
+      if (__YAQMC_QA_BUILD__ && smoke) {
+        return {};
+      }
+      const oauthSession = session.fromPartition(partition, options);
+      applySessionSecurity(oauthSession);
+      return oauthSession;
+    },
+    isPackaged: app.isPackaged,
+    invoke: invokeOAuthCore,
+  },
+  coreInvoke: invokeOAuthCore,
+  collectHostPayload: collectLiveHostPayload,
+  platformFacts: () => {
+    const displayBackend = liveDisplayBackend();
+    const shortcuts = shortcutSession.status();
+    return {
+      displayBackend,
+      graphicsMode: linuxGraphicsFacts.mode,
+      trayAvailable: trayHandle !== undefined,
+      trayError,
+      globalShortcutsSupported: !isNativeWaylandDisplayBackend(displayBackend),
+      globalShortcutsEnabled: shortcuts.globalShortcutsEnabled,
+      shortcutError: shortcuts.shortcutError,
+    };
+  },
+  setShortcutsEnabled: (enabled) => shortcutSession.setEnabled(enabled),
+  deepLinkStatus: () => deepLinkRegistration,
+  takePendingDeepLink,
+  updater: {
+    check: () => requireUpdater().check(),
+    download: () => requireUpdater().download(),
+    install: () => requireUpdater().install(),
+  },
+  windowChrome: hostWindowChrome,
+  // host.coreStatus: renderer markReady probe if it missed host://core-status.
+  coreStatus: () => ({ status: supervisor?.status ?? 'down' }),
+});
+
 const router = new IpcRouter({
   methods: loadMethodAclFromFile(methodAclPath),
   onDenied: ({ method, role }) => {
     writeHostLog(`acl denied method=${method} role=${role}`);
   },
-  hostHandlers: createHostHandlers({
-    openExternal: (url) => shell.openExternal(url),
-    lyrics: lyricsSurfaces,
-    unlock: lyricsUnlock,
-    capabilities: () =>
-      lyricsSurfaceCapabilities({
-        platform: process.platform,
-        displayBackend: liveDisplayBackend(),
-      }),
-    showMainAndOpenSettings: emitOpenSettings,
-    emitSurfaceClosed: (kind: LyricsSurfaceKind) => {
-      fanoutEvent(CHANNEL_LYRICS_SURFACE_CLOSED, kind);
-    },
-    emitSurfaceInteraction: (kind: LyricsSurfaceKind, interaction) => {
-      fanoutEvent(CHANNEL_LYRICS_SURFACE_INTERACTION, { kind, interaction });
-    },
-    dialogs: {
-      showSaveDialog: (options) =>
-        mainWindow && !mainWindow.isDestroyed()
-          ? dialog.showSaveDialog(mainWindow, options)
-          : dialog.showSaveDialog(options),
-      showOpenDialog: (options) =>
-        mainWindow && !mainWindow.isDestroyed()
-          ? dialog.showOpenDialog(mainWindow, options)
-          : dialog.showOpenDialog(options),
-    },
-    downloadsDir: () => app.getPath('downloads'),
-    dataDir: () => coreDataPaths().dataDir,
-    // diagnostics_open_log_folder / diagnostics_reveal_bundle: host-owned OS folder APIs.
-    folders: {
-      logDir: () => coreDataPaths().logDir,
-      // E2E validates the IPC contract against an isolated QA profile. Do not
-      // launch a real desktop file manager there: on headless/portal-backed
-      // Linux sessions it can leave Electron's IPC reply unresolved.
-      openPath: (target) =>
-        __YAQMC_QA_BUILD__ && e2e ? Promise.resolve('') : shell.openPath(target),
-      showItemInFolder: (target) => {
-        if (!(__YAQMC_QA_BUILD__ && e2e)) {
-          shell.showItemInFolder(target);
-        }
-      },
-      exists: (target) => existsSync(target),
-    },
-    oauth: {
-      createWindow: (options) =>
-        createOAuthBrowserWindow(options as ConstructorParameters<typeof BrowserWindow>[0]),
-      fromPartition: (partition, options) => {
-        if (__YAQMC_QA_BUILD__ && smoke) {
-          return {};
-        }
-        const oauthSession = session.fromPartition(partition, options);
-        applySessionSecurity(oauthSession);
-        return oauthSession;
-      },
-      isPackaged: app.isPackaged,
-      invoke: invokeOAuthCore,
-    },
-    coreInvoke: invokeOAuthCore,
-    collectHostPayload: collectLiveHostPayload,
-    platformFacts: () => {
-      const displayBackend = liveDisplayBackend();
-      const shortcuts = shortcutSession.status();
-      return {
-        displayBackend,
-        graphicsMode: linuxGraphicsFacts.mode,
-        trayAvailable: trayHandle !== undefined,
-        trayError,
-        globalShortcutsSupported: !isNativeWaylandDisplayBackend(displayBackend),
-        globalShortcutsEnabled: shortcuts.globalShortcutsEnabled,
-        shortcutError: shortcuts.shortcutError,
-      };
-    },
-    setShortcutsEnabled: (enabled) => shortcutSession.setEnabled(enabled),
-    deepLinkStatus: () => deepLinkRegistration,
-    takePendingDeepLink,
-    updater: {
-      check: () => requireUpdater().check(),
-      download: () => requireUpdater().download(),
-      install: () => requireUpdater().install(),
-    },
-    windowChrome: hostWindowChrome,
-    // host.coreStatus: renderer markReady probe if it missed host://core-status.
-    coreStatus: () => ({ status: supervisor?.status ?? 'down' }),
-  }),
+  hostHandlers,
 });
 
 const updaterHandle = createUpdater({
@@ -1116,6 +1118,9 @@ function installTrayAndShortcuts(): void {
       resourcesDir,
       getMainWindow: () => mainWindow,
       invokePlayer,
+      unlockLyricsSurfaces: async () => {
+        await hostHandlers.lyrics_surfaces_unlock_all?.(undefined, undefined, 'host');
+      },
       openSettings: emitOpenSettings,
       quit: () => {
         stopping = true;

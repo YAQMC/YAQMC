@@ -204,7 +204,8 @@ export function hideLyricsSurface(window: LyricsSurfaceWindow): void {
 
 /**
  * Lock: whole-window click-through + not focusable (plan §22.2, Option A).
- * Unlock is a separate HWND (`lyrics-unlock.ts`), not a hole in this window.
+ * Unlock is intentionally outside this HWND (tray / Settings), not a hole in
+ * the surface and not a second always-on-top window.
  * `{ forward: true }` is forbidden: it keeps the surface in the Windows
  * hit-test path so clicks never reach apps underneath (SURF-02).
  * Locked Windows z-order uses `floating` so Electron inserts the HWND behind

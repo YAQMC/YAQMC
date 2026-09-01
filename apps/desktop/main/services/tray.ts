@@ -59,6 +59,8 @@ export type CreateTrayOptions = {
   resourcesDir: string;
   getMainWindow: () => TrayWindow | undefined;
   invokePlayer: (method: PlayerInvokeMethod) => void | Promise<void>;
+  /** Unlock both passive lyric surfaces without showing a click target over either window. */
+  unlockLyricsSurfaces: () => void | Promise<void>;
   /** Host wires this to emit `app://open-settings`. Do not send IPC here. */
   openSettings: () => void;
   quit: () => void;
@@ -144,12 +146,26 @@ export function createTray(options: CreateTrayOptions): TrayHandle {
     });
   };
 
+  const unlockLyricsSurfaces = (): void => {
+    void Promise.resolve(options.unlockLyricsSurfaces()).catch((error: unknown) => {
+      options.log?.('tray command rejected', {
+        method: 'unlock-lyrics',
+        error: String(error),
+      });
+    });
+  };
+
   const rebuildMenu = (): void => {
     const template: TrayMenuItem[] = [
       {
         id: 'show-hide',
         label: labels['show-hide'],
         click: () => toggleMainWindow(options.getMainWindow),
+      },
+      {
+        id: 'unlock-lyrics',
+        label: labels['unlock-lyrics'],
+        click: unlockLyricsSurfaces,
       },
       { type: 'separator' },
       { id: 'play-pause', label: labels['play-pause'], click: () => runPlayer('toggle') },

@@ -1166,6 +1166,7 @@ export const zhCN = {
   },
   tray: {
     'show-hide': '显示 / 隐藏',
+    'unlock-lyrics': '解锁歌词浮层',
     'play-pause': '播放 / 暂停',
     previous: '上一首',
     next: '下一首',
