@@ -81,6 +81,13 @@ impl api::ProviderAccount for QQMusicService {
             .expect("QQMusic account snapshot and provider-api DTOs share the frozen wire schema")
     }
 
+    async fn refresh_account(&self) -> api::ProviderResult<api::AccountSnapshot> {
+        let value = QQMusicService::refresh_account(self)
+            .await
+            .map_err(provider_error)?;
+        map_output(value)
+    }
+
     async fn favorite_songs(
         &self,
         cursor: Option<String>,

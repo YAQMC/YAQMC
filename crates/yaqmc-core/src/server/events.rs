@@ -8,13 +8,14 @@ use serde_json::{json, Value};
 use tokio::sync::broadcast::error::RecvError;
 
 use yaqmc_protocol::{
-    CHANNEL_API_EVENT, CHANNEL_HOST_COMMAND, CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION,
-    CHANNEL_PLAYER_SNAPSHOT,
+    CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_HOST_COMMAND, CHANNEL_LYRICS_DOCUMENT,
+    CHANNEL_LYRICS_PROJECTION, CHANNEL_PLAYER_SNAPSHOT,
 };
 
 use crate::player::{ApiEvent, PlayerService};
 use crate::storage::StorageService;
 use crate::system_media::SystemMediaIntegration;
+use crate::CoreHandle;
 use crate::HostCommand;
 
 const PLAYER_SNAPSHOT_EVENT_TYPES: &[&str] = &[
@@ -197,6 +198,38 @@ pub fn spawn_host_command_fanout(
                 Err(RecvError::Closed) => break,
             }
         }
+    });
+}
+
+/// Restore provider accounts without blocking the request loop, then notify
+/// renderers so an initial guest snapshot cannot remain stale after startup.
+pub fn spawn_account_restore_fanout(
+    runtime: &tokio::runtime::Handle,
+    core: Arc<CoreHandle>,
+    sink: Arc<dyn EventSink>,
+) {
+    let sink = SequencedSink::new(sink);
+    runtime.spawn(async move {
+        core.plugins().restore_provider_accounts().await;
+        let providers = core.providers();
+        let provider_ids = providers.provider_ids().collect::<Vec<_>>();
+        let mut signed_in = false;
+        for provider_id in provider_ids {
+            let Ok(account) = providers.require_account_provider(provider_id.as_str()) else {
+                continue;
+            };
+            if account
+                .provider_account()
+                .account_snapshot()
+                .await
+                .state_name()
+                == "authenticated"
+            {
+                signed_in = true;
+                break;
+            }
+        }
+        sink.emit_channel(CHANNEL_ACCOUNT_CHANGED, json!({ "signedIn": signed_in }));
     });
 }
 

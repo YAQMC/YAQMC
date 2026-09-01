@@ -128,6 +128,10 @@ class NativeAccountMusicProvider extends NativeMusicProvider implements AccountM
     return this.request('provider_account_snapshot', {}, signal);
   }
 
+  refreshAccount(signal?: AbortSignal): Promise<AccountSnapshot> {
+    return this.request('provider_account_refresh', {}, signal);
+  }
+
   getLoginMethods(signal?: AbortSignal): Promise<AccountLoginMethodDescriptor[]> {
     return this.request('provider_account_login_methods', {}, signal);
   }

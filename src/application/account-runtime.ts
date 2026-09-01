@@ -23,7 +23,7 @@ import {
   type AccountMusicProvider,
   type MusicProvider,
 } from '../providers/music-provider';
-import { CHANNEL_HOST_CORE_STATUS } from '@yaqmc/client';
+import { CHANNEL_ACCOUNT_CHANGED, CHANNEL_HOST_CORE_STATUS } from '@yaqmc/client';
 import { getHostBridge, getYaqmcClient } from './yaqmc-runtime';
 
 export type AccountRuntimeError =
@@ -66,6 +66,8 @@ export const FAVORITE_RECONCILED_MESSAGE =
   'The server result was checked before the library was updated.';
 export const FAVORITE_OUTCOME_UNKNOWN_MESSAGE =
   'The server could not confirm the library change. Refreshing Favorites.';
+const ACCOUNT_REVALIDATE_INTERVAL_MS = 5 * 60 * 1_000;
+const ACCOUNT_REVALIDATE_MIN_GAP_MS = 60 * 1_000;
 
 export type PlaylistMutationOperation =
   'create' | 'rename' | 'add' | 'remove' | 'delete' | 'collect' | 'uncollect';
@@ -99,6 +101,7 @@ interface AccountStoreState {
   openDialog: () => void;
   closeDialog: (provider: AccountMusicProvider) => Promise<void>;
   refreshSnapshot: (provider: AccountMusicProvider) => Promise<void>;
+  refreshAccount: (provider: AccountMusicProvider) => Promise<void>;
   startLogin: (provider: AccountMusicProvider, method: AccountLoginMethod) => Promise<void>;
   heartbeatLogin: (provider: AccountMusicProvider) => Promise<void>;
   refreshQr: (provider: AccountMusicProvider) => Promise<void>;
@@ -916,6 +919,8 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   closeDialog: (provider) => cancelOwnedAttempt(provider, true),
   refreshSnapshot: (provider) =>
     runSnapshotRequest(provider, (signal) => provider.getAccountSnapshot(signal), false),
+  refreshAccount: (provider) =>
+    runSnapshotRequest(provider, (signal) => provider.refreshAccount(signal), false),
   startLogin: async (provider, method) => {
     set({ dialogOpen: true, displayedQrImageDataUri: null });
     await runSnapshotRequest(
@@ -1843,22 +1848,58 @@ export function useAccountRuntime(provider: MusicProvider): void {
       reconcileOwnershipTimers(provider);
       hydrateAuthenticatedFavoriteAuthority(provider);
     });
+    let lastRevalidationAt = Date.now();
+    let revalidating = false;
     const release = () => disposeOwnership(provider);
     window.addEventListener('pagehide', release);
-    void useAccountStore.getState().refreshSnapshot(provider);
+    const refreshSnapshot = () => void useAccountStore.getState().refreshSnapshot(provider);
+    const stopAccountChanged = getYaqmcClient().on(CHANNEL_ACCOUNT_CHANGED, () => {
+      lastRevalidationAt = Date.now();
+      refreshSnapshot();
+    });
+    const revalidate = () => {
+      const now = Date.now();
+      if (
+        revalidating ||
+        document.visibilityState === 'hidden' ||
+        useAccountStore.getState().snapshot.state !== 'authenticated' ||
+        now - lastRevalidationAt < ACCOUNT_REVALIDATE_MIN_GAP_MS
+      ) {
+        return;
+      }
+      revalidating = true;
+      lastRevalidationAt = now;
+      void useAccountStore
+        .getState()
+        .refreshAccount(provider)
+        .finally(() => {
+          revalidating = false;
+        });
+    };
+    const revalidateOnVisible = () => {
+      if (document.visibilityState === 'visible') revalidate();
+    };
+    window.addEventListener('focus', revalidate);
+    document.addEventListener('visibilitychange', revalidateOnVisible);
+    const revalidationTimer = window.setInterval(revalidate, ACCOUNT_REVALIDATE_INTERVAL_MS);
+    refreshSnapshot();
     reconcileOwnershipTimers(provider);
     hydrateAuthenticatedFavoriteAuthority(provider);
     const stopCoreStatus =
       getHostBridge().kind === 'electron'
         ? getYaqmcClient().on(CHANNEL_HOST_CORE_STATUS, (payload) => {
             if (payload.status === 'ready') {
-              void useAccountStore.getState().refreshSnapshot(provider);
+              refreshSnapshot();
             }
           })
         : undefined;
 
     return () => {
       stopCoreStatus?.();
+      stopAccountChanged();
+      window.clearInterval(revalidationTimer);
+      window.removeEventListener('focus', revalidate);
+      document.removeEventListener('visibilitychange', revalidateOnVisible);
       window.removeEventListener('pagehide', release);
       unsubscribe();
       disposeOwnership(provider);

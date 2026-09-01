@@ -8,7 +8,8 @@ mod types;
 
 pub use events::{
     actions_for_player_event, host_command_event, lagged_resync_channels,
-    spawn_host_command_fanout, spawn_player_fanout, EventSink, FanoutActions,
+    spawn_account_restore_fanout, spawn_host_command_fanout, spawn_player_fanout, EventSink,
+    FanoutActions,
 };
 pub use methods::{core_dispatch_methods, dispatch, DispatchError};
 pub use ops::{

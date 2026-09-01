@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import {
   choosePluginFile,
+  listPlugins,
   pluginHostSafeMode,
+  setPluginEnabled,
   setPluginSafeMode,
+  type PluginRecord,
 } from '../application/plugin-runtime';
 import { PluginManager } from './PluginManager';
 
@@ -32,9 +35,11 @@ vi.mock('../application/plugin-runtime', () => ({
 describe('PluginManager', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('en-US');
+    vi.mocked(listPlugins).mockResolvedValue([]);
     vi.mocked(pluginHostSafeMode).mockResolvedValue(false);
     vi.mocked(choosePluginFile).mockReset();
     vi.mocked(setPluginSafeMode).mockReset();
+    vi.mocked(setPluginEnabled).mockReset();
   });
 
   it('renders the empty plugin list and install control', async () => {
@@ -84,5 +89,43 @@ describe('PluginManager', () => {
         ),
       ).toBeInTheDocument();
     });
+  });
+
+  it('presents installed plugins as a localized status list with stable actions', async () => {
+    const plugin: PluginRecord = {
+      id: 'dev.yaqmc.lyrics-scenes',
+      name: 'Lyrics scenes',
+      version: '1.0.0',
+      description: 'Synthetic fixture',
+      authors: ['YAQMC'],
+      enabled: false,
+      status: 'disabled',
+      apiVersion: 1,
+      packageSha256: 'a'.repeat(64),
+      source: 'local',
+      unsigned: true,
+      entrypoints: { styles: 1, scenes: 1, script: false },
+      permissions: [],
+      grantedPermissions: [],
+      riskRating: 'low',
+      styleScan: { severity: null, findings: [] },
+      scriptScan: { severity: null, findings: [] },
+      compatible: true,
+      platforms: ['win32'],
+    };
+    vi.mocked(listPlugins).mockResolvedValue([plugin]);
+    vi.mocked(setPluginEnabled).mockResolvedValue({ ...plugin, enabled: true, status: 'active' });
+
+    render(<PluginManager />);
+
+    expect(await screen.findByRole('heading', { name: 'Installed plugins' })).toBeInTheDocument();
+    expect(screen.getByText('Disabled')).toBeInTheDocument();
+    expect(screen.getByText('Styles')).toBeInTheDocument();
+    expect(screen.getByText('Scenes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open Lyrics scenes details' })).toBeInTheDocument();
+    const enable = screen.getByRole('button', { name: 'Enable' });
+    expect(enable).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(enable);
+    await waitFor(() => expect(setPluginEnabled).toHaveBeenCalledWith(plugin.id, true, []));
   });
 });

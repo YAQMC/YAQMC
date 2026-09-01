@@ -1,6 +1,6 @@
 //! ADR-004 event channel names. Core fan-out owns the player/lyrics/host-command
 //! map; plugin/preferences still notify through existing host callbacks until a
-//! later bus merge. `account://changed` and `core://log` are declared and unused.
+//! later bus merge. `core://log` remains declared and unused.
 
 pub const CHANNEL_API_EVENT: &str = "api://event";
 pub const CHANNEL_PLAYER_SNAPSHOT: &str = "player://snapshot";

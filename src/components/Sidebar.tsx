@@ -14,6 +14,7 @@ import { isPrimaryRoute, type AppRoute } from '../application/navigation';
 import { useMusicProvider } from '../application/provider-context';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
+import { useSafeArtworkSource } from '../application/artwork-source';
 import { useTranslation } from 'react-i18next';
 
 interface SidebarProps {
@@ -32,7 +33,9 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
   const providerLabel = provider.id === 'qqmusic' ? t('qqGuest') : provider.displayName;
   const profileLabel = accountProfile?.nickname ?? t('listener');
   const profileInitial = Array.from(profileLabel.trim())[0] ?? 'L';
-  const avatarUrl = safeAccountAvatarUrl(accountProfile?.avatarUrl);
+  const avatarUrl = useSafeArtworkSource(safeAccountAvatarUrl(accountProfile?.avatarUrl), {
+    pendingRemote: 'hide',
+  });
   const accountLabel = accountEntitlement
     ? t('accountSummary', {
         tier: t(`accountTier.${accountEntitlement.tier}`),

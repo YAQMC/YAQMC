@@ -5,7 +5,14 @@ const memoryCache = new Map<string, string>();
 const pendingCache = new Map<string, Promise<string>>();
 let cacheGeneration = 0;
 
-const CACHEABLE_ARTWORK_HOSTS = new Set(['y.gtimg.cn', 'qpic.y.qq.com', 'music-file.y.qq.com']);
+const CACHEABLE_ARTWORK_HOSTS = new Set([
+  'y.gtimg.cn',
+  'qpic.y.qq.com',
+  'music-file.y.qq.com',
+  'q.qlogo.cn',
+  'thirdwx.qlogo.cn',
+  'thirdqq.qlogo.cn',
+]);
 
 export function isCacheableArtworkSource(url: string): boolean {
   try {

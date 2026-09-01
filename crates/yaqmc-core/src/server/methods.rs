@@ -62,6 +62,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "provider_set_current_quality",
     "provider_account_login_methods",
     "provider_account_snapshot",
+    "provider_account_refresh",
     "provider_favorite_songs",
     "provider_account_playlists",
     "provider_account_playlist_tracks",
@@ -560,6 +561,12 @@ async fn invoke_core(
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             ok(capability.provider_account().account_snapshot().await)
+        }
+        "provider_account_refresh" => {
+            let ProviderIdParams { provider_id } = parse(&params)?;
+            let capability =
+                provider_command(core.providers().require_account_provider(&provider_id))?;
+            provider(capability.provider_account().refresh_account().await)
         }
         "provider_favorite_songs" => {
             let ProviderCursorPageParams {

@@ -111,6 +111,7 @@ export const MIGRATED_METHOD_NAMES = [
   'provider_set_current_quality',
   'provider_account_login_methods',
   'provider_account_snapshot',
+  'provider_account_refresh',
   'provider_favorite_songs',
   'provider_account_playlists',
   'provider_account_playlist_tracks',
@@ -316,6 +317,7 @@ export type MethodParams = Exhaustive<{
   provider_set_current_quality: { providerId: string; quality: AudioQualityPreference };
   provider_account_login_methods: { providerId: string };
   provider_account_snapshot: { providerId: string };
+  provider_account_refresh: { providerId: string };
   provider_favorite_songs: { providerId: string; cursor: string | null; limit: number };
   provider_account_playlists: { providerId: string; cursor: string | null; limit: number };
   provider_account_playlist_tracks: {
@@ -528,6 +530,7 @@ export type MethodResult = Exhaustive<{
   provider_set_current_quality: PlayerSnapshot;
   provider_account_login_methods: AccountLoginMethodDescriptor[];
   provider_account_snapshot: AccountSnapshot;
+  provider_account_refresh: AccountSnapshot;
   provider_favorite_songs: Page<Song>;
   provider_account_playlists: Page<AccountPlaylistSummary>;
   provider_account_playlist_tracks: AccountPlaylistDetail;

@@ -206,6 +206,11 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::Main,
     ),
     spec(
+        "provider_account_refresh",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
         "provider_favorite_songs",
         MethodOwner::Core,
         OriginClass::Main,

@@ -15,7 +15,7 @@ export function AppBackground() {
       : background.mode === 'image'
         ? background.source
         : null;
-  const safeSource = useSafeArtworkSource(desiredSource);
+  const safeSource = useSafeArtworkSource(desiredSource, { pendingRemote: 'hide' });
   const preblurred = useBlurredArtwork(background.mode === 'artwork' ? safeSource : null);
   const imageSrc = background.mode === 'artwork' ? (preblurred ?? safeSource) : safeSource;
   return (

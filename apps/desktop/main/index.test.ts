@@ -166,7 +166,20 @@ describe('host boot wiring', () => {
     expect(source).toContain('sandbox: true');
     expect(source).toContain('contextIsolation: true');
     expect(source).toContain('nodeIntegration: false');
+    expect(source).toContain("backgroundColor: '#11120f'");
     expect(source).not.toContain(['--', 'no-sandbox'].join(''));
+  });
+
+  it('shows the renderer before waiting for Core startup and skips portable launch updates', () => {
+    const boot = source.slice(
+      source.indexOf('app.whenReady()'),
+      source.indexOf("app.on('before-quit'"),
+    );
+    expect(boot.indexOf('createMainWindow(root);')).toBeGreaterThan(-1);
+    expect(boot.indexOf('createMainWindow(root);')).toBeLessThan(
+      boot.indexOf('await startSupervisor();'),
+    );
+    expect(boot).toContain('!process.env.PORTABLE_EXECUTABLE_FILE');
   });
 
   it('restores lyric surface geometry after core ready using BASE-04 keys', () => {

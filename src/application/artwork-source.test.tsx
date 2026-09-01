@@ -77,6 +77,9 @@ describe('artwork source policy', () => {
     'https://y.gtimg.cn:443/a.jpg',
     'https://qpic.y.qq.com/a.jpg',
     'https://music-file.y.qq.com/songlist/cover.jpg',
+    'https://q.qlogo.cn/avatar.jpg',
+    'https://thirdwx.qlogo.cn/avatar.jpg',
+    'https://thirdqq.qlogo.cn/avatar.jpg',
   ])('classifies exact QQ artwork origin %s for native caching', (source) => {
     expect(isCacheableArtworkSource(source)).toBe(true);
     expect(classifyArtworkSource(source, currentOrigin)).toEqual({ kind: 'cache', source });

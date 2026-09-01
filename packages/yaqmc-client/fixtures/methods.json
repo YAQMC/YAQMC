@@ -356,6 +356,19 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "provider_account_refresh",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "provider_favorite_songs",
     "owner": "core",
     "requestCap": 1048576,

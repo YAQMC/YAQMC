@@ -552,6 +552,12 @@ impl QQMusicService {
         self.auth.snapshot().await
     }
 
+    pub async fn refresh_account(&self) -> Result<AccountSnapshot, QQMusicError> {
+        let snapshot = self.auth.revalidate().await?;
+        self.account.clear_runtime_state().await;
+        Ok(snapshot)
+    }
+
     pub(crate) fn account_generation(&self) -> u64 {
         self.auth.generation()
     }

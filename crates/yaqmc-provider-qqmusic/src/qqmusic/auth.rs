@@ -890,6 +890,46 @@ impl QQMusicAuthService {
         self.snapshot.read().await.clone()
     }
 
+    pub(crate) async fn revalidate(&self) -> Result<AccountSnapshot, QQMusicError> {
+        let (generation, cancellation) = self.capture_generation();
+        let lifecycle = self.lifecycle.lock().await;
+        self.ensure_generation_current(generation)?;
+        let session = match self.active_session.read().await.clone() {
+            Some(session) => session,
+            None => return Ok(self.snapshot().await),
+        };
+        let snapshot = self.snapshot.read().await.clone();
+        if !matches!(snapshot.account, AccountState::Authenticated { .. }) {
+            return Ok(snapshot);
+        }
+        let epoch = AccountEpoch {
+            generation,
+            scope: session.account_cache_scope.clone(),
+        };
+        let validated = match self.protocol.validate_session(&session, cancellation).await {
+            Ok(validated) => validated,
+            Err(
+                error @ (QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected),
+            ) => {
+                drop(lifecycle);
+                self.require_reauthentication_if_current(&epoch).await?;
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
+        self.ensure_current(&epoch).await?;
+        self.storage
+            .delete_provider_cache_kind(ACCOUNT_CACHE_KIND)
+            .map_err(|_| QQMusicError::Storage)?;
+        if !self
+            .publish_authenticated_if_current(generation, validated)
+            .await
+        {
+            return Err(QQMusicError::Cancelled);
+        }
+        Ok(self.snapshot().await)
+    }
+
     pub(crate) fn playback_epoch_clock(&self) -> Arc<PlaybackEpochClock> {
         Arc::clone(&self.playback_epoch)
     }
@@ -4032,6 +4072,46 @@ mod tests {
         assert!(expired_credentials
             .value(crate::qmapi::credential::CREDENTIAL_V2)
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn revalidate_refreshes_an_authenticated_snapshot_without_changing_identity_generation() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("refreshable")).expect("session JSON"),
+        );
+        let service = auth_service(Arc::clone(&protocol), credentials);
+        let restored = service.restore().await.expect("restore");
+        let generation = service.generation();
+
+        let refreshed = service.revalidate().await.expect("revalidate");
+
+        assert_eq!(refreshed.state_name(), "authenticated");
+        assert_eq!(refreshed.revision, restored.revision + 1);
+        assert_eq!(service.generation(), generation);
+        assert_eq!(protocol.validation_count.load(Ordering::Acquire), 2);
+    }
+
+    #[tokio::test]
+    async fn transient_revalidation_failure_keeps_the_authenticated_snapshot() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("offline-refresh")).expect("session JSON"),
+        );
+        let service = auth_service(Arc::clone(&protocol), credentials);
+        let restored = service.restore().await.expect("restore");
+        protocol.fail_validation(QQMusicError::Offline);
+
+        assert!(matches!(
+            service.revalidate().await,
+            Err(QQMusicError::Offline)
+        ));
+        assert_eq!(service.snapshot().await.revision, restored.revision);
+        assert_eq!(service.snapshot().await.state_name(), "authenticated");
     }
 
     #[tokio::test]

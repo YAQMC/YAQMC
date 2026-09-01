@@ -1,5 +1,10 @@
-import { CHANNEL_PLUGIN_CHANGED, type ProviderDescriptor } from '@yaqmc/client';
+import {
+  CHANNEL_HOST_CORE_STATUS,
+  CHANNEL_PLUGIN_CHANGED,
+  type ProviderDescriptor,
+} from '@yaqmc/client';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import App from '../App';
 import type { MusicProvider } from '../providers/music-provider';
 import { createNativeMusicProvider } from '../providers/native/native-music-provider';
@@ -8,6 +13,7 @@ import { MusicProviderRoot } from './provider-root';
 import { getYaqmcClient } from './yaqmc-runtime';
 
 export function NativeApplication({ initialProviderId }: { initialProviderId?: string }) {
+  const { t } = useTranslation('pages');
   const [descriptors, setDescriptors] = useState<ProviderDescriptor[] | null>(null);
   useEffect(() => {
     const client = getYaqmcClient();
@@ -24,10 +30,14 @@ export function NativeApplication({ initialProviderId }: { initialProviderId?: s
         });
     };
     reload();
-    const unlisten = client.on(CHANNEL_PLUGIN_CHANGED, reload);
+    const stopPluginChanged = client.on(CHANNEL_PLUGIN_CHANGED, reload);
+    const stopCoreStatus = client.on(CHANNEL_HOST_CORE_STATUS, (payload) => {
+      if (payload.status === 'ready') reload();
+    });
     return () => {
       generation += 1;
-      unlisten();
+      stopPluginChanged();
+      stopCoreStatus();
     };
   }, []);
   const providers = useMemo<MusicProvider[]>(() => {
@@ -48,7 +58,16 @@ export function NativeApplication({ initialProviderId }: { initialProviderId?: s
     return options && options.length > 0 ? options : undefined;
   }, [descriptors]);
   if (descriptors === null) {
-    return <main className="app-bootstrap" aria-label="Loading YAQMC" aria-busy="true" />;
+    return (
+      <main className="app-bootstrap" aria-label={t('loadingMusic')} aria-busy="true">
+        <span className="app-bootstrap__mark" aria-hidden="true" />
+        <span className="app-bootstrap__copy">
+          <strong>YAQMC</strong>
+          <small>{t('loadingMusic')}</small>
+        </span>
+        <span className="app-bootstrap__progress" aria-hidden="true" />
+      </main>
+    );
   }
   return (
     <MusicProviderRoot

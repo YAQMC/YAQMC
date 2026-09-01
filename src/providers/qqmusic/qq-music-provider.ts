@@ -101,6 +101,10 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
     return nativeRequest('qqmusic_account_snapshot', undefined, signal);
   }
 
+  refreshAccount(signal?: AbortSignal): Promise<AccountSnapshot> {
+    return nativeRequest('provider_account_refresh', { providerId: this.id }, signal);
+  }
+
   getLoginMethods(): Promise<AccountLoginMethodDescriptor[]> {
     return Promise.resolve([
       { id: 'qq', label: 'QQ', flow: 'oauth' },

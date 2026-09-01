@@ -907,6 +907,7 @@ function createMainWindow(root: string): BrowserWindow {
     minWidth: 1000,
     minHeight: 680,
     show: !(__YAQMC_QA_BUILD__ && smoke),
+    backgroundColor: '#11120f',
     frame: false,
     icon: path.join(
       desktopRoot,
@@ -1175,6 +1176,7 @@ if (
         headers: served.headers,
       });
     });
+    createMainWindow(root);
     try {
       await startSupervisor();
     } catch (error) {
@@ -1182,10 +1184,9 @@ if (
       quitWith(1);
       return;
     }
-    createMainWindow(root);
     sendPlatformAttach();
     installTrayAndShortcuts();
-    if (!(__YAQMC_QA_BUILD__ && smoke) && app.isPackaged) {
+    if (!(__YAQMC_QA_BUILD__ && smoke) && app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE) {
       updaterHandle?.scheduleLaunchCheck();
     }
     if (__YAQMC_QA_BUILD__ && smoke && mainWindow) {

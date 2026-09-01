@@ -50,6 +50,11 @@ pub trait ProviderAccount: Send + Sync {
     /// and credential replacement advance it; passive snapshot revisions do not.
     fn account_generation(&self) -> u64;
     async fn account_snapshot(&self) -> AccountSnapshot;
+    /// Revalidate remote profile and entitlement data when supported. Providers
+    /// without a remote refresh operation keep their current snapshot.
+    async fn refresh_account(&self) -> ProviderResult<AccountSnapshot> {
+        Ok(self.account_snapshot().await)
+    }
     async fn favorite_songs(
         &self,
         cursor: Option<String>,

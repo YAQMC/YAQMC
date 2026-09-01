@@ -72,6 +72,7 @@ export interface MusicProvider extends CatalogMusicProvider, LyricsMusicProvider
 
 export interface AccountMusicProvider {
   getAccountSnapshot(signal?: AbortSignal): Promise<AccountSnapshot>;
+  refreshAccount(signal?: AbortSignal): Promise<AccountSnapshot>;
   getLoginMethods?(signal?: AbortSignal): Promise<AccountLoginMethodDescriptor[]>;
   startWebLogin(method: AccountLoginMethod, signal?: AbortSignal): Promise<AccountSnapshot>;
   startQrLogin(signal?: AbortSignal): Promise<AccountSnapshot>;
@@ -136,6 +137,7 @@ export function isAccountMusicProvider(
   const candidate = provider as Partial<AccountMusicProvider>;
   return [
     'getAccountSnapshot',
+    'refreshAccount',
     'startWebLogin',
     'startQrLogin',
     'heartbeatQrLogin',

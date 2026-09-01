@@ -67,6 +67,10 @@ function capabilityChips(plugin: PluginRecord): string[] {
   return chips;
 }
 
+function pluginStatusLabel(status: PluginRecord['status'], t: (key: string) => string): string {
+  return t(`status.${status}`);
+}
+
 function permissionChanges(
   previous: string[] | null,
   next: string[],
@@ -323,32 +327,62 @@ export function PluginManager() {
           {t('safeModeActive')}
         </p>
       )}
-      {plugins.length === 0 && <p className="settings-empty">{t('empty')}</p>}
-      <ul className="plugin-manager__list">
-        {plugins.map((plugin) => (
-          <li key={plugin.id} className="plugin-card">
-            <button type="button" className="plugin-card__main" onClick={() => setDetails(plugin)}>
-              <Puzzle size={16} />
-              <span>
-                <strong>{plugin.name}</strong>
-                <small>
-                  {plugin.version} · API {plugin.apiVersion} · {plugin.status}
-                  {plugin.unsigned ? ` · ${t('unsigned')}` : ''}
-                </small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="button button--quiet"
-              aria-pressed={plugin.enabled}
-              disabled={busy || plugin.status === 'incompatible'}
-              onClick={() => void toggle(plugin, !plugin.enabled)}
-            >
-              <Power size={14} /> {plugin.enabled ? t('disable') : t('enable')}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <h3 className="plugin-manager__heading">{t('installed')}</h3>
+      {plugins.length === 0 ? (
+        <p className="settings-empty plugin-manager__empty">{t('empty')}</p>
+      ) : (
+        <ul className="plugin-manager__list">
+          {plugins.map((plugin) => {
+            const chips = capabilityChips(plugin);
+            return (
+              <li key={plugin.id} className="plugin-card" data-status={plugin.status}>
+                <button
+                  type="button"
+                  className="plugin-card__main"
+                  aria-label={t('openDetails', { name: plugin.name })}
+                  onClick={() => setDetails(plugin)}
+                >
+                  <span className="plugin-card__icon" aria-hidden="true">
+                    <Puzzle size={18} />
+                  </span>
+                  <span className="plugin-card__copy">
+                    <span className="plugin-card__title-row">
+                      <strong>{plugin.name}</strong>
+                      <span className="plugin-card__status">
+                        {pluginStatusLabel(plugin.status, t)}
+                      </span>
+                    </span>
+                    <small>
+                      {t('version', { version: plugin.version })} · API {plugin.apiVersion}
+                      {plugin.unsigned ? ` · ${t('unsigned')}` : ''}
+                    </small>
+                    {chips.length > 0 && (
+                      <span className="plugin-card__capabilities" aria-label={t('capabilities')}>
+                        {chips.map((chip) => (
+                          <span key={chip} className="plugin-chip">
+                            {chip}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                <div className="plugin-card__actions">
+                  <button
+                    type="button"
+                    className="button button--quiet plugin-card__toggle"
+                    aria-pressed={plugin.enabled}
+                    disabled={busy || plugin.status === 'incompatible'}
+                    onClick={() => void toggle(plugin, !plugin.enabled)}
+                  >
+                    <Power size={14} /> {plugin.enabled ? t('disable') : t('enable')}
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {inspect && (
         <div className="plugin-review" role="dialog" aria-label={t('reviewTitle')}>
           <h3>{t('reviewTitle')}</h3>

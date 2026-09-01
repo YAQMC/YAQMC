@@ -50,7 +50,14 @@ pub(super) fn artwork_from_provider_url(
     }
 }
 
-const ALLOWED_ARTWORK_HOSTS: &[&str] = &["y.gtimg.cn", "qpic.y.qq.com", "music-file.y.qq.com"];
+const ALLOWED_ARTWORK_HOSTS: &[&str] = &[
+    "y.gtimg.cn",
+    "qpic.y.qq.com",
+    "music-file.y.qq.com",
+    "q.qlogo.cn",
+    "thirdwx.qlogo.cn",
+    "thirdqq.qlogo.cn",
+];
 
 pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(value) else {

@@ -13,7 +13,8 @@ use yaqmc_protocol::{
 };
 
 use super::{
-    dispatch, spawn_host_command_fanout, spawn_player_fanout, EventSink, HostDispatchHooks,
+    dispatch, spawn_account_restore_fanout, spawn_host_command_fanout, spawn_player_fanout,
+    EventSink, HostDispatchHooks,
 };
 use crate::diagnostics::AppSection;
 use crate::platform::PlatformDiagnostics;
@@ -21,10 +22,12 @@ use crate::CoreHandle;
 
 struct ChannelSink {
     sender: mpsc::UnboundedSender<CoreMessage>,
+    seq: AtomicU64,
 }
 
 impl EventSink for ChannelSink {
-    fn emit(&self, seq: u64, channel: &str, payload: &Value) {
+    fn emit(&self, _source_seq: u64, channel: &str, payload: &Value) {
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
         let _ = self.sender.send(CoreMessage::Event {
             seq,
             channel: channel.to_owned(),
@@ -140,21 +143,24 @@ where
     // Electron composition point: position/EOS fan-out lives here.
     core.player()
         .start_clock_on_runtime(&tokio::runtime::Handle::current());
-    // Restore the account session after bootstrap. Electron must
-    // await it before the request loop: `account://changed` is unused, so a
-    // first snapshot that still sees guest stays guest after restart.
-    core.plugins().restore_provider_accounts().await;
-
     let core = Arc::new(core);
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
     let (replies_tx, mut replies_rx) = mpsc::unbounded_channel();
-    let sink: Arc<dyn EventSink> = Arc::new(ChannelSink { sender: events_tx });
+    let sink: Arc<dyn EventSink> = Arc::new(ChannelSink {
+        sender: events_tx,
+        seq: AtomicU64::new(0),
+    });
     let host = Arc::new(StdioNotifyHost::new(host, Arc::clone(&sink)));
     spawn_player_fanout(
         &tokio::runtime::Handle::current(),
         core.player(),
         core.storage(),
         system_media,
+        Arc::clone(&sink),
+    );
+    spawn_account_restore_fanout(
+        &tokio::runtime::Handle::current(),
+        Arc::clone(&core),
         Arc::clone(&sink),
     );
     spawn_host_command_fanout(&tokio::runtime::Handle::current(), host_commands, sink);

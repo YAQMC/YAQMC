@@ -100,6 +100,7 @@ function provider() {
       'getLyrics',
       'search',
       'getAccountSnapshot',
+      'refreshAccount',
       'heartbeatQrLogin',
       'signOut',
       'getFavoriteSongs',

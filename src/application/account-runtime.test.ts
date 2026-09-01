@@ -24,13 +24,18 @@ import {
 } from './account-runtime';
 
 const coreStatusMocks = vi.hoisted(() => {
-  const listeners = new Set<(payload: { status: string }) => void>();
+  const listeners = new Map<string, Set<(payload: unknown) => void>>();
   return {
     kind: 'fake' as 'electron' | 'fake',
     listeners,
     emit(status: string) {
-      for (const listener of listeners) {
+      for (const listener of listeners.get('host://core-status') ?? []) {
         listener({ status });
+      }
+    },
+    emitAccount(signedIn: boolean) {
+      for (const listener of listeners.get('account://changed') ?? []) {
+        listener({ signedIn });
       }
     },
     reset() {
@@ -43,10 +48,12 @@ const coreStatusMocks = vi.hoisted(() => {
 vi.mock('./yaqmc-runtime', () => ({
   getHostBridge: () => ({ kind: coreStatusMocks.kind }),
   getYaqmcClient: () => ({
-    on: (_channel: string, handler: (payload: { status: string }) => void) => {
-      coreStatusMocks.listeners.add(handler);
+    on: (channel: string, handler: (payload: unknown) => void) => {
+      const listeners = coreStatusMocks.listeners.get(channel) ?? new Set();
+      listeners.add(handler);
+      coreStatusMocks.listeners.set(channel, listeners);
       return () => {
-        coreStatusMocks.listeners.delete(handler);
+        listeners.delete(handler);
       };
     },
   }),
@@ -262,6 +269,7 @@ function accountProvider(
     getLyrics: unsupported,
     search: unsupported,
     getAccountSnapshot: vi.fn().mockResolvedValue(guestSnapshot()),
+    refreshAccount: vi.fn().mockResolvedValue(guestSnapshot()),
     startWebLogin: vi.fn().mockResolvedValue(waitingSnapshot()),
     startQrLogin: vi.fn().mockResolvedValue(waitingSnapshot()),
     heartbeatQrLogin: vi.fn().mockResolvedValue(waitingSnapshot(3)),
@@ -360,6 +368,33 @@ describe('account runtime', () => {
     });
     await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('authenticated'));
     expect(getAccountSnapshot).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('refreshes after account events and revalidates an authenticated account on focus', async () => {
+    vi.useFakeTimers();
+    const getAccountSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce(guestSnapshot())
+      .mockResolvedValue(authenticatedSnapshot());
+    const refreshAccount = vi.fn().mockResolvedValue(authenticatedSnapshot(4));
+    const provider = accountProvider({ getAccountSnapshot, refreshAccount });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await act(async () => Promise.resolve());
+    await act(async () => {
+      coreStatusMocks.emitAccount(true);
+      await Promise.resolve();
+    });
+    expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+    });
+    expect(refreshAccount).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().snapshot.revision).toBe(4);
     unmount();
   });
 
@@ -1204,7 +1239,7 @@ describe('account runtime', () => {
 
     expect(result.current.catalog.status).toBe('ready');
     expect(useAccountStore.getState().favorites).toEqual({ status: 'account-required' });
-    expect(provider.getHome).toHaveBeenCalledTimes(2);
+    expect(provider.getHome).toHaveBeenCalledOnce();
     expect(provider.getLibrary).toHaveBeenCalledOnce();
     expect(getFavoriteSongs).not.toHaveBeenCalled();
     unmount();

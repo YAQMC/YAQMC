@@ -266,15 +266,16 @@ fn host_commands_map_to_the_protocol_host_channel() {
 }
 
 #[test]
-fn declared_core_channels_include_reserved_unused_account_changed() {
+fn declared_core_channels_include_account_restore_notifications() {
     assert!(CORE_EVENT_CHANNELS.contains(&CHANNEL_PLUGIN_CHANGED));
     assert!(CORE_EVENT_CHANNELS.contains(&CHANNEL_PREFERENCES_CHANGED));
     assert!(CORE_EVENT_CHANNELS.contains(&CHANNEL_CORE_LOG));
     assert!(CORE_EVENT_CHANNELS.contains(&CHANNEL_ACCOUNT_CHANGED));
     let source = include_str!("../src/server/events.rs");
+    assert!(source.contains("CHANNEL_ACCOUNT_CHANGED"));
     assert!(
-        !source.contains("account://changed") && !source.contains("core://log"),
-        "account://changed and core://log stay reserved/unused in the fan-out"
+        !source.contains("core://log"),
+        "core://log stays reserved/unused"
     );
 }
 

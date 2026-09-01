@@ -37,23 +37,13 @@ export function useCatalog(): CatalogState {
         });
       });
 
-    void provider
-      .getHome(controller.signal, true)
-      .then((home) => {
-        setState((current) => (current.status === 'ready' ? { ...current, home } : current));
-      })
-      .catch(() => {
-        // A startup refresh failure keeps the cached feed; the periodic
-        // refresh retries later.
-      });
-
     return () => controller.abort();
   }, [provider, t]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       void provider
-        .getHome()
+        .getHome(undefined, true)
         .then((home) => {
           setState((current) => (current.status === 'ready' ? { ...current, home } : current));
         })

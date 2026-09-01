@@ -296,7 +296,7 @@ export function LyricsPresetEditor({
   const moveRaf = useRef<number | null>(null);
   const pendingMove = useRef<PointerEvent | null>(null);
   const preview = useLyricsPresetPreviewStore();
-  const artworkSrc = useSafeArtworkSource(preview.artworkSrc);
+  const artworkSrc = useSafeArtworkSource(preview.artworkSrc, { pendingRemote: 'hide' });
   const previewBlurred = useBlurredArtwork(
     draft.scene.background.source === 'color' || draft.scene.background.blur <= 0
       ? null

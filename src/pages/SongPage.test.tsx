@@ -82,6 +82,7 @@ describe('SongPage', () => {
     const provider = Object.assign(Object.create(fakeMusicProvider), {
       id: 'qqmusic',
       getAccountSnapshot: unused,
+      refreshAccount: unused,
       startWebLogin: unused,
       startQrLogin: unused,
       heartbeatQrLogin: unused,

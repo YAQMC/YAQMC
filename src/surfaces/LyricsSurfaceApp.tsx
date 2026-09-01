@@ -408,6 +408,7 @@ export function IslandSurface(props: SurfaceProps) {
   const track = projection?.value.currentTrack;
   const artworkSource = useSafeArtworkSource(
     track ? resolveArtworkSource(track.artwork, 'small') : null,
+    { pendingRemote: 'hide' },
   );
   const duration = projection?.value.playbackDurationMs ?? track?.durationMs ?? 0;
   const line = current ?? projection?.value.currentLine ?? null;

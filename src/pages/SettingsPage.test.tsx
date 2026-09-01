@@ -63,6 +63,7 @@ function accountProvider(overrides: Partial<AccountMusicProvider> = {}) {
       'getLyrics',
       'search',
       'getAccountSnapshot',
+      'refreshAccount',
       'startWebLogin',
       'startQrLogin',
       'heartbeatQrLogin',

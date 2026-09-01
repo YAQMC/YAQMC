@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { useTranslation } from 'react-i18next';
 import { useLocalApiSettings } from '../application/local-api';
 import { useAccountStore } from '../application/account-runtime';
+import { useSafeArtworkSource } from '../application/artwork-source';
 import {
   resetLyricsSurfacePosition,
   setLyricsSurfaceInteraction,
@@ -1026,7 +1027,9 @@ export function SettingsPage() {
     : null;
   const accountProfile = accountSnapshot.profile;
   const accountEntitlement = accountSnapshot.entitlement;
-  const accountAvatarUrl = safeAccountAvatarUrl(accountProfile?.avatarUrl);
+  const accountAvatarUrl = useSafeArtworkSource(safeAccountAvatarUrl(accountProfile?.avatarUrl), {
+    pendingRemote: 'hide',
+  });
   const accountStateLabel = (() => {
     switch (accountSnapshot.state) {
       case 'guest':
