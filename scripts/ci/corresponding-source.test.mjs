@@ -114,8 +114,8 @@ test('builds revision-bound source archives and a hash manifest', () => {
   assert.equal(result.manifest.qmApiRsRevision, QM_API_RS_REV);
   assert.equal(result.manifest.amll.revision, AMLL_REV);
   assert.equal(result.manifest.amll.version, AMLL_VERSION);
-  assert.equal(result.manifest.p14c.status, 'BLOCKED');
-  assert.deepEqual(result.manifest.p14c.blockers, ['exact-pin-three-day-soak']);
+  assert.equal(result.manifest.p14c.status, 'READY');
+  assert.deepEqual(result.manifest.p14c.blockers, []);
   assert.match(result.manifest.p14c.readinessSha256, /^[0-9a-f]{64}$/u);
   assert.equal(result.manifest.provenance.status, 'PASS');
   assert.match(result.manifest.provenance.ledgerSha256, /^[0-9a-f]{64}$/u);

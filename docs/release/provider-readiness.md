@@ -1,6 +1,6 @@
 # Production provider readiness
 
-Status: **READY-AUTO / SOAK PENDING** for the production `qmapi` backend at
+Status: **READY (MAINTAINER SOAK WAIVER)** for the production `qmapi` backend at
 exact `qm-api-rs` revision
 `006d149e59250122e77019e34a1a48340b20a1c3`.
 
@@ -35,7 +35,8 @@ current pin retains the typed Guess and Radar continuation requests and the
 validated canonical public-song-link helper. It adds credential-scoped discovery
 of the current account's daily recommendation ID from a fixed QQ Music page,
 without changing the QMC implementation. Its automatic Rust and provider-boundary
-checks must pass before the implementation checkpoint, while the three-day soak
-remains `not-started`. The new daily-discovery path has not been exercised against
-a maintainer production account. Live-service verification and any new waiver
-require an explicit maintainer decision after the implementation report.
+checks passed before the release request. On 2026-09-01, maintainer Mai-xiyu
+explicitly authorized proceeding with the release and skipping the new pin's
+three-day soak. This waiver does not assert that the soak or a production-account
+LIVE run passed; the new daily-discovery path has not been exercised against a
+maintainer production account.

@@ -31,22 +31,24 @@ function currentPinQualifiedRecord() {
   };
 }
 
-test('the shipped record keeps the new exact-pin soak pending', () => {
+test('the shipped record carries the maintainer-authorized exact-pin soak waiver', () => {
   const { record, blockers } = inspectP14cReadiness();
   assert.equal(record.cutoverAuthorized, true);
   assert.equal(record.defaultBackend, 'qmapi');
   assert.deepEqual(record.responsibilities.pendingProductionReplacement, []);
-  assert.deepEqual(
-    blockers.map((gate) => [gate.id, gate.status]),
-    [['exact-pin-three-day-soak', 'not-started']],
-  );
+  assert.deepEqual(blockers, []);
+  const soak = record.gates.find((gate) => gate.id === 'exact-pin-three-day-soak');
+  assert.equal(soak.status, 'waived');
+  assert.equal(soak.appliesToPin, record.targetPin);
+  assert.equal(soak.waivedBy, 'Mai-xiyu');
+  assert.equal(soak.waiverKind, 'maintainer-authorized-skip');
 });
 
-test('the shipped record renders a readable pending report', () => {
+test('the shipped record renders a readable maintainer-waived report', () => {
   const { record, blockers } = inspectP14cReadiness();
   const report = formatP14cStatus(record, blockers);
-  assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);
-  assert.match(report, /exact-pin-three-day-soak: not-started/);
+  assert.match(report, /^PROVIDER READINESS STATUS: READY$/m);
+  assert.match(report, /exact-pin-three-day-soak: waived/);
 });
 
 test('a waiver pinned to the cutover baseline blocks the current target pin', () => {

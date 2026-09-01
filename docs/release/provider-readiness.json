@@ -28,9 +28,12 @@
     },
     {
       "id": "exact-pin-three-day-soak",
-      "status": "not-started",
+      "status": "waived",
       "appliesToPin": "006d149e59250122e77019e34a1a48340b20a1c3",
-      "evidence": "docs/release/provider-readiness.md"
+      "evidence": "docs/release/provider-readiness.md",
+      "waivedBy": "Mai-xiyu",
+      "waivedOn": "2026-09-01",
+      "waiverKind": "maintainer-authorized-skip"
     },
     {
       "id": "production-credential-primary",
