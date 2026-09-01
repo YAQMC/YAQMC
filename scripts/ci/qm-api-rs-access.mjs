@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 export const QM_API_RS_GIT = 'https://github.com/YAQMC/qm-api-rs.git';
 export const QM_API_RS_ORIGIN = 'https://github.com/YAQMC/qm-api-rs';
-export const QM_API_RS_REV = 'bec1d0f245e36da0a8b052053d7b4dcb4893b90d';
+export const QM_API_RS_REV = '006d149e59250122e77019e34a1a48340b20a1c3';
 export const QM_API_RS_CRATE = 'qqmusic-api';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');

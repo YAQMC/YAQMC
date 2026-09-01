@@ -2,7 +2,7 @@
 
 Status: **READY-AUTO / SOAK PENDING** for the production `qmapi` backend at
 exact `qm-api-rs` revision
-`bec1d0f245e36da0a8b052053d7b4dcb4893b90d`.
+`006d149e59250122e77019e34a1a48340b20a1c3`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
@@ -31,9 +31,11 @@ is maintained separately in
 
 The previous exact-pin waiver applied only to revision
 `827233cb799bede84ee5033ec16450dc1d5e2587`; it is not carried forward. The
-current pin retains the typed Guess and Radar continuation requests and adds a
-validated canonical public-song-link helper without changing the QMC implementation.
-Its automatic Rust and provider-boundary checks must
-pass before the implementation checkpoint, while the three-day soak remains
-`not-started`. Live-service verification and any new waiver require an explicit
-maintainer decision after the implementation report.
+current pin retains the typed Guess and Radar continuation requests and the
+validated canonical public-song-link helper. It adds credential-scoped discovery
+of the current account's daily recommendation ID from a fixed QQ Music page,
+without changing the QMC implementation. Its automatic Rust and provider-boundary
+checks must pass before the implementation checkpoint, while the three-day soak
+remains `not-started`. The new daily-discovery path has not been exercised against
+a maintainer production account. Live-service verification and any new waiver
+require an explicit maintainer decision after the implementation report.

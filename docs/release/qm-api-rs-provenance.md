@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS** at production revision
-`bec1d0f245e36da0a8b052053d7b4dcb4893b90d`.
+`006d149e59250122e77019e34a1a48340b20a1c3`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -15,10 +15,11 @@ source-to-target mappings are present in the crate and mirrored in
 recorded as a protocol and API-shape reference, not incorporated source.
 Former port and extracted-client source claims were removed before this pin.
 
-The 2026-08-30 review retains the previously reviewed credential, transport,
-MQTT, parser, pagination, typed recommendation, and CI hardening baseline. The
-new delta adds a pure `canonical_song_url` helper, strict identifier validation,
-contract tests, and public documentation. It performs no network request and
+The 2026-09-01 review retains the previously reviewed credential, transport,
+MQTT, parser, pagination, typed recommendation, canonical public-song-link, and
+CI hardening baseline. The new delta adds one fixed-origin, credential-scoped
+HTML request that extracts the positive `data-rid` associated with the current
+account's “今日私享” card, plus bounded parser and transport contract tests. It
 does not modify `src/qmc.rs`; the existing QMC source mappings and blob evidence
 therefore remain applicable.
 

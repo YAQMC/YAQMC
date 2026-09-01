@@ -14,7 +14,7 @@ import {
 const repositoryRoot = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
 
 test('pins the audited public production revision', () => {
-  assert.equal(QM_API_RS_REV, 'bec1d0f245e36da0a8b052053d7b4dcb4893b90d');
+  assert.equal(QM_API_RS_REV, '006d149e59250122e77019e34a1a48340b20a1c3');
   assert.equal(QM_API_RS_GIT, 'https://github.com/YAQMC/qm-api-rs.git');
 });
 

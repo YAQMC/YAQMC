@@ -79,7 +79,7 @@ test('the baseline-pinned waiver renders a readable blocked report', () => {
   const report = formatP14cStatus(staleRecord, blockers);
   assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);
   assert.match(report, /exact-pin-three-day-soak: blocked/);
-  assert.match(report, /not target bec1d0f245e36da0a8b052053d7b4dcb4893b90d/);
+  assert.match(report, /not target 006d149e59250122e77019e34a1a48340b20a1c3/);
 });
 
 test('a current-pin waiver produces a structurally ready fixture', () => {
