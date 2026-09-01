@@ -3,6 +3,7 @@ import { allSongs } from '../providers/fake/fixtures';
 import type { ShareMusicProvider } from '../providers/music-provider';
 import {
   buildYaqmcSongLink,
+  copyTextToClipboard,
   formatSongShareText,
   resolveSongShareValue,
   SongShareUnavailableError,
@@ -20,6 +21,14 @@ const target = {
 };
 
 describe('song sharing', () => {
+  it('prefers the native clipboard capability over the browser clipboard', async () => {
+    const nativeWriteText = vi.fn(async () => undefined);
+
+    await copyTextToClipboard('native share text', nativeWriteText);
+
+    expect(nativeWriteText).toHaveBeenCalledWith('native share text');
+  });
+
   it('builds only the canonical YAQMC catalog song shape', () => {
     expect(buildYaqmcSongLink(target)).toBe(
       `yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(song.id)}`,
@@ -34,7 +43,7 @@ describe('song sharing', () => {
     );
   });
 
-  it('uses the provider target for public, internal, and text share values', async () => {
+  it('uses the provider only for public links and builds app/text shares from the visible song', async () => {
     const getSongShareTarget = vi.fn().mockResolvedValue(target);
     const provider: ShareMusicProvider = { getSongShareTarget };
 
@@ -47,7 +56,7 @@ describe('song sharing', () => {
     await expect(resolveSongShareValue(provider, 'qqmusic', song, 'text')).resolves.toBe(
       `${song.title} — ${song.artists[0]!.name}`,
     );
-    expect(getSongShareTarget).toHaveBeenCalledTimes(3);
+    expect(getSongShareTarget).toHaveBeenCalledTimes(1);
     expect(getSongShareTarget).toHaveBeenCalledWith(song.id, undefined);
   });
 
@@ -55,9 +64,9 @@ describe('song sharing', () => {
     const mismatched: ShareMusicProvider = {
       getSongShareTarget: vi.fn().mockResolvedValue({ ...target, entityId: 'another-song' }),
     };
-    await expect(resolveSongShareValue(mismatched, 'qqmusic', song, 'text')).rejects.toMatchObject({
-      reason: 'target',
-    });
+    await expect(
+      resolveSongShareValue(mismatched, 'qqmusic', song, 'public-link'),
+    ).rejects.toMatchObject({ reason: 'target' });
 
     const privateOnly: ShareMusicProvider = {
       getSongShareTarget: vi.fn().mockResolvedValue({

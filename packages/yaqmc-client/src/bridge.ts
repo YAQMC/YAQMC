@@ -21,6 +21,10 @@ export interface HostShellBridge {
   openExternal(url: string): Promise<void>;
 }
 
+export interface HostClipboardBridge {
+  writeText(text: string): Promise<void>;
+}
+
 export type HostOpenFileKind = 'background-image' | 'plugin-package';
 export type HostSaveFileKind = 'diagnostics-zip' | 'statistics-json' | 'statistics-csv';
 
@@ -40,5 +44,6 @@ export interface HostBridge {
   readonly windowRole: WindowRole;
   readonly window: HostWindowBridge;
   readonly shell: HostShellBridge;
+  readonly clipboard?: HostClipboardBridge;
   readonly dialog?: HostDialogBridge;
 }

@@ -38,10 +38,13 @@ export function selectHostBridge(
 ): HostBridge {
   const windowRole = windowRoleFromSearch(search);
   const parameters = new URLSearchParams(search);
-  if (parameters.get('provider') === 'fake') {
-    return createFakeBridge({ windowRole });
-  }
   const api = readRendererApi();
+  if (parameters.get('provider') === 'fake') {
+    const bridge = createFakeBridge({ windowRole });
+    // Fake catalog/Core calls must stay offline, while safe one-way host
+    // capabilities still exercise the real Electron boundary in QA.
+    return api ? { ...bridge, clipboard: createElectronBridge(api, windowRole).clipboard } : bridge;
+  }
   if (api) return createElectronBridge(api, windowRole);
   if (buildType === 'release') {
     throw new Error('Electron preload bridge is unavailable in the release renderer');

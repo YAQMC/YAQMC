@@ -47,6 +47,20 @@ export async function resolveSongShareValue(
     throw new SongShareUnavailableError('provider', 'The song does not belong to this provider.');
   }
 
+  if (kind !== 'public-link') {
+    const localTarget: ShareTarget = {
+      providerId,
+      entityKind: 'song',
+      entityId: songId,
+      title: song.title,
+      artists: song.artists.map((artist) => artist.name),
+      album: song.album.title,
+    };
+    return kind === 'yaqmc-link'
+      ? buildYaqmcSongLink(localTarget)
+      : formatSongShareText(localTarget);
+  }
+
   const target = await provider.getSongShareTarget(songId, signal);
   assertShareTarget(target);
   if (
@@ -60,9 +74,6 @@ export async function resolveSongShareValue(
     );
   }
 
-  if (kind === 'yaqmc-link') return buildYaqmcSongLink(target);
-  if (kind === 'text') return formatSongShareText(target);
-
   const publicUrl = parsePublicHttpsUrl(target.canonicalHttpsUrl);
   if (!publicUrl) {
     throw new SongShareUnavailableError(
@@ -73,7 +84,14 @@ export async function resolveSongShareValue(
   return publicUrl;
 }
 
-export async function copyTextToClipboard(value: string): Promise<void> {
+export async function copyTextToClipboard(
+  value: string,
+  nativeWriteText?: (text: string) => Promise<void>,
+): Promise<void> {
+  if (nativeWriteText) {
+    await nativeWriteText(value);
+    return;
+  }
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
     return;

@@ -2,6 +2,7 @@ import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProviderContext } from './provider-context';
 import { pushPluginNotice } from './plugin-notifications';
+import { getHostBridge } from './yaqmc-runtime';
 import {
   copyTextToClipboard,
   resolveSongShareValue,
@@ -31,7 +32,7 @@ export function useSongShareActions(song: Song): {
     }
     try {
       const value = await resolveSongShareValue(shareProvider, shareProvider.id, song, kind);
-      await copyTextToClipboard(value);
+      await copyTextToClipboard(value, getHostBridge().clipboard?.writeText);
       notify('success', t('shareCopied'), kind);
     } catch (error) {
       const message =

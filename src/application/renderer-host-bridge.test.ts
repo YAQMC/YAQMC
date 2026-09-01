@@ -23,14 +23,17 @@ describe('selectHostBridge', () => {
     Reflect.deleteProperty(window, 'yaqmc');
   });
 
-  it('keeps ?provider=fake on createFakeBridge even when window.yaqmc is present', () => {
+  it('keeps fake protocol calls offline while retaining native clipboard writes', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
     Reflect.set(window, 'yaqmc', {
-      invoke: vi.fn(),
+      invoke,
       on: vi.fn(() => () => undefined),
     });
     const bridge = selectHostBridge('?provider=fake&surface=desktop');
     expect(bridge.kind).toBe('fake');
     expect(bridge.windowRole).toBe('lyrics-desktop');
+    await bridge.clipboard?.writeText('share text');
+    expect(invoke).toHaveBeenCalledWith('clipboard.writeText', { text: 'share text' });
   });
 
   it('wraps window.yaqmc.invoke/on without inventing a second protocol', async () => {
@@ -71,6 +74,7 @@ describe('selectHostBridge', () => {
     await bridge.window.close();
     await bridge.window.setFullscreen(true);
     await bridge.shell.openExternal('https://github.com/YAQMC/YAQMC');
+    await bridge.clipboard?.writeText('share text');
     expect(invoke).toHaveBeenCalledWith('window.minimize');
     expect(invoke).toHaveBeenCalledWith('window.toggleMaximize');
     expect(invoke).toHaveBeenCalledWith('window.close');
@@ -78,6 +82,7 @@ describe('selectHostBridge', () => {
     expect(invoke).toHaveBeenCalledWith('shell.openExternal', {
       url: 'https://github.com/YAQMC/YAQMC',
     });
+    expect(invoke).toHaveBeenCalledWith('clipboard.writeText', { text: 'share text' });
   });
 
   it('routes private dialog methods through window.yaqmc.invoke', async () => {

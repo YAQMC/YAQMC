@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   globalShortcut,
   ipcMain,
@@ -405,6 +406,7 @@ if (__YAQMC_QA_BUILD__ && e2e) {
 
 const hostHandlers = createHostHandlers({
   openExternal: (url) => shell.openExternal(url),
+  writeClipboardText: (text) => clipboard.writeText(text),
   lyrics: lyricsSurfaces,
   unlock: lyricsUnlock,
   capabilities: () =>

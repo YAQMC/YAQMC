@@ -47,6 +47,9 @@ import type { HostHandler } from './router';
 /** Not in the migrated Core inventory; HostBridge.shell.openExternal lands here. */
 export const SHELL_OPEN_EXTERNAL = 'shell.openExternal';
 
+/** Main-process clipboard write; renderer clipboard permissions remain denied. */
+export const CLIPBOARD_WRITE_TEXT = 'clipboard.writeText';
+
 /** Not in the migrated Core inventory; HostBridge.window lands here. */
 export const WINDOW_MINIMIZE = 'window.minimize';
 export const WINDOW_TOGGLE_MAXIMIZE = 'window.toggleMaximize';
@@ -147,6 +150,24 @@ export function urlFromOpenExternalParams(params: unknown): string {
     }
   }
   return '';
+}
+
+const MAX_CLIPBOARD_TEXT_BYTES = 16 * 1024;
+
+export function textFromClipboardParams(params: unknown): string {
+  const text =
+    params && typeof params === 'object' && 'text' in params
+      ? (params as { text?: unknown }).text
+      : undefined;
+  if (
+    typeof text !== 'string' ||
+    text.length === 0 ||
+    text.includes('\0') ||
+    new TextEncoder().encode(text).length > MAX_CLIPBOARD_TEXT_BYTES
+  ) {
+    throw new Error('clipboard.writeText requires bounded non-empty text');
+  }
+  return text;
 }
 
 export function enabledFromParams(params: unknown): boolean {
@@ -449,6 +470,7 @@ export function pathFromParams(params: unknown): string {
 
 export type HostHandlerDeps = {
   openExternal: ExternalOpener;
+  writeClipboardText?: (text: string) => void | Promise<void>;
   extraHttpsUrls?: () => readonly string[];
   lyrics: LyricsSurfaces;
   unlock: LyricsUnlockOverlays;
@@ -567,6 +589,12 @@ export function createHostHandlers(deps: HostHandlerDeps): Record<string, HostHa
     [SHELL_OPEN_EXTERNAL]: async (params) => {
       const url = urlFromOpenExternalParams(params);
       return openExternalIfAllowed(deps.openExternal, url, deps.extraHttpsUrls?.() ?? []);
+    },
+    [CLIPBOARD_WRITE_TEXT]: async (params) => {
+      if (!deps.writeClipboardText) {
+        throw new Error('Native clipboard is unavailable');
+      }
+      await deps.writeClipboardText(textFromClipboardParams(params));
     },
     lyrics_surfaces_reconcile: async (params) => {
       const surfaces = asSurfaceRuntimeMap(params);

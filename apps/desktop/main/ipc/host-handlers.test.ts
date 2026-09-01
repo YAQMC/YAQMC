@@ -18,6 +18,7 @@ import type {
 import { hostDenied, loadMethodAclFromFile } from './channels';
 import {
   closeToTrayFromPreferences,
+  CLIPBOARD_WRITE_TEXT,
   createHostHandlers,
   DIALOG_PICK_FILE,
   DIALOG_PICK_SAVE,
@@ -36,6 +37,7 @@ import {
   rememberCloseToTray,
   SHELL_OPEN_EXTERNAL,
   SYSTEM_SHORTCUTS_SET_ENABLED,
+  textFromClipboardParams,
   WINDOW_CLOSE,
   WINDOW_MINIMIZE,
   WINDOW_SET_FULLSCREEN,
@@ -198,6 +200,9 @@ describe('host handler helpers', () => {
     );
     expect(urlFromOpenExternalParams({ url: 'https://y.qq.com/' })).toBe('https://y.qq.com/');
     expect(urlFromOpenExternalParams({ href: 'https://y.qq.com/' })).toBe('');
+    expect(textFromClipboardParams({ text: 'share text' })).toBe('share text');
+    expect(() => textFromClipboardParams({ text: '' })).toThrow();
+    expect(() => textFromClipboardParams({ text: 'bad\0text' })).toThrow();
     expect(lyricsKindFromParams({ kind: 'island' })).toBe('island');
     expect(lyricsKindFromParams({ kind: 'unlock' })).toBeUndefined();
     expect(loginProviderFromParams({ loginProvider: 'qq' })).toBe('qq');
@@ -243,6 +248,32 @@ describe('host handler helpers', () => {
 });
 
 describe('IpcRouter host intercepts', () => {
+  it('writes bounded text through the main-process clipboard and denies surface origins', async () => {
+    const writeClipboardText = vi.fn();
+    const handlers = createHostHandlers({
+      openExternal: vi.fn(),
+      writeClipboardText,
+      lyrics: mockLyrics(),
+      unlock: mockUnlock(),
+      capabilities: () => lyricsSurfaceCapabilities({ platform: 'win32', nativeWayland: false }),
+      showMainAndOpenSettings: vi.fn(),
+    });
+    const router = new IpcRouter({ methods, hostHandlers: handlers });
+    router.registerWindow(1, 'main');
+    router.registerWindow(2, 'lyrics-desktop');
+
+    await expect(
+      router.invoke(1, { method: CLIPBOARD_WRITE_TEXT, params: { text: 'share text' } }),
+    ).resolves.toEqual({ ok: true, result: undefined });
+    expect(writeClipboardText).toHaveBeenCalledWith('share text');
+    await expect(
+      router.invoke(2, { method: CLIPBOARD_WRITE_TEXT, params: { text: 'blocked' } }),
+    ).resolves.toEqual({
+      ok: false,
+      error: hostDenied(CLIPBOARD_WRITE_TEXT, 'lyrics-desktop'),
+    });
+  });
+
   it('allowlists shell.openExternal from main and denies other origins', async () => {
     const openExternal = vi.fn(async () => undefined);
     const lyrics = mockLyrics();

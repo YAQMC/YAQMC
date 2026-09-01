@@ -1,5 +1,6 @@
 export {
   type HostBridge,
+  type HostClipboardBridge,
   type HostDialogBridge,
   type HostKind,
   type HostOpenFileKind,

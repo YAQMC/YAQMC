@@ -1,5 +1,6 @@
 import type {
   HostBridge,
+  HostClipboardBridge,
   HostShellBridge,
   HostWindowBridge,
   InvokeArgs,
@@ -12,6 +13,7 @@ export interface ElectronRendererApi {
   on(channel: string, callback: (payload: unknown) => void): () => void;
   window?: HostWindowBridge;
   shell?: HostShellBridge;
+  clipboard?: HostClipboardBridge;
 }
 
 function invokeWindow(api: ElectronRendererApi): HostWindowBridge {
@@ -32,6 +34,13 @@ function invokeShell(api: ElectronRendererApi): HostShellBridge {
   };
 }
 
+function invokeClipboard(api: ElectronRendererApi): HostClipboardBridge {
+  if (api.clipboard) return api.clipboard;
+  return {
+    writeText: (text) => api.invoke('clipboard.writeText', { text }).then(() => undefined),
+  };
+}
+
 function invokeThrough<M extends MethodName>(
   call: (method: string, params?: unknown) => Promise<unknown>,
   method: M,
@@ -49,6 +58,7 @@ export function createElectronBridge(
     windowRole,
     window: invokeWindow(api),
     shell: invokeShell(api),
+    clipboard: invokeClipboard(api),
     dialog: {
       pickSave: (options) =>
         api.invoke('dialog.pickSave', {
