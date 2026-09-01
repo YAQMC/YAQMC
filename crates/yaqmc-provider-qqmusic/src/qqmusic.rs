@@ -80,12 +80,24 @@ const QQ_PLAYLIST_URL: &str = "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinf
 const QQ_LRC_URL: &str = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
 const DEFAULT_TOPLIST_ID: u64 = 62;
 const DISCOVER_TOPLIST_IDS: [u64; 8] = [26, 27, 4, 3, 5, 6, 62, 57];
-const QQ_DAILY_RECOMMENDATION_SONGLIST_ID: i64 = 5_505_165_762;
 const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
 const ENTITY_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const LYRIC_TTL_MS: u64 = 30 * 24 * 60 * 60 * 1_000;
-const HOME_CACHE_KEY: &str = "qqmusic:home:v4";
+const GUEST_HOME_CACHE_KEY: &str = "qqmusic:home:v5:guest";
 const DISCOVER_CACHE_KEY: &str = "qqmusic:discover:v2";
+
+fn home_cache_location(session: Option<&SessionRecord>) -> (String, &'static str) {
+    match session {
+        Some(session) => (
+            format!(
+                "qqmusic:account:{}:home-v5",
+                session.account_cache_scope.as_str()
+            ),
+            cache::ACCOUNT_CACHE_KIND,
+        ),
+        None => (GUEST_HOME_CACHE_KEY.to_owned(), "metadata"),
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -486,17 +498,21 @@ impl QQMusicService {
     pub async fn status(&self) -> ProviderStatus {
         let connection = match self.client.toplist(DEFAULT_TOPLIST_ID, 1).await {
             Ok(_) => "online",
-            Err(_)
+            Err(_) => {
+                let session = self.auth.current_session().await;
+                let (cache_key, _) = home_cache_location(session.as_ref());
                 if self
                     .storage
-                    .get_json::<HomeFeed>(HOME_CACHE_KEY, true)
+                    .get_json::<HomeFeed>(&cache_key, true)
                     .ok()
                     .flatten()
-                    .is_some() =>
-            {
-                "cached"
+                    .is_some()
+                {
+                    "cached"
+                } else {
+                    "offline"
+                }
             }
-            Err(_) => "offline",
         };
         ProviderStatus {
             provider_id: "qqmusic".to_owned(),
@@ -1076,10 +1092,12 @@ impl QQMusicService {
 
     pub async fn home(&self, refresh: bool) -> Result<HomeFeed, QQMusicError> {
         let _home_lock = self.home_guard.lock().await;
+        let session = self.auth.current_session().await;
+        let (cache_key, cache_kind) = home_cache_location(session.as_ref());
         if !refresh {
             if let Some(feed) = self
                 .storage
-                .get_json::<HomeFeed>(HOME_CACHE_KEY, false)
+                .get_json::<HomeFeed>(&cache_key, false)
                 .map_err(|_| QQMusicError::Storage)?
             {
                 tracing::info!(
@@ -1091,10 +1109,10 @@ impl QQMusicService {
                 return Ok(feed);
             }
         }
-        match self.build_home().await {
+        match self.build_home(session).await {
             Ok(feed) => {
                 self.storage
-                    .put_json(HOME_CACHE_KEY, "metadata", &feed, METADATA_TTL_MS)
+                    .put_json(&cache_key, cache_kind, &feed, METADATA_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
                 self.remember_home_songs(&feed).await;
                 Ok(feed)
@@ -1102,7 +1120,7 @@ impl QQMusicService {
             Err(error) => {
                 let feed = self
                     .storage
-                    .get_json(HOME_CACHE_KEY, true)
+                    .get_json(&cache_key, true)
                     .map_err(|_| QQMusicError::Storage)?
                     .ok_or(error)?;
                 self.remember_home_songs(&feed).await;
@@ -1194,7 +1212,7 @@ impl QQMusicService {
             .await;
     }
 
-    async fn build_home(&self) -> Result<HomeFeed, QQMusicError> {
+    async fn build_home(&self, session: Option<SessionRecord>) -> Result<HomeFeed, QQMusicError> {
         let chart = self.client.toplist(DEFAULT_TOPLIST_ID, 18).await?;
         let first = chart.tracks.first().ok_or(QQMusicError::NotFound)?;
         let featured_album = match self.album(first.album.id.clone()).await {
@@ -1243,7 +1261,7 @@ impl QQMusicService {
             .map(|(summary, artists, songs)| album_from_songs(&summary, &artists, songs))
             .collect();
 
-        let session = self.auth.current_session().await.map(QQSession::from);
+        let session = session.map(QQSession::from);
         let session_ref = session.as_ref();
         let guess_tracks = match self.client.guess_recommend(session_ref, 10).await {
             Ok(tracks) => tracks,
@@ -1295,13 +1313,16 @@ impl QQMusicService {
                 Vec::new()
             }
         };
-        let daily_songlist = match self.client.daily_songlist(session_ref).await {
-            Ok(playlist) if !playlist.tracks.is_empty() => Some(playlist),
-            Ok(_) => None,
-            Err(error) => {
-                tracing::warn!(target: "qqmusic", %error, "home daily recommendation failed; leaving the section empty");
-                None
-            }
+        let daily_songlist = match session_ref {
+            Some(session) => match self.client.daily_songlist(session).await {
+                Ok(playlist) if !playlist.tracks.is_empty() => Some(playlist),
+                Ok(_) => None,
+                Err(error) => {
+                    tracing::warn!(target: "qqmusic", %error, "home daily recommendation failed; leaving the section empty");
+                    None
+                }
+            },
+            None => None,
         };
         let mut radar_entrance: Vec<(u64, String)> = Vec::new();
         if let Ok(history) = self.local_recent_history(10) {
@@ -2217,25 +2238,22 @@ impl QQMusicClient {
         Ok(playlists)
     }
 
-    async fn daily_songlist(&self, session: Option<&QQSession>) -> Result<Playlist, QQMusicError> {
-        let authenticated_client;
-        let catalog = if let Some(session) = session {
-            let credential = crate::qmapi::credential::credential_from_uin_and_cookie(
-                &session.uin,
-                &session.cookie_header,
-                None,
-                unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
-            )?;
-            authenticated_client =
-                crate::qmapi::qmapi_client_with(Some(credential), Some(qqmusic_api::Platform::Web))
-                    .map_err(crate::qmapi::cgi::map_qmapi_error)?;
-            &authenticated_client
-        } else {
-            &self.catalog
-        };
-        let response =
-            crate::qmapi::catalog::songlist(catalog, QQ_DAILY_RECOMMENDATION_SONGLIST_ID).await?;
-        normalize_qm_songlist(response, QQ_DAILY_RECOMMENDATION_SONGLIST_ID)
+    async fn daily_songlist(&self, session: &QQSession) -> Result<Playlist, QQMusicError> {
+        let credential = crate::qmapi::credential::credential_from_uin_and_cookie(
+            &session.uin,
+            &session.cookie_header,
+            None,
+            unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
+        )?;
+        let authenticated_client = crate::qmapi::qmapi_client_with(
+            Some(credential.clone()),
+            Some(qqmusic_api::Platform::Web),
+        )
+        .map_err(crate::qmapi::cgi::map_qmapi_error)?;
+        let songlist_id =
+            crate::qmapi::recommend::daily_songlist_id(&authenticated_client, &credential).await?;
+        let response = crate::qmapi::catalog::songlist(&authenticated_client, songlist_id).await?;
+        normalize_qm_songlist(response, songlist_id)
     }
 
     async fn new_song_recommend(
@@ -5284,6 +5302,32 @@ mod tests {
         storage::StorageService,
     };
 
+    #[test]
+    fn home_cache_is_isolated_by_opaque_account_scope() {
+        let session = |uin: &str, scope: &str| SessionRecord {
+            version: 1,
+            uin: uin.to_owned(),
+            encrypted_uin: None,
+            cookie_header: "qm_keyst=synthetic".to_owned(),
+            expires_at_ms: 9_999,
+            account_cache_scope: OpaqueAccountScope::parse(scope).expect("opaque scope"),
+        };
+        let first = session("10001", "11111111111111111111111111111111");
+        let second = session("20002", "22222222222222222222222222222222");
+
+        let (first_key, first_kind) = home_cache_location(Some(&first));
+        let (second_key, second_kind) = home_cache_location(Some(&second));
+        let (guest_key, guest_kind) = home_cache_location(None);
+
+        assert_ne!(first_key, second_key);
+        assert!(!first_key.contains(&first.uin));
+        assert!(!second_key.contains(&second.uin));
+        assert_eq!(first_kind, cache::ACCOUNT_CACHE_KIND);
+        assert_eq!(second_kind, cache::ACCOUNT_CACHE_KIND);
+        assert_eq!(guest_key, GUEST_HOME_CACHE_KEY);
+        assert_eq!(guest_kind, "metadata");
+    }
+
     struct RecordingAccountTransport {
         calls: Arc<AtomicUsize>,
     }
@@ -5848,7 +5892,7 @@ mod tests {
         };
         storage
             .put_json(
-                HOME_CACHE_KEY,
+                GUEST_HOME_CACHE_KEY,
                 "metadata",
                 &HomeFeed {
                     featured: FeaturedRelease {
@@ -5922,8 +5966,9 @@ mod tests {
 
     #[test]
     fn typed_daily_songlist_preserves_provider_metadata_and_actual_tracks() {
+        const DAILY_SONGLIST_ID: i64 = 7_654_321;
         let mut response = qqmusic_api::models::songlist::GetSonglistDetailResponse::default();
-        response.info.base.id = QQ_DAILY_RECOMMENDATION_SONGLIST_ID;
+        response.info.base.id = DAILY_SONGLIST_ID;
         response.info.base.title = "Synthetic listener's private daily mix".to_owned();
         response.info.base.desc = "Provider supplied description".to_owned();
         response.info.base.picurl =
@@ -5945,7 +5990,8 @@ mod tests {
             .expect("typed song fixture"),
         );
 
-        let playlist = normalize_qm_songlist(response, 1).expect("songlist normalizes");
+        let playlist =
+            normalize_qm_songlist(response, DAILY_SONGLIST_ID).expect("songlist normalizes");
 
         assert_eq!(playlist.title, "Synthetic listener's private daily mix");
         assert_eq!(playlist.description, "Provider supplied description");
@@ -6478,23 +6524,10 @@ mod tests {
             .recommend_songlists(None, 6)
             .await
             .expect("songlists");
-        let daily = client.daily_songlist(None).await.expect("daily songlist");
         assert!(!songlists.is_empty(), "expected recommended songlists");
-        assert!(
-            !daily.tracks.is_empty(),
-            "expected daily recommendation songs"
-        );
-        assert!(
-            !daily.title.is_empty(),
-            "daily songlist carries its provider title"
-        );
         assert!(
             songlists.iter().all(|playlist| !playlist.title.is_empty()),
             "recommended songlists carry titles"
-        );
-        assert!(
-            daily.tracks.iter().all(|song| !song.title.is_empty()),
-            "daily recommendation songs carry titles"
         );
     }
 
@@ -6554,7 +6587,7 @@ mod tests {
             .await
             .expect("personalized songlists");
         let daily = client
-            .daily_songlist(Some(&qq_session))
+            .daily_songlist(&qq_session)
             .await
             .expect("personalized daily songlist");
         let guess = client

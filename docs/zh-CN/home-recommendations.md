@@ -2,8 +2,8 @@
 
 > **简体中文** | [English](../home-recommendations.md)
 
-首页是一个基于 QQ 音乐登录会话的个性化发现界面。各区段只在数据可用时渲染，并且每个区段在无个性化数据时
-降级为通用内容，而不是留下一片空白。
+首页是一个基于 QQ 音乐登录会话的个性化发现界面。各区段只在数据可用时渲染。公共区段可降级为通用内容；
+仅账号可用的区段在没有已认证数据源时隐藏。
 
 ## 区段布局
 
@@ -34,7 +34,7 @@ hero 行下方，在有数据时展示两个区段：
 | 区段     | 登录态数据源                                                                                | 未登录降级                                       |
 | -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | 猜你喜欢 | `music.radioProxy.MbTrackRadioSvr/get_radio_track`                                          | `newsong.NewSongServer/get_new_song_info`        |
-| 每日精选 | 携带登录凭据的 qm-api-rs `songlist.get_detail`                                              | qm-api-rs 匿名歌单详情                           |
+| 每日精选 | qm-api-rs 先解析当前账号的 `data-rid`，再调用类型化 `songlist.get_detail`                   | 隐藏                                             |
 | 新歌推荐 | feed `500/511` disstid，然后 `CgiGetDiss`                                                   | `newsong.NewSongServer/get_new_song_info`        |
 | 推荐歌单 | feed `500/0` dissid 卡片（翻页收集）                                                        | `music.playlist.PlaylistSquare/GetRecommendFeed` |
 | 雷达     | `music.recommend.TrackRelationServer/GetRadarSong`，`EntranceSongs` = 最近听过歌曲的数字 id | 空                                               |
@@ -58,7 +58,8 @@ QQ 推荐分页只通过固定版本的 `qm-api-rs` 类型化接口进入 YAQMC�
 
 ## 缓存与刷新
 
-首页 feed 以 `qqmusic:home:v4` 为 key 缓存 15 分钟。缓存 key 带版本号，序列化结构的变更会使旧缓存失效。
+首页 feed 缓存 15 分钟：访客使用 `qqmusic:home:v5:guest`，已登录会话使用按账号隔离的不透明 key。账号缓存
+key 不包含 QQ 标识，并在账号重新校验或退出时清除，因此不会把一个账号的个性化首页提供给另一个账号。
 首页构建在异步互斥锁下串行执行，避免并发首次加载触发 QQ 音乐限流（`req_code 700000`）。启动时前端先读取
-缓存以便快速首屏，然后主动发一次强制刷新（`qqmusic_home` 带 `refresh=true`），让最新个性化区段替换旧缓存；
-之后继续每 15 分钟定时刷新。
+适用于当前会话的缓存以便快速首屏，然后主动发一次强制刷新（`qqmusic_home` 带 `refresh=true`）。账号快照
+发生变化时也会立即强制刷新；之后继续每 15 分钟定时刷新。

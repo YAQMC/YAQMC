@@ -119,7 +119,7 @@ describe('PluginManager', () => {
     render(<PluginManager />);
 
     expect(await screen.findByRole('heading', { name: 'Installed plugins' })).toBeInTheDocument();
-    expect(screen.getByText('Disabled')).toBeInTheDocument();
+    expect(await screen.findByText('Disabled')).toBeInTheDocument();
     expect(screen.getByText('Styles')).toBeInTheDocument();
     expect(screen.getByText('Scenes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open Lyrics scenes details' })).toBeInTheDocument();

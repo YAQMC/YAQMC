@@ -53,12 +53,12 @@ All discover sections use the guest path (no session):
 | Area page         | `music.area.AreaHome/getAreaHomePage`                       |
 
 The discovery feed is intentionally distinct from the home feed: home keeps personalized picks (guess-you-like,
-daily 30, radar, personalized songlists, and the personalized new-song picks card), while Discover shows the same
+the account's daily mix, radar, personalized songlists, and the personalized new-song picks card), while Discover shows the same
 content for every user.
 
 ## Caching and refresh
 
-The discover feed is cached under `qqmusic:discover:v1` for 15 minutes and rebuilt when refreshed. The frontend
+The discover feed is cached under `qqmusic:discover:v2` for 15 minutes and rebuilt when refreshed. The frontend
 loads the cached feed first for a fast first paint, then issues one forced refresh (`qqmusic_discover` with
 `refresh=true`), and continues a periodic 15-minute refresh while the page is mounted. A failed background refresh
 keeps the current feed and retries on the next interval.

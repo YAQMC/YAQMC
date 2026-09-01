@@ -436,6 +436,8 @@ mod tests {
     use qqmusic_api::{ApiTransport, Client, Platform, TransportRequest, TransportResponse};
     use yaqmc_provider_api::ArtistCatalogKind;
 
+    const SYNTHETIC_SONGLIST_ID: i64 = 7_654_321;
+
     #[derive(Default)]
     struct FixtureTransport {
         calls: Mutex<Vec<usize>>,
@@ -544,10 +546,10 @@ mod tests {
                         &include_bytes!("../../tests/fixtures/qqmusic/catalog/artist-albums.json")[..]
                     }
                     ("music.srfDissInfo.DissInfo", "CgiGetDiss") => {
-                        assert_eq!(req["param"]["disstid"], 5_505_165_762_i64);
+                        assert_eq!(req["param"]["disstid"], SYNTHETIC_SONGLIST_ID);
                         assert_eq!(req["param"]["song_num"], super::SONGLIST_TRACK_PAGE_SIZE);
                         match req["param"]["song_begin"].as_i64() {
-                            Some(0) => &br#"{"code":0,"req_0":{"code":0,"subcode":0,"data":{"code":0,"subcode":0,"dirinfo":{"tid":5505165762,"dirName":"Provider daily title","picUrl":"https://y.gtimg.cn/provider-daily.jpg","desc":"Provider daily description","creator":{"musicid":10001,"nick":"Provider curator","encrypt_uin":"PUBLIC_CREATOR_ID"}},"songlist":[{"id":1,"mid":"DAILY_TRACK_1","title":"Daily track 1"}],"total_song_num":2}}}"#[..],
+                            Some(0) => &br#"{"code":0,"req_0":{"code":0,"subcode":0,"data":{"code":0,"subcode":0,"dirinfo":{"tid":7654321,"dirName":"Provider daily title","picUrl":"https://y.gtimg.cn/provider-daily.jpg","desc":"Provider daily description","creator":{"musicid":10001,"nick":"Provider curator","encrypt_uin":"PUBLIC_CREATOR_ID"}},"songlist":[{"id":1,"mid":"DAILY_TRACK_1","title":"Daily track 1"}],"total_song_num":2}}}"#[..],
                             Some(100) => &br#"{"code":0,"req_0":{"code":0,"data":{"code":0,"subcode":0,"songlist":[{"id":2,"mid":"DAILY_TRACK_2","title":"Daily track 2"}],"total_song_num":2,"hasmore":0}}}"#[..],
                             begin => panic!("unexpected songlist page offset {begin:?}"),
                         }
@@ -603,7 +605,7 @@ mod tests {
             albums,
             super::ArtistCatalogPage::Albums { total: 1, items } if items.len() == 1
         ));
-        let daily = super::songlist(&client, 5_505_165_762)
+        let daily = super::songlist(&client, SYNTHETIC_SONGLIST_ID)
             .await
             .expect("daily songlist");
         assert_eq!(daily.info.base.title, "Provider daily title");

@@ -57,6 +57,18 @@ pub(crate) async fn radar(
         .map_err(map_qmapi_error)
 }
 
+pub(crate) async fn daily_songlist_id(
+    client: &Client,
+    credential: &Credential,
+) -> Result<i64, QQMusicError> {
+    client
+        .recommend
+        .get_daily_recommendation(Some(credential))
+        .await
+        .map(|response| response.songlist_id)
+        .map_err(map_qmapi_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

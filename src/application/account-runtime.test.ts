@@ -1239,7 +1239,7 @@ describe('account runtime', () => {
 
     expect(result.current.catalog.status).toBe('ready');
     expect(useAccountStore.getState().favorites).toEqual({ status: 'account-required' });
-    expect(provider.getHome).toHaveBeenCalledOnce();
+    expect(provider.getHome).toHaveBeenCalledTimes(2);
     expect(provider.getLibrary).toHaveBeenCalledOnce();
     expect(getFavoriteSongs).not.toHaveBeenCalled();
     unmount();

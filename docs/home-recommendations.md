@@ -3,7 +3,8 @@
 > [简体中文](zh-CN/home-recommendations.md) | **English**
 
 The home page is a personalized discovery surface backed by the QQ Music account session. Sections resolve only when
-their data is available, and each one degrades to a non-personalized fallback instead of leaving an empty gap.
+their data is available. Public sections can degrade to non-personalized data; account-only sections remain hidden
+when no authenticated source is available.
 
 ## Section layout
 
@@ -39,7 +40,7 @@ Each section uses the signed-in session when available and a general fallback ot
 | Section               | Authenticated source                                                                                             | Guest fallback                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | Guess you like        | `music.radioProxy.MbTrackRadioSvr/get_radio_track`                                                               | `newsong.NewSongServer/get_new_song_info`        |
-| Daily mix             | qm-api-rs `songlist.get_detail` with the signed-in credential                                                    | qm-api-rs anonymous songlist detail              |
+| Daily mix             | qm-api-rs resolves the current account's `data-rid`, then calls typed `songlist.get_detail`                      | hidden                                           |
 | New song picks        | feed `500/511` disstid, then `CgiGetDiss`                                                                        | `newsong.NewSongServer/get_new_song_info`        |
 | Recommended playlists | feed `500/0` dissid cards (paged)                                                                                | `music.playlist.PlaylistSquare/GetRecommendFeed` |
 | Radar                 | `music.recommend.TrackRelationServer/GetRadarSong` with `EntranceSongs` = numeric ids of recently listened songs | empty                                            |
@@ -65,8 +66,10 @@ credentials, cursors, and raw response shapes do not cross into React or Electro
 
 ## Caching and refresh
 
-The home feed is cached under `qqmusic:home:v4` for 15 minutes. The cache key is versioned so structural changes to
-the serialized feed invalidate stale copies. The home build is serialized under an async mutex so concurrent first
-loads cannot trip QQ Music rate limiting (`req_code 700000`). On startup the frontend loads the cached feed first for
-a fast first paint, then issues one forced refresh (`qqmusic_home` with `refresh=true`) so the latest personalized
-sections replace stale cache data; the periodic 15-minute refresh continues afterwards.
+The home feed is cached for 15 minutes under `qqmusic:home:v5:guest` for guests or an account-scoped opaque key for an
+authenticated session. Account cache keys contain no QQ identifier and are cleared on account revalidation or
+sign-out, so one account's personalized feed cannot be served to another account. The home build is serialized under
+an async mutex so concurrent first loads cannot trip QQ Music rate limiting (`req_code 700000`). On startup the
+frontend loads the applicable cached feed first for a fast first paint, then issues one forced refresh
+(`qqmusic_home` with `refresh=true`). Account snapshot changes trigger the same refresh immediately; the periodic
+15-minute refresh continues afterwards.
