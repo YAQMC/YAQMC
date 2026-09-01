@@ -23,13 +23,18 @@ export type PermissionSession = Pick<
 export const ARTWORK_CDN_REFERER = 'https://y.qq.com/';
 
 const ARTWORK_CDN_HOSTS = new Set(['y.gtimg.cn', 'qpic.y.qq.com', 'music-file.y.qq.com']);
+const Y_QQ_ARTWORK_PATH_PREFIXES = ['/m/resource/calendar/', '/music/common/upload/'] as const;
 
 export function isArtworkCdnUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
+    const allowedHost =
+      ARTWORK_CDN_HOSTS.has(parsed.hostname) ||
+      (parsed.hostname === 'y.qq.com' &&
+        Y_QQ_ARTWORK_PATH_PREFIXES.some((prefix) => parsed.pathname.startsWith(prefix)));
     return (
       parsed.protocol === 'https:' &&
-      ARTWORK_CDN_HOSTS.has(parsed.hostname) &&
+      allowedHost &&
       parsed.username === '' &&
       parsed.password === '' &&
       (parsed.port === '' || parsed.port === '443')
@@ -128,7 +133,15 @@ export function applySessionSecurity(target: PermissionSession): void {
     callback({});
   });
   target.webRequest?.onBeforeSendHeaders(
-    { urls: ['https://y.gtimg.cn/*', 'https://qpic.y.qq.com/*', 'https://music-file.y.qq.com/*'] },
+    {
+      urls: [
+        'https://y.gtimg.cn/*',
+        'https://qpic.y.qq.com/*',
+        'https://music-file.y.qq.com/*',
+        'https://y.qq.com/m/resource/calendar/*',
+        'https://y.qq.com/music/common/upload/*',
+      ],
+    },
     (details, callback) => {
       callback({
         requestHeaders: withArtworkCdnReferer(

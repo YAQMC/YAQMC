@@ -2507,7 +2507,7 @@ impl QQMusicClient {
             mvs.push(NewMv {
                 id,
                 title,
-                cover: entry["picurl"].as_str().unwrap_or_default().to_owned(),
+                cover: card_cover_url(entry),
                 duration_ms: entry["duration"]
                     .as_u64()
                     .map(|value| value * 1_000)
@@ -5971,8 +5971,7 @@ mod tests {
         response.info.base.id = DAILY_SONGLIST_ID;
         response.info.base.title = "Synthetic listener's private daily mix".to_owned();
         response.info.base.desc = "Provider supplied description".to_owned();
-        response.info.base.picurl =
-            "https://y.gtimg.cn/music/photo_new/T002R500x500M000ALBUM_MID.jpg".to_owned();
+        response.info.base.picurl = "https://y.qq.com/m/resource/calendar/0901_300.jpg".to_owned();
         response.info.creator.musicid = 10_001;
         response.info.creator.encrypt_uin = "PUBLIC_CREATOR_ID".to_owned();
         response.info.creator.nick = "Provider curator".to_owned();
@@ -5996,6 +5995,10 @@ mod tests {
         assert_eq!(playlist.title, "Synthetic listener's private daily mix");
         assert_eq!(playlist.description, "Provider supplied description");
         assert_eq!(playlist.owner.display_name, "Provider curator");
+        assert_eq!(
+            playlist.artwork.src,
+            "https://y.qq.com/m/resource/calendar/0901_300.jpg"
+        );
         assert_eq!(playlist.tracks.len(), 1);
         assert_eq!(playlist.tracks[0].title, "Provider track");
     }

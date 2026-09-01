@@ -130,6 +130,11 @@ describe('session and window wiring', () => {
       true,
     );
     expect(isArtworkCdnUrl('https://music-file.y.qq.com/songlist/cover.jpg')).toBe(true);
+    expect(isArtworkCdnUrl('https://y.qq.com/m/resource/calendar/0901_300.jpg')).toBe(true);
+    expect(isArtworkCdnUrl('https://y.qq.com/music/common/upload/MUSIC_FOCUS/focus.png')).toBe(
+      true,
+    );
+    expect(isArtworkCdnUrl('https://y.qq.com/portal/player.html')).toBe(false);
     expect(isArtworkCdnUrl('https://cdn.music-file.y.qq.com/songlist/cover.jpg')).toBe(false);
     expect(isArtworkCdnUrl('https://example.test/cover.jpg')).toBe(false);
     expect(
@@ -158,6 +163,8 @@ describe('session and window wiring', () => {
       'https://y.gtimg.cn/*',
       'https://qpic.y.qq.com/*',
       'https://music-file.y.qq.com/*',
+      'https://y.qq.com/m/resource/calendar/*',
+      'https://y.qq.com/music/common/upload/*',
     ]);
     const listener = onBeforeSendHeaders.mock.calls[0]?.[1] as (
       details: { url: string; requestHeaders: Record<string, string> },

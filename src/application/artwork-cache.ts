@@ -14,12 +14,18 @@ const CACHEABLE_ARTWORK_HOSTS = new Set([
   'thirdqq.qlogo.cn',
 ]);
 
+const Y_QQ_ARTWORK_PATH_PREFIXES = ['/m/resource/calendar/', '/music/common/upload/'] as const;
+
 export function isCacheableArtworkSource(url: string): boolean {
   try {
     const parsed = new URL(url);
+    const allowedHost =
+      CACHEABLE_ARTWORK_HOSTS.has(parsed.hostname) ||
+      (parsed.hostname === 'y.qq.com' &&
+        Y_QQ_ARTWORK_PATH_PREFIXES.some((prefix) => parsed.pathname.startsWith(prefix)));
     return (
       parsed.protocol === 'https:' &&
-      CACHEABLE_ARTWORK_HOSTS.has(parsed.hostname) &&
+      allowedHost &&
       parsed.username === '' &&
       parsed.password === '' &&
       (parsed.port === '' || parsed.port === '443')

@@ -80,6 +80,8 @@ describe('artwork source policy', () => {
     'https://q.qlogo.cn/avatar.jpg',
     'https://thirdwx.qlogo.cn/avatar.jpg',
     'https://thirdqq.qlogo.cn/avatar.jpg',
+    'https://y.qq.com/m/resource/calendar/0901_300.jpg',
+    'https://y.qq.com/music/common/upload/MUSIC_FOCUS/focus.png',
   ])('classifies exact QQ artwork origin %s for native caching', (source) => {
     expect(isCacheableArtworkSource(source)).toBe(true);
     expect(classifyArtworkSource(source, currentOrigin)).toEqual({ kind: 'cache', source });
@@ -95,6 +97,8 @@ describe('artwork source policy', () => {
     'https://example.com/a.jpg',
     'http://music-file.y.qq.com/songlist/cover.jpg',
     'https://cdn.music-file.y.qq.com/songlist/cover.jpg',
+    'https://y.qq.com/portal/player.html',
+    'https://y.qq.com/music/common/uploaded/not-allowed.jpg',
   ])('rejects non-allowlisted native artwork source %s', (source) => {
     expect(isCacheableArtworkSource(source)).toBe(false);
     expect(classifyArtworkSource(source, currentOrigin)).toBeNull();

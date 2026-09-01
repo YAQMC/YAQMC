@@ -24,15 +24,14 @@ pub(super) fn artwork_from_provider_url(
     title: &str,
     dominant_color: String,
 ) -> Artwork {
-    let source = upgrade_https(source.trim());
-    if !is_allowed_artwork_url(&source) {
+    let Some(source) = normalize_provider_artwork_url(source) else {
         return Artwork {
             src: FALLBACK_ARTWORK.to_owned(),
             alt: format!("Cover for {}", clean_text(title)),
             dominant_color,
             variants: Vec::new(),
         };
-    }
+    };
 
     let variants = canonical_album_mid(&source)
         .filter(|mid| is_safe_album_mid(mid))
@@ -59,6 +58,18 @@ const ALLOWED_ARTWORK_HOSTS: &[&str] = &[
     "thirdqq.qlogo.cn",
 ];
 
+const Y_QQ_ARTWORK_PATH_PREFIXES: &[&str] = &["/m/resource/calendar/", "/music/common/upload/"];
+
+fn normalize_provider_artwork_url(value: &str) -> Option<String> {
+    let value = value.trim();
+    let upgraded = if value.starts_with("//") {
+        format!("https:{value}")
+    } else {
+        upgrade_https(value)
+    };
+    is_allowed_artwork_url(&upgraded).then_some(upgraded)
+}
+
 pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(value) else {
         return false;
@@ -67,9 +78,13 @@ pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
         && url.username().is_empty()
         && url.password().is_none()
         && url.port_or_known_default() == Some(443)
-        && url
-            .host_str()
-            .is_some_and(|host| ALLOWED_ARTWORK_HOSTS.contains(&host))
+        && url.host_str().is_some_and(|host| {
+            ALLOWED_ARTWORK_HOSTS.contains(&host)
+                || (host == "y.qq.com"
+                    && Y_QQ_ARTWORK_PATH_PREFIXES
+                        .iter()
+                        .any(|prefix| url.path().starts_with(prefix)))
+        })
 }
 
 pub(super) fn provider_cover_url(value: &serde_json::Value) -> String {
@@ -106,15 +121,12 @@ pub(super) fn provider_cover_url(value: &serde_json::Value) -> String {
 
 pub(super) fn card_cover_url(card: &serde_json::Value) -> String {
     let cover = provider_cover_url(&card["cover"]);
-    if !cover.is_empty() {
-        return cover;
-    }
-    card["picurl"]
-        .as_str()
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .unwrap_or_default()
-        .to_owned()
+    let source = if cover.is_empty() {
+        card["picurl"].as_str().unwrap_or_default()
+    } else {
+        &cover
+    };
+    normalize_provider_artwork_url(source).unwrap_or_default()
 }
 
 fn fallback_artwork(title: &str, color_key: &str) -> Artwork {
@@ -253,6 +265,17 @@ mod tests {
         assert_eq!(measured.variants.len(), 1);
         assert_eq!(measured.variants[0].width, 500);
         assert_eq!(measured.variants[0].height, 500);
+
+        let daily = artwork_from_provider_url(
+            "https://y.qq.com/m/resource/calendar/0901_300.jpg",
+            "今日私享",
+            "#102030".to_owned(),
+        );
+        assert_eq!(
+            daily.src,
+            "https://y.qq.com/m/resource/calendar/0901_300.jpg"
+        );
+        assert!(daily.variants.is_empty());
     }
 
     #[test]
@@ -262,6 +285,15 @@ mod tests {
             artwork_from_provider_url(
                 "https://example.com/cover.jpg",
                 "Album",
+                "#102030".to_owned()
+            )
+            .src,
+            FALLBACK_ARTWORK
+        );
+        assert_eq!(
+            artwork_from_provider_url(
+                "https://y.qq.com/portal/player.html",
+                "Not artwork",
                 "#102030".to_owned()
             )
             .src,
@@ -311,5 +343,21 @@ mod tests {
             })),
             "https://music-file.y.qq.com/songlist/medium"
         );
+        assert_eq!(
+            card_cover_url(&serde_json::json!({
+                "picurl": "http://y.gtimg.cn/music/photo_new/mv.jpg"
+            })),
+            "https://y.gtimg.cn/music/photo_new/mv.jpg"
+        );
+        assert_eq!(
+            card_cover_url(&serde_json::json!({
+                "cover": "https://y.qq.com/music/common/upload/MUSIC_FOCUS/focus.png"
+            })),
+            "https://y.qq.com/music/common/upload/MUSIC_FOCUS/focus.png"
+        );
+        assert!(card_cover_url(&serde_json::json!({
+            "cover": "https://y.qq.com/portal/player.html"
+        }))
+        .is_empty());
     }
 }
