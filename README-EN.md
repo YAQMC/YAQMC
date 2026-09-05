@@ -28,14 +28,10 @@
 
 ## Release status
 
-> [!WARNING]
-> This document describes the unreleased Electron `main` branch and the Android host now under development. The latest public tag,
-> `v0.1.0-beta.6`, uses the retired desktop host; its package names, features, and limitations do not describe the
-> current tree. There is no public installer matching this document until a new Electron preview is released.
-
-The Electron line remains beta software. Windows has local native validation; Linux and Android still need broader
-real-device testing. Before downloading, read the release notes and confirm the platform, architecture, and
-acceptance status.
+`v0.1.0` is the target stable release line. Once tagged, one release workflow builds Windows, Linux, and Android artifacts from
+the same Git commit; Windows and Android packages must pass signing gates, while Linux packages include SHA-256
+checksums. Hardware acceptance still varies by platform, so read the release notes before downloading and confirm
+the architecture and tested scope.
 
 ## Highlights
 
@@ -117,7 +113,8 @@ The complete Electron desktop fetches the exact public `qm-api-rs` production pi
 npm run dev:desktop
 ```
 
-Credentials, native audio, cache, and QQ Music transport exist only behind the Electron host. See
+QQ Music transport, account state, cache policy, and playback state live in the shared Rust Core. The Electron and
+Android hosts provide their platform-specific secure storage, audio, and lifecycle integration. See
 [development](docs/development.md) for the pinned dependency and full boundary.
 
 In a native build, QQ Music guest mode is the default. Add `?provider=fake` to the application URL when recording

@@ -333,7 +333,11 @@ test('renders every pending metric and complete continuity and artifact facts', 
   assert.match(output, /CORRESPONDING-SOURCE-MANIFEST\.json/);
   assert.match(output, /YAQMC-source-\{sha\}\.zip/);
   assert.match(output, /qm-api-rs-source-\{pin\}\.zip/);
-  assert.match(output, /`\{arch\}` is `x64` or `arm64`/);
+  assert.match(output, /YAQMC-android-arm64-v8a-v\{version\}\.apk/);
+  assert.match(output, /BUILD-IDENTITY-ANDROID\.json/);
+  assert.match(output, /SHA256SUMS-android\.txt/);
+  assert.match(output, /RELEASE-NOTES\.md/);
+  assert.match(output, /Desktop `\{arch\}` is `x64` or `arm64`/);
   assert.match(output, /P0 performance gate: NOT COMPLETE/);
 });
 

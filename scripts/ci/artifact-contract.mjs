@@ -104,6 +104,41 @@ const CONTRACT = [
     'qm-api-rs corresponding source',
     'qm-api-rs-source-{pin}.zip',
   ],
+  [
+    'android-apk',
+    'scripts/build-android.mjs',
+    'Android arm64-v8a',
+    'Signed APK',
+    'YAQMC-android-arm64-v8a-v{version}.apk',
+  ],
+  [
+    'android-build-identity',
+    'scripts/ci/stage-android-release.mjs',
+    'Android arm64-v8a',
+    'Build identity',
+    'BUILD-IDENTITY-ANDROID.json',
+  ],
+  [
+    'android-release-checksums',
+    'scripts/ci/stage-android-release.mjs',
+    'Android arm64-v8a',
+    'Checksums',
+    'SHA256SUMS-android.txt',
+  ],
+  [
+    'android-release-notes',
+    'scripts/ci/stage-android-release.mjs',
+    'Android arm64-v8a',
+    'Release notes',
+    'RELEASE-NOTES-ANDROID.md',
+  ],
+  [
+    'release-notes',
+    'scripts/ci/assemble-release.mjs',
+    'Windows/Linux/Android',
+    'Combined release notes',
+    'RELEASE-NOTES.md',
+  ],
 ].map(([id, source, platform, kind, pattern]) =>
   Object.freeze({ id, source, platform, kind, pattern }),
 );

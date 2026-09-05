@@ -34,7 +34,7 @@ const expectedAmllPackages = [
   },
 ];
 
-export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release draft
+export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release
 
 Windows installers and portable executables, when included, are Authenticode-signed.
 The release workflow validates both signature status and the expected publisher
@@ -505,6 +505,7 @@ export function assembleElectronRelease({ sourceDir, correspondingSourceDir, des
     files: readdirSync(destDir).sort(),
     hasWindowsFeed: Boolean(windowsFeed),
     hasLinuxFeed: Boolean(linuxFeed),
+    releaseCommit: correspondingSource.releaseCommit,
   };
 }
 

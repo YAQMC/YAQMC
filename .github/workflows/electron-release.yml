@@ -1,4 +1,4 @@
-name: Electron release
+name: YAQMC release
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ on:
       - 'v*'
 
 concurrency:
-  group: electron-release-${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -41,6 +41,103 @@ jobs:
       - run: node scripts/ci/qm-api-rs-access.mjs --check
       - run: npm run provider:enforce
       - run: npm run provenance:enforce
+
+  android-package:
+    name: Android release package (arm64-v8a)
+    needs: [release-gates]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: release-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 26.7.0
+          cache: npm
+      - uses: ./.github/actions/setup-android
+      - run: npm ci
+      - name: Require and materialize Android release signing credentials
+        shell: bash
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          ANDROID_RELEASE_CERT_SHA256: ${{ secrets.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          for name in \
+            ANDROID_RELEASE_KEYSTORE_BASE64 \
+            ANDROID_RELEASE_KEY_ALIAS \
+            ANDROID_RELEASE_STORE_PASSWORD \
+            ANDROID_RELEASE_KEY_PASSWORD \
+            ANDROID_RELEASE_CERT_SHA256; do
+            if [ -z "${!name:-}" ]; then
+              echo "The release-signing environment is missing required secret ${name}" >&2
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/yaqmc-android-release.keystore"
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          test -s "$keystore"
+          chmod 600 "$keystore"
+          echo "ANDROID_RELEASE_KEYSTORE=$keystore" >> "$GITHUB_ENV"
+      - name: Build signed Android release APK
+        shell: bash
+        env:
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          args=(--variant release --stage-to release-android)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            args+=(--tag "$GITHUB_REF_NAME")
+          fi
+          node scripts/build-android.mjs "${args[@]}"
+      - name: Verify Android signature and checksum
+        shell: bash
+        env:
+          ANDROID_RELEASE_CERT_SHA256: ${{ secrets.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find release-android -maxdepth 1 -type f -name '*.apk' -print)
+          if [ "${#apks[@]}" -ne 1 ]; then
+            echo "Expected exactly one staged Android APK, found ${#apks[@]}" >&2
+            exit 1
+          fi
+          signer_output="$(
+            "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" \
+              verify --verbose --print-certs "${apks[0]}"
+          )"
+          actual_digest="$(
+            printf '%s\n' "$signer_output" |
+              sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+              head -n 1 |
+              tr -d ':[:space:]' |
+              tr '[:upper:]' '[:lower:]'
+          )"
+          expected_digest="$(
+            printf '%s' "$ANDROID_RELEASE_CERT_SHA256" |
+              tr -d ':[:space:]' |
+              tr '[:upper:]' '[:lower:]'
+          )"
+          if [[ ! "$actual_digest" =~ ^[0-9a-f]{64}$ ]] || [ "$actual_digest" != "$expected_digest" ]; then
+            echo "Android release signer certificate does not match the expected SHA-256 digest" >&2
+            exit 1
+          fi
+          (cd release-android && sha256sum --check SHA256SUMS-android.txt)
+      - name: Remove Android signing material
+        if: always()
+        shell: bash
+        run: rm -f -- "$RUNNER_TEMP/yaqmc-android-release.keystore"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: YAQMC-android-arm64-v8a-${{ github.sha }}
+          path: release-android
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
   frontend-build:
     needs: [release-gates]
@@ -194,8 +291,8 @@ jobs:
           key: cargo-${{ runner.os }}-${{ matrix.target }}-1.88-${{ hashFiles('Cargo.lock') }}-${{ env.YAQMC_BUILD_PROFILE }}
 
   assemble:
-    name: Assemble Electron draft assets
-    needs: [electron-package]
+    name: Assemble release assets
+    needs: [electron-package, android-package]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -203,7 +300,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: YAQMC/qm-api-rs
-          ref: 006d149e59250122e77019e34a1a48340b20a1c3
+          ref: 7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5
           path: .corresponding-source/qm-api-rs
           persist-credentials: false
       - name: Checkout exact AMLL corresponding source
@@ -227,22 +324,28 @@ jobs:
           pattern: YAQMC-electron-*
           path: packed
           merge-multiple: false
-      - name: Flatten installers and updater metadata
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: YAQMC-android-arm64-v8a-${{ github.sha }}
+          path: packed-android
+      - name: Validate and flatten release assets
         run: >-
-          node scripts/ci/assemble-electron-release.mjs
-          --from packed
+          node scripts/ci/assemble-release.mjs
+          --electron-from packed
+          --android-from packed-android
           --source-from corresponding-source
           --to assembled
+          --commit ${{ github.sha }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: YAQMC-electron-draft-${{ github.sha }}
+          name: YAQMC-release-draft-${{ github.sha }}
           path: assembled
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
 
   github-release-draft:
-    name: Draft Electron GitHub Release
+    name: Draft GitHub Release
     needs: [assemble]
     runs-on: ubuntu-latest
     permissions:
@@ -251,7 +354,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: YAQMC-electron-draft-${{ github.sha }}
+          name: YAQMC-release-draft-${{ github.sha }}
           path: assembled
       - name: Create draft GitHub Release
         env:
@@ -267,5 +370,5 @@ jobs:
           gh release create "$tag" assembled/* \
             --draft \
             --target "$GITHUB_SHA" \
-            --title "YAQMC Electron ${tag} (draft)" \
-            --notes-file assembled/RELEASE-NOTES-ELECTRON.md
+            --title "YAQMC ${tag} (draft)" \
+            --notes-file assembled/RELEASE-NOTES.md

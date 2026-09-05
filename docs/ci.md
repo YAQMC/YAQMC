@@ -2,14 +2,14 @@
 
 > [简体中文](zh-CN/ci.md) | **English**
 
-This page describes the Electron-only GitHub Actions pipeline. Ordinary CI package artifacts are not published and may be unsigned. The release workflow requires Authenticode for every Windows installer and portable executable; Linux release formats remain unsigned. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
+This page describes the desktop and Android GitHub Actions pipelines. Ordinary CI package artifacts are not published and may be unsigned. The release workflow requires Authenticode for every Windows installer and portable executable and a persistent release certificate for Android; Linux release formats remain unsigned. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
 
 ## Workflows
 
-| Workflow         | File                                     | Trigger                                          | Result                                                                    |
-| ---------------- | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------- |
-| CI               | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                             |
-| Electron release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | signer-gated Windows packages, Linux packages, and a draft GitHub Release |
+| Workflow      | File                                     | Trigger                                          | Result                                                                                  |
+| ------------- | ---------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| CI            | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                           |
+| YAQMC release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | signer-gated Windows and Android packages, Linux packages, and one draft GitHub Release |
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
@@ -36,6 +36,8 @@ Superseded pull-request runs are cancelled. Pushes to `main`, tag builds, and ma
 
 Windows produces an NSIS installer and portable executable. Linux produces AppImage, `.deb`, `.rpm`, and `.tar.gz`. Package jobs install Electron packaging tools on Linux; retired Linux web-runtime packages are not host dependencies.
 
+The Android release job builds its own `dist-android` renderer, compiles the shared Rust Core for `arm64-v8a`, synchronizes Capacitor, and assembles a minified release APK with JDK 21, SDK 36, and NDK 28.2.13676358. Android does not reuse the desktop renderer artifact because its host feature boundary is different.
+
 Do not upload or reuse `node_modules` between jobs.
 
 ## Windows release signing
@@ -56,6 +58,18 @@ Before upload, PowerShell verifies both expected EXEs with
 Subject to the protected value. The updater keeps electron-updater's default
 publisher-signature verification enabled. Signing credentials are available
 only to the package step, not `npm ci`, artifact upload, or assembly jobs.
+
+## Android release signing
+
+The Android package job uses the same protected `release-signing` environment and requires:
+
+- `ANDROID_RELEASE_KEYSTORE_BASE64`: the persistent release keystore encoded as Base64;
+- `ANDROID_RELEASE_KEY_ALIAS`: the release key alias;
+- `ANDROID_RELEASE_STORE_PASSWORD`: the keystore password;
+- `ANDROID_RELEASE_KEY_PASSWORD`: the key password.
+- `ANDROID_RELEASE_CERT_SHA256`: the expected SHA-256 digest of the release signing certificate.
+
+The workflow decodes the keystore only into the runner's temporary directory, limits its permissions, and removes it before artifact upload. Missing signing data fails closed. After Gradle assembly, Android Build Tools `apksigner verify --print-certs` checks the APK and compares its certificate digest to the protected expected value; `sha256sum --check` then verifies the staged checksum. Keep the same signing key for every upgrade of `org.yaqmc.android`; losing it prevents users from installing an update over the existing app.
 
 ## Optimization and caches
 
@@ -86,11 +100,11 @@ instructions, collector, and verifier. CI runs the verifier's identity-only
 gate before upload; it is not mixed into draft release assets.
 
 The release workflow fails before packaging unless the pin, provider readiness,
-provenance, and Windows signing gates pass. It checks out the exact dependency revisions,
+provenance, Windows signing, and Android signing gates pass. It checks out the exact dependency revisions,
 builds revision-bound YAQMC, `qm-api-rs`, and AMLL source archives, and writes
 `CORRESPONDING-SOURCE-MANIFEST.json`. Assembly verifies those archive hashes,
-flattens package assets, writes `SHA256SUMS-electron.txt` and
-`RELEASE-NOTES-ELECTRON.md`, and keeps only x64 updater feeds as `latest.yml`
+flattens package assets, validates the Android build identity against the same Git commit,
+writes platform checksums plus `RELEASE-NOTES.md`, and keeps only x64 updater feeds as `latest.yml`
 and `latest-linux.yml`. A `v*` push keeps that tag; a manual run uses
 `electron-draft-<run-id>`. Both create a draft release for maintainer review.
 

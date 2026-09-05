@@ -34,6 +34,7 @@ test('stages a revision-bound arm64 APK with checksums and public metadata', () 
   const identity = JSON.parse(
     readFileSync(path.join(destination, 'BUILD-IDENTITY-ANDROID.json'), 'utf8'),
   );
+  assert.equal(identity.schemaVersion, 1);
   assert.equal(identity.applicationId, ANDROID_APPLICATION_ID);
   assert.equal(identity.versionCode, 1_002_007);
   assert.equal(identity.commit, 'a'.repeat(40));

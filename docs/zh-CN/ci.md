@@ -2,14 +2,14 @@
 
 > **简体中文** | [English](../ci.md)
 
-本文说明仅使用 Electron 的 GitHub Actions 流水线。普通 CI 安装包不会发布，且可能未签名；发布工作流要求每个 Windows 安装器与 portable EXE 都经过 Authenticode 签名，Linux 发布格式仍不做代码签名。任何这类产物都不能单独证明安装包已在目标硬件上启动。
+本文说明桌面端与 Android 的 GitHub Actions 流水线。普通 CI 安装包不会发布，且可能未签名；发布工作流要求每个 Windows 安装器与 portable EXE 都经过 Authenticode 签名，并要求 Android 使用长期保存的正式证书签名；Linux 发布格式仍不做代码签名。任何这类产物都不能单独证明安装包已在目标硬件上启动。
 
 ## 工作流
 
-| 工作流        | 文件                                     | 触发条件                            | 结果                                                     |
-| ------------- | ---------------------------------------- | ----------------------------------- | -------------------------------------------------------- |
-| CI            | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                          |
-| Electron 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 经过签名门禁的 Windows 包、Linux 包与草稿 GitHub Release |
+| 工作流     | 文件                                     | 触发条件                            | 结果                                                                   |
+| ---------- | ---------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| CI         | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                                        |
+| YAQMC 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 经过签名门禁的 Windows/Android 包、Linux 包与同一个草稿 GitHub Release |
 
 已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
@@ -31,6 +31,8 @@
 
 Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
 
+Android 发布任务会单独构建 `dist-android` renderer，将共享 Rust Core 编译为 `arm64-v8a`，同步 Capacitor，并使用 JDK 21、SDK 36 与 NDK 28.2.13676358 组装压缩后的正式 APK。Android 不复用桌面 renderer artifact，因为两种宿主的功能边界不同。
+
 不要在任务间上传或复用 `node_modules`。
 
 ## Windows 发布签名
@@ -47,6 +49,18 @@ Windows 任务要求其中配置以下 environment secrets：
 通过 `Get-AuthenticodeSignature` 检查两个预期 EXE，要求状态为 `Valid`，并将
 签名者 Subject 与受保护值比较。更新器保留 electron-updater 默认的发行者签名
 校验。签名凭据只注入打包步骤，不提供给 `npm ci`、artifact 上传或组装任务。
+
+## Android 发布签名
+
+Android 打包任务使用同一个受保护的 `release-signing` environment，并要求配置：
+
+- `ANDROID_RELEASE_KEYSTORE_BASE64`：Base64 编码的长期正式 keystore；
+- `ANDROID_RELEASE_KEY_ALIAS`：正式密钥 alias；
+- `ANDROID_RELEASE_STORE_PASSWORD`：keystore 密码；
+- `ANDROID_RELEASE_KEY_PASSWORD`：密钥密码。
+- `ANDROID_RELEASE_CERT_SHA256`：正式签名证书的预期 SHA-256 指纹。
+
+工作流只把 keystore 解码到 runner 临时目录，限制文件权限，并在上传 artifact 前删除。缺少任一签名项都会失败关闭。Gradle 组装后，工作流用 Android Build Tools 的 `apksigner verify --print-certs` 检查 APK，并将证书 SHA-256 指纹与受保护的预期值比较；随后用 `sha256sum --check` 校验 staging 生成的 checksum。`org.yaqmc.android` 的所有后续升级必须使用同一把签名密钥；密钥丢失后用户将无法覆盖安装更新。
 
 ## 优化与缓存
 
@@ -73,7 +87,7 @@ Linux x64 打包任务还会上传独立的扁平 artifact
 identity、checksums、当前测试/验收说明、采集器和验证器。上传前 CI 会执行
 identity-only 校验；该测试包不会混入 Release 草稿资产。
 
-发布工作流在打包前强制通过 pin、提供器 readiness、provenance 与 Windows 签名门禁。它检出依赖的精确 revision，生成绑定 revision 的 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，生成 `SHA256SUMS-electron.txt` 与 `RELEASE-NOTES-ELECTRON.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
+发布工作流在打包前强制通过 pin、提供器 readiness、provenance、Windows 签名与 Android 签名门禁。它检出依赖的精确 revision，生成绑定 revision 的 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，要求 Android build identity 与同一个 Git commit 一致，生成分平台 checksum 与 `RELEASE-NOTES.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
 
 打包后的 renderer 使用 AGPL 许可的 AMLL 包。组装器会核对精确包版本、许可证、revision、源码入口、
 归档 hash 以及[对应源代码交付政策](../../CORRESPONDING_SOURCE_POLICY.md)中的要求。

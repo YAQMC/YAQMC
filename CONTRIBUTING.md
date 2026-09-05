@@ -19,7 +19,7 @@ npm run dev
 ```
 
 完整的 Electron 桌面端和 Rust workspace 无条件链接公开 `qm-api-rs`（crate `qqmusic-api`），精确钉在
-`006d149e59250122e77019e34a1a48340b20a1c3`。本地若在 `../qm-api-rs` 有检出，运行
+`7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`。本地若在 `../qm-api-rs` 有检出，运行
 `node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。生产边界和发布门禁见
 [提供器 readiness](docs/release/provider-readiness.md)与 [CI 文档](docs/zh-CN/ci.md)。
 
@@ -54,7 +54,7 @@ Pull Request 应说明问题、方案、风险/回退、测试证据和界面截
 
 CI（`.github/workflows/ci.yml`）会在 pull request 上构建 Windows x64 与 Linux x64 Electron 包，在
 `main` 推送和手动触发时扩展到 Windows/Linux 的 x64/arm64 矩阵，并以 Actions artifact 保留 14 天。
-CI 使用 ThinLTO；`v*` tag 的生产草稿由 `electron-release.yml` 使用仓库里的 Fat LTO。事件、缓存、产物命名与“构建通过 vs 运行时验证”
+CI 使用 ThinLTO；`v*` tag 的 Windows、Linux 与 Android 生产草稿由 `electron-release.yml` 生成，桌面 Core 使用仓库里的 Fat LTO。事件、缓存、产物命名与“构建通过 vs 运行时验证”
 见 [CI 文档](docs/zh-CN/ci.md)。也可以在 Actions 里对当前分支手动运行 **CI**。
 
 ## 安全与协议边界

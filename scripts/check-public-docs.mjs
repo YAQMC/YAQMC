@@ -185,15 +185,19 @@ if (englishReadme.includes('](docs/zh-CN/')) {
   errors.push('README-EN.md: English documentation links must not target docs/zh-CN/');
 }
 
-if (!chineseReadme.includes('`v0.1.0-beta.6`') || !chineseReadme.includes('Electron `main`')) {
-  errors.push(
-    'README.md: must distinguish the current Electron tree from the latest legacy release',
-  );
+if (
+  !chineseReadme.includes('`v0.1.0`') ||
+  !chineseReadme.includes('Windows、Linux 和 Android') ||
+  chineseReadme.includes('v0.1.0-beta.6')
+) {
+  errors.push('README.md: must describe the current unified v0.1.0 release line');
 }
-if (!englishReadme.includes('`v0.1.0-beta.6`') || !englishReadme.includes('Electron `main`')) {
-  errors.push(
-    'README-EN.md: must distinguish the current Electron tree from the latest legacy release',
-  );
+if (
+  !englishReadme.includes('`v0.1.0`') ||
+  !englishReadme.includes('Windows, Linux, and Android') ||
+  englishReadme.includes('v0.1.0-beta.6')
+) {
+  errors.push('README-EN.md: must describe the current unified v0.1.0 release line');
 }
 
 const englishLyrics = await readFile(path.join(repositoryRoot, 'docs/lyrics.md'), 'utf8');
@@ -269,13 +273,17 @@ if (!englishSite.includes('lang="en"') || !englishSite.includes('href="../"')) {
   errors.push('site/en/index.html: missing English language declaration or Chinese switch');
 }
 if (
-  !chineseSite.includes('v0.1.0-beta.6') ||
-  !englishSite.includes('v0.1.0-beta.6') ||
+  !chineseSite.includes('v0.1.0') ||
+  !englishSite.includes('v0.1.0') ||
+  !chineseSite.includes('https://github.com/YAQMC/YAQMC/releases') ||
+  !englishSite.includes('https://github.com/YAQMC/YAQMC/releases') ||
   chineseSite.includes('/releases/latest') ||
-  englishSite.includes('/releases/latest')
+  englishSite.includes('/releases/latest') ||
+  chineseSite.includes('v0.1.0-beta.6') ||
+  englishSite.includes('v0.1.0-beta.6')
 ) {
   errors.push(
-    'site: must explain the legacy latest release instead of linking it as the current Electron build',
+    'site: must describe the pending unified v0.1.0 release line without linking a legacy latest release',
   );
 }
 

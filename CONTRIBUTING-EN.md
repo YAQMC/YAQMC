@@ -15,7 +15,7 @@ npm run dev
 
 The full Electron desktop and Rust workspace link the public `qm-api-rs` crate (`qqmusic-api`) as an unconditional
 production dependency, pinned at
-`006d149e59250122e77019e34a1a48340b20a1c3`. A sibling checkout at `../qm-api-rs`
+`7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`. A sibling checkout at `../qm-api-rs`
 is checked against that pin by `node scripts/ci/qm-api-rs-access.mjs --check`.
 See [provider readiness](docs/release/provider-readiness.md) and [CI](docs/ci.md) for the production boundary and
 release gates.
@@ -46,7 +46,7 @@ or unredacted diagnostics. Do not implement subscription, regional, copyright, o
 
 CI (`.github/workflows/ci.yml`) packages Electron for Windows x64 and Linux x64 on pull requests, and expands to
 the Windows/Linux x64/arm64 matrix on `main` pushes and manual dispatch. Artifacts are retained for 14 days. CI uses ThinLTO;
-`v*` production drafts come from `electron-release.yml` with the repository Fat LTO profile. Events, caches,
+`v*` Windows, Linux, and Android production drafts come from `electron-release.yml`; desktop Core packages use the repository Fat LTO profile. Events, caches,
 artifact names, and build-accepted vs runtime-tested are documented in [CI](docs/ci.md). You can also run **CI**
 manually on the current branch from the Actions tab.
 

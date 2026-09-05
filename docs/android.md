@@ -56,8 +56,9 @@ npm run android:build:debug
 The debug APK is exported to the current user's dedicated `Downloads/YAQMC/Android/debug` directory by default.
 Set `YAQMC_ANDROID_DEBUG_OUTPUT_DIR` to override that export location.
 
-A release build additionally requires the four signing variables documented by the release workflow. Never put a
-keystore or signing password in the repository or `gradle.properties`.
+A local release build additionally requires the four Gradle signing variables documented by the build script. The
+tagged workflow accepts the keystore as Base64 and also requires its expected certificate SHA-256 digest, as
+documented in [CI](ci.md). Never put a keystore or signing password in the repository or `gradle.properties`.
 
 Published APKs are named `YAQMC-android-arm64-v8a-v<version>.apk`. Verify their SHA-256 value with the adjacent
 `SHA256SUMS-android.txt` before sideloading. Android upgrades require the same package ID

@@ -15,6 +15,8 @@ gradle -p android :app:assembleDebug
 
 Debug accepts `arm64-v8a` and `x86_64`. Release is arm64-only. Release version metadata comes from `YAQMC_VERSION_NAME` and `YAQMC_VERSION_CODE`. A release build fails unless all of these are present in the environment: `ANDROID_RELEASE_KEYSTORE`, `ANDROID_RELEASE_KEY_ALIAS`, `ANDROID_RELEASE_STORE_PASSWORD`, and `ANDROID_RELEASE_KEY_PASSWORD`. Secrets are intentionally not stored in `gradle.properties`.
 
+The tagged GitHub release workflow reads the long-lived signing values from the protected `release-signing` environment. It decodes `ANDROID_RELEASE_KEYSTORE_BASE64` into the runner temporary directory, passes the other three Gradle values unchanged, verifies the APK and the expected `ANDROID_RELEASE_CERT_SHA256` identity with Android Build Tools `apksigner`, and deletes the temporary keystore before artifact upload.
+
 The Rust library is not checked into this source tree. The core build must copy ABI-specific `.so` files into a build output directory and set `YAQMC_ANDROID_NATIVE_LIB_DIR` to that directory. The Gradle source set reads JNI libraries from that output only.
 
 ## Native contract

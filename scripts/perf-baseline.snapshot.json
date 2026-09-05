@@ -56,6 +56,21 @@
     },
     {
       "id": "electron-qm-api-rs-source"
+    },
+    {
+      "id": "android-apk"
+    },
+    {
+      "id": "android-build-identity"
+    },
+    {
+      "id": "android-release-checksums"
+    },
+    {
+      "id": "android-release-notes"
+    },
+    {
+      "id": "release-notes"
     }
   ],
   "dataPaths": [

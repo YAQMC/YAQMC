@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "phase": "P14-C",
-  "targetPin": "006d149e59250122e77019e34a1a48340b20a1c3",
+  "targetPin": "7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5",
   "cutoverBaselinePin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
   "defaultBackend": "qmapi",
   "cutoverAuthorized": true,
@@ -29,10 +29,10 @@
     {
       "id": "exact-pin-three-day-soak",
       "status": "waived",
-      "appliesToPin": "006d149e59250122e77019e34a1a48340b20a1c3",
+      "appliesToPin": "7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5",
       "evidence": "docs/release/provider-readiness.md",
       "waivedBy": "Mai-xiyu",
-      "waivedOn": "2026-09-01",
+      "waivedOn": "2026-09-06",
       "waiverKind": "maintainer-authorized-skip"
     },
     {

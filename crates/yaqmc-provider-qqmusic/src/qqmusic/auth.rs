@@ -2367,12 +2367,11 @@ impl QQMusicAuthService {
             .protocol
             .validate_session(&candidate, cancellation.clone())
             .await
-            .map_err(|error| {
+            .inspect_err(|error| {
                 tracing::warn!(target: "qqmusic.auth", attempt_tag = diagnostic_tag, generation,
                     stage = "identity-validation-failed", error_code = error.code(),
                     elapsed_ms = started.elapsed().as_millis() as u64,
                     credential_committed = false, "login credential promotion");
-                error
             })?;
         tracing::info!(target: "qqmusic.auth", attempt_tag = diagnostic_tag, generation,
             stage = "identity-validated", credential_committed = false,

@@ -38,6 +38,7 @@ export function stageAndroidRelease({ apkPath, destination, version, commit }) {
     path.join(destination, 'BUILD-IDENTITY-ANDROID.json'),
     `${JSON.stringify(
       {
+        schemaVersion: 1,
         applicationId: ANDROID_APPLICATION_ID,
         versionName,
         versionCode,

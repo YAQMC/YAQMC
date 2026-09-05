@@ -5,11 +5,15 @@ import test from 'node:test';
 import { artifactContractEntries } from './artifact-contract.mjs';
 import { repositoryRoot } from './repo.mjs';
 
-test('artifact contract describes only current Electron packages and release metadata', () => {
+test('artifact contract describes current desktop, Android, and release metadata', () => {
   const entries = artifactContractEntries();
-  assert.equal(entries.length, 15);
+  assert.equal(entries.length, 20);
   assert.equal(new Set(entries.map(({ id }) => id)).size, entries.length);
-  assert.ok(entries.every(({ id }) => id.startsWith('electron-')));
+  assert.ok(
+    entries.every(
+      ({ id }) => id.startsWith('electron-') || id.startsWith('android-') || id === 'release-notes',
+    ),
+  );
   assert.ok(
     entries.every(({ source, platform, kind, pattern }) => source && platform && kind && pattern),
   );
@@ -25,7 +29,14 @@ test('artifact contract describes only current Electron packages and release met
     path.join(repositoryRoot, '.github/workflows/electron-release.yml'),
     'utf8',
   );
-  assert.match(workflow, /assemble-electron-release\.mjs/);
+  assert.match(workflow, /assemble-release\.mjs/);
+  assert.match(workflow, /node scripts\/build-android\.mjs/);
+  assert.match(workflow, /\.\/\.github\/actions\/setup-android/);
+  assert.match(workflow, /secrets\.ANDROID_RELEASE_KEYSTORE_BASE64/);
+  assert.match(workflow, /secrets\.ANDROID_RELEASE_CERT_SHA256/);
+  assert.match(workflow, /verify --verbose --print-certs/);
+  assert.match(workflow, /YAQMC-android-arm64-v8a-\$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /--notes-file assembled\/RELEASE-NOTES\.md/);
   assert.match(workflow, /corresponding-source\.mjs/);
   assert.match(workflow, /repository: YAQMC\/qm-api-rs/);
   assert.match(workflow, /stage-linux-tester\.mjs/);

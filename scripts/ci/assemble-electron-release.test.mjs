@@ -305,9 +305,9 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
   );
 });
 
-test('Electron release workflow is the sole tagged desktop release workflow', () => {
+test('YAQMC release workflow is the sole tagged desktop and Android release workflow', () => {
   const workflow = readFileSync(WORKFLOW, 'utf8');
-  assert.match(workflow, /^name: Electron release/m);
+  assert.match(workflow, /^name: YAQMC release/m);
   assert.match(workflow, /tags:\s*\n\s+-\s+'v\*'/);
   assert.match(workflow, /node scripts\/ci\/package-electron\.mjs/);
   assert.match(workflow, /libasound2-dev rpm fakeroot/);
@@ -329,7 +329,16 @@ test('Electron release workflow is the sole tagged desktop release workflow', ()
   assert.match(workflow, /--source-from corresponding-source/);
   assert.match(workflow, /node scripts\/ci\/stage-linux-tester\.mjs/);
   assert.match(workflow, /YAQMC-linux-x64-tester-\$\{\{ github\.sha \}\}/);
-  assert.match(workflow, /node scripts\/ci\/assemble-electron-release\.mjs/);
+  assert.match(workflow, /node scripts\/ci\/assemble-release\.mjs/);
+  assert.match(workflow, /node scripts\/build-android\.mjs/);
+  assert.match(workflow, /secrets\.ANDROID_RELEASE_KEYSTORE_BASE64/);
+  assert.match(workflow, /secrets\.ANDROID_RELEASE_KEY_ALIAS/);
+  assert.match(workflow, /secrets\.ANDROID_RELEASE_STORE_PASSWORD/);
+  assert.match(workflow, /secrets\.ANDROID_RELEASE_KEY_PASSWORD/);
+  assert.match(workflow, /secrets\.ANDROID_RELEASE_CERT_SHA256/);
+  assert.match(workflow, /verify --verbose --print-certs/);
+  assert.match(workflow, /SHA256SUMS-android\.txt/);
+  assert.match(workflow, /--notes-file assembled\/RELEASE-NOTES\.md/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /--draft/);
   assert.doesNotMatch(workflow, /autoDownload:\s*true/);

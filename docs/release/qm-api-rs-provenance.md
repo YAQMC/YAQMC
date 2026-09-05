@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS** at production revision
-`006d149e59250122e77019e34a1a48340b20a1c3`.
+`7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -15,13 +15,13 @@ source-to-target mappings are present in the crate and mirrored in
 recorded as a protocol and API-shape reference, not incorporated source.
 Former port and extracted-client source claims were removed before this pin.
 
-The 2026-09-01 review retains the previously reviewed credential, transport,
-MQTT, parser, pagination, typed recommendation, canonical public-song-link, and
-CI hardening baseline. The new delta adds one fixed-origin, credential-scoped
-HTML request that extracts the positive `data-rid` associated with the current
-account's “今日私享” card, plus bounded parser and transport contract tests. It
-does not modify `src/qmc.rs`; the existing QMC source mappings and blob evidence
-therefore remain applicable.
+The 2026-09-06 review retains the previously reviewed credential, transport,
+MQTT, parser, pagination, recommendation, canonical public-song-link, daily
+recommendation discovery, and CI hardening baseline. The new delta introduces
+typed mobile QR terminal outcomes, non-sensitive progress observation, strict
+active-topic binding for MQTT login events, and regression tests for terminal
+classification and stale-topic rejection. It does not modify `src/qmc.rs`; the
+existing QMC source mappings and blob evidence therefore remain applicable.
 
 Immutable evidence and mappings are recorded in
 [provenance-ledger.json](provenance-ledger.json), including the crate license,

@@ -51,8 +51,9 @@ npm run android:build:debug
 Debug APK 默认导出到当前用户的 `Downloads/YAQMC/Android/debug` 专属目录；可用
 `YAQMC_ANDROID_DEBUG_OUTPUT_DIR` 改写导出位置。
 
-Release 构建还需要工作流文档列出的四个签名环境变量。禁止把 keystore 或密码提交到仓库或写入
-`gradle.properties`。
+本地 Release 构建还需要构建脚本列出的四个 Gradle 签名环境变量。Tag 工作流通过 Base64 接收
+keystore，并额外要求预期证书的 SHA-256 指纹，详见 [CI](ci.md)。禁止把 keystore 或密码提交到
+仓库或写入 `gradle.properties`。
 
 发布文件名为 `YAQMC-android-arm64-v8a-v<version>.apk`。侧载前使用相邻的
 `SHA256SUMS-android.txt` 核对 SHA-256。Android 后续升级必须始终使用相同包名

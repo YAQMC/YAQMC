@@ -17,7 +17,7 @@ The source delivery must include:
 
 - the exact YAQMC source for the released commit;
 - the exact linked `qm-api-rs` source resolved by revision
-  `006d149e59250122e77019e34a1a48340b20a1c3` (or the revision recorded in that release's lockfile); and
+  `7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5` (or the revision recorded in that release's lockfile); and
 - the preferred source form for the shipped `@applemusic-like-lyrics/core` and
   `@applemusic-like-lyrics/react` packages. Version `0.5.2` maps to upstream commit
   `fd7ec2d597daa2a66a37ca5f3214d6757ec17cfa` (`core-bundle@0.5.2`) and is licensed
@@ -30,8 +30,8 @@ references, and hashes of all delivered archives.
 
 Do not publish a binary release if the required corresponding source is unavailable.
 
-The Electron release workflow enforces provider readiness and provenance before
-packaging. Its assembly job checks out the exact `qm-api-rs` and AMLL revisions with
+The YAQMC release workflow enforces provider readiness and provenance before
+desktop and Android packaging. Its assembly job checks out the exact `qm-api-rs` and AMLL revisions with
 `persist-credentials: false`, runs
 `scripts/ci/corresponding-source.mjs`, and refuses to create a draft unless all
 three revision-bound source archives and `CORRESPONDING-SOURCE-MANIFEST.json`

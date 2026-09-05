@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -12,6 +13,7 @@ import {
   defaultAndroidDebugDestination,
   gradleTask,
 } from '../build-android.mjs';
+import { repositoryRoot } from './repo.mjs';
 
 test('Android build plan fixes the release and debug ABI sets', () => {
   assert.deepEqual(ANDROID_RELEASE_ABIS, ['arm64-v8a']);
@@ -51,7 +53,7 @@ test('debug exports use a YAQMC-specific deterministic filename', () => {
   assert.equal(debugApkName('0.7.0'), 'YAQMC-0.7.0-android-debug.apk');
   assert.equal(
     defaultAndroidDebugDestination({ USERPROFILE: 'C:\\Users\\maintainer' }),
-    path.resolve('C:\\Users\\maintainer', 'Downloads', 'YAQMC', 'Android', 'debug'),
+    path.join('C:\\Users\\maintainer', 'Downloads', 'YAQMC', 'Android', 'debug'),
   );
   assert.equal(
     defaultAndroidDebugDestination({
@@ -75,4 +77,13 @@ test('SDK discovery prioritizes explicit configuration and has a Windows fallbac
   assert.equal(candidates[1], path.resolve('D:\\sdk-legacy'));
   assert.equal(candidates[2], path.resolve('C:\\Users\\tester\\AppData\\Local', 'Android', 'Sdk'));
   assert.equal(ANDROID_NDK_VERSION, '28.2.13676358');
+});
+
+test('Android CI setup uses the JDK required by Capacitor and Gradle', () => {
+  const action = readFileSync(
+    path.join(repositoryRoot, '.github', 'actions', 'setup-android', 'action.yml'),
+    'utf8',
+  );
+  assert.match(action, /java-version:\s*'21'/u);
+  assert.doesNotMatch(action, /java-version:\s*'17'/u);
 });

@@ -2,7 +2,7 @@
 
 Status: **READY (MAINTAINER SOAK WAIVER)** for the production `qmapi` backend at
 exact `qm-api-rs` revision
-`006d149e59250122e77019e34a1a48340b20a1c3`.
+`7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
@@ -31,12 +31,12 @@ is maintained separately in
 
 The previous exact-pin waiver applied only to revision
 `827233cb799bede84ee5033ec16450dc1d5e2587`; it is not carried forward. The
-current pin retains the typed Guess and Radar continuation requests and the
-validated canonical public-song-link helper. It adds credential-scoped discovery
-of the current account's daily recommendation ID from a fixed QQ Music page,
-without changing the QMC implementation. Its automatic Rust and provider-boundary
-checks passed before the release request. On 2026-09-01, maintainer Mai-xiyu
-explicitly authorized proceeding with the release and skipping the new pin's
-three-day soak. This waiver does not assert that the soak or a production-account
-LIVE run passed; the new daily-discovery path has not been exercised against a
-maintainer production account.
+current pin retains the typed Guess and Radar continuation requests, validated
+canonical public-song-link helper, and credential-scoped daily recommendation
+discovery. It adds typed mobile QR terminal outcomes and non-sensitive progress
+events, and binds MQTT business events to the active QR topic without changing
+the QMC implementation. Its Rust, provider-boundary, and Android compile checks
+passed before the release request. On 2026-09-06, maintainer Mai-xiyu explicitly
+requested the release and thereby authorized skipping the new pin's three-day
+soak. This waiver does not assert that the soak or a production-account LIVE run
+passed.
