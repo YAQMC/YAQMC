@@ -7,7 +7,7 @@ import {
   setPluginPresetCatalog,
   type LyricsPresetDefinition,
 } from './lyrics-preset';
-import { isNativeRuntime } from './native-player-runtime';
+import { hasHostCapability } from './host-capabilities';
 import { skipsLiveCssBlur } from './platform-integration';
 import { getYaqmcClient } from './yaqmc-runtime';
 import { usePlayerStore } from './player-store';
@@ -649,7 +649,7 @@ export async function setPluginDeveloperMode(enabled: boolean): Promise<boolean>
 }
 
 export async function pluginHostDeveloperMode(): Promise<boolean> {
-  if (!isNativeRuntime) return false;
+  if (!hasHostCapability('plugins')) return false;
   const resources = await client.invoke('plugin_active_resources');
   return resources.developerMode;
 }
@@ -705,7 +705,7 @@ export async function readPluginAsset(
 }
 
 export async function applyPluginResources(): Promise<ActivePluginResources | null> {
-  if (!isNativeRuntime || applying) return null;
+  if (!hasHostCapability('plugins') || applying) return null;
   applying = true;
   try {
     const resources = await client.invoke('plugin_active_resources');
@@ -730,7 +730,7 @@ export async function applyPluginResources(): Promise<ActivePluginResources | nu
 }
 
 export async function listPlugins(): Promise<PluginRecord[]> {
-  if (!isNativeRuntime) return [];
+  if (!hasHostCapability('plugins')) return [];
   return client.invoke('plugin_list');
 }
 
@@ -772,7 +772,7 @@ export async function setPluginSafeMode(enabled: boolean): Promise<boolean> {
 }
 
 export async function pluginHostSafeMode(): Promise<boolean> {
-  if (!isNativeRuntime) return false;
+  if (!hasHostCapability('plugins')) return false;
   const resources = await client.invoke('plugin_active_resources');
   return resources.safeMode;
 }
@@ -802,7 +802,7 @@ export function pluginDiagnosticsText(record: PluginRecord): string {
 
 export function usePluginHost(): void {
   useEffect(() => {
-    if (!isNativeRuntime) return;
+    if (!hasHostCapability('plugins')) return;
     void applyPluginResources();
     const unlisten = client.on('plugin://changed', () => {
       void applyPluginResources();

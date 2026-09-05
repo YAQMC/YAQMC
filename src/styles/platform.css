@@ -5,9 +5,11 @@
    Frosted artwork look on Windows comes from a one-time canvas pre-blur, not live
    filter:blur. Do not disable Chromium hardware acceleration to mask this. */
 :root[data-platform='linux'] .topbar,
-:root[data-platform='windows'] .topbar {
+:root[data-platform='windows'] .topbar,
+:root[data-platform='android'] .topbar {
   background: color-mix(in srgb, var(--bg-opaque) 96%, var(--surface));
   backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 :root[data-platform='linux'] .app-background[data-mode='artwork'] .app-background__image {
@@ -18,6 +20,14 @@
 
 :root[data-platform='windows'] .app-background[data-mode='artwork'] .app-background__image {
   filter: saturate(0.84);
+}
+
+:root[data-platform='android'] .app-background[data-mode='artwork'] .app-background__image {
+  filter: saturate(0.8);
+}
+
+:root[data-platform='android'] .action-menu__surface button {
+  min-height: 44px;
 }
 
 :root[data-platform='linux'] .lyrics-stage[data-background-mode='image'] .lyrics-stage__backdrop,
@@ -54,13 +64,21 @@
   .lyrics-stage__viewport::before,
 :root[data-platform='windows'] .lyrics-surface--desktop::before,
 :root[data-platform='windows'] .lyrics-surface--desktop::after,
-:root[data-platform='windows'] .island-card {
+:root[data-platform='windows'] .island-card,
+:root[data-platform='android'] .lyrics-fullscreen-transport,
+:root[data-platform='android']
+  .lyrics-stage[data-cover-layout='full']
+  .lyrics-stage__viewport::before,
+:root[data-platform='android'] .lyrics-surface--desktop::before,
+:root[data-platform='android'] .lyrics-surface--desktop::after,
+:root[data-platform='android'] .island-card {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 :root[data-platform='linux'] .lyrics-fullscreen-transport,
-:root[data-platform='windows'] .lyrics-fullscreen-transport {
+:root[data-platform='windows'] .lyrics-fullscreen-transport,
+:root[data-platform='android'] .lyrics-fullscreen-transport {
   background: color-mix(in srgb, var(--bg-opaque) 94%, var(--surface));
 }
 

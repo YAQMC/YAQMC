@@ -1,4 +1,6 @@
 import type { ProviderDescriptor } from '@yaqmc/client';
+import { getHostBridge } from '../../application/yaqmc-runtime';
+import { ProviderError } from '../../domain/music';
 import type {
   AccountLoginMethodDescriptor,
   AccountPlaylistDetail,
@@ -138,6 +140,19 @@ class NativeAccountMusicProvider extends NativeMusicProvider implements AccountM
 
   startWebLogin(method: string, signal?: AbortSignal): Promise<AccountSnapshot> {
     return this.request('provider_auth_oauth_start', { methodId: method }, signal);
+  }
+
+  reopenLogin(attemptId: string, signal?: AbortSignal): Promise<AccountSnapshot> {
+    if (getHostBridge().kind !== 'android' || this.id !== 'qqmusic') {
+      return Promise.reject(
+        new ProviderError(
+          'unsupported-operation',
+          'Reopening mobile authorization is unavailable on this host.',
+          false,
+        ),
+      );
+    }
+    return this.request('provider_auth_oauth_start', { methodId: 'qq', attemptId }, signal);
   }
 
   startQrLogin(signal?: AbortSignal): Promise<AccountSnapshot> {

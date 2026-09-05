@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { DeepLinkRegistrationStatus } from '@yaqmc/client';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
+import { hasHostCapability } from './host-capabilities';
 
 const client = getYaqmcClient();
 
@@ -140,14 +141,16 @@ export function usePlatformIntegration() {
       .catch((caught) => {
         if (active) setError(String(caught));
       });
-    void client
-      .invoke('deep_link_status')
-      .then((value) => {
-        if (active) setDeepLinks(value);
-      })
-      .catch((caught) => {
-        if (active) setError(String(caught));
-      });
+    if (hasHostCapability('deepLinks')) {
+      void client
+        .invoke('deep_link_status')
+        .then((value) => {
+          if (active) setDeepLinks(value);
+        })
+        .catch((caught) => {
+          if (active) setError(String(caught));
+        });
+    }
     return () => {
       active = false;
     };

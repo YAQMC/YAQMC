@@ -224,6 +224,10 @@ pub enum AccountState {
         expires_at_ms: u64,
         #[serde(rename = "pollAfterMs")]
         poll_after_ms: u64,
+        /// Optional, provider-owned HTTPS authorization target for native hosts.
+        /// Hosts must validate it before adapting it to an installed app's deep link.
+        #[serde(rename = "launchUrl", default, skip_serializing_if = "Option::is_none")]
+        launch_url: Option<String>,
         profile: (),
         entitlement: (),
     },

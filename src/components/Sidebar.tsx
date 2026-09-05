@@ -4,18 +4,19 @@ import {
   Compass,
   Heart,
   Home,
+  Library,
   ListMusic,
   Puzzle,
   Search,
   Settings,
 } from 'lucide-react';
-import { useAccountStore } from '../application/account-runtime';
-import { isPrimaryRoute, type AppRoute } from '../application/navigation';
-import { useMusicProvider } from '../application/provider-context';
+import { isLibraryRoute, isPrimaryRoute, type AppRoute } from '../application/navigation';
+import { isAndroidRuntime } from '../application/host-capabilities';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
-import { useSafeArtworkSource } from '../application/artwork-source';
+import { useAccountIdentity } from '../application/account-identity';
 import { useTranslation } from 'react-i18next';
+import { AccountAvatar } from './AccountAvatar';
 
 interface SidebarProps {
   route: AppRoute;
@@ -24,29 +25,21 @@ interface SidebarProps {
 
 export function Sidebar({ route, onNavigate }: SidebarProps) {
   const { t } = useTranslation('navigation');
+  const android = isAndroidRuntime();
   const pluginSidebar = usePluginUiSnapshot().sidebar;
-  const provider = useMusicProvider();
-  const accountSnapshot = useAccountStore((state) => state.snapshot);
-  const authenticated = accountSnapshot.state === 'authenticated';
-  const accountProfile = authenticated ? accountSnapshot.profile : null;
-  const accountEntitlement = authenticated ? accountSnapshot.entitlement : null;
-  const providerLabel = provider.id === 'qqmusic' ? t('qqGuest') : provider.displayName;
-  const profileLabel = accountProfile?.nickname ?? t('listener');
-  const profileInitial = Array.from(profileLabel.trim())[0] ?? 'L';
-  const avatarUrl = useSafeArtworkSource(safeAccountAvatarUrl(accountProfile?.avatarUrl), {
-    pendingRemote: 'hide',
-  });
-  const accountLabel = accountEntitlement
-    ? t('accountSummary', {
-        tier: t(`accountTier.${accountEntitlement.tier}`),
-        membership: t(`accountMembership.${accountEntitlement.membership}`),
-      })
-    : providerLabel;
-  const primaryItems = [
-    { label: t('home'), page: 'home' as const, icon: Home },
-    { label: t('search'), page: 'search' as const, icon: Search },
-    { label: t('explore'), page: 'explore' as const, icon: Compass },
-  ];
+  const identity = useAccountIdentity();
+  const primaryItems = android
+    ? [
+        { label: t('home'), page: 'home' as const, icon: Home },
+        { label: t('explore'), page: 'explore' as const, icon: Compass },
+        { label: t('library'), page: 'library' as const, icon: Library },
+        { label: t('search'), page: 'search' as const, icon: Search },
+      ]
+    : [
+        { label: t('home'), page: 'home' as const, icon: Home },
+        { label: t('search'), page: 'search' as const, icon: Search },
+        { label: t('explore'), page: 'explore' as const, icon: Compass },
+      ];
   return (
     <aside className="sidebar" data-yaqmc="sidebar">
       <div className="sidebar__brand" aria-label="YAQMC">
@@ -60,7 +53,12 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
             type="button"
             key={page}
             className="sidebar__item"
-            data-active={isPrimaryRoute(route, page) || undefined}
+            aria-label={label}
+            title={label}
+            data-active={
+              (page === 'library' ? isLibraryRoute(route) : isPrimaryRoute(route, page)) ||
+              undefined
+            }
             onClick={() => onNavigate({ page })}
           >
             <Icon size={18} />
@@ -68,117 +66,123 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
           </button>
         ))}
 
-        <p className="sidebar__section-label">{t('yourMusic')}</p>
-        <button
-          type="button"
-          className="sidebar__item"
-          data-active={isPrimaryRoute(route, 'favorites') || undefined}
-          onClick={() => onNavigate({ page: 'favorites' })}
-        >
-          <Heart size={18} />
-          <span>{t('favorites')}</span>
-        </button>
-        <button
-          type="button"
-          className="sidebar__item"
-          data-active={
-            isPrimaryRoute(route, 'account-playlists') ||
-            isPrimaryRoute(route, 'account-playlist') ||
-            undefined
-          }
-          onClick={() => onNavigate({ page: 'account-playlists' })}
-        >
-          <ListMusic size={18} />
-          <span>{t('playlists')}</span>
-        </button>
-        <button
-          type="button"
-          className="sidebar__item"
-          data-active={isPrimaryRoute(route, 'account-recent') || undefined}
-          onClick={() => onNavigate({ page: 'account-recent' })}
-        >
-          <Clock3 size={18} />
-          <span>{t('recentlyPlayed')}</span>
-        </button>
+        {!android && (
+          <>
+            <p className="sidebar__section-label">{t('yourMusic')}</p>
+            <button
+              type="button"
+              className="sidebar__item"
+              data-active={isPrimaryRoute(route, 'favorites') || undefined}
+              onClick={() => onNavigate({ page: 'favorites' })}
+            >
+              <Heart size={18} />
+              <span>{t('favorites')}</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar__item"
+              data-active={
+                isPrimaryRoute(route, 'account-playlists') ||
+                isPrimaryRoute(route, 'account-playlist') ||
+                undefined
+              }
+              onClick={() => onNavigate({ page: 'account-playlists' })}
+            >
+              <ListMusic size={18} />
+              <span>{t('playlists')}</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar__item"
+              data-active={isPrimaryRoute(route, 'account-recent') || undefined}
+              onClick={() => onNavigate({ page: 'account-recent' })}
+            >
+              <Clock3 size={18} />
+              <span>{t('recentlyPlayed')}</span>
+            </button>
 
-        <p className="sidebar__section-label">{t('application')}</p>
-        <button
-          type="button"
-          className="sidebar__item"
-          data-active={isPrimaryRoute(route, 'statistics') || undefined}
-          onClick={() => onNavigate({ page: 'statistics' })}
-        >
-          <BarChart3 size={18} />
-          <span>{t('statistics')}</span>
-        </button>
-        <button
-          type="button"
-          className="sidebar__item"
-          data-active={isPrimaryRoute(route, 'settings') || undefined}
-          onClick={() => onNavigate({ page: 'settings' })}
-        >
-          <Settings size={18} />
-          <span>{t('settings')}</span>
-        </button>
-        {pluginSidebar.length > 0 && <p className="sidebar__section-label">Plugins</p>}
-        {pluginSidebar.map((action) => (
-          <button
-            type="button"
-            key={`${action.pluginId}:${action.id}`}
-            className="sidebar__item"
-            onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'sidebar')}
-          >
-            <Puzzle size={18} />
-            <span>{action.label}</span>
-          </button>
-        ))}
+            <p className="sidebar__section-label">{t('application')}</p>
+            <button
+              type="button"
+              className="sidebar__item"
+              data-active={isPrimaryRoute(route, 'statistics') || undefined}
+              onClick={() => onNavigate({ page: 'statistics' })}
+            >
+              <BarChart3 size={18} />
+              <span>{t('statistics')}</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar__item"
+              data-active={isPrimaryRoute(route, 'settings') || undefined}
+              onClick={() => onNavigate({ page: 'settings' })}
+            >
+              <Settings size={18} />
+              <span>{t('settings')}</span>
+            </button>
+            {pluginSidebar.length > 0 && <p className="sidebar__section-label">Plugins</p>}
+            {pluginSidebar.map((action) => (
+              <button
+                type="button"
+                key={`${action.pluginId}:${action.id}`}
+                className="sidebar__item"
+                onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'sidebar')}
+              >
+                <Puzzle size={18} />
+                <span>{action.label}</span>
+              </button>
+            ))}
+          </>
+        )}
       </nav>
 
       <button
         type="button"
         className="sidebar__profile"
         aria-label={t('openSettings')}
+        title={t('openSettings')}
+        data-yaqmc="account-avatar"
         onClick={() => onNavigate({ page: 'settings' })}
       >
-        {avatarUrl ? (
-          <img
-            className="sidebar__avatar"
-            src={avatarUrl}
-            alt={t('accountAvatar', { nickname: profileLabel })}
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <span className="sidebar__avatar" aria-hidden="true">
-            {profileInitial}
-          </span>
-        )}
+        <AccountAvatar identity={identity} className="sidebar__avatar" />
         <span className="sidebar__profile-copy">
-          <strong>{profileLabel}</strong>
-          <small>{accountLabel}</small>
+          <strong>{identity.label}</strong>
+          <small>{identity.summary}</small>
         </span>
         <span
           className="sidebar__status"
-          title={t('providerActive', { provider: provider.displayName })}
+          title={t('providerActive', { provider: identity.providerName })}
         />
       </button>
     </aside>
   );
 }
 
-function safeAccountAvatarUrl(value: string | null | undefined): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' &&
-      ['qpic.y.qq.com', 'q.qlogo.cn', 'thirdwx.qlogo.cn', 'thirdqq.qlogo.cn'].includes(
-        url.hostname,
-      ) &&
-      url.port === '' &&
-      url.username === '' &&
-      url.password === ''
-      ? url.toString()
-      : null;
-  } catch {
-    return null;
-  }
+/** Compact navigation used by Android phones; the desktop rail remains intact. */
+export function AndroidBottomNav({ route, onNavigate }: SidebarProps) {
+  const { t } = useTranslation('navigation');
+  const items = [
+    { label: t('home'), page: 'home' as const, icon: Home },
+    { label: t('explore'), page: 'explore' as const, icon: Compass },
+    { label: t('library'), page: 'library' as const, icon: Library },
+    { label: t('search'), page: 'search' as const, icon: Search },
+  ];
+  return (
+    <nav className="android-bottom-nav" aria-label={t('primary')}>
+      {items.map(({ label, page, icon: Icon }) => (
+        <button
+          key={page}
+          type="button"
+          className="android-bottom-nav__item"
+          data-active={
+            (page === 'library' ? isLibraryRoute(route) : isPrimaryRoute(route, page)) || undefined
+          }
+          onClick={() => onNavigate({ page })}
+        >
+          <Icon size={20} />
+          <span>{label}</span>
+        </button>
+      ))}
+    </nav>
+  );
 }

@@ -337,7 +337,9 @@ impl ComponentProviderAdapter {
         Ok(OAuthPrepareResult {
             attempt_id,
             url: prepared.url,
+            mobile_url: None,
             navigation_allowlist: prepared.navigation_allowlist,
+            external_navigation_rules: Vec::new(),
             callback_matcher: OAuthCallbackMatcher {
                 url_prefix: prepared.callback_matcher.url_prefix,
             },

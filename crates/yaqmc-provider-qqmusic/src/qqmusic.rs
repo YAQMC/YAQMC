@@ -730,6 +730,10 @@ impl QQMusicService {
         self.auth.start().await
     }
 
+    pub async fn start_mobile_login(&self) -> Result<AccountSnapshot, QQMusicError> {
+        self.auth.start_mobile().await
+    }
+
     #[doc(hidden)]
     pub async fn start_oauth_login(
         &self,

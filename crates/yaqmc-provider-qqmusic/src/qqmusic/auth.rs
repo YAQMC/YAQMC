@@ -45,7 +45,7 @@ use std::{
 use subtle::ConstantTimeEq;
 #[cfg(test)]
 use tokio::sync::Notify;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 #[cfg(test)]
@@ -90,6 +90,9 @@ pub(crate) struct AuthChallenge {
     mime_type: String,
     poll_secret: String,
     expires_at_ms: u64,
+    mobile_launch_url: Option<String>,
+    // Polls consume this attempt's worker; they never reconnect MQTT.
+    mobile_worker: Option<Arc<MobileAuthWorker>>,
 }
 
 impl AuthChallenge {
@@ -99,6 +102,8 @@ impl AuthChallenge {
             mime_type: String::new(),
             poll_secret: self.poll_secret.clone(),
             expires_at_ms: self.expires_at_ms,
+            mobile_launch_url: self.mobile_launch_url.clone(),
+            mobile_worker: self.mobile_worker.clone(),
         }
     }
 }
@@ -109,6 +114,152 @@ pub(crate) enum AuthPollResult {
     Confirmed(SessionRecord),
     Expired,
     Rejected,
+}
+
+struct MobileAuthWorker {
+    // Generated locally, unrelated to QR identifiers or credentials.
+    tag: String,
+    events: Mutex<mpsc::Receiver<Result<AuthPollResult, QQMusicError>>>,
+}
+
+type MobileLoginObserver = Arc<dyn Fn(qqmusic_api::modules::login::MobileLoginEvent) + Send + Sync>;
+
+impl MobileAuthWorker {
+    async fn start<F, Fut>(
+        cancellation: CancellationToken,
+        lifetime: Duration,
+        clock: Arc<dyn Clock>,
+        run: F,
+    ) -> Result<Arc<Self>, QQMusicError>
+    where
+        F: FnOnce(MobileLoginObserver) -> Fut + Send + 'static,
+        Fut: std::future::Future<
+                Output = Result<
+                    Vec<qqmusic_api::models::login::QRLoginResult>,
+                    qqmusic_api::QmError,
+                >,
+            > + Send
+            + 'static,
+    {
+        use qqmusic_api::modules::login::MobileLoginEvent;
+
+        let tag = random_opaque_id();
+        let started = Instant::now();
+        let (events_tx, events_rx) = mpsc::channel(8);
+        let (ready_tx, ready_rx) = oneshot::channel();
+        let ready = Arc::new(StdMutex::new(Some(ready_tx)));
+        let observed_ready = ready.clone();
+        let observed_events = events_tx.clone();
+        let observed_tag = tag.clone();
+        let observer: MobileLoginObserver = Arc::new(move |event| {
+            let (stage, code) = match event {
+                MobileLoginEvent::Connected => ("mqtt-connected", None),
+                MobileLoginEvent::Subscribed => ("mqtt-subscribed", None),
+                MobileLoginEvent::Scanned => ("qr-scanned", None),
+                MobileLoginEvent::CredentialsParsed => ("credentials-parsed", None),
+                MobileLoginEvent::Exchanging => ("credential-exchange-started", None),
+                MobileLoginEvent::Exchanged => ("credential-exchange-completed", None),
+                MobileLoginEvent::Refused => ("explicit-refusal", None),
+                MobileLoginEvent::Expired => ("qr-expired", None),
+                MobileLoginEvent::Failure { code } => ("upstream-failure", code),
+            };
+            tracing::info!(
+                target: "qqmusic.auth", attempt_tag = %observed_tag, qr_tag = %observed_tag,
+                stage, business_code = code, elapsed_ms = started.elapsed().as_millis() as u64,
+                reconnect_count = 0, credential_committed = false,
+                "mobile login transport progress"
+            );
+            if event == MobileLoginEvent::Subscribed {
+                if let Some(sender) = observed_ready
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take()
+                {
+                    let _ = sender.send(Ok(()));
+                }
+            }
+            if event == MobileLoginEvent::Scanned {
+                // Progress may coalesce; the terminal result below is always delivered.
+                let _ = observed_events.try_send(Ok(AuthPollResult::WaitingForConfirmation));
+            }
+        });
+        let worker_cancellation = cancellation.clone();
+        let worker_tag = tag.clone();
+        tokio::spawn(async move {
+            let result = tokio::select! {
+                biased;
+                _ = worker_cancellation.cancelled() => Err(QQMusicError::Cancelled),
+                result = tokio::time::timeout(lifetime, run(observer)) => match result {
+                    Ok(result) => result
+                        .map_err(crate::qmapi::cgi::map_qmapi_error)
+                        .and_then(|events| mobile_terminal_result(events, clock.now_ms())),
+                    Err(_) => Ok(AuthPollResult::Expired),
+                },
+            };
+            tracing::info!(
+                target: "qqmusic.auth", attempt_tag = %worker_tag, qr_tag = %worker_tag,
+                stage = "mqtt-worker-finished", error_code = result.as_ref().err().map(QQMusicError::code),
+                elapsed_ms = started.elapsed().as_millis() as u64, reconnect_count = 0,
+                credential_committed = false, "mobile login worker finished"
+            );
+            let pending_ready = ready.lock().unwrap_or_else(|e| e.into_inner()).take();
+            if let Some(sender) = pending_ready {
+                // No actionable QR is returned without both CONNACK and SUBACK.
+                let error = match result {
+                    Err(error) => error,
+                    Ok(AuthPollResult::Expired) => QQMusicError::Timeout,
+                    Ok(_) => QQMusicError::Protocol,
+                };
+                let _ = sender.send(Err(error));
+            } else {
+                let _ = events_tx.send(result).await;
+            }
+        });
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+            ready = ready_rx => ready.map_err(|_| QQMusicError::Protocol)??,
+        }
+        Ok(Arc::new(Self {
+            tag,
+            events: Mutex::new(events_rx),
+        }))
+    }
+
+    async fn next(&self, cancellation: CancellationToken) -> Result<AuthPollResult, QQMusicError> {
+        let mut events = self.events.lock().await;
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => Err(QQMusicError::Cancelled),
+            result = events.recv() => result.unwrap_or(Err(QQMusicError::Protocol)),
+        }
+    }
+}
+
+fn mobile_terminal_result(
+    mut events: Vec<qqmusic_api::models::login::QRLoginResult>,
+    now_ms: u64,
+) -> Result<AuthPollResult, QQMusicError> {
+    use qqmusic_api::models::login::QRCodeLoginEvents;
+    let result = events.pop().ok_or(QQMusicError::MalformedResponse)?;
+    match result.event {
+        QRCodeLoginEvents::Timeout => Ok(AuthPollResult::Expired),
+        QRCodeLoginEvents::Refuse => Ok(AuthPollResult::Rejected),
+        QRCodeLoginEvents::Done => {
+            let credential = result.credential.ok_or(QQMusicError::MalformedResponse)?;
+            Ok(AuthPollResult::Confirmed(
+                crate::qmapi::credential::session_from_login_credential(&credential, now_ms)?,
+            ))
+        }
+        // An ended stream without a terminal event is neither a poll nor a refusal.
+        QRCodeLoginEvents::Scan | QRCodeLoginEvents::Conf => Err(QQMusicError::Protocol),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AuthChallengeMode {
+    DesktopQr,
+    MobileApp,
 }
 
 #[derive(Clone, PartialEq)]
@@ -124,6 +275,13 @@ pub(crate) trait QQMusicAuthProtocol: Send + Sync {
         &self,
         cancellation: CancellationToken,
     ) -> Result<AuthChallenge, QQMusicError>;
+
+    async fn create_mobile_challenge(
+        &self,
+        _cancellation: CancellationToken,
+    ) -> Result<AuthChallenge, QQMusicError> {
+        Err(QQMusicError::UnsupportedOperation)
+    }
 
     async fn poll_challenge(
         &self,
@@ -309,15 +467,16 @@ impl TransportQQMusicAuthProtocol {
         payload: &Value,
         mut cookies: SecretCookieJar,
     ) -> Result<SessionRecord, QQMusicError> {
-        if json_code(payload).unwrap_or(-1) != 0
-            || payload
-                .pointer("/req/code")
-                .or_else(|| payload.pointer("/req_0/code"))
-                .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
-                .unwrap_or(-1)
-                != 0
-        {
-            return Err(QQMusicError::AuthorizationRejected);
+        let global_code = json_code(payload).ok_or(QQMusicError::MalformedResponse)?;
+        let business_code = payload
+            .pointer("/req/code")
+            .or_else(|| payload.pointer("/req_0/code"))
+            .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
+            .ok_or(QQMusicError::MalformedResponse)?;
+        if global_code != 0 || business_code != 0 {
+            tracing::warn!(target: "qqmusic.auth", global_code, business_code,
+                stage = "credential-exchange-failed", "login exchange business failure");
+            return Err(QQMusicError::Protocol);
         }
         let data = payload
             .pointer("/req/data")
@@ -403,7 +562,7 @@ impl TransportQQMusicAuthProtocol {
         require_redirect(&check_sig)?;
         tracing::debug!(
             target: "qqmusic.auth",
-            location = check_sig.headers.get(header::LOCATION).and_then(|value| value.to_str().ok()).unwrap_or(""),
+            redirect_received = true,
             "QQ login check_sig redirect received"
         );
         cookies.absorb_set_cookie(&check_sig.headers)?;
@@ -535,6 +694,70 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
             mime_type: mime_type.to_owned(),
             poll_secret,
             expires_at_ms: self.clock.now_ms().saturating_add(DEFAULT_QR_LIFETIME_MS),
+            mobile_launch_url: None,
+            mobile_worker: None,
+        })
+    }
+
+    async fn create_mobile_challenge(
+        &self,
+        cancellation: CancellationToken,
+    ) -> Result<AuthChallenge, QQMusicError> {
+        use qqmusic_api::{models::login::QRLoginType, Platform};
+
+        if cancellation.is_cancelled() {
+            return Err(QQMusicError::Cancelled);
+        }
+        let client = crate::qmapi::qmapi_client_with(None, Some(Platform::Android))
+            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
+        let qr = tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+            result = client.login.get_qrcode(QRLoginType::Mobile) => {
+                result.map_err(crate::qmapi::cgi::map_qmapi_error)?
+            }
+        };
+        if qr.data.is_empty()
+            || qr.data.len() > MAX_QR_BYTES
+            || qr.identifier.is_empty()
+            || qr.identifier.len() > 512
+            || qr.identifier.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return Err(QQMusicError::MalformedResponse);
+        }
+        let mime_type = normalize_image_mime(&qr.mimetype)
+            .ok_or(QQMusicError::MalformedResponse)?
+            .to_owned();
+        let mut launch_url = Url::parse("https://y.qq.com/m/client/qr_code_login/authorize.html")
+            .map_err(|_| QQMusicError::Protocol)?;
+        launch_url
+            .query_pairs_mut()
+            .append_pair("qrcode_id", &qr.identifier);
+        let expires_at_ms = self.clock.now_ms().saturating_add(DEFAULT_QR_LIFETIME_MS);
+        let subscribed_qr = qr.clone();
+        let mobile_worker = MobileAuthWorker::start(
+            cancellation,
+            Duration::from_millis(DEFAULT_QR_LIFETIME_MS),
+            self.clock.clone(),
+            move |observer| async move {
+                client
+                    .login
+                    .checking_mobile_qrcode_observed(
+                        &subscribed_qr,
+                        Duration::from_millis(DEFAULT_QR_LIFETIME_MS),
+                        observer,
+                    )
+                    .await
+            },
+        )
+        .await?;
+        Ok(AuthChallenge {
+            qr_bytes: qr.data,
+            mime_type,
+            poll_secret: qr.identifier,
+            expires_at_ms,
+            mobile_launch_url: Some(launch_url.to_string()),
+            mobile_worker: Some(mobile_worker),
         })
     }
 
@@ -543,6 +766,14 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         challenge: &AuthChallenge,
         cancellation: CancellationToken,
     ) -> Result<AuthPollResult, QQMusicError> {
+        if challenge.mobile_launch_url.is_some() {
+            return challenge
+                .mobile_worker
+                .as_ref()
+                .ok_or(QQMusicError::Protocol)?
+                .next(cancellation)
+                .await;
+        }
         let mut url = Url::parse("https://ssl.ptlogin2.qq.com/ptqrlogin")
             .map_err(|_| QQMusicError::Protocol)?;
         url.query_pairs_mut()
@@ -589,7 +820,6 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         tracing::debug!(
             target: "qqmusic.auth",
             status,
-            message = args.get(4).map(String::as_str).unwrap_or(""),
             "QR login poll returned a status"
         );
         match status {
@@ -613,7 +843,6 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
                 tracing::warn!(
                     target: "qqmusic.auth",
                     status = other,
-                    message = args.get(4).map(String::as_str).unwrap_or(""),
                     "QR login poll returned an unrecognized status; the account may require security verification"
                 );
                 Err(QQMusicError::MalformedResponse)
@@ -692,13 +921,9 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         require_success(&response)?;
         let payload: Value =
             serde_json::from_slice(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
-        let request = payload
-            .get("req")
-            .or_else(|| payload.get("req_0"))
-            .ok_or(QQMusicError::SchemaChanged)?;
-        if json_code(&payload).unwrap_or(-1) != 0 || json_code(request).unwrap_or(-1) != 0 {
-            return Err(QQMusicError::AuthenticationExpired);
-        }
+        let request = payload.get("req").or_else(|| payload.get("req_0"));
+        require_session_validation_success(&payload, request)?;
+        let request = request.ok_or(QQMusicError::SchemaChanged)?;
         let data = request.get("data").ok_or(QQMusicError::SchemaChanged)?;
         let profile = data
             .get("userInfo")
@@ -758,6 +983,7 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
 struct ActiveAttempt {
     attempt_id: String,
     owner_lease_id: String,
+    owner_lease_ms: u64,
     generation: u64,
     owner_deadline: Instant,
     expires_at_ms: u64,
@@ -894,10 +1120,34 @@ impl QQMusicAuthService {
         let (generation, cancellation) = self.capture_generation();
         let lifecycle = self.lifecycle.lock().await;
         self.ensure_generation_current(generation)?;
-        let session = match self.active_session.read().await.clone() {
+        let active_session = { self.active_session.read().await.clone() };
+        let mut session = match active_session {
             Some(session) => session,
-            None => return Ok(self.snapshot().await),
+            None => {
+                let snapshot = self.snapshot().await;
+                let retry_restore = matches!(
+                    &snapshot.account,
+                    AccountState::SecureStoreUnavailable { .. }
+                        | AccountState::NetworkError {
+                            attempt_id: None,
+                            ..
+                        }
+                );
+                drop(lifecycle);
+                return if retry_restore {
+                    self.restore_for_generation(Some(generation)).await
+                } else {
+                    Ok(snapshot)
+                };
+            }
         };
+        let now_ms = self.clock.now_ms();
+        if session.expires_at_ms <= now_ms {
+            // `expires_at_ms` is a bounded local revalidation lease, not proof that QQ
+            // rejected the credential. Validate an in-memory renewal first; the cold-start
+            // restore path persists the renewed lease with rollback protection.
+            session.expires_at_ms = now_ms.saturating_add(FALLBACK_SESSION_LIFETIME_MS);
+        }
         let snapshot = self.snapshot.read().await.clone();
         if !matches!(snapshot.account, AccountState::Authenticated { .. }) {
             return Ok(snapshot);
@@ -906,18 +1156,33 @@ impl QQMusicAuthService {
             generation,
             scope: session.account_cache_scope.clone(),
         };
-        let validated = match self.protocol.validate_session(&session, cancellation).await {
+        let validated = match self
+            .protocol
+            .validate_session(&session, cancellation.clone())
+            .await
+        {
             Ok(validated) => validated,
-            Err(
-                error @ (QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected),
-            ) => {
-                drop(lifecycle);
-                self.require_reauthentication_if_current(&epoch).await?;
-                return Err(error);
+            Err(QQMusicError::AuthenticationExpired | QQMusicError::AuthorizationRejected) => {
+                // A single edge/CDN response must not evict a durable login. Confirm an
+                // explicit authentication rejection once through the independent safe-read
+                // request before changing the account state.
+                match self.protocol.validate_session(&session, cancellation).await {
+                    Ok(validated) => validated,
+                    Err(
+                        confirmed @ (QQMusicError::AuthenticationExpired
+                        | QQMusicError::AuthorizationRejected),
+                    ) => {
+                        drop(lifecycle);
+                        self.require_reauthentication_if_current(&epoch).await?;
+                        return Err(confirmed);
+                    }
+                    Err(other) => return Err(other),
+                }
             }
             Err(error) => return Err(error),
         };
         self.ensure_current(&epoch).await?;
+        *self.active_session.write().await = Some(session);
         self.storage
             .delete_provider_cache_kind(ACCOUNT_CACHE_KIND)
             .map_err(|_| QQMusicError::Storage)?;
@@ -987,9 +1252,8 @@ impl QQMusicAuthService {
             .await
             .clone()
             .ok_or(QQMusicError::AuthenticationExpired)?;
-        if session.expires_at_ms <= self.clock.now_ms() {
-            return Err(QQMusicError::AuthenticationExpired);
-        }
+        // The timestamp is a refresh/revalidation lease. Only an upstream response can prove
+        // the encrypted credential is no longer usable; the periodic revalidator renews it.
         let snapshot = self.snapshot.read().await.clone();
         let (profile, entitlement) = match snapshot.account {
             AccountState::Authenticated {
@@ -1079,9 +1343,32 @@ impl QQMusicAuthService {
     }
 
     pub(crate) async fn start(self: &Arc<Self>) -> Result<AccountSnapshot, QQMusicError> {
+        self.start_with_mode(AuthChallengeMode::DesktopQr)
+            .await
+            .map(|(snapshot, _)| snapshot)
+    }
+
+    pub(crate) async fn start_mobile(self: &Arc<Self>) -> Result<AccountSnapshot, QQMusicError> {
+        self.start_with_mode(AuthChallengeMode::MobileApp)
+            .await
+            .map(|(snapshot, _)| snapshot)
+    }
+
+    async fn start_with_mode(
+        self: &Arc<Self>,
+        mode: AuthChallengeMode,
+    ) -> Result<(AccountSnapshot, Option<String>), QQMusicError> {
         let (generation, cancellation) = self.begin_generation().await;
         let attempt_id = random_opaque_id();
         let owner_lease_id = random_opaque_id();
+        // Android can freeze a phone app while QQ Music/TIM owns the foreground. Keep the
+        // app-handoff attempt alive until its already-bounded QR expiry instead of making
+        // correctness depend on a seven-second renderer/native heartbeat.
+        let owner_lease_ms = if mode == AuthChallengeMode::MobileApp {
+            MAX_ATTEMPT_MS
+        } else {
+            OWNER_LEASE_MS
+        };
         let poll_after_ms = MIN_POLL_INTERVAL_MS;
         self.install_owner_signal(OwnerSignal {
             attempt_id: attempt_id.clone(),
@@ -1100,8 +1387,9 @@ impl QQMusicAuthService {
             *active = Some(ActiveAttempt {
                 attempt_id: attempt_id.clone(),
                 owner_lease_id: owner_lease_id.clone(),
+                owner_lease_ms,
                 generation,
-                owner_deadline: Instant::now() + Duration::from_millis(OWNER_LEASE_MS),
+                owner_deadline: Instant::now() + Duration::from_millis(owner_lease_ms),
                 expires_at_ms: self.clock.now_ms().saturating_add(MAX_ATTEMPT_MS),
                 poll_after_ms,
                 challenge: None,
@@ -1126,7 +1414,17 @@ impl QQMusicAuthService {
             return Err(QQMusicError::Cancelled);
         }
 
-        let mut challenge = match self.protocol.create_challenge(cancellation.clone()).await {
+        let challenge_result = match mode {
+            AuthChallengeMode::DesktopQr => {
+                self.protocol.create_challenge(cancellation.clone()).await
+            }
+            AuthChallengeMode::MobileApp => {
+                self.protocol
+                    .create_mobile_challenge(cancellation.clone())
+                    .await
+            }
+        };
+        let mut challenge = match challenge_result {
             Ok(challenge) => challenge,
             Err(error) => {
                 if self.is_current(generation) {
@@ -1163,6 +1461,12 @@ impl QQMusicAuthService {
             challenge.mime_type,
             BASE64.encode(&challenge.qr_bytes)
         );
+        let mobile_launch_url = challenge.mobile_launch_url.clone();
+        if let Some(worker) = &challenge.mobile_worker {
+            tracing::info!(target: "qqmusic.auth", attempt_tag = %worker.tag, qr_tag = %worker.tag,
+                generation, stage = "qr-published", mqtt_connected = true, mqtt_subscribed = true,
+                credential_committed = false, "subscribed QR bound to account attempt");
+        }
         {
             let mut active = self.active_attempt.lock().await;
             let Some(current) = active.as_mut().filter(|current| {
@@ -1171,7 +1475,7 @@ impl QQMusicAuthService {
                 return Err(QQMusicError::Cancelled);
             };
             current.expires_at_ms = expires_at_ms;
-            current.owner_deadline = Instant::now() + Duration::from_millis(OWNER_LEASE_MS);
+            current.owner_deadline = Instant::now() + Duration::from_millis(current.owner_lease_ms);
             current.challenge = Some(challenge);
         }
         if !self
@@ -1183,6 +1487,7 @@ impl QQMusicAuthService {
                     qr_image_data_uri: image,
                     expires_at_ms,
                     poll_after_ms,
+                    launch_url: mobile_launch_url.clone(),
                     profile: (),
                     entitlement: (),
                 },
@@ -1198,7 +1503,7 @@ impl QQMusicAuthService {
                 service.poll_loop(generation, attempt_id).await;
             }
         });
-        Ok(self.snapshot().await)
+        Ok((self.snapshot().await, mobile_launch_url))
     }
 
     pub(crate) async fn oauth_provider(&self, attempt_id: &str) -> Option<OAuthLoginProvider> {
@@ -1219,6 +1524,8 @@ impl QQMusicAuthService {
     ) -> Result<OAuthLaunch, QQMusicError> {
         let state = random_opaque_id();
         let authorization_url = provider.authorization_url(&state)?;
+        let mobile_authorization_url = provider.mobile_authorization_url(&state)?;
+        let callback_matcher_url = provider.callback_matcher_url(&state)?;
         let (generation, cancellation) = self.begin_generation().await;
         let attempt_id = random_opaque_id();
         let owner_lease_id = random_opaque_id();
@@ -1241,6 +1548,7 @@ impl QQMusicAuthService {
             *active = Some(ActiveAttempt {
                 attempt_id: attempt_id.clone(),
                 owner_lease_id: owner_lease_id.clone(),
+                owner_lease_ms: OWNER_LEASE_MS,
                 generation,
                 owner_deadline: Instant::now() + Duration::from_millis(OWNER_LEASE_MS),
                 expires_at_ms,
@@ -1282,6 +1590,8 @@ impl QQMusicAuthService {
         Ok(OAuthLaunch {
             attempt_id,
             authorization_url,
+            mobile_authorization_url,
+            callback_matcher_url,
             snapshot: self.snapshot().await,
         })
     }
@@ -1306,7 +1616,7 @@ impl QQMusicAuthService {
                 .oauth
                 .as_mut()
                 .filter(|oauth| oauth.provider == provider)
-                .ok_or(QQMusicError::AuthorizationRejected)?;
+                .ok_or(QQMusicError::Protocol)?;
             if oauth.completing {
                 return Err(QQMusicError::MutationInProgress);
             }
@@ -1386,7 +1696,7 @@ impl QQMusicAuthService {
         }) else {
             return Err(QQMusicError::Cancelled);
         };
-        current.owner_deadline = Instant::now() + Duration::from_millis(OWNER_LEASE_MS);
+        current.owner_deadline = Instant::now() + Duration::from_millis(current.owner_lease_ms);
         drop(active);
         Ok(self.snapshot().await)
     }
@@ -1519,7 +1829,17 @@ impl QQMusicAuthService {
     }
 
     pub(crate) async fn restore(&self) -> Result<AccountSnapshot, QQMusicError> {
+        self.restore_for_generation(None).await
+    }
+
+    async fn restore_for_generation(
+        &self,
+        expected_generation: Option<u64>,
+    ) -> Result<AccountSnapshot, QQMusicError> {
         let (generation, cancellation) = self.capture_generation();
+        if expected_generation.is_some_and(|expected| expected != generation) {
+            return Err(QQMusicError::Cancelled);
+        }
         let _lifecycle = self.lifecycle.lock().await;
         self.ensure_generation_current(generation)?;
         if !self
@@ -1862,7 +2182,7 @@ impl QQMusicAuthService {
 
     async fn poll_loop(self: Arc<Self>, generation: u64, attempt_id: String) {
         loop {
-            let Some((challenge, cancellation, owner_deadline, expires_at_ms, poll_after_ms)) =
+            let Some((challenge, cancellation, _, expires_at_ms, poll_after_ms)) =
                 self.poll_context(generation, &attempt_id).await
             else {
                 return;
@@ -1883,16 +2203,23 @@ impl QQMusicAuthService {
             let poll = self
                 .protocol
                 .poll_challenge(&challenge, cancellation.clone());
-            let result = tokio::select! {
-                biased;
-                _ = cancellation.cancelled() => return,
-                _ = tokio::time::sleep_until(owner_deadline) => {
-                    if self.expire_owner_if_due(generation, &attempt_id).await {
-                        return;
+            tokio::pin!(poll);
+            let result = loop {
+                let Some((_, _, owner_deadline, _, _)) =
+                    self.poll_context(generation, &attempt_id).await
+                else {
+                    return;
+                };
+                tokio::select! {
+                    biased;
+                    _ = cancellation.cancelled() => return,
+                    _ = tokio::time::sleep_until(owner_deadline) => {
+                        if self.expire_owner_if_due(generation, &attempt_id).await {
+                            return;
+                        }
                     }
-                    continue;
+                    result = &mut poll => break result,
                 }
-                result = poll => result,
             };
             if !self.is_current(generation) || cancellation.is_cancelled() {
                 return;
@@ -1935,7 +2262,15 @@ impl QQMusicAuthService {
                         return;
                     }
                     let promotion = self
-                        .promote_session(generation, cancellation.clone(), session)
+                        .promote_session_observed(
+                            generation,
+                            cancellation.clone(),
+                            session,
+                            challenge
+                                .mobile_worker
+                                .as_ref()
+                                .map(|worker| worker.tag.as_str()),
+                        )
                         .await;
                     self.clear_owner_signal(&attempt_id);
                     if let Err(error) = promotion {
@@ -1949,6 +2284,9 @@ impl QQMusicAuthService {
                     return;
                 }
                 Err(error) => {
+                    // MQTT uses a unicast authorization event. Reconnecting with a fresh
+                    // client cannot prove missed credentials will be replayed. Preserve the
+                    // network outcome and require an explicit new attempt instead.
                     self.finish_attempt_with_error(generation, &attempt_id, &error)
                         .await;
                     return;
@@ -2008,12 +2346,37 @@ impl QQMusicAuthService {
         &self,
         generation: u64,
         cancellation: CancellationToken,
-        mut candidate: SessionRecord,
+        candidate: SessionRecord,
     ) -> Result<AccountSnapshot, QQMusicError> {
+        self.promote_session_observed(generation, cancellation, candidate, None)
+            .await
+    }
+
+    async fn promote_session_observed(
+        &self,
+        generation: u64,
+        cancellation: CancellationToken,
+        mut candidate: SessionRecord,
+        diagnostic_tag: Option<&str>,
+    ) -> Result<AccountSnapshot, QQMusicError> {
+        let started = Instant::now();
+        tracing::info!(target: "qqmusic.auth", attempt_tag = diagnostic_tag, generation,
+            stage = "identity-validation-started", credential_committed = false,
+            "login credential promotion");
         let candidate_validation = self
             .protocol
             .validate_session(&candidate, cancellation.clone())
-            .await?;
+            .await
+            .map_err(|error| {
+                tracing::warn!(target: "qqmusic.auth", attempt_tag = diagnostic_tag, generation,
+                    stage = "identity-validation-failed", error_code = error.code(),
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    credential_committed = false, "login credential promotion");
+                error
+            })?;
+        tracing::info!(target: "qqmusic.auth", attempt_tag = diagnostic_tag, generation,
+            stage = "identity-validated", credential_committed = false,
+            "login credential promotion");
         if candidate.encrypted_uin.is_none() {
             candidate.encrypted_uin = encrypted_uin_from_cookie_header(&candidate.cookie_header)
                 .or(candidate_validation.encrypted_uin);
@@ -2054,6 +2417,9 @@ impl QQMusicAuthService {
         self.hit_lifecycle_boundary(LifecycleBoundary::BeforeStagingSave)
             .await;
         self.ensure_generation_current(generation)?;
+        tracing::info!(target: "qqmusic.auth", attempt_tag = diagnostic_tag, generation,
+            stage = "secure-storage-started", credential_committed = false,
+            "login credential promotion");
 
         if self
             .credentials
@@ -2189,6 +2555,10 @@ impl QQMusicAuthService {
                 .rollback_after_active(generation, &prior, QQMusicError::Cancelled)
                 .await;
         }
+        tracing::info!(target: "qqmusic.auth", attempt_tag = diagnostic_tag, generation,
+            stage = "credential-committed", credential_committed = true,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "login credential promotion completed");
         Ok(self.snapshot().await)
     }
 
@@ -2311,6 +2681,7 @@ impl QQMusicAuthService {
                 ),
                 expires_at_ms: current.expires_at_ms,
                 poll_after_ms: current.poll_after_ms,
+                launch_url: challenge.mobile_launch_url.clone(),
                 profile: (),
                 entitlement: (),
             }
@@ -2499,9 +2870,14 @@ impl QQMusicAuthService {
     }
 
     fn write_account(snapshot: &mut AccountSnapshot, account: AccountState) {
+        let previous_state = snapshot.state_name();
         snapshot.revision = snapshot.revision.saturating_add(1);
         snapshot.capabilities = capabilities_for(&account);
         snapshot.account = account;
+        tracing::info!(target: "qqmusic.auth", stage = "account-state-published",
+            previous_state, next_state = snapshot.state_name(), revision = snapshot.revision,
+            credential_committed = snapshot.state_name() == "authenticated",
+            "account state transition");
     }
 
     async fn publish_authenticated_if_current(
@@ -2679,13 +3055,11 @@ fn error_state(attempt_id: &str, error: &QQMusicError) -> AccountState {
                 entitlement: (),
             }
         }
-        QQMusicError::AuthorizationRejected | QQMusicError::AuthenticationExpired => {
-            AccountState::Rejected {
-                attempt_id,
-                profile: (),
-                entitlement: (),
-            }
-        }
+        QQMusicError::AuthorizationRejected => AccountState::Rejected {
+            attempt_id,
+            profile: (),
+            entitlement: (),
+        },
         _ => AccountState::ProtocolError {
             attempt_id,
             profile: (),
@@ -2817,6 +3191,31 @@ fn require_success(response: &TransportResponse) -> Result<(), QQMusicError> {
         Ok(())
     } else {
         Err(QQMusicError::Protocol)
+    }
+}
+
+fn require_session_validation_success(
+    envelope: &Value,
+    request: Option<&Value>,
+) -> Result<(), QQMusicError> {
+    let global_code = json_code(envelope).ok_or(QQMusicError::SchemaChanged)?;
+    classify_session_validation_code(global_code)?;
+    let request_code = request
+        .and_then(json_code)
+        .ok_or(QQMusicError::SchemaChanged)?;
+    classify_session_validation_code(request_code)?;
+    Ok(())
+}
+
+fn classify_session_validation_code(code: i64) -> Result<(), QQMusicError> {
+    match code {
+        0 => Ok(()),
+        // These are the credential-expiry codes used by QQ Music's CGI protocol.
+        1000 | 104_400 | 104_401 => Err(QQMusicError::AuthenticationExpired),
+        2001 | 104_604 => Err(QQMusicError::RateLimited),
+        10_004 => Err(QQMusicError::Unavailable),
+        // Unknown business failures are not proof that credentials are invalid.
+        _ => Err(QQMusicError::SchemaChanged),
     }
 }
 
@@ -3125,6 +3524,7 @@ mod tests {
 
     struct FakeProtocol {
         results: Mutex<VecDeque<AuthPollResult>>,
+        poll_count: AtomicUsize,
         validation_count: AtomicUsize,
         poll_entered: Notify,
         poll_release: Notify,
@@ -3133,6 +3533,7 @@ mod tests {
         validation_entered: Notify,
         validation_release: Notify,
         invalid_challenge: AtomicBool,
+        poll_errors: StdMutex<VecDeque<QQMusicError>>,
         validation_errors: StdMutex<VecDeque<QQMusicError>>,
         oauth_exchange: StdMutex<Option<(OAuthLoginProvider, String)>>,
     }
@@ -3141,6 +3542,7 @@ mod tests {
         fn new(results: Vec<AuthPollResult>) -> Self {
             Self {
                 results: Mutex::new(results.into()),
+                poll_count: AtomicUsize::new(0),
                 validation_count: AtomicUsize::new(0),
                 poll_entered: Notify::new(),
                 poll_release: Notify::new(),
@@ -3149,6 +3551,7 @@ mod tests {
                 validation_entered: Notify::new(),
                 validation_release: Notify::new(),
                 invalid_challenge: AtomicBool::new(false),
+                poll_errors: StdMutex::new(VecDeque::new()),
                 validation_errors: StdMutex::new(VecDeque::new()),
                 oauth_exchange: StdMutex::new(None),
             }
@@ -3164,6 +3567,13 @@ mod tests {
 
         fn return_invalid_challenge(&self) {
             self.invalid_challenge.store(true, Ordering::Release);
+        }
+
+        fn fail_poll(&self, error: QQMusicError) {
+            self.poll_errors
+                .lock()
+                .expect("poll error lock")
+                .push_back(error);
         }
 
         fn fail_validation(&self, error: QQMusicError) {
@@ -3196,7 +3606,21 @@ mod tests {
                 mime_type: "image/png".to_owned(),
                 poll_secret: "synthetic-poll-secret".to_owned(),
                 expires_at_ms: 1_800_000_000_000,
+                mobile_launch_url: None,
+                mobile_worker: None,
             })
+        }
+
+        async fn create_mobile_challenge(
+            &self,
+            cancellation: CancellationToken,
+        ) -> Result<AuthChallenge, QQMusicError> {
+            let mut challenge = self.create_challenge(cancellation).await?;
+            challenge.mobile_launch_url = Some(
+                "https://y.qq.com/m/client/qr_code_login/authorize.html?qrcode_id=synthetic"
+                    .to_owned(),
+            );
+            Ok(challenge)
         }
 
         async fn poll_challenge(
@@ -3204,9 +3628,18 @@ mod tests {
             _challenge: &AuthChallenge,
             _cancellation: CancellationToken,
         ) -> Result<AuthPollResult, QQMusicError> {
+            self.poll_count.fetch_add(1, Ordering::AcqRel);
             if self.hold_poll.load(Ordering::Acquire) {
                 self.poll_entered.notify_one();
                 self.poll_release.notified().await;
+            }
+            if let Some(error) = self
+                .poll_errors
+                .lock()
+                .expect("poll error lock")
+                .pop_front()
+            {
+                return Err(error);
             }
             match self.results.lock().await.pop_front() {
                 Some(result) => Ok(result),
@@ -3249,6 +3682,7 @@ mod tests {
 
     #[derive(Clone, Copy)]
     enum CredentialFault {
+        ActiveLoadOnce,
         PartialActiveSave,
         PartialV2Save,
         ActiveReadback,
@@ -3311,6 +3745,9 @@ mod tests {
                 .lock()
                 .expect("operations lock")
                 .push(format!("load:{account}"));
+            if account == ACTIVE_SESSION && self.consume_fault(CredentialFault::ActiveLoadOnce) {
+                return Err(CredentialError::OperationFailed);
+            }
             if account == ACTIVE_SESSION
                 && self.active_save_seen.load(Ordering::Acquire)
                 && self.consume_fault(CredentialFault::ActiveReadback)
@@ -3373,6 +3810,14 @@ mod tests {
         credentials: Arc<RecordingCredentialStore>,
     ) -> (Arc<QQMusicAuthService>, Arc<StorageService>) {
         let clock: Arc<dyn Clock> = Arc::new(ManualClock::new(1_700_000_000_000));
+        auth_service_with_clock(protocol, credentials, clock)
+    }
+
+    fn auth_service_with_clock(
+        protocol: Arc<FakeProtocol>,
+        credentials: Arc<RecordingCredentialStore>,
+        clock: Arc<dyn Clock>,
+    ) -> (Arc<QQMusicAuthService>, Arc<StorageService>) {
         let protocol: Arc<dyn QQMusicAuthProtocol> = protocol;
         let credentials: Arc<dyn CredentialStore> = credentials;
         let storage = Arc::new(StorageService::temporary());
@@ -3410,6 +3855,186 @@ mod tests {
             }
         }
         panic!("notification did not arrive");
+    }
+
+    #[tokio::test]
+    async fn mobile_worker_waits_for_suback_and_streams_scan_before_terminal() {
+        use qqmusic_api::{
+            models::login::{QRCodeLoginEvents, QRLoginResult},
+            modules::login::MobileLoginEvent,
+        };
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let (subscribe_tx, subscribe_rx) = oneshot::channel();
+        let (finish_tx, finish_rx) = oneshot::channel();
+        let cancellation = CancellationToken::new();
+        let worker_cancellation = cancellation.clone();
+        let starts = Arc::new(AtomicU64::new(0));
+        let observed_starts = starts.clone();
+        let pending = tokio::spawn(async move {
+            MobileAuthWorker::start(
+                worker_cancellation,
+                Duration::from_secs(30),
+                Arc::new(super::super::clock::SystemClock),
+                move |observer| async move {
+                    observed_starts.fetch_add(1, Ordering::AcqRel);
+                    observer(MobileLoginEvent::Connected);
+                    connected_tx.send(()).unwrap();
+                    subscribe_rx.await.unwrap();
+                    observer(MobileLoginEvent::Subscribed);
+                    observer(MobileLoginEvent::Scanned);
+                    finish_rx.await.unwrap();
+                    Ok(vec![QRLoginResult {
+                        event: QRCodeLoginEvents::Refuse,
+                        credential: None,
+                    }])
+                },
+            )
+            .await
+        });
+        connected_rx.await.unwrap();
+        assert!(
+            !pending.is_finished(),
+            "CONNACK alone must not expose the QR"
+        );
+        subscribe_tx.send(()).unwrap();
+        let worker = pending.await.unwrap().expect("subscribed worker");
+        assert!(matches!(
+            worker.next(cancellation.clone()).await,
+            Ok(AuthPollResult::WaitingForConfirmation)
+        ));
+        assert_eq!(starts.load(Ordering::Acquire), 1);
+        finish_tx.send(()).unwrap();
+        assert!(matches!(
+            worker.next(cancellation.clone()).await,
+            Ok(AuthPollResult::Rejected)
+        ));
+        assert!(matches!(
+            worker.next(cancellation).await,
+            Err(QQMusicError::Protocol)
+        ));
+        assert_eq!(
+            starts.load(Ordering::Acquire),
+            1,
+            "a consumed worker cannot restart"
+        );
+    }
+
+    #[tokio::test]
+    async fn mobile_worker_failure_before_subscription_does_not_publish_an_actionable_qr() {
+        let result = MobileAuthWorker::start(
+            CancellationToken::new(),
+            Duration::from_secs(30),
+            Arc::new(super::super::clock::SystemClock),
+            |observer| async move {
+                observer(qqmusic_api::modules::login::MobileLoginEvent::Connected);
+                Err(qqmusic_api::QmError::Network(qqmusic_api::NetworkError {
+                    kind: qqmusic_api::NetworkErrorKind::Connect,
+                    message: "synthetic failure".into(),
+                }))
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(QQMusicError::Offline)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn mobile_worker_subscription_deadline_and_cancellation_are_bounded() {
+        for cancelled in [false, true] {
+            let cancellation = CancellationToken::new();
+            let task_cancellation = cancellation.clone();
+            let pending = tokio::spawn(async move {
+                MobileAuthWorker::start(
+                    task_cancellation,
+                    Duration::from_secs(2),
+                    Arc::new(super::super::clock::SystemClock),
+                    |_| async move { std::future::pending().await },
+                )
+                .await
+            });
+            tokio::task::yield_now().await;
+            if cancelled {
+                cancellation.cancel();
+            } else {
+                tokio::time::advance(Duration::from_secs(3)).await;
+            }
+            let result = pending.await.unwrap();
+            if cancelled {
+                assert!(matches!(result, Err(QQMusicError::Cancelled)));
+            } else {
+                assert!(matches!(result, Err(QQMusicError::Timeout)));
+            }
+        }
+    }
+
+    #[test]
+    fn only_explicit_qr_refusal_maps_to_rejected() {
+        use qqmusic_api::models::login::{QRCodeLoginEvents, QRLoginResult};
+        for event in [
+            QRCodeLoginEvents::Scan,
+            QRCodeLoginEvents::Conf,
+            QRCodeLoginEvents::Done,
+        ] {
+            assert!(mobile_terminal_result(
+                vec![QRLoginResult {
+                    event,
+                    credential: None
+                }],
+                0
+            )
+            .is_err());
+        }
+        assert!(matches!(
+            mobile_terminal_result(
+                vec![QRLoginResult {
+                    event: QRCodeLoginEvents::Timeout,
+                    credential: None
+                }],
+                0
+            ),
+            Ok(AuthPollResult::Expired)
+        ));
+        assert!(matches!(
+            mobile_terminal_result(
+                vec![QRLoginResult {
+                    event: QRCodeLoginEvents::Refuse,
+                    credential: None
+                }],
+                0
+            ),
+            Ok(AuthPollResult::Rejected)
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::AuthenticationExpired),
+            AccountState::ProtocolError { .. }
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::AuthorizationRejected),
+            AccountState::Rejected { .. }
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::Storage),
+            AccountState::ProtocolError { .. }
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::Offline),
+            AccountState::NetworkError { .. }
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::Timeout),
+            AccountState::NetworkError { .. }
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::RateLimited),
+            AccountState::NetworkError { .. }
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::Cancelled),
+            AccountState::Cancelled { .. }
+        ));
+        assert!(matches!(
+            error_state("synthetic-attempt", &QQMusicError::Protocol),
+            AccountState::ProtocolError { .. }
+        ));
     }
 
     #[test]
@@ -3451,6 +4076,8 @@ mod tests {
             mime_type: "image/png; charset=binary".to_owned(),
             poll_secret: "synthetic".to_owned(),
             expires_at_ms: 100,
+            mobile_launch_url: None,
+            mobile_worker: None,
         };
         assert!(validate_challenge(&valid).is_ok());
         let invalid = AuthChallenge {
@@ -3458,6 +4085,8 @@ mod tests {
             mime_type: "image/svg+xml".to_owned(),
             poll_secret: "synthetic".to_owned(),
             expires_at_ms: 100,
+            mobile_launch_url: None,
+            mobile_worker: None,
         };
         assert!(validate_challenge(&invalid).is_err());
     }
@@ -3490,6 +4119,75 @@ mod tests {
         tokio::time::advance(Duration::from_millis(1_600)).await;
         wait_for_state(&service, "expired").await;
         assert!(service.snapshot().await.qr_image_data_uri().is_none());
+        assert!(service.challenge_bytes_for_test().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn mobile_start_exposes_only_the_bounded_app_handoff_and_qr_fallback() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let service = auth_service(
+            Arc::clone(&protocol),
+            Arc::new(RecordingCredentialStore::default()),
+        );
+
+        let started = service.start_mobile().await.expect("mobile start");
+        let serialized = serde_json::to_string(&started).expect("mobile snapshot JSON");
+        assert_eq!(started.state_name(), "waiting-for-scan");
+        assert!(started.qr_image_data_uri().is_some());
+        assert!(serialized.contains(
+            "\"launchUrl\":\"https://y.qq.com/m/client/qr_code_login/authorize.html?qrcode_id=synthetic\""
+        ));
+        assert!(!serialized.contains("synthetic-poll-secret"));
+
+        service
+            .cancel(started.attempt_id().expect("attempt"))
+            .await
+            .expect("cancel mobile attempt");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn mobile_app_handoff_survives_the_short_interactive_owner_lease() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        protocol.hold_poll();
+        let service = auth_service(
+            Arc::clone(&protocol),
+            Arc::new(RecordingCredentialStore::default()),
+        );
+
+        let started = service.start_mobile().await.expect("mobile start");
+        wait_for_notification(&protocol.poll_entered).await;
+        tokio::time::advance(Duration::from_secs(8)).await;
+        assert_eq!(service.snapshot().await.state_name(), "waiting-for-scan");
+        assert!(service.has_active_owner());
+
+        service
+            .cancel(started.attempt_id().expect("attempt"))
+            .await
+            .expect("cancel mobile attempt");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn mobile_app_handoff_reports_disconnect_without_assuming_event_replay() {
+        let protocol = Arc::new(FakeProtocol::new(vec![AuthPollResult::Confirmed(session(
+            "mobile-reconnected",
+        ))]));
+        protocol.fail_poll(QQMusicError::Offline);
+        let service = auth_service(
+            Arc::clone(&protocol),
+            Arc::new(RecordingCredentialStore::default()),
+        );
+
+        service.start_mobile().await.expect("mobile start");
+        for _ in 0..20 {
+            if protocol.poll_count.load(Ordering::Acquire) >= 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        wait_for_state(&service, "network-error").await;
+        tokio::time::advance(Duration::from_millis(MIN_POLL_INTERVAL_MS + 1)).await;
+        assert_eq!(service.snapshot().await.state_name(), "network-error");
+        assert_eq!(protocol.poll_count.load(Ordering::Acquire), 1);
         assert!(service.challenge_bytes_for_test().await.is_none());
     }
 
@@ -3730,6 +4428,8 @@ mod tests {
             Arc::new(RecordingCredentialStore::default()),
         );
         let started = service.start().await.expect("start");
+        wait_for_notification(&protocol.poll_entered).await;
+        assert_eq!(protocol.poll_count.load(Ordering::Acquire), 1);
         tokio::time::advance(Duration::from_secs(6)).await;
         service
             .heartbeat(
@@ -3741,6 +4441,11 @@ mod tests {
         assert!(service.heartbeat("wrong", "wrong").await.is_err());
         tokio::time::advance(Duration::from_secs(2)).await;
         assert_eq!(service.snapshot().await.state_name(), "waiting-for-scan");
+        assert_eq!(
+            protocol.poll_count.load(Ordering::Acquire),
+            1,
+            "renewing ownership must not reconnect an in-flight MQTT poll",
+        );
         tokio::time::advance(Duration::from_secs(6)).await;
         wait_for_state(&service, "cancelled").await;
     }
@@ -4095,6 +4800,154 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn revalidate_renews_an_elapsed_local_lease_instead_of_dropping_login() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        let now_ms = 1_700_000_000_000;
+        let clock = Arc::new(ManualClock::new(now_ms));
+        let mut expiring = session("elapsed-local-lease");
+        expiring.expires_at_ms = now_ms + 1_000;
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&expiring).expect("session JSON"),
+        );
+        let clock_dyn: Arc<dyn Clock> = clock.clone();
+        let (service, _) =
+            auth_service_with_clock(Arc::clone(&protocol), Arc::clone(&credentials), clock_dyn);
+        service.restore().await.expect("initial restore");
+        clock.advance(1_001);
+
+        let renewed = service
+            .revalidate()
+            .await
+            .expect("elapsed lease is restored and validated online");
+
+        assert_eq!(renewed.state_name(), "authenticated");
+        assert_eq!(protocol.validation_count.load(Ordering::Acquire), 2);
+        assert!(
+            service
+                .current_session()
+                .await
+                .expect("renewed active session")
+                .expires_at_ms
+                > now_ms + 1_001
+        );
+        assert!(credentials.value(ACTIVE_SESSION).is_some());
+        assert!(credentials
+            .operations()
+            .iter()
+            .all(|operation| operation != "delete:qqmusic-session"));
+    }
+
+    #[tokio::test]
+    async fn elapsed_local_lease_keeps_login_on_transient_revalidation_failures() {
+        for error in [
+            QQMusicError::Offline,
+            QQMusicError::Timeout,
+            QQMusicError::RateLimited,
+        ] {
+            let expected_code = error.code();
+            let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+            let credentials = Arc::new(RecordingCredentialStore::default());
+            let now_ms = 1_700_000_000_000;
+            let clock = Arc::new(ManualClock::new(now_ms));
+            let mut expiring = session(expected_code);
+            expiring.expires_at_ms = now_ms + 1_000;
+            credentials.seed(
+                ACTIVE_SESSION,
+                serde_json::to_string(&expiring).expect("session JSON"),
+            );
+            let clock_dyn: Arc<dyn Clock> = clock.clone();
+            let (service, _) =
+                auth_service_with_clock(Arc::clone(&protocol), Arc::clone(&credentials), clock_dyn);
+            let restored = service.restore().await.expect("initial restore");
+            clock.advance(1_001);
+            protocol.fail_validation(error);
+
+            let failure = match service.revalidate().await {
+                Err(error) => error,
+                Ok(_) => panic!("expected transient revalidation failure"),
+            };
+
+            assert_eq!(failure.code(), expected_code);
+            assert!(service.snapshot().await == restored);
+            assert!(service.current_session().await.is_some());
+            assert!(credentials.value(ACTIVE_SESSION).is_some());
+            assert!(credentials
+                .operations()
+                .iter()
+                .all(|operation| operation != "delete:qqmusic-session"));
+        }
+    }
+
+    #[tokio::test]
+    async fn one_auth_rejection_followed_by_a_transient_error_keeps_login() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("edge-rejection")).expect("session JSON"),
+        );
+        let service = auth_service(Arc::clone(&protocol), Arc::clone(&credentials));
+        let restored = service.restore().await.expect("restore");
+        protocol.fail_validations([QQMusicError::AuthenticationExpired, QQMusicError::Offline]);
+
+        assert!(matches!(
+            service.revalidate().await,
+            Err(QQMusicError::Offline)
+        ));
+        assert!(service.snapshot().await == restored);
+        assert!(service.current_session().await.is_some());
+        assert!(credentials.value(ACTIVE_SESSION).is_some());
+        assert!(credentials
+            .operations()
+            .iter()
+            .all(|operation| operation != "delete:qqmusic-session"));
+    }
+
+    #[tokio::test]
+    async fn confirmed_auth_rejection_requires_login_and_removes_rejected_credentials() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("confirmed-expiry")).expect("session JSON"),
+        );
+        let service = auth_service(Arc::clone(&protocol), Arc::clone(&credentials));
+        service.restore().await.expect("restore");
+        let active_before = credentials
+            .value(ACTIVE_SESSION)
+            .expect("legacy credential");
+        let v2_before = credentials
+            .value(crate::qmapi::credential::CREDENTIAL_V2)
+            .expect("v2 credential");
+        protocol.fail_validations([
+            QQMusicError::AuthenticationExpired,
+            QQMusicError::AuthenticationExpired,
+        ]);
+
+        assert!(matches!(
+            service.revalidate().await,
+            Err(QQMusicError::AuthenticationExpired)
+        ));
+        assert_eq!(
+            service.snapshot().await.state_name(),
+            "reauthentication-required"
+        );
+        assert!(service.current_session().await.is_none());
+        assert!(!active_before.is_empty());
+        assert!(!v2_before.is_empty());
+        assert!(credentials.value(ACTIVE_SESSION).is_none());
+        assert!(credentials
+            .value(crate::qmapi::credential::CREDENTIAL_V2)
+            .is_none());
+        assert!(credentials
+            .operations()
+            .iter()
+            .any(|operation| operation == "delete:qqmusic-session"));
+    }
+
+    #[tokio::test]
     async fn transient_revalidation_failure_keeps_the_authenticated_snapshot() {
         let protocol = Arc::new(FakeProtocol::new(Vec::new()));
         let credentials = Arc::new(RecordingCredentialStore::default());
@@ -4175,6 +5028,62 @@ mod tests {
             "secure-store-unavailable"
         );
         assert!(service.current_session().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn revalidate_retries_restore_after_a_transient_credential_load_failure() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        let credentials = Arc::new(RecordingCredentialStore::with_fault(
+            CredentialFault::ActiveLoadOnce,
+        ));
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("recoverable")).expect("legacy session JSON"),
+        );
+        let service = auth_service(Arc::clone(&protocol), Arc::clone(&credentials));
+
+        assert!(matches!(
+            service.restore().await,
+            Err(QQMusicError::Storage)
+        ));
+        assert_eq!(
+            service.snapshot().await.state_name(),
+            "secure-store-unavailable"
+        );
+        assert!(credentials.value(ACTIVE_SESSION).is_some());
+
+        let recovered = service
+            .revalidate()
+            .await
+            .expect("a later refresh retries credential restore");
+        assert_eq!(recovered.state_name(), "authenticated");
+        assert_eq!(protocol.validation_count.load(Ordering::Acquire), 1);
+    }
+
+    #[tokio::test]
+    async fn revalidate_retries_a_network_interrupted_startup_restore() {
+        let protocol = Arc::new(FakeProtocol::new(Vec::new()));
+        protocol.fail_validation(QQMusicError::Offline);
+        let credentials = Arc::new(RecordingCredentialStore::default());
+        credentials.seed(
+            ACTIVE_SESSION,
+            serde_json::to_string(&session("network-recoverable")).expect("legacy session JSON"),
+        );
+        let service = auth_service(Arc::clone(&protocol), Arc::clone(&credentials));
+
+        assert!(matches!(
+            service.restore().await,
+            Err(QQMusicError::Offline)
+        ));
+        assert_eq!(service.snapshot().await.state_name(), "network-error");
+        assert!(credentials.value(ACTIVE_SESSION).is_some());
+
+        let recovered = service
+            .revalidate()
+            .await
+            .expect("a later refresh retries the startup restore");
+        assert_eq!(recovered.state_name(), "authenticated");
+        assert_eq!(protocol.validation_count.load(Ordering::Acquire), 2);
     }
 
     #[tokio::test]
@@ -4806,6 +5715,8 @@ mod tests {
             mime_type: String::new(),
             poll_secret: "SYNTHETIC_QR_SECRET".to_owned(),
             expires_at_ms: 1_800_000_000_000,
+            mobile_launch_url: None,
+            mobile_worker: None,
         };
 
         assert!(matches!(
@@ -4912,6 +5823,8 @@ mod tests {
             mime_type: String::new(),
             poll_secret: "SYNTHETIC_QR_SECRET".to_owned(),
             expires_at_ms: 1_800_000_000_000,
+            mobile_launch_url: None,
+            mobile_worker: None,
         };
 
         let confirmed = protocol
@@ -5142,5 +6055,55 @@ mod tests {
             .validate_session(&session, CancellationToken::new())
             .await;
         assert!(matches!(cancelled, Err(QQMusicError::Cancelled)));
+    }
+
+    #[test]
+    fn session_validation_only_classifies_explicit_authentication_codes_as_expired() {
+        let envelope = json!({ "code": 0 });
+        let success = json!({ "code": 0 });
+        assert!(require_session_validation_success(&envelope, Some(&success)).is_ok());
+        for code in [1000, 104_400, 104_401] {
+            let response = json!({ "code": code });
+            assert!(matches!(
+                require_session_validation_success(&envelope, Some(&response)),
+                Err(QQMusicError::AuthenticationExpired)
+            ));
+            let rejected_envelope = json!({ "code": code });
+            assert!(matches!(
+                require_session_validation_success(&rejected_envelope, Some(&success)),
+                Err(QQMusicError::AuthenticationExpired)
+            ));
+        }
+        let rate_limited = json!({ "code": 2001 });
+        assert!(matches!(
+            require_session_validation_success(&envelope, Some(&rate_limited)),
+            Err(QQMusicError::RateLimited)
+        ));
+        assert!(matches!(
+            require_session_validation_success(&rate_limited, Some(&success)),
+            Err(QQMusicError::RateLimited)
+        ));
+        let signature_required = json!({ "code": 2000 });
+        assert!(matches!(
+            require_session_validation_success(&envelope, Some(&signature_required)),
+            Err(QQMusicError::SchemaChanged)
+        ));
+        let unknown = json!({ "code": 10_007 });
+        assert!(matches!(
+            require_session_validation_success(&envelope, Some(&unknown)),
+            Err(QQMusicError::SchemaChanged)
+        ));
+        assert!(matches!(
+            require_session_validation_success(&unknown, Some(&success)),
+            Err(QQMusicError::SchemaChanged)
+        ));
+        assert!(matches!(
+            require_session_validation_success(&json!({}), Some(&success)),
+            Err(QQMusicError::SchemaChanged)
+        ));
+        assert!(matches!(
+            require_session_validation_success(&envelope, None),
+            Err(QQMusicError::SchemaChanged)
+        ));
     }
 }

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isNativeRuntime } from '../application/native-player-runtime';
+import { hasHostCapability } from '../application/host-capabilities';
 import {
   choosePluginDirectory,
   choosePluginFile,
@@ -97,7 +97,7 @@ export function PluginManager() {
   const [installedPermissions, setInstalledPermissions] = useState<string[] | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!isNativeRuntime) return;
+    if (!hasHostCapability('plugins')) return;
     const [nextPlugins, nextSafeMode, nextDeveloperMode] = await Promise.all([
       listPlugins(),
       pluginHostSafeMode(),
@@ -109,7 +109,7 @@ export function PluginManager() {
   }, []);
 
   useEffect(() => {
-    if (!isNativeRuntime) return undefined;
+    if (!hasHostCapability('plugins')) return undefined;
     let active = true;
     const timer = window.setTimeout(() => {
       void refresh().catch((caught: unknown) => {
@@ -252,7 +252,7 @@ export function PluginManager() {
 
   return (
     <div className="plugin-manager">
-      {!isNativeRuntime && (
+      {!hasHostCapability('plugins') && (
         <p className="settings-empty" role="status">
           {t('desktopOnly')}
         </p>
@@ -270,7 +270,7 @@ export function PluginManager() {
         <button
           type="button"
           className="button button--secondary"
-          disabled={!isNativeRuntime || busy}
+          disabled={!hasHostCapability('plugins') || busy}
           onClick={() => void handleInstall()}
         >
           <FilePlus size={14} /> {t('installAction')}
@@ -285,7 +285,7 @@ export function PluginManager() {
           <button
             type="button"
             className="button button--secondary"
-            disabled={!isNativeRuntime || busy}
+            disabled={!hasHostCapability('plugins') || busy}
             onClick={() => void handleUnpacked()}
           >
             <FolderOpen size={14} /> {t('installUnpackedAction')}
@@ -301,7 +301,7 @@ export function PluginManager() {
           type="button"
           className={safeMode ? 'button button--secondary' : 'button button--quiet'}
           aria-pressed={safeMode}
-          disabled={!isNativeRuntime || busy}
+          disabled={!hasHostCapability('plugins') || busy}
           onClick={() => void handleSafeMode()}
         >
           <ShieldAlert size={14} /> {safeMode ? t('leaveSafeMode') : t('enterSafeMode')}
@@ -316,7 +316,7 @@ export function PluginManager() {
           type="button"
           className={developerMode ? 'button button--secondary' : 'button button--quiet'}
           aria-pressed={developerMode}
-          disabled={!isNativeRuntime || busy}
+          disabled={!hasHostCapability('plugins') || busy}
           onClick={() => void handleDeveloperMode()}
         >
           {developerMode ? t('leaveDeveloperMode') : t('enterDeveloperMode')}

@@ -1,3 +1,4 @@
+import { DESKTOP_HOST_CAPABILITIES } from '../bridge';
 import type {
   HostBridge,
   HostClipboardBridge,
@@ -14,6 +15,9 @@ export interface ElectronRendererApi {
   window?: HostWindowBridge;
   shell?: HostShellBridge;
   clipboard?: HostClipboardBridge;
+  capabilities?: Partial<HostBridge['capabilities']>;
+  platform?: 'electron';
+  kind?: 'electron';
 }
 
 function invokeWindow(api: ElectronRendererApi): HostWindowBridge {
@@ -55,6 +59,7 @@ export function createElectronBridge(
 ): HostBridge {
   return {
     kind: 'electron',
+    capabilities: { ...DESKTOP_HOST_CAPABILITIES, ...api.capabilities },
     windowRole,
     window: invokeWindow(api),
     shell: invokeShell(api),

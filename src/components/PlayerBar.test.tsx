@@ -13,11 +13,16 @@ import i18n from '../i18n';
 import { PlayerBar } from './PlayerBar';
 
 const nativeRuntime = vi.hoisted(() => ({ value: true }));
+const compactLayout = vi.hoisted(() => ({ value: false }));
 
 vi.mock('../application/native-player-runtime', () => ({
   get isNativeRuntime() {
     return nativeRuntime.value;
   },
+}));
+
+vi.mock('../application/use-compact-player-layout', () => ({
+  useCompactPlayerLayout: () => compactLayout.value,
 }));
 
 function qqTrack() {
@@ -68,6 +73,7 @@ describe('PlayerBar lyrics presentation entry', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     nativeRuntime.value = true;
+    compactLayout.value = false;
     resetAccountRuntimeForTest();
     usePlayerStore.setState(initialPlayerState);
     usePreferencesStore.setState(defaultPreferences);
@@ -347,6 +353,35 @@ describe('PlayerBar lyrics presentation entry', () => {
 
     expect(onToggleQueue).toHaveBeenCalledOnce();
     expect(usePlayerStore.getState()).toMatchObject({ queueOpen: false, lyricsOpen: false });
+  });
+
+  it('keeps queue and quality controls reachable from the compact player menu', () => {
+    compactLayout.value = true;
+    const onToggleQueue = vi.fn();
+    const commands: unknown[] = [];
+    setPlayerCommandAdapter(async (command) => {
+      commands.push(command);
+    });
+    usePlayerStore.setState({
+      queue: [qqTrack()],
+      currentIndex: 0,
+      sourceSelection: {
+        requestedQuality: 'automatic',
+        resolvedQuality: 'standard',
+        preview: false,
+      },
+    });
+    render(<PlayerBar onToggleQueue={onToggleQueue} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /More actions/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show queue' }));
+    expect(onToggleQueue).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: /More actions/ }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Audio quality for the current track: Hi-Res' }),
+    );
+    expect(commands).toContainEqual({ type: 'setQuality', quality: 'hi-res' });
   });
 
   it('uses the shared favorite projection and exposes pending state', async () => {

@@ -1,5 +1,7 @@
 dist
 release-electron
+release-android
+dist-android
 node_modules
 playwright-report
 test-results
@@ -13,6 +15,9 @@ packages/yaqmc-client/fixtures
 .worktrees/**
 worktrees/**
 target
+/apps/android/android/**/build/**
+/apps/android/android/.gradle/**
+/apps/android/android/app/src/main/assets/**
 
 # Untracked legacy Tauri tree
 /src-tauri/**

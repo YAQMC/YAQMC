@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { SecondaryLyricVisibility } from './preferences';
 import { getYaqmcClient } from './yaqmc-runtime';
+import { supportsWindowControls } from './host-capabilities';
 
 export interface FullscreenPort {
   read(): Promise<boolean>;
@@ -54,7 +55,7 @@ const browserPort: FullscreenPort = {
 const nativePort: FullscreenPort = {
   read: async () => nativeFullscreen,
   write: async (value) => {
-    await getYaqmcClient().host.window.setFullscreen(value);
+    await getYaqmcClient().host.window?.setFullscreen(value);
     nativeFullscreen = value;
   },
   subscribe: async (listener) => {
@@ -64,8 +65,7 @@ const nativePort: FullscreenPort = {
   },
 };
 
-let fullscreenPort: FullscreenPort =
-  getYaqmcClient().bridge.kind === 'fake' ? browserPort : nativePort;
+let fullscreenPort: FullscreenPort = supportsWindowControls() ? nativePort : browserPort;
 let generation = 0;
 let nextSynchronizationSequence = 0;
 let lastCommittedSynchronizationSequence = 0;

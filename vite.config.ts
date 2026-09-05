@@ -58,7 +58,10 @@ export default defineConfig(({ command }) => ({
     __YAQMC_BUILD_COMMIT__: JSON.stringify(currentCommit()),
     __YAQMC_RELEASE_CHANNEL__: JSON.stringify(process.env.YAQMC_RELEASE_CHANNEL ?? 'development'),
     __YAQMC_BUILD_TYPE__: JSON.stringify(command === 'serve' ? 'development' : 'release'),
-    __YAQMC_QA_BUILD__: JSON.stringify(command === 'serve'),
+    __YAQMC_QA_BUILD__: JSON.stringify(command === 'serve' || process.env.YAQMC_QA_BUILD === '1'),
+    __YAQMC_TARGET_PLATFORM__: JSON.stringify(
+      process.env.YAQMC_TARGET_PLATFORM === 'android' ? 'android' : 'desktop',
+    ),
   },
   clearScreen: false,
   server: {

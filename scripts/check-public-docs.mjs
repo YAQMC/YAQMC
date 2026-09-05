@@ -7,6 +7,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const publicDocuments = [
   'account-membership.md',
   'account-library.md',
+  'android.md',
   'appearance.md',
   'architecture.md',
   'artwork.md',

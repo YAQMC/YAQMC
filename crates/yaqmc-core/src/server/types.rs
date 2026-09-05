@@ -77,6 +77,14 @@ pub struct ProviderIdParams {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderAuthStartParams {
+    pub provider_id: String,
+    #[serde(default)]
+    pub mobile: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderEntityParams {
     pub provider_id: String,
     pub id: String,
@@ -222,7 +230,7 @@ pub struct ArtistCatalogParams {
 
 #[cfg(test)]
 mod search_params_tests {
-    use super::{ArtistCatalogParams, SearchParams};
+    use super::{ArtistCatalogParams, ProviderAuthStartParams, SearchParams};
 
     #[test]
     fn typed_search_params_accept_lowercase_kind_and_camel_case_fields() {
@@ -251,6 +259,22 @@ mod search_params_tests {
         assert_eq!(params.kind, yaqmc_provider_api::ArtistCatalogKind::Album);
         assert_eq!(params.page, 3);
         assert_eq!(params.limit, 20);
+    }
+
+    #[test]
+    fn provider_auth_start_defaults_to_desktop_and_accepts_mobile_selection() {
+        let desktop: ProviderAuthStartParams = serde_json::from_value(serde_json::json!({
+            "providerId": "qqmusic"
+        }))
+        .expect("desktop auth params");
+        assert!(!desktop.mobile);
+
+        let mobile: ProviderAuthStartParams = serde_json::from_value(serde_json::json!({
+            "providerId": "qqmusic",
+            "mobile": true
+        }))
+        .expect("mobile auth params");
+        assert!(mobile.mobile);
     }
 }
 

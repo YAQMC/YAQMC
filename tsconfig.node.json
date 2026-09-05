@@ -23,6 +23,7 @@
     "packages/yaqmc-client/vitest.config.ts",
     "packages/yaqmc-client/src/**/*.test.ts",
     "apps/desktop/main/**/*.test.ts",
-    "apps/desktop/vitest.config.ts"
+    "apps/desktop/vitest.config.ts",
+    "apps/android/capacitor.config.ts"
   ]
 }

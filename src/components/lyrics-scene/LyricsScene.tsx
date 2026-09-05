@@ -193,7 +193,8 @@ export function LyricsScene({
   onEditorDragStart,
   transportHidden = false,
   layoutKey,
-}: LyricsSceneProps & { transportHidden?: boolean; layoutKey?: string }) {
+  compact = false,
+}: LyricsSceneProps & { transportHidden?: boolean; layoutKey?: string; compact?: boolean }) {
   const { t: player } = useTranslation('player');
   const { t: common } = useTranslation('common');
   const { t: settings } = useTranslation('settings', { keyPrefix: 'lyricsPresets' });
@@ -213,6 +214,10 @@ export function LyricsScene({
   const runtimeScrubbing = usePlayerStore((state) => state.isScrubbing);
   const runtimeTimelineRevision = usePlayerStore((state) => state.timelineRevision);
   const scene = preset.scene;
+  // The editor and desktop retain preset geometry. A compact runtime reuses the
+  // same widgets in normal grid flow, so metadata cannot cover the transport.
+  const boxStyle = (box: Parameters<typeof widgetBoxStyle>[0]): CSSProperties =>
+    compact && !editor ? { zIndex: box.zIndex } : widgetBoxStyle(box);
   const { durationMs, getPositionMs } = bindings;
   const [transportDraft, setTransportDraft] = useState<number | null>(null);
   const transportPositionMs =
@@ -391,6 +396,7 @@ export function LyricsScene({
       data-image-fit={appearance.imageFit}
       data-preview-frame={previewFrame}
       data-song-id={bindings.songId ?? undefined}
+      data-compact={compact || undefined}
       style={style}
       onPointerDown={(event) => {
         if (!editor || !onSelectWidget) return;
@@ -476,7 +482,7 @@ export function LyricsScene({
           selected={selectedWidgetId === 'artwork'}
           onSelect={(id) => onSelectWidget?.(id)}
           onEditorDragStart={onEditorDragStart}
-          style={widgetBoxStyle(scene.artwork)}
+          style={boxStyle(scene.artwork)}
         >
           {scene.artwork.renderer === 'vinyl' ? (
             <VinylDisc
@@ -512,11 +518,13 @@ export function LyricsScene({
           selected={selectedWidgetId === 'metadata'}
           onSelect={(id) => onSelectWidget?.(id)}
           onEditorDragStart={onEditorDragStart}
-          style={{ ...widgetBoxStyle(scene.metadata), textAlign: scene.metadata.align }}
+          style={{ ...boxStyle(scene.metadata), textAlign: scene.metadata.align }}
         >
           <div className="lyrics-scene__metadata" data-align={scene.metadata.align}>
-            <strong style={{ fontSize: `${scene.metadata.titleScale}em` }}>{bindings.title}</strong>
-            <span style={{ fontSize: `${scene.metadata.artistScale}em` }}>
+            <strong style={compact ? undefined : { fontSize: `${scene.metadata.titleScale}em` }}>
+              {bindings.title}
+            </strong>
+            <span style={compact ? undefined : { fontSize: `${scene.metadata.artistScale}em` }}>
               {bindings.artistLabel}
             </span>
           </div>
@@ -530,7 +538,10 @@ export function LyricsScene({
           selected={selectedWidgetId === 'lyrics'}
           onSelect={(id) => onSelectWidget?.(id)}
           onEditorDragStart={onEditorDragStart}
-          style={{ ...widgetBoxStyle(scene.lyrics), fontSize: cssPx(primaryFontPx) }}
+          style={{
+            ...boxStyle(scene.lyrics),
+            ...(compact ? {} : { fontSize: cssPx(primaryFontPx) }),
+          }}
         >
           <LyricsViewport
             document={bindings.lyrics}
@@ -562,7 +573,7 @@ export function LyricsScene({
           selected={selectedWidgetId === 'transport'}
           onSelect={(id) => onSelectWidget?.(id)}
           onEditorDragStart={onEditorDragStart}
-          style={widgetBoxStyle(scene.transport)}
+          style={boxStyle(scene.transport)}
         >
           <div
             className="lyrics-stage__controls lyrics-scene__transport"

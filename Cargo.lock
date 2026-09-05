@@ -2785,7 +2785,6 @@ dependencies = [
 [[package]]
 name = "qqmusic-api"
 version = "0.1.0"
-source = "git+https://github.com/YAQMC/qm-api-rs.git?rev=006d149e59250122e77019e34a1a48340b20a1c3#006d149e59250122e77019e34a1a48340b20a1c3"
 dependencies = [
  "aes",
  "async-trait",
@@ -5363,6 +5362,21 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+
+[[package]]
+name = "yaqmc-android"
+version = "0.1.0"
+dependencies = [
+ "jni 0.22.4",
+ "ndk-context",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "yaqmc-core",
+ "yaqmc-protocol",
+]
 
 [[package]]
 name = "yaqmc-core"

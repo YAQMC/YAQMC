@@ -6,6 +6,8 @@ interface NativeProviderError {
   code?: string;
   message?: string;
   retryable?: boolean;
+  details?: unknown;
+  data?: unknown;
 }
 
 const providerErrorCodes = new Set<ProviderErrorCode>(PROVIDER_ERROR_CODES);
@@ -20,17 +22,26 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 function normalizeProviderError(error: unknown, displayName: string): ProviderError {
   const value = error as NativeProviderError | null;
-  if (
-    value &&
-    typeof value === 'object' &&
-    typeof value.code === 'string' &&
-    providerErrorCodes.has(value.code as ProviderErrorCode)
-  ) {
-    return new ProviderError(
-      value.code as ProviderErrorCode,
-      typeof value.message === 'string' ? value.message : `${displayName} request failed.`,
-      Boolean(value.retryable),
-    );
+  if (value && typeof value === 'object') {
+    const data = value.data as NativeProviderError | null;
+    const candidates: unknown[] = [value, value.details, data, data?.details];
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const providerError = candidate as NativeProviderError;
+      if (
+        typeof providerError.code !== 'string' ||
+        !providerErrorCodes.has(providerError.code as ProviderErrorCode)
+      ) {
+        continue;
+      }
+      return new ProviderError(
+        providerError.code as ProviderErrorCode,
+        typeof providerError.message === 'string'
+          ? providerError.message
+          : `${displayName} request failed.`,
+        Boolean(providerError.retryable),
+      );
+    }
   }
   return new ProviderError('provider-failure', `${displayName} request failed.`, false);
 }

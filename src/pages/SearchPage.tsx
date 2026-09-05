@@ -5,6 +5,7 @@ import { usePlayerStore } from '../application/player-store';
 import { useMusicProvider } from '../application/provider-context';
 import type { AppRoute } from '../application/navigation';
 import { useCatalogSearch } from '../application/use-catalog-search';
+import { isAndroidRuntime } from '../application/host-capabilities';
 import { EntityLink } from '../components/EntityLink';
 import { MediaCard } from '../components/MediaCard';
 import { TrackList } from '../components/TrackList';
@@ -26,32 +27,54 @@ interface SearchPageProps {
 }
 
 const tabOrder: CatalogSearchKind[] = ['song', 'artist', 'album', 'playlist'];
+const ANDROID_SEARCH_DEBOUNCE_MS = 280;
 
 export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPageProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'search' });
   const { t: errors } = useTranslation('errors');
   const provider = useMusicProvider();
   const playTracks = usePlayerStore((state) => state.playTracks);
+  const androidRuntime = isAndroidRuntime();
   const [inputValue, setInputValue] = useState(initialQuery);
+  const [requestQuery, setRequestQuery] = useState(initialQuery.trim());
+  const [isComposing, setIsComposing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const loadMoreTargetRef = useRef<HTMLDivElement>(null);
   const normalizedInput = inputValue.trim();
-  const search = useCatalogSearch({ provider, query: normalizedInput });
+  const search = useCatalogSearch({
+    provider,
+    query: androidRuntime ? requestQuery : normalizedInput,
+  });
   const category = search.categories[search.activeKind];
   const loadMore = search.loadMore;
   const categoryLabel = t(search.activeKind === 'song' ? 'songs' : `${search.activeKind}s`);
+  const queryPending = normalizedInput !== search.query;
   const searching = Boolean(
     normalizedInput &&
-    (category.status === 'loading' || category.status === 'idle' || category.loadingMore),
+    (queryPending ||
+      category.status === 'loading' ||
+      category.status === 'idle' ||
+      category.loadingMore),
   );
 
   useEffect(() => inputRef.current?.focus(), []);
+
+  useEffect(() => {
+    if (!androidRuntime) return;
+    if (isComposing) return;
+    const timer = window.setTimeout(
+      () => setRequestQuery(normalizedInput),
+      normalizedInput ? ANDROID_SEARCH_DEBOUNCE_MS : 0,
+    );
+    return () => window.clearTimeout(timer);
+  }, [androidRuntime, isComposing, normalizedInput]);
 
   useEffect(() => {
     const target = loadMoreTargetRef.current;
     if (
       !target ||
       !normalizedInput ||
+      queryPending ||
       category.status !== 'ready' ||
       !category.hasMore ||
       category.loadingMore ||
@@ -75,6 +98,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
     category.paginationError,
     category.status,
     normalizedInput,
+    queryPending,
     loadMore,
   ]);
 
@@ -85,12 +109,27 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
 
   return (
     <div className="page standard-page search-page">
-      <div className="search-page__field" data-searching={searching || undefined}>
+      <form
+        className="search-page__field"
+        data-searching={searching || undefined}
+        role="search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setRequestQuery(normalizedInput);
+          inputRef.current?.blur();
+        }}
+      >
         <Search size={20} />
         <input
           ref={inputRef}
+          enterKeyHint="search"
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={(event) => {
+            setIsComposing(false);
+            setInputValue(event.currentTarget.value);
+          }}
           placeholder={t('placeholder')}
           aria-label={t('label')}
         />
@@ -99,7 +138,7 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
             <X size={16} />
           </IconButton>
         )}
-      </div>
+      </form>
 
       {!normalizedInput ? (
         <>
@@ -176,11 +215,14 @@ export function SearchPage({ initialQuery = '', feed, onNavigate }: SearchPagePr
             role="tabpanel"
             aria-labelledby={`search-tab-${search.activeKind}`}
             aria-busy={
-              category.status === 'loading' || category.status === 'idle' || category.loadingMore
+              queryPending ||
+              category.status === 'loading' ||
+              category.status === 'idle' ||
+              category.loadingMore
             }
             tabIndex={0}
           >
-            {category.status === 'loading' || category.status === 'idle' ? (
+            {queryPending || category.status === 'loading' || category.status === 'idle' ? (
               <div className="empty-state" role="status" aria-live="polite">
                 <span>
                   <Search size={24} />

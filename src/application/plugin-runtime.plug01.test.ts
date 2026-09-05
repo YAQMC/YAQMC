@@ -18,6 +18,11 @@ const invokeMock = vi.hoisted(() => vi.fn());
 const hostKind = vi.hoisted(() => ({ value: 'electron' as 'electron' | 'fake' }));
 
 vi.mock('./yaqmc-runtime', () => ({
+  getHostBridge: () => ({
+    get kind() {
+      return hostKind.value;
+    },
+  }),
   getYaqmcClient: () => ({
     invoke: invokeMock,
     on: vi.fn(() => () => undefined),

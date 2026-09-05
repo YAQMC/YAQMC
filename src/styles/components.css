@@ -51,6 +51,8 @@
   z-index: 80;
   display: grid;
   min-width: 190px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -794,6 +796,60 @@ input[type='range']:disabled {
   background: var(--surface-raised);
   box-shadow: var(--shadow-md);
   animation: panel-enter var(--motion-base) var(--ease-out);
+}
+
+@media (max-width: 839px) {
+  .app-shell[data-host-kind='android'] .panel-scrim {
+    inset: 0 0 136px;
+  }
+
+  .app-shell[data-host-kind='android'] .context-panel {
+    top: auto;
+    right: 0;
+    bottom: 136px;
+    left: 0;
+    width: 100%;
+    max-height: min(72vh, 560px);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    animation-name: panel-enter-mobile;
+  }
+
+  .app-shell[data-host-kind='android'] .context-panel__header {
+    min-height: 56px;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 839px) {
+  .app-shell[data-host-kind='android'] .panel-scrim {
+    inset: 0 0 76px 72px;
+  }
+
+  .app-shell[data-host-kind='android'] .context-panel {
+    bottom: 76px;
+    left: 72px;
+    width: auto;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 479px) and (min-width: 600px) {
+  .app-shell[data-host-kind='android'] .panel-scrim {
+    inset: 0 0 68px 72px;
+  }
+
+  .app-shell[data-host-kind='android'] .context-panel {
+    bottom: 80px;
+    width: min(360px, calc(100vw - 96px));
+  }
+}
+
+@keyframes panel-enter-mobile {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
 }
 
 @keyframes panel-enter {
@@ -1895,6 +1951,15 @@ input[type='range']:disabled {
 
 .account-dialog__close {
   flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+.account-dialog__close-glyph {
+  font-size: 1.55rem;
+  font-weight: 400;
+  line-height: 1;
 }
 
 .account-dialog__body {
@@ -1942,6 +2007,59 @@ input[type='range']:disabled {
   gap: 10px;
   min-height: 62px;
   padding: 12px 24px 18px;
+}
+
+@media (max-width: 599px), (orientation: landscape) and (max-height: 599px) {
+  .account-dialog-backdrop {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .account-dialog {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .account-dialog__header {
+    align-items: center;
+    gap: 12px;
+    padding: max(12px, var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 16px 12px;
+  }
+
+  .account-dialog__header > div {
+    min-width: 0;
+  }
+
+  .account-dialog__header h2 {
+    font-size: clamp(1.35rem, 6vw, 1.65rem);
+    line-height: 1.12;
+  }
+
+  .account-dialog__body {
+    align-content: center;
+    grid-auto-rows: max-content;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 20px 16px;
+  }
+
+  .account-dialog__qr {
+    width: min(232px, 54vh, 72vw);
+  }
+
+  .account-dialog__actions {
+    padding: 12px 16px max(16px, var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  .account-dialog__actions .button {
+    flex: 1 1 160px;
+    min-height: 48px;
+  }
 }
 
 .settings-account-profile {
@@ -2137,6 +2255,41 @@ input[type='range']:disabled {
   line-height: 1.4;
   pointer-events: none;
   transform: translateX(-50%);
+}
+
+@media (orientation: portrait) and (max-width: 599px) {
+  .app-shell[data-host-kind='android'] .track-list__header,
+  .app-shell[data-host-kind='android'] .track-row,
+  .app-shell[data-host-kind='android'] .track-list:has(.track-row__album) .track-list__header,
+  .app-shell[data-host-kind='android'] .track-list:has(.track-row__album) .track-row {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    column-gap: 4px;
+    padding-inline: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .track-row__album,
+  .app-shell[data-host-kind='android'] .track-row__quality,
+  .app-shell[data-host-kind='android'] .track-list__quality,
+  .app-shell[data-host-kind='android'] .track-list__duration,
+  .app-shell[data-host-kind='android'] .track-row__favorite-action {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .track-row__play-button,
+  .app-shell[data-host-kind='android'] .track-row__actions .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .track-row__actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .app-shell[data-host-kind='android'] .track-row__title,
+  .app-shell[data-host-kind='android'] .track-row__artist {
+    max-width: 100%;
+  }
 }
 
 .fps-overlay strong {

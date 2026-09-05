@@ -26,7 +26,7 @@ import {
 const coreStatusMocks = vi.hoisted(() => {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
   return {
-    kind: 'fake' as 'electron' | 'fake',
+    kind: 'fake' as 'electron' | 'fake' | 'android',
     listeners,
     emit(status: string) {
       for (const listener of listeners.get('host://core-status') ?? []) {
@@ -81,6 +81,27 @@ function guestSnapshot(revision = 1): AccountSnapshot {
 function restoringSnapshot(revision = 1): AccountSnapshot {
   return {
     state: 'restoring-session',
+    profile: null,
+    entitlement: null,
+    revision,
+    capabilities,
+  };
+}
+
+function secureStoreUnavailableSnapshot(revision = 1): AccountSnapshot {
+  return {
+    state: 'secure-store-unavailable',
+    profile: null,
+    entitlement: null,
+    revision,
+    capabilities,
+  };
+}
+
+function networkErrorSnapshot(revision = 1, attemptId: string | null = null): AccountSnapshot {
+  return {
+    state: 'network-error',
+    attemptId,
     profile: null,
     entitlement: null,
     revision,
@@ -398,6 +419,88 @@ describe('account runtime', () => {
     unmount();
   });
 
+  it('retries an Android secure-store restore immediately without waiting for the normal gap', async () => {
+    coreStatusMocks.kind = 'android';
+    const getAccountSnapshot = vi.fn().mockResolvedValue(secureStoreUnavailableSnapshot());
+    const refreshAccount = vi.fn().mockResolvedValue(authenticatedSnapshot(2));
+    const provider = accountProvider({ getAccountSnapshot, refreshAccount });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('authenticated'));
+    expect(refreshAccount).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it('retries an Android network-interrupted restore when connectivity returns', async () => {
+    vi.useFakeTimers();
+    coreStatusMocks.kind = 'android';
+    const getAccountSnapshot = vi.fn().mockResolvedValue(networkErrorSnapshot());
+    const refreshAccount = vi
+      .fn()
+      .mockRejectedValueOnce(new ProviderError('offline', 'offline', true))
+      .mockResolvedValueOnce(authenticatedSnapshot(2));
+    const provider = accountProvider({ getAccountSnapshot, refreshAccount });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(refreshAccount).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().snapshot.state).toBe('network-error');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+      window.dispatchEvent(new Event('online'));
+      await Promise.resolve();
+    });
+    expect(refreshAccount).toHaveBeenCalledTimes(2);
+    expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
+    unmount();
+  });
+
+  it('retries an Android network-interrupted restore after five seconds without an online event', async () => {
+    vi.useFakeTimers();
+    coreStatusMocks.kind = 'android';
+    const getAccountSnapshot = vi.fn().mockResolvedValue(networkErrorSnapshot());
+    const refreshAccount = vi
+      .fn()
+      .mockRejectedValueOnce(new ProviderError('offline', 'offline', true))
+      .mockResolvedValueOnce(authenticatedSnapshot(2));
+    const provider = accountProvider({ getAccountSnapshot, refreshAccount });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(refreshAccount).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_999);
+    });
+    expect(refreshAccount).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(refreshAccount).toHaveBeenCalledTimes(2);
+    expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
+    unmount();
+  });
+
+  it('does not mistake an Android login-attempt network error for a restore failure', async () => {
+    coreStatusMocks.kind = 'android';
+    const getAccountSnapshot = vi.fn().mockResolvedValue(networkErrorSnapshot(1, 'login-attempt'));
+    const refreshAccount = vi.fn();
+    const provider = accountProvider({ getAccountSnapshot, refreshAccount });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('network-error'));
+    expect(refreshAccount).not.toHaveBeenCalled();
+    unmount();
+  });
+
   it('hydrates favorite authority immediately after an authenticated session restore', async () => {
     const track = allSongs[0]!;
     const getFavoriteSongs = vi.fn().mockResolvedValue(page([track], 3));
@@ -551,7 +654,7 @@ describe('account runtime', () => {
     unmount();
   });
 
-  it('pagehide and unmount clear ownership once and reject a late refresh result', async () => {
+  it('keeps ownership across pagehide and accepts the current snapshot result', async () => {
     const initial = deferred<AccountSnapshot>();
     const cancelQrLogin = vi.fn().mockResolvedValue(cancelledSnapshot());
     const provider = accountProvider({
@@ -570,14 +673,39 @@ describe('account runtime', () => {
       window.dispatchEvent(new PageTransitionEvent('pagehide'));
     });
 
-    expect(useAccountStore.getState().displayedQrImageDataUri).toBeNull();
-    expect(cancelQrLogin).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().displayedQrImageDataUri).toBe(waiting.qrImageDataUri);
+    expect(cancelQrLogin).not.toHaveBeenCalled();
     initial.resolve(authenticatedSnapshot());
     await act(async () => initial.promise);
-    expect(useAccountStore.getState().snapshot.state).not.toBe('authenticated');
+    expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
 
     unmount();
-    expect(cancelQrLogin).toHaveBeenCalledOnce();
+    expect(cancelQrLogin).not.toHaveBeenCalled();
+  });
+
+  it('pauses renderer polling while hidden and snapshots before resuming on foreground', async () => {
+    vi.useFakeTimers();
+    const getAccountSnapshot = vi.fn().mockResolvedValue(waitingSnapshot());
+    const heartbeatQrLogin = vi.fn().mockResolvedValue(waitingSnapshot());
+    const provider = accountProvider({ getAccountSnapshot, heartbeatQrLogin });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    const { unmount } = renderHook(() => useAccountRuntime(provider));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000);
+    });
+    expect(heartbeatQrLogin).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
+    expect(getAccountSnapshot).toHaveBeenCalledTimes(2);
+    unmount();
   });
 
   it('is inert for a catalog-only provider', async () => {
@@ -590,6 +718,84 @@ describe('account runtime', () => {
     await act(async () => Promise.resolve());
     expect(useAccountStore.getState().snapshot).toBe(before);
     unmount();
+  });
+
+  it('keeps native Android ownership across runtime remount and rotation', async () => {
+    coreStatusMocks.kind = 'android';
+    const snapshot = waitingSnapshot();
+    const getAccountSnapshot = vi.fn().mockResolvedValue(snapshot);
+    const cancelQrLogin = vi.fn().mockResolvedValue(cancelledSnapshot());
+    const provider = accountProvider({ getAccountSnapshot, cancelQrLogin });
+    const first = renderHook(() => useAccountRuntime(provider));
+    await act(async () => Promise.resolve());
+    act(() => useAccountStore.getState().openDialog());
+    act(() => window.dispatchEvent(new Event('orientationchange')));
+    first.unmount();
+    expect(cancelQrLogin).not.toHaveBeenCalled();
+    const second = renderHook(() => useAccountRuntime(provider));
+    await act(async () => Promise.resolve());
+    expect(useAccountStore.getState().snapshot).toMatchObject({ attemptId: 'attempt-a' });
+    expect(provider.startWebLogin).not.toHaveBeenCalled();
+    second.unmount();
+    expect(cancelQrLogin).not.toHaveBeenCalled();
+  });
+
+  it('keeps the authenticated projection when Android replaces the same logical provider', async () => {
+    coreStatusMocks.kind = 'android';
+    const replacementSnapshot = deferred<AccountSnapshot>();
+    const original = accountProvider({
+      getAccountSnapshot: vi.fn().mockResolvedValue(authenticatedSnapshot()),
+    });
+    const replacement = accountProvider({
+      getAccountSnapshot: vi.fn(() => replacementSnapshot.promise),
+    });
+    const view = renderHook(
+      ({ provider }: { provider: MusicProvider & AccountMusicProvider }) =>
+        useAccountRuntime(provider),
+      { initialProps: { provider: original } },
+    );
+
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('authenticated'));
+    view.rerender({ provider: replacement });
+    expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
+
+    replacementSnapshot.resolve(authenticatedSnapshot(4));
+    await act(async () => replacementSnapshot.promise);
+    expect(useAccountStore.getState().snapshot).toMatchObject({
+      state: 'authenticated',
+      revision: 4,
+    });
+    view.unmount();
+  });
+
+  it('does not let a background snapshot supersede an in-flight login command', async () => {
+    const startup = deferred<AccountSnapshot>();
+    const provider = accountProvider({ startWebLogin: vi.fn(() => startup.promise) });
+    useAccountStore.setState({ snapshot: guestSnapshot(), dialogOpen: true });
+    const start = useAccountStore.getState().startLogin(provider, 'qq');
+    await useAccountStore.getState().refreshSnapshot(provider);
+    expect(provider.getAccountSnapshot).not.toHaveBeenCalled();
+    startup.resolve(waitingSnapshot());
+    await start;
+    expect(useAccountStore.getState().snapshot).toMatchObject({ attemptId: 'attempt-a' });
+    expect(provider.cancelQrLogin).not.toHaveBeenCalled();
+  });
+
+  it('delegates Android heartbeat ownership to native while refreshing the same visible attempt', async () => {
+    vi.useFakeTimers();
+    coreStatusMocks.kind = 'android';
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    const provider = accountProvider({
+      getAccountSnapshot: vi.fn().mockResolvedValue(waitingSnapshot()),
+    });
+    const view = renderHook(() => useAccountRuntime(provider));
+    await act(async () => Promise.resolve());
+    act(() => useAccountStore.getState().openDialog());
+    await act(async () => vi.advanceTimersByTimeAsync(6_000));
+    expect(provider.heartbeatQrLogin).not.toHaveBeenCalled();
+    expect(provider.getAccountSnapshot).toHaveBeenCalledTimes(4);
+    expect(provider.startWebLogin).not.toHaveBeenCalled();
+    view.unmount();
   });
 
   it('marks a guest resource account-required without invoking a private read', async () => {

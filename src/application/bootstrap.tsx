@@ -4,6 +4,7 @@ import { NativeApplication } from './native-application';
 import { installPackagedConsoleForward } from './logger';
 import { getHostBridge, getYaqmcClient } from './yaqmc-runtime';
 import { LyricsSurfaceApp, LyricsUnlockControl } from '../surfaces/LyricsSurfaceApp';
+import { supportsLyricsSurfaces } from './host-capabilities';
 import type { SurfaceKind } from './preferences';
 import '../i18n';
 import '../styles/index.css';
@@ -17,14 +18,16 @@ export function bootstrapApplication(options: { developmentApplication?: ReactNo
 
   const parameters = new URLSearchParams(window.location.search);
   const requestedSurface = parameters.get('surface');
-  const surface = ['desktop', 'island'].includes(requestedSurface ?? '')
-    ? (requestedSurface as SurfaceKind)
-    : null;
+  const surface =
+    supportsLyricsSurfaces() && ['desktop', 'island'].includes(requestedSurface ?? '')
+      ? (requestedSurface as SurfaceKind)
+      : null;
   if (surface) document.documentElement.dataset.surface = surface;
   const requestedUnlockSurface = parameters.get('unlockSurface');
-  const unlockSurface = ['desktop', 'island'].includes(requestedUnlockSurface ?? '')
-    ? (requestedUnlockSurface as SurfaceKind)
-    : null;
+  const unlockSurface =
+    supportsLyricsSurfaces() && ['desktop', 'island'].includes(requestedUnlockSurface ?? '')
+      ? (requestedUnlockSurface as SurfaceKind)
+      : null;
   if (unlockSurface) document.documentElement.dataset.surfaceUnlock = unlockSurface;
 
   const requestedProvider = parameters.get('provider');

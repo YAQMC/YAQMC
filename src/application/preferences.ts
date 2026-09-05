@@ -20,6 +20,8 @@ import {
 import { logger } from './logger';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
+import { supportsLyricsSurfaces } from './host-capabilities';
+import { hasHostCapability } from './host-capabilities';
 
 const PREFERENCES_CACHE_KEY = 'yaqmc.preferences.v2';
 const LEGACY_PREFERENCES_CACHE_KEY = 'music-client.preferences.v1';
@@ -754,7 +756,7 @@ export interface ManagedBackgroundImage {
 }
 
 export async function pickManagedBackgroundImage(): Promise<ManagedBackgroundImage | null> {
-  if (!isNativeRuntime) return null;
+  if (!isNativeRuntime || !hasHostCapability('fileImport')) return null;
   const client = getYaqmcClient();
   const picked = await client.host.dialog?.pickFile({ kind: 'background-image' });
   if (picked == null) return null;
@@ -921,21 +923,25 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
         // Invalid cross-window state is ignored; Rust validates persisted documents.
       }
     });
-    const stopInteraction = client.on('lyrics://surface-interaction', (payload) => {
-      if (!active) return;
-      const kind = payload?.kind;
-      const interaction = payload?.interaction;
-      if (kind !== 'desktop' && kind !== 'island') return;
-      if (interaction !== 'interactive' && interaction !== 'passive-locked') return;
-      usePreferencesStore.getState().setSurfaceInteractionLocal(kind, interaction);
-    });
-    const stopClosed = client.on('lyrics://surface-closed', (payload) => {
-      const kind = payload as unknown as string;
-      if (!active || !['desktop', 'island'].includes(kind)) return;
-      const store = usePreferencesStore.getState();
-      if (store.surfaces[kind as SurfaceKind].enabled)
-        store.updateSurface(kind as SurfaceKind, { enabled: false });
-    });
+    const stopInteraction = supportsLyricsSurfaces()
+      ? client.on('lyrics://surface-interaction', (payload) => {
+          if (!active) return;
+          const kind = payload?.kind;
+          const interaction = payload?.interaction;
+          if (kind !== 'desktop' && kind !== 'island') return;
+          if (interaction !== 'interactive' && interaction !== 'passive-locked') return;
+          usePreferencesStore.getState().setSurfaceInteractionLocal(kind, interaction);
+        })
+      : () => undefined;
+    const stopClosed = supportsLyricsSurfaces()
+      ? client.on('lyrics://surface-closed', (payload) => {
+          const kind = payload as unknown as string;
+          if (!active || !['desktop', 'island'].includes(kind)) return;
+          const store = usePreferencesStore.getState();
+          if (store.surfaces[kind as SurfaceKind].enabled)
+            store.updateSurface(kind as SurfaceKind, { enabled: false });
+        })
+      : () => undefined;
     return () => {
       active = false;
       stopChanged();
@@ -994,7 +1000,7 @@ export function usePreferencesRuntime(reconcileSurfaces: boolean): ResolvedColor
   }, [appearance.backgroundImageReference, appearance.backgroundMode, setBackgroundImageState]);
 
   useEffect(() => {
-    if (!isNativeRuntime || !reconcileSurfaces || !hydrated) return;
+    if (!isNativeRuntime || !supportsLyricsSurfaces() || !reconcileSurfaces || !hydrated) return;
     const timer = window.setTimeout(() => {
       void getYaqmcClient()
         .invoke('lyrics_surfaces_reconcile', { surfaces })

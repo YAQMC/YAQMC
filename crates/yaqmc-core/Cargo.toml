@@ -6,13 +6,16 @@ license.workspace = true
 rust-version.workspace = true
 
 [features]
-default = []
+default = ["plugins", "local-api", "system-media"]
+plugins = ["dep:wasmtime", "dep:wasmtime-wasi"]
+local-api = ["dep:axum"]
+system-media = ["dep:mpris-server", "dep:souvlaki", "dep:windows-sys"]
 test-support = ["dep:tempfile"]
-test-provider = ["test-support"]
+test-provider = ["test-support", "plugins", "local-api", "system-media"]
 
 [dependencies]
 async-trait = "0.1"
-axum = { version = "0.8", features = ["http1", "json", "tokio"] }
+axum = { version = "0.8", optional = true, features = ["http1", "json", "tokio"] }
 base64 = "0.22"
 futures-util = "0.3"
 keyring = "4.1.6"
@@ -32,19 +35,19 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-wasmtime = { version = "=36.0.14", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
-wasmtime-wasi = { version = "=36.0.14", default-features = false }
+wasmtime = { version = "=36.0.14", optional = true, default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+wasmtime-wasi = { version = "=36.0.14", optional = true, default-features = false }
 yaqmc-protocol = { path = "../yaqmc-protocol" }
 yaqmc-provider-api = { path = "../yaqmc-provider-api" }
 yaqmc-provider-qqmusic = { path = "../yaqmc-provider-qqmusic" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-mpris-server = "0.10.0"
+mpris-server = { version = "0.10.0", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-souvlaki = { version = "0.8.3", default-features = false }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+souvlaki = { version = "0.8.3", optional = true, default-features = false }
+windows-sys = { version = "0.61", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 http-body-util = "0.1"

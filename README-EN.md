@@ -10,12 +10,13 @@
 
 <p align="center">
   <strong>Yet Another Q Music Client</strong><br>
-  A native, unofficial QQ Music desktop client for Windows and Linux.
+  A native, unofficial QQ Music client for Windows, Linux, and Android.
 </p>
 
 <p align="center">
   <a href="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0 or newer">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111" alt="React 19">
   <img src="https://img.shields.io/badge/Rust-1.88%2B-000?logo=rust&logoColor=white" alt="Rust 1.88 or newer">
 </p>
@@ -28,13 +29,13 @@
 ## Release status
 
 > [!WARNING]
-> This document describes the unreleased Electron `main` branch. The latest public tag,
+> This document describes the unreleased Electron `main` branch and the Android host now under development. The latest public tag,
 > `v0.1.0-beta.6`, uses the retired desktop host; its package names, features, and limitations do not describe the
 > current tree. There is no public installer matching this document until a new Electron preview is released.
 
-The Electron line remains beta software. Windows has local native validation; Linux still needs broader testing on
-real desktop environments. Before downloading, read the release notes and confirm that the release explicitly says
-it is an Electron build.
+The Electron line remains beta software. Windows has local native validation; Linux and Android still need broader
+real-device testing. Before downloading, read the release notes and confirm the platform, architecture, and
+acceptance status.
 
 ## Highlights
 
@@ -63,12 +64,17 @@ Electron releases publish the package formats that each supported runner can bui
 | -------- | --------------------- | ------------------------------------------------------- |
 | Windows  | x64 / AMD64, ARM64    | NSIS `.exe`, portable `.exe`                            |
 | Linux    | x86_64 / AMD64, ARM64 | AppImage, Debian `.deb`, RPM `.rpm`, portable `.tar.gz` |
+| Android  | ARM64                 | signed `.apk`                                           |
 
 AMD64, x86_64, and the release label x64 name the same architecture. Windows i686/x86 packages are no longer published.
 Release artifacts include SHA-256 checksums. Linux runtime acceptance remains host-specific—especially on native
 Wayland. The x86_64 AppImage and the revision-bound `YAQMC-linux-x64-tester-<commit>` bundle are separate artifacts;
 only the tester bundle contains the diagnostics collector, verifier, and acceptance documents described in
 [the Linux guide](docs/linux.md).
+
+Android requires Android 8.0 or newer. GitHub Releases publish only an `arm64-v8a` APK; there is no Play Store,
+Android App Bundle, 32-bit APK, plugin host, or loopback Local API in Android v1. Verify the APK with
+`SHA256SUMS-android.txt` before sideloading. See the [Android guide](docs/android.md).
 
 ## Current status
 
@@ -184,6 +190,7 @@ single-command capability and cannot access account or player state.
 - `scripts/collect-linux-diagnostics.sh` — privacy-bounded tester capture
 
 Start with [architecture](docs/architecture.md), [playback](docs/playback.md),
+[Android](docs/android.md),
 [development](docs/development.md), [data locations and uninstall](docs/data-locations.md),
 [streaming](docs/streaming.md), [platform integration](docs/platform-integration.md),
 [Linux runtime](docs/linux.md), [QQ Music provider](docs/qqmusic-provider.md),

@@ -42,6 +42,7 @@ vi.mock('./application/use-lyrics-coordinator', () => ({ useLyricsCoordinator: v
 vi.mock('./application/platform-integration', () => ({
   usePlatformDiagnosticsRuntime: vi.fn(),
 }));
+vi.mock('./application/plugin-runtime', () => ({ usePluginHost: vi.fn() }));
 vi.mock('./application/use-theme', () => ({
   useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
 }));
@@ -77,6 +78,7 @@ vi.mock('./components/LyricsPanel', () => ({
   ),
 }));
 vi.mock('./components/Sidebar', () => ({
+  AndroidBottomNav: () => null,
   Sidebar: ({ route, onNavigate }: { route: AppRoute; onNavigate: (route: AppRoute) => void }) => (
     <aside>
       <output data-testid="active-route">{route.page}</output>

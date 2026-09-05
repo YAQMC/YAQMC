@@ -6,7 +6,7 @@
 
 ## 用户
 
-- 开始使用：[数据位置、升级及卸载](data-locations.md)、[外观个性化](appearance.md)和
+- 开始使用：[Android](android.md)、[数据位置、升级及卸载](data-locations.md)、[外观个性化](appearance.md)和
   [Linux 运行环境](linux.md)
 - 浏览与账号：[登录与安全存储](authentication.md)、[账号音乐库](account-library.md)、
   [会员模型](account-membership.md)、[首页推荐](home-recommendations.md)和[发现页](discover.md)
@@ -36,7 +36,8 @@
 ## 测试与发布
 
 - [CI、缓存与产物](ci.md)、[日志系统](logging.md)和[Linux 图形策略](linux-graphics.md)
-- [Windows 验收](windows-acceptance.md)和[Linux 验收](linux-acceptance.md)
+- [Windows 验收](windows-acceptance.md)和[Linux 验收](linux-acceptance.md)；Android 真机验收范围见
+  [Android 指南](android.md)
 - [发布与合规记录](../release/README.md)
 
 验收记录会区分自动化检查、真实账号和真实设备证据。没有满足相应验收记录的项目不能写成“已验证”。

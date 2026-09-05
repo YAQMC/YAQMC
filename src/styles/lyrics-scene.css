@@ -321,6 +321,428 @@
   cursor: ns-resize;
   transform: translateX(-50%);
 }
+
+/* Native Android player surfaces inherit the WebView safe-area contract. */
+.app-shell[data-host-kind='android'] .lyrics-stage {
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.app-shell[data-host-kind='android'] .lyrics-stage__topbar {
+  top: var(--android-safe-top);
+  right: var(--android-safe-right);
+}
+
+.app-shell[data-host-kind='android'] .lyrics-stage__chrome {
+  bottom: calc(14px + var(--android-safe-bottom));
+  left: calc(14px + var(--android-safe-left));
+  gap: 8px;
+}
+
+.app-shell[data-host-kind='android'] .lyrics-stage__topbar .icon-button,
+.app-shell[data-host-kind='android'] .lyrics-stage__chrome .icon-button,
+.app-shell[data-host-kind='android'] .lyrics-stage__control-buttons .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.app-shell[data-host-kind='android'] .lyrics-stage__play {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+}
+
+.lyrics-scene[data-compact] .lyrics-scene__transport {
+  height: auto;
+}
+
+.lyrics-scene[data-compact] .lyrics-stage__controls-center {
+  gap: 4px;
+}
+
+.lyrics-scene[data-compact] .lyrics-stage__progress input[type='range'] {
+  height: 44px;
+  min-height: 44px;
+}
+
+.lyrics-scene[data-compact] .lyrics-stage__static-line {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+/* Phone portrait: the preset's reusable widgets are rearranged into a true
+ * single-column player. Only the runtime geometry changes; presets and
+ * playback/lyric state stay shared with desktop. */
+@media (orientation: portrait) and (max-width: 599px) {
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] {
+    --phone-cover-size: min(calc(100vw - 48px), 26dvh, 240px);
+    --phone-player-top: calc(var(--android-safe-top) + 54px);
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='artwork'] {
+    grid-area: artwork;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='metadata'] {
+    grid-area: metadata;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='lyrics'] {
+    grid-area: lyrics;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='transport'] {
+    grid-area: transport;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] {
+    display: grid;
+    grid-template-areas: 'artwork' 'metadata' 'lyrics' 'transport';
+    grid-template-rows: minmax(0, var(--phone-cover-size)) auto minmax(0, 1fr) max-content;
+    gap: 8px;
+    padding: var(--phone-player-top) max(16px, var(--android-safe-right))
+      calc(var(--android-safe-bottom) + 10px) max(16px, var(--android-safe-left));
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget {
+    position: relative;
+    width: 100%;
+    min-height: 0;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='artwork'] {
+    width: var(--phone-cover-size);
+    height: 100%;
+    justify-self: center;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata {
+    align-items: center;
+    gap: 2px;
+    text-align: center;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata strong {
+    display: -webkit-box;
+    overflow: hidden;
+    max-width: 100%;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: clamp(1.05rem, 5.4vw, 1.4rem);
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata span {
+    overflow: hidden;
+    max-width: 100%;
+    font-size: clamp(0.8rem, 3.8vw, 1rem);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport,
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport .lyrics-stage__controls-center,
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport .lyrics-stage__progress {
+    width: 100%;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__progress {
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+    gap: 6px;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__play {
+    width: 48px;
+    height: 48px;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__chrome {
+    top: calc(var(--android-safe-top) + 5px);
+    bottom: auto;
+    left: calc(var(--android-safe-left) + 5px);
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__topbar {
+    padding: 5px;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__amll-static {
+    width: 100%;
+    padding: 18% 6px 24%;
+    gap: 10px;
+    overscroll-behavior-y: contain;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__static-line {
+    color: color-mix(in srgb, var(--lyrics-foreground, var(--lyrics-ink)) 92%, transparent);
+    font-size: clamp(16px, 5vw, 24px);
+    letter-spacing: -0.015em;
+    line-height: 1.28;
+    text-shadow: none;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__amll {
+    --amll-lp-font-size: clamp(16px, 5vw, 24px);
+    font-size: clamp(16px, 5vw, 24px);
+  }
+}
+
+/* Tablet portrait keeps the desktop player's two visual columns, but puts the
+ * same runtime widgets into flow so preset coordinates cannot leave metadata
+ * stranded near the bottom or overlap another region. */
+@media (orientation: portrait) and (min-width: 600px) and (max-width: 959px) {
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] {
+    display: grid;
+    grid-template-columns: minmax(260px, 42%) minmax(0, 1fr);
+    grid-template-rows:
+      minmax(0, 1fr) clamp(260px, 40vw, 340px) auto max-content
+      minmax(0, 1fr);
+    gap: 10px 22px;
+    padding: calc(var(--android-safe-top) + 62px) max(18px, var(--android-safe-right))
+      calc(var(--android-safe-bottom) + 18px) max(18px, var(--android-safe-left));
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='artwork'] {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='metadata'] {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='lyrics'] {
+    grid-column: 2;
+    grid-row: 1 / -1;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='transport'] {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget {
+    position: relative;
+    width: 100%;
+    min-height: 0;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='artwork'] {
+    height: 100%;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata {
+    align-items: center;
+    gap: 3px;
+    text-align: center;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata strong {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: clamp(1.1rem, 3.4vw, 1.55rem);
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata span {
+    overflow: hidden;
+    max-width: 100%;
+    font-size: clamp(0.85rem, 2.3vw, 1.05rem);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport,
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport .lyrics-stage__controls-center,
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport .lyrics-stage__progress {
+    width: 100%;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__amll-static {
+    width: 100%;
+    padding: 16% 8px 22%;
+    gap: 10px;
+    overscroll-behavior-y: contain;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__static-line,
+  .app-shell[data-host-kind='android'] .lyrics-stage__amll {
+    --amll-lp-font-size: clamp(18px, 3.2vw, 28px);
+    font-size: clamp(18px, 3.2vw, 28px);
+    line-height: 1.3;
+    text-shadow: none;
+  }
+}
+
+/* Desktop presets express metadata scales in `em`. Give tablet landscape a
+ * readable base that is independent of the shell UI font preference while
+ * preserving each preset's title/artist scale ratio. */
+@media (orientation: landscape) and (min-width: 840px) and (max-width: 1199px) and (min-height: 600px) {
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata {
+    font-size: clamp(16px, 1.75vw, 20px);
+  }
+}
+
+/* Phone landscape: a height-bounded left player column and an independently
+ * scrolling lyric column. This deliberately differs from tablet landscape. */
+@media (orientation: landscape) and (max-height: 599px) {
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] {
+    --landscape-left-width: min(40vw, 390px);
+    --landscape-player-top: calc(var(--android-safe-top) + 46px);
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='artwork'] {
+    grid-area: artwork;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='metadata'] {
+    grid-area: metadata;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='lyrics'] {
+    grid-area: lyrics;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='transport'] {
+    grid-area: transport;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] {
+    display: grid;
+    grid-template-areas:
+      'artwork lyrics'
+      'metadata lyrics'
+      'transport lyrics';
+    grid-template-columns: var(--landscape-left-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto max-content;
+    column-gap: 14px;
+    row-gap: 4px;
+    padding: var(--landscape-player-top) calc(var(--android-safe-right) + 12px)
+      calc(var(--android-safe-bottom) + 7px) calc(var(--android-safe-left) + 10px);
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene[data-mode='runtime'] .lyrics-scene__widget {
+    position: relative;
+    width: 100%;
+    min-height: 0;
+  }
+
+  .app-shell[data-host-kind='android']
+    .lyrics-scene[data-mode='runtime']
+    .lyrics-scene__widget[data-widget='artwork'] {
+    width: 100%;
+    height: 100%;
+    justify-self: center;
+    align-self: center;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata {
+    align-items: center;
+    gap: 1px;
+    text-align: center;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata strong,
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata span {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata strong {
+    font-size: clamp(0.95rem, 2.8vw, 1.25rem);
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__metadata span {
+    font-size: clamp(0.75rem, 2vw, 0.9rem);
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport,
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport .lyrics-stage__controls-center,
+  .app-shell[data-host-kind='android'] .lyrics-scene__transport .lyrics-stage__progress {
+    width: 100%;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__control-buttons {
+    gap: 8px;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__progress {
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+    gap: 4px;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__play {
+    width: 48px;
+    height: 48px;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__chrome {
+    top: calc(var(--android-safe-top) + 2px);
+    bottom: auto;
+    left: calc(var(--android-safe-left) + 2px);
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__topbar {
+    padding: 2px;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__amll-static {
+    width: 100%;
+    padding: 8% 8px 16%;
+    gap: 8px;
+    overscroll-behavior-y: contain;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__static-line {
+    color: color-mix(in srgb, var(--lyrics-foreground, var(--lyrics-ink)) 92%, transparent);
+    font-size: clamp(15px, 2.6vw, 22px);
+    letter-spacing: -0.01em;
+    line-height: 1.22;
+    text-shadow: none;
+  }
+
+  .app-shell[data-host-kind='android'] .lyrics-stage__amll {
+    --amll-lp-font-size: clamp(15px, 2.6vw, 22px);
+    font-size: clamp(15px, 2.6vw, 22px);
+  }
+}
 .lyrics-composer-handle[data-resize='ne'] {
   top: -5px;
   right: -5px;

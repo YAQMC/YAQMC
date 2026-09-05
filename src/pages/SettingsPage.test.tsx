@@ -9,6 +9,27 @@ import type { AccountSnapshot } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
 import { SettingsPage } from './SettingsPage';
 
+vi.mock('../application/host-capabilities', () => {
+  const desktop = {
+    windowControls: true,
+    lyricsSurfaces: true,
+    plugins: true,
+    localApi: true,
+    fileExport: true,
+    fileImport: true,
+    nativeShare: false,
+    deepLinks: true,
+    updateMode: 'install',
+  } as const;
+  return {
+    hostCapabilities: () => desktop,
+    hasHostCapability: (capability: keyof typeof desktop) => Boolean(desktop[capability]),
+    isAndroidRuntime: () => false,
+    supportsLyricsSurfaces: () => true,
+    supportsWindowControls: () => true,
+  };
+});
+
 const capabilities = {
   qrLogin: true,
   favoriteRead: true,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
+import { hasHostCapability } from './host-capabilities';
 
 const client = getYaqmcClient();
 
@@ -54,13 +54,13 @@ export function useLocalApiSettings(): LocalApiSettings {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!isNativeRuntime) return;
+    if (!hasHostCapability('localApi')) return;
     const next = await run(() => client.invoke('local_api_status'));
     if (next) setStatus(next);
   }, [run]);
 
   useEffect(() => {
-    if (!isNativeRuntime) return;
+    if (!hasHostCapability('localApi')) return;
     let active = true;
     void client
       .invoke('local_api_status')
@@ -124,7 +124,7 @@ export function useLocalApiSettings(): LocalApiSettings {
   }, [refresh, run]);
 
   return {
-    available: isNativeRuntime,
+    available: hasHostCapability('localApi'),
     status,
     token,
     busy,

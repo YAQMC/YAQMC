@@ -15,6 +15,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 function writeMiniRepo(root, versions) {
   mkdirSync(path.join(root, 'apps', 'desktop'), { recursive: true });
+  mkdirSync(path.join(root, 'apps', 'android'), { recursive: true });
   mkdirSync(path.join(root, 'crates', 'yaqmc-core'), { recursive: true });
   writeFileSync(
     path.join(root, 'package.json'),
@@ -23,6 +24,10 @@ function writeMiniRepo(root, versions) {
   writeFileSync(
     path.join(root, 'apps', 'desktop', 'package.json'),
     `${JSON.stringify({ name: '@yaqmc/desktop', version: versions.desktop }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(root, 'apps', 'android', 'package.json'),
+    `${JSON.stringify({ name: '@yaqmc/android', version: versions.android }, null, 2)}\n`,
   );
   writeFileSync(
     path.join(root, 'Cargo.toml'),
@@ -55,6 +60,7 @@ test('check/dry-run fails when desktop package.json differs from root', () => {
   writeMiniRepo(root, {
     root: '0.1.0',
     desktop: '9.9.9',
+    android: '0.1.0',
     core: '0.1.0',
   });
   assert.throws(
@@ -67,11 +73,30 @@ test('check/dry-run fails when desktop package.json differs from root', () => {
   );
 });
 
+test('check/dry-run fails when Android package.json differs from root', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-sync-version-android-'));
+  writeMiniRepo(root, {
+    root: '0.1.0',
+    desktop: '0.1.0',
+    android: '9.9.9',
+    core: '0.1.0',
+  });
+  assert.throws(
+    () => syncVersions({ repoRoot: root, check: true }),
+    /apps\/android\/package.json: 9\.9\.9 != 0\.1\.0/,
+  );
+  assert.equal(
+    JSON.parse(readFileSync(path.join(root, 'apps', 'android', 'package.json'), 'utf8')).version,
+    '9.9.9',
+  );
+});
+
 test('check/dry-run fails when a workspace crate differs from root', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-sync-version-crate-'));
   writeMiniRepo(root, {
     root: '0.1.0',
     desktop: '0.1.0',
+    android: '0.1.0',
     core: '0.2.0',
   });
   assert.throws(
@@ -85,13 +110,18 @@ test('write mode copies the root version and no-ops files that already match', (
   writeMiniRepo(root, {
     root: '0.1.0',
     desktop: '0.0.9',
+    android: '0.0.7',
     core: '0.0.8',
   });
   const result = syncVersions({ repoRoot: root });
   assert.equal(result.version, '0.1.0');
-  assert.equal(result.updates.length, 2);
+  assert.equal(result.updates.length, 3);
   assert.equal(
     JSON.parse(readFileSync(path.join(root, 'apps', 'desktop', 'package.json'), 'utf8')).version,
+    '0.1.0',
+  );
+  assert.equal(
+    JSON.parse(readFileSync(path.join(root, 'apps', 'android', 'package.json'), 'utf8')).version,
     '0.1.0',
   );
   assert.equal(
@@ -107,10 +137,12 @@ test('already-matching trees are a no-op write', () => {
   writeMiniRepo(root, {
     root: '0.1.0',
     desktop: '0.1.0',
+    android: '0.1.0',
     core: '0.1.0',
   });
   const files = [
     path.join(root, 'apps', 'desktop', 'package.json'),
+    path.join(root, 'apps', 'android', 'package.json'),
     path.join(root, 'crates', 'yaqmc-core', 'Cargo.toml'),
   ];
   const before = files.map((filePath) => readFileSync(filePath));

@@ -1,0 +1,22 @@
+{
+  "name": "@yaqmc/android",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Yaqmc Android Capacitor host",
+  "scripts": {
+    "build:web": "node ../../scripts/build-android.mjs --variant debug --skip-native --skip-gradle",
+    "sync": "npx cap sync android",
+    "android:debug": "node ../../scripts/build-android.mjs --variant debug",
+    "android:release": "node ../../scripts/build-android.mjs --variant release --stage-to release-android",
+    "test": "node ../../scripts/run-android-gradle.mjs :app:testDebugUnitTest",
+    "build": "npm run android:debug"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.1",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.1"
+  }
+}

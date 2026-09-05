@@ -44,7 +44,7 @@ import {
   useAccountStore,
 } from './application/account-runtime';
 import { isAccountMusicProvider, type MusicProvider } from './providers/music-provider';
-import { Sidebar } from './components/Sidebar';
+import { AndroidBottomNav, Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { PlayerBar } from './components/PlayerBar';
 import { QueuePanel } from './components/QueuePanel';
@@ -60,6 +60,7 @@ import { AreaPage } from './pages/AreaPage';
 import { PlaylistPage } from './pages/PlaylistPage';
 import { ExplorePage } from './pages/ExplorePage';
 import { LibraryPage } from './pages/LibraryPage';
+import { MediaLibraryPage } from './pages/MediaLibraryPage';
 import { SearchPage } from './pages/SearchPage';
 import { AppBackground } from './components/AppBackground';
 import { PluginNoticeHost } from './components/PluginNoticeHost';
@@ -83,6 +84,10 @@ import { CHANNEL_APP_OPEN_CATALOG_SONG } from '@yaqmc/client';
 import { catalogSongRouteFromDeepLink } from './application/deep-link-navigation';
 import { usePluginHost } from './application/plugin-runtime';
 import './styles/index.css';
+import { getHostBridge } from './application/yaqmc-runtime';
+import { hasHostCapability, isAndroidRuntime } from './application/host-capabilities';
+import { App as CapacitorApp } from '@capacitor/app';
+import { androidBackAction } from './application/android-back-navigation';
 
 const ApplicationPlaybackDiagnostics = __YAQMC_QA_BUILD__
   ? lazy(async () => {
@@ -147,6 +152,7 @@ function homePlaylists(home: HomeFeed): Playlist[] {
 
 export default function App() {
   const { t } = useTranslation('pages');
+  const { t: common } = useTranslation('common');
   const provider = useMusicProvider();
   const providerRegistry = useContext(ProviderRegistryContext);
   const providerSelection = useMusicProviderSelection();
@@ -182,7 +188,12 @@ export default function App() {
   const loadNextAccountPlaylist = useAccountStore((state) => state.loadNextAccountPlaylist);
   const previousLyricsOpen = useRef(lyricsOpen);
   const [history, setHistory] = useState<NavigationHistory>({ entries: [initialRoute], index: 0 });
+  const historyRef = useRef(history);
   const route = history.entries[history.index] ?? initialRoute;
+
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
 
   const navigate = useCallback(
     (nextRoute: AppRoute) => {
@@ -221,7 +232,7 @@ export default function App() {
   }, [navigate]);
 
   useEffect(() => {
-    if (!isNativeRuntime) return;
+    if (!isNativeRuntime || !hasHostCapability('deepLinks')) return;
     const client = getYaqmcClient();
     const openSong = (payload: { providerId: string; entityId: string }) => {
       const available = providerSelection.providers.some(
@@ -258,6 +269,56 @@ export default function App() {
       }));
     });
   }, []);
+
+  useEffect(() => {
+    if (!isAndroidRuntime()) return;
+
+    let disposed = false;
+    let removeListener: (() => Promise<void>) | null = null;
+    void CapacitorApp.addListener('backButton', () => {
+      const player = usePlayerStore.getState();
+      const presentation = useLyricsPresentationStore.getState();
+      const stage = useLyricsStageStore.getState().stage;
+      const account = useAccountStore.getState();
+      const action = androidBackAction({
+        accountDialogOpen: account.dialogOpen && accountProvider !== null,
+        playerSurfaceOpen:
+          player.queueOpen ||
+          player.lyricsOpen ||
+          presentation.fullscreen ||
+          presentation.pending ||
+          stage !== 'closed',
+        canNavigateBack: historyRef.current.index > 0,
+      });
+
+      if (action === 'close-account-dialog') {
+        void account.closeDialog(accountProvider!);
+      } else if (action === 'close-player-surface') {
+        if (
+          player.lyricsOpen ||
+          presentation.fullscreen ||
+          presentation.pending ||
+          stage !== 'closed'
+        ) {
+          void closeLyricsPresentation();
+        } else {
+          player.closePanels();
+        }
+      } else if (action === 'navigate-back') {
+        goBack();
+      } else {
+        void CapacitorApp.exitApp();
+      }
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else removeListener = listener.remove;
+    });
+
+    return () => {
+      disposed = true;
+      if (removeListener) void removeListener();
+    };
+  }, [accountProvider, goBack]);
 
   useEffect(() => {
     if (isNativeRuntime) return;
@@ -444,6 +505,8 @@ export default function App() {
         </Suspense>
       </RouteErrorBoundary>
     );
+  } else if (route.page === 'library') {
+    pageContent = <MediaLibraryPage onNavigate={navigate} />;
   } else if (
     route.page === 'favorites' ||
     route.page === 'account-playlists' ||
@@ -503,6 +566,9 @@ export default function App() {
       <div className="empty-state empty-state--error">
         <h1>{t('musicUnavailable')}</h1>
         <p>{catalog.message}</p>
+        <button type="button" className="button button--primary" onClick={catalog.retry}>
+          {common('retry')}
+        </button>
       </div>
     );
   } else if (catalogRoute && catalogRouteProvider) {
@@ -539,6 +605,9 @@ export default function App() {
       <div className="empty-state empty-state--error">
         <h1>{t('musicUnavailable')}</h1>
         <p>{catalog.message}</p>
+        <button type="button" className="button button--primary" onClick={catalog.retry}>
+          {common('retry')}
+        </button>
       </div>
     );
   } else {
@@ -548,7 +617,12 @@ export default function App() {
         break;
       case 'search':
         pageContent = (
-          <SearchPage initialQuery={route.query} feed={catalog.home} onNavigate={navigate} />
+          <SearchPage
+            key={`search:${route.query ?? ''}`}
+            initialQuery={route.query}
+            feed={catalog.home}
+            onNavigate={navigate}
+          />
         );
         break;
       case 'explore':
@@ -576,6 +650,8 @@ export default function App() {
         <div
           className="app-shell"
           data-provider-id={provider.id}
+          data-host-kind={getHostBridge().kind}
+          data-lyrics-open={lyricsSurfaceVisible || undefined}
           data-lyrics-focus={(lyricsSurfaceVisible && focusSidebarCollapsed) || undefined}
           data-lyrics-fullscreen={(lyricsSurfaceVisible && fullscreen) || undefined}
         >
@@ -589,6 +665,7 @@ export default function App() {
               onForward={goForward}
               onSearch={() => navigate({ page: 'search' })}
               onToggleTheme={toggleTheme}
+              onAccount={() => navigate({ page: 'settings' })}
             />
             <main
               className="main-content"
@@ -601,6 +678,7 @@ export default function App() {
             </main>
           </div>
           <PlayerBar onToggleQueue={toggleQueue} />
+          <AndroidBottomNav route={route} onNavigate={navigate} />
           <PluginNoticeHost />
           <CoreStatusBanner />
           <QueuePanel />

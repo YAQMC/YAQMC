@@ -210,7 +210,22 @@ pub fn spawn_account_restore_fanout(
 ) {
     let sink = SequencedSink::new(sink);
     runtime.spawn(async move {
+        #[cfg(feature = "plugins")]
         core.plugins().restore_provider_accounts().await;
+
+        // Reduced hosts (notably Android) do not compile the extension host. Its
+        // compatibility stub cannot restore the in-tree provider, so restore the
+        // registry directly instead of leaving a persisted account at revision 0.
+        #[cfg(not(feature = "plugins"))]
+        {
+            let providers = core.providers();
+            for provider_id in providers.provider_ids() {
+                if let Ok(account) = providers.require_account_provider(provider_id.as_str()) {
+                    account.provider_account().restore_session().await;
+                }
+            }
+        }
+
         let providers = core.providers();
         let provider_ids = providers.provider_ids().collect::<Vec<_>>();
         let mut signed_in = false;

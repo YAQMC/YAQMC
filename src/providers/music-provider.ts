@@ -75,6 +75,8 @@ export interface AccountMusicProvider {
   refreshAccount(signal?: AbortSignal): Promise<AccountSnapshot>;
   getLoginMethods?(signal?: AbortSignal): Promise<AccountLoginMethodDescriptor[]>;
   startWebLogin(method: AccountLoginMethod, signal?: AbortSignal): Promise<AccountSnapshot>;
+  /** Reopen the current native authorization; must never create a replacement attempt. */
+  reopenLogin?(attemptId: string, signal?: AbortSignal): Promise<AccountSnapshot>;
   startQrLogin(signal?: AbortSignal): Promise<AccountSnapshot>;
   heartbeatQrLogin(
     attemptId: string,

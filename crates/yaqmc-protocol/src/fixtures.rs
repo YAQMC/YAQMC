@@ -533,7 +533,9 @@ fn responses() -> Value {
             body: ResponseBody::success(json!({
                 "attemptId": "attempt-0",
                 "url": "https://example.invalid/authorize",
+                "mobileUrl": null,
                 "navigationAllowlist": ["https://example.invalid/*"],
+                "externalNavigationRules": [],
                 "callbackMatcher": { "urlPrefix": "https://example.invalid/callback" }
             })),
         }),

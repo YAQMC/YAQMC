@@ -1,5 +1,10 @@
 export {
+  ANDROID_HOST_CAPABILITIES,
+  DESKTOP_HOST_CAPABILITIES,
+  FAKE_HOST_CAPABILITIES,
+  defaultHostCapabilities,
   type HostBridge,
+  type HostCapabilities,
   type HostClipboardBridge,
   type HostDialogBridge,
   type HostKind,
@@ -7,6 +12,10 @@ export {
   type HostSaveFileKind,
   type HostShellBridge,
   type HostWindowBridge,
+  type HostNativeShareBridge,
+  type HostNativeShareRequest,
+  type HostShareBridge,
+  type HostShareRequest,
   type InvokeArgs,
   type WindowRole,
 } from './bridge';
@@ -18,6 +27,11 @@ export {
   type PlayerCommandAdapter,
 } from './player-command-adapter';
 export { createElectronBridge, type ElectronRendererApi } from './bridges/electron';
+export {
+  createAndroidBridge,
+  readCapacitorAndroidApi,
+  type AndroidRendererApi,
+} from './bridges/android';
 export { createFakeBridge, type FakeCatalog } from './bridges/fake';
 export {
   CHANNEL_ACCOUNT_CHANGED,

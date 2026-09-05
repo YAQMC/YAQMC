@@ -57,6 +57,7 @@ impl CoreServices {
             )
             .map_err(CoreBootstrapError::from_error)?,
         );
+        #[cfg(feature = "plugins")]
         let plugins = match ExtensionHost::open(config.paths.data_dir.join("plugins")) {
             Ok(host) => Arc::new(host),
             Err(error) => {
@@ -67,6 +68,11 @@ impl CoreServices {
                 )
             }
         };
+        #[cfg(not(feature = "plugins"))]
+        let plugins = Arc::new(
+            ExtensionHost::open(config.paths.data_dir.join("plugins"))
+                .map_err(CoreBootstrapError::from_error)?,
+        );
         let level = std::env::var("YAQMC_LOG_LEVEL")
             .ok()
             .and_then(|value| logging::LogLevel::parse(&value))
@@ -95,6 +101,7 @@ impl CoreServices {
             ProviderRegistry::new("qqmusic", [Arc::clone(&qq_music)])
                 .map_err(CoreBootstrapError::from_error)?,
         );
+        #[cfg(feature = "plugins")]
         plugins
             .attach_provider_runtime(
                 Arc::clone(&providers),

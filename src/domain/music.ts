@@ -494,6 +494,7 @@ export type AccountState =
       qrImageDataUri: string;
       expiresAtMs: number;
       pollAfterMs: number;
+      launchUrl?: string;
       profile: null;
       entitlement: null;
     }

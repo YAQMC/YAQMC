@@ -69,12 +69,14 @@ export function setJsonPackageVersion(text, version) {
   return { text: next, changed: true };
 }
 
-function desktopPackagePath(repoRoot) {
-  return path.join(repoRoot, 'apps', 'desktop', 'package.json');
+function applicationPackagePaths(repoRoot) {
+  return ['desktop', 'android'].map((application) =>
+    path.join(repoRoot, 'apps', application, 'package.json'),
+  );
 }
 
 export function collectVersionTargets(repoRoot) {
-  return [desktopPackagePath(repoRoot), ...workspaceCrateManifests(repoRoot)];
+  return [...applicationPackagePaths(repoRoot), ...workspaceCrateManifests(repoRoot)];
 }
 
 function relativeToRoot(repoRoot, filePath) {
@@ -87,17 +89,18 @@ export function syncVersions(options) {
   const expected = readRootVersion(repoRoot);
   const updates = [];
 
-  const desktopPath = desktopPackagePath(repoRoot);
-  const desktopText = readFileSync(desktopPath, 'utf8');
-  const desktop = setJsonPackageVersion(desktopText, expected);
-  if (desktop.changed) {
-    updates.push({
-      path: desktopPath,
-      from: JSON.parse(desktopText).version,
-      to: expected,
-    });
-    if (!check) {
-      writeFileSync(desktopPath, desktop.text);
+  for (const packagePath of applicationPackagePaths(repoRoot)) {
+    const packageText = readFileSync(packagePath, 'utf8');
+    const applicationPackage = setJsonPackageVersion(packageText, expected);
+    if (applicationPackage.changed) {
+      updates.push({
+        path: packagePath,
+        from: JSON.parse(packageText).version,
+        to: expected,
+      });
+      if (!check) {
+        writeFileSync(packagePath, applicationPackage.text);
+      }
     }
   }
 

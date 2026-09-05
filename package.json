@@ -50,6 +50,9 @@
     "perf:baseline": "node scripts/perf-baseline.mjs",
     "contracts:update": "node scripts/update-contract-fixtures.mjs",
     "contracts:check": "node scripts/update-contract-fixtures.mjs --check",
+    "android:check": "node scripts/ci/verify-android-project.mjs && node scripts/build-android.mjs --variant debug --skip-web --skip-sync --skip-gradle && node scripts/run-android-gradle.mjs :app:testDebugUnitTest",
+    "android:build:debug": "node scripts/build-android.mjs --variant debug",
+    "android:build:release": "node scripts/build-android.mjs --variant release --stage-to release-android",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "stage-core": "node scripts/stage-core.mjs",
     "sync-version": "node scripts/sync-version.mjs",
@@ -61,6 +64,7 @@
   "dependencies": {
     "@applemusic-like-lyrics/core": "0.5.2",
     "@applemusic-like-lyrics/react": "0.5.2",
+    "@capacitor/app": "8.1.1",
     "@yaqmc/client": "*",
     "i18next": "^26.3.6",
     "lucide-react": "^1.31.0",

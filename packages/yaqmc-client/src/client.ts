@@ -1,11 +1,14 @@
-import type {
-  HostBridge,
-  HostDialogBridge,
-  HostShellBridge,
-  HostWindowBridge,
-  InvokeArgs,
+import {
+  defaultHostCapabilities,
+  type HostBridge,
+  type HostDialogBridge,
+  type HostShellBridge,
+  type HostWindowBridge,
+  type HostShareBridge,
+  type InvokeArgs,
 } from './bridge';
 import {
+  CHANNEL_APP_OPEN_CATALOG_SONG,
   CHANNEL_LYRICS_DOCUMENT,
   CHANNEL_LYRICS_PROJECTION,
   CHANNEL_PLAYER_SNAPSHOT,
@@ -15,6 +18,14 @@ import {
   type ChannelPayload,
 } from './protocol/events';
 import type { MethodName, MethodParams, MethodResult } from './protocol/methods';
+
+function capabilityEnabled(
+  bridge: HostBridge,
+  capability: keyof NonNullable<HostBridge['capabilities']>,
+): boolean {
+  if (bridge.capabilities) return Boolean(bridge.capabilities[capability]);
+  return Boolean(defaultHostCapabilities(bridge.kind)[capability]);
+}
 
 export const READY_QUEUE_TIMEOUT_MS = 15_000;
 
@@ -39,6 +50,7 @@ export class YaqmcClient {
     timer: ReturnType<typeof setTimeout>;
   }> = [];
   private readonly listeners = new Map<ChannelName, Set<Listener<ChannelName>>>();
+  private pendingDeepLink: ChannelPayload[typeof CHANNEL_APP_OPEN_CATALOG_SONG] | null = null;
   private readonly stopListening: Array<() => void> = [];
 
   readonly player = {
@@ -95,6 +107,7 @@ export class YaqmcClient {
       range: MethodParams['statistics_snapshot']['range'],
       format: MethodParams['statistics_export_to']['request']['format'],
     ) => {
+      if (!capabilityEnabled(this.bridge, 'fileExport')) return null;
       const path = await this.host.dialog?.pickSave({
         kind: format === 'json' ? 'statistics-json' : 'statistics-csv',
         defaultPath: `YAQMC-statistics.${format}`,
@@ -207,9 +220,10 @@ export class YaqmcClient {
   };
 
   readonly host: {
-    window: HostWindowBridge;
+    window?: HostWindowBridge;
     shell: HostShellBridge;
     dialog?: HostDialogBridge;
+    share?: HostShareBridge;
     systemIntegrationStatus: () => Promise<MethodResult['system_integration_status']>;
     setShortcutsEnabled: (
       enabled: boolean,
@@ -221,6 +235,7 @@ export class YaqmcClient {
       window: bridge.window,
       shell: bridge.shell,
       dialog: bridge.dialog,
+      share: bridge.share,
       systemIntegrationStatus: () => this.invoke('system_integration_status'),
       setShortcutsEnabled: (enabled: boolean) =>
         this.invoke('system_shortcuts_set_enabled', { enabled }),
@@ -259,6 +274,11 @@ export class YaqmcClient {
     const bucket = this.listeners.get(channel) ?? new Set();
     bucket.add(handler as Listener<ChannelName>);
     this.listeners.set(channel, bucket);
+    if (channel === CHANNEL_APP_OPEN_CATALOG_SONG && this.pendingDeepLink) {
+      const payload = this.pendingDeepLink;
+      this.pendingDeepLink = null;
+      (handler as Listener<typeof CHANNEL_APP_OPEN_CATALOG_SONG>)(payload);
+    }
     return () => {
       bucket.delete(handler as Listener<ChannelName>);
     };
@@ -280,7 +300,7 @@ export class YaqmcClient {
       this.invoke('lyrics_surface_projection'),
       this.invoke('player_lyrics'),
       this.invoke('app_preferences_get'),
-      this.invoke('plugin_list'),
+      capabilityEnabled(this.bridge, 'plugins') ? this.invoke('plugin_list') : Promise.resolve([]),
     ]);
     this.emit(CHANNEL_PLAYER_SNAPSHOT, snapshot);
     this.emit(CHANNEL_LYRICS_PROJECTION, projection);
@@ -289,7 +309,12 @@ export class YaqmcClient {
   }
 
   private emit<C extends ChannelName>(channel: C, payload: ChannelPayload[C]): void {
-    for (const handler of this.listeners.get(channel) ?? []) {
+    const listeners = this.listeners.get(channel);
+    if (!listeners?.size && channel === CHANNEL_APP_OPEN_CATALOG_SONG) {
+      this.pendingDeepLink = payload as ChannelPayload[typeof CHANNEL_APP_OPEN_CATALOG_SONG];
+      return;
+    }
+    for (const handler of listeners ?? []) {
       (handler as Listener<C>)(payload);
     }
   }

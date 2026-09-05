@@ -1,9 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const testRuntime = vi.hoisted(() => ({ android: false }));
 const invoke = vi.hoisted(() => vi.fn());
 
 vi.mock('./native-player-runtime', () => ({ isNativeRuntime: true }));
+vi.mock('./host-capabilities', () => ({
+  isAndroidRuntime: () => testRuntime.android,
+}));
 vi.mock('./yaqmc-runtime', () => ({
   getYaqmcClient: () => ({ invoke }),
 }));
@@ -37,6 +41,7 @@ function response(method: string, params?: { providerId?: string }) {
 
 describe('useProviderSettings', () => {
   beforeEach(() => {
+    testRuntime.android = false;
     invoke.mockReset();
     invoke.mockImplementation(async (method: string, params?: { providerId?: string }) =>
       response(method, params),
@@ -63,5 +68,20 @@ describe('useProviderSettings', () => {
     await waitFor(() => expect(hook.result.current.status?.providerId).toBe('provider.b'));
     expect(invoke).toHaveBeenCalledWith('provider_status', { providerId: 'provider.b' });
     expect(invoke).not.toHaveBeenCalledWith('qqmusic_status');
+  });
+
+  it('keeps provider status available on Android when cache stats fail', async () => {
+    testRuntime.android = true;
+    invoke.mockImplementation(async (method: string, params?: { providerId?: string }) => {
+      if (method === 'provider_cache_stats') throw new Error('cache unavailable');
+      return response(method, params);
+    });
+
+    const hook = renderHook(() => useProviderSettings('provider.android'));
+
+    await waitFor(() => expect(hook.result.current.status?.providerId).toBe('provider.android'));
+    expect(hook.result.current.cache).toBeNull();
+    expect(hook.result.current.error).toBe('cache unavailable');
+    expect(invoke).not.toHaveBeenCalledWith('audio_output_devices');
   });
 });

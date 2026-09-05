@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ProviderContext } from './provider-context';
 import { pushPluginNotice } from './plugin-notifications';
 import { getHostBridge } from './yaqmc-runtime';
+import { hostCapabilities } from './host-capabilities';
 import {
   copyTextToClipboard,
   resolveSongShareValue,
@@ -22,6 +23,7 @@ export function useSongShareActions(song: Song): {
   const provider = useContext(ProviderContext);
   const shareProvider = provider && isShareMusicProvider(provider) ? provider : null;
   const referencedProviderId = song.provider?.providerId.trim();
+  const nativeShare = getHostBridge().share;
   const available =
     shareProvider !== null && (!referencedProviderId || referencedProviderId === shareProvider.id);
 
@@ -32,7 +34,15 @@ export function useSongShareActions(song: Song): {
     }
     try {
       const value = await resolveSongShareValue(shareProvider, shareProvider.id, song, kind);
-      await copyTextToClipboard(value, getHostBridge().clipboard?.writeText);
+      if (hostCapabilities().nativeShare && nativeShare) {
+        await nativeShare?.share({
+          text: kind === 'public-link' ? song.title : value,
+          title: song.title,
+          ...(kind === 'public-link' ? { url: value } : {}),
+        });
+      } else {
+        await copyTextToClipboard(value, getHostBridge().clipboard?.writeText);
+      }
       notify('success', t('shareCopied'), kind);
     } catch (error) {
       const message =

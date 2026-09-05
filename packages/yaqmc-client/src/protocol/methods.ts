@@ -338,8 +338,8 @@ export type MethodParams = Exhaustive<{
   provider_remove_playlist_track: { providerId: string; request: PlaylistTrackMutationRequest };
   provider_delete_playlist: { providerId: string; request: DeletePlaylistRequest };
   provider_set_playlist_collected: { providerId: string; request: CollectPlaylistRequest };
-  provider_auth_start: { providerId: string };
-  provider_auth_oauth_start: { providerId: string; methodId: string };
+  provider_auth_start: { providerId: string; mobile?: boolean };
+  provider_auth_oauth_start: { providerId: string; methodId: string; attemptId?: string };
   provider_auth_heartbeat: {
     providerId: string;
     attemptId: string;

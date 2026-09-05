@@ -20,8 +20,9 @@ test.describe('FE-06 fake-mode UI', () => {
 
   test('shows the top-bar search trigger', async ({ page }) => {
     await openFakeHome(page);
-    await expect(page.getByRole('button', { name: /Ctrl K/ })).toBeVisible();
-    await expect(page.locator('.search-trigger')).toContainText('Search');
+    const search = page.locator('.topbar').getByRole('button', { name: 'Search', exact: true });
+    await expect(search).toBeVisible();
+    await expect(search.locator('kbd')).toHaveText('Ctrl K');
   });
 
   test('opens the search page with a search box', async ({ page }) => {
@@ -110,7 +111,7 @@ test.describe('FE-06 fake-mode UI', () => {
   test('opens the lyrics panel', async ({ page }) => {
     await openFakeHome(page);
     await waitForHydratedPlayer(page);
-    await page.getByRole('button', { name: 'Show lyrics' }).click();
+    await playerBar(page).getByRole('button', { name: 'Open lyrics page' }).click();
     await expect(page.getByRole('region', { name: 'Synchronized lyrics' })).toBeVisible();
   });
 
@@ -148,6 +149,7 @@ test.describe('FE-06 fake-mode UI', () => {
       .getByRole('button', { name: 'Explore' })
       .click();
     await expect(page.getByRole('heading', { name: 'Explore' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Charts', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Charts' })).toBeVisible();
   });
 

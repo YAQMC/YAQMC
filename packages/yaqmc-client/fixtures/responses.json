@@ -8,6 +8,8 @@
       "callbackMatcher": {
         "urlPrefix": "https://example.invalid/callback"
       },
+      "externalNavigationRules": [],
+      "mobileUrl": null,
       "navigationAllowlist": [
         "https://example.invalid/*"
       ],

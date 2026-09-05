@@ -19,11 +19,11 @@ pub type ForegroundFullscreenProbe = Arc<dyn Fn() -> Option<bool> + Send + Sync>
 
 /// Production probe: Win32 geometry on Windows, `None` (NotSupported) elsewhere.
 pub fn platform_fullscreen_probe() -> Option<ForegroundFullscreenProbe> {
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "system-media"))]
     {
         Some(Arc::new(foreground_is_fullscreen) as ForegroundFullscreenProbe)
     }
-    #[cfg(not(windows))]
+    #[cfg(not(all(windows, feature = "system-media")))]
     {
         None
     }
@@ -55,7 +55,7 @@ pub(crate) fn maybe_spawn_platform_watch(
     spawn_fullscreen_watch(runtime, publisher, shutdown, probe);
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "system-media"))]
 pub fn foreground_is_fullscreen() -> Option<bool> {
     use windows_sys::Win32::{
         Foundation::RECT,
@@ -100,7 +100,7 @@ pub fn foreground_is_fullscreen() -> Option<bool> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "system-media")))]
 pub fn foreground_is_fullscreen() -> Option<bool> {
     // Wayland/X11 do not expose a portable foreground-window geometry API (TD-5).
     // Returning None is the safe fallback: never hide a lyric window permanently.

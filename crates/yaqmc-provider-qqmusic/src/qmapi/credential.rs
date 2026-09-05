@@ -175,6 +175,22 @@ fn session_from_credential(
     })
 }
 
+/// Convert a freshly issued library login credential into YAQMC's bounded
+/// session representation. The opaque cache scope is intentionally generated
+/// locally and contains no account identifier.
+pub(crate) fn session_from_login_credential(
+    credential: &Credential,
+    now_ms: u64,
+) -> Result<SessionRecord, QQMusicError> {
+    let expires_at_ms = credential_expires_at_ms(credential, now_ms);
+    session_from_credential(
+        credential,
+        OpaqueAccountScope::generate(),
+        now_ms,
+        expires_at_ms,
+    )
+}
+
 fn unwrap_library_store(raw: &str) -> Result<(Value, Option<OpaqueAccountScope>), QQMusicError> {
     let value: Value =
         serde_json::from_str(raw).map_err(|_| QQMusicError::AuthenticationExpired)?;

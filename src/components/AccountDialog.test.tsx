@@ -1,10 +1,16 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { ProviderContext } from '../application/provider-context';
 import type { AccountSnapshot } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
 import { AccountDialog } from './AccountDialog';
+
+const runtime = vi.hoisted(() => ({ androidPhone: false }));
+
+vi.mock('../application/host-capabilities', () => ({
+  isAndroidPhoneRuntime: () => runtime.androidPhone,
+}));
 
 const capabilities = {
   qrLogin: true,
@@ -145,7 +151,10 @@ function renderDialog(snapshot: AccountSnapshot, displayedQrImageDataUri: string
 }
 
 describe('AccountDialog', () => {
-  beforeEach(() => resetAccountRuntimeForTest());
+  beforeEach(() => {
+    runtime.androidPhone = false;
+    resetAccountRuntimeForTest();
+  });
 
   it.each([
     ['guest', 'Choose an authorization method for Account Test'],
@@ -170,7 +179,7 @@ describe('AccountDialog', () => {
     unmount();
   });
 
-  it('renders only the sanitized projected QR image and cancels once on unmount', () => {
+  it('renders only the sanitized projected QR image without cancelling on unmount', () => {
     const waiting = stateSnapshot('waiting-for-scan');
     if (waiting.state !== 'waiting-for-scan') throw new Error('invalid test fixture');
     const { container, unmount, cancelQrLogin } = renderDialog(waiting, waiting.qrImageDataUri);
@@ -183,7 +192,7 @@ describe('AccountDialog', () => {
       /qrsig|ptqrtoken|qm_keyst|cookie|https?:\/\/|attempt-a|lease-a|qrImageDataUri/i,
     );
     unmount();
-    expect(cancelQrLogin).toHaveBeenCalledOnce();
+    expect(cancelQrLogin).not.toHaveBeenCalled();
   });
 
   it('refuses a non-data QR projection even when the native state is waiting', () => {
@@ -238,6 +247,100 @@ describe('AccountDialog', () => {
     expect(screen.queryByRole('button', { name: 'Continue with QQ' })).not.toBeInTheDocument();
     view.unmount();
   });
+
+  it('uses QQ Music app login and hides the broken same-device WeChat route on phones', () => {
+    runtime.androidPhone = true;
+    const account = provider();
+    Object.assign(account.value, { id: 'qqmusic' });
+    useAccountStore.setState({ snapshot: stateSnapshot('guest'), dialogOpen: true });
+    const view = render(
+      <ProviderContext.Provider value={account.value}>
+        <AccountDialog />
+      </ProviderContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open QQ Music to sign in' }));
+    expect(account.startWebLogin).toHaveBeenCalledWith('qq', undefined);
+    expect(screen.queryByRole('button', { name: 'Continue with WeChat' })).not.toBeInTheDocument();
+    expect(screen.getByText(/opens the QQ Music app/i)).toBeVisible();
+    view.unmount();
+  });
+
+  it('uses an explicit retry action for a terminal mobile attempt', () => {
+    runtime.androidPhone = true;
+    const account = provider();
+    Object.assign(account.value, { id: 'qqmusic' });
+    useAccountStore.setState({ snapshot: stateSnapshot('rejected'), dialogOpen: true });
+    const view = render(
+      <ProviderContext.Provider value={account.value}>
+        <AccountDialog />
+      </ProviderContext.Provider>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Start again' })).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Open QQ Music to sign in' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start again' }));
+    expect(account.startWebLogin).toHaveBeenCalledWith('qq', undefined);
+    view.unmount();
+  });
+
+  it('does not cancel an active attempt when the dialog component remounts', () => {
+    const waiting = stateSnapshot('waiting-for-scan');
+    const first = renderDialog(
+      waiting,
+      waiting.state === 'waiting-for-scan' ? waiting.qrImageDataUri : null,
+    );
+    first.unmount();
+    expect(first.cancelQrLogin).not.toHaveBeenCalled();
+  });
+
+  it('reopens only the displayed mobile attempt without restarting or hiding its QR', async () => {
+    runtime.androidPhone = true;
+    const account = provider();
+    const waiting = {
+      ...stateSnapshot('waiting-for-scan'),
+      launchUrl: 'https://y.qq.com/synthetic',
+    };
+    const reopenLogin = vi.fn().mockResolvedValue(waiting);
+    Object.assign(account.value, { id: 'qqmusic', reopenLogin });
+    useAccountStore.setState({
+      snapshot: waiting,
+      displayedQrImageDataUri: 'data:image/png;base64,AA==',
+      dialogOpen: true,
+    });
+    const view = render(
+      <ProviderContext.Provider value={account.value}>
+        <AccountDialog />
+      </ProviderContext.Provider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Open QQ Music again' }));
+      expect(screen.getByRole('img')).toHaveAttribute('src', 'data:image/png;base64,AA==');
+    });
+    expect(reopenLogin).toHaveBeenCalledWith('attempt-a', undefined);
+    expect(account.startWebLogin).not.toHaveBeenCalled();
+    expect(account.startQrLogin).not.toHaveBeenCalled();
+    runtime.androidPhone = false;
+    view.rerender(
+      <ProviderContext.Provider value={account.value}>
+        <AccountDialog />
+      </ProviderContext.Provider>,
+    );
+    expect(screen.getByRole('button', { name: 'Open QQ Music again' })).toBeVisible();
+    expect(reopenLogin).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
+  it.each(['expired', 'network-error', 'protocol-error', 'rejected'] as const)(
+    'never exposes a stale QR or reopen action in %s',
+    (state) => {
+      renderDialog(stateSnapshot(state), 'data:image/png;base64,AA==');
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Open QQ Music again' })).not.toBeInTheDocument();
+    },
+  );
 
   it('contains keyboard focus and closes on Escape', () => {
     const { cancelQrLogin } = renderDialog(stateSnapshot('guest'));

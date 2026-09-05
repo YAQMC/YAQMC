@@ -143,9 +143,11 @@ describe('SettingsUpdateSection', () => {
           canInstall: true,
           version: '1.2.3',
           releaseUrl: 'https://github.com/YAQMC/YAQMC/releases',
+          releaseNotes: 'Release notes from the signed feed.',
         }),
       ),
     );
+    expect(screen.getByText('Release notes from the signed feed.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Download update' }));
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(HOST_UPDATER_DOWNLOAD_METHOD));
 

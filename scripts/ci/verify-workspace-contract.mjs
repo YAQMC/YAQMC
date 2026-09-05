@@ -6,6 +6,7 @@ import { QM_API_RS_GIT, QM_API_RS_REV, isPinnedQqmusicApiPackage } from './qm-ap
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const expectedMembers = [
+  ['yaqmc-android', 'crates/yaqmc-android/Cargo.toml'],
   ['yaqmc-core', 'crates/yaqmc-core/Cargo.toml'],
   ['yaqmc-protocol', 'crates/yaqmc-protocol/Cargo.toml'],
   ['yaqmc-provider-api', 'crates/yaqmc-provider-api/Cargo.toml'],

@@ -2,9 +2,10 @@
 
 > [简体中文](zh-CN/development.md) | **English**
 
-YAQMC has three build layers: the React renderer, the Electron Main/preload
-host, and the Rust Core process. Native development builds all three; browser
-development intentionally substitutes the deterministic fake provider.
+YAQMC has a shared React renderer and Rust Core with two native hosts. Electron
+uses Main/preload plus a supervised Core process; Android embeds Core through
+JNI in a Capacitor host. Browser development intentionally substitutes the
+deterministic fake provider.
 
 ## Required toolchain
 
@@ -13,6 +14,8 @@ development intentionally substitutes the deterministic fake provider.
 - Windows: MSVC build tools;
 - Debian/Ubuntu: ALSA development headers for native audio, plus `rpm` and
   `fakeroot` when producing every Linux package format.
+- Android: JDK 21, Android SDK/build tools 36, NDK 28.2.13676358, and
+  cargo-ndk 4.1.2. Android Studio 2025.2.1 or newer is recommended.
 
 The repository pins Node in `package.json`, `package-lock.json`, and
 `.node-version`. Check `node --version` before interpreting JavaScript or
@@ -75,6 +78,22 @@ must use the matching Rust target and the CI packaging matrix; renaming an
 artifact does not change its architecture. Local builds must always keep
 `--publish never`.
 
+## Android build
+
+Android debug builds include ARM64 and an x86_64 emulator library. Published
+release APKs contain ARM64 only.
+
+```powershell
+npm ci
+npm run android:check
+npm run android:build:debug
+```
+
+Release signing is injected only through the `release-signing` environment in
+CI. A local release build must use the same four `ANDROID_RELEASE_*`
+environment variables; never put those values in a tracked Gradle file. See
+the [Android guide](android.md).
+
 ## Verification
 
 ```powershell
@@ -91,6 +110,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --all-targets --locked
 npm run contracts:check
+npm run android:check
 ```
 
 Ignored Rust tests can contact live services or produce audible output. Do not

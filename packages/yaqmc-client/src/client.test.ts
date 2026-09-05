@@ -187,6 +187,32 @@ describe('YaqmcClient', () => {
     client.dispose();
   });
 
+  it('retains only the newest cold-start deep link until the app subscribes', () => {
+    const handlers = new Map<string, Array<(payload: unknown) => void>>();
+    const bridge = testBridge();
+    bridge.listen = (channel, handler) => {
+      const list = handlers.get(channel) ?? [];
+      list.push(handler as (payload: unknown) => void);
+      handlers.set(channel, list);
+      return () => undefined;
+    };
+    const client = new YaqmcClient(bridge);
+    const first = { providerId: 'qqmusic', entityId: 'qqmusic:track:first' };
+    const newest = { providerId: 'qqmusic', entityId: 'qqmusic:track:newest' };
+    for (const handler of handlers.get('app://open-catalog-song') ?? []) {
+      handler(first);
+      handler(newest);
+    }
+
+    const seen: ChannelPayload['app://open-catalog-song'][] = [];
+    client.on('app://open-catalog-song', (payload) => seen.push(payload));
+    expect(seen).toEqual([newest]);
+
+    client.on('app://open-catalog-song', (payload) => seen.push(payload));
+    expect(seen).toEqual([newest]);
+    client.dispose();
+  });
+
   it('resync pulls the §14.5 snapshot set and re-emits player/lyrics channels', async () => {
     const invoked: Array<{ method: MethodName; params: unknown }> = [];
     const client = new YaqmcClient(testBridge(invoked));

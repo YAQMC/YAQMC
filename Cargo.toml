@@ -1,11 +1,17 @@
 [workspace]
 members = [
     "crates/yaqmc-core",
+    "crates/yaqmc-android",
     "crates/yaqmc-protocol",
     "crates/yaqmc-provider-api",
     "crates/yaqmc-provider-qqmusic",
 ]
 resolver = "2"
+
+# Keep the pinned qm-api revision reproducible while testing the coordinated
+# login error classification changes in the sibling checkout.
+[patch."https://github.com/YAQMC/qm-api-rs.git"]
+qqmusic-api = { path = "../qm-api-rs" }
 
 [workspace.package]
 edition = "2021"

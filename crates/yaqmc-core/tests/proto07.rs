@@ -102,10 +102,44 @@ fn prepare_returns_allowlist_and_cancel_consumes_the_attempt() {
         assert!(allowlist
             .iter()
             .any(|entry| entry.as_str() == Some("https://graph.qq.com/**")));
+        let callback_matcher = reqwest::Url::parse(
+            prepared["callbackMatcher"]["urlPrefix"]
+                .as_str()
+                .expect("callback matcher"),
+        )
+        .expect("callback matcher URL");
         assert_eq!(
-            prepared["callbackMatcher"]["urlPrefix"].as_str(),
+            callback_matcher.as_str().split('?').next(),
             Some(OAuthLoginProvider::Qq.callback_url_prefix())
         );
+        let authorization_url = reqwest::Url::parse(url).expect("authorization URL");
+        let authorization_state = authorization_url
+            .query_pairs()
+            .find_map(|(key, value)| (key == "state").then(|| value.into_owned()))
+            .expect("authorization state");
+        let callback_query = callback_matcher
+            .query_pairs()
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(callback_query.get("state"), Some(&authorization_state));
+        assert_eq!(
+            callback_query.get("login_type").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            callback_query.get("surl").map(String::as_str),
+            Some("https://y.qq.com/")
+        );
+        let mobile_url = reqwest::Url::parse(
+            prepared["mobileUrl"]
+                .as_str()
+                .expect("mobile authorization URL"),
+        )
+        .expect("mobile authorization URL");
+        assert_eq!(mobile_url.path(), "/oauth2.0/authorize");
+        assert!(prepared["externalNavigationRules"]
+            .as_array()
+            .is_some_and(|rules| !rules.is_empty()));
         let parsed: Vec<String> = allowlist
             .iter()
             .map(|entry| entry.as_str().expect("glob").to_owned())

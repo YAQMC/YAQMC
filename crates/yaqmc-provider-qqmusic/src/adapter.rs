@@ -218,6 +218,13 @@ impl api::ProviderAccount for QQMusicService {
         map_output(value)
     }
 
+    async fn start_mobile_login(&self) -> api::ProviderResult<api::AccountSnapshot> {
+        let value = QQMusicService::start_mobile_login(self)
+            .await
+            .map_err(provider_error)?;
+        map_output(value)
+    }
+
     async fn prepare_oauth_login(
         &self,
         provider: api::OAuthLoginProvider,
@@ -230,7 +237,18 @@ impl api::ProviderAccount for QQMusicService {
         Ok(api::OAuthPrepareResult {
             attempt_id: result.attempt_id,
             url: result.url,
+            mobile_url: result.mobile_url,
             navigation_allowlist: result.navigation_allowlist,
+            external_navigation_rules: result
+                .external_navigation_rules
+                .into_iter()
+                .map(|rule| api::OAuthExternalNavigationRule {
+                    scheme: rule.scheme,
+                    host: rule.host,
+                    path: rule.path,
+                    android_packages: rule.android_packages,
+                })
+                .collect(),
             callback_matcher: api::OAuthCallbackMatcher {
                 url_prefix: result.callback_matcher.url_prefix,
             },

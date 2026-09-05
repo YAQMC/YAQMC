@@ -39,12 +39,14 @@ import { PlaybackModeControl } from './PlaybackModeControl';
 import { useTranslation } from 'react-i18next';
 import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
+import { isAndroidRuntime, supportsLyricsSurfaces } from '../application/host-capabilities';
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { usePreferencesStore } from '../application/preferences';
 import type { AudioQuality, AudioQualityPreference, QualityCapabilityState } from '../domain/music';
 import { EntityLink } from './EntityLink';
-import { ActionMenu } from './ui/ActionMenu';
+import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import { SongShareMenuItems } from './SongShareActions';
+import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
 
 function VolumeIcon({ muted, volume }: { muted: boolean; volume: number }) {
   if (muted || volume === 0) return <VolumeX size={17} />;
@@ -249,6 +251,7 @@ export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
   const { t: common } = useTranslation('common');
   const pluginBar = usePluginUiSnapshot().playerBar;
   const current = useCurrentSong();
+  const compact = useCompactPlayerLayout();
   const provider = useContext(ProviderContext);
   const accountProvider = provider && isAccountMusicProvider(provider) ? provider : null;
   const accountSnapshot = useAccountStore((state) => state.snapshot);
@@ -376,18 +379,52 @@ export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
                 </small>
               )}
             </div>
-            <IconButton
-              label={favoriteLabel}
+            {!compact && (
+              <IconButton
+                label={favoriteLabel}
+                size="small"
+                active={favorite}
+                disabled={!favoriteAvailable || favoritePending}
+                onClick={() => {
+                  if (accountProvider) void setFavorite(accountProvider, current, !favorite);
+                }}
+              >
+                <Heart size={15} fill={favorite ? 'currentColor' : 'none'} />
+              </IconButton>
+            )}
+            <ActionMenu
+              label={t('moreActions', { title: current.title })}
               size="small"
-              active={favorite}
-              disabled={!favoriteAvailable || favoritePending}
-              onClick={() => {
-                if (accountProvider) void setFavorite(accountProvider, current, !favorite);
-              }}
+              className="player-bar__more"
             >
-              <Heart size={15} fill={favorite ? 'currentColor' : 'none'} />
-            </IconButton>
-            <ActionMenu label={t('moreActions', { title: current.title })} size="small">
+              {compact && (
+                <ActionMenuItem
+                  disabled={!favoriteAvailable || favoritePending}
+                  onClick={() => {
+                    if (accountProvider) return setFavorite(accountProvider, current, !favorite);
+                  }}
+                >
+                  {favoriteLabel}
+                </ActionMenuItem>
+              )}
+              {compact && (
+                <ActionMenuItem onClick={onToggleQueue ?? toggleQueue}>
+                  {t('showQueue')}
+                </ActionMenuItem>
+              )}
+              {compact &&
+                qualityOptions.map((option) => (
+                  <ActionMenuItem
+                    key={option.value}
+                    disabled={
+                      current.provider?.providerId !== 'qqmusic' || Boolean(option.disabled)
+                    }
+                    onClick={() => setQuality(option.value)}
+                  >
+                    {selectedQuality === option.value ? '✓ ' : ''}
+                    {t('qualityMenu')}: {option.label}
+                  </ActionMenuItem>
+                ))}
               <SongShareMenuItems song={current} />
             </ActionMenu>
           </>
@@ -432,15 +469,17 @@ export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
           className="player-quality-select"
           disabled={!current || current.provider?.providerId !== 'qqmusic'}
         />
-        <IconButton
-          label={desktopEnabled ? t('disableDesktopLyrics') : t('enableDesktopLyrics')}
-          size="small"
-          active={desktopEnabled}
-          disabled={!isNativeRuntime}
-          onClick={() => updateSurface('desktop', { enabled: !desktopEnabled })}
-        >
-          <Mic2 size={16} />
-        </IconButton>
+        {!isAndroidRuntime() && supportsLyricsSurfaces() && (
+          <IconButton
+            label={desktopEnabled ? t('disableDesktopLyrics') : t('enableDesktopLyrics')}
+            size="small"
+            active={desktopEnabled}
+            disabled={!isNativeRuntime || !supportsLyricsSurfaces()}
+            onClick={() => updateSurface('desktop', { enabled: !desktopEnabled })}
+          >
+            <Mic2 size={16} />
+          </IconButton>
+        )}
         <IconButton
           label={t('showQueue')}
           size="small"

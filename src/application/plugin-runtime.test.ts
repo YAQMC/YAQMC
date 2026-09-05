@@ -14,6 +14,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 const pickFileMock = vi.hoisted(() => vi.fn());
 
 vi.mock('./yaqmc-runtime', () => ({
+  getHostBridge: () => ({ kind: 'electron' }),
   getYaqmcClient: () => ({
     invoke: invokeMock,
     on: vi.fn(() => () => undefined),

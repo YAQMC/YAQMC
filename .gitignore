@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-android/
 coverage/
 output/
 /release/
@@ -33,6 +34,19 @@ apps/desktop/resources/core/yaqmc-core
 apps/desktop/resources/core/yaqmc-core.exe
 apps/desktop/resources/core/core.sha256
 apps/desktop/resources/core/manifest.json
+
+# Android generated outputs and local SDK configuration
+apps/android/android/.gradle/
+apps/android/android/build/
+apps/android/android/app/build/
+apps/android/android/app/src/main/assets/
+apps/android/android/app/capacitor.build.gradle
+apps/android/android/capacitor.settings.gradle
+apps/android/android/capacitor-cordova-android-plugins/
+apps/android/android/local.properties
+release-android/
+*.jks
+*.keystore
 
 # Local acceptance reports
 artifacts/perf-baseline.md

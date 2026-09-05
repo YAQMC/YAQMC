@@ -1,10 +1,12 @@
 import type { AccountLoginMethod, OAuthPrepareResult } from '@yaqmc/client';
+import { Buffer } from 'node:buffer';
 
 /** §11.2: `qqmusic-oauth-{attemptId}` */
 export const OAUTH_WINDOW_PREFIX = 'qqmusic-oauth-';
 export const OAUTH_PARTITION_PREFIX = 'oauth:';
 export const OAUTH_WINDOW_WIDTH = 480;
 export const OAUTH_WINDOW_HEIGHT = 640;
+const OAUTH_URL_MAX_BYTES = 8 * 1024;
 
 export type OAuthNavigationEvent = {
   preventDefault(): void;
@@ -327,8 +329,28 @@ function globMatchesUrl(glob: string, href: string, parsed: URL): boolean {
 }
 
 function parseUrl(value: string): URL | undefined {
+  if (
+    value.length === 0 ||
+    Buffer.byteLength(value, 'utf8') > OAUTH_URL_MAX_BYTES ||
+    Array.from(value).some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 31 || codePoint === 127;
+    })
+  ) {
+    return undefined;
+  }
   try {
-    return new URL(value);
+    const parsed = new URL(value);
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.hostname === '' ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      parsed.port !== ''
+    ) {
+      return undefined;
+    }
+    return parsed;
   } catch {
     return undefined;
   }

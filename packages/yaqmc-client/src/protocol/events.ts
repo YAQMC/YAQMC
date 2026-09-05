@@ -111,6 +111,7 @@ export interface UpdatePayload {
   channel: string;
   version?: string;
   releaseUrl?: string;
+  releaseNotes?: string;
   error?: string;
 }
 

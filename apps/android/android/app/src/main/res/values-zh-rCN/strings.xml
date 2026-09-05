@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">YAQMC</string>
+    <string name="oauth_title">登录 QQ 音乐</string>
+    <string name="oauth_back">返回</string>
+    <string name="oauth_close">关闭登录</string>
+    <string name="oauth_load_failed">无法加载登录页面</string>
+    <string name="oauth_load_failed_detail">请检查网络连接，然后重试。</string>
+    <string name="oauth_retry">重试</string>
+    <string name="oauth_app_unavailable">请先安装或启用支持的登录应用，然后重试。</string>
+</resources>

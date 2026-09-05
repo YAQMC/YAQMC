@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Yet Another Q Music Client</strong><br>
-  一个适用于 Windows 和 Linux 的非官方 QQ 音乐桌面客户端。
+  一个适用于 Windows、Linux 和 Android 的非官方 QQ 音乐客户端。
 </p>
 
 <p align="center">
@@ -16,6 +16,7 @@
 <p align="center">
   <a href="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml/badge.svg" alt="CI 状态"></a>
   <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0 或更高版本">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111" alt="React 19">
   <img src="https://img.shields.io/badge/Rust-1.88%2B-000?logo=rust&logoColor=white" alt="Rust 1.88 或更高版本">
 </p>
@@ -27,12 +28,12 @@
 ## 发布状态
 
 > [!WARNING]
-> 本文档描述尚未发布的 Electron `main`。目前最新公开版本 `v0.1.0-beta.6` 使用已经退役的桌面宿主，
+> 本文档描述尚未发布的 Electron `main` 以及正在实现的 Android 宿主。目前最新公开版本 `v0.1.0-beta.6` 使用已经退役的桌面宿主，
 > 其安装包名称、功能和限制均不能代表当前代码。新的 Electron 预览版发布前，没有与本文档完全对应的
 > 公开安装包。
 
-Electron 分支仍处于测试阶段。Windows 已完成本地原生验证；Linux 仍需在真实桌面环境中继续验收。
-每次下载前请先阅读对应 Release 说明，确认其中明确标注为 Electron 构建。
+Electron 分支仍处于测试阶段。Windows 已完成本地原生验证；Linux 与 Android 仍需在真实设备上继续验收。
+每次下载前请先阅读对应 Release 说明，确认平台、架构和验收状态。
 
 ## 安装
 
@@ -58,6 +59,12 @@ Linux 用户：
 - Debian、Ubuntu 可以使用 `.deb`；Fedora、openSUSE 等系统可以使用 `.rpm`。
 - AppImage 不需要安装，添加可执行权限后即可运行。
 
+Android 用户：
+
+- Android 8.0 或更高版本的 ARM64 手机和平板：选择 `android-arm64-v8a` APK。
+- Android 版仅通过 GitHub Release 侧载，不提供 Google Play 或 32 位 APK。
+- 安装前使用同一 Release 中的 `SHA256SUMS-android.txt` 核对文件。
+
 `AMD64`、`x86_64` 和发布名中的 `x64` 指同一种架构。
 
 ## 它能做什么？
@@ -69,7 +76,8 @@ Linux 用户：
 - 根据访客或账号实际拥有的权限选择音质，不伪造会员能力。
 - 可以在播放器右侧的音符菜单中临时切换当前歌曲音质；设置页仍负责之后歌曲的默认音质。
 - 支持账号已获授权的 QQ Music `mflac` 流式解密、边下边播和随机拖动；磁盘缓存只保存密文。
-- 支持媒体快捷键、系统媒体面板、托盘和可选的本地控制 API。
+- 桌面端支持媒体快捷键、系统媒体面板、托盘和可选的本地控制 API；Android 端使用系统媒体通知、
+  锁屏和蓝牙控制。
 
 ### 登录与账号
 
@@ -226,6 +234,7 @@ cargo test --workspace -- --ignored --nocapture
 ### 进一步阅读
 
 - [中文文档总目录](docs/zh-CN/README.md)
+- [Android 使用与构建](docs/zh-CN/android.md)
 - [开发环境](docs/zh-CN/development.md)
 - [数据位置、升级与卸载](docs/zh-CN/data-locations.md)
 - [架构](docs/zh-CN/architecture.md)

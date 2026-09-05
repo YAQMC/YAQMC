@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import { initialPlayerState, usePlayerStore } from '../application/player-store';
@@ -10,6 +10,11 @@ import '../styles/components.css';
 import '../styles/lyrics-scene.css';
 import '../styles/platform.css';
 import { LyricsPanel } from './LyricsPanel';
+
+const layout = vi.hoisted(() => ({ compact: false }));
+vi.mock('../application/use-compact-player-layout', () => ({
+  useCompactPlayerLayout: () => layout.compact,
+}));
 
 vi.mock('../application/yaqmc-runtime', () => ({
   getHostBridge: () => ({ kind: 'electron' }),
@@ -44,6 +49,7 @@ function unsynchronizedDocument(): LyricDocument {
 
 describe('LyricsPanel', () => {
   beforeEach(() => {
+    layout.compact = false;
     resetLyricsStageForTests();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const song = allSongs.find((candidate) => candidate.id === 'quiet-light');
@@ -73,6 +79,7 @@ describe('LyricsPanel', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     vi.restoreAllMocks();
     resetLyricsStageForTests();
@@ -83,6 +90,42 @@ describe('LyricsPanel', () => {
 
     expect(container.querySelector('.lyrics-stage__amll')).toBeInTheDocument();
     expect(container.querySelector('.amll-lyric-player.dom')).toBeInTheDocument();
+  });
+
+  it('reveals auto-hidden lyrics controls when a touch pointer presses the stage', () => {
+    vi.useFakeTimers();
+    useLyricsStore.setState({ document: unsynchronizedDocument(), status: 'ready' });
+    const { container } = render(<LyricsPanel {...props()} />);
+    const stage = screen.getByRole('region', { name: 'Synchronized lyrics' });
+    const chrome = container.querySelector('.lyrics-stage__chrome');
+
+    act(() => vi.advanceTimersByTime(2_400));
+    expect(chrome).toHaveAttribute('data-hidden');
+
+    fireEvent.pointerDown(stage, { pointerType: 'touch', clientY: 200 });
+    expect(chrome).not.toHaveAttribute('data-hidden');
+
+    act(() => vi.advanceTimersByTime(2_400));
+    expect(chrome).toHaveAttribute('data-hidden');
+    vi.useRealTimers();
+  });
+
+  it('keeps compact controls usable without a pointer move and reuses flow widgets', () => {
+    layout.compact = true;
+    vi.useFakeTimers();
+    useLyricsStore.setState({ document: unsynchronizedDocument(), status: 'ready' });
+    const { container, rerender } = render(<LyricsPanel {...props()} />);
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(container.querySelector('.lyrics-scene__transport')).not.toHaveAttribute('data-hidden');
+    expect(container.querySelector('.lyrics-stage__chrome')).not.toHaveAttribute('data-hidden');
+    const songId = container.querySelector('.lyrics-stage')?.getAttribute('data-song-id');
+    for (const widget of container.querySelectorAll<HTMLElement>('.lyrics-scene__widget')) {
+      expect(widget.style.position).not.toBe('absolute');
+    }
+    rerender(<LyricsPanel {...props({ fullscreen: true })} />);
+    expect(container.querySelector('.lyrics-scene__transport')).not.toHaveAttribute('data-hidden');
+    expect(container.querySelector('.lyrics-stage__chrome')).not.toHaveAttribute('data-hidden');
+    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-song-id', songId);
   });
 
   it('passes the selected lyrics font weight into the scene CSS variables', () => {

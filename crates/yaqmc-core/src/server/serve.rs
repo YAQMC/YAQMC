@@ -9,13 +9,10 @@ use tokio::sync::mpsc;
 
 use yaqmc_protocol::{
     core_handshake, CoreIdentity, CoreMessage, CoreTransport, HandshakeError, ProtocolError,
-    ResponseBody, WindowOrigin, CHANNEL_PREFERENCES_CHANGED,
+    WindowOrigin, CHANNEL_PREFERENCES_CHANGED,
 };
 
-use super::{
-    dispatch, spawn_account_restore_fanout, spawn_host_command_fanout, spawn_player_fanout,
-    EventSink, HostDispatchHooks,
-};
+use super::{CoreRuntime, EventSink, HostDispatchHooks};
 use crate::diagnostics::AppSection;
 use crate::platform::PlatformDiagnostics;
 use crate::CoreHandle;
@@ -121,8 +118,6 @@ where
     T: CoreTransport,
     H: HostDispatchHooks + 'static,
 {
-    let host_commands = core.subscribe_host_commands();
-    let system_media = core.start_system_media();
     let attach = core_handshake(&mut transport, identity_from_core(&core)).await?;
     tracing::info!(
         target: "core.protocol",
@@ -130,40 +125,14 @@ where
         "host attached"
     );
 
-    if let Err(error) = core.local_api().start_if_enabled().await {
-        // A persisted bind failure must remain visible through local_api_status,
-        // but it must not prevent the desktop host from attaching.
-        tracing::warn!(
-            target: "local_api",
-            error = %error,
-            "failed to restore the enabled local API listener"
-        );
-    }
-
-    // Electron composition point: position/EOS fan-out lives here.
-    core.player()
-        .start_clock_on_runtime(&tokio::runtime::Handle::current());
-    let core = Arc::new(core);
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
     let (replies_tx, mut replies_rx) = mpsc::unbounded_channel();
     let sink: Arc<dyn EventSink> = Arc::new(ChannelSink {
         sender: events_tx,
         seq: AtomicU64::new(0),
     });
-    let host = Arc::new(StdioNotifyHost::new(host, Arc::clone(&sink)));
-    spawn_player_fanout(
-        &tokio::runtime::Handle::current(),
-        core.player(),
-        core.storage(),
-        system_media,
-        Arc::clone(&sink),
-    );
-    spawn_account_restore_fanout(
-        &tokio::runtime::Handle::current(),
-        Arc::clone(&core),
-        Arc::clone(&sink),
-    );
-    spawn_host_command_fanout(&tokio::runtime::Handle::current(), host_commands, sink);
+    let host = StdioNotifyHost::new(host, Arc::clone(&sink));
+    let runtime = Arc::new(CoreRuntime::start(core, host, sink).await);
 
     let mut events_open = true;
     let mut replies_open = true;
@@ -198,33 +167,15 @@ where
                         // kills a live Core; spawn so core_ping and player events
                         // still flush.
                         let origin = origin.unwrap_or(WindowOrigin::Host);
-                        let core = Arc::clone(&core);
-                        let host = Arc::clone(&host);
+                        let runtime = Arc::clone(&runtime);
                         let replies_tx = replies_tx.clone();
                         tokio::spawn(async move {
-                            let result = dispatch(
-                                core.as_ref(),
-                                host.as_ref(),
-                                origin,
-                                &method,
-                                params,
-                            )
-                            .await;
-                            let body = match result {
-                                Ok(value) => ResponseBody::success(value),
-                                Err(error) => ResponseBody::failure(error.into_core_error()),
-                            };
+                            let body = runtime.invoke(origin, &method, params).await;
                             let _ = replies_tx.send((id, body));
                         });
                     }
                     Ok(CoreMessage::Shutdown { .. }) => {
-                        persist_queue(&core).await;
-                        core.player().stop_clock();
-                        // Mark the plugin journal clean on host Exit.
-                        // Electron's graceful protocol shutdown must do the same,
-                        // or the next boot treats a normal quit as a crash loop.
-                        core.plugins().mark_clean_exit();
-                        core.shutdown();
+                        runtime.shutdown(true).await;
                         transport.send(&CoreMessage::ShutdownAck).await?;
                         break;
                     }
@@ -233,9 +184,7 @@ where
                     }
                     Err(ProtocolError::Closed) => {
                         tracing::info!(target: "core.protocol", "stdin EOF; shutting down");
-                        persist_queue(&core).await;
-                        core.player().stop_clock();
-                        core.shutdown();
+                        runtime.shutdown(false).await;
                         break;
                     }
                     Err(error) => return Err(error),
@@ -244,11 +193,4 @@ where
         }
     }
     Ok(())
-}
-
-async fn persist_queue(core: &CoreHandle) {
-    let snapshot = core.player().snapshot().await;
-    if let Err(error) = core.storage().save_queue(&snapshot) {
-        tracing::warn!(target: "storage", error = %error, "queue persistence failed during shutdown");
-    }
 }

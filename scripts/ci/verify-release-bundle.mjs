@@ -15,6 +15,8 @@ const forbiddenMarkers = [
   'YAQMC_UI_PERF_DIAG',
   'yaqmc-smoke-ok',
   'harness failed to load',
+  'Fake catalog is not attached',
+  'is not implemented on the fake bridge',
 ];
 
 const scannedExtensions = new Set(['.cjs', '.css', '.html', '.js', '.json', '.mjs']);

@@ -1,7 +1,7 @@
 //! Error mapping from the pinned `qqmusic-api` surface into YAQMC errors.
 //! Production A/B signing stays on in-tree MD5 `zzb` (Keep).
 
-use qqmusic_api::{NetworkErrorKind, QmError};
+use qqmusic_api::{NetworkErrorKind, QmError, QrLoginReason};
 
 use crate::qqmusic::QQMusicError;
 
@@ -26,8 +26,17 @@ pub(crate) fn map_qmapi_error(error: QmError) -> QQMusicError {
         QmError::RateLimited => QQMusicError::RateLimited,
         QmError::CredentialExpired(_)
         | QmError::CredentialInvalid(_)
-        | QmError::Login { .. }
         | QmError::CredentialRefresh(_) => QQMusicError::AuthenticationExpired,
+        QmError::QrLogin {
+            reason: QrLoginReason::Refused,
+        } => QQMusicError::AuthorizationRejected,
+        QmError::QrLogin {
+            reason: QrLoginReason::Timeout,
+        } => QQMusicError::Timeout,
+        QmError::QrLogin { .. } => QQMusicError::Protocol,
+        // Generic Login is used for server-side business failures and must
+        // never be rendered as an authorization refusal.
+        QmError::Login { .. } => QQMusicError::Protocol,
         QmError::GlobalApi { .. } | QmError::CgiApi { .. } => QQMusicError::SchemaChanged,
         QmError::SignatureRequired | QmError::Protocol { .. } => QQMusicError::Protocol,
         QmError::Deserialize(_) | QmError::ApiData(_) | QmError::JsonPath(_) => {
@@ -40,7 +49,7 @@ pub(crate) fn map_qmapi_error(error: QmError) -> QQMusicError {
 
 #[cfg(test)]
 mod tests {
-    use qqmusic_api::{NetworkError, NetworkErrorKind, QmError};
+    use qqmusic_api::{NetworkError, NetworkErrorKind, QmError, QrLoginReason};
 
     use super::*;
     #[test]
@@ -66,6 +75,35 @@ mod tests {
         assert!(matches!(
             map_qmapi_error(QmError::CredentialExpired("x".into())),
             QQMusicError::AuthenticationExpired
+        ));
+        assert!(matches!(
+            map_qmapi_error(QmError::QrLogin {
+                reason: QrLoginReason::Refused
+            }),
+            QQMusicError::AuthorizationRejected
+        ));
+        for reason in [
+            QrLoginReason::MissingCredential,
+            QrLoginReason::LoginFailed,
+            QrLoginReason::FlowEnded,
+        ] {
+            assert!(matches!(
+                map_qmapi_error(QmError::QrLogin { reason }),
+                QQMusicError::Protocol
+            ));
+        }
+        assert!(matches!(
+            map_qmapi_error(QmError::QrLogin {
+                reason: QrLoginReason::Timeout
+            }),
+            QQMusicError::Timeout
+        ));
+        assert!(matches!(
+            map_qmapi_error(QmError::Login {
+                message: "loginFailed".into(),
+                code: -1,
+            }),
+            QQMusicError::Protocol
         ));
         assert!(matches!(
             map_qmapi_error(QmError::Http {

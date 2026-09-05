@@ -488,6 +488,7 @@ export type AccountState =
       qrImageDataUri: string;
       expiresAtMs: number;
       pollAfterMs: number;
+      launchUrl?: string;
       profile: null;
       entitlement: null;
     }
@@ -1226,7 +1227,14 @@ export interface PingResult {
 export interface OAuthPrepareResult {
   attemptId: string;
   url: string;
+  mobileUrl?: string | null;
   navigationAllowlist: string[];
+  externalNavigationRules?: Array<{
+    scheme: string;
+    host: string;
+    path: string;
+    androidPackages: string[];
+  }>;
   callbackMatcher: { urlPrefix: string };
 }
 

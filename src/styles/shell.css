@@ -85,9 +85,87 @@
   background: var(--bg);
 }
 
+.app-shell[data-host-kind='android'] {
+  --android-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --android-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --android-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --android-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+
+  height: 100dvh;
+  max-height: 100dvh;
+  grid-template-rows: minmax(0, 1fr) calc(92px + var(--android-safe-bottom));
+  overflow: hidden;
+}
+
+.app-shell[data-host-kind='android'] > .sidebar {
+  padding-top: max(20px, calc(12px + var(--android-safe-top)));
+  padding-bottom: max(14px, calc(8px + var(--android-safe-bottom)));
+  padding-left: max(12px, var(--android-safe-left));
+}
+
+.app-shell[data-host-kind='android'] > .content-shell {
+  grid-template-rows: calc(54px + var(--android-safe-top)) minmax(0, 1fr);
+}
+
+.app-shell[data-host-kind='android'] .topbar {
+  padding-top: var(--android-safe-top);
+  padding-right: max(28px, var(--android-safe-right));
+}
+
+/* The page owns search while it is mounted; the topbar is a shortcut from
+ * other pages, not a second search surface. This applies across orientations. */
+.app-shell[data-host-kind='android']:has(.search-page) .search-trigger {
+  display: none;
+}
+
+.app-shell[data-host-kind='android'] .main-content {
+  overscroll-behavior-y: contain;
+  scroll-padding-block: 12px;
+}
+
+.app-shell[data-host-kind='android'] .search-page__field {
+  min-width: 0;
+}
+
+.app-shell[data-host-kind='android'] .search-page__field input,
+.app-shell[data-host-kind='android'] .search-page__field .icon-button,
+.app-shell[data-host-kind='android'] .search-tabs button {
+  min-height: 44px;
+}
+
+.app-shell[data-host-kind='android'] .search-page__field .icon-button,
+.app-shell[data-host-kind='android'] .search-tabs button {
+  min-width: 44px;
+}
+
+.app-shell[data-host-kind='android'] .search-page__field > svg {
+  flex-shrink: 0;
+}
+
+.app-shell[data-host-kind='android'] .search-results__heading h1,
+.app-shell[data-host-kind='android'] .search-page__intro h1 {
+  overflow-wrap: anywhere;
+}
+
+.app-shell[data-host-kind='android'] > .player-bar {
+  padding-right: max(18px, var(--android-safe-right));
+  padding-bottom: calc(10px + var(--android-safe-bottom));
+}
+
 .app-shell[data-lyrics-focus],
 .app-shell[data-lyrics-fullscreen] {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* The lyrics stage is a modal surface. Keep the underlying shell out of both
+ * hit testing and the accessibility tree while it is open; otherwise its
+ * top-right and bottom controls occupy the same coordinates as lyrics chrome. */
+.app-shell[data-lyrics-open] > .sidebar,
+.app-shell[data-lyrics-open] > .content-shell,
+.app-shell[data-lyrics-open] > .player-bar,
+.app-shell[data-lyrics-open] > .android-bottom-nav {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .app-shell[data-lyrics-focus] > .sidebar,
@@ -385,6 +463,12 @@
   font-size: 0.625rem;
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .search-trigger kbd {
+    display: none;
+  }
+}
+
 .main-content {
   min-width: 0;
   min-height: 0;
@@ -639,6 +723,481 @@
   min-width: 0;
 }
 
+.android-bottom-nav {
+  display: none;
+}
+
+.topbar__account {
+  display: none;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 5px;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  transition:
+    background var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.topbar__account:hover {
+  background: var(--surface-hover);
+}
+
+.topbar__account:focus-visible,
+.sidebar__profile:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.topbar__account:active {
+  transform: scale(0.95);
+}
+
+.topbar__account-avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: #6b7360;
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  object-fit: cover;
+}
+
+/* Android phone portrait: one content column plus persistent player and nav. */
+@media (orientation: portrait) and (max-width: 599px) {
+  .app-shell[data-host-kind='android'] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 72px calc(64px + var(--android-safe-bottom));
+  }
+
+  .app-shell[data-host-kind='android'] > .sidebar {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] > .content-shell {
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-rows: calc(52px + var(--android-safe-top)) minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .app-shell[data-host-kind='android'] > .player-bar {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 72px;
+    padding: 8px max(8px, var(--android-safe-right)) 8px max(8px, var(--android-safe-left));
+  }
+
+  .app-shell[data-host-kind='android'] > .android-bottom-nav {
+    position: relative;
+    z-index: 25;
+    display: flex;
+    grid-column: 1;
+    grid-row: 3;
+    min-height: 64px;
+    padding: 4px max(8px, var(--android-safe-right)) max(4px, var(--android-safe-bottom))
+      max(8px, var(--android-safe-left));
+    border-top: 1px solid var(--border);
+    background: var(--player);
+  }
+
+  .android-bottom-nav__item {
+    display: grid;
+    flex: 1;
+    min-width: 44px;
+    min-height: 48px;
+    place-items: center;
+    align-content: center;
+    gap: 2px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: var(--text-2xs);
+  }
+
+  .android-bottom-nav__item[data-active] {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .app-shell[data-host-kind='android'] .topbar {
+    min-height: 52px;
+    padding: var(--android-safe-top) max(8px, var(--android-safe-right)) 0
+      max(12px, var(--android-safe-left));
+  }
+
+  .app-shell[data-host-kind='android'] .topbar__history {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .topbar__tools {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .app-shell[data-host-kind='android'] .search-trigger {
+    flex: 1;
+    width: auto;
+    min-height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .main-content {
+    min-height: 0;
+    padding-bottom: 8px;
+    overscroll-behavior-y: contain;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__center {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__tools {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .topbar__account {
+    display: grid;
+  }
+
+  .app-shell[data-host-kind='android'] .topbar .icon-button,
+  .app-shell[data-host-kind='android'] .player-bar .icon-button,
+  .app-shell[data-host-kind='android'] .player-bar .action-menu > .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__artwork,
+  .app-shell[data-host-kind='android'] .player-bar__artwork-button {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-controls .playback-mode {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .player-controls {
+    gap: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .player-controls__play {
+    width: 48px;
+    height: 48px;
+    margin-inline: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__track {
+    gap: 4px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-progress {
+    display: none;
+  }
+}
+
+@media (orientation: portrait) and (min-width: 600px) and (max-width: 959px) {
+  .app-shell[data-host-kind='android'] {
+    grid-template-columns: calc(72px + var(--android-safe-left)) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) calc(76px + var(--android-safe-bottom));
+  }
+
+  .app-shell[data-host-kind='android'] > .sidebar {
+    display: flex;
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-items: center;
+    padding: calc(14px + var(--android-safe-top)) 8px calc(14px + var(--android-safe-bottom))
+      calc(8px + var(--android-safe-left));
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__brand {
+    margin: 0 0 22px;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__brand > span:last-child,
+  .app-shell[data-host-kind='android'] .sidebar__item span,
+  .app-shell[data-host-kind='android'] .sidebar__section-label,
+  .app-shell[data-host-kind='android'] .sidebar__profile-copy,
+  .app-shell[data-host-kind='android'] .sidebar__status {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__item {
+    justify-content: center;
+    min-height: 48px;
+    padding: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__nav {
+    width: 100%;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__profile {
+    justify-content: center;
+    padding: 4px;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__item,
+  .app-shell[data-host-kind='android'] .sidebar__profile,
+  .app-shell[data-host-kind='android'] .topbar .icon-button,
+  .app-shell[data-host-kind='android'] .player-bar .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .search-trigger {
+    min-height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] > .content-shell {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .app-shell[data-host-kind='android'] > .player-bar {
+    grid-column: 2;
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding-bottom: calc(10px + var(--android-safe-bottom));
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__center {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__tools,
+  .app-shell[data-host-kind='android'] .player-progress,
+  .app-shell[data-host-kind='android'] .player-controls .playback-mode {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .player-controls__play {
+    width: 48px;
+    height: 48px;
+    margin-inline: 2px;
+  }
+
+  .app-shell[data-host-kind='android'] > .android-bottom-nav {
+    display: none;
+  }
+}
+
+/* Android phone landscape: compact rail and compact player, never desktop chrome. */
+@media (orientation: landscape) and (min-width: 600px) and (max-height: 599px) {
+  .app-shell[data-host-kind='android'] {
+    grid-template-columns: calc(60px + var(--android-safe-left)) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) calc(62px + var(--android-safe-bottom));
+  }
+
+  .app-shell[data-host-kind='android'] > .sidebar {
+    display: flex;
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-items: center;
+    padding: max(6px, var(--android-safe-top)) 6px max(4px, var(--android-safe-bottom))
+      max(6px, var(--android-safe-left));
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__brand {
+    flex-shrink: 0;
+    margin: 0 0 6px;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__brand > span:last-child,
+  .app-shell[data-host-kind='android'] .sidebar__item span,
+  .app-shell[data-host-kind='android'] .sidebar__section-label,
+  .app-shell[data-host-kind='android'] .sidebar__profile-copy,
+  .app-shell[data-host-kind='android'] .sidebar__status {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__nav {
+    width: 100%;
+    gap: 2px;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__item {
+    flex-shrink: 0;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__profile {
+    flex-shrink: 0;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px;
+  }
+
+  .app-shell[data-host-kind='android'] > .content-shell {
+    grid-column: 2;
+    grid-row: 1;
+    grid-template-rows: calc(48px + var(--android-safe-top)) minmax(0, 1fr);
+  }
+
+  .app-shell[data-host-kind='android'] .topbar {
+    min-height: 48px;
+    padding-top: var(--android-safe-top);
+    padding-inline: 12px max(8px, var(--android-safe-right));
+  }
+
+  .app-shell[data-host-kind='android'] .search-trigger {
+    min-height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .topbar__tools {
+    gap: 4px;
+  }
+
+  .app-shell[data-host-kind='android'] .page {
+    padding: 12px max(clamp(16px, 2.5vw, 28px), var(--android-safe-right)) 24px
+      clamp(16px, 2.5vw, 28px);
+  }
+
+  .app-shell[data-host-kind='android'] .search-page__field {
+    max-width: none;
+  }
+
+  .app-shell[data-host-kind='android'] .search-page__intro,
+  .app-shell[data-host-kind='android'] .search-results__heading {
+    margin-top: 20px;
+  }
+
+  .app-shell[data-host-kind='android'] .search-page__intro h1,
+  .app-shell[data-host-kind='android'] .search-results__heading h1 {
+    font-size: clamp(1.5rem, 3.2vw, 2rem);
+    line-height: 1.2;
+  }
+
+  .app-shell[data-host-kind='android'] .search-page .content-section,
+  .app-shell[data-host-kind='android'] .search-tabs {
+    margin-top: 20px;
+  }
+
+  .app-shell[data-host-kind='android'] > .player-bar {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 62px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 6px max(10px, var(--android-safe-right)) calc(6px + var(--android-safe-bottom)) 10px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__center {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__tools,
+  .app-shell[data-host-kind='android'] .player-progress,
+  .app-shell[data-host-kind='android'] .player-controls .playback-mode {
+    display: none;
+  }
+
+  .app-shell[data-host-kind='android'] .topbar .icon-button,
+  .app-shell[data-host-kind='android'] .player-bar .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-controls__play {
+    width: 48px;
+    height: 48px;
+    margin-inline: 2px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-controls {
+    gap: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__track {
+    gap: 6px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__artwork,
+  .app-shell[data-host-kind='android'] .player-bar__artwork-button {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] > .android-bottom-nav {
+    display: none;
+  }
+}
+
+@media (min-width: 840px) {
+  .app-shell[data-host-kind='android'] .android-bottom-nav {
+    display: none;
+  }
+}
+
+/* Android tablet landscape reuses desktop structure with compact dimensions. */
+@media (orientation: landscape) and (min-width: 840px) and (max-width: 1199px) and (min-height: 600px) {
+  .app-shell[data-host-kind='android'] {
+    grid-template-columns: 184px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) calc(82px + var(--android-safe-bottom));
+  }
+
+  .app-shell[data-host-kind='android'] > .content-shell {
+    grid-template-rows: calc(54px + var(--android-safe-top)) minmax(0, 1fr);
+  }
+
+  .app-shell[data-host-kind='android'] > .player-bar {
+    grid-template-columns: minmax(170px, 0.8fr) minmax(300px, 1.25fr) minmax(150px, 0.7fr);
+    padding-block: 6px calc(6px + var(--android-safe-bottom));
+  }
+
+  .app-shell[data-host-kind='android'] .sidebar__item,
+  .app-shell[data-host-kind='android'] .sidebar__profile,
+  .app-shell[data-host-kind='android'] .topbar .icon-button,
+  .app-shell[data-host-kind='android'] .player-bar .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-controls__play {
+    width: 46px;
+    height: 46px;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__tools .player-quality-select {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .app-shell[data-host-kind='android'] .search-trigger {
+    min-height: 44px;
+  }
+}
+
 .player-bar__tools .player-quality-select {
   width: 112px;
   min-width: 112px;
@@ -665,31 +1224,31 @@
 }
 
 @media (max-width: 1420px) {
-  .player-bar__tools .player-quality-select {
+  .app-shell:not([data-host-kind='android']) .player-bar__tools .player-quality-select {
     width: 92px;
     min-width: 92px;
   }
 
-  .volume-control {
+  .app-shell:not([data-host-kind='android']) .volume-control {
     width: 88px;
   }
 }
 
 @media (max-width: 1120px) {
-  .app-shell {
+  .app-shell:not([data-host-kind='android']) {
     grid-template-columns: 196px minmax(0, 1fr);
   }
 
-  .player-bar {
+  .app-shell:not([data-host-kind='android']) > .player-bar {
     grid-template-columns: minmax(180px, 0.8fr) minmax(320px, 1.3fr) minmax(178px, 0.75fr);
     padding-inline: 12px;
   }
 
-  .player-bar__center {
+  .app-shell:not([data-host-kind='android']) .player-bar__center {
     padding-inline: 12px;
   }
 
-  .player-bar__tools .player-quality-select {
+  .app-shell:not([data-host-kind='android']) .player-bar__tools .player-quality-select {
     width: 34px;
     min-width: 34px;
     grid-template-columns: 1fr;
@@ -697,8 +1256,27 @@
     padding: 0;
   }
 
-  .player-bar__tools .player-quality-select > span,
-  .player-bar__tools .player-quality-select > svg:last-child {
+  .app-shell:not([data-host-kind='android']) .player-bar__tools .player-quality-select > span,
+  .app-shell:not([data-host-kind='android'])
+    .player-bar__tools
+    .player-quality-select
+    > svg:last-child {
+    display: none;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 840px) and (max-width: 1199px) and (min-height: 600px) {
+  .app-shell[data-host-kind='android'] .player-bar__tools .player-quality-select {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0;
+  }
+
+  .app-shell[data-host-kind='android'] .player-bar__tools .player-quality-select > span,
+  .app-shell[data-host-kind='android'] .player-bar__tools .player-quality-select > svg:last-child {
     display: none;
   }
 }

@@ -23,6 +23,36 @@ import {
 
 const CALLBACK_PREFIX = 'https://y.qq.com/portal/wx_redirect.html';
 const AUTH_URL = 'https://graph.qq.com/oauth2.0/show?client_id=1';
+
+type OAuthPolicyFixture = {
+  kind: 'allowlist' | 'callback';
+  expected: boolean;
+  url: string;
+  policy: string;
+};
+
+const oauthPolicyFixtures = readFileSync(
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../packages/yaqmc-client/fixtures/oauth-url-policy.tsv',
+  ),
+  'utf8',
+)
+  .trim()
+  .split(/\r?\n/u)
+  .slice(1)
+  .map((line, index): OAuthPolicyFixture => {
+    const [kind, expected, url, policy] = line.split('\t');
+    if (
+      (kind !== 'allowlist' && kind !== 'callback') ||
+      (expected !== 'true' && expected !== 'false') ||
+      url === undefined ||
+      policy === undefined
+    ) {
+      throw new Error(`Invalid OAuth policy fixture at row ${index + 2}`);
+    }
+    return { kind, expected: expected === 'true', url, policy };
+  });
 const PREPARED: OAuthPrepareResult = {
   attemptId: 'attempt-0',
   url: AUTH_URL,
@@ -272,6 +302,18 @@ describe('oauth allowlist globs', () => {
     expect(isOAuthCallbackUrl(callback, 'not a URL')).toBe(false);
     expect(urlMatchesOAuthAllowlist(callback, allowlist)).toBe(true);
   });
+});
+
+describe('shared OAuth URL policy contract', () => {
+  for (const fixture of oauthPolicyFixtures) {
+    it(`${fixture.kind} ${fixture.expected ? 'allows' : 'rejects'} ${fixture.url}`, () => {
+      const actual =
+        fixture.kind === 'allowlist'
+          ? urlMatchesOAuthAllowlist(fixture.url, fixture.policy.split('|'))
+          : isOAuthCallbackUrl(fixture.url, fixture.policy);
+      expect(actual).toBe(fixture.expected);
+    });
+  }
 });
 
 describe('provider-scoped oauth lifecycle', () => {

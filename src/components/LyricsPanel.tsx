@@ -31,6 +31,7 @@ import { ActionMenu } from './ui/ActionMenu';
 import { SongShareMenuItems } from './SongShareActions';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '../application/preferences';
+import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
 import { applySceneBackdrop, resolveLyricsAppearance } from '../application/lyrics-appearance';
 import { useSafeArtworkSource } from '../application/artwork-source';
 import { resolveArtworkSource } from '../application/artwork-resolver';
@@ -91,6 +92,7 @@ function LyricsPanelStage({
   stageState,
 }: LyricsPanelProps & { stageState: LyricsStageState }) {
   noteLyricsPanelCommit();
+  const compact = useCompactPlayerLayout();
   const { t } = useTranslation('lyrics');
   const { t: player } = useTranslation('player');
   const provider = useContext(ProviderContext);
@@ -254,6 +256,7 @@ function LyricsPanelStage({
   useEffect(() => {
     const stageElement = stage.current;
     if (!stageElement) return;
+    if (compact) return;
     let timer: number | null = null;
     const reveal = () => {
       setControlsHidden(false);
@@ -264,19 +267,25 @@ function LyricsPanelStage({
       transportRef.current?.reveal();
       if (!fullscreen || event.clientY <= 56) reveal();
     };
+    const handlePointerDown = (event: PointerEvent) => {
+      transportRef.current?.reveal();
+      if (!fullscreen || event.pointerType !== 'mouse' || event.clientY <= 56) reveal();
+    };
     const handleKeyDown = () => {
       if (fullscreen) reveal();
     };
 
     if (!fullscreen) timer = window.setTimeout(() => setControlsHidden(true), 2_400);
     stageElement.addEventListener('pointermove', handlePointerMove);
+    stageElement.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       stageElement.removeEventListener('pointermove', handlePointerMove);
+      stageElement.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [fullscreen]);
+  }, [compact, fullscreen]);
 
   useEffect(() => {
     const stageElement = stage.current;
@@ -354,7 +363,7 @@ function LyricsPanelStage({
     romanization,
     wordEffect,
     fontWeight,
-    amll,
+    amll: compact ? { ...amll, enableBlur: false, enableScale: false } : amll,
   };
 
   return (
@@ -371,7 +380,7 @@ function LyricsPanelStage({
       data-image-fit={appearance.imageFit}
       data-song-id={currentTrackId ?? undefined}
     >
-      {fullscreen && (
+      {fullscreen && !compact && (
         <LyricsFullscreenTransport ref={transportRef} artworkSource={safeArtworkSource} />
       )}
 
@@ -386,11 +395,12 @@ function LyricsPanelStage({
         bindings={bindings}
         appearance={sceneAppearance}
         mode="runtime"
-        transportHidden={fullscreen || controlsHidden}
+        compact={compact}
+        transportHidden={!compact && (fullscreen || controlsHidden)}
         layoutKey={`${focus}:${fullscreen}`}
       />
 
-      <div className="lyrics-stage__topbar" data-hidden={controlsHidden || undefined}>
+      <div className="lyrics-stage__topbar" data-hidden={(!compact && controlsHidden) || undefined}>
         <IconButton
           label={nextCoverLabel}
           size="large"
@@ -400,7 +410,10 @@ function LyricsPanelStage({
         </IconButton>
       </div>
 
-      <div className="lyrics-stage__chrome" data-hidden={fullscreen || controlsHidden || undefined}>
+      <div
+        className="lyrics-stage__chrome"
+        data-hidden={(!compact && (fullscreen || controlsHidden)) || undefined}
+      >
         <IconButton label={t('collapse')} size="large" onClick={onClose}>
           <ChevronDown size={20} />
         </IconButton>

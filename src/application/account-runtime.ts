@@ -25,6 +25,7 @@ import {
 } from '../providers/music-provider';
 import { CHANNEL_ACCOUNT_CHANGED, CHANNEL_HOST_CORE_STATUS } from '@yaqmc/client';
 import { getHostBridge, getYaqmcClient } from './yaqmc-runtime';
+import { isAndroidRuntime } from './host-capabilities';
 
 export type AccountRuntimeError =
   'network' | 'authorization' | 'secure-store' | 'protocol' | 'unknown';
@@ -68,6 +69,8 @@ export const FAVORITE_OUTCOME_UNKNOWN_MESSAGE =
   'The server could not confirm the library change. Refreshing Favorites.';
 const ACCOUNT_REVALIDATE_INTERVAL_MS = 5 * 60 * 1_000;
 const ACCOUNT_REVALIDATE_MIN_GAP_MS = 60 * 1_000;
+const SESSION_RESTORE_RETRY_MIN_GAP_MS = 5_000;
+const SESSION_RESTORE_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000] as const;
 
 export type PlaylistMutationOperation =
   'create' | 'rename' | 'add' | 'remove' | 'delete' | 'collect' | 'uncollect';
@@ -103,6 +106,7 @@ interface AccountStoreState {
   refreshSnapshot: (provider: AccountMusicProvider) => Promise<void>;
   refreshAccount: (provider: AccountMusicProvider) => Promise<void>;
   startLogin: (provider: AccountMusicProvider, method: AccountLoginMethod) => Promise<void>;
+  reopenLogin: (provider: AccountMusicProvider) => Promise<void>;
   heartbeatLogin: (provider: AccountMusicProvider) => Promise<void>;
   refreshQr: (provider: AccountMusicProvider) => Promise<void>;
   cancelLogin: (provider: AccountMusicProvider) => Promise<void>;
@@ -363,6 +367,12 @@ async function releaseUncommittedOwnership(
 
 function reconcileOwnershipTimers(provider: AccountMusicProvider): void {
   const { dialogOpen, snapshot } = useAccountStore.getState();
+  // The native owner lease is process-scoped; renderer timers must not keep
+  // polling or heartbeating while the Activity/WebView is backgrounded.
+  if (isAndroidRuntime() && document.visibilityState === 'hidden') {
+    clearOwnershipTimers();
+    return;
+  }
   if (snapshot.state === 'restoring-session') {
     if (
       snapshotTimer !== null &&
@@ -388,9 +398,10 @@ function reconcileOwnershipTimers(provider: AccountMusicProvider): void {
 
   const pollAfterMs = Math.min(2_000, Math.max(1_500, owner.pollAfterMs));
   const ownerKey = `${owner.attemptId}\u0000${owner.ownerLeaseId}`;
+  const rendererOwnsLease = !isAndroidRuntime();
   if (
     snapshotTimer !== null &&
-    heartbeatTimer !== null &&
+    (rendererOwnsLease ? heartbeatTimer !== null : heartbeatTimer === null) &&
     timerOwnerKey === ownerKey &&
     timerPollAfterMs === pollAfterMs
   ) {
@@ -402,9 +413,11 @@ function reconcileOwnershipTimers(provider: AccountMusicProvider): void {
   snapshotTimer = window.setInterval(() => {
     void useAccountStore.getState().refreshSnapshot(provider);
   }, pollAfterMs);
-  heartbeatTimer = window.setInterval(() => {
-    void useAccountStore.getState().heartbeatLogin(provider);
-  }, 2_000);
+  if (rendererOwnsLease) {
+    heartbeatTimer = window.setInterval(() => {
+      void useAccountStore.getState().heartbeatLogin(provider);
+    }, 2_000);
+  }
 }
 
 function hydrateAuthenticatedFavoriteAuthority(provider: AccountMusicProvider): void {
@@ -424,6 +437,8 @@ async function runSnapshotRequest(
   busy: boolean,
   onStale?: (snapshot: AccountSnapshot) => Promise<void> | void,
 ): Promise<void> {
+  // A notification/read must not supersede the command that is creating the attempt.
+  if (!busy && useAccountStore.getState().busy) return;
   const generation = ++requestGeneration;
   if (busy) useAccountStore.setState({ busy: true, error: null });
   try {
@@ -467,12 +482,12 @@ async function cancelOwnedAttempt(
   }
 }
 
-function disposeOwnership(provider: AccountMusicProvider): void {
+function disposeOwnership(provider: AccountMusicProvider, cancelNative = true): void {
   const snapshot = useAccountStore.getState().snapshot;
   const id = ownedSnapshot(snapshot)?.attemptId ?? null;
   ++requestGeneration;
   clearOwnershipTimers();
-  if (id) {
+  if (id && cancelNative) {
     blockedAttempts.add(id);
     void cancellationRequest(provider, id, undefined).catch(() => undefined);
   }
@@ -930,7 +945,20 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       (snapshot) => releaseUncommittedOwnership(provider, snapshot),
     );
   },
+  reopenLogin: async (provider) => {
+    const { snapshot, busy } = get();
+    if (
+      busy ||
+      snapshot.state !== 'waiting-for-scan' ||
+      !snapshot.launchUrl ||
+      !provider.reopenLogin
+    )
+      return;
+    const attemptId = snapshot.attemptId;
+    await runSnapshotRequest(provider, (signal) => provider.reopenLogin!(attemptId, signal), true);
+  },
   heartbeatLogin: async (provider) => {
+    if (get().busy) return;
     const owner = ownedSnapshot(get().snapshot);
     if (!owner || blockedAttempts.has(owner.attemptId)) return;
     const generation = ++requestGeneration;
@@ -1837,7 +1865,7 @@ export async function runTemporaryPlaylistAcceptance(
 export function useAccountRuntime(provider: MusicProvider): void {
   useLayoutEffect(() => {
     resetAccountProjection();
-  }, [provider]);
+  }, [provider.id]);
 
   useEffect(() => {
     if (!isAccountMusicProvider(provider)) return;
@@ -1850,39 +1878,113 @@ export function useAccountRuntime(provider: MusicProvider): void {
     });
     let lastRevalidationAt = Date.now();
     let revalidating = false;
-    const release = () => disposeOwnership(provider);
-    window.addEventListener('pagehide', release);
-    const refreshSnapshot = () => void useAccountStore.getState().refreshSnapshot(provider);
+    let restoreRetryTimer: number | null = null;
+    let restoreRetryAttempt = 0;
+    const refreshSnapshot = () => useAccountStore.getState().refreshSnapshot(provider);
     const stopAccountChanged = getYaqmcClient().on(CHANNEL_ACCOUNT_CHANGED, () => {
       lastRevalidationAt = Date.now();
-      refreshSnapshot();
+      void refreshSnapshot();
     });
-    const revalidate = () => {
-      const now = Date.now();
+    let lastRestoreRetryAt = 0;
+    const isRetryableAndroidRestore = () => {
+      const snapshot = useAccountStore.getState().snapshot;
+      return (
+        isAndroidRuntime() &&
+        (snapshot.state === 'secure-store-unavailable' ||
+          (snapshot.state === 'network-error' && snapshot.attemptId === null))
+      );
+    };
+    const clearRestoreRetry = () => {
+      if (restoreRetryTimer !== null) window.clearTimeout(restoreRetryTimer);
+      restoreRetryTimer = null;
+    };
+    const scheduleRestoreRetry = (delayMs?: number) => {
       if (
-        revalidating ||
+        restoreRetryTimer !== null ||
         document.visibilityState === 'hidden' ||
-        useAccountStore.getState().snapshot.state !== 'authenticated' ||
-        now - lastRevalidationAt < ACCOUNT_REVALIDATE_MIN_GAP_MS
+        !isRetryableAndroidRestore()
       ) {
         return;
       }
+      const retryDelay =
+        delayMs ??
+        SESSION_RESTORE_RETRY_DELAYS_MS[
+          Math.min(restoreRetryAttempt, SESSION_RESTORE_RETRY_DELAYS_MS.length - 1)
+        ] ??
+        SESSION_RESTORE_RETRY_MIN_GAP_MS;
+      restoreRetryTimer = window.setTimeout(
+        () => {
+          restoreRetryTimer = null;
+          revalidate();
+        },
+        Math.max(0, retryDelay),
+      );
+    };
+    const revalidate = () => {
+      const now = Date.now();
+      const snapshot = useAccountStore.getState().snapshot;
+      const snapshotState = snapshot.state;
+      const retrySessionRestore = isRetryableAndroidRestore();
+      const restoreRetryGapMs = now - lastRestoreRetryAt;
+      if (
+        revalidating ||
+        document.visibilityState === 'hidden' ||
+        (snapshotState !== 'authenticated' && !retrySessionRestore) ||
+        (!retrySessionRestore && now - lastRevalidationAt < ACCOUNT_REVALIDATE_MIN_GAP_MS)
+      ) {
+        return;
+      }
+      if (retrySessionRestore && restoreRetryGapMs < SESSION_RESTORE_RETRY_MIN_GAP_MS) {
+        scheduleRestoreRetry(SESSION_RESTORE_RETRY_MIN_GAP_MS - restoreRetryGapMs);
+        return;
+      }
+      clearRestoreRetry();
       revalidating = true;
       lastRevalidationAt = now;
+      if (retrySessionRestore) lastRestoreRetryAt = now;
       void useAccountStore
         .getState()
         .refreshAccount(provider)
         .finally(() => {
           revalidating = false;
+          if (isRetryableAndroidRestore()) {
+            scheduleRestoreRetry();
+            restoreRetryAttempt += 1;
+          } else {
+            restoreRetryAttempt = 0;
+            clearRestoreRetry();
+          }
         });
     };
     const revalidateOnVisible = () => {
-      if (document.visibilityState === 'visible') revalidate();
+      if (isAndroidRuntime() && document.visibilityState !== 'visible') {
+        clearOwnershipTimers();
+        clearRestoreRetry();
+        return;
+      }
+      // Reconcile the active attempt first. This prevents a stale renderer
+      // snapshot from restarting or overriding the native-owned task.
+      void useAccountStore
+        .getState()
+        .refreshSnapshot(provider)
+        .finally(() => {
+          reconcileOwnershipTimers(provider);
+          revalidate();
+        });
+    };
+    const revalidateOnOnline = () => {
+      if (isRetryableAndroidRestore()) {
+        lastRestoreRetryAt = 0;
+        restoreRetryAttempt = 0;
+        clearRestoreRetry();
+      }
+      revalidate();
     };
     window.addEventListener('focus', revalidate);
+    window.addEventListener('online', revalidateOnOnline);
     document.addEventListener('visibilitychange', revalidateOnVisible);
     const revalidationTimer = window.setInterval(revalidate, ACCOUNT_REVALIDATE_INTERVAL_MS);
-    refreshSnapshot();
+    void refreshSnapshot().finally(revalidate);
     reconcileOwnershipTimers(provider);
     hydrateAuthenticatedFavoriteAuthority(provider);
     const stopCoreStatus =
@@ -1898,11 +2000,13 @@ export function useAccountRuntime(provider: MusicProvider): void {
       stopCoreStatus?.();
       stopAccountChanged();
       window.clearInterval(revalidationTimer);
+      clearRestoreRetry();
       window.removeEventListener('focus', revalidate);
+      window.removeEventListener('online', revalidateOnOnline);
       document.removeEventListener('visibilitychange', revalidateOnVisible);
-      window.removeEventListener('pagehide', release);
       unsubscribe();
-      disposeOwnership(provider);
+      // Android owns a bounded, process-scoped task. A renderer remount is not user cancellation.
+      disposeOwnership(provider, !isAndroidRuntime());
       controller.abort();
       if (runtimeProvider === provider) {
         runtimeProvider = null;

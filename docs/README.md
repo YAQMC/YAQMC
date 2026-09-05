@@ -6,7 +6,7 @@ This directory contains the public user, tester, contributor, and release docume
 
 ## Users
 
-- Getting started: [data locations, upgrades, and uninstall](data-locations.md),
+- Getting started: [Android](android.md), [data locations, upgrades, and uninstall](data-locations.md),
   [appearance](appearance.md), and [Linux runtime](linux.md)
 - Browsing and accounts: [authentication](authentication.md), [account library](account-library.md),
   [membership](account-membership.md), [home recommendations](home-recommendations.md), and
@@ -38,7 +38,8 @@ This directory contains the public user, tester, contributor, and release docume
 ## Testing and release
 
 - [CI, caches, and artifacts](ci.md), [logging](logging.md), and [Linux graphics](linux-graphics.md)
-- [Windows acceptance](windows-acceptance.md) and [Linux acceptance](linux-acceptance.md)
+- [Windows acceptance](windows-acceptance.md) and [Linux acceptance](linux-acceptance.md); Android device
+  acceptance is defined in the [Android guide](android.md)
 - [Release and compliance records](release/README.md)
 
 Acceptance records distinguish deterministic checks from real-account and real-device evidence. A pending gate must

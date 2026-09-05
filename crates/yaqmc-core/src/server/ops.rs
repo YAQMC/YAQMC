@@ -16,12 +16,17 @@ use crate::issue_reporter::{self, IssueDraft, IssuePreview};
 use crate::local_api::{LocalApiService, LocalApiStatus};
 use crate::logging::{self, ErrorRecord, LogLevel, LoggingHandle, LOG_LEVEL_SETTING_KEY};
 use crate::player::{PlayerService, PlayerSnapshot, RepeatMode};
+#[cfg(feature = "plugins")]
 use crate::plugin::api::{
     PluginBridgeRequest, PluginEnableRequest, PluginInspectResult, PluginInstallRequest,
     PluginSettingsWrite, PluginUninstallRequest,
 };
-use crate::plugin::host::{ActivePluginResources, ExtensionHost, PluginRecord};
+#[cfg(feature = "plugins")]
+use crate::plugin::host::{ActivePluginResources, PluginRecord};
+#[cfg(feature = "plugins")]
 use crate::plugin::permissions::parse_permission;
+use crate::plugin::ExtensionHost;
+#[cfg(feature = "plugins")]
 use crate::plugin::{PluginDiagnostic, PluginStatus};
 use crate::storage::StorageService;
 use crate::CoreHandle;
@@ -71,6 +76,7 @@ fn stringify(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
+#[cfg(feature = "plugins")]
 pub fn parse_grants(values: &[String]) -> Result<Vec<String>, String> {
     values
         .iter()
@@ -139,6 +145,7 @@ fn map_provider_section(status: ProviderStatus, request: &DiagnosticsRequest) ->
     }
 }
 
+#[cfg(feature = "plugins")]
 fn map_plugin_diagnostic(diagnostic: PluginDiagnostic) -> WirePluginDiagnostic {
     let status = match diagnostic.status {
         PluginStatus::Installed => WirePluginStatus::Installed,
@@ -181,14 +188,17 @@ pub async fn assemble_diagnostics_snapshot(
         app,
     );
     snapshot.lyrics_preset = request.lyrics_preset;
-    snapshot.plugins = plugins
-        .map(|host| {
-            host.diagnostics()
-                .into_iter()
-                .map(map_plugin_diagnostic)
-                .collect()
-        })
-        .unwrap_or_default();
+    #[cfg(feature = "plugins")]
+    {
+        snapshot.plugins = plugins
+            .map(|host| {
+                host.diagnostics()
+                    .into_iter()
+                    .map(map_plugin_diagnostic)
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
     snapshot
 }
 
@@ -199,6 +209,7 @@ pub fn map_provider_section_for_test(
     map_provider_section(status, request)
 }
 
+#[cfg(feature = "plugins")]
 pub fn map_plugin_diagnostic_for_test(diagnostic: PluginDiagnostic) -> WirePluginDiagnostic {
     map_plugin_diagnostic(diagnostic)
 }
@@ -617,6 +628,7 @@ pub async fn issue_reporter_preview(
     issue_reporter::prepare_preview(&draft, &snapshot, &label)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_inspect_path(
     host: &ExtensionHost,
     path: String,
@@ -635,6 +647,7 @@ pub fn plugin_inspect_path(
     })
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_install(
     host: &ExtensionHost,
     request: PluginInstallRequest,
@@ -666,6 +679,7 @@ pub fn plugin_install(
     Ok(record)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_install_from(
     host: &ExtensionHost,
     request: PluginInstallRequest,
@@ -674,6 +688,7 @@ pub fn plugin_install_from(
     plugin_install(host, request, notify)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_set_enabled(
     host: &ExtensionHost,
     request: PluginEnableRequest,
@@ -687,6 +702,7 @@ pub fn plugin_set_enabled(
     Ok(record)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_uninstall(
     host: &ExtensionHost,
     request: PluginUninstallRequest,
@@ -698,6 +714,7 @@ pub fn plugin_uninstall(
     Ok(())
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_set_safe_mode(
     host: &ExtensionHost,
     enabled: bool,
@@ -708,6 +725,7 @@ pub fn plugin_set_safe_mode(
     Ok(host.safe_mode())
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_set_developer_mode(
     host: &ExtensionHost,
     enabled: bool,
@@ -718,6 +736,7 @@ pub fn plugin_set_developer_mode(
     Ok(host.developer_mode())
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_install_unpacked(
     host: &ExtensionHost,
     request: PluginInstallRequest,
@@ -731,6 +750,7 @@ pub fn plugin_install_unpacked(
     Ok(record)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_reload(
     host: &ExtensionHost,
     id: &str,
@@ -741,6 +761,7 @@ pub fn plugin_reload(
     Ok(record)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_read_asset(
     host: &ExtensionHost,
     plugin_id: &str,
@@ -753,6 +774,7 @@ pub fn plugin_read_asset(
     }))
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_settings_set(
     host: &ExtensionHost,
     request: PluginSettingsWrite,
@@ -765,6 +787,7 @@ pub fn plugin_settings_set(
     Ok(value)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_mark_failed(
     host: &ExtensionHost,
     id: &str,
@@ -776,6 +799,7 @@ pub fn plugin_mark_failed(
     Ok(record)
 }
 
+#[cfg(feature = "plugins")]
 pub async fn plugin_bridge(
     host: &ExtensionHost,
     player: &PlayerService,
@@ -784,22 +808,27 @@ pub async fn plugin_bridge(
     crate::plugin::bridge::dispatch_bridge(host, player, &request).await
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_list(host: &ExtensionHost) -> Vec<PluginRecord> {
     host.list()
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_active_resources(host: &ExtensionHost) -> ActivePluginResources {
     host.active_resources()
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_diagnostics(host: &ExtensionHost) -> Vec<PluginDiagnostic> {
     host.diagnostics()
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_runtime_start(host: &ExtensionHost, plugin_id: &str) -> Result<String, String> {
     Ok(host.start_runtime(plugin_id).map_err(stringify)?.token)
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_runtime_stop(host: &ExtensionHost, token: &str) {
     host.stop_runtime(token);
 }
@@ -818,6 +847,7 @@ pub fn live_platform_diagnostics(
     })
 }
 
+#[cfg(feature = "plugins")]
 pub fn plugin_settings_get(host: &ExtensionHost, id: &str) -> Result<Value, String> {
     host.settings_get(id, false).map_err(stringify)
 }

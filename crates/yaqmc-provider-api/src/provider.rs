@@ -106,6 +106,13 @@ pub trait ProviderAccount: Send + Sync {
     ) -> ProviderResult<PlaylistMutationResult>;
 
     async fn start_qr_login(&self) -> ProviderResult<AccountSnapshot>;
+    async fn start_mobile_login(&self) -> ProviderResult<AccountSnapshot> {
+        Err(crate::ProviderCommandError {
+            code: "unsupported-operation".to_owned(),
+            message: "this provider does not support native mobile login".to_owned(),
+            retryable: false,
+        })
+    }
     async fn prepare_oauth_login(
         &self,
         provider: OAuthLoginProvider,

@@ -548,12 +548,23 @@ pub struct OAuthCallbackMatcher {
     pub url_prefix: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthExternalNavigationRule {
+    pub scheme: String,
+    pub host: String,
+    pub path: String,
+    pub android_packages: Vec<String>,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthPrepareResult {
     pub attempt_id: String,
     pub url: String,
+    pub mobile_url: Option<String>,
     pub navigation_allowlist: Vec<String>,
+    pub external_navigation_rules: Vec<OAuthExternalNavigationRule>,
     pub callback_matcher: OAuthCallbackMatcher,
     #[serde(skip)]
     pub snapshot: crate::AccountSnapshot,

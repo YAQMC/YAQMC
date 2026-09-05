@@ -2,8 +2,9 @@
 
 > **简体中文** | [English](../development.md)
 
-YAQMC 包含三层构建：React renderer、Electron Main/preload 宿主，以及独立的
-Rust Core 进程。原生开发会构建三层；浏览器开发固定使用确定性 fake provider。
+YAQMC 由共享的 React renderer、Rust Core 和两个原生宿主组成。Electron 使用
+Main/preload 与受监管的 Core 子进程；Android 通过 JNI 在 Capacitor 宿主中嵌入
+Core。浏览器开发固定使用确定性 fake provider。
 
 ## 必需工具链
 
@@ -12,6 +13,8 @@ Rust Core 进程。原生开发会构建三层；浏览器开发固定使用确�
 - Windows：MSVC 构建工具；
 - Debian/Ubuntu：原生音频所需 ALSA 开发头；若生成全部 Linux 包格式，还需
   `rpm` 与 `fakeroot`。
+- Android：JDK 21、Android SDK/Build Tools 36、NDK 28.2.13676358 和
+  cargo-ndk 4.1.2；推荐 Android Studio 2025.2.1 或更高版本。
 
 Node 版本同时钉在 `package.json`、`package-lock.json` 与 `.node-version`。
 解释 JavaScript/TypeScript 失败前先检查 `node --version`。
@@ -70,6 +73,21 @@ npm run package -w @yaqmc/desktop -- --publish never
 这只生成当前主机架构。跨架构包必须使用对应 Rust target 与 CI 打包矩阵；修改
 文件名不会改变二进制架构。本机构建必须始终保留 `--publish never`。
 
+## Android 构建
+
+Android debug 构建同时包含 ARM64 和 x86_64 模拟器库；公开的 Release APK
+仅包含 ARM64。
+
+```powershell
+npm ci
+npm run android:check
+npm run android:build:debug
+```
+
+Release 签名只通过 CI 的 `release-signing` Environment 注入。本地 Release
+构建也必须使用同样的四个 `ANDROID_RELEASE_*` 环境变量，禁止将其写入受 Git
+跟踪的 Gradle 文件。详见 [Android 指南](android.md)。
+
 ## 验证
 
 ```powershell
@@ -86,6 +104,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --all-targets --locked
 npm run contracts:check
+npm run android:check
 ```
 
 被忽略的 Rust 测试可能连接真实服务或产生可听音频，不能在 CI 中运行，也不能

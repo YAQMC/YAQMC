@@ -16,6 +16,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 function metadataWithTargetDirectory(targetDirectory) {
   const members = [
+    ['yaqmc-android', 'crates/yaqmc-android/Cargo.toml'],
     ['yaqmc-core', 'crates/yaqmc-core/Cargo.toml'],
     ['yaqmc-protocol', 'crates/yaqmc-protocol/Cargo.toml'],
     ['yaqmc-provider-api', 'crates/yaqmc-provider-api/Cargo.toml'],

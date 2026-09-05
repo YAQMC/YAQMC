@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  releaseAccountDialogOwnership,
-  useAccountStore,
-  type AccountRuntimeError,
-} from '../application/account-runtime';
+import { useAccountStore, type AccountRuntimeError } from '../application/account-runtime';
+import { isAndroidPhoneRuntime } from '../application/host-capabilities';
 import { useMusicProvider } from '../application/provider-context';
 import type { AccountLoginMethodDescriptor, AccountSnapshot } from '../domain/music';
 import { isAccountMusicProvider } from '../providers/music-provider';
+import '../styles/account-dialog.css';
 
 const FALLBACK_LOGIN_METHODS: readonly AccountLoginMethodDescriptor[] = [
   { id: 'qq', label: 'QQ', flow: 'oauth' },
@@ -58,6 +56,7 @@ function stateMessage(
     case 'starting-login':
       return t('starting');
     case 'waiting-for-scan':
+      if (snapshot.launchUrl) return t('waitingMobileScan');
       return t('waitingScan', { provider: providerName });
     case 'waiting-for-confirmation':
       return t('waitingConfirmation');
@@ -93,10 +92,15 @@ export function AccountDialog() {
   const error = useAccountStore((state) => state.error);
   const closeDialog = useAccountStore((state) => state.closeDialog);
   const startLogin = useAccountStore((state) => state.startLogin);
+  const reopenLogin = useAccountStore((state) => state.reopenLogin);
+  const refreshQr = useAccountStore((state) => state.refreshQr);
   const cancelLogin = useAccountStore((state) => state.cancelLogin);
+  const signOut = useAccountStore((state) => state.signOut);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const accountProvider = isAccountMusicProvider(provider) ? provider : null;
+  const usesQqMusicPhoneLogin = provider.id === 'qqmusic' && isAndroidPhoneRuntime();
+  const providerLabel = provider.id === 'qqmusic' ? 'QQ 音乐' : provider.displayName;
   const [loadedLoginMethods, setLoadedLoginMethods] = useState<{
     provider: NonNullable<typeof accountProvider>;
     methods: readonly AccountLoginMethodDescriptor[];
@@ -106,6 +110,9 @@ export function AccountDialog() {
       ? loadedLoginMethods.methods
       : []
     : FALLBACK_LOGIN_METHODS;
+  const visibleLoginMethods = usesQqMusicPhoneLogin
+    ? loginMethods.filter((method) => method.id !== 'wechat')
+    : loginMethods;
 
   useEffect(() => {
     if (!dialogOpen || !accountProvider?.getLoginMethods) return;
@@ -127,19 +134,6 @@ export function AccountDialog() {
     if (dialogOpen) closeRef.current?.focus();
   }, [dialogOpen]);
 
-  useEffect(
-    () => () => {
-      if (
-        accountProvider &&
-        useAccountStore.getState().dialogOpen &&
-        isOwnedState(useAccountStore.getState().snapshot)
-      ) {
-        releaseAccountDialogOwnership(accountProvider);
-      }
-    },
-    [accountProvider],
-  );
-
   if (!dialogOpen || !accountProvider) return null;
 
   const qrImage =
@@ -149,6 +143,13 @@ export function AccountDialog() {
       ? 'protocol'
       : error;
   const waiting = isOwnedState(snapshot);
+  // The active contract, not the current orientation, determines the authorization route.
+  const canReopen = Boolean(
+    qrImage &&
+    snapshot.state === 'waiting-for-scan' &&
+    snapshot.launchUrl &&
+    accountProvider.reopenLogin,
+  );
   const canStart =
     snapshot.state === 'guest' ||
     snapshot.state === 'cancelled' ||
@@ -158,6 +159,12 @@ export function AccountDialog() {
     snapshot.state === 'expired' ||
     snapshot.state === 'session-expired' ||
     snapshot.state === 'reauthentication-required';
+  const terminal =
+    snapshot.state === 'cancelled' ||
+    snapshot.state === 'rejected' ||
+    snapshot.state === 'network-error' ||
+    snapshot.state === 'protocol-error' ||
+    snapshot.state === 'expired';
 
   const close = () => void closeDialog(accountProvider);
   const trapFocus = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -192,41 +199,62 @@ export function AccountDialog() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="account-dialog-title"
+        data-login-state={snapshot.state}
         onKeyDown={trapFocus}
       >
         <header className="account-dialog__header">
           <div>
             <p>{t('eyebrow')}</p>
-            <h2 id="account-dialog-title">{t('title', { provider: provider.displayName })}</h2>
+            <h2 id="account-dialog-title">{t('title', { provider: providerLabel })}</h2>
           </div>
           <button
             ref={closeRef}
             type="button"
             className="button button--quiet account-dialog__close"
+            aria-label={common('close')}
             onClick={close}
           >
-            {common('close')}
+            <span className="account-dialog__close-glyph" aria-hidden="true">
+              ×
+            </span>
           </button>
         </header>
 
         <div className="account-dialog__body">
+          <p role="status" aria-live="polite">
+            {stateMessage(snapshot, effectiveError, t, providerLabel)}
+          </p>
           {qrImage && (
             <div className="account-dialog__qr">
-              <img src={qrImage} alt={t('scanAlt', { provider: provider.displayName })} />
+              <img src={qrImage} alt={t('scanAlt', { provider: providerLabel })} />
             </div>
           )}
-          <p role="status">{stateMessage(snapshot, effectiveError, t, provider.displayName)}</p>
+          {canReopen && (
+            <small className="account-dialog__notice">{t('mobileCurrentQrNotice')}</small>
+          )}
           {canStart && (
             <small className="account-dialog__notice">
-              {t('oauthNotice', { provider: provider.displayName })}
+              {t(usesQqMusicPhoneLogin ? 'mobileQqNotice' : 'oauthNotice', {
+                provider: providerLabel,
+              })}
             </small>
           )}
           {busy && <small>{t('busy')}</small>}
         </div>
 
         <footer className="account-dialog__actions">
+          {canReopen && (
+            <button
+              type="button"
+              className="button button--primary"
+              disabled={busy}
+              onClick={() => void reopenLogin(accountProvider)}
+            >
+              {t('reopenQqMusicApp')}
+            </button>
+          )}
           {canStart &&
-            loginMethods.map((method, index) => (
+            visibleLoginMethods.map((method, index) => (
               <button
                 key={method.id}
                 type="button"
@@ -235,12 +263,24 @@ export function AccountDialog() {
                 onClick={() => void startLogin(accountProvider, method.id)}
               >
                 {method.id === 'qq'
-                  ? t('signInQq')
+                  ? terminal
+                    ? t('retry')
+                    : t(usesQqMusicPhoneLogin ? 'signInQqMusicApp' : 'signInQq')
                   : method.id === 'wechat'
                     ? t('signInWechat')
                     : method.label}
               </button>
             ))}
+          {snapshot.state === 'expired' && !usesQqMusicPhoneLogin && (
+            <button
+              type="button"
+              className="button button--secondary"
+              disabled={busy}
+              onClick={() => void refreshQr(accountProvider)}
+            >
+              {t('refresh')}
+            </button>
+          )}
           {waiting && (
             <button
               type="button"
@@ -249,6 +289,16 @@ export function AccountDialog() {
               onClick={() => void cancelLogin(accountProvider)}
             >
               {t('cancel')}
+            </button>
+          )}
+          {snapshot.state === 'authenticated' && (
+            <button
+              type="button"
+              className="button button--secondary"
+              disabled={busy}
+              onClick={() => void signOut(accountProvider)}
+            >
+              {busy ? t('signingOut') : t('signOut')}
             </button>
           )}
         </footer>

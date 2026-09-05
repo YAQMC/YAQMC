@@ -73,8 +73,9 @@ export function updateStatusCopy(payload: UpdatePayload): string {
   }
 }
 
-export function SettingsUpdateSection() {
+export function SettingsUpdateSection({ mode = 'install' }: { mode?: 'install' | 'notify' }) {
   const [payload, setPayload] = useState<UpdatePayload>(IDLE_UPDATE_PAYLOAD);
+  const notifyOnly = mode === 'notify';
 
   useEffect(() => {
     return getYaqmcClient().on(CHANNEL_HOST_UPDATE, (next) => {
@@ -176,7 +177,14 @@ export function SettingsUpdateSection() {
           <div className="settings-row">
             <div>
               <strong>Release page</strong>
-              <span>deb / rpm / tar.gz builds cannot update in place.</span>
+              <span>
+                {notifyOnly
+                  ? 'Android opens the signed APK on GitHub Releases and never installs it automatically.'
+                  : 'deb / rpm / tar.gz builds cannot update in place.'}
+              </span>
+              {payload.releaseNotes ? (
+                <p className="settings-update-notes">{payload.releaseNotes}</p>
+              ) : null}
             </div>
             <button
               type="button"

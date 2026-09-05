@@ -7,6 +7,10 @@ pub mod credentials;
 pub mod diagnostics;
 pub mod fullscreen_watch;
 pub mod issue_reporter;
+#[cfg(feature = "local-api")]
+pub mod local_api;
+#[cfg(not(feature = "local-api"))]
+#[path = "local_api_unavailable.rs"]
 pub mod local_api;
 pub mod logging;
 pub mod media;
@@ -20,6 +24,10 @@ pub mod server;
 pub mod statistics;
 pub mod storage;
 pub mod streaming;
+#[cfg(feature = "system-media")]
+pub mod system_media;
+#[cfg(not(feature = "system-media"))]
+#[path = "system_media_unavailable.rs"]
 pub mod system_media;
 
 mod bootstrap;

@@ -4,6 +4,7 @@ export type AppRoute =
   | { page: 'home' }
   | { page: 'search'; query?: string }
   | { page: 'explore' }
+  | { page: 'library' }
   | { page: 'favorites' }
   | { page: 'account-playlists' }
   | { page: 'account-playlist'; playlist: AccountPlaylistSummary }
@@ -32,4 +33,15 @@ export function scopeCatalogRoute(route: AppRoute, providerId: string): AppRoute
 
 export function isPrimaryRoute(route: AppRoute, page: AppRoute['page']): boolean {
   return route.page === page;
+}
+
+export function isLibraryRoute(route: AppRoute): boolean {
+  return [
+    'library',
+    'favorites',
+    'account-playlists',
+    'account-playlist',
+    'account-recent',
+    'statistics',
+  ].includes(route.page);
 }

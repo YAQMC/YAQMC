@@ -326,6 +326,8 @@ pub enum AccountState {
         expires_at_ms: u64,
         #[serde(rename = "pollAfterMs")]
         poll_after_ms: u64,
+        #[serde(rename = "launchUrl", default, skip_serializing_if = "Option::is_none")]
+        launch_url: Option<String>,
         profile: (),
         entitlement: (),
     },

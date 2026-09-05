@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AccountSnapshot, HomeFeed, LibrarySnapshot } from '../domain/music';
+import {
+  ProviderError,
+  type AccountSnapshot,
+  type HomeFeed,
+  type LibrarySnapshot,
+} from '../domain/music';
 import { useAccountStore } from './account-runtime';
 import { useMusicProvider } from './provider-context';
 
-export type CatalogState =
+type CatalogDataState =
   | { status: 'loading'; home: null; library: null; message: null }
   | { status: 'ready'; home: HomeFeed; library: LibrarySnapshot; message: null }
   | { status: 'error'; home: null; library: null; message: string };
+
+export type CatalogState = CatalogDataState & { retry: () => void };
 
 const HOME_REFRESH_MS = 15 * 60 * 1_000;
 
@@ -37,12 +44,17 @@ export function useCatalog(): CatalogState {
     provider: typeof provider;
     key: string;
   } | null>(null);
-  const [state, setState] = useState<CatalogState>({
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<CatalogDataState>({
     status: 'loading',
     home: null,
     library: null,
     message: null,
   });
+  const retry = useCallback(() => {
+    setState({ status: 'loading', home: null, library: null, message: null });
+    setAttempt((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -63,16 +75,26 @@ export function useCatalog(): CatalogState {
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
+        const message =
+          error instanceof ProviderError
+            ? error.code === 'offline'
+              ? t('offline')
+              : error.code === 'timeout'
+                ? t('timeout')
+                : error.code === 'rate-limited'
+                  ? t('rateLimited')
+                  : t('catalogFailed')
+            : t('catalogFailed');
         setState({
           status: 'error',
           home: null,
           library: null,
-          message: t('catalogFailed'),
+          message,
         });
       });
 
     return () => controller.abort();
-  }, [provider, t]);
+  }, [attempt, provider, t]);
 
   useEffect(() => {
     const previous = previousAccount.current;
@@ -109,5 +131,21 @@ export function useCatalog(): CatalogState {
     return () => window.clearInterval(interval);
   }, [provider]);
 
-  return state;
+  useEffect(() => {
+    if (state.status !== 'error') return;
+    let retried = false;
+    const retryAfterConnectivityChange = () => {
+      if (retried || document.visibilityState !== 'visible') return;
+      retried = true;
+      retry();
+    };
+    window.addEventListener('online', retryAfterConnectivityChange);
+    document.addEventListener('visibilitychange', retryAfterConnectivityChange);
+    return () => {
+      window.removeEventListener('online', retryAfterConnectivityChange);
+      document.removeEventListener('visibilitychange', retryAfterConnectivityChange);
+    };
+  }, [retry, state.status]);
+
+  return { ...state, retry };
 }

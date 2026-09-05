@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">YAQMC</string>
+    <string name="oauth_title">Sign in to QQ Music</string>
+    <string name="oauth_back">Go back</string>
+    <string name="oauth_close">Close sign-in</string>
+    <string name="oauth_load_failed">Couldn\'t load the sign-in page</string>
+    <string name="oauth_load_failed_detail">Check your internet connection, then try again.</string>
+    <string name="oauth_retry">Retry</string>
+    <string name="oauth_app_unavailable">Install or enable the supported sign-in app, then try again.</string>
+</resources>

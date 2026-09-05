@@ -68,7 +68,9 @@ import {
   saveAsNewPreset,
 } from '../application/lyrics-preset';
 import { isNativeRuntime } from '../application/native-player-runtime';
+import { hostCapabilities, supportsLyricsSurfaces } from '../application/host-capabilities';
 import { useProviderSettings } from '../application/provider-settings';
+import { isAndroidRuntime } from '../application/host-capabilities';
 import { usePlatformIntegration } from '../application/platform-integration';
 import { openProductLink } from '../application/external-links';
 import { buildMetadata, productMetadata, type ProductLink } from '../application/product-metadata';
@@ -118,15 +120,17 @@ function SettingsSection({
   title,
   description,
   action,
+  className = '',
   children,
 }: {
   title: string;
   description: string;
   action?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="settings-section">
+    <section className={`settings-section ${className}`.trim()}>
       <div className="settings-section__heading">
         <div>
           <h2>{title}</h2>
@@ -687,6 +691,7 @@ export function SettingsPage() {
   const { t: common } = useTranslation('common');
   const { t: errors } = useTranslation('errors');
   const api = useLocalApiSettings();
+  const host = hostCapabilities();
   const musicProvider = useMusicProvider();
   const provider = useProviderSettings(musicProvider.id);
   const providerSelection = useMusicProviderSelection();
@@ -735,7 +740,7 @@ export function SettingsPage() {
   const visibleTokenDraft = tokenTouched ? tokenDraft : (apiToken ?? '');
 
   useEffect(() => {
-    if (!isNativeRuntime) return;
+    if (!supportsLyricsSurfaces()) return;
     void getYaqmcClient()
       .invoke('lyrics_surface_capabilities')
       .then(setCapabilities)
@@ -755,11 +760,11 @@ export function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!isNativeRuntime || !packagedConsoleForward) return;
+    if (!isNativeRuntime || host.updateMode !== 'install' || !packagedConsoleForward) return;
     void currentConsoleForwardMode()
       .then(setConsoleForwardState)
       .catch(() => setConsoleForwardState('error'));
-  }, [packagedConsoleForward]);
+  }, [host.updateMode, packagedConsoleForward]);
 
   const changeLogLevel = async (next: LogLevel) => {
     setDiagnosticsBusy(true);
@@ -882,7 +887,11 @@ export function SettingsPage() {
     { value: 'default', label: t('appearance.backgroundDefault') },
     { value: 'artwork', label: t('appearance.backgroundArtwork') },
     { value: 'color', label: t('appearance.backgroundColor') },
-    { value: 'image', label: t('appearance.backgroundImage'), disabled: !isNativeRuntime },
+    {
+      value: 'image',
+      label: t('appearance.backgroundImage'),
+      disabled: !isNativeRuntime || !hostCapabilities().fileImport,
+    },
   ];
   const fitOptions: readonly SelectOption<typeof preferences.appearance.backgroundFit>[] = [
     { value: 'cover', label: t('appearance.fitCover') },
@@ -1129,7 +1138,12 @@ export function SettingsPage() {
   const accountNeedsReauthentication =
     accountSnapshot.state === 'session-expired' ||
     accountSnapshot.state === 'reauthentication-required';
-  const rendererLabel = platform.diagnostics ? 'Electron / Chromium' : t('about.browserPreview');
+  const android = isAndroidRuntime();
+  const rendererLabel = platform.diagnostics
+    ? platform.diagnostics.os === 'android'
+      ? t('about.androidWebView')
+      : 'Electron / Chromium'
+    : t('about.browserPreview');
   const aboutLinks: Array<{ id: ProductLink; label: string }> = [
     { id: 'repository', label: t('about.repository') },
     { id: 'releases', label: t('about.releases') },
@@ -1564,59 +1578,66 @@ export function SettingsPage() {
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        title={t('surfaces.title')}
-        description={t('surfaces.description')}
-        action={
-          lockedSurfaceKinds.length > 0 ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              disabled={unlockingAll}
-              onClick={() => void unlockAllSurfaces()}
-            >
-              <Unlock size={14} />
-              {unlockingAll ? t('surfaces.unlockingAll') : t('surfaces.unlockAll')}
-            </button>
-          ) : undefined
-        }
-      >
-        <SurfaceCapabilityBanner
-          capabilities={surfaceCapabilitiesFromDiagnostics(platform.diagnostics) ?? capabilities}
-        />
-        <div className="settings-card settings-card--surfaces">
-          <SurfaceSettingsPanel
-            kind="desktop"
-            supported={capabilities?.desktop ?? isNativeRuntime}
+      {host.lyricsSurfaces && (
+        <SettingsSection
+          title={t('surfaces.title')}
+          description={t('surfaces.description')}
+          action={
+            lockedSurfaceKinds.length > 0 ? (
+              <button
+                type="button"
+                className="button button--secondary"
+                disabled={unlockingAll}
+                onClick={() => void unlockAllSurfaces()}
+              >
+                <Unlock size={14} />
+                {unlockingAll ? t('surfaces.unlockingAll') : t('surfaces.unlockAll')}
+              </button>
+            ) : undefined
+          }
+        >
+          <SurfaceCapabilityBanner
+            capabilities={surfaceCapabilitiesFromDiagnostics(platform.diagnostics) ?? capabilities}
           />
-          <SurfaceSettingsPanel kind="island" supported={capabilities?.island ?? isNativeRuntime} />
-        </div>
-      </SettingsSection>
+          <div className="settings-card settings-card--surfaces">
+            <SurfaceSettingsPanel
+              kind="desktop"
+              supported={host.lyricsSurfaces && (capabilities?.desktop ?? true)}
+            />
+            <SurfaceSettingsPanel
+              kind="island"
+              supported={host.lyricsSurfaces && (capabilities?.island ?? true)}
+            />
+          </div>
+        </SettingsSection>
+      )}
 
       <SettingsSection title={t('playback.title')} description={t('playback.description')}>
         <div className="settings-card">
-          <SettingRow
-            title={t('playback.audioOutput')}
-            description={
-              resolvedOutput
-                ? `${t('playback.audioOutputDescription')} ${t('playback.resolvedOutput', {
-                    device: resolvedOutput.name,
-                    rate: resolvedOutput.sampleRate,
-                    channels: resolvedOutput.channels,
-                  })}`
-                : t('playback.audioOutputDescription')
-            }
-            control={
-              <Select
-                value={selectedOutput}
-                options={outputOptions}
-                onChange={(deviceId) => void provider.setOutputDevice(deviceId)}
-                ariaLabel={t('playback.outputLabel')}
-                icon={Headphones}
-                disabled={!provider.available || provider.busy || provider.devices.length === 0}
-              />
-            }
-          />
+          {!android && (
+            <SettingRow
+              title={t('playback.audioOutput')}
+              description={
+                resolvedOutput
+                  ? `${t('playback.audioOutputDescription')} ${t('playback.resolvedOutput', {
+                      device: resolvedOutput.name,
+                      rate: resolvedOutput.sampleRate,
+                      channels: resolvedOutput.channels,
+                    })}`
+                  : t('playback.audioOutputDescription')
+              }
+              control={
+                <Select
+                  value={selectedOutput}
+                  options={outputOptions}
+                  onChange={(deviceId) => void provider.setOutputDevice(deviceId)}
+                  ariaLabel={t('playback.outputLabel')}
+                  icon={Headphones}
+                  disabled={!provider.available || provider.busy || provider.devices.length === 0}
+                />
+              }
+            />
+          )}
           <SettingRow
             title={t('playback.quality')}
             description={t('playback.qualityDescription')}
@@ -1643,108 +1664,115 @@ export function SettingsPage() {
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        title={t('systemIntegration.title')}
-        description={t('systemIntegration.description')}
-      >
-        <div className="settings-card">
-          <SettingRow
-            title={t('systemIntegration.closeBehavior')}
-            description={t('systemIntegration.closeBehaviorDescription')}
-            control={
-              <Select
-                value={preferences.system.closeBehavior}
-                options={closeBehaviorOptions}
-                onChange={(closeBehavior) => preferences.updateSystem({ closeBehavior })}
-                ariaLabel={t('systemIntegration.closeBehavior')}
-                icon={Monitor}
-                disabled={!isNativeRuntime}
-              />
-            }
-          />
-          <SettingRow
-            title={t('systemIntegration.globalShortcuts')}
-            description={
-              platform.diagnostics?.desktopIntegration.globalShortcutsSupported === false
-                ? t('systemIntegration.shortcutsUnsupported')
-                : t('systemIntegration.shortcutsDescription')
-            }
-            control={
-              <Toggle
-                checked={preferences.system.globalShortcutsEnabled}
-                label={t('systemIntegration.globalShortcuts')}
-                disabled={
-                  !isNativeRuntime ||
-                  platform.busy ||
-                  (platform.diagnostics?.desktopIntegration.globalShortcutsSupported === false &&
-                    !preferences.system.globalShortcutsEnabled)
+      {host.windowControls && (
+        <SettingsSection
+          title={t('systemIntegration.title')}
+          description={t('systemIntegration.description')}
+        >
+          <div className="settings-card">
+            <SettingRow
+              title={t('systemIntegration.closeBehavior')}
+              description={t('systemIntegration.closeBehaviorDescription')}
+              control={
+                <Select
+                  value={preferences.system.closeBehavior}
+                  options={closeBehaviorOptions}
+                  onChange={(closeBehavior) => preferences.updateSystem({ closeBehavior })}
+                  ariaLabel={t('systemIntegration.closeBehavior')}
+                  icon={Monitor}
+                  disabled={!isNativeRuntime}
+                />
+              }
+            />
+            <SettingRow
+              title={t('systemIntegration.globalShortcuts')}
+              description={
+                platform.diagnostics?.desktopIntegration.globalShortcutsSupported === false
+                  ? t('systemIntegration.shortcutsUnsupported')
+                  : t('systemIntegration.shortcutsDescription')
+              }
+              control={
+                <Toggle
+                  checked={preferences.system.globalShortcutsEnabled}
+                  label={t('systemIntegration.globalShortcuts')}
+                  disabled={
+                    !isNativeRuntime ||
+                    platform.busy ||
+                    (platform.diagnostics?.desktopIntegration.globalShortcutsSupported === false &&
+                      !preferences.system.globalShortcutsEnabled)
+                  }
+                  onChange={(enabled) => void changeGlobalShortcuts(enabled)}
+                />
+              }
+            />
+            <SettingRow
+              title={t('systemIntegration.deepLinks')}
+              description={
+                platform.deepLinks?.error
+                  ? t('systemIntegration.deepLinksError')
+                  : platform.deepLinks?.registered
+                    ? t('systemIntegration.deepLinksRegistered')
+                    : t('systemIntegration.deepLinksUnavailable')
+              }
+              control={
+                <Toggle
+                  checked={preferences.system.deepLinksEnabled}
+                  label={t('systemIntegration.deepLinks')}
+                  disabled={!host.deepLinks || platform.deepLinks?.supported === false}
+                  onChange={(deepLinksEnabled) => preferences.updateSystem({ deepLinksEnabled })}
+                />
+              }
+            />
+            {host.updateMode === 'install' && (
+              <SettingRow
+                title={t('systemIntegration.clipboardDeepLinks')}
+                description={t('systemIntegration.clipboardDeepLinksDescription')}
+                control={
+                  <Toggle
+                    checked={preferences.system.clipboardDeepLinksEnabled}
+                    label={t('systemIntegration.clipboardDeepLinks')}
+                    disabled={
+                      !isNativeRuntime ||
+                      !host.deepLinks ||
+                      (!preferences.system.deepLinksEnabled &&
+                        !preferences.system.clipboardDeepLinksEnabled)
+                    }
+                    onChange={(clipboardDeepLinksEnabled) =>
+                      preferences.updateSystem({ clipboardDeepLinksEnabled })
+                    }
+                  />
                 }
-                onChange={(enabled) => void changeGlobalShortcuts(enabled)}
               />
-            }
-          />
-          <SettingRow
-            title={t('systemIntegration.deepLinks')}
-            description={
-              platform.deepLinks?.error
-                ? t('systemIntegration.deepLinksError')
-                : platform.deepLinks?.registered
-                  ? t('systemIntegration.deepLinksRegistered')
-                  : t('systemIntegration.deepLinksUnavailable')
-            }
-            control={
-              <Toggle
-                checked={preferences.system.deepLinksEnabled}
-                label={t('systemIntegration.deepLinks')}
-                disabled={!isNativeRuntime || platform.deepLinks?.supported === false}
-                onChange={(deepLinksEnabled) => preferences.updateSystem({ deepLinksEnabled })}
-              />
-            }
-          />
-          <SettingRow
-            title={t('systemIntegration.clipboardDeepLinks')}
-            description={t('systemIntegration.clipboardDeepLinksDescription')}
-            control={
-              <Toggle
-                checked={preferences.system.clipboardDeepLinksEnabled}
-                label={t('systemIntegration.clipboardDeepLinks')}
-                disabled={
-                  !isNativeRuntime ||
-                  (!preferences.system.deepLinksEnabled &&
-                    !preferences.system.clipboardDeepLinksEnabled)
-                }
-                onChange={(clipboardDeepLinksEnabled) =>
-                  preferences.updateSystem({ clipboardDeepLinksEnabled })
-                }
-              />
-            }
-          />
-          <SettingRow
-            title={t('systemIntegration.platformBackend')}
-            description={t('systemIntegration.platformBackendDescription')}
-            control={
-              <span className="settings-runtime-value">
-                <Keyboard size={14} />
-                {platform.diagnostics
-                  ? [
-                      platform.diagnostics.linux?.displayBackend ?? platform.diagnostics.os,
-                      platform.diagnostics.systemMedia.specification,
-                      platform.diagnostics.desktopIntegration.trayAvailable
-                        ? t('systemIntegration.trayReady')
-                        : t('systemIntegration.trayUnavailable'),
-                    ].join(' · ')
-                  : t('systemIntegration.detecting')}
-              </span>
-            }
-          />
-        </div>
-      </SettingsSection>
+            )}
+            <SettingRow
+              title={t('systemIntegration.platformBackend')}
+              description={t('systemIntegration.platformBackendDescription')}
+              control={
+                <span className="settings-runtime-value">
+                  <Keyboard size={14} />
+                  {platform.diagnostics
+                    ? [
+                        platform.diagnostics.linux?.displayBackend ?? platform.diagnostics.os,
+                        platform.diagnostics.systemMedia.specification,
+                        platform.diagnostics.desktopIntegration.trayAvailable
+                          ? t('systemIntegration.trayReady')
+                          : t('systemIntegration.trayUnavailable'),
+                      ].join(' · ')
+                    : t('systemIntegration.detecting')}
+                </span>
+              }
+            />
+          </div>
+        </SettingsSection>
+      )}
 
-      <SettingsSection title={t('plugins.title')} description={t('plugins.description')}>
-        <div className="settings-card">
-          <PluginManager />
-        </div>
-      </SettingsSection>
+      {host.plugins && (
+        <SettingsSection title={t('plugins.title')} description={t('plugins.description')}>
+          <div className="settings-card">
+            <PluginManager />
+          </div>
+        </SettingsSection>
+      )}
 
       <SettingsSection title={t('diagnostics.title')} description={t('diagnostics.description')}>
         <div className="settings-card">
@@ -1784,46 +1812,50 @@ export function SettingsPage() {
               }
             />
           ) : null}
-          <SettingRow
-            title={t('diagnostics.openFolder')}
-            description={t('diagnostics.openFolderDescription')}
-            control={
-              <button
-                type="button"
-                className="button button--secondary"
-                disabled={!isNativeRuntime || diagnosticsBusy}
-                onClick={() => void handleOpenLogFolder()}
-              >
-                <Folder size={14} /> {t('diagnostics.openFolderAction')}
-              </button>
-            }
-          />
-          <SettingRow
-            title={t('diagnostics.exportBundle')}
-            description={t('diagnostics.exportBundleDescription')}
-            control={
-              <div className="settings-inline-actions">
+          {host.fileExport && (
+            <SettingRow
+              title={t('diagnostics.openFolder')}
+              description={t('diagnostics.openFolderDescription')}
+              control={
                 <button
                   type="button"
                   className="button button--secondary"
                   disabled={!isNativeRuntime || diagnosticsBusy}
-                  onClick={() => void handleExportBundle()}
+                  onClick={() => void handleOpenLogFolder()}
                 >
-                  <FileText size={14} /> {t('diagnostics.exportBundleAction')}
+                  <Folder size={14} /> {t('diagnostics.openFolderAction')}
                 </button>
-                {lastBundle && (
+              }
+            />
+          )}
+          {host.fileExport && (
+            <SettingRow
+              title={t('diagnostics.exportBundle')}
+              description={t('diagnostics.exportBundleDescription')}
+              control={
+                <div className="settings-inline-actions">
                   <button
                     type="button"
-                    className="button button--quiet"
-                    disabled={diagnosticsBusy}
-                    onClick={() => void handleRevealBundle()}
+                    className="button button--secondary"
+                    disabled={!isNativeRuntime || diagnosticsBusy}
+                    onClick={() => void handleExportBundle()}
                   >
-                    <Folder size={14} /> {t('issueReporter.revealBundle')}
+                    <FileText size={14} /> {t('diagnostics.exportBundleAction')}
                   </button>
-                )}
-              </div>
-            }
-          />
+                  {lastBundle && (
+                    <button
+                      type="button"
+                      className="button button--quiet"
+                      disabled={diagnosticsBusy}
+                      onClick={() => void handleRevealBundle()}
+                    >
+                      <Folder size={14} /> {t('issueReporter.revealBundle')}
+                    </button>
+                  )}
+                </div>
+              }
+            />
+          )}
           <SettingRow
             title={t('diagnostics.clearLogs')}
             description={t('diagnostics.clearLogsDescription')}
@@ -1864,20 +1896,22 @@ export function SettingsPage() {
               }
             />
           )}
-          <SettingRow
-            title={t('diagnostics.platformExport')}
-            description={t('diagnostics.platformExportDescription')}
-            control={
-              <button
-                type="button"
-                className="button button--secondary"
-                disabled={!platform.available || platform.busy}
-                onClick={() => void platform.exportDiagnostics()}
-              >
-                <Download size={14} /> {t('diagnostics.platformExportAction')}
-              </button>
-            }
-          />
+          {host.fileExport && (
+            <SettingRow
+              title={t('diagnostics.platformExport')}
+              description={t('diagnostics.platformExportDescription')}
+              control={
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  disabled={!platform.available || platform.busy}
+                  onClick={() => void platform.exportDiagnostics()}
+                >
+                  <Download size={14} /> {t('diagnostics.platformExportAction')}
+                </button>
+              }
+            />
+          )}
         </div>
         {platform.exportPath && (
           <p className="settings-export-path">
@@ -1902,6 +1936,7 @@ export function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
+        className="settings-section--account"
         title={t('account.title')}
         description={t('account.description')}
         action={
@@ -2038,174 +2073,176 @@ export function SettingsPage() {
         )}
       </SettingsSection>
 
-      <SettingsSection
-        title={t('api.title')}
-        description={t('api.description')}
-        action={
-          api.status && (
-            <span className="api-status" data-state={api.status.state}>
-              <i />
-              {api.status.state === 'running'
-                ? t('api.statusRunning')
-                : api.status.state === 'starting'
-                  ? t('api.statusStarting')
-                  : api.status.state === 'error'
-                    ? t('api.statusError')
-                    : t('api.statusDisabled')}
-            </span>
-          )
-        }
-      >
-        {!api.available ? (
-          <div className="settings-notice">
-            <Server size={20} />
-            <div>
-              <strong>{t('api.desktopRequired')}</strong>
-              <p>{t('api.browserUnavailable')}</p>
+      {host.localApi && (
+        <SettingsSection
+          title={t('api.title')}
+          description={t('api.description')}
+          action={
+            api.status && (
+              <span className="api-status" data-state={api.status.state}>
+                <i />
+                {api.status.state === 'running'
+                  ? t('api.statusRunning')
+                  : api.status.state === 'starting'
+                    ? t('api.statusStarting')
+                    : api.status.state === 'error'
+                      ? t('api.statusError')
+                      : t('api.statusDisabled')}
+              </span>
+            )
+          }
+        >
+          {!api.available ? (
+            <div className="settings-notice">
+              <Server size={20} />
+              <div>
+                <strong>{t('api.desktopRequired')}</strong>
+                <p>{t('api.browserUnavailable')}</p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="settings-card">
-            <SettingRow
-              title={t('api.enable')}
-              description={t('api.enableDescription')}
-              control={
-                <Toggle
-                  checked={api.status?.enabled ?? false}
-                  label={t('api.enableLabel')}
-                  disabled={api.busy || !api.status}
-                  onChange={(enabled) => void api.setEnabled(enabled)}
-                />
-              }
-            />
-            <SettingRow
-              title={t('api.endpoint')}
-              description={
-                api.status?.state === 'running'
-                  ? t('api.listening', {
-                      endpoint: `http://${api.status.host}:${api.status.boundPort}`,
-                    })
-                  : t('api.notListening')
-              }
-              control={
-                <form className="port-form" onSubmit={submitPort}>
-                  <span>127.0.0.1:</span>
-                  <input
-                    key={api.status?.configuredPort ?? 19_532}
-                    name="port"
-                    type="number"
-                    min={1_024}
-                    max={65_535}
-                    defaultValue={api.status?.configuredPort ?? 19_532}
+          ) : (
+            <div className="settings-card">
+              <SettingRow
+                title={t('api.enable')}
+                description={t('api.enableDescription')}
+                control={
+                  <Toggle
+                    checked={api.status?.enabled ?? false}
+                    label={t('api.enableLabel')}
                     disabled={api.busy || !api.status}
-                    aria-label={t('api.portLabel')}
+                    onChange={(enabled) => void api.setEnabled(enabled)}
                   />
-                  <button className="button button--secondary" type="submit" disabled={api.busy}>
-                    {common('apply')}
-                  </button>
+                }
+              />
+              <SettingRow
+                title={t('api.endpoint')}
+                description={
+                  api.status?.state === 'running'
+                    ? t('api.listening', {
+                        endpoint: `http://${api.status.host}:${api.status.boundPort}`,
+                      })
+                    : t('api.notListening')
+                }
+                control={
+                  <form className="port-form" onSubmit={submitPort}>
+                    <span>127.0.0.1:</span>
+                    <input
+                      key={api.status?.configuredPort ?? 19_532}
+                      name="port"
+                      type="number"
+                      min={1_024}
+                      max={65_535}
+                      defaultValue={api.status?.configuredPort ?? 19_532}
+                      disabled={api.busy || !api.status}
+                      aria-label={t('api.portLabel')}
+                    />
+                    <button className="button button--secondary" type="submit" disabled={api.busy}>
+                      {common('apply')}
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-icon-button"
+                      onClick={() => void copyEndpoint()}
+                      aria-label={t('api.copyAddress')}
+                    >
+                      <Copy size={16} />
+                    </button>
+                    <span className="port-form__copied" aria-live="polite">
+                      {copied === 'endpoint' ? common('copied') : ''}
+                    </span>
+                  </form>
+                }
+              />
+              <div className="settings-row settings-row--token">
+                <div>
+                  <strong>{t('api.token')}</strong>
+                  <span>{t('api.tokenDescription')}</span>
+                </div>
+                <form className="token-control" onSubmit={submitToken}>
+                  <input
+                    type={tokenVisible ? 'text' : 'password'}
+                    value={visibleTokenDraft}
+                    onChange={(event) => {
+                      setTokenTouched(true);
+                      setTokenDraft(event.target.value);
+                    }}
+                    placeholder={t('api.token')}
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={api.busy}
+                    aria-label={t('api.token')}
+                  />
+                  {api.status?.tokenConfigured && (
+                    <button
+                      type="button"
+                      className="settings-icon-button"
+                      onClick={() => setTokenVisible((visible) => !visible)}
+                      disabled={api.busy}
+                      aria-label={tokenVisible ? t('api.hideToken') : t('api.revealToken')}
+                    >
+                      {tokenVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="settings-icon-button"
-                    onClick={() => void copyEndpoint()}
-                    aria-label={t('api.copyAddress')}
+                    onClick={() => void copyToken()}
+                    disabled={api.busy || !visibleTokenDraft}
+                    aria-label={t('api.copyToken')}
                   >
                     <Copy size={16} />
                   </button>
-                  <span className="port-form__copied" aria-live="polite">
-                    {copied === 'endpoint' ? common('copied') : ''}
+                  <span className="token-control__copied" aria-live="polite">
+                    {copied === 'token' ? common('copied') : ''}
                   </span>
                 </form>
-              }
-            />
-            <div className="settings-row settings-row--token">
-              <div>
-                <strong>{t('api.token')}</strong>
-                <span>{t('api.tokenDescription')}</span>
-              </div>
-              <form className="token-control" onSubmit={submitToken}>
-                <input
-                  type={tokenVisible ? 'text' : 'password'}
-                  value={visibleTokenDraft}
-                  onChange={(event) => {
-                    setTokenTouched(true);
-                    setTokenDraft(event.target.value);
-                  }}
-                  placeholder={t('api.token')}
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={api.busy}
-                  aria-label={t('api.token')}
-                />
-                {api.status?.tokenConfigured && (
+                <div className="token-actions">
                   <button
                     type="button"
-                    className="settings-icon-button"
-                    onClick={() => setTokenVisible((visible) => !visible)}
-                    disabled={api.busy}
-                    aria-label={tokenVisible ? t('api.hideToken') : t('api.revealToken')}
+                    className="button button--secondary"
+                    onClick={() => void saveToken()}
+                    disabled={api.busy || (!tokenTouched && api.status?.tokenConfigured)}
                   >
-                    {tokenVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {t('api.saveToken')}
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="settings-icon-button"
-                  onClick={() => void copyToken()}
-                  disabled={api.busy || !visibleTokenDraft}
-                  aria-label={t('api.copyToken')}
-                >
-                  <Copy size={16} />
-                </button>
-                <span className="token-control__copied" aria-live="polite">
-                  {copied === 'token' ? common('copied') : ''}
-                </span>
-              </form>
-              <div className="token-actions">
-                <button
-                  type="button"
-                  className="button button--secondary"
-                  onClick={() => void saveToken()}
-                  disabled={api.busy || (!tokenTouched && api.status?.tokenConfigured)}
-                >
-                  {t('api.saveToken')}
-                </button>
-                <button
-                  type="button"
-                  className="button button--quiet token-regenerate"
-                  onClick={regenerate}
-                  disabled={api.busy}
-                >
-                  <RotateCcw size={14} /> {t('api.regenerate')}
-                </button>
+                  <button
+                    type="button"
+                    className="button button--quiet token-regenerate"
+                    onClick={regenerate}
+                    disabled={api.busy}
+                  >
+                    <RotateCcw size={14} /> {t('api.regenerate')}
+                  </button>
+                </div>
+              </div>
+              {!api.status?.tokenConfigured && (
+                <p className="settings-token-recommendation">{t('api.tokenRecommendation')}</p>
+              )}
+              <div className="settings-security-note">
+                <ShieldCheck size={17} />
+                <p>{t('api.security')}</p>
               </div>
             </div>
-            {!api.status?.tokenConfigured && (
-              <p className="settings-token-recommendation">{t('api.tokenRecommendation')}</p>
-            )}
-            <div className="settings-security-note">
-              <ShieldCheck size={17} />
-              <p>{t('api.security')}</p>
-            </div>
-          </div>
-        )}
-        {api.error && (
-          <p className="settings-error" title={api.error}>
-            {errors('settingsFailed')}
-          </p>
-        )}
-        {api.available && (
-          <button
-            type="button"
-            className="settings-refresh"
-            onClick={() => void api.refresh()}
-            disabled={api.busy}
-          >
-            <RefreshCw size={13} /> {t('api.refresh')}
-          </button>
-        )}
-      </SettingsSection>
+          )}
+          {api.error && (
+            <p className="settings-error" title={api.error}>
+              {errors('settingsFailed')}
+            </p>
+          )}
+          {api.available && (
+            <button
+              type="button"
+              className="settings-refresh"
+              onClick={() => void api.refresh()}
+              disabled={api.busy}
+            >
+              <RefreshCw size={13} /> {t('api.refresh')}
+            </button>
+          )}
+        </SettingsSection>
+      )}
 
-      <SettingsUpdateSection />
+      {host.updateMode !== 'none' && <SettingsUpdateSection mode={host.updateMode} />}
 
       <SettingsSection title={t('about.title')} description={t('about.description')}>
         <div className="settings-about">

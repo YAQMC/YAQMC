@@ -69,10 +69,10 @@ describe('selectHostBridge', () => {
     Reflect.set(window, 'yaqmc', { invoke, on: vi.fn(() => () => undefined) });
 
     const bridge = selectHostBridge('');
-    await bridge.window.minimize();
-    await bridge.window.toggleMaximize();
-    await bridge.window.close();
-    await bridge.window.setFullscreen(true);
+    await bridge.window!.minimize();
+    await bridge.window!.toggleMaximize();
+    await bridge.window!.close();
+    await bridge.window!.setFullscreen(true);
     await bridge.shell.openExternal('https://github.com/YAQMC/YAQMC');
     await bridge.clipboard?.writeText('share text');
     expect(invoke).toHaveBeenCalledWith('window.minimize');
@@ -123,5 +123,20 @@ describe('selectHostBridge', () => {
 
   it('fails closed instead of showing fixture data when a release preload is missing', () => {
     expect(() => selectHostBridge('', 'release')).toThrow(/preload bridge is unavailable/);
+  });
+
+  it('selects the Android bridge and never fabricates it when release injection is absent', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    Reflect.set(window, 'yaqmc', {
+      invoke,
+      on: vi.fn(() => () => undefined),
+      platform: 'android',
+    });
+    const bridge = selectHostBridge('?platform=android', 'release');
+    expect(bridge.kind).toBe('android');
+    expect(bridge.window).toBeUndefined();
+    expect(bridge.capabilities?.localApi).toBe(false);
+    Reflect.deleteProperty(window, 'yaqmc');
+    expect(() => selectHostBridge('?platform=android', 'release')).toThrow(/Android native bridge/);
   });
 });

@@ -12,8 +12,10 @@ import {
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ThemePreference } from '../application/use-theme';
-import { isNativeRuntime } from '../application/native-player-runtime';
 import { getYaqmcClient } from '../application/yaqmc-runtime';
+import { isNativeRuntime } from '../application/native-player-runtime';
+import { useAccountIdentity } from '../application/account-identity';
+import { AccountAvatar } from './AccountAvatar';
 import { IconButton } from './ui/IconButton';
 
 interface TopBarProps {
@@ -24,6 +26,7 @@ interface TopBarProps {
   onForward: () => void;
   onSearch: () => void;
   onToggleTheme: () => void;
+  onAccount?: () => void;
 }
 
 export function TopBar({
@@ -34,22 +37,27 @@ export function TopBar({
   onForward,
   onSearch,
   onToggleTheme,
+  onAccount,
 }: TopBarProps) {
   const { t } = useTranslation('navigation');
+  const accountIdentity = useAccountIdentity();
   const [maximized, setMaximized] = useState(false);
   const windowHost = () => getYaqmcClient().host.window;
+  const bridge = getYaqmcClient().bridge;
+  const android = bridge?.kind === 'android';
+  const windowControls = bridge?.capabilities?.windowControls ?? (isNativeRuntime && !android);
 
-  const minimize = () => void windowHost().minimize();
+  const minimize = () => void windowHost()?.minimize();
   const toggleMaximize = () => {
     setMaximized((value) => !value);
-    void windowHost().toggleMaximize();
+    void windowHost()?.toggleMaximize();
   };
-  const close = () => void windowHost().close();
+  const close = () => void windowHost()?.close();
 
   return (
     <header className="topbar">
       <span
-        className={isNativeRuntime ? 'topbar__drag yaqmc-drag' : 'topbar__drag'}
+        className={windowControls ? 'topbar__drag yaqmc-drag' : 'topbar__drag'}
         aria-hidden="true"
       />
       <div className="topbar__history yaqmc-no-drag">
@@ -66,10 +74,15 @@ export function TopBar({
         </IconButton>
       </div>
       <div className="topbar__tools yaqmc-no-drag">
-        <button type="button" className="search-trigger" onClick={onSearch}>
+        <button
+          type="button"
+          className="search-trigger"
+          aria-label={t('search')}
+          onClick={onSearch}
+        >
           <Search size={15} />
           <span>{t('searchShortcut')}</span>
-          <kbd>Ctrl K</kbd>
+          {!android && <kbd aria-hidden="true">Ctrl K</kbd>}
         </button>
         <IconButton
           label={theme === 'dark' ? t('useLightTheme') : t('useDarkTheme')}
@@ -78,7 +91,19 @@ export function TopBar({
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </IconButton>
-        {isNativeRuntime && (
+        {onAccount && (
+          <button
+            type="button"
+            className="topbar__account"
+            aria-label={t('openSettings')}
+            title={t('openSettings')}
+            data-yaqmc="account-avatar"
+            onClick={onAccount}
+          >
+            <AccountAvatar identity={accountIdentity} className="topbar__account-avatar" />
+          </button>
+        )}
+        {windowControls && (
           <div className="topbar__window-controls">
             <IconButton label={t('minimizeWindow')} size="small" onClick={minimize}>
               <Minus size={15} />

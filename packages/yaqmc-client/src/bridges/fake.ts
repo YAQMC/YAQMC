@@ -1,3 +1,4 @@
+import { FAKE_HOST_CAPABILITIES } from '../bridge';
 import type {
   HostBridge,
   HostDialogBridge,
@@ -223,6 +224,7 @@ export function createFakeBridge(options?: {
 
   return {
     kind: 'fake',
+    capabilities: FAKE_HOST_CAPABILITIES,
     windowRole: options?.windowRole ?? 'main',
     window: noopWindow(),
     shell: noopShell(),

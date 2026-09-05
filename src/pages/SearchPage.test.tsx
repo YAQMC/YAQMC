@@ -14,6 +14,12 @@ import { FakeMusicProvider } from '../providers/fake/fake-music-provider';
 import { allSongs, homeFeed } from '../providers/fake/fixtures';
 import { SearchPage } from './SearchPage';
 
+const hostRuntime = vi.hoisted(() => ({ android: false }));
+
+vi.mock('../application/host-capabilities', () => ({
+  isAndroidRuntime: () => hostRuntime.android,
+}));
+
 function pagedSong(index: number): Song {
   const fixture = allSongs[0]!;
   return { ...fixture, id: `page-track-${index}`, title: `Page track ${index}` };
@@ -92,6 +98,7 @@ describe('SearchPage', () => {
   const intersectionCallbacks: IntersectionObserverCallback[] = [];
 
   beforeEach(() => {
+    hostRuntime.android = false;
     usePlayerStore.setState(initialPlayerState);
     intersectionCallbacks.length = 0;
     vi.stubGlobal(
@@ -117,6 +124,61 @@ describe('SearchPage', () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it('buffers Android IME composition and lets the keyboard search action submit once', async () => {
+    hostRuntime.android = true;
+    const provider = new FakeMusicProvider();
+    vi.spyOn(provider, 'search').mockImplementation(async (query) => resultFor(query));
+    render(
+      <ProviderContext.Provider value={provider}>
+        <SearchPage feed={homeFeed} onNavigate={() => undefined} />
+      </ProviderContext.Provider>,
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Search music' });
+    expect(input).toHaveAttribute('enterkeyhint', 'search');
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: '周' } });
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 320)));
+    expect(provider.search).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: '周杰伦' } });
+    fireEvent.compositionEnd(input);
+    fireEvent.submit(screen.getByRole('search'));
+    await waitFor(() =>
+      expect(provider.search).toHaveBeenCalledWith(
+        '周杰伦',
+        'song',
+        expect.any(AbortSignal),
+        1,
+        20,
+      ),
+    );
+    expect(provider.search).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces the live query when navigation supplies a different search route', async () => {
+    const provider = new FakeMusicProvider();
+    vi.spyOn(provider, 'search').mockImplementation(async (query) => resultFor(query));
+    const view = (initialQuery: string) => (
+      <ProviderContext.Provider value={provider}>
+        <SearchPage
+          key={`search:${initialQuery}`}
+          initialQuery={initialQuery}
+          feed={homeFeed}
+          onNavigate={() => undefined}
+        />
+      </ProviderContext.Provider>
+    );
+    const { rerender } = render(view('first'));
+
+    await screen.findByText('first result');
+    rerender(view('second'));
+
+    expect(screen.getByRole('textbox', { name: 'Search music' })).toHaveValue('second');
+    await screen.findByText('second result');
+    expect(screen.queryByText('first result')).not.toBeInTheDocument();
+  });
 
   it('automatically appends the next page when the bottom sentinel intersects', async () => {
     const provider = new FakeMusicProvider();
