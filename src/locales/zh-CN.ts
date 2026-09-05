@@ -848,6 +848,7 @@ export const zhCN = {
       uninstall: '卸载',
       unsigned: '未签名 / 本地插件',
       reviewTitle: '核对插件权限',
+      enableReviewDescription: '此插件需要尚未批准的权限。请逐项核对后再启用；取消则保持停用。',
       accept: '安装并启用',
       cancel: '取消',
       close: '关闭',

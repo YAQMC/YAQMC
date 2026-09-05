@@ -180,6 +180,49 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+@media (min-width: 900px) {
+  .app-shell:not([data-host-kind='android']) .home-page .media-grid--hero > .media-card {
+    display: grid;
+    grid-template-columns: clamp(76px, 8vw, 112px) minmax(0, 1fr);
+    align-items: center;
+    align-content: center;
+    gap: 14px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    overflow: visible;
+  }
+
+  .app-shell:not([data-host-kind='android']) .home-page .media-grid--hero .media-card__art {
+    margin: 0;
+  }
+
+  .app-shell:not([data-host-kind='android']) .home-page .media-grid--hero .artwork {
+    box-shadow: none;
+    border-radius: var(--radius-sm);
+  }
+
+  .app-shell:not([data-host-kind='android']) .home-page .media-grid--hero .media-card__title {
+    font-size: var(--text-sm);
+  }
+
+  .app-shell:not([data-host-kind='android']) .home-page .media-grid--hero .media-card__play {
+    top: auto;
+    right: 4px;
+    bottom: 4px;
+    width: 44px;
+    height: 44px;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .app-shell:not([data-host-kind='android']) .home-page .eyebrow {
+    display: none;
+  }
+}
+
 .editorial-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2096,6 +2139,16 @@
 
 .plugin-card__capabilities .plugin-chip {
   margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.plugin-card__capabilities .plugin-chip + .plugin-chip::before {
+  margin-right: 5px;
+  content: '·';
 }
 
 .plugin-card__actions {
@@ -2123,6 +2176,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
+  overflow-wrap: anywhere;
 }
 
 .plugin-review__actions {

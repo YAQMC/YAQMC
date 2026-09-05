@@ -8,7 +8,7 @@ import {
   FolderOpen,
   RefreshCw,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { hasHostCapability } from '../application/host-capabilities';
 import {
@@ -93,8 +93,18 @@ export function PluginManager() {
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [pendingUnpacked, setPendingUnpacked] = useState(false);
   const [grant, setGrant] = useState<string[]>([]);
-  const [details, setDetails] = useState<PluginRecord | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [installedPermissions, setInstalledPermissions] = useState<string[] | null>(null);
+  const [enableReviewId, setEnableReviewId] = useState<string | null>(null);
+  const [enableGrants, setEnableGrants] = useState<string[]>([]);
+  const actionPending = useRef(false);
+  const enableReviewRef = useRef<HTMLElement>(null);
+  const details = plugins.find((plugin) => plugin.id === detailsId) ?? null;
+  const enableReview = plugins.find((plugin) => plugin.id === enableReviewId) ?? null;
+
+  useEffect(() => {
+    if (enableReviewId) enableReviewRef.current?.focus();
+  }, [enableReviewId]);
 
   const refresh = useCallback(async () => {
     if (!hasHostCapability('plugins')) return;
@@ -190,26 +200,50 @@ export function PluginManager() {
     }
   };
 
-  const toggle = async (plugin: PluginRecord, enabled: boolean) => {
+  const toggle = async (
+    plugin: PluginRecord,
+    enabled: boolean,
+    grants = plugin.grantedPermissions,
+  ) => {
+    if (busy || actionPending.current) return;
+    actionPending.current = true;
     setBusy(true);
     setError(null);
     try {
-      await setPluginEnabled(plugin.id, enabled, enabled ? plugin.permissions : []);
+      await setPluginEnabled(plugin.id, enabled, enabled ? grants : []);
+      setEnableReviewId(null);
       await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
+      actionPending.current = false;
       setBusy(false);
     }
   };
 
+  const requestToggle = (plugin: PluginRecord) => {
+    if (
+      !plugin.enabled &&
+      plugin.permissions.some(
+        (permission) =>
+          isSensitivePermission(permission) && !plugin.grantedPermissions.includes(permission),
+      )
+    ) {
+      setEnableReviewId(plugin.id);
+      setEnableGrants([...plugin.grantedPermissions]);
+      return;
+    }
+    void toggle(plugin, !plugin.enabled);
+  };
+
   const remove = async (plugin: PluginRecord) => {
+    if (busy || actionPending.current) return;
     if (!window.confirm(t('uninstallConfirm', { name: plugin.name }))) return;
     const removeData = window.confirm(t('removeDataConfirm'));
     setBusy(true);
     try {
       await uninstallPlugin(plugin.id, removeData);
-      setDetails(null);
+      setDetailsId(null);
       await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -246,6 +280,21 @@ export function PluginManager() {
     }
   };
 
+  const runDetailAction = async (action: () => Promise<unknown>) => {
+    if (busy || actionPending.current) return;
+    actionPending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      actionPending.current = false;
+      setBusy(false);
+    }
+  };
+
   const reviewDelta = inspect
     ? permissionChanges(installedPermissions, inspect.permissions)
     : { added: [], removed: [] };
@@ -261,6 +310,65 @@ export function PluginManager() {
         <p className="settings-error" role="alert">
           {error}
         </p>
+      )}
+      {enableReview && (
+        <section
+          className="plugin-review"
+          aria-label={t('reviewTitle')}
+          ref={enableReviewRef}
+          tabIndex={-1}
+        >
+          <h3>
+            {t('reviewTitle')} · {enableReview.name}
+          </h3>
+          <p>{t('enableReviewDescription')}</p>
+          <ul className="plugin-permissions">
+            {enableReview.permissions.filter(isSensitivePermission).map((permission) => (
+              <li key={permission}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={enableGrants.includes(permission)}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setEnableGrants((current) =>
+                        event.target.checked
+                          ? [...current, permission]
+                          : current.filter((item) => item !== permission),
+                      )
+                    }
+                  />
+                  {permissionLabel(permission, t)}
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="plugin-review__actions">
+            <button
+              type="button"
+              className="button button--quiet"
+              disabled={busy}
+              onClick={() => setEnableReviewId(null)}
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="button"
+              className="button"
+              disabled={
+                busy ||
+                safeMode ||
+                enableReview.permissions.some(
+                  (permission) =>
+                    isSensitivePermission(permission) && !enableGrants.includes(permission),
+                )
+              }
+              onClick={() => void toggle(enableReview, true, enableGrants)}
+            >
+              {t('enable')}
+            </button>
+          </div>
+        </section>
       )}
       <div className="settings-row">
         <div>
@@ -340,7 +448,7 @@ export function PluginManager() {
                   type="button"
                   className="plugin-card__main"
                   aria-label={t('openDetails', { name: plugin.name })}
-                  onClick={() => setDetails(plugin)}
+                  onClick={() => setDetailsId(plugin.id)}
                 >
                   <span className="plugin-card__icon" aria-hidden="true">
                     <Puzzle size={18} />
@@ -372,8 +480,10 @@ export function PluginManager() {
                     type="button"
                     className="button button--quiet plugin-card__toggle"
                     aria-pressed={plugin.enabled}
-                    disabled={busy || plugin.status === 'incompatible'}
-                    onClick={() => void toggle(plugin, !plugin.enabled)}
+                    disabled={
+                      busy || (safeMode && !plugin.enabled) || plugin.status === 'incompatible'
+                    }
+                    onClick={() => requestToggle(plugin)}
                   >
                     <Power size={14} /> {plugin.enabled ? t('disable') : t('enable')}
                   </button>
@@ -446,8 +556,11 @@ export function PluginManager() {
             <button
               type="button"
               className="button button--quiet"
+              disabled={busy}
               onClick={() => {
                 setInspect(null);
+                setPendingPath(null);
+                setPendingUnpacked(false);
                 setInstalledPermissions(null);
               }}
             >
@@ -514,14 +627,24 @@ export function PluginManager() {
             </p>
           )}
           {details.settingsSchema ? (
-            <PluginSettingsForm pluginId={details.id} schema={details.settingsSchema} />
+            <PluginSettingsForm
+              key={details.id}
+              pluginId={details.id}
+              schema={details.settingsSchema}
+            />
           ) : null}
           <div className="plugin-review__actions">
             {developerMode && details.unpackedPath && (
               <button
                 type="button"
                 className="button button--quiet"
-                onClick={() => void reloadPlugin(details.id).then(refresh)}
+                disabled={busy}
+                onClick={() =>
+                  void runDetailAction(async () => {
+                    await reloadPlugin(details.id);
+                    await refresh();
+                  })
+                }
               >
                 <RefreshCw size={14} /> {t('reload')}
               </button>
@@ -529,18 +652,24 @@ export function PluginManager() {
             <button
               type="button"
               className="button button--quiet"
-              onClick={() => void navigator.clipboard.writeText(pluginDiagnosticsText(details))}
+              disabled={busy}
+              onClick={() =>
+                void runDetailAction(() =>
+                  navigator.clipboard.writeText(pluginDiagnosticsText(details)),
+                )
+              }
             >
               <Copy size={14} /> {t('copyDiagnostics')}
             </button>
             <button
               type="button"
               className="button button--quiet"
+              disabled={busy}
               onClick={() => void remove(details)}
             >
               <Trash2 size={14} /> {t('uninstall')}
             </button>
-            <button type="button" className="button" onClick={() => setDetails(null)}>
+            <button type="button" className="button" onClick={() => setDetailsId(null)}>
               {t('close')}
             </button>
           </div>

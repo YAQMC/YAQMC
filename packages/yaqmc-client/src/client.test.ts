@@ -213,23 +213,27 @@ describe('YaqmcClient', () => {
     client.dispose();
   });
 
-  it('resync pulls the §14.5 snapshot set and re-emits player/lyrics channels', async () => {
-    const invoked: Array<{ method: MethodName; params: unknown }> = [];
-    const client = new YaqmcClient(testBridge(invoked));
-    client.markReady();
-    const seen: string[] = [];
-    client.on('player://snapshot', () => seen.push('player://snapshot'));
-    client.on('lyrics://projection', () => seen.push('lyrics://projection'));
-    const pulled = await client.resync();
-    expect(pulled.plugins).toEqual([]);
-    expect(invoked.map((entry) => entry.method).sort()).toEqual([
-      'app_preferences_get',
-      'lyrics_surface_projection',
-      'player_lyrics',
-      'player_snapshot',
-      'plugin_list',
-    ]);
-    expect(seen).toEqual(['player://snapshot', 'lyrics://projection']);
-    client.dispose();
-  });
+  it.each(['electron', 'fake'] as const)(
+    'resync respects %s plugin capabilities and re-emits player/lyrics channels',
+    async (kind) => {
+      const invoked: Array<{ method: MethodName; params: unknown }> = [];
+      const bridge = { ...testBridge(invoked), kind };
+      const client = new YaqmcClient(bridge);
+      client.markReady();
+      const seen: string[] = [];
+      client.on('player://snapshot', () => seen.push('player://snapshot'));
+      client.on('lyrics://projection', () => seen.push('lyrics://projection'));
+      const pulled = await client.resync();
+      expect(pulled.plugins).toEqual([]);
+      expect(invoked.map((entry) => entry.method).sort()).toEqual([
+        'app_preferences_get',
+        'lyrics_surface_projection',
+        'player_lyrics',
+        'player_snapshot',
+        ...(kind === 'electron' ? ['plugin_list'] : []),
+      ]);
+      expect(seen).toEqual(['player://snapshot', 'lyrics://projection']);
+      client.dispose();
+    },
+  );
 });

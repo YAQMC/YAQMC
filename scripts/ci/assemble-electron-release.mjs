@@ -49,7 +49,7 @@ use the published SHA-256 checksums for transport verification.
 - Provider readiness and provenance are enforced before packaging. The exact YAQMC,
   \`qm-api-rs\`, and Apple Music-like Lyrics corresponding-source archives are identified by
   \`CORRESPONDING-SOURCE-MANIFEST.json\`.
-- This draft is not an A→B upgrade rehearsal.
+- This build does not constitute an A→B upgrade rehearsal.
 `;
 
 export function parseAssembleArgs(argv) {

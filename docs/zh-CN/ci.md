@@ -6,10 +6,10 @@
 
 ## 工作流
 
-| 工作流     | 文件                                     | 触发条件                            | 结果                                                                   |
-| ---------- | ---------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
-| CI         | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                                        |
-| YAQMC 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 经过签名门禁的 Windows/Android 包、Linux 包与同一个草稿 GitHub Release |
+| 工作流     | 文件                                     | 触发条件                            | 结果                                                                              |
+| ---------- | ---------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- |
+| CI         | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                                                   |
+| YAQMC 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 经过签名门禁的 Windows/Android 包与 Linux 包；稳定 tag 正式发布，其余运行创建草稿 |
 
 已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
@@ -87,7 +87,9 @@ Linux x64 打包任务还会上传独立的扁平 artifact
 identity、checksums、当前测试/验收说明、采集器和验证器。上传前 CI 会执行
 identity-only 校验；该测试包不会混入 Release 草稿资产。
 
-发布工作流在打包前强制通过 pin、提供器 readiness、provenance、Windows 签名与 Android 签名门禁。它检出依赖的精确 revision，生成绑定 revision 的 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，要求 Android build identity 与同一个 Git commit 一致，生成分平台 checksum 与 `RELEASE-NOTES.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。两者都创建供维护者复核的草稿 Release。
+发布工作流在打包前强制通过 pin、提供器 readiness、provenance、Windows 签名与 Android 签名门禁。它检出依赖的精确 revision，生成绑定 revision 的 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，要求 Android build identity 与同一个 Git commit 一致，生成分平台 checksum 与 `RELEASE-NOTES.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。手动运行和预发布 tag 保持草稿；与项目版本一致的稳定版 `vX.Y.Z` tag 在所有必要任务成功后，将草稿发布为非预发布的正式版并标记为 latest。
+
+签名配置在安装工具链及构建前端之前检查；缺失项只输出名称，不输出值。正式 tag 必须包含 Windows/Linux 的 x64、arm64 完整矩阵、Windows 安装器和便携 EXE、Linux 四种格式、x64 更新源，以及 arm64-v8a Android APK。手动 Windows/Linux 演练可缩小桌面目标，但仍包含 Android。签名凭据未配置时不要创建正式 tag。历史 Release 和 tag 单独核对名称后清理，CI 不会自动删除发布历史。
 
 打包后的 renderer 使用 AGPL 许可的 AMLL 包。组装器会核对精确包版本、许可证、revision、源码入口、
 归档 hash 以及[对应源代码交付政策](../../CORRESPONDING_SOURCE_POLICY.md)中的要求。

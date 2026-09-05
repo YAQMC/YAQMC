@@ -6,10 +6,10 @@ This page describes the desktop and Android GitHub Actions pipelines. Ordinary C
 
 ## Workflows
 
-| Workflow      | File                                     | Trigger                                          | Result                                                                                  |
-| ------------- | ---------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| CI            | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                           |
-| YAQMC release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | signer-gated Windows and Android packages, Linux packages, and one draft GitHub Release |
+| Workflow      | File                                     | Trigger                                          | Result                                                                                                                  |
+| ------------- | ---------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| CI            | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                                                           |
+| YAQMC release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | signer-gated Windows and Android packages plus Linux packages; stable tags publish a Release, other runs create a draft |
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
@@ -106,7 +106,18 @@ builds revision-bound YAQMC, `qm-api-rs`, and AMLL source archives, and writes
 flattens package assets, validates the Android build identity against the same Git commit,
 writes platform checksums plus `RELEASE-NOTES.md`, and keeps only x64 updater feeds as `latest.yml`
 and `latest-linux.yml`. A `v*` push keeps that tag; a manual run uses
-`electron-draft-<run-id>`. Both create a draft release for maintainer review.
+`electron-draft-<run-id>`. Manual runs and prerelease tags remain drafts. A stable
+`vX.Y.Z` tag matching the canonical package version publishes the assembled draft as
+a non-prerelease and marks it latest, only after every required job succeeds.
+
+Signing configuration is checked before toolchain installation and frontend builds;
+missing secrets are reported by name, never by value. Tagged releases require the
+complete Windows and Linux x64/arm64 matrix, both Windows setup and portable EXEs,
+all four Linux formats, x64 updater feeds, and the arm64-v8a Android APK. Manual
+Windows/Linux rehearsals may limit desktop targets but still include Android.
+Do not create a stable tag until signing credentials are configured. Old releases
+and tags are removed separately after checking their exact names; CI does not delete
+release history automatically.
 
 The packaged renderer uses the AGPL-licensed AMLL packages. Assembly verifies their exact package version,
 license, revision, source entry points, archive hash, and the requirements in

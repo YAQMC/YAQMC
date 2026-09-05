@@ -1,18 +1,20 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import {
   choosePluginFile,
   listPlugins,
   pluginHostSafeMode,
+  pluginHostDeveloperMode,
+  reloadPlugin,
   setPluginEnabled,
   setPluginSafeMode,
   type PluginRecord,
 } from '../application/plugin-runtime';
 import { PluginManager } from './PluginManager';
 
-vi.mock('../application/native-player-runtime', () => ({
-  isNativeRuntime: true,
+vi.mock('../application/host-capabilities', () => ({
+  hasHostCapability: (capability: string) => capability === 'plugins',
 }));
 
 vi.mock('../application/plugin-runtime', () => ({
@@ -40,6 +42,8 @@ describe('PluginManager', () => {
     vi.mocked(choosePluginFile).mockReset();
     vi.mocked(setPluginSafeMode).mockReset();
     vi.mocked(setPluginEnabled).mockReset();
+    vi.mocked(pluginHostDeveloperMode).mockResolvedValue(false);
+    vi.mocked(reloadPlugin).mockReset();
   });
 
   it('renders the empty plugin list and install control', async () => {
@@ -127,5 +131,132 @@ describe('PluginManager', () => {
     expect(enable).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(enable);
     await waitFor(() => expect(setPluginEnabled).toHaveBeenCalledWith(plugin.id, true, []));
+  });
+
+  const providerPlugin: PluginRecord = {
+    id: 'dev.yaqmc.test-provider',
+    name: 'Test provider',
+    version: '1.0.0',
+    description: 'Test description',
+    authors: ['Test'],
+    enabled: false,
+    status: 'disabled',
+    apiVersion: 3,
+    packageSha256: 'a'.repeat(64),
+    source: 'local',
+    unsigned: true,
+    entrypoints: { styles: 0, scenes: 0, script: false, component: true },
+    permissions: ['provider.catalog', 'provider.account', 'network:https://example.com'],
+    grantedPermissions: ['provider.catalog'],
+    riskRating: 'high',
+    styleScan: { severity: null, findings: [] },
+    scriptScan: { severity: null, findings: [] },
+    compatible: true,
+    platforms: ['win32'],
+    unpackedPath: '/test/provider',
+  };
+
+  it('never grants previously denied sensitive permissions when enabling a plugin', async () => {
+    vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
+    render(<PluginManager />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
+    const review = screen.getByRole('region', { name: 'Review plugin permissions' });
+    expect(setPluginEnabled).not.toHaveBeenCalled();
+    expect(within(review).getByRole('button', { name: 'Enable' })).toBeDisabled();
+    for (const checkbox of within(review).getAllByRole('checkbox')) {
+      expect(checkbox).not.toBeChecked();
+      fireEvent.click(checkbox);
+    }
+    fireEvent.click(within(review).getByRole('button', { name: 'Enable' }));
+    await waitFor(() =>
+      expect(setPluginEnabled).toHaveBeenCalledWith(
+        providerPlugin.id,
+        true,
+        providerPlugin.permissions,
+      ),
+    );
+  });
+
+  it('preserves existing grants without prompting again and allows cancelling new grants', async () => {
+    vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
+    const view = render(<PluginManager />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      screen.queryByRole('region', { name: 'Review plugin permissions' }),
+    ).not.toBeInTheDocument();
+    expect(setPluginEnabled).not.toHaveBeenCalled();
+    view.unmount();
+    vi.mocked(listPlugins).mockResolvedValue([
+      { ...providerPlugin, grantedPermissions: providerPlugin.permissions },
+    ]);
+    render(<PluginManager />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
+    await waitFor(() =>
+      expect(setPluginEnabled).toHaveBeenCalledWith(
+        providerPlugin.id,
+        true,
+        providerPlugin.permissions,
+      ),
+    );
+    expect(
+      screen.queryByRole('region', { name: 'Review plugin permissions' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('prevents enabling plugins while safe mode is active', async () => {
+    vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
+    vi.mocked(pluginHostSafeMode).mockResolvedValue(true);
+    render(<PluginManager />);
+    const enable = await screen.findByRole('button', { name: 'Enable' });
+    expect(enable).toBeDisabled();
+    fireEvent.click(enable);
+    expect(setPluginEnabled).not.toHaveBeenCalled();
+  });
+
+  it('reports reload failures and prevents concurrent detail mutations', async () => {
+    vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
+    vi.mocked(pluginHostDeveloperMode).mockResolvedValue(true);
+    let rejectReload!: (error: Error) => void;
+    vi.mocked(reloadPlugin).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectReload = reject;
+        }),
+    );
+    render(<PluginManager />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Test provider details' }));
+    const dialog = screen.getByRole('dialog', { name: providerPlugin.name });
+    fireEvent.click(within(dialog).getByRole('button', { name: /reload/i }));
+    expect(within(dialog).getByRole('button', { name: /reload/i })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: /^uninstall$/i })).toBeDisabled();
+    await act(async () => rejectReload(new Error('Component validation failed')));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Component validation failed');
+    expect(within(dialog).getByRole('button', { name: /reload/i })).toBeEnabled();
+  });
+
+  it('refreshes open details after a successful reload', async () => {
+    vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
+    vi.mocked(pluginHostDeveloperMode).mockResolvedValue(true);
+    vi.mocked(reloadPlugin).mockImplementation(async () => {
+      const next = { ...providerPlugin, description: 'Updated description', version: '1.1.0' };
+      vi.mocked(listPlugins).mockResolvedValue([next]);
+      return next;
+    });
+    render(<PluginManager />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Test provider details' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /reload/i }));
+    expect(await screen.findByText('Updated description')).toBeInTheDocument();
+    expect(screen.queryByText('Test description')).not.toBeInTheDocument();
+  });
+
+  it('reports clipboard failures instead of leaving an unhandled rejection', async () => {
+    vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
+    const writeText = vi.fn().mockRejectedValue(new Error('Clipboard permission denied'));
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    render(<PluginManager />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Test provider details' }));
+    fireEvent.click(screen.getByRole('button', { name: /copy plugin diagnostics/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Clipboard permission denied');
   });
 });

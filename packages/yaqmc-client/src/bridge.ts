@@ -44,7 +44,7 @@ export const ANDROID_HOST_CAPABILITIES: Readonly<HostCapabilities> = {
 export const FAKE_HOST_CAPABILITIES: Readonly<HostCapabilities> = {
   windowControls: false,
   lyricsSurfaces: true,
-  plugins: true,
+  plugins: false,
   localApi: true,
   fileExport: true,
   fileImport: false,

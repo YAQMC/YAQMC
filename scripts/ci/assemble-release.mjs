@@ -12,6 +12,8 @@ import {
   androidArtifactName,
 } from './stage-android-release.mjs';
 import { sha256File } from './write-build-info.mjs';
+import { ELECTRON_PACKAGE_TARGETS } from './select-electron-package-matrix.mjs';
+import { electronArtifactNames } from './package-electron.mjs';
 
 export const RELEASE_NOTES_NAME = 'RELEASE-NOTES.md';
 
@@ -109,13 +111,36 @@ export function addAndroidReleaseAssets({
   return { apkName, files: readdirSync(destDir).sort(), version };
 }
 
+export function verifyDesktopReleaseTargets(sourceDir, expectedCommit, targets = 'all') {
+  if (!['all', 'windows', 'linux'].includes(targets)) throw new Error('Invalid release targets');
+  for (const target of ELECTRON_PACKAGE_TARGETS.filter(
+    (entry) => targets === 'all' || entry.os === targets,
+  )) {
+    const directory = path.join(
+      sourceDir,
+      `YAQMC-electron-${target.os}-${target.arch}-${expectedCommit}`,
+    );
+    for (const name of electronArtifactNames(target)) {
+      if (!existsSync(path.join(directory, name))) {
+        throw new Error(`Missing required release artifact: ${name}`);
+      }
+    }
+    if (target.arch === 'x64') {
+      const feed = target.os === 'windows' ? 'latest.yml' : 'latest-linux.yml';
+      if (!existsSync(path.join(directory, feed))) throw new Error(`Missing updater feed: ${feed}`);
+    }
+  }
+}
+
 export function assembleRelease({
   electronSourceDir,
   androidSourceDir,
   correspondingSourceDir,
   destDir,
   expectedCommit,
+  targets = 'all',
 }) {
+  verifyDesktopReleaseTargets(electronSourceDir, expectedCommit, targets);
   const electron = assembleElectronRelease({
     sourceDir: electronSourceDir,
     correspondingSourceDir,
@@ -145,6 +170,7 @@ if (invokedDirectly) {
     correspondingSourceDir: path.resolve(options['source-from']),
     destDir: path.resolve(options.to),
     expectedCommit: options.commit,
+    targets: options.targets || 'all',
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

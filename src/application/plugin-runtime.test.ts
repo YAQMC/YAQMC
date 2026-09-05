@@ -1,6 +1,7 @@
 // @ts-expect-error Vitest runs in Node; the renderer tsconfig does not include Node types.
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
 import {
   choosePluginFile,
   installPlugin,
@@ -8,10 +9,14 @@ import {
   pluginDiagnosticsText,
   pluginWorkerBootstrap,
   setPluginSceneInstance,
+  usePluginHost,
 } from './plugin-runtime';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const pickFileMock = vi.hoisted(() => vi.fn());
+const logErrorMock = vi.hoisted(() => vi.fn());
+
+vi.mock('./logger', () => ({ logger: { error: logErrorMock } }));
 
 vi.mock('./yaqmc-runtime', () => ({
   getHostBridge: () => ({ kind: 'electron' }),
@@ -94,6 +99,17 @@ describe('plugin runtime isolation', () => {
     Reflect.deleteProperty(window, 'yaqmc');
     invokeMock.mockReset();
     pickFileMock.mockReset();
+    logErrorMock.mockReset();
+  });
+
+  it('records resource startup failures instead of leaking unhandled rejections', async () => {
+    const error = new Error('Core unavailable');
+    invokeMock.mockRejectedValueOnce(error);
+    const { unmount } = renderHook(() => usePluginHost());
+    await waitFor(() => {
+      expect(logErrorMock).toHaveBeenCalledWith('plugin.resources.load_failed', error);
+    });
+    unmount();
   });
 
   it('bootstraps workers without host, DOM, or network APIs', () => {

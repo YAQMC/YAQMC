@@ -16,6 +16,10 @@ const song: Song = {
 };
 
 describe('createFakeBridge', () => {
+  it('does not advertise the native plugin runtime it cannot implement', () => {
+    expect(createFakeBridge().capabilities?.plugins).toBe(false);
+  });
+
   it('hydrates, seeks, and fans out player snapshots locally', async () => {
     const bridge = createFakeBridge();
     const seen: number[] = [];

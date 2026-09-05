@@ -68,6 +68,13 @@ export default defineConfig(({ command }) => ({
     host: '127.0.0.1',
     port: 1420,
     strictPort: true,
+    watch: {
+      // Native build outputs can be locked while Cargo/Gradle replaces them on Windows.
+      ignored: [
+        /(?:^|[/\\])(?:target|\.gradle)(?:[/\\]|$)/,
+        /[/\\]apps[/\\]android[/\\]android[/\\](?:app[/\\])?build(?:[/\\]|$)/,
+      ],
+    },
   },
   test: {
     environment: 'jsdom',

@@ -857,6 +857,8 @@ export const enUS = {
       uninstall: 'Uninstall',
       unsigned: 'Unsigned / local plugin',
       reviewTitle: 'Review plugin permissions',
+      enableReviewDescription:
+        'This plugin requires permissions you have not approved. Review each permission before enabling it. Cancel to keep it disabled.',
       accept: 'Install and enable',
       cancel: 'Cancel',
       close: 'Close',

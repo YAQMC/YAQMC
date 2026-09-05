@@ -33,11 +33,24 @@ jobs:
   release-gates:
     name: Provider pin and provenance release gates
     runs-on: ubuntu-latest
+    environment: release-signing
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 26.7.0
+      - name: Validate release version and signing prerequisites
+        env:
+          YAQMC_TARGETS: ${{ inputs.targets || 'all' }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          YAQMC_WINDOWS_SIGNER_SUBJECT: ${{ secrets.YAQMC_WINDOWS_SIGNER_SUBJECT }}
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          ANDROID_RELEASE_CERT_SHA256: ${{ secrets.ANDROID_RELEASE_CERT_SHA256 }}
+        run: node scripts/ci/release-preflight.mjs
       - run: node scripts/ci/qm-api-rs-access.mjs --check
       - run: npm run provider:enforce
       - run: npm run provenance:enforce
@@ -336,6 +349,7 @@ jobs:
           --source-from corresponding-source
           --to assembled
           --commit ${{ github.sha }}
+          --targets ${{ inputs.targets || 'all' }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: YAQMC-release-draft-${{ github.sha }}
@@ -372,3 +386,6 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "YAQMC ${tag} (draft)" \
             --notes-file assembled/RELEASE-NOTES.md
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            gh release edit "$tag" --draft=false --prerelease=false --latest --title "YAQMC $tag"
+          fi

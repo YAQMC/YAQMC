@@ -803,10 +803,13 @@ export function pluginDiagnosticsText(record: PluginRecord): string {
 export function usePluginHost(): void {
   useEffect(() => {
     if (!hasHostCapability('plugins')) return;
-    void applyPluginResources();
-    const unlisten = client.on('plugin://changed', () => {
-      void applyPluginResources();
-    });
+    const refresh = () => {
+      void applyPluginResources().catch((error: unknown) => {
+        logger.error('plugin.resources.load_failed', error);
+      });
+    };
+    refresh();
+    const unlisten = client.on('plugin://changed', refresh);
     const unsubscribePlayer = usePlayerStore.subscribe((state, previous) => {
       const track = state.queue[state.currentIndex ?? -1];
       const previousTrack = previous.queue[previous.currentIndex ?? -1];

@@ -35,6 +35,10 @@ Enable and disable are reversible without restarting YAQMC. The active version i
 not used. API v3 private KV, managed cache, and credential-handle indexes use hashed namespaces, and Components never
 receive their host paths.
 
+Enabling preserves existing permission grants. If a disabled plugin requests sensitive permissions that have not
+been approved, the manager requires explicit review before activation; cancelling keeps it disabled. Safe Mode
+blocks activation. Reload failures are shown in the manager, and open details refresh after a successful reload.
+
 Disabling a Provider plugin cancels calls, revokes its Host context, and unregisters the provider. Re-enabling creates
 a new context. Uninstalling deactivates first and removes private data only when the user selects that option. An
 unclean activation enters safe mode on the next launch.
