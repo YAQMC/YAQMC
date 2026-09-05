@@ -86,4 +86,6 @@ test('Android CI setup uses the JDK required by Capacitor and Gradle', () => {
   );
   assert.match(action, /java-version:\s*'21'/u);
   assert.doesNotMatch(action, /java-version:\s*'17'/u);
+  assert.match(action, /cmdline-tools\/latest\/bin\/sdkmanager/u);
+  assert.doesNotMatch(action, /^\s*yes \| sdkmanager/mu);
 });
