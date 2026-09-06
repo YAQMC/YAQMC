@@ -18,9 +18,6 @@ export function releasePreflight(environment, version) {
     'ANDROID_RELEASE_STORE_PASSWORD',
     'ANDROID_RELEASE_KEY_PASSWORD',
     'ANDROID_RELEASE_CERT_SHA256',
-    ...(targets !== 'linux'
-      ? ['WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD', 'YAQMC_WINDOWS_SIGNER_SUBJECT']
-      : []),
   ];
   const missing = required.filter((name) => !environment[name]?.trim());
   if (missing.length) {

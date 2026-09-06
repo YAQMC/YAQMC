@@ -50,6 +50,17 @@ function releasePublicAssetsPlugin(command: string): Plugin {
 }
 
 export default defineConfig(({ command }) => ({
+  resolve: {
+    alias:
+      process.env.YAQMC_TARGET_PLATFORM === 'android'
+        ? {
+            './application/android-app': path.join(
+              repositoryRoot,
+              'src/application/android-app.native.ts',
+            ),
+          }
+        : undefined,
+  },
   plugins: [developmentEntryPlugin(command), releasePublicAssetsPlugin(command), react()],
   publicDir: command === 'serve' ? 'public' : false,
   // Serve from `/` in development; package relative assets for the app:// protocol.

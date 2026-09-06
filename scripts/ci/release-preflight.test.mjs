@@ -9,12 +9,9 @@ const credentials = {
   ANDROID_RELEASE_STORE_PASSWORD: 'fixture',
   ANDROID_RELEASE_KEY_PASSWORD: 'fixture',
   ANDROID_RELEASE_CERT_SHA256: 'ab'.repeat(32),
-  WIN_CSC_LINK: 'fixture',
-  WIN_CSC_KEY_PASSWORD: 'fixture',
-  YAQMC_WINDOWS_SIGNER_SUBJECT: 'fixture',
 };
 
-test('preflight requires both Android and Windows secrets for a full release', () => {
+test('preflight requires Android secrets but allows unsigned Windows for a full release', () => {
   assert.deepEqual(releasePreflight(credentials, '0.1.0'), {
     targets: 'all',
     version: '0.1.0',
@@ -33,9 +30,9 @@ test('a Linux-only rehearsal still includes Android but does not require Windows
     Object.entries(credentials).filter(([key]) => key.startsWith('ANDROID_')),
   );
   assert.equal(releasePreflight({ ...android, YAQMC_TARGETS: 'linux' }, '0.1.0').targets, 'linux');
-  assert.throws(
-    () => releasePreflight({ ...android, YAQMC_TARGETS: 'windows' }, '0.1.0'),
-    /WIN_CSC_LINK/u,
+  assert.equal(
+    releasePreflight({ ...android, YAQMC_TARGETS: 'windows' }, '0.1.0').targets,
+    'windows',
   );
 });
 

@@ -49,6 +49,9 @@ export function electronBuilderArgs({ os, arch, requireSigning = false }) {
     }
   }
   if (os === 'windows') {
+    if (!requireSigning) {
+      args.push('--config.forceCodeSigning=false', '--config.win.verifyUpdateCodeSignature=false');
+    }
     args.push('--win', 'nsis', 'portable', `--${arch}`);
   } else if (os === 'linux') {
     // electron-builder expands ${arch} using each Linux target's native label

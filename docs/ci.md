@@ -2,14 +2,14 @@
 
 > [简体中文](zh-CN/ci.md) | **English**
 
-This page describes the desktop and Android GitHub Actions pipelines. Ordinary CI package artifacts are not published and may be unsigned. The release workflow requires Authenticode for every Windows installer and portable executable and a persistent release certificate for Android; Linux release formats remain unsigned. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
+This page describes the desktop and Android GitHub Actions pipelines. Windows and Linux releases are unsigned; Android requires a persistent release certificate. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
 
 ## Workflows
 
-| Workflow      | File                                     | Trigger                                          | Result                                                                                                                  |
-| ------------- | ---------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| CI            | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                                                           |
-| YAQMC release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | signer-gated Windows and Android packages plus Linux packages; stable tags publish a Release, other runs create a draft |
+| Workflow      | File                                     | Trigger                                          | Result                                                                                                       |
+| ------------- | ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| CI            | `.github/workflows/ci.yml`               | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                                                |
+| YAQMC release | `.github/workflows/electron-release.yml` | `v*` tags, manual dispatch                       | unsigned Windows/Linux and signed Android packages; stable tags publish a Release, other runs create a draft |
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
@@ -42,24 +42,19 @@ Do not upload or reuse `node_modules` between jobs.
 
 ## Windows release signing
 
-The `electron-release` package matrix uses the protected `release-signing`
-environment. Its Windows jobs require these environment secrets:
+The approved release policy publishes unsigned Windows installers and portable EXEs.
+No Windows certificate secrets are required. The workflow disables certificate discovery
+and checks that both EXEs have `NotSigned` status before upload. Unsigned packaging
+disables updater publisher-signature verification; only download from the official
+YAQMC release. SHA-256 checksums detect corruption but do not independently authenticate
+the publisher. Windows may show an unknown-publisher or SmartScreen warning.
 
-- `WIN_CSC_LINK`: a base64-encoded PFX/P12 certificate or another
-  electron-builder-supported certificate reference;
-- `WIN_CSC_KEY_PASSWORD`: the certificate password;
-- `YAQMC_WINDOWS_SIGNER_SUBJECT`: the complete expected Authenticode
-  certificate Subject.
-
-The release job layers `electron-builder.release.yml` over the normal builder
-configuration. `forceCodeSigning: true` aborts the job if signing is unavailable.
-Before upload, PowerShell verifies both expected EXEs with
-`Get-AuthenticodeSignature`, requires `Valid` status, and compares the signer
-Subject to the protected value. The updater keeps electron-updater's default
-publisher-signature verification enabled. Signing credentials are available
-only to the package step, not `npm ci`, artifact upload, or assembly jobs.
+An explicit local `--require-signing true` build still uses the separate fail-closed
+`electron-builder.release.yml` configuration; it is not the current release workflow policy.
 
 ## Android release signing
+
+To create a new key on Windows, run `pwsh -File scripts/new-android-release-key.ps1 -Destination <PRIVATE_DIRECTORY_OUTSIDE_REPO>` with `keytool` installed. The script refuses existing destinations, restricts directory permissions, and writes five secret-value files plus a PKCS12 keystore and public certificate. Upload each text file's content under its filename without `.txt` in repository **Settings → Environments → release-signing → Environment secrets**, not Dependabot secrets or Actions variables. Keep an encrypted offline backup. Never commit these files. New keys cannot directly update installations signed with an unrelated old key.
 
 The Android package job uses the same protected `release-signing` environment and requires:
 
@@ -100,7 +95,7 @@ instructions, collector, and verifier. CI runs the verifier's identity-only
 gate before upload; it is not mixed into draft release assets.
 
 The release workflow fails before packaging unless the pin, provider readiness,
-provenance, Windows signing, and Android signing gates pass. It checks out the exact dependency revisions,
+provenance, and Android signing gates pass. It checks out the exact dependency revisions,
 builds revision-bound YAQMC, `qm-api-rs`, and AMLL source archives, and writes
 `CORRESPONDING-SOURCE-MANIFEST.json`. Assembly verifies those archive hashes,
 flattens package assets, validates the Android build identity against the same Git commit,

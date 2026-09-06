@@ -2,14 +2,14 @@
 
 > **简体中文** | [English](../ci.md)
 
-本文说明桌面端与 Android 的 GitHub Actions 流水线。普通 CI 安装包不会发布，且可能未签名；发布工作流要求每个 Windows 安装器与 portable EXE 都经过 Authenticode 签名，并要求 Android 使用长期保存的正式证书签名；Linux 发布格式仍不做代码签名。任何这类产物都不能单独证明安装包已在目标硬件上启动。
+本文说明桌面端与 Android 的 GitHub Actions 流水线。Windows 与 Linux 正式版不做代码签名，Android 使用长期保存的正式证书签名。任何这类产物都不能单独证明安装包已在目标硬件上启动。
 
 ## 工作流
 
-| 工作流     | 文件                                     | 触发条件                            | 结果                                                                              |
-| ---------- | ---------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- |
-| CI         | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                                                   |
-| YAQMC 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 经过签名门禁的 Windows/Android 包与 Linux 包；稳定 tag 正式发布，其余运行创建草稿 |
+| 工作流     | 文件                                     | 触发条件                            | 结果                                                                            |
+| ---------- | ---------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
+| CI         | `.github/workflows/ci.yml`               | pull request、推送 `main`、手动触发 | 质量门禁与未签名安装包 artifact                                                 |
+| YAQMC 发布 | `.github/workflows/electron-release.yml` | `v*` tag、手动触发                  | 未签名 Windows/Linux 包与已签名 Android 包；稳定 tag 正式发布，其余运行创建草稿 |
 
 已删除的旧桌面工作流不再是受支持的构建路径。CI 安装包 artifact 保留 14 天。
 
@@ -37,20 +37,18 @@ Android 发布任务会单独构建 `dist-android` renderer，将共享 Rust Cor
 
 ## Windows 发布签名
 
-`electron-release` 打包矩阵使用受保护的 `release-signing` environment。
-Windows 任务要求其中配置以下 environment secrets：
+当前批准的发布策略是未签名 Windows 安装器与 portable EXE，不需要 Windows 证书 secrets。
+工作流关闭证书自动发现，上传前检查两个 EXE 均为 `NotSigned`。
+未签名打包关闭更新器的发行者签名校验；仅从 YAQMC 官方发布页下载。
+SHA-256 校验和能检测损坏，但不能独立证明发行者身份。
+Windows 可能提示未知发布者或 SmartScreen 警告。
 
-- `WIN_CSC_LINK`：Base64 编码的 PFX/P12 证书，或 electron-builder 支持的其他证书引用；
-- `WIN_CSC_KEY_PASSWORD`：证书密码；
-- `YAQMC_WINDOWS_SIGNER_SUBJECT`：预期 Authenticode 证书的完整 Subject。
-
-发布任务会把 `electron-builder.release.yml` 叠加到普通构建配置上；
-`forceCodeSigning: true` 会在无法签名时直接终止任务。上传前，PowerShell
-通过 `Get-AuthenticodeSignature` 检查两个预期 EXE，要求状态为 `Valid`，并将
-签名者 Subject 与受保护值比较。更新器保留 electron-updater 默认的发行者签名
-校验。签名凭据只注入打包步骤，不提供给 `npm ci`、artifact 上传或组装任务。
+显式本地 `--require-signing true` 仍使用独立的 `electron-builder.release.yml`
+强制签名配置，但这不是当前远端发布工作流的策略。
 
 ## Android 发布签名
+
+在已安装 `keytool` 的 Windows 上，执行 `pwsh -File scripts/new-android-release-key.ps1 -Destination <仓库外的私有目录>` 可生成新密钥。脚本拒绝覆盖已有目录，限制目录权限，并输出五个 Secret 值文件、PKCS12 keystore 和公开证书。进入仓库 **Settings → Environments → release-signing → Environment secrets**，以每个文本文件去掉 `.txt` 的文件名作为名称，以全文作为值；不是 Dependabot secrets 或 Actions variables。另做加密离线备份，禁止提交这些文件。新密钥不能直接覆盖升级使用其他旧密钥签名的安装。
 
 Android 打包任务使用同一个受保护的 `release-signing` environment，并要求配置：
 
@@ -87,7 +85,7 @@ Linux x64 打包任务还会上传独立的扁平 artifact
 identity、checksums、当前测试/验收说明、采集器和验证器。上传前 CI 会执行
 identity-only 校验；该测试包不会混入 Release 草稿资产。
 
-发布工作流在打包前强制通过 pin、提供器 readiness、provenance、Windows 签名与 Android 签名门禁。它检出依赖的精确 revision，生成绑定 revision 的 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，要求 Android build identity 与同一个 Git commit 一致，生成分平台 checksum 与 `RELEASE-NOTES.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。手动运行和预发布 tag 保持草稿；与项目版本一致的稳定版 `vX.Y.Z` tag 在所有必要任务成功后，将草稿发布为非预发布的正式版并标记为 latest。
+发布工作流在打包前强制通过 pin、提供器 readiness、provenance 与 Android 签名门禁。它检出依赖的精确 revision，生成绑定 revision 的 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 `CORRESPONDING-SOURCE-MANIFEST.json`。组装步骤先核对归档 hash，再摊平安装包，要求 Android build identity 与同一个 Git commit 一致，生成分平台 checksum 与 `RELEASE-NOTES.md`，且只保留 x64 更新源 `latest.yml` / `latest-linux.yml`。`v*` 推送沿用原 tag；手动运行使用 `electron-draft-<run-id>`。手动运行和预发布 tag 保持草稿；与项目版本一致的稳定版 `vX.Y.Z` tag 在所有必要任务成功后，将草稿发布为非预发布的正式版并标记为 latest。
 
 签名配置在安装工具链及构建前端之前检查；缺失项只输出名称，不输出值。正式 tag 必须包含 Windows/Linux 的 x64、arm64 完整矩阵、Windows 安装器和便携 EXE、Linux 四种格式、x64 更新源，以及 arm64-v8a Android APK。手动 Windows/Linux 演练可缩小桌面目标，但仍包含 Android。签名凭据未配置时不要创建正式 tag。历史 Release 和 tag 单独核对名称后清理，CI 不会自动删除发布历史。
 

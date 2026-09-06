@@ -86,7 +86,7 @@ import { usePluginHost } from './application/plugin-runtime';
 import './styles/index.css';
 import { getHostBridge } from './application/yaqmc-runtime';
 import { hasHostCapability, isAndroidRuntime } from './application/host-capabilities';
-import { App as CapacitorApp } from '@capacitor/app';
+import { androidApp as CapacitorApp } from './application/android-app';
 import { androidBackAction } from './application/android-back-navigation';
 
 const ApplicationPlaybackDiagnostics = __YAQMC_QA_BUILD__

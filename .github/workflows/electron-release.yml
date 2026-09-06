@@ -42,9 +42,6 @@ jobs:
       - name: Validate release version and signing prerequisites
         env:
           YAQMC_TARGETS: ${{ inputs.targets || 'all' }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          YAQMC_WINDOWS_SIGNER_SUBJECT: ${{ secrets.YAQMC_WINDOWS_SIGNER_SUBJECT }}
           ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
           ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
           ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
@@ -215,35 +212,18 @@ jobs:
         with:
           name: yaqmc-frontend-dist-${{ github.sha }}
           path: dist
-      - name: Require Windows Authenticode credentials
-        if: matrix.os == 'windows'
-        shell: pwsh
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          YAQMC_WINDOWS_SIGNER_SUBJECT: ${{ secrets.YAQMC_WINDOWS_SIGNER_SUBJECT }}
-        run: |
-          $required = @('WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD', 'YAQMC_WINDOWS_SIGNER_SUBJECT')
-          foreach ($name in $required) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "The release-signing environment is missing required secret $name"
-            }
-          }
       - name: Compile core, then pack Electron
         env:
-          WIN_CSC_LINK: ${{ matrix.os == 'windows' && secrets.WIN_CSC_LINK || '' }}
-          WIN_CSC_KEY_PASSWORD: ${{ matrix.os == 'windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: >-
           node scripts/ci/package-electron.mjs
           --target ${{ matrix.target }}
           --os ${{ matrix.os }}
           --arch ${{ matrix.arch }}
-          --require-signing ${{ matrix.os == 'windows' && 'true' || 'false' }}
-      - name: Verify Windows Authenticode signer
+          --require-signing false
+      - name: Verify Windows unsigned release artifacts
         if: matrix.os == 'windows'
         shell: pwsh
-        env:
-          YAQMC_WINDOWS_SIGNER_SUBJECT: ${{ secrets.YAQMC_WINDOWS_SIGNER_SUBJECT }}
         run: |
           $artifactDir = Join-Path 'release-electron' 'YAQMC-electron-windows-${{ matrix.arch }}'
           $expectedNames = @(
@@ -253,20 +233,13 @@ jobs:
           foreach ($name in $expectedNames) {
             $file = Join-Path $artifactDir $name
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-              throw "Missing signed release artifact $name"
+              throw "Missing release artifact $name"
             }
             $signature = Get-AuthenticodeSignature -LiteralPath $file
-            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-              throw "Authenticode validation failed for $name with status $($signature.Status)"
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
+              throw "Expected an unsigned release artifact $name, got $($signature.Status)"
             }
-            if ($null -eq $signature.SignerCertificate -or -not [string]::Equals(
-              $signature.SignerCertificate.Subject,
-              $env:YAQMC_WINDOWS_SIGNER_SUBJECT,
-              [System.StringComparison]::OrdinalIgnoreCase
-            )) {
-              throw "Authenticode signer identity mismatch for $name"
-            }
-            Write-Output "Verified Authenticode signature for $name"
+            Write-Output "Verified unsigned release policy for $name"
           }
       - name: Stage and verify Linux x64 tester artifact
         if: matrix.os == 'linux' && matrix.arch == 'x64'

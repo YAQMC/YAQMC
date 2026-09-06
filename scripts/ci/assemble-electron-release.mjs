@@ -36,10 +36,11 @@ const expectedAmllPackages = [
 
 export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release
 
-Windows installers and portable executables, when included, are Authenticode-signed.
-The release workflow validates both signature status and the expected publisher
-identity before artifacts can be uploaded. Linux artifacts are not code-signed;
-use the published SHA-256 checksums for transport verification.
+Windows installers and portable executables are unsigned. Windows may display an
+unknown-publisher or SmartScreen warning. Publisher signature verification is not
+available for this Windows update channel. Linux artifacts are also not code-signed;
+download only from the official YAQMC release and compare the published SHA-256 checksums.
+Checksums detect corruption; they do not establish an independent publisher identity.
 
 - Windows i686 is not published.
 - App and keyring data stay under \`org.yaqmc.desktop\`.

@@ -129,6 +129,14 @@ test('release Windows packages layer the fail-closed signing config', () => {
   );
 });
 
+test('unsigned Windows packages explicitly disable publisher verification; signed builds preserve it', () => {
+  const unsigned = electronBuilderArgs({ os: 'windows', arch: 'x64' });
+  assert.ok(unsigned.includes('--config.forceCodeSigning=false'));
+  assert.ok(unsigned.includes('--config.win.verifyUpdateCodeSignature=false'));
+  const signed = electronBuilderArgs({ os: 'windows', arch: 'x64', requireSigning: true });
+  assert.ok(!signed.includes('--config.win.verifyUpdateCodeSignature=false'));
+});
+
 test('parseElectronPackageArgs treats --dry-run as a boolean', () => {
   const parsed = parseElectronPackageArgs([
     '--os',
