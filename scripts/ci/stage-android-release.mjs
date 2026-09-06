@@ -10,6 +10,30 @@ export const ANDROID_RELEASE_ABI = 'arm64-v8a';
 export const ANDROID_MIN_SDK = 26;
 export const ANDROID_TARGET_SDK = 36;
 
+export function androidReleaseNotes(version) {
+  const { versionName } = androidVersion(version);
+  return `# YAQMC Android ${versionName}
+
+## 中文
+
+- 应用包名：\`${ANDROID_APPLICATION_ID}\`
+- 架构：\`${ANDROID_RELEASE_ABI}\`
+- 系统要求：Android 8.0（API ${ANDROID_MIN_SDK}）或更新版本。
+- APK 通过 GitHub Releases 分发；后续覆盖升级必须使用相同的签名证书。
+- 安装前请用 \`SHA256SUMS-android.txt\` 校验下载文件。
+- Android v1 不包含桌面悬浮歌词、插件和回环 Local API。
+
+## English
+
+- Package: \`${ANDROID_APPLICATION_ID}\`
+- Architecture: \`${ANDROID_RELEASE_ABI}\`
+- Requires Android 8.0 (API ${ANDROID_MIN_SDK}) or newer.
+- This APK is distributed through GitHub Releases and must retain the same signing certificate for upgrades.
+- Verify the download with \`SHA256SUMS-android.txt\` before sideloading.
+- Android v1 does not include desktop lyric overlays, plugins, or the loopback Local API.
+`;
+}
+
 function sha256(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
@@ -53,13 +77,7 @@ export function stageAndroidRelease({ apkPath, destination, version, commit }) {
   );
   writeFileSync(
     path.join(destination, 'RELEASE-NOTES-ANDROID.md'),
-    `# YAQMC Android ${versionName}\n\n` +
-      `- Package: \`${ANDROID_APPLICATION_ID}\`\n` +
-      `- Architecture: \`${ANDROID_RELEASE_ABI}\`\n` +
-      `- Requires Android 8.0 (API ${ANDROID_MIN_SDK}) or newer.\n` +
-      '- This APK is distributed through GitHub Releases and must retain the same signing certificate for upgrades.\n' +
-      '- Verify the download with `SHA256SUMS-android.txt` before sideloading.\n' +
-      '- Android v1 does not include desktop lyric overlays, plugins, or the loopback Local API.\n',
+    androidReleaseNotes(versionName),
   );
   return { digest, name, stagedApk, versionCode, versionName };
 }

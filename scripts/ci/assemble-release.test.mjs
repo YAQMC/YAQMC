@@ -60,9 +60,12 @@ test('adds a revision-bound Android APK and unified notes to assembled release a
   assert.equal(result.apkName, 'YAQMC-android-arm64-v8a-v0.1.0.apk');
   assert.equal(readFileSync(path.join(assembled, result.apkName), 'utf8'), 'signed-apk-fixture');
   const notes = readFileSync(path.join(assembled, RELEASE_NOTES_NAME), 'utf8');
-  assert.match(notes, /^# YAQMC release/mu);
-  assert.match(notes, /^## YAQMC desktop release/mu);
+  assert.match(notes, /^# YAQMC 发布说明 \/ Release notes/mu);
+  assert.match(notes, /^## YAQMC 桌面版 \/ Desktop release/mu);
   assert.match(notes, /^## YAQMC Android 0\.1\.0/mu);
+  assert.equal((notes.match(/^### 中文$/gmu) ?? []).length, 2);
+  assert.equal((notes.match(/^### English$/gmu) ?? []).length, 2);
+  assert.equal((notes.match(/^# /gmu) ?? []).length, 1);
 });
 
 test('rejects Android assets with a mismatched commit or checksum', () => {

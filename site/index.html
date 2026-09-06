@@ -2,190 +2,275 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="YAQMC（Yet Another Q Music Client）是适用于 Windows 与 Linux 的非官方 QQ 音乐桌面客户端。"
+      content="从桌面到随身屏幕，把喜欢的歌留在身边。一个开源的非官方 QQ 音乐客户端，适用于 Windows、Linux 与 Android。"
     />
-    <meta name="theme-color" content="#0d100c" />
-    <title>YAQMC — Windows 与 Linux QQ 音乐桌面客户端</title>
+    <meta name="theme-color" content="#f6f5f0" />
+    <title>YAQMC — 音乐与歌词，自在同行</title>
     <link rel="icon" href="assets/yaqmc-logo.png" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="alternate" hreflang="en" href="en/" />
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="./" aria-label="YAQMC 首页">
-        <img src="assets/yaqmc-logo.png" alt="" width="44" height="44" />
-        <span>YAQMC</span>
-      </a>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="site-header wrap">
+      <a class="brand" href="./" aria-label="YAQMC"
+        ><img src="assets/yaqmc-logo.png" width="36" height="36" alt="" />YAQMC</a
+      >
       <nav aria-label="主要导航">
-        <a href="#features">能力</a>
-        <a href="#plugins">插件示例</a>
-        <a href="#status">状态</a>
-        <a href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/README.md">文档</a>
-        <a href="en/" lang="en">English</a>
+        <a href="#download">下载</a><a href="#plugins">插件</a><a href="#resources">文档</a
+        ><a class="language" href="en/" lang="en">English ↗</a>
       </nav>
     </header>
-
-    <main>
+    <main id="main" class="wrap">
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
+          <a class="release-label" href="https://github.com/YAQMC/YAQMC/releases/tag/v0.1.0"
+            ><span class="status-dot" aria-hidden="true"></span>v0.1.0 正式版已发布 ↗</a
+          >
           <p class="eyebrow">Yet Another Q Music Client</p>
-          <h1 id="hero-title">把音乐、歌词与桌面<br />放回同一个节奏。</h1>
+          <h1 id="hero-title">音乐与歌词，<br /><em>自在同行。</em></h1>
           <p class="lead">
-            YAQMC 是面向 Windows 与 Linux 的非官方 QQ
-            音乐桌面客户端。原生音频、逐字歌词、账号音乐库与 桌面集成由一套权威播放状态驱动。
+            从桌面到随身屏幕，把喜欢的歌留在身边。一个开源的非官方 QQ 音乐客户端，适用于
+            Windows、Linux 与 Android。
           </p>
           <div class="actions">
-            <a class="button primary" href="https://github.com/YAQMC/YAQMC/releases"
-              >查看 Releases</a
-            >
-            <a class="button secondary" href="https://github.com/YAQMC/YAQMC">查看源代码</a>
+            <a class="button primary" href="#download">下载 YAQMC ↓</a
+            ><a class="button quiet" href="https://github.com/YAQMC/YAQMC">查看源代码 ↗</a>
           </div>
-          <p class="fine-print">与腾讯或 QQ 音乐无从属关系；不绕过会员、地区、版权或账号权益。</p>
-          <p class="fine-print">
-            v0.1.0 统一发布线将从同一 Git commit 构建 Windows、Linux 与 Android 产物。
-          </p>
+          <p class="hero-note">开源代码 / 原生播放 / 逐字歌词</p>
         </div>
-        <div class="hero-mark" aria-hidden="true">
-          <div class="signal signal-one"></div>
-          <div class="signal signal-two"></div>
-          <img src="assets/yaqmc-logo.png" alt="" width="280" height="280" />
-          <span class="pulse"></span>
+        <div class="sleeve" role="img" aria-label="黑胶唱片品牌插画，非应用截图">
+          <div class="sleeve-top" aria-hidden="true">
+            <span>YAQMC — SIDE A</span><span>33⅓ RPM</span>
+          </div>
+          <div class="record" aria-hidden="true">
+            <div class="record-label">
+              <img src="assets/yaqmc-logo.png" width="72" height="72" alt="" /><span
+                >JUST PRESS PLAY</span
+              ><i></i>
+            </div>
+          </div>
+          <div class="sleeve-bottom" aria-hidden="true">
+            <span>听见旋律。<br />看见每一句。</span
+            ><span class="sleeve-index">01<small>MUSIC / LYRICS / YOU</small></span>
+          </div>
         </div>
       </section>
-
-      <section class="feature-grid" id="features" aria-labelledby="features-title">
+      <div class="platform-strip">
+        <span>YAQMC / v0.1.0</span>
+        <p>Windows <span>/</span> Linux <span>/</span> Android</p>
+        <span>DESKTOP &amp; MOBILE</span>
+      </div>
+      <section class="section">
         <div class="section-heading">
-          <p class="eyebrow">一套状态，多个界面</p>
-          <h2 id="features-title">桌面音乐客户端应该彼此一致。</h2>
+          <div>
+            <p class="eyebrow">专注聆听</p>
+            <h2>从一首歌，<br />到每一句歌词。</h2>
+          </div>
+          <p>把播放、歌词和音乐库连接起来。<br />不必为了换个界面，打断听歌的节奏。</p>
         </div>
-        <article class="feature feature-wide">
-          <span class="number">01</span>
-          <h3>原生播放，不用浏览器时钟猜进度</h3>
-          <p>
-            Rust PlayerService
-            统一队列、seek、随机/循环、试听时间轴、音质与错误；系统媒体面板和歌词共用真实音频时钟。
-          </p>
-        </article>
-        <article class="feature">
-          <span class="number">02</span>
-          <h3>逐字歌词与悬浮表面</h3>
-          <p>主歌词、桌面歌词、Lyrics Island 支持翻译与罗马音；锁定后仍保留独立悬浮解锁入口。</p>
-        </article>
-        <article class="feature">
-          <span class="number">03</span>
-          <h3>受限的 QQ / 微信 OAuth</h3>
-          <p>
-            登录发生在腾讯托管页面。凭据进入操作系统安全存储，歌词窗口与 OAuth
-            窗口没有账号命令权限。
-          </p>
-        </article>
-        <article class="feature">
-          <span class="number">04</span>
-          <h3>音质由实际权益决定</h3>
-          <p>
-            标准、高品质、无损与臻品按账号权益和实时音源选择；授权 mflac
-            只在本地内存流式解密，磁盘保留密文。
-          </p>
-        </article>
-        <article class="feature feature-accent">
-          <span class="number">05</span>
-          <h3>Windows 与 Linux</h3>
-          <p>
-            提供多架构安装包、托盘、SMTC/MPRIS、输出设备与 Linux 诊断工具。Wayland
-            能力会如实标注限制。
-          </p>
-        </article>
+        <div class="feature-grid">
+          <article class="feature">
+            <span class="index">01 / PLAYBACK</span>
+            <h3>播放有自己的节奏</h3>
+            <p>
+              由 Rust
+              播放服务统一管理队列、进度与音质。可用音源由账号权益及平台实际返回决定，不绕过会员或版权限制。
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/audio-quality.md"
+              >了解音质选择 ↗</a
+            >
+          </article>
+          <article class="feature">
+            <span class="index">02 / LYRICS</span>
+            <h3>歌词，不止一个位置</h3>
+            <p>
+              逐字歌词、翻译与罗马音随歌而行。桌面端另有桌面歌词和歌词岛；锁定后，从系统托盘解锁。
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/lyrics.md"
+              >了解歌词功能 ↗</a
+            >
+          </article>
+          <article class="feature">
+            <span class="index">03 / LIBRARY</span>
+            <h3>顺着喜欢的歌探索</h3>
+            <p>
+              搜索歌曲、歌手与专辑，从歌曲信息继续浏览音乐。登录后访问账号音乐库，用分享链接连接下一次聆听。
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/account-library.md"
+              >了解账号音乐库 ↗</a
+            >
+          </article>
+        </div>
       </section>
-
-      <section class="status" id="plugins" aria-labelledby="plugins-title">
-        <div>
-          <p class="eyebrow">插件示例</p>
-          <h2 id="plugins-title">下载后在设置里安装，默认不启用。</h2>
-          <p>
-            这些 <code>*.yaqmc-plugin</code> 可修改界面，也可通过受能力约束的 API v3 Component
-            添加音乐平台。 在 YAQMC → 设置 → 插件 →
-            选择文件。没有插件市场，全部都是未验证的本地旁加载包。
-          </p>
+      <section class="section" id="download">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">开始聆听 / v0.1.0</p>
+            <h2>选一个设备，<br />把音乐带走。</h2>
+          </div>
+          <p>按系统与处理器架构选择安装包。<br />所有下载均来自本项目的 GitHub Release。</p>
         </div>
-        <div class="download-list">
+        <div class="download-grid">
+          <article class="download-card">
+            <span class="os-mark">WIN</span>
+            <h3>Windows</h3>
+            <p>Setup / Portable · x64 / arm64</p>
+            <a
+              class="button primary"
+              href="https://github.com/YAQMC/YAQMC/releases/download/v0.1.0/YAQMC-windows-x64-setup.exe"
+              >下载 x64 安装版 ↓</a
+            >
+            <div class="alternative">
+              <a
+                href="https://github.com/YAQMC/YAQMC/releases/download/v0.1.0/YAQMC-windows-x64-portable.exe"
+                >x64 便携版</a
+              ><a
+                href="https://github.com/YAQMC/YAQMC/releases/download/v0.1.0/YAQMC-windows-arm64-setup.exe"
+                >arm64 安装版</a
+              >
+            </div>
+            <p class="package-note">
+              未进行代码签名，Windows 可能提示未知发布者或 SmartScreen 警告。
+            </p>
+          </article>
+          <article class="download-card">
+            <span class="os-mark">LINUX</span>
+            <h3>Linux</h3>
+            <p>AppImage / deb / rpm / tar.gz</p>
+            <a
+              class="button primary"
+              href="https://github.com/YAQMC/YAQMC/releases/download/v0.1.0/YAQMC-linux-x64.AppImage"
+              >x64 AppImage ↓</a
+            >
+            <div class="alternative">
+              <a href="https://github.com/YAQMC/YAQMC/releases/download/v0.1.0/YAQMC-linux-x64.deb"
+                >x64 deb</a
+              ><a
+                href="https://github.com/YAQMC/YAQMC/releases/download/v0.1.0/YAQMC-linux-arm64.AppImage"
+                >arm64 AppImage</a
+              >
+            </div>
+            <p class="package-note">
+              未进行代码签名。Wayland 与不同桌面环境的兼容性请参阅 Linux 文档。
+              <a href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/linux.md">文档 ↗</a>
+            </p>
+          </article>
+          <article class="download-card">
+            <span class="os-mark">ANDROID</span>
+            <h3>Android</h3>
+            <p>Android 8.0+ · arm64-v8a</p>
+            <a
+              class="button primary"
+              href="https://github.com/YAQMC/YAQMC/releases/download/v0.1.0/YAQMC-android-arm64-v8a-v0.1.0.apk"
+              >下载 APK ↓</a
+            >
+            <div class="alternative">
+              <a href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/android.md"
+                >安装与使用说明</a
+              >
+            </div>
+            <p class="package-note">
+              签名 APK，支持手机与平板布局。当前不包含桌面悬浮歌词、插件与 Local API。
+            </p>
+          </article>
+        </div>
+        <div class="download-footnote">
+          <p>
+            安装前请核对 Release 中的 SHA-256
+            文件。校验值可发现文件损坏，不能独立证明发布者身份。桌面自动更新通道目前仅支持 x64。
+          </p>
+          <a class="text-link" href="https://github.com/YAQMC/YAQMC/releases/tag/v0.1.0"
+            >全部安装包与发布说明 ↗</a
+          >
+        </div>
+      </section>
+      <section class="section plugin-section" id="plugins">
+        <div class="plugin-copy">
+          <p class="eyebrow">留一点空间，给你的想法</p>
+          <h2>你的播放器，<br />也可以有你的笔触。</h2>
+          <p>
+            在桌面端用样式、歌词场景或平台组件扩展 YAQMC。下载 .yaqmc-plugin 文件后，在「设置 →
+            插件」中安装并查看权限。
+          </p>
+          <p class="muted">
+            示例包默认不启用，均为未验证的本地旁加载包，并非插件市场。平台示例使用合成数据，不提供真实音乐服务。
+          </p>
+          <a
+            class="text-link"
+            href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/plugin-development.md"
+            >开始开发插件 ↗</a
+          >
+        </div>
+        <div class="plugin-list">
           <a href="plugins/dev.yaqmc.example.studio-1.0.0.yaqmc-plugin" download
-            ><strong>Studio</strong><span>样式 + 两个歌词场景 + 书签脚本（全部 v1 权限）</span></a
+            ><span class="plugin-swatch studio" aria-hidden="true">S</span
+            ><span><strong>Studio</strong><small>样式、两个歌词场景与书签脚本</small></span
+            ><span aria-hidden="true">↓</span></a
+          ><a href="plugins/dev.yaqmc.example.sakura-1.0.0.yaqmc-plugin" download
+            ><span class="plugin-swatch sakura" aria-hidden="true">S</span
+            ><span><strong>Sakura</strong><small>给侧栏、播放条与队列加一点粉色</small></span
+            ><span aria-hidden="true">↓</span></a
+          ><a href="plugins/dev.yaqmc.example.night-1.0.0.yaqmc-plugin" download
+            ><span class="plugin-swatch night" aria-hidden="true">N</span
+            ><span><strong>Night</strong><small>冷色界面样式，与 Sakura 互斥</small></span
+            ><span aria-hidden="true">↓</span></a
           >
-          <a href="plugins/dev.yaqmc.example.sakura-1.0.0.yaqmc-plugin" download
-            ><strong>Sakura</strong><span>粉色侧栏 / 播放条 / 队列 / 标题</span></a
-          >
-          <a href="plugins/dev.yaqmc.example.night-1.0.0.yaqmc-plugin" download
-            ><strong>Night</strong><span>冷色铬框，与 Sakura 冲突</span></a
-          >
-          <a href="plugins/dev.yaqmc.example.scenes-1.0.0.yaqmc-plugin" download
-            ><strong>歌词场景</strong><span>Aurora 与 Vinyl glow</span></a
-          >
-          <a href="plugins/dev.yaqmc.example.now-playing-1.0.0.yaqmc-plugin" download
-            ><strong>会话书签</strong><span>隔离脚本：读 API、事件、存储、seek 恢复</span></a
-          >
-          <a href="plugins/dev.yaqmc.example.ink-core-1.0.0.yaqmc-plugin" download
-            ><strong>Ink core</strong><span>共享 --yaqmc-* 变量</span></a
-          >
-          <a href="plugins/dev.yaqmc.example.ink-accent-1.0.0.yaqmc-plugin" download
-            ><strong>Ink accent</strong><span>依赖 Ink core，应用到铬框</span></a
-          >
-          <a href="plugins/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin" download
-            ><strong>只读目录平台</strong><span>API v3 Component，无网络、账号或存储权限</span></a
-          >
-          <a href="plugins/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin" download
-            ><strong>完整示例平台</strong
-            ><span>目录、发现、播放、推荐、歌词与隔离的合成账号</span></a
-          >
+          <details>
+            <summary>更多示例</summary>
+            <div class="extra-plugins">
+              <a href="plugins/dev.yaqmc.example.scenes-1.0.0.yaqmc-plugin" download>scenes ↓</a
+              ><a href="plugins/dev.yaqmc.example.now-playing-1.0.0.yaqmc-plugin" download
+                >now-playing ↓</a
+              ><a href="plugins/dev.yaqmc.example.ink-core-1.0.0.yaqmc-plugin" download
+                >ink-core ↓</a
+              ><a href="plugins/dev.yaqmc.example.ink-accent-1.0.0.yaqmc-plugin" download
+                >ink-accent ↓</a
+              ><a href="plugins/dev.yaqmc.example.catalog-1.0.0.yaqmc-plugin" download>catalog ↓</a
+              ><a href="plugins/dev.yaqmc.example.platform-1.0.0.yaqmc-plugin" download
+                >platform ↓</a
+              >
+            </div>
+          </details>
         </div>
       </section>
-
-      <section class="status" id="status" aria-labelledby="status-title">
+      <section class="resources" id="resources">
         <div>
-          <p class="eyebrow">Beta 状态</p>
-          <h2 id="status-title">把“实现了”和“验收了”分开写。</h2>
+          <p class="eyebrow">OPEN SOURCE / OPEN IDEAS</p>
+          <h2>从使用，到参与。</h2>
         </div>
-        <div class="status-list">
-          <div>
-            <span class="dot done"></span><strong>已覆盖</strong>
-            <p>访客目录、Windows 原生播放、歌词与 QMC/mflac 外部样本 seek。</p>
-          </div>
-          <div>
-            <span class="dot pending"></span><strong>待所有者验收</strong>
-            <p>真实收藏/歌单写回与线上臻品取源。</p>
-          </div>
-          <div>
-            <span class="dot pending"></span><strong>待真机验收</strong>
-            <p>最终 Arch / 原生 Wayland AppImage 矩阵。</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="closing" aria-labelledby="closing-title">
-        <p class="eyebrow">发布、验证、反馈</p>
-        <h2 id="closing-title">YAQMC v0.1.0 正在准备发布。</h2>
-        <p>
-          正式版发布后，请按系统、处理器架构与 Release 说明选择安装包，并使用随附的 SHA-256
-          文件校验下载。
-        </p>
-        <div class="actions">
-          <a class="button primary" href="https://github.com/YAQMC/YAQMC/releases">查看 Releases</a>
-          <a class="text-link" href="https://github.com/YAQMC/YAQMC/releases">历史发布 →</a>
-          <a class="text-link" href="https://github.com/YAQMC/YAQMC/issues/new/choose"
-            >提交问题 →</a
-          >
+        <div class="resource-links">
+          <a href="https://github.com/YAQMC/YAQMC/blob/main/docs/zh-CN/README.md">使用文档 ↗</a
+          ><a href="https://github.com/YAQMC/YAQMC/blob/main/CONTRIBUTING.md">参与开发 ↗</a
+          ><a href="https://github.com/YAQMC/YAQMC/issues/new/choose">反馈问题 ↗</a>
         </div>
       </section>
     </main>
-
-    <footer>
-      <div><strong>YAQMC</strong><span>Yet Another Q Music Client</span></div>
-      <div class="footer-links">
-        <a href="https://github.com/YAQMC/YAQMC/blob/main/SECURITY.md">安全</a>
-        <a href="https://github.com/YAQMC/YAQMC/blob/main/ACKNOWLEDGEMENTS.md">鸣谢</a>
-        <a href="https://github.com/YAQMC/YAQMC">GitHub</a>
+    <footer class="wrap">
+      <div class="footer-top">
+        <a class="brand" href="./"
+          ><img src="assets/yaqmc-logo.png" width="32" height="32" alt="" />YAQMC</a
+        >
+        <p>Yet Another Q Music Client</p>
+        <div class="footer-links">
+          <a href="https://github.com/YAQMC/YAQMC">GitHub</a
+          ><a href="https://github.com/YAQMC/YAQMC/blob/main/SECURITY.md">安全</a
+          ><a href="https://github.com/YAQMC/YAQMC/blob/main/ACKNOWLEDGEMENTS.md">鸣谢</a>
+        </div>
       </div>
+      <p class="legal">
+        非官方项目，与腾讯或 QQ
+        音乐无从属关系。不绕过会员、地区、版权或账号权益限制。功能可用性取决于平台、账号与运行环境。
+      </p>
     </footer>
   </body>
 </html>

@@ -34,7 +34,28 @@ const expectedAmllPackages = [
   },
 ];
 
-export const ELECTRON_RELEASE_NOTES = `# YAQMC desktop release
+export const ELECTRON_RELEASE_NOTES = `# YAQMC 桌面版 / Desktop release
+
+## 中文
+
+提供 Windows 与 Linux 的 x64、arm64 安装包。请按操作系统与处理器架构选择附件。
+
+**Windows 安装程序和便携版未签名**，可能出现未知发布者或 SmartScreen 提示；
+Windows 更新通道不提供发布者签名验证。Linux 产物也未进行代码签名。
+请仅从 YAQMC 官方 Release 下载，并核对公布的 SHA-256 校验值。
+校验值用于发现文件损坏，不能独立证明发布者身份。
+
+- 不提供 Windows i686（32 位）版本。
+- 应用与密钥环数据命名空间为 \`org.yaqmc.desktop\`。
+- Linux 图形诊断使用 Chromium/Ozone 模式，旧宿主的渲染器覆盖配置不适用。
+- 自动更新元数据（\`latest.yml\`、\`latest-linux.yml\`）仅适用于 **x64**；arm64 请手动下载安装包。
+- 打包前检查 Provider 就绪状态及来源。YAQMC、\`qm-api-rs\` 和 Apple Music-like Lyrics
+  的确切对应源码归档见 \`CORRESPONDING-SOURCE-MANIFEST.json\`。
+- 本次构建不代表已完成 A→B 跨版本升级演练。
+
+## English
+
+Windows and Linux packages are available for x64 and arm64. Choose the asset for your OS and architecture.
 
 Windows installers and portable executables are unsigned. Windows may display an
 unknown-publisher or SmartScreen warning. Publisher signature verification is not

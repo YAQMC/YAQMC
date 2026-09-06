@@ -277,13 +277,15 @@ if (
   !englishSite.includes('v0.1.0') ||
   !chineseSite.includes('https://github.com/YAQMC/YAQMC/releases') ||
   !englishSite.includes('https://github.com/YAQMC/YAQMC/releases') ||
-  chineseSite.includes('/releases/latest') ||
-  englishSite.includes('/releases/latest') ||
+  !chineseSite.includes('/releases/tag/v0.1.0') ||
+  !englishSite.includes('/releases/tag/v0.1.0') ||
+  chineseSite.includes('正在准备发布') ||
+  englishSite.includes('preparing for release') ||
   chineseSite.includes('v0.1.0-beta.6') ||
   englishSite.includes('v0.1.0-beta.6')
 ) {
   errors.push(
-    'site: must describe the pending unified v0.1.0 release line without linking a legacy latest release',
+    'site: must link the published unified v0.1.0 release without stale pre-release copy',
   );
 }
 

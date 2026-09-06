@@ -8,6 +8,7 @@ import test from 'node:test';
 import {
   ANDROID_APPLICATION_ID,
   androidArtifactName,
+  androidReleaseNotes,
   stageAndroidRelease,
 } from './stage-android-release.mjs';
 
@@ -43,6 +44,18 @@ test('stages a revision-bound arm64 APK with checksums and public metadata', () 
     readFileSync(path.join(destination, 'RELEASE-NOTES-ANDROID.md'), 'utf8'),
     /Android 8\.0/,
   );
+});
+
+test('release notes retain both languages, signing constraints, and the requested version', () => {
+  const notes = androidReleaseNotes('0.1.0');
+  assert.match(notes, /^# YAQMC Android 0\.1\.0$/mu);
+  assert.match(notes, /^## 中文$/mu);
+  assert.match(notes, /^## English$/mu);
+  assert.match(notes, /相同的签名证书/u);
+  assert.match(notes, /same signing certificate/u);
+  assert.match(notes, /Android v1 不包含桌面悬浮歌词、插件/u);
+  assert.match(notes, /does not include desktop lyric overlays, plugins/u);
+  assert.throws(() => androidReleaseNotes('not-a-version'));
 });
 
 test('rejects missing artifacts, invalid versions, and abbreviated revisions', () => {

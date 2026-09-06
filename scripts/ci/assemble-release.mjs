@@ -39,8 +39,8 @@ function demoteHeadings(markdown) {
   return markdown.trim().replace(/^#/gmu, '##');
 }
 
-function combinedReleaseNotes(androidNotes) {
-  return `# YAQMC release\n\n${demoteHeadings(ELECTRON_RELEASE_NOTES)}\n\n${demoteHeadings(
+export function combinedReleaseNotes(androidNotes) {
+  return `# YAQMC 发布说明 / Release notes\n\n${demoteHeadings(ELECTRON_RELEASE_NOTES)}\n\n${demoteHeadings(
     androidNotes,
   )}\n`;
 }

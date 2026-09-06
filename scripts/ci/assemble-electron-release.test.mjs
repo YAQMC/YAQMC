@@ -268,6 +268,9 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
     ELECTRON_RELEASE_NOTES,
   );
   assert.match(ELECTRON_RELEASE_NOTES, /executables are unsigned/i);
+  assert.match(ELECTRON_RELEASE_NOTES, /Windows 安装程序和便携版未签名/u);
+  assert.match(ELECTRON_RELEASE_NOTES, /^## 中文$/mu);
+  assert.match(ELECTRON_RELEASE_NOTES, /^## English$/mu);
   assert.match(ELECTRON_RELEASE_NOTES, /SmartScreen/i);
   assert.match(ELECTRON_RELEASE_NOTES, /publisher/i);
   assert.match(ELECTRON_RELEASE_NOTES, /i686/);
