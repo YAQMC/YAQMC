@@ -33,7 +33,7 @@ function developmentEntryPlugin(command: string): Plugin {
 }
 
 function releasePublicAssetsPlugin(command: string): Plugin {
-  const assets = ['favicon.svg', 'yaqmc-logo.png', 'artwork/preset-preview.svg'];
+  const assets = ['yaqmc-logo.png', 'artwork/preset-preview.svg'];
   return {
     name: 'yaqmc-release-public-assets',
     generateBundle() {
@@ -42,7 +42,9 @@ function releasePublicAssetsPlugin(command: string): Plugin {
         this.emitFile({
           type: 'asset',
           fileName,
-          source: readFileSync(path.join(repositoryRoot, 'public', fileName)),
+          source: readFileSync(
+            path.join(repositoryRoot, fileName === 'yaqmc-logo.png' ? 'assets' : 'public', fileName),
+          ),
         });
       }
     },
