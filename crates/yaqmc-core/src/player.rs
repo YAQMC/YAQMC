@@ -457,6 +457,8 @@ pub struct PlayerService {
     core: Arc<RwLock<PlayerCore>>,
     events: broadcast::Sender<ApiEvent>,
     clock_running: AtomicBool,
+    background_mode: AtomicBool,
+    clock_wake: Arc<tokio::sync::Notify>,
     transition_running: AtomicBool,
     recovery_running: AtomicBool,
     runtime_expiry_retry_available: AtomicBool,
@@ -484,6 +486,8 @@ impl PlayerService {
             })),
             events,
             clock_running: AtomicBool::new(false),
+            background_mode: AtomicBool::new(false),
+            clock_wake: Arc::new(tokio::sync::Notify::new()),
             transition_running: AtomicBool::new(false),
             recovery_running: AtomicBool::new(false),
             runtime_expiry_retry_available: AtomicBool::new(true),
@@ -598,6 +602,7 @@ impl PlayerService {
             self.stamped(core.snapshot())
         };
         self.publish(event_type, &snapshot);
+        self.clock_wake.notify_one();
         Ok(snapshot)
     }
 
@@ -843,6 +848,7 @@ impl PlayerService {
                 });
                 if let Ok(snapshot) = &result {
                     self.publish("player.playback", snapshot);
+                    self.clock_wake.notify_one();
                 }
                 result
             }
@@ -1984,6 +1990,34 @@ impl PlayerService {
         self.start_clock_on_runtime(&handle);
     }
 
+    pub fn set_background_mode(&self, background: bool) {
+        self.background_mode.store(background, Ordering::Release);
+        self.clock_wake.notify_one();
+    }
+
+    pub fn effective_clock_delay(&self, is_playing: bool) -> Duration {
+        #[cfg(target_os = "android")]
+        {
+            if !is_playing {
+                Duration::from_millis(1_000)
+            } else if self.background_mode.load(Ordering::Relaxed) {
+                Duration::from_millis(1_000)
+            } else {
+                Duration::from_millis(200)
+            }
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            if self.background_mode.load(Ordering::Relaxed) {
+                Duration::from_millis(1_000)
+            } else if is_playing {
+                Duration::from_millis(50)
+            } else {
+                Duration::from_millis(250)
+            }
+        }
+    }
+
     /// Starts the clock from a synchronous host composition point.
     ///
     /// The host owns runtime construction; Core only schedules its existing task on that runtime.
@@ -1993,8 +2027,6 @@ impl PlayerService {
         }
         let service = Arc::clone(self);
         handle.spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(50));
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut last_position_event = Instant::now();
             let mut previous_song_id: Option<String> = None;
             let mut previous_line_index: Option<usize> = None;
@@ -2005,10 +2037,19 @@ impl PlayerService {
             let mut last_stall_log = Instant::now()
                 .checked_sub(Duration::from_secs(10))
                 .unwrap_or_else(Instant::now);
+            let mut tick_delay = Duration::ZERO;
             tracing::info!(target: "player.eos", "clock eos-gate 2026-08-20a playhead-recover");
 
             while service.clock_running.load(Ordering::Acquire) {
-                interval.tick().await;
+                if !tick_delay.is_zero() {
+                    tokio::select! {
+                        _ = tokio::time::sleep(tick_delay) => {}
+                        _ = service.clock_wake.notified() => {}
+                    }
+                }
+                if !service.clock_running.load(Ordering::Acquire) {
+                    break;
+                }
                 let now = Instant::now();
                 let engine = service.audio.snapshot();
                 let pending_seek = service.seek_mailbox.latest();
@@ -2251,12 +2292,14 @@ impl PlayerService {
                     previous_line_index = lyric_state.line_index;
                     previous_word_index = lyric_state.word_index;
                 }
+                tick_delay = service.effective_clock_delay(snapshot.is_playing);
             }
         });
     }
 
     pub fn stop_clock(&self) {
         self.clock_running.store(false, Ordering::Release);
+        self.clock_wake.notify_one();
         self.load_generation.fetch_add(1, Ordering::AcqRel);
         let _ = self.audio.stop();
     }
@@ -4991,5 +5034,35 @@ mod tests {
         });
         player.stop_clock();
         runtime.block_on(async { tokio::task::yield_now().await });
+    }
+
+    #[tokio::test]
+    async fn background_mode_adapts_effective_clock_delay() {
+        let (player, _engine) = live_clock_player();
+        assert_eq!(
+            player.effective_clock_delay(true),
+            Duration::from_millis(50)
+        );
+        assert_eq!(
+            player.effective_clock_delay(false),
+            Duration::from_millis(250)
+        );
+
+        player.set_background_mode(true);
+        assert_eq!(
+            player.effective_clock_delay(true),
+            Duration::from_millis(1_000)
+        );
+        assert_eq!(
+            player.effective_clock_delay(false),
+            Duration::from_millis(1_000)
+        );
+
+        player.set_background_mode(false);
+        assert_eq!(
+            player.effective_clock_delay(true),
+            Duration::from_millis(50)
+        );
+        player.stop_clock();
     }
 }

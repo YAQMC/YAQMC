@@ -14,4 +14,11 @@ class FrameRatePolicyTest {
         assertEquals(60f, highestRefreshRate(floatArrayOf(Float.NaN, -1f, 0f, 60f)))
         assertEquals(0f, highestRefreshRate(floatArrayOf()))
     }
+
+    @Test
+    fun `adaptive policy preserves system default rate for power efficiency`() {
+        assertEquals(0f, adaptiveRefreshRate(floatArrayOf(60f, 120f, 90f), prefersEfficiency = true))
+        assertEquals(120f, adaptiveRefreshRate(floatArrayOf(60f, 120f, 90f), prefersEfficiency = false))
+    }
 }
+

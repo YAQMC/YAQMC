@@ -70,6 +70,13 @@ object CoreManager {
         return id
     }
 
+    fun setLifecycle(state: String) {
+        val activeHandle = handle
+        if (initialized.get() && activeHandle != 0L) {
+            nativeSetLifecycle(activeHandle, state)
+        }
+    }
+
     fun shutdown() {
         synchronized(lifecycleLock) {
             val activeHandle = handle
@@ -129,6 +136,9 @@ object CoreManager {
         method: String,
         paramsJson: String,
     )
+
+    @JvmStatic
+    private external fun nativeSetLifecycle(handle: Long, state: String)
 
     @JvmStatic
     private external fun nativeShutdown(handle: Long)

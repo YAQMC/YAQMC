@@ -510,6 +510,28 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeInvoke(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeSetLifecycle(
+    mut env: EnvUnowned<'_>,
+    _class: jni::objects::JClass<'_>,
+    handle: jlong,
+    state: JString<'_>,
+) {
+    let _ = env.with_env(|env| {
+        let state = jstring(env, state);
+        let core = cores()
+            .lock()
+            .ok()
+            .and_then(|registry| registry.get(&(handle as u64)).cloned());
+        let Some(core) = core else {
+            return Ok::<(), jni::errors::Error>(());
+        };
+        let is_background = state == "background";
+        core.core.core().player().set_background_mode(is_background);
+        Ok(())
+    });
+}
+
+#[no_mangle]
 pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeShutdown(
     mut env: EnvUnowned<'_>,
     _class: jni::objects::JClass<'_>,

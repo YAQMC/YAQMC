@@ -13,6 +13,7 @@ import androidx.media3.common.util.UnstableApi
 import com.capacitorjs.plugins.app.AppPlugin
 import com.getcapacitor.BridgeActivity
 import com.getcapacitor.WebViewListener
+import org.yaqmc.android.core.CoreManager
 import org.yaqmc.android.core.DeepLinkManager
 import org.yaqmc.android.core.MobileLoginOwner
 import org.yaqmc.android.media.PlaybackService
@@ -47,14 +48,17 @@ class MainActivity : BridgeActivity() {
         super.onResume()
         requestResponsiveFrameRate()
         MobileLoginOwner.lifecycle("foreground")
+        CoreManager.setLifecycle("foreground")
     }
 
     override fun onPause() {
+        CoreManager.setLifecycle("background")
         MobileLoginOwner.lifecycle("background")
         super.onPause()
     }
 
     override fun onDestroy() {
+        CoreManager.setLifecycle("background")
         MobileLoginOwner.lifecycle(if (isChangingConfigurations) "activity-recreated" else "activity-destroyed")
         super.onDestroy()
     }
@@ -63,17 +67,20 @@ class MainActivity : BridgeActivity() {
         deepLinks.accept(intent)
     }
 
-    /** Prefer the platform's high UI frame-rate category while preserving its
+    /** Prefer the platform's adaptive UI frame-rate behavior while preserving its
      * power, thermal and seamless-switching decisions. */
     private fun requestResponsiveFrameRate() {
         val webView = bridge?.webView ?: return
-        val preferred = highestRefreshRate(webView.display?.supportedRefreshRates ?: floatArrayOf())
-        if (preferred <= 0f) return
         val attributes = window.attributes
-        attributes.preferredRefreshRate = preferred
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            // Android 15+: enable automatic touch boost so scrolling/gestures run smoothly,
+            // while allowing the display and WebView to throttle down when static (LTPO / power saving).
             attributes.setFrameRateBoostOnTouchEnabled(true)
-            webView.setRequestedFrameRate(preferred)
+            webView.setRequestedFrameRate(0f)
+        } else {
+            // Keep preferredRefreshRate at 0f (system default) to allow dynamic switching rather
+            // than locking max power consumption.
+            attributes.preferredRefreshRate = 0f
         }
         window.attributes = attributes
     }
@@ -146,3 +153,6 @@ class MainActivity : BridgeActivity() {
 
 internal fun highestRefreshRate(rates: FloatArray): Float =
     rates.asSequence().filter { it.isFinite() && it > 0f }.maxOrNull() ?: 0f
+
+internal fun adaptiveRefreshRate(rates: FloatArray, prefersEfficiency: Boolean = true): Float =
+    if (prefersEfficiency) 0f else highestRefreshRate(rates)
