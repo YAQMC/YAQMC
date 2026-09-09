@@ -63,6 +63,7 @@ export function androidSdkCandidates(environment = process.env, platform = proce
     candidates.push(path.join(environment.HOME, 'Library', 'Android', 'sdk'));
   } else if (environment.HOME) {
     candidates.push(path.join(environment.HOME, 'Android', 'Sdk'));
+    candidates.push(path.join(environment.HOME, '.local', 'share', 'Android', 'Sdk'));
   }
   return [...new Set(candidates.filter(Boolean).map((candidate) => path.resolve(candidate)))];
 }
@@ -106,6 +107,16 @@ export function androidJavaCandidates(environment = process.env, platform = proc
     homes.push('/Applications/Android Studio.app/Contents/jbr/Contents/Home');
   } else {
     homes.push('/opt/android-studio/jbr');
+  }
+  if (environment.HOME) {
+    const jdks = path.join(environment.HOME, '.jdks');
+    if (existsSync(jdks)) {
+      homes.push(
+        ...readdirSync(jdks, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory() && entry.name.startsWith('jdk-21'))
+          .map((entry) => path.join(jdks, entry.name)),
+      );
+    }
   }
   homes.push(environment.JAVA_HOME);
   return [
