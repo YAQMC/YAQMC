@@ -6,6 +6,8 @@ on:
     paths:
       - 'site/**'
       - 'assets/yaqmc-logo.png'
+      - 'assets/yaqmc-social-preview.svg'
+      - 'assets/yaqmc-social-preview.png'
       - 'docs/**'
       - 'README*.md'
       - 'scripts/build-pages.mjs'

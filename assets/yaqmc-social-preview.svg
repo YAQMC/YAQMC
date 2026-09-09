@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+<title id="title">YAQMC — Music and lyrics, in good company</title>
+<desc id="desc">YAQMC, an open-source unofficial QQ Music client for Windows, Linux and Android.</desc>
+<defs>
+  <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8f7f2"/><stop offset="1" stop-color="#e9efe3"/></linearGradient>
+  <radialGradient id="vinyl"><stop stop-color="#26362c"/><stop offset=".66" stop-color="#17221b"/><stop offset="1" stop-color="#0d1511"/></radialGradient>
+  <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#183324" flood-opacity=".2"/></filter>
+</defs>
+<rect width="1280" height="640" fill="url(#paper)"/>
+<path d="M0 0h1280v640H0z" fill="none" stroke="#d5ddd0" stroke-width="2"/>
+<g transform="translate(86 74)">
+  <rect width="64" height="64" rx="15" fill="#285c40"/>
+  <circle cx="32" cy="32" r="19" fill="none" stroke="#f6f5f0" stroke-width="3"/>
+  <path d="M19 37v-10m7 15V22m7 12V27m7 14V19m7 18v-9" stroke="#f6f5f0" stroke-width="3.5" stroke-linecap="round"/>
+  <text x="84" y="42" fill="#202923" font-family="Segoe UI,Arial,sans-serif" font-size="32" font-weight="700" letter-spacing="1">YAQMC</text>
+</g>
+<g transform="translate(86 244)">
+  <text fill="#285c40" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="5">YET ANOTHER Q MUSIC CLIENT</text>
+  <text y="88" fill="#202923" font-family="Segoe UI,Arial,sans-serif" font-size="72" font-weight="650" letter-spacing="-2">Your music.</text>
+  <text y="164" fill="#285c40" font-family="Georgia,serif" font-size="78" font-style="italic">Every word.</text>
+  <text y="224" fill="#5e695f" font-family="Segoe UI,Arial,sans-serif" font-size="22">Open source · Native playback · Synced lyrics</text>
+</g>
+<g transform="translate(867 320)" filter="url(#shadow)">
+  <circle r="230" fill="url(#vinyl)"/>
+  <g fill="none" stroke="#526257" stroke-opacity=".35">
+    <circle r="200"/><circle r="179"/><circle r="157"/><circle r="135"/><circle r="113"/>
+  </g>
+  <circle r="86" fill="#c6d7b5"/>
+  <circle r="33" fill="#f6f5f0" stroke="#285c40" stroke-width="5"/>
+  <path d="M-20 9v-23m10 30V-30m10 20v-12m10 25v-29m10 24V-7" stroke="#285c40" stroke-width="5" stroke-linecap="round"/>
+  <circle r="5" fill="#202923"/>
+  <text text-anchor="middle" y="126" fill="#c6d7b5" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="700" letter-spacing="3">JUST PRESS PLAY</text>
+</g>
+<g transform="translate(86 570)" fill="#5e695f" font-family="Segoe UI,Arial,sans-serif" font-size="16">
+  <text>Windows</text><text x="105">/</text><text x="132">Linux</text><text x="220">/</text><text x="247">Android</text>
+</g>
+<text x="1194" y="570" text-anchor="end" fill="#285c40" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="2">v0.1.0</text>
+</svg>
