@@ -43,7 +43,11 @@ function releasePublicAssetsPlugin(command: string): Plugin {
           type: 'asset',
           fileName,
           source: readFileSync(
-            path.join(repositoryRoot, fileName === 'yaqmc-logo.png' ? 'assets' : 'public', fileName),
+            path.join(
+              repositoryRoot,
+              fileName === 'yaqmc-logo.png' ? 'assets' : 'public',
+              fileName,
+            ),
           ),
         });
       }
