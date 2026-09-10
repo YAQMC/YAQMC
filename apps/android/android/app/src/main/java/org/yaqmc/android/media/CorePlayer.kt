@@ -53,6 +53,7 @@ class CorePlayer(
     override fun getState(): State {
         val currentPlaylist = playlist
         val normalizedIndex = currentIndex.takeIf { it in currentPlaylist.indices } ?: C.INDEX_UNSET
+        val currentPos = CoreManager.audioBackend?.currentPositionMs ?: positionMs
         return State.Builder()
             .setAvailableCommands(
                 Player.Commands.Builder().addAll(
@@ -75,7 +76,7 @@ class CorePlayer(
             .setIsLoading(projection.loading)
             .setPlayerError(playerError)
             .setCurrentMediaItemIndex(normalizedIndex)
-            .setContentPositionMs(positionMs)
+            .setContentPositionMs(currentPos)
             .setVolume(volume)
             .setRepeatMode(repeatMode)
             .setShuffleModeEnabled(shuffle)

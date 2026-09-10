@@ -21,6 +21,8 @@ object CoreManager {
     private val lifecycleLock = Any()
     @Volatile private var handle = 0L
     private lateinit var credentials: CredentialStore
+    @Volatile private var _audioBackend: org.yaqmc.android.media.ExoAudioBackend? = null
+    val audioBackend: org.yaqmc.android.media.ExoAudioBackend? get() = _audioBackend
 
     fun initialize(context: Context, buildJson: String, callback: Callback? = null) {
         callback?.let(::addCallback)
@@ -29,6 +31,7 @@ object CoreManager {
             if (initialized.get()) return
             System.loadLibrary("yaqmc_core")
             credentials = CredentialStore(context.applicationContext)
+            _audioBackend = org.yaqmc.android.media.ExoAudioBackend(context.applicationContext)
             val nativeHandle = nativeInitialize(
                 context.applicationContext,
                 context.filesDir.absolutePath,
@@ -77,6 +80,28 @@ object CoreManager {
         }
     }
 
+    fun reportAudioState(
+        positionMs: Long,
+        durationMs: Long,
+        isPlaying: Boolean,
+        isBuffering: Boolean,
+        isEnded: Boolean,
+        error: String?,
+    ) {
+        val activeHandle = handle
+        if (initialized.get() && activeHandle != 0L) {
+            nativeReportAudioState(
+                activeHandle,
+                positionMs,
+                durationMs,
+                isPlaying,
+                isBuffering,
+                isEnded,
+                error,
+            )
+        }
+    }
+
     fun shutdown() {
         synchronized(lifecycleLock) {
             val activeHandle = handle
@@ -84,6 +109,8 @@ object CoreManager {
             if (initialized.compareAndSet(true, false) && activeHandle != 0L) {
                 nativeShutdown(activeHandle)
             }
+            _audioBackend?.release()
+            _audioBackend = null
             oneShotResponses.clear()
         }
     }
@@ -117,6 +144,29 @@ object CoreManager {
                 credentials.remove(account)
                 true
             }.getOrDefault(false)
+
+        fun audioLoad(streamId: Long, localPath: String?, format: String): Boolean =
+            _audioBackend?.load(streamId, localPath, format) ?: false
+
+        fun audioPlay() {
+            _audioBackend?.play()
+        }
+
+        fun audioPause() {
+            _audioBackend?.pause()
+        }
+
+        fun audioStop() {
+            _audioBackend?.stop()
+        }
+
+        fun audioSeek(positionMs: Long) {
+            _audioBackend?.seek(positionMs)
+        }
+
+        fun audioSetVolume(volume: Float) {
+            _audioBackend?.setVolume(volume)
+        }
     }
 
     @JvmStatic
@@ -139,6 +189,31 @@ object CoreManager {
 
     @JvmStatic
     private external fun nativeSetLifecycle(handle: Long, state: String)
+
+    @JvmStatic
+    private external fun nativeReportAudioState(
+        handle: Long,
+        positionMs: Long,
+        durationMs: Long,
+        isPlaying: Boolean,
+        isBuffering: Boolean,
+        isEnded: Boolean,
+        error: String?,
+    )
+
+    @JvmStatic
+    internal external fun nativeStreamOpen(streamId: Long, position: Long): Long
+
+    @JvmStatic
+    internal external fun nativeStreamRead(
+        streamId: Long,
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int
+
+    @JvmStatic
+    internal external fun nativeStreamClose(streamId: Long)
 
     @JvmStatic
     private external fun nativeShutdown(handle: Long)

@@ -1995,6 +1995,10 @@ impl PlayerService {
         self.clock_wake.notify_one();
     }
 
+    pub fn wake_clock(&self) {
+        self.clock_wake.notify_one();
+    }
+
     pub fn effective_clock_delay(&self, is_playing: bool) -> Duration {
         #[cfg(target_os = "android")]
         {

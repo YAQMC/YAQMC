@@ -18,9 +18,15 @@ class CoreManagerContractTest {
         assertTrue("credentialLoad" in nativeMethods)
         assertTrue("credentialSave" in nativeMethods)
         assertTrue("credentialDelete" in nativeMethods)
+        assertTrue("audioLoad" in nativeMethods)
+        assertTrue("audioPlay" in nativeMethods)
+        assertTrue("audioPause" in nativeMethods)
+        assertTrue("audioStop" in nativeMethods)
+        assertTrue("audioSeek" in nativeMethods)
+        assertTrue("audioSetVolume" in nativeMethods)
         val callbackMethods = CoreManager::class.java.declaredClasses
             .flatMap { it.declaredMethods.toList() }
-            .filter { it.name.startsWith("onCore") || it.name.startsWith("credential") }
+            .filter { it.name.startsWith("onCore") || it.name.startsWith("credential") || it.name.startsWith("audio") }
         assertTrue(callbackMethods.isNotEmpty())
         assertTrue(
             "Rust calls callback-object instance methods through JNI",

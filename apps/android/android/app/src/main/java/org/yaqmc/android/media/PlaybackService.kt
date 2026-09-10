@@ -10,7 +10,6 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
@@ -23,7 +22,6 @@ class PlaybackService : MediaSessionService() {
     private var player: CorePlayer? = null
     private var focusRequest: AudioFocusRequest? = null
     private lateinit var audioManager: AudioManager
-    private lateinit var wakeLock: PowerManager.WakeLock
     private val handler = Handler(Looper.getMainLooper())
     private val focusPolicy = AudioFocusPolicy()
     private var focusHeld = false
@@ -61,9 +59,6 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
         active = this
         audioManager = getSystemService(AudioManager::class.java)
-        wakeLock = getSystemService(PowerManager::class.java)
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "yaqmc:playback")
-            .apply { setReferenceCounted(false) }
         player = CorePlayer(
             Looper.getMainLooper(),
             ::requestAudioFocus,
@@ -96,7 +91,6 @@ class PlaybackService : MediaSessionService() {
             noisyReceiverRegistered = false
         }
         abandonAudioFocus()
-        updateWakeLock(false)
         session?.release()
         player?.close()
         player?.release()
@@ -171,20 +165,13 @@ class PlaybackService : MediaSessionService() {
             player?.pauseForSystem()
             return
         }
-        updateWakeLock(held)
         if (!held) abandonAudioFocus()
-    }
-
-    private fun updateWakeLock(held: Boolean) {
-        if (held && !wakeLock.isHeld) wakeLock.acquire()
-        if (!held && wakeLock.isHeld) wakeLock.release()
     }
 
     private fun stopAfterCore() {
         if (shuttingDown) return
         shuttingDown = true
         abandonAudioFocus()
-        updateWakeLock(false)
         stopSelf()
     }
 
