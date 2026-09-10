@@ -185,14 +185,26 @@ pub enum PreparedPlaybackLocation {
     },
 }
 
-struct DecryptingReader<Reader> {
+pub trait ReadSeek: Read + Seek + Send + Sync + 'static {}
+impl<T: Read + Seek + Send + Sync + 'static> ReadSeek for T {}
+
+pub enum PlaybackStreamLocation {
+    Local(PathBuf),
+    Stream {
+        reader: Box<dyn ReadSeek>,
+        content_length: u64,
+        monitor: Option<ProgressiveMonitor>,
+    },
+}
+
+pub struct DecryptingReader<Reader> {
     inner: Reader,
     decryptor: Arc<dyn MediaDecryptor>,
     position: u64,
 }
 
 impl<Reader> DecryptingReader<Reader> {
-    fn new(inner: Reader, decryptor: Arc<dyn MediaDecryptor>) -> Self {
+    pub fn new(inner: Reader, decryptor: Arc<dyn MediaDecryptor>) -> Self {
         Self {
             inner,
             decryptor,
@@ -1222,16 +1234,59 @@ struct DecodedPlaybackSource {
     sample_rate: u32,
 }
 
-fn decode_source(
+pub fn open_playback_stream(
     source: &PreparedPlaybackSource,
-) -> Result<DecodedPlaybackSource, AudioEngineError> {
+) -> Result<PlaybackStreamLocation, AudioEngineError> {
     source
         .epoch_guard
-        .validate_and_run(|| decode_source_unchecked(source))
+        .validate_and_run(|| match &source.location {
+            PreparedPlaybackLocation::Local(path) => {
+                if !path.exists() {
+                    return Err(AudioEngineError::MediaOpenFailed);
+                }
+                Ok(PlaybackStreamLocation::Local(path.clone()))
+            }
+            PreparedPlaybackLocation::Progressive(progressive) => {
+                let reader = progressive
+                    .open_reader()
+                    .map_err(|_| AudioEngineError::StreamingFailed)?;
+                Ok(PlaybackStreamLocation::Stream {
+                    reader: Box::new(reader),
+                    content_length: progressive.content_length(),
+                    monitor: Some(progressive.monitor()),
+                })
+            }
+            PreparedPlaybackLocation::EncryptedLocal {
+                path,
+                content_length,
+                decryptor,
+            } => {
+                let file = File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?;
+                let mut reader = DecryptingReader::new(file, decryptor.clone());
+                validate_decrypted_flac(&mut reader, decryptor.as_ref())?;
+                Ok(PlaybackStreamLocation::Stream {
+                    reader: Box::new(reader),
+                    content_length: *content_length,
+                    monitor: None,
+                })
+            }
+            PreparedPlaybackLocation::EncryptedProgressive { source, decryptor } => {
+                let reader = source
+                    .open_reader()
+                    .map_err(|_| AudioEngineError::StreamingFailed)?;
+                let mut reader = DecryptingReader::new(reader, decryptor.clone());
+                validate_decrypted_flac(&mut reader, decryptor.as_ref())?;
+                Ok(PlaybackStreamLocation::Stream {
+                    reader: Box::new(reader),
+                    content_length: source.content_length(),
+                    monitor: Some(source.monitor()),
+                })
+            }
+        })
         .map_err(|_| AudioEngineError::SourceCancelled)?
 }
 
-fn decode_source_unchecked(
+fn decode_source(
     source: &PreparedPlaybackSource,
 ) -> Result<DecodedPlaybackSource, AudioEngineError> {
     tracing::debug!(
@@ -1241,9 +1296,9 @@ fn decode_source_unchecked(
         cache_key = %source.cache_key,
         "loading prepared media"
     );
-    match &source.location {
-        PreparedPlaybackLocation::Local(path) => {
-            let file = File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?;
+    match open_playback_stream(source)? {
+        PlaybackStreamLocation::Local(path) => {
+            let file = File::open(&path).map_err(|_| AudioEngineError::MediaOpenFailed)?;
             let decoder = Decoder::try_from(file).map_err(|error| {
                 tracing::warn!(
                     target: "audio",
@@ -1255,13 +1310,14 @@ fn decode_source_unchecked(
             })?;
             Ok(decoded_playback_source(decoder, source.format, None))
         }
-        PreparedPlaybackLocation::Progressive(progressive) => {
-            let reader = progressive
-                .open_reader()
-                .map_err(|_| AudioEngineError::StreamingFailed)?;
+        PlaybackStreamLocation::Stream {
+            reader,
+            content_length,
+            monitor,
+        } => {
             let decoder = DecoderBuilder::new()
                 .with_data(reader)
-                .with_byte_len(progressive.content_length())
+                .with_byte_len(content_length)
                 .with_seekable(true)
                 .with_hint(source.format.extension())
                 .build()
@@ -1270,71 +1326,11 @@ fn decode_source_unchecked(
                         target: "audio",
                         format = source.format.as_str(),
                         error = %error,
-                        "decoder rejected progressive media"
+                        "decoder rejected stream media"
                     );
                     AudioEngineError::DecoderUnsupported
                 })?;
-            Ok(decoded_playback_source(
-                decoder,
-                source.format,
-                Some(progressive.monitor()),
-            ))
-        }
-        PreparedPlaybackLocation::EncryptedLocal {
-            path,
-            content_length,
-            decryptor,
-        } => {
-            let mut reader = DecryptingReader::new(
-                File::open(path).map_err(|_| AudioEngineError::MediaOpenFailed)?,
-                decryptor.clone(),
-            );
-            validate_decrypted_flac(&mut reader, decryptor.as_ref())?;
-            let decoder = DecoderBuilder::new()
-                .with_data(reader)
-                .with_byte_len(*content_length)
-                .with_seekable(true)
-                .with_hint(source.format.extension())
-                .build()
-                .map_err(|error| {
-                    tracing::warn!(
-                        target: "audio",
-                        media_kind = "encrypted-flac",
-                        error = %error,
-                        "decoder rejected decrypted media"
-                    );
-                    AudioEngineError::DecoderUnsupported
-                })?;
-            Ok(decoded_playback_source(decoder, source.format, None))
-        }
-        PreparedPlaybackLocation::EncryptedProgressive { source, decryptor } => {
-            let mut reader = DecryptingReader::new(
-                source
-                    .open_reader()
-                    .map_err(|_| AudioEngineError::StreamingFailed)?,
-                decryptor.clone(),
-            );
-            validate_decrypted_flac(&mut reader, decryptor.as_ref())?;
-            let decoder = DecoderBuilder::new()
-                .with_data(reader)
-                .with_byte_len(source.content_length())
-                .with_seekable(true)
-                .with_hint("flac")
-                .build()
-                .map_err(|error| {
-                    tracing::warn!(
-                        target: "audio",
-                        media_kind = "encrypted-progressive-flac",
-                        error = %error,
-                        "decoder rejected decrypted progressive media"
-                    );
-                    AudioEngineError::DecoderUnsupported
-                })?;
-            Ok(decoded_playback_source(
-                decoder,
-                AudioFormat::Flac,
-                Some(source.monitor()),
-            ))
+            Ok(decoded_playback_source(decoder, source.format, monitor))
         }
     }
 }
@@ -1382,7 +1378,7 @@ fn append_decoded_source(
     (metadata, monitor)
 }
 
-fn validate_decrypted_flac<Reader: Read + Seek>(
+pub fn validate_decrypted_flac<Reader: Read + Seek>(
     reader: &mut Reader,
     decryptor: &dyn MediaDecryptor,
 ) -> Result<(), AudioEngineError> {
@@ -2142,5 +2138,41 @@ mod tests {
         assert_eq!(engine.load(&source(1)), Err(AudioEngineError::StaleCommand));
         assert_eq!(engine.snapshot().source_generation, generation);
         assert!(engine.snapshot().loaded);
+    }
+
+    #[test]
+    fn open_playback_stream_validates_existence_and_guard() {
+        let missing = PreparedPlaybackSource {
+            location: PreparedPlaybackLocation::Local(PathBuf::from("/nonexistent/file.flac")),
+            format: AudioFormat::Flac,
+            timeline_offset_ms: 0,
+            timeline_end_ms: None,
+            is_preview: false,
+            cache_key: "missing".to_owned(),
+            selection: PlaybackSourceSelection {
+                requested_quality: AudioQualityPreference::High,
+                resolved_quality: AudioQuality::Standard,
+                fallback_reason: None,
+                preview: false,
+                quality_capabilities: Vec::new(),
+            },
+            epoch_guard: PlaybackEpochGuard::unrestricted(),
+            load_generation: 1,
+        };
+        assert_eq!(
+            open_playback_stream(&missing).err(),
+            Some(AudioEngineError::MediaOpenFailed)
+        );
+
+        let guard = PlaybackEpochGuard::unrestricted();
+        guard.cancellation_token().cancel();
+        let cancelled = PreparedPlaybackSource {
+            epoch_guard: guard,
+            ..missing
+        };
+        assert_eq!(
+            open_playback_stream(&cancelled).err(),
+            Some(AudioEngineError::SourceCancelled)
+        );
     }
 }
