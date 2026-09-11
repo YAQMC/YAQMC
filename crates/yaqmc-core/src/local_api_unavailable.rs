@@ -24,7 +24,18 @@ pub struct LocalApiStatus {
     pub configured_port: u16,
     pub bound_port: Option<u16>,
     pub token_configured: bool,
+    pub token_state: LocalApiTokenState,
     pub last_error: Option<String>,
+}
+
+/// Mirrors the real service: this build cannot read secure token storage, so the
+/// API is treated as fail-closed rather than as the user disabling the token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalApiTokenState {
+    Configured,
+    ExplicitlyDisabled,
+    Unavailable,
 }
 
 #[derive(Debug, Error)]
@@ -58,6 +69,7 @@ impl LocalApiService {
             configured_port: 19_532,
             bound_port: None,
             token_configured: false,
+            token_state: LocalApiTokenState::Unavailable,
             last_error: Some("local API is unavailable in this Core build".to_owned()),
         }
     }

@@ -19,9 +19,9 @@ class NativeAudioDataSource(private val streamId: Long) : BaseDataSource(/* isNe
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
         transferInitializing(dataSpec)
-        val remaining = CoreManager.nativeStreamOpen(streamId, dataSpec.position)
+        val remaining = CoreManager.streamOpen(streamId, dataSpec.position)
         if (remaining < 0) {
-            throw IOException("Failed to open native stream $streamId at position ${dataSpec.position}")
+            throw NativeStreamError.failure("open", remaining, streamId, dataSpec.position)
         }
         bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
             dataSpec.length
@@ -43,9 +43,19 @@ class NativeAudioDataSource(private val streamId: Long) : BaseDataSource(/* isNe
             length
         }
 
-        val bytesRead = CoreManager.nativeStreamRead(streamId, buffer, offset, bytesToRead)
-        if (bytesRead <= 0) {
+        val bytesRead = CoreManager.streamRead(streamId, buffer, offset, bytesToRead)
+        if (bytesRead == 0) {
             return C.RESULT_END_OF_INPUT
+        }
+        if (bytesRead < 0) {
+            // A negative code is a real failure. Treating it as end-of-input
+            // silently truncated playback and suppressed quality fallback.
+            throw NativeStreamError.failure(
+                "read",
+                bytesRead.toLong(),
+                streamId,
+                dataSpec?.position ?: 0L,
+            )
         }
         if (bytesRemaining != C.LENGTH_UNSET.toLong()) {
             bytesRemaining -= bytesRead
@@ -59,10 +69,11 @@ class NativeAudioDataSource(private val streamId: Long) : BaseDataSource(/* isNe
     override fun close() {
         if (opened) {
             opened = false
-            CoreManager.nativeStreamClose(streamId)
+            CoreManager.streamClose(streamId)
             transferEnded()
         }
     }
+
 }
 
 @UnstableApi

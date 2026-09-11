@@ -5,7 +5,7 @@ import i18n from './i18n';
 import { defaultPreferences, usePreferencesStore } from './application/preferences';
 import { resetAccountRuntimeForTest, useAccountStore } from './application/account-runtime';
 import { initialPlayerState, usePlayerStore } from './application/player-store';
-import { resetLyricsStageForTests } from './application/lyrics-stage-machine';
+import { resetLyricsStageForTests, useLyricsStageStore } from './application/lyrics-stage-machine';
 import type { AppRoute } from './application/navigation';
 import {
   ProviderContext,
@@ -257,6 +257,30 @@ class ControlledFullscreenPort implements FullscreenPort {
 }
 
 describe('App TopBar history navigation', () => {
+  it('keeps the original page inert through entrance and exit, restoring it on close', () => {
+    renderApp();
+    const shell = document.querySelector('.app-shell');
+    const content = document.querySelector('.content-shell');
+    const header = content?.firstElementChild;
+    expect(content).not.toHaveAttribute('inert');
+    act(() => {
+      usePlayerStore.setState({ lyricsOpen: true });
+      useLyricsStageStore.setState({ stage: 'entering' });
+    });
+    expect(shell).toHaveAttribute('data-lyrics-stage', 'entering');
+    expect(content).toHaveAttribute('inert');
+    act(() => useLyricsStageStore.setState({ stage: 'open' }));
+    expect(shell).toHaveAttribute('data-lyrics-stage', 'open');
+    act(() => {
+      usePlayerStore.setState({ lyricsOpen: false });
+      useLyricsStageStore.setState({ stage: 'exiting' });
+    });
+    expect(content).toHaveAttribute('inert');
+    expect(shell).toHaveAttribute('data-lyrics-stage', 'exiting');
+    act(() => useLyricsStageStore.setState({ stage: 'closed' }));
+    expect(content).not.toHaveAttribute('inert');
+    expect(content?.firstElementChild).toBe(header);
+  });
   let port: ControlledFullscreenPort;
   let restorePort: () => void;
 
@@ -373,6 +397,36 @@ describe('App TopBar history navigation', () => {
     fireEvent.keyDown(window, { key: 'F11' });
     await waitFor(() => expect(port.writes).toEqual([true, false, true, false]));
     expect(usePlayerStore.getState().isPlaying).toBe(true);
+  });
+
+  it('closes the windowed lyrics page on Escape without changing playback', async () => {
+    usePreferencesStore.setState({
+      ...defaultPreferences,
+      lyrics: { ...defaultPreferences.lyrics, focusSidebarCollapsed: false },
+    });
+    renderApp();
+    act(() => {
+      usePlayerStore.setState({
+        queue: [allSongs[0]!],
+        currentIndex: 0,
+        lyricsOpen: true,
+        isPlaying: true,
+        playbackState: 'playing',
+        positionMs: 12_000,
+      });
+    });
+
+    expect(screen.getByTestId('lyrics-presentation-mode')).toHaveTextContent('windowed');
+    expect(document.querySelector('.app-shell')).toHaveAttribute('data-lyrics-open');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() => expect(usePlayerStore.getState().lyricsOpen).toBe(false));
+    expect(usePlayerStore.getState()).toMatchObject({ isPlaying: true, positionMs: 12_000 });
+    expect(useLyricsStageStore.getState().stage).toBe('closed');
+    await waitFor(() =>
+      expect(document.querySelector('.app-shell')).not.toHaveAttribute('data-lyrics-open'),
+    );
   });
 
   it('projects the active provider identity without hard-coding the acceptance marker', () => {

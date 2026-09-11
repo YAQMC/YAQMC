@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isPlaybackDiagnosticsBuild } from '../application/diagnostics-profile';
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { getYaqmcClient } from '../application/yaqmc-runtime';
 
@@ -21,6 +22,12 @@ function fpsTier(fps: number): 'good' | 'ok' | 'low' {
 }
 
 export function FpsOverlay() {
+  // Production builds never mount the HUD; the runtime below is only reachable
+  // from a dev/QA build.
+  return isPlaybackDiagnosticsBuild() ? <FpsOverlayRuntime /> : null;
+}
+
+function FpsOverlayRuntime() {
   const [stats, setStats] = useState<FrameStats | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const samples = useRef<number[]>([]);

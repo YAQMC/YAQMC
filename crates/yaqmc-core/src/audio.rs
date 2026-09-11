@@ -252,6 +252,11 @@ pub struct AudioEngineSnapshot {
     pub duration_ms: Option<u64>,
     pub output_error: Option<String>,
     pub source_error: Option<String>,
+    /// A decoder failure reported asynchronously by a native backend.
+    ///
+    /// This is separate from `source_error` so Core can apply the same
+    /// automatic quality fallback used for synchronous decoder failures.
+    pub decoder_error: Option<String>,
     pub source_url_expired: bool,
     pub buffering: bool,
     pub progressive_downloaded_bytes: Option<u64>,

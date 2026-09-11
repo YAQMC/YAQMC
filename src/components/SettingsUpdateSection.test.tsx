@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { YaqmcClient, createFakeBridge, type UpdatePayload } from '@yaqmc/client';
+import i18n from '../i18n';
 import {
   HOST_UPDATER_CHECK_METHOD,
   HOST_UPDATER_DOWNLOAD_METHOD,
@@ -67,6 +68,24 @@ describe('updater settings helpers', () => {
 });
 
 describe('SettingsUpdateSection', () => {
+  it('updates headings, actions and status when the language switches', async () => {
+    render(<SettingsUpdateSection />);
+    try {
+      await act(() => i18n.changeLanguage('zh-CN'));
+      expect(screen.getByRole('heading', { name: '更新' })).toBeVisible();
+      expect(screen.getByRole('button', { name: '检查更新' })).toBeVisible();
+      expect(screen.getByRole('status')).toHaveTextContent('尚未检查更新。');
+      act(() => emitUpdate(payload('available', { version: '1.2.3', canInstall: true })));
+      expect(screen.getByRole('status')).toHaveTextContent('发现新版本 1.2.3。');
+      expect(screen.getByRole('button', { name: '下载更新' })).toBeVisible();
+      await act(() => i18n.changeLanguage('en-US'));
+      expect(screen.getByRole('heading', { name: 'Updates' })).toBeVisible();
+      expect(screen.getByRole('status')).toHaveTextContent('Version 1.2.3 is available.');
+      expect(invokeMock).not.toHaveBeenCalled();
+    } finally {
+      await act(() => i18n.changeLanguage('en-US'));
+    }
+  });
   beforeEach(() => {
     invokeMock.mockReset();
     openExternalMock.mockReset();

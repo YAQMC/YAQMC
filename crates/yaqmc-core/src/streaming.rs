@@ -123,6 +123,16 @@ impl ProgressiveMonitor {
     pub fn content_length(&self) -> u64 {
         self.inner.content_length
     }
+
+    /// Requests cancellation of the progressive reader.
+    ///
+    /// A reader blocked inside [`ProgressiveReader::ensure_segment`] wakes up and
+    /// returns `ErrorKind::Interrupted` instead of waiting out the full range
+    /// timeout, so retiring a stream cannot strand a blocking read for seconds.
+    pub fn cancel(&self) {
+        self.inner.cancelled.store(true, Ordering::Release);
+        self.inner.ready.notify_all();
+    }
 }
 
 struct ProgressiveInner {
@@ -1004,6 +1014,72 @@ mod tests {
         assert_eq!(
             validate_unsatisfied_range(&headers, 1024),
             Err(ProgressiveError::ResponseTooLarge)
+        );
+    }
+
+    /// F-06/F-02 regression: retiring a stream must wake a read that is blocked
+    /// on an in-flight range instead of stranding it for the full 20s timeout.
+    #[test]
+    fn cancelling_a_monitor_wakes_a_reader_blocked_on_a_pending_segment() {
+        let root = tempfile::tempdir().expect("temp root");
+        let path = root.path().join("pending.part");
+        fs::write(&path, b"abcdefghijkl").expect("fixture");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("storage"),
+        );
+        let inner = Arc::new(ProgressiveInner {
+            url: "https://example.invalid/media".to_owned(),
+            headers: HeaderMap::new(),
+            path: path.clone(),
+            content_length: 12,
+            segment_size: 4,
+            cache_key: "pending".to_owned(),
+            extension: "bin".to_owned(),
+            mime_type: None,
+            storage,
+            // Only the first segment is available and no worker is running, so
+            // the reader parks inside `ensure_segment` until it is cancelled.
+            state: Mutex::new(SegmentState {
+                available: vec![true, false, false],
+                requested: VecDeque::new(),
+                in_flight: None,
+                next_prefetch: 1,
+                error: None,
+                promoted: false,
+            }),
+            ready: Condvar::new(),
+            waiting: AtomicBool::new(false),
+            cancelled: AtomicBool::new(false),
+            reader_count: AtomicUsize::new(1),
+            source_count: AtomicUsize::new(0),
+            downloaded_bytes: AtomicU64::new(4),
+        });
+        let monitor = ProgressiveMonitor {
+            inner: Arc::clone(&inner),
+        };
+        let mut reader = ProgressiveReader {
+            file: File::open(&inner.path).expect("open fixture"),
+            inner: Arc::clone(&inner),
+            position: 0,
+        };
+        reader.seek(SeekFrom::Start(4)).expect("seek");
+        let blocked = thread::spawn(move || {
+            let mut bytes = [0_u8; 4];
+            reader.read(&mut bytes)
+        });
+        assert!(wait_until(Duration::from_secs(5), || monitor.is_waiting()));
+        let requested_at = Instant::now();
+        monitor.cancel();
+        let error = blocked
+            .join()
+            .expect("blocked reader thread")
+            .expect_err("cancelled read must fail");
+        assert_eq!(error.kind(), io::ErrorKind::Interrupted);
+        assert!(
+            requested_at.elapsed() < Duration::from_secs(2),
+            "cancel took {:?}",
+            requested_at.elapsed()
         );
     }
 

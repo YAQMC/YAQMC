@@ -8,6 +8,7 @@ import {
   preferencesRequireMigration,
   usePreferencesStore,
 } from './preferences';
+import { defaultLyricsTransportState } from './lyrics-transport';
 
 describe('preference persistence model', () => {
   it('falls back cleanly for missing or future-shaped data', () => {
@@ -340,6 +341,62 @@ describe('preference persistence model', () => {
     expect(created.lyrics.coverLayout).toBe('full');
     expect(preferencesRequireMigration({ version: 2 })).toBe(true);
   });
+});
+
+it('defaults the transport bars, normalizes unsafe ids and flags legacy documents', () => {
+  const defaults = normalizePreferences({ version: 2 }).transport;
+  expect(defaults).toEqual({
+    schemaVersion: 1,
+    window: 'builtin.transport.window',
+    fullscreen: 'builtin.transport.fullscreen',
+  });
+
+  const normalized = normalizePreferences({
+    version: 2,
+    transport: { schemaVersion: 1, window: '  plugin.studio.bar  ', fullscreen: 'not a valid id!' },
+  }).transport;
+  expect(normalized.window).toBe('plugin.studio.bar');
+  expect(normalized.fullscreen).toBe('builtin.transport.fullscreen');
+
+  expect(
+    normalizePreferences({
+      version: 2,
+      transport: { schemaVersion: 9, window: 'plugin.studio.bar', fullscreen: 'plugin.studio.bar' },
+    }).transport,
+  ).toEqual(defaults);
+
+  const current = normalizePreferences({ version: 2 });
+  expect(preferencesRequireMigration(current)).toBe(false);
+  const legacy = { ...current } as Record<string, unknown>;
+  delete legacy.transport;
+  expect(preferencesRequireMigration(legacy)).toBe(true);
+  expect(
+    preferencesRequireMigration({ ...current, transport: { schemaVersion: 1, window: '' } }),
+  ).toBe(true);
+});
+
+it('stores window and fullscreen transport selections independently', () => {
+  usePreferencesStore.setState({
+    ...defaultPreferences,
+    transport: { ...defaultLyricsTransportState },
+  });
+  usePreferencesStore.getState().setTransportPreset('window', 'plugin.studio.bar');
+
+  expect(usePreferencesStore.getState().transport).toEqual({
+    schemaVersion: 1,
+    window: 'plugin.studio.bar',
+    fullscreen: 'builtin.transport.fullscreen',
+  });
+
+  usePreferencesStore.getState().setTransportPreset('fullscreen', 'plugin.studio.overlay');
+  expect(usePreferencesStore.getState().transport).toEqual({
+    schemaVersion: 1,
+    window: 'plugin.studio.bar',
+    fullscreen: 'plugin.studio.overlay',
+  });
+
+  usePreferencesStore.getState().setTransportPreset('fullscreen', '  ');
+  expect(usePreferencesStore.getState().transport.fullscreen).toBe('builtin.transport.fullscreen');
 });
 
 describe('formatBackgroundPickerError', () => {

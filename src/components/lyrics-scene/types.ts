@@ -38,6 +38,7 @@ export interface LyricsSceneBindings {
   beginScrub?: () => void;
   previewScrub?: (positionMs: number) => void;
   commitScrub?: (positionMs: number) => void;
+  cancelScrub?: () => void;
   togglePlayback: () => void;
   next?: () => void;
   previous?: () => void;

@@ -19,11 +19,12 @@ import { useTranslation } from 'react-i18next';
 import { AccountAvatar } from './AccountAvatar';
 
 interface SidebarProps {
+  inert?: boolean;
   route: AppRoute;
   onNavigate: (route: AppRoute) => void;
 }
 
-export function Sidebar({ route, onNavigate }: SidebarProps) {
+export function Sidebar({ route, onNavigate, inert }: SidebarProps) {
   const { t } = useTranslation('navigation');
   const android = isAndroidRuntime();
   const pluginSidebar = usePluginUiSnapshot().sidebar;
@@ -41,7 +42,7 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
         { label: t('explore'), page: 'explore' as const, icon: Compass },
       ];
   return (
-    <aside className="sidebar" data-yaqmc="sidebar">
+    <aside className="sidebar" data-yaqmc="sidebar" inert={inert}>
       <div className="sidebar__brand" aria-label="YAQMC">
         <span className="sidebar__brand-mark" aria-hidden="true" />
         <span>YAQMC</span>
@@ -159,7 +160,7 @@ export function Sidebar({ route, onNavigate }: SidebarProps) {
 }
 
 /** Compact navigation used by Android phones; the desktop rail remains intact. */
-export function AndroidBottomNav({ route, onNavigate }: SidebarProps) {
+export function AndroidBottomNav({ route, onNavigate, inert }: SidebarProps) {
   const { t } = useTranslation('navigation');
   const items = [
     { label: t('home'), page: 'home' as const, icon: Home },
@@ -168,7 +169,7 @@ export function AndroidBottomNav({ route, onNavigate }: SidebarProps) {
     { label: t('search'), page: 'search' as const, icon: Search },
   ];
   return (
-    <nav className="android-bottom-nav" aria-label={t('primary')}>
+    <nav className="android-bottom-nav" aria-label={t('primary')} inert={inert}>
       {items.map(({ label, page, icon: Icon }) => (
         <button
           key={page}

@@ -462,6 +462,7 @@ pub struct PlayerService {
     transition_running: AtomicBool,
     recovery_running: AtomicBool,
     runtime_expiry_retry_available: AtomicBool,
+    runtime_decoder_fallback_available: AtomicBool,
     load_generation: Arc<AtomicU64>,
     session_id: AtomicU64,
     seek_mailbox: SeekMailbox,
@@ -491,6 +492,7 @@ impl PlayerService {
             transition_running: AtomicBool::new(false),
             recovery_running: AtomicBool::new(false),
             runtime_expiry_retry_available: AtomicBool::new(true),
+            runtime_decoder_fallback_available: AtomicBool::new(true),
             load_generation: Arc::new(AtomicU64::new(0)),
             session_id: AtomicU64::new(0),
             seek_mailbox: SeekMailbox::default(),
@@ -1444,8 +1446,30 @@ impl PlayerService {
         allow_runtime_expiry_retry: bool,
         required_session: Option<u64>,
     ) -> Result<PlayerSnapshot, PlayerError> {
+        self.load_index_with_options(
+            index,
+            autoplay,
+            resume_position_ms,
+            allow_runtime_expiry_retry,
+            required_session,
+            false,
+        )
+        .await
+    }
+
+    async fn load_index_with_options(
+        &self,
+        index: usize,
+        autoplay: bool,
+        resume_position_ms: u64,
+        allow_runtime_expiry_retry: bool,
+        required_session: Option<u64>,
+        force_client_fallback: bool,
+    ) -> Result<PlayerSnapshot, PlayerError> {
         self.runtime_expiry_retry_available
             .store(allow_runtime_expiry_retry, Ordering::Release);
+        self.runtime_decoder_fallback_available
+            .store(!force_client_fallback, Ordering::Release);
         let (song, start_snapshot, generation, session) = {
             let mut core = self.core.write().await;
             if let Some(required) = required_session {
@@ -1493,9 +1517,34 @@ impl PlayerService {
         let _ = self.audio.stop();
         self.publish("player.track", &start_snapshot);
 
-        let resolved = match self.resolver.resolve(&song).await {
-            Ok(source) => source,
-            Err(error) => return self.fail_load(generation, &error).await,
+        let resolved = if force_client_fallback {
+            let failed = match self.resolver.resolve(&song).await {
+                Ok(source) => source,
+                Err(error) => return self.fail_load(generation, &error).await,
+            };
+            if !automatic_client_fallback_candidate(&failed.selection) {
+                return self
+                    .fail_load(generation, &PlaybackSourceError::DecoderUnsupported)
+                    .await;
+            }
+            tracing::info!(
+                target: "player.source",
+                failed_quality = ?failed.selection.resolved_quality,
+                "retrying asynchronously rejected decoder source with clear client fallback"
+            );
+            match self
+                .resolver
+                .resolve_client_fallback(&song, &failed.selection)
+                .await
+            {
+                Ok(source) => source,
+                Err(error) => return self.fail_load(generation, &error).await,
+            }
+        } else {
+            match self.resolver.resolve(&song).await {
+                Ok(source) => source,
+                Err(error) => return self.fail_load(generation, &error).await,
+            }
         };
         if generation != self.load_generation.load(Ordering::Acquire) {
             return Ok(self.snapshot().await);
@@ -2072,6 +2121,15 @@ impl PlayerService {
                 ) = {
                     let mut core = service.core.write().await;
                     let previous_state = core.playback_state;
+                    let engine_matches = engine.loaded
+                        && core.source_generation != 0
+                        && engine.source_generation == core.source_generation;
+                    let decoder_fallback_candidate = engine_matches
+                        && engine.decoder_error.is_some()
+                        && core
+                            .source_selection
+                            .as_ref()
+                            .is_some_and(automatic_client_fallback_candidate);
                     let recovery = if engine.source_url_expired
                         && !service.recovery_running.swap(true, Ordering::AcqRel)
                     {
@@ -2092,17 +2150,38 @@ impl PlayerService {
                             if candidate.is_none() {
                                 service.recovery_running.store(false, Ordering::Release);
                             }
-                            candidate
+                            candidate.map(|(index, position_ms, autoplay)| {
+                                (index, position_ms, autoplay, false)
+                            })
                         } else {
                             service.recovery_running.store(false, Ordering::Release);
                             None
                         }
+                    } else if decoder_fallback_candidate
+                        && service
+                            .runtime_decoder_fallback_available
+                            .swap(false, Ordering::AcqRel)
+                        && !service.recovery_running.swap(true, Ordering::AcqRel)
+                    {
+                        let candidate = core.current_index.map(|index| {
+                            (
+                                index,
+                                core.position_ms,
+                                matches!(
+                                    previous_state,
+                                    PlaybackState::Playing | PlaybackState::Buffering
+                                ),
+                            )
+                        });
+                        if candidate.is_none() {
+                            service.recovery_running.store(false, Ordering::Release);
+                        }
+                        candidate.map(|(index, position_ms, autoplay)| {
+                            (index, position_ms, autoplay, true)
+                        })
                     } else {
                         None
                     };
-                    let engine_matches = engine.loaded
-                        && core.source_generation != 0
-                        && engine.source_generation == core.source_generation;
                     if engine_matches {
                         let engine_pos =
                             core.timeline_offset_ms.saturating_add(engine.position_ms);
@@ -2120,7 +2199,19 @@ impl PlayerService {
                                 Some(core.timeline_offset_ms.saturating_add(duration));
                         }
                     }
-                    if let Some(message) = &engine.source_error {
+                    if let Some(message) = &engine.decoder_error {
+                        if recovery.is_some() {
+                            core.playback_state = PlaybackState::Buffering;
+                            core.playback_error = None;
+                        } else {
+                            core.playback_state = PlaybackState::FatalError;
+                            core.playback_error = Some(PlaybackFailure {
+                                code: "decoder-unsupported".to_owned(),
+                                message: message.clone(),
+                                retryable: false,
+                            });
+                        }
+                    } else if let Some(message) = &engine.source_error {
                         if recovery.is_some() {
                             core.playback_state = PlaybackState::Buffering;
                             core.playback_error = None;
@@ -2244,7 +2335,7 @@ impl PlayerService {
                     let transition = Arc::clone(&service);
                     tokio::spawn(async move { transition.handle_end(eos_session).await });
                 }
-                if let Some((index, position_ms, autoplay)) = recovery {
+                if let Some((index, position_ms, autoplay, decoder_fallback)) = recovery {
                     let recovery_session = snapshot.session_id;
                     let recovery_service = Arc::clone(&service);
                     tokio::spawn(async move {
@@ -2261,18 +2352,35 @@ impl PlayerService {
                         }
                         recovery_service
                             .publish_transition(PlaybackTransitionReason::Recovery);
-                        tracing::info!(target: "stream.range", position_ms, session = recovery_session, "re-resolving an expired progressive media URL once");
-                        if let Err(error) = recovery_service
-                            .load_index_with_policy(
-                                index,
-                                autoplay,
-                                position_ms,
-                                false,
-                                Some(recovery_session),
-                            )
-                            .await
-                        {
-                            tracing::warn!(target: "stream.range", error = %error, "progressive URL recovery failed");
+                        if decoder_fallback {
+                            tracing::info!(target: "player.source", position_ms, session = recovery_session, "reloading after asynchronous decoder failure with clear client fallback");
+                            if let Err(error) = recovery_service
+                                .load_index_with_options(
+                                    index,
+                                    autoplay,
+                                    position_ms,
+                                    false,
+                                    Some(recovery_session),
+                                    true,
+                                )
+                                .await
+                            {
+                                tracing::warn!(target: "player.source", error = %error, "asynchronous decoder fallback failed");
+                            }
+                        } else {
+                            tracing::info!(target: "stream.range", position_ms, session = recovery_session, "re-resolving an expired progressive media URL once");
+                            if let Err(error) = recovery_service
+                                .load_index_with_policy(
+                                    index,
+                                    autoplay,
+                                    position_ms,
+                                    false,
+                                    Some(recovery_session),
+                                )
+                                .await
+                            {
+                                tracing::warn!(target: "stream.range", error = %error, "progressive URL recovery failed");
+                            }
                         }
                         recovery_service
                             .recovery_running
@@ -3075,6 +3183,66 @@ mod tests {
 
         assert!(snapshot.is_playing);
         assert_eq!(fallback_calls.load(Ordering::Acquire), 1);
+        assert_eq!(
+            snapshot
+                .source_selection
+                .as_ref()
+                .map(|selection| selection.resolved_quality),
+            Some(AudioQuality::High)
+        );
+        assert_eq!(
+            snapshot
+                .source_selection
+                .as_ref()
+                .and_then(|selection| selection.fallback_reason),
+            Some(PlaybackFallbackReason::ClientUnsupported)
+        );
+    }
+
+    #[tokio::test]
+    async fn automatic_quality_falls_back_after_async_decoder_failure() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let player = Arc::new(PlayerService::with_runtime(
+            Arc::clone(&engine) as Arc<dyn AudioEngine>,
+            Arc::new(ClientFallbackResolver {
+                requested_quality: AudioQualityPreference::Automatic,
+                fallback_calls: Arc::clone(&fallback_calls),
+            }),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        ));
+
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("automatic-async-decoder", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("automatic playback starts before the async decoder report");
+        player.start_clock();
+
+        engine.force_snapshot(|snapshot| {
+            snapshot.decoder_error = Some("Media3 decoder rejected the source".to_owned());
+            snapshot.source_error = snapshot.decoder_error.clone();
+            snapshot.playing = false;
+            snapshot.paused = false;
+            snapshot.buffering = false;
+        });
+        player.wake_clock();
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while fallback_calls.load(Ordering::Acquire) == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("async decoder failure should trigger the clear fallback");
+        player.stop_clock();
+
+        let snapshot = player.snapshot().await;
+        assert_eq!(fallback_calls.load(Ordering::Acquire), 1);
+        assert!(snapshot.is_playing);
         assert_eq!(
             snapshot
                 .source_selection

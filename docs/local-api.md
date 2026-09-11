@@ -10,13 +10,20 @@ integrations, and future companion applications. It is not a public or LAN serve
 - Disabled by default; while disabled there is no listening socket.
 - Binds only to IPv4 loopback `127.0.0.1`. It never binds `0.0.0.0`.
 - Defaults to port `19532`; the Settings page can change it without restarting the application.
-- The bearer token is optional. When set, it is stored through the operating-system credential service, is never
-  logged or written to SQLite/config JSON, and is shown only after an explicit reveal action. Leaving it empty
-  permits all local processes to call `/v1`; setting a token is recommended. A legacy plaintext config token is
+- The bearer token has three distinguishable states, reported as `tokenState`:
+  - `configured` — a token is stored and enforced on `/v1`.
+  - `explicitly-disabled` — you cleared the token, so `/v1` is deliberately open to local processes. Setting a
+    token is recommended.
+  - `unavailable` — the operating-system credential service could not be read. The listener still starts and
+    `/health` stays public, but every `/v1` request is refused with `503 credentials_unavailable` instead of
+    silently running without authentication. Restoring the credential service, or setting/clearing the token
+    again, returns the API to one of the two states above.
+- When set, the token is stored through the operating-system credential service, is never logged or written to
+  SQLite/config JSON, and is shown only after an explicit reveal action. A legacy plaintext config token is
   migrated once and removed from the file.
 - Regenerating the token restarts an active listener and immediately invalidates previous clients.
-- Every `/v1` route requires authentication when a token is configured. `/health` is always public and returns only
-  service/version status.
+- Every `/v1` route requires authentication unless the token was explicitly disabled. `/health` is always public and
+  returns only service/version status.
 - CORS is not enabled. Requests are limited to 16 KiB and JSON bodies reject unknown fields.
 - There is no generic command, shell, filesystem-path, plugin-execution, or unrestricted host-IPC endpoint.
 - Provider Component API v3 is not an HTTP surface. Catalog, playback, recommendation, lyrics, and account Component
@@ -36,6 +43,10 @@ user's files or process memory.
 Open **Settings > Local HTTP API**, choose a port, optionally set a token, and enable the toggle. The UI reports
 `running`, `disabled`, or `error`, the bound address, and the actual bound port. Leave the token empty only for
 trusted local tools; otherwise reveal/copy it when configuring a local client.
+
+If the UI reports that secure token storage is unavailable, no bearer token can be verified until that storage
+recovers and the token is set again, or until you deliberately clear the token. Clearing it is the action that
+switches `/v1` back to unauthenticated mode.
 
 The checked-in [OpenAPI 3.1 description](./local-api.openapi.yaml) is the normative HTTP shape for v1.
 

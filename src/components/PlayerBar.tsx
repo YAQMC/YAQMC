@@ -243,10 +243,11 @@ function PlayerVolumeSlider({ t }: { t: TFunction<'player'> }) {
 }
 
 interface PlayerBarProps {
+  inert?: boolean;
   onToggleQueue?: () => void;
 }
 
-export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
+export function PlayerBar({ onToggleQueue, inert }: PlayerBarProps) {
   const { t } = useTranslation('player');
   const { t: common } = useTranslation('common');
   const pluginBar = usePluginUiSnapshot().playerBar;
@@ -323,7 +324,7 @@ export function PlayerBar({ onToggleQueue }: PlayerBarProps) {
   ];
 
   return (
-    <footer className="player-bar" aria-label={t('region')} data-yaqmc="player-bar">
+    <footer className="player-bar" aria-label={t('region')} data-yaqmc="player-bar" inert={inert}>
       <div className="player-bar__track">
         {current ? (
           <>

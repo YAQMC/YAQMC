@@ -580,6 +580,36 @@ export const enUS = {
     errorUnknown: 'The account operation could not be completed.',
   },
   settings: {
+    updates: {
+      title: 'Updates',
+      description: 'Check for a new YAQMC release. Updates are never installed silently.',
+      check: 'Check for updates',
+      checking: 'Checking for updates…',
+      availableManualVersion:
+        'Version {{version}} is available. This package cannot update in place — open the release page.',
+      availableManual:
+        'An update is available. This package cannot update in place — open the release page.',
+      availableVersion: 'Version {{version}} is available.',
+      available: 'An update is available.',
+      latest: 'You are on the latest version.',
+      downloading: 'Downloading update…',
+      ready: 'Update downloaded. Restart YAQMC to install.',
+      notWired: 'Update checks are not wired in this build.',
+      checkFailed: 'Could not check for updates.',
+      downloadFailed: 'Could not download the update.',
+      installFailed: 'Could not restart to install.',
+      idle: 'No update check has run yet.',
+      download: 'Download',
+      downloadDescription: 'Starts only after you click. Nothing installs in the background.',
+      downloadAction: 'Download update',
+      release: 'Release page',
+      androidReleaseDescription:
+        'Android opens the signed APK on GitHub Releases and never installs it automatically.',
+      releaseDescription: 'deb / rpm / tar.gz builds cannot update in place.',
+      releaseAction: 'Open release page',
+      install: 'Restart to install',
+      installDescription: 'Installs only after you click. Playback will stop.',
+    },
     eyebrow: 'APPLICATION',
     title: 'Settings',
     subtitle: 'Language, appearance, playback, lyrics, and local integration controls.',
@@ -702,6 +732,18 @@ export const enUS = {
       amllWordFadeWidth: 'Word transition width',
       amllWordFadeWidthDescription: 'Control the soft edge of word-level lyric reveals.',
       amllWordFadeWidthValue: '{{value}}×',
+      transport: 'Player bar',
+      transportDescription:
+        'Choose the bar style used by the windowed and fullscreen lyrics surfaces. Plugin styles apply only while their permissions are granted.',
+      transportWindow: 'Window lyrics bar',
+      transportWindowDescription:
+        'Choose the controls below the cover or the floating bar for windowed lyrics.',
+      transportFullscreen: 'Fullscreen lyrics bar',
+      transportFullscreenDescription:
+        'Choose either style independently for fullscreen lyrics. Narrow screens keep controls in the page layout.',
+      transportBuiltinWindow: 'Built-in compact style',
+      transportBuiltinFullscreen: 'Built-in immersive style',
+      transportFromPlugin: 'Plugin style ({{plugin}})',
     },
     lyricsPresets: {
       title: 'Lyrics presets',

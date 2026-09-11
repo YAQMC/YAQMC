@@ -3,6 +3,14 @@ import { expect, type Page } from '@playwright/test';
 
 /** Real Android renderer/bridge branches, with the Core IPC boundary kept offline. */
 export async function installAndroidFixture(page: Page): Promise<void> {
+  // The desktop Vite alias deliberately rejects native lifecycle calls. Model
+  // that boundary only in tests; no native shell/plugin is present here.
+  await page.route('**/src/application/android-app.ts', (route) =>
+    route.fulfill({
+      contentType: 'application/javascript',
+      body: 'export const androidApp = { addListener: async () => ({ remove: async () => {} }), exitApp: async () => {} };',
+    }),
+  );
   await page.addInitScript(() => {
     const core = async () => {
       const bridgePath = '/packages/yaqmc-client/src/bridges/fake.ts';

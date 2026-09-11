@@ -17,6 +17,12 @@ import {
   resolveLyricsPreset,
   type LyricsPresetState,
 } from './lyrics-preset';
+import {
+  defaultLyricsTransportState,
+  lyricsTransportRequiresMigration,
+  normalizeLyricsTransportState,
+  type LyricsTransportState,
+} from './lyrics-transport';
 import { logger } from './logger';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
@@ -118,6 +124,8 @@ export interface AppPreferences {
   lyrics: LyricDisplaySettings;
   amll: AmllSettings;
   lyricsPresets: LyricsPresetState;
+  /** Declarative transport bars for the window and fullscreen lyrics surfaces. */
+  transport: LyricsTransportState;
   surfaces: Record<SurfaceKind, LyricSurfaceSettings>;
   system: SystemSettings;
   debug: DebugSettings;
@@ -177,6 +185,7 @@ export const defaultPreferences: AppPreferences = {
     wordFadeWidth: 0.5,
   },
   lyricsPresets: defaultLyricsPresetState,
+  transport: defaultLyricsTransportState,
   surfaces: {
     desktop: defaultSurface('desktop'),
     island: defaultSurface('island'),
@@ -349,6 +358,7 @@ export function normalizePreferences(value: unknown): AppPreferences {
       wordFadeWidth: numberInRange(amll.wordFadeWidth, 0.5, 0.05, 1),
     },
     lyricsPresets,
+    transport: normalizeLyricsTransportState(source.transport),
     surfaces: {
       desktop: normalizeSurface(surfaces.desktop, 'desktop', legacyPreferences),
       island: normalizeSurface(surfaces.island, 'island', legacyPreferences),
@@ -372,6 +382,7 @@ export function normalizePreferences(value: unknown): AppPreferences {
 
 export function preferencesRequireMigration(value: unknown): boolean {
   if (!value || typeof value !== 'object') return true;
+  if (lyricsTransportRequiresMigration((value as { transport?: unknown }).transport)) return true;
   const source = value as {
     version?: unknown;
     surfaces?: Record<string, unknown>;
@@ -552,6 +563,7 @@ interface PreferencesState extends AppPreferences {
     recipe: LyricsPresetState | ((current: LyricsPresetState) => LyricsPresetState),
   ) => void;
   selectLyricsPreset: (id: string) => void;
+  setTransportPreset: (surface: 'window' | 'fullscreen', id: string) => void;
   updateSystem: (patch: Partial<SystemSettings>) => void;
   updateDebug: (patch: Partial<DebugSettings>) => void;
   updateSurface: (kind: SurfaceKind, patch: Partial<LyricSurfaceSettings>) => void;
@@ -569,6 +581,7 @@ function persistedSlice(state: PreferencesState): AppPreferences {
     lyrics: state.lyrics,
     amll: state.amll,
     lyricsPresets: state.lyricsPresets,
+    transport: state.transport,
     surfaces: state.surfaces,
     system: state.system,
     debug: state.debug,
@@ -663,6 +676,16 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   selectLyricsPreset: (id) => {
     logger.info('lyrics.preset.select', 'selected lyrics preset', { id });
     get().updateLyricsPresets((current) => ({ ...current, selectedId: id }));
+  },
+  setTransportPreset: (surface, id) => {
+    set((state) => ({
+      transport: normalizeLyricsTransportState({
+        ...state.transport,
+        [surface]: id,
+      }),
+      persistenceError: null,
+    }));
+    persist(persistedSlice(get()));
   },
   updateSystem: (patch) => {
     set((state) => ({

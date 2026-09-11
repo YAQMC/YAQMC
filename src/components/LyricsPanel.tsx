@@ -32,6 +32,8 @@ import { SongShareMenuItems } from './SongShareActions';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '../application/preferences';
 import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
+import { useLyricsTransportDefinition } from '../application/use-lyrics-transport';
+import { BUILTIN_TRANSPORT_WINDOW_ID } from '../application/lyrics-transport';
 import { applySceneBackdrop, resolveLyricsAppearance } from '../application/lyrics-appearance';
 import { useSafeArtworkSource } from '../application/artwork-source';
 import { resolveArtworkSource } from '../application/artwork-resolver';
@@ -92,7 +94,9 @@ function LyricsPanelStage({
   stageState,
 }: LyricsPanelProps & { stageState: LyricsStageState }) {
   noteLyricsPanelCommit();
-  const compact = useCompactPlayerLayout();
+  const compact = useCompactPlayerLayout(true);
+  const transportDefinition = useLyricsTransportDefinition(fullscreen ? 'fullscreen' : 'window');
+  const floatingTransport = !compact && transportDefinition.id !== BUILTIN_TRANSPORT_WINDOW_ID;
   const { t } = useTranslation('lyrics');
   const { t: player } = useTranslation('player');
   const provider = useContext(ProviderContext);
@@ -134,6 +138,7 @@ function LyricsPanelStage({
   const beginScrub = usePlayerStore((state) => state.beginScrub);
   const previewScrub = usePlayerStore((state) => state.previewScrub);
   const commitScrub = usePlayerStore((state) => state.commitScrub);
+  const cancelScrub = usePlayerStore((state) => state.cancelScrub);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const next = usePlayerStore((state) => state.next);
   const previous = usePlayerStore((state) => state.previous);
@@ -356,6 +361,7 @@ function LyricsPanelStage({
     beginScrub,
     previewScrub,
     commitScrub,
+    cancelScrub,
     togglePlayback,
     next,
     previous,
@@ -380,8 +386,12 @@ function LyricsPanelStage({
       data-image-fit={appearance.imageFit}
       data-song-id={currentTrackId ?? undefined}
     >
-      {fullscreen && !compact && (
-        <LyricsFullscreenTransport ref={transportRef} artworkSource={safeArtworkSource} />
+      {floatingTransport && (
+        <LyricsFullscreenTransport
+          ref={transportRef}
+          artworkSource={safeArtworkSource}
+          surface={fullscreen ? 'fullscreen' : 'window'}
+        />
       )}
 
       {fullscreenError !== null && (
@@ -396,7 +406,9 @@ function LyricsPanelStage({
         appearance={sceneAppearance}
         mode="runtime"
         compact={compact}
-        transportHidden={!compact && (fullscreen || controlsHidden)}
+        transportSurface={fullscreen ? 'fullscreen' : 'window'}
+        transportHidden={false}
+        hideTransportWidget={floatingTransport}
         layoutKey={`${focus}:${fullscreen}`}
       />
 

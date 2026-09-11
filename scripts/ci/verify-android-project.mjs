@@ -193,8 +193,17 @@ export function verifyAndroidProject(repositoryRoot = defaultRepositoryRoot) {
   if (JSON.stringify(releaseAbis) !== JSON.stringify(['arm64-v8a'])) {
     errors.push(`release ABI set must be arm64-v8a; found ${releaseAbis.join(',')}`);
   }
-  if (/exoplayer/iu.test(appGradle))
-    errors.push('Android host must not add ExoPlayer as a second engine');
+  // Media3 ExoPlayer is the single Android playback engine: Rust Core owns the
+  // stream and Media3 only consumes it. Assert the pinned engine is present and
+  // that the legacy ExoPlayer2 artifact is not added as a second engine.
+  requireMatch(
+    appGradle,
+    /androidx\.media3:media3-exoplayer:1\.10\.1/u,
+    'Media3 ExoPlayer must be 1.10.1',
+    errors,
+  );
+  if (/com\.google\.android\.exoplayer/u.test(appGradle))
+    errors.push('Legacy ExoPlayer2 must not be added as a second engine');
 
   const permissions = new Set(
     [...manifest.matchAll(/<uses-permission\s+android:name="([^"]+)"\s*\/>/gu)].map(

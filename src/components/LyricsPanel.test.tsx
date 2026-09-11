@@ -37,6 +37,14 @@ function props(overrides: Partial<React.ComponentProps<typeof LyricsPanel>> = {}
   return { focus: false, fullscreen: false, fullscreenError: null, onClose: vi.fn(), ...overrides };
 }
 
+// jsdom has no AnimationEvent, so the panel only sees animationName when the
+// event is built by hand - exactly like the real browser dispatches it.
+function stageAnimationEvent(type: string, animationName: string): Event {
+  const event = new Event(type, { bubbles: true, cancelable: false });
+  Object.defineProperty(event, 'animationName', { value: animationName, configurable: true });
+  return event;
+}
+
 function unsynchronizedDocument(): LyricDocument {
   return {
     songId: 'quiet-light',
@@ -166,5 +174,103 @@ describe('LyricsPanel', () => {
 
     expect(screen.getByText(/no lyrics found|暂无歌词|歌词不可用/i)).toBeInTheDocument();
     expect(container.querySelector('.amll-lyric-player')).toBeNull();
+  });
+
+  it('keeps one lyrics surface through the entrance without a duplicate song header', () => {
+    const { container } = render(<LyricsPanel {...props()} />);
+    const stage = container.querySelector<HTMLElement>('.lyrics-stage');
+    const context = container.querySelector<HTMLElement>('.lyrics-stage__context');
+
+    expect(stage).toHaveAttribute('data-stage', 'entering');
+    expect(context).toBeNull();
+
+    act(() => stage!.dispatchEvent(stageAnimationEvent('animationend', 'lyrics-stage-enter')));
+
+    expect(container.querySelector('.lyrics-stage')).toBe(stage);
+    expect(stage).toHaveAttribute('data-stage', 'open');
+    expect(container.querySelectorAll('.lyrics-stage')).toHaveLength(1);
+  });
+
+  it('runs the entrance transition once without touching playback or refetching lyrics', () => {
+    const lyricsBefore = useLyricsStore.getState().document;
+    const playerBefore = usePlayerStore.getState();
+    const { container } = render(<LyricsPanel {...props()} />);
+    const stage = container.querySelector<HTMLElement>('.lyrics-stage')!;
+
+    act(() => stage.dispatchEvent(stageAnimationEvent('animationend', 'lyrics-stage-enter')));
+    expect(stage).toHaveAttribute('data-stage', 'open');
+    const generation = stage.dataset.stageGeneration;
+
+    act(() => stage.dispatchEvent(stageAnimationEvent('animationend', 'lyrics-stage-enter')));
+    act(() => stage.dispatchEvent(stageAnimationEvent('animationend', 'lyrics-stage-exit')));
+
+    expect(stage).toHaveAttribute('data-stage', 'open');
+    expect(stage.dataset.stageGeneration).toBe(generation);
+    expect(container.querySelector('.lyrics-stage')).toBe(stage);
+
+    const playerAfter = usePlayerStore.getState();
+    expect(playerAfter.queue).toBe(playerBefore.queue);
+    expect(playerAfter.currentIndex).toBe(playerBefore.currentIndex);
+    expect(playerAfter.isPlaying).toBe(playerBefore.isPlaying);
+    expect(playerAfter.positionMs).toBe(playerBefore.positionMs);
+    expect(playerAfter.lyricsOpen).toBe(true);
+    expect(useLyricsStore.getState().document).toBe(lyricsBefore);
+  });
+
+  it('honours prefers-reduced-motion without dropping the visible state transition', () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => true,
+    })) as typeof window.matchMedia;
+    try {
+      const { container } = render(<LyricsPanel {...props()} />);
+      const stage = container.querySelector<HTMLElement>('.lyrics-stage');
+      const context = container.querySelector<HTMLElement>('.lyrics-stage__context');
+
+      expect(stage).toHaveAttribute('data-stage', 'open');
+      expect(context).toBeNull();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
+  it('keeps the empty lyrics page operable when nothing is playing', () => {
+    useLyricsStore.setState({ songId: null, status: 'idle', document: null, error: null });
+    usePlayerStore.setState({ queue: [], currentIndex: -1 });
+    const { container } = render(<LyricsPanel {...props()} />);
+    const context = container.querySelector<HTMLElement>('.lyrics-stage__context');
+
+    expect(container.querySelector('.lyrics-stage')).toHaveAttribute('data-stage', 'entering');
+    expect(context).toBeNull();
+    expect(screen.getByRole('button', { name: 'Collapse lyrics page' })).toBeVisible();
+    expect(container.querySelector('.lyrics-transport')).toBeNull();
+    expect(container.querySelector('.lyrics-stage__context-artwork img')).toBeNull();
+  });
+
+  it('renders the configured window and fullscreen transport bars around one renderer', () => {
+    const { container, rerender } = render(<LyricsPanel {...props()} />);
+    const windowBar = container.querySelector<HTMLElement>('.lyrics-transport');
+
+    expect(windowBar).toHaveAttribute('data-transport-preset', 'builtin.transport.window');
+    expect(container.querySelectorAll('.lyrics-transport')).toHaveLength(1);
+    expect(windowBar?.querySelector('button[aria-label="Play"]')).not.toBeNull();
+    expect(windowBar?.querySelector('button[aria-label="Previous track"]')).not.toBeNull();
+    expect(windowBar?.querySelector('button[aria-label="Next track"]')).not.toBeNull();
+    expect(windowBar?.querySelector('input[type="range"]')).not.toBeNull();
+
+    rerender(<LyricsPanel {...props({ fullscreen: true })} />);
+    const fullscreenBar = container.querySelector<HTMLElement>('.lyrics-transport');
+
+    expect(fullscreenBar).toHaveAttribute('data-transport-preset', 'builtin.transport.fullscreen');
+    expect(container.querySelectorAll('.lyrics-transport')).toHaveLength(1);
+    expect(fullscreenBar?.querySelector('.lyrics-transport__track')).toBeNull();
+    expect(fullscreenBar?.querySelector('.lyrics-transport__artwork')).toBeNull();
   });
 });

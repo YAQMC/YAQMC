@@ -149,6 +149,23 @@ jobs:
             target
           key: cargo-${{ runner.os }}-x86_64-unknown-linux-gnu-stable-${{ hashFiles('Cargo.lock') }}-dev
 
+  android-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 26.7.0
+          cache: npm
+      - uses: ./.github/actions/setup-android
+      - run: npm ci
+      - run: node scripts/ci/verify-android-project.mjs
+      - run: node scripts/ci/check-android-jni-symbols.mjs
+      - run: npm run android:check
+
   secret-scan:
     name: Secret scan (${{ matrix.os }})
     strategy:
@@ -278,6 +295,7 @@ jobs:
         frontend-quality,
         frontend-build,
         rust-quality,
+        android-quality,
         secret-scan,
         electron-build,
         electron-package-matrix,
@@ -296,6 +314,7 @@ jobs:
             echo "- frontend-quality: \`${{ needs.frontend-quality.result }}\`"
             echo "- frontend-build: \`${{ needs.frontend-build.result }}\`"
             echo "- rust-quality: \`${{ needs.rust-quality.result }}\`"
+            echo "- android-quality: \`${{ needs.android-quality.result }}\`"
             echo "- electron-build: \`${{ needs.electron-build.result }}\`"
             echo "- secret-scan: \`${{ needs.secret-scan.result }}\`"
             echo "- electron-package-matrix: \`${{ needs.electron-package-matrix.result }}\`"
@@ -306,6 +325,7 @@ jobs:
           needs.frontend-quality.result != 'success' ||
           needs.frontend-build.result != 'success' ||
           needs.rust-quality.result != 'success' ||
+          needs.android-quality.result != 'success' ||
           needs.electron-build.result != 'success' ||
           needs.secret-scan.result != 'success' ||
           (github.event_name == 'workflow_dispatch' && needs.electron-package-matrix.result != 'success') ||

@@ -61,6 +61,22 @@ pub enum LocalApiRunState {
     Error,
 }
 
+/// How the bearer token requirement was resolved.
+///
+/// The distinction is a security boundary: an unreadable credential store must
+/// not be mistaken for the user's explicit choice to run the API without a
+/// token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalApiTokenState {
+    /// A bearer token is stored and enforced on `/v1`.
+    Configured,
+    /// The user explicitly cleared the token, so `/v1` stays open by choice.
+    ExplicitlyDisabled,
+    /// Secure token storage could not be read; `/v1` fails closed.
+    Unavailable,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalApiStatus {
@@ -70,6 +86,7 @@ pub struct LocalApiStatus {
     pub configured_port: u16,
     pub bound_port: Option<u16>,
     pub token_configured: bool,
+    pub token_state: LocalApiTokenState,
     pub last_error: Option<String>,
 }
 
@@ -117,17 +134,29 @@ impl LocalApiService {
     ) -> Result<Arc<Self>, LocalApiError> {
         let mut config = load_or_create_config(&config_path)?;
         let mut credential_error = None;
-        let mut token = match credentials.load(LOCAL_API_TOKEN_ACCOUNT) {
-            Ok(token) => token.unwrap_or_default(),
+        let mut token = String::new();
+        let mut token_state;
+        match credentials.load(LOCAL_API_TOKEN_ACCOUNT) {
+            Ok(Some(stored)) if !stored.is_empty() => {
+                token = stored;
+                token_state = LocalApiTokenState::Configured;
+            }
+            Ok(_) => token_state = LocalApiTokenState::ExplicitlyDisabled,
             Err(error) => {
                 credential_error = Some(error.to_string());
-                String::new()
+                token_state = LocalApiTokenState::Unavailable;
             }
-        };
+        }
         if !config.legacy_token.is_empty() {
             match credentials.save(LOCAL_API_TOKEN_ACCOUNT, &config.legacy_token) {
-                Ok(()) => token.clone_from(&config.legacy_token),
-                Err(error) => credential_error = Some(error.to_string()),
+                Ok(()) => {
+                    token.clone_from(&config.legacy_token);
+                    token_state = LocalApiTokenState::Configured;
+                }
+                Err(error) => {
+                    credential_error = Some(error.to_string());
+                    token_state = LocalApiTokenState::Unavailable;
+                }
             }
             // Fail closed: a legacy plaintext token is removed even when the OS
             // credential store is unavailable. The user can retry enabling later.
@@ -141,6 +170,7 @@ impl LocalApiService {
             configured_port: config.port,
             bound_port: None,
             token_configured: !token.is_empty(),
+            token_state,
             last_error: credential_error,
         };
         Ok(Arc::new(Self {
@@ -219,6 +249,11 @@ impl LocalApiService {
 
         let mut status = self.status.write().await;
         status.token_configured = !token.is_empty();
+        status.token_state = if token.is_empty() {
+            LocalApiTokenState::ExplicitlyDisabled
+        } else {
+            LocalApiTokenState::Configured
+        };
         status.last_error = None;
         drop(status);
 
@@ -248,6 +283,7 @@ impl LocalApiService {
 
         let config = self.config.read().await.clone();
         let token = self.token.read().await.clone();
+        let auth = ApiAuth::for_token_state(self.status.read().await.token_state, &token);
         {
             let mut status = self.status.write().await;
             status.state = LocalApiRunState::Starting;
@@ -265,7 +301,7 @@ impl LocalApiService {
             }
         };
         let bound_port = listener.local_addr()?.port();
-        let router = build_router(Arc::clone(&self.player), token);
+        let router = build_router_with_auth(Arc::clone(&self.player), auth);
         let (shutdown, shutdown_receiver) = oneshot::channel();
         let task = tokio::spawn(async move {
             axum::serve(listener, router)
@@ -320,7 +356,46 @@ struct ApiState {
     player: Arc<PlayerService>,
 }
 
+#[cfg(test)]
 pub(crate) fn build_router(player: Arc<PlayerService>, token: String) -> Router {
+    build_router_with_auth(player, ApiAuth::from_expected_token(token))
+}
+
+/// How `/v1` authenticates requests.
+#[derive(Clone)]
+pub(crate) enum ApiAuth {
+    /// No credential is required because the user explicitly disabled the token.
+    Open,
+    /// Exactly this bearer token is required.
+    Bearer(Arc<String>),
+    /// Secure token storage could not be read, so every `/v1` request is refused.
+    Unavailable,
+}
+
+impl ApiAuth {
+    /// An empty expected token means the operator opted out of authentication.
+    #[cfg(test)]
+    fn from_expected_token(token: String) -> Self {
+        if token.is_empty() {
+            Self::Open
+        } else {
+            Self::Bearer(Arc::new(token))
+        }
+    }
+
+    fn for_token_state(state: LocalApiTokenState, token: &str) -> Self {
+        match state {
+            LocalApiTokenState::Unavailable => Self::Unavailable,
+            // A token that should be configured but cannot be read must never
+            // degrade into an unauthenticated API.
+            LocalApiTokenState::Configured if token.is_empty() => Self::Unavailable,
+            LocalApiTokenState::Configured => Self::Bearer(Arc::new(token.to_owned())),
+            LocalApiTokenState::ExplicitlyDisabled => Self::Open,
+        }
+    }
+}
+
+pub(crate) fn build_router_with_auth(player: Arc<PlayerService>, auth: ApiAuth) -> Router {
     let state = ApiState { player };
     let protected = Router::new()
         .route("/player", get(get_player))
@@ -338,7 +413,7 @@ pub(crate) fn build_router(player: Arc<PlayerService>, token: String) -> Router 
         .route("/lyrics", get(get_lyrics))
         .route("/lyrics/current", get(get_current_lyrics))
         .route("/events", get(events))
-        .route_layer(middleware::from_fn_with_state(Arc::new(token), authorize))
+        .route_layer(middleware::from_fn_with_state(auth, authorize))
         .layer(axum::extract::DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .with_state(state);
 
@@ -347,28 +422,36 @@ pub(crate) fn build_router(player: Arc<PlayerService>, token: String) -> Router 
         .nest("/v1", protected)
 }
 
-async fn authorize(State(expected): State<Arc<String>>, request: Request, next: Next) -> Response {
-    if expected.is_empty() {
-        return next.run(request).await;
-    }
-    let supplied = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "));
-    let authorized = supplied.is_some_and(|candidate| {
-        candidate.len() == expected.len()
-            && bool::from(candidate.as_bytes().ct_eq(expected.as_bytes()))
-    });
-    if !authorized {
-        return ApiError::new(
-            StatusCode::UNAUTHORIZED,
-            "unauthorized",
-            "A valid bearer token is required.",
+async fn authorize(State(auth): State<ApiAuth>, request: Request, next: Next) -> Response {
+    match auth {
+        ApiAuth::Open => next.run(request).await,
+        ApiAuth::Unavailable => ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "credentials_unavailable",
+            "Secure token storage is unavailable; refusing to serve /v1 without authentication.",
         )
-        .into_response();
+        .into_response(),
+        ApiAuth::Bearer(expected) => {
+            let supplied = request
+                .headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "));
+            let authorized = supplied.is_some_and(|candidate| {
+                candidate.len() == expected.len()
+                    && bool::from(candidate.as_bytes().ct_eq(expected.as_bytes()))
+            });
+            if !authorized {
+                return ApiError::new(
+                    StatusCode::UNAUTHORIZED,
+                    "unauthorized",
+                    "A valid bearer token is required.",
+                )
+                .into_response();
+            }
+            next.run(request).await
+        }
     }
-    next.run(request).await
 }
 
 #[derive(Serialize)]
@@ -694,6 +777,119 @@ mod tests {
             header::AUTHORIZATION,
             HeaderValue::from_static("Bearer secret"),
         )
+    }
+
+    /// Simulates an OS keyring that is temporarily unavailable.
+    struct FailingCredentialStore;
+
+    impl CredentialStore for FailingCredentialStore {
+        fn load(&self, _account: &str) -> Result<Option<String>, CredentialError> {
+            Err(CredentialError::Unavailable)
+        }
+
+        fn save(&self, _account: &str, _secret: &str) -> Result<(), CredentialError> {
+            Err(CredentialError::Unavailable)
+        }
+
+        fn delete(&self, _account: &str) -> Result<(), CredentialError> {
+            Err(CredentialError::Unavailable)
+        }
+    }
+
+    #[tokio::test]
+    async fn v1_fails_closed_when_secure_token_storage_is_unavailable() {
+        let router = build_router_with_auth(Arc::new(PlayerService::new()), ApiAuth::Unavailable);
+
+        let health = router
+            .clone()
+            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(health.status(), StatusCode::OK);
+
+        let refused = router
+            .oneshot(Request::get("/v1/player").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response_json(refused).await["error"]["code"],
+            "credentials_unavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn unreadable_credentials_are_not_reported_as_an_explicit_opt_out() {
+        let directory = tempdir().expect("temp directory");
+        let broken = LocalApiService::new(
+            directory.path().join("local-api.json"),
+            Arc::new(PlayerService::new()),
+            Arc::new(FailingCredentialStore),
+        )
+        .expect("service loads");
+
+        let status = broken.status().await;
+        assert_eq!(status.token_state, LocalApiTokenState::Unavailable);
+        assert!(!status.token_configured);
+        assert!(status.last_error.is_some());
+
+        let explicit = LocalApiService::new(
+            directory.path().join("local-api-explicit.json"),
+            Arc::new(PlayerService::new()),
+            Arc::new(MemoryCredentialStore::default()),
+        )
+        .expect("service loads");
+        assert_eq!(
+            explicit.status().await.token_state,
+            LocalApiTokenState::ExplicitlyDisabled
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stored_token_is_reported_as_configured() {
+        let directory = tempdir().expect("temp directory");
+        let credentials = Arc::new(MemoryCredentialStore::default());
+        credentials
+            .save(LOCAL_API_TOKEN_ACCOUNT, "secret")
+            .expect("token saves");
+        let service = LocalApiService::new(
+            directory.path().join("local-api.json"),
+            Arc::new(PlayerService::new()),
+            credentials,
+        )
+        .expect("service loads");
+
+        let status = service.status().await;
+        assert_eq!(status.token_state, LocalApiTokenState::Configured);
+        assert!(status.token_configured);
+    }
+
+    #[tokio::test]
+    async fn clearing_the_token_returns_to_the_explicitly_disabled_state() {
+        let directory = tempdir().expect("temp directory");
+        let service = LocalApiService::new(
+            directory.path().join("local-api.json"),
+            Arc::new(PlayerService::new()),
+            Arc::new(MemoryCredentialStore::default()),
+        )
+        .expect("service loads");
+
+        service
+            .set_token("secret".to_owned())
+            .await
+            .expect("token set");
+        assert_eq!(
+            service.status().await.token_state,
+            LocalApiTokenState::Configured
+        );
+
+        service
+            .set_token(String::new())
+            .await
+            .expect("token cleared");
+        let cleared = service.status().await;
+        assert_eq!(cleared.token_state, LocalApiTokenState::ExplicitlyDisabled);
+        assert!(!cleared.token_configured);
     }
 
     #[tokio::test]

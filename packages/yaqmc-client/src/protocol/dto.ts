@@ -826,6 +826,8 @@ export interface ManagedBackgroundImage {
 
 export type LocalApiRunState = 'disabled' | 'starting' | 'running' | 'error';
 
+export type LocalApiTokenState = 'configured' | 'explicitly-disabled' | 'unavailable';
+
 export interface LocalApiStatus {
   enabled: boolean;
   state: LocalApiRunState;
@@ -833,6 +835,7 @@ export interface LocalApiStatus {
   configuredPort: number;
   boundPort: number | null;
   tokenConfigured: boolean;
+  tokenState: LocalApiTokenState;
   lastError: string | null;
 }
 

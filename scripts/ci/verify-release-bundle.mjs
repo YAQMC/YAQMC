@@ -19,6 +19,11 @@ const forbiddenMarkers = [
   'is not implemented on the fake bridge',
 ];
 
+/** Markers that a production renderer bundle must not execute: the QA-only
+ * playback HUD is compiled out unless YAQMC_QA_BUILD=1. The class name may
+ * survive in the stylesheet, so only JavaScript is checked here. */
+const devOnlyJavaScriptMarkers = ['fps-overlay', 'debug_perf_sample'];
+
 const scannedExtensions = new Set(['.cjs', '.css', '.html', '.js', '.json', '.mjs']);
 
 function filesBelow(root) {
@@ -73,11 +78,19 @@ export function verifyReleaseBundle({ rendererDir, desktopDir } = {}) {
       ) {
         violations.push(`${kind}:${relative}: non-product artwork`);
       }
-      if (!scannedExtensions.has(path.extname(relative).toLowerCase())) continue;
+      const extension = path.extname(relative).toLowerCase();
+      if (!scannedExtensions.has(extension)) continue;
       const contents = readFileSync(file, 'utf8');
       for (const marker of forbiddenMarkers) {
         if (contents.includes(marker)) {
           violations.push(`${kind}:${relative}: forbidden marker ${JSON.stringify(marker)}`);
+        }
+      }
+      if (kind === 'renderer' && extension === '.js') {
+        for (const marker of devOnlyJavaScriptMarkers) {
+          if (contents.includes(marker)) {
+            violations.push(`${kind}:${relative}: dev-only marker ${JSON.stringify(marker)}`);
+          }
         }
       }
     }

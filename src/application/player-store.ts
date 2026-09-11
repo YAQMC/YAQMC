@@ -88,6 +88,7 @@ interface PlayerActions {
   beginScrub: () => void;
   previewScrub: (positionMs: number) => void;
   commitScrub: (positionMs: number) => void;
+  cancelScrub: () => void;
   tick: (elapsedMs: number) => void;
   beginVolumeScrub: () => void;
   setVolume: (volume: number) => void;
@@ -631,6 +632,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       set({ isScrubbing: false, scrubAwaitingAckFrom: null });
     }
   },
+
+  // Cancel a UI preview without issuing a seek (e.g. permission revoked mid-drag).
+  cancelScrub: () =>
+    set((state) => ({
+      isScrubbing: false,
+      scrubPosition: state.positionMs,
+      scrubAwaitingAckFrom: null,
+    })),
 
   tick: (elapsedMs) =>
     set((state) => {

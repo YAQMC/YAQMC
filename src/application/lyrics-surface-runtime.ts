@@ -295,6 +295,7 @@ function currentPreferenceDocument(): AppPreferences {
     lyrics: state.lyrics,
     amll: state.amll,
     lyricsPresets: state.lyricsPresets,
+    transport: state.transport,
     surfaces: state.surfaces,
     system: state.system,
     debug: state.debug,

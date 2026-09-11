@@ -24,10 +24,8 @@
   width: 32px;
   height: 32px;
   margin: 6px;
-  background: linear-gradient(145deg, var(--accent-primary), var(--accent-secondary));
+  background: url('/yaqmc-logo.png') center / contain no-repeat;
   content: '';
-  mask: url('/yaqmc-logo.png') center / contain no-repeat;
-  -webkit-mask: url('/yaqmc-logo.png') center / contain no-repeat;
 }
 
 .app-bootstrap__copy {
@@ -152,29 +150,28 @@
   padding-bottom: calc(10px + var(--android-safe-bottom));
 }
 
-.app-shell[data-lyrics-focus],
-.app-shell[data-lyrics-fullscreen] {
+.app-shell[data-lyrics-stage='open'][data-lyrics-focus],
+.app-shell[data-lyrics-stage='open'][data-lyrics-fullscreen] {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* The lyrics stage is a modal surface. Keep the underlying shell out of both
- * hit testing and the accessibility tree while it is open; otherwise its
- * top-right and bottom controls occupy the same coordinates as lyrics chrome. */
-.app-shell[data-lyrics-open] > .sidebar,
-.app-shell[data-lyrics-open] > .content-shell,
-.app-shell[data-lyrics-open] > .player-bar,
-.app-shell[data-lyrics-open] > .android-bottom-nav {
+/* React sets inert throughout the modal lifecycle. Keep the real page visible
+ * behind entering/exiting lyrics; only hide it after the stage covers it. */
+.app-shell[data-lyrics-stage='open'] > .sidebar,
+.app-shell[data-lyrics-stage='open'] > .content-shell,
+.app-shell[data-lyrics-stage='open'] > .player-bar,
+.app-shell[data-lyrics-stage='open'] > .android-bottom-nav {
   visibility: hidden;
   pointer-events: none;
 }
 
-.app-shell[data-lyrics-focus] > .sidebar,
-.app-shell[data-lyrics-fullscreen] > .sidebar {
+.app-shell[data-lyrics-stage='open'][data-lyrics-focus] > .sidebar,
+.app-shell[data-lyrics-stage='open'][data-lyrics-fullscreen] > .sidebar {
   display: none;
 }
 
-.app-shell[data-lyrics-focus] > .content-shell,
-.app-shell[data-lyrics-focus] > .player-bar {
+.app-shell[data-lyrics-stage='open'][data-lyrics-focus] > .content-shell,
+.app-shell[data-lyrics-stage='open'][data-lyrics-focus] > .player-bar {
   grid-column: 1;
 }
 
@@ -230,10 +227,8 @@
 .sidebar__brand-mark::before {
   width: 24px;
   height: 24px;
-  background: linear-gradient(145deg, var(--accent-primary), var(--accent-secondary));
+  background: url('/yaqmc-logo.png') center / contain no-repeat;
   content: '';
-  mask: url('/yaqmc-logo.png') center / contain no-repeat;
-  -webkit-mask: url('/yaqmc-logo.png') center / contain no-repeat;
 }
 
 .sidebar__nav {

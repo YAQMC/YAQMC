@@ -8,9 +8,13 @@
 
 - 默认关闭，关闭时没有监听 socket；
 - 只绑定 IPv4 loopback `127.0.0.1`，默认端口 `19532`；
-- 首次启用生成随机 256-bit bearer token，只存操作系统凭据服务；只有用户明确点“显示”才呈现；
+- token 有三种可区分状态，通过 `tokenState` 上报：`configured`（已配置并对 `/v1` 强制校验）、
+  `explicitly-disabled`（用户主动清空 token，`/v1` 按用户选择不认证）、`unavailable`（操作系统凭据服务读取失败）；
+- `unavailable` 时监听器仍会启动、`/health` 仍公开，但所有 `/v1` 请求返回 `503 credentials_unavailable`，
+  不会静默退化为无认证模式；恢复凭据服务或重新设置/清空 token 后回到上面两种状态；
+- 已设置的 token 只存操作系统凭据服务，不写入日志或配置；只有用户明确点“显示”才呈现；
 - 重新生成 token 会重启监听器并立即让旧客户端失效；
-- 所有 `/v1` 路由需要认证，公开 `/health` 只返回服务/版本状态；
+- 除用户主动禁用 token 外，所有 `/v1` 路由需要认证，公开 `/health` 只返回服务/版本状态；
 - 不启用 CORS，请求体上限 16 KiB，JSON 拒绝未知字段；
 - 不存在通用命令、shell、文件路径、插件执行或不受限的宿主 IPC 端点；
 - Provider Component API v3 不是 HTTP 接口；目录、播放、推荐、歌词和账号 Component 调用只走 Electron/Core
@@ -24,6 +28,9 @@ token 防止普通网页或普通本机调用者误用，不抵御以同一 OS �
 ## 启用与认证
 
 在“设置 > 本地 HTTP API”选择端口并开启。仅在配置本机客户端时显示/复制 token。
+
+若界面提示安全凭据存储不可用，则在存储恢复并重新设置 token 之前，或在用户主动清空 token 之前，任何 bearer
+token 都无法通过校验。只有用户主动清空 token 才会让 `/v1` 回到无认证模式。
 
 ```powershell
 $apiToken = '<从设置复制的 token>'

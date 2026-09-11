@@ -81,22 +81,26 @@ object CoreManager {
     }
 
     fun reportAudioState(
+        streamId: Long,
         positionMs: Long,
         durationMs: Long,
         isPlaying: Boolean,
         isBuffering: Boolean,
         isEnded: Boolean,
+        errorKind: String?,
         error: String?,
     ) {
         val activeHandle = handle
         if (initialized.get() && activeHandle != 0L) {
             nativeReportAudioState(
                 activeHandle,
+                streamId,
                 positionMs,
                 durationMs,
                 isPlaying,
                 isBuffering,
                 isEnded,
+                errorKind,
                 error,
             )
         }
@@ -193,19 +197,21 @@ object CoreManager {
     @JvmStatic
     private external fun nativeReportAudioState(
         handle: Long,
+        streamId: Long,
         positionMs: Long,
         durationMs: Long,
         isPlaying: Boolean,
         isBuffering: Boolean,
         isEnded: Boolean,
+        errorKind: String?,
         error: String?,
     )
 
     @JvmStatic
-    internal external fun nativeStreamOpen(streamId: Long, position: Long): Long
+    private external fun nativeStreamOpen(streamId: Long, position: Long): Long
 
     @JvmStatic
-    internal external fun nativeStreamRead(
+    private external fun nativeStreamRead(
         streamId: Long,
         buffer: ByteArray,
         offset: Int,
@@ -213,7 +219,14 @@ object CoreManager {
     ): Int
 
     @JvmStatic
-    internal external fun nativeStreamClose(streamId: Long)
+    private external fun nativeStreamClose(streamId: Long)
+
+    fun streamOpen(streamId: Long, position: Long): Long = nativeStreamOpen(streamId, position)
+
+    fun streamRead(streamId: Long, buffer: ByteArray, offset: Int, length: Int): Int =
+        nativeStreamRead(streamId, buffer, offset, length)
+
+    fun streamClose(streamId: Long) = nativeStreamClose(streamId)
 
     @JvmStatic
     private external fun nativeShutdown(handle: Long)

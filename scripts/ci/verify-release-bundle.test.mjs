@@ -22,6 +22,29 @@ test('accepts product renderer and desktop files', (t) => {
   assert.equal(verifyReleaseBundle({ rendererDir: renderer, desktopDir: desktop }).length, 2);
 });
 
+test('rejects a renderer bundle that still ships the QA-only playback HUD', (t) => {
+  const root = sandbox();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const renderer = path.join(root, 'renderer');
+  mkdirSync(renderer, { recursive: true });
+  writeFileSync(
+    path.join(renderer, 'index.js'),
+    'const node = document.createElement("div"); node.className = "fps-overlay";',
+  );
+  assert.throws(
+    () => verifyReleaseBundle({ rendererDir: renderer }),
+    (error) => {
+      assert.match(String(error), /dev-only marker/u);
+      return true;
+    },
+  );
+
+  // The stylesheet may keep the class name; only executed JavaScript matters.
+  writeFileSync(path.join(renderer, 'index.js'), 'export const app = true;');
+  writeFileSync(path.join(renderer, 'app.css'), '.fps-overlay { color: red; }');
+  assert.equal(verifyReleaseBundle({ rendererDir: renderer }).length, 1);
+});
+
 test('rejects fake markers, harness paths, and non-product artwork', (t) => {
   const root = sandbox();
   t.after(() => rmSync(root, { recursive: true, force: true }));

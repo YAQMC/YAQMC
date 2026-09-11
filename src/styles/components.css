@@ -1164,6 +1164,10 @@ input[type='range']:disabled {
 }
 
 .lyrics-stage {
+  --android-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --android-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --android-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --android-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
   --lyrics-font-scale: 1;
   --lyrics-line-height: 1.16;
   --lyrics-line-gap: 0.75cqh;
@@ -1357,111 +1361,199 @@ input[type='range']:disabled {
 .lyrics-fullscreen-transport {
   position: absolute;
   z-index: 4;
-  bottom: 24px;
-  left: 50%;
-  display: grid;
-  width: min(560px, calc(100vw - 180px));
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 11px;
-  padding: 9px 12px 12px;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 15px;
-  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.34);
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  left: max(12px, env(safe-area-inset-left, 0px));
+  display: flex;
+  justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 12px);
+  transform: translateY(12px);
   transition:
     opacity 180ms var(--ease-out),
     transform 180ms var(--ease-out);
-  backdrop-filter: blur(18px);
 }
 
 .lyrics-fullscreen-transport[data-visible],
 .lyrics-fullscreen-transport:focus-within {
   opacity: 1;
+  transform: translateY(0);
+}
+
+/* Only the bar itself is interactive: the lyrics, the drag region and the
+ * window controls behind the overlay stay reachable. */
+.lyrics-fullscreen-transport[data-visible] > .lyrics-transport,
+.lyrics-fullscreen-transport:focus-within > .lyrics-transport {
   pointer-events: auto;
-  transform: translate(-50%, 0);
 }
 
-.lyrics-fullscreen-transport__artwork {
-  width: 42px;
-  height: 42px;
-  border-radius: 9px;
+/* The windowed bar is always visible, so it sits above the bottom-left
+ * chrome cluster instead of overlapping the collapse/favorite buttons. */
+.lyrics-fullscreen-transport[data-transport-surface='window'] {
+  bottom: calc(max(16px, env(safe-area-inset-bottom, 0px)) + 58px);
 }
 
-.lyrics-fullscreen-transport__track {
+/* One transport renderer for the window and fullscreen lyrics surfaces.
+ * Presets only change action order, color tokens and metric sizes, so every
+ * control keeps a >= 44px hit area and the bar can wrap instead of overflowing. */
+.lyrics-transport {
+  display: flex;
+  width: 100%;
+  max-width: min(560px, 100%);
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--transport-gap, 8px);
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--transport-radius, 14px);
+  background: color-mix(in srgb, var(--transport-surface, var(--surface-raised)) 82%, transparent);
+  color: var(--transport-text, var(--text));
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.lyrics-transport[data-layout='stacked'] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.lyrics-transport[data-layout='stacked'] .lyrics-transport__progress {
+  grid-column: 1 / -1;
+}
+
+.lyrics-transport[data-layout='stacked']:not([data-identity]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.lyrics-transport[data-layout='stacked']:not([data-identity]) .lyrics-transport__controls {
+  justify-content: center;
+}
+
+.lyrics-transport__artwork {
+  display: grid;
+  width: var(--transport-artwork-size, 42px);
+  min-width: var(--transport-artwork-size, 42px);
+  height: var(--transport-artwork-size, 42px);
+  overflow: hidden;
+  border-radius: calc(var(--transport-radius, 14px) * 0.6);
+  place-items: center;
+}
+
+.lyrics-transport__artwork > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lyrics-transport__track {
   display: flex;
   min-width: 0;
   flex-direction: column;
 }
 
-.lyrics-fullscreen-transport__track strong,
-.lyrics-fullscreen-transport__track span {
+.lyrics-transport__track strong,
+.lyrics-transport__track span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.lyrics-fullscreen-transport__track strong {
+.lyrics-transport__track strong {
+  color: var(--transport-text, var(--text));
   font-size: var(--text-sm);
   font-weight: 680;
 }
 
-.lyrics-fullscreen-transport__track span {
+.lyrics-transport__track span {
   margin-top: 2px;
-  color: var(--text-tertiary);
+  color: var(--transport-muted, var(--text-tertiary));
   font-size: var(--text-xs);
 }
 
-.lyrics-fullscreen-transport__controls {
+.lyrics-transport__controls {
   display: flex;
+  min-width: 0;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 3px;
 }
 
-.lyrics-fullscreen-transport .icon-button {
-  color: var(--text-secondary);
+.lyrics-transport__control {
+  min-width: max(44px, var(--transport-control-size, 44px));
+  min-height: max(44px, var(--transport-control-size, 44px));
 }
 
-.lyrics-fullscreen-transport .icon-button:hover,
-.lyrics-fullscreen-transport__play:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+.lyrics-transport__control.icon-button {
+  color: var(--transport-muted, var(--text-secondary));
 }
 
-.lyrics-fullscreen-transport__play {
+.lyrics-transport__control.icon-button:hover,
+.lyrics-transport__play:hover {
+  background: color-mix(in srgb, var(--transport-text, var(--text)) 14%, transparent);
+  color: var(--transport-text, var(--text));
+}
+
+.lyrics-transport__play {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: var(--transport-control-size, 44px);
+  height: var(--transport-control-size, 44px);
   border-radius: 50%;
-  background: var(--text);
-  color: var(--bg-opaque);
+  background: var(--transport-text, var(--text));
+  color: var(--transport-surface, var(--bg-opaque));
   place-items: center;
 }
 
-.lyrics-fullscreen-transport__progress {
-  position: absolute;
-  right: 12px;
-  bottom: 5px;
-  left: 65px;
-  height: 2px;
-  overflow: hidden;
-  border-radius: var(--radius-round);
-  background: color-mix(in srgb, var(--text) 12%, transparent);
+.lyrics-transport__progress {
+  width: auto;
+  flex: 1 1 220px;
+  min-width: 0;
+  align-items: center;
 }
 
-.lyrics-fullscreen-transport__progress-fill {
-  display: block;
+.lyrics-transport__progress input[type='range'] {
+  height: 44px;
+  min-height: 44px;
+}
+
+/* Inside a preset scene widget the same controls fill the preset box and keep
+ * the scene's transparent styling. */
+.lyrics-scene__transport .lyrics-transport {
   width: 100%;
+  max-width: 100%;
   height: 100%;
-  border-radius: inherit;
-  background: color-mix(in srgb, var(--text) 72%, transparent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  will-change: transform;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+
+.lyrics-scene__transport .lyrics-transport[data-layout='stacked'] {
+  display: grid;
+  height: auto;
+}
+
+.lyrics-transport[data-layout='compact'] .lyrics-transport__progress,
+.lyrics-transport[data-layout='stacked'] .lyrics-transport__progress {
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+@media (max-height: 460px) {
+  .lyrics-transport {
+    padding: 4px 8px;
+  }
+
+  .lyrics-transport__track {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

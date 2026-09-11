@@ -652,11 +652,12 @@ export default function App() {
           data-provider-id={provider.id}
           data-host-kind={getHostBridge().kind}
           data-lyrics-open={lyricsSurfaceVisible || undefined}
+          data-lyrics-stage={lyricsStage === 'closed' && lyricsOpen ? 'entering' : lyricsStage}
           data-lyrics-focus={(lyricsSurfaceVisible && focusSidebarCollapsed) || undefined}
           data-lyrics-fullscreen={(lyricsSurfaceVisible && fullscreen) || undefined}
         >
-          <Sidebar route={route} onNavigate={navigate} />
-          <div className="content-shell">
+          <Sidebar route={route} onNavigate={navigate} inert={lyricsSurfaceVisible} />
+          <div className="content-shell" inert={lyricsSurfaceVisible}>
             <TopBar
               canGoBack={history.index > 0}
               canGoForward={history.index < history.entries.length - 1}
@@ -677,8 +678,8 @@ export default function App() {
               {pageContent}
             </main>
           </div>
-          <PlayerBar onToggleQueue={toggleQueue} />
-          <AndroidBottomNav route={route} onNavigate={navigate} />
+          <PlayerBar onToggleQueue={toggleQueue} inert={lyricsSurfaceVisible} />
+          <AndroidBottomNav route={route} onNavigate={navigate} inert={lyricsSurfaceVisible} />
           <PluginNoticeHost />
           <CoreStatusBanner />
           <QueuePanel />

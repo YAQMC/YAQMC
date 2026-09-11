@@ -12,6 +12,14 @@ import { skipsLiveCssBlur } from './platform-integration';
 import { getYaqmcClient } from './yaqmc-runtime';
 import { usePlayerStore } from './player-store';
 import { primaryPlaybackMode } from './playback-mode';
+import {
+  BUILTIN_TRANSPORT_FULLSCREEN_ID,
+  BUILTIN_TRANSPORT_WINDOW_ID,
+  setPluginTransportCatalog,
+  listTransportPresets,
+  validateTransportDefinition,
+  type LyricsTransportCatalogEntry,
+} from './lyrics-transport';
 import { usePreferencesStore } from './preferences';
 import { useLyricsStore } from './lyrics-store';
 import { selectLyricCursor } from './lyrics-timing';
@@ -129,12 +137,25 @@ const SCENE_STYLE_ATTR = 'data-yaqmc-plugin-scene-style';
 
 let workers = new Map<string, Worker>();
 let runtimeTokens = new Map<string, string>();
+let workerPermissions = new Map<string, ReadonlySet<string>>();
 let lastPositionEmit = 0;
 let lastTrackKey = '';
 let lastLineKey = '';
 let lastQueueKey = '';
 let lastModeKey = '';
-let applying = false;
+let applyingPromise: Promise<ActivePluginResources | null> | null = null;
+/**
+ * Monotonically increasing refresh id.  A refresh request invalidates any
+ * in-flight resource load; the loop below will coalesce concurrent requests
+ * and apply only the newest snapshot.
+ */
+let resourceGeneration = 0;
+/**
+ * Runtime generation is separate from the resource generation because a
+ * worker can still resolve an async bridge call after it has been terminated.
+ * Every worker callback must prove that it belongs to the current generation.
+ */
+let runtimeGeneration = 0;
 const sceneInstance = { id: 0, sceneId: '', pluginId: '' };
 const sceneVariables = new Map<string, string>();
 const sceneStates = new Map<string, string>();
@@ -410,10 +431,12 @@ function toPluginPreset(scene: ActiveSceneResource): LyricsPresetDefinition | nu
 }
 
 function stopScripts(): void {
+  runtimeGeneration += 1;
   for (const worker of workers.values()) {
     worker.terminate();
   }
   workers = new Map();
+  workerPermissions = new Map();
   void Promise.all(
     [...runtimeTokens.values()].map((token) =>
       client.invoke('plugin_runtime_stop', { token }).catch(() => undefined),
@@ -521,11 +544,19 @@ function applyBridgeSideEffect(
   }
 }
 
-async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
-  stopScripts();
+async function startScripts(
+  scripts: ActiveScriptResource[],
+  grants: ReadonlyMap<string, readonly string[]>,
+  generation: number,
+): Promise<void> {
   for (const script of scripts) {
+    if (generation !== runtimeGeneration) return;
     try {
       const token = await client.invoke('plugin_runtime_start', { pluginId: script.pluginId });
+      if (generation !== runtimeGeneration) {
+        await client.invoke('plugin_runtime_stop', { token }).catch(() => undefined);
+        return;
+      }
       runtimeTokens.set(script.pluginId, token);
       const blob = new Blob([pluginWorkerBootstrap(script.source, script.pluginId)], {
         type: 'text/javascript',
@@ -534,6 +565,7 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
       const worker = new Worker(url, { name: `yaqmc-plugin-${script.pluginId}` });
       URL.revokeObjectURL(url);
       worker.onmessage = (event: MessageEvent) => {
+        if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
         const data = event.data as {
           type?: string;
           id?: string;
@@ -553,11 +585,13 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
             .catch(() => undefined);
           worker.terminate();
           workers.delete(script.pluginId);
+          workerPermissions.delete(script.pluginId);
           clearPluginUi(script.pluginId);
           return;
         }
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
         const boundToken = runtimeTokens.get(script.pluginId);
+        if (!boundToken) return;
         void client
           .invoke('plugin_bridge', {
             request: {
@@ -567,10 +601,12 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
             },
           })
           .then((value) => {
+            if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
             applyBridgeSideEffect(script, data.method ?? '', data.payload, value);
             worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: true, value });
           })
           .catch((error: unknown) => {
+            if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
             worker.postMessage({
               type: 'yaqmc/result',
               id: data.id,
@@ -580,6 +616,7 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
           });
       };
       worker.onerror = (event) => {
+        if (generation !== runtimeGeneration || workers.get(script.pluginId) !== worker) return;
         logger.error('plugin.runtime.error', event.message, { pluginId: script.pluginId });
         void client
           .invoke('plugin_mark_failed', {
@@ -590,7 +627,9 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
         clearPluginUi(script.pluginId);
       };
       workers.set(script.pluginId, worker);
+      workerPermissions.set(script.pluginId, new Set(grants.get(script.pluginId) ?? []));
     } catch (error) {
+      if (generation !== runtimeGeneration) return;
       const reason = error instanceof Error ? error.message : 'plugin runtime failed to start';
       logger.error('plugin.runtime.error', reason, { pluginId: script.pluginId });
       void client
@@ -601,12 +640,78 @@ async function startScripts(scripts: ActiveScriptResource[]): Promise<void> {
   }
 }
 
-function emitToPlugins(event: string, payload: unknown): void {
-  for (const worker of workers.values()) {
-    worker.postMessage({ type: 'yaqmc/event', event, payload });
+/**
+ * Permission required before a plugin may passively receive an event.
+ *
+ * `null` means the payload carries no user data (lifecycle/theme keys only).
+ * Events missing from this table are never broadcast, so adding a new
+ * `emitToPlugins` call cannot leak data before its requirement is declared.
+ */
+export const PLUGIN_EVENT_PERMISSIONS: Readonly<Record<string, string | null>> = {
+  'scene.changed': 'scene.register',
+  'track.changed': 'track.read',
+  'playback.stateChanged': 'player.read',
+  'playback.modeChanged': 'player.read',
+  'playback.position': 'player.read',
+  'playback.positionCommitted': 'player.read',
+  'queue.changed': 'player.read',
+  'lyrics.lineChanged': 'lyrics.read',
+  'lyrics.documentChanged': 'lyrics.read',
+  'theme.changed': 'theme.read',
+};
+
+function pluginEventPermission(event: string): string | null | undefined {
+  return Object.hasOwn(PLUGIN_EVENT_PERMISSIONS, event)
+    ? PLUGIN_EVENT_PERMISSIONS[event]
+    : undefined;
+}
+
+/**
+ * Granted permissions for every installed plugin.
+ *
+ * Event fan-out fails closed: if the host cannot report grants, plugins receive
+ * no read-only events instead of receiving everything.
+ */
+async function grantedPermissionsByPlugin(): Promise<Map<string, string[]>> {
+  try {
+    const records = await client.invoke('plugin_list');
+    return new Map(records.map((record) => [record.id, [...record.grantedPermissions]]));
+  } catch (error) {
+    logger.error('plugin.permissions.load_failed', error);
+    return new Map();
   }
 }
 
+/**
+ * Fans a data event out to the plugins that hold its permission.
+ *
+ * Returns `false` for events that are not declared in
+ * [`PLUGIN_EVENT_PERMISSIONS`]: the fan-out fails closed, so a future
+ * `emitToPlugins` call cannot leak payloads before its requirement is declared.
+ */
+export function broadcastPluginEvent(event: string, payload: unknown): boolean {
+  const required = pluginEventPermission(event);
+  if (required === undefined) {
+    logger.error('plugin.runtime.unknown_event', `refusing to broadcast unknown event ${event}`);
+    return false;
+  }
+  for (const [pluginId, worker] of workers) {
+    if (required !== null && !workerPermissions.get(pluginId)?.has(required)) continue;
+    worker.postMessage({ type: 'yaqmc/event', event, payload });
+  }
+  return true;
+}
+
+function emitToPlugins(event: string, payload: unknown): void {
+  broadcastPluginEvent(event, payload);
+}
+
+/**
+ * Lifecycle/UI control channel for one plugin.
+ *
+ * Control messages are addressed to a single runtime and never fan out, which
+ * keeps them separate from the permission-filtered data events above.
+ */
 function emitToPlugin(pluginId: string, event: string, payload: unknown): void {
   workers.get(pluginId)?.postMessage({ type: 'yaqmc/event', event, payload });
 }
@@ -704,29 +809,117 @@ export async function readPluginAsset(
   }
 }
 
-export async function applyPluginResources(): Promise<ActivePluginResources | null> {
-  if (!hasHostCapability('plugins') || applying) return null;
-  applying = true;
-  try {
-    const resources = await client.invoke('plugin_active_resources');
-    applyStyleSheets(resources.safeMode ? [] : resources.styles);
-    applySceneSheets(resources.safeMode ? [] : resources.scenes);
-    const presets = (resources.safeMode ? [] : resources.scenes)
-      .map(toPluginPreset)
-      .filter((preset): preset is LyricsPresetDefinition => preset !== null);
-    setPluginPresetCatalog(presets);
-    const selectedId = usePreferencesStore.getState().lyricsPresets.selectedId;
-    if (selectedId.startsWith('plugin:') && !presets.some((preset) => preset.id === selectedId)) {
-      usePreferencesStore.getState().selectLyricsPreset(BUILTIN_CLASSIC_ID);
-    }
-    await startScripts(resources.safeMode ? [] : resources.scripts);
-    if (resources.safeMode) resetSceneBehavior();
-    const selected = usePreferencesStore.getState().lyricsPresets.selectedId;
-    emitSceneLifecycle(selected);
-    return resources;
-  } finally {
-    applying = false;
+/**
+ * Extracts the declarative transport bars a plugin declares in its scene
+ * documents. The payload is strictly validated and re-authorized against the
+ * live grants before it can reach the renderer.
+ */
+function collectPluginTransports(
+  scenes: ActiveSceneResource[],
+  grants: ReadonlyMap<string, readonly string[]>,
+): LyricsTransportCatalogEntry[] {
+  const entries: LyricsTransportCatalogEntry[] = [];
+  for (const scene of scenes) {
+    const source =
+      scene.definition && typeof scene.definition === 'object'
+        ? (scene.definition as { transportBar?: unknown })
+        : {};
+    if (source.transportBar === undefined) continue;
+    const definition = validateTransportDefinition(source.transportBar);
+    if (!definition) continue;
+    entries.push({
+      pluginId: scene.pluginId,
+      definition,
+      grantedPermissions: [...(grants.get(scene.pluginId) ?? [])],
+    });
   }
+  return entries;
+}
+
+async function applyPluginResourcesSnapshot(
+  generation: number,
+): Promise<ActivePluginResources | null> {
+  const resources = await client.invoke('plugin_active_resources');
+  // Do not let a stale response overwrite styles, catalogs, preferences, or
+  // scene state while a newer plugin://changed event is being processed.
+  if (generation !== resourceGeneration) return null;
+
+  applyStyleSheets(resources.safeMode ? [] : resources.styles);
+  applySceneSheets(resources.safeMode ? [] : resources.scenes);
+  const scenes = resources.safeMode ? [] : resources.scenes;
+  const presets = scenes
+    .map(toPluginPreset)
+    .filter((preset): preset is LyricsPresetDefinition => preset !== null);
+  setPluginPresetCatalog(presets);
+  const grants = resources.safeMode
+    ? new Map<string, string[]>()
+    : await grantedPermissionsByPlugin();
+  if (generation !== resourceGeneration) return null;
+
+  const transports = collectPluginTransports(scenes, grants);
+  setPluginTransportCatalog(transports);
+  const preferences = usePreferencesStore.getState();
+  const selectedId = preferences.lyricsPresets.selectedId;
+  if (selectedId.startsWith('plugin:') && !presets.some((preset) => preset.id === selectedId)) {
+    preferences.selectLyricsPreset(BUILTIN_CLASSIC_ID);
+  }
+  for (const surface of ['window', 'fullscreen'] as const) {
+    const builtinId =
+      surface === 'window' ? BUILTIN_TRANSPORT_WINDOW_ID : BUILTIN_TRANSPORT_FULLSCREEN_ID;
+    const selected =
+      surface === 'window' ? preferences.transport.window : preferences.transport.fullscreen;
+    if (listTransportPresets(surface).some((entry) => entry.id === selected)) continue;
+    preferences.setTransportPreset(surface, builtinId);
+  }
+  if (generation !== resourceGeneration) return null;
+  await startScripts(resources.safeMode ? [] : resources.scripts, grants, runtimeGeneration);
+  if (generation !== resourceGeneration) return null;
+  if (resources.safeMode) resetSceneBehavior();
+  const selected = usePreferencesStore.getState().lyricsPresets.selectedId;
+  emitSceneLifecycle(selected);
+  return resources;
+}
+
+export function applyPluginResources(): Promise<ActivePluginResources | null> {
+  if (!hasHostCapability('plugins')) return Promise.resolve(null);
+
+  resourceGeneration += 1;
+  // Retire renderer-side capabilities synchronously as well as workers.  A
+  // revoked plugin must not keep styles, actions, or transport definitions
+  // alive while the replacement snapshot is being fetched.
+  if (typeof document !== 'undefined') {
+    applyStyleSheets([]);
+    applySceneSheets([]);
+  }
+  setPluginPresetCatalog([]);
+  setPluginTransportCatalog([]);
+  resetSceneBehavior();
+  clearPluginUi();
+  // Invalidate and retire the currently running workers synchronously.  This
+  // is intentionally done even when a load is already in progress: otherwise
+  // a revoked plugin can continue receiving events during the await window.
+  stopScripts();
+
+  if (applyingPromise) return applyingPromise;
+
+  applyingPromise = (async () => {
+    while (true) {
+      const generation = resourceGeneration;
+      try {
+        const latest = await applyPluginResourcesSnapshot(generation);
+        if (generation === resourceGeneration) return latest;
+      } catch (error) {
+        // A failure for an obsolete snapshot must not reject a newer refresh
+        // that arrived while the request was in flight.  Retry the latest
+        // generation; only surface errors for the current request.
+        if (generation !== resourceGeneration) continue;
+        throw error;
+      }
+    }
+  })().finally(() => {
+    applyingPromise = null;
+  });
+  return applyingPromise;
 }
 
 export async function listPlugins(): Promise<PluginRecord[]> {

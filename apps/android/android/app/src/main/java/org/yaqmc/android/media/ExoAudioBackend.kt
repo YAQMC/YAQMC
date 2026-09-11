@@ -36,6 +36,30 @@ class ExoAudioBackend(context: Context) {
         private set
     @Volatile var lastError: String? = null
         private set
+    @Volatile var errorKind: String? = null
+        private set
+
+    /** Stream id of the loaded source, sent with every state report. */
+    private var loadedStreamId: Long = 0L
+
+    /**
+     * Bumped on every load and stop.
+     *
+     * Each callback and posted block captures the epoch it belongs to, so work
+     * queued by a previous track cannot report state for the current one.
+     */
+    private var loadEpoch: Long = 0L
+    private var activeListener: Player.Listener? = null
+
+    /**
+     * Fails a load whose source never reaches READY or ERROR.
+     *
+     * Media3 reports neither success nor failure while a data source stalls, so
+     * without an upper bound Core would sit in `buffering` forever after a
+     * black-holed request. The runnable is replaced on every load and removed on
+     * stop, and it re-checks the epoch before touching state.
+     */
+    private var prepareTimeoutTask: Runnable? = null
 
     private val progressUpdater = object : Runnable {
         override fun run() {
@@ -87,8 +111,23 @@ class ExoAudioBackend(context: Context) {
             }
         })
 
-        exoPlayer.addListener(object : Player.Listener {
+    }
+
+    /**
+     * Binds listener callbacks to the load epoch they belong to.
+     *
+     * Media3 dispatches state changes and errors on the main thread, so a
+     * callback queued for the previous track can arrive after a new `load()`.
+     * Each listener checks its own epoch and drops stale reports.
+     */
+    private fun attachListener(epoch: Long) {
+        activeListener?.let { exoPlayer.removeListener(it) }
+        val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                if (epoch != loadEpoch) return
+                if (playbackState == Player.STATE_READY || playbackState == Player.STATE_ENDED) {
+                    clearPrepareTimeout()
+                }
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 isEnded = playbackState == Player.STATE_ENDED
                 if (playbackState == Player.STATE_READY) {
@@ -102,6 +141,7 @@ class ExoAudioBackend(context: Context) {
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
+                if (epoch != loadEpoch) return
                 isPlaying = playing
                 currentPositionMs = exoPlayer.currentPosition
                 reportState()
@@ -114,19 +154,57 @@ class ExoAudioBackend(context: Context) {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (epoch != loadEpoch) return
+                clearPrepareTimeout()
+                errorKind = classifyError(error)
                 lastError = error.message
                 isPlaying = false
                 isBuffering = false
                 reportState()
             }
-        })
+        }
+        activeListener = listener
+        exoPlayer.addListener(listener)
+    }
+
+    private fun clearPrepareTimeout() {
+        prepareTimeoutTask?.let { mainHandler.removeCallbacks(it) }
+        prepareTimeoutTask = null
+    }
+
+    private fun schedulePrepareTimeout(epoch: Long) {
+        clearPrepareTimeout()
+        val timeout = Runnable {
+            if (epoch != loadEpoch) return@Runnable
+            if (errorKind != null || isEnded) return@Runnable
+            if (!isBuffering) return@Runnable
+            errorKind = KIND_SOURCE
+            lastError = "Media3 did not prepare the source within ${PREPARE_TIMEOUT_MS / 1_000}s"
+            isBuffering = false
+            isPlaying = false
+            reportState()
+        }
+        prepareTimeoutTask = timeout
+        mainHandler.postDelayed(timeout, PREPARE_TIMEOUT_MS)
     }
 
     fun load(streamId: Long, localPath: String?, format: String): Boolean {
+        val epoch = ++loadEpoch
+        clearPrepareTimeout()
+        loadedStreamId = streamId
+        lastError = null
+        errorKind = null
+
         mainHandler.post {
-            lastError = null
+            if (epoch != loadEpoch) return@post
+
             isEnded = false
+            isPlaying = false
+            // Media3 has not prepared the source yet. Reporting buffering keeps
+            // Core from treating the load as immediately playable.
+            isBuffering = true
             currentPositionMs = 0L
+            durationMs = C.TIME_UNSET
 
             val mimeType = mimeTypeForFormat(format)
             val mediaItem = if (!localPath.isNullOrEmpty()) {
@@ -142,9 +220,11 @@ class ExoAudioBackend(context: Context) {
                     .build()
             }
 
+            attachListener(epoch)
             exoPlayer.setMediaItem(mediaItem)
             exoPlayer.prepare()
             reportState()
+            schedulePrepareTimeout(epoch)
         }
         return true
     }
@@ -162,20 +242,29 @@ class ExoAudioBackend(context: Context) {
     }
 
     fun stop() {
+        loadEpoch += 1
+        clearPrepareTimeout()
         mainHandler.post {
             mainHandler.removeCallbacks(progressUpdater)
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
+            activeListener?.let { exoPlayer.removeListener(it) }
+            activeListener = null
             isPlaying = false
             isBuffering = false
             isEnded = false
             currentPositionMs = 0L
-            reportState()
+            durationMs = C.TIME_UNSET
+            lastError = null
+            errorKind = null
+            reportState(clearDuration = true)
         }
     }
 
     fun seek(positionMs: Long) {
+        val epoch = loadEpoch
         mainHandler.post {
+            if (epoch != loadEpoch) return@post
             exoPlayer.seekTo(positionMs)
             currentPositionMs = positionMs
             reportState()
@@ -195,15 +284,50 @@ class ExoAudioBackend(context: Context) {
         }
     }
 
-    private fun reportState() {
+    private fun reportState(clearDuration: Boolean = false) {
         CoreManager.reportAudioState(
+            streamId = loadedStreamId,
             positionMs = currentPositionMs,
-            durationMs = durationMs,
+            durationMs = if (clearDuration || durationMs == C.TIME_UNSET) {
+                DURATION_UNSET_SENTINEL
+            } else {
+                durationMs
+            },
             isPlaying = isPlaying,
             isBuffering = isBuffering,
             isEnded = isEnded,
+            errorKind = errorKind,
             error = lastError,
         )
+    }
+
+    /**
+     * Maps a Media3 failure onto the source/output categories Core reacts to.
+     *
+     * `source-expired` is decided in Rust from the progressive monitor, which is
+     * the only component that observes the upstream HTTP status.
+     */
+    private fun classifyError(error: PlaybackException): String = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> KIND_NETWORK
+
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+        PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+        PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED,
+        PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+        PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED -> KIND_SOURCE
+
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED -> KIND_DECODER
+
+        else -> KIND_OUTPUT
     }
 
     private fun mimeTypeForFormat(format: String): String = when (format.lowercase()) {
@@ -216,5 +340,19 @@ class ExoAudioBackend(context: Context) {
 
     companion object {
         private const val PROGRESS_UPDATE_INTERVAL_MS = 500L
+        /** Upper bound for a load that never reaches READY or ERROR. */
+        private const val PREPARE_TIMEOUT_MS = 15_000L
+
+        /**
+         * Sent to Rust when the duration is unknown.
+         *
+         * Rust clears its cached duration for negative values, which is how a
+         * stop or a new load drops the previous track's duration.
+         */
+        private const val DURATION_UNSET_SENTINEL = -1L
+        private const val KIND_NETWORK = "network"
+        private const val KIND_SOURCE = "source"
+        private const val KIND_DECODER = "decoder"
+        private const val KIND_OUTPUT = "output"
     }
 }

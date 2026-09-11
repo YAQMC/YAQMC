@@ -1,18 +1,21 @@
-import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import {
   useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
-  type CSSProperties,
   type FocusEvent,
   type Ref,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import type {
+  ResolvedLyricsTransportDefinition,
+  LyricsTransportSurface,
+} from '../application/lyrics-transport';
+import { useLyricsTransportDefinition } from '../application/use-lyrics-transport';
 import { getEstimatedPositionMs, usePlayerStore } from '../application/player-store';
 import { joinArtistNames } from '../utils/format';
-import { IconButton } from './ui/IconButton';
+import { LyricsTransportControls } from './LyricsTransportControls';
 
 const HIDE_DELAY_MS = 2_400;
 
@@ -23,9 +26,18 @@ export interface LyricsFullscreenTransportHandle {
 interface LyricsFullscreenTransportProps {
   ref?: Ref<LyricsFullscreenTransportHandle>;
   artworkSource: string | null;
+  /**
+   * `fullscreen` renders the immersive overlay; `window` renders the compact
+   * bar used by the windowed lyrics page. Both share one implementation.
+   */
+  surface?: LyricsTransportSurface;
 }
 
-export function LyricsFullscreenTransport({ ref, artworkSource }: LyricsFullscreenTransportProps) {
+export function LyricsFullscreenTransport({
+  ref,
+  artworkSource,
+  surface = 'fullscreen',
+}: LyricsFullscreenTransportProps) {
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id ?? null);
   const currentTitle = usePlayerStore((state) => state.queue[state.currentIndex]?.title ?? '');
   const currentArtistLabel = usePlayerStore((state) =>
@@ -37,71 +49,89 @@ export function LyricsFullscreenTransport({ ref, artworkSource }: LyricsFullscre
   const positionMs = usePlayerStore((state) => state.positionMs);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const playbackDurationMs = usePlayerStore((state) => state.playbackDurationMs);
-  const isScrubbing = usePlayerStore((state) => state.isScrubbing);
   const previous = usePlayerStore((state) => state.previous);
   const togglePlayback = usePlayerStore((state) => state.togglePlayback);
   const next = usePlayerStore((state) => state.next);
+  const beginScrub = usePlayerStore((state) => state.beginScrub);
+  const previewScrub = usePlayerStore((state) => state.previewScrub);
+  const commitScrub = usePlayerStore((state) => state.commitScrub);
+  const cancelScrub = usePlayerStore((state) => state.cancelScrub);
+  const definition = useLyricsTransportDefinition(surface);
 
   if (currentId === null) return null;
-
-  const durationMs = playbackDurationMs ?? currentDurationMs;
 
   return (
     <LyricsFullscreenTransportSurface
       ref={ref}
-      currentId={currentId}
+      surface={surface}
+      definition={definition}
       currentTitle={currentTitle}
       currentArtistLabel={currentArtistLabel}
-      currentDurationMs={durationMs}
+      durationMs={playbackDurationMs ?? currentDurationMs ?? 0}
       artworkSource={artworkSource}
       positionMs={positionMs}
       isPlaying={isPlaying}
-      isScrubbing={isScrubbing}
-      playbackDurationMs={durationMs}
       previous={previous}
       togglePlayback={togglePlayback}
       next={next}
+      beginScrub={beginScrub}
+      previewScrub={previewScrub}
+      commitScrub={commitScrub}
+      cancelScrub={cancelScrub}
     />
   );
 }
 
 interface LyricsFullscreenTransportSurfaceProps {
   ref?: Ref<LyricsFullscreenTransportHandle>;
-  currentId: string;
+  surface: LyricsTransportSurface;
+  definition: ResolvedLyricsTransportDefinition;
   currentTitle: string;
   currentArtistLabel: string;
-  currentDurationMs: number | null;
+  durationMs: number;
   artworkSource: string | null;
   positionMs: number;
   isPlaying: boolean;
-  isScrubbing: boolean;
-  playbackDurationMs: number | null;
   previous: () => void;
   togglePlayback: () => void;
   next: () => void;
+  beginScrub: () => void;
+  previewScrub: (positionMs: number) => void;
+  commitScrub: (positionMs: number) => void;
+  cancelScrub: () => void;
 }
 
 function LyricsFullscreenTransportSurface({
   ref,
-  currentId,
+  surface,
+  definition,
   currentTitle,
   currentArtistLabel,
-  currentDurationMs,
+  durationMs,
   artworkSource,
   positionMs,
   isPlaying,
-  isScrubbing,
-  playbackDurationMs,
   previous,
   togglePlayback,
   next,
+  beginScrub,
+  previewScrub,
+  commitScrub,
+  cancelScrub,
 }: LyricsFullscreenTransportSurfaceProps) {
   const { t: player } = useTranslation('player');
-  const { t: common } = useTranslation('common');
+  const immersive = surface === 'fullscreen';
+  // Both surfaces start visible; only the immersive overlay schedules a hide.
   const [visible, setVisible] = useState(true);
   const [focused, setFocused] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressFill = useRef<HTMLSpanElement>(null);
+  const readPositionMs = useCallback(
+    () =>
+      usePlayerStore.getState().isScrubbing
+        ? usePlayerStore.getState().positionMs
+        : getEstimatedPositionMs(),
+    [],
+  );
 
   const clearTimer = useCallback(() => {
     if (timer.current === null) return;
@@ -112,12 +142,13 @@ function LyricsFullscreenTransportSurface({
   const reveal = useCallback(() => {
     setVisible(true);
     clearTimer();
-    if (!isPlaying || focused) return;
+    // The windowed bar stays put; only the immersive overlay fades away.
+    if (!immersive || !isPlaying || focused) return;
     timer.current = setTimeout(() => {
       timer.current = null;
       setVisible(false);
     }, HIDE_DELAY_MS);
-  }, [clearTimer, focused, isPlaying]);
+  }, [clearTimer, focused, immersive, isPlaying]);
 
   useImperativeHandle(ref, () => ({ reveal }), [reveal]);
 
@@ -133,13 +164,13 @@ function LyricsFullscreenTransportSurface({
 
   useEffect(() => {
     clearTimer();
-    if (!isPlaying || focused) return clearTimer;
+    if (!immersive || !isPlaying || focused) return clearTimer;
     timer.current = setTimeout(() => {
       timer.current = null;
       setVisible(false);
     }, HIDE_DELAY_MS);
     return clearTimer;
-  }, [clearTimer, currentId, focused, isPlaying]);
+  }, [clearTimer, focused, immersive, isPlaying]);
 
   const pinVisible = () => {
     clearTimer();
@@ -159,68 +190,36 @@ function LyricsFullscreenTransportSurface({
     }
   };
 
-  const durationMs = playbackDurationMs ?? currentDurationMs ?? 0;
-  const visualPositionMs = isPlaying && !isScrubbing ? getEstimatedPositionMs() : positionMs;
-  const progress =
-    durationMs > 0 && Number.isFinite(positionMs)
-      ? Math.min(100, Math.max(0, (visualPositionMs / durationMs) * 100))
-      : 0;
-
-  useEffect(() => {
-    if (!isPlaying || isScrubbing || durationMs <= 0) return;
-    let frame = 0;
-    const tick = () => {
-      const position = Math.max(0, Math.min(getEstimatedPositionMs(), durationMs));
-      progressFill.current?.style.setProperty('transform', `scaleX(${position / durationMs})`);
-      frame = window.requestAnimationFrame(tick);
-    };
-    tick();
-    return () => window.cancelAnimationFrame(frame);
-  }, [durationMs, isPlaying, isScrubbing]);
-
   return (
     <div
       className="lyrics-fullscreen-transport"
-      data-visible={visible || !isPlaying || focused || undefined}
+      data-transport-surface={surface}
+      data-visible={!immersive || visible || !isPlaying || focused || undefined}
       role="group"
       aria-label={player('region')}
       onFocusCapture={pinVisible}
       onBlurCapture={handleBlurCapture}
     >
-      <span className="artwork lyrics-fullscreen-transport__artwork" aria-hidden="true">
-        {artworkSource && <img src={artworkSource} alt="" loading="eager" draggable={false} />}
-      </span>
-      <div className="lyrics-fullscreen-transport__track">
-        <strong>{currentTitle}</strong>
-        <span>{currentArtistLabel}</span>
-      </div>
-      <div className="lyrics-fullscreen-transport__controls">
-        <IconButton label={player('previous')} size="small" onClick={previous}>
-          <SkipBack size={16} fill="currentColor" />
-        </IconButton>
-        <button
-          type="button"
-          className="lyrics-fullscreen-transport__play"
-          onClick={togglePlayback}
-          aria-label={isPlaying ? common('pause') : common('play')}
-        >
-          {isPlaying ? (
-            <Pause size={17} fill="currentColor" />
-          ) : (
-            <Play size={17} fill="currentColor" />
-          )}
-        </button>
-        <IconButton label={player('next')} size="small" onClick={next}>
-          <SkipForward size={16} fill="currentColor" />
-        </IconButton>
-      </div>
-      <span className="lyrics-fullscreen-transport__progress" aria-hidden="true">
-        <span
-          ref={progressFill}
-          className="lyrics-fullscreen-transport__progress-fill"
-          style={{ transform: `scaleX(${progress / 100})` } as CSSProperties}
-        />
-      </span>
+      <LyricsTransportControls
+        key={definition.id}
+        definition={definition}
+        artworkSource={artworkSource}
+        title={currentTitle}
+        artistLabel={currentArtistLabel}
+        isPlaying={isPlaying}
+        active={!immersive || visible || !isPlaying || focused}
+        positionMs={positionMs}
+        durationMs={durationMs}
+        getPositionMs={readPositionMs}
+        onPrevious={previous}
+        onTogglePlayback={togglePlayback}
+        onNext={next}
+        onBeginScrub={beginScrub}
+        onPreviewScrub={previewScrub}
+        onCommitScrub={commitScrub}
+        onCancelScrub={cancelScrub}
+        className="lyrics-fullscreen-transport__bar"
+      />
     </div>
   );
 }

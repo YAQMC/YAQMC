@@ -67,6 +67,11 @@ import {
   resolveLyricsPreset,
   saveAsNewPreset,
 } from '../application/lyrics-preset';
+import {
+  listTransportPresets,
+  resolveLyricsTransport,
+  type LyricsTransportSurface,
+} from '../application/lyrics-transport';
 import { isNativeRuntime } from '../application/native-player-runtime';
 import { hostCapabilities, supportsLyricsSurfaces } from '../application/host-capabilities';
 import { useProviderSettings } from '../application/provider-settings';
@@ -906,6 +911,24 @@ export function SettingsPage() {
     { value: 'show', label: t('lyrics.show') },
     { value: 'hide', label: t('lyrics.hide') },
   ];
+  const transportOptions = (surface: LyricsTransportSurface) =>
+    listTransportPresets(surface).map((preset) => ({
+      value: preset.id,
+      label:
+        preset.source === 'built-in'
+          ? t(
+              preset.nameKey === 'transportFullscreenBuiltin'
+                ? 'lyrics.transportBuiltinFullscreen'
+                : 'lyrics.transportBuiltinWindow',
+            )
+          : t('lyrics.transportFromPlugin', {
+              plugin: preset.pluginId ?? preset.name ?? preset.id,
+            }),
+    }));
+  const windowTransportOptions = transportOptions('window');
+  const fullscreenTransportOptions = transportOptions('fullscreen');
+  const windowTransportValue = resolveLyricsTransport(preferences.transport, 'window').id;
+  const fullscreenTransportValue = resolveLyricsTransport(preferences.transport, 'fullscreen').id;
   const lyricFontWeightOptions: readonly SelectOption<LyricFontWeight>[] = [
     { value: '400', label: t('lyrics.fontWeightRegular') },
     { value: '500', label: t('lyrics.fontWeightMedium') },
@@ -1455,6 +1478,30 @@ export function SettingsPage() {
                   preferences.updateLyrics({ wordEffect: enabled ? 'jump' : 'fill' })
                 }
                 label={t('lyrics.wordJump')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.transportWindow')}
+            description={t('lyrics.transportWindowDescription')}
+            control={
+              <Select
+                value={windowTransportValue}
+                options={windowTransportOptions}
+                onChange={(id) => preferences.setTransportPreset('window', id)}
+                ariaLabel={t('lyrics.transportWindow')}
+              />
+            }
+          />
+          <SettingRow
+            title={t('lyrics.transportFullscreen')}
+            description={t('lyrics.transportFullscreenDescription')}
+            control={
+              <Select
+                value={fullscreenTransportValue}
+                options={fullscreenTransportOptions}
+                onChange={(id) => preferences.setTransportPreset('fullscreen', id)}
+                ariaLabel={t('lyrics.transportFullscreen')}
               />
             }
           />

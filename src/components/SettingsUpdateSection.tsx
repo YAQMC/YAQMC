@@ -1,6 +1,8 @@
 import { CHANNEL_HOST_UPDATE, type UpdatePayload, type UpdateState } from '@yaqmc/client';
 import { Download, ExternalLink, RefreshCw, RotateCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import { getYaqmcClient } from '../application/yaqmc-runtime';
 
 /** Host-only methods Main registers in UPD-01. Not in METHOD_NAMES. */
@@ -46,34 +48,38 @@ export async function requestHostUpdateInstall(client: HostInvokeSeam): Promise<
 }
 
 export function updateStatusCopy(payload: UpdatePayload): string {
+  const t = i18n.getFixedT(null, 'settings', 'updates');
   switch (payload.state) {
     case 'checking':
-      return 'Checking for updates…';
+      return t('checking');
     case 'available':
       if (!payload.canInstall) {
         return payload.version
-          ? `Version ${payload.version} is available. This package cannot update in place — open the release page.`
-          : 'An update is available. This package cannot update in place — open the release page.';
+          ? t('availableManualVersion', { version: payload.version })
+          : t('availableManual');
       }
-      return payload.version
-        ? `Version ${payload.version} is available.`
-        : 'An update is available.';
+      return payload.version ? t('availableVersion', { version: payload.version }) : t('available');
     case 'not-available':
-      return 'You are on the latest version.';
+      return t('latest');
     case 'downloading':
-      return 'Downloading update…';
+      return t('downloading');
     case 'ready-to-install':
-      return 'Update downloaded. Restart YAQMC to install.';
+      return t('ready');
     case 'error':
       return payload.error === NOT_WIRED_ERROR
-        ? 'Update checks are not wired in this build.'
-        : (payload.error ?? 'Could not check for updates.');
+        ? t('notWired')
+        : payload.error === 'update-download-failed'
+          ? t('downloadFailed')
+          : payload.error === 'update-install-failed'
+            ? t('installFailed')
+            : (payload.error ?? t('checkFailed'));
     default:
-      return 'No update check has run yet.';
+      return t('idle');
   }
 }
 
 export function SettingsUpdateSection({ mode = 'install' }: { mode?: 'install' | 'notify' }) {
+  const { t } = useTranslation('settings', { keyPrefix: 'updates' });
   const [payload, setPayload] = useState<UpdatePayload>(IDLE_UPDATE_PAYLOAD);
   const notifyOnly = mode === 'notify';
 
@@ -101,7 +107,7 @@ export function SettingsUpdateSection({ mode = 'install' }: { mode?: 'install' |
       setPayload((current) => ({
         ...current,
         state: 'error',
-        error: 'Could not download the update.',
+        error: 'update-download-failed',
       }));
     }
   };
@@ -114,7 +120,7 @@ export function SettingsUpdateSection({ mode = 'install' }: { mode?: 'install' |
       setPayload((current) => ({
         ...current,
         state: 'error',
-        error: 'Could not restart to install.',
+        error: 'update-install-failed',
       }));
     }
   };
@@ -134,14 +140,14 @@ export function SettingsUpdateSection({ mode = 'install' }: { mode?: 'install' |
     <section className="settings-section">
       <div className="settings-section__heading">
         <div>
-          <h2>Updates</h2>
-          <p>Check for a new YAQMC release. Updates are never installed silently.</p>
+          <h2>{t('title')}</h2>
+          <p>{t('description')}</p>
         </div>
       </div>
       <div className="settings-card">
         <div className="settings-row">
           <div>
-            <strong>Check for updates</strong>
+            <strong>{t('check')}</strong>
             <span
               data-update-state={payload.state}
               role={payload.state === 'error' ? 'alert' : 'status'}
@@ -155,33 +161,29 @@ export function SettingsUpdateSection({ mode = 'install' }: { mode?: 'install' |
             disabled={busy}
             onClick={() => void check()}
           >
-            <RefreshCw size={14} /> Check for updates
+            <RefreshCw size={14} /> {t('check')}
           </button>
         </div>
         {showDownload ? (
           <div className="settings-row">
             <div>
-              <strong>Download</strong>
-              <span>Starts only after you click. Nothing installs in the background.</span>
+              <strong>{t('download')}</strong>
+              <span>{t('downloadDescription')}</span>
             </div>
             <button
               type="button"
               className="button button--secondary"
               onClick={() => void download()}
             >
-              <Download size={14} /> Download update
+              <Download size={14} /> {t('downloadAction')}
             </button>
           </div>
         ) : null}
         {showReleaseLink ? (
           <div className="settings-row">
             <div>
-              <strong>Release page</strong>
-              <span>
-                {notifyOnly
-                  ? 'Android opens the signed APK on GitHub Releases and never installs it automatically.'
-                  : 'deb / rpm / tar.gz builds cannot update in place.'}
-              </span>
+              <strong>{t('release')}</strong>
+              <span>{notifyOnly ? t('androidReleaseDescription') : t('releaseDescription')}</span>
               {payload.releaseNotes ? (
                 <p className="settings-update-notes">{payload.releaseNotes}</p>
               ) : null}
@@ -191,22 +193,22 @@ export function SettingsUpdateSection({ mode = 'install' }: { mode?: 'install' |
               className="button button--secondary"
               onClick={() => void openRelease()}
             >
-              <ExternalLink size={14} /> Open release page
+              <ExternalLink size={14} /> {t('releaseAction')}
             </button>
           </div>
         ) : null}
         {showInstall ? (
           <div className="settings-row">
             <div>
-              <strong>Restart to install</strong>
-              <span>Installs only after you click. Playback will stop.</span>
+              <strong>{t('install')}</strong>
+              <span>{t('installDescription')}</span>
             </div>
             <button
               type="button"
               className="button button--secondary"
               onClick={() => void install()}
             >
-              <RotateCw size={14} /> Restart to install
+              <RotateCw size={14} /> {t('install')}
             </button>
           </div>
         ) : null}

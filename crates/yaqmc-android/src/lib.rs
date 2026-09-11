@@ -8,8 +8,8 @@ use std::{
     io::{Read, Seek, SeekFrom},
     path::PathBuf,
     sync::{
-        atomic::{AtomicI64, AtomicU64, Ordering},
-        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+        Arc, Condvar, Mutex, OnceLock,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -22,9 +22,9 @@ use jni::{
 use serde_json::{json, Value};
 use yaqmc_core::{
     audio::{
-        open_playback_stream, AudioEngine, AudioEngineError, AudioEngineSnapshot, AudioLoadMetadata,
-        AudioOutputDevice, AudioResolvedOutput, PlaybackStreamLocation, PreparedPlaybackSource,
-        ReadSeek,
+        open_playback_stream, AudioEngine, AudioEngineError, AudioEngineSnapshot,
+        AudioLoadMetadata, AudioOutputDevice, AudioResolvedOutput, PlaybackStreamLocation,
+        PreparedPlaybackSource, ReadSeek,
     },
     bootstrap,
     credentials::{CredentialError, CredentialStore},
@@ -34,33 +34,333 @@ use yaqmc_core::{
         SystemMediaStatus,
     },
     server::{CoreRuntime, EventSink, HostDispatchHooks},
+    streaming::{ProgressiveError, ProgressiveMonitor},
     CoreBootstrapInputs, CoreConfig, CorePaths,
 };
 use yaqmc_protocol::{CoreError, ResponseBody, WindowOrigin};
 
-struct RegisteredStream {
-    stream: Box<dyn ReadSeek>,
+/// Integer results shared with `NativeAudioDataSource` on the Kotlin side.
+///
+/// The read surface keeps its `jint` ABI, but every failure mode has its own
+/// code so the Kotlin data source can raise a typed `IOException` instead of
+/// treating a failure as end-of-stream and silently truncating playback.
+const STREAM_OK_EOF: jint = 0;
+const STREAM_ERR_IO: jint = -1;
+const STREAM_ERR_UNKNOWN_ID: jint = -2;
+const STREAM_ERR_CANCELLED: jint = -3;
+const STREAM_ERR_INTERNAL: jint = -4;
+const STREAM_ERR_BUSY: jint = -5;
+
+/// How long a second data source waits for the cursor before reporting
+/// [`STREAM_ERR_BUSY`]. Media3 drives one data source per media period, so a
+/// contended stream is a defect worth surfacing rather than a normal queue.
+const LEASE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// A decoded media stream owned by the Rust Core.
+///
+/// A Media3 `DataSource` is *not* the owner of this stream: Media3 closes and
+/// reopens its data source around every seek, so stream lifetime follows the
+/// playback generation instead of the data source session.
+struct StreamState {
+    reader: Mutex<Box<dyn ReadSeek>>,
     content_length: u64,
+    monitor: Option<ProgressiveMonitor>,
+    retired: AtomicBool,
+    /// Cursor owner across JNI calls; `Some(lease_id)` while a lease holds it.
+    cursor_owner: Mutex<Option<i64>>,
+    cursor_released: Condvar,
 }
 
-static STREAMS: OnceLock<Mutex<HashMap<i64, RegisteredStream>>> = OnceLock::new();
-static NEXT_STREAM_ID: AtomicI64 = AtomicI64::new(1);
+impl StreamState {
+    fn is_retired(&self) -> bool {
+        self.retired.load(Ordering::Acquire)
+    }
 
-fn streams() -> &'static Mutex<HashMap<i64, RegisteredStream>> {
+    /// Wakes a read blocked on a progressive range segment.
+    ///
+    /// Cancellation is only requested when the stream is retired, never when a
+    /// data source closes, so reopening after a seek keeps working.
+    fn wake_blocked_reads(&self) {
+        if let Some(monitor) = &self.monitor {
+            monitor.cancel();
+        }
+    }
+}
+
+/// One `NativeAudioDataSource` session over a [`StreamState`].
+struct StreamLease {
+    stream_id: i64,
+    stream: Arc<StreamState>,
+}
+
+static STREAMS: OnceLock<Mutex<HashMap<i64, Arc<StreamState>>>> = OnceLock::new();
+static STREAM_LEASES: OnceLock<Mutex<HashMap<i64, Arc<StreamLease>>>> = OnceLock::new();
+static NEXT_STREAM_ID: AtomicI64 = AtomicI64::new(1);
+static NEXT_LEASE_ID: AtomicI64 = AtomicI64::new(1);
+
+fn streams() -> &'static Mutex<HashMap<i64, Arc<StreamState>>> {
     STREAMS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn register_stream(stream: Box<dyn ReadSeek>, content_length: u64) -> i64 {
+fn leases() -> &'static Mutex<HashMap<i64, Arc<StreamLease>>> {
+    STREAM_LEASES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn register_stream(
+    stream: Box<dyn ReadSeek>,
+    content_length: u64,
+    monitor: Option<ProgressiveMonitor>,
+) -> i64 {
     let id = NEXT_STREAM_ID.fetch_add(1, Ordering::Relaxed);
-    if let Ok(mut map) = streams().lock() {
-        map.insert(id, RegisteredStream { stream, content_length });
+    let state = Arc::new(StreamState {
+        reader: Mutex::new(stream),
+        content_length,
+        monitor,
+        retired: AtomicBool::new(false),
+        cursor_owner: Mutex::new(None),
+        cursor_released: Condvar::new(),
+    });
+    match streams().lock() {
+        Ok(mut map) => {
+            map.insert(id, state);
+        }
+        Err(poisoned) => {
+            poisoned.into_inner().insert(id, state);
+        }
     }
     id
 }
 
-fn remove_stream(id: i64) {
-    if let Ok(mut map) = streams().lock() {
-        map.remove(&id);
+/// Resolves a stream id without holding the registry lock across any I/O.
+fn stream_state(id: i64) -> Option<Arc<StreamState>> {
+    match streams().lock() {
+        Ok(map) => map.get(&id).map(Arc::clone),
+        Err(poisoned) => poisoned.into_inner().get(&id).map(Arc::clone),
+    }
+}
+
+/// Ends a stream's life.
+///
+/// This is the only path that retires a stream. It runs when the playback
+/// generation is replaced (`load`) or when playback stops, so a Media3 data
+/// source close never destroys the underlying stream.
+fn retire_stream(id: i64) {
+    let state = match streams().lock() {
+        Ok(mut map) => map.remove(&id),
+        Err(poisoned) => poisoned.into_inner().remove(&id),
+    };
+    let Some(state) = state else {
+        return;
+    };
+    state.retired.store(true, Ordering::Release);
+    if let Ok(mut owner) = state.cursor_owner.lock() {
+        *owner = None;
+    }
+    state.cursor_released.notify_all();
+    // Wake a read blocked inside a progressive range wait.
+    state.wake_blocked_reads();
+    match leases().lock() {
+        Ok(mut map) => map.retain(|_, lease| lease.stream_id != id),
+        Err(poisoned) => poisoned
+            .into_inner()
+            .retain(|_, lease| lease.stream_id != id),
+    }
+    if let Some(lease) = take_active_lease(id) {
+        release_lease(lease);
+    }
+}
+
+fn lease_for(lease_id: i64) -> Option<Arc<StreamLease>> {
+    match leases().lock() {
+        Ok(map) => map.get(&lease_id).map(Arc::clone),
+        Err(poisoned) => poisoned.into_inner().get(&lease_id).map(Arc::clone),
+    }
+}
+
+/// Takes a cursor lease over `stream_id`.
+fn acquire_lease_with_timeout(stream_id: i64, wait: Duration) -> i64 {
+    let Some(state) = stream_state(stream_id) else {
+        return STREAM_ERR_UNKNOWN_ID as i64;
+    };
+    if state.is_retired() {
+        return STREAM_ERR_CANCELLED as i64;
+    }
+    let lease_id = NEXT_LEASE_ID.fetch_add(1, Ordering::Relaxed);
+    let mut owner = match state.cursor_owner.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let deadline = Instant::now() + wait;
+    while owner.is_some() {
+        if state.is_retired() {
+            return STREAM_ERR_CANCELLED as i64;
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return STREAM_ERR_BUSY as i64;
+        }
+        let (next, _) = state
+            .cursor_released
+            .wait_timeout(owner, remaining)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        owner = next;
+    }
+    if state.is_retired() {
+        return STREAM_ERR_CANCELLED as i64;
+    }
+    *owner = Some(lease_id);
+    drop(owner);
+    let lease = Arc::new(StreamLease {
+        stream_id,
+        stream: Arc::clone(&state),
+    });
+    match leases().lock() {
+        Ok(mut map) => {
+            map.insert(lease_id, lease);
+        }
+        Err(poisoned) => {
+            poisoned.into_inner().insert(lease_id, lease);
+        }
+    }
+    lease_id
+}
+
+fn acquire_lease(stream_id: i64) -> i64 {
+    acquire_lease_with_timeout(stream_id, LEASE_WAIT_TIMEOUT)
+}
+
+/// Releases a data source session. The underlying stream stays alive.
+fn release_lease(lease_id: i64) {
+    let lease = match leases().lock() {
+        Ok(mut map) => map.remove(&lease_id),
+        Err(poisoned) => poisoned.into_inner().remove(&lease_id),
+    };
+    let Some(lease) = lease else {
+        return;
+    };
+    if let Ok(mut owner) = lease.stream.cursor_owner.lock() {
+        if *owner == Some(lease_id) {
+            *owner = None;
+        }
+    }
+    lease.stream.cursor_released.notify_all();
+}
+
+/// Seeks the leased cursor and returns the remaining byte count, or a negative
+/// [`STREAM_ERR_*`] code.
+fn seek_lease(lease_id: i64, position: i64) -> i64 {
+    let Some(lease) = lease_for(lease_id) else {
+        return STREAM_ERR_UNKNOWN_ID as i64;
+    };
+    let stream = &lease.stream;
+    if stream.is_retired() {
+        return STREAM_ERR_CANCELLED as i64;
+    }
+    let pos = position.max(0) as u64;
+    if pos > stream.content_length {
+        return STREAM_ERR_IO as i64;
+    }
+    let mut reader = match stream.reader.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if reader.seek(SeekFrom::Start(pos)).is_err() {
+        return STREAM_ERR_IO as i64;
+    }
+    stream.content_length.saturating_sub(pos) as i64
+}
+
+/// Reads into `buffer`, returning the byte count or a negative [`STREAM_ERR_*`]
+/// code. `STREAM_OK_EOF` is reserved for a genuine end of stream.
+fn read_lease(lease_id: i64, buffer: &mut [u8]) -> jint {
+    let Some(lease) = lease_for(lease_id) else {
+        return STREAM_ERR_UNKNOWN_ID;
+    };
+    let stream = &lease.stream;
+    if stream.is_retired() {
+        return STREAM_ERR_CANCELLED;
+    }
+    if buffer.is_empty() {
+        return STREAM_OK_EOF;
+    }
+    let mut reader = match stream.reader.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    match reader.read(buffer) {
+        Ok(0) => STREAM_OK_EOF,
+        Ok(bytes) => bytes as jint,
+        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => STREAM_ERR_CANCELLED,
+        Err(_) => STREAM_ERR_IO,
+    }
+}
+
+/// The lease currently backing each Media3 data source, keyed by stream id.
+///
+/// Media3 identifies the stream on every JNI call, not the data source session,
+/// so the session that owns the cursor is tracked here instead of on the wire.
+static ACTIVE_LEASES: OnceLock<Mutex<HashMap<i64, i64>>> = OnceLock::new();
+
+fn active_leases() -> &'static Mutex<HashMap<i64, i64>> {
+    ACTIVE_LEASES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn take_active_lease(stream_id: i64) -> Option<i64> {
+    match active_leases().lock() {
+        Ok(mut map) => map.remove(&stream_id),
+        Err(poisoned) => poisoned.into_inner().remove(&stream_id),
+    }
+}
+
+fn put_active_lease(stream_id: i64, lease_id: i64) {
+    match active_leases().lock() {
+        Ok(mut map) => {
+            map.insert(stream_id, lease_id);
+        }
+        Err(poisoned) => {
+            poisoned.into_inner().insert(stream_id, lease_id);
+        }
+    }
+}
+
+/// Opens a Media3 data source session over `stream_id`.
+///
+/// Media3 closes and reopens its data source around every seek, so a new open
+/// takes the cursor over from the previous session instead of failing or
+/// destroying the stream.
+fn open_stream(stream_id: i64, position: i64) -> i64 {
+    if let Some(previous) = take_active_lease(stream_id) {
+        release_lease(previous);
+    }
+    let lease = acquire_lease(stream_id);
+    if lease <= 0 {
+        return lease;
+    }
+    let remaining = seek_lease(lease, position);
+    if remaining < 0 {
+        release_lease(lease);
+        return remaining;
+    }
+    put_active_lease(stream_id, lease);
+    remaining
+}
+
+/// Reads from the session currently open over `stream_id`.
+fn read_stream(stream_id: i64, buffer: &mut [u8]) -> jint {
+    let lease = match active_leases().lock() {
+        Ok(map) => map.get(&stream_id).copied(),
+        Err(poisoned) => poisoned.into_inner().get(&stream_id).copied(),
+    };
+    let Some(lease) = lease else {
+        return STREAM_ERR_UNKNOWN_ID;
+    };
+    read_lease(lease, buffer)
+}
+
+/// Closes a data source session without ending the underlying stream.
+fn close_stream(stream_id: i64) {
+    if let Some(lease) = take_active_lease(stream_id) {
+        release_lease(lease);
     }
 }
 
@@ -75,7 +375,9 @@ struct AudioState {
     last_position_update: Instant,
     duration_ms: Option<u64>,
     error: Option<String>,
+    error_kind: Option<String>,
     source_generation: u64,
+    active_stream_id: i64,
 }
 
 impl Default for AudioState {
@@ -90,7 +392,9 @@ impl Default for AudioState {
             last_position_update: Instant::now(),
             duration_ms: None,
             error: None,
+            error_kind: None,
             source_generation: 0,
+            active_stream_id: 0,
         }
     }
 }
@@ -117,6 +421,22 @@ impl AndroidAudioEngine {
     fn state_handle(&self) -> Arc<Mutex<AudioState>> {
         Arc::clone(&self.state)
     }
+
+    /// Latest progressive transfer failure for the stream backing this engine.
+    fn current_stream_monitor_error(&self) -> Option<ProgressiveError> {
+        let stream_id = self.current_stream_id.load(Ordering::Relaxed);
+        if stream_id == 0 {
+            return None;
+        }
+        let streams = match streams().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        streams
+            .get(&stream_id)
+            .and_then(|state| state.monitor.as_ref())
+            .and_then(ProgressiveMonitor::error_kind)
+    }
 }
 
 impl AudioEngine for AndroidAudioEngine {
@@ -126,16 +446,20 @@ impl AudioEngine for AndroidAudioEngine {
             PlaybackStreamLocation::Local(path) => {
                 let prev_id = self.current_stream_id.swap(0, Ordering::Relaxed);
                 if prev_id != 0 {
-                    remove_stream(prev_id);
+                    retire_stream(prev_id);
                 }
                 (0, Some(path.to_string_lossy().to_string()))
             }
-            PlaybackStreamLocation::Stream { reader, content_length, .. } => {
+            PlaybackStreamLocation::Stream {
+                reader,
+                content_length,
+                monitor,
+            } => {
                 let prev_id = self.current_stream_id.swap(0, Ordering::Relaxed);
                 if prev_id != 0 {
-                    remove_stream(prev_id);
+                    retire_stream(prev_id);
                 }
-                let sid = register_stream(reader, content_length);
+                let sid = register_stream(reader, content_length, monitor);
                 self.current_stream_id.store(sid, Ordering::Relaxed);
                 (sid, None)
             }
@@ -185,7 +509,11 @@ impl AudioEngine for AndroidAudioEngine {
             last_position_update: Instant::now(),
             duration_ms: source.timeline_end_ms,
             error: None,
+            error_kind: None,
             source_generation: generation,
+            // Reports carry the stream id they belong to, so a callback queued by
+            // the previous track is rejected instead of overwriting this source.
+            active_stream_id: stream_id,
         };
 
         Ok(AudioLoadMetadata {
@@ -247,7 +575,7 @@ impl AudioEngine for AndroidAudioEngine {
     fn stop(&self) -> Result<(), AudioEngineError> {
         let prev_id = self.current_stream_id.swap(0, Ordering::Relaxed);
         if prev_id != 0 {
-            remove_stream(prev_id);
+            retire_stream(prev_id);
         }
         self.vm
             .attach_current_thread(|env| {
@@ -322,6 +650,37 @@ impl AudioEngine for AndroidAudioEngine {
         } else {
             st.position_ms
         };
+        // Media3 reports failures asynchronously, after `load` has already
+        // returned success. Classifying them here lets Core's recoverable-error
+        // and link-expiry paths react on the next tick instead of seeing every
+        // failure as an output-device problem.
+        //
+        // The progressive monitor is the authoritative expiry signal: it is the
+        // only component that sees the upstream HTTP status.
+        let monitor_error = self.current_stream_monitor_error();
+        let (source_error, source_url_expired, output_error) =
+            if matches!(monitor_error, Some(ProgressiveError::UrlExpired)) {
+                (
+                    st.error
+                        .clone()
+                        .or_else(|| Some(ProgressiveError::UrlExpired.to_string())),
+                    true,
+                    None,
+                )
+            } else {
+                match st.error_kind.as_deref() {
+                    Some("source-expired") => (st.error.clone(), true, None),
+                    Some("source") | Some("network") | Some("decoder") => {
+                        (st.error.clone(), false, None)
+                    }
+                    _ => (None, false, st.error.clone()),
+                }
+            };
+        let decoder_error = if matches!(st.error_kind.as_deref(), Some("decoder")) {
+            st.error.clone()
+        } else {
+            None
+        };
         AudioEngineSnapshot {
             loaded: st.loaded,
             playing: st.playing,
@@ -329,9 +688,10 @@ impl AudioEngine for AndroidAudioEngine {
             ended: st.ended,
             position_ms: current_position,
             duration_ms: st.duration_ms,
-            output_error: st.error.clone(),
-            source_error: None,
-            source_url_expired: false,
+            output_error,
+            source_error,
+            decoder_error,
+            source_url_expired,
             buffering: st.buffering,
             progressive_downloaded_bytes: None,
             progressive_total_bytes: None,
@@ -882,11 +1242,13 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeReportAudio
     mut env: EnvUnowned<'_>,
     _class: jni::objects::JClass<'_>,
     handle: jlong,
+    stream_id: jlong,
     position_ms: jlong,
     duration_ms: jlong,
     is_playing: jboolean,
     is_buffering: jboolean,
     is_ended: jboolean,
+    error_kind: JString<'_>,
     error: JString<'_>,
 ) {
     let _ = env.with_env(|env| {
@@ -895,6 +1257,12 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeReportAudio
         } else {
             Some(jstring(env, error))
         };
+        let error_kind_str = if error_kind.is_null() {
+            None
+        } else {
+            Some(jstring(env, error_kind))
+        };
+        let has_error = error_str.is_some() || error_kind_str.is_some();
 
         let cores = match cores().lock() {
             Ok(guard) => guard,
@@ -906,9 +1274,15 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeReportAudio
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
+                // Drop reports from a data source that has already been replaced.
+                if stream_id != 0 && stream_id != st.active_stream_id {
+                    return Ok(());
+                }
                 st.position_ms = position_ms.max(0) as u64;
                 st.last_position_update = Instant::now();
-                if duration_ms > 0 {
+                if duration_ms < 0 {
+                    st.duration_ms = None;
+                } else if duration_ms > 0 {
                     st.duration_ms = Some(duration_ms as u64);
                 }
                 st.playing = is_playing;
@@ -918,8 +1292,9 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeReportAudio
                     st.playing = false;
                 }
                 st.error = error_str;
+                st.error_kind = error_kind_str;
             }
-            if is_ended {
+            if is_ended || has_error {
                 core.core.core().player().wake_clock();
             }
         }
@@ -934,18 +1309,7 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeStreamOpen(
     stream_id: jlong,
     position: jlong,
 ) -> jlong {
-    let mut map = match streams().lock() {
-        Ok(guard) => guard,
-        Err(_) => return -1,
-    };
-    let Some(entry) = map.get_mut(&stream_id) else {
-        return -1;
-    };
-    let pos = position.max(0) as u64;
-    if entry.stream.seek(SeekFrom::Start(pos)).is_err() {
-        return -1;
-    }
-    (entry.content_length.saturating_sub(pos)) as jlong
+    open_stream(stream_id, position)
 }
 
 #[no_mangle]
@@ -960,35 +1324,24 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeStreamRead(
     let offset = offset.max(0) as usize;
     let length = length.max(0) as usize;
     if length == 0 {
-        return 0;
+        return STREAM_OK_EOF;
     }
     let mut temp_buf = vec![0u8; length.min(64 * 1024)];
-    let read_res = {
-        let mut map = match streams().lock() {
-            Ok(guard) => guard,
-            Err(_) => return -1,
-        };
-        let Some(entry) = map.get_mut(&stream_id) else {
-            return -1;
-        };
-        entry.stream.read(&mut temp_buf)
-    };
-    match read_res {
-        Ok(0) => -1,
-        Ok(n) => {
-            let res = env.with_env(|env| -> Result<(), jni::errors::Error> {
-                let slice: &[i8] = unsafe {
-                    std::slice::from_raw_parts(temp_buf[..n].as_ptr().cast::<i8>(), n)
-                };
-                buffer.set_region(env, offset as jsize, slice)?;
-                Ok(())
-            });
-            match res.into_outcome() {
-                jni::Outcome::Ok(_) => n as jint,
-                _ => -1,
-            }
-        }
-        Err(_) => -1,
+    let read = read_stream(stream_id, &mut temp_buf);
+    if read <= 0 {
+        return read;
+    }
+    let bytes = read as usize;
+    let res = env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let slice: &[i8] =
+            unsafe { std::slice::from_raw_parts(temp_buf[..bytes].as_ptr().cast::<i8>(), bytes) };
+        buffer.set_region(env, offset as jsize, slice)?;
+        Ok(())
+    });
+    match res.into_outcome() {
+        jni::Outcome::Ok(_) => read,
+        // The bytes never reached Kotlin, so this must not look like EOF.
+        _ => STREAM_ERR_INTERNAL,
     }
 }
 
@@ -998,12 +1351,62 @@ pub extern "system" fn Java_org_yaqmc_android_core_CoreManager_nativeStreamClose
     _class: jni::objects::JClass<'_>,
     stream_id: jlong,
 ) {
-    remove_stream(stream_id);
+    close_stream(stream_id);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{io::Cursor, thread};
+
+    fn wait_until(timeout: Duration, predicate: impl Fn() -> bool) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if predicate() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        predicate()
+    }
+
+    /// A reader that parks until the test releases it, standing in for a
+    /// progressive range request that has not completed yet.
+    struct ParkingReader {
+        started: Arc<AtomicBool>,
+        release: Arc<(Mutex<bool>, Condvar)>,
+    }
+
+    impl Read for ParkingReader {
+        fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.started.store(true, Ordering::Release);
+            let (lock, condvar) = &*self.release;
+            let mut released = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !*released {
+                if Instant::now() >= deadline {
+                    break;
+                }
+                released = condvar
+                    .wait_timeout(released, Duration::from_millis(50))
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .0;
+            }
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "parked reader released",
+            ))
+        }
+    }
+
+    impl Seek for ParkingReader {
+        fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+            Ok(match position {
+                SeekFrom::Start(value) => value,
+                _ => 0,
+            })
+        }
+    }
 
     #[test]
     fn registry_handles_are_non_pointer_monotonic_values() {
@@ -1029,26 +1432,76 @@ mod tests {
     }
 
     #[test]
-    fn registered_stream_lifecycle_and_lookup() {
+    fn stream_survives_data_source_close_and_reopen() {
         use std::io::Cursor;
-        let data = vec![1u8, 2, 3, 4, 5];
-        let stream = Box::new(Cursor::new(data));
-        let id = register_stream(stream, 5);
+        let data: Vec<u8> = (0u8..32).collect();
+        let id = register_stream(Box::new(Cursor::new(data)), 32, None);
         assert!(id > 0);
 
-        {
-            let mut map = streams().lock().unwrap();
-            let entry = map.get_mut(&id).expect("stream is registered");
-            assert_eq!(entry.content_length, 5);
-            let mut buf = [0u8; 3];
-            let read = entry.stream.read(&mut buf).unwrap();
-            assert_eq!(read, 3);
-            assert_eq!(&buf, &[1, 2, 3]);
-        }
+        assert_eq!(open_stream(id, 0), 32);
+        let mut buf = [0u8; 4];
+        assert_eq!(read_stream(id, &mut buf), 4);
+        assert_eq!(buf, [0, 1, 2, 3]);
 
-        remove_stream(id);
-        let map = streams().lock().unwrap();
-        assert!(map.get(&id).is_none());
+        // Media3 closes and reopens its data source around every seek. The
+        // stream has to outlive that close, which is the F-02 regression.
+        close_stream(id);
+        assert_eq!(open_stream(id, 8), 24);
+        let mut buf = [0u8; 2];
+        assert_eq!(read_stream(id, &mut buf), 2);
+        assert_eq!(buf, [8, 9]);
+        close_stream(id);
+
+        // Only generation eviction or an explicit stop ends the stream.
+        retire_stream(id);
+        assert_eq!(open_stream(id, 0), STREAM_ERR_UNKNOWN_ID as i64);
+    }
+
+    #[test]
+    fn read_distinguishes_eof_from_failures() {
+        use std::io::Cursor;
+        let id = register_stream(Box::new(Cursor::new(vec![1u8, 2, 3])), 3, None);
+        assert_eq!(open_stream(id, 0), 3);
+
+        let mut buf = [0u8; 8];
+        assert_eq!(read_stream(id, &mut buf), 3);
+        // A genuine end of stream is 0, never a negative error code.
+        assert_eq!(read_stream(id, &mut buf), STREAM_OK_EOF);
+
+        // Seeking past the end is an I/O failure, not EOF.
+        assert_eq!(open_stream(id, 99), STREAM_ERR_IO as i64);
+        // An unknown stream never looks like data or like a silent EOF.
+        assert_eq!(read_stream(id + 1_000, &mut buf), STREAM_ERR_UNKNOWN_ID);
+
+        retire_stream(id);
+        let after_retire = read_stream(id, &mut buf);
+        assert!(
+            after_retire == STREAM_ERR_UNKNOWN_ID || after_retire == STREAM_ERR_CANCELLED,
+            "retired stream read returned {after_retire}"
+        );
+        let open_after_retire = open_stream(id, 0);
+        assert!(
+            open_after_retire == STREAM_ERR_UNKNOWN_ID as i64
+                || open_after_retire == STREAM_ERR_CANCELLED as i64,
+            "retired stream open returned {open_after_retire}"
+        );
+    }
+
+    #[test]
+    fn a_new_data_source_session_takes_over_the_cursor() {
+        use std::io::Cursor;
+        let data: Vec<u8> = (0u8..16).collect();
+        let id = register_stream(Box::new(Cursor::new(data)), 16, None);
+        assert_eq!(open_stream(id, 0), 16);
+        // Media3 can reopen at a new position before the previous session is
+        // closed; that must neither fail nor retire the stream.
+        assert_eq!(open_stream(id, 4), 12);
+        let mut buf = [0u8; 2];
+        assert_eq!(read_stream(id, &mut buf), 2);
+        assert_eq!(buf, [4, 5]);
+        close_stream(id);
+        assert_eq!(open_stream(id, 12), 4);
+        retire_stream(id);
     }
 
     #[test]
@@ -1063,10 +1516,113 @@ mod tests {
             last_position_update: Instant::now() - Duration::from_millis(150),
             duration_ms: Some(10_000),
             error: None,
+            error_kind: None,
             source_generation: 1,
+            active_stream_id: 7,
         };
         let elapsed = state.last_position_update.elapsed().as_millis() as u64;
         let current_pos = (state.position_ms + elapsed).min(state.duration_ms.unwrap_or(u64::MAX));
         assert!(current_pos >= 1_150);
+    }
+
+    #[test]
+    fn retiring_a_stream_does_not_wait_for_an_in_flight_read() {
+        let started = Arc::new(AtomicBool::new(false));
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let reader = ParkingReader {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        };
+        let id = register_stream(Box::new(reader), 8, None);
+        assert_eq!(open_stream(id, 0), 8);
+
+        let reader_thread = thread::spawn(move || {
+            let mut buffer = [0_u8; 4];
+            read_stream(id, &mut buffer)
+        });
+        assert!(wait_until(Duration::from_secs(5), || started.load(Ordering::Acquire)));
+
+        // Retirement must not block on the reader: it only flips `retired`,
+        // notifies waiters and wakes the progressive monitor.
+        let retire_started = Instant::now();
+        retire_stream(id);
+        assert!(
+            retire_started.elapsed() < Duration::from_secs(1),
+            "retire_stream blocked for {:?}",
+            retire_started.elapsed()
+        );
+
+        let (lock, condvar) = &*release;
+        *lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = true;
+        condvar.notify_all();
+        let result = reader_thread.join().expect("parked reader thread");
+        assert!(
+            result == STREAM_ERR_IO || result == STREAM_ERR_CANCELLED,
+            "a released parked reader returned {result}"
+        );
+        // The stream is gone, so a late open can never reattach to it.
+        assert_eq!(open_stream(id, 0), STREAM_ERR_UNKNOWN_ID as i64);
+    }
+
+    #[test]
+    fn an_evicted_generation_cannot_read_the_replacement_stream() {
+        let evicted = register_stream(Box::new(Cursor::new(vec![1_u8; 8])), 8, None);
+        assert_eq!(open_stream(evicted, 0), 8);
+        let mut buffer = [0_u8; 2];
+        assert_eq!(read_stream(evicted, &mut buffer), 2);
+        close_stream(evicted);
+        retire_stream(evicted);
+
+        let replacement = register_stream(Box::new(Cursor::new(vec![2_u8; 8])), 8, None);
+        assert_eq!(open_stream(replacement, 0), 8);
+
+        // A late callback from the evicted generation must not observe or
+        // disturb the replacement stream.
+        assert_eq!(read_stream(evicted, &mut buffer), STREAM_ERR_UNKNOWN_ID);
+        assert_eq!(open_stream(evicted, 0), STREAM_ERR_UNKNOWN_ID as i64);
+        close_stream(evicted);
+
+        let mut replacement_bytes = [0_u8; 4];
+        assert_eq!(read_stream(replacement, &mut replacement_bytes), 4);
+        assert_eq!(replacement_bytes, [2, 2, 2, 2]);
+        retire_stream(replacement);
+    }
+
+    #[test]
+    fn concurrent_readers_on_distinct_streams_do_not_deadlock() {
+        let data = || (0_u8..64).collect::<Vec<u8>>();
+        let first = register_stream(Box::new(Cursor::new(data())), 64, None);
+        let second = register_stream(Box::new(Cursor::new(data())), 64, None);
+        assert_eq!(open_stream(first, 0), 64);
+        assert_eq!(open_stream(second, 0), 64);
+
+        let started = Instant::now();
+        let handles: Vec<_> = [first, second]
+            .into_iter()
+            .map(|id| {
+                thread::spawn(move || {
+                    let mut read = 0_u64;
+                    let mut buffer = [0_u8; 8];
+                    loop {
+                        match read_stream(id, &mut buffer) {
+                            0 => break,
+                            bytes if bytes > 0 => read += bytes as u64,
+                            other => panic!("read_stream returned {other}"),
+                        }
+                    }
+                    read
+                })
+            })
+            .collect();
+        for handle in handles {
+            assert_eq!(handle.join().expect("reader thread"), 64);
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "concurrent readers took {:?}",
+            started.elapsed()
+        );
+        retire_stream(first);
+        retire_stream(second);
     }
 }
