@@ -207,7 +207,7 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
 
 2026-09-12 计划复核基线：
 
-- YAQMC：`main`，HEAD 为 `031b196a51c88907616754161f3cd284e39a71be`，存在未提交接入改动。
+- YAQMC：`main`，HEAD 为 `96e19a8`；本轮 API 边界改动已提交并推送，工作树仅保留既有未跟踪临时文件。
 - `qm-api-rs`：HEAD 和本地 `origin/main` 跟踪引用均为
   `ae01e75624c7dc8c5fa900919356c3bd03b18328`，工作树干净；该 revision
   已推送到 `YAQMC/qm-api-rs`。
