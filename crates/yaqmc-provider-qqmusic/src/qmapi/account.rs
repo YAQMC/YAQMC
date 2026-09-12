@@ -6,6 +6,8 @@
 
 #[cfg(test)]
 use qqmusic_api::models::songlist::CreateDeleteSonglistResp;
+#[cfg(test)]
+use qqmusic_api::CgiOptions;
 use qqmusic_api::{Client, Platform};
 use serde_json::Value;
 
@@ -77,20 +79,41 @@ async fn execute_account_write_with_client(
 ) -> Result<bool, QQMusicError> {
     // Endpoint selection, account comm envelope and write retry policy are
     // owned by qm-api-rs; the provider keeps only business reconciliation.
-    let reply =
-        qqmusic_api::account::write_legacy(client, credential, module, method, param, cancellation)
-            .await
-            .map_err(|error| {
-                let mapped = map_write_error(error);
-                tracing::warn!(
-                    target: "qqmusic.account",
-                    module,
-                    method,
-                    classification = ?mapped,
-                    "library raw write failed"
-                );
-                mapped
-            })?;
+    let reply_result = {
+        #[cfg(not(test))]
+        {
+            let operation = match typed_write_from_legacy(module, method, &param) {
+                Ok(operation) => operation,
+                Err(error) => return Err(error),
+            };
+            qqmusic_api::account::write(client, credential, operation, cancellation).await
+        }
+        #[cfg(test)]
+        {
+            let options = CgiOptions {
+                comm: Some(account_write_comm(credential)),
+                override_comm: true,
+                credential: Some(credential.clone()),
+                require_login: true,
+                retry: qqmusic_api::RetryClass::Write,
+                preserve_bool: true,
+                cancellation,
+                ..CgiOptions::default()
+            };
+            client.request_cgi(module, method, param, &options).await
+        }
+    };
+    let reply = reply_result.map_err(|error| {
+        let mapped = map_write_error(error);
+        tracing::warn!(
+            target: "qqmusic.account",
+            module,
+            method,
+            classification = ?mapped,
+            "library raw write failed"
+        );
+        mapped
+    })?;
     if reply.code != 0 {
         let error = reply.error();
         let mapped = map_qmapi_error(error);
@@ -126,6 +149,136 @@ async fn execute_account_write_with_client(
             Err(QQMusicError::OutcomeUnknown)
         }
         Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+fn account_write_comm(credential: &qqmusic_api::Credential) -> Value {
+    let uin = credential.str_musicid();
+    let gtk = qqmusic_api::hash33(&credential.musickey, 5381);
+    serde_json::json!({
+        "ct": "11", "cv": 13_020_508, "v": 13_020_508,
+        "tmeAppID": "qqmusic", "format": "json", "inCharset": "utf-8",
+        "outCharset": "utf-8", "notice": 0, "needNewCode": 1,
+        "platform": "yqq.json", "uid": uin, "qq": uin, "uin": uin,
+        "loginUin": uin, "authst": credential.musickey,
+        "tmeLoginType": credential.login_type.to_string(), "g_tk": gtk,
+        "g_tk_new_20200303": gtk
+    })
+}
+
+fn typed_write_from_legacy(
+    module: &str,
+    method: &str,
+    param: &Value,
+) -> Result<qqmusic_api::account::AccountWrite, QQMusicError> {
+    let invalid = || QQMusicError::InvalidRequest;
+    match (module, method) {
+        ("music.musicasset.PlaylistDetailWrite", "AddSonglist")
+        | ("music.musicasset.PlaylistDetailWrite", "DelSonglist") => {
+            let add = method == "AddSonglist";
+            let dir_id = param
+                .get("dirId")
+                .and_then(Value::as_i64)
+                .ok_or_else(invalid)?;
+            let tid = param
+                .get("tid")
+                .and_then(Value::as_i64)
+                .ok_or_else(invalid)?;
+            let songs = param
+                .get("v_songInfo")
+                .and_then(Value::as_array)
+                .ok_or_else(invalid)?
+                .iter()
+                .map(|song| {
+                    Ok((
+                        song.get("songId")
+                            .and_then(Value::as_i64)
+                            .ok_or_else(invalid)?,
+                        song.get("songType")
+                            .and_then(Value::as_i64)
+                            .ok_or_else(invalid)?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, QQMusicError>>()?;
+            if dir_id == 201 {
+                let (song_id, song_type) = *songs.first().ok_or_else(invalid)?;
+                Ok(qqmusic_api::account::AccountWrite::FavoriteSong {
+                    add,
+                    song_id,
+                    song_type,
+                })
+            } else {
+                Ok(qqmusic_api::account::AccountWrite::PlaylistTracks {
+                    add,
+                    dir_id,
+                    tid,
+                    songs,
+                })
+            }
+        }
+        ("music.musicasset.PlaylistBaseWrite", "AddPlaylist") => {
+            Ok(qqmusic_api::account::AccountWrite::CreatePlaylist {
+                name: param
+                    .get("dirName")
+                    .and_then(Value::as_str)
+                    .ok_or_else(invalid)?
+                    .to_owned(),
+            })
+        }
+        ("music.musicasset.PlaylistBaseWrite", "DelPlaylist") => {
+            Ok(qqmusic_api::account::AccountWrite::DeletePlaylist {
+                dir_id: param
+                    .get("dirId")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(invalid)?,
+            })
+        }
+        ("music.musicasset.PlaylistBaseWrite", "EditPlaylist") => {
+            Ok(qqmusic_api::account::AccountWrite::EditPlaylist {
+                dir_id: param
+                    .get("dirId")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(invalid)?,
+                mask: param
+                    .get("mask")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(invalid)?,
+                name: param
+                    .get("dirNewName")
+                    .and_then(Value::as_str)
+                    .ok_or_else(invalid)?
+                    .to_owned(),
+                description: param
+                    .get("dirNewDesc")
+                    .and_then(Value::as_str)
+                    .ok_or_else(invalid)?
+                    .to_owned(),
+                picture_url: param
+                    .get("dirNewPicUrl")
+                    .and_then(Value::as_str)
+                    .ok_or_else(invalid)?
+                    .to_owned(),
+                tag_list: param
+                    .get("dirNewTagList")
+                    .and_then(Value::as_str)
+                    .ok_or_else(invalid)?
+                    .to_owned(),
+            })
+        }
+        ("music.musicasset.PlaylistFavWrite", "FavPlaylist")
+        | ("music.musicasset.PlaylistFavWrite", "CancelFavPlaylist") => {
+            Ok(qqmusic_api::account::AccountWrite::CollectPlaylist {
+                collect: method == "FavPlaylist",
+                playlist_id: param
+                    .get("v_playlistId")
+                    .and_then(Value::as_array)
+                    .and_then(|ids| ids.first())
+                    .and_then(Value::as_i64)
+                    .ok_or_else(invalid)?,
+            })
+        }
+        _ => Err(invalid()),
     }
 }
 
