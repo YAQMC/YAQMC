@@ -6,7 +6,7 @@
 
 #[cfg(test)]
 use qqmusic_api::models::songlist::CreateDeleteSonglistResp;
-use qqmusic_api::{CgiOptions, Client, Platform};
+use qqmusic_api::{Client, Platform};
 use serde_json::Value;
 
 use crate::qmapi::cgi::map_qmapi_error;
@@ -75,30 +75,22 @@ async fn execute_account_write_with_client(
     param: Value,
     cancellation: tokio_util::sync::CancellationToken,
 ) -> Result<bool, QQMusicError> {
-    let options = CgiOptions {
-        comm: Some(account_write_comm(credential)),
-        override_comm: true,
-        credential: Some(credential.clone()),
-        require_login: true,
-        retry: qqmusic_api::RetryClass::Write,
-        preserve_bool: true,
-        cancellation,
-        ..CgiOptions::default()
-    };
-    let reply = client
-        .request_cgi(module, method, param, &options)
-        .await
-        .map_err(|error| {
-            let mapped = map_write_error(error);
-            tracing::warn!(
-                target: "qqmusic.account",
-                module,
-                method,
-                classification = ?mapped,
-                "library raw write failed"
-            );
-            mapped
-        })?;
+    // Endpoint selection, account comm envelope and write retry policy are
+    // owned by qm-api-rs; the provider keeps only business reconciliation.
+    let reply =
+        qqmusic_api::account::write_legacy(client, credential, module, method, param, cancellation)
+            .await
+            .map_err(|error| {
+                let mapped = map_write_error(error);
+                tracing::warn!(
+                    target: "qqmusic.account",
+                    module,
+                    method,
+                    classification = ?mapped,
+                    "library raw write failed"
+                );
+                mapped
+            })?;
     if reply.code != 0 {
         let error = reply.error();
         let mapped = map_qmapi_error(error);
@@ -135,38 +127,6 @@ async fn execute_account_write_with_client(
         }
         Err(error) => Err(error),
     }
-}
-
-fn account_write_comm(credential: &qqmusic_api::Credential) -> Value {
-    // Account writes were live-validated with the mobile identity envelope.
-    // Keep request execution in the library while overriding its read-oriented
-    // Web defaults for this write-only boundary.
-    let uin = if credential.str_musicid.is_empty() {
-        credential.musicid.to_string()
-    } else {
-        credential.str_musicid.clone()
-    };
-    let gtk = qqmusic_api::hash33(&credential.musickey, 5381);
-    serde_json::json!({
-        "ct": "11",
-        "cv": 13_020_508,
-        "v": 13_020_508,
-        "tmeAppID": "qqmusic",
-        "format": "json",
-        "inCharset": "utf-8",
-        "outCharset": "utf-8",
-        "notice": 0,
-        "needNewCode": 1,
-        "platform": "yqq.json",
-        "uid": uin,
-        "qq": uin,
-        "uin": uin,
-        "loginUin": uin,
-        "authst": credential.musickey,
-        "tmeLoginType": credential.login_type.to_string(),
-        "g_tk": gtk,
-        "g_tk_new_20200303": gtk,
-    })
 }
 
 fn map_write_error(error: qqmusic_api::QmError) -> QQMusicError {

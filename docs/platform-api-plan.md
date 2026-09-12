@@ -209,7 +209,7 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
 
 - YAQMC：`main`，HEAD 为 `031b196a51c88907616754161f3cd284e39a71be`，存在未提交接入改动。
 - `qm-api-rs`：HEAD 和本地 `origin/main` 跟踪引用均为
-  `76a4b0ab65e3dc15d0d4b1645d352a3165abb07a`，工作树干净；该 revision
+  `ae01e75624c7dc8c5fa900919356c3bd03b18328`，工作树干净；该 revision
   已推送到 `YAQMC/qm-api-rs`。
 - 新库提供 Discovery、Web 榜单、Web 首页 Feed、公共歌单/新歌推荐、歌单搜索兼容接口；
   修复歌手专辑空 tags、歌单分页/身份/业务错误检查，以及 Cookie jar 和重定向隔离问题。
@@ -218,7 +218,7 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
   个性化歌单和新歌推荐已切换到库的 typed Feed，并用每次请求的凭据快照创建认证客户端；
   不修改共享 Client 的默认凭据。并非仍处于临时 path patch 状态；也并非所有端点已经迁移。
 - 当前 Cargo.toml 与 Cargo.lock 已固定完整 SHA
-  `76a4b0ab65e3dc15d0d4b1645d352a3165abb07a`；CI、来源账本和 readiness 若仍指向旧
+  `ae01e75624c7dc8c5fa900919356c3bd03b18328`；CI、来源账本和 readiness 若仍指向旧
   revision，需在发布前同步更新并重新审阅来源和发布资格；不能改写旧 revision 的 soak 豁免。
 
 证据分级：
@@ -245,10 +245,10 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
   `QueueEntry`、continuation token、`account-runtime.ts` 和插件 component adapter 均没有
   `profileId` 维度；现有 `account_generation` 只是 Provider 级代次。
 - 生产账户读路径的收藏、歌单曲目和最近播放现已统一调用
-  `qm-api-rs::account::read_page` typed boundary；provider 只负责身份快照、缓存、分页和
-  对账。账户写路径虽然经过库 transport，module/method/param 仍由 provider 提供，尚不是
-  typed endpoint。
-  写路径虽然经过库 transport，module/method/param 仍由 provider 提供，尚不是 typed endpoint。
+  `qm-api-rs::account::read_page` typed boundary；账户写路径通过
+  `qm-api-rs::account::write_legacy` 的固定 allowlist 和账户凭据边界执行，provider 只负责
+  身份快照、缓存、分页、业务结果解释和对账。`write_legacy` 是过渡 façade，下一步应以
+  `AccountWrite` 枚举替代其兼容字符串参数。
 - 生产加密播放现已通过 `qm-api-rs::SongApi::get_song_urls` 的 typed `CgiGetEVkey`
   路径；provider 仅负责候选音质映射、凭据注入和 CDN/ekey 响应校验。旧
   `musics.fcg` payload/signature 代码仅保留在测试 fixture 中。
