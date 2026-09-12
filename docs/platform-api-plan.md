@@ -209,7 +209,7 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
 
 - YAQMC：`main`，HEAD 为 `96e19a8`；本轮 API 边界改动已提交并推送，工作树仅保留既有未跟踪临时文件。
 - `qm-api-rs`：HEAD 和本地 `origin/main` 跟踪引用均为
-  `ae01e75624c7dc8c5fa900919356c3bd03b18328`，工作树干净；该 revision
+  `94d1aa90d52ff1529e9d379aa2cdcfb1202beee3`，工作树干净；该 revision
   已推送到 `YAQMC/qm-api-rs`。
 - 新库提供 Discovery、Web 榜单、Web 首页 Feed、公共歌单/新歌推荐、歌单搜索兼容接口；
   修复歌手专辑空 tags、歌单分页/身份/业务错误检查，以及 Cookie jar 和重定向隔离问题。
@@ -218,7 +218,7 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
   个性化歌单和新歌推荐已切换到库的 typed Feed，并用每次请求的凭据快照创建认证客户端；
   不修改共享 Client 的默认凭据。并非仍处于临时 path patch 状态；也并非所有端点已经迁移。
 - 当前 Cargo.toml 与 Cargo.lock 已固定完整 SHA
-  `ae01e75624c7dc8c5fa900919356c3bd03b18328`；CI、来源账本和 readiness 若仍指向旧
+  `94d1aa90d52ff1529e9d379aa2cdcfb1202beee3`；CI、来源账本和 readiness 若仍指向旧
   revision，需在发布前同步更新并重新审阅来源和发布资格；不能改写旧 revision 的 soak 豁免。
 
 证据分级：
