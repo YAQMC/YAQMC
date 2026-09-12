@@ -246,9 +246,9 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
   `profileId` 维度；现有 `account_generation` 只是 Provider 级代次。
 - 生产账户读路径的收藏、歌单曲目和最近播放现已统一调用
   `qm-api-rs::account::read_page` typed boundary；账户写路径通过
-  `qm-api-rs::account::write_legacy` 的固定 allowlist 和账户凭据边界执行，provider 只负责
-  身份快照、缓存、分页、业务结果解释和对账。`write_legacy` 是过渡 façade，下一步应以
-  `AccountWrite` 枚举替代其兼容字符串参数。
+  `qm-api-rs::account::AccountWrite` 的固定 endpoint、参数校验和账户凭据边界执行，provider
+  只负责身份快照、缓存、分页、业务结果解释和对账。`write_legacy` 仅保留为受限兼容 API，
+  生产 provider 不再调用它。
 - 生产加密播放现已通过 `qm-api-rs::SongApi::get_song_urls` 的 typed `CgiGetEVkey`
   路径；provider 仅负责候选音质映射、凭据注入和 CDN/ekey 响应校验。旧
   `musics.fcg` payload/signature 代码仅保留在测试 fixture 中。
