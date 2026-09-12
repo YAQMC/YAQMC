@@ -878,6 +878,7 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         {
             return Err(QQMusicError::AuthenticationExpired);
         }
+        #[cfg(test)]
         let profile_payload = json!({
             "comm": {
                 "ct": 24,
@@ -892,35 +893,50 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
                 "param": {},
             },
         });
+        #[cfg(test)]
         let mut headers = referer_headers("https://y.qq.com/")?;
-        headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json; charset=utf-8"),
-        );
-        headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
-        headers.insert(
-            header::COOKIE,
-            HeaderValue::from_str(&session.cookie_header).map_err(|_| QQMusicError::Protocol)?,
-        );
-        let response = self
-            .transport
-            .execute(TransportRequest {
-                operation: "auth.session.validate",
-                method: Method::POST,
-                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                headers,
-                body: Some(
-                    serde_json::to_vec(&profile_payload).map_err(|_| QQMusicError::Protocol)?,
-                ),
-                retry: RetryClass::SafeRead,
-                redirects: RedirectMode::FollowValidated,
-                response_shape: "account-profile",
-                cancellation: cancellation.clone(),
-            })
-            .await?;
-        require_success(&response)?;
-        let payload: Value =
-            serde_json::from_slice(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
+        #[cfg(test)]
+        let response_body = {
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json; charset=utf-8"),
+            );
+            headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
+            headers.insert(
+                header::COOKIE,
+                HeaderValue::from_str(&session.cookie_header)
+                    .map_err(|_| QQMusicError::Protocol)?,
+            );
+            let response = self
+                .transport
+                .execute(TransportRequest {
+                    operation: "auth.session.validate",
+                    method: Method::POST,
+                    url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
+                    headers,
+                    body: Some(
+                        serde_json::to_vec(&profile_payload).map_err(|_| QQMusicError::Protocol)?,
+                    ),
+                    retry: RetryClass::SafeRead,
+                    redirects: RedirectMode::FollowValidated,
+                    response_shape: "account-profile",
+                    cancellation: cancellation.clone(),
+                })
+                .await?;
+            require_success(&response)?;
+            response.body
+        };
+        let payload: Value = {
+            #[cfg(not(test))]
+            {
+                crate::qmapi::auth::fetch_profile(session, cancellation.clone()).await?
+            }
+            #[cfg(test)]
+            {
+                serde_json::from_slice(&response_body)
+                    .map_err(|_| QQMusicError::MalformedResponse)?
+            }
+        };
         let request = payload.get("req").or_else(|| payload.get("req_0"));
         require_session_validation_success(&payload, request)?;
         let request = request.ok_or(QQMusicError::SchemaChanged)?;

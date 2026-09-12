@@ -9,6 +9,7 @@
 #![cfg_attr(test, allow(dead_code))]
 
 pub(crate) mod account;
+pub(crate) mod auth;
 pub(crate) mod catalog;
 pub(crate) mod cgi;
 pub(crate) mod credential;
