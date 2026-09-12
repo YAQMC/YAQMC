@@ -1,7 +1,10 @@
 //! Typed qm-api-rs recommendation boundary.
 
 use qqmusic_api::{
-    models::recommend::{GuessRecommendRequest, RadarRecommendRequest},
+    models::{
+        discovery::FeedShelf,
+        recommend::{GuessRecommendRequest, RadarRecommendRequest, WebRecommendedSonglist},
+    },
     Client, Credential, Song,
 };
 
@@ -66,6 +69,40 @@ pub(crate) async fn daily_songlist_id(
         .get_daily_recommendation(Some(credential))
         .await
         .map(|response| response.songlist_id)
+        .map_err(map_qmapi_error)
+}
+
+pub(crate) async fn web_home_feed(
+    client: &Client,
+    credential: &Credential,
+    page: u32,
+    seen_shelves: u32,
+    cached_shelf_ids: &[String],
+) -> Result<Vec<FeedShelf>, QQMusicError> {
+    client
+        .recommend
+        .get_web_home_feed(page, seen_shelves, cached_shelf_ids, credential)
+        .await
+        .map_err(map_qmapi_error)
+}
+
+pub(crate) async fn web_songlists(
+    client: &Client,
+    offset: u32,
+    limit: u32,
+) -> Result<Vec<WebRecommendedSonglist>, QQMusicError> {
+    client
+        .recommend
+        .get_web_songlists(offset, limit)
+        .await
+        .map_err(map_qmapi_error)
+}
+
+pub(crate) async fn web_newsongs(client: &Client, kind: u32) -> Result<Vec<Song>, QQMusicError> {
+    client
+        .recommend
+        .get_web_newsongs(kind)
+        .await
         .map_err(map_qmapi_error)
 }
 

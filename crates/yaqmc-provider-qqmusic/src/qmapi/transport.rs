@@ -84,6 +84,9 @@ impl YaqmcReqwestTransport {
         let mut current_url = start_url.clone();
         let mut method = request.method;
         let mut headers = request.headers.clone();
+        let explicit_cookies = headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("cookie"));
         ensure_yqq_cgi_headers(start_url, &mut headers);
         let mut body = request.body.clone();
         let mut hops = 0_usize;
@@ -126,6 +129,11 @@ impl YaqmcReqwestTransport {
                     }
                     if cross_origin {
                         strip_secret_headers(&mut headers);
+                        if explicit_cookies {
+                            // A library credential snapshot remains authoritative
+                            // after redirects; never reactivate ambient jar cookies.
+                            headers.push(("Cookie".into(), String::new()));
+                        }
                     }
                     if redirects_as_get(status, method) {
                         method = HttpMethod::Get;
@@ -707,6 +715,73 @@ mod tests {
             ));
             assert_eq!(target_hits.load(Ordering::SeqCst), 0);
         }
+    }
+
+    #[tokio::test]
+    async fn explicit_cookies_stay_isolated_across_redirects() {
+        use axum::{
+            http::{HeaderMap, StatusCode},
+            routing::get,
+            Router,
+        };
+        let target_app = Router::new()
+            .route(
+                "/seed",
+                get(|| async {
+                    (
+                        [("set-cookie", "qm_keyst=synthetic-target-session; Path=/")],
+                        "seed",
+                    )
+                }),
+            )
+            .route(
+                "/target",
+                get(|headers: HeaderMap| async move {
+                    headers
+                        .get("cookie")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_owned()
+                }),
+            );
+        let target = spawn_router(target_app).await;
+        let target_url = format!("{target}/target");
+        let source_app = Router::new().route(
+            "/from",
+            get(move || {
+                let target_url = target_url.clone();
+                async move { (StatusCode::FOUND, [("location", target_url)]) }
+            }),
+        );
+        let source = spawn_router(source_app).await;
+        let transport = transport_for(&source, TransportConfig::default());
+        transport.allow_origin(&target);
+        transport
+            .execute(TransportRequest::new(
+                HttpMethod::Get,
+                format!("{target}/seed"),
+            ))
+            .await
+            .unwrap();
+        for cookie in ["", "qm_keyst=synthetic-source-session"] {
+            let mut request = TransportRequest::new(HttpMethod::Get, format!("{source}/from"));
+            request.headers.push(("Cookie".into(), cookie.into()));
+            let response = transport.execute(request).await.unwrap();
+            assert_eq!(response.status, 200);
+            assert!(
+                response.text().is_empty(),
+                "redirect reactivated ambient cookies"
+            );
+        }
+        // Calls without explicit credential scope retain generic login HTTP behavior.
+        let response = transport
+            .execute(TransportRequest::new(
+                HttpMethod::Get,
+                format!("{source}/from"),
+            ))
+            .await
+            .unwrap();
+        assert!(response.text().contains("synthetic-target-session"));
     }
 
     #[tokio::test]

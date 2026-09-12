@@ -1,15 +1,17 @@
 //! Row I: library `MediaSource` URLs sanitized through the in-tree CDN allowlist.
 //!
-//! Entitlement / quality ladder (`choose_source`) stays in-tree. Encrypted
-//! evkey stays on in-tree `zzb` HTTP. Under `qmapi` (non-test) clear vkey HTTP
-//! uses library `UrlGetVkey` / `get_song_urls`.
+//! Entitlement / quality ladder (`choose_source`) stays in-tree. Both clear
+//! and encrypted vkey requests use the typed library `get_song_urls`; the
+//! provider only maps its candidate list and validates the returned CDN data.
 
 use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::sync::Arc;
 
 use qqmusic_api::models::song::UrlinfoItem;
-use qqmusic_api::modules::song::{FileTypeLike, SongFileInfo, SongFileType, SpecialSongFileType};
+use qqmusic_api::modules::song::{
+    FileTypeLike, SongFileInfo, SongFileType, SongQuality, SpecialSongFileType,
+};
 use qqmusic_api::Platform;
 #[cfg(test)]
 use yaqmc_provider_api::PlaybackLocation;
@@ -168,6 +170,86 @@ pub(crate) async fn clear_playable_urls(
     clear_urls_from_items(filenames, response.data)
 }
 
+/// Resolve encrypted playback candidates through the typed qm-api-rs
+/// `CgiGetEVkey` implementation.  The provider supplies only the candidate
+/// identifiers and account credentials; request signing, transport and
+/// response decoding stay inside qm-api-rs.
+pub(crate) async fn encrypted_playable_sources(
+    track_id: &str,
+    media_mid: &str,
+    filenames: &[String],
+    uin: &str,
+    cookie_header: &str,
+) -> Result<HashMap<String, Option<(String, String)>>, QQMusicError> {
+    if filenames.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut infos = Vec::with_capacity(filenames.len());
+    for filename in filenames {
+        let quality =
+            encrypted_quality_for_filename(filename).ok_or(QQMusicError::MalformedResponse)?;
+        infos.push(
+            SongFileInfo::new(track_id)
+                .with_media_mid(media_mid)
+                .with_song_type(0)
+                .with_type_ref(quality.file_type(true)),
+        );
+    }
+    let credential = credential_from_uin_and_cookie(uin, cookie_header, None, u64::MAX)?;
+    let client = qmapi_client_with(Some(credential.clone()), Some(Platform::Android))
+        .map_err(map_qmapi_error)?;
+    let response = client
+        .song
+        .get_song_urls(
+            &infos,
+            SongQuality::Master.file_type(true),
+            Some(&credential),
+        )
+        .await
+        .map_err(map_qmapi_error)?;
+
+    let requested = filenames.iter().map(String::as_str).collect::<HashSet<_>>();
+    if requested.len() != filenames.len() {
+        return Err(QQMusicError::MalformedResponse);
+    }
+    let mut results = filenames
+        .iter()
+        .map(|filename| (filename.clone(), None))
+        .collect::<HashMap<_, _>>();
+    let mut seen = HashSet::with_capacity(response.data.len());
+    for item in response.data {
+        if item.filename.trim().is_empty()
+            || !requested.contains(item.filename.as_str())
+            || !seen.insert(item.filename.clone())
+        {
+            return Err(QQMusicError::MalformedResponse);
+        }
+        if item.result != 0 || item.purl.trim().is_empty() || item.ekey.trim().is_empty() {
+            continue;
+        }
+        let joined = if item.purl.starts_with("https://") || item.purl.starts_with("http://") {
+            item.purl
+        } else {
+            format!(
+                "{LIBRARY_FALLBACK_ORIGIN}{}",
+                item.purl.trim_start_matches('/')
+            )
+        };
+        let url = sanitize_qmapi_playback_url(&joined)?;
+        results.insert(item.filename, Some((url, item.ekey)));
+    }
+    Ok(results)
+}
+
+fn encrypted_quality_for_filename(filename: &str) -> Option<SongQuality> {
+    match filename.get(..4) {
+        Some("AIM0") if filename.ends_with(".mflac") => Some(SongQuality::Master),
+        Some("F0M0") if filename.ends_with(".mflac") => Some(SongQuality::Flac),
+        _ => None,
+    }
+}
+
 fn clear_urls_from_items(
     filenames: &[String],
     items: Vec<UrlinfoItem>,
@@ -209,6 +291,20 @@ mod tests {
     use yaqmc_provider_api::PlaybackLocation;
 
     use super::*;
+
+    #[test]
+    fn encrypted_filename_mapping_accepts_only_supported_shapes() {
+        assert_eq!(
+            encrypted_quality_for_filename("AIM0media.mflac"),
+            Some(SongQuality::Master)
+        );
+        assert_eq!(
+            encrypted_quality_for_filename("F0M0media.mflac"),
+            Some(SongQuality::Flac)
+        );
+        assert!(encrypted_quality_for_filename("AIM0media.flac").is_none());
+        assert!(encrypted_quality_for_filename("M800media.mp3").is_none());
+    }
 
     const LIBRARY_FALLBACK: &str =
         "https://isure.stream.qqmusic.qq.com/C400fixture.m4a?vkey=redacted";

@@ -1025,38 +1025,26 @@ impl QQMusicAccountService {
         context: &AuthenticatedAccountContext,
         track_id: &str,
     ) -> Result<Option<bool>, QQMusicError> {
-        let payload = musicu_request(
-            &context.session,
-            "music.srfDissInfo.DissInfo",
-            "CgiGetDiss",
-            json!({ "dirid": 201, "song_begin": 0, "song_num": 100 }),
-        );
         let response = self
-            .transport
-            .execute(TransportRequest {
-                operation: "account.favorite.reconcile",
-                method: Method::POST,
-                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                headers: account_headers(&context.session)?,
-                body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
-                retry: RetryClass::ReconciliationRead,
-                redirects: RedirectMode::FollowValidated,
-                response_shape: "favorite-reconciliation-page",
-                cancellation: context.cancellation.clone(),
-            })
-            .await
-            .map_err(|error| match error {
-                QQMusicError::AuthorizationRejected => QQMusicError::AuthenticationExpired,
-                other => other,
-            })?;
-        self.auth.ensure_current(&context.epoch).await?;
-        if !response.status.is_success() {
-            return Err(QQMusicError::Protocol);
-        }
-        let page = normalize_favorite_response(&response.body, 0)?;
+            .read_account_page(
+                context,
+                "account.favorite.reconcile",
+                "favorite-reconciliation-page",
+                qqmusic_api::account::AccountRead::FavoriteSongs,
+                0,
+                100,
+                RetryClass::ReconciliationRead,
+            )
+            .await?;
+        let page = normalize_favorite_response(
+            &response
+                .compatibility_json()
+                .map_err(crate::qmapi::cgi::map_qmapi_error)?,
+            0,
+        )?;
         if page.items.iter().any(|song| song.id == track_id) {
             Ok(Some(true))
-        } else if page.next_provider_cursor.is_none() {
+        } else if response.next_offset.is_none() {
             Ok(Some(false))
         } else {
             Ok(None)
@@ -2479,35 +2467,29 @@ impl QQMusicAccountService {
         }
 
         let limit = limit.clamp(1, 100);
-        let mut params = json!({
-            "disstid": 0,
-            "dirid": 201,
-            "tag": true,
-            "song_begin": offset,
-            "song_num": limit,
-            "userinfo": true,
-            "orderlist": true,
-            "onlysonglist": 1
-        });
-        if let Some(encrypted_uin) = context.session.encrypted_uin.as_deref() {
-            params["enc_host_uin"] = json!(encrypted_uin);
-        }
-        let payload = musicu_request(
-            &context.session,
-            "music.srfDissInfo.DissInfo",
-            "CgiGetDiss",
-            params,
-        );
         let response = match self
-            .execute_read(&context, "account.favorites", "favorite-page", payload)
+            .read_account_page(
+                &context,
+                "account.favorites",
+                "favorite-page",
+                qqmusic_api::account::AccountRead::FavoriteSongs,
+                offset,
+                limit,
+                RetryClass::SafeRead,
+            )
             .await
         {
             Ok(response) => response,
-            Err(error) => {
-                return self.stale_page_or_error(&context, cached, error).await;
-            }
+            Err(error) => return self.stale_page_or_error(&context, cached, error).await,
         };
-        let normalized = normalize_favorite_response(&response.body, offset)?;
+        let mut normalized = normalize_favorite_response(
+            &response
+                .compatibility_json()
+                .map_err(crate::qmapi::cgi::map_qmapi_error)?,
+            offset,
+        )?;
+        normalized.next_provider_cursor = response.next_offset.map(|offset| offset.to_string());
+        normalized.total = response.total;
         validate_next_provider_cursor(offset, normalized.next_provider_cursor.as_deref())?;
         self.auth.ensure_current(&context.epoch).await?;
         let now = self.clock.now_ms();
@@ -2875,58 +2857,27 @@ impl QQMusicAccountService {
         }
 
         let limit = limit.clamp(1, 100);
-        let params = match &reference {
-            AccountPlaylistReference::FavoriteSongs { dir_id } => {
-                let mut params = json!({
-                    "disstid": 0,
-                    "dirid": dir_id,
-                    "tag": true,
-                    "song_begin": offset,
-                    "song_num": limit,
-                    "userinfo": true,
-                    "orderlist": true,
-                    "onlysonglist": 1
-                });
-                if let Some(encrypted_uin) = context.session.encrypted_uin.as_deref() {
-                    params["enc_host_uin"] = json!(encrypted_uin);
-                }
-                params
+        let operation = match &reference {
+            AccountPlaylistReference::FavoriteSongs { dir_id: 201 } => {
+                qqmusic_api::account::AccountRead::FavoriteSongs
             }
-            AccountPlaylistReference::Owned { .. }
-            | AccountPlaylistReference::Collected { .. }
-            | AccountPlaylistReference::SystemCollection { tid: Some(_), .. } => {
-                let tid = reference.generic_tid()?;
-                let disstid = tid
-                    .parse::<u64>()
-                    .map(Value::from)
-                    .unwrap_or_else(|_| Value::String(tid.to_owned()));
-                json!({
-                    "disstid": disstid,
-                    "dirid": 0,
-                    "tag": true,
-                    "song_begin": offset,
-                    "song_num": limit,
-                    "userinfo": true,
-                    "orderlist": true,
-                    "onlysonglist": 1
-                })
+            AccountPlaylistReference::FavoriteSongs { .. }
+            | AccountPlaylistReference::SystemCollection { tid: None, .. } => {
+                return Err(QQMusicError::UnsupportedAccountCollection)
             }
-            AccountPlaylistReference::SystemCollection { tid: None, .. } => {
-                return Err(QQMusicError::UnsupportedAccountCollection);
-            }
+            _ => qqmusic_api::account::AccountRead::PlaylistTracks {
+                tid: reference.generic_tid()?.to_owned(),
+            },
         };
-        let payload = musicu_request(
-            &context.session,
-            "music.srfDissInfo.DissInfo",
-            "CgiGetDiss",
-            params,
-        );
         let response = match self
-            .execute_read(
+            .read_account_page(
                 &context,
                 "account.playlist-tracks",
                 "playlist-detail-page",
-                payload,
+                operation,
+                offset,
+                limit,
+                RetryClass::SafeRead,
             )
             .await
         {
@@ -2941,11 +2892,14 @@ impl QQMusicAccountService {
                 return Err(error);
             }
         };
+        let response_body = response
+            .compatibility_json()
+            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
         let (summary, mut normalized) = match &reference {
             AccountPlaylistReference::FavoriteSongs { .. } => (
                 requested_summary.clone(),
-                normalize_favorite_response(&response.body, offset).map_err(|error| {
-                    let (top, req, subcode) = response_codes(&response.body);
+                normalize_favorite_response(&response_body, offset).map_err(|error| {
+                    let (top, req, subcode) = response_codes(&response_body);
                     tracing::warn!(
                         target: "qqmusic.playlist",
                         playlist_id = %playlist_id,
@@ -2956,7 +2910,7 @@ impl QQMusicAccountService {
                         code = ?top,
                         req_code = ?req,
                         subcode = ?subcode,
-                        response = %response_preview(&response.body),
+                        response = %response_preview(&response_body),
                         "account favorites response failed to normalize"
                     );
                     error
@@ -2964,9 +2918,9 @@ impl QQMusicAccountService {
             ),
             _ => {
                 let (mut summary, page) =
-                    normalize_playlist_detail_response(&response.body, offset).map_err(
+                    normalize_playlist_detail_response(&response_body, offset).map_err(
                         |error| {
-                            let (top, req, subcode) = response_codes(&response.body);
+                            let (top, req, subcode) = response_codes(&response_body);
                             tracing::warn!(
                                 target: "qqmusic.playlist",
                                 playlist_id = %playlist_id,
@@ -2977,15 +2931,15 @@ impl QQMusicAccountService {
                                 code = ?top,
                                 req_code = ?req,
                                 subcode = ?subcode,
-                                shape = %response_shape(&response.body),
-                                response = %response_preview(&response.body),
+                                shape = %response_shape(&response_body),
+                                response = %response_preview(&response_body),
                                 "account playlist detail response failed to normalize"
                             );
                             error
                         },
                     )?;
                 if summary.reference.generic_tid()? != reference.generic_tid()? {
-                    let (top, req, subcode) = response_codes(&response.body);
+                    let (top, req, subcode) = response_codes(&response_body);
                     tracing::warn!(
                         target: "qqmusic.playlist",
                         playlist_id = %playlist_id,
@@ -2995,7 +2949,7 @@ impl QQMusicAccountService {
                         code = ?top,
                         req_code = ?req,
                         subcode = ?subcode,
-                        response = %response_preview(&response.body),
+                        response = %response_preview(&response_body),
                         "account playlist detail resolved a different playlist than requested"
                     );
                     return Err(QQMusicError::SchemaChanged);
@@ -3029,6 +2983,8 @@ impl QQMusicAccountService {
                 (summary, page)
             }
         };
+        normalized.next_provider_cursor = response.next_offset.map(|offset| offset.to_string());
+        normalized.total = response.total;
         validate_next_provider_cursor(offset, normalized.next_provider_cursor.as_deref())?;
         self.overlay_favorites(&context, &mut normalized.items)?;
         self.auth.ensure_current(&context.epoch).await?;
@@ -3086,22 +3042,29 @@ impl QQMusicAccountService {
         }
 
         let limit = limit.clamp(1, 100);
-        let payload = musicu_request(
-            &context.session,
-            "music.musichallSong.RecentPlayList",
-            "GetRecentPlayList",
-            json!({ "uin": context.session.uin, "begin": offset, "num": limit }),
-        );
         let response = match self
-            .execute_read(&context, "account.recent", "recent-history-page", payload)
+            .read_account_page(
+                &context,
+                "account.recent",
+                "recent-history-page",
+                qqmusic_api::account::AccountRead::RecentlyPlayed,
+                offset,
+                limit,
+                RetryClass::SafeRead,
+            )
             .await
         {
             Ok(response) => response,
-            Err(error) => {
-                return self.stale_page_or_error(&context, cached, error).await;
-            }
+            Err(error) => return self.stale_page_or_error(&context, cached, error).await,
         };
-        let mut normalized = normalize_recent_response(&response.body, offset)?;
+        let mut normalized = normalize_recent_response(
+            &response
+                .compatibility_json()
+                .map_err(crate::qmapi::cgi::map_qmapi_error)?,
+            offset,
+        )?;
+        normalized.next_provider_cursor = response.next_offset.map(|offset| offset.to_string());
+        normalized.total = response.total;
         validate_next_provider_cursor(offset, normalized.next_provider_cursor.as_deref())?;
         let mut songs = normalized
             .items
@@ -3218,6 +3181,51 @@ impl QQMusicAccountService {
             resource,
             provider_cursor,
         )))
+    }
+
+    // Tests inject transport responses; they use the production endpoint and
+    // response validation, including the account epoch boundaries.
+    #[allow(clippy::too_many_arguments)]
+    async fn read_account_page(
+        &self,
+        context: &AuthenticatedAccountContext,
+        operation: &'static str,
+        response_shape: &'static str,
+        endpoint: qqmusic_api::account::AccountRead,
+        offset: u64,
+        limit: u32,
+        retry: RetryClass,
+    ) -> Result<qqmusic_api::account::AccountPage, QQMusicError> {
+        self.auth.ensure_current(&context.epoch).await?;
+        let credential = crate::qmapi::credential::credential_from_session(&context.session)?;
+        let transport = super::transport::qmapi_bridge::AccountReadTransport {
+            inner: Arc::clone(&self.transport),
+            operation,
+            response_shape,
+            retry,
+        };
+        let client = qqmusic_api::Client::new_with_transport(None, None, Arc::new(transport));
+        let result = qqmusic_api::account::read_page(
+            &client,
+            &credential,
+            endpoint,
+            offset,
+            limit,
+            context.cancellation.clone(),
+        )
+        .await
+        .map_err(|error| match error {
+            qqmusic_api::QmError::ApiData(_) => QQMusicError::SchemaChanged,
+            other => crate::qmapi::cgi::map_qmapi_error(other),
+        });
+        #[cfg(test)]
+        if result.is_ok() {
+            self.hit_read_boundary(ReadBoundary::Response).await;
+        } else if result.as_ref().err().is_some_and(stale_eligible) {
+            self.hit_read_boundary(ReadBoundary::BeforeRetry).await;
+        }
+        self.auth.ensure_current(&context.epoch).await?;
+        result
     }
 
     async fn execute_read(

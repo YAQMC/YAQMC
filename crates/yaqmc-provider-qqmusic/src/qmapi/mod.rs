@@ -1,9 +1,9 @@
 //! Pinned `qqmusic-api` production integration.
 //!
 //! HTTP goes through [`transport::YaqmcReqwestTransport`] (YAQMC reqwest 0.13.4).
-//! QMC decryption, lyric fetch/decrypt, clear vkey, VIP fetch, credential-v2,
-//! and raw favorite/playlist writes use the library. Encrypted evkey and A/B
-//! signing stay on in-tree MD5 `zzb` (Keep); G reconciliation, `choose_source`,
+//! QMC decryption, lyric fetch/decrypt, clear/encrypted vkey, VIP fetch,
+//! credential-v2, and raw favorite/playlist writes use the library. A/B
+//! signing remains only in test fixtures; G reconciliation, `choose_source`,
 //! QR/OAuth, and home/discover mapping stay in-tree.
 
 #![cfg_attr(test, allow(dead_code))]

@@ -1,16 +1,9 @@
 //! Typed qm-api-rs catalog boundary.
 //!
-//! This module intentionally exposes only normalized library boundary values
-//! to the parent provider. The album-list and playlist-search paths add narrow
-//! compatibility decoders for production fields that the pinned qm-api-rs
-//! models cannot currently deserialize without discarding the whole page.
+//! Protocol construction and compatibility decoding live in qm-api-rs. This
+//! adapter aggregates bounded pages and validates identities for application use.
 
-use qqmusic_api::{
-    models::{base::Singer, singer::AlbumBrief},
-    CgiOptions, Client, Platform,
-};
-use serde::{de::Error as _, Deserialize, Deserializer};
-use serde_json::{json, Value};
+use qqmusic_api::{models::base::Singer, Client};
 
 use crate::qmapi::cgi::map_qmapi_error;
 use crate::qqmusic::QQMusicError;
@@ -46,162 +39,19 @@ pub(crate) enum ArtistCatalogPage {
     },
 }
 
-pub(crate) struct PlaylistSearchPage {
-    pub total: i64,
-    pub items: Vec<PlaylistSearchItem>,
-}
-
-pub(crate) struct PlaylistSearchItem {
-    pub id: String,
-    pub title: String,
-    pub creator: String,
-    pub artwork_url: String,
-    pub track_count: u32,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct PlaylistSearchResponse {
-    meta: PlaylistSearchMeta,
-    body: PlaylistSearchBody,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct PlaylistSearchMeta {
-    sum: i64,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct PlaylistSearchBody {
-    #[serde(
-        rename = "item_songlist",
-        deserialize_with = "deserialize_playlist_items"
-    )]
-    items: Vec<PlaylistSearchWireItem>,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct PlaylistSearchWireItem {
-    #[serde(rename = "dissid", deserialize_with = "deserialize_stringish")]
-    id: String,
-    #[serde(rename = "dissname", deserialize_with = "deserialize_stringish")]
-    title: String,
-    #[serde(rename = "nickname", deserialize_with = "deserialize_stringish")]
-    creator: String,
-    #[serde(
-        rename = "logo",
-        alias = "picUrl",
-        alias = "cover",
-        deserialize_with = "deserialize_stringish"
-    )]
-    artwork_url: String,
-    #[serde(
-        rename = "songnum",
-        alias = "songNum",
-        alias = "song_cnt",
-        deserialize_with = "deserialize_u32ish"
-    )]
-    track_count: u32,
-}
-
-fn deserialize_playlist_items<'de, D>(
-    deserializer: D,
-) -> Result<Vec<PlaylistSearchWireItem>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let Value::Array(entries) = Value::deserialize(deserializer)? else {
-        return Err(D::Error::custom("item_songlist must be an array"));
-    };
-    Ok(entries
-        .into_iter()
-        .filter_map(|entry| serde_json::from_value(entry).ok())
-        .collect())
-}
-
-fn deserialize_stringish<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    match Value::deserialize(deserializer)? {
-        Value::String(value) => Ok(value),
-        Value::Number(value) => Ok(value.to_string()),
-        Value::Null => Ok(String::new()),
-        _ => Ok(String::new()),
-    }
-}
-
-fn deserialize_u32ish<'de, D>(deserializer: D) -> Result<u32, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    match Value::deserialize(deserializer)? {
-        Value::Number(value) => Ok(value
-            .as_u64()
-            .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or_default()),
-        Value::String(value) => Ok(value.parse::<u32>().unwrap_or_default()),
-        _ => Ok(0),
-    }
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-struct SingerAlbumListResponse {
-    singer_mid: String,
-    total: i64,
-    #[serde(deserialize_with = "deserialize_album_list")]
-    album_list: Vec<AlbumBrief>,
-}
-
-fn deserialize_album_list<'de, D>(deserializer: D) -> Result<Vec<AlbumBrief>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-    let entries = match value {
-        Value::Null => return Ok(Vec::new()),
-        Value::Array(entries) => entries,
-        _ => return Err(D::Error::custom("albumList must be an array or null")),
-    };
-
-    entries
-        .into_iter()
-        .map(|mut entry| {
-            // The production endpoint currently returns `tags: null`. The
-            // pinned qm-api-rs `AlbumBrief` expects an array, and its lenient
-            // JSONPath conversion otherwise discards the entire album page.
-            if let Some(object) = entry.as_object_mut() {
-                if object.get("tags").is_some_and(Value::is_null) {
-                    object.insert("tags".to_owned(), Value::Array(Vec::new()));
-                }
-            }
-            serde_json::from_value(entry).map_err(D::Error::custom)
-        })
-        .collect()
-}
+pub(crate) use qqmusic_api::models::search::{
+    SonglistSearchItem as PlaylistSearchItem, SonglistSearchPage as PlaylistSearchPage,
+};
 
 async fn artist_album_list(
     client: &Client,
     mid: &str,
     number: i64,
     page: i64,
-) -> Result<SingerAlbumListResponse, QQMusicError> {
+) -> Result<qqmusic_api::models::singer::SingerAlbumListResponse, QQMusicError> {
     client
-        .cgi(
-            "music.musichallAlbum.AlbumListServer",
-            "GetAlbumList",
-            json!({
-                "singerMid": mid,
-                "order": 1,
-                "number": number,
-                "begin": (page - 1) * number,
-            }),
-            &CgiOptions::default(),
-        )
+        .singer
+        .get_album_list(mid, number, page)
         .await
         .map_err(map_qmapi_error)
 }
@@ -212,59 +62,30 @@ pub(crate) async fn playlist_search(
     page: u32,
     limit: u32,
 ) -> Result<PlaylistSearchPage, QQMusicError> {
-    let response: PlaylistSearchResponse = client
-        .cgi(
-            "music.search.SearchCgiService",
-            "DoSearchForQQMusicMobile",
-            json!({
-                "searchid": qqmusic_api::get_search_id(),
-                "query": query,
-                "search_type": qqmusic_api::SearchType::Songlist.value(),
-                "num_per_page": limit,
-                "page_num": page,
-                "highlight": true,
-                "grp": true,
-                "selectors": {},
-                "vec_selectors": [],
-            }),
-            &CgiOptions {
-                platform: Some(Platform::Android),
-                ..CgiOptions::default()
-            },
-        )
+    let response = client
+        .search
+        .search_songlists(query, i64::from(limit), i64::from(page))
         .await
         .map_err(map_qmapi_error)?;
-
-    if page == 1 && response.meta.sum > 0 && response.body.items.is_empty() {
+    if page == 1 && response.total > 0 && response.items.is_empty() {
         return Err(QQMusicError::SchemaChanged);
     }
-
-    Ok(PlaylistSearchPage {
-        total: response.meta.sum,
-        items: response
-            .body
-            .items
-            .into_iter()
-            .map(|item| PlaylistSearchItem {
-                id: item.id,
-                title: item.title,
-                creator: item.creator,
-                artwork_url: item.artwork_url,
-                track_count: item.track_count,
-            })
-            .collect(),
-    })
+    Ok(response)
 }
 
 pub(crate) async fn songlist(
     client: &Client,
     id: i64,
 ) -> Result<qqmusic_api::models::songlist::GetSonglistDetailResponse, QQMusicError> {
+    if id <= 0 {
+        return Err(QQMusicError::InvalidRequest);
+    }
     let mut response = client
         .songlist
         .get_detail(id, 0, SONGLIST_TRACK_PAGE_SIZE, 1, false, true, true)
         .await
         .map_err(map_qmapi_error)?;
+    validate_songlist_page(&response, id)?;
     let mut page = 1_u32;
 
     loop {
@@ -295,6 +116,7 @@ pub(crate) async fn songlist(
             )
             .await
             .map_err(map_qmapi_error)?;
+        validate_songlist_page(&next, id)?;
         if next.songs.is_empty() {
             return Err(QQMusicError::SchemaChanged);
         }
@@ -302,6 +124,21 @@ pub(crate) async fn songlist(
         response.hasmore = next.hasmore;
         response.songs.extend(next.songs);
     }
+}
+
+fn validate_songlist_page(
+    page: &qqmusic_api::models::songlist::GetSonglistDetailResponse,
+    requested_id: i64,
+) -> Result<(), QQMusicError> {
+    if page.code != 0
+        || page.subcode != 0
+        || page.total < 0
+        || page.hasmore < 0
+        || (page.info.base.id > 0 && page.info.base.id != requested_id)
+    {
+        return Err(QQMusicError::SchemaChanged);
+    }
+    Ok(())
 }
 
 pub(crate) async fn artist_catalog_page(

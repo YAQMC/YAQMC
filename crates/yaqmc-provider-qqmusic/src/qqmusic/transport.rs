@@ -18,6 +18,8 @@ use std::{
 use std::{fmt, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
+pub(crate) mod qmapi_bridge;
+
 const ALLOWED_HOSTS: &[&str] = &[
     "u.y.qq.com",
     "c.y.qq.com",

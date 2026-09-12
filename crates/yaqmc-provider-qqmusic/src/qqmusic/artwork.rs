@@ -60,7 +60,7 @@ const ALLOWED_ARTWORK_HOSTS: &[&str] = &[
 
 const Y_QQ_ARTWORK_PATH_PREFIXES: &[&str] = &["/m/resource/calendar/", "/music/common/upload/"];
 
-fn normalize_provider_artwork_url(value: &str) -> Option<String> {
+pub(super) fn normalize_provider_artwork_url(value: &str) -> Option<String> {
     let value = value.trim();
     let upgraded = if value.starts_with("//") {
         format!("https:{value}")
@@ -87,7 +87,8 @@ pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
         })
 }
 
-pub(super) fn provider_cover_url(value: &serde_json::Value) -> String {
+#[cfg(test)]
+fn provider_cover_url(value: &serde_json::Value) -> String {
     if let Some(text) = value
         .as_str()
         .map(str::trim)
@@ -119,7 +120,8 @@ pub(super) fn provider_cover_url(value: &serde_json::Value) -> String {
     String::new()
 }
 
-pub(super) fn card_cover_url(card: &serde_json::Value) -> String {
+#[cfg(test)]
+fn card_cover_url(card: &serde_json::Value) -> String {
     let cover = provider_cover_url(&card["cover"]);
     let source = if cover.is_empty() {
         card["picurl"].as_str().unwrap_or_default()
