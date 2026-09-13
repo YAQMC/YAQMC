@@ -490,6 +490,29 @@ Linux 本机构建、Electron GUI 或 LIVE。新 pin 的 soak 仍为 not-started
 复杂度：下载和 Base64 编码的时间/额外空间为 O(b)，b 为响应字节数，图片上限 5 MiB。
 不以该上限替代 Wasm 插件资源配额或媒体播放的流式缓存限制。
 
+### 2026-09-14：插件撤权代次保护
+
+本批基线为 YAQMC `b2cf62f`，只改 renderer 插件运行时与对应测试，不触碰 provider。
+
+- 缺陷：`setPluginEnabled` / `uninstallPlugin` / `reloadPlugin` / `installPlugin` /
+  `installUnpackedPlugin` / `setPluginSafeMode` / `setPluginDeveloperMode` 先 `await` 宿主调用，
+  再 `applyPluginResources()`。在宿主已撤销授权、刷新尚未开始的 await 窗口里，
+  `workerPermissions` 和 worker 仍是上一次快照的旧值，被撤权插件仍能收到
+  `track.changed` 等只读事件。
+- 修复：抽出同步的 `retirePluginCapabilities()`（代次 +1、清样式/预设/transport/场景/UI、
+  `stopScripts()`），新增 `withRetiredPluginCapabilities(mutate)`：先撤权再 `await` 宿主，
+  成功后按宿主真值重建；突变失败时同样重建并保留原始错误，刷新失败只记
+  `plugin.resources.refresh_failed`，能力保持撤权（fail closed）。
+- 回归测试（`src/application/plugin-runtime.events.test.ts`）：
+  1. 撤权宿主调用未 resolve 时 worker 已 `terminate`，新的 `track.changed` 不再投递；
+  2. 撤权调用 reject 时仍按宿主真值重建 worker，且不报刷新失败。
+     删除修复后这两条失败（已实测 2 failed）。
+- 验证：`node scripts/run-vitest.mjs run` 109 files / 854 tests 通过；`tsc -b`、
+  改动文件的 ESLint 与 Prettier 通过。
+
+本批只覆盖 C1 中“插件禁用立即撤销路由、旧异步结果不得覆盖新状态”的语义；B1/B2 profile、
+C1 的完整路由层、D 混合队列与 E Spotify 仍未完成。
+
 ## 6. 可执行工作包与依赖
 
 下表为后续实施顺序，不是本次已经执行的修改。每个工作包都应保持可独立审阅；

@@ -748,9 +748,9 @@ function emitSceneLifecycle(selectedId: string): void {
 }
 
 export async function setPluginDeveloperMode(enabled: boolean): Promise<boolean> {
-  const next = await client.invoke('plugin_set_developer_mode', { enabled });
-  await applyPluginResources();
-  return next;
+  return withRetiredPluginCapabilities(() =>
+    client.invoke('plugin_set_developer_mode', { enabled }),
+  );
 }
 
 export async function pluginHostDeveloperMode(): Promise<boolean> {
@@ -767,17 +767,15 @@ export async function installUnpackedPlugin(
   path: string,
   options: { enable?: boolean; grant?: string[] } = {},
 ): Promise<PluginRecord> {
-  const record = await client.invoke('plugin_install_unpacked', {
-    request: { path, enable: options.enable ?? false, grant: options.grant ?? [] },
-  });
-  await applyPluginResources();
-  return record;
+  return withRetiredPluginCapabilities(() =>
+    client.invoke('plugin_install_unpacked', {
+      request: { path, enable: options.enable ?? false, grant: options.grant ?? [] },
+    }),
+  );
 }
 
 export async function reloadPlugin(id: string): Promise<PluginRecord> {
-  const record = await client.invoke('plugin_reload', { id });
-  await applyPluginResources();
-  return record;
+  return withRetiredPluginCapabilities(() => client.invoke('plugin_reload', { id }));
 }
 
 export async function pluginSettingsGet(id: string): Promise<Record<string, unknown>> {
@@ -880,9 +878,15 @@ async function applyPluginResourcesSnapshot(
   return resources;
 }
 
-export function applyPluginResources(): Promise<ActivePluginResources | null> {
-  if (!hasHostCapability('plugins')) return Promise.resolve(null);
-
+/**
+ * Retires every renderer-side plugin capability synchronously.
+ *
+ * The generation bump invalidates any in-flight resource snapshot and any
+ * worker callback, and clearing the worker map makes the event fan-out fail
+ * closed.  Callers therefore cannot observe a revoked plugin receiving an
+ * event, even before the host has answered the mutation that revoked it.
+ */
+function retirePluginCapabilities(): void {
   resourceGeneration += 1;
   // Retire renderer-side capabilities synchronously as well as workers.  A
   // revoked plugin must not keep styles, actions, or transport definitions
@@ -899,6 +903,34 @@ export function applyPluginResources(): Promise<ActivePluginResources | null> {
   // is intentionally done even when a load is already in progress: otherwise
   // a revoked plugin can continue receiving events during the await window.
   stopScripts();
+}
+
+/**
+ * Runs a host mutation that can change plugin grants.
+ *
+ * Capabilities are retired before the host is awaited so the pre-mutation
+ * grant set can never be observed after the caller started the mutation, then
+ * the renderer is re-synchronised from host truth.  A failed mutation still
+ * refreshes, so the renderer never keeps capabilities the host no longer has.
+ */
+async function withRetiredPluginCapabilities<T>(mutate: () => Promise<T>): Promise<T> {
+  retirePluginCapabilities();
+  try {
+    const result = await mutate();
+    await applyPluginResources();
+    return result;
+  } catch (error) {
+    await applyPluginResources().catch((refreshError: unknown) => {
+      logger.error('plugin.resources.refresh_failed', refreshError);
+    });
+    throw error;
+  }
+}
+
+export function applyPluginResources(): Promise<ActivePluginResources | null> {
+  if (!hasHostCapability('plugins')) return Promise.resolve(null);
+
+  retirePluginCapabilities();
 
   if (applyingPromise) return applyingPromise;
 
@@ -936,9 +968,7 @@ export async function installPlugin(
   options: { enable?: boolean; grant?: string[] } = {},
 ): Promise<PluginRecord> {
   const request = { path, enable: options.enable ?? false, grant: options.grant ?? [] };
-  const record = await client.invoke('plugin_install_from', { request });
-  await applyPluginResources();
-  return record;
+  return withRetiredPluginCapabilities(() => client.invoke('plugin_install_from', { request }));
 }
 
 export async function setPluginEnabled(
@@ -946,22 +976,21 @@ export async function setPluginEnabled(
   enabled: boolean,
   grant: string[] = [],
 ): Promise<PluginRecord> {
-  const record = await client.invoke('plugin_set_enabled', {
-    request: { id, enabled, grant },
-  });
-  await applyPluginResources();
-  return record;
+  return withRetiredPluginCapabilities(() =>
+    client.invoke('plugin_set_enabled', {
+      request: { id, enabled, grant },
+    }),
+  );
 }
 
 export async function uninstallPlugin(id: string, removeData: boolean): Promise<void> {
-  await client.invoke('plugin_uninstall', { request: { id, removeData } });
-  await applyPluginResources();
+  await withRetiredPluginCapabilities(() =>
+    client.invoke('plugin_uninstall', { request: { id, removeData } }),
+  );
 }
 
 export async function setPluginSafeMode(enabled: boolean): Promise<boolean> {
-  const next = await client.invoke('plugin_set_safe_mode', { enabled });
-  await applyPluginResources();
-  return next;
+  return withRetiredPluginCapabilities(() => client.invoke('plugin_set_safe_mode', { enabled }));
 }
 
 export async function pluginHostSafeMode(): Promise<boolean> {

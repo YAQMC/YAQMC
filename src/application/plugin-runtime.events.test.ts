@@ -270,6 +270,79 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     unmount();
   });
 
+  it('fails closed while the revoking host call is still in flight', async () => {
+    grants = { [GRANTED]: ['track.read', 'player.read', 'lyrics.read'] };
+    const { unmount } = renderHook(() => usePluginHost());
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    const granted = instanceAt(0);
+
+    usePlayerStore.setState(trackState(0, 5) as never);
+    await waitFor(() => expect(postedEvents(granted)).toContain('track.changed'));
+    const deliveredBeforeRevoke = postedEvents(granted).length;
+
+    const revoke = deferred<{ id: string; grantedPermissions: string[] }>();
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_set_enabled') return revoke.promise;
+      if (method === 'plugin_active_resources') return Promise.resolve(emptyResources());
+      if (method === 'plugin_list') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    const pending = setPluginEnabled(GRANTED, false, []);
+
+    // The host has not answered the revocation yet, so the renderer must
+    // already have retired the runtime instead of delivering events to a
+    // plugin whose grant is being withdrawn.
+    expect(granted.terminated).toBe(true);
+    usePlayerStore.setState(trackState(0, 6) as never);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(postedEvents(granted)).toHaveLength(deliveredBeforeRevoke);
+
+    revoke.resolve({ id: GRANTED, grantedPermissions: [] });
+    await pending;
+    expect(FakeWorker.instances).toHaveLength(2);
+
+    unmount();
+  });
+
+  it('re-synchronises from host truth when the revocation call fails', async () => {
+    grants = { [GRANTED]: ['track.read', 'player.read', 'lyrics.read'] };
+    const { unmount } = renderHook(() => usePluginHost());
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    const first = instanceAt(0);
+
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_set_enabled') return Promise.reject(new Error('host refused'));
+      if (method === 'plugin_active_resources') {
+        return Promise.resolve({
+          ...emptyResources(),
+          scripts: [
+            { pluginId: GRANTED, pluginName: GRANTED, source: 'definePlugin({});' },
+            { pluginId: UNGRANTED, pluginName: UNGRANTED, source: 'definePlugin({});' },
+          ],
+        });
+      }
+      if (method === 'plugin_list') {
+        return Promise.resolve([
+          { id: GRANTED, grantedPermissions: ['track.read', 'player.read', 'lyrics.read'] },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await expect(setPluginEnabled(GRANTED, false, [])).rejects.toThrow('host refused');
+
+    // A failed mutation must not leave the renderer without the capabilities
+    // the host still grants.
+    expect(first.terminated).toBe(true);
+    await waitFor(() => expect(FakeWorker.instances.length).toBeGreaterThan(2));
+    expect(logErrorMock).not.toHaveBeenCalledWith(
+      'plugin.resources.refresh_failed',
+      expect.anything(),
+    );
+
+    unmount();
+  });
   it('coalesces refreshes and never applies an obsolete resource snapshot', async () => {
     const firstResources = deferred<ReturnType<typeof emptyResources>>();
     const latestResources = deferred<ReturnType<typeof emptyResources>>();
