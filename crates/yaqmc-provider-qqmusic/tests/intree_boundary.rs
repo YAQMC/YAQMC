@@ -112,6 +112,19 @@ fn artwork_mapping_does_not_construct_upstream_photo_urls() {
     }
 }
 
+#[test]
+fn artwork_downloads_cross_the_library_and_provider_neutral_cache_boundary() {
+    let service = include_str!("../src/qqmusic.rs");
+    assert!(!service.contains("artwork_http"));
+    assert!(service.contains("QmapiArtworkFetcher(&self.client.catalog)"));
+    let cache_api = include_str!("../../yaqmc-provider-api/src/storage.rs");
+    assert!(!cache_api.contains("reqwest::Client"));
+    assert!(cache_api.contains("fetcher: &dyn ArtworkFetcher"));
+    let adapter = include_str!("../src/qmapi/artwork.rs");
+    assert!(adapter.contains("qqmusic_api::artwork::download"));
+    assert!(!adapter.contains("https://"));
+}
+
 #[derive(Default)]
 struct TestCredentialStore {
     secrets: Mutex<HashMap<String, String>>,

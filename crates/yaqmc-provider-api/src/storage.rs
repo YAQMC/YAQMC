@@ -41,6 +41,18 @@ pub enum ProviderCacheMutation {
 #[error("the provider storage operation failed")]
 pub struct ProviderStorageError;
 
+/// Bounded content returned by a provider-owned downloader, never a credential
+/// or an HTTP client. Core validates it again before storing a cache entry.
+pub struct ArtworkBytes {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+}
+
+#[async_trait]
+pub trait ArtworkFetcher: Send + Sync {
+    async fn fetch(&self, url: &str) -> Result<ArtworkBytes, ProviderStorageError>;
+}
+
 #[async_trait]
 pub trait ProviderStorage: Send + Sync {
     fn get_json_value(
@@ -93,7 +105,7 @@ pub trait ProviderStorage: Send + Sync {
 
     async fn artwork_data_uri(
         &self,
-        client: &reqwest::Client,
+        fetcher: &dyn ArtworkFetcher,
         url: &str,
     ) -> Result<String, ProviderStorageError>;
 

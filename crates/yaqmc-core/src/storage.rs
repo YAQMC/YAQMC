@@ -1,9 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use futures_util::StreamExt;
-use reqwest::{
-    header::{HeaderMap, HeaderValue, REFERER},
-    Client, StatusCode,
-};
+use reqwest::{header::HeaderMap, Client, StatusCode};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -17,9 +14,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
-use tokio::{fs as async_fs, io::AsyncWriteExt, sync::Semaphore};
+use tokio::{
+    fs as async_fs,
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::Semaphore,
+};
+use yaqmc_provider_api::storage::{ArtworkFetcher, ProviderStorage, ProviderStorageError};
 pub use yaqmc_provider_api::storage::{CacheStats, ProviderCacheMutation};
-use yaqmc_provider_api::storage::{ProviderStorage, ProviderStorageError};
 
 use crate::statistics::{
     ListeningArtist, ListeningDisplaySnapshot, ListeningOutcome, ListeningSessionRecord,
@@ -71,18 +72,13 @@ pub struct StorageService {
     database_path: PathBuf,
     cache_root: PathBuf,
     download_guard: Semaphore,
+    artwork_commit_guard: tokio::sync::Mutex<()>,
     #[cfg(any(test, feature = "test-support"))]
     _temporary_root: Option<tempfile::TempDir>,
     #[cfg(any(test, feature = "test-support"))]
     fail_provider_cache_delete: AtomicBool,
     #[cfg(any(test, feature = "test-support"))]
     fail_provider_cache_batch_after: AtomicUsize,
-}
-
-fn artwork_fetch_headers() -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(REFERER, HeaderValue::from_static("https://y.qq.com/"));
-    headers
 }
 
 impl StorageService {
@@ -104,6 +100,7 @@ impl StorageService {
             database_path,
             cache_root,
             download_guard: Semaphore::new(4),
+            artwork_commit_guard: tokio::sync::Mutex::new(()),
             #[cfg(any(test, feature = "test-support"))]
             _temporary_root: None,
             #[cfg(any(test, feature = "test-support"))]
@@ -992,31 +989,107 @@ impl StorageService {
 
     pub async fn artwork_data_uri(
         &self,
-        client: &Client,
+        fetcher: &dyn ArtworkFetcher,
         url: &str,
     ) -> Result<String, StorageError> {
+        // Keep the existing URL-derived key and file format so old image caches
+        // remain readable after moving network policy into the provider.
         let stable_key = format!("artwork:{}", sha256(url.as_bytes()));
-        let file = self
-            .fetch_cached(
-                client,
-                "artwork",
-                &stable_key,
-                url,
-                artwork_fetch_headers(),
-                "img",
-                SINGLE_ARTWORK_LIMIT,
-                Some("image/"),
-            )
-            .await?;
-        let bytes = async_fs::read(file.path)
+        if let Some(uri) = self.cached_artwork_uri(&stable_key).await? {
+            return Ok(uri);
+        }
+        let _guard = self
+            .download_guard
+            .acquire()
             .await
             .map_err(|_| StorageError::File)?;
+        if let Some(uri) = self.cached_artwork_uri(&stable_key).await? {
+            return Ok(uri);
+        }
+        let image = fetcher
+            .fetch(url)
+            .await
+            .map_err(|_| StorageError::Network)?;
+        if image.bytes.len() as u64 > SINGLE_ARTWORK_LIMIT {
+            return Err(StorageError::ResponseTooLarge);
+        }
+        let mime = normalize_mime_type(&image.mime_type)
+            .filter(|mime| mime.starts_with("image/"))
+            .ok_or(StorageError::InvalidContentType)?;
+        let _commit = self.artwork_commit_guard.lock().await;
+        // Another download may have populated the same key while this request
+        // was in flight. Prefer its committed cache entry over a second write.
+        if let Some(uri) = self.cached_artwork_uri(&stable_key).await? {
+            return Ok(uri);
+        }
+        let directory = self.cache_root.join("artwork");
+        async_fs::create_dir_all(&directory)
+            .await
+            .map_err(|_| StorageError::File)?;
+        let digest = sha256(stable_key.as_bytes());
+        let relative_path = format!("artwork/{digest}.img");
+        let target = self.cache_root.join(&relative_path);
+        let temporary = directory.join(format!("{digest}.{}.part", rand::random::<u64>()));
+        if async_fs::write(&temporary, &image.bytes).await.is_err() {
+            let _ = async_fs::remove_file(&temporary).await;
+            return Err(StorageError::File);
+        }
+        if async_fs::rename(&temporary, &target).await.is_err() {
+            let _ = async_fs::remove_file(&temporary).await;
+            if let Some(uri) = self.cached_artwork_uri(&stable_key).await? {
+                return Ok(uri);
+            }
+            return Err(StorageError::File);
+        }
+        if let Err(error) = self.record_file(
+            &stable_key,
+            "artwork",
+            &relative_path,
+            image.bytes.len() as u64,
+            Some(&mime),
+        ) {
+            let _ = async_fs::remove_file(&target).await;
+            return Err(error);
+        }
+        self.enforce_file_limit("artwork", ARTWORK_CACHE_LIMIT)?;
+        Ok(format!(
+            "data:{mime};base64,{}",
+            STANDARD.encode(image.bytes)
+        ))
+    }
+
+    async fn cached_artwork_uri(&self, stable_key: &str) -> Result<Option<String>, StorageError> {
+        let Some(file) = self.lookup_file(stable_key)? else {
+            return Ok(None);
+        };
+        let file = self.validate_cached_mime(stable_key, file, Some("image/"))?;
+        if async_fs::metadata(&file.path)
+            .await
+            .map_err(|_| StorageError::File)?
+            .len()
+            > SINGLE_ARTWORK_LIMIT
+        {
+            return Err(StorageError::ResponseTooLarge);
+        }
+        let mut bytes = Vec::new();
+        async_fs::File::open(file.path)
+            .await
+            .map_err(|_| StorageError::File)?
+            .take(SINGLE_ARTWORK_LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|_| StorageError::File)?;
+        if bytes.len() as u64 > SINGLE_ARTWORK_LIMIT {
+            return Err(StorageError::ResponseTooLarge);
+        }
         let mime = file
             .mime_type
             .as_deref()
-            .filter(|mime| mime.starts_with("image/"))
             .ok_or(StorageError::InvalidContentType)?;
-        Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+        Ok(Some(format!(
+            "data:{mime};base64,{}",
+            STANDARD.encode(bytes)
+        )))
     }
 
     pub fn stats(&self) -> Result<CacheStats, StorageError> {
@@ -1400,10 +1473,10 @@ impl ProviderStorage for StorageService {
 
     async fn artwork_data_uri(
         &self,
-        client: &Client,
+        fetcher: &dyn ArtworkFetcher,
         url: &str,
     ) -> Result<String, ProviderStorageError> {
-        StorageService::artwork_data_uri(self, client, url)
+        StorageService::artwork_data_uri(self, fetcher, url)
             .await
             .map_err(|_| ProviderStorageError)
     }
@@ -1774,7 +1847,6 @@ fn sqlite_i64(value: u64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, http::header::CONTENT_TYPE, response::Response, routing::get, Router};
 
     fn storage() -> (tempfile::TempDir, StorageService) {
         let root = tempfile::tempdir().expect("temp directory");
@@ -2078,72 +2150,127 @@ mod tests {
         );
     }
 
-    async fn start_artwork_server() -> (String, tokio::task::JoinHandle<()>) {
-        let app = Router::new()
-            .route(
-                "/image",
-                get(|| async {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .header(CONTENT_TYPE, "Image/PNG; charset=binary")
-                        .body(Body::from(vec![0_u8, 1, 2, 3]))
-                        .expect("image response")
-                }),
-            )
-            .route(
-                "/html",
-                get(|| async {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .header(CONTENT_TYPE, "text/html")
-                        .body(Body::from("not an image"))
-                        .expect("HTML response")
-                }),
-            )
-            .route(
-                "/missing",
-                get(|| async {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .body(Body::from(vec![0_u8, 1, 2, 3]))
-                        .expect("response without Content-Type")
-                }),
-            );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("loopback listener");
-        let address = listener.local_addr().expect("loopback address");
-        let task = tokio::spawn(async move {
-            axum::serve(listener, app)
-                .await
-                .expect("artwork test server");
-        });
-        (format!("http://{address}"), task)
+    struct TestArtworkFetcher {
+        mime_type: String,
+        bytes: Vec<u8>,
+        calls: AtomicUsize,
+        fail: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl ArtworkFetcher for TestArtworkFetcher {
+        async fn fetch(
+            &self,
+            _: &str,
+        ) -> Result<yaqmc_provider_api::ArtworkBytes, ProviderStorageError> {
+            self.calls.fetch_add(1, AtomicOrdering::AcqRel);
+            if self.fail {
+                return Err(ProviderStorageError);
+            }
+            Ok(yaqmc_provider_api::ArtworkBytes {
+                bytes: self.bytes.clone(),
+                mime_type: self.mime_type.clone(),
+            })
+        }
+    }
+
+    fn image_fetcher(mime: &str) -> TestArtworkFetcher {
+        TestArtworkFetcher {
+            mime_type: mime.into(),
+            bytes: vec![0, 1, 2, 3],
+            calls: AtomicUsize::new(0),
+            fail: false,
+        }
     }
 
     #[tokio::test]
     async fn artwork_responses_require_an_explicit_image_content_type() {
-        let (base_url, server) = start_artwork_server().await;
-        let client = Client::builder().no_proxy().build().expect("HTTP client");
-
-        for path in ["html", "missing"] {
+        for mime in ["text/html", "", "image/", "image/png, text/html"] {
             let (root, storage) = storage();
             let result = storage
-                .artwork_data_uri(&client, &format!("{base_url}/{path}"))
+                .artwork_data_uri(&image_fetcher(mime), "https://example.invalid/image")
                 .await;
             assert!(matches!(result, Err(StorageError::InvalidContentType)));
-            assert_eq!(storage.stats().expect("cache stats").artwork_entries, 0);
+            assert_eq!(storage.stats().unwrap().artwork_entries, 0);
             assert!(!root.path().join("cache/artwork").exists());
         }
-
         let (_root, storage) = storage();
-        let data_uri = storage
-            .artwork_data_uri(&client, &format!("{base_url}/image"))
-            .await
-            .expect("valid image response is cached");
-        assert_eq!(data_uri, "data:image/png;base64,AAECAw==");
-        assert_eq!(storage.stats().expect("cache stats").artwork_entries, 1);
-        server.abort();
+        let fetcher = image_fetcher("Image/PNG; charset=binary");
+        let url = "https://example.invalid/image";
+        assert_eq!(
+            storage.artwork_data_uri(&fetcher, url).await.unwrap(),
+            "data:image/png;base64,AAECAw=="
+        );
+        assert_eq!(
+            storage.artwork_data_uri(&fetcher, url).await.unwrap(),
+            "data:image/png;base64,AAECAw=="
+        );
+        assert_eq!(fetcher.calls.load(AtomicOrdering::Acquire), 1);
+        assert_eq!(storage.stats().unwrap().artwork_entries, 1);
+    }
+
+    #[tokio::test]
+    async fn concurrent_artwork_requests_publish_one_consistent_cache_entry() {
+        let (_root, storage) = storage();
+        let fetcher = image_fetcher("image/png");
+        let url = "https://example.invalid/concurrent-image";
+        let (first, second) = tokio::join!(
+            storage.artwork_data_uri(&fetcher, url),
+            storage.artwork_data_uri(&fetcher, url)
+        );
+        assert_eq!(first.unwrap(), second.unwrap());
+        let stats = storage.stats().unwrap();
+        assert_eq!(stats.artwork_entries, 1);
+        assert_eq!(stats.artwork_bytes, 4);
+    }
+
+    #[tokio::test]
+    async fn artwork_rejects_oversize_or_failed_fetches_without_cache_entries() {
+        let (_root, storage) = storage();
+        let large = TestArtworkFetcher {
+            bytes: vec![0; SINGLE_ARTWORK_LIMIT as usize + 1],
+            ..image_fetcher("image/png")
+        };
+        assert!(matches!(
+            storage
+                .artwork_data_uri(&large, "https://example.invalid/large")
+                .await,
+            Err(StorageError::ResponseTooLarge)
+        ));
+        let failed = TestArtworkFetcher {
+            fail: true,
+            ..image_fetcher("image/png")
+        };
+        assert!(matches!(
+            storage
+                .artwork_data_uri(&failed, "https://example.invalid/failed")
+                .await,
+            Err(StorageError::Network)
+        ));
+        assert_eq!(storage.stats().unwrap().artwork_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn artwork_reads_old_url_cache_keys_without_network_or_credential_access() {
+        let (_root, storage) = storage();
+        let url = "https://example.invalid/old-image";
+        let stable_key = format!("artwork:{}", sha256(url.as_bytes()));
+        let relative_path = format!("artwork/{}.img", sha256(stable_key.as_bytes()));
+        let path = storage.cache_root.join(&relative_path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, [0_u8, 1, 2, 3]).unwrap();
+        storage
+            .record_file(&stable_key, "artwork", &relative_path, 4, Some("image/png"))
+            .unwrap();
+        let fetcher = TestArtworkFetcher {
+            fail: true,
+            ..image_fetcher("image/png")
+        };
+        assert_eq!(
+            storage.artwork_data_uri(&fetcher, url).await.unwrap(),
+            "data:image/png;base64,AAECAw=="
+        );
+        assert_eq!(fetcher.calls.load(AtomicOrdering::Acquire), 0);
     }
 
     #[tokio::test]

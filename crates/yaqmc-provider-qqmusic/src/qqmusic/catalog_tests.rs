@@ -67,7 +67,6 @@ fn fixture(pages: Vec<Value>) -> (QQMusicClient, Arc<SonglistTransport>) {
     (
         QQMusicClient {
             http: http.clone(),
-            artwork_http: http,
             catalog: qqmusic_api::Client::new_with_transport(
                 None,
                 Some(qqmusic_api::Platform::Web),
@@ -267,7 +266,6 @@ fn discovery_fixture(fail: bool) -> (QQMusicClient, Arc<DiscoveryTransport>) {
     (
         QQMusicClient {
             http: http.clone(),
-            artwork_http: http,
             catalog: qqmusic_api::Client::new_with_transport(
                 None,
                 Some(qqmusic_api::Platform::Web),

@@ -1611,7 +1611,10 @@ impl QQMusicService {
             return Err(QQMusicError::MalformedResponse);
         }
         self.storage
-            .artwork_data_uri(&self.client.artwork_http, &url)
+            .artwork_data_uri(
+                &crate::qmapi::artwork::QmapiArtworkFetcher(&self.client.catalog),
+                &url,
+            )
             .await
             .map_err(|_| QQMusicError::Storage)
     }
@@ -1828,7 +1831,6 @@ fn map_provider_source_error(error: QQMusicError) -> PlaybackSourceError {
 #[derive(Clone)]
 struct QQMusicClient {
     http: Client,
-    artwork_http: Client,
     catalog: qqmusic_api::Client,
 }
 
@@ -1842,19 +1844,8 @@ impl QQMusicClient {
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .build()
             .map_err(|_| QQMusicError::Offline)?;
-        let artwork_http = Client::builder()
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(15))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|_| QQMusicError::Offline)?;
         let catalog = crate::qmapi::qmapi_client().map_err(crate::qmapi::cgi::map_qmapi_error)?;
-        Ok(Self {
-            http,
-            artwork_http,
-            catalog,
-        })
+        Ok(Self { http, catalog })
     }
 
     async fn search(
@@ -4587,7 +4578,6 @@ mod tests {
     use super::account::AccountState;
     use super::transport::{TransportRequest, TransportResponse};
     use super::*;
-    use axum::{response::Redirect, routing::get, Router};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use yaqmc_core::{
         audio::{AudioEngine, RodioAudioEngine},
@@ -4763,7 +4753,6 @@ mod tests {
         );
         let client = QQMusicClient {
             http: Client::new(),
-            artwork_http: Client::new(),
             catalog,
         };
 
@@ -5692,49 +5681,85 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn artwork_http_client_does_not_follow_redirects() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("loopback listener");
-        let address = listener.local_addr().expect("loopback address");
-        let redirected_hits = Arc::new(AtomicUsize::new(0));
-        let target_hits = Arc::clone(&redirected_hits);
-        let redirect_target = format!("http://{address}/redirected");
-        let app = Router::new()
-            .route(
-                "/artwork",
-                get(move || {
-                    let redirect_target = redirect_target.clone();
-                    async move { Redirect::temporary(&redirect_target) }
-                }),
-            )
-            .route(
-                "/redirected",
-                get(move || {
-                    let target_hits = Arc::clone(&target_hits);
-                    async move {
-                        target_hits.fetch_add(1, Ordering::SeqCst);
-                        "unexpected redirect target"
-                    }
-                }),
+    async fn artwork_uses_anonymous_library_downloads_and_reuses_the_core_cache() {
+        struct ImageTransport {
+            calls: AtomicUsize,
+            status: u16,
+        }
+        #[async_trait::async_trait]
+        impl qqmusic_api::ApiTransport for ImageTransport {
+            async fn execute(
+                &self,
+                request: qqmusic_api::TransportRequest,
+            ) -> qqmusic_api::Result<qqmusic_api::TransportResponse> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(request.method, qqmusic_api::HttpMethod::Get);
+                assert_eq!(request.redirects, qqmusic_api::RedirectMode::None);
+                assert_eq!(request.max_response_bytes, Some(5 * 1024 * 1024));
+                assert!(request
+                    .headers
+                    .iter()
+                    .any(|(name, value)| name.eq_ignore_ascii_case("cookie") && value.is_empty()));
+                assert!(!request
+                    .headers
+                    .iter()
+                    .any(|(name, value)| name.eq_ignore_ascii_case("authorization")
+                        || value.contains("SYNTHETIC_SESSION_KEY")));
+                Ok(qqmusic_api::TransportResponse {
+                    status: self.status,
+                    final_url: request.url,
+                    headers: vec![
+                        ("Content-Type".into(), "image/png".into()),
+                        ("Location".into(), "https://qpic.y.qq.com/redirected".into()),
+                    ],
+                    body: vec![0, 1, 2, 3],
+                })
+            }
+        }
+        for status in [200, 307] {
+            let root = tempfile::tempdir().unwrap();
+            let storage = Arc::new(
+                StorageService::open(root.path().join("data"), root.path().join("cache")).unwrap(),
             );
-        let server = tokio::spawn(async move {
-            axum::serve(listener, app)
+            let mut service = QQMusicService::new(
+                storage.clone(),
+                Arc::new(MemoryCredentialStore::default()),
+                root.path().join("fixtures"),
+            )
+            .unwrap();
+            let transport = Arc::new(ImageTransport {
+                calls: AtomicUsize::new(0),
+                status,
+            });
+            service.client.catalog = qqmusic_api::Client::new_with_transport(
+                Some(qqmusic_api::Credential {
+                    musicid: 10001,
+                    musickey: "SYNTHETIC_SESSION_KEY".into(),
+                    ..Default::default()
+                }),
+                None,
+                transport.clone(),
+            );
+            let source = "https://qpic.y.qq.com/image.png";
+            let result = service.artwork_data_uri(source.into()).await;
+            if status == 200 {
+                assert_eq!(result.unwrap(), "data:image/png;base64,AAECAw==");
+                assert_eq!(
+                    service.artwork_data_uri(source.into()).await.unwrap(),
+                    "data:image/png;base64,AAECAw=="
+                );
+                assert_eq!(storage.stats().unwrap().artwork_entries, 1);
+            } else {
+                assert!(result.is_err());
+                assert_eq!(storage.stats().unwrap().artwork_entries, 0);
+            }
+            assert_eq!(transport.calls.load(Ordering::SeqCst), 1);
+            assert!(service
+                .artwork_data_uri("https://example.invalid/unsafe.png".into())
                 .await
-                .expect("redirect test server");
-        });
-        let client = QQMusicClient::new().expect("QQ Music client");
-
-        let response = client
-            .artwork_http
-            .get(format!("http://{address}/artwork"))
-            .send()
-            .await
-            .expect("redirect response");
-
-        assert!(response.status().is_redirection());
-        assert_eq!(redirected_hits.load(Ordering::SeqCst), 0);
-        server.abort();
+                .is_err());
+            assert_eq!(transport.calls.load(Ordering::SeqCst), 1);
+        }
     }
 
     #[tokio::test]

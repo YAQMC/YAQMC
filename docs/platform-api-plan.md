@@ -394,7 +394,7 @@ YAQMC 的 Cargo manifest/lock、CI pin helper、对应源码 checkout、开发�
 #### 账户列表收敛（继续实施）
 
 本批基线为 YAQMC `05a2354`，库 pin 更新为
-`cbbf8e79b3b13635309c6f0b6e9109404bd60c38`。
+`c910820b7a21781cff3ca59ab5717e9fa7673bb8`。
 
 - `OwnedPlaylists` / `CollectedPlaylists` 将自建/收藏歌单列表的 endpoint、请求参数、
   显式凭据和分页校验移到库。普通列表与修改前/修改后对账共用该接口；
@@ -419,7 +419,7 @@ Clippy 与 CI 脚本 235 项通过。所有请求使用合成数据，未执行�
 
 | 命令                                                                                               | 结果                                                               |
 | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `cargo +1.88.0 fetch --locked`                                                                     | 已从远端获取 `cbbf8e7`                                             |
+| `cargo +1.88.0 fetch --locked`                                                                     | 已从远端获取 `c910820`                                             |
 | `cargo +1.88.0 check --workspace --locked --offline --all-targets`                                 | 通过                                                               |
 | `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings`                 | 通过                                                               |
 | `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet`                          | 通过；Core 277、provider 287 passed / 8 ignored，边界集成 3 passed |
@@ -440,7 +440,7 @@ Electron 构建和 Android 检查；它不是本批新提交的 CI 证据，不�
 
 本批库 pin 更新为 `cbbf8e79b3b13635309c6f0b6e9109404bd60c38`。新增 `qm-api-rs::artwork`
 纯函数边界，统一专辑尺寸、CDN URL 升级、主机/路径白名单、专辑 MID 解析和变体生成；
-该模块不执行网络请求，也不接收账户凭据。provider 的 artwork 模块现在只映射
+该 revision 的模块不执行网络请求，也不接收账户凭据。provider 的 artwork 模块只映射
 `ArtworkSource` 为 `Provider API::Artwork`，不再持有 `T002R` URL 模板、CDN 白名单或
 `reqwest::Url` 解析。宿主仍负责缓存、无凭据图片下载、响应大小/内容类型和重定向策略。
 
@@ -448,6 +448,47 @@ Electron 构建和 Android 检查；它不是本批新提交的 CI 证据，不�
 新增源码边界测试及 UI 元数据回归。正式 pin 下 provider 测试 288 passed / 8 ignored，
 workspace check/Clippy 通过；未进行真实 CDN 下载或 LIVE artwork 验收。该批不改变
 fallback artwork，不把任意上游 URL 变成可信图片。
+
+#### 2026-09-14：图片下载和缓存边界
+
+本批基线为 YAQMC `6f3cf12`，库候选已提交为
+`8734353175317cf81c2180b73deff18edca8a650`。上一批仅迁出 URL 协议，下载仍经 Core 中的
+`reqwest::Client` 直连；本批将实际图片请求纳入 `qm-api-rs::artwork::download`：
+
+- 库指定匿名 GET、显式空 Cookie、禁止重定向，复核最终 URL、状态和图片 Content-Type。
+  `HttpOptions` / `TransportRequest` 新增可选响应字节上限，两种 transport 都在解码后分块
+  收集过程中执行上限；图片固定 5 MiB，不再先无界读取完整响应。其他 API 未设置上限时
+  保留既有策略。自定义 transport 也必须遵守该字段。
+- `ProviderStorage` 不再接收 HTTP client，改为 `ArtworkFetcher` / `ArtworkBytes`；QQ
+  adapter 只委托库下载并映射结果。删除额外 `artwork_http` client。Core 保留缓存、Base64
+  和 UI 数据 URI 输出，并独立复核大小与 MIME。
+- 缓存使用原 URL 派生的键和文件名，旧缓存无需网络迁移。下载仍受原有四并发限制，
+  缓存提交串行化以避免同一图片并发发布的不一致；缓存读取也有字节上限。
+- 新增合成下载契约、真实 loopback 定长/分块响应限额、旧缓存命中、无效/超限响应拒绝、
+  并发缓存写入，以及完整 provider → 库 → cache 的回归；不向真实 QQ/CDN 发请求。
+
+库全量测试 185 单元测试、34 集成测试通过，Clippy/fmt 通过。联调 provider 289 passed /
+8 ignored，边界集成 5 passed，workspace check/Clippy 通过。
+
+正式 git pin（无本地 path patch）的验证结果：
+
+| 命令                                                                                               | 结果                                                           |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `cargo +1.88.0 fetch --locked`                                                                     | 已取得远端 `8734353`                                           |
+| `cargo +1.88.0 check --workspace --locked --offline --all-targets`                                 | 通过                                                           |
+| `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings`                 | 通过                                                           |
+| `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet`                          | 通过；Core 280、provider 289 passed / 8 ignored、边界 5 passed |
+| `cargo +1.88.0 fmt --all -- --check`、`git diff --check`                                           | 通过                                                           |
+| `npm run ci:test-scripts`                                                                          | 235 passed                                                     |
+| 本批 MJS 的 ESLint 与改动文本的 Prettier                                                           | 通过                                                           |
+| `npm run docs:check`、`node scripts/ci/qm-api-rs-access.mjs --check`、`npm run provenance:enforce` | 通过                                                           |
+| `./scripts/check-secrets.ps1 -SelfTest`、`./scripts/check-secrets.ps1`                             | 通过                                                           |
+
+多 profile、插件端点路由、Spotify、桌面 QR/OAuth 残留仍未完成；本批未执行 Android 真机、
+Linux 本机构建、Electron GUI 或 LIVE。新 pin 的 soak 仍为 not-started，不触发 Release。
+
+复杂度：下载和 Base64 编码的时间/额外空间为 O(b)，b 为响应字节数，图片上限 5 MiB。
+不以该上限替代 Wasm 插件资源配额或媒体播放的流式缓存限制。
 
 ## 6. 可执行工作包与依赖
 

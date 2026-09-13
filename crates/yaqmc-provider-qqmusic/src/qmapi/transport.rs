@@ -148,7 +148,8 @@ impl YaqmcReqwestTransport {
             }
 
             let response_headers = headers_from_reqwest(response.headers());
-            let body_bytes = collect_body(response, &request.cancellation).await?;
+            let body_bytes =
+                collect_body(response, &request.cancellation, request.max_response_bytes).await?;
             return Ok(TransportResponse {
                 status,
                 final_url: current_url.to_string(),
@@ -283,7 +284,9 @@ fn validate_url(url: &Url, extra_origins: &[String]) -> Result<(), QmError> {
     if host.is_empty() {
         return Err(allowlist_denied("<missing-host>"));
     }
-    if url.scheme() == "https" && is_allowed_host(host) {
+    if (url.scheme() == "https" && is_allowed_host(host))
+        || qqmusic_api::artwork::is_allowed_url(url.as_str())
+    {
         return Ok(());
     }
     let origin = origin_of(url);
@@ -338,15 +341,31 @@ async fn sleep_or_cancel(request: &TransportRequest, delay: Duration) -> Result<
 }
 
 async fn collect_body(
-    response: reqwest::Response,
+    mut response: reqwest::Response,
     cancellation: &CancellationToken,
+    limit: Option<usize>,
 ) -> Result<Vec<u8>, QmError> {
-    tokio::select! {
-        biased;
-        () = cancellation.cancelled() => Err(cancelled()),
-        body = response.bytes() => body
-            .map(|bytes| bytes.to_vec())
-            .map_err(map_reqwest_error),
+    let too_large = || QmError::Protocol {
+        stage: "response-limit",
+        message: "decoded response exceeds byte limit".into(),
+    };
+    if limit.is_some_and(|limit| response.content_length().is_some_and(|n| n > limit as u64)) {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            () = cancellation.cancelled() => return Err(cancelled()),
+            chunk = response.chunk() => chunk.map_err(map_reqwest_error)?,
+        };
+        let Some(chunk) = chunk else {
+            return Ok(bytes);
+        };
+        if limit.is_some_and(|limit| chunk.len() > limit.saturating_sub(bytes.len())) {
+            return Err(too_large());
+        }
+        bytes.extend_from_slice(&chunk);
     }
 }
 
@@ -555,6 +574,48 @@ mod tests {
         let transport = YaqmcReqwestTransport::new(config).expect("reqwest 0.13 transport");
         transport.allow_origin(base);
         transport
+    }
+
+    #[tokio::test]
+    async fn decoded_body_limit_is_enforced_for_length_and_chunked_responses() {
+        use axum::{body::Body, response::Response};
+        let hits = Arc::new(AtomicU32::new(0));
+        let count = hits.clone();
+        let app = Router::new()
+            .route("/fixed", get(|| async { "12345678" }))
+            .route(
+                "/chunked",
+                get(move || {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    async {
+                        Response::new(Body::from_stream(futures_util::stream::iter([
+                            Ok::<_, std::convert::Infallible>("1234"),
+                            Ok("5678"),
+                        ])))
+                    }
+                }),
+            );
+        let base = spawn_router(app).await;
+        let transport = transport_for(&base, TransportConfig::default());
+        for path in ["fixed", "chunked"] {
+            let mut request = TransportRequest::new(HttpMethod::Get, format!("{base}/{path}"));
+            request.max_response_bytes = Some(4);
+            assert!(matches!(
+                transport.execute(request).await,
+                Err(QmError::Protocol {
+                    stage: "response-limit",
+                    ..
+                })
+            ));
+        }
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "over-limit responses cannot be retried"
+        );
+        let mut exact = TransportRequest::new(HttpMethod::Get, format!("{base}/fixed"));
+        exact.max_response_bytes = Some(8);
+        assert_eq!(transport.execute(exact).await.unwrap().body, b"12345678");
     }
 
     #[test]
