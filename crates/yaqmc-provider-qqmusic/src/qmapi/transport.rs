@@ -29,6 +29,20 @@ const PRODUCTION_HOSTS: &[&str] = &[
     "lp.open.weixin.qq.com",
 ];
 
+/// Business endpoint owned by the transport boundary.
+///
+/// Provider modules must reach QQ Music through typed qm-api-rs calls or this
+/// boundary; they must not declare upstream URLs of their own.
+pub(crate) const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+
+/// Headers the host sends when fetching a resolved media URL.
+pub(crate) fn playback_headers() -> Vec<(String, String)> {
+    vec![
+        ("Referer".to_owned(), "https://y.qq.com/".to_owned()),
+        ("Origin".to_owned(), "https://y.qq.com".to_owned()),
+    ]
+}
+
 pub(crate) struct YaqmcReqwestTransport {
     client: Client,
     config: TransportConfig,

@@ -7,8 +7,15 @@ use lyrics_crypto::decrypter::qrc::decrypter::decrypt_lyrics as decrypt_qrc;
 #[cfg(test)]
 use md5::{Digest as Md5Digest, Md5};
 use quick_xml::{escape::unescape, events::Event, Reader};
-use reqwest::{header, Client, RequestBuilder, StatusCode};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use reqwest::Client;
+#[cfg(test)]
+use reqwest::RequestBuilder;
+#[cfg(test)]
+use reqwest::{header, StatusCode};
+#[cfg(test)]
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use serde_json::{json, Value};
 use sha2::Sha256;
 use std::{
@@ -69,7 +76,7 @@ pub(crate) use cache::OpaqueAccountScope;
 pub(crate) use entitlement::normalize_account_entitlement;
 pub use oauth::{url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult};
 
-const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+pub(crate) use crate::qmapi::transport::QQ_MUSICU_URL;
 #[cfg(test)]
 #[allow(dead_code)]
 const QQ_MUSICS_URL: &str = "https://u.y.qq.com/cgi-bin/musics.fcg";
@@ -2370,33 +2377,9 @@ impl QQMusicClient {
         };
         #[cfg(test)]
         let qmapi_clear_urls: Option<HashMap<String, String>> = None;
-        let response: VkeyEnvelope = if qmapi_clear_urls.is_some() || filenames.is_empty() {
-            VkeyEnvelope::default()
-        } else {
-            let song_mids = vec![provider.track_id.clone(); filenames.len()];
-            let song_types = vec![0_u8; filenames.len()];
-            let uin = session.map_or("0", |session| session.uin.as_str());
-            let payload = json!({
-                "comm": { "uin": uin, "format": "json", "ct": 24, "cv": 0 },
-                "req_0": {
-                    "module": "vkey.GetVkeyServer",
-                    "method": "CgiGetVkey",
-                    "param": {
-                        "guid": stable_guid(),
-                        "songmid": song_mids,
-                        "songtype": song_types,
-                        "uin": uin,
-                        "loginflag": 1,
-                        "platform": "20",
-                        "filename": filenames.clone()
-                    }
-                }
-            });
-            self.send_json("playback.resolve", || {
-                self.musicu_request(&payload, session)
-            })
-            .await?
-        };
+        let response: VkeyEnvelope = self
+            .legacy_vkey_envelope(&provider.track_id, &filenames, session)
+            .await?;
         epoch_guard
             .validate()
             .map_err(|_| QQMusicError::Cancelled)?;
@@ -2585,6 +2568,57 @@ impl QQMusicClient {
             .collect()
     }
 
+    /// Legacy clear-key vkey request kept as migration regression coverage.
+    ///
+    /// Production resolves clear playback URLs through the typed `qm-api-rs`
+    /// playback module, so the raw business CGI payload is compiled in tests only.
+    #[cfg(test)]
+    async fn legacy_vkey_envelope(
+        &self,
+        song_mid: &str,
+        filenames: &[String],
+        session: Option<&QQSession>,
+    ) -> Result<VkeyEnvelope, QQMusicError> {
+        if filenames.is_empty() {
+            return Ok(VkeyEnvelope::default());
+        }
+        let song_mids = vec![song_mid.to_owned(); filenames.len()];
+        let song_types = vec![0_u8; filenames.len()];
+        let uin = session.map_or("0", |session| session.uin.as_str());
+        let payload = json!({
+            "comm": { "uin": uin, "format": "json", "ct": 24, "cv": 0 },
+            "req_0": {
+                "module": "vkey.GetVkeyServer",
+                "method": "CgiGetVkey",
+                "param": {
+                    "guid": stable_guid(),
+                    "songmid": song_mids,
+                    "songtype": song_types,
+                    "uin": uin,
+                    "loginflag": 1,
+                    "platform": "20",
+                    "filename": filenames
+                }
+            }
+        });
+        self.send_json("playback.resolve", || {
+            self.musicu_request(&payload, session)
+        })
+        .await
+    }
+
+    /// Production build: clear playback URLs are always library resolved.
+    #[cfg(not(test))]
+    async fn legacy_vkey_envelope(
+        &self,
+        _song_mid: &str,
+        _filenames: &[String],
+        _session: Option<&QQSession>,
+    ) -> Result<VkeyEnvelope, QQMusicError> {
+        Ok(VkeyEnvelope::default())
+    }
+
+    #[cfg(test)]
     fn musicu_request(&self, payload: &Value, session: Option<&QQSession>) -> RequestBuilder {
         let request = self
             .http
@@ -2599,6 +2633,7 @@ impl QQMusicClient {
         }
     }
 
+    #[cfg(test)]
     async fn send_json<T, F>(&self, operation: &str, build: F) -> Result<T, QQMusicError>
     where
         T: DeserializeOwned,
@@ -2939,12 +2974,7 @@ struct EncryptedPlaybackSource {
     ekey: EncryptedMediaKey,
 }
 
-pub(crate) fn playback_headers() -> Vec<(String, String)> {
-    vec![
-        ("Referer".to_owned(), "https://y.qq.com/".to_owned()),
-        ("Origin".to_owned(), "https://y.qq.com".to_owned()),
-    ]
-}
+pub(crate) use crate::qmapi::transport::playback_headers;
 
 pub(crate) fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
     header.split(';').find_map(|part| {
@@ -4476,6 +4506,7 @@ fn merge_recent_history(
     remote
 }
 
+#[cfg(test)]
 fn stable_guid() -> String {
     let value = unix_timestamp_ms() % 9_000_000_000 + 1_000_000_000;
     value.to_string()
