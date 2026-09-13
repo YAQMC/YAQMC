@@ -247,8 +247,8 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
 - 生产账户读路径的收藏、歌单曲目和最近播放现已统一调用
   `qm-api-rs::account::read_page` typed boundary；账户写路径通过
   `qm-api-rs::account::AccountWrite` 的固定 endpoint、参数校验和账户凭据边界执行，provider
-  保留身份快照、缓存、分页、业务结果解释和对账。注意 `typed_write_from_legacy`
-  仍从 provider 的 module/method/JSON 转换为 `AccountWrite`，这不等于业务参数构造已完全迁出。
+  保留身份快照、缓存、分页、业务结果解释和对账。当时仍有 `typed_write_from_legacy`
+  从 module/method/JSON 转换为 `AccountWrite`；下面的“账户写入与对账详情”增量已删除该层。
 - 生产加密播放现已通过 `qm-api-rs::SongApi::get_song_urls` 的 typed `CgiGetEVkey`
   路径；provider 仅负责候选音质映射、凭据注入和 CDN/ekey 响应校验。旧
   `musics.fcg` payload/signature 代码仅保留在测试 fixture 中。
@@ -319,7 +319,7 @@ Playing 覆盖 Paused/Stopped；收窄时钟状态晋级后两项测试以及缓
 最终完整 workspace 也通过。原 QA 断言未修改，不用增加 sleep 或修改期望掩盖竞态。
 未运行前端全矩阵、平台打包、Android 真机、LIVE 或发布验收。
 
-残留工作：直接构造 `AccountWrite` 以删除 provider 的字符串转换层；迁移桌面 QR、
+当时的残留工作：直接构造 `AccountWrite` 以删除 provider 的字符串转换层；迁移桌面 QR、
 OAuth code exchange 和其请求/响应契约；核对 artwork 生成与安全下载边界。
 插件路由 C1 继续依赖 B1/B2，不提前建立缺少 profile 隔离和调用方的第二套注册表。
 
@@ -348,6 +348,48 @@ YAQMC 的 Cargo manifest/lock、CI pin helper、对应源码 checkout、开发�
 
 以上不是 Android 真机、LIVE、完整前端矩阵或 Release 验收。历史 cutover 授权不变，
 但旧 pin 的 soak waiver 没有转移到新 pin；本轮仅推送代码，不创建 tag 或 Release。
+
+#### 账户写入与对账详情（继续实施）
+
+本批基线为 YAQMC `b592988`，新增库 pin 为
+`ee2c20b6ae071dacb18832ddef12c630eaa549fd`。
+
+- 收藏歌曲、歌单创建/重命名/删除、歌曲增删和收藏歌单直接构造 `AccountWrite`，
+  不再生成 module/method/业务 JSON 再反向解析。删除旧写入 envelope、重复结果解析器
+  和服务层 `cfg(test)` 绕行；生产与测试共用 typed 调用及注入的 `ApiTransport`。
+- 保留账户代次的前后检查、幂等操作 ID、未知结果的只读对账以及禁止自动重放写操作。
+  添加取消前/发送后取消、损坏响应、503/超时、拒绝、凭据隔离和越界数值 ID 回归。
+- 歌单修改前与对账的详情读取接入 `account::read_page`，不再在此处拼装 `CgiGetDiss`。
+  库原本把部分自建歌单返回的目录 ID 误作公开 TID；新增 `OwnedPlaylistTracks`，只接受
+  请求前从同账户可信列表捕获的目录绑定，不从待校验响应推导绑定；冲突身份仍 fail closed。
+- 合成写入 fixture 的 envelope 从旧 `req` 改为库实际使用的 `req_0`，保留业务内容与
+  Applied/Rejected/Reconciled、精确发送次数及对账断言。只读 fixture 的 `req` 保持不变。
+- 新增源码边界回归：禁止旧写入编码器回流、禁止测试专用执行分支、保留前后账户代次检查；
+  readiness 检查同步 typed 调用，不再要求旧的测试分支。
+
+库全量验证：`cargo +1.88.0 test --locked --offline --all-targets --all-features --quiet`
+通过（181 单元测试、24 集成测试），`clippy --locked --offline --all-targets --all-features -- -D warnings`
+和格式检查通过。联调 provider 通过 284 项、8 ignored，边界集成 2 项通过。
+测试数量减少包含删除只测旧库辅助接口/旧转换层的重复测试；新参数表覆盖全部 9 种写操作。
+
+正式 pin 的无 path patch 复核结果：
+
+| 命令                                                                                               | 结果                                                               |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `cargo +1.88.0 fetch --locked`                                                                     | 已从远端取得 `ee2c20b`                                             |
+| `cargo +1.88.0 check --workspace --locked --offline --all-targets`                                 | 通过                                                               |
+| `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings`                 | 通过                                                               |
+| `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet`                          | 通过；Core 277、provider 284 passed / 8 ignored、边界集成 2 passed |
+| `cargo +1.88.0 fmt --all -- --check`、`git diff --check`                                           | 通过                                                               |
+| `npm run ci:test-scripts`                                                                          | 235 passed                                                         |
+| `node scripts/ci/qm-api-rs-access.mjs --check`、`npm run docs:check`、`npm run provenance:enforce` | 通过                                                               |
+| 本批 MJS 的 ESLint、本批 Markdown/JSON/MJS/YAML 的 Prettier                                        | 通过                                                               |
+| `./scripts/check-secrets.ps1 -SelfTest`、`./scripts/check-secrets.ps1`                             | 通过                                                               |
+| `npm run provider:enforce`                                                                         | 预期退出 3：新 pin soak 为 not-started                             |
+
+此批不完成全部账户读取：歌单列表/收藏歌单列表及其对账仍有旧请求构造；桌面 QR、OAuth
+交换、artwork 等仍待迁移。多 profile、插件端点路由与 Spotify 保持未完成。
+所有本批验证为合成数据/本地环境，不等同于 LIVE 或真机通过；新 pin 不继承 soak waiver。
 
 ## 6. 可执行工作包与依赖
 

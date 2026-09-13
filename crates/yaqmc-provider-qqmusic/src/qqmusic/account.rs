@@ -17,6 +17,7 @@ use super::{
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
     upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
 };
+use qqmusic_api::account::AccountWrite;
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
     Method, StatusCode, Url,
@@ -652,21 +653,6 @@ pub struct PlaylistMutationResult {
     pub auth_revision: u64,
 }
 
-#[derive(Serialize)]
-struct EditPlaylistPayload {
-    #[serde(rename = "dirId")]
-    dir_id: u64,
-    mask: u8,
-    #[serde(rename = "dirNewName")]
-    dir_new_name: String,
-    #[serde(rename = "dirNewDesc")]
-    dir_new_desc: String,
-    #[serde(rename = "dirNewPicUrl")]
-    dir_new_pic_url: String,
-    #[serde(rename = "dirNewtaglist")]
-    dir_new_tag_list: String,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PlaylistWriteCertainty {
     Accepted,
@@ -969,18 +955,12 @@ impl QQMusicAccountService {
             context,
             "account.favorite.write",
             "favorite-mutation",
-            "music.musicasset.PlaylistDetailWrite",
-            if request.favorite {
-                "AddSonglist"
-            } else {
-                "DelSonglist"
+            AccountWrite::FavoriteSong {
+                add: request.favorite,
+                song_id: i64::try_from(numeric_track_id)
+                    .map_err(|_| QQMusicError::InvalidRequest)?,
+                song_type: 0,
             },
-            json!({
-                "dirId": 201,
-                "tid": 0,
-                "bFmtUtf8": true,
-                "v_songInfo": [{ "songId": numeric_track_id, "songType": 0 }]
-            }),
         )
         .await
     }
@@ -1331,45 +1311,27 @@ impl QQMusicAccountService {
         request: &CollectPlaylistRequest,
         provider_id: &str,
     ) -> Result<PlaylistMutationResult, QQMusicError> {
-        let encrypted_uin = context
+        if context
             .session
             .encrypted_uin
             .as_deref()
-            .ok_or(QQMusicError::UnsupportedOperation)?;
-        let method = if request.collected {
-            "FavPlaylist"
-        } else {
-            "CancelFavPlaylist"
-        };
-        let param = json!({
-            "uin": encrypted_uin,
-            "v_playlistId": [provider_id.parse::<u64>().map_err(|_| QQMusicError::InvalidRequest)?]
-        });
-        #[cfg(not(test))]
-        let write = crate::qmapi::account::execute_account_write(
-            &context.session,
-            "music.musicasset.PlaylistFavWrite",
-            method,
-            param,
-            context.cancellation.clone(),
-        )
-        .await;
-        #[cfg(test)]
+            .is_none_or(str::is_empty)
+        {
+            return Err(QQMusicError::UnsupportedOperation);
+        }
         let write = self
-            .execute_account_transport(
+            .execute_playlist_write(
                 context,
                 "account.playlist.collection.write",
                 "playlist-collection-result",
-                musicu_request(
-                    &context.session,
-                    "music.musicasset.PlaylistFavWrite",
-                    method,
-                    param,
-                ),
-                RetryClass::Write,
+                AccountWrite::CollectPlaylist {
+                    collect: request.collected,
+                    playlist_id: provider_id
+                        .parse::<i64>()
+                        .map_err(|_| QQMusicError::InvalidRequest)?,
+                },
             )
-            .await
-            .and_then(|response| playlist_collection_write_accepted(&response.body, provider_id));
+            .await;
         let (accepted, definitively_rejected) = match write {
             Ok(accepted) => (accepted, true),
             Err(QQMusicError::OutcomeUnknown | QQMusicError::Timeout | QQMusicError::Offline) => {
@@ -1559,9 +1521,9 @@ impl QQMusicAccountService {
                 context,
                 "account.playlist.create.write",
                 "playlist-create-mutation",
-                "music.musicasset.PlaylistBaseWrite",
-                "AddPlaylist",
-                json!({ "dirName": request.title }),
+                AccountWrite::CreatePlaylist {
+                    name: request.title.clone(),
+                },
             )
             .await;
         #[cfg(test)]
@@ -1665,23 +1627,20 @@ impl QQMusicAccountService {
         if !before.summary.capabilities.can_rename {
             return Err(QQMusicError::AuthorizationRejected);
         }
-        let payload = serde_json::to_value(EditPlaylistPayload {
-            dir_id: edit.provider_dir_id,
-            mask: 15,
-            dir_new_name: request.title.clone(),
-            dir_new_desc: edit.description.clone(),
-            dir_new_pic_url: edit.picture_url.clone(),
-            dir_new_tag_list: String::new(),
-        })
-        .map_err(|_| QQMusicError::Protocol)?;
         let write = self
             .execute_playlist_write(
                 context,
                 "account.playlist.rename.write",
                 "playlist-rename-mutation",
-                "music.musicasset.PlaylistBaseWrite",
-                "EditPlaylist",
-                payload,
+                AccountWrite::EditPlaylist {
+                    dir_id: i64::try_from(edit.provider_dir_id)
+                        .map_err(|_| QQMusicError::InvalidRequest)?,
+                    mask: 15,
+                    name: request.title.clone(),
+                    description: edit.description.clone(),
+                    picture_url: edit.picture_url.clone(),
+                    tag_list: String::new(),
+                },
             )
             .await;
         #[cfg(test)]
@@ -1814,7 +1773,6 @@ impl QQMusicAccountService {
             );
             return Err(QQMusicError::SchemaChanged);
         };
-        let method = if add { "AddSonglist" } else { "DelSonglist" };
         let operation = if add {
             "account.playlist.add.write"
         } else {
@@ -1825,14 +1783,17 @@ impl QQMusicAccountService {
                 context,
                 operation,
                 "playlist-track-mutation",
-                "music.musicasset.PlaylistDetailWrite",
-                method,
-                json!({
-                    "dirId": provider_dir_id,
-                    "tid": 0,
-                    "bFmtUtf8": true,
-                    "v_songInfo": [{ "songId": numeric_track_id, "songType": 0 }]
-                }),
+                AccountWrite::PlaylistTracks {
+                    add,
+                    dir_id: i64::try_from(provider_dir_id)
+                        .map_err(|_| QQMusicError::InvalidRequest)?,
+                    tid: 0,
+                    songs: vec![(
+                        i64::try_from(numeric_track_id)
+                            .map_err(|_| QQMusicError::InvalidRequest)?,
+                        0,
+                    )],
+                },
             )
             .await;
         #[cfg(test)]
@@ -1926,9 +1887,10 @@ impl QQMusicAccountService {
                 context,
                 "account.playlist.delete.write",
                 "playlist-delete-mutation",
-                "music.musicasset.PlaylistBaseWrite",
-                "DelPlaylist",
-                json!({ "dirId": provider_dir_id }),
+                AccountWrite::DeletePlaylist {
+                    dir_id: i64::try_from(provider_dir_id)
+                        .map_err(|_| QQMusicError::InvalidRequest)?,
+                },
             )
             .await;
         #[cfg(test)]
@@ -2007,74 +1969,28 @@ impl QQMusicAccountService {
         context: &AuthenticatedAccountContext,
         operation: &'static str,
         response_shape: &'static str,
-        module: &'static str,
-        method: &'static str,
-        param: Value,
+        write: AccountWrite,
     ) -> Result<bool, QQMusicError> {
-        #[cfg(not(test))]
-        {
-            let _ = (operation, response_shape);
-            self.auth.ensure_current(&context.epoch).await?;
-            let result = crate::qmapi::account::execute_account_write(
-                &context.session,
-                module,
-                method,
-                param,
-                context.cancellation.clone(),
-            )
-            .await;
-            self.auth.ensure_current(&context.epoch).await?;
-            result
-        }
-        #[cfg(test)]
-        {
-            let response = self
-                .execute_account_transport(
-                    context,
-                    operation,
-                    response_shape,
-                    authenticated_musicu_write_request(&context.session, module, method, param)?,
-                    RetryClass::Write,
-                )
-                .await?;
-            let parsed = playlist_write_accepted(&response.body);
-            if parsed.is_err() {
-                let content_type = response
-                    .headers
-                    .get(reqwest::header::CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok())
-                    .unwrap_or("unknown");
-                let diagnostic =
-                    serde_json::from_slice::<Value>(&response.body)
-                        .ok()
-                        .map(|value| {
-                            let top_level_keys = value
-                                .as_object()
-                                .map(|object| object.keys().cloned().collect::<Vec<_>>())
-                                .unwrap_or_default();
-                            let top_code = value.get("code").and_then(|code| {
-                                code.as_i64().or_else(|| code.as_str()?.parse().ok())
-                            });
-                            let request_code = value
-                                .pointer("/req/code")
-                                .or_else(|| value.pointer("/req_0/code"))
-                                .and_then(|code| {
-                                    code.as_i64().or_else(|| code.as_str()?.parse().ok())
-                                });
-                            (top_level_keys, top_code, request_code)
-                        });
-                tracing::warn!(
-                    target: "account.favorite",
-                    operation,
-                    status = response.status.as_u16(),
-                    content_type,
-                    body_len = response.body.len(),
-                    diagnostic = ?diagnostic,
-                    "account write response shape was not recognized"
-                );
-            }
-            parsed
-        }
+        self.auth.ensure_current(&context.epoch).await?;
+        let credential = crate::qmapi::credential::credential_from_session(&context.session)?;
+        // Only the transport is injected. Production and tests share the same
+        // typed operation, library envelope and outcome classification.
+        let transport = super::transport::qmapi_bridge::AccountTransport {
+            inner: Arc::clone(&self.transport),
+            operation,
+            response_shape,
+            retry: RetryClass::Write,
+        };
+        let client = qqmusic_api::Client::new_with_transport(None, None, Arc::new(transport));
+        let result = crate::qmapi::account::execute_account_write(
+            &client,
+            &credential,
+            write,
+            context.cancellation.clone(),
+        )
+        .await;
+        self.auth.ensure_current(&context.epoch).await?;
+        result
     }
 
     async fn execute_account_transport(
@@ -2224,60 +2140,66 @@ impl QQMusicAccountService {
         operation: &'static str,
     ) -> Result<FreshPlaylistPage, QQMusicError> {
         let provider_id = provider_playlist_id(playlist_id)?;
-        let disstid = provider_id
-            .parse::<u64>()
-            .map(Value::from)
-            .unwrap_or_else(|_| Value::String(provider_id.to_owned()));
+        // Capture the account-scoped identity before the request. A directory
+        // alias is trusted only when it came from this account's owned listing,
+        // never from the response whose identity we are about to validate.
+        let projected = self
+            .projection_for(context)?
+            .playlists
+            .into_iter()
+            .find(|item| item.id == playlist_id);
+        let endpoint = match projected.as_ref() {
+            Some(AccountPlaylistSummary {
+                ownership: PlaylistOwnership::Owned,
+                reference:
+                    AccountPlaylistReference::Owned {
+                        dir_id: Some(dir_id),
+                        ..
+                    },
+                ..
+            }) => qqmusic_api::account::AccountRead::OwnedPlaylistTracks {
+                tid: provider_id.to_owned(),
+                dir_id: *dir_id,
+            },
+            _ => qqmusic_api::account::AccountRead::PlaylistTracks {
+                tid: provider_id.to_owned(),
+            },
+        };
         let response = self
-            .execute_account_transport(
+            .read_account_page(
                 context,
                 operation,
                 "playlist-detail-reconciliation",
-                musicu_request(
-                    &context.session,
-                    "music.srfDissInfo.DissInfo",
-                    "CgiGetDiss",
-                    json!({
-                        "disstid": disstid,
-                        "dirid": 0,
-                        "tag": true,
-                        "song_begin": offset,
-                        "song_num": 100,
-                        "userinfo": true,
-                        "orderlist": true,
-                        "onlysonglist": 1
-                    }),
-                ),
+                endpoint,
+                offset,
+                100,
                 retry,
             )
-            .await?;
+            .await?
+            .compatibility_json()
+            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
         let value: Value =
-            serde_json::from_slice(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
+            serde_json::from_slice(&response).map_err(|_| QQMusicError::MalformedResponse)?;
         let data = response_data(&value)?;
         let edit_value = data
             .get("dirinfo")
             .or_else(|| data.pointer("/cdlist/0"))
             .cloned()
             .ok_or(QQMusicError::SchemaChanged)?;
-        let (mut summary, page) = normalize_playlist_detail_response(&response.body, offset)
-            .map_err(|error| {
+        let (mut summary, page) =
+            normalize_playlist_detail_response(&response, offset).map_err(|error| {
                 tracing::warn!(
                     target: "qqmusic.playlist",
                     playlist_id = %playlist_id,
                     operation,
                     error = %error,
-                    shape = %response_shape(&response.body),
+                    shape = %response_shape(&response),
                     "playlist mutation detail failed to normalize"
                 );
                 error
             })?;
         let dirinfo_dir_id = playlist_dir_id_from_value(&edit_value);
-        if let Some(projected) = self
-            .projection_for(context)?
-            .playlists
-            .into_iter()
-            .find(|item| item.id == playlist_id)
-        {
+        if let Some(projected) = projected {
             if let (Ok(requested_tid), Ok(resolved_tid)) = (
                 projected.reference.generic_tid(),
                 summary.reference.generic_tid(),
@@ -2291,7 +2213,7 @@ impl QQMusicAccountService {
                         operation,
                         requested_tid,
                         resolved_tid,
-                        shape = %response_shape(&response.body),
+                        shape = %response_shape(&response),
                         "playlist mutation detail resolved a different playlist than requested"
                     );
                     return Err(QQMusicError::SchemaChanged);
@@ -2311,7 +2233,7 @@ impl QQMusicAccountService {
                 operation,
                 resolved_id = %summary.id,
                 ownership = ?summary.ownership,
-                shape = %response_shape(&response.body),
+                shape = %response_shape(&response),
                 "playlist mutation detail identity did not match the requested playlist"
             );
             return Err(QQMusicError::SchemaChanged);
@@ -3198,7 +3120,7 @@ impl QQMusicAccountService {
     ) -> Result<qqmusic_api::account::AccountPage, QQMusicError> {
         self.auth.ensure_current(&context.epoch).await?;
         let credential = crate::qmapi::credential::credential_from_session(&context.session)?;
-        let transport = super::transport::qmapi_bridge::AccountReadTransport {
+        let transport = super::transport::qmapi_bridge::AccountTransport {
             inner: Arc::clone(&self.transport),
             operation,
             response_shape,
@@ -3370,56 +3292,6 @@ fn musicu_request(
     })
 }
 
-fn authenticated_musicu_write_request(
-    session: &SessionRecord,
-    module: &'static str,
-    method: &'static str,
-    param: Value,
-) -> Result<Value, QQMusicError> {
-    let music_key = cookie_value(&session.cookie_header, "qm_keyst")
-        .or_else(|| cookie_value(&session.cookie_header, "qqmusic_key"))
-        .ok_or(QQMusicError::AuthenticationExpired)?;
-    let login_type = cookie_value(&session.cookie_header, "tmeLoginType")
-        .filter(|value| matches!(*value, "1" | "2"))
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| {
-            if music_key.starts_with("W_X") {
-                "1".to_owned()
-            } else {
-                "2".to_owned()
-            }
-        });
-    let gtk = hash33(music_key.as_bytes());
-
-    Ok(json!({
-        "comm": {
-            "ct": "11",
-            "cv": 13_020_508,
-            "v": 13_020_508,
-            "tmeAppID": "qqmusic",
-            "format": "json",
-            "inCharset": "utf-8",
-            "outCharset": "utf-8",
-            "notice": 0,
-            "needNewCode": 1,
-            "platform": "yqq.json",
-            "uid": session.uin,
-            "qq": session.uin,
-            "uin": session.uin,
-            "loginUin": session.uin,
-            "authst": music_key,
-            "tmeLoginType": login_type,
-            "g_tk": gtk,
-            "g_tk_new_20200303": gtk,
-        },
-        "req": {
-            "module": module,
-            "method": method,
-            "param": param,
-        },
-    }))
-}
-
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectPlaylistRequest {
@@ -3576,54 +3448,6 @@ fn playlist_mutation_result(
         error_code,
         auth_revision,
     }
-}
-
-fn favorite_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
-    let value: Value = serde_json::from_slice(body).map_err(|_| QQMusicError::MalformedResponse)?;
-    ensure_cgi_response_success(&value)?;
-    if value
-        .pointer("/req/data/result/updateTime")
-        .or_else(|| value.pointer("/req_0/data/result/updateTime"))
-        .or_else(|| value.pointer("/data/result/updateTime"))
-        .is_some()
-    {
-        return Ok(true);
-    }
-    let return_code = value
-        .pointer("/req/data/retCode")
-        .or_else(|| value.pointer("/req_0/data/retCode"))
-        .or_else(|| value.pointer("/data/retCode"))
-        .and_then(Value::as_i64)
-        .ok_or(QQMusicError::SchemaChanged)?;
-    Ok(return_code == 0)
-}
-
-fn playlist_write_accepted(body: &[u8]) -> Result<bool, QQMusicError> {
-    favorite_write_accepted(body)
-}
-
-fn playlist_collection_write_accepted(
-    body: &[u8],
-    provider_id: &str,
-) -> Result<bool, QQMusicError> {
-    let value: Value = serde_json::from_slice(body).map_err(|_| QQMusicError::MalformedResponse)?;
-    let data = response_data(&value)?;
-    let result = data
-        .get("result")
-        .or_else(|| data.get("retCode"))
-        .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
-        .ok_or(QQMusicError::SchemaChanged)?;
-    let failed = data
-        .get("v_failedPlaylistId")
-        .or_else(|| data.get("v_failTids"))
-        .and_then(Value::as_array)
-        .is_some_and(|values| {
-            values
-                .iter()
-                .filter_map(value_string)
-                .any(|id| id == provider_id)
-        });
-    Ok(result == 0 && !failed)
 }
 
 fn ensure_cgi_response_success(value: &Value) -> Result<(), QQMusicError> {
@@ -4875,17 +4699,26 @@ mod tests {
         assert!(page.items[0].is_favorite);
     }
 
-    #[test]
-    fn current_playlist_write_accepts_update_time_result() {
-        let body = serde_json::to_vec(&json!({
-            "code": 0,
-            "req": {
-                "code": 0,
-                "data": { "result": { "updateTime": 1_800_000_000 } }
-            }
-        }))
-        .expect("playlist write response");
-        assert!(matches!(favorite_write_accepted(&body), Ok(true)));
+    #[tokio::test]
+    async fn current_playlist_write_accepts_update_time_result() {
+        let fixture = AccountServiceFixture::authenticated([body(
+            r#"{"code":0,"req_0":{"code":0,"data":{"result":{"updateTime":1800000000}}}}"#,
+        )])
+        .await;
+        let context = fixture.auth.capture_account_context().await.unwrap();
+        assert!(fixture
+            .service
+            .execute_playlist_write(
+                &context,
+                "account.playlist.create.write",
+                "playlist-create-mutation",
+                AccountWrite::CreatePlaylist {
+                    name: "Synthetic playlist".into()
+                },
+            )
+            .await
+            .unwrap());
+        assert_eq!(fixture.transport.call_count(), 1);
     }
 
     #[test]
@@ -5138,50 +4971,90 @@ mod tests {
         assert!(!serialized.contains("cookie"));
     }
 
-    #[test]
-    fn authenticated_write_request_uses_current_mobile_identity_context() {
-        let mut qq_session = synthetic_session('f');
-        qq_session.uin = "100000001".to_owned();
-        qq_session.cookie_header =
-            "qm_keyst=SYNTHETIC_QQ_KEY; tmeLoginType=2; other=value".to_owned();
-        let request = authenticated_musicu_write_request(
-            &qq_session,
-            "module",
-            "method",
-            json!({"safe": true}),
-        )
-        .expect("authenticated QQ write request");
-
-        assert_eq!(request.pointer("/comm/ct"), Some(&json!("11")));
-        assert_eq!(request.pointer("/comm/cv"), Some(&json!(13_020_508)));
-        assert_eq!(request.pointer("/comm/v"), Some(&json!(13_020_508)));
-        assert_eq!(request.pointer("/comm/tmeAppID"), Some(&json!("qqmusic")));
-        assert_eq!(request.pointer("/comm/uid"), Some(&json!("100000001")));
-        assert_eq!(request.pointer("/comm/qq"), Some(&json!("100000001")));
-        assert_eq!(request.pointer("/comm/loginUin"), Some(&json!("100000001")));
-        assert_eq!(
-            request.pointer("/comm/authst"),
-            Some(&json!("SYNTHETIC_QQ_KEY"))
-        );
-        assert_eq!(request.pointer("/comm/tmeLoginType"), Some(&json!("2")));
-        assert!(request
-            .pointer("/comm/g_tk")
-            .and_then(Value::as_u64)
-            .is_some());
-
-        let mut wechat_session = synthetic_session('e');
-        wechat_session.cookie_header = "qqmusic_key=W_X_SYNTHETIC_WECHAT_KEY".to_owned();
-        let request =
-            authenticated_musicu_write_request(&wechat_session, "module", "method", json!({}))
-                .expect("authenticated WeChat write request");
-        assert_eq!(request.pointer("/comm/tmeLoginType"), Some(&json!("1")));
-
-        let mut missing_key = synthetic_session('d');
-        missing_key.cookie_header = "other=value".to_owned();
+    #[tokio::test]
+    async fn authenticated_write_request_uses_the_current_typed_identity_context() {
+        let fixture = AccountServiceFixture::authenticated([
+            favorite_success_body(),
+            favorite_success_body(),
+        ])
+        .await;
+        for (cookie, key, login_type) in [
+            (
+                "qm_keyst=SYNTHETIC_QQ_KEY; tmeLoginType=2; other=value",
+                "SYNTHETIC_QQ_KEY",
+                "2",
+            ),
+            (
+                "qqmusic_key=W_X_SYNTHETIC_WECHAT_KEY",
+                "W_X_SYNTHETIC_WECHAT_KEY",
+                "1",
+            ),
+        ] {
+            let mut context = fixture.auth.capture_account_context().await.unwrap();
+            context.session.cookie_header = cookie.into();
+            assert!(fixture
+                .service
+                .execute_playlist_write(
+                    &context,
+                    "account.favorite.write",
+                    "favorite-mutation",
+                    AccountWrite::FavoriteSong {
+                        add: true,
+                        song_id: 42,
+                        song_type: 0
+                    },
+                )
+                .await
+                .unwrap());
+            let request: Value = serde_json::from_slice(
+                &fixture
+                    .transport
+                    .request_body("account.favorite.write")
+                    .await
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(request.pointer("/comm/ct"), Some(&json!("11")));
+            assert_eq!(request.pointer("/comm/cv"), Some(&json!(13_020_508)));
+            assert_eq!(request.pointer("/comm/v"), Some(&json!(13_020_508)));
+            assert_eq!(request.pointer("/comm/tmeAppID"), Some(&json!("qqmusic")));
+            assert_eq!(
+                request.pointer("/comm/uid"),
+                Some(&json!(context.session.uin))
+            );
+            assert_eq!(
+                request.pointer("/comm/loginUin"),
+                Some(&json!(context.session.uin))
+            );
+            assert_eq!(request.pointer("/comm/authst"), Some(&json!(key)));
+            assert_eq!(
+                request.pointer("/comm/tmeLoginType"),
+                Some(&json!(login_type))
+            );
+            assert!(request
+                .pointer("/comm/g_tk")
+                .and_then(Value::as_u64)
+                .is_some());
+        }
+        let mut context = fixture.auth.capture_account_context().await.unwrap();
+        context.session.cookie_header = "other=value".into();
         assert!(matches!(
-            authenticated_musicu_write_request(&missing_key, "module", "method", json!({})),
+            fixture
+                .service
+                .execute_playlist_write(
+                    &context,
+                    "account.favorite.write",
+                    "favorite-mutation",
+                    AccountWrite::FavoriteSong {
+                        add: true,
+                        song_id: 42,
+                        song_type: 0
+                    },
+                )
+                .await,
             Err(QQMusicError::AuthenticationExpired)
         ));
+        assert_eq!(fixture.transport.call_count(), 2);
     }
 
     #[tokio::test]
@@ -5349,9 +5222,12 @@ mod tests {
                 .expect("collection write request"),
         )
         .unwrap();
-        assert_eq!(request.pointer("/req/method"), Some(&json!("FavPlaylist")));
         assert_eq!(
-            request.pointer("/req/param/v_playlistId/0"),
+            request.pointer("/req_0/method"),
+            Some(&json!("FavPlaylist"))
+        );
+        assert_eq!(
+            request.pointer("/req_0/param/v_playlistId/0"),
             Some(&json!(7001))
         );
         assert_eq!(fixture.transport.call_count(), 2);
@@ -5977,15 +5853,18 @@ mod tests {
         )
         .expect("favorite request JSON");
         assert_eq!(
-            request.pointer("/req/module"),
+            request.pointer("/req_0/module"),
             Some(&json!("music.musicasset.PlaylistDetailWrite"))
         );
-        assert_eq!(request.pointer("/req/method"), Some(&json!("DelSonglist")));
-        assert_eq!(request.pointer("/req/param/dirId"), Some(&json!(201)));
-        assert_eq!(request.pointer("/req/param/tid"), Some(&json!(0)));
-        assert_eq!(request.pointer("/req/param/bFmtUtf8"), Some(&json!(true)));
         assert_eq!(
-            request.pointer("/req/param/v_songInfo/0"),
+            request.pointer("/req_0/method"),
+            Some(&json!("DelSonglist"))
+        );
+        assert_eq!(request.pointer("/req_0/param/dirId"), Some(&json!(201)));
+        assert_eq!(request.pointer("/req_0/param/tid"), Some(&json!(0)));
+        assert_eq!(request.pointer("/req_0/param/bFmtUtf8"), Some(&json!(true)));
+        assert_eq!(
+            request.pointer("/req_0/param/v_songInfo/0"),
             Some(&json!({ "songId": 1001, "songType": 0 }))
         );
     }
@@ -6037,6 +5916,62 @@ mod tests {
             Err(QQMusicError::InvalidRequest)
         ));
         assert_eq!(fixture.transport.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn favorite_rejects_numeric_ids_outside_the_typed_boundary_before_transport() {
+        let fixture = AccountServiceFixture::authenticated([]).await;
+        fixture
+            .service
+            .track_references
+            .lock()
+            .await
+            .remember("qqmusic:track:SANITIZED_TRACK_A".into(), u64::MAX);
+        assert!(matches!(
+            fixture
+                .service
+                .set_favorite(favorite_request(
+                    "SANITIZED_TRACK_A",
+                    true,
+                    "favorite-overflow",
+                ))
+                .await,
+            Err(QQMusicError::InvalidRequest)
+        ));
+        assert_eq!(fixture.transport.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn malformed_write_reply_uses_the_same_safe_reconciliation_as_a_timeout() {
+        let fixture = AccountServiceFixture::authenticated([
+            body("synthetic malformed response"),
+            terminal_favorites_body(),
+        ])
+        .await;
+        let result = fixture
+            .service
+            .set_favorite(favorite_request(
+                "SANITIZED_TRACK_C",
+                true,
+                "favorite-malformed-reconcile",
+            ))
+            .await
+            .expect("safe read reconciles the unknown write");
+        assert_eq!(result.status, MutationStatus::Reconciled);
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.write")
+                .await,
+            1
+        );
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.favorite.reconcile")
+                .await,
+            1
+        );
     }
 
     #[tokio::test]
@@ -6282,7 +6217,7 @@ mod tests {
     #[tokio::test]
     async fn favorite_cgi_authentication_code_transitions_to_reauthentication_required() {
         let fixture = AccountServiceFixture::authenticated([body(
-            r#"{"code":0,"req":{"code":104401,"data":{}}}"#,
+            r#"{"code":0,"req_0":{"code":104401,"data":{}}}"#,
         )])
         .await;
 
@@ -6307,7 +6242,7 @@ mod tests {
     async fn favorite_reconciliation_cgi_authentication_code_requires_reauthentication() {
         let fixture = AccountServiceFixture::authenticated([
             TestReply::Error(QQMusicError::OutcomeUnknown),
-            body(r#"{"code":0,"req":{"code":104400,"data":{}}}"#),
+            body(r#"{"code":0,"req_0":{"code":104400,"data":{}}}"#),
         ])
         .await;
         let service = Arc::clone(&fixture.service);
@@ -6764,6 +6699,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn playlist_reconciliation_read_rejects_wrong_page_before_mutation() {
+        let TestReply::Body(raw) = owned_playlist_detail_with_title("Synthetic Owned Playlist")
+        else {
+            panic!("playlist fixture must contain a response");
+        };
+        let mut response: Value = serde_json::from_slice(&raw).unwrap();
+        response["req"]["data"]["song_begin"] = json!(100);
+        let fixture = AccountServiceFixture::authenticated([body(&response.to_string())]).await;
+        assert!(matches!(
+            fixture
+                .service
+                .rename_playlist(rename_playlist_request("Must not be written"),)
+                .await,
+            Err(QQMusicError::SchemaChanged)
+        ));
+        assert_eq!(
+            fixture
+                .transport
+                .operation_count("account.playlist.rename.write")
+                .await,
+            0
+        );
+        assert_eq!(fixture.transport.call_count(), 1);
+    }
+
+    #[tokio::test]
     async fn safe_rename_preserves_native_description_picture_and_empty_tags() {
         let fixture = AccountServiceFixture::authenticated([
             owned_playlist_detail_with_title("Synthetic Owned Playlist"),
@@ -6788,18 +6749,18 @@ mod tests {
         .expect("rename JSON");
 
         assert_eq!(result.status, MutationStatus::Applied);
-        assert_eq!(request.pointer("/req/param/mask"), Some(&json!(15)));
+        assert_eq!(request.pointer("/req_0/param/mask"), Some(&json!(15)));
         assert_eq!(
-            request.pointer("/req/param/dirNewName"),
+            request.pointer("/req_0/param/dirNewName"),
             Some(&json!("Renamed safely"))
         );
-        assert_eq!(request.pointer("/req/param/dirNewDesc"), Some(&json!("")));
+        assert_eq!(request.pointer("/req_0/param/dirNewDesc"), Some(&json!("")));
         assert_eq!(
-            request.pointer("/req/param/dirNewPicUrl"),
+            request.pointer("/req_0/param/dirNewPicUrl"),
             Some(&json!("https://qpic.y.qq.com/synthetic-owned.png"))
         );
         assert_eq!(
-            request.pointer("/req/param/dirNewtaglist"),
+            request.pointer("/req_0/param/dirNewtaglist"),
             Some(&json!(""))
         );
     }
@@ -6853,14 +6814,17 @@ mod tests {
         )
         .expect("add JSON");
         assert_eq!(add.status, MutationStatus::Applied);
-        assert_eq!(add_request.pointer("/req/param/dirId"), Some(&json!(3001)));
-        assert_eq!(add_request.pointer("/req/param/tid"), Some(&json!(0)));
         assert_eq!(
-            add_request.pointer("/req/param/bFmtUtf8"),
+            add_request.pointer("/req_0/param/dirId"),
+            Some(&json!(3001))
+        );
+        assert_eq!(add_request.pointer("/req_0/param/tid"), Some(&json!(0)));
+        assert_eq!(
+            add_request.pointer("/req_0/param/bFmtUtf8"),
             Some(&json!(true))
         );
         assert_eq!(
-            add_request.pointer("/req/param/v_songInfo/0"),
+            add_request.pointer("/req_0/param/v_songInfo/0"),
             Some(&json!({ "songId": 1003, "songType": 0 }))
         );
 
@@ -6912,7 +6876,7 @@ mod tests {
         assert_eq!(deleted.status, MutationStatus::Applied);
         assert!(deleted.playlist.is_none());
         assert_eq!(
-            delete_request.pointer("/req/param/dirId"),
+            delete_request.pointer("/req_0/param/dirId"),
             Some(&json!(3001))
         );
     }
@@ -7021,9 +6985,12 @@ mod tests {
             add.playlist.as_ref().map(|playlist| playlist.id.as_str()),
             Some("qqmusic:playlist:SANITIZED_PLAYLIST_OWNED")
         );
-        assert_eq!(add_request.pointer("/req/param/dirId"), Some(&json!(3001)));
         assert_eq!(
-            add_request.pointer("/req/param/v_songInfo/0"),
+            add_request.pointer("/req_0/param/dirId"),
+            Some(&json!(3001))
+        );
+        assert_eq!(
+            add_request.pointer("/req_0/param/v_songInfo/0"),
             Some(&json!({ "songId": 1003, "songType": 0 }))
         );
     }

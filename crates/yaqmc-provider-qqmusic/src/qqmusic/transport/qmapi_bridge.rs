@@ -3,7 +3,7 @@
 use super::*;
 use reqwest::header::{HeaderName, HeaderValue};
 
-pub(crate) struct AccountReadTransport {
+pub(crate) struct AccountTransport {
     pub inner: Arc<dyn QqTransport>,
     pub operation: &'static str,
     pub response_shape: &'static str,
@@ -11,7 +11,7 @@ pub(crate) struct AccountReadTransport {
 }
 
 #[async_trait]
-impl qqmusic_api::ApiTransport for AccountReadTransport {
+impl qqmusic_api::ApiTransport for AccountTransport {
     async fn execute(
         &self,
         request: qqmusic_api::TransportRequest,

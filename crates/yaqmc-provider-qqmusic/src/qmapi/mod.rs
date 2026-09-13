@@ -1,8 +1,9 @@
 //! Pinned `qqmusic-api` production integration.
 //!
-//! HTTP goes through [`transport::YaqmcReqwestTransport`] (YAQMC reqwest 0.13.4).
+//! HTTP goes through [`transport::YaqmcReqwestTransport`] or the account's injected
+//! `ApiTransport` adapter (YAQMC reqwest 0.13.4 in production).
 //! QMC decryption, lyric fetch/decrypt, clear/encrypted vkey, VIP fetch,
-//! credential-v2, and raw favorite/playlist writes use the library. A/B
+//! credential-v2, and typed favorite/playlist writes use the library. A/B
 //! signing remains only in test fixtures; G reconciliation, `choose_source`,
 //! QR/OAuth, and home/discover mapping stay in-tree.
 

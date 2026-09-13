@@ -257,9 +257,9 @@ export function assertP14cPreparationGuards({
   }
   if (
     !accountSource.includes('async fn execute_playlist_write(') ||
-    !/#\[cfg\(not\(test\)\)\][\s\S]{0,1600}crate::qmapi::account::execute_account_write\(/.test(
-      accountSource,
-    )
+    !accountSource.includes('write: AccountWrite,') ||
+    !accountSource.includes('crate::qmapi::account::execute_account_write(') ||
+    accountSource.includes('typed_write_from_legacy(')
   ) {
     throw new Error('production account mutation hybrid is missing');
   }
