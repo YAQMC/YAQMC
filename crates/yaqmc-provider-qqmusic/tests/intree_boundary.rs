@@ -91,6 +91,27 @@ fn account_lists_have_no_business_http_or_legacy_request_builder() {
     assert!(production.contains("AccountRead::CollectedPlaylists"));
 }
 
+// The host maps UI fields; upstream artwork URL/size decoding belongs to the library.
+#[test]
+fn artwork_mapping_does_not_construct_upstream_photo_urls() {
+    let source = include_str!("../src/qqmusic/artwork.rs");
+    let production = source.split("#[cfg(test)]").next().unwrap();
+    assert!(production.contains("qqmusic_api::artwork::album(mid)"));
+    assert!(production.contains("qqmusic_api::artwork::from_url(source)"));
+    for forbidden in [
+        "https://",
+        "T002R",
+        "photo_new",
+        "Url::parse",
+        "VERIFIED_ALBUM_SIZES",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "artwork protocol duplicated: {forbidden}"
+        );
+    }
+}
+
 #[derive(Default)]
 struct TestCredentialStore {
     secrets: Mutex<HashMap<String, String>>,

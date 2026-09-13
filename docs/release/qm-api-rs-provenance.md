@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS (SOURCE-MAPPING DELTA REVIEW)** at production revision
-`c910820b7a21781cff3ca59ab5717e9fa7673bb8`.
+`cbbf8e79b3b13635309c6f0b6e9109404bd60c38`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching

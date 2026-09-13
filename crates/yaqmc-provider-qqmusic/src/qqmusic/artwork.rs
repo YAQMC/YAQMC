@@ -1,22 +1,16 @@
-use super::{clean_text, color_for, upgrade_https};
+use super::{clean_text, color_for};
 use yaqmc_provider_api::{Artwork, ArtworkVariant};
 
+pub(super) use qqmusic_api::artwork::{
+    is_allowed_url as is_allowed_artwork_url, normalize_url as normalize_provider_artwork_url,
+};
+
 const FALLBACK_ARTWORK: &str = "/artwork/stillness.svg";
-const VERIFIED_ALBUM_SIZES: [u32; 4] = [150, 300, 500, 800];
 
 pub(super) fn artwork_for_album(mid: &str, title: &str) -> Artwork {
-    let clean_mid = mid.trim();
-    if !is_safe_album_mid(clean_mid) {
-        return fallback_artwork(title, mid);
-    }
-
-    let variants = album_variants(clean_mid);
-    Artwork {
-        src: variants[1].src.clone(),
-        alt: format!("Cover for {}", clean_text(title)),
-        dominant_color: color_for(clean_mid),
-        variants,
-    }
+    let source = qqmusic_api::artwork::album(mid);
+    let color_key = if source.is_some() { mid.trim() } else { mid };
+    map_artwork(source, title, color_for(color_key))
 }
 
 pub(super) fn artwork_from_provider_url(
@@ -24,67 +18,40 @@ pub(super) fn artwork_from_provider_url(
     title: &str,
     dominant_color: String,
 ) -> Artwork {
-    let Some(source) = normalize_provider_artwork_url(source) else {
-        return Artwork {
-            src: FALLBACK_ARTWORK.to_owned(),
-            alt: format!("Cover for {}", clean_text(title)),
-            dominant_color,
-            variants: Vec::new(),
-        };
-    };
+    map_artwork(
+        qqmusic_api::artwork::from_url(source),
+        title,
+        dominant_color,
+    )
+}
 
-    let variants = canonical_album_mid(&source)
-        .filter(|mid| is_safe_album_mid(mid))
-        .map(|mid| album_variants(&mid))
-        .or_else(|| measured_source_variant(&source).map(|variant| vec![variant]))
-        .unwrap_or_default();
+fn map_artwork(
+    source: Option<qqmusic_api::artwork::ArtworkSource>,
+    title: &str,
+    dominant_color: String,
+) -> Artwork {
+    let (src, variants) = source
+        .map(|source| {
+            (
+                source.url,
+                source
+                    .variants
+                    .into_iter()
+                    .map(|variant| ArtworkVariant {
+                        src: variant.url,
+                        width: variant.width,
+                        height: variant.height,
+                    })
+                    .collect(),
+            )
+        })
+        .unwrap_or_else(|| (FALLBACK_ARTWORK.to_owned(), Vec::new()));
     Artwork {
-        src: variants
-            .get(1)
-            .map(|variant| variant.src.clone())
-            .unwrap_or(source),
+        src,
         alt: format!("Cover for {}", clean_text(title)),
         dominant_color,
         variants,
     }
-}
-
-const ALLOWED_ARTWORK_HOSTS: &[&str] = &[
-    "y.gtimg.cn",
-    "qpic.y.qq.com",
-    "music-file.y.qq.com",
-    "q.qlogo.cn",
-    "thirdwx.qlogo.cn",
-    "thirdqq.qlogo.cn",
-];
-
-const Y_QQ_ARTWORK_PATH_PREFIXES: &[&str] = &["/m/resource/calendar/", "/music/common/upload/"];
-
-pub(super) fn normalize_provider_artwork_url(value: &str) -> Option<String> {
-    let value = value.trim();
-    let upgraded = if value.starts_with("//") {
-        format!("https:{value}")
-    } else {
-        upgrade_https(value)
-    };
-    is_allowed_artwork_url(&upgraded).then_some(upgraded)
-}
-
-pub(super) fn is_allowed_artwork_url(value: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(value) else {
-        return false;
-    };
-    url.scheme() == "https"
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.port_or_known_default() == Some(443)
-        && url.host_str().is_some_and(|host| {
-            ALLOWED_ARTWORK_HOSTS.contains(&host)
-                || (host == "y.qq.com"
-                    && Y_QQ_ARTWORK_PATH_PREFIXES
-                        .iter()
-                        .any(|prefix| url.path().starts_with(prefix)))
-        })
 }
 
 #[cfg(test)]
@@ -129,68 +96,6 @@ fn card_cover_url(card: &serde_json::Value) -> String {
         &cover
     };
     normalize_provider_artwork_url(source).unwrap_or_default()
-}
-
-fn fallback_artwork(title: &str, color_key: &str) -> Artwork {
-    Artwork {
-        src: FALLBACK_ARTWORK.to_owned(),
-        alt: format!("Cover for {}", clean_text(title)),
-        dominant_color: color_for(color_key),
-        variants: Vec::new(),
-    }
-}
-
-fn album_variants(mid: &str) -> Vec<ArtworkVariant> {
-    VERIFIED_ALBUM_SIZES
-        .into_iter()
-        .map(|size| ArtworkVariant {
-            src: format!(
-                "https://y.gtimg.cn/music/photo_new/T002R{size}x{size}M000{mid}.jpg?max_age=2592000"
-            ),
-            width: size,
-            height: size,
-        })
-        .collect()
-}
-
-fn is_safe_album_mid(mid: &str) -> bool {
-    !mid.is_empty()
-        && mid != "unknown"
-        && mid.len() <= 64
-        && mid
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric())
-}
-
-fn canonical_album_mid(source: &str) -> Option<String> {
-    let url = reqwest::Url::parse(source).ok()?;
-    let filename = url.path_segments()?.next_back()?;
-    let after_prefix = filename.strip_prefix("T002R")?;
-    let (_, mid_with_suffix) = after_prefix.split_once("M000")?;
-    let raw_mid = mid_with_suffix.strip_suffix(".jpg")?;
-    let mid = raw_mid
-        .rsplit_once('_')
-        .filter(|(_, suffix)| {
-            !suffix.is_empty() && suffix.chars().all(|value| value.is_ascii_digit())
-        })
-        .map(|(mid, _)| mid)
-        .unwrap_or(raw_mid);
-    Some(mid.to_owned())
-}
-
-fn measured_source_variant(source: &str) -> Option<ArtworkVariant> {
-    let url = reqwest::Url::parse(source).ok()?;
-    let filename = url.path_segments()?.next_back()?;
-    let (_, dimensions_and_id) = filename.split_once('R')?;
-    let (dimensions, _) = dimensions_and_id.split_once("M000")?;
-    let (width, height) = dimensions.split_once('x')?;
-    let width = width.parse::<u32>().ok()?;
-    let height = height.parse::<u32>().ok()?;
-    (width > 0 && height > 0).then(|| ArtworkVariant {
-        src: source.to_owned(),
-        width,
-        height,
-    })
 }
 
 #[cfg(test)]
@@ -301,6 +206,16 @@ mod tests {
             .src,
             FALLBACK_ARTWORK
         );
+    }
+
+    #[test]
+    fn album_like_playlist_filename_preserves_source_and_ui_metadata() {
+        let source = "https://qpic.y.qq.com/T002R300x300M000ALBUM123.jpg";
+        let artwork = artwork_from_provider_url(source, "A &amp; B", "#123456".into());
+        assert_eq!(artwork.src, source);
+        assert!(artwork.variants.is_empty());
+        assert_eq!(artwork.dominant_color, "#123456");
+        assert_eq!(artwork.alt, "Cover for A & B");
     }
 
     #[test]

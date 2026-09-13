@@ -394,7 +394,7 @@ YAQMC 的 Cargo manifest/lock、CI pin helper、对应源码 checkout、开发�
 #### 账户列表收敛（继续实施）
 
 本批基线为 YAQMC `05a2354`，库 pin 更新为
-`c910820b7a21781cff3ca59ab5717e9fa7673bb8`。
+`cbbf8e79b3b13635309c6f0b6e9109404bd60c38`。
 
 - `OwnedPlaylists` / `CollectedPlaylists` 将自建/收藏歌单列表的 endpoint、请求参数、
   显式凭据和分页校验移到库。普通列表与修改前/修改后对账共用该接口；
@@ -419,7 +419,7 @@ Clippy 与 CI 脚本 235 项通过。所有请求使用合成数据，未执行�
 
 | 命令                                                                                               | 结果                                                               |
 | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `cargo +1.88.0 fetch --locked`                                                                     | 已从远端获取 `c910820`                                             |
+| `cargo +1.88.0 fetch --locked`                                                                     | 已从远端获取 `cbbf8e7`                                             |
 | `cargo +1.88.0 check --workspace --locked --offline --all-targets`                                 | 通过                                                               |
 | `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings`                 | 通过                                                               |
 | `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet`                          | 通过；Core 277、provider 287 passed / 8 ignored，边界集成 3 passed |
@@ -435,6 +435,19 @@ Electron 构建和 Android 检查；它不是本批新提交的 CI 证据，不�
 
 单页解析/映射时间和空间均为 O(n)，n 不超过请求上限 100；完整列表对账最多读取
 100 页。保留有界对账，未增加无界重试。多 profile、插件端点路由和 Spotify 不在本批完成范围。
+
+#### Artwork URL 收敛（继续实施）
+
+本批库 pin 更新为 `cbbf8e79b3b13635309c6f0b6e9109404bd60c38`。新增 `qm-api-rs::artwork`
+纯函数边界，统一专辑尺寸、CDN URL 升级、主机/路径白名单、专辑 MID 解析和变体生成；
+该模块不执行网络请求，也不接收账户凭据。provider 的 artwork 模块现在只映射
+`ArtworkSource` 为 `Provider API::Artwork`，不再持有 `T002R` URL 模板、CDN 白名单或
+`reqwest::Url` 解析。宿主仍负责缓存、无凭据图片下载、响应大小/内容类型和重定向策略。
+
+库新增测试覆盖专辑尺寸、后缀 MID、图表图片、协议混淆和安全白名单，provider
+新增源码边界测试及 UI 元数据回归。正式 pin 下 provider 测试 288 passed / 8 ignored，
+workspace check/Clippy 通过；未进行真实 CDN 下载或 LIVE artwork 验收。该批不改变
+fallback artwork，不把任意上游 URL 变成可信图片。
 
 ## 6. 可执行工作包与依赖
 
