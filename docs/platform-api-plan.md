@@ -555,11 +555,12 @@ C1 的完整路由层、D 混合队列与 E Spotify 仍未完成。
   transport 边界模块；旧版 vkey CGI 载荷、`musicu_request`、`send_json`、`stable_guid`
   与 legacy 歌词请求收敛为 `cfg(test)` 的迁移回归覆盖，生产编译路径全部走 typed `qm-api-rs`。
   行为不变：生产环境清流 URL 一直由库侧 vkey 结果提供，旧分支此前已不可达。
-- 验证（`qm-api-rs` 使用固定 revision 的等价本地补丁进行测试编译，因为同批次还有其它
-  未落地的库改动）：`cargo test -p yaqmc-provider-qqmusic` 289 passed / 8 ignored，
-  `tests/endpoint_boundary.rs` 3 passed，`tests/intree_boundary.rs` 5 passed；
-  `clippy --all-targets -- -D warnings` 与 `cargo check`（生产 profile）均通过。
-  本批未执行 Android 真机、LIVE 或打包，也未提交 `qm-api-rs` 之外的新 pin。
+- 验证（在落地后的 pin `f9e7266` 上执行）：`cargo test -p yaqmc-provider-qqmusic`
+  289 passed / 8 ignored，`tests/endpoint_boundary.rs` 3 passed，
+  `tests/intree_boundary.rs` 5 passed；`cargo test --workspace`、workspace Clippy
+  `--all-targets -- -D warnings`、`cargo fmt --check`、`node scripts/ci/qm-api-rs-access.mjs --check`
+  与 `npm run ci:test-scripts`（235 passed）均通过。
+  本批未执行 Android 真机、LIVE 或打包，也未创建 tag 或 Release。
 
 ## 6. 可执行工作包与依赖
 
