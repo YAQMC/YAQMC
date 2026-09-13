@@ -1,8 +1,8 @@
 # Production provider readiness
 
-Status: **READY (MAINTAINER SOAK WAIVER)** for the production `qmapi` backend at
+Status: **BLOCKED (EXACT-PIN SOAK NOT STARTED)** for the production `qmapi` backend at
 exact `qm-api-rs` revision
-`7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`.
+`d421d9898797afd59fb900b43a9871ded55ee720`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
@@ -23,20 +23,21 @@ and source-retirement guards.
 
 ## Evidence decision
 
-Authenticated provider verification covered login/session resolution, clear
+Historical authenticated provider verification covered login/session resolution, clear
 and encrypted playback sources, lyrics, seek continuity, account reads, and
 favorite mutation reconciliation before cutover. The crate provenance record
 is maintained separately in
 [qm-api-rs-provenance.md](qm-api-rs-provenance.md).
 
 The previous exact-pin waiver applied only to revision
-`827233cb799bede84ee5033ec16450dc1d5e2587`; it is not carried forward. The
-current pin retains the typed Guess and Radar continuation requests, validated
-canonical public-song-link helper, and credential-scoped daily recommendation
-discovery. It adds typed mobile QR terminal outcomes and non-sensitive progress
-events, and binds MQTT business events to the active QR topic without changing
-the QMC implementation. Its Rust, provider-boundary, and Android compile checks
-passed before the release request. On 2026-09-06, maintainer Mai-xiyu explicitly
-requested the release and thereby authorized skipping the new pin's three-day
-soak. This waiver does not assert that the soak or a production-account LIVE run
-passed.
+`7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`; it is not carried forward.
+The new pin adds typed discovery/account boundaries and OAuth URL construction,
+credential isolation, and response validation. The QMC implementation is unchanged;
+the limited source-evidence comparison is recorded in the provenance document.
+
+The original cutover remains authorized; its non-soak gates describe the historical
+cutover, not a new LIVE run for this pin. Local synthetic tests do not establish
+production-account, Android-device, or soak acceptance. The new exact-pin three-day
+soak has not started, and no new waiver or release has been requested. Consequently
+`npm run provider:enforce` must exit nonzero until new evidence is recorded. A normal
+code push must not turn this record into READY.

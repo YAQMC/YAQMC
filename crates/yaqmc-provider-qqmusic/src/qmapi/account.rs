@@ -1,13 +1,12 @@
 //! Row G: library `songlist`/`user` raw ops. Reconciliation stays in-tree.
 //!
-//! Production raw writes use the library CGI client. `account.rs` retains
-//! `client_operation_id`, epoch cancellation, safe-read reconciliation, cache
-//! projection, and wire DTO/error mapping.
+//! Production writes use qm-api-rs's typed `AccountWrite` CGI boundary. This
+//! module retains a narrow legacy module/method/JSON adapter at the provider
+//! edge, plus `client_operation_id`, epoch cancellation, safe-read
+//! reconciliation, cache projection, and wire DTO/error mapping.
 
 #[cfg(test)]
 use qqmusic_api::models::songlist::CreateDeleteSonglistResp;
-#[cfg(test)]
-use qqmusic_api::CgiOptions;
 use qqmusic_api::{Client, Platform};
 use serde_json::Value;
 
@@ -79,30 +78,12 @@ async fn execute_account_write_with_client(
 ) -> Result<bool, QQMusicError> {
     // Endpoint selection, account comm envelope and write retry policy are
     // owned by qm-api-rs; the provider keeps only business reconciliation.
-    let reply_result = {
-        #[cfg(not(test))]
-        {
-            let operation = match typed_write_from_legacy(module, method, &param) {
-                Ok(operation) => operation,
-                Err(error) => return Err(error),
-            };
-            qqmusic_api::account::write(client, credential, operation, cancellation).await
-        }
-        #[cfg(test)]
-        {
-            let options = CgiOptions {
-                comm: Some(account_write_comm(credential)),
-                override_comm: true,
-                credential: Some(credential.clone()),
-                require_login: true,
-                retry: qqmusic_api::RetryClass::Write,
-                preserve_bool: true,
-                cancellation,
-                ..CgiOptions::default()
-            };
-            client.request_cgi(module, method, param, &options).await
-        }
+    let operation = match typed_write_from_legacy(credential, module, method, &param) {
+        Ok(operation) => operation,
+        Err(error) => return Err(error),
     };
+    let reply_result =
+        qqmusic_api::account::write(client, credential, operation, cancellation).await;
     let reply = reply_result.map_err(|error| {
         let mapped = map_write_error(error);
         tracing::warn!(
@@ -152,22 +133,8 @@ async fn execute_account_write_with_client(
     }
 }
 
-#[cfg(test)]
-fn account_write_comm(credential: &qqmusic_api::Credential) -> Value {
-    let uin = credential.str_musicid();
-    let gtk = qqmusic_api::hash33(&credential.musickey, 5381);
-    serde_json::json!({
-        "ct": "11", "cv": 13_020_508, "v": 13_020_508,
-        "tmeAppID": "qqmusic", "format": "json", "inCharset": "utf-8",
-        "outCharset": "utf-8", "notice": 0, "needNewCode": 1,
-        "platform": "yqq.json", "uid": uin, "qq": uin, "uin": uin,
-        "loginUin": uin, "authst": credential.musickey,
-        "tmeLoginType": credential.login_type.to_string(), "g_tk": gtk,
-        "g_tk_new_20200303": gtk
-    })
-}
-
 fn typed_write_from_legacy(
+    credential: &qqmusic_api::Credential,
     module: &str,
     method: &str,
     param: &Value,
@@ -202,6 +169,9 @@ fn typed_write_from_legacy(
                 })
                 .collect::<Result<Vec<_>, QQMusicError>>()?;
             if dir_id == 201 {
+                if tid != 0 || songs.len() != 1 {
+                    return Err(invalid());
+                }
                 let (song_id, song_type) = *songs.first().ok_or_else(invalid)?;
                 Ok(qqmusic_api::account::AccountWrite::FavoriteSong {
                     add,
@@ -260,7 +230,7 @@ fn typed_write_from_legacy(
                     .ok_or_else(invalid)?
                     .to_owned(),
                 tag_list: param
-                    .get("dirNewTagList")
+                    .get("dirNewtaglist")
                     .and_then(Value::as_str)
                     .ok_or_else(invalid)?
                     .to_owned(),
@@ -268,12 +238,25 @@ fn typed_write_from_legacy(
         }
         ("music.musicasset.PlaylistFavWrite", "FavPlaylist")
         | ("music.musicasset.PlaylistFavWrite", "CancelFavPlaylist") => {
+            let encrypted_uin = param
+                .get("uin")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(invalid)?;
+            if credential.encrypt_uin.is_empty() || encrypted_uin != credential.encrypt_uin {
+                return Err(invalid());
+            }
+            let playlist_ids = param
+                .get("v_playlistId")
+                .and_then(Value::as_array)
+                .ok_or_else(invalid)?;
+            if playlist_ids.len() != 1 {
+                return Err(invalid());
+            }
             Ok(qqmusic_api::account::AccountWrite::CollectPlaylist {
                 collect: method == "FavPlaylist",
-                playlist_id: param
-                    .get("v_playlistId")
-                    .and_then(Value::as_array)
-                    .and_then(|ids| ids.first())
+                playlist_id: playlist_ids
+                    .first()
                     .and_then(Value::as_i64)
                     .ok_or_else(invalid)?,
             })
@@ -408,8 +391,21 @@ mod tests {
     const PLAYLISTS_OK: &[u8] =
         br#"{"code":0,"req_0":{"code":0,"data":{"total":0,"v_playlist":[],"bFinish":true}}}"#;
 
+    #[derive(Clone, Copy)]
+    enum ResponseFixture {
+        Accepted,
+        CreatePlaylist,
+        Playlists,
+        Reconcile,
+        NoChange,
+        Unconfirmed,
+        Malformed,
+        MissingEnvelopeCode,
+    }
+
     struct RecordingTransport {
         captured: Mutex<Vec<CapturedRequest>>,
+        response: ResponseFixture,
     }
 
     #[derive(Clone, Debug)]
@@ -420,8 +416,13 @@ mod tests {
 
     impl RecordingTransport {
         fn new() -> Self {
+            Self::with_response(ResponseFixture::Accepted)
+        }
+
+        fn with_response(response: ResponseFixture) -> Self {
             Self {
                 captured: Mutex::new(Vec::new()),
+                response,
             }
         }
 
@@ -441,10 +442,6 @@ mod tests {
             &self,
             request: TransportRequest,
         ) -> qqmusic_api::Result<TransportResponse> {
-            let body_json = match &request.body {
-                HttpBody::Json(value) => value.clone(),
-                _ => Value::Null,
-            };
             self.captured
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -452,28 +449,15 @@ mod tests {
                     retry: request.retry,
                     body: request.body,
                 });
-            let module = body_json
-                .pointer("/req_0/module")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let method = body_json
-                .pointer("/req_0/method")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            let test_case = body_json
-                .pointer("/req_0/param/testCase")
-                .and_then(Value::as_str);
-            let body = match test_case {
-                Some("reconcile") => WRITE_RECONCILE,
-                Some("no-change") => WRITE_NO_CHANGE,
-                Some("malformed") => WRITE_MALFORMED,
-                Some("missing-envelope-code") => WRITE_MISSING_ENVELOPE_CODE,
-                _ => match (module, method) {
-                    ("music.musicasset.PlaylistBaseWrite", "AddPlaylist") => CREATE_OK,
-                    ("music.musicasset.PlaylistBaseRead", "GetPlaylistByUin") => PLAYLISTS_OK,
-                    (_, "Unconfirmed") => WRITE_UNCONFIRMED,
-                    _ => WRITE_OK,
-                },
+            let body = match self.response {
+                ResponseFixture::Accepted => WRITE_OK,
+                ResponseFixture::CreatePlaylist => CREATE_OK,
+                ResponseFixture::Playlists => PLAYLISTS_OK,
+                ResponseFixture::Reconcile => WRITE_RECONCILE,
+                ResponseFixture::NoChange => WRITE_NO_CHANGE,
+                ResponseFixture::Unconfirmed => WRITE_UNCONFIRMED,
+                ResponseFixture::Malformed => WRITE_MALFORMED,
+                ResponseFixture::MissingEnvelopeCode => WRITE_MISSING_ENVELOPE_CODE,
             };
             Ok(TransportResponse {
                 status: 200,
@@ -489,6 +473,7 @@ mod tests {
             musicid: 1_000_000_001,
             str_musicid: "1000000001".into(),
             musickey: "SYNTHETIC_MUSIC_KEY".into(),
+            encrypt_uin: "SANITIZED_ENCRYPTED_UIN".into(),
             login_type: 2,
             ..Credential::default()
         }
@@ -567,7 +552,9 @@ mod tests {
 
     #[tokio::test]
     async fn create_playlist_uses_add_playlist_and_write_retry() {
-        let transport = std::sync::Arc::new(RecordingTransport::new());
+        let transport = std::sync::Arc::new(RecordingTransport::with_response(
+            ResponseFixture::CreatePlaylist,
+        ));
         let client = probe_client(transport.clone());
         let created = created_playlist_from_library(
             &client
@@ -617,7 +604,9 @@ mod tests {
 
     #[tokio::test]
     async fn created_songlists_use_get_playlist_by_uin() {
-        let transport = std::sync::Arc::new(RecordingTransport::new());
+        let transport = std::sync::Arc::new(RecordingTransport::with_response(
+            ResponseFixture::Playlists,
+        ));
         let client = probe_client(transport.clone());
         client
             .user
@@ -633,7 +622,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn production_raw_writer_covers_rename_and_playlist_collection() {
+    async fn typed_writer_bridge_covers_rename_and_playlist_collection() {
         let transport = std::sync::Arc::new(RecordingTransport::new());
         let client = probe_client(transport.clone());
         let credential = signed_in_credential();
@@ -662,6 +651,8 @@ mod tests {
         assert_eq!(req["method"], "EditPlaylist");
         assert_eq!(req["param"]["dirId"], 3001);
         assert_eq!(req["param"]["mask"], 15);
+        assert_eq!(req["param"]["dirNewtaglist"], serde_json::json!(""));
+        assert!(req["param"].get("dirNewTagList").is_none());
         let HttpBody::Json(body) = &captured.body else {
             panic!("CGI body must be JSON");
         };
@@ -693,18 +684,29 @@ mod tests {
         assert_eq!(req["module"], "music.musicasset.PlaylistFavWrite");
         assert_eq!(req["method"], "FavPlaylist");
         assert_eq!(req["param"]["v_playlistId"], serde_json::json!([88]));
+        assert_eq!(
+            req["param"]["uin"],
+            serde_json::json!("SANITIZED_ENCRYPTED_UIN")
+        );
     }
 
     #[tokio::test]
     async fn unconfirmed_success_shape_defers_to_safe_read_reconciliation() {
-        let transport = std::sync::Arc::new(RecordingTransport::new());
+        let transport = std::sync::Arc::new(RecordingTransport::with_response(
+            ResponseFixture::Unconfirmed,
+        ));
         let client = probe_client(transport);
         let error = execute_account_write_with_client(
             &client,
             &signed_in_credential(),
             "music.musicasset.PlaylistDetailWrite",
-            "Unconfirmed",
-            serde_json::json!({ "dirId": FAVORITE_DIR_ID }),
+            "DelSonglist",
+            serde_json::json!({
+                "dirId": FAVORITE_DIR_ID,
+                "tid": 0,
+                "bFmtUtf8": true,
+                "v_songInfo": [{ "songId": 42, "songType": 0 }]
+            }),
             tokio_util::sync::CancellationToken::new(),
         )
         .await
@@ -713,27 +715,125 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn playlist_business_codes_preserve_rejection_and_unknown_outcomes() {
+    async fn invalid_legacy_conversion_fails_closed_before_transport() {
         let transport = std::sync::Arc::new(RecordingTransport::new());
+        let client = probe_client(transport.clone());
+
+        let error = execute_account_write_with_client(
+            &client,
+            &signed_in_credential(),
+            "music.musicasset.PlaylistBaseWrite",
+            "EditPlaylist",
+            serde_json::json!({
+                "dirId": 3001,
+                "mask": 15,
+                "dirNewName": "renamed",
+                "dirNewDesc": "description",
+                "dirNewPicUrl": ""
+            }),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("missing legacy tag key must fail before transport");
+        assert!(matches!(error, QQMusicError::InvalidRequest));
+
+        let error = execute_account_write_with_client(
+            &client,
+            &signed_in_credential(),
+            "music.musicasset.PlaylistFavWrite",
+            "FavPlaylist",
+            serde_json::json!({
+                "uin": "WRONG_ENCRYPTED_UIN",
+                "v_playlistId": [88]
+            }),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("mismatched encrypted uin must fail before transport");
+        assert!(matches!(error, QQMusicError::InvalidRequest));
+
+        for param in [
+            serde_json::json!({
+                "dirId": FAVORITE_DIR_ID,
+                "tid": 1,
+                "v_songInfo": [{ "songId": 42, "songType": 0 }]
+            }),
+            serde_json::json!({
+                "dirId": FAVORITE_DIR_ID,
+                "tid": 0,
+                "v_songInfo": [
+                    { "songId": 42, "songType": 0 },
+                    { "songId": 43, "songType": 0 }
+                ]
+            }),
+        ] {
+            let error = execute_account_write_with_client(
+                &client,
+                &signed_in_credential(),
+                "music.musicasset.PlaylistDetailWrite",
+                "AddSonglist",
+                param,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .expect_err("favorite conversion must reject non-singleton input");
+            assert!(matches!(error, QQMusicError::InvalidRequest));
+        }
+
+        let error = execute_account_write_with_client(
+            &client,
+            &signed_in_credential(),
+            "music.musicasset.PlaylistFavWrite",
+            "FavPlaylist",
+            serde_json::json!({
+                "uin": "SANITIZED_ENCRYPTED_UIN",
+                "v_playlistId": [88, 89]
+            }),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("collection conversion must reject batched input");
+        assert!(matches!(error, QQMusicError::InvalidRequest));
+        assert!(transport.captured.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn playlist_business_codes_preserve_rejection_and_unknown_outcomes() {
+        let transport =
+            std::sync::Arc::new(RecordingTransport::with_response(ResponseFixture::NoChange));
         let client = probe_client(transport);
         let no_change = execute_account_write_with_client(
             &client,
             &signed_in_credential(),
             "music.musicasset.PlaylistDetailWrite",
             "DelSonglist",
-            serde_json::json!({ "dirId": FAVORITE_DIR_ID, "testCase": "no-change" }),
+            serde_json::json!({
+                "dirId": FAVORITE_DIR_ID,
+                "tid": 0,
+                "bFmtUtf8": true,
+                "v_songInfo": [{ "songId": 42, "songType": 0 }]
+            }),
             tokio_util::sync::CancellationToken::new(),
         )
         .await
         .expect("known no-change response");
         assert!(!no_change);
 
+        let transport = std::sync::Arc::new(RecordingTransport::with_response(
+            ResponseFixture::Reconcile,
+        ));
+        let client = probe_client(transport);
         let error = execute_account_write_with_client(
             &client,
             &signed_in_credential(),
             "music.musicasset.PlaylistDetailWrite",
             "DelSonglist",
-            serde_json::json!({ "dirId": FAVORITE_DIR_ID, "testCase": "reconcile" }),
+            serde_json::json!({
+                "dirId": FAVORITE_DIR_ID,
+                "tid": 0,
+                "bFmtUtf8": true,
+                "v_songInfo": [{ "songId": 42, "songType": 0 }]
+            }),
             tokio_util::sync::CancellationToken::new(),
         )
         .await
@@ -743,14 +843,23 @@ mod tests {
 
     #[tokio::test]
     async fn unrelated_business_code_remains_a_schema_error() {
-        let transport = std::sync::Arc::new(RecordingTransport::new());
+        let transport = std::sync::Arc::new(RecordingTransport::with_response(
+            ResponseFixture::Reconcile,
+        ));
         let client = probe_client(transport);
         let error = execute_account_write_with_client(
             &client,
             &signed_in_credential(),
             "music.musicasset.PlaylistBaseWrite",
             "EditPlaylist",
-            serde_json::json!({ "dirId": 3001, "testCase": "reconcile" }),
+            serde_json::json!({
+                "dirId": 3001,
+                "mask": 15,
+                "dirNewName": "renamed",
+                "dirNewDesc": "description",
+                "dirNewPicUrl": "",
+                "dirNewtaglist": ""
+            }),
             tokio_util::sync::CancellationToken::new(),
         )
         .await
@@ -760,8 +869,11 @@ mod tests {
 
     #[tokio::test]
     async fn post_send_envelope_decode_failures_require_reconciliation() {
-        for test_case in ["malformed", "missing-envelope-code"] {
-            let transport = std::sync::Arc::new(RecordingTransport::new());
+        for response in [
+            ResponseFixture::Malformed,
+            ResponseFixture::MissingEnvelopeCode,
+        ] {
+            let transport = std::sync::Arc::new(RecordingTransport::with_response(response));
             let client = probe_client(transport);
             let error = execute_account_write_with_client(
                 &client,
@@ -770,7 +882,9 @@ mod tests {
                 "DelSonglist",
                 serde_json::json!({
                     "dirId": FAVORITE_DIR_ID,
-                    "testCase": test_case
+                    "tid": 0,
+                    "bFmtUtf8": true,
+                    "v_songInfo": [{ "songId": 42, "songType": 0 }]
                 }),
                 tokio_util::sync::CancellationToken::new(),
             )
@@ -788,7 +902,7 @@ mod tests {
     }
 
     #[test]
-    fn raw_writer_classifies_write_results_without_bypassing_reconciliation() {
+    fn typed_bridge_classifies_write_results_without_bypassing_reconciliation() {
         assert!(account_write_accepted(&serde_json::json!({ "retCode": 0 })).unwrap());
         assert!(!account_write_accepted(&serde_json::json!({ "retCode": 1 })).unwrap());
         assert!(account_write_accepted(&serde_json::json!({

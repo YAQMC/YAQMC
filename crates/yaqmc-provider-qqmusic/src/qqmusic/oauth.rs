@@ -2,15 +2,6 @@ use super::{account::AccountSnapshot, QQMusicError};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
-const QQ_CLIENT_ID: &str = "100497308";
-const WECHAT_APP_ID: &str = "wx48db31d50e334801";
-const QQ_REDIRECT_URI: &str =
-    "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/";
-const WECHAT_REDIRECT_URI: &str =
-    "https://y.qq.com/portal/wx_redirect.html?login_type=2&surl=https://y.qq.com/";
-const QQ_DESKTOP_AUTHORIZATION_URL: &str = "https://graph.qq.com/oauth2.0/show";
-const QQ_MOBILE_AUTHORIZATION_URL: &str = "https://graph.qq.com/oauth2.0/authorize";
-
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum OAuthLoginProvider {
@@ -33,66 +24,28 @@ impl OAuthLoginProvider {
         }
     }
 
+    fn qm_api_provider(self) -> qqmusic_api::OAuthLoginProvider {
+        match self {
+            Self::Qq => qqmusic_api::OAuthLoginProvider::Qq,
+            Self::Wechat => qqmusic_api::OAuthLoginProvider::Wechat,
+        }
+    }
+
     pub(crate) fn authorization_url(self, state: &str) -> Result<Url, QQMusicError> {
-        self.authorization_url_for_presentation(state, false)
+        let url = qqmusic_api::modules::LoginApi::build_oauth_authorize_url(
+            self.qm_api_provider(),
+            state,
+        )
+        .map_err(|_| QQMusicError::Protocol)?;
+        Ok(url)
     }
 
     pub(crate) fn mobile_authorization_url(self, state: &str) -> Result<Option<Url>, QQMusicError> {
-        match self {
-            Self::Qq => self
-                .authorization_url_for_presentation(state, true)
-                .map(Some),
-            Self::Wechat => Ok(None),
-        }
-    }
-
-    fn authorization_url_for_presentation(
-        self,
-        state: &str,
-        mobile: bool,
-    ) -> Result<Url, QQMusicError> {
-        if state.len() != 32 || !state.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err(QQMusicError::Protocol);
-        }
-        let mut url = match self {
-            Self::Qq => Url::parse(if mobile {
-                QQ_MOBILE_AUTHORIZATION_URL
-            } else {
-                QQ_DESKTOP_AUTHORIZATION_URL
-            }),
-            Self::Wechat => Url::parse("https://open.weixin.qq.com/connect/qrconnect"),
-        }
+        let url = qqmusic_api::modules::LoginApi::build_oauth_mobile_authorize_url(
+            self.qm_api_provider(),
+            state,
+        )
         .map_err(|_| QQMusicError::Protocol)?;
-        {
-            let mut query = url.query_pairs_mut();
-            match self {
-                Self::Qq => {
-                    query
-                        .append_pair("which", "Login")
-                        .append_pair("display", if mobile { "mobile" } else { "pc" })
-                        .append_pair("response_type", "code")
-                        .append_pair("client_id", QQ_CLIENT_ID)
-                        .append_pair("redirect_uri", QQ_REDIRECT_URI)
-                        .append_pair("scope", "get_user_info,get_app_friends")
-                        .append_pair("state", state);
-                }
-                Self::Wechat => {
-                    query
-                        .append_pair("appid", WECHAT_APP_ID)
-                        .append_pair("redirect_uri", WECHAT_REDIRECT_URI)
-                        .append_pair("response_type", "code")
-                        .append_pair("scope", "snsapi_login")
-                        .append_pair("state", state)
-                        .append_pair(
-                            "href",
-                            "https://y.qq.com/mediastyle/music_v17/src/css/popup_wechat.css",
-                        );
-                }
-            }
-        }
-        if self == Self::Wechat {
-            url.set_fragment(Some("wechat_redirect"));
-        }
         Ok(url)
     }
 
@@ -297,6 +250,12 @@ mod tests {
     use super::*;
 
     const STATE: &str = "0123456789abcdef0123456789abcdef";
+    const QQ_CLIENT_ID: &str = "100497308";
+    const QQ_REDIRECT_URI: &str =
+        "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/";
+    const WECHAT_APP_ID: &str = "wx48db31d50e334801";
+    const WECHAT_REDIRECT_URI: &str =
+        "https://y.qq.com/portal/wx_redirect.html?login_type=2&surl=https://y.qq.com/";
 
     #[test]
     fn authorization_urls_use_the_registered_qq_music_redirects_and_fresh_state() {
@@ -345,9 +304,20 @@ mod tests {
             .mobile_authorization_url(STATE)
             .expect("mobile presentation")
             .is_none());
-        assert!(OAuthLoginProvider::Qq
-            .authorization_url("predictable")
-            .is_err());
+    }
+
+    #[test]
+    fn authorization_urls_reject_non_hex_control_and_overlong_states() {
+        let non_hex = "g".repeat(32);
+        let control = format!("{}\u{0001}", "0".repeat(31));
+        let overlong = "0".repeat(33);
+        for state in [non_hex.as_str(), control.as_str(), overlong.as_str()] {
+            assert!(OAuthLoginProvider::Qq.authorization_url(state).is_err());
+            assert!(OAuthLoginProvider::Qq
+                .mobile_authorization_url(state)
+                .is_err());
+            assert!(OAuthLoginProvider::Wechat.authorization_url(state).is_err());
+        }
     }
 
     #[test]

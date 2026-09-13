@@ -2242,7 +2242,10 @@ impl PlayerService {
                         )
                     {
                         core.playback_state = PlaybackState::Buffering;
-                    } else if engine.playing && core.playback_state != PlaybackState::Playing {
+                    } else if engine_matches
+                        && engine.playing
+                        && core.playback_state == PlaybackState::Buffering
+                    {
                         core.playback_state = PlaybackState::Playing;
                         core.playback_error = None;
                     }
@@ -2777,7 +2780,7 @@ mod tests {
         playback_types::{AudioQualityPreference, PlaybackEpoch, PlaybackFallbackReason},
     };
     use async_trait::async_trait;
-    use std::sync::atomic::AtomicUsize;
+    use std::sync::{atomic::AtomicUsize, Condvar, Mutex as StdMutex};
     use tokio_util::sync::CancellationToken;
 
     fn song(id: &str, duration_ms: u64) -> Song {
@@ -2899,6 +2902,231 @@ mod tests {
     struct FailFirstEncryptedLoadAudioEngine {
         inner: crate::audio::TestAudioEngine,
         remaining_failures: AtomicUsize,
+    }
+
+    struct SnapshotBarrierAudioEngine {
+        inner: crate::audio::TestAudioEngine,
+        gate: StdMutex<SnapshotBarrierState>,
+        gate_changed: Condvar,
+    }
+
+    struct PlaybackStateSignal {
+        states: StdMutex<Vec<String>>,
+        changed: Condvar,
+    }
+
+    #[derive(Default)]
+    struct SnapshotBarrierState {
+        stale_armed: bool,
+        stale_entered: bool,
+        stale_released: bool,
+        next_armed: bool,
+        next_entered: bool,
+    }
+
+    impl SnapshotBarrierAudioEngine {
+        fn new() -> Self {
+            Self {
+                inner: crate::audio::TestAudioEngine::default(),
+                gate: StdMutex::new(SnapshotBarrierState::default()),
+                gate_changed: Condvar::new(),
+            }
+        }
+
+        fn arm_stale_snapshot(&self) {
+            let mut gate = self.gate.lock().expect("snapshot gate lock");
+            gate.stale_armed = true;
+            gate.stale_entered = false;
+            gate.stale_released = false;
+            gate.next_armed = false;
+            gate.next_entered = false;
+        }
+
+        fn wait_stale_snapshot(&self) {
+            let mut gate = self.gate.lock().expect("snapshot gate lock");
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while !gate.stale_entered {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    gate.stale_released = true;
+                    self.gate_changed.notify_all();
+                    panic!("clock did not reach stale snapshot barrier");
+                }
+                let (next, result) = self
+                    .gate_changed
+                    .wait_timeout(gate, remaining)
+                    .expect("snapshot gate wait");
+                gate = next;
+                if result.timed_out() && !gate.stale_entered {
+                    gate.stale_released = true;
+                    self.gate_changed.notify_all();
+                    panic!("clock did not reach stale snapshot barrier");
+                }
+            }
+        }
+
+        fn arm_next_snapshot(&self) {
+            let mut gate = self.gate.lock().expect("snapshot gate lock");
+            gate.next_armed = true;
+            gate.next_entered = false;
+        }
+
+        fn wait_next_snapshot(&self) {
+            let mut gate = self.gate.lock().expect("snapshot gate lock");
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while !gate.next_entered {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    panic!("clock did not reach next snapshot barrier");
+                }
+                let (next, result) = self
+                    .gate_changed
+                    .wait_timeout(gate, remaining)
+                    .expect("snapshot gate wait");
+                gate = next;
+                if result.timed_out() && !gate.next_entered {
+                    panic!("clock did not reach next snapshot barrier");
+                }
+            }
+        }
+
+        fn release_stale_snapshot(&self) {
+            let mut gate = self
+                .gate
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            gate.stale_released = true;
+            self.gate_changed.notify_all();
+        }
+    }
+
+    impl PlaybackStateSignal {
+        fn new() -> Self {
+            Self {
+                states: StdMutex::new(Vec::new()),
+                changed: Condvar::new(),
+            }
+        }
+
+        fn mark(&self) -> usize {
+            self.states.lock().expect("playback signal lock").len()
+        }
+
+        fn wait_for_state_after(&self, expected: &str, after: usize) {
+            let mut states = self.states.lock().expect("playback signal lock");
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                if states.iter().skip(after).any(|state| state == expected) {
+                    return;
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    panic!("playback state {expected} was not published");
+                }
+                let (next, result) = self
+                    .changed
+                    .wait_timeout(states, remaining)
+                    .expect("playback signal wait");
+                states = next;
+                if result.timed_out() && !states.iter().skip(after).any(|state| state == expected) {
+                    panic!("playback state {expected} was not published");
+                }
+            }
+        }
+    }
+
+    impl PlayerEventObserver for PlaybackStateSignal {
+        fn observe(&self, event: &ApiEvent) -> Option<ObserverFollowupEvent> {
+            if event.event_type == "player.playback" {
+                if let Some(state) = event.data.get("playbackState").and_then(Value::as_str) {
+                    self.states
+                        .lock()
+                        .expect("playback signal lock")
+                        .push(state.to_owned());
+                    self.changed.notify_all();
+                }
+            }
+            None
+        }
+    }
+
+    struct SnapshotReleaseGuard<'a>(&'a SnapshotBarrierAudioEngine);
+
+    impl Drop for SnapshotReleaseGuard<'_> {
+        fn drop(&mut self) {
+            self.0.release_stale_snapshot();
+        }
+    }
+
+    struct ClockStopGuard<'a>(&'a PlayerService);
+
+    impl Drop for ClockStopGuard<'_> {
+        fn drop(&mut self) {
+            self.0.stop_clock();
+        }
+    }
+
+    impl AudioEngine for SnapshotBarrierAudioEngine {
+        fn load(
+            &self,
+            source: &crate::audio::PreparedPlaybackSource,
+        ) -> Result<crate::audio::AudioLoadMetadata, AudioEngineError> {
+            self.inner.load(source)
+        }
+
+        fn play(&self) -> Result<(), AudioEngineError> {
+            self.inner.play()
+        }
+
+        fn pause(&self) -> Result<(), AudioEngineError> {
+            self.inner.pause()
+        }
+
+        fn stop(&self) -> Result<(), AudioEngineError> {
+            self.inner.stop()
+        }
+
+        fn seek(&self, position: Duration) -> Result<(), AudioEngineError> {
+            self.inner.seek(position)
+        }
+
+        fn set_volume(&self, volume: f32) -> Result<(), AudioEngineError> {
+            self.inner.set_volume(volume)
+        }
+
+        fn set_output_device(&self, device_id: &str) -> Result<(), AudioEngineError> {
+            self.inner.set_output_device(device_id)
+        }
+
+        fn snapshot(&self) -> crate::audio::AudioEngineSnapshot {
+            // Capture before waiting so the clock owns a deliberately stale
+            // `playing=true` sample while pause/stop commits its Core state.
+            let snapshot = self.inner.snapshot();
+            let mut gate = self.gate.lock().expect("snapshot gate lock");
+            if gate.stale_armed && !gate.stale_entered {
+                gate.stale_entered = true;
+                self.gate_changed.notify_all();
+                while !gate.stale_released {
+                    let (next, result) = self
+                        .gate_changed
+                        .wait_timeout(gate, Duration::from_secs(3))
+                        .expect("snapshot gate wait");
+                    gate = next;
+                    if result.timed_out() {
+                        gate.stale_released = true;
+                    }
+                }
+                gate.stale_armed = false;
+            } else if gate.next_armed && !gate.next_entered {
+                gate.next_entered = true;
+                self.gate_changed.notify_all();
+            }
+            snapshot
+        }
+
+        fn output_devices(&self) -> Result<Vec<AudioOutputDevice>, AudioEngineError> {
+            self.inner.output_devices()
+        }
     }
 
     struct FailFirstEncryptedPrepare {
@@ -4100,6 +4328,103 @@ mod tests {
         let player = test_runtime_player(Arc::clone(&engine));
         player.start_clock();
         (player, engine)
+    }
+
+    async fn assert_stale_clock_snapshot_does_not_revive(target: PlaybackState) {
+        let engine = Arc::new(SnapshotBarrierAudioEngine::new());
+        let player = Arc::new(PlayerService::with_runtime(
+            Arc::clone(&engine) as Arc<dyn AudioEngine>,
+            Arc::new(crate::media::TestPlaybackSourceResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        ));
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("stale-clock", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+
+        engine.arm_stale_snapshot();
+        let _release_guard = SnapshotReleaseGuard(&engine);
+        player.start_clock();
+        let _clock_guard = ClockStopGuard(&player);
+        engine.wait_stale_snapshot();
+
+        match target {
+            PlaybackState::Paused => player.pause().await.expect("pause"),
+            PlaybackState::Stopped => player.stop().await.expect("stop"),
+            _ => panic!("test only covers terminal user commands"),
+        };
+        assert_eq!(player.snapshot().await.playback_state, target);
+
+        engine.arm_next_snapshot();
+        engine.release_stale_snapshot();
+        player.wake_clock();
+        engine.wait_next_snapshot();
+
+        assert_eq!(player.snapshot().await.playback_state, target);
+        assert!(!player.lyric_surface_projection().await.is_playing);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stale_clock_snapshot_cannot_revive_pause() {
+        assert_stale_clock_snapshot_does_not_revive(PlaybackState::Paused).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stale_clock_snapshot_cannot_revive_stop() {
+        assert_stale_clock_snapshot_does_not_revive(PlaybackState::Stopped).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn matching_buffering_state_recovers_to_playing() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = Arc::new(PlayerService::with_runtime(
+            Arc::clone(&engine) as Arc<dyn AudioEngine>,
+            Arc::new(crate::media::TestPlaybackSourceResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        ));
+        let signal = Arc::new(PlaybackStateSignal::new());
+        player.set_event_observer(signal.clone());
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("buffering-recovery", 10_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.start_clock();
+        let _clock_guard = ClockStopGuard(&player);
+
+        let before_buffering = signal.mark();
+        engine.force_snapshot(|snapshot| {
+            snapshot.buffering = true;
+            snapshot.playing = true;
+            snapshot.paused = false;
+        });
+        player.wake_clock();
+        signal.wait_for_state_after("buffering", before_buffering);
+        assert_eq!(
+            player.snapshot().await.playback_state,
+            PlaybackState::Buffering
+        );
+
+        let before_playing = signal.mark();
+        engine.force_snapshot(|snapshot| {
+            snapshot.buffering = false;
+            snapshot.playing = true;
+            snapshot.paused = false;
+        });
+        player.wake_clock();
+        signal.wait_for_state_after("playing", before_playing);
+        assert_eq!(
+            player.snapshot().await.playback_state,
+            PlaybackState::Playing
+        );
+        player.stop_clock();
     }
 
     fn qq_song(id: &str, duration_ms: u64) -> Song {

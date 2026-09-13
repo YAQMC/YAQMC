@@ -223,13 +223,13 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
 
 证据分级：
 
-| 范围                                    | 已有结果                                                                        | 限制                     |
-| --------------------------------------- | ------------------------------------------------------------------------------- | ------------------------ |
-| 新库全量测试                            | 本次复核：175 lib、6 Discovery、4 Web 推荐、1 public API、4 security 全通过       | 仅覆盖合成契约，不含 LIVE |
-| 新库 MSRV Clippy / fmt                  | 本次复核通过                                                                    | 不能代替 YAQMC 集成验证  |
-| YAQMC `catalog_tests`                   | 本次收回前序运行结果：8 passed、0 failed、287 filtered out                      | 只是 provider 的定向测试 |
-| YAQMC workspace check / provider Clippy | 本次复核通过                                                                    | 全 workspace 测试仍需单独执行 |
-| Windows / Linux / Android / LIVE        | 此次接口增量没有完整验收证据                                                    | 不据此签收或发布         |
+| 范围                                    | 已有结果                                                                    | 限制                          |
+| --------------------------------------- | --------------------------------------------------------------------------- | ----------------------------- |
+| 新库全量测试                            | 本次复核：175 lib、6 Discovery、4 Web 推荐、1 public API、4 security 全通过 | 仅覆盖合成契约，不含 LIVE     |
+| 新库 MSRV Clippy / fmt                  | 本次复核通过                                                                | 不能代替 YAQMC 集成验证       |
+| YAQMC `catalog_tests`                   | 本次收回前序运行结果：8 passed、0 failed、287 filtered out                  | 只是 provider 的定向测试      |
+| YAQMC workspace check / provider Clippy | 本次复核通过                                                                | 全 workspace 测试仍需单独执行 |
+| Windows / Linux / Android / LIVE        | 此次接口增量没有完整验收证据                                                | 不据此签收或发布              |
 
 定向测试同时报告未使用的 `web_home_feed` 和旧 Toplist DTO 警告，属于下一批需收尾事项。
 合成 transport 与本地阻断代理用于隔离真实 QQ 请求；未修改登录/MQTT 状态机。
@@ -247,13 +247,14 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
 - 生产账户读路径的收藏、歌单曲目和最近播放现已统一调用
   `qm-api-rs::account::read_page` typed boundary；账户写路径通过
   `qm-api-rs::account::AccountWrite` 的固定 endpoint、参数校验和账户凭据边界执行，provider
-  只负责身份快照、缓存、分页、业务结果解释和对账。`write_legacy` 仅保留为受限兼容 API，
-  生产 provider 不再调用它。
+  保留身份快照、缓存、分页、业务结果解释和对账。注意 `typed_write_from_legacy`
+  仍从 provider 的 module/method/JSON 转换为 `AccountWrite`，这不等于业务参数构造已完全迁出。
 - 生产加密播放现已通过 `qm-api-rs::SongApi::get_song_urls` 的 typed `CgiGetEVkey`
   路径；provider 仅负责候选音质映射、凭据注入和 CDN/ekey 响应校验。旧
   `musics.fcg` payload/signature 代码仅保留在测试 fixture 中。
-- 桌面二维码/OAuth、check-sig、ptqrshow/ptqrlogin 和用户资料验证仍有 provider 自有 HTTP；
-  手机 QR/MQTT 已使用库接口，但不代表桌面授权路径已迁移。
+- 桌面二维码/OAuth exchange、check-sig、ptqrshow/ptqrlogin 仍有 provider 自有 HTTP；
+  用户资料验证已在 `7a5febd` 迁到库，手机 QR/MQTT 已使用库接口，
+  但不代表桌面授权链路已迁移。
 - 未发现同一 Provider 多 profile 并行、混合队列来源、profile 切换迟到结果丢弃、禁用/恢复或
   profile-aware continuation 的真实测试。现有 multiple-provider 测试不覆盖这些语义。
 
@@ -261,6 +262,92 @@ Spotify client ID、注册回调和可测试账户是 LIVE 验收前置条件，
 B1/B2 身份与运行时仍是未完成项；本计划不把推荐批次的通过结果升级为全量解耦结论。
 
 B–F 阶段仍未完成；Spotify 真实故障尚未复现。此次计划更新不把任何待办项改为已完成。
+
+### 2026-09-13 本地增量审阅
+
+本次基线为 YAQMC `7a5febd`、库 `94d1aa9`。本节保留正式 pin 同步前的联调记录；
+库增量随后已提交为 `d421d9898797afd59fb900b43a9871ded55ee720` 并推送。
+命令级本地 path patch 只证明候选代码可以联调；正式 pin 的复核另行记录在本节末尾。
+
+- 库将账户写入的 wire 执行器设为私有，外部使用 `AccountWrite`。
+  固定 Web 请求契约，避免默认 Android Client 在写入前额外协商 session/QIMEI；
+  取消前后检查阻止已取消请求发布成功结果，写请求不自动重放。
+- 审阅发现既有 typed 迁移遗漏收藏歌单的加密 `uin`，并把编辑歌单的
+  `dirNewtaglist` 错写为 `dirNewTagList`。库修正两项 wire 契约；收藏身份从单次调用的
+  显式 `Credential` 获取，不继承全局账户、不使用普通 UIN 替代。
+- provider 账户写入测试须调用生产的 typed 路径。旧的 `cfg(test)` raw 绕行
+  和放在业务参数中的测试开关会掩盖转换错误；改为由合成 transport 配置响应。
+- QQ/微信 OAuth 授权 URL 构造移入库的纯函数；桌面 QQ `display=pc`、
+  手机 QQ `display=mobile` 与微信无独立手机 URL 的行为保持不变。
+  宿主导航白名单、回调 state 校验、登录尝试 ownership 和 MQTT 流程不迁出。
+- 基线 MSRV provider Clippy 与完整 workspace 测试通过；新库的账户写入契约测试
+  覆盖端点参数、显式凭据、取消、单次发送和业务码。未执行真实账户写入或真机登录验证。
+- 最初的 `qm-api-rs-access --check` 暴露既有 pin 漂移：Cargo 为 `94d1aa9`，
+  CI helper、对应源码 checkout 与 release 记录为 `7d0f6e1`。
+  不得将旧 pin 的 provenance/soak 证据自动套用到候选 revision。
+- 完整测试额外暴露播放器时钟竞态：音频快照在 Core 写锁前采样，
+  暂停提交后旧的 `engine.playing=true` 仍可把状态重新改为 Playing。
+  修复将自动恢复收窄到匹配当前 source generation 的 Buffering 状态；
+  pause/stop 不得被旧快照复活。增加受屏障控制的确定性回归，不修改原 QA 断言。
+
+同步前联调验证（Rust `1.88.0`，Node `26.7.0`）：
+
+| 命令/范围                                                                                             | 实际结果                                                                                             |
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 库 `cargo +1.88.0 test --locked --offline --all-targets --all-features --quiet`                       | 180 单元测试、22 集成测试通过，其中新增 7 项账户写契约测试                                           |
+| 库 `cargo +1.88.0 clippy --locked --offline --all-targets --all-features -- -D warnings`              | 通过                                                                                                 |
+| 候选 YAQMC `cargo +1.88.0 check --workspace --offline --all-targets` + 下述 patch                     | 通过                                                                                                 |
+| 候选 YAQMC `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings` + patch | 通过                                                                                                 |
+| 候选 YAQMC `cargo +1.88.0 test -p yaqmc-provider-qqmusic --locked --offline --quiet` + patch          | 290 passed、8 ignored，boundary integration 1 passed                                                 |
+| 候选 YAQMC `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet` + patch          | 修复时钟竞态后通过：Core 277 passed，provider 290 passed / 8 ignored；原播放 QA 1 passed / 1 ignored |
+| 两仓库 `cargo +1.88.0 fmt --all -- --check`、`git diff --check`                                       | 通过                                                                                                 |
+| YAQMC `npx --no-install prettier --check docs/platform-api-plan.md`、`npm run docs:check`             | 通过                                                                                                 |
+| YAQMC `node scripts/ci/qm-api-rs-access.mjs --check`                                                  | 失败：前述既有 pin 漂移                                                                              |
+
+联调时给 YAQMC Cargo 命令追加如下选项（放在测试程序或 Clippy 的 `--` 之前）：
+
+```powershell
+--config 'patch."https://github.com/YAQMC/qm-api-rs.git".qqmusic-api.path="D:/qm-api-rs"'
+```
+
+首次切换 patch 会更新 lock，因此先执行上表未带 `--locked` 的 check；
+后续测试使用 `--locked`。最终恢复原 git lock，不提交绝对本机 path 依赖。
+缺少新库 pin 时，OAuth 接入代码不能直接用旧远端依赖编译；下面的正式 pin 同步补齐该步骤。
+首次完整 workspace 与定向 QA 均曾在 `qa_play01_production.rs:663` 失败，
+当时 pause 后歌词投影 `isPlaying` 仍为 true。新增屏障测试在旧分支下分别复现
+Playing 覆盖 Paused/Stopped；收窄时钟状态晋级后两项测试以及缓冲恢复测试通过，
+最终完整 workspace 也通过。原 QA 断言未修改，不用增加 sleep 或修改期望掩盖竞态。
+未运行前端全矩阵、平台打包、Android 真机、LIVE 或发布验收。
+
+残留工作：直接构造 `AccountWrite` 以删除 provider 的字符串转换层；迁移桌面 QR、
+OAuth code exchange 和其请求/响应契约；核对 artwork 生成与安全下载边界。
+插件路由 C1 继续依赖 B1/B2，不提前建立缺少 profile 隔离和调用方的第二套注册表。
+
+#### 正式远端 pin 复核
+
+YAQMC 的 Cargo manifest/lock、CI pin helper、对应源码 checkout、开发文档及 release
+记录现已统一到 `d421d9898797afd59fb900b43a9871ded55ee720`。此处使用正式 git 依赖，
+没有本地 path patch。Cargo 更新附带的无关 Windows 依赖重选已移除；lock 只改库 revision。
+
+| 实际执行命令                                                                                                                                                               | 结果                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `cargo +1.88.0 fetch --locked`                                                                                                                                             | 成功获取正式远端 revision                                                   |
+| `cargo +1.88.0 check --workspace --locked --offline --all-targets`                                                                                                         | 通过                                                                        |
+| `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet`                                                                                                  | 通过；Core 277、provider 290 passed / 8 ignored，原播放 QA 通过 / 1 ignored |
+| `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings`                                                                                         | 通过                                                                        |
+| `cargo +1.88.0 fmt --all -- --check`                                                                                                                                       | 通过                                                                        |
+| `npm run ci:test-scripts`                                                                                                                                                  | 235 passed                                                                  |
+| `node scripts/ci/qm-api-rs-access.mjs --check`                                                                                                                             | 通过；库 checkout、helper、provider pin 一致                                |
+| `npm run provenance:enforce`                                                                                                                                               | 通过；范围限于已记录来源及新 pin 的 source-mapping delta review             |
+| `npm run provider:enforce`                                                                                                                                                 | 预期退出 3：新 pin 的 exact-pin-three-day-soak 为 not-started，无新豁免     |
+| `npm run docs:check`                                                                                                                                                       | 47 组双语技术文档校验通过                                                   |
+| `npx --no-install eslint scripts/ci/qm-api-rs-access.mjs scripts/ci/qm-api-rs-access.test.mjs scripts/ci/p14c-readiness.test.mjs scripts/ci/corresponding-source.test.mjs` | 通过                                                                        |
+| `npx --no-install prettier --check`（本次改动的 Markdown/JSON/MJS/YAML 文件）                                                                                              | 通过                                                                        |
+| `./scripts/check-secrets.ps1 -SelfTest`、`./scripts/check-secrets.ps1`                                                                                                     | 通过；只报告扫描状态，不输出候选值                                          |
+| `git diff --check`                                                                                                                                                         | 通过                                                                        |
+
+以上不是 Android 真机、LIVE、完整前端矩阵或 Release 验收。历史 cutover 授权不变，
+但旧 pin 的 soak waiver 没有转移到新 pin；本轮仅推送代码，不创建 tag 或 Release。
 
 ## 6. 可执行工作包与依赖
 

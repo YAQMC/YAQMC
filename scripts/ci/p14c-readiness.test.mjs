@@ -31,24 +31,28 @@ function currentPinQualifiedRecord() {
   };
 }
 
-test('the shipped record carries the maintainer-authorized exact-pin soak waiver', () => {
+test('the new production pin does not inherit a previous soak waiver', () => {
   const { record, blockers } = inspectP14cReadiness();
   assert.equal(record.cutoverAuthorized, true);
   assert.equal(record.defaultBackend, 'qmapi');
   assert.deepEqual(record.responsibilities.pendingProductionReplacement, []);
-  assert.deepEqual(blockers, []);
+  assert.deepEqual(
+    blockers.map(({ id, status }) => ({ id, status })),
+    [{ id: 'exact-pin-three-day-soak', status: 'not-started' }],
+  );
   const soak = record.gates.find((gate) => gate.id === 'exact-pin-three-day-soak');
-  assert.equal(soak.status, 'waived');
+  assert.equal(soak.status, 'not-started');
   assert.equal(soak.appliesToPin, record.targetPin);
-  assert.equal(soak.waivedBy, 'Mai-xiyu');
-  assert.equal(soak.waiverKind, 'maintainer-authorized-skip');
+  assert.equal(soak.waivedBy, undefined);
+  assert.equal(soak.waivedOn, undefined);
+  assert.equal(soak.waiverKind, undefined);
 });
 
-test('the shipped record renders a readable maintainer-waived report', () => {
+test('the shipped record reports the unqualified pin as blocked', () => {
   const { record, blockers } = inspectP14cReadiness();
   const report = formatP14cStatus(record, blockers);
-  assert.match(report, /^PROVIDER READINESS STATUS: READY$/m);
-  assert.match(report, /exact-pin-three-day-soak: waived/);
+  assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);
+  assert.match(report, /exact-pin-three-day-soak: not-started/);
 });
 
 test('a waiver pinned to the cutover baseline blocks the current target pin', () => {
@@ -81,7 +85,7 @@ test('the baseline-pinned waiver renders a readable blocked report', () => {
   const report = formatP14cStatus(staleRecord, blockers);
   assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);
   assert.match(report, /exact-pin-three-day-soak: blocked/);
-  assert.match(report, /not target 7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5/);
+  assert.ok(report.includes(`not target ${record.targetPin}`));
 });
 
 test('a current-pin waiver produces a structurally ready fixture', () => {
