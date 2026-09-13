@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.MainThread
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -260,6 +261,18 @@ class ExoAudioBackend(context: Context) {
             reportState(clearDuration = true)
         }
     }
+
+    /**
+     * Precise playback position for animation-heavy Android UI.
+     *
+     * [currentPositionMs] is intentionally refreshed only at the Core reporting cadence
+     * ([PROGRESS_UPDATE_INTERVAL_MS]). Native lyric rendering needs frame-level samples, but
+     * increasing that reporting cadence would also increase Rust/JNI traffic. Call this from the
+     * main thread (for example from Choreographer) to read Media3 directly without emitting a Core
+     * state report.
+     */
+    @MainThread
+    fun currentPositionForUiMs(): Long = exoPlayer.currentPosition.coerceAtLeast(0L)
 
     fun seek(positionMs: Long) {
         val epoch = loadEpoch
