@@ -34,10 +34,10 @@
     },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
-      "revision": "8734353175317cf81c2180b73deff18edca8a650",
-      "yaqmcPin": "8734353175317cf81c2180b73deff18edca8a650",
+      "revision": "f9e7266aeff15379b1659687f09df8da5128be03",
+      "yaqmcPin": "f9e7266aeff15379b1659687f09df8da5128be03",
       "linked": true,
-      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-14 limited delta review from 7d0f6e1 to 8734353 covers typed web/account interfaces, OAuth URL construction, credential isolation and bounded anonymous artwork downloads. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at both pins, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
+      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-14 limited delta review from 7d0f6e1 to 8734353 covers typed web/account interfaces, OAuth URL construction, credential isolation and bounded anonymous artwork downloads. The follow-up delta review from 8734353 to f9e7266 covers only src/lib.rs and src/modules/login.rs: the desktop OAuth authorization-code exchange wire contract and login reply decoding move into the library. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at every reviewed pin, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
     }
   },
   "sources": [

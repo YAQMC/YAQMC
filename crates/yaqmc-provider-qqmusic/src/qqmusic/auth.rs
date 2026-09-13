@@ -54,6 +54,8 @@ use yaqmc_provider_api::{
     PlaybackEpochClock, ProviderStorage, ProviderStorageError, SpawnBlockingCredentialStore,
 };
 
+use crate::qmapi::cgi::map_qmapi_error;
+
 pub(crate) const ACTIVE_SESSION: &str = "qqmusic-session";
 pub(crate) const STAGING_SESSION: &str = "qqmusic-session-staging";
 const MIN_POLL_INTERVAL_MS: u64 = 1_500;
@@ -398,37 +400,20 @@ impl TransportQQMusicAuthProtocol {
         {
             return Err(QQMusicError::Protocol);
         }
-        let (operation, module, method, param, login_type) = match provider {
-            OAuthLoginProvider::Qq => (
-                "auth.qq.exchange",
-                "QQConnectLogin.LoginServer",
-                "QQLogin",
-                json!({ "code": code }),
-                2,
-            ),
-            OAuthLoginProvider::Wechat => (
-                "auth.wechat.exchange",
-                "music.login.LoginServer",
-                "Login",
-                json!({ "code": code, "strAppid": "wx48db31d50e334801" }),
-                1,
-            ),
+        let operation = match provider {
+            OAuthLoginProvider::Qq => "auth.qq.exchange",
+            OAuthLoginProvider::Wechat => "auth.wechat.exchange",
         };
-        let mut comm = json!({
-            "platform": "yqq",
-            "ct": 24,
-            "cv": 0,
-            "tmeLoginType": login_type,
-        });
-        if let Some(gtk) = gtk {
-            comm["g_tk"] = json!(gtk);
-        }
+        // Upstream module/method/param/comm shape is owned by qm-api-rs; the
+        // provider keeps transport policy, retries and attempt ownership.
+        let exchange =
+            qqmusic_api::build_oauth_code_exchange_request(provider.qm_api_provider(), code, gtk);
         let login_payload = json!({
-            "comm": comm,
+            "comm": exchange.comm,
             "req": {
-                "module": module,
-                "method": method,
-                "param": param,
+                "module": exchange.module,
+                "method": exchange.method,
+                "param": exchange.param,
             }
         });
         let mut login_headers = if cookies.values.is_empty() {
@@ -483,14 +468,17 @@ impl TransportQQMusicAuthProtocol {
             .or_else(|| payload.pointer("/req_0/data"))
             .or_else(|| payload.pointer("/req"))
             .ok_or(QQMusicError::MalformedResponse)?;
-        let uin = first_string(data, &["/str_musicid", "/musicid", "/uin"])
-            .filter(|value| {
-                !value.is_empty() && value.chars().all(|character| character.is_ascii_digit())
-            })
-            .ok_or(QQMusicError::MalformedResponse)?;
-        let music_key = first_string(data, &["/musickey", "/musicKey"])
-            .filter(|value| !value.is_empty())
-            .ok_or(QQMusicError::MalformedResponse)?;
+        // Field decoding (including the `uin`/`musicKey` aliases) is owned by
+        // qm-api-rs; the provider only enforces the session invariants it needs.
+        let credential = qqmusic_api::credential_from_login_data(data).map_err(map_qmapi_error)?;
+        let uin = credential.str_musicid();
+        if uin.is_empty() || !uin.chars().all(|character| character.is_ascii_digit()) {
+            return Err(QQMusicError::MalformedResponse);
+        }
+        let music_key = credential.musickey.clone();
+        if music_key.is_empty() {
+            return Err(QQMusicError::MalformedResponse);
+        }
         cookies.insert("uin", &format!("o{uin}"))?;
         cookies.insert("qqmusic_uin", &uin)?;
         cookies.insert("qm_keyst", &music_key)?;
@@ -498,8 +486,12 @@ impl TransportQQMusicAuthProtocol {
         cookies.remove("qrsig");
         cookies.remove("pt_login_sig");
 
-        let created = numeric_u64(data, &["/musickeyCreateTime", "/musickey_create_time"]);
-        let lifetime = numeric_u64(data, &["/keyExpiresIn", "/key_expires_in"]);
+        let created = u64::try_from(credential.musickey_create_time)
+            .ok()
+            .filter(|value| *value > 0);
+        let lifetime = u64::try_from(credential.key_expires_in)
+            .ok()
+            .filter(|value| *value > 0);
         let expires_at_ms = match (created, lifetime) {
             (Some(created), Some(lifetime)) if lifetime > 0 => {
                 let created_ms = if created >= 1_000_000_000_000 {
@@ -515,7 +507,8 @@ impl TransportQQMusicAuthProtocol {
                 .saturating_add(FALLBACK_SESSION_LIFETIME_MS),
         };
 
-        let encrypted_uin = first_string(data, &["/encryptUin", "/encrypt_uin", "/euin"])
+        let encrypted_uin = Some(credential.encrypt_uin)
+            .filter(|value| !value.trim().is_empty())
             .or_else(|| {
                 ["euin", "encryptUin"]
                     .into_iter()

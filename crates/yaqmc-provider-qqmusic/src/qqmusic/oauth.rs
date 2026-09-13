@@ -24,7 +24,7 @@ impl OAuthLoginProvider {
         }
     }
 
-    fn qm_api_provider(self) -> qqmusic_api::OAuthLoginProvider {
+    pub(crate) fn qm_api_provider(self) -> qqmusic_api::OAuthLoginProvider {
         match self {
             Self::Qq => qqmusic_api::OAuthLoginProvider::Qq,
             Self::Wechat => qqmusic_api::OAuthLoginProvider::Wechat,

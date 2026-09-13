@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS (SOURCE-MAPPING DELTA REVIEW)** at production revision
-`8734353175317cf81c2180b73deff18edca8a650`.
+`f9e7266aeff15379b1659687f09df8da5128be03`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -29,6 +29,15 @@ transport implementations, with synthetic and loopback contract tests.
 No dependency, license,
 third-party notice, or QMC source change appears in that range. The existing
 source mappings are retained based on identical Git blobs, not on test results:
+
+The next delta review compares `8734353175317cf81c2180b73deff18edca8a650` with the
+current pin `f9e7266aeff15379b1659687f09df8da5128be03`. That range contains two
+changed files, `src/lib.rs` and `src/modules/login.rs`: the desktop OAuth
+authorization-code exchange contract (module, method, param, comm, WeChat
+`strAppid`, optional `gtk`) and the login reply decoding move into the library,
+with contract tests for both providers and the `uin`/`musicKey` spellings. No
+dependency, license, third-party notice, or QMC source change appears in the
+range, and the four reviewed blobs below are byte-identical at both revisions:
 
 | File                     | Git blob at both revisions                 |
 | ------------------------ | ------------------------------------------ |

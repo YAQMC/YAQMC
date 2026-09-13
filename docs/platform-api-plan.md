@@ -490,6 +490,33 @@ Linux 本机构建、Electron GUI 或 LIVE。新 pin 的 soak 仍为 not-started
 复杂度：下载和 Base64 编码的时间/额外空间为 O(b)，b 为响应字节数，图片上限 5 MiB。
 不以该上限替代 Wasm 插件资源配额或媒体播放的流式缓存限制。
 
+#### 2026-09-14：桌面 OAuth 授权码交换的 wire 契约入库
+
+本批承接 A4 的授权残留。此前 `qqmusic/auth.rs` 的 `exchange_code` 仍在 provider 内
+构造 `module`/`method`/`param`/`comm`、微信 `strAppid`、`g_tk`，并自行解释登录响应的
+`str_musicid`/`musicid`/`uin` 与 `musickey`/`musicKey` 字段。这些属于上游 wire 契约，
+与 provider 职责边界分离后移入 `qm-api-rs`：
+
+- 库新增 `build_oauth_code_exchange_request`、`credential_from_login_data`、
+  `OAuthCodeExchangeRequest` 与 `WECHAT_MUSIC_APP_ID`，覆盖 QQ 与微信两种登录类型，
+  并记录 `gtk` 可选、`uin`/`musicKey` 别名解析的契约测试。
+- provider 只保留 transport 策略（`RetryClass::AuthPoll`、允许的跳转）、请求头、
+  cookie jar 变更、`OutcomeUnknown` 语义、会话过期推导与 `SessionRecord` 构造；
+  不再出现上游 module/method 字符串。
+- 会话不变式未放宽：uin 必须为纯数字且非空、`musickey` 必须非空，否则仍是
+  `MalformedResponse`；业务码非 0 仍是 `Protocol`。`musickeyCreateTime`/`keyExpiresIn`
+  为 0 或缺省时继续回落到 `FALLBACK_SESSION_LIFETIME_MS`，与既有凭据校验一致。
+
+本批同时把 pin 前移到 `f9e7266aeff15379b1659687f09df8da5128be03`。来源增量仅涉及
+`src/lib.rs` 与 `src/modules/login.rs`；`LICENSE`、`PROVENANCE.md`、
+`THIRD_PARTY_NOTICES.md`、`src/qmc.rs` 的 Git blob 与上一 pin 完全一致，已记入
+`docs/release/qm-api-rs-provenance.md` 与 provenance ledger。旧 pin 的 soak 豁免不迁移，
+新 pin 的 `exact-pin-three-day-soak` 仍为 `not-started`，不构成发布授权。
+
+联调（库 path patch）结果：provider 289 passed / 8 ignored，边界测试 4 passed；
+库 187 单元测试与全部集成测试通过，Clippy、fmt 通过。正式 pin 下的验证结果记录在下一批
+证据小节中；多 profile、插件端点路由与 Spotify 仍不在本批范围。
+
 ### 2026-09-14：插件撤权代次保护
 
 本批基线为 YAQMC `b2cf62f`，只改 renderer 插件运行时与对应测试，不触碰 provider。
@@ -512,6 +539,27 @@ Linux 本机构建、Electron GUI 或 LIVE。新 pin 的 soak 仍为 not-started
 
 本批只覆盖 C1 中“插件禁用立即撤销路由、旧异步结果不得覆盖新状态”的语义；B1/B2 profile、
 C1 的完整路由层、D 混合队列与 E Spotify 仍未完成。
+
+### 2026-09-14：provider 端点反回流门禁与 A5 清理
+
+- 新增 `crates/yaqmc-provider-qqmusic/tests/endpoint_boundary.rs`：按文件扫描 `src/**/*.rs`
+  的**生产代码**（剥离 `#[cfg(test)]` 项、忽略 `*_tests.rs`），统计 QQ 上游标记
+  （`u.y.qq.com`、`musicu.fcg`、`ssl.ptlogin2`、`graph.qq.com`、裸 `y.qq.com` 等）。
+  未列入白名单的文件出现任何一项即失败；白名单文件同时在测试输出里列出当前残留计数，
+  便于逐批消账。测试同时包含扫描器的自检（保证只统计生产代码、不误伤字符串里的花括号）。
+- 当前白名单仅 4 个已验证归属：`qmapi/transport.rs`（YAQMC 侧 transport 边界与共享
+  musicu 端点）、`qqmusic/auth.rs`（登录/会话流程待迁移）、`qqmusic/oauth.rs`
+  （OAuth 导航白名单待库接管）、`qqmusic/transport.rs`（账户/鉴权仍在用的旧 transport 边界）。
+  这四个文件一旦迁移完成，必须同步从白名单删除，否则门禁会因“例外不存在”而失败。
+- `qqmusic.rs` 生产代码不再自持上游端点：`QQ_MUSICU_URL`、`playback_headers()` 移入
+  transport 边界模块；旧版 vkey CGI 载荷、`musicu_request`、`send_json`、`stable_guid`
+  与 legacy 歌词请求收敛为 `cfg(test)` 的迁移回归覆盖，生产编译路径全部走 typed `qm-api-rs`。
+  行为不变：生产环境清流 URL 一直由库侧 vkey 结果提供，旧分支此前已不可达。
+- 验证（`qm-api-rs` 使用固定 revision 的等价本地补丁进行测试编译，因为同批次还有其它
+  未落地的库改动）：`cargo test -p yaqmc-provider-qqmusic` 289 passed / 8 ignored，
+  `tests/endpoint_boundary.rs` 3 passed，`tests/intree_boundary.rs` 5 passed；
+  `clippy --all-targets -- -D warnings` 与 `cargo check`（生产 profile）均通过。
+  本批未执行 Android 真机、LIVE 或打包，也未提交 `qm-api-rs` 之外的新 pin。
 
 ## 6. 可执行工作包与依赖
 
