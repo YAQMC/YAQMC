@@ -9,6 +9,15 @@ pluginManagement {
     }
 }
 
+val githubPackagesUser =
+    System.getenv("YAQMC_GITHUB_PACKAGES_USER")
+        ?.takeIf(String::isNotBlank)
+        ?: System.getenv("GITHUB_ACTOR")?.takeIf(String::isNotBlank)
+val githubPackagesToken =
+    System.getenv("YAQMC_GITHUB_PACKAGES_TOKEN")
+        ?.takeIf(String::isNotBlank)
+        ?: System.getenv("GITHUB_TOKEN")?.takeIf(String::isNotBlank)
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
@@ -16,6 +25,23 @@ dependencyResolutionManagement {
         maven { url = uri("https://maven.aliyun.com/repository/google") }
         google()
         mavenCentral()
+
+        // `amll-android` is a private repository-scoped GitHub Package. Keep the repository out of
+        // ordinary unauthenticated builds until credentials are available; the app does not depend
+        // on the package yet, so this is only the consumption boundary for the native-lyrics work.
+        if (githubPackagesUser != null && githubPackagesToken != null) {
+            maven {
+                name = "yaqmcAmllGitHubPackages"
+                url = uri("https://maven.pkg.github.com/YAQMC/amll-android")
+                credentials {
+                    username = githubPackagesUser
+                    password = githubPackagesToken
+                }
+                content {
+                    includeGroup("dev.yaqmc")
+                }
+            }
+        }
     }
 }
 
