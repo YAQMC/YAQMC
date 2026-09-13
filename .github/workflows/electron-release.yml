@@ -286,7 +286,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: YAQMC/qm-api-rs
-          ref: ee2c20b6ae071dacb18832ddef12c630eaa549fd
+          ref: c910820b7a21781cff3ca59ab5717e9fa7673bb8
           path: .corresponding-source/qm-api-rs
           persist-credentials: false
       - name: Checkout exact AMLL corresponding source

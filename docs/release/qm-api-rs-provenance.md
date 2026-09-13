@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS (SOURCE-MAPPING DELTA REVIEW)** at production revision
-`ee2c20b6ae071dacb18832ddef12c630eaa549fd`.
+`c910820b7a21781cff3ca59ab5717e9fa7673bb8`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -15,12 +15,14 @@ source-to-target mappings are present in the crate and mirrored in
 recorded as a protocol and API-shape reference, not incorporated source.
 Former port and extracted-client source claims were removed before this pin.
 
-The 2026-09-13 delta review compares the seven commits after the previously recorded
+The 2026-09-13 delta review compares the eight commits after the previously recorded
 `7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5` through the new pin. The changes add
 typed web discovery/account interfaces, OAuth URL construction, credential
-isolation, validation, and synthetic contract tests. The final account delta adds
+isolation, validation, and synthetic contract tests. The account deltas add
 an explicit trusted directory binding for owned playlist responses; it rejects
 conflicting playlist and directory identities and has transport contract tests.
+The latest delta extends those typed reads to owned/saved playlist lists, preserving
+explicit credential scope and validating page ranges and continuation flags.
 No dependency, license,
 third-party notice, or QMC source change appears in that range. The existing
 source mappings are retained based on identical Git blobs, not on test results:

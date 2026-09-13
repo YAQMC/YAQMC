@@ -33,7 +33,7 @@ fn account_writes_have_no_legacy_encoder_or_test_only_execution_path() {
         .split_once("async fn execute_playlist_write(")
         .unwrap()
         .1
-        .split_once("async fn execute_account_transport(")
+        .split_once("async fn fetch_all_playlist_summaries(")
         .unwrap()
         .0;
     assert!(
@@ -59,6 +59,36 @@ fn account_writes_have_no_legacy_encoder_or_test_only_execution_path() {
     assert!(detail_read.contains("AccountRead::PlaylistTracks"));
     assert!(!detail_read.contains("musicu_request("));
     assert!(!detail_read.contains("CgiGetDiss"));
+}
+
+#[test]
+fn account_lists_have_no_business_http_or_legacy_request_builder() {
+    let source = include_str!("../src/qqmusic/account.rs");
+    for retired in [
+        "fn musicu_request(",
+        "fn account_headers(",
+        "async fn execute_read(",
+        "async fn execute_account_transport(",
+        "fn cookie_value",
+        ".execute(TransportRequest",
+        ".request_http(",
+        ".request_cgi(",
+    ] {
+        assert!(!source.contains(retired), "retired account HTTP: {retired}");
+    }
+    let production = source.split("mod tests {").next().unwrap();
+    for endpoint in [
+        "GetPlaylistByUin",
+        "CgiGetPlaylistFavInfo",
+        "music.musicasset.",
+    ] {
+        assert!(
+            !production.contains(endpoint),
+            "wire endpoint belongs in qm-api-rs: {endpoint}"
+        );
+    }
+    assert!(production.contains("AccountRead::OwnedPlaylists"));
+    assert!(production.contains("AccountRead::CollectedPlaylists"));
 }
 
 #[derive(Default)]

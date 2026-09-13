@@ -5,7 +5,7 @@
 
 use super::{
     artwork::{artwork_from_provider_url, is_allowed_artwork_url},
-    auth::{AuthenticatedAccountContext, QQMusicAuthService, SessionRecord},
+    auth::{AuthenticatedAccountContext, QQMusicAuthService},
     cache::{
         AccountCache, AccountEpoch, AccountLibraryProjection, CachedAccountPage,
         CompletedResultCache, OpaqueCursorRegistry, ProviderTrackRegistry, ACCOUNT_CACHE_KIND,
@@ -14,16 +14,22 @@ use super::{
     color_for, normalize_new_song, normalize_old_song, playlist_id,
     redaction::{redact_json, sanitize_field},
     stable_component,
-    transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
-    upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError, QQ_MUSICU_URL,
+    transport::{QqTransport, RetryClass},
+    upgrade_https, NewSongDto, OldSongDto, PlaylistOwner, QQMusicError,
+};
+#[cfg(test)]
+use super::{
+    auth::SessionRecord,
+    transport::{TransportRequest, TransportResponse},
+    QQ_MUSICU_URL,
 };
 use qqmusic_api::account::AccountWrite;
-use reqwest::{
-    header::{self, HeaderMap, HeaderValue},
-    Method, StatusCode, Url,
-};
+#[cfg(test)]
+use reqwest::{header::HeaderMap, StatusCode, Url};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 #[cfg(test)]
 use std::sync::Mutex as StdMutex;
 use std::{
@@ -1993,95 +1999,14 @@ impl QQMusicAccountService {
         result
     }
 
-    async fn execute_account_transport(
-        &self,
-        context: &AuthenticatedAccountContext,
-        operation: &'static str,
-        response_shape: &'static str,
-        payload: Value,
-        retry: RetryClass,
-    ) -> Result<TransportResponse, QQMusicError> {
-        self.auth.ensure_current(&context.epoch).await?;
-        let response = self
-            .transport
-            .execute(TransportRequest {
-                operation,
-                method: Method::POST,
-                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                headers: account_headers(&context.session)?,
-                body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
-                retry,
-                redirects: RedirectMode::FollowValidated,
-                response_shape,
-                cancellation: context.cancellation.clone(),
-            })
-            .await
-            .map_err(|error| match error {
-                QQMusicError::AuthorizationRejected => QQMusicError::AuthenticationExpired,
-                other => other,
-            })?;
-        self.auth.ensure_current(&context.epoch).await?;
-        if !response.status.is_success() {
-            return Err(match response.status {
-                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                    QQMusicError::AuthenticationExpired
-                }
-                StatusCode::TOO_MANY_REQUESTS => QQMusicError::RateLimited,
-                status if status.is_server_error() && retry == RetryClass::Write => {
-                    QQMusicError::OutcomeUnknown
-                }
-                status if status.is_server_error() => QQMusicError::Offline,
-                _ => QQMusicError::Protocol,
-            });
-        }
-        Ok(response)
-    }
-
     async fn fetch_all_playlist_summaries(
         &self,
         context: &AuthenticatedAccountContext,
         retry: RetryClass,
         operation: &'static str,
     ) -> Result<Vec<AccountPlaylistSummary>, QQMusicError> {
-        let mut offset = 0_u64;
-        let mut playlists = Vec::new();
-        for _ in 0..100 {
-            let payload = musicu_request(
-                &context.session,
-                "music.musicasset.PlaylistBaseRead",
-                "GetPlaylistByUin",
-                json!({
-                    "uin": context.session.uin,
-                    "sin": offset,
-                    "ein": offset.saturating_add(99)
-                }),
-            );
-            let response = self
-                .execute_account_transport(
-                    context,
-                    operation,
-                    "playlist-summary-reconciliation",
-                    payload,
-                    retry,
-                )
-                .await?;
-            let page = normalize_playlist_page_response_with_ownership(
-                &response.body,
-                offset,
-                PlaylistOwnership::Owned,
-                &["v_playlist", "playlist"],
-            )?;
-            playlists.extend(page.items);
-            let Some(next) = page.next_provider_cursor else {
-                return Ok(playlists);
-            };
-            let next = provider_offset(&next).map_err(|_| QQMusicError::SchemaChanged)?;
-            if next <= offset {
-                return Err(QQMusicError::SchemaChanged);
-            }
-            offset = next;
-        }
-        Err(QQMusicError::SchemaChanged)
+        self.fetch_all_playlist_list(context, retry, operation, false)
+            .await
     }
 
     async fn fetch_all_collected_playlist_summaries(
@@ -2090,39 +2015,64 @@ impl QQMusicAccountService {
         retry: RetryClass,
         operation: &'static str,
     ) -> Result<Vec<AccountPlaylistSummary>, QQMusicError> {
-        let encrypted_uin = context
-            .session
-            .encrypted_uin
-            .as_deref()
-            .ok_or(QQMusicError::UnsupportedOperation)?;
-        let mut offset = 0_u64;
+        self.fetch_all_playlist_list(context, retry, operation, true)
+            .await
+    }
+
+    async fn fetch_all_playlist_list(
+        &self,
+        context: &AuthenticatedAccountContext,
+        retry: RetryClass,
+        operation: &'static str,
+        collected: bool,
+    ) -> Result<Vec<AccountPlaylistSummary>, QQMusicError> {
+        if collected
+            && context
+                .session
+                .encrypted_uin
+                .as_deref()
+                .is_none_or(str::is_empty)
+        {
+            return Err(QQMusicError::UnsupportedOperation);
+        }
+        let mut offset = 0;
         let mut playlists = Vec::new();
         for _ in 0..100 {
             let response = self
-                .execute_account_transport(
+                .read_account_page(
                     context,
                     operation,
-                    "collected-playlist-reconciliation",
-                    musicu_request(
-                        &context.session,
-                        "music.musicasset.PlaylistFavRead",
-                        "CgiGetPlaylistFavInfo",
-                        json!({"uin": encrypted_uin, "offset": offset, "size": 100}),
-                    ),
+                    "playlist-summary-reconciliation",
+                    if collected {
+                        qqmusic_api::account::AccountRead::CollectedPlaylists
+                    } else {
+                        qqmusic_api::account::AccountRead::OwnedPlaylists
+                    },
+                    offset,
+                    100,
                     retry,
                 )
                 .await?;
             let page = normalize_playlist_page_response_with_ownership(
-                &response.body,
+                &response
+                    .compatibility_json()
+                    .map_err(crate::qmapi::cgi::map_qmapi_error)?,
                 offset,
-                PlaylistOwnership::Collected,
-                &["v_list", "v_playlist", "playlist"],
+                if collected {
+                    PlaylistOwnership::Collected
+                } else {
+                    PlaylistOwnership::Owned
+                },
+                if collected {
+                    &["v_list", "v_playlist", "playlist"]
+                } else {
+                    &["v_playlist", "playlist"]
+                },
             )?;
             playlists.extend(page.items);
-            let Some(next) = page.next_provider_cursor else {
+            let Some(next) = response.next_offset else {
                 return Ok(playlists);
             };
-            let next = provider_offset(&next).map_err(|_| QQMusicError::SchemaChanged)?;
             if next <= offset {
                 return Err(QQMusicError::SchemaChanged);
             }
@@ -2516,28 +2466,17 @@ impl QQMusicAccountService {
         }
 
         let limit = limit.clamp(1, 100);
-        let payload = if collected_phase {
-            let encrypted_uin = context
+        if collected_phase
+            && context
                 .session
                 .encrypted_uin
                 .as_deref()
-                .ok_or(QQMusicError::InvalidRequest)?;
-            musicu_request(
-                &context.session,
-                "music.musicasset.PlaylistFavRead",
-                "CgiGetPlaylistFavInfo",
-                json!({"uin": encrypted_uin, "offset": offset, "size": limit}),
-            )
-        } else {
-            musicu_request(
-                &context.session,
-                "music.musicasset.PlaylistBaseRead",
-                "GetPlaylistByUin",
-                json!({ "uin": context.session.uin }),
-            )
-        };
+                .is_none_or(str::is_empty)
+        {
+            return Err(QQMusicError::InvalidRequest);
+        }
         let response = match self
-            .execute_read(
+            .read_account_page(
                 &context,
                 if collected_phase {
                     "account.playlists.saved"
@@ -2549,17 +2488,25 @@ impl QQMusicAccountService {
                 } else {
                     "playlist-page"
                 },
-                payload,
+                if collected_phase {
+                    qqmusic_api::account::AccountRead::CollectedPlaylists
+                } else {
+                    qqmusic_api::account::AccountRead::OwnedPlaylists
+                },
+                offset,
+                limit,
+                RetryClass::SafeRead,
             )
             .await
         {
             Ok(response) => response,
-            Err(error) => {
-                return self.stale_page_or_error(&context, cached, error).await;
-            }
+            Err(error) => return self.stale_page_or_error(&context, cached, error).await,
         };
+        let response_body = response
+            .compatibility_json()
+            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
         let mut normalized = normalize_playlist_page_response_with_ownership(
-            &response.body,
+            &response_body,
             offset,
             if collected_phase {
                 PlaylistOwnership::Collected
@@ -2573,7 +2520,7 @@ impl QQMusicAccountService {
             },
         )
         .map_err(|error| {
-            let (top, req, subcode) = response_codes(&response.body);
+            let (top, req, subcode) = response_codes(&response_body);
             tracing::warn!(
                 target: "qqmusic.playlist",
                 cursor = ?cursor,
@@ -2583,49 +2530,13 @@ impl QQMusicAccountService {
                 code = ?top,
                 req_code = ?req,
                 subcode = ?subcode,
-                response = %response_preview(&response.body),
+                response = %response_preview(&response_body),
                 "account playlist list response failed to normalize"
             );
             error
         })?;
-        if !collected_phase {
-            if let Ok(value) = serde_json::from_slice::<Value>(&response.body) {
-                if let Some(list) = response_data(&value)
-                    .ok()
-                    .and_then(|data| data.get("v_playlist"))
-                    .and_then(Value::as_array)
-                {
-                    let entries = list
-                        .iter()
-                        .map(|entry| {
-                            let tid = entry
-                                .get("tid")
-                                .or_else(|| entry.get("disstid"))
-                                .or_else(|| entry.get("id"))
-                                .map(|value| sanitize_field(&value.to_string()).into_owned())
-                                .unwrap_or_else(|| "<missing>".to_owned());
-                            let dir_id = entry
-                                .get("dirId")
-                                .or_else(|| entry.get("dirid"))
-                                .map(|value| value.to_string())
-                                .unwrap_or_else(|| "<missing>".to_owned());
-                            let name = entry
-                                .get("dirName")
-                                .or_else(|| entry.get("dissname"))
-                                .or_else(|| entry.get("title"))
-                                .map(|value| sanitize_field(&value.to_string()).into_owned())
-                                .unwrap_or_else(|| "<missing>".to_owned());
-                            format!("tid={tid} dirId={dir_id} name={name}")
-                        })
-                        .collect::<Vec<_>>();
-                    tracing::info!(
-                        target: "qqmusic.playlist",
-                        raw_entries = ?entries,
-                        "GetPlaylistByUin returned raw v_playlist entries"
-                    );
-                }
-            }
-        }
+        normalized.next_provider_cursor = response.next_offset.map(|offset| offset.to_string());
+        normalized.total = response.total;
         if collected_phase {
             normalized.next_provider_cursor = normalized
                 .next_provider_cursor
@@ -3150,53 +3061,6 @@ impl QQMusicAccountService {
         result
     }
 
-    async fn execute_read(
-        &self,
-        context: &AuthenticatedAccountContext,
-        operation: &'static str,
-        response_shape: &'static str,
-        payload: Value,
-    ) -> Result<TransportResponse, QQMusicError> {
-        self.auth.ensure_current(&context.epoch).await?;
-        let body = serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?;
-        let result = self
-            .transport
-            .execute(TransportRequest {
-                operation,
-                method: Method::POST,
-                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                headers: account_headers(&context.session)?,
-                body: Some(body),
-                retry: RetryClass::SafeRead,
-                redirects: RedirectMode::FollowValidated,
-                response_shape,
-                cancellation: context.cancellation.clone(),
-            })
-            .await;
-        #[cfg(test)]
-        if result.is_ok() {
-            self.hit_read_boundary(ReadBoundary::Response).await;
-        } else if result.as_ref().err().is_some_and(stale_eligible) {
-            self.hit_read_boundary(ReadBoundary::BeforeRetry).await;
-        }
-        let response = result.map_err(|error| match error {
-            QQMusicError::AuthorizationRejected => QQMusicError::AuthenticationExpired,
-            other => other,
-        })?;
-        self.auth.ensure_current(&context.epoch).await?;
-        if !response.status.is_success() {
-            return Err(match response.status {
-                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-                    QQMusicError::AuthenticationExpired
-                }
-                StatusCode::TOO_MANY_REQUESTS => QQMusicError::RateLimited,
-                status if status.is_server_error() => QQMusicError::Offline,
-                _ => QQMusicError::Protocol,
-            });
-        }
-        Ok(response)
-    }
-
     async fn stale_page_or_error<T: for<'de> Deserialize<'de>>(
         &self,
         context: &AuthenticatedAccountContext,
@@ -3258,77 +3122,12 @@ impl QQMusicAccountService {
     }
 }
 
-fn musicu_request(
-    session: &SessionRecord,
-    module: &'static str,
-    method: &'static str,
-    param: Value,
-) -> Value {
-    let mut comm = json!({
-        "ct": 24,
-        "cv": 4_747_474,
-        "format": "json",
-        "inCharset": "utf-8",
-        "outCharset": "utf-8",
-        "notice": 0,
-        "needNewCode": 1,
-        "platform": "yqq.json",
-        "uin": session.uin,
-    });
-    if let Some(key) = cookie_value(&session.cookie_header, "qm_keyst")
-        .or_else(|| cookie_value(&session.cookie_header, "qqmusic_key"))
-    {
-        let gtk = hash33(key.as_bytes());
-        comm["g_tk"] = json!(gtk);
-        comm["g_tk_new_20200303"] = json!(gtk);
-    }
-    json!({
-        "comm": comm,
-        "req": {
-            "module": module,
-            "method": method,
-            "param": param,
-        },
-    })
-}
-
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectPlaylistRequest {
     pub playlist_id: String,
     pub collected: bool,
     pub client_operation_id: String,
-}
-
-fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
-    header.split(';').find_map(|part| {
-        let (key, value) = part.trim().split_once('=')?;
-        (key == name && !value.is_empty()).then_some(value)
-    })
-}
-
-fn hash33(value: &[u8]) -> u32 {
-    value.iter().fold(5_381_u32, |hash, byte| {
-        hash.wrapping_mul(33).wrapping_add(u32::from(*byte))
-    }) & 0x7fff_ffff
-}
-
-fn account_headers(session: &SessionRecord) -> Result<HeaderMap, QQMusicError> {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json; charset=utf-8"),
-    );
-    headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
-    headers.insert(
-        header::REFERER,
-        HeaderValue::from_static("https://y.qq.com/"),
-    );
-    headers.insert(
-        header::COOKIE,
-        HeaderValue::from_str(&session.cookie_header).map_err(|_| QQMusicError::Protocol)?,
-    );
-    Ok(headers)
 }
 
 fn provider_offset(cursor: &str) -> Result<u64, QQMusicError> {
@@ -4955,22 +4754,6 @@ mod tests {
         assert_eq!(page.items[0].played_at_ms, Some(1_800_000_000_000));
     }
 
-    #[test]
-    fn authenticated_musicu_request_has_web_context_without_serializing_credentials() {
-        let mut session = synthetic_session('f');
-        session.cookie_header = "qm_keyst=SYNTHETIC_KEY; other=value".to_owned();
-        let request = musicu_request(&session, "module", "method", json!({}));
-        assert_eq!(request.pointer("/comm/platform"), Some(&json!("yqq.json")));
-        assert_eq!(request.pointer("/comm/cv"), Some(&json!(4_747_474)));
-        assert!(request
-            .pointer("/comm/g_tk")
-            .and_then(Value::as_u64)
-            .is_some());
-        let serialized = request.to_string();
-        assert!(!serialized.contains("SYNTHETIC_KEY"));
-        assert!(!serialized.contains("cookie"));
-    }
-
     #[tokio::test]
     async fn authenticated_write_request_uses_the_current_typed_identity_context() {
         let fixture = AccountServiceFixture::authenticated([
@@ -5105,6 +4888,196 @@ mod tests {
             .expect("terminal projection");
         assert_eq!(projection.favorite_ids.len(), 3);
         assert_eq!(fixture.transport.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn playlist_pages_advance_raw_offsets_then_enter_the_saved_phase() {
+        let fixture = AccountServiceFixture::authenticated([
+            body(
+                r#"{"code":0,"req":{"code":0,"data":{"sin":0,"total":3,"v_playlist":[
+                {"tid":7001,"dirId":3001,"dirName":"Owned first"},null
+            ]}}}"#,
+            ),
+            body(
+                r#"{"code":0,"req":{"code":0,"data":{"sin":2,"total":3,"bFinish":true,"v_playlist":[
+                {"tid":7002,"dirId":3002,"dirName":"Owned second"}
+            ]}}}"#,
+            ),
+            body(
+                r#"{"code":0,"req":{"code":0,"data":{"offset":0,"bFinish":true,"v_list":[
+                {"id":7003,"title":"Saved third"}
+            ]}}}"#,
+            ),
+        ])
+        .await;
+        enable_playlist_collection(&fixture).await;
+        let first = fixture.service.playlists(None, 2).await.unwrap();
+        assert_eq!(
+            first.items.len(),
+            1,
+            "malformed row is not a rendered playlist"
+        );
+        let second = fixture
+            .service
+            .playlists(first.next_cursor, 2)
+            .await
+            .unwrap();
+        assert_eq!(second.items[0].id, "qqmusic:playlist:7002");
+        let request: Value = serde_json::from_slice(
+            &fixture
+                .transport
+                .request_body("account.playlists")
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(request["req"]["param"]["sin"], 2);
+        assert_eq!(request["req"]["param"]["ein"], 3);
+        assert_eq!(request["req"]["param"]["uin"], fixture.session.uin);
+        let third = fixture
+            .service
+            .playlists(second.next_cursor, 2)
+            .await
+            .unwrap();
+        assert_eq!(third.items[0].id, "qqmusic:playlist:7003");
+        assert_eq!(third.items[0].ownership, PlaylistOwnership::Collected);
+        assert!(
+            third.next_cursor.is_none(),
+            "bFinish closes a list without a total"
+        );
+        let request: Value = serde_json::from_slice(
+            &fixture
+                .transport
+                .request_body("account.playlists.saved")
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            request["req"]["param"],
+            json!({
+                "uin":"SANITIZED_ENCRYPTED_UIN","offset":0,"size":2
+            })
+        );
+        let context = fixture.auth.capture_account_context().await.unwrap();
+        assert_eq!(
+            fixture
+                .service
+                .projection_for(&context)
+                .unwrap()
+                .playlists
+                .len(),
+            3
+        );
+        assert_eq!(fixture.transport.call_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn playlist_list_rejects_repeated_first_page_without_committing_a_partial_library() {
+        let fixture = AccountServiceFixture::authenticated([
+            body(
+                r#"{"code":0,"req":{"code":0,"data":{"sin":0,"total":2,
+                "v_playlist":[{"tid":7001,"dirName":"First"}]}}}"#,
+            ),
+            body(
+                r#"{"code":0,"req":{"code":0,"data":{"sin":0,"total":2,
+                "v_playlist":[{"tid":7001,"dirName":"First again"}]}}}"#,
+            ),
+        ])
+        .await;
+        let first = fixture.service.playlists(None, 1).await.unwrap();
+        assert!(matches!(
+            fixture.service.playlists(first.next_cursor, 1).await,
+            Err(QQMusicError::SchemaChanged)
+        ));
+        let context = fixture.auth.capture_account_context().await.unwrap();
+        assert!(fixture
+            .service
+            .projection_for(&context)
+            .unwrap()
+            .playlists
+            .is_empty());
+        assert_eq!(fixture.transport.call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn playlist_list_epoch_changes_discard_late_results_at_read_and_commit_boundaries() {
+        for boundary in [
+            ReadBoundary::Response,
+            ReadBoundary::BeforeRetry,
+            ReadBoundary::BeforeCacheCommit,
+        ] {
+            let reply = if boundary == ReadBoundary::BeforeRetry {
+                TestReply::Error(QQMusicError::Offline)
+            } else {
+                body(
+                    r#"{"code":0,"req":{"code":0,"data":{"bFinish":true,
+                    "v_playlist":[{"tid":7001,"dirName":"Old account"}]}}}"#,
+                )
+            };
+            let fixture = AccountServiceFixture::authenticated([reply]).await;
+            let barrier = fixture.service.set_read_barrier(boundary);
+            let service = fixture.service.clone();
+            let task = tokio::spawn(async move { service.playlists(None, 100).await });
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                barrier.entered.notified(),
+            )
+            .await
+            .expect("playlist request reaches boundary");
+            fixture.auth.logout().await.unwrap();
+            barrier.release.notify_one();
+            assert!(matches!(task.await.unwrap(), Err(QQMusicError::Cancelled)));
+            assert!(fixture
+                .storage
+                .get_json::<Value>(
+                    &AccountCache::projection_key(&fixture.session.account_cache_scope),
+                    true,
+                )
+                .unwrap()
+                .is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn playlist_reconciliation_honors_finish_and_current_credential_scope() {
+        for collected in [false, true] {
+            let key = if collected { "v_list" } else { "v_playlist" };
+            let data = json!({key:[{"tid":7001,"dirName":"Listed"}],"bFinish":true});
+            let fixture = AccountServiceFixture::authenticated([body(
+                &json!({
+                    "code":0,"req":{"code":0,"data":data}
+                })
+                .to_string(),
+            )])
+            .await;
+            enable_playlist_collection(&fixture).await;
+            let context = fixture.auth.capture_account_context().await.unwrap();
+            let lists = fixture
+                .service
+                .fetch_all_playlist_list(
+                    &context,
+                    RetryClass::ReconciliationRead,
+                    "account.playlist.test.reconcile",
+                    collected,
+                )
+                .await
+                .unwrap();
+            assert_eq!(lists.len(), 1);
+            assert_eq!(
+                lists[0].ownership,
+                if collected {
+                    PlaylistOwnership::Collected
+                } else {
+                    PlaylistOwnership::Owned
+                }
+            );
+            assert_eq!(
+                fixture.transport.call_count(),
+                1,
+                "terminal page must not be re-read"
+            );
+        }
     }
 
     #[tokio::test]

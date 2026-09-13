@@ -387,9 +387,54 @@ YAQMC 的 Cargo manifest/lock、CI pin helper、对应源码 checkout、开发�
 | `./scripts/check-secrets.ps1 -SelfTest`、`./scripts/check-secrets.ps1`                             | 通过                                                               |
 | `npm run provider:enforce`                                                                         | 预期退出 3：新 pin soak 为 not-started                             |
 
-此批不完成全部账户读取：歌单列表/收藏歌单列表及其对账仍有旧请求构造；桌面 QR、OAuth
+此批结束时尚未完成全部账户读取：歌单列表/收藏歌单列表及其对账仍有旧请求构造；桌面 QR、OAuth
 交换、artwork 等仍待迁移。多 profile、插件端点路由与 Spotify 保持未完成。
 所有本批验证为合成数据/本地环境，不等同于 LIVE 或真机通过；新 pin 不继承 soak waiver。
+
+#### 账户列表收敛（继续实施）
+
+本批基线为 YAQMC `05a2354`，库 pin 更新为
+`c910820b7a21781cff3ca59ab5717e9fa7673bb8`。
+
+- `OwnedPlaylists` / `CollectedPlaylists` 将自建/收藏歌单列表的 endpoint、请求参数、
+  显式凭据和分页校验移到库。普通列表与修改前/修改后对账共用该接口；
+  `qqmusic/account.rs` 中已删除 `musicu_request`、`execute_read`、
+  `execute_account_transport`、手写 Cookie/header 与重复 hash33 helper。
+- 原普通自建歌单列表只发送 UIN，没有后续页偏移；现在每页发送 `sin/ein`，
+  收藏列表发送 `offset/size`。区间按原始响应行数推进，坏条目被 UI 映射丢弃也不回退游标。
+  该请求形态来自已有对账路径，不据此声称经过新的线上分页验证。
+- 库识别并校验 `hasmore`、`has_more` 和列表的 `bFinish`；拒绝重复第一页、页大小溢出、
+  零进展、矛盾结束标志及未到声明总数就提前结束。未知总数的明确终止页不会被重复请求。
+- 保留 owned → saved 分段游标、同账户完整列表投影和账户代次检查；删除原始列表逐条 info
+  日志。新增错页不提交部分库、完整三页混合刷新、注销时迟到结果丢弃和对账结束标志回归。
+- 边界测试现在禁止该服务重新引入通用业务 HTTP/request builder；这不是整个 provider 的
+  全量 URL 门禁。其他文件中的桌面 QR、OAuth exchange、artwork 仍需后续收敛。
+
+库验证：`cargo +1.88.0 test --locked --offline --all-targets --all-features --quiet`
+通过（181 单元测试、31 集成测试，新增列表契约 7 项）；同范围 Clippy `-D warnings`
+和 fmt 通过。provider 联调 287 passed / 8 ignored，边界测试 3 passed；workspace
+Clippy 与 CI 脚本 235 项通过。所有请求使用合成数据，未执行真实账户读写或真机操作。
+
+正式 git pin（无 path patch）验证：
+
+| 命令                                                                                               | 结果                                                               |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `cargo +1.88.0 fetch --locked`                                                                     | 已从远端获取 `c910820`                                             |
+| `cargo +1.88.0 check --workspace --locked --offline --all-targets`                                 | 通过                                                               |
+| `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings`                 | 通过                                                               |
+| `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet`                          | 通过；Core 277、provider 287 passed / 8 ignored，边界集成 3 passed |
+| `cargo +1.88.0 fmt --all -- --check`、`git diff --check`                                           | 通过                                                               |
+| `npm run ci:test-scripts`                                                                          | 235 passed                                                         |
+| `npm run docs:check`、`node scripts/ci/qm-api-rs-access.mjs --check`、`npm run provenance:enforce` | 通过                                                               |
+| 本批 MJS 的 ESLint 与改动文本的 Prettier 检查                                                      | 通过                                                               |
+| `./scripts/check-secrets.ps1 -SelfTest`、`./scripts/check-secrets.ps1`                             | 通过                                                               |
+| `npm run provider:enforce`                                                                         | 预期退出 3：新 pin 的 soak 未开始                                  |
+
+另已核实基线 `05a2354` 的远端 CI run `34755285649` 全部完成成功，含 Windows/Linux
+Electron 构建和 Android 检查；它不是本批新提交的 CI 证据，不等同于真机或打包验收。
+
+单页解析/映射时间和空间均为 O(n)，n 不超过请求上限 100；完整列表对账最多读取
+100 页。保留有界对账，未增加无界重试。多 profile、插件端点路由和 Spotify 不在本批完成范围。
 
 ## 6. 可执行工作包与依赖
 

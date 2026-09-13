@@ -34,10 +34,10 @@
     },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
-      "revision": "ee2c20b6ae071dacb18832ddef12c630eaa549fd",
-      "yaqmcPin": "ee2c20b6ae071dacb18832ddef12c630eaa549fd",
+      "revision": "c910820b7a21781cff3ca59ab5717e9fa7673bb8",
+      "yaqmcPin": "c910820b7a21781cff3ca59ab5717e9fa7673bb8",
       "linked": true,
-      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-13 limited delta review from 7d0f6e1 to ee2c20b covers typed web/account interfaces, OAuth URL construction and credential isolation. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at both pins, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
+      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-13 limited delta review from 7d0f6e1 to c910820 covers typed web/account interfaces, OAuth URL construction and credential isolation. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at both pins, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
     }
   },
   "sources": [
@@ -127,15 +127,15 @@
       "copyright": "Copyright (c) 2019 程序猿老龚 gjh.me",
       "mappings": [
         {
-          "target": "qm-api-rs@ee2c20b/src/qmc.rs Qmc2Map::decrypt_in_place",
+          "target": "qm-api-rs@c910820/src/qmc.rs Qmc2Map::decrypt_in_place",
           "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMMapCipher.getMask/rotate, reached through the YAQMC provider adapter"
         },
         {
-          "target": "qm-api-rs@ee2c20b/src/qmc.rs Qmc2Rc4::decrypt_in_place",
+          "target": "qm-api-rs@c910820/src/qmc.rs Qmc2Rc4::decrypt_in_place",
           "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMRC4Cipher segmented stream, reached through the YAQMC provider adapter"
         },
         {
-          "target": "qm-api-rs@ee2c20b/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
+          "target": "qm-api-rs@c910820/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
           "relation": "independent Rust rewrite of QMCDecode/QMCKeyDecoder.swift and TeaCipher.swift ekey TEA unwrap, reached through the YAQMC provider adapter"
         }
       ],
@@ -205,7 +205,7 @@
       "path": "THIRD_PARTY_NOTICES.md",
       "sourceId": "gongjiehong-qmcdecode",
       "status": "verified",
-      "evidence": "sha256:67237aeb2ccf914c24cc470f5273355e77660697ff1235e070840c97117cd418"
+      "evidence": "sha256:229dda91a2752d3fe9db623212ddffe122f77a61e0560f56b7e3bb150b082f87"
     }
   ],
   "release": {
