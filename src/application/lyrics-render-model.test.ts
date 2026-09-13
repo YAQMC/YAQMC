@@ -57,7 +57,7 @@ describe('buildLyricsRenderModel', () => {
     ]);
   });
 
-  it('filters invalid timed words and falls back to the whole line when none remain', () => {
+  it('filters invalid timed words and derives a missing line end from source word timing', () => {
     const model = buildLyricsRenderModel(
       document({
         lines: [
@@ -84,6 +84,28 @@ describe('buildLyricsRenderModel', () => {
       endTimeMs: 1250,
       words: [{ startTimeMs: 500, endTimeMs: 1250, text: 'valid end source' }],
     });
+  });
+
+  it('falls back to one whole-line timing atom when no word timing is valid', () => {
+    const model = buildLyricsRenderModel(
+      document({
+        lines: [
+          {
+            id: 'line-1',
+            startMs: 500,
+            endMs: 900,
+            text: 'whole fallback',
+            words: [{ startMs: 700, endMs: 600, text: 'invalid' }],
+          },
+        ],
+      }),
+      'hide',
+      'hide',
+    );
+
+    expect(model.lines[0]?.words).toEqual([
+      { startTimeMs: 500, endTimeMs: 900, text: 'whole fallback' },
+    ]);
   });
 
   it('uses a whole-line timing atom for line-synchronized documents', () => {
