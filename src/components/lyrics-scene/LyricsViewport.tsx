@@ -3,98 +3,34 @@ import { LyricPlayer } from '@applemusic-like-lyrics/react';
 import type { LyricLine as AmllLyricLine, LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
 import { AlignLeft, Music2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { shouldShowLyricSecondary } from '../../application/lyrics-presentation';
+import {
+  buildLyricsRenderModel,
+  type RenderLyricLine,
+} from '../../application/lyrics-render-model';
 import type {
   AmllSettings,
   LyricWordEffect,
   SecondaryLyricVisibility,
 } from '../../application/preferences';
 import { usePlayerStore } from '../../application/player-store';
-import type { LyricDocument, LyricLine } from '../../domain/music';
+import type { LyricDocument } from '../../domain/music';
 
 import '@applemusic-like-lyrics/core/style.css';
 
-interface AmllLyricModel {
-  lines: AmllLyricLine[];
-  sourceLineIndexes: number[];
-}
-
-function finiteLineEnd(line: LyricLine): number | null {
-  if (line.endMs !== null && Number.isFinite(line.endMs) && line.endMs >= (line.startMs ?? 0)) {
-    return line.endMs;
-  }
-  const wordEnd = line.words.reduce(
-    (latest, word) => (Number.isFinite(word.endMs) ? Math.max(latest, word.endMs) : latest),
-    Number.NEGATIVE_INFINITY,
-  );
-  return Number.isFinite(wordEnd) ? wordEnd : null;
-}
-
-function toAmllLyricModel(
-  document: LyricDocument,
-  translation: SecondaryLyricVisibility,
-  romanization: SecondaryLyricVisibility,
-): AmllLyricModel {
-  const lines: AmllLyricLine[] = [];
-  const sourceLineIndexes: number[] = [];
-
-  for (const [sourceIndex, sourceLine] of document.lines.entries()) {
-    if (sourceLine.startMs === null || !Number.isFinite(sourceLine.startMs)) continue;
-    const endMs = finiteLineEnd(sourceLine);
-    if (endMs === null) continue;
-    const words =
-      document.syncMode === 'word' && sourceLine.words.length > 0
-        ? sourceLine.words
-            .filter(
-              (word) =>
-                Number.isFinite(word.startMs) &&
-                Number.isFinite(word.endMs) &&
-                word.endMs >= word.startMs,
-            )
-            .map((word) => ({
-              startTime: Math.round(word.startMs),
-              endTime: Math.round(word.endMs),
-              word: word.text,
-            }))
-        : [];
-    const timedWords =
-      words.length > 0
-        ? words
-        : [
-            {
-              startTime: Math.round(sourceLine.startMs),
-              endTime: Math.round(endMs),
-              word: sourceLine.text,
-            },
-          ];
-
-    lines.push({
-      words: timedWords,
-      translatedLyric: shouldShowLyricSecondary(
-        translation,
-        sourceLine.translation,
-        sourceLine.text,
-        'translation',
-      )
-        ? (sourceLine.translation ?? '')
-        : '',
-      romanLyric: shouldShowLyricSecondary(
-        romanization,
-        sourceLine.romanization,
-        sourceLine.text,
-        'romanization',
-      )
-        ? (sourceLine.romanization ?? '')
-        : '',
-      startTime: Math.round(sourceLine.startMs),
-      endTime: Math.round(endMs),
-      isBG: false,
-      isDuet: sourceLine.vocalistId === 'response',
-    });
-    sourceLineIndexes.push(sourceIndex);
-  }
-
-  return { lines, sourceLineIndexes };
+function toAmllLyricLine(line: RenderLyricLine): AmllLyricLine {
+  return {
+    words: line.words.map((word) => ({
+      startTime: word.startTimeMs,
+      endTime: word.endTimeMs,
+      word: word.text,
+    })),
+    translatedLyric: line.translatedLyric,
+    romanLyric: line.romanLyric,
+    startTime: line.startTimeMs,
+    endTime: line.endTimeMs,
+    isBG: line.isBackground,
+    isDuet: line.isDuet,
+  };
 }
 
 function lyricTimeMs(
@@ -265,8 +201,12 @@ export function LyricsViewport({
     isPlaying,
   );
   const model = useMemo(
-    () => (document ? toAmllLyricModel(document, translation, romanization) : null),
+    () => (document ? buildLyricsRenderModel(document, translation, romanization) : null),
     [document, romanization, translation],
+  );
+  const amllLines = useMemo(
+    () => model?.lines.map(toAmllLyricLine) ?? [],
+    [model],
   );
 
   useEffect(() => onFollowStateChange?.('active'), [onFollowStateChange]);
@@ -298,7 +238,7 @@ export function LyricsViewport({
 
   const onLyricLineClick = (event: LyricLineMouseEvent) => {
     if (!allowSeek) return;
-    const sourceIndex = model.sourceLineIndexes[event.lineIndex];
+    const sourceIndex = model.lines[event.lineIndex]?.sourceLineIndex;
     const sourceLine = sourceIndex === undefined ? undefined : document.lines[sourceIndex];
     if (!sourceLine || sourceLine.startMs === null) return;
     seek(Math.max(0, sourceLine.startMs + document.metadata.offsetMs - presentationOffsetMs));
@@ -314,7 +254,7 @@ export function LyricsViewport({
       <LyricPlayer
         className="lyrics-stage__amll-player"
         disabled={editorGesture}
-        lyricLines={model.lines}
+        lyricLines={amllLines}
         currentTime={currentTime}
         isSeeking={false}
         playing={isPlaying}
