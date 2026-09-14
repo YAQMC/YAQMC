@@ -26,6 +26,7 @@ describe('useCatalog', () => {
   it('does not invoke account methods while loading the public catalog', async () => {
     const provider = {
       id: 'catalog-with-disabled-account',
+      profileId: 'default',
       displayName: 'Catalog fixture',
       getHome: vi.fn().mockResolvedValue(homeFeed),
       getDiscover: vi.fn(),
@@ -58,6 +59,7 @@ describe('useCatalog', () => {
   it('forces a home refresh when the account snapshot changes', async () => {
     const provider = {
       id: 'catalog-account-refresh',
+      profileId: 'default',
       displayName: 'Catalog fixture',
       getHome: vi.fn().mockResolvedValue(homeFeed),
       getDiscover: vi.fn(),
@@ -92,6 +94,7 @@ describe('useCatalog', () => {
   it('preserves a timeout classification and can retry the initial catalog load', async () => {
     const provider = {
       id: 'catalog-timeout-retry',
+      profileId: 'default',
       displayName: 'Catalog fixture',
       getHome: vi
         .fn()
@@ -128,6 +131,7 @@ describe('useCatalog', () => {
   it('retries a failed catalog once when connectivity returns', async () => {
     const provider = {
       id: 'catalog-online-retry',
+      profileId: 'default',
       displayName: 'Catalog fixture',
       getHome: vi
         .fn()

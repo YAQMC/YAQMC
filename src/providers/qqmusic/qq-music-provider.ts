@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PROFILE_ID,
   type AccountLoginMethod,
   type AccountLoginMethodDescriptor,
   type AccountPlaylistDetail,
@@ -35,6 +36,7 @@ import { nativeProviderRequest as nativeRequest } from '../native/native-request
 
 export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
   readonly id = 'qqmusic';
+  readonly profileId = DEFAULT_PROFILE_ID;
   readonly displayName = 'QQ Music';
 
   getHome(signal?: AbortSignal, refresh = false): Promise<HomeFeed> {
@@ -76,7 +78,11 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
   }
 
   getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
-    return nativeRequest('catalog_share_song', { providerId: this.id, id }, signal);
+    return nativeRequest(
+      'catalog_share_song',
+      { providerId: this.id, profileId: this.profileId, id },
+      signal,
+    );
   }
 
   getLibrary(signal?: AbortSignal): Promise<LibrarySnapshot> {
@@ -102,7 +108,11 @@ export class QQMusicProvider implements MusicProvider, AccountMusicProvider {
   }
 
   refreshAccount(signal?: AbortSignal): Promise<AccountSnapshot> {
-    return nativeRequest('provider_account_refresh', { providerId: this.id }, signal);
+    return nativeRequest(
+      'provider_account_refresh',
+      { providerId: this.id, profileId: this.profileId },
+      signal,
+    );
   }
 
   getLoginMethods(): Promise<AccountLoginMethodDescriptor[]> {

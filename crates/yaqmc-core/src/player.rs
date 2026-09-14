@@ -3633,6 +3633,7 @@ mod tests {
         let mut first = song("qq-first", 10_000);
         first.provider = Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
             track_id: first.id.clone(),
             numeric_id: None,
             album_id: None,
@@ -3641,6 +3642,7 @@ mod tests {
         let mut disabled = song("plugin-disabled", 10_000);
         disabled.provider = Some(ProviderTrackReference {
             provider_id: "plugin.disabled".to_owned(),
+            profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
             track_id: disabled.id.clone(),
             numeric_id: None,
             album_id: None,
@@ -3649,6 +3651,7 @@ mod tests {
         let mut last = song("qq-last", 10_000);
         last.provider = Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
             track_id: last.id.clone(),
             numeric_id: None,
             album_id: None,
@@ -4431,6 +4434,7 @@ mod tests {
         let mut track = song(id, duration_ms);
         track.provider = Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
             track_id: id.to_owned(),
             numeric_id: None,
             album_id: None,

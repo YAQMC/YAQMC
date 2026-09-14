@@ -2,11 +2,14 @@ export const YAQMC_DEEP_LINK_SCHEME = 'yaqmc';
 
 const MAX_URI_BYTES = 2_048;
 const MAX_ENTITY_ID_BYTES = 256;
+const MAX_PROFILE_ID_BYTES = 64;
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
+const PROFILE_ID_PATTERN = PROVIDER_ID_PATTERN;
 const INVALID_PERCENT_ESCAPE = /%(?![0-9a-f]{2})/iu;
 
 export interface CatalogSongDeepLink {
   providerId: string;
+  profileId: string;
   entityId: string;
 }
 
@@ -75,8 +78,11 @@ export function parseYaqmcDeepLink(value: string): CatalogSongDeepLink | null {
   if (!PROVIDER_ID_PATTERN.test(providerId)) return null;
 
   const queryEntries = [...url.searchParams.entries()];
-  if (queryEntries.length !== 1 || queryEntries[0]?.[0] !== 'id') return null;
-  const entityId = queryEntries[0][1];
+  if (queryEntries.length < 1 || queryEntries.length > 2) return null;
+  const query = new Map(queryEntries);
+  if (query.size !== queryEntries.length || !query.has('id')) return null;
+  if ([...query.keys()].some((key) => key !== 'id' && key !== 'profileId')) return null;
+  const entityId = query.get('id')!;
   if (
     !entityId ||
     entityId !== entityId.trim() ||
@@ -86,7 +92,14 @@ export function parseYaqmcDeepLink(value: string): CatalogSongDeepLink | null {
     return null;
   }
 
-  return { providerId, entityId };
+  const profileId = query.get('profileId') ?? 'default';
+  if (
+    !PROFILE_ID_PATTERN.test(profileId) ||
+    new TextEncoder().encode(profileId).length > MAX_PROFILE_ID_BYTES
+  ) {
+    return null;
+  }
+  return { providerId, profileId, entityId };
 }
 
 export function deepLinkFromArgv(argv: readonly string[]): CatalogSongDeepLink | null {

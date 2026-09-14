@@ -4,6 +4,10 @@ import { createClipboardDeepLinkMonitor } from './clipboard-deep-link';
 const firstLink = 'yaqmc://catalog/qqmusic/song?id=qqmusic%3Atrack%3A000qgbM90wbOxx';
 const equivalentFirstLink = 'yaqmc://catalog/qqmusic/song?id=qqmusic:track:000qgbM90wbOxx';
 const secondLink = 'yaqmc://catalog/qqmusic/song?id=qqmusic%3Atrack%3A001';
+const alternateProfileLink =
+  'yaqmc://catalog/qqmusic/song?id=qqmusic%3Atrack%3A000qgbM90wbOxx&profileId=alternate';
+const alternateProfileEquivalentLink =
+  'yaqmc://catalog/qqmusic/song?profileId=alternate&id=qqmusic%3Atrack%3A000qgbM90wbOxx';
 
 describe('clipboard deep-link fallback', () => {
   it('reads only while enabled and focused, using the first read as a baseline', () => {
@@ -52,6 +56,41 @@ describe('clipboard deep-link fallback', () => {
     expect(accept).toHaveBeenCalledOnce();
     expect(accept).toHaveBeenCalledWith({
       providerId: 'qqmusic',
+      profileId: 'default',
+      entityId: 'qqmusic:track:000qgbM90wbOxx',
+    });
+  });
+
+  it('deduplicates links by provider, profile, and entity scope', () => {
+    let clipboard = 'ordinary text';
+    const accept = vi.fn();
+    const monitor = createClipboardDeepLinkMonitor({
+      readText: () => clipboard,
+      accept,
+    });
+
+    monitor.setEnabled(true);
+    monitor.setFocused(true);
+    for (const value of [
+      firstLink,
+      alternateProfileLink,
+      alternateProfileEquivalentLink,
+      firstLink,
+    ]) {
+      monitor.setFocused(false);
+      clipboard = value;
+      monitor.setFocused(true);
+    }
+
+    expect(accept).toHaveBeenCalledTimes(2);
+    expect(accept).toHaveBeenNthCalledWith(1, {
+      providerId: 'qqmusic',
+      profileId: 'default',
+      entityId: 'qqmusic:track:000qgbM90wbOxx',
+    });
+    expect(accept).toHaveBeenNthCalledWith(2, {
+      providerId: 'qqmusic',
+      profileId: 'alternate',
       entityId: 'qqmusic:track:000qgbM90wbOxx',
     });
   });

@@ -85,13 +85,18 @@ mod tests {
         assert!(capabilities.recommendations().is_some());
         assert!(capabilities.lyrics().is_some());
         let legacy = capabilities.legacy_provider().expect("legacy provider");
-        assert!(std::ptr::eq(
+        // Capability accounts are exposed through the scoped legacy adapter;
+        // verify that the adapter still delegates the account generation to
+        // the underlying legacy provider rather than relying on identity of
+        // the two different trait-object views.
+        assert_eq!(
             capabilities
                 .account()
                 .expect("account capability")
-                .provider_account(),
-            legacy.account()
-        ));
+                .provider_account()
+                .account_generation(),
+            legacy.account().account_generation()
+        );
         assert_eq!(legacy.id(), "qqmusic");
     }
 
@@ -130,6 +135,7 @@ mod tests {
             playback_capability: None,
             provider: Some(ProviderTrackReference {
                 provider_id: "plugin.missing".to_owned(),
+                profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
                 track_id: "1".to_owned(),
                 numeric_id: None,
                 album_id: None,

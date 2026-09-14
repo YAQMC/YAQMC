@@ -32,11 +32,13 @@ import type {
   ShareTarget,
   Song,
 } from '../../domain/music';
+import { DEFAULT_PROFILE_ID } from '../../domain/music';
 import type { AccountMusicProvider, MusicProvider, ShareMusicProvider } from '../music-provider';
 import { nativeProviderRequest } from './native-request';
 
 export class NativeMusicProvider implements MusicProvider {
   readonly id: string;
+  readonly profileId = DEFAULT_PROFILE_ID;
   readonly displayName: string;
 
   constructor(readonly descriptor: ProviderDescriptor) {
@@ -51,7 +53,7 @@ export class NativeMusicProvider implements MusicProvider {
   ): Promise<T> {
     return nativeProviderRequest(
       method,
-      { providerId: this.id, ...params },
+      { providerId: this.id, profileId: this.profileId, ...params },
       signal,
       this.displayName,
     );
@@ -118,7 +120,7 @@ class NativeShareMusicProvider extends NativeMusicProvider implements ShareMusic
   getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
     return nativeProviderRequest(
       'catalog_share_song',
-      { providerId: this.id, id },
+      { providerId: this.id, profileId: this.profileId, id },
       signal,
       this.displayName,
     );
@@ -273,7 +275,7 @@ class NativeAccountShareMusicProvider
   getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
     return nativeProviderRequest(
       'catalog_share_song',
-      { providerId: this.id, id },
+      { providerId: this.id, profileId: this.profileId, id },
       signal,
       this.displayName,
     );

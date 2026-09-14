@@ -135,7 +135,9 @@ React 不拼接平台域名或上游路由。
 首版提供两个明确动作：
 
 - **复制公开链接**：优先复制提供器返回的 HTTPS 链接；没有公开链接时禁用并解释原因。
-- **复制 YAQMC 链接**：复制 `yaqmc://catalog/<provider>/song?id=<percent-encoded-id>`，用于已安装 YAQMC 的设备。
+- **复制 YAQMC 链接**：复制
+  `yaqmc://catalog/<provider>/song?id=<percent-encoded-id>&profileId=<profile>`，用于已安装 YAQMC 的设备；
+  不含 `profileId` 的旧链接选择 `default`。
 
 分享动作出现在歌曲页、Player Bar 的更多菜单、歌词页和 TrackList 的歌曲上下文菜单。复制成功或失败使用现有通知
 系统反馈。为不支持链接的平台，还可复制纯文本 `歌曲 — 歌手`，但不能伪装成可点击链接。
@@ -144,8 +146,8 @@ React 不拼接平台域名或上游路由。
 
 - Electron 注册 `yaqmc` scheme，并复用现有 single-instance 机制。
 - Windows/Linux 的 `second-instance` 和 macOS 的 `open-url` 都进入同一个纯解析器。
-- 解析器只接受 `catalog/song`，限制 URI 总长、provider ID 和 entity ID 长度，并拒绝用户名、端口、片段、
-  未知查询参数、控制字符和重复关键参数。
+- 解析器只接受 `catalog/song`，限制 URI 总长、provider ID、profile ID 和 entity ID 长度，并拒绝用户名、
+  端口、片段、未知查询参数、控制字符和重复参数。
 - 解析结果只转换成类型化的“打开歌曲详情”导航命令；不进入 Shell、文件系统、SQL、HTML 或任意 IPC。
 - 深链只聚焦主窗口并打开详情，不自动播放、不登录、不打开辅助歌词窗口。
 - 注册失败不阻止应用启动；设置页显示当前协议注册状态并允许关闭。

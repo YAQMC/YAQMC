@@ -239,9 +239,8 @@ export default function App() {
         (candidate) => candidate.id === payload.providerId && candidate.available,
       );
       if (!available) return;
-      const nextRoute = catalogSongRouteFromDeepLink(payload.providerId, payload);
+      const nextRoute = catalogSongRouteFromDeepLink(provider.id, provider.profileId, payload);
       if (nextRoute) {
-        providerSelection.selectProvider(payload.providerId);
         navigate(nextRoute);
       }
     };
@@ -253,7 +252,7 @@ export default function App() {
       })
       .catch(() => undefined);
     return unsubscribe;
-  }, [navigate, providerSelection]);
+  }, [navigate, provider, providerSelection]);
 
   const goBack = useCallback(() => {
     void runAfterLyricsClose(() => {

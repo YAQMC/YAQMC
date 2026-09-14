@@ -287,69 +287,133 @@ export type MethodParams = Exhaustive<{
   audio_output_devices: void;
   audio_set_output_device: { deviceId: string };
   provider_list: void;
-  provider_status: { providerId: string };
-  provider_home: { providerId: string; refresh: boolean };
-  provider_discover: { providerId: string; refresh: boolean };
-  provider_area: { providerId: string; encArea: string };
-  provider_library: { providerId: string };
+  provider_status: { providerId: string; profileId?: string };
+  provider_home: { providerId: string; profileId?: string; refresh: boolean };
+  provider_discover: { providerId: string; profileId?: string; refresh: boolean };
+  provider_area: { providerId: string; profileId?: string; encArea: string };
+  provider_library: { providerId: string; profileId?: string };
   provider_search: {
     providerId: string;
+    profileId?: string;
     query: string;
     kind: CatalogSearchKind;
     page: number;
     limit: number;
   };
-  provider_song: { providerId: string; id: string };
-  provider_album: { providerId: string; id: string };
-  provider_artist: { providerId: string; id: string };
+  provider_song: { providerId: string; profileId?: string; id: string };
+  provider_album: { providerId: string; profileId?: string; id: string };
+  provider_artist: { providerId: string; profileId?: string; id: string };
   provider_artist_catalog: {
     providerId: string;
+    profileId?: string;
     id: string;
     kind: ArtistCatalogKind;
     page: number;
     limit: number;
   };
-  provider_playlist: { providerId: string; id: string };
-  provider_lyrics: { providerId: string; id: string };
-  provider_recommendation_next: { providerId: string; request: RecommendationRequest };
-  provider_cache_artwork: { providerId: string; url: string };
-  provider_set_preferred_quality: { providerId: string; quality: AudioQualityPreference };
-  provider_set_current_quality: { providerId: string; quality: AudioQualityPreference };
-  provider_account_login_methods: { providerId: string };
-  provider_account_snapshot: { providerId: string };
-  provider_account_refresh: { providerId: string };
-  provider_favorite_songs: { providerId: string; cursor: string | null; limit: number };
-  provider_account_playlists: { providerId: string; cursor: string | null; limit: number };
+  provider_playlist: { providerId: string; profileId?: string; id: string };
+  provider_lyrics: { providerId: string; profileId?: string; id: string };
+  provider_recommendation_next: {
+    providerId: string;
+    profileId?: string;
+    request: RecommendationRequest;
+  };
+  provider_cache_artwork: { providerId: string; profileId?: string; url: string };
+  provider_set_preferred_quality: {
+    providerId: string;
+    profileId?: string;
+    quality: AudioQualityPreference;
+  };
+  provider_set_current_quality: {
+    providerId: string;
+    profileId?: string;
+    quality: AudioQualityPreference;
+  };
+  provider_account_login_methods: { providerId: string; profileId?: string };
+  provider_account_snapshot: { providerId: string; profileId?: string };
+  provider_account_refresh: { providerId: string; profileId?: string };
+  provider_favorite_songs: {
+    providerId: string;
+    profileId?: string;
+    cursor: string | null;
+    limit: number;
+  };
+  provider_account_playlists: {
+    providerId: string;
+    profileId?: string;
+    cursor: string | null;
+    limit: number;
+  };
   provider_account_playlist_tracks: {
     providerId: string;
+    profileId?: string;
     playlist: AccountPlaylistSummary;
     cursor: string | null;
     limit: number;
   };
   provider_account_recently_played: {
     providerId: string;
+    profileId?: string;
     cursor: string | null;
     limit: number;
   };
-  provider_set_favorite: { providerId: string; request: FavoriteMutationRequest };
-  provider_create_playlist: { providerId: string; request: CreatePlaylistRequest };
-  provider_rename_playlist: { providerId: string; request: RenamePlaylistRequest };
-  provider_add_playlist_track: { providerId: string; request: PlaylistTrackMutationRequest };
-  provider_remove_playlist_track: { providerId: string; request: PlaylistTrackMutationRequest };
-  provider_delete_playlist: { providerId: string; request: DeletePlaylistRequest };
-  provider_set_playlist_collected: { providerId: string; request: CollectPlaylistRequest };
-  provider_auth_start: { providerId: string; mobile?: boolean };
-  provider_auth_oauth_start: { providerId: string; methodId: string; attemptId?: string };
+  provider_set_favorite: {
+    providerId: string;
+    profileId?: string;
+    request: FavoriteMutationRequest;
+  };
+  provider_create_playlist: {
+    providerId: string;
+    profileId?: string;
+    request: CreatePlaylistRequest;
+  };
+  provider_rename_playlist: {
+    providerId: string;
+    profileId?: string;
+    request: RenamePlaylistRequest;
+  };
+  provider_add_playlist_track: {
+    providerId: string;
+    profileId?: string;
+    request: PlaylistTrackMutationRequest;
+  };
+  provider_remove_playlist_track: {
+    providerId: string;
+    profileId?: string;
+    request: PlaylistTrackMutationRequest;
+  };
+  provider_delete_playlist: {
+    providerId: string;
+    profileId?: string;
+    request: DeletePlaylistRequest;
+  };
+  provider_set_playlist_collected: {
+    providerId: string;
+    profileId?: string;
+    request: CollectPlaylistRequest;
+  };
+  provider_auth_start: { providerId: string; profileId?: string; mobile?: boolean };
+  provider_auth_oauth_start: {
+    providerId: string;
+    profileId?: string;
+    methodId: string;
+    attemptId?: string;
+  };
   provider_auth_heartbeat: {
     providerId: string;
+    profileId?: string;
     attemptId: string;
     ownerLeaseId: string;
   };
-  provider_auth_cancel: { providerId: string; attemptId: string };
-  provider_auth_refresh: { providerId: string; attemptId: string | null };
-  provider_sign_out: { providerId: string };
-  provider_cache_stats: { providerId: string };
-  provider_clear_cache: { providerId: string };
+  provider_auth_cancel: { providerId: string; profileId?: string; attemptId: string };
+  provider_auth_refresh: {
+    providerId: string;
+    profileId?: string;
+    attemptId: string | null;
+  };
+  provider_sign_out: { providerId: string; profileId?: string };
+  provider_cache_stats: { providerId: string; profileId?: string };
+  provider_clear_cache: { providerId: string; profileId?: string };
   qqmusic_status: void;
   qqmusic_home: { refresh: boolean };
   qqmusic_discover: { refresh: boolean };
@@ -367,7 +431,7 @@ export type MethodParams = Exhaustive<{
   };
   qqmusic_playlist: { id: string };
   qqmusic_lyrics: { songId: string };
-  catalog_share_song: { providerId: string; id: string };
+  catalog_share_song: { providerId: string; profileId?: string; id: string };
   qqmusic_cache_artwork: { url: string };
   qqmusic_set_preferred_quality: { quality: AudioQualityPreference };
   qqmusic_set_current_quality: { quality: AudioQualityPreference };
@@ -486,13 +550,14 @@ export type MethodParams = Exhaustive<{
   auth_oauth_prepare: { providerKind: AccountLoginMethod };
   auth_oauth_complete: { attemptId: string; callbackUrl: string };
   auth_oauth_cancel: { attemptId: string };
-  provider_auth_oauth_prepare: { providerId: string; methodId: string };
+  provider_auth_oauth_prepare: { providerId: string; profileId?: string; methodId: string };
   provider_auth_oauth_complete: {
     providerId: string;
+    profileId?: string;
     attemptId: string;
     callbackUrl: string;
   };
-  provider_auth_oauth_cancel: { providerId: string; attemptId: string };
+  provider_auth_oauth_cancel: { providerId: string; profileId?: string; attemptId: string };
   app_settings_get: { key: string };
   app_settings_set: { key: string; value: string };
   app_settings_remove: { key: string };

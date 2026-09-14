@@ -123,6 +123,7 @@ describe('TopBar', () => {
     useAccountStore.setState({
       snapshot: {
         state: 'authenticated',
+        profileId: 'default',
         profile: {
           avatarUrl: 'https://q.qlogo.cn/topbar-avatar.png',
           nickname: 'Mobile Listener',

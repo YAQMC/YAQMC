@@ -13,8 +13,10 @@ describe('YAQMC deep links', () => {
   it('round-trips the only accepted catalog song route', () => {
     const entityId = 'qqmusic:track:歌 /? #1';
     expect(
-      parseYaqmcDeepLink(`yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(entityId)}`),
-    ).toEqual({ providerId: 'qqmusic', entityId });
+      parseYaqmcDeepLink(
+        `yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(entityId)}&profileId=alternate`,
+      ),
+    ).toEqual({ providerId: 'qqmusic', profileId: 'alternate', entityId });
   });
 
   it.each([
@@ -29,6 +31,12 @@ describe('YAQMC deep links', () => {
     'yaqmc://catalog/qqmusic/album?id=album',
     'yaqmc://catalog/qqmusic/song?id=one&id=two',
     'yaqmc://catalog/qqmusic/song?id=track&play=1',
+    'yaqmc://catalog/qqmusic/song?id=track&profileId=',
+    'yaqmc://catalog/qqmusic/song?id=track&profileId=bad%20profile',
+    'yaqmc://catalog/qqmusic/song?id=track&profileId=bad%2Fprofile',
+    'yaqmc://catalog/qqmusic/song?id=track&profileId=one&profileId=two',
+    'yaqmc://catalog/qqmusic/song?id=track&profile=alternate',
+    `yaqmc://catalog/qqmusic/song?id=track&profileId=${'a'.repeat(65)}`,
     'yaqmc://catalog/qqmusic/song?id=%ZZ',
     'yaqmc://catalog/qqmusic/song?id=%0Atrack',
     `yaqmc://catalog/qqmusic/song?id=${'x'.repeat(257)}`,
@@ -37,10 +45,21 @@ describe('YAQMC deep links', () => {
     expect(parseYaqmcDeepLink(value)).toBeNull();
   });
 
+  it('accepts a 64-character profile and rejects 65 characters', () => {
+    const profileId = 'a'.repeat(64);
+    expect(
+      parseYaqmcDeepLink(`yaqmc://catalog/qqmusic/song?id=track&profileId=${profileId}`),
+    ).toEqual({ providerId: 'qqmusic', profileId, entityId: 'track' });
+    expect(
+      parseYaqmcDeepLink(`yaqmc://catalog/qqmusic/song?id=track&profileId=${'a'.repeat(65)}`),
+    ).toBeNull();
+  });
+
   it('accepts one argv link and rejects ambiguous launches', () => {
     const link = 'yaqmc://catalog/qqmusic/song?id=track';
     expect(deepLinkFromArgv(['YAQMC.exe', '--flag', link])).toEqual({
       providerId: 'qqmusic',
+      profileId: 'default',
       entityId: 'track',
     });
     expect(deepLinkFromArgv(['YAQMC.exe', link, link])).toBeNull();
@@ -81,12 +100,12 @@ describe('YAQMC deep links', () => {
   });
 
   it('delivers a cold or warm link once and drops it when disabled', () => {
-    const cold = { providerId: 'qqmusic', entityId: 'cold' };
+    const cold = { providerId: 'qqmusic', profileId: 'default', entityId: 'cold' };
     const inbox = new DeepLinkInbox(cold);
     expect(inbox.take(true)).toEqual(cold);
     expect(inbox.take(true)).toBeNull();
 
-    inbox.offer({ providerId: 'qqmusic', entityId: 'warm' });
+    inbox.offer({ providerId: 'qqmusic', profileId: 'default', entityId: 'warm' });
     expect(inbox.take(false)).toBeNull();
     expect(inbox.take(true)).toBeNull();
   });

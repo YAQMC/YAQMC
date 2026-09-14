@@ -164,14 +164,18 @@ describe('QueuePanel', () => {
     const entries = openQueue();
     const current = {
       ...entries[0]!.track,
-      provider: { providerId: 'qqmusic', trackId: entries[0]!.track.id },
+      provider: {
+        providerId: 'qqmusic',
+        profileId: 'default',
+        trackId: entries[0]!.track.id,
+      },
     };
     const pluginTrack = {
       ...entries[1]!.track,
       id: 'plugin-song',
       title: 'Plugin song',
       artists: [{ id: 'plugin-artist', name: 'Plugin Artist' }],
-      provider: { providerId: 'plugin.example', trackId: 'plugin-song' },
+      provider: { providerId: 'plugin.example', profileId: 'default', trackId: 'plugin-song' },
     };
     usePlayerStore.setState({
       queue: [current, pluginTrack, ...entries.slice(2).map((entry) => entry.track)],

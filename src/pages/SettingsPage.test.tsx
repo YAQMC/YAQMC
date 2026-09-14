@@ -42,6 +42,7 @@ const capabilities = {
 function guestSnapshot(revision = 1): AccountSnapshot {
   return {
     state: 'guest',
+    profileId: 'default',
     profile: null,
     entitlement: null,
     revision,
@@ -54,6 +55,7 @@ function authenticatedSnapshot(
 ): AccountSnapshot {
   return {
     state: 'authenticated',
+    profileId: 'default',
     profile: {
       avatarUrl,
       nickname: 'Synthetic Listener',
@@ -273,6 +275,7 @@ describe('SettingsPage account section', () => {
     useAccountStore.setState({
       snapshot: {
         state: 'protocol-error',
+        profileId: 'default',
         attemptId: 'private-attempt-id',
         profile: null,
         entitlement: null,

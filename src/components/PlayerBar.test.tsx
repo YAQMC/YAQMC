@@ -31,6 +31,7 @@ function qqTrack() {
     id: 'qqmusic:track:SANITIZED_TRACK_A',
     provider: {
       providerId: 'qqmusic',
+      profileId: 'default',
       trackId: 'SANITIZED_TRACK_A',
       numericId: 1001,
     },
@@ -40,6 +41,7 @@ function qqTrack() {
 function authenticatedSnapshot(): AccountSnapshot {
   return {
     state: 'authenticated',
+    profileId: 'default',
     profile: { avatarUrl: null, nickname: 'Listener', maskedIdentity: '10******01' },
     entitlement: {
       tier: 'free',
@@ -432,6 +434,7 @@ describe('PlayerBar lyrics presentation entry', () => {
       ...qqTrack(),
       provider: {
         providerId: 'qqmusic' as const,
+        profileId: 'default' as const,
         trackId: 'SANITIZED_TRACK_A',
       },
     };

@@ -789,7 +789,10 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
     }
 
     private fun deepLinkObject(target: CatalogSongDeepLink) =
-        JSObject().put("providerId", target.providerId).put("entityId", target.entityId)
+        JSObject()
+            .put("providerId", target.providerId)
+            .put("profileId", target.profileId)
+            .put("entityId", target.entityId)
 
     private fun JSONArray.strings(): List<String> = buildList {
         for (index in 0 until length()) {

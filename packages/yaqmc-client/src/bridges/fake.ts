@@ -7,12 +7,13 @@ import type {
   WindowRole,
 } from '../bridge';
 import { CHANNEL_PLAYER_SNAPSHOT, type ChannelName, type ChannelPayload } from '../protocol/events';
-import type {
-  ContinuationSnapshot,
-  HomeFeed,
-  PlayerSnapshot,
-  PlayTracksRequest,
-  Song,
+import {
+  DEFAULT_PROFILE_ID,
+  type ContinuationSnapshot,
+  type HomeFeed,
+  type PlayerSnapshot,
+  type PlayTracksRequest,
+  type Song,
 } from '../protocol/dto';
 import type { MethodName, MethodParams, MethodResult } from '../protocol/methods';
 
@@ -72,6 +73,7 @@ export function createFakeBridge(options?: {
     active: false,
     sessionId: null,
     providerId: null,
+    profileId: null,
     kind: null,
     accountGeneration: null,
     cursor: null,
@@ -147,6 +149,7 @@ export function createFakeBridge(options?: {
           active: true,
           sessionId: (continuation.sessionId ?? 0) + 1,
           providerId: request.providerId,
+          profileId: request.profileId ?? DEFAULT_PROFILE_ID,
           kind: request.kind,
           accountGeneration: 0,
           cursor: request.kind === 'guess' ? String(request.tracks.length) : '2',

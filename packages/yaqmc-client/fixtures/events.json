@@ -106,6 +106,7 @@
     "kind": "event",
     "payload": {
       "entityId": "qqmusic:track:001X3HEN1oK0Jr",
+      "profileId": "default",
       "providerId": "qqmusic"
     },
     "seq": 12

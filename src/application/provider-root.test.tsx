@@ -81,6 +81,7 @@ describe('MusicProviderRoot', () => {
     useAccountStore.setState({
       snapshot: {
         state: 'authenticated',
+        profileId: 'default',
         profile: { avatarUrl: null, nickname: 'Provider B user', maskedIdentity: '***' },
         entitlement: {
           tier: 'free',
@@ -117,6 +118,7 @@ describe('MusicProviderRoot', () => {
     useAccountStore.setState({
       snapshot: {
         state: 'authenticated',
+        profileId: 'default',
         profile: { avatarUrl: null, nickname: 'Provider A user', maskedIdentity: '***' },
         entitlement: {
           tier: 'free',

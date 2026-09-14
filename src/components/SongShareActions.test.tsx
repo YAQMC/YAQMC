@@ -31,6 +31,7 @@ describe('SongShareMenuItems', () => {
     const publicUrl = `https://y.qq.com/n/ryqq/songDetail/${song.id}`;
     const getSongShareTarget = vi.fn(async () => ({
       providerId: 'qqmusic',
+      profileId: 'default',
       entityKind: 'song' as const,
       entityId: song.id,
       title: song.title,
@@ -58,7 +59,7 @@ describe('SongShareMenuItems', () => {
     await waitFor(() => expect(mocks.writeText).toHaveBeenCalledTimes(3));
     expect(mocks.writeText).toHaveBeenCalledWith(publicUrl);
     expect(mocks.writeText).toHaveBeenCalledWith(
-      `yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(song.id)}`,
+      `yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(song.id)}&profileId=default`,
     );
     expect(mocks.writeText).toHaveBeenCalledWith(`${song.title} — ${song.artists[0]!.name}`);
     expect(getSongShareTarget).toHaveBeenCalledOnce();

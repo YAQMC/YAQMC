@@ -51,6 +51,7 @@ describe('useLyricsCoordinator', () => {
   const getLyrics = vi.fn();
   const provider = {
     id: 'qqmusic',
+    profileId: 'default',
     displayName: 'QQ Music',
     getHome: vi.fn(),
     getDiscover: vi.fn(),

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PROFILE_ID,
   ProviderError,
   type Album,
   type AlbumPreview,
@@ -35,6 +36,24 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+function scopedSong(value: Song): Song {
+  const song = clone(value);
+  if (song.provider) song.provider.profileId = DEFAULT_PROFILE_ID;
+  return song;
+}
+
+function scopedAlbum(value: Album): Album {
+  const album = clone(value);
+  album.tracks = album.tracks.map(scopedSong);
+  return album;
+}
+
+function scopedPlaylist(value: Playlist): Playlist {
+  const playlist = clone(value);
+  playlist.tracks = playlist.tracks.map(scopedSong);
+  return playlist;
+}
+
 function normalizeQuery(query: string): string {
   return query.trim().toLocaleLowerCase();
 }
@@ -48,18 +67,38 @@ function normalizePageLimit(page: number, limit: number): { page: number; limit:
 
 export class FakeMusicProvider implements MusicProvider {
   readonly id = 'fake';
+  readonly profileId = DEFAULT_PROFILE_ID;
   readonly displayName = 'Offline fixtures';
 
   async getHome(signal?: AbortSignal, refresh = false) {
     throwIfAborted(signal);
     void refresh;
-    return clone(homeFeed);
+    const feed = clone(homeFeed);
+    feed.featured.album = scopedAlbum(feed.featured.album);
+    feed.recentlyPlayed = feed.recentlyPlayed.map((collection) =>
+      collection.type === 'album'
+        ? { type: 'album', item: scopedAlbum(collection.item) }
+        : { type: 'playlist', item: scopedPlaylist(collection.item) },
+    );
+    feed.madeForYou = feed.madeForYou.map(scopedPlaylist);
+    feed.newReleases = feed.newReleases.map(scopedAlbum);
+    feed.guessSonglist = feed.guessSonglist ? scopedPlaylist(feed.guessSonglist) : null;
+    feed.recommendedSonglists = feed.recommendedSonglists.map(scopedPlaylist);
+    feed.dailySonglist = feed.dailySonglist ? scopedPlaylist(feed.dailySonglist) : null;
+    feed.newSongSonglist = feed.newSongSonglist ? scopedPlaylist(feed.newSongSonglist) : null;
+    feed.radarSongs = feed.radarSongs.map(scopedSong);
+    return feed;
   }
 
   async getDiscover(signal?: AbortSignal, refresh = false) {
     throwIfAborted(signal);
     void refresh;
-    return clone(discoverFeed);
+    const feed = clone(discoverFeed);
+    feed.charts = feed.charts.map(scopedPlaylist);
+    feed.newSongs = feed.newSongs ? scopedPlaylist(feed.newSongs) : null;
+    feed.newAlbums = feed.newAlbums.map(scopedAlbum);
+    feed.popularSonglists = feed.popularSonglists.map(scopedPlaylist);
+    return feed;
   }
 
   async getArea(encArea: string, signal?: AbortSignal) {
@@ -68,7 +107,10 @@ export class FakeMusicProvider implements MusicProvider {
     if (!area) {
       throw new ProviderError('malformed-response', `Unknown fixture area: ${encArea}`, false);
     }
-    return clone(area);
+    const feed = clone(area);
+    feed.songlists = feed.songlists.map(scopedPlaylist);
+    feed.playlists = feed.playlists.map(scopedPlaylist);
+    return feed;
   }
 
   async getSong(id: EntityId, signal?: AbortSignal): Promise<Song> {
@@ -77,7 +119,7 @@ export class FakeMusicProvider implements MusicProvider {
     if (!song) {
       throw new ProviderError('not-found', `Unknown fixture song: ${id}`, false);
     }
-    return clone(song);
+    return scopedSong(song);
   }
 
   async getAlbum(id: EntityId, signal?: AbortSignal): Promise<Album> {
@@ -86,7 +128,7 @@ export class FakeMusicProvider implements MusicProvider {
     if (!album) {
       throw new ProviderError('malformed-response', `Unknown fixture album: ${id}`, false);
     }
-    return clone(album);
+    return scopedAlbum(album);
   }
 
   async getArtist(id: EntityId, signal?: AbortSignal): Promise<Artist> {
@@ -117,7 +159,7 @@ export class FakeMusicProvider implements MusicProvider {
       name: summary.name,
       artwork: clone(artistAlbums[0]?.artwork ?? topSongs[0]!.artwork),
       description: `Offline fixture profile for ${summary.name}.`,
-      topSongs: clone(topSongs.slice(0, 20)),
+      topSongs: topSongs.slice(0, 20).map(scopedSong),
       albums: albumPreviews,
     };
   }
@@ -139,7 +181,7 @@ export class FakeMusicProvider implements MusicProvider {
     const normalized = normalizePageLimit(page, limit);
     const start = (normalized.page - 1) * normalized.limit;
     if (kind === 'song') {
-      const items = artistSongs.slice(start, start + normalized.limit);
+      const items = artistSongs.slice(start, start + normalized.limit).map(scopedSong);
       return clone({
         kind,
         artistId: id,
@@ -183,12 +225,16 @@ export class FakeMusicProvider implements MusicProvider {
     if (!playlist) {
       throw new ProviderError('malformed-response', `Unknown fixture playlist: ${id}`, false);
     }
-    return clone(playlist);
+    return scopedPlaylist(playlist);
   }
 
   async getLibrary(signal?: AbortSignal) {
     throwIfAborted(signal);
-    return clone(librarySnapshot);
+    const library = clone(librarySnapshot);
+    library.favoriteSongs = library.favoriteSongs.map(scopedSong);
+    library.savedAlbums = library.savedAlbums.map(scopedAlbum);
+    library.savedPlaylists = library.savedPlaylists.map(scopedPlaylist);
+    return library;
   }
 
   async getLyrics(songId: EntityId, signal?: AbortSignal) {
@@ -270,19 +316,21 @@ export class FakeMusicProvider implements MusicProvider {
                 }));
     const start = Math.max(0, (Math.max(1, page) - 1) * Math.max(1, limit));
     const items = matches.slice(start, start + Math.max(1, limit));
-    return clone({
+    const result = {
       kind,
       query: query.trim(),
       page: Math.max(1, page),
       hasMore: start + items.length < matches.length,
-      items,
-    }) as SearchResult;
+      items: kind === 'song' ? (items as Song[]).map(scopedSong) : items,
+    } as SearchResult;
+    return clone(result);
   }
 
   async getSongShareTarget(id: EntityId, signal?: AbortSignal): Promise<ShareTarget> {
     const song = await this.getSong(id, signal);
     return {
       providerId: this.id,
+      profileId: this.profileId,
       entityKind: 'song',
       entityId: song.id,
       title: song.title,

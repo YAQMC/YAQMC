@@ -44,6 +44,7 @@ describe('NativeMusicProvider', () => {
     await provider.search('ambient', 'song', undefined, 2, 8);
     expect(invoke).toHaveBeenCalledWith('provider_search', {
       providerId: 'plugin.example',
+      profileId: 'default',
       query: 'ambient',
       kind: 'song',
       page: 2,
@@ -67,9 +68,12 @@ describe('NativeMusicProvider', () => {
     await provider.startWebLogin('browser-oauth');
     await provider.getSongShareTarget('track-1');
     expect(invoke.mock.calls).toEqual([
-      ['provider_account_login_methods', { providerId: 'plugin.example' }],
-      ['provider_auth_oauth_start', { providerId: 'plugin.example', methodId: 'browser-oauth' }],
-      ['catalog_share_song', { providerId: 'plugin.example', id: 'track-1' }],
+      ['provider_account_login_methods', { providerId: 'plugin.example', profileId: 'default' }],
+      [
+        'provider_auth_oauth_start',
+        { providerId: 'plugin.example', profileId: 'default', methodId: 'browser-oauth' },
+      ],
+      ['catalog_share_song', { providerId: 'plugin.example', profileId: 'default', id: 'track-1' }],
     ]);
   });
 
@@ -100,6 +104,7 @@ describe('NativeMusicProvider', () => {
     await provider.reopenLogin!('synthetic-attempt');
     expect(invoke).toHaveBeenCalledExactlyOnceWith('provider_auth_oauth_start', {
       providerId: 'qqmusic',
+      profileId: 'default',
       methodId: 'qq',
       attemptId: 'synthetic-attempt',
     });

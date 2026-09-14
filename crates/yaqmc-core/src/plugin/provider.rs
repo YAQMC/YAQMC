@@ -23,10 +23,13 @@ use yaqmc_provider_api::{
     PlaybackEpoch, PlaybackEpochClock, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
     PlaybackSourceProvider, PlaybackSourceResolver, PlaybackSourceSelection, Playlist,
     PlaylistMutationResult, PlaylistTrackMutationRequest, ProviderAccount, ProviderCapabilities,
-    ProviderCommandError, ProviderResult, ProviderStatus, RecommendationBatch,
-    RecommendationProvider, RecommendationRequest, RemotePlayHistoryItem, RenamePlaylistRequest,
-    ResolvedPlaybackSource, SearchResult, Song,
+    ProviderCommandError, ProviderResult, ProviderScopedOutput, ProviderStatus,
+    RecommendationBatch, RecommendationProvider, RecommendationRequest, RemotePlayHistoryItem,
+    RenamePlaylistRequest, ResolvedPlaybackSource, SearchResult, Song, DEFAULT_PROFILE_ID,
 };
+
+#[cfg(test)]
+use yaqmc_provider_api::ShareTarget;
 
 use crate::plugin::{
     component::{component_credential_headers, ComponentRuntimeError, ProviderComponent},
@@ -102,7 +105,7 @@ impl ComponentProviderAdapter {
             epoch_clock.replace(Some(component_playback_epoch(&provider_id, generation)));
         }
         Ok(Arc::new(Self {
-            provider_id,
+            provider_id: provider_id.clone(),
             display_name: provider
                 .name
                 .clone()
@@ -115,7 +118,7 @@ impl ComponentProviderAdapter {
             epoch_clock,
             account_cancellation: Mutex::new(CancellationToken::new()),
             oauth_attempts: Mutex::new(HashMap::new()),
-            last_account_snapshot: Mutex::new(guest_component_snapshot()),
+            last_account_snapshot: Mutex::new(guest_component_snapshot(&provider_id)),
         }))
     }
 
@@ -171,20 +174,32 @@ impl ComponentProviderAdapter {
             .invoke(capability, operation, &payload)
             .await
             .map_err(map_runtime_error)?;
-        let mut value: Value =
-            serde_json::from_str(&response).map_err(|_| ProviderCommandError {
-                code: "invalid-provider-response".to_owned(),
-                message: "the provider returned malformed JSON".to_owned(),
-                retryable: false,
-            })?;
+        let value: Value = serde_json::from_str(&response).map_err(|_| ProviderCommandError {
+            code: "invalid-provider-response".to_owned(),
+            message: "the provider returned malformed JSON".to_owned(),
+            retryable: false,
+        })?;
         let mut nodes = 0;
         validate_value(&value, 0, &mut nodes)?;
-        enforce_provider_scope(&mut value, &self.provider_id);
         serde_json::from_value(value).map_err(|_| ProviderCommandError {
             code: "invalid-provider-response".to_owned(),
             message: "the provider response does not match the requested operation".to_owned(),
             retryable: false,
         })
+    }
+
+    async fn call_scoped<Req, Response>(
+        &self,
+        capability: ProviderCapability,
+        operation: &str,
+        request: &Req,
+    ) -> ProviderResult<Response>
+    where
+        Req: Serialize + ?Sized,
+        Response: DeserializeOwned + ProviderScopedOutput,
+    {
+        let response: Response = self.call(capability, operation, request).await?;
+        response.validate_scope(&self.provider_id)
     }
 
     async fn call_account_scoped<Req, Response>(
@@ -243,34 +258,37 @@ impl ComponentProviderAdapter {
         )
     }
 
-    fn sanitize_snapshot(&self, mut snapshot: AccountSnapshot) -> AccountSnapshot {
+    fn sanitize_snapshot(&self, mut snapshot: AccountSnapshot) -> ProviderResult<AccountSnapshot> {
+        snapshot = snapshot.validate_scope(&self.provider_id)?;
         snapshot.revision = self.snapshot_revision.fetch_add(1, Ordering::AcqRel) + 1;
         *self
             .last_account_snapshot
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = snapshot.clone();
-        snapshot
+        Ok(snapshot)
     }
 
-    fn sanitize_page<T>(&self, mut page: Page<T>) -> Page<T> {
+    fn sanitize_page<T: ProviderScopedOutput>(&self, mut page: Page<T>) -> ProviderResult<Page<T>> {
+        page = page.validate_scope(&self.provider_id)?;
         page.auth_revision = self.account_generation.load(Ordering::Acquire);
-        page
+        Ok(page)
     }
 
     fn sanitize_playlist_mutation(
         &self,
         mut result: PlaylistMutationResult,
-    ) -> PlaylistMutationResult {
+    ) -> ProviderResult<PlaylistMutationResult> {
+        result = result.validate_scope(&self.provider_id)?;
         result.auth_revision = self.account_generation.load(Ordering::Acquire);
-        result
+        Ok(result)
     }
 
     fn sanitize_favorite_mutation(
         &self,
         mut result: FavoriteMutationResult,
-    ) -> FavoriteMutationResult {
+    ) -> ProviderResult<FavoriteMutationResult> {
         result.auth_revision = self.account_generation.load(Ordering::Acquire);
-        result
+        Ok(result)
     }
 
     async fn prepare_component_oauth_login(
@@ -405,8 +423,10 @@ fn component_now_ms() -> u64 {
         .min(u128::from(u64::MAX)) as u64
 }
 
-fn guest_component_snapshot() -> AccountSnapshot {
+fn guest_component_snapshot(provider_id: &str) -> AccountSnapshot {
     AccountSnapshot {
+        provider_id: provider_id.to_owned(),
+        profile_id: DEFAULT_PROFILE_ID.to_owned(),
         account: AccountState::Guest {
             profile: (),
             entitlement: (),
@@ -744,6 +764,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     async fn catalog_status(&self) -> ProviderStatus {
         ProviderStatus {
             provider_id: self.provider_id.clone(),
+            profile_id: DEFAULT_PROFILE_ID.to_owned(),
             display_name: self.display_name.clone(),
             connection: if self.component.circuit_open() {
                 "circuit-open".to_owned()
@@ -765,7 +786,7 @@ impl CatalogProvider for ComponentProviderAdapter {
         page: u32,
         limit: u32,
     ) -> ProviderResult<SearchResult> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.search",
             &json!({ "query": query, "kind": kind, "page": page, "limit": limit }),
@@ -774,7 +795,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     }
 
     async fn catalog_song(&self, id: String) -> ProviderResult<Song> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.song",
             &json!({ "id": id }),
@@ -783,7 +804,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     }
 
     async fn catalog_album(&self, id: String) -> ProviderResult<Album> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.album",
             &json!({ "id": id }),
@@ -792,7 +813,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     }
 
     async fn catalog_artist(&self, id: String) -> ProviderResult<Artist> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.artist",
             &json!({ "id": id }),
@@ -807,7 +828,7 @@ impl CatalogProvider for ComponentProviderAdapter {
         page: u32,
         limit: u32,
     ) -> ProviderResult<ArtistCatalogPage> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.artist-page",
             &json!({ "id": id, "kind": kind, "page": page, "limit": limit }),
@@ -816,7 +837,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     }
 
     async fn catalog_playlist(&self, id: String) -> ProviderResult<Playlist> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.playlist",
             &json!({ "id": id }),
@@ -825,7 +846,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     }
 
     async fn catalog_home(&self, refresh: bool) -> ProviderResult<HomeFeed> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.home",
             &json!({ "refresh": refresh }),
@@ -834,7 +855,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     }
 
     async fn catalog_discover(&self, refresh: bool) -> ProviderResult<DiscoverFeed> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.discover",
             &json!({ "refresh": refresh }),
@@ -843,7 +864,7 @@ impl CatalogProvider for ComponentProviderAdapter {
     }
 
     async fn catalog_area(&self, enc_area: String) -> ProviderResult<AreaFeed> {
-        self.call(
+        self.call_scoped(
             ProviderCapability::Catalog,
             "catalog.area",
             &json!({ "encArea": enc_area }),
@@ -881,12 +902,14 @@ impl RecommendationProvider for ComponentProviderAdapter {
         &self,
         request: RecommendationRequest,
     ) -> ProviderResult<RecommendationBatch> {
-        self.call_account_scoped(
-            ProviderCapability::Recommendation,
-            "recommendation.next",
-            &request,
-        )
-        .await
+        let batch: RecommendationBatch = self
+            .call_account_scoped(
+                ProviderCapability::Recommendation,
+                "recommendation.next",
+                &request,
+            )
+            .await?;
+        batch.validate_scope(&self.provider_id)
     }
 }
 
@@ -938,12 +961,13 @@ impl PlaybackSourceProvider for ComponentProviderAdapter {
         quality: AudioQualityPreference,
     ) -> ProviderResult<ProviderStatus> {
         let mut status: ProviderStatus = self
-            .call(
+            .call::<_, ProviderStatus>(
                 ProviderCapability::Playback,
                 "playback.set-preferred-quality",
                 &json!({ "quality": quality }),
             )
-            .await?;
+            .await?
+            .validate_scope(&self.provider_id)?;
         status.provider_id = self.provider_id.clone();
         status.display_name = self.display_name.clone();
         status.capabilities = self.catalog_capability_projection();
@@ -1008,7 +1032,12 @@ impl ProviderAccount for ComponentProviderAdapter {
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .clone()
             });
-        self.sanitize_snapshot(snapshot)
+        self.sanitize_snapshot(snapshot).unwrap_or_else(|_| {
+            self.last_account_snapshot
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone()
+        })
     }
 
     async fn favorite_songs(
@@ -1023,7 +1052,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "cursor": cursor, "limit": limit }),
             )
             .await?;
-        Ok(self.sanitize_page(page))
+        self.sanitize_page(page)
     }
 
     async fn account_playlists(
@@ -1038,7 +1067,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "cursor": cursor, "limit": limit }),
             )
             .await?;
-        Ok(self.sanitize_page(page))
+        self.sanitize_page(page)
     }
 
     async fn account_playlist_tracks(
@@ -1047,6 +1076,7 @@ impl ProviderAccount for ComponentProviderAdapter {
         cursor: Option<String>,
         limit: u32,
     ) -> ProviderResult<AccountPlaylistDetail> {
+        let playlist = playlist.validate_scope(&self.provider_id)?;
         let mut detail: AccountPlaylistDetail = self
             .call_account_scoped(
                 ProviderCapability::Account,
@@ -1054,6 +1084,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "playlist": playlist, "cursor": cursor, "limit": limit }),
             )
             .await?;
+        detail = detail.validate_scope(&self.provider_id)?;
         detail.tracks.auth_revision = self.account_generation();
         Ok(detail)
     }
@@ -1070,7 +1101,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "cursor": cursor, "limit": limit }),
             )
             .await?;
-        Ok(self.sanitize_page(page))
+        self.sanitize_page(page)
     }
 
     async fn set_favorite(
@@ -1084,7 +1115,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "request": request }),
             )
             .await?;
-        Ok(self.sanitize_favorite_mutation(result))
+        self.sanitize_favorite_mutation(result)
     }
 
     async fn create_playlist(
@@ -1098,7 +1129,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "request": request }),
             )
             .await?;
-        Ok(self.sanitize_playlist_mutation(result))
+        self.sanitize_playlist_mutation(result)
     }
 
     async fn rename_playlist(
@@ -1112,7 +1143,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "request": request }),
             )
             .await?;
-        Ok(self.sanitize_playlist_mutation(result))
+        self.sanitize_playlist_mutation(result)
     }
 
     async fn add_playlist_track(
@@ -1126,7 +1157,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "request": request }),
             )
             .await?;
-        Ok(self.sanitize_playlist_mutation(result))
+        self.sanitize_playlist_mutation(result)
     }
 
     async fn remove_playlist_track(
@@ -1140,7 +1171,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "request": request }),
             )
             .await?;
-        Ok(self.sanitize_playlist_mutation(result))
+        self.sanitize_playlist_mutation(result)
     }
 
     async fn delete_playlist(
@@ -1154,7 +1185,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "request": request }),
             )
             .await?;
-        Ok(self.sanitize_playlist_mutation(result))
+        self.sanitize_playlist_mutation(result)
     }
 
     async fn set_playlist_collected(
@@ -1168,7 +1199,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "request": request }),
             )
             .await?;
-        Ok(self.sanitize_playlist_mutation(result))
+        self.sanitize_playlist_mutation(result)
     }
 
     async fn start_qr_login(&self) -> ProviderResult<AccountSnapshot> {
@@ -1180,7 +1211,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({}),
             )
             .await?;
-        Ok(self.sanitize_snapshot(snapshot))
+        self.sanitize_snapshot(snapshot)
     }
 
     async fn prepare_oauth_login(
@@ -1223,7 +1254,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "attemptId": attempt_id, "callbackUrl": callback_url.as_str() }),
             )
             .await?;
-        Ok(self.sanitize_snapshot(snapshot))
+        self.sanitize_snapshot(snapshot)
     }
 
     async fn cancel_oauth_login(&self, attempt_id: &str) -> ProviderResult<AccountSnapshot> {
@@ -1239,7 +1270,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "attemptId": attempt_id }),
             )
             .await?;
-        Ok(self.sanitize_snapshot(snapshot))
+        self.sanitize_snapshot(snapshot)
     }
 
     async fn heartbeat_qr_login(
@@ -1254,7 +1285,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "attemptId": attempt_id, "ownerLeaseId": owner_lease_id }),
             )
             .await?;
-        Ok(self.sanitize_snapshot(snapshot))
+        self.sanitize_snapshot(snapshot)
     }
 
     async fn is_oauth_login(&self, attempt_id: &str) -> bool {
@@ -1275,7 +1306,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "attemptId": attempt_id }),
             )
             .await?;
-        Ok(self.sanitize_snapshot(snapshot))
+        self.sanitize_snapshot(snapshot)
     }
 
     async fn refresh_qr_login(
@@ -1290,7 +1321,7 @@ impl ProviderAccount for ComponentProviderAdapter {
                 &json!({ "attemptId": attempt_id }),
             )
             .await?;
-        Ok(self.sanitize_snapshot(snapshot))
+        self.sanitize_snapshot(snapshot)
     }
 
     async fn restore_session(&self) {
@@ -1309,7 +1340,7 @@ impl ProviderAccount for ComponentProviderAdapter {
         let snapshot = self
             .call_account_scoped(ProviderCapability::Account, "account.sign-out", &json!({}))
             .await?;
-        Ok(self.sanitize_snapshot(snapshot))
+        self.sanitize_snapshot(snapshot)
     }
 }
 
@@ -1534,58 +1565,6 @@ fn invalid_response(message: &str) -> ProviderCommandError {
     }
 }
 
-fn enforce_provider_scope(value: &mut Value, provider_id: &str) {
-    match value {
-        Value::Array(values) => {
-            for value in values {
-                enforce_provider_scope(value, provider_id);
-            }
-        }
-        Value::Object(values) => {
-            for value in values.values_mut() {
-                enforce_provider_scope(value, provider_id);
-            }
-            if looks_like_song(values) {
-                let track_id = values
-                    .get("provider")
-                    .and_then(Value::as_object)
-                    .and_then(|provider| provider.get("trackId"))
-                    .and_then(Value::as_str)
-                    .filter(|id| !id.is_empty())
-                    .or_else(|| values.get("id").and_then(Value::as_str))
-                    .unwrap_or_default()
-                    .to_owned();
-                let provider = values
-                    .entry("provider".to_owned())
-                    .or_insert_with(|| json!({}));
-                if let Some(provider) = provider.as_object_mut() {
-                    provider.insert("providerId".to_owned(), json!(provider_id));
-                    provider.insert("trackId".to_owned(), json!(track_id));
-                }
-            }
-            if values.contains_key("entityKind") && values.contains_key("entityId") {
-                values.insert("providerId".to_owned(), json!(provider_id));
-            }
-        }
-        _ => {}
-    }
-}
-
-fn looks_like_song(values: &serde_json::Map<String, Value>) -> bool {
-    [
-        "id",
-        "title",
-        "artists",
-        "album",
-        "artwork",
-        "durationMs",
-        "quality",
-        "availability",
-    ]
-    .iter()
-    .all(|key| values.contains_key(*key))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1772,6 +1751,7 @@ mod tests {
     fn guest_snapshot(revision: u64) -> Value {
         json!({
             "state": "guest",
+            "providerId": "dev.example.account",
             "profile": null,
             "entitlement": null,
             "revision": revision,
@@ -1798,8 +1778,124 @@ mod tests {
             "isFavorite": false,
             "quality": "standard",
             "availability": { "status": "available" },
-            "provider": { "providerId": "spoofed", "trackId": "song-1" }
+            "provider": { "providerId": "dev.example.catalog", "trackId": "song-1" }
         })
+    }
+
+    fn playlist_summary(profile_id: Option<&str>) -> Value {
+        let mut value = json!({
+            "providerId": "dev.example.account",
+            "id": "playlist-1",
+            "reference": { "kind": "owned", "tid": "tid-1" },
+            "title": "Fixture Playlist",
+            "description": "",
+            "owner": { "id": "owner-1", "displayName": "Owner" },
+            "artwork": { "src": "", "alt": "", "dominantColor": "#000000" },
+            "ownership": "owned",
+            "capabilities": {
+                "canAddTracks": true,
+                "canRemoveTracks": true,
+                "canRename": true,
+                "canDelete": true,
+                "canReorder": true
+            },
+            "trackCount": 1,
+            "updatedAtMs": null
+        });
+        if let Some(profile_id) = profile_id {
+            value["profileId"] = json!(profile_id);
+        }
+        value
+    }
+
+    #[test]
+    fn typed_scope_defaults_legacy_profiles_and_rejects_forged_values() {
+        let legacy_song: Song = serde_json::from_value(song()).expect("song");
+        assert_eq!(
+            legacy_song.provider.as_ref().expect("provider").profile_id,
+            DEFAULT_PROFILE_ID
+        );
+        assert!(legacy_song
+            .clone()
+            .validate_scope("dev.example.catalog")
+            .is_ok());
+
+        let mut forged_song = song();
+        forged_song["provider"]["profileId"] = json!("secondary");
+        let forged_song: Song = serde_json::from_value(forged_song).expect("forged song shape");
+        assert_eq!(
+            forged_song
+                .validate_scope("dev.example.catalog")
+                .expect_err("non-default song profile must fail closed")
+                .code,
+            "invalid-provider-response"
+        );
+
+        let mut forged_provider = song();
+        forged_provider["provider"]["providerId"] = json!("other.provider");
+        let forged_provider: Song =
+            serde_json::from_value(forged_provider).expect("forged provider shape");
+        assert!(forged_provider
+            .validate_scope("dev.example.catalog")
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn scoped_snapshot_status_share_playlist_and_mutation_outputs_are_fail_closed() {
+        let account = account_adapter(guest_snapshot(1));
+        let snapshot = account.account_snapshot().await;
+        assert_eq!(snapshot.profile_id, DEFAULT_PROFILE_ID);
+        let mut forged_snapshot = snapshot.clone();
+        forged_snapshot.profile_id = "secondary".to_owned();
+        assert!(forged_snapshot
+            .validate_scope("dev.example.account")
+            .is_err());
+
+        let catalog = adapter(json!({}));
+        let status = catalog.catalog_status().await;
+        assert_eq!(status.profile_id, DEFAULT_PROFILE_ID);
+        let mut forged_status = status.clone();
+        forged_status.profile_id = "secondary".to_owned();
+        assert!(forged_status.validate_scope("dev.example.catalog").is_err());
+
+        let share: ShareTarget = serde_json::from_value(json!({
+            "providerId": "dev.example.catalog",
+            "entityKind": "song",
+            "entityId": "song-1",
+            "title": "Fixture Song",
+            "artists": []
+        }))
+        .expect("legacy share target");
+        assert_eq!(share.profile_id, DEFAULT_PROFILE_ID);
+        assert!(share.clone().validate_scope("dev.example.catalog").is_ok());
+        let mut forged_share = share;
+        forged_share.profile_id = "secondary".to_owned();
+        assert!(forged_share.validate_scope("dev.example.catalog").is_err());
+
+        let playlist: AccountPlaylistSummary =
+            serde_json::from_value(playlist_summary(None)).expect("legacy playlist");
+        assert_eq!(playlist.profile_id, DEFAULT_PROFILE_ID);
+        assert!(playlist
+            .clone()
+            .validate_scope("dev.example.account")
+            .is_ok());
+        let mut forged_playlist = playlist;
+        forged_playlist.profile_id = "secondary".to_owned();
+        assert!(forged_playlist
+            .validate_scope("dev.example.account")
+            .is_err());
+
+        let mut mutation_value = json!({
+            "clientOperationId": "op-1",
+            "status": "applied",
+            "playlist": null,
+            "errorCode": null,
+            "authRevision": 0
+        });
+        mutation_value["playlist"] = playlist_summary(Some("secondary"));
+        let mutation: PlaylistMutationResult =
+            serde_json::from_value(mutation_value).expect("playlist mutation");
+        assert!(mutation.validate_scope("dev.example.account").is_err());
     }
 
     #[tokio::test]

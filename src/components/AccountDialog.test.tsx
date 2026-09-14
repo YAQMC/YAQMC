@@ -21,7 +21,7 @@ const capabilities = {
   recentHistoryRead: false,
 };
 
-const base = { revision: 1, capabilities };
+const base = { profileId: 'default', revision: 1, capabilities };
 const profile = {
   avatarUrl: 'https://qpic.y.qq.com/synthetic-avatar.png',
   nickname: 'Synthetic Listener',

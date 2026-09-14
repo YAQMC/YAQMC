@@ -10,7 +10,7 @@ import java.util.IdentityHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicReference
 
-data class CatalogSongDeepLink(val providerId: String, val entityId: String)
+data class CatalogSongDeepLink(val providerId: String, val profileId: String, val entityId: String)
 
 /** Android implementation of apps/desktop/main/deep-link.ts's catalog-song contract. */
 class DeepLinkManager {
@@ -29,6 +29,7 @@ class DeepLinkManager {
     companion object {
         const val MAX_URI_BYTES = 2_048
         const val MAX_ENTITY_ID_BYTES = 256
+        const val MAX_PROFILE_ID_BYTES = 64
         private val providerPattern = Regex("^[a-z0-9][a-z0-9._-]{0,63}$")
         private val invalidEscape = Regex("%(?![0-9a-f]{2})", RegexOption.IGNORE_CASE)
 
@@ -58,13 +59,19 @@ class DeepLinkManager {
             val provider = segments[0]
             if (!providerPattern.matches(provider)) return null
             val fields = uri.rawQuery?.split('&') ?: return null
-            if (fields.size != 1) return null
-            val equals = fields[0].indexOf('=')
-            if (equals <= 0) return null
-            val queryName = decode(fields[0].substring(0, equals)) ?: return null
-            val entity = decode(fields[0].substring(equals + 1)) ?: return null
+            if (fields.isEmpty() || fields.size > 2) return null
+            val query = mutableMapOf<String, String>()
+            for (field in fields) {
+                val equals = field.indexOf('=')
+                if (equals <= 0) return null
+                val queryName = decode(field.substring(0, equals)) ?: return null
+                if (queryName != "id" && queryName != "profileId") return null
+                if (query.put(queryName, decode(field.substring(equals + 1)) ?: return null) != null) {
+                    return null
+                }
+            }
+            val entity = query["id"] ?: return null
             if (
-                queryName != "id" ||
                 entity.isEmpty() ||
                 entity != entity.trim() ||
                 hasControl(entity) ||
@@ -72,7 +79,11 @@ class DeepLinkManager {
             ) {
                 return null
             }
-            return CatalogSongDeepLink(provider, entity)
+            val profile = query["profileId"] ?: "default"
+            if (!providerPattern.matches(profile) || profile.toByteArray(StandardCharsets.UTF_8).size > MAX_PROFILE_ID_BYTES) {
+                return null
+            }
+            return CatalogSongDeepLink(provider, profile, entity)
         }
 
         fun isCatalogUri(uri: Uri): Boolean = parse(uri) != null

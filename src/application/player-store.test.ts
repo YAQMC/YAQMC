@@ -60,6 +60,7 @@ describe('player store', () => {
     const queue = [song];
     const snapshot: AccountSnapshot = {
       state: 'authenticated',
+      profileId: 'default',
       profile: { avatarUrl: null, nickname: 'Listener', maskedIdentity: '10******01' },
       entitlement: {
         tier: 'free',

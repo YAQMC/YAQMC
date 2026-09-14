@@ -1,6 +1,6 @@
-import type { ShareTarget, Song } from '../domain/music';
+import { DEFAULT_PROFILE_ID, type ShareTarget, type Song } from '../domain/music';
 import type { ShareMusicProvider } from '../providers/music-provider';
-import { isProviderId } from '../providers/provider-registry';
+import { isProfileId, isProviderId } from '../providers/provider-registry';
 
 export type SongShareKind = 'public-link' | 'yaqmc-link' | 'text';
 
@@ -18,7 +18,7 @@ export class SongShareUnavailableError extends Error {
 
 export function buildYaqmcSongLink(target: ShareTarget): string {
   assertShareTarget(target);
-  return `yaqmc://catalog/${target.providerId}/song?id=${encodeURIComponent(target.entityId)}`;
+  return `yaqmc://catalog/${target.providerId}/song?id=${encodeURIComponent(target.entityId)}&profileId=${encodeURIComponent(target.profileId)}`;
 }
 
 export function formatSongShareText(target: ShareTarget): string {
@@ -50,6 +50,7 @@ export async function resolveSongShareValue(
   if (kind !== 'public-link') {
     const localTarget: ShareTarget = {
       providerId,
+      profileId: song.provider?.profileId ?? DEFAULT_PROFILE_ID,
       entityKind: 'song',
       entityId: songId,
       title: song.title,
@@ -65,6 +66,7 @@ export async function resolveSongShareValue(
   assertShareTarget(target);
   if (
     target.providerId !== providerId ||
+    target.profileId !== (song.provider?.profileId ?? DEFAULT_PROFILE_ID) ||
     target.entityId !== songId ||
     target.entityKind !== 'song'
   ) {
@@ -117,6 +119,7 @@ function assertShareTarget(target: ShareTarget): void {
   if (
     target.entityKind !== 'song' ||
     !isProviderId(target.providerId) ||
+    !isProfileId(target.profileId) ||
     !entityId ||
     new TextEncoder().encode(entityId).length > MAX_ENTITY_ID_BYTES ||
     hasControlCharacters(entityId) ||

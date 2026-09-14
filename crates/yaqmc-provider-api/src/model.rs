@@ -37,6 +37,8 @@ pub struct AlbumSummary {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderTrackReference {
     pub provider_id: String,
+    #[serde(default = "crate::profile::default_profile_id")]
+    pub profile_id: String,
     pub track_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub numeric_id: Option<u64>,
@@ -112,6 +114,8 @@ pub enum ShareEntityKind {
 #[serde(rename_all = "camelCase")]
 pub struct ShareTarget {
     pub provider_id: String,
+    #[serde(default = "crate::profile::default_profile_id")]
+    pub profile_id: String,
     pub entity_kind: ShareEntityKind,
     pub entity_id: String,
     pub title: String,
@@ -182,4 +186,31 @@ pub struct LyricDocument {
     #[serde(default)]
     pub vocalists: Vec<LyricVocalist>,
     pub lines: Vec<LyricLine>,
+}
+
+#[cfg(test)]
+mod profile_compat_tests {
+    use super::*;
+    use crate::DEFAULT_PROFILE_ID;
+    use serde_json::json;
+
+    #[test]
+    fn legacy_track_reference_and_share_target_use_default_profile() {
+        let reference: ProviderTrackReference = serde_json::from_value(json!({
+            "providerId": "qqmusic",
+            "trackId": "song-1"
+        }))
+        .expect("legacy track reference deserializes");
+        assert_eq!(reference.profile_id, DEFAULT_PROFILE_ID);
+
+        let target: ShareTarget = serde_json::from_value(json!({
+            "providerId": "qqmusic",
+            "entityKind": "song",
+            "entityId": "song-1",
+            "title": "Song",
+            "artists": []
+        }))
+        .expect("legacy share target deserializes");
+        assert_eq!(target.profile_id, DEFAULT_PROFILE_ID);
+    }
 }

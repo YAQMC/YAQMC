@@ -8,10 +8,12 @@ import {
   resolveSongShareValue,
   SongShareUnavailableError,
 } from './song-sharing';
+import { catalogSongRouteFromDeepLink } from './deep-link-navigation';
 
 const song = allSongs[0]!;
 const target = {
   providerId: 'qqmusic',
+  profileId: 'default',
   entityKind: 'song' as const,
   entityId: song.id,
   title: song.title,
@@ -29,10 +31,38 @@ describe('song sharing', () => {
     expect(nativeWriteText).toHaveBeenCalledWith('native share text');
   });
 
-  it('builds only the canonical YAQMC catalog song shape', () => {
-    expect(buildYaqmcSongLink(target)).toBe(
-      `yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(song.id)}`,
+  it('builds a profile-preserving YAQMC catalog song link', () => {
+    const defaultLink = buildYaqmcSongLink(target);
+    expect(defaultLink).toBe(
+      `yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(song.id)}&profileId=default`,
     );
+    const defaultUrl = new URL(defaultLink);
+    expect(
+      catalogSongRouteFromDeepLink('qqmusic', 'default', {
+        providerId: defaultUrl.pathname.split('/')[1]!,
+        profileId: defaultUrl.searchParams.get('profileId')!,
+        entityId: defaultUrl.searchParams.get('id')!,
+      }),
+    ).toEqual({ page: 'song', id: song.id, providerId: 'qqmusic' });
+
+    const alternateTarget = {
+      ...target,
+      profileId: 'alternate',
+      entityId: 'track id/with?reserved',
+    };
+    const alternateLink = buildYaqmcSongLink(alternateTarget);
+    expect(alternateLink).toBe(
+      `yaqmc://catalog/qqmusic/song?id=${encodeURIComponent(alternateTarget.entityId)}&profileId=alternate`,
+    );
+    const alternateUrl = new URL(alternateLink);
+    expect(
+      catalogSongRouteFromDeepLink('qqmusic', 'alternate', {
+        providerId: alternateUrl.pathname.split('/')[1]!,
+        profileId: alternateUrl.searchParams.get('profileId')!,
+        entityId: alternateUrl.searchParams.get('id')!,
+      }),
+    ).toEqual({ page: 'song', id: alternateTarget.entityId, providerId: 'qqmusic' });
+
     expect(formatSongShareText(target)).toBe(`${song.title} — ${song.artists[0]!.name}`);
 
     expect(() => buildYaqmcSongLink({ ...target, providerId: 'QQMusic' })).toThrow(
@@ -51,7 +81,7 @@ describe('song sharing', () => {
       target.canonicalHttpsUrl,
     );
     await expect(resolveSongShareValue(provider, 'qqmusic', song, 'yaqmc-link')).resolves.toBe(
-      `yaqmc://catalog/qqmusic/song?id=${song.id}`,
+      `yaqmc://catalog/qqmusic/song?id=${song.id}&profileId=default`,
     );
     await expect(resolveSongShareValue(provider, 'qqmusic', song, 'text')).resolves.toBe(
       `${song.title} — ${song.artists[0]!.name}`,
@@ -80,5 +110,15 @@ describe('song sharing', () => {
     await expect(resolveSongShareValue(privateOnly, 'qqmusic', song, 'text')).resolves.toContain(
       song.title,
     );
+  });
+
+  it('rejects a public target from a different profile', async () => {
+    const mismatchedProfile: ShareMusicProvider = {
+      getSongShareTarget: vi.fn().mockResolvedValue({ ...target, profileId: 'secondary' }),
+    };
+
+    await expect(
+      resolveSongShareValue(mismatchedProfile, 'qqmusic', song, 'public-link'),
+    ).rejects.toMatchObject({ reason: 'target' });
   });
 });

@@ -7,6 +7,7 @@ describe('FakeMusicProvider', () => {
   const provider = new FakeMusicProvider();
 
   it('returns detached fixture data', async () => {
+    expect(provider.profileId).toBe('default');
     const first = await provider.getHome();
     first.featured.album.title = 'Changed by a consumer';
 
@@ -43,6 +44,7 @@ describe('FakeMusicProvider', () => {
   it('looks up fixture songs and artists through the catalog detail boundary', async () => {
     const song = await provider.getSong('quiet-light');
     expect(song.title).toBe('Quiet Light');
+    expect(provider.profileId).toBe('default');
 
     const artist = await provider.getArtist('artist-mira-vale');
     expect(artist.name).toBe('Mira Vale');

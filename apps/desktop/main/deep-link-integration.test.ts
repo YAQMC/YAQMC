@@ -36,7 +36,9 @@ describe('Electron deep-link single-instance integration', () => {
       'C:\\',
     );
 
-    expect(received).toEqual([{ providerId: 'qqmusic', entityId: 'qqmusic:track:001' }]);
+    expect(received).toEqual([
+      { providerId: 'qqmusic', profileId: 'default', entityId: 'qqmusic:track:001' },
+    ]);
     expect(focus).toHaveBeenCalledTimes(1);
   });
 });

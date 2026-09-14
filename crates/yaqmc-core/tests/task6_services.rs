@@ -34,7 +34,7 @@ fn table_names(database: &Path) -> Vec<String> {
 }
 
 #[test]
-fn storage_uses_injected_roots_and_preserves_the_v6_schema() {
+fn storage_uses_injected_roots_and_preserves_the_v7_schema() {
     let root = TempDir::new().expect("temporary root");
     let data_root = root.path().join("injected-data");
     let cache_root = root.path().join("injected-cache");
@@ -74,7 +74,7 @@ fn storage_uses_injected_roots_and_preserves_the_v6_schema() {
     let journal_mode: String = connection
         .pragma_query_value(None, "journal_mode", |row| row.get(0))
         .expect("journal mode");
-    assert_eq!(version, 6);
+    assert_eq!(version, 7);
     assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
     drop(connection);
     assert_eq!(

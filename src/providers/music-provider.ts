@@ -67,10 +67,14 @@ export interface ShareMusicProvider {
 
 export interface MusicProvider extends CatalogMusicProvider, LyricsMusicProvider {
   readonly id: string;
+  readonly profileId: string;
   readonly displayName: string;
 }
 
 export interface AccountMusicProvider {
+  /** Identity is present on every concrete MusicProvider; optional here for test doubles. */
+  readonly id?: string;
+  readonly profileId?: string;
   getAccountSnapshot(signal?: AbortSignal): Promise<AccountSnapshot>;
   refreshAccount(signal?: AbortSignal): Promise<AccountSnapshot>;
   getLoginMethods?(signal?: AbortSignal): Promise<AccountLoginMethodDescriptor[]>;
@@ -168,6 +172,7 @@ export function isShareMusicProvider(
 
 export interface MusicProviderCapabilityFacade {
   readonly id: string;
+  readonly profileId: string;
   readonly catalog: CatalogMusicProvider;
   readonly lyrics: LyricsMusicProvider;
   /** Recommendation fetching is Core-owned; this is capability metadata only. */
@@ -182,6 +187,7 @@ export function createMusicProviderCapabilityFacade(
 ): MusicProviderCapabilityFacade {
   return Object.freeze({
     id: provider.id,
+    profileId: provider.profileId,
     catalog: provider,
     lyrics: provider,
     recommendations: true,

@@ -262,6 +262,7 @@ fn events() -> Value {
             channel: CHANNEL_APP_OPEN_CATALOG_SONG.to_owned(),
             payload: json!({
                 "providerId": "qqmusic",
+                "profileId": "default",
                 "entityId": "qqmusic:track:001X3HEN1oK0Jr"
             }),
         }),
@@ -499,6 +500,7 @@ fn requests() -> Value {
             method: "catalog_share_song".to_owned(),
             params: Some(json!({
                 "providerId": "qqmusic",
+                "profileId": "default",
                 "id": "qqmusic:track:001X3HEN1oK0Jr"
             })),
             origin: None,
@@ -543,6 +545,7 @@ fn responses() -> Value {
             id: 18,
             body: ResponseBody::success(json!({
                 "providerId": "qqmusic",
+                "profileId": "default",
                 "entityKind": "song",
                 "entityId": "qqmusic:track:001X3HEN1oK0Jr",
                 "title": "Quiet Light",

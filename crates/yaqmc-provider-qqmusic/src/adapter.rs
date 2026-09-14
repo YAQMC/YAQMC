@@ -56,6 +56,7 @@ fn share_target_for_song(song: api::Song) -> api::ProviderResult<api::ShareTarge
         provider.and_then(|provider| qqmusic_api::canonical_song_url(&provider.track_id));
     Ok(api::ShareTarget {
         provider_id: "qqmusic".to_owned(),
+        profile_id: api::DEFAULT_PROFILE_ID.to_owned(),
         entity_kind: api::ShareEntityKind::Song,
         entity_id: entity_id.to_owned(),
         title: title.to_owned(),
@@ -107,7 +108,11 @@ impl api::ProviderAccount for QQMusicService {
         let value = QQMusicService::account_playlists(self, cursor, limit)
             .await
             .map_err(provider_error)?;
-        map_output(value)
+        let mut page: api::Page<api::AccountPlaylistSummary> = map_output(value)?;
+        for playlist in &mut page.items {
+            playlist.provider_id = "qqmusic".to_owned();
+        }
+        Ok(page)
     }
 
     async fn account_playlist_tracks(
@@ -120,7 +125,9 @@ impl api::ProviderAccount for QQMusicService {
         let value = QQMusicService::account_playlist_tracks(self, playlist, cursor, limit)
             .await
             .map_err(provider_error)?;
-        map_output(value)
+        let mut detail: api::AccountPlaylistDetail = map_output(value)?;
+        detail.summary.provider_id = "qqmusic".to_owned();
+        Ok(detail)
     }
 
     async fn account_recently_played(
@@ -561,6 +568,7 @@ mod share_tests {
             playback_capability: None,
             provider: Some(api::ProviderTrackReference {
                 provider_id: "qqmusic".to_owned(),
+                profile_id: api::DEFAULT_PROFILE_ID.to_owned(),
                 track_id: track_id.to_owned(),
                 numeric_id: None,
                 album_id: None,

@@ -343,6 +343,7 @@ fn normalize_quality(value: &str) -> &'static str {
 fn provider_status(preferred_quality: &str) -> Value {
     json!({
         "providerId": PROVIDER_ID,
+        "profileId": "default",
         "displayName": "YAQMC Platform Example",
         "connection": "ready",
         "message": "deterministic component fixture",
@@ -480,6 +481,8 @@ fn account_capabilities() -> Value {
 
 fn guest_snapshot() -> Value {
     json!({
+        "providerId": PROVIDER_ID,
+        "profileId": "default",
         "state": "guest",
         "profile": null,
         "entitlement": null,
@@ -490,6 +493,8 @@ fn guest_snapshot() -> Value {
 
 fn authenticated_snapshot() -> Value {
     json!({
+        "providerId": PROVIDER_ID,
+        "profileId": "default",
         "state": "authenticated",
         "profile": {
             "avatarUrl": null,

@@ -51,4 +51,20 @@ describe('QQMusicProvider', () => {
       limit: 20,
     });
   });
+
+  it('includes the default profile on provider-scoped legacy façade calls', async () => {
+    await provider.refreshAccount();
+    expect(invoke).toHaveBeenCalledWith('provider_account_refresh', {
+      providerId: 'qqmusic',
+      profileId: 'default',
+    });
+
+    invoke.mockReset();
+    await provider.getSongShareTarget('song-1');
+    expect(invoke).toHaveBeenCalledWith('catalog_share_song', {
+      providerId: 'qqmusic',
+      profileId: 'default',
+      id: 'song-1',
+    });
+  });
 });

@@ -143,6 +143,147 @@ fn player_group_dispatch_round_trips_a_snapshot() {
 }
 
 #[test]
+fn provider_dispatch_defaults_and_rejects_profile_scope_at_the_registry_boundary() {
+    let (_root, runtime, core, host) = boot();
+    runtime.block_on(async {
+        for params in [
+            json!({ "providerId": "qqmusic" }),
+            json!({ "providerId": "qqmusic", "profileId": "default" }),
+        ] {
+            let status = dispatch(
+                &core,
+                &host,
+                WindowOrigin::Main,
+                "provider_status",
+                Some(params),
+            )
+            .await
+            .expect("the compatibility profile is available");
+            assert_eq!(status["providerId"], "qqmusic");
+            assert_eq!(status["profileId"], "default");
+        }
+
+        for (params, expected_code) in [
+            (
+                json!({ "providerId": "qqmusic", "profileId": "bad profile" }),
+                "invalid-request",
+            ),
+            (
+                json!({ "providerId": "qqmusic", "profileId": "secondary" }),
+                "profile-unavailable",
+            ),
+            (json!({ "providerId": "missing" }), "provider-unavailable"),
+        ] {
+            let error = dispatch(
+                &core,
+                &host,
+                WindowOrigin::Main,
+                "provider_status",
+                Some(params),
+            )
+            .await
+            .expect_err("invalid or unavailable scopes fail closed")
+            .into_core_error();
+            assert_eq!(
+                error
+                    .details
+                    .as_ref()
+                    .and_then(|value| value["code"].as_str()),
+                Some(expected_code)
+            );
+        }
+    });
+}
+
+#[test]
+fn profile_aware_provider_methods_parse_provider_id_before_scope_resolution() {
+    let (_root, runtime, core, host) = boot();
+    runtime.block_on(async {
+        for params in [json!({}), json!({ "providerId": 42 })] {
+            let error = dispatch(
+                &core,
+                &host,
+                WindowOrigin::Main,
+                "provider_status",
+                Some(params),
+            )
+            .await
+            .expect_err("malformed provider parameters are protocol errors")
+            .into_core_error();
+            assert_eq!(error.code, ErrorCode::Protocol.as_str());
+            assert!(error.details.is_none());
+        }
+
+        let error = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_status",
+            Some(json!({ "providerId": "missing" })),
+        )
+        .await
+        .expect_err("an unknown, well-typed provider reaches provider resolution")
+        .into_core_error();
+        assert_eq!(error.code, ErrorCode::CommandError.as_str());
+        assert!(!error.retryable);
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["code"].as_str()),
+            Some("provider-unavailable")
+        );
+    });
+}
+
+#[test]
+fn continuation_start_preserves_provider_command_error_details() {
+    let (_root, runtime, core, host) = boot();
+    runtime.block_on(async {
+        let error = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "continuation_start",
+            Some(json!({
+                "request": {
+                    "providerId": "missing",
+                    "kind": "guess",
+                    "tracks": []
+                }
+            })),
+        )
+        .await
+        .expect_err("unknown providers fail with a provider command error")
+        .into_core_error();
+        assert_eq!(error.code, ErrorCode::CommandError.as_str());
+        assert_eq!(error.message, "music provider is unavailable");
+        assert!(!error.retryable);
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["code"].as_str()),
+            Some("provider-unavailable")
+        );
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["message"].as_str()),
+            Some("music provider is unavailable")
+        );
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["retryable"].as_bool()),
+            Some(false)
+        );
+    });
+}
+
+#[test]
 fn statistics_dispatch_round_trips_snapshot_export_and_clear_notification() {
     let (root, runtime, core, host) = boot();
     runtime.block_on(async {

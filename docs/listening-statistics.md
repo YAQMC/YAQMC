@@ -23,9 +23,11 @@ statistics use a separate `listening_sessions` dataset.
 
 ## Export and deletion
 
-**Export JSON** produces a versioned document containing the current summary and its session records. **Export CSV**
-contains one summary row followed by session rows. The native save dialog authorizes one exact destination, format,
-and renderer window for a single export; the renderer cannot use this flow to write an arbitrary path.
+**Export JSON** produces a versioned document containing the current summary and its session records. Export schema
+version 2 includes `profileId` on provider-owned song, artist, album, and session records. **Export CSV** contains one
+summary row followed by session rows and likewise includes a `profileId` column. The native save dialog authorizes one
+exact destination, format, and renderer window for a single export; the renderer cannot use this flow to write an
+arbitrary path.
 
 **Clear statistics** requires a second confirmation and deletes only listening-statistics rows. Preferences, account
 library data, provider caches, the current queue, and recent playback snapshots are preserved. Clearing while a song

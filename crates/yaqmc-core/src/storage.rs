@@ -552,13 +552,13 @@ impl StorageService {
         transaction
             .execute(
                 "INSERT INTO listening_sessions(
-                   session_id, provider_id, track_id, album_id, title, album_title,
+                   session_id, provider_id, profile_id, track_id, album_id, title, album_title,
                    display_json, started_at_ms, ended_at_ms, listened_ms,
                    playable_duration_ms, outcome, source_context, requested_quality,
                    resolved_quality, preview, error_code, updated_at_ms
                  ) VALUES (
-                   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                   ?14, ?15, ?16, ?17, ?18
+                   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+                   ?15, ?16, ?17, ?18, ?19
                  )
                  ON CONFLICT(session_id) DO UPDATE SET
                    ended_at_ms = excluded.ended_at_ms,
@@ -573,6 +573,7 @@ impl StorageService {
                 params![
                     record.session_id,
                     record.provider_id,
+                    record.profile_id,
                     record.track_id,
                     record.display.album_id,
                     record.display.title,
@@ -672,11 +673,11 @@ impl StorageService {
         let top_songs = query_entity_totals(
             &connection,
             &format!(
-                "SELECT provider_id, track_id, MAX(title), MAX(album_title),
+                "SELECT provider_id, profile_id, track_id, MAX(title), MAX(album_title),
                         SUM(listened_ms), COUNT(*)
                  FROM listening_sessions
                  WHERE {filter} AND outcome IN ('completed', 'qualified')
-                 GROUP BY provider_id, track_id
+                 GROUP BY provider_id, profile_id, track_id
                  ORDER BY SUM(listened_ms) DESC, COUNT(*) DESC, MAX(title) ASC
                  LIMIT 20"
             ),
@@ -685,12 +686,12 @@ impl StorageService {
         let top_albums = query_entity_totals(
             &connection,
             &format!(
-                "SELECT provider_id, album_id, MAX(album_title), '',
+                "SELECT provider_id, profile_id, album_id, MAX(album_title), '',
                         SUM(listened_ms), COUNT(*)
                  FROM listening_sessions
                  WHERE {filter} AND outcome IN ('completed', 'qualified')
                    AND album_id IS NOT NULL AND album_id <> ''
-                 GROUP BY provider_id, album_id
+                 GROUP BY provider_id, profile_id, album_id
                  ORDER BY SUM(listened_ms) DESC, COUNT(*) DESC, MAX(album_title) ASC
                  LIMIT 20"
             ),
@@ -698,7 +699,8 @@ impl StorageService {
         )?;
         let top_artists = query_entity_totals(
             &connection,
-            "SELECT sessions.provider_id, artists.artist_id, MAX(artists.artist_name), '',
+            "SELECT sessions.provider_id, sessions.profile_id, artists.artist_id,
+                        MAX(artists.artist_name), '',
                         SUM(sessions.listened_ms), COUNT(*)
                  FROM listening_sessions AS sessions
                  JOIN listening_session_artists AS artists
@@ -707,7 +709,7 @@ impl StorageService {
                    AND (?1 = 0 OR sessions.ended_at_ms >= ?1)
                    AND sessions.outcome IN ('completed', 'qualified')
                    AND artists.artist_id <> ''
-                 GROUP BY sessions.provider_id, artists.artist_id
+                 GROUP BY sessions.provider_id, sessions.profile_id, artists.artist_id
                  ORDER BY SUM(sessions.listened_ms) DESC, COUNT(*) DESC,
                           MAX(artists.artist_name) ASC
                  LIMIT 20",
@@ -780,7 +782,7 @@ impl StorageService {
         }
         let mut statement = connection
             .prepare(
-                "SELECT session_id, provider_id, track_id, display_json, started_at_ms,
+                "SELECT session_id, provider_id, profile_id, track_id, display_json, started_at_ms,
                         ended_at_ms, listened_ms, playable_duration_ms, outcome,
                         source_context, requested_quality, resolved_quality, preview,
                         error_code, updated_at_ms
@@ -791,24 +793,25 @@ impl StorageService {
             .map_err(|_| StorageError::Database)?;
         let rows = statement
             .query_map(params![sqlite_i64(cutoff)], |row| {
-                let outcome = row.get::<_, String>(8)?;
-                let display_json = row.get::<_, String>(3)?;
+                let outcome = row.get::<_, String>(9)?;
+                let display_json = row.get::<_, String>(4)?;
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
                     display_json,
-                    row.get::<_, i64>(4)?,
-                    row.get::<_, Option<i64>>(5)?,
-                    row.get::<_, i64>(6)?,
-                    row.get::<_, Option<i64>>(7)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, Option<i64>>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, Option<i64>>(8)?,
                     outcome,
-                    row.get::<_, String>(9)?,
-                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, String>(10)?,
                     row.get::<_, Option<String>>(11)?,
-                    row.get::<_, i64>(12)?,
-                    row.get::<_, Option<String>>(13)?,
-                    row.get::<_, i64>(14)?,
+                    row.get::<_, Option<String>>(12)?,
+                    row.get::<_, i64>(13)?,
+                    row.get::<_, Option<String>>(14)?,
+                    row.get::<_, i64>(15)?,
                 ))
             })
             .map_err(|_| StorageError::Database)?;
@@ -817,6 +820,7 @@ impl StorageService {
             let (
                 session_id,
                 provider_id,
+                profile_id,
                 track_id,
                 display_json,
                 started_at_ms,
@@ -837,6 +841,7 @@ impl StorageService {
             sessions.push(ListeningSessionRecord {
                 session_id,
                 provider_id,
+                profile_id,
                 track_id,
                 display,
                 started_at_ms: started_at_ms.max(0) as u64,
@@ -1669,6 +1674,41 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
             )
             .map_err(|_| StorageError::Database)?;
     }
+    if version < 7 {
+        let has_profile_id = connection
+            .prepare("PRAGMA table_info(listening_sessions)")
+            .and_then(|mut statement| {
+                let columns = statement
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(columns.iter().any(|column| column == "profile_id"))
+            })
+            .map_err(|_| StorageError::Database)?;
+        connection
+            .execute_batch("BEGIN;")
+            .map_err(|_| StorageError::Database)?;
+        if !has_profile_id {
+            connection
+                .execute(
+                    "ALTER TABLE listening_sessions
+                     ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'default'",
+                    [],
+                )
+                .map_err(|_| StorageError::Database)?;
+        }
+        connection
+            .execute_batch(
+                "CREATE INDEX IF NOT EXISTS listening_sessions_provider_profile_track
+                   ON listening_sessions(provider_id, profile_id, track_id, ended_at_ms DESC);
+                 CREATE INDEX IF NOT EXISTS listening_sessions_provider_profile_album
+                   ON listening_sessions(provider_id, profile_id, album_id, ended_at_ms DESC);
+                 DROP INDEX IF EXISTS listening_sessions_provider_track;
+                 DROP INDEX IF EXISTS listening_sessions_album;
+                 PRAGMA user_version = 7;
+                 COMMIT;",
+            )
+            .map_err(|_| StorageError::Database)?;
+    }
     Ok(())
 }
 
@@ -1684,11 +1724,12 @@ fn query_entity_totals(
         .query_map(params![sqlite_i64(cutoff)], |row| {
             Ok(StatisticsEntityTotal {
                 provider_id: row.get(0)?,
-                id: row.get(1)?,
-                title: row.get(2)?,
-                subtitle: row.get(3)?,
-                listened_ms: row.get::<_, i64>(4)?.max(0) as u64,
-                play_count: row.get::<_, i64>(5)?.max(0) as u64,
+                profile_id: row.get(1)?,
+                id: row.get(2)?,
+                title: row.get(3)?,
+                subtitle: row.get(4)?,
+                listened_ms: row.get::<_, i64>(5)?.max(0) as u64,
+                play_count: row.get::<_, i64>(6)?.max(0) as u64,
             })
         })
         .map_err(|_| StorageError::Database)?;
@@ -1847,6 +1888,8 @@ fn sqlite_i64(value: u64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::player::Song;
+    use serde_json::json;
 
     fn storage() -> (tempfile::TempDir, StorageService) {
         let root = tempfile::tempdir().expect("temp directory");
@@ -1864,7 +1907,7 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("migration version");
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         storage
             .put_json("qq:search:test", "metadata", &vec!["one", "two"], 60_000)
             .expect("cache write");
@@ -1874,6 +1917,101 @@ mod tests {
             .expect("cache hit");
         assert_eq!(value, vec!["one", "two"]);
         assert_eq!(storage.stats().expect("stats").metadata_entries, 1);
+    }
+
+    #[test]
+    fn v7_migration_adds_default_profile_to_an_existing_statistics_database() {
+        let root = tempfile::tempdir().expect("temp directory");
+        let data_root = root.path().join("data");
+        let cache_root = root.path().join("cache");
+        fs::create_dir_all(&data_root).expect("data directory");
+        let database = data_root.join("library.sqlite3");
+        let connection = Connection::open(&database).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE listening_sessions (
+                   session_id TEXT PRIMARY KEY,
+                   provider_id TEXT NOT NULL,
+                   track_id TEXT NOT NULL,
+                   album_id TEXT,
+                   title TEXT NOT NULL,
+                   album_title TEXT NOT NULL,
+                   display_json TEXT NOT NULL,
+                   started_at_ms INTEGER NOT NULL,
+                   ended_at_ms INTEGER,
+                   listened_ms INTEGER NOT NULL,
+                   playable_duration_ms INTEGER,
+                   outcome TEXT NOT NULL,
+                   source_context TEXT NOT NULL,
+                   requested_quality TEXT,
+                   resolved_quality TEXT,
+                   preview INTEGER NOT NULL,
+                   error_code TEXT,
+                   updated_at_ms INTEGER NOT NULL
+                 );
+                 INSERT INTO listening_sessions(
+                   session_id, provider_id, track_id, album_id, title, album_title,
+                   display_json, started_at_ms, listened_ms, outcome, source_context,
+                   preview, updated_at_ms
+                 ) VALUES ('legacy', 'missing', 'missing', NULL, 'Missing', '', '{}',
+                           0, 0, 'stopped', 'queue', 0, 0);
+                 PRAGMA user_version = 6;",
+            )
+            .expect("legacy schema");
+        drop(connection);
+
+        let storage = StorageService::open(data_root, cache_root).expect("migration succeeds");
+        let connection = storage
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let version: u32 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("migration version");
+        assert_eq!(version, 7);
+        let profile_id: String = connection
+            .query_row(
+                "SELECT profile_id FROM listening_sessions
+                 WHERE session_id = 'legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("legacy rows use the default profile");
+        assert_eq!(profile_id, "default");
+    }
+
+    #[test]
+    fn legacy_queue_json_restores_provider_profile_default() {
+        let (_root, storage) = storage();
+        let legacy_song = json!({
+            "id": "one",
+            "title": "One",
+            "artists": [{"id": "artist", "name": "Artist"}],
+            "album": {"id": "album", "title": "Album"},
+            "artwork": {"src": "", "alt": "", "dominantColor": ""},
+            "durationMs": 1000,
+            "trackNumber": 1,
+            "isFavorite": false,
+            "quality": "high",
+            "availability": {"status": "available"},
+            "provider": {"providerId": "fake", "trackId": "one"}
+        });
+        storage
+            .connection
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .execute(
+                "INSERT INTO queue_state(singleton, value_json, updated_at_ms)
+                 VALUES (1, ?1, 1)",
+                params![serde_json::to_string(&vec![legacy_song]).expect("queue JSON")],
+            )
+            .expect("legacy queue row");
+
+        let queue: Vec<Song> = storage
+            .load_queue()
+            .expect("legacy queue loads")
+            .expect("legacy queue exists");
+        assert_eq!(queue[0].provider.as_ref().unwrap().profile_id, "default");
     }
 
     #[test]

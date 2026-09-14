@@ -71,6 +71,7 @@ const capabilities = {
 function guestSnapshot(revision = 1): AccountSnapshot {
   return {
     state: 'guest',
+    profileId: 'default',
     profile: null,
     entitlement: null,
     revision,
@@ -81,6 +82,7 @@ function guestSnapshot(revision = 1): AccountSnapshot {
 function restoringSnapshot(revision = 1): AccountSnapshot {
   return {
     state: 'restoring-session',
+    profileId: 'default',
     profile: null,
     entitlement: null,
     revision,
@@ -91,6 +93,7 @@ function restoringSnapshot(revision = 1): AccountSnapshot {
 function secureStoreUnavailableSnapshot(revision = 1): AccountSnapshot {
   return {
     state: 'secure-store-unavailable',
+    profileId: 'default',
     profile: null,
     entitlement: null,
     revision,
@@ -101,6 +104,7 @@ function secureStoreUnavailableSnapshot(revision = 1): AccountSnapshot {
 function networkErrorSnapshot(revision = 1, attemptId: string | null = null): AccountSnapshot {
   return {
     state: 'network-error',
+    profileId: 'default',
     attemptId,
     profile: null,
     entitlement: null,
@@ -112,6 +116,7 @@ function networkErrorSnapshot(revision = 1, attemptId: string | null = null): Ac
 function waitingSnapshot(revision = 2): AccountSnapshot {
   return {
     state: 'waiting-for-scan',
+    profileId: 'default',
     attemptId: 'attempt-a',
     ownerLeaseId: 'lease-a',
     qrImageDataUri: 'data:image/png;base64,AA==',
@@ -127,6 +132,7 @@ function waitingSnapshot(revision = 2): AccountSnapshot {
 function authenticatedSnapshot(revision = 3): AccountSnapshot {
   return {
     state: 'authenticated',
+    profileId: 'default',
     profile: {
       avatarUrl: 'https://qpic.y.qq.com/synthetic-avatar.png',
       nickname: 'Synthetic Listener',
@@ -201,7 +207,9 @@ function favoriteResult(
 function accountPlaylistSummary(id = 'account-playlist-a'): AccountPlaylistSummary {
   const fixture = playlists[0]!;
   return {
+    providerId: 'account-test',
     id,
+    profileId: 'default',
     reference: { kind: 'owned', tid: id, dirId: 3001 },
     title: 'Synthetic account playlist',
     description: fixture.description,
@@ -252,6 +260,7 @@ function playlistResource(summary: AccountPlaylistSummary, tracks: Song[] = []) 
 function cancelledSnapshot(revision = 4): AccountSnapshot {
   return {
     state: 'cancelled',
+    profileId: 'default',
     attemptId: 'attempt-a',
     profile: null,
     entitlement: null,
@@ -278,6 +287,7 @@ function accountProvider(
   };
   return {
     id: 'account-test',
+    profileId: 'default',
     displayName: 'Account Test',
     getHome: unsupported,
     getDiscover: unsupported,
@@ -341,6 +351,65 @@ describe('account runtime', () => {
     await firstRequest;
 
     expect(useAccountStore.getState().snapshot.state).toBe('authenticated');
+  });
+
+  it('materializes an alternate profile for legacy account snapshots, playlists, and songs', async () => {
+    const provider = accountProvider({ profileId: 'alternate' });
+    const legacySnapshot = {
+      ...authenticatedSnapshot(4),
+      profileId: undefined,
+    } as unknown as AccountSnapshot;
+    const legacyPlaylist = {
+      ...accountPlaylistSummary(),
+      profileId: undefined,
+    } as unknown as AccountPlaylistSummary;
+    const legacySong = {
+      ...allSongs[0]!,
+      provider: { providerId: 'account-test', profileId: undefined, trackId: allSongs[0]!.id },
+    } as unknown as Song;
+    provider.getAccountSnapshot = vi.fn().mockResolvedValue(legacySnapshot);
+    provider.getAccountPlaylists = vi.fn().mockResolvedValue(page([legacyPlaylist], 4));
+    provider.getFavoriteSongs = vi.fn().mockResolvedValue(page([legacySong], 4));
+
+    await useAccountStore.getState().refreshSnapshot(provider);
+    expect(useAccountStore.getState().snapshot).toMatchObject({
+      providerId: 'account-test',
+      profileId: 'alternate',
+    });
+
+    await useAccountStore.getState().loadPlaylists(provider);
+    expect(useAccountStore.getState().playlists).toMatchObject({
+      data: [{ providerId: 'account-test', profileId: 'alternate' }],
+    });
+    await useAccountStore.getState().loadFavorites(provider);
+    expect(useAccountStore.getState().favorites).toMatchObject({
+      data: [
+        {
+          provider: { providerId: 'account-test', profileId: 'alternate', trackId: legacySong.id },
+        },
+      ],
+    });
+  });
+
+  it('rejects explicit foreign profile and provider scopes for an alternate profile', async () => {
+    const provider = accountProvider({ profileId: 'alternate' });
+    const foreignPlaylist = { ...accountPlaylistSummary(), profileId: 'default' };
+    const foreignSong = {
+      ...allSongs[0]!,
+      provider: {
+        providerId: 'foreign-provider',
+        profileId: 'alternate',
+        trackId: allSongs[0]!.id,
+      },
+    };
+    provider.getAccountPlaylists = vi.fn().mockResolvedValue(page([foreignPlaylist], 3));
+    provider.getFavoriteSongs = vi.fn().mockResolvedValue(page([foreignSong], 3));
+    useAccountStore.setState({ snapshot: { ...authenticatedSnapshot(3), profileId: 'alternate' } });
+
+    await useAccountStore.getState().loadPlaylists(provider);
+    expect(useAccountStore.getState().playlists).toMatchObject({ status: 'error', data: null });
+    await useAccountStore.getState().loadFavorites(provider);
+    expect(useAccountStore.getState().favorites).toMatchObject({ status: 'error', data: null });
   });
 
   it('keeps polling a native restore until the authenticated snapshot is published', async () => {
@@ -541,6 +610,22 @@ describe('account runtime', () => {
     cancellation.resolve(cancelledSnapshot());
     await Promise.all([close, duplicate]);
     expect(useAccountStore.getState().snapshot.state).toBe('cancelled');
+  });
+
+  it('does not commit a foreign snapshot returned by cancellation', async () => {
+    const foreign = { ...cancelledSnapshot(), providerId: 'foreign-provider' };
+    const cancelQrLogin = vi.fn().mockResolvedValue(foreign);
+    const provider = accountProvider({ cancelQrLogin });
+    const waiting = waitingSnapshot();
+    useAccountStore.setState({ snapshot: waiting, dialogOpen: true });
+
+    await useAccountStore.getState().closeDialog(provider);
+
+    expect(cancelQrLogin).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().snapshot).toEqual(waiting);
+    expect(useAccountStore.getState().snapshot).not.toMatchObject({
+      providerId: 'foreign-provider',
+    });
   });
 
   it('cancels ownership returned after the dialog closed during OAuth startup', async () => {
@@ -1383,6 +1468,106 @@ describe('account runtime', () => {
       status: 'ready',
       data: { tracks: { items: [first, second, third] } },
       nextCursor: null,
+    });
+  });
+
+  it('does not commit a foreign account playlist page', async () => {
+    const summary = { ...accountPlaylistSummary(), providerId: 'foreign-provider' };
+    const getAccountPlaylists = vi.fn().mockResolvedValue(page([summary], 3));
+    const provider = accountProvider({ getAccountPlaylists });
+    useAccountStore.setState({ snapshot: authenticatedSnapshot(3) });
+
+    await useAccountStore.getState().loadPlaylists(provider);
+
+    expect(getAccountPlaylists).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().playlists).toMatchObject({
+      status: 'error',
+      data: null,
+    });
+    expect(useAccountStore.getState().playlists).not.toMatchObject({
+      data: [{ providerId: 'foreign-provider' }],
+    });
+  });
+
+  it('does not commit a foreign account playlist detail summary', async () => {
+    const summary = accountPlaylistSummary();
+    const foreignSummary = { ...summary, profileId: 'foreign-profile' };
+    const provider = accountProvider({
+      getAccountPlaylistTracks: vi.fn().mockResolvedValue({
+        summary: foreignSummary,
+        tracks: page([], 3),
+      }),
+    });
+    useAccountStore.setState({ snapshot: authenticatedSnapshot(3) });
+
+    await useAccountStore.getState().loadAccountPlaylist(provider, summary);
+
+    expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).toMatchObject({
+      status: 'error',
+      data: null,
+    });
+    expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).not.toMatchObject({
+      data: { summary: { profileId: 'foreign-profile' } },
+    });
+  });
+
+  it('does not commit an account playlist detail with a foreign track', async () => {
+    const summary = accountPlaylistSummary();
+    const foreignTrack = {
+      ...allSongs[0]!,
+      provider: { providerId: 'foreign-provider', profileId: 'default', trackId: allSongs[0]!.id },
+    };
+    const provider = accountProvider({
+      getAccountPlaylistTracks: vi.fn().mockResolvedValue({
+        summary,
+        tracks: page([foreignTrack], 3),
+      }),
+    });
+    useAccountStore.setState({ snapshot: authenticatedSnapshot(3) });
+
+    await useAccountStore.getState().loadAccountPlaylist(provider, summary);
+
+    expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).toMatchObject({
+      status: 'error',
+      data: null,
+    });
+    expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).not.toMatchObject({
+      data: { tracks: { items: [{ provider: { providerId: 'foreign-provider' } }] } },
+    });
+  });
+
+  it('rolls back when a playlist mutation returns a foreign playlist', async () => {
+    const summary = accountPlaylistSummary();
+    const foreign = { ...summary, providerId: 'foreign-provider' };
+    const renamePlaylist = vi.fn(async (request: { clientOperationId: string }) =>
+      playlistMutationResult(request.clientOperationId, 'applied', foreign),
+    );
+    const provider = accountProvider({ renamePlaylist });
+    useAccountStore.setState({
+      snapshot: playlistAuthenticatedSnapshot(3),
+      playlists: {
+        status: 'ready',
+        data: [summary],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1_800_000_000_000,
+        authRevision: 3,
+      },
+      accountPlaylistDetails: { [summary.id]: playlistResource(summary) },
+    });
+
+    const result = await useAccountStore.getState().renamePlaylist(provider, summary, 'Renamed');
+
+    expect(result).toBeNull();
+    expect(renamePlaylist).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().playlists).toMatchObject({
+      data: [{ id: summary.id, title: summary.title, providerId: 'account-test' }],
+    });
+    expect(useAccountStore.getState().accountPlaylistDetails[summary.id]).toMatchObject({
+      data: { summary: { title: summary.title, providerId: 'account-test' } },
+    });
+    expect(useAccountStore.getState().playlists).not.toMatchObject({
+      data: [{ providerId: 'foreign-provider' }],
     });
   });
 

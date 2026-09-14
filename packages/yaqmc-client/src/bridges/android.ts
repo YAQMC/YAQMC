@@ -110,6 +110,7 @@ export function readCapacitorAndroidApi(
     plugin.addListener('deepLink', (event) => {
       const payload = {
         providerId: event.providerId,
+        ...(typeof event.profileId === 'string' ? { profileId: event.profileId } : {}),
         entityId: event.entityId,
       };
       // Capacitor may deliver a retained cold-start event before React mounts

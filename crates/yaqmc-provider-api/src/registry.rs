@@ -1,14 +1,18 @@
 //! Runtime-ID provider registry and legacy capability façade.
 
 use crate::{
-    AccountLoginFlow, AccountLoginMethodDescriptor, AccountProvider, Album, AreaFeed, Artist,
-    ArtistCatalogKind, ArtistCatalogPage, AudioQualityPreference, CacheStats, CatalogProvider,
-    CatalogProviderCapabilities, CatalogSearchKind, DiscoverFeed, HomeFeed, LibrarySnapshot,
-    LyricDocument, LyricsProvider, MusicProvider, PlaybackSourceError, PlaybackSourceProvider,
-    PlaybackSourceResolver, PlaybackSourceSelection, Playlist, ProviderAccount,
-    ProviderCommandError, ProviderResult, ProviderStatus, RecommendationBatch,
-    RecommendationProvider, RecommendationRequest, ResolvedPlaybackSource, SearchResult,
-    ShareProvider, ShareTarget, Song,
+    AccountLoginFlow, AccountLoginMethodDescriptor, AccountPlaylistDetail, AccountPlaylistSummary,
+    AccountProvider, AccountSnapshot, AccountState, Album, AreaFeed, Artist, ArtistCatalogKind,
+    ArtistCatalogPage, AudioQualityPreference, CacheStats, CatalogProvider,
+    CatalogProviderCapabilities, CatalogSearchKind, CollectPlaylistRequest, CreatePlaylistRequest,
+    DeletePlaylistRequest, DiscoverFeed, FavoriteMutationRequest, FavoriteMutationResult, HomeFeed,
+    LibrarySnapshot, LyricDocument, LyricsProvider, MusicProvider, OAuthLoginProvider,
+    OAuthPrepareResult, Page, PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
+    PlaybackSourceSelection, Playlist, PlaylistMutationResult, PlaylistTrackMutationRequest,
+    ProviderAccount, ProviderCommandError, ProviderProfileKey, ProviderResult,
+    ProviderScopedOutput, ProviderStatus, RecommendationBatch, RecommendationProvider,
+    RecommendationRequest, RemotePlayHistoryItem, RenamePlaylistRequest, ResolvedPlaybackSource,
+    SearchResult, ShareProvider, ShareTarget, Song, DEFAULT_PROFILE_ID,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -152,6 +156,45 @@ impl std::error::Error for ProviderRegistryError {}
 
 struct LegacyCapabilityAdapter {
     provider: Arc<dyn MusicProvider>,
+    provider_id: String,
+}
+
+impl LegacyCapabilityAdapter {
+    fn validate<T: ProviderScopedOutput>(&self, value: T) -> ProviderResult<T> {
+        value.validate_scope(&self.provider_id)
+    }
+
+    fn fallback_snapshot(&self) -> AccountSnapshot {
+        AccountSnapshot {
+            account: AccountState::Guest {
+                profile: (),
+                entitlement: (),
+            },
+            provider_id: self.provider_id.clone(),
+            profile_id: DEFAULT_PROFILE_ID.to_owned(),
+            revision: 0,
+            capabilities: crate::AccountCapabilities {
+                qr_login: false,
+                favorite_read: false,
+                favorite_write: false,
+                playlist_read: false,
+                playlist_write: false,
+                recent_history_read: false,
+            },
+        }
+    }
+
+    fn fallback_status(&self) -> ProviderStatus {
+        ProviderStatus {
+            provider_id: self.provider_id.clone(),
+            profile_id: DEFAULT_PROFILE_ID.to_owned(),
+            display_name: self.provider.display_name().to_owned(),
+            connection: "invalid-provider-response".to_owned(),
+            message: "the provider returned an invalid scope".to_owned(),
+            preferred_quality: AudioQualityPreference::Automatic,
+            capabilities: self.provider.capabilities(),
+        }
+    }
 }
 
 #[async_trait]
@@ -161,7 +204,9 @@ impl CatalogProvider for LegacyCapabilityAdapter {
     }
 
     async fn catalog_status(&self) -> ProviderStatus {
-        self.provider.status().await
+        let status = self.provider.status().await;
+        self.validate(status)
+            .unwrap_or_else(|_| self.fallback_status())
     }
 
     async fn catalog_search(
@@ -171,19 +216,31 @@ impl CatalogProvider for LegacyCapabilityAdapter {
         page: u32,
         limit: u32,
     ) -> ProviderResult<SearchResult> {
-        self.provider.search(query, kind, page, limit).await
+        self.provider
+            .search(query, kind, page, limit)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_song(&self, id: String) -> ProviderResult<Song> {
-        self.provider.song(id).await
+        self.provider
+            .song(id)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_album(&self, id: String) -> ProviderResult<Album> {
-        self.provider.album(id).await
+        self.provider
+            .album(id)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_artist(&self, id: String) -> ProviderResult<Artist> {
-        self.provider.artist(id).await
+        self.provider
+            .artist(id)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_artist_page(
@@ -193,27 +250,42 @@ impl CatalogProvider for LegacyCapabilityAdapter {
         page: u32,
         limit: u32,
     ) -> ProviderResult<ArtistCatalogPage> {
-        self.provider.artist_catalog(id, kind, page, limit).await
+        self.provider
+            .artist_catalog(id, kind, page, limit)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_playlist(&self, id: String) -> ProviderResult<Playlist> {
-        self.provider.playlist(id).await
+        self.provider
+            .playlist(id)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_home(&self, refresh: bool) -> ProviderResult<HomeFeed> {
-        self.provider.home(refresh).await
+        self.provider
+            .home(refresh)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_discover(&self, refresh: bool) -> ProviderResult<DiscoverFeed> {
-        self.provider.discover(refresh).await
+        self.provider
+            .discover(refresh)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn catalog_area(&self, enc_area: String) -> ProviderResult<AreaFeed> {
-        self.provider.area(enc_area).await
+        self.provider
+            .area(enc_area)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     fn catalog_library(&self) -> LibrarySnapshot {
-        self.provider.library()
+        self.validate(self.provider.library()).unwrap_or_default()
     }
 
     async fn catalog_artwork_data_uri(&self, url: String) -> ProviderResult<String> {
@@ -229,13 +301,24 @@ impl CatalogProvider for LegacyCapabilityAdapter {
     }
 
     async fn catalog_remember_songs(&self, songs: &[Song]) {
-        self.provider.remember_songs(songs).await;
+        let Ok(songs) = songs
+            .iter()
+            .cloned()
+            .map(|song| self.validate(song))
+            .collect::<ProviderResult<Vec<_>>>()
+        else {
+            return;
+        };
+        self.provider.remember_songs(&songs).await;
     }
 }
 
 #[async_trait]
 impl PlaybackSourceResolver for LegacyCapabilityAdapter {
     async fn resolve(&self, song: &Song) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
+        if self.validate(song.clone()).is_err() {
+            return Err(PlaybackSourceError::TrackUnavailable);
+        }
         self.provider.resolve(song).await
     }
 
@@ -244,6 +327,9 @@ impl PlaybackSourceResolver for LegacyCapabilityAdapter {
         song: &Song,
         failed: &PlaybackSourceSelection,
     ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
+        if self.validate(song.clone()).is_err() {
+            return Err(PlaybackSourceError::TrackUnavailable);
+        }
         self.provider.resolve_client_fallback(song, failed).await
     }
 }
@@ -258,7 +344,10 @@ impl PlaybackSourceProvider for LegacyCapabilityAdapter {
         &self,
         quality: AudioQualityPreference,
     ) -> ProviderResult<ProviderStatus> {
-        self.provider.set_preferred_quality(quality).await
+        self.provider
+            .set_preferred_quality(quality)
+            .await
+            .and_then(|value| self.validate(value))
     }
 
     async fn playback_set_current_quality(
@@ -276,7 +365,10 @@ impl RecommendationProvider for LegacyCapabilityAdapter {
         &self,
         request: RecommendationRequest,
     ) -> ProviderResult<RecommendationBatch> {
-        self.provider.recommendation_next(request).await
+        self.provider
+            .recommendation_next(request)
+            .await
+            .and_then(|value| self.validate(value))
     }
 }
 
@@ -288,16 +380,233 @@ impl LyricsProvider for LegacyCapabilityAdapter {
 }
 
 #[async_trait]
+impl ProviderAccount for LegacyCapabilityAdapter {
+    fn account_generation(&self) -> u64 {
+        self.provider.account_generation()
+    }
+
+    async fn account_snapshot(&self) -> AccountSnapshot {
+        self.validate(self.provider.account_snapshot().await)
+            .unwrap_or_else(|_| self.fallback_snapshot())
+    }
+
+    async fn refresh_account(&self) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .refresh_account()
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn favorite_songs(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<Page<Song>> {
+        self.provider
+            .favorite_songs(cursor, limit)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn account_playlists(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<Page<AccountPlaylistSummary>> {
+        self.provider
+            .account_playlists(cursor, limit)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn account_playlist_tracks(
+        &self,
+        playlist: AccountPlaylistSummary,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<AccountPlaylistDetail> {
+        self.validate(playlist.clone())?;
+        self.provider
+            .account_playlist_tracks(playlist, cursor, limit)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn account_recently_played(
+        &self,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> ProviderResult<Page<RemotePlayHistoryItem>> {
+        self.provider
+            .account_recently_played(cursor, limit)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn set_favorite(
+        &self,
+        request: FavoriteMutationRequest,
+    ) -> ProviderResult<FavoriteMutationResult> {
+        self.provider.set_favorite(request).await
+    }
+
+    async fn create_playlist(
+        &self,
+        request: CreatePlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult> {
+        self.provider
+            .create_playlist(request)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn rename_playlist(
+        &self,
+        request: RenamePlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult> {
+        self.provider
+            .rename_playlist(request)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn add_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> ProviderResult<PlaylistMutationResult> {
+        self.provider
+            .add_playlist_track(request)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn remove_playlist_track(
+        &self,
+        request: PlaylistTrackMutationRequest,
+    ) -> ProviderResult<PlaylistMutationResult> {
+        self.provider
+            .remove_playlist_track(request)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn delete_playlist(
+        &self,
+        request: DeletePlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult> {
+        self.provider
+            .delete_playlist(request)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn set_playlist_collected(
+        &self,
+        request: CollectPlaylistRequest,
+    ) -> ProviderResult<PlaylistMutationResult> {
+        self.provider
+            .set_playlist_collected(request)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn start_qr_login(&self) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .start_qr_login()
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn start_mobile_login(&self) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .start_mobile_login()
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn prepare_oauth_login(
+        &self,
+        provider: OAuthLoginProvider,
+    ) -> ProviderResult<OAuthPrepareResult> {
+        self.provider.prepare_oauth_login(provider).await
+    }
+
+    async fn complete_oauth_login(
+        &self,
+        attempt_id: &str,
+        callback_url: reqwest::Url,
+    ) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .complete_oauth_login(attempt_id, callback_url)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn cancel_oauth_login(&self, attempt_id: &str) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .cancel_oauth_login(attempt_id)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn heartbeat_qr_login(
+        &self,
+        attempt_id: String,
+        owner_lease_id: String,
+    ) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .heartbeat_qr_login(attempt_id, owner_lease_id)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn is_oauth_login(&self, attempt_id: &str) -> bool {
+        self.provider.is_oauth_login(attempt_id).await
+    }
+
+    async fn cancel_qr_login(&self, attempt_id: String) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .cancel_qr_login(attempt_id)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn refresh_qr_login(
+        &self,
+        attempt_id: Option<String>,
+    ) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .refresh_qr_login(attempt_id)
+            .await
+            .and_then(|value| self.validate(value))
+    }
+
+    async fn restore_session(&self) {
+        self.provider.restore_session().await
+    }
+
+    async fn sign_out(&self) -> ProviderResult<AccountSnapshot> {
+        self.provider
+            .sign_out()
+            .await
+            .and_then(|value| self.validate(value))
+    }
+}
+
+#[async_trait]
 impl ShareProvider for LegacyCapabilityAdapter {
     async fn share_song(&self, id: String) -> ProviderResult<ShareTarget> {
-        self.provider.share_song(id).await
+        self.provider
+            .share_song(id)
+            .await
+            .and_then(|value| self.validate(value))
     }
 }
 
 #[async_trait]
 impl AccountProvider for LegacyCapabilityAdapter {
     fn provider_account(&self) -> &dyn ProviderAccount {
-        self.provider.account()
+        self
     }
 
     async fn account_login_methods(&self) -> ProviderResult<Vec<AccountLoginMethodDescriptor>> {
@@ -328,7 +637,13 @@ impl AccountProvider for LegacyCapabilityAdapter {
                 ));
             }
         };
-        self.provider.prepare_oauth_login(method).await
+        self.provider
+            .prepare_oauth_login(method)
+            .await
+            .and_then(|mut value| {
+                value.snapshot = self.validate(value.snapshot)?;
+                Ok(value)
+            })
     }
 }
 
@@ -391,6 +706,7 @@ impl MusicProviderCapabilityFacade {
     fn from_legacy(id: ProviderId, provider: Arc<dyn MusicProvider>) -> Self {
         let display_name = provider.display_name().to_owned();
         let adapter = Arc::new(LegacyCapabilityAdapter {
+            provider_id: id.to_string(),
             provider: Arc::clone(&provider),
         });
         Self {
@@ -681,14 +997,89 @@ impl ProviderRegistry {
         }
     }
 
-    pub async fn share_song(&self, provider_id: &str, id: String) -> ProviderResult<ShareTarget> {
+    /// Route queue/catalog hydration to the provider that owns each song.
+    /// Unknown or currently unavailable profiles remain in the queue but do
+    /// not leak their metadata into another provider's cache.
+    pub async fn remember_scoped_songs(&self, songs: &[Song]) {
+        let mut grouped = HashMap::<String, Vec<Song>>::new();
+        for song in songs {
+            let (provider_id, profile_id) = song.provider.as_ref().map_or_else(
+                || (self.default_id.as_str(), DEFAULT_PROFILE_ID),
+                |reference| {
+                    (
+                        reference.provider_id.as_str(),
+                        reference.profile_id.as_str(),
+                    )
+                },
+            );
+            if self
+                .resolve_profile(Some(provider_id), Some(profile_id))
+                .is_ok()
+            {
+                grouped
+                    .entry(provider_id.to_owned())
+                    .or_default()
+                    .push(song.clone());
+            }
+        }
+        for (provider_id, songs) in grouped {
+            self.remember_songs(&provider_id, &songs).await;
+        }
+    }
+
+    pub async fn remember_songs_for_profile(
+        &self,
+        profile: &ProviderProfileKey,
+        songs: &[Song],
+    ) -> ProviderResult<()> {
+        self.resolve_profile(Some(&profile.provider_id), Some(&profile.profile_id))?;
+        for song in songs {
+            let song_profile = song
+                .provider
+                .as_ref()
+                .map_or_else(
+                    || ProviderProfileKey::default_profile(&profile.provider_id),
+                    |reference| {
+                        ProviderProfileKey::new(&reference.provider_id, &reference.profile_id)
+                    },
+                )
+                .map_err(|_| {
+                    ProviderCommandError::invalid_request("song provider scope is invalid")
+                })?;
+            if song_profile != *profile {
+                return Err(ProviderCommandError::invalid_request(
+                    "song provider scope does not match the requested profile",
+                ));
+            }
+        }
+        self.remember_songs(&profile.provider_id, songs).await;
+        Ok(())
+    }
+
+    pub async fn share_song(
+        &self,
+        provider_id: &str,
+        profile_id: Option<&str>,
+        id: String,
+    ) -> ProviderResult<ShareTarget> {
+        let expected_scope = self.resolve_profile(Some(provider_id), profile_id)?;
         let provider = self.require_provider(provider_id)?;
         let share = provider.share().ok_or_else(|| ProviderCommandError {
             code: "unsupported-operation".to_owned(),
             message: "this music provider does not support sharing".to_owned(),
             retryable: false,
         })?;
-        share.share_song(id).await
+        let target = share.share_song(id).await?;
+        let returned_scope = ProviderProfileKey::new(&target.provider_id, &target.profile_id)
+            .map_err(|_| {
+                ProviderCommandError::adapter("provider returned an invalid share scope")
+            })?;
+        if returned_scope != expected_scope {
+            return Err(ProviderCommandError::adapter(
+                "provider returned a mismatched share scope",
+            ));
+        }
+        Ok(target)
     }
 
     pub fn account_generation(&self, provider_id: &str) -> Option<u64> {
@@ -698,6 +1089,14 @@ impl ProviderRegistry {
                 .account()
                 .map_or(0, |account| account.provider_account().account_generation()),
         )
+    }
+
+    pub fn account_generation_for_profile(
+        &self,
+        profile: &ProviderProfileKey,
+    ) -> ProviderResult<Option<u64>> {
+        self.resolve_profile(Some(&profile.provider_id), Some(&profile.profile_id))?;
+        Ok(self.account_generation(&profile.provider_id))
     }
 
     pub async fn recommendation_next(
@@ -716,6 +1115,16 @@ impl ProviderRegistry {
         recommendations.recommendation_next(request).await
     }
 
+    pub async fn recommendation_next_for_profile(
+        &self,
+        profile: &ProviderProfileKey,
+        request: RecommendationRequest,
+    ) -> ProviderResult<RecommendationBatch> {
+        self.resolve_profile(Some(&profile.provider_id), Some(&profile.profile_id))?;
+        self.recommendation_next(&profile.provider_id, request)
+            .await
+    }
+
     fn require_provider(&self, id: &str) -> ProviderResult<Arc<MusicProviderCapabilityFacade>> {
         self.capabilities(id).ok_or_else(|| ProviderCommandError {
             code: "provider-unavailable".to_owned(),
@@ -724,15 +1133,65 @@ impl ProviderRegistry {
         })
     }
 
+    /// Resolve a provider/profile pair at the registry boundary.
+    ///
+    /// Profile IDs are intentionally not a second provider lookup in B1:
+    /// only the compatibility `default` profile exists. Missing values retain
+    /// the legacy default, while malformed values fail as invalid requests.
+    pub fn resolve_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<ProviderProfileKey> {
+        let provider_id = provider_id.ok_or_else(|| ProviderCommandError {
+            code: "provider-unavailable".to_owned(),
+            message: "music provider is unavailable".to_owned(),
+            retryable: false,
+        })?;
+        let profile_id = profile_id.unwrap_or(DEFAULT_PROFILE_ID);
+        let key = ProviderProfileKey::new(provider_id, profile_id).map_err(|error| {
+            ProviderCommandError::invalid_request(format!("invalid provider profile: {error}"))
+        })?;
+        if !self.contains(provider_id) {
+            return Err(ProviderCommandError {
+                code: "provider-unavailable".to_owned(),
+                message: "music provider is unavailable".to_owned(),
+                retryable: false,
+            });
+        }
+        if key.profile_id != DEFAULT_PROFILE_ID {
+            return Err(ProviderCommandError {
+                code: "profile-unavailable".to_owned(),
+                message: "music provider profile is unavailable".to_owned(),
+                retryable: false,
+            });
+        }
+        Ok(key)
+    }
+
+    /// Resolve and return a provider capability façade for a profile-aware
+    /// command. This is the profile-aware counterpart to `require_provider`.
+    pub fn require_provider_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<MusicProviderCapabilityFacade>> {
+        let key = self.resolve_profile(provider_id, profile_id)?;
+        self.require_provider(&key.provider_id)
+    }
+
     fn playback_for_song(
         &self,
         song: &Song,
     ) -> Result<Arc<dyn PlaybackSourceProvider>, PlaybackSourceError> {
         match song.provider.as_ref() {
-            Some(reference) => self
-                .capabilities(&reference.provider_id)
-                .and_then(|provider| provider.playback_arc())
-                .ok_or(PlaybackSourceError::TrackUnavailable),
+            Some(reference) => {
+                self.resolve_profile(Some(&reference.provider_id), Some(&reference.profile_id))
+                    .map_err(|_| PlaybackSourceError::TrackUnavailable)?;
+                self.capabilities(&reference.provider_id)
+                    .and_then(|provider| provider.playback_arc())
+                    .ok_or(PlaybackSourceError::TrackUnavailable)
+            }
             None => self
                 .capabilities(self.default_id.as_str())
                 .and_then(|provider| provider.playback_arc())
@@ -803,6 +1262,22 @@ impl PlaybackSourceResolver for ProviderRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RecommendationKind;
+
+    fn test_registry() -> ProviderRegistry {
+        let id = ProviderId::parse("qqmusic").expect("test provider ID");
+        let facade = Arc::new(MusicProviderCapabilityFacade::from_capabilities(
+            id.clone(),
+            ProviderCapabilities::default(),
+        ));
+        let mut providers = HashMap::new();
+        providers.insert(id.clone(), facade);
+        ProviderRegistry {
+            providers: RwLock::new(providers),
+            inactive: RwLock::new(HashMap::new()),
+            default_id: id,
+        }
+    }
 
     #[test]
     fn runtime_provider_ids_are_owned_and_validated() {
@@ -831,6 +1306,87 @@ mod tests {
         assert_eq!(
             ProviderId::parse("a".repeat(MAX_PROVIDER_ID_BYTES + 1)),
             Err(ProviderIdError::TooLong)
+        );
+    }
+
+    #[test]
+    fn profile_resolution_defaults_missing_values_to_legacy_profile() {
+        let registry = test_registry();
+
+        let missing = registry
+            .resolve_profile(Some("qqmusic"), None)
+            .expect("missing profile uses the default");
+        assert_eq!(missing.profile_id, DEFAULT_PROFILE_ID);
+
+        let explicit = registry
+            .resolve_profile(Some("qqmusic"), Some(DEFAULT_PROFILE_ID))
+            .expect("explicit default profile is available");
+        assert_eq!(explicit, missing);
+    }
+
+    #[test]
+    fn profile_resolution_classifies_provider_and_profile_failures() {
+        let registry = test_registry();
+
+        assert_eq!(
+            registry
+                .resolve_profile(None, None)
+                .expect_err("missing provider must fail closed")
+                .code,
+            "provider-unavailable"
+        );
+        assert_eq!(
+            registry
+                .resolve_profile(Some("qqmusic"), Some("bad profile"))
+                .expect_err("malformed profile must be rejected")
+                .code,
+            "invalid-request"
+        );
+        assert_eq!(
+            registry
+                .resolve_profile(Some("missing"), None)
+                .expect_err("unknown provider must be unavailable")
+                .code,
+            "provider-unavailable"
+        );
+        assert_eq!(
+            registry
+                .resolve_profile(Some("qqmusic"), Some("secondary"))
+                .expect_err("B1 has no non-default profiles")
+                .code,
+            "profile-unavailable"
+        );
+    }
+
+    #[test]
+    fn profile_scoped_continuation_routes_reject_non_default_profiles() {
+        let registry = test_registry();
+        let alternate = ProviderProfileKey::new("qqmusic", "alternate").expect("profile key");
+
+        assert_eq!(
+            registry
+                .account_generation_for_profile(&alternate)
+                .expect_err("B1 does not expose alternate profiles")
+                .code,
+            "profile-unavailable"
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("test runtime");
+        let error = runtime.block_on(registry.recommendation_next_for_profile(
+            &alternate,
+            RecommendationRequest {
+                kind: RecommendationKind::Guess,
+                limit: 1,
+                cursor: None,
+                seeds: Vec::new(),
+            },
+        ));
+        assert_eq!(
+            error
+                .expect_err("B1 does not expose alternate profiles")
+                .code,
+            "profile-unavailable"
         );
     }
 }

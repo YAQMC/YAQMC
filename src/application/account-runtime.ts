@@ -17,7 +17,7 @@ import type {
   RenamePlaylistRequest,
   Song,
 } from '../domain/music';
-import { ProviderError } from '../domain/music';
+import { DEFAULT_PROFILE_ID, ProviderError } from '../domain/music';
 import {
   isAccountMusicProvider,
   type AccountMusicProvider,
@@ -156,6 +156,8 @@ interface AccountStoreState {
 }
 
 const initialSnapshot: AccountSnapshot = {
+  providerId: 'qqmusic',
+  profileId: DEFAULT_PROFILE_ID,
   state: 'guest',
   profile: null,
   entitlement: null,
@@ -332,6 +334,115 @@ function commitSnapshot(snapshot: AccountSnapshot): void {
   });
 }
 
+function scopedSnapshot(
+  provider: AccountMusicProvider,
+  snapshot: AccountSnapshot,
+): AccountSnapshot {
+  const expectedProviderId = provider.id ?? 'qqmusic';
+  const expectedProfileId = provider.profileId ?? DEFAULT_PROFILE_ID;
+  const providerId = snapshot.providerId ?? expectedProviderId;
+  const profileId = snapshot.profileId ?? expectedProfileId;
+  if (providerId !== expectedProviderId || profileId !== expectedProfileId) {
+    throw new ProviderError(
+      'profile-unavailable',
+      'The provider returned a foreign account scope.',
+      false,
+    );
+  }
+  return { ...snapshot, providerId, profileId };
+}
+
+function scopedPlaylistSummary(
+  provider: AccountMusicProvider,
+  summary: AccountPlaylistSummary,
+  materialize = true,
+): AccountPlaylistSummary {
+  const expectedProviderId = provider.id ?? 'qqmusic';
+  const expectedProfileId = provider.profileId ?? DEFAULT_PROFILE_ID;
+  const providerId = summary.providerId ?? expectedProviderId;
+  const profileId = summary.profileId ?? expectedProfileId;
+  if (providerId !== expectedProviderId || profileId !== expectedProfileId) {
+    throw new ProviderError(
+      'profile-unavailable',
+      'The provider returned a foreign playlist scope.',
+      false,
+    );
+  }
+  return materialize ? { ...summary, providerId, profileId } : summary;
+}
+
+function scopedSong(provider: AccountMusicProvider, song: Song): Song {
+  const expectedProviderId = provider.id ?? 'qqmusic';
+  const expectedProfileId = provider.profileId ?? DEFAULT_PROFILE_ID;
+  const providerId = song.provider?.providerId ?? expectedProviderId;
+  const profileId = song.provider?.profileId ?? expectedProfileId;
+  if (providerId !== expectedProviderId || profileId !== expectedProfileId) {
+    throw new ProviderError(
+      'profile-unavailable',
+      'The provider returned a foreign song scope.',
+      false,
+    );
+  }
+  return {
+    ...song,
+    provider: {
+      ...song.provider,
+      providerId,
+      profileId,
+      trackId: song.provider?.trackId ?? song.id,
+    },
+  };
+}
+
+function scopedPlaylistDetail(
+  provider: AccountMusicProvider,
+  detail: AccountPlaylistDetail,
+): AccountPlaylistDetail {
+  return {
+    ...detail,
+    summary: scopedPlaylistSummary(provider, detail.summary),
+    tracks: {
+      ...detail.tracks,
+      items: detail.tracks.items.map((song) => scopedSong(provider, song)),
+    },
+  };
+}
+
+function scopedRemoteHistoryItem(
+  provider: AccountMusicProvider,
+  item: RemotePlayHistoryItem,
+): RemotePlayHistoryItem {
+  return { ...item, song: scopedSong(provider, item.song) };
+}
+
+function scopedAccountPage<T>(
+  provider: AccountMusicProvider,
+  resource: AccountListResource,
+  page: Page<T>,
+): Page<T> {
+  const items =
+    resource === 'playlists'
+      ? (page.items as AccountPlaylistSummary[]).map((summary) =>
+          scopedPlaylistSummary(provider, summary),
+        )
+      : resource === 'favorites'
+        ? (page.items as Song[]).map((song) => scopedSong(provider, song))
+        : (page.items as RemotePlayHistoryItem[]).map((item) =>
+            scopedRemoteHistoryItem(provider, item),
+          );
+  return { ...page, items: items as T[] };
+}
+
+function scopedPlaylistMutationResult(
+  provider: AccountMusicProvider,
+  result: PlaylistMutationResult,
+): PlaylistMutationResult {
+  return {
+    ...result,
+    playlist: result.playlist ? scopedPlaylistSummary(provider, result.playlist) : null,
+  };
+}
+
 function cancellationRequest(
   provider: AccountMusicProvider,
   id: string,
@@ -442,7 +553,7 @@ async function runSnapshotRequest(
   const generation = ++requestGeneration;
   if (busy) useAccountStore.setState({ busy: true, error: null });
   try {
-    const next = await request(runtimeSignal(provider));
+    const next = scopedSnapshot(provider, await request(runtimeSignal(provider)));
     if (generation !== requestGeneration) {
       await onStale?.(next);
       return;
@@ -472,7 +583,10 @@ async function cancelOwnedAttempt(
   });
   if (!id) return;
   try {
-    const next = await cancellationRequest(provider, id, runtimeSignal(provider));
+    const next = scopedSnapshot(
+      provider,
+      await cancellationRequest(provider, id, runtimeSignal(provider)),
+    );
     if (generation !== requestGeneration) return;
     commitSnapshot(next);
   } catch (error) {
@@ -693,7 +807,11 @@ async function loadPagedList<T>(options: {
   });
 
   try {
-    let page = await request(requestedCursor ?? undefined, runtimeSignal(provider));
+    let page = scopedAccountPage(
+      provider,
+      resource,
+      await request(requestedCursor ?? undefined, runtimeSignal(provider)),
+    );
     if (
       !canCommitListResult(resource, generation, revision, requestedCursor) ||
       page.authRevision !== revision
@@ -708,7 +826,11 @@ async function loadPagedList<T>(options: {
         page.authRevision === revision &&
         !page.stale
       ) {
-        page = await request(page.nextCursor, runtimeSignal(provider));
+        page = scopedAccountPage(
+          provider,
+          resource,
+          await request(page.nextCursor, runtimeSignal(provider)),
+        );
         if (
           !canCommitListResult(resource, generation, revision, requestedCursor) ||
           page.authRevision !== revision
@@ -793,7 +915,8 @@ async function loadAccountPlaylistResource(
   playlist: AccountPlaylistSummary,
   reset: boolean,
 ): Promise<void> {
-  const id = playlist.id;
+  const scopedPlaylist = scopedPlaylistSummary(provider, playlist, false);
+  const id = scopedPlaylist.id;
   const snapshot = useAccountStore.getState().snapshot;
   if (snapshot.state !== 'authenticated') {
     setAccountPlaylistResource(id, resourceForSnapshot(snapshot));
@@ -826,19 +949,24 @@ async function loadAccountPlaylistResource(
   });
 
   try {
-    const detail = await provider.getAccountPlaylistTracks(
-      playlist,
-      requestedCursor ?? undefined,
-      100,
-      runtimeSignal(provider),
+    const detail = scopedPlaylistDetail(
+      provider,
+      await provider.getAccountPlaylistTracks(
+        scopedPlaylist,
+        requestedCursor ?? undefined,
+        100,
+        runtimeSignal(provider),
+      ),
     );
+    const summary = detail.summary;
     if (
       !canCommitAccountPlaylist(id, generation, revision, requestedCursor) ||
-      detail.tracks.authRevision !== revision
+      detail.tracks.authRevision !== revision ||
+      summary.id !== id
     ) {
       return;
     }
-    if (detail.summary.ownership === 'favorite') {
+    if (summary.ownership === 'favorite') {
       projectFavoritePage(detail.tracks.items, false, favoriteRequestVersion);
     }
     const tracks = mergeFirstSeen(
@@ -847,7 +975,7 @@ async function loadAccountPlaylistResource(
       (song) => song.id,
     );
     const merged: AccountPlaylistDetail = {
-      summary: detail.summary,
+      summary,
       tracks: { ...detail.tracks, items: tracks },
     };
     const loaded: LoadedLibraryResource<AccountPlaylistDetail> = {
@@ -969,7 +1097,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
         runtimeSignal(provider),
       );
       if (generation !== requestGeneration) return;
-      commitSnapshot(next);
+      commitSnapshot(scopedSnapshot(provider, next));
     } catch (error) {
       if (generation !== requestGeneration) return;
       clearOwnershipTimers();
@@ -984,7 +1112,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
           reconciledOwner.attemptId !== owner.attemptId ||
           reconciledOwner.ownerLeaseId !== owner.ownerLeaseId
         ) {
-          commitSnapshot(reconciled);
+          commitSnapshot(scopedSnapshot(provider, reconciled));
           return;
         }
       } catch {
@@ -993,7 +1121,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       set({ error: classifyError(error) });
       try {
         const next = await cancellationRequest(provider, owner.attemptId, runtimeSignal(provider));
-        if (generation === requestGeneration) commitSnapshot(next);
+        if (generation === requestGeneration) commitSnapshot(scopedSnapshot(provider, next));
       } catch {
         // The stable local error above is sufficient; cancellation is best effort.
       }
@@ -1066,6 +1194,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       set({ mutationMessage: 'This account cannot change Favorites.' });
       return;
     }
+    track = scopedSong(provider, track);
     if (initial.favoritePendingByTrackId[track.id]) return;
 
     const revision = initial.snapshot.revision;
@@ -1294,6 +1423,8 @@ function restorePlaylistEntity(
 
 function collectedSummaryFromPlaylist(playlist: Playlist): AccountPlaylistSummary {
   return {
+    providerId: useAccountStore.getState().snapshot.providerId ?? 'qqmusic',
+    profileId: useAccountStore.getState().snapshot.profileId,
     id: playlist.id,
     reference: {
       kind: 'collected',
@@ -1348,7 +1479,10 @@ async function runPlaylistCollectionMutation(
   };
   let result: PlaylistMutationResult;
   try {
-    result = await provider.setPlaylistCollected(request, runtimeSignal(provider));
+    result = scopedPlaylistMutationResult(
+      provider,
+      await provider.setPlaylistCollected(request, runtimeSignal(provider)),
+    );
   } catch (error) {
     const current = useAccountStore.getState();
     if (current.playlistPendingById[playlist.id] !== operationId) return null;
@@ -1445,6 +1579,8 @@ async function runEntityPlaylistMutation({
     initial.openDialog();
     return null;
   }
+  playlist = scopedPlaylistSummary(provider, playlist, false);
+  if (track) track = scopedSong(provider, track);
   const capability =
     operation === 'rename'
       ? playlist.capabilities.canRename
@@ -1502,23 +1638,31 @@ async function runEntityPlaylistMutation({
         title: title!,
         clientOperationId: operationId,
       };
-      result = await provider.renamePlaylist(request, signal);
+      result = scopedPlaylistMutationResult(
+        provider,
+        await provider.renamePlaylist(request, signal),
+      );
     } else if (operation === 'add' || operation === 'remove') {
       const request: PlaylistTrackMutationRequest = {
         playlistId: playlist.id,
         trackId: track!.id,
         clientOperationId: operationId,
       };
-      result =
+      result = scopedPlaylistMutationResult(
+        provider,
         operation === 'add'
           ? await provider.addPlaylistTrack(request, signal)
-          : await provider.removePlaylistTrack(request, signal);
+          : await provider.removePlaylistTrack(request, signal),
+      );
     } else {
       const request: DeletePlaylistRequest = {
         playlistId: playlist.id,
         clientOperationId: operationId,
       };
-      result = await provider.deletePlaylist(request, signal);
+      result = scopedPlaylistMutationResult(
+        provider,
+        await provider.deletePlaylist(request, signal),
+      );
     }
   } catch (error) {
     const current = useAccountStore.getState();
@@ -1654,7 +1798,10 @@ async function runCreatePlaylistMutation(
   const request: CreatePlaylistRequest = { title, clientOperationId: operationId };
   let result: PlaylistMutationResult;
   try {
-    result = await provider.createPlaylist(request, runtimeSignal(provider));
+    result = scopedPlaylistMutationResult(
+      provider,
+      await provider.createPlaylist(request, runtimeSignal(provider)),
+    );
   } catch (error) {
     const current = useAccountStore.getState();
     if (current.playlistPendingById[CREATE_PLAYLIST_KEY] !== operationId) return null;
@@ -1783,12 +1930,16 @@ export async function runTemporaryPlaylistAcceptance(
   provider: AccountMusicProvider,
   knownTrack: Song,
 ): Promise<AccountPlaylistSummary> {
+  knownTrack = scopedSong(provider, knownTrack);
   const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   const title = `YAQMC Integration Test (${timestamp})`;
-  const create = await provider.createPlaylist({
-    title,
-    clientOperationId: mutationOperationId('playlist-create-acceptance'),
-  });
+  const create = scopedPlaylistMutationResult(
+    provider,
+    await provider.createPlaylist({
+      title,
+      clientOperationId: mutationOperationId('playlist-create-acceptance'),
+    }),
+  );
   const created = requireAcceptedPlaylistMutation(create, 'create');
   if (!created || created.title !== title || !isTemporaryPlaylist(created, created.id)) {
     throw new Error('Temporary playlist creation returned an unsafe cleanup target');
@@ -1798,14 +1949,20 @@ export async function runTemporaryPlaylistAcceptance(
   let deleteAttempted = false;
   let primaryError: unknown;
   try {
-    const add = await provider.addPlaylistTrack({
-      playlistId: created.id,
-      trackId: knownTrack.id,
-      clientOperationId: mutationOperationId('playlist-add-acceptance'),
-    });
+    const add = scopedPlaylistMutationResult(
+      provider,
+      await provider.addPlaylistTrack({
+        playlistId: created.id,
+        trackId: knownTrack.id,
+        clientOperationId: mutationOperationId('playlist-add-acceptance'),
+      }),
+    );
     requireAcceptedPlaylistMutation(add, 'add');
 
-    const detail = await provider.getAccountPlaylistTracks(created, undefined, 100);
+    const detail = scopedPlaylistDetail(
+      provider,
+      await provider.getAccountPlaylistTracks(created, undefined, 100),
+    );
     if (
       !isTemporaryPlaylist(detail.summary, created.id) ||
       !detail.tracks.items.some((track) => track.id === knownTrack.id)
@@ -1814,19 +1971,25 @@ export async function runTemporaryPlaylistAcceptance(
     }
     cleanupTarget = detail.summary;
 
-    const remove = await provider.removePlaylistTrack({
-      playlistId: created.id,
-      trackId: knownTrack.id,
-      clientOperationId: mutationOperationId('playlist-remove-acceptance'),
-    });
+    const remove = scopedPlaylistMutationResult(
+      provider,
+      await provider.removePlaylistTrack({
+        playlistId: created.id,
+        trackId: knownTrack.id,
+        clientOperationId: mutationOperationId('playlist-remove-acceptance'),
+      }),
+    );
     requireAcceptedPlaylistMutation(remove, 'remove');
 
     const renamedTitle = `${title} Verified`;
-    const rename = await provider.renamePlaylist({
-      playlistId: created.id,
-      title: renamedTitle,
-      clientOperationId: mutationOperationId('playlist-rename-acceptance'),
-    });
+    const rename = scopedPlaylistMutationResult(
+      provider,
+      await provider.renamePlaylist({
+        playlistId: created.id,
+        title: renamedTitle,
+        clientOperationId: mutationOperationId('playlist-rename-acceptance'),
+      }),
+    );
     const renamed = requireAcceptedPlaylistMutation(rename, 'rename');
     if (!renamed || renamed.title !== renamedTitle || !isTemporaryPlaylist(renamed, created.id)) {
       throw new Error('Temporary playlist rename could not be verified safely');
@@ -1834,10 +1997,13 @@ export async function runTemporaryPlaylistAcceptance(
     cleanupTarget = renamed;
 
     deleteAttempted = true;
-    const deleted = await provider.deletePlaylist({
-      playlistId: created.id,
-      clientOperationId: mutationOperationId('playlist-delete-acceptance'),
-    });
+    const deleted = scopedPlaylistMutationResult(
+      provider,
+      await provider.deletePlaylist({
+        playlistId: created.id,
+        clientOperationId: mutationOperationId('playlist-delete-acceptance'),
+      }),
+    );
     requireConfirmedPlaylistDeletion(deleted);
     return created;
   } catch (error) {
@@ -1846,10 +2012,13 @@ export async function runTemporaryPlaylistAcceptance(
 
   if (!deleteAttempted && isTemporaryPlaylist(cleanupTarget, created.id)) {
     try {
-      const cleanup = await provider.deletePlaylist({
-        playlistId: created.id,
-        clientOperationId: mutationOperationId('playlist-cleanup-acceptance'),
-      });
+      const cleanup = scopedPlaylistMutationResult(
+        provider,
+        await provider.deletePlaylist({
+          playlistId: created.id,
+          clientOperationId: mutationOperationId('playlist-cleanup-acceptance'),
+        }),
+      );
       requireConfirmedPlaylistDeletion(cleanup);
     } catch (cleanupError) {
       throw new AggregateError(

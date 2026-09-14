@@ -154,8 +154,9 @@ The first version exposes two explicit actions:
 
 - **Copy public link** prefers the provider's canonical HTTPS URL. It is disabled with a reason when no public link
   exists.
-- **Copy YAQMC link** writes `yaqmc://catalog/<provider>/song?id=<percent-encoded-id>` for machines with YAQMC
-  installed.
+- **Copy YAQMC link** writes
+  `yaqmc://catalog/<provider>/song?id=<percent-encoded-id>&profileId=<profile>` for machines with YAQMC installed;
+  legacy links without `profileId` select `default`.
 
 Share actions appear on Song Page, the Player Bar overflow menu, Lyrics Page, and a song's TrackList context menu.
 The existing notification system reports copy success or failure. Providers without links can expose **Copy song
@@ -165,8 +166,8 @@ info** as plain `Title — Artist` text, but that text is never presented as a c
 
 - Electron registers the `yaqmc` scheme and reuses the single-instance mechanism.
 - Windows/Linux `second-instance` and macOS `open-url` feed one pure parser.
-- The parser accepts only `catalog/song`, caps total URI, provider ID, and entity ID length, and rejects userinfo,
-  ports, fragments, unknown query parameters, control characters, and duplicate required parameters.
+- The parser accepts only `catalog/song`, caps total URI, provider ID, profile ID, and entity ID length, and rejects
+  userinfo, ports, fragments, unknown query parameters, control characters, and duplicate parameters.
 - A parsed link becomes only a typed “open song detail” navigation command. It never becomes a shell argument,
   filesystem path, SQL, HTML, or arbitrary IPC.
 - A deep link focuses the main window and opens details. It does not play, authenticate, or open auxiliary lyrics

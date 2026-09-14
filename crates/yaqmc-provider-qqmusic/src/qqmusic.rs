@@ -41,6 +41,7 @@ mod oauth;
 mod redaction;
 mod transport;
 
+use yaqmc_provider_api::DEFAULT_PROFILE_ID;
 use yaqmc_provider_api::{
     AlbumPreview, AlbumSummary, Artist, ArtistCatalogKind, ArtistCatalogPage, ArtistPreview,
     ArtistSummary, Artwork, AudioCodec, AudioFormat, AudioFormatInfo, AudioQuality, CacheStats,
@@ -3032,6 +3033,7 @@ fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
         playback_capability: Some(playback_capability),
         provider: Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            profile_id: DEFAULT_PROFILE_ID.to_owned(),
             track_id: song_mid,
             numeric_id: (raw.id > 0).then_some(raw.id),
             album_id: (!album_mid.is_empty()).then_some(album_mid),
@@ -3143,6 +3145,7 @@ fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Opti
         playback_capability: Some(playback_capability),
         provider: Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            profile_id: DEFAULT_PROFILE_ID.to_owned(),
             track_id: song_mid,
             numeric_id: (raw.id > 0).then_some(raw.id as u64),
             album_id: (!album_mid.is_empty()).then_some(album_mid),
@@ -3526,6 +3529,7 @@ fn normalize_old_song(raw: OldSongDto, fallback_track_number: u32) -> Option<Son
         playback_capability: Some(playback_capability),
         provider: Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            profile_id: DEFAULT_PROFILE_ID.to_owned(),
             track_id: song_mid,
             numeric_id: (raw.song_id > 0).then_some(raw.song_id),
             album_id: (!album_mid.is_empty()).then_some(album_mid),

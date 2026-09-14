@@ -27,6 +27,7 @@ function authenticatePlaylistWrites() {
   useAccountStore.setState({
     snapshot: {
       state: 'authenticated',
+      profileId: 'default',
       profile: { avatarUrl: null, nickname: 'Listener', maskedIdentity: '10******01' },
       entitlement: {
         tier: 'free',
@@ -52,7 +53,9 @@ function authenticatePlaylistWrites() {
 function accountSummary(): AccountPlaylistSummary {
   const playlist = playlists[0]!;
   return {
+    providerId: 'qqmusic',
     id: playlist.id,
+    profileId: 'default',
     reference: { kind: 'owned', tid: playlist.id, dirId: 3001 },
     title: playlist.title,
     description: playlist.description,

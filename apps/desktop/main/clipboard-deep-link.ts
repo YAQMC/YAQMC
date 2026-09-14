@@ -109,5 +109,5 @@ function parseCandidate(value: string): CatalogSongDeepLink | null {
 }
 
 function targetKey(target: CatalogSongDeepLink): string {
-  return `${target.providerId}\u0000${target.entityId}`;
+  return `${target.providerId}\u0000${target.profileId}\u0000${target.entityId}`;
 }

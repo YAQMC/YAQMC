@@ -98,7 +98,7 @@ fn bootstrap_owns_one_shared_service_graph() {
 fn restored_queue_calls_remember_songs_before_player_restore() {
     let source = include_str!("../src/bootstrap.rs");
     let remember = source
-        .find("qq_music.remember_songs(&snapshot.queue)")
+        .find("providers.remember_scoped_songs(&snapshot.queue)")
         .expect("restored queue provider-reference hydration");
     let restore = source
         .find("player.restore(snapshot)")

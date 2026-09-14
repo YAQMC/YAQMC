@@ -54,7 +54,9 @@ describe('Sidebar navigation', () => {
     renderSidebar({
       page: 'account-playlist',
       playlist: {
+        providerId: 'account-owner',
         id: 'account-playlist-a',
+        profileId: 'default',
         reference: { kind: 'owned', tid: 'account-playlist-a', dirId: 3001 },
         title: 'Playlist',
         description: '',
@@ -83,6 +85,7 @@ describe('Sidebar navigation', () => {
     useAccountStore.setState({
       snapshot: {
         state: 'authenticated',
+        profileId: 'default',
         profile: {
           avatarUrl: 'https://q.qlogo.cn/synthetic-avatar.png',
           nickname: 'Synthetic Listener',

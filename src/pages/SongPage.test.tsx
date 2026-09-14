@@ -64,7 +64,9 @@ describe('SongPage', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Copy YAQMC link' }));
 
     await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(`yaqmc://catalog/fake/song?id=${song.id}`),
+      expect(writeText).toHaveBeenCalledWith(
+        `yaqmc://catalog/fake/song?id=${song.id}&profileId=default`,
+      ),
     );
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
@@ -104,11 +106,16 @@ describe('SongPage', () => {
     const favoriteSong = {
       ...allSongs[0]!,
       isFavorite: false,
-      provider: { providerId: 'qqmusic', trackId: 'remote-quiet-light' },
+      provider: {
+        providerId: 'qqmusic',
+        profileId: 'default',
+        trackId: 'remote-quiet-light',
+      },
     };
     useAccountStore.setState({
       snapshot: {
         state: 'authenticated',
+        profileId: 'default',
         profile: { avatarUrl: null, nickname: 'Test', maskedIdentity: 'test' },
         entitlement: {
           tier: 'free',

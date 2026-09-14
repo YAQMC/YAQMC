@@ -142,11 +142,11 @@ impl CoreServices {
         );
         continuation.start_monitor(&inputs.runtime);
         if let Ok(Some(snapshot)) = storage.load_queue::<PlayerSnapshot>() {
-            let qq_music = Arc::clone(&qq_music);
+            let providers = Arc::clone(&providers);
             let player = Arc::clone(&player);
             let runtime = inputs.runtime.clone();
             std::thread::spawn(move || {
-                runtime.block_on(qq_music.remember_songs(&snapshot.queue));
+                runtime.block_on(providers.remember_scoped_songs(&snapshot.queue));
                 runtime.block_on(player.restore(snapshot));
             })
             .join()

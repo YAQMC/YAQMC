@@ -31,6 +31,7 @@ const populated: StatisticsSnapshot = {
   topSongs: [
     {
       providerId: 'qqmusic',
+      profileId: 'default',
       id: 'song-1',
       title: 'Signal',
       subtitle: 'Album A',

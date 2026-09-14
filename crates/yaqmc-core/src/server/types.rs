@@ -66,6 +66,9 @@ pub struct NamedRequest<T> {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderNamedRequest<T> {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub request: T,
 }
 
@@ -73,12 +76,18 @@ pub struct ProviderNamedRequest<T> {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderIdParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAuthStartParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     #[serde(default)]
     pub mobile: bool,
 }
@@ -87,6 +96,9 @@ pub struct ProviderAuthStartParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderEntityParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub id: String,
 }
 
@@ -94,6 +106,9 @@ pub struct ProviderEntityParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRefreshParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub refresh: bool,
 }
 
@@ -101,6 +116,9 @@ pub struct ProviderRefreshParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAreaParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub enc_area: String,
 }
 
@@ -108,6 +126,9 @@ pub struct ProviderAreaParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderSearchParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub query: String,
     pub kind: yaqmc_provider_api::CatalogSearchKind,
     pub page: u32,
@@ -118,6 +139,9 @@ pub struct ProviderSearchParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderArtistCatalogParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub id: String,
     pub kind: yaqmc_provider_api::ArtistCatalogKind,
     pub page: u32,
@@ -128,6 +152,9 @@ pub struct ProviderArtistCatalogParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderUrlParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub url: String,
 }
 
@@ -135,6 +162,9 @@ pub struct ProviderUrlParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderCursorPageParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub cursor: Option<String>,
     pub limit: u32,
 }
@@ -143,6 +173,9 @@ pub struct ProviderCursorPageParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderPlaylistTracksParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub playlist: yaqmc_provider_api::AccountPlaylistSummary,
     pub cursor: Option<String>,
     pub limit: u32,
@@ -152,6 +185,9 @@ pub struct ProviderPlaylistTracksParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderQualityParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub quality: yaqmc_provider_api::AudioQualityPreference,
 }
 
@@ -159,6 +195,9 @@ pub struct ProviderQualityParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAuthHeartbeatParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub attempt_id: String,
     pub owner_lease_id: String,
 }
@@ -167,6 +206,9 @@ pub struct ProviderAuthHeartbeatParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAttemptParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub attempt_id: String,
 }
 
@@ -174,6 +216,9 @@ pub struct ProviderAttemptParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderOptionalAttemptParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub attempt_id: Option<String>,
 }
 
@@ -181,6 +226,9 @@ pub struct ProviderOptionalAttemptParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderOAuthPrepareParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub method_id: String,
 }
 
@@ -188,6 +236,9 @@ pub struct ProviderOAuthPrepareParams {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderOAuthCompleteParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub attempt_id: String,
     pub callback_url: String,
 }
@@ -294,6 +345,9 @@ pub struct SongIdParams {
 #[serde(rename_all = "camelCase")]
 pub struct ShareSongParams {
     pub provider_id: String,
+    #[serde(default)]
+    #[allow(dead_code)] // validated from the raw provider envelope before typed parsing
+    pub profile_id: Option<String>,
     pub id: String,
 }
 

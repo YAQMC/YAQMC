@@ -1,3 +1,6 @@
+/** Compatibility profile used by legacy single-account provider data. */
+export const DEFAULT_PROFILE_ID = 'default';
+
 export type EntityId = string;
 
 export interface ArtworkVariant {
@@ -89,6 +92,7 @@ export interface AudioFormatInfo {
 
 export interface ProviderTrackReference {
   providerId: string;
+  profileId: string;
   trackId: string;
   numericId?: number;
   albumId?: string;
@@ -123,6 +127,7 @@ export interface Song {
 
 export interface ShareTarget {
   providerId: string;
+  profileId: string;
   entityKind: 'song';
   entityId: EntityId;
   title: string;
@@ -351,6 +356,8 @@ export const PROVIDER_ERROR_CODES = [
   'cancelled',
   'not-found',
   'invalid-request',
+  'provider-unavailable',
+  'profile-unavailable',
   'unsupported-operation',
   'mutation-in-progress',
   'storage-failure',
@@ -386,6 +393,8 @@ export type AccountPlaylistReference =
   | { kind: 'system-collection'; dirId: number; tid?: string; collectionType?: string };
 
 export interface AccountPlaylistSummary {
+  providerId: string;
+  profileId: string;
   id: EntityId;
   reference: AccountPlaylistReference;
   title: string;
@@ -521,6 +530,9 @@ export type AccountState =
     };
 
 export type AccountSnapshot = AccountState & {
+  /** Provider scope returned by Core; legacy hosts default to qqmusic. */
+  providerId?: string;
+  profileId: string;
   revision: number;
   capabilities: AccountCapabilities;
 };

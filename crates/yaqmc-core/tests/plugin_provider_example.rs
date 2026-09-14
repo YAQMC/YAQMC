@@ -324,6 +324,7 @@ async fn complete_platform_component_exercises_capabilities_and_lifecycle() {
     builtin_song.id = "qqmusic-fixture".to_owned();
     builtin_song.provider = Some(ProviderTrackReference {
         provider_id: "qqmusic".to_owned(),
+        profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
         track_id: "qqmusic-fixture".to_owned(),
         numeric_id: None,
         album_id: None,

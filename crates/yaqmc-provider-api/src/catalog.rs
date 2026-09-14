@@ -474,6 +474,8 @@ pub struct CatalogProviderCapabilities {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderStatus {
     pub provider_id: String,
+    #[serde(default = "crate::profile::default_profile_id")]
+    pub profile_id: String,
     pub display_name: String,
     pub connection: String,
     pub message: String,
@@ -568,4 +570,34 @@ pub struct OAuthPrepareResult {
     pub callback_matcher: OAuthCallbackMatcher,
     #[serde(skip)]
     pub snapshot: crate::AccountSnapshot,
+}
+
+#[cfg(test)]
+mod profile_compat_tests {
+    use super::*;
+    use crate::DEFAULT_PROFILE_ID;
+    use serde_json::json;
+
+    #[test]
+    fn legacy_provider_status_uses_default_profile() {
+        let status: ProviderStatus = serde_json::from_value(json!({
+            "providerId": "qqmusic",
+            "displayName": "QQ Music",
+            "connection": "online",
+            "message": "",
+            "preferredQuality": "standard",
+            "capabilities": {
+                "search": true,
+                "album": true,
+                "artist": true,
+                "playlist": true,
+                "lyrics": true,
+                "wordTimedLyrics": false,
+                "streaming": true,
+                "qualitySelection": true
+            }
+        }))
+        .expect("legacy provider status deserializes");
+        assert_eq!(status.profile_id, DEFAULT_PROFILE_ID);
+    }
 }

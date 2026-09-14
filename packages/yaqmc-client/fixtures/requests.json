@@ -30,6 +30,7 @@
     "method": "catalog_share_song",
     "params": {
       "id": "qqmusic:track:001X3HEN1oK0Jr",
+      "profileId": "default",
       "providerId": "qqmusic"
     }
   },

@@ -35,6 +35,25 @@ describe('createFakeBridge', () => {
     expect(bridge.kind).toBe('fake');
   });
 
+  it('defaults legacy continuation requests and preserves an explicit profile', async () => {
+    const bridge = createFakeBridge();
+
+    const legacy = await bridge.invoke('continuation_start', {
+      request: { providerId: 'qqmusic', kind: 'guess', tracks: [song] },
+    });
+    expect(legacy.profileId).toBe('default');
+
+    const explicit = await bridge.invoke('continuation_start', {
+      request: {
+        providerId: 'qqmusic',
+        profileId: 'secondary',
+        kind: 'guess',
+        tracks: [song],
+      },
+    });
+    expect(explicit.profileId).toBe('secondary');
+  });
+
   it('routes catalog home through an injected fake-music-provider-shaped catalog', async () => {
     const home = { featured: { eyebrow: 'x', album: { id: 'a' } } } as unknown as HomeFeed;
     const bridge = createFakeBridge({

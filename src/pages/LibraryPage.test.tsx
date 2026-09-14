@@ -23,6 +23,7 @@ const capabilities = {
 function guestSnapshot(): AccountSnapshot {
   return {
     state: 'guest',
+    profileId: 'default',
     profile: null,
     entitlement: null,
     revision: 1,
@@ -33,6 +34,7 @@ function guestSnapshot(): AccountSnapshot {
 function authenticatedSnapshot(avatarUrl: string | null = null): AccountSnapshot {
   return {
     state: 'authenticated',
+    profileId: 'default',
     profile: {
       avatarUrl,
       nickname: 'Synthetic Listener',
@@ -54,7 +56,9 @@ function authenticatedSnapshot(avatarUrl: string | null = null): AccountSnapshot
 function playlistSummary(): AccountPlaylistSummary {
   const fixture = playlists[0]!;
   return {
+    providerId: 'qqmusic',
     id: 'account-playlist-a',
+    profileId: 'default',
     reference: { kind: 'owned', tid: 'account-playlist-a', dirId: 3001 },
     title: 'Synthetic Mix',
     description: fixture.description,
@@ -163,6 +167,7 @@ describe('LibraryPage account resources', () => {
         {...view.props}
         snapshot={{
           state: 'reauthentication-required',
+          profileId: 'default',
           profile: authenticatedSnapshot().profile,
           entitlement: authenticatedSnapshot().entitlement,
           revision: 4,

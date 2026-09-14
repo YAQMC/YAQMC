@@ -1,5 +1,8 @@
 /** DTO mirror seeded from `src/domain/music.ts` and command-facing frontend types. */
 
+/** Profile used by the pre-profile provider API and legacy response decoder. */
+export const DEFAULT_PROFILE_ID = 'default';
+
 export type EntityId = string;
 
 export interface ArtworkVariant {
@@ -90,6 +93,7 @@ export interface AudioFormatInfo {
 
 export interface ProviderTrackReference {
   providerId: string;
+  profileId: string;
   trackId: string;
   numericId?: number;
   albumId?: string;
@@ -124,6 +128,7 @@ export interface Song {
 
 export interface ShareTarget {
   providerId: string;
+  profileId: string;
   entityKind: 'song';
   entityId: EntityId;
   title: string;
@@ -345,6 +350,8 @@ export const PROVIDER_ERROR_CODES = [
   'cancelled',
   'not-found',
   'invalid-request',
+  'provider-unavailable',
+  'profile-unavailable',
   'unsupported-operation',
   'mutation-in-progress',
   'storage-failure',
@@ -380,6 +387,8 @@ export type AccountPlaylistReference =
   | { kind: 'system-collection'; dirId: number; tid?: string; collectionType?: string };
 
 export interface AccountPlaylistSummary {
+  providerId: string;
+  profileId: string;
   id: EntityId;
   reference: AccountPlaylistReference;
   title: string;
@@ -515,6 +524,8 @@ export type AccountState =
     };
 
 export type AccountSnapshot = AccountState & {
+  providerId?: string;
+  profileId: string;
   revision: number;
   capabilities: AccountCapabilities;
 };
@@ -593,6 +604,7 @@ export type ContinuationTerminalReason =
 
 export interface ContinuationStartRequest {
   providerId: string;
+  profileId?: string;
   kind: ContinuationKind;
   tracks: Song[];
   startAtId?: EntityId | null;
@@ -603,6 +615,7 @@ export interface ContinuationSnapshot {
   active: boolean;
   sessionId: number | null;
   providerId: string | null;
+  profileId: string | null;
   kind: ContinuationKind | null;
   accountGeneration: number | null;
   cursor: string | null;
@@ -671,6 +684,7 @@ export interface PlayerSnapshot {
 
 export interface ProviderStatus {
   providerId: string;
+  profileId: string;
   displayName: string;
   connection: 'online' | 'cached' | 'offline';
   message: string;
@@ -1017,6 +1031,7 @@ export type StatisticsExportFormat = 'json' | 'csv';
 
 export interface StatisticsEntityTotal {
   providerId: string;
+  profileId: string;
   id: string;
   title: string;
   subtitle: string;

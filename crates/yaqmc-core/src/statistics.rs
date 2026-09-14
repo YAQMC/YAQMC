@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use yaqmc_provider_api::DEFAULT_PROFILE_ID;
 
 use crate::player::{
     ApiEvent, ObserverFollowupEvent, PlaybackContextEvent, PlaybackLifecycleEvent, PlaybackState,
@@ -19,6 +20,10 @@ const QUALIFIED_THRESHOLD_MS: u64 = 30_000;
 const CHECKPOINT_INTERVAL_MS: u64 = 15_000;
 const MAX_NORMAL_POSITION_DELTA_MS: u64 = 5_000;
 const MAX_SOURCE_CONTEXT_BYTES: usize = 64;
+
+fn default_profile_id() -> String {
+    DEFAULT_PROFILE_ID.to_owned()
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum StatisticsRange {
@@ -117,6 +122,8 @@ pub struct ListeningDisplaySnapshot {
 pub(crate) struct ListeningSessionRecord {
     pub session_id: String,
     pub provider_id: String,
+    #[serde(default = "default_profile_id")]
+    pub profile_id: String,
     pub track_id: String,
     pub display: ListeningDisplaySnapshot,
     pub started_at_ms: u64,
@@ -136,6 +143,8 @@ pub(crate) struct ListeningSessionRecord {
 #[serde(rename_all = "camelCase")]
 pub struct StatisticsEntityTotal {
     pub provider_id: String,
+    #[serde(default = "default_profile_id")]
+    pub profile_id: String,
     pub id: String,
     pub title: String,
     pub subtitle: String,
@@ -218,6 +227,37 @@ struct ActiveListening {
     checkpoint_listened_ms: u64,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct NormalizedTrackScope {
+    provider_id: String,
+    profile_id: String,
+    track_id: String,
+}
+
+fn normalized_track_scope(song: &Song) -> NormalizedTrackScope {
+    let reference = song.provider.as_ref();
+    let provider_id = reference
+        .map(|reference| reference.provider_id.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown")
+        .to_owned();
+    let profile_id = reference
+        .map(|reference| reference.profile_id.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_PROFILE_ID)
+        .to_owned();
+    let track_id = reference
+        .map(|reference| reference.track_id.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| song.id.trim())
+        .to_owned();
+    NormalizedTrackScope {
+        provider_id,
+        profile_id,
+        track_id,
+    }
+}
+
 struct TrackerState {
     active: Option<ActiveListening>,
     source_context: String,
@@ -268,7 +308,7 @@ impl StatisticsService {
             .listening_sessions_for_export(request.range, now)?;
         let bytes = match request.format {
             StatisticsExportFormat::Json => serde_json::to_vec_pretty(&json!({
-                "schemaVersion": 1,
+                "schemaVersion": 2,
                 "statistics": snapshot,
                 "sessions": sessions,
             }))
@@ -510,21 +550,8 @@ impl StatisticsService {
         if snapshot.session_id == 0 {
             return;
         }
-        let provider_id = song
-            .provider
-            .as_ref()
-            .map(|reference| reference.provider_id.trim())
-            .filter(|value| !value.is_empty())
-            .unwrap_or("unknown")
-            .to_owned();
-        let track_id = song
-            .provider
-            .as_ref()
-            .map(|reference| reference.track_id.trim())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| song.id.trim())
-            .to_owned();
-        if track_id.is_empty() {
+        let scope = normalized_track_scope(song);
+        if scope.track_id.is_empty() {
             return;
         }
         let display = ListeningDisplaySnapshot {
@@ -543,8 +570,9 @@ impl StatisticsService {
         };
         let mut record = ListeningSessionRecord {
             session_id: self.next_id(now_ms),
-            provider_id,
-            track_id,
+            provider_id: scope.provider_id,
+            profile_id: scope.profile_id,
+            track_id: scope.track_id,
             display,
             started_at_ms: now_ms,
             ended_at_ms: None,
@@ -660,17 +688,10 @@ fn qualification_threshold(record: &ListeningSessionRecord) -> u64 {
 }
 
 fn same_track(record: &ListeningSessionRecord, song: &Song) -> bool {
-    let provider = song
-        .provider
-        .as_ref()
-        .map(|reference| reference.provider_id.as_str())
-        .unwrap_or("unknown");
-    let track = song
-        .provider
-        .as_ref()
-        .map(|reference| reference.track_id.as_str())
-        .unwrap_or(song.id.as_str());
-    record.provider_id == provider && record.track_id == track
+    let scope = normalized_track_scope(song);
+    record.provider_id == scope.provider_id
+        && record.profile_id == scope.profile_id
+        && record.track_id == scope.track_id
 }
 
 fn audio_quality_name(quality: crate::player::AudioQuality) -> String {
@@ -710,9 +731,10 @@ fn write_export(path: &Path, bytes: &[u8]) -> Result<(), StatisticsError> {
 
 fn render_csv(snapshot: &StatisticsSnapshot, sessions: &[ListeningSessionRecord]) -> String {
     let mut rows = vec![
-        "recordType,sessionId,providerId,trackId,title,albumId,albumTitle,artists,startedAtMs,endedAtMs,listenedMs,playableDurationMs,outcome,sourceContext,requestedQuality,resolvedQuality,preview,errorCode,qualifiedListeningMs,qualifiedPlayCount,completedCount,skippedCount,skipRate".to_owned(),
+        "recordType,sessionId,providerId,profileId,trackId,title,albumId,albumTitle,artists,startedAtMs,endedAtMs,listenedMs,playableDurationMs,outcome,sourceContext,requestedQuality,resolvedQuality,preview,errorCode,qualifiedListeningMs,qualifiedPlayCount,completedCount,skippedCount,skipRate".to_owned(),
         [
             "summary".to_owned(),
+            String::new(),
             String::new(),
             String::new(),
             String::new(),
@@ -754,6 +776,7 @@ fn render_csv(snapshot: &StatisticsSnapshot, sessions: &[ListeningSessionRecord]
                 "session".to_owned(),
                 session.session_id.clone(),
                 session.provider_id.clone(),
+                session.profile_id.clone(),
                 session.track_id.clone(),
                 session.display.title.clone(),
                 session.display.album_id.clone().unwrap_or_default(),
@@ -841,12 +864,23 @@ mod tests {
             playback_capability: None,
             provider: Some(yaqmc_provider_api::ProviderTrackReference {
                 provider_id: "fake".to_owned(),
+                profile_id: yaqmc_provider_api::DEFAULT_PROFILE_ID.to_owned(),
                 track_id: id.to_owned(),
                 numeric_id: None,
                 album_id: Some("album-one".to_owned()),
                 media_id: None,
             }),
         }
+    }
+
+    fn song_with_profile(id: &str, duration_ms: u64, profile_id: &str) -> Song {
+        let mut track = song(id, duration_ms);
+        track
+            .provider
+            .as_mut()
+            .expect("test song has a provider reference")
+            .profile_id = profile_id.to_owned();
+        track
     }
 
     fn snapshot(
@@ -1051,9 +1085,51 @@ mod tests {
     }
 
     #[test]
+    fn same_provider_track_in_different_profiles_has_distinct_statistics_entities() {
+        let service = service();
+        let default_track = song("same-track", 100_000);
+        play_forward(&service, 1, &default_track, Some(100_000), 30_000);
+        observe_transition(&service, 130_001, 1, PlaybackTransitionReason::Completed);
+
+        let alternate_track = song_with_profile("same-track", 100_000, "alternate");
+        play_forward(&service, 2, &alternate_track, Some(100_000), 30_000);
+        observe_transition(&service, 230_001, 2, PlaybackTransitionReason::Completed);
+
+        let snapshot = service
+            .snapshot(StatisticsRange::AllTime)
+            .expect("statistics query");
+        assert_eq!(snapshot.top_songs.len(), 2);
+        assert_eq!(
+            snapshot
+                .top_songs
+                .iter()
+                .map(|total| total.profile_id.as_str())
+                .collect::<std::collections::HashSet<_>>(),
+            [DEFAULT_PROFILE_ID, "alternate"]
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>()
+        );
+    }
+
+    #[test]
+    fn blank_profile_is_normalized_to_default_profile() {
+        let service = service();
+        let track = song_with_profile("blank-profile", 100_000, "  \t");
+        play_forward(&service, 1, &track, Some(100_000), 30_000);
+        observe_transition(&service, 130_001, 1, PlaybackTransitionReason::Completed);
+
+        let snapshot = service
+            .snapshot(StatisticsRange::AllTime)
+            .expect("statistics query");
+        assert_eq!(snapshot.top_songs.len(), 1);
+        assert_eq!(snapshot.top_songs[0].profile_id, DEFAULT_PROFILE_ID);
+    }
+
+    #[test]
     fn recovery_transfers_the_record_without_counting_the_position_jump() {
         let service = service();
         let track = song("recover", 100_000);
+        let recovered_track = song_with_profile("recover", 100_000, " \t");
         observe_snapshot(
             &service,
             "player.track",
@@ -1077,19 +1153,19 @@ mod tests {
             &service,
             "player.track",
             7_000,
-            &snapshot(2, track.clone(), PlaybackState::Loading, 5_000, 0),
+            &snapshot(2, recovered_track.clone(), PlaybackState::Loading, 5_000, 0),
         );
         observe_snapshot(
             &service,
             "player.playback",
             8_000,
-            &snapshot(2, track.clone(), PlaybackState::Playing, 5_000, 0),
+            &snapshot(2, recovered_track.clone(), PlaybackState::Playing, 5_000, 0),
         );
         observe_snapshot(
             &service,
             "player.position",
             13_000,
-            &snapshot(2, track, PlaybackState::Playing, 10_000, 0),
+            &snapshot(2, recovered_track, PlaybackState::Playing, 10_000, 0),
         );
         observe_transition(&service, 13_001, 2, PlaybackTransitionReason::Completed);
 
@@ -1250,20 +1326,35 @@ mod tests {
             .expect("CSV export");
         let json: Value =
             serde_json::from_slice(&fs::read(json_path).expect("JSON read")).expect("JSON parses");
+        assert_eq!(json["schemaVersion"], 2);
         let statistics = &json["statistics"];
         assert_eq!(statistics["qualifiedListeningMs"], 30_000);
         assert_eq!(statistics["qualifiedPlayCount"], 2);
         assert_eq!(statistics["completedCount"], 1);
         assert_eq!(statistics["skippedCount"], 1);
+        assert_eq!(statistics["topSongs"][0]["profileId"], DEFAULT_PROFILE_ID);
+        assert_eq!(json["sessions"][0]["profileId"], DEFAULT_PROFILE_ID);
         let csv = fs::read_to_string(csv_path).expect("CSV read");
+        assert_eq!(
+            csv.lines().next(),
+            Some("recordType,sessionId,providerId,profileId,trackId,title,albumId,albumTitle,artists,startedAtMs,endedAtMs,listenedMs,playableDurationMs,outcome,sourceContext,requestedQuality,resolvedQuality,preview,errorCode,qualifiedListeningMs,qualifiedPlayCount,completedCount,skippedCount,skipRate")
+        );
         let summary = csv
             .lines()
             .nth(1)
             .expect("CSV contains the summary row")
             .split(',')
             .collect::<Vec<_>>();
-        assert_eq!(&summary[18..22], ["30000", "2", "1", "1"]);
-        let csv_skip_rate = summary[22].parse::<f64>().expect("CSV skip rate");
+        assert_eq!(summary.len(), 24);
+        assert_eq!(&summary[19..23], ["30000", "2", "1", "1"]);
+        let first_session = csv
+            .lines()
+            .nth(2)
+            .expect("CSV contains a session row")
+            .split(',')
+            .collect::<Vec<_>>();
+        assert_eq!(first_session[3], DEFAULT_PROFILE_ID);
+        let csv_skip_rate = summary[23].parse::<f64>().expect("CSV skip rate");
         let json_skip_rate = statistics["skipRate"].as_f64().expect("JSON skip rate");
         assert!((csv_skip_rate - json_skip_rate).abs() < f64::EPSILON);
 
@@ -1292,6 +1383,7 @@ mod tests {
         let record = ListeningSessionRecord {
             session_id: "orphan".to_owned(),
             provider_id: "fake".to_owned(),
+            profile_id: DEFAULT_PROFILE_ID.to_owned(),
             track_id: "one".to_owned(),
             display: ListeningDisplaySnapshot {
                 title: "One".to_owned(),

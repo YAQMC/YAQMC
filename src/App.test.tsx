@@ -151,6 +151,7 @@ const accountCapabilities = {
 function authenticatedSnapshot(): AccountSnapshot {
   return {
     state: 'authenticated',
+    profileId: 'default',
     profile: {
       avatarUrl: null,
       nickname: 'Synthetic Listener',
@@ -173,7 +174,9 @@ function accountPlaylistDetail(): AccountPlaylistDetail {
   const playlist = playlists[0]!;
   return {
     summary: {
+      providerId: 'qqmusic',
       id: 'account-playlist-a',
+      profileId: 'default',
       reference: { kind: 'owned', tid: 'account-playlist-a', dirId: 3001 },
       title: 'Private synthetic playlist',
       description: playlist.description,

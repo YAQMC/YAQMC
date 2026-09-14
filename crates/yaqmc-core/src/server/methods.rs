@@ -6,7 +6,9 @@ use yaqmc_protocol::{
     authorize, AclDenied, CoreError, ErrorCode, MethodOwner, PlatformAttach, WindowOrigin,
 };
 
-use crate::continuation::{ContinuationStartRequest, ContinuationTerminalReason};
+use crate::continuation::{
+    ContinuationError, ContinuationStartRequest, ContinuationTerminalReason,
+};
 use crate::player::PlayTracksRequest;
 #[cfg(feature = "plugins")]
 use crate::plugin::api::{
@@ -17,7 +19,8 @@ use crate::statistics::{StatisticsChanged, StatisticsExportRequest};
 use crate::CoreHandle;
 use yaqmc_provider_api::{
     CollectPlaylistRequest, CreatePlaylistRequest, DeletePlaylistRequest, FavoriteMutationRequest,
-    PlaylistTrackMutationRequest, ProviderCommandError, ProviderResult, RenamePlaylistRequest,
+    PlaylistTrackMutationRequest, ProviderCommandError, ProviderResult, ProviderScopedOutput,
+    RenamePlaylistRequest,
 };
 
 use super::ops;
@@ -294,6 +297,29 @@ fn parse<T: DeserializeOwned>(params: &Value) -> Result<T, DispatchError> {
         .map_err(|error| DispatchError::InvalidParams(error.to_string()))
 }
 
+fn validate_provider_profile(core: &CoreHandle, params: &Value) -> Result<(), DispatchError> {
+    let provider_id = params.get("providerId").and_then(Value::as_str);
+    let profile_id = match params.get("profileId") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(profile_id)) => Some(profile_id.as_str()),
+        Some(_) => {
+            return Err(DispatchError::InvalidParams(
+                "profileId must be a string".to_owned(),
+            ));
+        }
+    };
+    provider_command(core.providers().resolve_profile(provider_id, profile_id)).map(drop)
+}
+
+fn parse_provider<T: DeserializeOwned>(
+    core: &CoreHandle,
+    params: &Value,
+) -> Result<T, DispatchError> {
+    let parsed = parse(params)?;
+    validate_provider_profile(core, params)?;
+    Ok(parsed)
+}
+
 fn ok<T: Serialize>(value: T) -> Result<Value, DispatchError> {
     serde_json::to_value(value).map_err(|error| DispatchError::Command {
         message: error.to_string(),
@@ -326,6 +352,17 @@ fn provider_error(error: ProviderCommandError) -> DispatchError {
         message: error.message.clone(),
         retryable: error.retryable,
         details: serde_json::to_value(&error).ok(),
+    }
+}
+
+fn continuation_error(error: ContinuationError) -> DispatchError {
+    match error {
+        ContinuationError::ProviderCommand(error) => provider_error(error),
+        error => DispatchError::Command {
+            message: error.to_string(),
+            retryable: false,
+            details: None,
+        },
     }
 }
 
@@ -428,7 +465,7 @@ async fn invoke_core(
         }
         "provider_list" => ok(core.providers().descriptors()),
         "provider_status" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             ok(catalog.catalog_status().await)
@@ -437,7 +474,8 @@ async fn invoke_core(
             let ProviderRefreshParams {
                 provider_id,
                 refresh,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_home(refresh).await)
@@ -446,7 +484,8 @@ async fn invoke_core(
             let ProviderRefreshParams {
                 provider_id,
                 refresh,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_discover(refresh).await)
@@ -455,13 +494,14 @@ async fn invoke_core(
             let ProviderAreaParams {
                 provider_id,
                 enc_area,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_area(enc_area).await)
         }
         "provider_library" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             ok(catalog.catalog_library())
@@ -473,25 +513,32 @@ async fn invoke_core(
                 kind,
                 page,
                 limit,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_search(query, kind, page, limit).await)
         }
         "provider_song" => {
-            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let ProviderEntityParams {
+                provider_id, id, ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_song(id).await)
         }
         "provider_album" => {
-            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let ProviderEntityParams {
+                provider_id, id, ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_album(id).await)
         }
         "provider_artist" => {
-            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let ProviderEntityParams {
+                provider_id, id, ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_artist(id).await)
@@ -503,19 +550,24 @@ async fn invoke_core(
                 kind,
                 page,
                 limit,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_artist_page(id, kind, page, limit).await)
         }
         "provider_playlist" => {
-            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let ProviderEntityParams {
+                provider_id, id, ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_playlist(id).await)
         }
         "provider_lyrics" => {
-            let ProviderEntityParams { provider_id, id } = parse(&params)?;
+            let ProviderEntityParams {
+                provider_id, id, ..
+            } = parse_provider(core, &params)?;
             let lyrics = provider_command(core.providers().require_lyrics_provider(&provider_id))?;
             provider(lyrics.lyrics_for_song(id).await)
         }
@@ -523,7 +575,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<yaqmc_provider_api::RecommendationRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             provider(
                 core.providers()
                     .recommendation_next(&provider_id, request)
@@ -531,7 +584,9 @@ async fn invoke_core(
             )
         }
         "provider_cache_artwork" => {
-            let ProviderUrlParams { provider_id, url } = parse(&params)?;
+            let ProviderUrlParams {
+                provider_id, url, ..
+            } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_artwork_data_uri(url).await)
@@ -540,7 +595,8 @@ async fn invoke_core(
             let ProviderQualityParams {
                 provider_id,
                 quality,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let playback =
                 provider_command(core.providers().require_playback_provider(&provider_id))?;
             provider(
@@ -557,7 +613,8 @@ async fn invoke_core(
             let ProviderQualityParams {
                 provider_id,
                 quality,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let playback =
                 provider_command(core.providers().require_playback_provider(&provider_id))?;
             provider(
@@ -571,19 +628,19 @@ async fn invoke_core(
             )
         }
         "provider_account_login_methods" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             let account =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(account.account_login_methods().await)
         }
         "provider_account_snapshot" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             ok(capability.provider_account().account_snapshot().await)
         }
         "provider_account_refresh" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(capability.provider_account().refresh_account().await)
@@ -593,7 +650,8 @@ async fn invoke_core(
                 provider_id,
                 cursor,
                 limit,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(
@@ -608,7 +666,8 @@ async fn invoke_core(
                 provider_id,
                 cursor,
                 limit,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(
@@ -621,10 +680,18 @@ async fn invoke_core(
         "provider_account_playlist_tracks" => {
             let ProviderPlaylistTracksParams {
                 provider_id,
+                profile_id,
                 playlist,
                 cursor,
                 limit,
-            } = parse(&params)?;
+            } = parse_provider(core, &params)?;
+            let scope = provider_command(
+                core.providers()
+                    .resolve_profile(Some(&provider_id), profile_id.as_deref()),
+            )?;
+            let playlist = playlist
+                .validate_scope(&scope.provider_id)
+                .map_err(provider_error)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(
@@ -639,7 +706,8 @@ async fn invoke_core(
                 provider_id,
                 cursor,
                 limit,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(
@@ -653,7 +721,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<FavoriteMutationRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(capability.provider_account().set_favorite(request).await)
@@ -662,7 +731,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<CreatePlaylistRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(capability.provider_account().create_playlist(request).await)
@@ -671,7 +741,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<RenamePlaylistRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(capability.provider_account().rename_playlist(request).await)
@@ -680,7 +751,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<PlaylistTrackMutationRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(
@@ -694,7 +766,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<PlaylistTrackMutationRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(
@@ -708,7 +781,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<DeletePlaylistRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(capability.provider_account().delete_playlist(request).await)
@@ -717,7 +791,8 @@ async fn invoke_core(
             let ProviderNamedRequest::<CollectPlaylistRequest> {
                 provider_id,
                 request,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             provider(
@@ -731,7 +806,8 @@ async fn invoke_core(
             let ProviderAuthStartParams {
                 provider_id,
                 mobile,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             core.continuation()
                 .end(ContinuationTerminalReason::AccountChanged)
                 .await;
@@ -748,7 +824,8 @@ async fn invoke_core(
                 provider_id,
                 attempt_id,
                 owner_lease_id,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             let account = capability.provider_account();
@@ -768,7 +845,8 @@ async fn invoke_core(
             let ProviderAttemptParams {
                 provider_id,
                 attempt_id,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             let result = capability
@@ -785,7 +863,8 @@ async fn invoke_core(
             let ProviderOptionalAttemptParams {
                 provider_id,
                 attempt_id,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             let result = capability
@@ -798,7 +877,7 @@ async fn invoke_core(
             provider(result)
         }
         "provider_sign_out" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             core.continuation()
                 .end(ContinuationTerminalReason::AccountChanged)
                 .await;
@@ -807,13 +886,13 @@ async fn invoke_core(
             provider(capability.provider_account().sign_out().await)
         }
         "provider_cache_stats" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_cache_stats())
         }
         "provider_clear_cache" => {
-            let ProviderIdParams { provider_id } = parse(&params)?;
+            let ProviderIdParams { provider_id, .. } = parse_provider(core, &params)?;
             let catalog =
                 provider_command(core.providers().require_catalog_provider(&provider_id))?;
             provider(catalog.catalog_clear_cache())
@@ -871,8 +950,16 @@ async fn invoke_core(
             provider(core.qq_music().lyrics(song_id).await)
         }
         "catalog_share_song" => {
-            let ShareSongParams { provider_id, id } = parse(&params)?;
-            provider(core.providers().share_song(&provider_id, id).await)
+            let ShareSongParams {
+                provider_id,
+                profile_id,
+                id,
+            } = parse_provider(core, &params)?;
+            provider(
+                core.providers()
+                    .share_song(&provider_id, profile_id.as_deref(), id)
+                    .await,
+            )
         }
         "qqmusic_cache_artwork" => {
             let UrlParams { url } = parse(&params)?;
@@ -1001,11 +1088,11 @@ async fn invoke_core(
         "continuation_snapshot" => ok(core.continuation().snapshot().await),
         "continuation_start" => {
             let NamedRequest::<ContinuationStartRequest> { request } = parse(&params)?;
-            cmd(core
-                .continuation()
+            core.continuation()
                 .start(request)
                 .await
-                .map_err(|error| error.to_string()))
+                .map_err(continuation_error)
+                .and_then(ok)
         }
         "continuation_end" => ok(core
             .continuation()
@@ -1017,7 +1104,7 @@ async fn invoke_core(
             core.continuation()
                 .end(ContinuationTerminalReason::QueueReplaced)
                 .await;
-            core.qq_music().remember_songs(&tracks).await;
+            core.providers().remember_scoped_songs(&tracks).await;
             ok(core.player().hydrate_queue(tracks).await)
         }
         "player_play_tracks" => {
@@ -1025,7 +1112,9 @@ async fn invoke_core(
             core.continuation()
                 .end(ContinuationTerminalReason::QueueReplaced)
                 .await;
-            core.qq_music().remember_songs(&request.tracks).await;
+            core.providers()
+                .remember_scoped_songs(&request.tracks)
+                .await;
             cmd(core
                 .player()
                 .play_tracks(request)
@@ -1436,7 +1525,8 @@ async fn invoke_core(
             let ProviderOAuthPrepareParams {
                 provider_id,
                 method_id,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             core.continuation()
                 .end(ContinuationTerminalReason::AccountChanged)
                 .await;
@@ -1449,7 +1539,8 @@ async fn invoke_core(
                 provider_id,
                 attempt_id,
                 callback_url,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let callback_url = reqwest::Url::parse(&callback_url)
                 .map_err(|error| DispatchError::InvalidParams(error.to_string()))?;
             let capability =
@@ -1467,7 +1558,8 @@ async fn invoke_core(
             let ProviderAttemptParams {
                 provider_id,
                 attempt_id,
-            } = parse(&params)?;
+                ..
+            } = parse_provider(core, &params)?;
             let capability =
                 provider_command(core.providers().require_account_provider(&provider_id))?;
             let result = capability
@@ -1545,5 +1637,45 @@ async fn invoke_core(
                 origin: WindowOrigin::Host,
             }))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn continuation_provider_error_mapping_preserves_provider_details() {
+        let error = continuation_error(ContinuationError::ProviderCommand(ProviderCommandError {
+            code: "timeout".to_owned(),
+            message: "temporary recommendation backend outage".to_owned(),
+            retryable: true,
+        }))
+        .into_core_error();
+
+        assert_eq!(error.code, ErrorCode::CommandError.as_str());
+        assert_eq!(error.message, "temporary recommendation backend outage");
+        assert!(error.retryable);
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["code"].as_str()),
+            Some("timeout")
+        );
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["message"].as_str()),
+            Some("temporary recommendation backend outage")
+        );
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["retryable"].as_bool()),
+            Some(true)
+        );
     }
 }

@@ -86,6 +86,8 @@ export interface OpenSettingsPayload {
 
 export interface OpenCatalogSongPayload {
   providerId: string;
+  /** Omitted by legacy hosts; consumers use the default profile in that case. */
+  profileId?: string;
   entityId: string;
 }
 

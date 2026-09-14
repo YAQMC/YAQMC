@@ -23,6 +23,7 @@ function qqTrack(): Song {
     id: 'qqmusic:track:SANITIZED_TRACK_A',
     provider: {
       providerId: 'qqmusic',
+      profileId: 'default',
       trackId: 'SANITIZED_TRACK_A',
       numericId: 1001,
     },
@@ -32,6 +33,7 @@ function qqTrack(): Song {
 function authenticatedSnapshot(): AccountSnapshot {
   return {
     state: 'authenticated',
+    profileId: 'default',
     profile: { avatarUrl: null, nickname: 'Listener', maskedIdentity: '10******01' },
     entitlement: {
       tier: 'free',
@@ -197,7 +199,9 @@ describe('TrackList favorite controls', () => {
   it('adds the row track to an owned playlist from the overflow menu', async () => {
     const track = qqTrack();
     const playlist: AccountPlaylistSummary = {
+      providerId: 'qqmusic',
       id: 'qqmusic:playlist:owned-a',
+      profileId: 'default',
       reference: { kind: 'owned', tid: 'owned-a', dirId: 2 },
       title: 'Synthetic Mix',
       description: '',
