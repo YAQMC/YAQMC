@@ -475,7 +475,7 @@ describe('App TopBar history navigation', () => {
         'owned:account-playlist-a',
       ),
     );
-    expect(account.getAccountPlaylistTracks).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(account.getAccountPlaylistTracks).toHaveBeenCalledTimes(2));
     expect(account.getAccountPlaylistTracks).toHaveBeenLastCalledWith(
       accountPlaylistDetail().summary,
       undefined,
