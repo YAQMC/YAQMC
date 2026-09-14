@@ -9,10 +9,10 @@ use crate::{
     LibrarySnapshot, LyricDocument, LyricsProvider, MusicProvider, OAuthLoginProvider,
     OAuthPrepareResult, Page, PlaybackSourceError, PlaybackSourceProvider, PlaybackSourceResolver,
     PlaybackSourceSelection, Playlist, PlaylistMutationResult, PlaylistTrackMutationRequest,
-    ProviderAccount, ProviderCommandError, ProviderProfileKey, ProviderResult,
-    ProviderScopedOutput, ProviderStatus, RecommendationBatch, RecommendationProvider,
-    RecommendationRequest, RemotePlayHistoryItem, RenamePlaylistRequest, ResolvedPlaybackSource,
-    SearchResult, ShareProvider, ShareTarget, Song, DEFAULT_PROFILE_ID,
+    ProviderAccount, ProviderCommandError, ProviderProfileKey, ProviderProfileKeyError,
+    ProviderResult, ProviderScopedOutput, ProviderStatus, RecommendationBatch,
+    RecommendationProvider, RecommendationRequest, RemotePlayHistoryItem, RenamePlaylistRequest,
+    ResolvedPlaybackSource, SearchResult, ShareProvider, ShareTarget, Song, DEFAULT_PROFILE_ID,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -124,10 +124,14 @@ impl std::error::Error for ProviderIdError {}
 pub enum ProviderRegistryError {
     Empty,
     InvalidId(ProviderIdError),
+    InvalidProfile(ProviderProfileKeyError),
     DuplicateId(ProviderId),
+    DuplicateProfile(ProviderProfileKey),
+    MissingProvider(ProviderId),
     MissingDefault(ProviderId),
     EmptyCapabilities,
     ProtectedDefault(ProviderId),
+    ProtectedDefaultProfile(ProviderProfileKey),
 }
 
 impl fmt::Display for ProviderRegistryError {
@@ -135,7 +139,14 @@ impl fmt::Display for ProviderRegistryError {
         match self {
             Self::Empty => formatter.write_str("at least one music provider is required"),
             Self::InvalidId(error) => error.fmt(formatter),
+            Self::InvalidProfile(error) => error.fmt(formatter),
             Self::DuplicateId(id) => write!(formatter, "duplicate music provider id: {id}"),
+            Self::DuplicateProfile(key) => write!(
+                formatter,
+                "duplicate music provider profile: {}/{}",
+                key.provider_id, key.profile_id
+            ),
+            Self::MissingProvider(id) => write!(formatter, "music provider is missing: {id}"),
             Self::MissingDefault(id) => {
                 write!(formatter, "default music provider is missing: {id}")
             }
@@ -148,6 +159,11 @@ impl fmt::Display for ProviderRegistryError {
                     "the default music provider cannot be removed: {id}"
                 )
             }
+            Self::ProtectedDefaultProfile(key) => write!(
+                formatter,
+                "the default music provider profile cannot be removed: {}/{}",
+                key.provider_id, key.profile_id
+            ),
         }
     }
 }
@@ -804,14 +820,32 @@ impl MusicProviderCapabilityFacade {
         self.lyrics.as_ref().map(Arc::clone)
     }
 
+    fn recommendations_arc(&self) -> Option<Arc<dyn RecommendationProvider>> {
+        self.recommendations.as_ref().map(Arc::clone)
+    }
+
+    fn share_arc(&self) -> Option<Arc<dyn ShareProvider>> {
+        self.share.as_ref().map(Arc::clone)
+    }
+
     fn account_arc(&self) -> Option<Arc<dyn AccountProvider>> {
         self.account.as_ref().map(Arc::clone)
     }
 }
 
+struct RegistryState {
+    /// Every live provider instance, keyed by its platform ID and local
+    /// profile. The default profile is the compatibility entry point used by
+    /// the pre-profile API.
+    profiles: HashMap<ProviderProfileKey, Arc<MusicProviderCapabilityFacade>>,
+    inactive: HashMap<ProviderId, ProviderDescriptor>,
+}
+
 pub struct ProviderRegistry {
-    providers: RwLock<HashMap<ProviderId, Arc<MusicProviderCapabilityFacade>>>,
-    inactive: RwLock<HashMap<ProviderId, ProviderDescriptor>>,
+    /// Profile and descriptor transitions share this one lock. In particular,
+    /// a platform cannot be visible as both active and inactive between an
+    /// unregister/register hand-off.
+    state: RwLock<RegistryState>,
     default_id: ProviderId,
 }
 
@@ -821,53 +855,83 @@ impl ProviderRegistry {
         providers: impl IntoIterator<Item = Arc<dyn MusicProvider>>,
     ) -> Result<Self, ProviderRegistryError> {
         let default_id = ProviderId::parse(default_id).map_err(ProviderRegistryError::InvalidId)?;
-        let mut registry = HashMap::new();
+        let mut profiles = HashMap::new();
         for provider in providers {
             let id = ProviderId::parse(provider.id()).map_err(ProviderRegistryError::InvalidId)?;
             let facade = Arc::new(MusicProviderCapabilityFacade::from_legacy(
                 id.clone(),
                 provider,
             ));
-            if registry.insert(id.clone(), facade).is_some() {
+            let key = ProviderProfileKey::default_profile(id.as_str())
+                .expect("ProviderId is valid, so its default profile key is valid");
+            if profiles.insert(key, facade).is_some() {
                 return Err(ProviderRegistryError::DuplicateId(id));
             }
         }
-        if registry.is_empty() {
+        if profiles.is_empty() {
             return Err(ProviderRegistryError::Empty);
         }
-        if !registry.contains_key(&default_id) {
+        if !profiles.contains_key(
+            &ProviderProfileKey::default_profile(default_id.as_str())
+                .expect("ProviderId is valid, so its default profile key is valid"),
+        ) {
             return Err(ProviderRegistryError::MissingDefault(default_id));
         }
         Ok(Self {
-            providers: RwLock::new(registry),
-            inactive: RwLock::new(HashMap::new()),
+            state: RwLock::new(RegistryState {
+                profiles,
+                inactive: HashMap::new(),
+            }),
             default_id,
         })
     }
 
     pub fn provider(&self, id: &str) -> Option<Arc<dyn MusicProvider>> {
-        self.read_providers()
-            .get(id)
+        self.capabilities(id)
             .and_then(|provider| provider.legacy_provider())
     }
 
     pub fn capabilities(&self, id: &str) -> Option<Arc<MusicProviderCapabilityFacade>> {
-        self.read_providers().get(id).map(Arc::clone)
+        self.capabilities_for_profile(id, DEFAULT_PROFILE_ID)
     }
 
     pub fn provider_ids(&self) -> impl Iterator<Item = ProviderId> {
-        let mut ids = self.read_providers().keys().cloned().collect::<Vec<_>>();
+        let mut ids = self
+            .read_state()
+            .profiles
+            .keys()
+            .filter(|key| key.profile_id == DEFAULT_PROFILE_ID)
+            .map(|key| {
+                ProviderId::parse(&key.provider_id).expect("registered profile key is valid")
+            })
+            .collect::<Vec<_>>();
         ids.sort();
         ids.into_iter()
     }
 
+    /// Return all live provider/profile keys. A platform appears once for each
+    /// registered profile; descriptors intentionally remain platform-level.
+    pub fn profile_keys(&self) -> Vec<ProviderProfileKey> {
+        let mut keys = self
+            .read_state()
+            .profiles
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        keys.sort();
+        keys
+    }
+
     pub fn descriptors(&self) -> Vec<ProviderDescriptor> {
-        let providers = self.read_providers();
-        let mut descriptors = providers
-            .values()
+        let state = self.read_state();
+        let mut descriptors = state
+            .profiles
+            .iter()
+            .filter(|(key, _)| key.profile_id == DEFAULT_PROFILE_ID)
+            .map(|(_, provider)| provider)
             .map(|provider| provider.descriptor(provider.id() == &self.default_id, true))
             .collect::<Vec<_>>();
-        descriptors.extend(self.read_inactive().values().cloned());
+        descriptors.extend(state.inactive.values().cloned());
         descriptors.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
         descriptors
     }
@@ -879,10 +943,11 @@ impl ProviderRegistry {
         capabilities: ProviderCapabilitySummary,
     ) -> Result<(), ProviderRegistryError> {
         let id = ProviderId::parse(id).map_err(ProviderRegistryError::InvalidId)?;
-        if self.read_providers().contains_key(&id) {
+        let mut state = self.write_state();
+        if Self::state_contains_default_profile(&state, id.as_str()) {
             return Ok(());
         }
-        self.write_inactive().insert(
+        state.inactive.insert(
             id.clone(),
             ProviderDescriptor {
                 provider_id: id.to_string(),
@@ -896,7 +961,7 @@ impl ProviderRegistry {
     }
 
     pub fn forget_inactive(&self, id: &str) {
-        self.write_inactive().remove(id);
+        self.write_state().inactive.remove(id);
     }
 
     pub fn default_id(&self) -> &ProviderId {
@@ -904,8 +969,7 @@ impl ProviderRegistry {
     }
 
     pub fn default_provider(&self) -> Arc<dyn MusicProvider> {
-        self.read_providers()
-            .get(&self.default_id)
+        self.capabilities(self.default_id.as_str())
             .expect("ProviderRegistry validates its default provider")
             .legacy_provider()
             .expect("ProviderRegistry default is a legacy provider")
@@ -924,13 +988,47 @@ impl ProviderRegistry {
             id.clone(),
             capabilities,
         ));
-        let mut providers = self.write_providers();
-        if providers.contains_key(&id) {
+        let key = ProviderProfileKey::default_profile(id.as_str())
+            .expect("ProviderId is valid, so its default profile key is valid");
+        let mut state = self.write_state();
+        if state.profiles.contains_key(&key) {
             return Err(ProviderRegistryError::DuplicateId(id));
         }
-        providers.insert(id.clone(), Arc::clone(&facade));
-        drop(providers);
-        self.write_inactive().remove(&id);
+        state.profiles.insert(key, Arc::clone(&facade));
+        state.inactive.remove(&id);
+        Ok(facade)
+    }
+
+    /// Register a second local profile for an existing platform provider.
+    /// The platform descriptor remains owned by the default profile, so a
+    /// profile cannot appear as a separate provider in discovery UI.
+    pub fn register_profile(
+        &self,
+        provider_id: impl AsRef<str>,
+        profile_id: impl AsRef<str>,
+        capabilities: ProviderCapabilities,
+    ) -> Result<Arc<MusicProviderCapabilityFacade>, ProviderRegistryError> {
+        if capabilities.is_empty() {
+            return Err(ProviderRegistryError::EmptyCapabilities);
+        }
+        let key = ProviderProfileKey::new(provider_id, profile_id)
+            .map_err(ProviderRegistryError::InvalidProfile)?;
+        let id =
+            ProviderId::parse(&key.provider_id).expect("profile key validates its provider ID");
+        let default_key = ProviderProfileKey::default_profile(id.as_str())
+            .expect("ProviderId is valid, so its default profile key is valid");
+        let facade = Arc::new(MusicProviderCapabilityFacade::from_capabilities(
+            id.clone(),
+            capabilities,
+        ));
+        let mut state = self.write_state();
+        if !state.profiles.contains_key(&default_key) {
+            return Err(ProviderRegistryError::MissingProvider(id));
+        }
+        if state.profiles.contains_key(&key) {
+            return Err(ProviderRegistryError::DuplicateProfile(key));
+        }
+        state.profiles.insert(key, Arc::clone(&facade));
         Ok(facade)
     }
 
@@ -943,16 +1041,51 @@ impl ProviderRegistry {
                 self.default_id.clone(),
             ));
         }
-        let removed = self.write_providers().remove(id);
+        let key = match ProviderProfileKey::default_profile(id) {
+            Ok(key) => key,
+            Err(_) => return Ok(None),
+        };
+        let mut state = self.write_state();
+        let removed = state.profiles.remove(&key);
+        if removed.is_some() {
+            state
+                .profiles
+                .retain(|profile, _| profile.provider_id != id);
+        }
         if let Some(provider) = &removed {
-            self.write_inactive()
+            state
+                .inactive
                 .insert(provider.id().clone(), provider.descriptor(false, false));
         }
         Ok(removed)
     }
 
+    /// Remove one non-default profile without affecting the compatibility
+    /// default profile or the platform descriptor.
+    pub fn unregister_profile(
+        &self,
+        provider_id: &str,
+        profile_id: &str,
+    ) -> Result<Option<Arc<MusicProviderCapabilityFacade>>, ProviderRegistryError> {
+        let key = ProviderProfileKey::new(provider_id, profile_id)
+            .map_err(ProviderRegistryError::InvalidProfile)?;
+        if key.profile_id == DEFAULT_PROFILE_ID {
+            return Err(ProviderRegistryError::ProtectedDefaultProfile(key));
+        }
+        Ok(self.write_state().profiles.remove(&key))
+    }
+
     pub fn contains(&self, id: &str) -> bool {
-        self.read_providers().contains_key(id)
+        self.capabilities(id).is_some()
+    }
+
+    pub fn capabilities_for_profile(
+        &self,
+        provider_id: &str,
+        profile_id: &str,
+    ) -> Option<Arc<MusicProviderCapabilityFacade>> {
+        let key = ProviderProfileKey::new(provider_id, profile_id).ok()?;
+        self.read_state().profiles.get(&key).map(Arc::clone)
     }
 
     pub fn catalog_provider(&self, id: &str) -> Option<Arc<dyn CatalogProvider>> {
@@ -991,6 +1124,66 @@ impl ProviderRegistry {
             .ok_or_else(|| unsupported_provider_capability("account"))
     }
 
+    pub fn require_catalog_provider_for_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<dyn CatalogProvider>> {
+        self.require_provider_profile(provider_id, profile_id)?
+            .catalog_arc()
+            .ok_or_else(|| unsupported_provider_capability("catalog"))
+    }
+
+    pub fn require_lyrics_provider_for_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<dyn LyricsProvider>> {
+        self.require_provider_profile(provider_id, profile_id)?
+            .lyrics_arc()
+            .ok_or_else(|| unsupported_provider_capability("lyrics"))
+    }
+
+    pub fn require_playback_provider_for_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<dyn PlaybackSourceProvider>> {
+        self.require_provider_profile(provider_id, profile_id)?
+            .playback_arc()
+            .ok_or_else(|| unsupported_provider_capability("playback"))
+    }
+
+    pub fn require_account_provider_for_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<dyn AccountProvider>> {
+        self.require_provider_profile(provider_id, profile_id)?
+            .account_arc()
+            .ok_or_else(|| unsupported_provider_capability("account"))
+    }
+
+    pub fn require_recommendation_provider_for_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<dyn RecommendationProvider>> {
+        self.require_provider_profile(provider_id, profile_id)?
+            .recommendations_arc()
+            .ok_or_else(|| unsupported_provider_capability("recommendations"))
+    }
+
+    pub fn require_share_provider_for_profile(
+        &self,
+        provider_id: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> ProviderResult<Arc<dyn ShareProvider>> {
+        self.require_provider_profile(provider_id, profile_id)?
+            .share_arc()
+            .ok_or_else(|| unsupported_provider_capability("sharing"))
+    }
+
     pub async fn remember_songs(&self, id: &str, songs: &[Song]) {
         if let Some(provider) = self.catalog_provider(id) {
             provider.catalog_remember_songs(songs).await;
@@ -1001,7 +1194,7 @@ impl ProviderRegistry {
     /// Unknown or currently unavailable profiles remain in the queue but do
     /// not leak their metadata into another provider's cache.
     pub async fn remember_scoped_songs(&self, songs: &[Song]) {
-        let mut grouped = HashMap::<String, Vec<Song>>::new();
+        let mut grouped = HashMap::<ProviderProfileKey, Vec<Song>>::new();
         for song in songs {
             let (provider_id, profile_id) = song.provider.as_ref().map_or_else(
                 || (self.default_id.as_str(), DEFAULT_PROFILE_ID),
@@ -1016,14 +1209,18 @@ impl ProviderRegistry {
                 .resolve_profile(Some(provider_id), Some(profile_id))
                 .is_ok()
             {
-                grouped
-                    .entry(provider_id.to_owned())
-                    .or_default()
-                    .push(song.clone());
+                let key = ProviderProfileKey::new(provider_id, profile_id)
+                    .expect("resolve_profile validates the provider/profile key");
+                grouped.entry(key).or_default().push(song.clone());
             }
         }
-        for (provider_id, songs) in grouped {
-            self.remember_songs(&provider_id, &songs).await;
+        for (profile, songs) in grouped {
+            if let Ok(provider) = self.require_catalog_provider_for_profile(
+                Some(&profile.provider_id),
+                Some(&profile.profile_id),
+            ) {
+                provider.catalog_remember_songs(&songs).await;
+            }
         }
     }
 
@@ -1052,7 +1249,12 @@ impl ProviderRegistry {
                 ));
             }
         }
-        self.remember_songs(&profile.provider_id, songs).await;
+        if let Ok(provider) = self.require_catalog_provider_for_profile(
+            Some(&profile.provider_id),
+            Some(&profile.profile_id),
+        ) {
+            provider.catalog_remember_songs(songs).await;
+        }
         Ok(())
     }
 
@@ -1063,12 +1265,10 @@ impl ProviderRegistry {
         id: String,
     ) -> ProviderResult<ShareTarget> {
         let expected_scope = self.resolve_profile(Some(provider_id), profile_id)?;
-        let provider = self.require_provider(provider_id)?;
-        let share = provider.share().ok_or_else(|| ProviderCommandError {
-            code: "unsupported-operation".to_owned(),
-            message: "this music provider does not support sharing".to_owned(),
-            retryable: false,
-        })?;
+        let share = self.require_share_provider_for_profile(
+            Some(provider_id),
+            Some(&expected_scope.profile_id),
+        )?;
         let target = share.share_song(id).await?;
         let returned_scope = ProviderProfileKey::new(&target.provider_id, &target.profile_id)
             .map_err(|_| {
@@ -1095,8 +1295,11 @@ impl ProviderRegistry {
         &self,
         profile: &ProviderProfileKey,
     ) -> ProviderResult<Option<u64>> {
-        self.resolve_profile(Some(&profile.provider_id), Some(&profile.profile_id))?;
-        Ok(self.account_generation(&profile.provider_id))
+        let provider =
+            self.require_provider_profile(Some(&profile.provider_id), Some(&profile.profile_id))?;
+        Ok(Some(provider.account().map_or(0, |account| {
+            account.provider_account().account_generation()
+        })))
     }
 
     pub async fn recommendation_next(
@@ -1104,15 +1307,15 @@ impl ProviderRegistry {
         provider_id: &str,
         request: RecommendationRequest,
     ) -> ProviderResult<RecommendationBatch> {
-        let provider = self.require_provider(provider_id)?;
-        let recommendations = provider
-            .recommendations()
-            .ok_or_else(|| ProviderCommandError {
-                code: "unsupported-operation".to_owned(),
-                message: "this music provider does not support recommendations".to_owned(),
-                retryable: false,
-            })?;
-        recommendations.recommendation_next(request).await
+        let profile = self.resolve_profile(Some(provider_id), None)?;
+        let batch = self
+            .require_recommendation_provider_for_profile(
+                Some(&profile.provider_id),
+                Some(&profile.profile_id),
+            )?
+            .recommendation_next(request)
+            .await?;
+        validate_recommendation_batch_scope(batch, &profile)
     }
 
     pub async fn recommendation_next_for_profile(
@@ -1120,9 +1323,16 @@ impl ProviderRegistry {
         profile: &ProviderProfileKey,
         request: RecommendationRequest,
     ) -> ProviderResult<RecommendationBatch> {
-        self.resolve_profile(Some(&profile.provider_id), Some(&profile.profile_id))?;
-        self.recommendation_next(&profile.provider_id, request)
-            .await
+        let expected =
+            self.resolve_profile(Some(&profile.provider_id), Some(&profile.profile_id))?;
+        let batch = self
+            .require_recommendation_provider_for_profile(
+                Some(&profile.provider_id),
+                Some(&profile.profile_id),
+            )?
+            .recommendation_next(request)
+            .await?;
+        validate_recommendation_batch_scope(batch, &expected)
     }
 
     fn require_provider(&self, id: &str) -> ProviderResult<Arc<MusicProviderCapabilityFacade>> {
@@ -1135,9 +1345,9 @@ impl ProviderRegistry {
 
     /// Resolve a provider/profile pair at the registry boundary.
     ///
-    /// Profile IDs are intentionally not a second provider lookup in B1:
-    /// only the compatibility `default` profile exists. Missing values retain
-    /// the legacy default, while malformed values fail as invalid requests.
+    /// Missing profile IDs retain the legacy default. Explicit profile IDs
+    /// must name a currently registered instance; there is no fallback from a
+    /// missing scoped profile to the default instance.
     pub fn resolve_profile(
         &self,
         provider_id: Option<&str>,
@@ -1159,14 +1369,15 @@ impl ProviderRegistry {
                 retryable: false,
             });
         }
-        if key.profile_id != DEFAULT_PROFILE_ID {
-            return Err(ProviderCommandError {
+        if self.read_state().profiles.contains_key(&key) {
+            Ok(key)
+        } else {
+            Err(ProviderCommandError {
                 code: "profile-unavailable".to_owned(),
                 message: "music provider profile is unavailable".to_owned(),
                 retryable: false,
-            });
+            })
         }
-        Ok(key)
     }
 
     /// Resolve and return a provider capability façade for a profile-aware
@@ -1177,7 +1388,12 @@ impl ProviderRegistry {
         profile_id: Option<&str>,
     ) -> ProviderResult<Arc<MusicProviderCapabilityFacade>> {
         let key = self.resolve_profile(provider_id, profile_id)?;
-        self.require_provider(&key.provider_id)
+        self.capabilities_for_profile(&key.provider_id, &key.profile_id)
+            .ok_or_else(|| ProviderCommandError {
+                code: "profile-unavailable".to_owned(),
+                message: "music provider profile is unavailable".to_owned(),
+                retryable: false,
+            })
     }
 
     fn playback_for_song(
@@ -1188,7 +1404,7 @@ impl ProviderRegistry {
             Some(reference) => {
                 self.resolve_profile(Some(&reference.provider_id), Some(&reference.profile_id))
                     .map_err(|_| PlaybackSourceError::TrackUnavailable)?;
-                self.capabilities(&reference.provider_id)
+                self.capabilities_for_profile(&reference.provider_id, &reference.profile_id)
                     .and_then(|provider| provider.playback_arc())
                     .ok_or(PlaybackSourceError::TrackUnavailable)
             }
@@ -1199,36 +1415,20 @@ impl ProviderRegistry {
         }
     }
 
-    fn read_providers(
-        &self,
-    ) -> std::sync::RwLockReadGuard<'_, HashMap<ProviderId, Arc<MusicProviderCapabilityFacade>>>
-    {
-        self.providers
+    fn state_contains_default_profile(state: &RegistryState, id: &str) -> bool {
+        ProviderProfileKey::default_profile(id)
+            .ok()
+            .is_some_and(|key| state.profiles.contains_key(&key))
+    }
+
+    fn read_state(&self) -> std::sync::RwLockReadGuard<'_, RegistryState> {
+        self.state
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn write_providers(
-        &self,
-    ) -> std::sync::RwLockWriteGuard<'_, HashMap<ProviderId, Arc<MusicProviderCapabilityFacade>>>
-    {
-        self.providers
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    fn read_inactive(
-        &self,
-    ) -> std::sync::RwLockReadGuard<'_, HashMap<ProviderId, ProviderDescriptor>> {
-        self.inactive
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    fn write_inactive(
-        &self,
-    ) -> std::sync::RwLockWriteGuard<'_, HashMap<ProviderId, ProviderDescriptor>> {
-        self.inactive
+    fn write_state(&self) -> std::sync::RwLockWriteGuard<'_, RegistryState> {
+        self.state
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -1240,6 +1440,45 @@ fn unsupported_provider_capability(capability: &str) -> ProviderCommandError {
         message: format!("this music provider does not support {capability}"),
         retryable: false,
     }
+}
+
+fn validate_recommendation_batch_scope(
+    mut batch: RecommendationBatch,
+    expected: &ProviderProfileKey,
+) -> ProviderResult<RecommendationBatch> {
+    for song in &mut batch.songs {
+        match &song.provider {
+            Some(reference) => {
+                let actual = ProviderProfileKey::new(&reference.provider_id, &reference.profile_id)
+                    .map_err(|_| {
+                        ProviderCommandError::adapter(
+                            "provider returned an invalid recommendation song scope",
+                        )
+                    })?;
+                if actual != *expected {
+                    return Err(ProviderCommandError::adapter(
+                        "provider returned a mismatched recommendation song scope",
+                    ));
+                }
+            }
+            None if expected.profile_id == DEFAULT_PROFILE_ID => {
+                song.provider = Some(crate::ProviderTrackReference {
+                    provider_id: expected.provider_id.clone(),
+                    profile_id: expected.profile_id.clone(),
+                    track_id: song.id.clone(),
+                    numeric_id: None,
+                    album_id: None,
+                    media_id: None,
+                });
+            }
+            None => {
+                return Err(ProviderCommandError::adapter(
+                    "provider returned an unscoped recommendation for a non-default profile",
+                ));
+            }
+        }
+    }
+    Ok(batch)
 }
 
 #[async_trait]
@@ -1262,7 +1501,141 @@ impl PlaybackSourceResolver for ProviderRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RecommendationKind;
+    use crate::{
+        AlbumSummary, ArtistSummary, Artwork, AudioFormat, AudioQuality, PlaybackEpochGuard,
+        PlaybackLocation, PlaybackSourceSelection, ProviderTrackReference, RecommendationKind,
+        SongAvailability,
+    };
+    use std::{path::PathBuf, sync::Barrier, thread};
+
+    struct ProfilePlayback {
+        label: &'static str,
+    }
+
+    struct ProfileRecommendations {
+        song: Song,
+    }
+
+    #[async_trait]
+    impl RecommendationProvider for ProfileRecommendations {
+        async fn recommendation_next(
+            &self,
+            _request: RecommendationRequest,
+        ) -> ProviderResult<RecommendationBatch> {
+            Ok(RecommendationBatch {
+                songs: vec![self.song.clone()],
+                next_cursor: None,
+                ended: true,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl PlaybackSourceResolver for ProfilePlayback {
+        async fn resolve(
+            &self,
+            song: &Song,
+        ) -> Result<ResolvedPlaybackSource, PlaybackSourceError> {
+            Ok(ResolvedPlaybackSource {
+                cache_key: format!("{}:{}", self.label, song.id),
+                location: PlaybackLocation::Local(PathBuf::from("profile-test.wav")),
+                format: AudioFormat::Wav,
+                mime_type: Some("audio/wav".to_owned()),
+                quality_label: self.label.to_owned(),
+                bitrate_kbps: None,
+                sample_rate_hz: None,
+                bit_depth: None,
+                content_length: None,
+                supports_range: true,
+                expires_at_ms: None,
+                timeline_offset_ms: 0,
+                timeline_end_ms: Some(song.duration_ms),
+                is_preview: false,
+                selection: PlaybackSourceSelection {
+                    requested_quality: AudioQualityPreference::Automatic,
+                    resolved_quality: song.quality,
+                    fallback_reason: None,
+                    preview: false,
+                    quality_capabilities: Vec::new(),
+                },
+                epoch_guard: PlaybackEpochGuard::unrestricted(),
+            })
+        }
+    }
+
+    #[async_trait]
+    impl PlaybackSourceProvider for ProfilePlayback {
+        fn playback_media_http_client(&self) -> reqwest::Client {
+            reqwest::Client::new()
+        }
+
+        async fn playback_set_preferred_quality(
+            &self,
+            _quality: AudioQualityPreference,
+        ) -> ProviderResult<ProviderStatus> {
+            Err(ProviderCommandError::invalid_request(
+                "not used by this test",
+            ))
+        }
+
+        async fn playback_set_current_quality(
+            &self,
+            _track_id: String,
+            _quality: AudioQualityPreference,
+        ) -> ProviderResult<()> {
+            Ok(())
+        }
+    }
+
+    fn playback_capabilities(label: &'static str) -> ProviderCapabilities {
+        ProviderCapabilities {
+            playback: Some(Arc::new(ProfilePlayback { label })),
+            ..ProviderCapabilities::default()
+        }
+    }
+
+    fn recommendation_capabilities(song: Song) -> ProviderCapabilities {
+        ProviderCapabilities {
+            recommendations: Some(Arc::new(ProfileRecommendations { song })),
+            ..ProviderCapabilities::default()
+        }
+    }
+
+    fn scoped_song(profile_id: Option<&str>) -> Song {
+        Song {
+            id: "same-track".to_owned(),
+            title: "Test song".to_owned(),
+            artists: vec![ArtistSummary {
+                id: "artist".to_owned(),
+                name: "Artist".to_owned(),
+            }],
+            album: AlbumSummary {
+                id: "album".to_owned(),
+                title: "Album".to_owned(),
+            },
+            artwork: Artwork {
+                src: String::new(),
+                alt: String::new(),
+                dominant_color: String::new(),
+                variants: Vec::new(),
+            },
+            duration_ms: 1,
+            track_number: 1,
+            is_favorite: false,
+            quality: AudioQuality::Standard,
+            availability: SongAvailability::Available,
+            audio_formats: Vec::new(),
+            playback_capability: None,
+            provider: profile_id.map(|profile_id| ProviderTrackReference {
+                provider_id: "qqmusic".to_owned(),
+                profile_id: profile_id.to_owned(),
+                track_id: "same-track".to_owned(),
+                numeric_id: None,
+                album_id: None,
+                media_id: None,
+            }),
+        }
+    }
 
     fn test_registry() -> ProviderRegistry {
         let id = ProviderId::parse("qqmusic").expect("test provider ID");
@@ -1270,12 +1643,66 @@ mod tests {
             id.clone(),
             ProviderCapabilities::default(),
         ));
-        let mut providers = HashMap::new();
-        providers.insert(id.clone(), facade);
+        let mut profiles = HashMap::new();
+        profiles.insert(
+            ProviderProfileKey::default_profile(id.as_str()).expect("default profile key"),
+            facade,
+        );
         ProviderRegistry {
-            providers: RwLock::new(providers),
-            inactive: RwLock::new(HashMap::new()),
+            state: RwLock::new(RegistryState {
+                profiles,
+                inactive: HashMap::new(),
+            }),
             default_id: id,
+        }
+    }
+
+    fn playback_registry() -> ProviderRegistry {
+        let id = ProviderId::parse("qqmusic").expect("test provider ID");
+        let facade = Arc::new(MusicProviderCapabilityFacade::from_capabilities(
+            id.clone(),
+            playback_capabilities("default"),
+        ));
+        let mut profiles = HashMap::new();
+        profiles.insert(
+            ProviderProfileKey::default_profile(id.as_str()).expect("default profile key"),
+            facade,
+        );
+        ProviderRegistry {
+            state: RwLock::new(RegistryState {
+                profiles,
+                inactive: HashMap::new(),
+            }),
+            default_id: id,
+        }
+    }
+
+    fn recommendation_registry(song: Song) -> ProviderRegistry {
+        let id = ProviderId::parse("qqmusic").expect("test provider ID");
+        let facade = Arc::new(MusicProviderCapabilityFacade::from_capabilities(
+            id.clone(),
+            recommendation_capabilities(song),
+        ));
+        let mut profiles = HashMap::new();
+        profiles.insert(
+            ProviderProfileKey::default_profile(id.as_str()).expect("default profile key"),
+            facade,
+        );
+        ProviderRegistry {
+            state: RwLock::new(RegistryState {
+                profiles,
+                inactive: HashMap::new(),
+            }),
+            default_id: id,
+        }
+    }
+
+    fn recommendation_request() -> RecommendationRequest {
+        RecommendationRequest {
+            kind: RecommendationKind::Guess,
+            limit: 1,
+            cursor: None,
+            seeds: Vec::new(),
         }
     }
 
@@ -1387,6 +1814,239 @@ mod tests {
                 .expect_err("B1 does not expose alternate profiles")
                 .code,
             "profile-unavailable"
+        );
+    }
+
+    #[test]
+    fn profile_registration_routes_default_and_work_instances_exactly() {
+        let registry = playback_registry();
+        let work = registry
+            .register_profile("qqmusic", "work", playback_capabilities("work"))
+            .expect("register work profile");
+
+        assert!(Arc::ptr_eq(
+            &work,
+            &registry
+                .require_provider_profile(Some("qqmusic"), Some("work"))
+                .expect("work profile")
+        ));
+        assert_eq!(
+            registry
+                .resolve_profile(Some("qqmusic"), None)
+                .expect("legacy default")
+                .profile_id,
+            DEFAULT_PROFILE_ID
+        );
+        assert_eq!(
+            registry
+                .profile_keys()
+                .into_iter()
+                .map(|key| key.profile_id)
+                .collect::<Vec<_>>(),
+            vec![DEFAULT_PROFILE_ID.to_owned(), "work".to_owned()]
+        );
+        assert_eq!(registry.descriptors().len(), 1);
+    }
+
+    #[test]
+    fn profile_registration_fails_closed_and_default_profile_is_protected() {
+        let registry = playback_registry();
+        registry
+            .register_profile("qqmusic", "work", playback_capabilities("work"))
+            .expect("register work profile");
+
+        assert!(matches!(
+            registry.register_profile("qqmusic", "work", playback_capabilities("other")),
+            Err(ProviderRegistryError::DuplicateProfile(_))
+        ));
+        assert!(matches!(
+            registry.register_profile("missing", "work", playback_capabilities("other")),
+            Err(ProviderRegistryError::MissingProvider(_))
+        ));
+        assert_eq!(
+            registry
+                .resolve_profile(Some("qqmusic"), Some("unknown"))
+                .expect_err("unknown profile fails closed")
+                .code,
+            "profile-unavailable"
+        );
+        assert_eq!(
+            registry
+                .resolve_profile(Some("qqmusic"), Some("bad profile"))
+                .expect_err("invalid profile fails closed")
+                .code,
+            "invalid-request"
+        );
+        assert!(matches!(
+            registry.unregister_profile("qqmusic", DEFAULT_PROFILE_ID),
+            Err(ProviderRegistryError::ProtectedDefaultProfile(_))
+        ));
+    }
+
+    #[test]
+    fn unregistering_work_profile_preserves_default_profile() {
+        let registry = playback_registry();
+        registry
+            .register_profile("qqmusic", "work", playback_capabilities("work"))
+            .expect("register work profile");
+
+        assert!(registry
+            .unregister_profile("qqmusic", "work")
+            .expect("unregister work")
+            .is_some());
+        assert!(registry.contains("qqmusic"));
+        assert!(registry.resolve_profile(Some("qqmusic"), None).is_ok());
+        assert_eq!(
+            registry
+                .resolve_profile(Some("qqmusic"), Some("work"))
+                .expect_err("removed profile is unavailable")
+                .code,
+            "profile-unavailable"
+        );
+    }
+
+    #[test]
+    fn capability_and_playback_lookup_keep_profile_scope() {
+        let registry = playback_registry();
+        registry
+            .register_profile("qqmusic", "work", playback_capabilities("work"))
+            .expect("register work profile");
+
+        assert!(registry
+            .require_playback_provider_for_profile(Some("qqmusic"), Some("work"))
+            .is_ok());
+        let catalog_error =
+            match registry.require_catalog_provider_for_profile(Some("qqmusic"), Some("work")) {
+                Ok(_) => panic!("work has no catalog capability"),
+                Err(error) => error,
+            };
+        assert_eq!(catalog_error.code, "unsupported-operation");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("test runtime");
+        let default = runtime
+            .block_on(registry.resolve(&scoped_song(Some(DEFAULT_PROFILE_ID))))
+            .expect("default playback route");
+        let work = runtime
+            .block_on(registry.resolve(&scoped_song(Some("work"))))
+            .expect("work playback route");
+        let legacy = runtime
+            .block_on(registry.resolve(&scoped_song(None)))
+            .expect("legacy playback route");
+        assert_eq!(default.cache_key, "default:same-track");
+        assert_eq!(work.cache_key, "work:same-track");
+        assert_eq!(legacy.cache_key, "default:same-track");
+    }
+
+    #[test]
+    fn active_and_inactive_descriptor_transition_is_atomic() {
+        let registry = Arc::new(playback_registry());
+        registry
+            .register_capabilities("netease", playback_capabilities("netease"))
+            .expect("register secondary provider");
+        let barrier = Arc::new(Barrier::new(3));
+
+        let unregister_registry = Arc::clone(&registry);
+        let unregister_barrier = Arc::clone(&barrier);
+        let unregister = thread::spawn(move || {
+            unregister_barrier.wait();
+            unregister_registry
+                .unregister("netease")
+                .expect("unregister secondary provider");
+        });
+        let register_registry = Arc::clone(&registry);
+        let register_barrier = Arc::clone(&barrier);
+        let register = thread::spawn(move || {
+            register_barrier.wait();
+            let _ = register_registry
+                .register_capabilities("netease", playback_capabilities("netease-replacement"));
+        });
+        barrier.wait();
+        unregister.join().expect("unregister thread");
+        register.join().expect("register thread");
+
+        let netease = registry
+            .descriptors()
+            .into_iter()
+            .filter(|descriptor| descriptor.provider_id == "netease")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            netease.len(),
+            1,
+            "a platform has one active-or-inactive descriptor"
+        );
+        assert_eq!(netease[0].available, registry.contains("netease"));
+    }
+
+    #[test]
+    fn recommendations_keep_default_and_work_profile_scope() {
+        let registry = recommendation_registry(scoped_song(None));
+        registry
+            .register_profile(
+                "qqmusic",
+                "work",
+                recommendation_capabilities(scoped_song(Some("work"))),
+            )
+            .expect("register work recommendation provider");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("test runtime");
+
+        let default = runtime
+            .block_on(registry.recommendation_next("qqmusic", recommendation_request()))
+            .expect("legacy default output is materialized");
+        let default_scope = default.songs[0]
+            .provider
+            .as_ref()
+            .expect("materialized scope");
+        assert_eq!(default_scope.provider_id, "qqmusic");
+        assert_eq!(default_scope.profile_id, DEFAULT_PROFILE_ID);
+
+        let work_profile = ProviderProfileKey::new("qqmusic", "work").expect("work key");
+        let work = runtime
+            .block_on(
+                registry.recommendation_next_for_profile(&work_profile, recommendation_request()),
+            )
+            .expect("work output has exact scope");
+        assert_eq!(
+            work.songs[0]
+                .provider
+                .as_ref()
+                .expect("work scope")
+                .profile_id,
+            "work"
+        );
+    }
+
+    #[test]
+    fn recommendations_reject_foreign_provider_and_profile_scope() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("test runtime");
+
+        let mut foreign_provider_song = scoped_song(Some(DEFAULT_PROFILE_ID));
+        foreign_provider_song
+            .provider
+            .as_mut()
+            .expect("scoped song")
+            .provider_id = "netease".to_owned();
+        let foreign_provider = recommendation_registry(foreign_provider_song);
+        assert_eq!(
+            runtime
+                .block_on(foreign_provider.recommendation_next("qqmusic", recommendation_request()))
+                .expect_err("foreign recommendation provider must fail closed")
+                .code,
+            "provider-failure"
+        );
+
+        let foreign_profile = recommendation_registry(scoped_song(Some("other")));
+        assert_eq!(
+            runtime
+                .block_on(foreign_profile.recommendation_next("qqmusic", recommendation_request()))
+                .expect_err("foreign recommendation profile must fail closed")
+                .code,
+            "provider-failure"
         );
     }
 }
