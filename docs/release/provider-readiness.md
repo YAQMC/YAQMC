@@ -2,7 +2,7 @@
 
 Status: **BLOCKED (EXACT-PIN SOAK NOT STARTED)** for the production `qmapi` backend at
 exact `qm-api-rs` revision
-`81014a971d3a4e4ae99d7e620c8e6b1a19278936`.
+`c80ab34e021d567fd1ac62965d6fdca80ff5467c`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
@@ -31,9 +31,11 @@ is maintained separately in
 
 The previous exact-pin waiver applied only to revision
 `7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`; it is not carried forward.
-The new pin adds typed discovery/account boundaries and OAuth URL construction,
-credential isolation, and response validation. The QMC implementation is unchanged;
-the limited source-evidence comparison is recorded in the provenance document.
+The new pin adds typed discovery/account boundaries, OAuth URL construction,
+credential isolation, response validation, the library-owned desktop QQ QR login
+flow, and the library-owned mobile QR launch URL. The QMC implementation is
+unchanged; the limited source-evidence comparison is recorded in the provenance
+document.
 
 The original cutover remains authorized; its non-soak gates describe the historical
 cutover, not a new LIVE run for this pin. Local synthetic tests do not establish

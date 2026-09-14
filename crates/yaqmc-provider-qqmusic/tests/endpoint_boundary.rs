@@ -30,10 +30,10 @@ const MARKERS: &[&str] = &[
 // Finite counts: file, overlapping literal markers, low-level request calls.
 const EXPECTED: &[(&str, usize, usize)] = &[
     ("qmapi/transport.rs", 25, 2),
-    ("qqmusic/auth.rs", 19, 7),
+    ("qqmusic/auth.rs", 4, 3),
     ("qqmusic/oauth.rs", 11, 0),
     ("qqmusic/transport.rs", 12, 3),
-    ("qqmusic/transport/qmapi_bridge.rs", 0, 1),
+    ("qqmusic/transport/qmapi_bridge.rs", 0, 2),
 ];
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Truth {
@@ -153,6 +153,7 @@ struct Scan {
     inline_depth: usize,
     seen: HashSet<PathBuf>,
     counts: BTreeMap<String, Counts>,
+    details: BTreeMap<String, Vec<String>>,
 }
 impl Scan {
     fn new(root: &Path) -> Self {
@@ -163,22 +164,38 @@ impl Scan {
             inline_depth: 0,
             seen: HashSet::new(),
             counts: BTreeMap::new(),
+            details: BTreeMap::new(),
         }
     }
-    fn current(&mut self) -> &mut Counts {
-        let key = self
-            .file
+    fn key(&self) -> String {
+        self.file
             .strip_prefix(&self.root)
             .expect("source inside src")
             .to_string_lossy()
-            .replace('\\', "/");
+            .replace('\\', "/")
+    }
+    fn current(&mut self) -> &mut Counts {
+        let key = self.key();
         self.counts.entry(key).or_default()
     }
+    fn record(&mut self, detail: String) {
+        let key = self.key();
+        let entry = self.details.entry(key).or_default();
+        if !entry.contains(&detail) {
+            entry.push(detail);
+        }
+    }
     fn text(&mut self, value: &str) {
-        self.current().literals += MARKERS
-            .iter()
-            .map(|m| value.matches(m).count())
-            .sum::<usize>();
+        let mut total = 0;
+        for marker in MARKERS {
+            let hits = value.matches(marker).count();
+            if hits > 0 {
+                total += hits;
+                let snippet: String = value.chars().take(120).collect();
+                self.record(format!("marker {marker} x{hits} in `{snippet}`"));
+            }
+        }
+        self.current().literals += total;
     }
     fn tokens(&mut self, tokens: TokenStream) {
         let mut dot = false;
@@ -352,6 +369,8 @@ impl<'ast> Visit<'ast> for Scan {
     fn visit_expr_method_call(&mut self, n: &'ast syn::ExprMethodCall) {
         if request_like(&n.method.to_string()) {
             self.current().requests += 1;
+            let name = n.method.to_string();
+            self.record(format!("request-like method call `{name}`"));
         }
         visit::visit_expr_method_call(self, n);
     }
@@ -363,6 +382,13 @@ impl<'ast> Visit<'ast> for Scan {
                 .is_some_and(|s| request_like(&s.ident.to_string()))
             {
                 self.current().requests += 1;
+                let name = p
+                    .path
+                    .segments
+                    .last()
+                    .map(|s| s.ident.to_string())
+                    .unwrap_or_default();
+                self.record(format!("request-like call `{name}`"));
             }
         }
         visit::visit_expr_call(self, n);
@@ -379,6 +405,7 @@ fn production_endpoint_inventory_is_finite_and_exact() {
     scan.source(root.join("lib.rs"), root.clone());
     let observed: BTreeMap<_, _> = scan
         .counts
+        .clone()
         .into_iter()
         .filter(|(_, c)| *c != Counts::default())
         .collect();
@@ -396,7 +423,8 @@ fn production_endpoint_inventory_is_finite_and_exact() {
         .collect();
     assert_eq!(
         observed, expected,
-        "endpoint residue changed: inspect delta before changing the finite inventory"
+        "endpoint residue changed: inspect delta before changing the finite inventory\n{:#?}",
+        scan.details
     );
 }
 fn sample(source: &str) -> Counts {

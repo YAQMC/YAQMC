@@ -21,20 +21,23 @@ use super::{
     clock::Clock,
     entitlement::normalize_account_entitlement,
     oauth::{parse_callback, OAuthCallback, OAuthLaunch, OAuthLoginProvider},
-    transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
+    transport::{QqTransport, RetryClass},
     QQMusicError,
 };
 #[cfg(test)]
 use super::{
     account::{EntitlementTier, MembershipState},
+    transport::{RedirectMode, TransportRequest, TransportResponse},
     QQ_MUSICU_URL,
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
-    Method, StatusCode, Url,
+    Url,
 };
+#[cfg(test)]
+use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
@@ -320,6 +323,34 @@ impl TransportQQMusicAuthProtocol {
         Self { transport, clock }
     }
 
+    /// Library client whose HTTP goes through the host transport.
+    ///
+    /// The label identifies the provider phase for tracing and tests; the
+    /// library still selects the endpoint, method and wire contract.
+    fn login_client(&self, operation: &'static str) -> qqmusic_api::Client {
+        qqmusic_api::Client::new_with_transport(
+            None,
+            None,
+            Arc::new(super::transport::qmapi_bridge::HostTransport {
+                inner: Arc::clone(&self.transport),
+                operation,
+                response_shape: "qq-login-flow",
+            }),
+        )
+    }
+
+    fn session_from_oauth_session(session: qqmusic_api::auth::OAuthSession) -> SessionRecord {
+        SessionRecord {
+            version: SESSION_VERSION,
+            uin: session.credential.str_musicid(),
+            encrypted_uin: Some(session.credential.encrypt_uin)
+                .filter(|value| !value.trim().is_empty()),
+            cookie_header: session.cookie_header,
+            expires_at_ms: session.expires_at_ms,
+            account_cache_scope: OpaqueAccountScope::generate(),
+        }
+    }
+
     async fn fetch_entitlement(
         &self,
         session: &SessionRecord,
@@ -426,122 +457,7 @@ impl TransportQQMusicAuthProtocol {
         )
         .await
         .map_err(map_qmapi_error)?;
-        Ok(SessionRecord {
-            version: SESSION_VERSION,
-            uin: session.credential.str_musicid(),
-            encrypted_uin: Some(session.credential.encrypt_uin)
-                .filter(|value| !value.trim().is_empty()),
-            cookie_header: session.cookie_header,
-            expires_at_ms: session.expires_at_ms,
-            account_cache_scope: OpaqueAccountScope::generate(),
-        })
-    }
-
-    async fn complete_qq_exchange(
-        &self,
-        callback_url: &str,
-        poll_headers: &HeaderMap,
-        poll_secret: &str,
-        cancellation: CancellationToken,
-    ) -> Result<SessionRecord, QQMusicError> {
-        let check_sig_url = Url::parse(callback_url).map_err(|_| QQMusicError::Protocol)?;
-        require_endpoint(&check_sig_url, "ssl.ptlogin2.graph.qq.com", "/check_sig")?;
-
-        let mut cookies = SecretCookieJar::default();
-        cookies.insert("qrsig", poll_secret)?;
-        cookies.absorb_set_cookie(poll_headers)?;
-        let check_sig = self
-            .transport
-            .execute(TransportRequest {
-                max_response_bytes: None,
-                operation: "auth.qq.check-sig",
-                method: Method::GET,
-                url: check_sig_url,
-                headers: authenticated_headers(&cookies, Some("https://xui.ptlogin2.qq.com/"))?,
-                body: None,
-                retry: RetryClass::AuthPoll,
-                redirects: RedirectMode::ReturnResponse,
-                response_shape: "qq-check-sig-redirect",
-                cancellation: cancellation.clone(),
-            })
-            .await?;
-        require_redirect(&check_sig)?;
-        tracing::debug!(
-            target: "qqmusic.auth",
-            redirect_received = true,
-            "QQ login check_sig redirect received"
-        );
-        cookies.absorb_set_cookie(&check_sig.headers)?;
-        let p_skey = cookies.get("p_skey").ok_or(QQMusicError::Protocol)?;
-        let gtk = hash33(p_skey, 5_381);
-
-        let authorize_url = Url::parse("https://graph.qq.com/oauth2.0/authorize")
-            .map_err(|_| QQMusicError::Protocol)?;
-        let body = form_body(&[
-            ("response_type", "code".to_owned()),
-            ("client_id", "100497308".to_owned()),
-            (
-                "redirect_uri",
-                "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https://y.qq.com/"
-                    .to_owned(),
-            ),
-            ("scope", "get_user_info,get_app_friends".to_owned()),
-            ("state", "state".to_owned()),
-            ("switch", String::new()),
-            ("from_ptlogin", "1".to_owned()),
-            ("src", "1".to_owned()),
-            ("update_auth", "1".to_owned()),
-            ("openapi", "1010_1030".to_owned()),
-            ("g_tk", gtk.to_string()),
-            ("auth_time", self.clock.now_ms().to_string()),
-            ("ui", random_opaque_id()),
-        ])?;
-        let mut authorize_headers = authenticated_headers(&cookies, Some("https://graph.qq.com/"))?;
-        authorize_headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/x-www-form-urlencoded"),
-        );
-        let authorize = self
-            .transport
-            .execute(TransportRequest {
-                max_response_bytes: None,
-                operation: "auth.qq.authorize",
-                method: Method::POST,
-                url: authorize_url,
-                headers: authorize_headers,
-                body: Some(body),
-                retry: RetryClass::AuthPoll,
-                redirects: RedirectMode::ReturnResponse,
-                response_shape: "qq-oauth-redirect",
-                cancellation: cancellation.clone(),
-            })
-            .await?;
-        require_redirect(&authorize)?;
-        cookies.absorb_set_cookie(&authorize.headers)?;
-        let location = authorize
-            .headers
-            .get(header::LOCATION)
-            .and_then(|value| value.to_str().ok())
-            .ok_or(QQMusicError::Protocol)?;
-        let location = authorize
-            .final_url
-            .join(location)
-            .map_err(|_| QQMusicError::Protocol)?;
-        require_endpoint(&location, "y.qq.com", "/portal/wx_redirect.html")?;
-        let code = location
-            .query_pairs()
-            .find_map(|(key, value)| (key == "code").then(|| value.into_owned()))
-            .filter(|value| !value.is_empty())
-            .ok_or(QQMusicError::Protocol)?;
-
-        self.exchange_code(
-            OAuthLoginProvider::Qq,
-            &code,
-            Some(gtk),
-            cookies,
-            cancellation,
-        )
-        .await
+        Ok(Self::session_from_oauth_session(session))
     }
 }
 
@@ -551,57 +467,25 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         &self,
         cancellation: CancellationToken,
     ) -> Result<AuthChallenge, QQMusicError> {
-        let mut url = Url::parse("https://ssl.ptlogin2.qq.com/ptqrshow")
-            .map_err(|_| QQMusicError::Protocol)?;
-        url.query_pairs_mut()
-            .append_pair("appid", "716027609")
-            .append_pair("e", "2")
-            .append_pair("l", "M")
-            .append_pair("s", "3")
-            .append_pair("d", "72")
-            .append_pair("v", "4")
-            .append_pair("t", &format!("0.{}", self.clock.now_ms()))
-            .append_pair("daid", "383")
-            .append_pair("pt_3rd_aid", "100497308")
-            .append_pair("u1", "https://graph.qq.com/oauth2.0/login_jump");
-        let response = self
-            .transport
-            .execute(TransportRequest {
-                max_response_bytes: None,
-                operation: "auth.qq.create",
-                method: Method::GET,
-                url,
-                headers: referer_headers("https://xui.ptlogin2.qq.com/")?,
-                body: None,
-                retry: RetryClass::SafeRead,
-                redirects: RedirectMode::FollowValidated,
-                response_shape: "qr-image",
-                cancellation,
-            })
-            .await?;
-        require_success(&response)?;
-        let mime_type = response
-            .headers
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .and_then(normalize_image_mime)
-            .ok_or(QQMusicError::MalformedResponse)?;
-        if response.body.is_empty() || response.body.len() > MAX_QR_BYTES {
+        let client = self.login_client("auth.qq.create");
+        let challenge =
+            qqmusic_api::auth::create_desktop_qr(&client, self.clock.now_ms(), cancellation)
+                .await
+                .map_err(map_qmapi_error)?;
+        // `qm-api-rs` owns the request and its bounds; re-check the returned
+        // challenge before the host may render or persist it.
+        if challenge.image.is_empty()
+            || challenge.image.len() > MAX_QR_BYTES
+            || normalize_image_mime(&challenge.mime_type).is_none()
+            || challenge.qrsig.is_empty()
+        {
             return Err(QQMusicError::MalformedResponse);
         }
-        let mut cookies = SecretCookieJar::default();
-        cookies.absorb_set_cookie(&response.headers)?;
-        let poll_secret = cookies
-            .get("qrsig")
-            .filter(|value| !value.is_empty())
-            .ok_or(QQMusicError::MalformedResponse)?
-            .to_owned();
-
         Ok(AuthChallenge {
-            qr_bytes: response.body,
-            mime_type: mime_type.to_owned(),
-            poll_secret,
-            expires_at_ms: self.clock.now_ms().saturating_add(DEFAULT_QR_LIFETIME_MS),
+            qr_bytes: challenge.image,
+            mime_type: challenge.mime_type,
+            poll_secret: challenge.qrsig,
+            expires_at_ms: challenge.expires_at_ms,
             mobile_launch_url: None,
             mobile_worker: None,
         })
@@ -636,11 +520,10 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         let mime_type = normalize_image_mime(&qr.mimetype)
             .ok_or(QQMusicError::MalformedResponse)?
             .to_owned();
-        let mut launch_url = Url::parse("https://y.qq.com/m/client/qr_code_login/authorize.html")
-            .map_err(|_| QQMusicError::Protocol)?;
-        launch_url
-            .query_pairs_mut()
-            .append_pair("qrcode_id", &qr.identifier);
+        // The library owns the QQ page and the identifier encoding; the host only
+        // forwards the resulting deep link to the system browser.
+        let launch_url = qqmusic_api::auth::mobile_qr_launch_url(&qr.identifier)
+            .map_err(crate::qmapi::cgi::map_qmapi_error)?;
         let expires_at_ms = self.clock.now_ms().saturating_add(DEFAULT_QR_LIFETIME_MS);
         let subscribed_qr = qr.clone();
         let mobile_worker = MobileAuthWorker::start(
@@ -664,7 +547,7 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
             mime_type,
             poll_secret: qr.identifier,
             expires_at_ms,
-            mobile_launch_url: Some(launch_url.to_string()),
+            mobile_launch_url: Some(launch_url),
             mobile_worker: Some(mobile_worker),
         })
     }
@@ -682,81 +565,26 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
                 .next(cancellation)
                 .await;
         }
-        let mut url = Url::parse("https://ssl.ptlogin2.qq.com/ptqrlogin")
-            .map_err(|_| QQMusicError::Protocol)?;
-        url.query_pairs_mut()
-            .append_pair("u1", "https://graph.qq.com/oauth2.0/login_jump")
-            .append_pair(
-                "ptqrtoken",
-                &hash33(&challenge.poll_secret, 5_381).to_string(),
-            )
-            .append_pair("ptredirect", "0")
-            .append_pair("h", "1")
-            .append_pair("t", "1")
-            .append_pair("g", "1")
-            .append_pair("from_ui", "1")
-            .append_pair("ptlang", "2052")
-            .append_pair("action", &format!("0-0-{}", self.clock.now_ms()))
-            .append_pair("js_ver", "20102616")
-            .append_pair("js_type", "1")
-            .append_pair("pt_uistyle", "40")
-            .append_pair("aid", "716027609")
-            .append_pair("daid", "383")
-            .append_pair("pt_3rd_aid", "100497308")
-            .append_pair("has_onekey", "1");
-        let mut cookies = SecretCookieJar::default();
-        cookies.insert("qrsig", &challenge.poll_secret)?;
-        let response = self
-            .transport
-            .execute(TransportRequest {
-                max_response_bytes: None,
-                operation: "auth.qq.poll",
-                method: Method::GET,
-                url,
-                headers: authenticated_headers(&cookies, Some("https://xui.ptlogin2.qq.com/"))?,
-                body: None,
-                retry: RetryClass::AuthPoll,
-                redirects: RedirectMode::ReturnResponse,
-                response_shape: "qr-status",
-                cancellation: cancellation.clone(),
-            })
-            .await?;
-        require_success(&response)?;
-        let body =
-            std::str::from_utf8(&response.body).map_err(|_| QQMusicError::MalformedResponse)?;
-        let args = parse_ptui_callback(body)?;
-        let status = args.first().map(String::as_str).unwrap_or("<none>");
-        tracing::debug!(
-            target: "qqmusic.auth",
-            status,
-            "QR login poll returned a status"
-        );
-        match status {
-            "66" => Ok(AuthPollResult::WaitingForScan),
-            "67" => Ok(AuthPollResult::WaitingForConfirmation),
-            "65" => Ok(AuthPollResult::Expired),
-            "68" => Ok(AuthPollResult::Rejected),
-            "0" => {
-                let callback_url = args.get(2).ok_or(QQMusicError::MalformedResponse)?;
-                let session = self
-                    .complete_qq_exchange(
-                        callback_url,
-                        &response.headers,
-                        &challenge.poll_secret,
-                        cancellation,
-                    )
-                    .await?;
-                Ok(AuthPollResult::Confirmed(session))
+        let client = self.login_client("auth.qq.poll");
+        let polled = qqmusic_api::auth::poll_desktop_qr(
+            &client,
+            &challenge.poll_secret,
+            self.clock.now_ms(),
+            cancellation,
+        )
+        .await
+        .map_err(map_qmapi_error)?;
+        Ok(match polled {
+            qqmusic_api::auth::DesktopQrPoll::WaitingForScan => AuthPollResult::WaitingForScan,
+            qqmusic_api::auth::DesktopQrPoll::WaitingForConfirmation => {
+                AuthPollResult::WaitingForConfirmation
             }
-            other => {
-                tracing::warn!(
-                    target: "qqmusic.auth",
-                    status = other,
-                    "QR login poll returned an unrecognized status; the account may require security verification"
-                );
-                Err(QQMusicError::MalformedResponse)
+            qqmusic_api::auth::DesktopQrPoll::Expired => AuthPollResult::Expired,
+            qqmusic_api::auth::DesktopQrPoll::Rejected => AuthPollResult::Rejected,
+            qqmusic_api::auth::DesktopQrPoll::Confirmed(session) => {
+                AuthPollResult::Confirmed(Self::session_from_oauth_session(*session))
             }
-        }
+        })
     }
 
     async fn exchange_oauth_code(
@@ -3111,6 +2939,7 @@ fn require_endpoint(url: &Url, host: &str, path: &str) -> Result<(), QQMusicErro
     }
 }
 
+#[cfg(test)]
 fn require_success(response: &TransportResponse) -> Result<(), QQMusicError> {
     if response.status.is_success() {
         Ok(())
@@ -3141,22 +2970,6 @@ fn classify_session_validation_code(code: i64) -> Result<(), QQMusicError> {
         10_004 => Err(QQMusicError::Unavailable),
         // Unknown business failures are not proof that credentials are invalid.
         _ => Err(QQMusicError::SchemaChanged),
-    }
-}
-
-fn require_redirect(response: &TransportResponse) -> Result<(), QQMusicError> {
-    if matches!(
-        response.status,
-        StatusCode::MOVED_PERMANENTLY
-            | StatusCode::FOUND
-            | StatusCode::SEE_OTHER
-            | StatusCode::TEMPORARY_REDIRECT
-            | StatusCode::PERMANENT_REDIRECT
-    ) && response.headers.contains_key(header::LOCATION)
-    {
-        Ok(())
-    } else {
-        Err(QQMusicError::Protocol)
     }
 }
 

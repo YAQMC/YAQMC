@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS (SOURCE-MAPPING DELTA REVIEW)** at production revision
-`81014a971d3a4e4ae99d7e620c8e6b1a19278936`.
+`c80ab34e021d567fd1ac62965d6fdca80ff5467c`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -31,15 +31,19 @@ third-party notice, or QMC source change appears in that range. The existing
 source mappings are retained based on identical Git blobs, not on test results:
 
 The next delta review compares `8734353175317cf81c2180b73deff18edca8a650` with the
-current pin `81014a971d3a4e4ae99d7e620c8e6b1a19278936`. The three-commit range
-changes `docs/modules.md`, adds `src/auth.rs` and `tests/oauth_exchange_contract.rs`,
-and updates `src/lib.rs` plus `src/modules/login.rs`. It first centralizes the
-desktop OAuth wire shape and login field aliases, then moves the actual bounded,
-attempt-scoped HTTP exchange, Cookie processing and response validation into the
-library. The final commit makes the lower-level payload builder and decoder
-crate-private so consumers cannot bypass the complete exchange API. No dependency,
-license, third-party notice, or QMC source change appears in the range, and the
-four reviewed blobs below are byte-identical at both revisions:
+current pin `c80ab34e021d567fd1ac62965d6fdca80ff5467c`. The five-commit range
+changes `docs/modules.md`, adds `src/auth.rs`, `tests/oauth_exchange_contract.rs`
+and `tests/desktop_qr_contract.rs`, and updates `src/lib.rs` plus
+`src/modules/login.rs`. It first centralizes the desktop OAuth wire shape and
+login field aliases, then moves the actual bounded, attempt-scoped HTTP exchange,
+Cookie processing and response validation into the library, and makes the
+lower-level payload builder and decoder crate-private so consumers cannot bypass
+the complete exchange API. It then takes ownership of the desktop QQ QR login
+flow (`ptqrshow`/`ptqrlogin`, `check_sig`, the `oauth2.0/authorize` redirect and
+the `g_tk`/`ptqrtoken` derivations) with a synthetic end-to-end contract, and
+finally owns the mobile QR launch URL plus its identifier encoding and bounds. No
+dependency, license, third-party notice, or QMC source change appears in the
+range, and the four reviewed blobs below are byte-identical at both revisions:
 
 | File                     | Git blob at both revisions                 |
 | ------------------------ | ------------------------------------------ |

@@ -128,13 +128,15 @@ fn artwork_downloads_cross_the_library_and_provider_neutral_cache_boundary() {
 #[test]
 fn oauth_exchange_sends_only_through_the_library() {
     let source = include_str!("../src/qqmusic/auth.rs");
-    let exchange = source
-        .split_once("async fn exchange_code(")
-        .unwrap()
-        .1
-        .split_once("async fn complete_qq_exchange(")
-        .unwrap()
-        .0;
+    let start = source
+        .find("async fn exchange_code(")
+        .expect("exchange_code must exist")
+        + "async fn exchange_code(".len();
+    let rest = &source[start..];
+    let end = rest
+        .find("\n    async fn ")
+        .expect("exchange_code must be followed by another method");
+    let exchange = &rest[..end];
     assert!(exchange.contains("qqmusic_api::auth::exchange_oauth_code("));
     for forbidden in [
         "TransportRequest",

@@ -34,10 +34,10 @@
     },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
-      "revision": "81014a971d3a4e4ae99d7e620c8e6b1a19278936",
-      "yaqmcPin": "81014a971d3a4e4ae99d7e620c8e6b1a19278936",
+      "revision": "c80ab34e021d567fd1ac62965d6fdca80ff5467c",
+      "yaqmcPin": "c80ab34e021d567fd1ac62965d6fdca80ff5467c",
       "linked": true,
-      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-14 limited delta review from 7d0f6e1 to 8734353 covers typed web/account interfaces, OAuth URL construction, credential isolation and bounded anonymous artwork downloads. The three-commit follow-up from 8734353 to 81014a9 adds the complete attempt-scoped desktop OAuth exchange API and contract tests, then makes its payload builder/decoder crate-private. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at every reviewed pin, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
+      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-14 limited delta review from 7d0f6e1 to 8734353 covers typed web/account interfaces, OAuth URL construction, credential isolation and bounded anonymous artwork downloads. The five-commit follow-up from 8734353 to c80ab34 adds the complete attempt-scoped desktop OAuth exchange API and contract tests, makes its payload builder/decoder crate-private, takes ownership of the desktop QQ QR login flow, and owns the mobile QR launch URL with its identifier bounds. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at every reviewed pin, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
     }
   },
   "sources": [
