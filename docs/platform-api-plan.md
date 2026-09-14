@@ -517,6 +517,10 @@ Linux 本机构建、Electron GUI 或 LIVE。新 pin 的 soak 仍为 not-started
 库 187 单元测试与全部集成测试通过，Clippy、fmt 通过。正式 pin 下的验证结果记录在下一批
 证据小节中；多 profile、插件端点路由与 Spotify 仍不在本批范围。
 
+复核限定：该提交只移入了请求载荷和响应字段构造；`exchange_code` 的真实 HTTP 发送、
+cookie 处理和部分会话结果解释仍在 provider。它不满足“所有请求经过库 transport boundary”
+的完整 A4 要求，仍需迁移，不应称为最后一处授权协议已完成。
+
 ### 2026-09-14：插件撤权代次保护
 
 本批基线为 YAQMC `b2cf62f`，只改 renderer 插件运行时与对应测试，不触碰 provider。
@@ -542,6 +546,9 @@ C1 的完整路由层、D 混合队列与 E Spotify 仍未完成。
 
 ### 2026-09-14：provider 端点反回流门禁与 A5 清理
 
+以下记录描述 `f236da3` 的初版实现；父代理复核发现其测试模块截断及无限例外问题，
+不能以该初版通过作为完整防回流证据。下节记录修正。
+
 - 新增 `crates/yaqmc-provider-qqmusic/tests/endpoint_boundary.rs`：按文件扫描 `src/**/*.rs`
   的**生产代码**（剥离 `#[cfg(test)]` 项、忽略 `*_tests.rs`），统计 QQ 上游标记
   （`u.y.qq.com`、`musicu.fcg`、`ssl.ptlogin2`、`graph.qq.com`、裸 `y.qq.com` 等）。
@@ -561,6 +568,57 @@ C1 的完整路由层、D 混合队列与 E Spotify 仍未完成。
   `--all-targets -- -D warnings`、`cargo fmt --check`、`node scripts/ci/qm-api-rs-access.mjs --check`
   与 `npm run ci:test-scripts`（235 passed）均通过。
   本批未执行 Android 真机、LIVE 或打包，也未创建 tag 或 Release。
+
+### 2026-09-14：父代理复核修正
+
+基线 `61d8c56`。默认子智能体的初版改动保留，但不依赖其完成声明；本批直接复核并修正：
+
+- 初版端点扫描遇到 `#[cfg(test)] mod` 就跳过文件余下部分，且按文件名排除所有
+  `*_tests.rs`，会漏掉真实生产模块；`cfg(any(test, feature=...))` 也被误判为仅测试。
+  改用 dev-only `syn` AST，从 `lib.rs` 解析实际 module 声明；test=false 时不确定的 cfg
+  分支仍扫描，内联/外部测试模块之后的生产代码不再被隐藏。
+- 初版四个例外的数量为 `usize::MAX`，没有冻结。新清单固定字面量和低层调用计数；
+  增长、减少或新增文件都需要审阅。计数包含重叠域名标记及候选调用，不是唯一端点数量。
+
+| 文件                                | 字面量标记数 | 候选请求调用数 |
+| ----------------------------------- | -----------: | -------------: |
+| `qmapi/transport.rs`                |           28 |              2 |
+| `qqmusic/auth.rs`                   |           22 |              8 |
+| `qqmusic/oauth.rs`                  |           11 |              0 |
+| `qqmusic/transport.rs`              |           12 |              3 |
+| `qqmusic/transport/qmapi_bridge.rs` |            0 |              1 |
+
+- 新增 9 项门禁/自检，覆盖 raw/byte 字符串、注释/生命周期、cfg 组合、关联项/匹配分支、
+  外部及显式 path 模块、宏中的字面量/请求调用、无 URL 的低层调用；无法静态覆盖的
+  `include!`/`cfg_if!` 等生产宏直接要求显式处理。它是已知字面量/调用的静态约束，
+  不是宏展开/任意字符串数据流分析，也不代表例外文件已解耦。
+- 插件初版在一个 host mutation 完成而另一个撤权仍 pending 时可重新加载旧授权；
+  此外将 refresh 失败误当作 mutation 失败，再执行一次 refresh。两个确定性测试在修正前
+  均失败（期望 0 请求实际 1；期望 1 次 refresh 实际 2），不以时间 sleep 掩盖问题。
+  修复为所有授权变更 settle 前保持能力撤销、资源刷新等待该边界；mutation 错误与
+  refresh 错误分开处理，保留原始错误，不多发 refresh。共 14 项事件回归通过。
+
+目前实际 HTTP 的 OAuth code exchange/桌面 QR、完整 profile/插件路由/Spotify 仍未完成。
+本批没有调用真实账户，没有创建 Release 或 tag。
+
+本批独立执行结果（正式 `f9e7266` pin，无 path patch）：
+
+| 命令                                                                                               | 结果                                                                 |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `cargo +1.88.0 test -p yaqmc-provider-qqmusic --test endpoint_boundary --locked --offline --quiet` | 9 passed                                                             |
+| `cargo +1.88.0 check --workspace --locked --offline --all-targets`                                 | 通过                                                                 |
+| `cargo +1.88.0 clippy --workspace --locked --offline --all-targets -- -D warnings`                 | 通过                                                                 |
+| `cargo +1.88.0 test --workspace --locked --offline --all-targets --quiet -j 2`                     | Core 280、provider 289 passed / 8 ignored；端点 9、其他边界 5 passed |
+| `node scripts/run-vitest.mjs run src/application/plugin-runtime.events.test.ts`                    | 修复前 2 failed；最终 14 passed                                      |
+| `npm run typecheck`、`npm run lint`、`npm test`、`npm run build`                                   | 通过；109 files / 858 tests                                          |
+| `npm run ci:test-scripts`                                                                          | 235 passed                                                           |
+| `npm run docs:check`、`qm-api-rs-access --check`、`npm run provenance:enforce`                     | 通过                                                                 |
+| `cargo +1.88.0 fmt --all -- --check`、改动文本 Prettier、`git diff --check`                        | 通过                                                                 |
+| `./scripts/check-secrets.ps1 -SelfTest`、`./scripts/check-secrets.ps1`                             | 通过                                                                 |
+
+新增 `syn`/`proc-macro2` 仅为 dev-dependencies，用已锁定版本，不进入产品运行时依赖。
+基线远端 CI `34773948898` 已通过，但不能替代本批提交的验证，也不能掩盖上面确认的缺陷。
+本批没有新增 Android 真机或 Linux 本机运行证据。
 
 ## 6. 可执行工作包与依赖
 

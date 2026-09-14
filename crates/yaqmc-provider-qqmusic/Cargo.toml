@@ -28,6 +28,8 @@ yaqmc-provider-api = { path = "../yaqmc-provider-api" }
 zeroize = "1"
 
 [dev-dependencies]
+proc-macro2 = "1"
+syn = { version = "2", features = ["full", "visit"] }
 axum = "0.8"
 futures-util = "0.3"
 lyrics-crypto = "0.1.3"

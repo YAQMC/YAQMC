@@ -144,6 +144,8 @@ let lastLineKey = '';
 let lastQueueKey = '';
 let lastModeKey = '';
 let applyingPromise: Promise<ActivePluginResources | null> | null = null;
+let pendingGrantMutations = 0;
+const grantMutationWaiters = new Set<() => void>();
 /**
  * Monotonically increasing refresh id.  A refresh request invalidates any
  * in-flight resource load; the loop below will coalesce concurrent requests
@@ -914,17 +916,31 @@ function retirePluginCapabilities(): void {
  * refreshes, so the renderer never keeps capabilities the host no longer has.
  */
 async function withRetiredPluginCapabilities<T>(mutate: () => Promise<T>): Promise<T> {
-  retirePluginCapabilities();
+  pendingGrantMutations += 1;
+  let outcome: { ok: true; value: T } | { ok: false; error: unknown };
   try {
-    const result = await mutate();
-    await applyPluginResources();
-    return result;
+    retirePluginCapabilities();
+    outcome = { ok: true, value: await mutate() };
   } catch (error) {
+    outcome = { ok: false, error };
+  } finally {
+    pendingGrantMutations -= 1;
+    if (pendingGrantMutations === 0) {
+      const waiters = [...grantMutationWaiters];
+      grantMutationWaiters.clear();
+      waiters.forEach((resolve) => resolve());
+    }
+  }
+  if (!outcome.ok) {
     await applyPluginResources().catch((refreshError: unknown) => {
       logger.error('plugin.resources.refresh_failed', refreshError);
     });
-    throw error;
+    throw outcome.error;
   }
+  // Refresh failures are not mutation failures and must not replay a refresh
+  // or mask the already-committed host operation as a failed grant change.
+  await applyPluginResources();
+  return outcome.value;
 }
 
 export function applyPluginResources(): Promise<ActivePluginResources | null> {
@@ -936,6 +952,11 @@ export function applyPluginResources(): Promise<ActivePluginResources | null> {
 
   applyingPromise = (async () => {
     while (true) {
+      // A snapshot read during another grant mutation can still describe old
+      // host grants. Keep all renderer capabilities retired until it settles.
+      while (pendingGrantMutations > 0) {
+        await new Promise<void>((resolve) => grantMutationWaiters.add(resolve));
+      }
       const generation = resourceGeneration;
       try {
         const latest = await applyPluginResourcesSnapshot(generation);

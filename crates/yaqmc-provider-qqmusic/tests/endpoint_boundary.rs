@@ -1,23 +1,19 @@
-//! Anti-backflow gate: production provider code must not own upstream QQ Music
-//! endpoints.
-//!
-//! Only the YAQMC-side transport boundary and the login/session modules that
-//! still run pre-migration OAuth flows may name an upstream business endpoint.
-//! Every other module must reach QQ Music through typed `qm-api-rs` calls.
-//!
-//! Allowed files are frozen with an exact occurrence count. Adding a new
-//! endpoint literal fails the gate, and finishing one of the pending migrations
-//! also fails the gate until the inventory is updated, so the residue can
-//! neither silently grow nor linger unnoticed.
-
+//! Conservative AST inventory. Unknown cfg branches remain visible; this is
+//! a ratchet for known literals/calls, not proof of complete API decoupling.
+use proc_macro2::{TokenStream, TokenTree};
 use std::{
+    collections::{BTreeMap, HashSet},
     fs,
     path::{Path, PathBuf},
 };
+use syn::{
+    parse::Parser,
+    punctuated::Punctuated,
+    visit::{self, Visit},
+    Attribute, Expr, ForeignItem, ImplItem, Item, Lit, Meta, Token, TraitItem,
+};
 
-/// Upstream endpoint markers. Bare `y.qq.com` is included because a provider
-/// module building that origin owns protocol, not just a CDN URL.
-const UPSTREAM_MARKERS: &[&str] = &[
+const MARKERS: &[&str] = &[
     "u.y.qq.com",
     "c.y.qq.com",
     "c6.y.qq.com",
@@ -31,303 +27,512 @@ const UPSTREAM_MARKERS: &[&str] = &[
     "fcg_query_lyric",
     "y.qq.com",
 ];
-
-/// `(relative source path, allowed production occurrences, reason)`.
-const ALLOWED_ENDPOINT_OWNERS: &[(&str, usize, &str)] = &[
-    (
-        "qmapi/transport.rs",
-        usize::MAX,
-        "YAQMC-side reqwest transport host allowlist and shared musicu endpoint",
-    ),
-    (
-        "qqmusic/auth.rs",
-        usize::MAX,
-        "QQ/TIM/WeChat login and session flows pending typed auth migration",
-    ),
-    (
-        "qqmusic/oauth.rs",
-        usize::MAX,
-        "OAuth navigation allowlist pending library-owned authorization policy",
-    ),
-    (
-        "qqmusic/transport.rs",
-        usize::MAX,
-        "Legacy YAQMC transport boundary still used by the account and auth modules",
-    ),
+// Finite counts: file, overlapping literal markers, low-level request calls.
+const EXPECTED: &[(&str, usize, usize)] = &[
+    ("qmapi/transport.rs", 28, 2),
+    ("qqmusic/auth.rs", 22, 8),
+    ("qqmusic/oauth.rs", 11, 0),
+    ("qqmusic/transport.rs", 12, 3),
+    ("qqmusic/transport/qmapi_bridge.rs", 0, 1),
 ];
-
-fn provider_sources() -> Vec<(String, String)> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = Vec::new();
-    collect(&root, &mut files);
-    files.sort();
-    files
-        .into_iter()
-        // `*_tests.rs` modules are compiled only under `cfg(test)`.
-        .filter(|path| {
-            path.file_stem()
-                .and_then(|value| value.to_str())
-                .is_none_or(|stem| !stem.ends_with("_tests"))
-        })
-        .map(|path| {
-            let relative = path
-                .strip_prefix(&root)
-                .expect("provider source under src")
-                .to_string_lossy()
-                .replace('\\', "/");
-            let source = fs::read_to_string(&path).expect("provider source readable");
-            (relative, source)
-        })
-        .collect()
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Truth {
+    Yes,
+    No,
+    Unknown,
 }
-
-fn collect(directory: &Path, files: &mut Vec<PathBuf>) {
-    let entries = fs::read_dir(directory).expect("provider source directory");
-    for entry in entries {
-        let path = entry.expect("provider source entry").path();
-        if path.is_dir() {
-            collect(&path, files);
-        } else if path.extension().and_then(|value| value.to_str()) == Some("rs") {
-            files.push(path);
+fn cfg_truth(meta: &Meta) -> Truth {
+    match meta {
+        Meta::Path(p) if p.is_ident("test") => Truth::No,
+        Meta::List(l)
+            if l.path.is_ident("any") || l.path.is_ident("all") || l.path.is_ident("not") =>
+        {
+            let args = Punctuated::<Meta, Token![,]>::parse_terminated
+                .parse2(l.tokens.clone())
+                .expect("cfg arguments");
+            let values: Vec<_> = args.iter().map(cfg_truth).collect();
+            if l.path.is_ident("not") {
+                assert_eq!(values.len(), 1);
+                return match values[0] {
+                    Truth::No => Truth::Yes,
+                    Truth::Yes => Truth::No,
+                    Truth::Unknown => Truth::Unknown,
+                };
+            }
+            let all = l.path.is_ident("all");
+            let decisive = if all { Truth::No } else { Truth::Yes };
+            if values.contains(&decisive) {
+                decisive
+            } else if values.contains(&Truth::Unknown) {
+                Truth::Unknown
+            } else if all {
+                Truth::Yes
+            } else {
+                Truth::No
+            }
         }
+        _ => Truth::Unknown,
     }
 }
-
-fn is_test_gate(trimmed: &str) -> bool {
-    let Some(rest) = trimmed.strip_prefix("#[cfg(") else {
-        return false;
+fn meta_active(meta: &Meta) -> bool {
+    match meta {
+        Meta::List(l) if l.path.is_ident("cfg") => {
+            cfg_truth(&syn::parse2::<Meta>(l.tokens.clone()).expect("cfg predicate")) != Truth::No
+        }
+        Meta::List(l) if l.path.is_ident("cfg_attr") => {
+            let args = Punctuated::<Meta, Token![,]>::parse_terminated
+                .parse2(l.tokens.clone())
+                .expect("cfg_attr arguments");
+            let mut args = args.iter();
+            cfg_truth(args.next().expect("cfg_attr predicate")) != Truth::Yes
+                || args.all(meta_active)
+        }
+        _ => true,
+    }
+}
+fn active(attrs: &[Attribute]) -> bool {
+    attrs.iter().all(|a| meta_active(&a.meta))
+}
+macro_rules! attributes {
+    ($name:ident, $node:ident, $($v:ident),+ $(,)?) => {
+        fn $name(node: &$node) -> &[Attribute] { match node { $($node::$v(n)=>&n.attrs,)+ _=>&[] } }
     };
-    let Some(predicate) = rest.strip_suffix(")]") else {
-        return false;
-    };
-    let predicate = without_string_literals(predicate);
-    predicate
-        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
-        .any(|token| token == "test")
-        && !predicate.contains("not(")
 }
+attributes!(
+    item_attrs,
+    Item,
+    Const,
+    Enum,
+    ExternCrate,
+    Fn,
+    ForeignMod,
+    Impl,
+    Macro,
+    Mod,
+    Static,
+    Struct,
+    Trait,
+    TraitAlias,
+    Type,
+    Union,
+    Use
+);
+attributes!(impl_attrs, ImplItem, Const, Fn, Type, Macro);
+attributes!(trait_attrs, TraitItem, Const, Fn, Type, Macro);
+attributes!(foreign_attrs, ForeignItem, Fn, Static, Type, Macro);
+attributes!(
+    expr_attrs, Expr, Array, Assign, Async, Await, Binary, Block, Break, Call, Cast, Closure,
+    Const, Continue, Field, ForLoop, Group, If, Index, Infer, Let, Lit, Loop, Macro, Match,
+    MethodCall, Paren, Path, Range, RawAddr, Reference, Repeat, Return, Struct, Try, TryBlock,
+    Tuple, Unary, Unsafe, While, Yield
+);
 
-fn without_string_literals(text: &str) -> String {
-    let mut stripped = String::with_capacity(text.len());
-    let mut chars = text.chars();
-    while let Some(character) = chars.next() {
-        if character != '"' {
-            stripped.push(character);
-            continue;
-        }
-        let mut escaped = false;
-        for inner in chars.by_ref() {
-            if escaped {
-                escaped = false;
-                continue;
-            }
-            if inner == '\\' {
-                escaped = true;
-                continue;
-            }
-            if inner == '"' {
-                break;
-            }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Counts {
+    literals: usize,
+    requests: usize,
+}
+fn request_like(name: &str) -> bool {
+    matches!(
+        name,
+        "request_http"
+            | "request_http_raw"
+            | "request_http_bytes"
+            | "request_cgi"
+            | "request_cgi_batch"
+            | "send_json"
+            | "musicu_request"
+            | "send"
+            | "execute"
+    )
+}
+struct Scan {
+    root: PathBuf,
+    file: PathBuf,
+    module_dir: PathBuf,
+    inline_depth: usize,
+    seen: HashSet<PathBuf>,
+    counts: BTreeMap<String, Counts>,
+}
+impl Scan {
+    fn new(root: &Path) -> Self {
+        Self {
+            root: root.into(),
+            file: root.join("lib.rs"),
+            module_dir: root.into(),
+            inline_depth: 0,
+            seen: HashSet::new(),
+            counts: BTreeMap::new(),
         }
     }
-    stripped
-}
-
-/// Removes `#[cfg(test)]`-gated items so only production code is inspected.
-fn production_source(source: &str) -> String {
-    let mut production = String::with_capacity(source.len());
-    let mut cursor = 0usize;
-    while cursor < source.len() {
-        let end = line_end(source, cursor);
-        let line = &source[cursor..end];
-        if is_test_gate(line.trim()) {
-            cursor = skip_gated_item(source, end);
-            continue;
-        }
-        production.push_str(line);
-        cursor = end;
+    fn current(&mut self) -> &mut Counts {
+        let key = self
+            .file
+            .strip_prefix(&self.root)
+            .expect("source inside src")
+            .to_string_lossy()
+            .replace('\\', "/");
+        self.counts.entry(key).or_default()
     }
-    production
-}
-
-fn line_end(source: &str, start: usize) -> usize {
-    match source[start..].find('\n') {
-        Some(offset) => start + offset + 1,
-        None => source.len(),
+    fn text(&mut self, value: &str) {
+        self.current().literals += MARKERS
+            .iter()
+            .map(|m| value.matches(m).count())
+            .sum::<usize>();
+    }
+    fn tokens(&mut self, tokens: TokenStream) {
+        let mut dot = false;
+        for token in tokens {
+            match &token {
+                TokenTree::Ident(name) if dot && request_like(&name.to_string()) => {
+                    self.current().requests += 1
+                }
+                TokenTree::Literal(t) => {
+                    if let Ok(lit) = syn::parse_str::<Lit>(&t.to_string()) {
+                        self.visit_lit(&lit);
+                    }
+                }
+                TokenTree::Group(g) => self.tokens(g.stream()),
+                _ => {}
+            }
+            dot = matches!(&token, TokenTree::Punct(p) if p.as_char() == '.');
+        }
+    }
+    fn source(&mut self, file: PathBuf, module_dir: PathBuf) {
+        let file = file.canonicalize().expect("declared module exists");
+        assert!(file.starts_with(&self.root), "external module escapes src");
+        if !self.seen.insert(file.clone()) {
+            return;
+        }
+        let ast = syn::parse_file(&fs::read_to_string(&file).expect("readable source"))
+            .expect("valid Rust source");
+        if !active(&ast.attrs) {
+            return;
+        }
+        let old_file = std::mem::replace(&mut self.file, file);
+        let old_dir = std::mem::replace(&mut self.module_dir, module_dir);
+        let old_depth = std::mem::replace(&mut self.inline_depth, 0);
+        self.current();
+        self.visit_file(&ast);
+        self.file = old_file;
+        self.module_dir = old_dir;
+        self.inline_depth = old_depth;
     }
 }
-
-/// Returns the offset just past the item introduced by a `#[cfg(test)]` attribute.
-///
-/// A gated `mod` item is treated as running to the end of the file. The provider
-/// modules keep inline `cfg(test)` helpers next to production code and place the
-/// test module last, so the brace matching used for inline blocks cannot be
-/// trusted across the whole module; truncating is the conservative choice that
-/// cannot hide production code behind a miscount.
-fn skip_gated_item(source: &str, start: usize) -> usize {
-    let mut cursor = start;
-    let mut depth = 0i32;
-    let mut opened = false;
-    while cursor < source.len() {
-        let end = line_end(source, cursor);
-        let line = &source[cursor..end];
-        let trimmed = line.trim();
-        if !opened {
-            if trimmed.is_empty()
-                || trimmed.starts_with("#[")
-                || trimmed.starts_with("//")
-                || trimmed.starts_with("/*")
-            {
-                cursor = end;
-                continue;
-            }
-            if trimmed.starts_with("mod ") {
-                return source.len();
-            }
-            if trimmed.ends_with(';') && !trimmed.contains('{') {
-                return end;
-            }
+impl<'ast> Visit<'ast> for Scan {
+    fn visit_attribute(&mut self, _: &'ast Attribute) {} // Exclude doc and cfg strings.
+    fn visit_item(&mut self, n: &'ast Item) {
+        if active(item_attrs(n)) {
+            assert!(!matches!(n, Item::Verbatim(_)), "unparsed production item");
+            visit::visit_item(self, n);
         }
-        scan_braces(line, &mut depth, &mut opened);
-        if opened && depth <= 0 {
-            return end;
-        }
-        cursor = end;
     }
-    source.len()
-}
-
-/// Brace scanner that ignores braces inside string and char literals.
-fn scan_braces(line: &str, depth: &mut i32, opened: &mut bool) {
-    let mut chars = line.chars();
-    while let Some(character) = chars.next() {
-        match character {
-            '"' => skip_quoted(&mut chars, '"'),
-            '\'' if starts_char_literal(&chars) => skip_quoted(&mut chars, '\''),
-            '{' => {
-                *depth += 1;
-                *opened = true;
+    fn visit_impl_item(&mut self, n: &'ast ImplItem) {
+        if active(impl_attrs(n)) {
+            assert!(!matches!(n, ImplItem::Verbatim(_)));
+            visit::visit_impl_item(self, n);
+        }
+    }
+    fn visit_trait_item(&mut self, n: &'ast TraitItem) {
+        if active(trait_attrs(n)) {
+            assert!(!matches!(n, TraitItem::Verbatim(_)));
+            visit::visit_trait_item(self, n);
+        }
+    }
+    fn visit_foreign_item(&mut self, n: &'ast ForeignItem) {
+        if active(foreign_attrs(n)) {
+            assert!(!matches!(n, ForeignItem::Verbatim(_)));
+            visit::visit_foreign_item(self, n);
+        }
+    }
+    fn visit_expr(&mut self, n: &'ast Expr) {
+        if active(expr_attrs(n)) {
+            assert!(!matches!(n, Expr::Verbatim(_)));
+            visit::visit_expr(self, n);
+        }
+    }
+    fn visit_local(&mut self, n: &'ast syn::Local) {
+        if active(&n.attrs) {
+            visit::visit_local(self, n);
+        }
+    }
+    fn visit_stmt_macro(&mut self, n: &'ast syn::StmtMacro) {
+        if active(&n.attrs) {
+            visit::visit_stmt_macro(self, n);
+        }
+    }
+    fn visit_field(&mut self, n: &'ast syn::Field) {
+        if active(&n.attrs) {
+            visit::visit_field(self, n);
+        }
+    }
+    fn visit_variant(&mut self, n: &'ast syn::Variant) {
+        if active(&n.attrs) {
+            visit::visit_variant(self, n);
+        }
+    }
+    fn visit_arm(&mut self, n: &'ast syn::Arm) {
+        if active(&n.attrs) {
+            visit::visit_arm(self, n);
+        }
+    }
+    fn visit_item_mod(&mut self, n: &'ast syn::ItemMod) {
+        if !active(&n.attrs) {
+            return;
+        }
+        if let Some((_, items)) = &n.content {
+            let old = self.module_dir.clone();
+            self.module_dir.push(n.ident.to_string());
+            self.inline_depth += 1;
+            for item in items {
+                self.visit_item(item);
             }
-            '}' => *depth -= 1,
+            self.module_dir = old;
+            self.inline_depth -= 1;
+            return;
+        }
+        assert!(
+            !n.attrs.iter().any(|a| a.path().is_ident("cfg_attr")),
+            "conditional external module path needs explicit coverage"
+        );
+        let explicit = n.attrs.iter().find(|a| a.path().is_ident("path")).map(|a| {
+            let Meta::NameValue(value) = &a.meta else {
+                panic!("invalid module path")
+            };
+            let Expr::Lit(value) = &value.value else {
+                panic!("nonliteral module path")
+            };
+            let Lit::Str(value) = &value.lit else {
+                panic!("nonstring module path")
+            };
+            let base = if self.inline_depth == 0 {
+                self.file.parent().unwrap()
+            } else {
+                &self.module_dir
+            };
+            base.join(value.value())
+        });
+        let name = n.ident.to_string();
+        let path = explicit.unwrap_or_else(|| {
+            let flat = self.module_dir.join(format!("{name}.rs"));
+            let nested = self.module_dir.join(&name).join("mod.rs");
+            assert!(!(flat.exists() && nested.exists()), "ambiguous module");
+            if flat.exists() {
+                flat
+            } else {
+                nested
+            }
+        });
+        let nested = if path.file_name().unwrap() == "mod.rs" {
+            path.parent().unwrap().to_path_buf()
+        } else {
+            path.parent().unwrap().join(path.file_stem().unwrap())
+        };
+        self.source(path, nested);
+    }
+    fn visit_lit(&mut self, n: &'ast Lit) {
+        match n {
+            Lit::Str(s) => self.text(&s.value()),
+            Lit::ByteStr(s) => self.text(&String::from_utf8_lossy(&s.value())),
+            Lit::CStr(s) => self.text(&s.value().to_string_lossy()),
             _ => {}
         }
     }
-}
-
-/// Distinguishes `'x'` / `'\n'` from lifetimes such as `&'static str`.
-fn starts_char_literal(rest: &std::str::Chars<'_>) -> bool {
-    let mut lookahead = rest.clone();
-    match lookahead.next() {
-        Some('\\') => true,
-        Some(_) => lookahead.next() == Some('\''),
-        None => false,
-    }
-}
-
-fn skip_quoted(chars: &mut std::str::Chars<'_>, quote: char) {
-    let mut escaped = false;
-    for inner in chars.by_ref() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if inner == '\\' {
-            escaped = true;
-            continue;
-        }
-        if inner == quote {
-            break;
-        }
-    }
-}
-
-fn marker_occurrences(source: &str) -> usize {
-    UPSTREAM_MARKERS
-        .iter()
-        .map(|marker| source.matches(marker).count())
-        .sum()
-}
-
-#[test]
-fn production_provider_code_owns_no_undocumented_upstream_endpoint() {
-    let mut undocumented = Vec::new();
-    let mut observed = Vec::new();
-    for (path, source) in provider_sources() {
-        let count = marker_occurrences(&production_source(&source));
-        match ALLOWED_ENDPOINT_OWNERS
-            .iter()
-            .find(|(allowed, _, _)| *allowed == path)
-        {
-            Some((_, limit, _)) if *limit != usize::MAX => {
-                assert_eq!(
-                    count, *limit,
-                    "endpoint inventory for {path} changed; update ALLOWED_ENDPOINT_OWNERS \
-                     for the migrated or newly added endpoint"
-                );
-                observed.push((path, count));
-            }
-            Some(_) => observed.push((path, count)),
-            None if count > 0 => undocumented.push(format!("{path}: {count}")),
-            None => {}
-        }
-    }
-    assert!(
-        undocumented.is_empty(),
-        "production provider code must not own upstream QQ Music endpoints: {undocumented:?}"
-    );
-    for (path, _, _) in ALLOWED_ENDPOINT_OWNERS {
+    fn visit_macro(&mut self, n: &'ast syn::Macro) {
+        let name = n.path.segments.last().unwrap().ident.to_string();
         assert!(
-            observed.iter().any(|(seen, _)| seen == path),
-            "endpoint exception {path} no longer exists; drop it from ALLOWED_ENDPOINT_OWNERS"
+            !matches!(
+                name.as_str(),
+                "include" | "include_str" | "include_bytes" | "cfg_if"
+            ),
+            "opaque production macro {name} needs source coverage"
         );
+        self.tokens(n.tokens.clone());
     }
-    println!("allowed endpoint owners: {observed:?}");
+    fn visit_expr_method_call(&mut self, n: &'ast syn::ExprMethodCall) {
+        if request_like(&n.method.to_string()) {
+            self.current().requests += 1;
+        }
+        visit::visit_expr_method_call(self, n);
+    }
+    fn visit_expr_call(&mut self, n: &'ast syn::ExprCall) {
+        if let Expr::Path(p) = n.func.as_ref() {
+            if p.path
+                .segments
+                .last()
+                .is_some_and(|s| request_like(&s.ident.to_string()))
+            {
+                self.current().requests += 1;
+            }
+        }
+        visit::visit_expr_call(self, n);
+    }
 }
 
 #[test]
-fn migration_scope_baseline_is_recorded() {
-    let observed: Vec<(String, usize)> = provider_sources()
+fn production_endpoint_inventory_is_finite_and_exact() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .canonicalize()
+        .unwrap();
+    let mut scan = Scan::new(&root);
+    scan.source(root.join("lib.rs"), root.clone());
+    let observed: BTreeMap<_, _> = scan
+        .counts
         .into_iter()
-        .map(|(path, source)| (path, marker_occurrences(&production_source(&source))))
-        .filter(|(_, count)| *count > 0)
+        .filter(|(_, c)| *c != Counts::default())
         .collect();
-    println!("production endpoint residue: {observed:?}");
-    assert!(!observed.is_empty(), "expected a recorded baseline");
+    let expected: BTreeMap<_, _> = EXPECTED
+        .iter()
+        .map(|(p, l, r)| {
+            (
+                p.to_string(),
+                Counts {
+                    literals: *l,
+                    requests: *r,
+                },
+            )
+        })
+        .collect();
+    assert_eq!(
+        observed, expected,
+        "endpoint residue changed: inspect delta before changing the finite inventory"
+    );
+}
+fn sample(source: &str) -> Counts {
+    let mut scan = Scan::new(Path::new("fixture"));
+    scan.visit_file(&syn::parse_file(source).unwrap());
+    *scan.current()
+}
+#[test]
+fn test_modules_do_not_hide_following_production_or_raw_literals() {
+    let source = r####"
+        #[cfg(test)] mod tests { const URL:&str="u.y.qq.com"; }
+        // } { "u.y.qq.com"
+        /* { "u.y.qq.com" } */
+        fn production<'a>(s:&'a str) {
+            let _=r###"} u.y.qq.com {"###;
+            let _=b"u.y.qq.com";
+            call!("u.y.qq.com",r#"{"#);
+            #[cfg(test)] let _="u.y.qq.com";
+            #[cfg(test)] { let _="u.y.qq.com"; }
+            let _='}';
+        }
+    "####;
+    assert_eq!(
+        sample(source),
+        Counts {
+            literals: 6,
+            requests: 0
+        }
+    );
+}
+#[test]
+fn cfg_keeps_unknown_feature_branches() {
+    assert_eq!(
+        sample(
+            r#"
+        #[cfg(any(test, feature="live"))] const A:&str="u.y.qq.com";
+        #[cfg(all(test, feature="live"))] const B:&str="u.y.qq.com";
+        #[cfg(not(test))] const C:&str="u.y.qq.com";
+        #[cfg_attr(not(test), cfg(test))] const D:&str="u.y.qq.com";
+        #[cfg_attr(feature="live", cfg(test))] const E:&str="u.y.qq.com";
+        #[cfg(any())] const F:&str="u.y.qq.com";
+    "#
+        )
+        .literals,
+        6
+    );
+}
+#[test]
+fn external_test_modules_do_not_hide_production_test_named_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    fs::write(
+        root.join("lib.rs"),
+        "#[cfg(test)] mod missing_tests; mod active_tests; const URL:&str=\"u.y.qq.com\";",
+    )
+    .unwrap();
+    fs::write(
+        root.join("active_tests.rs"),
+        "const URL:&str=\"u.y.qq.com\";",
+    )
+    .unwrap();
+    let mut scan = Scan::new(&root);
+    scan.source(root.join("lib.rs"), root.clone());
+    assert_eq!(scan.counts["lib.rs"].literals, 2);
+    assert_eq!(scan.counts["active_tests.rs"].literals, 2);
+}
+#[test]
+#[should_panic(expected = "opaque production macro")]
+fn generated_code_is_not_silently_skipped() {
+    sample("include!(concat!(env!(\"OUT_DIR\"), \"/routes.rs\"));");
+}
+#[test]
+fn low_level_calls_are_detected_without_url_literals() {
+    assert_eq!(
+        sample("fn f(c:C) { c.request_cgi(module,method,payload); #[cfg(test)] c.send(); }")
+            .requests,
+        1
+    );
+    assert_eq!(
+        sample("fn f(c:C) { select! { x=c.request_http(url) => {} } C::request_cgi(c,m,p); }")
+            .requests,
+        2
+    );
 }
 
 #[test]
-fn test_gated_items_are_excluded_from_the_production_scan() {
-    let sample = "\
-use a::b;
-#[cfg(test)]
-use c::d;
-#[cfg(test)]
-fn inline_helper() {
-    let brace = \"{ not a brace }\";
-    assert_eq!(brace.len(), 17);
+fn cfg_on_associated_items_and_match_arms_is_respected() {
+    assert_eq!(
+        sample(
+            r#"
+        struct A;
+        impl A {
+            #[cfg(test)] fn hidden() { let _="u.y.qq.com"; }
+            fn visible() { let _="u.y.qq.com"; }
+        }
+        trait T {
+            #[cfg(test)] const HIDDEN: &str = "u.y.qq.com";
+            const VISIBLE: &str = "u.y.qq.com";
+        }
+        fn f() { match x {
+            #[cfg(test)] 1 => "u.y.qq.com",
+            _ => "u.y.qq.com",
+        }; }
+    "#
+        )
+        .literals,
+        6
+    );
 }
-fn production() {
-    let _ = \"u.y.qq.com\";
+
+#[test]
+fn inline_modules_resolve_explicit_paths_without_skipping_their_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    fs::create_dir(root.join("nested")).unwrap();
+    fs::write(
+        root.join("lib.rs"),
+        r#"mod nested { #[path="other.rs"] mod aliases; }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("nested/other.rs"),
+        "const URL: &str = \"u.y.qq.com\";",
+    )
+    .unwrap();
+    let mut scan = Scan::new(&root);
+    scan.source(root.join("lib.rs"), root.clone());
+    assert_eq!(scan.counts["nested/other.rs"].literals, 2);
 }
-#[cfg(not(test))]
-fn also_production() {}
-#[cfg(test)]
-mod tests {
-    fn helper() {
-        let escaped = \"}\";
-        assert_eq!(escaped.len(), 1);
-    }
-    const URL: &str = \"https://u.y.qq.com/cgi-bin/musicu.fcg\";
-}
-";
-    let production = production_source(sample);
-    assert!(production.contains("use a::b;"));
-    assert!(!production.contains("use c::d;"));
-    assert!(!production.contains("fn inline_helper()"));
-    assert!(production.contains("fn production()"));
-    assert!(production.contains("fn also_production() {}"));
-    assert!(!production.contains("fn helper()"));
-    assert!(!production.contains("musicu.fcg"));
-    // `u.y.qq.com` also matches the bare `y.qq.com` marker, by design.
-    assert_eq!(marker_occurrences(&production), 2);
+
+#[test]
+fn adding_a_marker_to_a_known_owner_changes_the_frozen_inventory() {
+    let source = "fn a() { let _=\"u.y.qq.com\"; }";
+    let baseline = sample(source);
+    assert_ne!(
+        baseline,
+        sample(&format!("{source}\nconst NEW: &str=\"graph.qq.com\";"))
+    );
 }

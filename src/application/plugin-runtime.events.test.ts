@@ -343,6 +343,85 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
 
     unmount();
   });
+  it('does not restore capabilities while another grant mutation is still pending', async () => {
+    const firstHost = deferred<undefined>();
+    const secondHost = deferred<undefined>();
+    let mutations = 0;
+    let resourceCalls = 0;
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_set_enabled')
+        return ++mutations === 1 ? firstHost.promise : secondHost.promise;
+      if (method === 'plugin_active_resources') {
+        resourceCalls += 1;
+        return Promise.resolve(emptyResources());
+      }
+      if (method === 'plugin_list') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    const first = setPluginEnabled(GRANTED, true, ['track.read']);
+    const second = setPluginEnabled(GRANTED, false, []);
+    const externalRefresh = applyPluginResources();
+    firstHost.resolve(undefined);
+    await Promise.resolve();
+    await Promise.resolve();
+    const callsBeforeSecondSettles = resourceCalls;
+    secondHost.resolve(undefined);
+    await Promise.all([first, second, externalRefresh]);
+    expect(callsBeforeSecondSettles).toBe(0);
+    expect(resourceCalls).toBeGreaterThan(0);
+  });
+
+  it('does not retry a failed refresh as if the successful host mutation had failed', async () => {
+    let resourceCalls = 0;
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_set_enabled') return Promise.resolve(undefined);
+      if (method === 'plugin_active_resources') {
+        resourceCalls += 1;
+        return Promise.reject(new Error('refresh failed'));
+      }
+      return Promise.resolve(undefined);
+    });
+    await expect(setPluginEnabled(GRANTED, false)).rejects.toThrow('refresh failed');
+    expect(resourceCalls).toBe(1);
+  });
+
+  it('invalidates a snapshot that was already loading before a grant mutation', async () => {
+    const oldResources = deferred<ReturnType<typeof emptyResources>>();
+    const hostMutation = deferred<undefined>();
+    let resourceCalls = 0;
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_set_enabled') return hostMutation.promise;
+      if (method === 'plugin_active_resources')
+        return ++resourceCalls === 1 ? oldResources.promise : Promise.resolve(emptyResources());
+      if (method === 'plugin_list') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    const refresh = applyPluginResources();
+    const mutation = setPluginEnabled(GRANTED, false);
+    oldResources.resolve({
+      ...emptyResources(),
+      styles: [{ pluginId: 'obsolete', css: '[data-obsolete]{}' }],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const callsBeforeMutationSettles = resourceCalls;
+    const staleStyle = document.querySelector('[data-yaqmc-plugin-style="obsolete"]');
+    hostMutation.resolve(undefined);
+    await Promise.all([refresh, mutation]);
+    expect(callsBeforeMutationSettles).toBe(1);
+    expect(staleStyle).toBeNull();
+  });
+
+  it('preserves the original host error when reconciliation also fails', async () => {
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_set_enabled') return Promise.reject(new Error('mutation rejected'));
+      if (method === 'plugin_active_resources') return Promise.reject(new Error('refresh failed'));
+      return Promise.resolve(undefined);
+    });
+    await expect(setPluginEnabled(GRANTED, false)).rejects.toThrow('mutation rejected');
+    expect(logErrorMock).toHaveBeenCalledWith('plugin.resources.refresh_failed', expect.any(Error));
+  });
+
   it('coalesces refreshes and never applies an obsolete resource snapshot', async () => {
     const firstResources = deferred<ReturnType<typeof emptyResources>>();
     const latestResources = deferred<ReturnType<typeof emptyResources>>();
