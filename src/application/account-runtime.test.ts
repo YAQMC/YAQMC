@@ -1636,6 +1636,354 @@ describe('account runtime', () => {
     unmount();
   });
 
+  it('keeps late snapshot and sign-out work in its provider/profile scope', async () => {
+    const lateSnapshot = deferred<AccountSnapshot>();
+    const lateSignOut = deferred<AccountSnapshot>();
+    const profileSnapshot = (profileId: string, revision: number) => ({
+      ...authenticatedSnapshot(revision),
+      providerId: 'account-test',
+      profileId,
+    });
+    const providerA = accountProvider({
+      profileId: 'profile-a',
+      getAccountSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(profileSnapshot('profile-a', 3))
+        .mockImplementationOnce(() => lateSnapshot.promise)
+        .mockResolvedValue(profileSnapshot('profile-a', 4)),
+      signOut: vi.fn(() => lateSignOut.promise),
+    });
+    const providerB = accountProvider({
+      profileId: 'profile-b',
+      getAccountSnapshot: vi.fn().mockResolvedValue(profileSnapshot('profile-b', 7)),
+    });
+
+    await useAccountStore.getState().refreshSnapshot(providerA);
+    const refreshA = useAccountStore.getState().refreshSnapshot(providerA);
+    await useAccountStore.getState().refreshSnapshot(providerB);
+    lateSnapshot.resolve(profileSnapshot('profile-a', 4));
+    await refreshA;
+
+    expect(useAccountStore.getState().snapshot).toMatchObject({
+      providerId: 'account-test',
+      profileId: 'profile-b',
+      revision: 7,
+    });
+    const activeA = renderHook(() => useAccountRuntime(providerA));
+    expect(useAccountStore.getState().snapshot).toMatchObject({
+      profileId: 'profile-a',
+      revision: 4,
+    });
+    activeA.unmount();
+
+    await useAccountStore.getState().refreshSnapshot(providerB);
+
+    const signOutA = useAccountStore.getState().signOut(providerA);
+    await useAccountStore.getState().refreshSnapshot(providerB);
+    lateSignOut.resolve({
+      ...guestSnapshot(8),
+      providerId: 'account-test',
+      profileId: 'profile-a',
+    });
+    await signOutA;
+
+    expect(useAccountStore.getState().snapshot).toMatchObject({
+      profileId: 'profile-b',
+      state: 'authenticated',
+      revision: 7,
+    });
+  });
+
+  it('keeps the selected facade when another mounted scope receives an account event', async () => {
+    const scoped = (profileId: string, revision: number) => ({
+      ...authenticatedSnapshot(revision),
+      providerId: 'account-test',
+      profileId,
+    });
+    const providerA = accountProvider({
+      profileId: 'profile-a',
+      getAccountSnapshot: vi
+        .fn()
+        .mockResolvedValueOnce(scoped('profile-a', 3))
+        .mockResolvedValue(scoped('profile-a', 4)),
+    });
+    const providerB = accountProvider({
+      profileId: 'profile-b',
+      getAccountSnapshot: vi.fn().mockResolvedValue(scoped('profile-b', 7)),
+    });
+    const a = renderHook(() => useAccountRuntime(providerA));
+    const b = renderHook(() => useAccountRuntime(providerB));
+    await waitFor(() => expect(useAccountStore.getState().snapshot.profileId).toBe('profile-b'));
+
+    await act(async () => {
+      coreStatusMocks.emitAccount(true);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(providerA.getAccountSnapshot).toHaveBeenCalledTimes(2));
+    expect(useAccountStore.getState().snapshot).toMatchObject({
+      profileId: 'profile-b',
+      revision: 7,
+    });
+
+    b.unmount();
+    a.unmount();
+  });
+
+  it('does not cancel a waiting QR owner until the last same-scope runtime unmounts', async () => {
+    const cancelQrLogin = vi.fn().mockResolvedValue(cancelledSnapshot());
+    const provider = accountProvider({
+      getAccountSnapshot: vi.fn().mockResolvedValue(waitingSnapshot()),
+      cancelQrLogin,
+    });
+    const first = renderHook(() => useAccountRuntime(provider));
+    const second = renderHook(() => useAccountRuntime(provider));
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('waiting-for-scan'));
+
+    first.unmount();
+    expect(cancelQrLogin).not.toHaveBeenCalled();
+    second.unmount();
+    await waitFor(() => expect(cancelQrLogin).toHaveBeenCalledOnce());
+  });
+
+  it('cancels a waiting QR owner exactly once when reset precedes every heartbeat', async () => {
+    const cancelQrLogin = vi.fn().mockResolvedValue(cancelledSnapshot());
+    const provider = accountProvider({
+      getAccountSnapshot: vi.fn().mockResolvedValue(waitingSnapshot()),
+      cancelQrLogin,
+    });
+    const view = renderHook(() => useAccountRuntime(provider));
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('waiting-for-scan'));
+
+    resetAccountRuntimeForTest();
+    await waitFor(() => expect(cancelQrLogin).toHaveBeenCalledOnce());
+    view.unmount();
+    await act(async () => Promise.resolve());
+    expect(cancelQrLogin).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a heartbeat failure in A when B becomes the active facade', async () => {
+    const heartbeat = deferred<AccountSnapshot>();
+    const refreshA = deferred<AccountSnapshot>();
+    const cancelA = deferred<AccountSnapshot>();
+    const waitingA = {
+      ...waitingSnapshot(),
+      providerId: 'account-test',
+      profileId: 'profile-a',
+    };
+    const providerA = accountProvider({
+      profileId: 'profile-a',
+      getAccountSnapshot: vi.fn().mockResolvedValue(waitingA),
+      refreshAccount: vi.fn(() => refreshA.promise),
+      heartbeatQrLogin: vi.fn(() => heartbeat.promise),
+      cancelQrLogin: vi.fn(() => cancelA.promise),
+    });
+    const providerB = accountProvider({
+      profileId: 'profile-b',
+      getAccountSnapshot: vi.fn().mockResolvedValue({
+        ...authenticatedSnapshot(7),
+        providerId: 'account-test',
+        profileId: 'profile-b',
+      }),
+    });
+
+    await useAccountStore.getState().refreshSnapshot(providerA);
+    const pendingHeartbeat = useAccountStore.getState().heartbeatLogin(providerA);
+    await useAccountStore.getState().refreshSnapshot(providerB);
+    const before = useAccountStore.getState();
+    heartbeat.reject(new ProviderError('offline', 'transient', true));
+    await waitFor(() => expect(providerA.cancelQrLogin).toHaveBeenCalledOnce());
+
+    expect(useAccountStore.getState()).toMatchObject({
+      snapshot: before.snapshot,
+      displayedQrImageDataUri: before.displayedQrImageDataUri,
+      busy: before.busy,
+    });
+
+    const pendingA = useAccountStore.getState().refreshAccount(providerA);
+    expect(useAccountStore.getState()).toMatchObject({
+      snapshot: waitingA,
+      displayedQrImageDataUri: null,
+      busy: false,
+      error: 'network',
+    });
+    refreshA.resolve(waitingA);
+    await pendingA;
+    cancelA.resolve({
+      ...cancelledSnapshot(),
+      providerId: 'account-test',
+      profileId: 'profile-a',
+    });
+    await pendingHeartbeat;
+  });
+
+  it('keeps a desktop waiting QR owner through same-scope provider replacement', async () => {
+    const cancelQrLogin = vi.fn().mockResolvedValue(cancelledSnapshot());
+    const original = accountProvider({
+      getAccountSnapshot: vi.fn().mockResolvedValue(waitingSnapshot()),
+      cancelQrLogin,
+    });
+    const replacement = accountProvider({
+      getAccountSnapshot: vi.fn().mockResolvedValue(waitingSnapshot()),
+      cancelQrLogin,
+    });
+    const view = renderHook(
+      ({ provider }: { provider: MusicProvider & AccountMusicProvider }) =>
+        useAccountRuntime(provider),
+      { initialProps: { provider: original } },
+    );
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('waiting-for-scan'));
+    view.rerender({ provider: replacement });
+    await act(async () => Promise.resolve());
+    expect(cancelQrLogin).not.toHaveBeenCalled();
+    view.unmount();
+    await waitFor(() => expect(cancelQrLogin).toHaveBeenCalledOnce());
+  });
+
+  it('cancels the last inactive scope owner without changing the active facade', async () => {
+    const cancelA = vi.fn().mockResolvedValue(cancelledSnapshot());
+    const providerA = accountProvider({
+      profileId: 'profile-a',
+      getAccountSnapshot: vi.fn().mockResolvedValue({
+        ...waitingSnapshot(),
+        providerId: 'account-test',
+        profileId: 'profile-a',
+      }),
+      cancelQrLogin: cancelA,
+    });
+    const providerB = accountProvider({
+      profileId: 'profile-b',
+      getAccountSnapshot: vi.fn().mockResolvedValue({
+        ...authenticatedSnapshot(7),
+        providerId: 'account-test',
+        profileId: 'profile-b',
+      }),
+    });
+    const a = renderHook(() => useAccountRuntime(providerA));
+    await waitFor(() => expect(useAccountStore.getState().snapshot.state).toBe('waiting-for-scan'));
+    const b = renderHook(() => useAccountRuntime(providerB));
+    await waitFor(() => expect(useAccountStore.getState().snapshot.profileId).toBe('profile-b'));
+
+    a.unmount();
+    await waitFor(() => expect(cancelA).toHaveBeenCalledOnce());
+    expect(useAccountStore.getState().snapshot).toMatchObject({
+      profileId: 'profile-b',
+      state: 'authenticated',
+      revision: 7,
+    });
+    b.unmount();
+  });
+
+  it('isolates same-track favorite mutation guards across profiles while retaining the legacy facade', async () => {
+    const track = allSongs[0]!;
+    const pendingA = deferred<FavoriteMutationResult>();
+    const profileSnapshot = (profileId: string) => ({
+      ...authenticatedSnapshot(3),
+      providerId: 'account-test',
+      profileId,
+    });
+    const setFavoriteA = vi.fn((request: FavoriteMutationRequest) => {
+      void request;
+      return pendingA.promise;
+    });
+    const providerA = accountProvider({
+      profileId: 'profile-a',
+      getAccountSnapshot: vi.fn().mockResolvedValue(profileSnapshot('profile-a')),
+      setFavorite: setFavoriteA,
+    });
+    const providerB = accountProvider({
+      profileId: 'profile-b',
+      getAccountSnapshot: vi.fn().mockResolvedValue(profileSnapshot('profile-b')),
+      setFavorite: vi.fn(async (request: FavoriteMutationRequest) =>
+        favoriteResult(request.clientOperationId, track, 'applied', true),
+      ),
+    });
+
+    await useAccountStore.getState().refreshSnapshot(providerA);
+    const mutationA = useAccountStore.getState().setFavorite(providerA, track, true);
+    expect(useAccountStore.getState().favoritePendingByTrackId[track.id]).toBeDefined();
+
+    await useAccountStore.getState().refreshSnapshot(providerB);
+    await useAccountStore.getState().setFavorite(providerB, track, true);
+
+    expect(providerB.setFavorite).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
+    expect(useAccountStore.getState().favoritePendingByTrackId[track.id]).toBeUndefined();
+
+    const operationA = setFavoriteA.mock.calls[0]![0].clientOperationId;
+    pendingA.resolve(favoriteResult(operationA, track, 'applied', true));
+    await mutationA;
+
+    // The exported store remains a compatibility facade for the active B scope.
+    expect(useAccountStore.getState().snapshot.profileId).toBe('profile-b');
+    expect(useAccountStore.getState().favoriteByTrackId[track.id]).toBe(true);
+  });
+
+  it('does not share delayed pages or same playlist-ID mutation guards between profiles', async () => {
+    const track = allSongs[0]!;
+    const delayedPage = deferred<Page<Song>>();
+    const delayedRename = deferred<PlaylistMutationResult>();
+    const profileSnapshot = (profileId: string) => ({
+      ...playlistAuthenticatedSnapshot(3),
+      providerId: 'account-test',
+      profileId,
+    });
+    const summaryA = { ...accountPlaylistSummary('shared-playlist-id'), profileId: 'profile-a' };
+    const summaryB = { ...accountPlaylistSummary('shared-playlist-id'), profileId: 'profile-b' };
+    const providerA = accountProvider({
+      profileId: 'profile-a',
+      getAccountSnapshot: vi.fn().mockResolvedValue(profileSnapshot('profile-a')),
+      getFavoriteSongs: vi.fn(() => delayedPage.promise),
+      renamePlaylist: vi.fn(() => delayedRename.promise),
+    });
+    const providerB = accountProvider({
+      profileId: 'profile-b',
+      getAccountSnapshot: vi.fn().mockResolvedValue(profileSnapshot('profile-b')),
+      getFavoriteSongs: vi.fn().mockResolvedValue(page([track], 3)),
+      renamePlaylist: vi.fn(async (request: { clientOperationId: string }) =>
+        playlistMutationResult(request.clientOperationId, 'applied', {
+          ...summaryB,
+          title: 'B title',
+        }),
+      ),
+    });
+
+    await useAccountStore.getState().refreshSnapshot(providerA);
+    const pageA = useAccountStore.getState().loadFavorites(providerA);
+    useAccountStore.setState({
+      playlists: {
+        status: 'ready',
+        data: [summaryA],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 1,
+        authRevision: 3,
+      },
+    });
+    const renameA = useAccountStore.getState().renamePlaylist(providerA, summaryA, 'A title');
+
+    await useAccountStore.getState().refreshSnapshot(providerB);
+    useAccountStore.setState({
+      playlists: {
+        status: 'ready',
+        data: [summaryB],
+        nextCursor: null,
+        total: 1,
+        fetchedAtMs: 2,
+        authRevision: 3,
+      },
+    });
+    await useAccountStore.getState().loadFavorites(providerB);
+    await useAccountStore.getState().renamePlaylist(providerB, summaryB, 'B title');
+
+    delayedPage.resolve(page([], 3));
+    delayedRename.resolve(playlistMutationResult('foreign-operation', 'rejected', summaryA));
+    await Promise.all([pageA, renameA]);
+
+    expect(providerB.renamePlaylist).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().favorites).toMatchObject({ data: [track] });
+    expect(useAccountStore.getState().playlists).toMatchObject({ data: [{ title: 'B title' }] });
+  });
+
   it('creates, verifies, mutates, and deletes only the playlist ID created by this run', async () => {
     const knownTrack = allSongs[0]!;
     const operations: string[] = [];

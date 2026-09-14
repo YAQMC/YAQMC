@@ -172,38 +172,213 @@ const initialSnapshot: AccountSnapshot = {
   },
 };
 
-let requestGeneration = 0;
-let snapshotTimer: number | null = null;
-let heartbeatTimer: number | null = null;
-let timerOwnerKey: string | null = null;
-let timerPollAfterMs: number | null = null;
+/**
+ * The zustand store below is deliberately only the projection currently shown
+ * by the UI.  The authoritative projection is kept per provider/profile
+ * scope.  This preserves the public store API for existing consumers while
+ * preventing one profile's asynchronous work from writing another profile.
+ */
+type AccountScopeKey = string;
+const accountProjectionKeys = [
+  'snapshot',
+  'displayedQrImageDataUri',
+  'dialogOpen',
+  'busy',
+  'error',
+  'favorites',
+  'playlists',
+  'recent',
+  'accountPlaylistDetails',
+  'favoriteByTrackId',
+  'favoritePendingByTrackId',
+  'playlistPendingById',
+  'playlistMutationNoticeById',
+  'mutationMessage',
+] as const;
+type AccountProjection = Pick<AccountStoreState, (typeof accountProjectionKeys)[number]>;
+
+const accountProjections = new Map<AccountScopeKey, AccountProjection>();
+let activeAccountScope: AccountScopeKey | null = null;
+
+function accountScopeKey(
+  provider: Pick<AccountMusicProvider, 'id' | 'profileId'>,
+): AccountScopeKey {
+  return `${provider.id ?? 'qqmusic'}\u0000${provider.profileId ?? DEFAULT_PROFILE_ID}`;
+}
+
+function accountProjection(state: AccountStoreState): AccountProjection {
+  return Object.fromEntries(
+    accountProjectionKeys.map((key) => [key, state[key]]),
+  ) as AccountProjection;
+}
+
+function freshAccountProjection(): AccountProjection {
+  const state = useAccountStore.getState();
+  return accountProjection({
+    ...state,
+    snapshot: initialSnapshot,
+    displayedQrImageDataUri: null,
+    dialogOpen: false,
+    busy: false,
+    error: null,
+    favorites: idleResource(),
+    playlists: idleResource(),
+    recent: idleResource(),
+    accountPlaylistDetails: {},
+    favoriteByTrackId: {},
+    favoritePendingByTrackId: {},
+    playlistPendingById: {},
+    playlistMutationNoticeById: {},
+    mutationMessage: null,
+  });
+}
+
+function ensureAccountScope(
+  provider: Pick<AccountMusicProvider, 'id' | 'profileId'>,
+): AccountScopeKey {
+  const scope = accountScopeKey(provider);
+  if (!accountProjections.has(scope)) accountProjections.set(scope, freshAccountProjection());
+  return scope;
+}
+
+function activateAccountScope(
+  provider: Pick<AccountMusicProvider, 'id' | 'profileId'>,
+): AccountScopeKey {
+  const nextScope = accountScopeKey(provider);
+  if (activeAccountScope === nextScope) return nextScope;
+
+  const current = useAccountStore.getState();
+  // Before the first scoped call, tests and legacy callers can still seed the
+  // facade directly.  Adopt that projection into the first requested scope.
+  if (activeAccountScope === null && !accountProjections.has(nextScope)) {
+    accountProjections.set(nextScope, accountProjection(current));
+  } else {
+    if (activeAccountScope !== null) {
+      accountProjections.set(activeAccountScope, accountProjection(current));
+    }
+    const target = accountProjections.get(nextScope);
+    activeAccountScope = nextScope;
+    useAccountStore.setState(target ?? freshAccountProjection());
+    return nextScope;
+  }
+  activeAccountScope = nextScope;
+  ensureAccountScope(provider);
+  return nextScope;
+}
+
+function isActiveAccountScope(scope: AccountScopeKey): boolean {
+  return activeAccountScope === scope;
+}
+
+function stateForAccountScope(scope: AccountScopeKey): AccountStoreState {
+  if (isActiveAccountScope(scope)) return useAccountStore.getState();
+  const projection = accountProjections.get(scope);
+  if (!projection) {
+    throw new Error(`Account runtime scope was not initialized: ${scope}`);
+  }
+  // Actions are stable facade methods. Data always comes from the keyed entry.
+  return { ...useAccountStore.getState(), ...projection };
+}
+
+function setAccountScopeState(
+  scope: AccountScopeKey,
+  update: Partial<AccountStoreState> | ((state: AccountStoreState) => Partial<AccountStoreState>),
+): void {
+  const current = stateForAccountScope(scope);
+  const patch = typeof update === 'function' ? update(current) : update;
+  if (isActiveAccountScope(scope)) {
+    useAccountStore.setState(patch);
+    return;
+  }
+  accountProjections.set(scope, {
+    ...accountProjection(current),
+    ...accountProjection({ ...current, ...patch }),
+  });
+}
+
+const requestGenerations = new Map<AccountScopeKey, number>();
+function nextRequestGeneration(scope: AccountScopeKey): number {
+  const next = (requestGenerations.get(scope) ?? 0) + 1;
+  requestGenerations.set(scope, next);
+  return next;
+}
+function requestGenerationFor(scope: AccountScopeKey): number {
+  return requestGenerations.get(scope) ?? 0;
+}
+interface OwnershipTimers {
+  snapshotTimer: number | null;
+  heartbeatTimer: number | null;
+  ownerKey: string | null;
+  pollAfterMs: number | null;
+}
+const ownershipTimersByScope = new Map<AccountScopeKey, OwnershipTimers>();
+function ownershipTimersForScope(scope: AccountScopeKey): OwnershipTimers {
+  let timers = ownershipTimersByScope.get(scope);
+  if (!timers) {
+    timers = { snapshotTimer: null, heartbeatTimer: null, ownerKey: null, pollAfterMs: null };
+    ownershipTimersByScope.set(scope, timers);
+  }
+  return timers;
+}
 const RESTORE_POLL_AFTER_MS = 500;
-let runtimeProvider: AccountMusicProvider | null = null;
-let runtimeAbortController: AbortController | null = null;
+const runtimeAbortControllers = new Map<AccountScopeKey, AbortController>();
+const runtimeOwnersByScope = new Map<AccountScopeKey, Set<symbol>>();
+const runtimeProvidersByScope = new Map<AccountScopeKey, AccountMusicProvider>();
 const blockedAttempts = new Set<string>();
 const cancellationRequests = new Map<string, Promise<AccountSnapshot>>();
-const libraryGenerations: Record<AccountListResource, number> = {
-  favorites: 0,
-  playlists: 0,
-  recent: 0,
-};
+function attemptKey(provider: Pick<AccountMusicProvider, 'id' | 'profileId'>, id: string): string {
+  return `${accountScopeKey(provider)}\u0000${id}`;
+}
+function snapshotAttemptKey(snapshot: AccountSnapshot, id: string): string {
+  return `${snapshot.providerId ?? 'qqmusic'}\u0000${snapshot.profileId ?? DEFAULT_PROFILE_ID}\u0000${id}`;
+}
+const libraryGenerationsByScope = new Map<AccountScopeKey, Record<AccountListResource, number>>();
+function libraryGenerationsForScope(scope: AccountScopeKey): Record<AccountListResource, number> {
+  let generations = libraryGenerationsByScope.get(scope);
+  if (!generations) {
+    generations = { favorites: 0, playlists: 0, recent: 0 };
+    libraryGenerationsByScope.set(scope, generations);
+  }
+  return generations;
+}
 const accountPlaylistGenerations = new Map<EntityId, number>();
-let favoriteMutationVersion = 0;
-const favoriteMutationVersionByTrackId = new Map<EntityId, number>();
-const favoriteConfirmedGuardByTrackId = new Map<
-  EntityId,
-  { version: number; desired: boolean; track: Song }
->();
+function accountPlaylistGenerationKey(scope: AccountScopeKey, id: EntityId): EntityId {
+  return `${scope}\u0000${id}`;
+}
+interface FavoriteRuntime {
+  mutationVersion: number;
+  mutationVersionByTrackId: Map<EntityId, number>;
+  confirmedGuardByTrackId: Map<EntityId, { version: number; desired: boolean; track: Song }>;
+}
+const favoriteRuntimes = new Map<AccountScopeKey, FavoriteRuntime>();
+
+function favoriteRuntimeFor(scope: AccountScopeKey): FavoriteRuntime {
+  let runtime = favoriteRuntimes.get(scope);
+  if (!runtime) {
+    runtime = {
+      mutationVersion: 0,
+      mutationVersionByTrackId: new Map(),
+      confirmedGuardByTrackId: new Map(),
+    };
+    favoriteRuntimes.set(scope, runtime);
+  }
+  return runtime;
+}
 
 const idleResource = <T>(): LibraryResource<T> => ({ status: 'idle' });
 
-function invalidateLibraryRequests(): void {
+function invalidateLibraryRequestsForScope(scope: AccountScopeKey): void {
+  const libraryGenerations = libraryGenerationsForScope(scope);
   libraryGenerations.favorites += 1;
   libraryGenerations.playlists += 1;
   libraryGenerations.recent += 1;
   for (const [id, generation] of accountPlaylistGenerations) {
+    if (!id.startsWith(`${scope}\u0000`)) continue;
     accountPlaylistGenerations.set(id, generation + 1);
   }
+}
+function invalidateLibraryRequests(): void {
+  invalidateLibraryRequestsForScope(activeAccountScope ?? '__legacy__');
 }
 
 function resourceForSnapshot<T>(snapshot: AccountSnapshot): LibraryResource<T> {
@@ -232,12 +407,17 @@ function resourceForSnapshot<T>(snapshot: AccountSnapshot): LibraryResource<T> {
   }
 }
 
-function libraryResetForSnapshot(snapshot: AccountSnapshot) {
-  invalidateLibraryRequests();
-  accountPlaylistGenerations.clear();
-  favoriteMutationVersion = 0;
-  favoriteMutationVersionByTrackId.clear();
-  favoriteConfirmedGuardByTrackId.clear();
+function libraryResetForSnapshot(scope: AccountScopeKey, snapshot: AccountSnapshot) {
+  invalidateLibraryRequestsForScope(scope);
+  for (const id of accountPlaylistGenerations.keys()) {
+    if (id.startsWith(`${scope}\u0000`)) {
+      accountPlaylistGenerations.delete(id);
+    }
+  }
+  const favoritesRuntime = favoriteRuntimeFor(scope);
+  favoritesRuntime.mutationVersion = 0;
+  favoritesRuntime.mutationVersionByTrackId.clear();
+  favoritesRuntime.confirmedGuardByTrackId.clear();
   return {
     favorites: resourceForSnapshot<Song[]>(snapshot),
     playlists: resourceForSnapshot<AccountPlaylistSummary[]>(snapshot),
@@ -280,16 +460,17 @@ function safeQrImage(value: string): string | null {
 }
 
 function runtimeSignal(provider: AccountMusicProvider): AbortSignal | undefined {
-  return runtimeProvider === provider ? runtimeAbortController?.signal : undefined;
+  return runtimeAbortControllers.get(accountScopeKey(provider))?.signal;
 }
 
-function clearOwnershipTimers(): void {
-  if (snapshotTimer !== null) window.clearInterval(snapshotTimer);
-  if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
-  snapshotTimer = null;
-  heartbeatTimer = null;
-  timerOwnerKey = null;
-  timerPollAfterMs = null;
+function clearOwnershipTimersForScope(scope: AccountScopeKey): void {
+  const timers = ownershipTimersForScope(scope);
+  if (timers.snapshotTimer !== null) window.clearInterval(timers.snapshotTimer);
+  if (timers.heartbeatTimer !== null) window.clearInterval(timers.heartbeatTimer);
+  timers.snapshotTimer = null;
+  timers.heartbeatTimer = null;
+  timers.ownerKey = null;
+  timers.pollAfterMs = null;
 }
 
 function classifyError(error: unknown): AccountRuntimeError {
@@ -308,20 +489,20 @@ function classifyError(error: unknown): AccountRuntimeError {
   return 'unknown';
 }
 
-function commitSnapshot(snapshot: AccountSnapshot): void {
+function commitSnapshot(scope: AccountScopeKey, snapshot: AccountSnapshot): void {
   const owner = ownedSnapshot(snapshot);
-  if (owner) blockedAttempts.delete(owner.attemptId);
+  if (owner) blockedAttempts.delete(snapshotAttemptKey(snapshot, owner.attemptId));
   if (!owner && 'attemptId' in snapshot && snapshot.attemptId) {
-    blockedAttempts.delete(snapshot.attemptId);
-    cancellationRequests.delete(snapshot.attemptId);
+    blockedAttempts.delete(snapshotAttemptKey(snapshot, snapshot.attemptId));
+    cancellationRequests.delete(snapshotAttemptKey(snapshot, snapshot.attemptId));
   }
-  const currentStore = useAccountStore.getState();
+  const currentStore = stateForAccountScope(scope);
   const dialogOpen = currentStore.dialogOpen;
   const displayedQrImageDataUri =
     dialogOpen && snapshot.state === 'waiting-for-scan'
       ? safeQrImage(snapshot.qrImageDataUri)
       : null;
-  useAccountStore.setState({
+  setAccountScopeState(scope, {
     snapshot,
     displayedQrImageDataUri,
     busy: false,
@@ -329,7 +510,7 @@ function commitSnapshot(snapshot: AccountSnapshot): void {
       snapshot.state === 'waiting-for-scan' && displayedQrImageDataUri === null ? 'protocol' : null,
     ...(currentStore.snapshot.revision !== snapshot.revision ||
     currentStore.snapshot.state !== snapshot.state
-      ? libraryResetForSnapshot(snapshot)
+      ? libraryResetForSnapshot(scope, snapshot)
       : {}),
   });
 }
@@ -448,10 +629,11 @@ function cancellationRequest(
   id: string,
   signal: AbortSignal | undefined,
 ): Promise<AccountSnapshot> {
-  const existing = cancellationRequests.get(id);
+  const key = attemptKey(provider, id);
+  const existing = cancellationRequests.get(key);
   if (existing) return existing;
   const request = provider.cancelQrLogin(id, signal);
-  cancellationRequests.set(id, request);
+  cancellationRequests.set(key, request);
   return request;
 }
 
@@ -461,14 +643,14 @@ async function releaseUncommittedOwnership(
 ): Promise<void> {
   const owner = ownedSnapshot(snapshot);
   if (!owner) return;
-  const currentOwner = ownedSnapshot(useAccountStore.getState().snapshot);
+  const currentOwner = ownedSnapshot(stateForAccountScope(accountScopeKey(provider)).snapshot);
   if (
     currentOwner?.attemptId === owner.attemptId &&
     currentOwner.ownerLeaseId === owner.ownerLeaseId
   ) {
     return;
   }
-  blockedAttempts.add(owner.attemptId);
+  blockedAttempts.add(attemptKey(provider, owner.attemptId));
   try {
     await cancellationRequest(provider, owner.attemptId, undefined);
   } catch {
@@ -477,33 +659,35 @@ async function releaseUncommittedOwnership(
 }
 
 function reconcileOwnershipTimers(provider: AccountMusicProvider): void {
-  const { dialogOpen, snapshot } = useAccountStore.getState();
+  const scope = ensureAccountScope(provider);
+  const { dialogOpen, snapshot } = stateForAccountScope(scope);
+  const timers = ownershipTimersForScope(scope);
   // The native owner lease is process-scoped; renderer timers must not keep
   // polling or heartbeating while the Activity/WebView is backgrounded.
   if (isAndroidRuntime() && document.visibilityState === 'hidden') {
-    clearOwnershipTimers();
+    clearOwnershipTimersForScope(scope);
     return;
   }
   if (snapshot.state === 'restoring-session') {
     if (
-      snapshotTimer !== null &&
-      heartbeatTimer === null &&
-      timerOwnerKey === 'restoring-session' &&
-      timerPollAfterMs === RESTORE_POLL_AFTER_MS
+      timers.snapshotTimer !== null &&
+      timers.heartbeatTimer === null &&
+      timers.ownerKey === 'restoring-session' &&
+      timers.pollAfterMs === RESTORE_POLL_AFTER_MS
     ) {
       return;
     }
-    clearOwnershipTimers();
-    timerOwnerKey = 'restoring-session';
-    timerPollAfterMs = RESTORE_POLL_AFTER_MS;
-    snapshotTimer = window.setInterval(() => {
-      void useAccountStore.getState().refreshSnapshot(provider);
+    clearOwnershipTimersForScope(scope);
+    timers.ownerKey = 'restoring-session';
+    timers.pollAfterMs = RESTORE_POLL_AFTER_MS;
+    timers.snapshotTimer = window.setInterval(() => {
+      void refreshSnapshotForScope(provider);
     }, RESTORE_POLL_AFTER_MS);
     return;
   }
   const owner = ownedSnapshot(snapshot);
-  if (!dialogOpen || !owner || blockedAttempts.has(owner.attemptId)) {
-    clearOwnershipTimers();
+  if (!dialogOpen || !owner || blockedAttempts.has(attemptKey(provider, owner.attemptId))) {
+    clearOwnershipTimersForScope(scope);
     return;
   }
 
@@ -511,28 +695,31 @@ function reconcileOwnershipTimers(provider: AccountMusicProvider): void {
   const ownerKey = `${owner.attemptId}\u0000${owner.ownerLeaseId}`;
   const rendererOwnsLease = !isAndroidRuntime();
   if (
-    snapshotTimer !== null &&
-    (rendererOwnsLease ? heartbeatTimer !== null : heartbeatTimer === null) &&
-    timerOwnerKey === ownerKey &&
-    timerPollAfterMs === pollAfterMs
+    timers.snapshotTimer !== null &&
+    (rendererOwnsLease ? timers.heartbeatTimer !== null : timers.heartbeatTimer === null) &&
+    timers.ownerKey === ownerKey &&
+    timers.pollAfterMs === pollAfterMs
   ) {
     return;
   }
-  clearOwnershipTimers();
-  timerOwnerKey = ownerKey;
-  timerPollAfterMs = pollAfterMs;
-  snapshotTimer = window.setInterval(() => {
-    void useAccountStore.getState().refreshSnapshot(provider);
+  clearOwnershipTimersForScope(scope);
+  timers.ownerKey = ownerKey;
+  timers.pollAfterMs = pollAfterMs;
+  timers.snapshotTimer = window.setInterval(() => {
+    void refreshSnapshotForScope(provider);
   }, pollAfterMs);
   if (rendererOwnsLease) {
-    heartbeatTimer = window.setInterval(() => {
-      void useAccountStore.getState().heartbeatLogin(provider);
+    timers.heartbeatTimer = window.setInterval(() => {
+      // The public action activates its scope; background timers must not.
+      if (isActiveAccountScope(accountScopeKey(provider))) {
+        void useAccountStore.getState().heartbeatLogin(provider);
+      }
     }, 2_000);
   }
 }
 
 function hydrateAuthenticatedFavoriteAuthority(provider: AccountMusicProvider): void {
-  const state = useAccountStore.getState();
+  const state = stateForAccountScope(ensureAccountScope(provider));
   if (
     state.snapshot.state === 'authenticated' &&
     state.snapshot.capabilities.favoriteRead &&
@@ -547,34 +734,58 @@ async function runSnapshotRequest(
   request: (signal?: AbortSignal) => Promise<AccountSnapshot>,
   busy: boolean,
   onStale?: (snapshot: AccountSnapshot) => Promise<void> | void,
+  scope = activateAccountScope(provider),
 ): Promise<void> {
   // A notification/read must not supersede the command that is creating the attempt.
-  if (!busy && useAccountStore.getState().busy) return;
-  const generation = ++requestGeneration;
-  if (busy) useAccountStore.setState({ busy: true, error: null });
+  if (!busy && stateForAccountScope(scope).busy) return;
+  const generation = nextRequestGeneration(scope);
+  if (busy) setAccountScopeState(scope, { busy: true, error: null });
   try {
     const next = scopedSnapshot(provider, await request(runtimeSignal(provider)));
-    if (generation !== requestGeneration) {
+    if (generation !== requestGenerationFor(scope)) {
       await onStale?.(next);
       return;
     }
-    commitSnapshot(next);
+    commitSnapshot(scope, next);
   } catch (error) {
-    if (generation !== requestGeneration) return;
+    if (generation !== requestGenerationFor(scope)) return;
     if (error instanceof DOMException && error.name === 'AbortError') return;
-    useAccountStore.setState({ busy: false, error: classifyError(error) });
+    setAccountScopeState(scope, { busy: false, error: classifyError(error) });
   }
+}
+
+function refreshSnapshotForScope(provider: AccountMusicProvider): Promise<void> {
+  const scope = ensureAccountScope(provider);
+  return runSnapshotRequest(
+    provider,
+    (signal) => provider.getAccountSnapshot(signal),
+    false,
+    undefined,
+    scope,
+  );
+}
+
+function refreshAccountForScope(provider: AccountMusicProvider): Promise<void> {
+  const scope = ensureAccountScope(provider);
+  return runSnapshotRequest(
+    provider,
+    (signal) => provider.refreshAccount(signal),
+    false,
+    undefined,
+    scope,
+  );
 }
 
 async function cancelOwnedAttempt(
   provider: AccountMusicProvider,
   closeDialog: boolean,
 ): Promise<void> {
+  const scope = activateAccountScope(provider);
   const current = useAccountStore.getState().snapshot;
   const id = ownedSnapshot(current)?.attemptId ?? null;
-  const generation = ++requestGeneration;
-  clearOwnershipTimers();
-  if (id) blockedAttempts.add(id);
+  const generation = nextRequestGeneration(scope);
+  clearOwnershipTimersForScope(scope);
+  if (id) blockedAttempts.add(attemptKey(provider, id));
   useAccountStore.setState({
     displayedQrImageDataUri: null,
     dialogOpen: closeDialog ? false : useAccountStore.getState().dialogOpen,
@@ -587,44 +798,53 @@ async function cancelOwnedAttempt(
       provider,
       await cancellationRequest(provider, id, runtimeSignal(provider)),
     );
-    if (generation !== requestGeneration) return;
-    commitSnapshot(next);
+    if (generation !== requestGenerationFor(scope)) return;
+    commitSnapshot(scope, next);
   } catch (error) {
-    if (generation !== requestGeneration) return;
+    if (generation !== requestGenerationFor(scope)) return;
     if (error instanceof DOMException && error.name === 'AbortError') return;
-    useAccountStore.setState({ busy: false, error: classifyError(error) });
+    setAccountScopeState(scope, { busy: false, error: classifyError(error) });
   }
 }
 
 function disposeOwnership(provider: AccountMusicProvider, cancelNative = true): void {
-  const snapshot = useAccountStore.getState().snapshot;
+  const scope = accountScopeKey(provider);
+  if (!accountProjections.has(scope)) return;
+  const snapshot = stateForAccountScope(scope).snapshot;
   const id = ownedSnapshot(snapshot)?.attemptId ?? null;
-  ++requestGeneration;
-  clearOwnershipTimers();
+  nextRequestGeneration(scope);
+  clearOwnershipTimersForScope(scope);
   if (id && cancelNative) {
-    blockedAttempts.add(id);
+    blockedAttempts.add(attemptKey(provider, id));
     void cancellationRequest(provider, id, undefined).catch(() => undefined);
   }
-  useAccountStore.setState({
+  setAccountScopeState(scope, {
     displayedQrImageDataUri: null,
     dialogOpen: false,
     busy: false,
   });
 }
 
-function listResource<T>(resource: AccountListResource): LibraryResource<T[]> {
-  return useAccountStore.getState()[resource] as LibraryResource<T[]>;
+function listResource<T>(
+  scope: AccountScopeKey,
+  resource: AccountListResource,
+): LibraryResource<T[]> {
+  return stateForAccountScope(scope)[resource] as LibraryResource<T[]>;
 }
 
-function publishListResource<T>(resource: AccountListResource, value: LibraryResource<T[]>): void {
+function publishListResource<T>(
+  scope: AccountScopeKey,
+  resource: AccountListResource,
+  value: LibraryResource<T[]>,
+): void {
   if (resource === 'favorites') {
-    useAccountStore.setState({ favorites: value as LibraryResource<Song[]> });
+    setAccountScopeState(scope, { favorites: value as LibraryResource<Song[]> });
   } else if (resource === 'playlists') {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       playlists: value as LibraryResource<AccountPlaylistSummary[]>,
     });
   } else {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       recent: value as LibraryResource<RemotePlayHistoryItem[]>,
     });
   }
@@ -654,19 +874,25 @@ function mergeFirstSeen<T>(base: T[], incoming: T[], keyOf: (item: T) => EntityI
   return merged;
 }
 
-function projectFavoritePage(songs: Song[], replace: boolean, requestVersion: number): void {
+function projectFavoritePage(
+  scope: AccountScopeKey,
+  runtime: FavoriteRuntime,
+  songs: Song[],
+  replace: boolean,
+  requestVersion: number,
+): void {
   const returned = new Set(songs.map((song) => song.id));
-  useAccountStore.setState((state) => {
+  setAccountScopeState(scope, (state) => {
     const favoriteByTrackId = { ...state.favoriteByTrackId };
     const ids = new Set([...Object.keys(favoriteByTrackId), ...returned]);
     for (const id of ids) {
-      const guard = favoriteConfirmedGuardByTrackId.get(id);
+      const guard = runtime.confirmedGuardByTrackId.get(id);
       const observed = returned.has(id);
       if (guard) {
         favoriteByTrackId[id] = guard.desired;
         continue;
       }
-      if ((favoriteMutationVersionByTrackId.get(id) ?? 0) > requestVersion) continue;
+      if ((runtime.mutationVersionByTrackId.get(id) ?? 0) > requestVersion) continue;
       if (observed) favoriteByTrackId[id] = true;
       else if (replace) favoriteByTrackId[id] = false;
     }
@@ -674,12 +900,12 @@ function projectFavoritePage(songs: Song[], replace: boolean, requestVersion: nu
   });
 }
 
-function reconcileConfirmedFavoriteSongs(songs: Song[]): Song[] {
+function reconcileConfirmedFavoriteSongs(runtime: FavoriteRuntime, songs: Song[]): Song[] {
   let reconciled = [...songs];
-  for (const [id, guard] of favoriteConfirmedGuardByTrackId) {
+  for (const [id, guard] of runtime.confirmedGuardByTrackId) {
     const observed = reconciled.some((song) => song.id === id);
     if (observed === guard.desired) {
-      favoriteConfirmedGuardByTrackId.delete(id);
+      runtime.confirmedGuardByTrackId.delete(id);
     } else if (guard.desired) {
       reconciled = mergeFirstSeen(reconciled, [guard.track], (song) => song.id);
     } else {
@@ -749,15 +975,16 @@ function classifyLibraryFailure(
 }
 
 function canCommitListResult(
+  scope: AccountScopeKey,
   resource: AccountListResource,
   generation: number,
   revision: number,
   requestedCursor: string | null,
 ): boolean {
-  const snapshot = useAccountStore.getState().snapshot;
-  const current = listResource(resource);
+  const snapshot = stateForAccountScope(scope).snapshot;
+  const current = listResource(scope, resource);
   return (
-    libraryGenerations[resource] === generation &&
+    libraryGenerationsForScope(scope)[resource] === generation &&
     snapshot.state === 'authenticated' &&
     snapshot.revision === revision &&
     current.status === 'loading' &&
@@ -775,13 +1002,15 @@ async function loadPagedList<T>(options: {
   autoLoadAll?: boolean;
 }): Promise<void> {
   const { provider, resource, reset, capability, request, keyOf, autoLoadAll } = options;
-  const snapshot = useAccountStore.getState().snapshot;
+  const scope = activateAccountScope(provider);
+  const favoritesRuntime = favoriteRuntimeFor(scope);
+  const snapshot = stateForAccountScope(scope).snapshot;
   if (snapshot.state !== 'authenticated') {
-    publishListResource(resource, resourceForSnapshot<T[]>(snapshot));
+    publishListResource(scope, resource, resourceForSnapshot<T[]>(snapshot));
     return;
   }
   if (!snapshot.capabilities[capability]) {
-    publishListResource(resource, {
+    publishListResource(scope, resource, {
       status: 'error',
       error: 'unsupported',
       data: null,
@@ -790,16 +1019,16 @@ async function loadPagedList<T>(options: {
     return;
   }
 
-  const previous = listResource<T>(resource);
+  const previous = listResource<T>(scope, resource);
   if (previous.status === 'loading') return;
   const visibleData = loadedData(previous) ?? [];
   const previousData = reset ? [] : visibleData;
   const requestedCursor = reset ? null : nextCursor(previous);
   if (!reset && requestedCursor === null) return;
   const revision = snapshot.revision;
-  const generation = ++libraryGenerations[resource];
-  const favoriteVersionAtRequest = favoriteMutationVersion;
-  publishListResource(resource, {
+  const generation = ++libraryGenerationsForScope(scope)[resource];
+  const favoriteVersionAtRequest = favoritesRuntime.mutationVersion;
+  publishListResource(scope, resource, {
     status: 'loading',
     data: visibleData.length > 0 ? visibleData : null,
     nextCursor: requestedCursor,
@@ -813,7 +1042,7 @@ async function loadPagedList<T>(options: {
       await request(requestedCursor ?? undefined, runtimeSignal(provider)),
     );
     if (
-      !canCommitListResult(resource, generation, revision, requestedCursor) ||
+      !canCommitListResult(scope, resource, generation, revision, requestedCursor) ||
       page.authRevision !== revision
     ) {
       return;
@@ -822,7 +1051,7 @@ async function loadPagedList<T>(options: {
     if (autoLoadAll) {
       while (
         page.nextCursor !== null &&
-        canCommitListResult(resource, generation, revision, requestedCursor) &&
+        canCommitListResult(scope, resource, generation, revision, requestedCursor) &&
         page.authRevision === revision &&
         !page.stale
       ) {
@@ -832,7 +1061,7 @@ async function loadPagedList<T>(options: {
           await request(page.nextCursor, runtimeSignal(provider)),
         );
         if (
-          !canCommitListResult(resource, generation, revision, requestedCursor) ||
+          !canCommitListResult(scope, resource, generation, revision, requestedCursor) ||
           page.authRevision !== revision
         ) {
           return;
@@ -841,12 +1070,12 @@ async function loadPagedList<T>(options: {
       }
     }
     if (resource === 'favorites') {
-      data = reconcileConfirmedFavoriteSongs(data as Song[]) as T[];
+      data = reconcileConfirmedFavoriteSongs(favoritesRuntime, data as Song[]) as T[];
     }
     if (data.length === 0 && page.nextCursor === null) {
-      publishListResource(resource, { status: 'empty' });
+      publishListResource(scope, resource, { status: 'empty' });
     } else if (page.stale) {
-      publishListResource(resource, {
+      publishListResource(scope, resource, {
         status: 'stale',
         data,
         total: page.total,
@@ -854,7 +1083,7 @@ async function loadPagedList<T>(options: {
         authRevision: page.authRevision,
       });
     } else {
-      publishListResource(resource, {
+      publishListResource(scope, resource, {
         status: 'ready',
         data,
         nextCursor: page.nextCursor,
@@ -864,17 +1093,23 @@ async function loadPagedList<T>(options: {
       });
     }
     if (resource === 'favorites') {
-      projectFavoritePage(data as Song[], page.nextCursor === null, favoriteVersionAtRequest);
+      projectFavoritePage(
+        scope,
+        favoritesRuntime,
+        data as Song[],
+        page.nextCursor === null,
+        favoriteVersionAtRequest,
+      );
     }
   } catch (error) {
-    if (!canCommitListResult(resource, generation, revision, requestedCursor)) return;
+    if (!canCommitListResult(scope, resource, generation, revision, requestedCursor)) return;
     const failure = classifyLibraryFailure(error);
     if (failure === 'cancelled') {
-      publishListResource(resource, previous);
+      publishListResource(scope, resource, previous);
     } else if (failure === 'reauthentication-required') {
-      publishListResource(resource, { status: 'reauthentication-required' });
+      publishListResource(scope, resource, { status: 'reauthentication-required' });
     } else {
-      publishListResource(resource, {
+      publishListResource(scope, resource, {
         status: 'error',
         error: failure,
         data: visibleData.length > 0 ? visibleData : null,
@@ -885,24 +1120,26 @@ async function loadPagedList<T>(options: {
 }
 
 function setAccountPlaylistResource(
+  scope: AccountScopeKey,
   id: EntityId,
   resource: LibraryResource<AccountPlaylistDetail>,
 ): void {
-  useAccountStore.setState((state) => ({
+  setAccountScopeState(scope, (state) => ({
     accountPlaylistDetails: { ...state.accountPlaylistDetails, [id]: resource },
   }));
 }
 
 function canCommitAccountPlaylist(
+  scope: AccountScopeKey,
   id: EntityId,
   generation: number,
   revision: number,
   requestedCursor: string | null,
 ): boolean {
-  const state = useAccountStore.getState();
+  const state = stateForAccountScope(scope);
   const current = state.accountPlaylistDetails[id];
   return (
-    accountPlaylistGenerations.get(id) === generation &&
+    accountPlaylistGenerations.get(accountPlaylistGenerationKey(scope, id)) === generation &&
     state.snapshot.state === 'authenticated' &&
     state.snapshot.revision === revision &&
     current?.status === 'loading' &&
@@ -915,15 +1152,17 @@ async function loadAccountPlaylistResource(
   playlist: AccountPlaylistSummary,
   reset: boolean,
 ): Promise<void> {
+  const scope = activateAccountScope(provider);
+  const favoritesRuntime = favoriteRuntimeFor(scope);
   const scopedPlaylist = scopedPlaylistSummary(provider, playlist, false);
   const id = scopedPlaylist.id;
-  const snapshot = useAccountStore.getState().snapshot;
+  const snapshot = stateForAccountScope(scope).snapshot;
   if (snapshot.state !== 'authenticated') {
-    setAccountPlaylistResource(id, resourceForSnapshot(snapshot));
+    setAccountPlaylistResource(scope, id, resourceForSnapshot(snapshot));
     return;
   }
   if (!snapshot.capabilities.playlistRead) {
-    setAccountPlaylistResource(id, {
+    setAccountPlaylistResource(scope, id, {
       status: 'error',
       error: 'unsupported',
       data: null,
@@ -931,17 +1170,18 @@ async function loadAccountPlaylistResource(
     });
     return;
   }
-  const previous = useAccountStore.getState().accountPlaylistDetails[id] ?? idleResource();
+  const previous = stateForAccountScope(scope).accountPlaylistDetails[id] ?? idleResource();
   if (previous.status === 'loading') return;
   const visibleDetail = loadedData(previous);
   const mergeBase = reset ? null : visibleDetail;
   const requestedCursor = reset ? null : nextCursor(previous);
   if (!reset && requestedCursor === null) return;
   const revision = snapshot.revision;
-  const favoriteRequestVersion = favoriteMutationVersion;
-  const generation = (accountPlaylistGenerations.get(id) ?? 0) + 1;
-  accountPlaylistGenerations.set(id, generation);
-  setAccountPlaylistResource(id, {
+  const favoriteRequestVersion = favoritesRuntime.mutationVersion;
+  const generation =
+    (accountPlaylistGenerations.get(accountPlaylistGenerationKey(scope, id)) ?? 0) + 1;
+  accountPlaylistGenerations.set(accountPlaylistGenerationKey(scope, id), generation);
+  setAccountPlaylistResource(scope, id, {
     status: 'loading',
     data: visibleDetail,
     nextCursor: requestedCursor,
@@ -960,14 +1200,20 @@ async function loadAccountPlaylistResource(
     );
     const summary = detail.summary;
     if (
-      !canCommitAccountPlaylist(id, generation, revision, requestedCursor) ||
+      !canCommitAccountPlaylist(scope, id, generation, revision, requestedCursor) ||
       detail.tracks.authRevision !== revision ||
       summary.id !== id
     ) {
       return;
     }
     if (summary.ownership === 'favorite') {
-      projectFavoritePage(detail.tracks.items, false, favoriteRequestVersion);
+      projectFavoritePage(
+        scope,
+        favoritesRuntime,
+        detail.tracks.items,
+        false,
+        favoriteRequestVersion,
+      );
     }
     const tracks = mergeFirstSeen(
       mergeBase?.tracks.items ?? [],
@@ -986,7 +1232,7 @@ async function loadAccountPlaylistResource(
       authRevision: detail.tracks.authRevision,
     };
     if (detail.tracks.stale) {
-      setAccountPlaylistResource(id, {
+      setAccountPlaylistResource(scope, id, {
         status: 'stale',
         data: loaded.data,
         total: loaded.total,
@@ -994,17 +1240,17 @@ async function loadAccountPlaylistResource(
         authRevision: loaded.authRevision,
       });
     } else {
-      setAccountPlaylistResource(id, { status: 'ready', ...loaded });
+      setAccountPlaylistResource(scope, id, { status: 'ready', ...loaded });
     }
   } catch (error) {
-    if (!canCommitAccountPlaylist(id, generation, revision, requestedCursor)) return;
+    if (!canCommitAccountPlaylist(scope, id, generation, revision, requestedCursor)) return;
     const failure = classifyLibraryFailure(error);
     if (failure === 'cancelled') {
-      setAccountPlaylistResource(id, previous);
+      setAccountPlaylistResource(scope, id, previous);
     } else if (failure === 'reauthentication-required') {
-      setAccountPlaylistResource(id, { status: 'reauthentication-required' });
+      setAccountPlaylistResource(scope, id, { status: 'reauthentication-required' });
     } else {
-      setAccountPlaylistResource(id, {
+      setAccountPlaylistResource(scope, id, {
         status: 'error',
         error: failure,
         data: visibleDetail,
@@ -1054,7 +1300,8 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       dialogOpen: true,
       error: null,
       displayedQrImageDataUri:
-        owner?.state === 'waiting-for-scan' && !blockedAttempts.has(owner.attemptId)
+        owner?.state === 'waiting-for-scan' &&
+        !blockedAttempts.has(snapshotAttemptKey(snapshot, owner.attemptId))
           ? safeQrImage(owner.qrImageDataUri)
           : null,
     });
@@ -1065,6 +1312,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   refreshAccount: (provider) =>
     runSnapshotRequest(provider, (signal) => provider.refreshAccount(signal), false),
   startLogin: async (provider, method) => {
+    activateAccountScope(provider);
     set({ dialogOpen: true, displayedQrImageDataUri: null });
     await runSnapshotRequest(
       provider,
@@ -1074,6 +1322,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     );
   },
   reopenLogin: async (provider) => {
+    activateAccountScope(provider);
     const { snapshot, busy } = get();
     if (
       busy ||
@@ -1086,53 +1335,57 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     await runSnapshotRequest(provider, (signal) => provider.reopenLogin!(attemptId, signal), true);
   },
   heartbeatLogin: async (provider) => {
+    const scope = activateAccountScope(provider);
     if (get().busy) return;
     const owner = ownedSnapshot(get().snapshot);
-    if (!owner || blockedAttempts.has(owner.attemptId)) return;
-    const generation = ++requestGeneration;
+    if (!owner || blockedAttempts.has(attemptKey(provider, owner.attemptId))) return;
+    const generation = nextRequestGeneration(scope);
     try {
       const next = await provider.heartbeatQrLogin(
         owner.attemptId,
         owner.ownerLeaseId,
         runtimeSignal(provider),
       );
-      if (generation !== requestGeneration) return;
-      commitSnapshot(scopedSnapshot(provider, next));
+      if (generation !== requestGenerationFor(scope)) return;
+      commitSnapshot(scope, scopedSnapshot(provider, next));
     } catch (error) {
-      if (generation !== requestGeneration) return;
-      clearOwnershipTimers();
-      blockedAttempts.add(owner.attemptId);
-      set({ displayedQrImageDataUri: null, busy: false });
+      if (generation !== requestGenerationFor(scope)) return;
+      clearOwnershipTimersForScope(scope);
+      blockedAttempts.add(attemptKey(provider, owner.attemptId));
+      setAccountScopeState(scope, { displayedQrImageDataUri: null, busy: false });
       try {
         const reconciled = await provider.getAccountSnapshot(runtimeSignal(provider));
-        if (generation !== requestGeneration) return;
+        if (generation !== requestGenerationFor(scope)) return;
         const reconciledOwner = ownedSnapshot(reconciled);
         if (
           !reconciledOwner ||
           reconciledOwner.attemptId !== owner.attemptId ||
           reconciledOwner.ownerLeaseId !== owner.ownerLeaseId
         ) {
-          commitSnapshot(scopedSnapshot(provider, reconciled));
+          commitSnapshot(scope, scopedSnapshot(provider, reconciled));
           return;
         }
       } catch {
-        if (generation !== requestGeneration) return;
+        if (generation !== requestGenerationFor(scope)) return;
       }
-      set({ error: classifyError(error) });
+      setAccountScopeState(scope, { error: classifyError(error) });
       try {
         const next = await cancellationRequest(provider, owner.attemptId, runtimeSignal(provider));
-        if (generation === requestGeneration) commitSnapshot(scopedSnapshot(provider, next));
+        if (generation === requestGenerationFor(scope)) {
+          commitSnapshot(scope, scopedSnapshot(provider, next));
+        }
       } catch {
         // The stable local error above is sufficient; cancellation is best effort.
       }
     }
   },
   refreshQr: async (provider) => {
+    const scope = activateAccountScope(provider);
     const snapshot = get().snapshot;
     if (snapshot.state !== 'expired') return;
     const previousAttemptId = snapshot.attemptId;
-    if (previousAttemptId) blockedAttempts.add(previousAttemptId);
-    clearOwnershipTimers();
+    if (previousAttemptId) blockedAttempts.add(attemptKey(provider, previousAttemptId));
+    clearOwnershipTimersForScope(scope);
     set({ dialogOpen: true, displayedQrImageDataUri: null });
     await runSnapshotRequest(
       provider,
@@ -1143,7 +1396,8 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   },
   cancelLogin: (provider) => cancelOwnedAttempt(provider, false),
   signOut: async (provider) => {
-    clearOwnershipTimers();
+    const scope = activateAccountScope(provider);
+    clearOwnershipTimersForScope(scope);
     set({ dialogOpen: false, displayedQrImageDataUri: null });
     await runSnapshotRequest(provider, (signal) => provider.signOut(signal), true);
   },
@@ -1185,6 +1439,8 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   loadNextAccountPlaylist: (provider, playlist) =>
     loadAccountPlaylistResource(provider, playlist, false),
   setFavorite: async (provider, track, favorite) => {
+    const scope = activateAccountScope(provider);
+    const favoritesRuntime = favoriteRuntimeFor(scope);
     const initial = get();
     if (initial.snapshot.state !== 'authenticated') {
       initial.openDialog();
@@ -1200,9 +1456,9 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
     const revision = initial.snapshot.revision;
     const previous = initial.favoriteByTrackId[track.id] ?? track.isFavorite;
     const operationId = mutationOperationId('favorite');
-    const mutationVersion = ++favoriteMutationVersion;
-    favoriteMutationVersionByTrackId.set(track.id, mutationVersion);
-    favoriteConfirmedGuardByTrackId.set(track.id, {
+    const mutationVersion = ++favoritesRuntime.mutationVersion;
+    favoritesRuntime.mutationVersionByTrackId.set(track.id, mutationVersion);
+    favoritesRuntime.confirmedGuardByTrackId.set(track.id, {
       version: mutationVersion,
       desired: favorite,
       track,
@@ -1227,18 +1483,18 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
         runtimeSignal(provider),
       );
     } catch (error) {
-      const current = get();
+      const current = stateForAccountScope(scope);
       if (current.favoritePendingByTrackId[track.id] !== operationId) return;
       const pending = withoutKey(current.favoritePendingByTrackId, track.id);
       if (current.snapshot.revision !== revision) {
-        set({ favoritePendingByTrackId: pending });
+        setAccountScopeState(scope, { favoritePendingByTrackId: pending });
         return;
       }
       const failure = classifyLibraryFailure(error);
-      if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
-        favoriteConfirmedGuardByTrackId.delete(track.id);
+      if (favoritesRuntime.mutationVersionByTrackId.get(track.id) === mutationVersion) {
+        favoritesRuntime.confirmedGuardByTrackId.delete(track.id);
       }
-      set({
+      setAccountScopeState(scope, {
         favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: previous },
         favoritePendingByTrackId: pending,
         favorites:
@@ -1256,7 +1512,7 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       return;
     }
 
-    const current = get();
+    const current = stateForAccountScope(scope);
     if (current.favoritePendingByTrackId[track.id] !== operationId) return;
     const pending = withoutKey(current.favoritePendingByTrackId, track.id);
     if (
@@ -1265,15 +1521,15 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       result.clientOperationId !== operationId ||
       result.trackId !== track.id
     ) {
-      set({ favoritePendingByTrackId: pending });
+      setAccountScopeState(scope, { favoritePendingByTrackId: pending });
       return;
     }
 
     if (result.status === 'rejected') {
-      if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
-        favoriteConfirmedGuardByTrackId.delete(track.id);
+      if (favoritesRuntime.mutationVersionByTrackId.get(track.id) === mutationVersion) {
+        favoritesRuntime.confirmedGuardByTrackId.delete(track.id);
       }
-      set({
+      setAccountScopeState(scope, {
         favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: previous },
         favoritePendingByTrackId: pending,
         mutationMessage: 'QQ Music rejected the Favorites change.',
@@ -1281,24 +1537,24 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
       return;
     }
     if (result.status === 'outcome-unknown') {
-      if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
-        favoriteConfirmedGuardByTrackId.delete(track.id);
+      if (favoritesRuntime.mutationVersionByTrackId.get(track.id) === mutationVersion) {
+        favoritesRuntime.confirmedGuardByTrackId.delete(track.id);
       }
-      set({
+      setAccountScopeState(scope, {
         favoritePendingByTrackId: pending,
         mutationMessage: FAVORITE_OUTCOME_UNKNOWN_MESSAGE,
       });
       void get().loadFavorites(provider, true);
       return;
     }
-    if (favoriteMutationVersionByTrackId.get(track.id) === mutationVersion) {
-      favoriteConfirmedGuardByTrackId.set(track.id, {
+    if (favoritesRuntime.mutationVersionByTrackId.get(track.id) === mutationVersion) {
+      favoritesRuntime.confirmedGuardByTrackId.set(track.id, {
         version: mutationVersion,
         desired: result.favorite,
         track,
       });
     }
-    set({
+    setAccountScopeState(scope, {
       favoriteByTrackId: { ...current.favoriteByTrackId, [track.id]: result.favorite },
       favoritePendingByTrackId: pending,
       favorites: confirmedFavoritesResource(
@@ -1322,6 +1578,12 @@ export const useAccountStore = create<AccountStoreState>((set, get) => ({
   setPlaylistCollected: (provider, playlist, collected) =>
     runPlaylistCollectionMutation(provider, playlist, collected),
 }));
+
+useAccountStore.subscribe((state) => {
+  if (activeAccountScope !== null) {
+    accountProjections.set(activeAccountScope, accountProjection(state));
+  }
+});
 
 function resourceWithData<T>(resource: LibraryResource<T>, data: T): LibraryResource<T> {
   if (
@@ -1452,6 +1714,7 @@ async function runPlaylistCollectionMutation(
   playlist: Playlist,
   collected: boolean,
 ): Promise<PlaylistMutationResult | null> {
+  const scope = activateAccountScope(provider);
   const initial = useAccountStore.getState();
   if (initial.snapshot.state !== 'authenticated') {
     initial.openDialog();
@@ -1484,10 +1747,10 @@ async function runPlaylistCollectionMutation(
       await provider.setPlaylistCollected(request, runtimeSignal(provider)),
     );
   } catch (error) {
-    const current = useAccountStore.getState();
+    const current = stateForAccountScope(scope);
     if (current.playlistPendingById[playlist.id] !== operationId) return null;
     const pending = withoutKey(current.playlistPendingById, playlist.id);
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       playlists: replacePlaylistSummary(current.playlists, playlist.id, previousSummary),
       playlistPendingById: pending,
       playlistMutationNoticeById: {
@@ -1501,7 +1764,7 @@ async function runPlaylistCollectionMutation(
     return null;
   }
 
-  const current = useAccountStore.getState();
+  const current = stateForAccountScope(scope);
   if (current.playlistPendingById[playlist.id] !== operationId) return null;
   const pending = withoutKey(current.playlistPendingById, playlist.id);
   const resultPlaylistValid =
@@ -1517,14 +1780,14 @@ async function runPlaylistCollectionMutation(
     !resultPlaylistValid ||
     !confirmationMatchesRequestedState
   ) {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       playlists: replacePlaylistSummary(current.playlists, playlist.id, previousSummary),
       playlistPendingById: pending,
     });
     return null;
   }
   if (result.status === 'applied' || result.status === 'reconciled') {
-    useAccountStore.setState((state) => ({
+    setAccountScopeState(scope, (state) => ({
       playlists: replacePlaylistSummary(state.playlists, playlist.id, result.playlist),
       playlistPendingById: pending,
       playlistMutationNoticeById:
@@ -1538,7 +1801,7 @@ async function runPlaylistCollectionMutation(
     return result;
   }
   if (result.status === 'outcome-unknown') {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       playlistPendingById: pending,
       playlistMutationNoticeById: {
         ...current.playlistMutationNoticeById,
@@ -1548,7 +1811,7 @@ async function runPlaylistCollectionMutation(
     void current.loadPlaylists(provider, true);
     return result;
   }
-  useAccountStore.setState({
+  setAccountScopeState(scope, {
     playlists: replacePlaylistSummary(current.playlists, playlist.id, previousSummary),
     playlistPendingById: pending,
     playlistMutationNoticeById: {
@@ -1574,6 +1837,7 @@ async function runEntityPlaylistMutation({
   title,
   track,
 }: EntityPlaylistMutationOptions): Promise<PlaylistMutationResult | null> {
+  const scope = activateAccountScope(provider);
   const initial = useAccountStore.getState();
   if (initial.snapshot.state !== 'authenticated') {
     initial.openDialog();
@@ -1612,8 +1876,8 @@ async function runEntityPlaylistMutation({
     loadedData(initial.playlists)?.find((item) => item.id === playlist.id) ?? null;
   const previousDetail = initial.accountPlaylistDetails[playlist.id];
   accountPlaylistGenerations.set(
-    playlist.id,
-    (accountPlaylistGenerations.get(playlist.id) ?? 0) + 1,
+    accountPlaylistGenerationKey(scope, playlist.id),
+    (accountPlaylistGenerations.get(accountPlaylistGenerationKey(scope, playlist.id)) ?? 0) + 1,
   );
   useAccountStore.setState((state) => {
     const projected =
@@ -1665,15 +1929,15 @@ async function runEntityPlaylistMutation({
       );
     }
   } catch (error) {
-    const current = useAccountStore.getState();
+    const current = stateForAccountScope(scope);
     if (current.playlistPendingById[playlist.id] !== operationId) return null;
     const pending = withoutKey(current.playlistPendingById, playlist.id);
     if (current.snapshot.revision !== revision) {
-      useAccountStore.setState({ playlistPendingById: pending });
+      setAccountScopeState(scope, { playlistPendingById: pending });
       return null;
     }
     const failure = classifyLibraryFailure(error);
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       ...restorePlaylistEntity(current, playlist.id, previousSummary, previousDetail),
       playlistPendingById: pending,
       playlistMutationNoticeById: {
@@ -1687,7 +1951,7 @@ async function runEntityPlaylistMutation({
     return null;
   }
 
-  const current = useAccountStore.getState();
+  const current = stateForAccountScope(scope);
   if (current.playlistPendingById[playlist.id] !== operationId) return null;
   const pending = withoutKey(current.playlistPendingById, playlist.id);
   if (
@@ -1697,14 +1961,14 @@ async function runEntityPlaylistMutation({
     (result.playlist !== null &&
       (result.playlist.id !== playlist.id || result.playlist.ownership !== 'owned'))
   ) {
-    useAccountStore.setState({ playlistPendingById: pending });
+    setAccountScopeState(scope, { playlistPendingById: pending });
     return null;
   }
   const confirmed = result.status === 'applied' || result.status === 'reconciled';
   const invalidConfirmedShape =
     confirmed && (operation === 'delete' ? result.playlist !== null : result.playlist === null);
   if (invalidConfirmedShape) {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       ...restorePlaylistEntity(current, playlist.id, previousSummary, previousDetail),
       playlistPendingById: pending,
       playlistMutationNoticeById: {
@@ -1715,7 +1979,7 @@ async function runEntityPlaylistMutation({
     return null;
   }
   if (result.status === 'rejected') {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       ...restorePlaylistEntity(current, playlist.id, previousSummary, previousDetail),
       playlistPendingById: pending,
       playlistMutationNoticeById: {
@@ -1726,7 +1990,7 @@ async function runEntityPlaylistMutation({
     return result;
   }
   if (result.status === 'outcome-unknown') {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       playlistPendingById: pending,
       playlistMutationNoticeById: {
         ...current.playlistMutationNoticeById,
@@ -1737,7 +2001,7 @@ async function runEntityPlaylistMutation({
     else void current.loadAccountPlaylist(provider, playlist, true);
     return result;
   }
-  useAccountStore.setState((state) => {
+  setAccountScopeState(scope, (state) => {
     if (operation === 'delete') {
       const accountPlaylistDetails = { ...state.accountPlaylistDetails };
       delete accountPlaylistDetails[playlist.id];
@@ -1778,6 +2042,7 @@ async function runCreatePlaylistMutation(
   provider: AccountMusicProvider,
   title: string,
 ): Promise<PlaylistMutationResult | null> {
+  const scope = activateAccountScope(provider);
   const initial = useAccountStore.getState();
   if (initial.snapshot.state !== 'authenticated') {
     initial.openDialog();
@@ -1803,15 +2068,15 @@ async function runCreatePlaylistMutation(
       await provider.createPlaylist(request, runtimeSignal(provider)),
     );
   } catch (error) {
-    const current = useAccountStore.getState();
+    const current = stateForAccountScope(scope);
     if (current.playlistPendingById[CREATE_PLAYLIST_KEY] !== operationId) return null;
     const pending = withoutKey(current.playlistPendingById, CREATE_PLAYLIST_KEY);
     if (current.snapshot.revision !== revision) {
-      useAccountStore.setState({ playlistPendingById: pending });
+      setAccountScopeState(scope, { playlistPendingById: pending });
       return null;
     }
     const failure = classifyLibraryFailure(error);
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       playlistPendingById: pending,
       playlistMutationNoticeById: {
         ...current.playlistMutationNoticeById,
@@ -1823,7 +2088,7 @@ async function runCreatePlaylistMutation(
     }
     return null;
   }
-  const current = useAccountStore.getState();
+  const current = stateForAccountScope(scope);
   if (current.playlistPendingById[CREATE_PLAYLIST_KEY] !== operationId) return null;
   const pending = withoutKey(current.playlistPendingById, CREATE_PLAYLIST_KEY);
   if (
@@ -1831,12 +2096,12 @@ async function runCreatePlaylistMutation(
     result.authRevision !== revision ||
     result.clientOperationId !== operationId
   ) {
-    useAccountStore.setState({ playlistPendingById: pending });
+    setAccountScopeState(scope, { playlistPendingById: pending });
     return null;
   }
   if (result.status === 'applied' || result.status === 'reconciled') {
     if (!result.playlist || result.playlist.ownership !== 'owned') {
-      useAccountStore.setState({
+      setAccountScopeState(scope, {
         playlistPendingById: pending,
         playlistMutationNoticeById: {
           ...current.playlistMutationNoticeById,
@@ -1845,7 +2110,7 @@ async function runCreatePlaylistMutation(
       });
       return null;
     }
-    useAccountStore.setState((state) => ({
+    setAccountScopeState(scope, (state) => ({
       ...projectPlaylistSummary(state, result.playlist!),
       playlistPendingById: pending,
       playlistMutationNoticeById:
@@ -1857,7 +2122,7 @@ async function runCreatePlaylistMutation(
           : withoutKey(state.playlistMutationNoticeById, CREATE_PLAYLIST_KEY),
     }));
   } else {
-    useAccountStore.setState({
+    setAccountScopeState(scope, {
       playlistPendingById: pending,
       playlistMutationNoticeById: {
         ...current.playlistMutationNoticeById,
@@ -2033,15 +2298,29 @@ export async function runTemporaryPlaylistAcceptance(
 
 export function useAccountRuntime(provider: MusicProvider): void {
   useLayoutEffect(() => {
-    resetAccountProjection();
-  }, [provider.id]);
+    // Catalog-only providers still own an isolated guest projection. Without
+    // activating it, switching away from an authenticated provider would keep
+    // rendering the previous account facade.
+    activateAccountScope(provider);
+  }, [provider]);
 
   useEffect(() => {
     if (!isAccountMusicProvider(provider)) return;
-    const controller = new AbortController();
-    runtimeProvider = provider;
-    runtimeAbortController = controller;
+    const scope = activateAccountScope(provider);
+    // Register before the first restore completes: reset and deferred cleanup
+    // must be able to cancel a waiting native owner even before heartbeat runs.
+    runtimeProvidersByScope.set(scope, provider);
+    const owner = Symbol('account-runtime-owner');
+    const owners = runtimeOwnersByScope.get(scope) ?? new Set<symbol>();
+    owners.add(owner);
+    runtimeOwnersByScope.set(scope, owners);
+    let controller = runtimeAbortControllers.get(scope);
+    if (!controller) {
+      controller = new AbortController();
+      runtimeAbortControllers.set(scope, controller);
+    }
     const unsubscribe = useAccountStore.subscribe(() => {
+      if (!isActiveAccountScope(scope)) return;
       reconcileOwnershipTimers(provider);
       hydrateAuthenticatedFavoriteAuthority(provider);
     });
@@ -2049,14 +2328,14 @@ export function useAccountRuntime(provider: MusicProvider): void {
     let revalidating = false;
     let restoreRetryTimer: number | null = null;
     let restoreRetryAttempt = 0;
-    const refreshSnapshot = () => useAccountStore.getState().refreshSnapshot(provider);
+    const refreshSnapshot = () => refreshSnapshotForScope(provider);
     const stopAccountChanged = getYaqmcClient().on(CHANNEL_ACCOUNT_CHANGED, () => {
       lastRevalidationAt = Date.now();
       void refreshSnapshot();
     });
     let lastRestoreRetryAt = 0;
     const isRetryableAndroidRestore = () => {
-      const snapshot = useAccountStore.getState().snapshot;
+      const snapshot = stateForAccountScope(scope).snapshot;
       return (
         isAndroidRuntime() &&
         (snapshot.state === 'secure-store-unavailable' ||
@@ -2091,7 +2370,7 @@ export function useAccountRuntime(provider: MusicProvider): void {
     };
     const revalidate = () => {
       const now = Date.now();
-      const snapshot = useAccountStore.getState().snapshot;
+      const snapshot = stateForAccountScope(scope).snapshot;
       const snapshotState = snapshot.state;
       const retrySessionRestore = isRetryableAndroidRestore();
       const restoreRetryGapMs = now - lastRestoreRetryAt;
@@ -2111,35 +2390,29 @@ export function useAccountRuntime(provider: MusicProvider): void {
       revalidating = true;
       lastRevalidationAt = now;
       if (retrySessionRestore) lastRestoreRetryAt = now;
-      void useAccountStore
-        .getState()
-        .refreshAccount(provider)
-        .finally(() => {
-          revalidating = false;
-          if (isRetryableAndroidRestore()) {
-            scheduleRestoreRetry();
-            restoreRetryAttempt += 1;
-          } else {
-            restoreRetryAttempt = 0;
-            clearRestoreRetry();
-          }
-        });
+      void refreshAccountForScope(provider).finally(() => {
+        revalidating = false;
+        if (isRetryableAndroidRestore()) {
+          scheduleRestoreRetry();
+          restoreRetryAttempt += 1;
+        } else {
+          restoreRetryAttempt = 0;
+          clearRestoreRetry();
+        }
+      });
     };
     const revalidateOnVisible = () => {
       if (isAndroidRuntime() && document.visibilityState !== 'visible') {
-        clearOwnershipTimers();
+        clearOwnershipTimersForScope(scope);
         clearRestoreRetry();
         return;
       }
       // Reconcile the active attempt first. This prevents a stale renderer
       // snapshot from restarting or overriding the native-owned task.
-      void useAccountStore
-        .getState()
-        .refreshSnapshot(provider)
-        .finally(() => {
-          reconcileOwnershipTimers(provider);
-          revalidate();
-        });
+      void refreshSnapshotForScope(provider).finally(() => {
+        reconcileOwnershipTimers(provider);
+        revalidate();
+      });
     };
     const revalidateOnOnline = () => {
       if (isRetryableAndroidRestore()) {
@@ -2174,38 +2447,58 @@ export function useAccountRuntime(provider: MusicProvider): void {
       window.removeEventListener('online', revalidateOnOnline);
       document.removeEventListener('visibilitychange', revalidateOnVisible);
       unsubscribe();
-      // Android owns a bounded, process-scoped task. A renderer remount is not user cancellation.
-      disposeOwnership(provider, !isAndroidRuntime());
-      controller.abort();
-      if (runtimeProvider === provider) {
-        runtimeProvider = null;
-        runtimeAbortController = null;
-      }
+      owners.delete(owner);
+      // Effect replacement runs cleanup before the replacement setup. Defer the
+      // final-owner decision one microtask so a same-scope replacement keeps its
+      // native QR owner and shared transport alive.
+      queueMicrotask(() => {
+        if (owners.size === 0 && runtimeOwnersByScope.get(scope) === owners) {
+          runtimeOwnersByScope.delete(scope);
+          const currentProvider = runtimeProvidersByScope.get(scope);
+          // Android owns a bounded, process-scoped task. A renderer remount is not user cancellation.
+          if (currentProvider) disposeOwnership(currentProvider, !isAndroidRuntime());
+          controller.abort();
+          if (runtimeAbortControllers.get(scope) === controller) {
+            runtimeAbortControllers.delete(scope);
+          }
+          if (runtimeProvidersByScope.get(scope) === currentProvider) {
+            runtimeProvidersByScope.delete(scope);
+          }
+        }
+      });
     };
   }, [provider]);
 }
 
 export function releaseAccountDialogOwnership(provider: AccountMusicProvider): void {
+  activateAccountScope(provider);
   disposeOwnership(provider);
 }
 
 export function resetAccountRuntimeForTest(): void {
-  runtimeAbortController?.abort();
-  runtimeAbortController = null;
-  runtimeProvider = null;
+  for (const provider of runtimeProvidersByScope.values()) disposeOwnership(provider);
+  for (const controller of runtimeAbortControllers.values()) controller.abort();
+  runtimeAbortControllers.clear();
+  runtimeOwnersByScope.clear();
+  runtimeProvidersByScope.clear();
+  accountProjections.clear();
+  activeAccountScope = null;
   resetAccountProjection();
 }
 
 function resetAccountProjection(): void {
-  ++requestGeneration;
+  requestGenerations.clear();
+  libraryGenerationsByScope.clear();
   invalidateLibraryRequests();
   accountPlaylistGenerations.clear();
-  clearOwnershipTimers();
+  for (const timers of ownershipTimersByScope.values()) {
+    if (timers.snapshotTimer !== null) window.clearInterval(timers.snapshotTimer);
+    if (timers.heartbeatTimer !== null) window.clearInterval(timers.heartbeatTimer);
+  }
+  ownershipTimersByScope.clear();
   blockedAttempts.clear();
   cancellationRequests.clear();
-  favoriteMutationVersion = 0;
-  favoriteMutationVersionByTrackId.clear();
-  favoriteConfirmedGuardByTrackId.clear();
+  favoriteRuntimes.clear();
   useAccountStore.setState({
     snapshot: initialSnapshot,
     displayedQrImageDataUri: null,
