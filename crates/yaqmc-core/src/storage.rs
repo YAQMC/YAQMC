@@ -21,6 +21,7 @@ use tokio::{
 };
 use yaqmc_provider_api::storage::{ArtworkFetcher, ProviderStorage, ProviderStorageError};
 pub use yaqmc_provider_api::storage::{CacheStats, ProviderCacheMutation};
+use yaqmc_provider_api::{ProviderProfileKey, DEFAULT_PROFILE_ID};
 
 use crate::statistics::{
     ListeningArtist, ListeningDisplaySnapshot, ListeningOutcome, ListeningSessionRecord,
@@ -437,6 +438,30 @@ impl StorageService {
         track_id: &str,
         value: &T,
     ) -> Result<(), StorageError> {
+        self.record_playback_snapshot_for_profile_id(provider, DEFAULT_PROFILE_ID, track_id, value)
+    }
+
+    pub fn record_playback_snapshot_for_profile<T: Serialize>(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        value: &T,
+    ) -> Result<(), StorageError> {
+        self.record_playback_snapshot_for_profile_id(
+            &profile.provider_id,
+            &profile.profile_id,
+            track_id,
+            value,
+        )
+    }
+
+    fn record_playback_snapshot_for_profile_id<T: Serialize>(
+        &self,
+        provider: &str,
+        profile_id: &str,
+        track_id: &str,
+        value: &T,
+    ) -> Result<(), StorageError> {
         let value_json = serde_json::to_string(value).map_err(|_| StorageError::Database)?;
         let now = sqlite_i64(unix_timestamp_ms());
         let connection = self
@@ -445,9 +470,9 @@ impl StorageService {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         connection
             .execute(
-                "INSERT INTO playback_history(provider, track_id, played_at_ms, value_json)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![provider, track_id, now, value_json],
+                "INSERT INTO playback_history(provider, profile_id, track_id, played_at_ms, value_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![provider, profile_id, track_id, now, value_json],
             )
             .map_err(|_| StorageError::Database)?;
         connection
@@ -466,6 +491,23 @@ impl StorageService {
         provider: &str,
         limit: u32,
     ) -> Result<Vec<(T, u64)>, StorageError> {
+        self.load_playback_history_for_profile_id(provider, DEFAULT_PROFILE_ID, limit)
+    }
+
+    pub fn load_playback_history_for_profile<T: DeserializeOwned>(
+        &self,
+        profile: &ProviderProfileKey,
+        limit: u32,
+    ) -> Result<Vec<(T, u64)>, StorageError> {
+        self.load_playback_history_for_profile_id(&profile.provider_id, &profile.profile_id, limit)
+    }
+
+    fn load_playback_history_for_profile_id<T: DeserializeOwned>(
+        &self,
+        provider: &str,
+        profile_id: &str,
+        limit: u32,
+    ) -> Result<Vec<(T, u64)>, StorageError> {
         let connection = self
             .connection
             .lock()
@@ -473,20 +515,22 @@ impl StorageService {
         let mut statement = connection
             .prepare(
                 "SELECT value_json, played_at_ms FROM playback_history AS history
-                 WHERE provider = ?1 AND value_json IS NOT NULL
+                 WHERE provider = ?1 AND profile_id = ?2 AND value_json IS NOT NULL
                    AND id = (
                      SELECT MAX(latest.id) FROM playback_history AS latest
                      WHERE latest.provider = history.provider
+                       AND latest.profile_id = history.profile_id
                        AND latest.track_id = history.track_id
                        AND latest.value_json IS NOT NULL
                    )
-                 ORDER BY played_at_ms DESC, id DESC LIMIT ?2",
+                 ORDER BY played_at_ms DESC, id DESC LIMIT ?3",
             )
             .map_err(|_| StorageError::Database)?;
         let rows = statement
-            .query_map(params![provider, i64::from(limit.clamp(1, 500))], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })
+            .query_map(
+                params![provider, profile_id, i64::from(limit.clamp(1, 500))],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+            )
             .map_err(|_| StorageError::Database)?;
         let mut history = Vec::new();
         for row in rows {
@@ -503,14 +547,44 @@ impl StorageService {
         track_id: &str,
         value: &T,
     ) -> Result<(), StorageError> {
+        self.backfill_playback_history_snapshot_for_profile_id(
+            provider,
+            DEFAULT_PROFILE_ID,
+            track_id,
+            value,
+        )
+    }
+
+    pub fn backfill_playback_history_snapshot_for_profile<T: Serialize>(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        value: &T,
+    ) -> Result<(), StorageError> {
+        self.backfill_playback_history_snapshot_for_profile_id(
+            &profile.provider_id,
+            &profile.profile_id,
+            track_id,
+            value,
+        )
+    }
+
+    fn backfill_playback_history_snapshot_for_profile_id<T: Serialize>(
+        &self,
+        provider: &str,
+        profile_id: &str,
+        track_id: &str,
+        value: &T,
+    ) -> Result<(), StorageError> {
         let value_json = serde_json::to_string(value).map_err(|_| StorageError::Database)?;
         self.connection
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .execute(
-                "UPDATE playback_history SET value_json = ?3
-                 WHERE provider = ?1 AND track_id = ?2 AND value_json IS NULL",
-                params![provider, track_id, value_json],
+                "UPDATE playback_history SET value_json = ?4
+                 WHERE provider = ?1 AND profile_id = ?2
+                   AND track_id = ?3 AND value_json IS NULL",
+                params![provider, profile_id, track_id, value_json],
             )
             .map_err(|_| StorageError::Database)?;
         Ok(())
@@ -1476,6 +1550,37 @@ impl ProviderStorage for StorageService {
             .map_err(|_| ProviderStorageError)
     }
 
+    fn record_playback_snapshot_for_profile_value(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        snapshot: serde_json::Value,
+    ) -> Result<(), ProviderStorageError> {
+        StorageService::record_playback_snapshot_for_profile(self, profile, track_id, &snapshot)
+            .map_err(|_| ProviderStorageError)
+    }
+
+    fn backfill_playback_history_snapshot_for_profile_value(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        snapshot: serde_json::Value,
+    ) -> Result<(), ProviderStorageError> {
+        StorageService::backfill_playback_history_snapshot_for_profile(
+            self, profile, track_id, &snapshot,
+        )
+        .map_err(|_| ProviderStorageError)
+    }
+
+    fn load_playback_history_for_profile_values(
+        &self,
+        profile: &ProviderProfileKey,
+        limit: u32,
+    ) -> Result<Vec<(serde_json::Value, u64)>, ProviderStorageError> {
+        StorageService::load_playback_history_for_profile(self, profile, limit)
+            .map_err(|_| ProviderStorageError)
+    }
+
     async fn artwork_data_uri(
         &self,
         fetcher: &dyn ArtworkFetcher,
@@ -1709,6 +1814,49 @@ fn migrate(connection: &Connection) -> Result<(), StorageError> {
             )
             .map_err(|_| StorageError::Database)?;
     }
+    if version < 8 {
+        connection
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS playback_history (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   provider TEXT NOT NULL,
+                   track_id TEXT NOT NULL,
+                   played_at_ms INTEGER NOT NULL,
+                   value_json TEXT,
+                   profile_id TEXT NOT NULL DEFAULT 'default'
+                 );",
+            )
+            .map_err(|_| StorageError::Database)?;
+        let has_profile_id = connection
+            .prepare("PRAGMA table_info(playback_history)")
+            .and_then(|mut statement| {
+                let columns = statement
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(columns.iter().any(|column| column == "profile_id"))
+            })
+            .map_err(|_| StorageError::Database)?;
+        connection
+            .execute_batch("BEGIN;")
+            .map_err(|_| StorageError::Database)?;
+        if !has_profile_id {
+            connection
+                .execute(
+                    "ALTER TABLE playback_history
+                     ADD COLUMN profile_id TEXT NOT NULL DEFAULT 'default'",
+                    [],
+                )
+                .map_err(|_| StorageError::Database)?;
+        }
+        connection
+            .execute_batch(
+                "CREATE INDEX IF NOT EXISTS playback_history_provider_profile_time
+                   ON playback_history(provider, profile_id, played_at_ms DESC);
+                 PRAGMA user_version = 8;
+                 COMMIT;",
+            )
+            .map_err(|_| StorageError::Database)?;
+    }
     Ok(())
 }
 
@@ -1907,7 +2055,7 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("migration version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         storage
             .put_json("qq:search:test", "metadata", &vec!["one", "two"], 60_000)
             .expect("cache write");
@@ -1968,7 +2116,7 @@ mod tests {
         let version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("migration version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         let profile_id: String = connection
             .query_row(
                 "SELECT profile_id FROM listening_sessions
@@ -2179,6 +2327,54 @@ mod tests {
         assert_eq!(history[0].0, updated);
         assert_eq!(history[1].0, second);
         assert!(history[0].1 >= history[1].1);
+    }
+
+    #[test]
+    fn profile_playback_history_keeps_same_provider_profiles_isolated() {
+        #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+        struct Track {
+            id: String,
+            title: String,
+        }
+
+        let (_root, storage) = storage();
+        let default_profile =
+            ProviderProfileKey::default_profile("qqmusic").expect("default profile");
+        let work_profile = ProviderProfileKey::new("qqmusic", "work").expect("work profile");
+        let default_track = Track {
+            id: "default-track".to_owned(),
+            title: "Default".to_owned(),
+        };
+        let work_track = Track {
+            id: "work-track".to_owned(),
+            title: "Work".to_owned(),
+        };
+
+        storage
+            .record_playback_snapshot_for_profile(&default_profile, "default-track", &default_track)
+            .expect("default record");
+        storage
+            .record_playback_snapshot_for_profile(&work_profile, "work-track", &work_track)
+            .expect("work record");
+
+        assert_eq!(
+            storage
+                .load_playback_history_for_profile::<Track>(&default_profile, 10)
+                .expect("default history")
+                .into_iter()
+                .map(|(track, _)| track)
+                .collect::<Vec<_>>(),
+            vec![default_track]
+        );
+        assert_eq!(
+            storage
+                .load_playback_history_for_profile::<Track>(&work_profile, 10)
+                .expect("work history")
+                .into_iter()
+                .map(|(track, _)| track)
+                .collect::<Vec<_>>(),
+            vec![work_track]
+        );
     }
 
     #[test]

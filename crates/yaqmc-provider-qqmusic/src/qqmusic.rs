@@ -35,6 +35,7 @@ mod artwork;
 mod auth;
 mod cache;
 mod clock;
+mod credential_slots;
 mod discovery;
 mod entitlement;
 mod oauth;
@@ -47,9 +48,9 @@ use yaqmc_provider_api::{
     ArtistSummary, Artwork, AudioCodec, AudioFormat, AudioFormatInfo, AudioQuality, CacheStats,
     CatalogSearchKind, CredentialStore, LyricDocument, LyricLine, LyricMetadata, LyricSyncMode,
     LyricWord, PlaybackCapability, PlaybackEpochGuard, PlaybackLocation, PlaybackSourceError,
-    PlaybackSourceResolver, PlaylistPreview, ProviderStorage, ProviderStorageExt,
-    ProviderTrackReference, ResolvedPlaybackSource, SearchResult, Song, SongAvailability,
-    SpawnBlockingCredentialStore,
+    PlaybackSourceResolver, PlaylistPreview, ProviderProfileKey, ProviderStorage,
+    ProviderStorageExt, ProviderTrackReference, ResolvedPlaybackSource, SearchResult, Song,
+    SongAvailability, SpawnBlockingCredentialStore,
 };
 pub use yaqmc_provider_api::{
     AudioQualityPreference, PlaybackFallbackReason, PlaybackSourceSelection,
@@ -402,6 +403,7 @@ impl From<QQMusicError> for ProviderCommandError {
 pub type ProviderResult<T> = Result<T, ProviderCommandError>;
 
 pub struct QQMusicService {
+    profile: ProviderProfileKey,
     client: QQMusicClient,
     #[cfg_attr(
         not(test),
@@ -427,7 +429,44 @@ pub struct QQMusicService {
     session_invalid: AtomicBool,
 }
 
+fn song_matches_profile(song: &Song, profile: &ProviderProfileKey) -> bool {
+    song.provider.as_ref().is_some_and(|provider| {
+        provider.provider_id == profile.provider_id && provider.profile_id == profile.profile_id
+    })
+}
+
 impl QQMusicService {
+    fn preferred_quality_key(profile: &ProviderProfileKey) -> String {
+        format!("preferred-quality:qqmusic:{}", profile.profile_id)
+    }
+
+    fn load_preferred_quality(
+        storage: &dyn ProviderStorage,
+        profile: &ProviderProfileKey,
+    ) -> Result<AudioQualityPreference, QQMusicError> {
+        let scoped_key = Self::preferred_quality_key(profile);
+        let scoped = storage
+            .get_setting(&scoped_key)
+            .map_err(|_| QQMusicError::Storage)?;
+        if let Some(value) = scoped {
+            return Ok(AudioQualityPreference::from_setting(Some(value)));
+        }
+        if profile.profile_id != DEFAULT_PROFILE_ID {
+            return Ok(AudioQualityPreference::Automatic);
+        }
+        let legacy = storage
+            .get_setting("preferred-quality")
+            .map_err(|_| QQMusicError::Storage)?;
+        if let Some(value) = legacy.clone() {
+            // Migration is idempotent. Keep the legacy value readable for
+            // older callers while making the profile slot authoritative.
+            storage
+                .set_setting(&scoped_key, &value)
+                .map_err(|_| QQMusicError::Storage)?;
+        }
+        Ok(AudioQualityPreference::from_setting(legacy))
+    }
+
     pub fn new<S>(
         storage: Arc<S>,
         credentials: Arc<dyn CredentialStore>,
@@ -436,12 +475,35 @@ impl QQMusicService {
     where
         S: ProviderStorage + 'static,
     {
+        let profile = ProviderProfileKey::default_profile("qqmusic")
+            .expect("QQ Music default profile is a static valid key");
+        Self::new_for_profile(storage, credentials, fixture_root, profile)
+    }
+
+    /// Build an isolated QQ Music service for one validated provider profile.
+    pub fn new_for_profile<S>(
+        storage: Arc<S>,
+        credentials: Arc<dyn CredentialStore>,
+        fixture_root: PathBuf,
+        profile: ProviderProfileKey,
+    ) -> Result<Self, QQMusicError>
+    where
+        S: ProviderStorage + 'static,
+    {
         let clock: Arc<dyn Clock> = Arc::new(SystemClock);
         let account_transport: Arc<dyn QqTransport> =
             Arc::new(ReqwestQqTransport::new(Arc::clone(&clock))?);
-        Self::new_with_runtime(storage, credentials, fixture_root, account_transport, clock)
+        Self::new_with_runtime_for_profile(
+            storage,
+            credentials,
+            fixture_root,
+            account_transport,
+            clock,
+            profile,
+        )
     }
 
+    #[allow(dead_code, reason = "used by deterministic in-module runtime tests")]
     pub(crate) fn new_with_runtime<S>(
         storage: Arc<S>,
         credentials: Arc<dyn CredentialStore>,
@@ -452,12 +514,36 @@ impl QQMusicService {
     where
         S: ProviderStorage + 'static,
     {
-        let storage: Arc<dyn ProviderStorage> = storage;
-        let preferred_quality = AudioQualityPreference::from_setting(
-            storage
-                .get_setting("preferred-quality")
-                .map_err(|_| QQMusicError::Storage)?,
+        let profile = ProviderProfileKey::default_profile("qqmusic")
+            .expect("QQ Music default profile is a static valid key");
+        Self::new_with_runtime_for_profile(
+            storage,
+            credentials,
+            fixture_root,
+            account_transport,
+            clock,
+            profile,
+        )
+    }
+
+    pub(crate) fn new_with_runtime_for_profile<S>(
+        storage: Arc<S>,
+        credentials: Arc<dyn CredentialStore>,
+        fixture_root: PathBuf,
+        account_transport: Arc<dyn QqTransport>,
+        clock: Arc<dyn Clock>,
+        profile: ProviderProfileKey,
+    ) -> Result<Self, QQMusicError>
+    where
+        S: ProviderStorage + 'static,
+    {
+        let slots = credential_slots::QQMusicCredentialSlots::new(profile.clone())
+            .map_err(|_| QQMusicError::InvalidRequest)?;
+        let credentials: Arc<dyn CredentialStore> = Arc::new(
+            credential_slots::ProfileCredentialStore::new(credentials, slots),
         );
+        let storage: Arc<dyn ProviderStorage> = storage;
+        let preferred_quality = Self::load_preferred_quality(storage.as_ref(), &profile)?;
         let auth_protocol = Arc::new(TransportQQMusicAuthProtocol::new(
             Arc::clone(&account_transport),
             Arc::clone(&clock),
@@ -475,6 +561,7 @@ impl QQMusicService {
             Arc::clone(&auth),
         ));
         Ok(Self {
+            profile,
             client: QQMusicClient::new()?,
             account_transport,
             clock,
@@ -492,6 +579,11 @@ impl QQMusicService {
 
     pub fn http_client(&self) -> Client {
         self.client.http.clone()
+    }
+
+    /// The validated provider/profile identity owning this service instance.
+    pub fn profile_key(&self) -> &ProviderProfileKey {
+        &self.profile
     }
 
     pub fn capabilities(&self) -> CatalogProviderCapabilities {
@@ -545,8 +637,9 @@ impl QQMusicService {
         &self,
         quality: AudioQualityPreference,
     ) -> Result<ProviderStatus, QQMusicError> {
+        let scoped_key = Self::preferred_quality_key(&self.profile);
         self.storage
-            .set_setting("preferred-quality", quality.as_setting())
+            .set_setting(&scoped_key, quality.as_setting())
             .map_err(|_| QQMusicError::Storage)?;
         *self.preferred_quality.write().await = quality;
         Ok(self.status().await)
@@ -630,7 +723,13 @@ impl QQMusicService {
     ) -> Result<Page<RemotePlayHistoryItem>, QQMusicError> {
         let limit = limit.clamp(1, 100);
         let remote = self.account.recently_played(cursor.clone(), limit).await;
-        let local = self.local_recent_history(if cursor.is_none() { limit } else { 0 })?;
+        // Legacy playback history is provider-only. Do not expose it to a
+        // non-default profile until storage has a profile-aware schema.
+        let local = if self.profile.profile_id == DEFAULT_PROFILE_ID {
+            self.local_recent_history(if cursor.is_none() { limit } else { 0 })?
+        } else {
+            Vec::new()
+        };
         let page = match remote {
             Ok(page) => merge_recent_history(page, local, limit),
             Err(error) if recent_history_fallback_eligible(&error) => {
@@ -661,16 +760,20 @@ impl QQMusicService {
                 if let Some(provider) = song
                     .provider
                     .as_ref()
-                    .filter(|provider| provider.provider_id == "qqmusic")
+                    .filter(|_| song_matches_profile(&song, &self.profile))
                 {
                     self.storage
-                        .backfill_playback_history_snapshot("qqmusic", &provider.track_id, &song)
+                        .backfill_playback_history_snapshot_for_profile(
+                            &self.profile,
+                            &provider.track_id,
+                            &song,
+                        )
                         .map_err(|_| QQMusicError::Storage)?;
                 }
             }
         }
         self.storage
-            .load_playback_history::<Song>("qqmusic", limit)
+            .load_playback_history_for_profile::<Song>(&self.profile, limit)
             .map_err(|_| QQMusicError::Storage)
             .map(|history| {
                 history
@@ -1696,8 +1799,8 @@ impl PlaybackSourceResolver for QQMusicService {
             }
             let source = source.map_err(map_provider_source_error)?;
             if let Some(provider) = &song.provider {
-                let _ = self.storage.record_playback_snapshot(
-                    &provider.provider_id,
+                let _ = self.storage.record_playback_snapshot_for_profile(
+                    &self.profile,
                     &provider.track_id,
                     song,
                 );
@@ -1803,9 +1906,11 @@ impl PlaybackSourceResolver for QQMusicService {
             capability.client = ClientCapabilityState::Unsupported;
             capability.playable = false;
         }
-        let _ =
-            self.storage
-                .record_playback_snapshot(&provider.provider_id, &provider.track_id, song);
+        let _ = self.storage.record_playback_snapshot_for_profile(
+            &self.profile,
+            &provider.track_id,
+            song,
+        );
         Ok(source)
     }
 }
@@ -5007,6 +5112,60 @@ mod tests {
     }
 
     #[test]
+    fn preferred_quality_is_profile_scoped_and_default_legacy_migrates_once() {
+        let root = tempfile::tempdir().expect("temp root");
+        let storage = StorageService::open(root.path().join("data"), root.path().join("cache"))
+            .expect("storage");
+        let default_profile =
+            ProviderProfileKey::default_profile("qqmusic").expect("default profile");
+        let work_profile = ProviderProfileKey::new("qqmusic", "work").expect("work profile");
+
+        storage
+            .set_setting("preferred-quality", "high")
+            .expect("legacy quality");
+        assert_eq!(
+            QQMusicService::load_preferred_quality(&storage, &default_profile)
+                .expect("default quality"),
+            AudioQualityPreference::High
+        );
+        assert_eq!(
+            storage
+                .get_setting("preferred-quality:qqmusic:default")
+                .expect("scoped quality"),
+            Some("high".to_owned())
+        );
+
+        // Once migrated, the scoped slot remains authoritative even if an old
+        // caller changes the compatibility key.
+        storage
+            .set_setting("preferred-quality", "lossless")
+            .expect("updated legacy quality");
+        assert_eq!(
+            QQMusicService::load_preferred_quality(&storage, &default_profile)
+                .expect("migrated default quality"),
+            AudioQualityPreference::High
+        );
+
+        // Alternate profiles neither read nor create the legacy slot.
+        assert_eq!(
+            QQMusicService::load_preferred_quality(&storage, &work_profile).expect("work quality"),
+            AudioQualityPreference::Automatic
+        );
+        assert_eq!(
+            storage
+                .get_setting("preferred-quality:qqmusic:work")
+                .expect("work scoped quality"),
+            None
+        );
+        assert_eq!(
+            storage
+                .get_setting("preferred-quality")
+                .expect("legacy quality"),
+            Some("lossless".to_owned())
+        );
+    }
+
+    #[test]
     fn encrypted_lossless_and_master_candidates_use_internal_media_mid_filenames() {
         let candidates = source_candidates("TRACK_MID", "MEDIA_MID");
         let encrypted = candidates
@@ -5163,6 +5322,60 @@ mod tests {
             RemotePlayHistorySource::LocalPlayback
         );
         assert_eq!(merged.items[1].song.id, "qqmusic:track:SECOND");
+    }
+
+    #[test]
+    fn queue_history_scope_requires_provider_and_profile_for_same_and_different_tracks() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/qqmusic/search-song.json"))
+                .expect("search fixture");
+        let raw: NewSongDto = serde_json::from_value(
+            fixture
+                .pointer("/data/song/list/0")
+                .cloned()
+                .expect("song fixture"),
+        )
+        .expect("song DTO");
+        let base = normalize_new_song(raw).expect("song normalizes");
+        let default_profile =
+            ProviderProfileKey::default_profile("qqmusic").expect("default profile");
+        let work_profile = ProviderProfileKey::new("qqmusic", "work").expect("work profile");
+
+        let mut default_same = base.clone();
+        default_same.id = "qqmusic:track:SAME".to_owned();
+        let mut work_same = default_same.clone();
+        work_same
+            .provider
+            .as_mut()
+            .expect("same track scope")
+            .profile_id = work_profile.profile_id.clone();
+        let mut default_other = base.clone();
+        default_other.id = "qqmusic:track:DEFAULT_ONLY".to_owned();
+        let mut work_other = base;
+        work_other.id = "qqmusic:track:WORK_ONLY".to_owned();
+        work_other
+            .provider
+            .as_mut()
+            .expect("work track scope")
+            .profile_id = work_profile.profile_id.clone();
+
+        let queue = vec![default_same, work_same, default_other, work_other];
+        let default_ids = queue
+            .iter()
+            .filter(|song| song_matches_profile(song, &default_profile))
+            .map(|song| song.id.as_str())
+            .collect::<Vec<_>>();
+        let work_ids = queue
+            .iter()
+            .filter(|song| song_matches_profile(song, &work_profile))
+            .map(|song| song.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            default_ids,
+            ["qqmusic:track:SAME", "qqmusic:track:DEFAULT_ONLY"]
+        );
+        assert_eq!(work_ids, ["qqmusic:track:SAME", "qqmusic:track:WORK_ONLY"]);
     }
 
     #[test]

@@ -58,7 +58,8 @@ use tokio_util::sync::CancellationToken;
 #[cfg(test)]
 use yaqmc_provider_api::AudioQuality;
 use yaqmc_provider_api::{
-    PlaybackEpochClock, ProviderStorage, ProviderStorageError, SpawnBlockingCredentialStore,
+    PlaybackEpochClock, ProviderCacheMutation, ProviderStorage, ProviderStorageError,
+    SpawnBlockingCredentialStore,
 };
 
 use crate::qmapi::cgi::map_qmapi_error;
@@ -920,9 +921,7 @@ impl QQMusicAuthService {
         };
         self.ensure_current(&epoch).await?;
         *self.active_session.write().await = Some(session);
-        self.storage
-            .delete_provider_cache_kind(ACCOUNT_CACHE_KIND)
-            .map_err(|_| QQMusicError::Storage)?;
+        self.clear_account_cache_for(&epoch.scope)?;
         if !self
             .publish_authenticated_if_current(generation, validated)
             .await
@@ -934,6 +933,15 @@ impl QQMusicAuthService {
 
     pub(crate) fn playback_epoch_clock(&self) -> Arc<PlaybackEpochClock> {
         Arc::clone(&self.playback_epoch)
+    }
+
+    fn clear_account_cache_for(&self, scope: &OpaqueAccountScope) -> Result<(), QQMusicError> {
+        self.storage
+            .apply_provider_cache_batch(&[ProviderCacheMutation::DeleteKindPrefix {
+                kind: ACCOUNT_CACHE_KIND.to_owned(),
+                prefix: super::cache::AccountCache::scope_prefix(scope),
+            }])
+            .map_err(|_| QQMusicError::Storage)
     }
 
     async fn persist_credential_v2(&self, session: &SessionRecord) -> Result<(), QQMusicError> {
@@ -1058,7 +1066,7 @@ impl QQMusicAuthService {
         let (generation, _) = self.begin_generation().await;
         let active = self.credentials.delete(ACTIVE_SESSION).await;
         let v2 = self.clear_credential_v2().await;
-        let account_cache = self.storage.delete_provider_cache_kind(ACCOUNT_CACHE_KIND);
+        let account_cache = self.clear_account_cache_for(&epoch.scope);
         *self.active_session.write().await = None;
         self.playback_epoch.replace(None);
         if !self
@@ -1896,10 +1904,34 @@ impl QQMusicAuthService {
         }
         self.cancel_owner_signals_before(generation);
         let _lifecycle = self.lifecycle.lock().await;
+        // A cold logout has no in-memory account state, but the active record
+        // still carries the opaque cache scope needed for a targeted cleanup.
+        // Read it before deleting credentials; malformed/unavailable records
+        // never widen cleanup to another account.
+        let in_memory_scope = self
+            .active_session
+            .read()
+            .await
+            .as_ref()
+            .map(|session| session.account_cache_scope.clone());
+        let cache_scope = match in_memory_scope {
+            Some(scope) => Some(scope),
+            None => self
+                .credentials
+                .load(ACTIVE_SESSION)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|raw| serde_json::from_str::<SessionRecord>(&raw).ok())
+                .map(|session| session.account_cache_scope),
+        };
         let staging = self.credentials.delete(STAGING_SESSION).await;
         let active = self.credentials.delete(ACTIVE_SESSION).await;
         let v2 = self.clear_credential_v2().await;
-        let account_cache = self.storage.delete_provider_cache_kind(ACCOUNT_CACHE_KIND);
+        let account_cache = cache_scope
+            .as_ref()
+            .map(|scope| self.clear_account_cache_for(scope))
+            .unwrap_or(Ok(()));
         *self.active_session.write().await = None;
         self.playback_epoch.replace(None);
         let credential_delete_failed = staging.is_err() || active.is_err() || v2.is_err();
@@ -2251,8 +2283,7 @@ impl QQMusicAuthService {
             return self.rollback_after_active(generation, &prior, error).await;
         }
         if self
-            .storage
-            .delete_provider_cache_kind(ACCOUNT_CACHE_KIND)
+            .clear_account_cache_for(&candidate.account_cache_scope)
             .is_err()
         {
             return self
@@ -2987,7 +3018,7 @@ fn numeric_u64(value: &Value, paths: &[&str]) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::qqmusic::{clock::ManualClock, transport::TransportResponse};
+    use crate::qqmusic::{cache::AccountCache, clock::ManualClock, transport::TransportResponse};
     use std::{
         collections::{BTreeMap, VecDeque},
         sync::{
@@ -4893,31 +4924,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn logout_and_successful_promotion_clear_only_account_cache_entries() {
+    async fn logout_and_successful_promotion_clear_only_the_current_account_scope() {
         let protocol = Arc::new(FakeProtocol::new(Vec::new()));
         let credentials = Arc::new(RecordingCredentialStore::default());
         let (service, storage) =
             auth_service_with_storage(Arc::clone(&protocol), Arc::clone(&credentials));
+        let candidate = session("candidate");
+        let other = session("other");
+        let candidate_key = AccountCache::favorites_key(&candidate.account_cache_scope, None);
+        let other_key = AccountCache::favorites_key(&other.account_cache_scope, None);
         storage
             .put_json("qqmusic:home", "metadata", &vec!["guest"], 60_000)
             .expect("guest cache write");
         storage
-            .put_json(
-                "qqmusic:account:old:favorites",
-                "qqmusic-account",
-                &vec!["private"],
-                60_000,
-            )
+            .put_json(&candidate_key, "qqmusic-account", &vec!["private"], 60_000)
             .expect("old account cache write");
+        storage
+            .put_json(&other_key, "qqmusic-account", &vec!["other"], 60_000)
+            .expect("other account cache write");
 
         service
-            .complete_confirmation(session("candidate"))
+            .complete_confirmation(candidate.clone())
             .await
             .expect("promotion");
         assert!(storage
-            .get_json::<Vec<String>>("qqmusic:account:old:favorites", true)
+            .get_json::<Vec<String>>(&candidate_key, true)
             .expect("account cache read")
             .is_none());
+        assert!(storage
+            .get_json::<Vec<String>>(&other_key, true)
+            .expect("other account cache read")
+            .is_some());
         assert!(storage
             .get_json::<Vec<String>>("qqmusic:home", true)
             .expect("guest cache read")
@@ -4925,7 +4962,7 @@ mod tests {
 
         storage
             .put_json(
-                "qqmusic:account:new:favorites",
+                &candidate_key,
                 "qqmusic-account",
                 &vec!["new-private"],
                 60_000,
@@ -4933,9 +4970,13 @@ mod tests {
             .expect("new account cache write");
         service.logout().await.expect("logout");
         assert!(storage
-            .get_json::<Vec<String>>("qqmusic:account:new:favorites", true)
+            .get_json::<Vec<String>>(&candidate_key, true)
             .expect("account cache read")
             .is_none());
+        assert!(storage
+            .get_json::<Vec<String>>(&other_key, true)
+            .expect("other account cache read")
+            .is_some());
         assert!(storage
             .get_json::<Vec<String>>("qqmusic:home", true)
             .expect("guest cache read")
@@ -4949,18 +4990,15 @@ mod tests {
             CredentialFault::StagingDeleteAlways,
         ));
         credentials.seed(STAGING_SESSION, "stale-stage".to_owned());
+        let active_session = session("active");
         credentials.seed(
             ACTIVE_SESSION,
-            serde_json::to_string(&session("active")).expect("active session JSON"),
+            serde_json::to_string(&active_session).expect("active session JSON"),
         );
         let (service, storage) = auth_service_with_storage(protocol, Arc::clone(&credentials));
+        let active_key = AccountCache::favorites_key(&active_session.account_cache_scope, None);
         storage
-            .put_json(
-                "qqmusic:account:active:favorites",
-                ACCOUNT_CACHE_KIND,
-                &vec!["private"],
-                60_000,
-            )
+            .put_json(&active_key, ACCOUNT_CACHE_KIND, &vec!["private"], 60_000)
             .expect("account cache write");
 
         assert!(service.logout().await.is_err());
@@ -4970,7 +5008,7 @@ mod tests {
         );
         assert!(credentials.value(ACTIVE_SESSION).is_none());
         assert!(storage
-            .get_json::<Vec<String>>("qqmusic:account:active:favorites", true)
+            .get_json::<Vec<String>>(&active_key, true)
             .expect("account cache read")
             .is_none());
         assert!(credentials
@@ -4988,7 +5026,7 @@ mod tests {
             serde_json::to_string(&session("active")).expect("active session JSON"),
         );
         let (service, storage) = auth_service_with_storage(protocol, Arc::clone(&credentials));
-        storage.fail_provider_cache_delete_for_test();
+        storage.fail_provider_cache_batch_after_for_test(1);
 
         assert!(service.logout().await.is_err());
         assert_eq!(service.snapshot().await.state_name(), "guest");
@@ -5001,7 +5039,7 @@ mod tests {
         let protocol = Arc::new(FakeProtocol::new(Vec::new()));
         let credentials = Arc::new(RecordingCredentialStore::default());
         let (service, storage) = auth_service_with_storage(protocol, Arc::clone(&credentials));
-        storage.fail_provider_cache_delete_for_test();
+        storage.fail_provider_cache_batch_after_for_test(1);
 
         assert!(service
             .complete_confirmation(session("candidate"))

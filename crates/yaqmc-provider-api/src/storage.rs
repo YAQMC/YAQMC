@@ -1,5 +1,6 @@
 //! Narrow provider-facing view of Core-owned SQLite and cache services.
 
+use crate::{ProviderProfileKey, DEFAULT_PROFILE_ID};
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
@@ -103,6 +104,44 @@ pub trait ProviderStorage: Send + Sync {
         limit: u32,
     ) -> Result<Vec<(Value, u64)>, ProviderStorageError>;
 
+    /// Profile-aware history boundary. Implementations that have not yet
+    /// migrated their schema retain legacy behavior only for the default
+    /// profile and fail closed for every other profile.
+    fn record_playback_snapshot_for_profile_value(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        snapshot: Value,
+    ) -> Result<(), ProviderStorageError> {
+        if profile.profile_id != DEFAULT_PROFILE_ID {
+            return Err(ProviderStorageError);
+        }
+        self.record_playback_snapshot_value(&profile.provider_id, track_id, snapshot)
+    }
+
+    fn backfill_playback_history_snapshot_for_profile_value(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        snapshot: Value,
+    ) -> Result<(), ProviderStorageError> {
+        if profile.profile_id != DEFAULT_PROFILE_ID {
+            return Err(ProviderStorageError);
+        }
+        self.backfill_playback_history_snapshot_value(&profile.provider_id, track_id, snapshot)
+    }
+
+    fn load_playback_history_for_profile_values(
+        &self,
+        profile: &ProviderProfileKey,
+        limit: u32,
+    ) -> Result<Vec<(Value, u64)>, ProviderStorageError> {
+        if profile.profile_id != DEFAULT_PROFILE_ID {
+            return Err(ProviderStorageError);
+        }
+        self.load_playback_history_values(&profile.provider_id, limit)
+    }
+
     async fn artwork_data_uri(
         &self,
         fetcher: &dyn ArtworkFetcher,
@@ -170,6 +209,41 @@ pub trait ProviderStorageExt: ProviderStorage {
         limit: u32,
     ) -> Result<Vec<(T, u64)>, ProviderStorageError> {
         self.load_playback_history_values(provider, limit)?
+            .into_iter()
+            .map(|(value, timestamp)| {
+                serde_json::from_value(value)
+                    .map(|value| (value, timestamp))
+                    .map_err(|_| ProviderStorageError)
+            })
+            .collect()
+    }
+
+    fn record_playback_snapshot_for_profile<T: Serialize + ?Sized>(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        snapshot: &T,
+    ) -> Result<(), ProviderStorageError> {
+        let snapshot = serde_json::to_value(snapshot).map_err(|_| ProviderStorageError)?;
+        self.record_playback_snapshot_for_profile_value(profile, track_id, snapshot)
+    }
+
+    fn backfill_playback_history_snapshot_for_profile<T: Serialize + ?Sized>(
+        &self,
+        profile: &ProviderProfileKey,
+        track_id: &str,
+        snapshot: &T,
+    ) -> Result<(), ProviderStorageError> {
+        let snapshot = serde_json::to_value(snapshot).map_err(|_| ProviderStorageError)?;
+        self.backfill_playback_history_snapshot_for_profile_value(profile, track_id, snapshot)
+    }
+
+    fn load_playback_history_for_profile<T: DeserializeOwned>(
+        &self,
+        profile: &ProviderProfileKey,
+        limit: u32,
+    ) -> Result<Vec<(T, u64)>, ProviderStorageError> {
+        self.load_playback_history_for_profile_values(profile, limit)?
             .into_iter()
             .map(|(value, timestamp)| {
                 serde_json::from_value(value)
