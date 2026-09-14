@@ -2,7 +2,7 @@
 
 Status: **BLOCKED (EXACT-PIN SOAK NOT STARTED)** for the production `qmapi` backend at
 exact `qm-api-rs` revision
-`f9e7266aeff15379b1659687f09df8da5128be03`.
+`81014a971d3a4e4ae99d7e620c8e6b1a19278936`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
@@ -13,7 +13,7 @@ and source-retirement guards.
 - `qm-api-rs` is the production implementation for clear-vkey retrieval,
   lyrics and QRC processing, and QMC decryption.
 - The provider uses the `qmapi` credential envelope for production account
-  operations. OAuth staging, mutation reconciliation, entitlement decisions,
+  operations. OAuth attempt/state staging, mutation reconciliation, entitlement decisions,
   transport policy, caching, artwork mapping, and wire DTO mapping remain
   YAQMC responsibilities.
 - Retired in-tree fallback implementations are guarded from production source

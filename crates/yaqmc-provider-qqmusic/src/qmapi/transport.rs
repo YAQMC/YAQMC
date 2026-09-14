@@ -33,6 +33,7 @@ const PRODUCTION_HOSTS: &[&str] = &[
 ///
 /// Provider modules must reach QQ Music through typed qm-api-rs calls or this
 /// boundary; they must not declare upstream URLs of their own.
+#[cfg(test)]
 pub(crate) const QQ_MUSICU_URL: &str = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 
 /// Headers the host sends when fetching a resolved media URL.

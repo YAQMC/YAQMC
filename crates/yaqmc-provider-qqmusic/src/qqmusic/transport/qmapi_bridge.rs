@@ -40,7 +40,9 @@ impl qqmusic_api::ApiTransport for AccountTransport {
             HeaderValue::from_static("application/json; charset=utf-8"),
         );
         let cancellation = request.cancellation.clone();
+        let limit = request.max_response_bytes;
         let operation = self.inner.execute(TransportRequest {
+            max_response_bytes: limit,
             operation: self.operation,
             method: Method::POST,
             url: Url::parse(&request.url)
@@ -60,6 +62,12 @@ impl qqmusic_api::ApiTransport for AccountTransport {
             () = cancellation.cancelled() => return Err(map_error(QQMusicError::Cancelled)),
             response = operation => response.map_err(map_error)?,
         };
+        if limit.is_some_and(|limit| response.body.len() > limit) {
+            return Err(QmError::Protocol {
+                stage: "response-limit",
+                message: "host response exceeds requested bound".into(),
+            });
+        }
         Ok(qqmusic_api::TransportResponse {
             status: response.status.as_u16(),
             final_url: response.final_url.to_string(),

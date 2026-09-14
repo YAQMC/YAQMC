@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS (SOURCE-MAPPING DELTA REVIEW)** at production revision
-`f9e7266aeff15379b1659687f09df8da5128be03`.
+`81014a971d3a4e4ae99d7e620c8e6b1a19278936`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -31,13 +31,15 @@ third-party notice, or QMC source change appears in that range. The existing
 source mappings are retained based on identical Git blobs, not on test results:
 
 The next delta review compares `8734353175317cf81c2180b73deff18edca8a650` with the
-current pin `f9e7266aeff15379b1659687f09df8da5128be03`. That range contains two
-changed files, `src/lib.rs` and `src/modules/login.rs`: the desktop OAuth
-authorization-code exchange contract (module, method, param, comm, WeChat
-`strAppid`, optional `gtk`) and the login reply decoding move into the library,
-with contract tests for both providers and the `uin`/`musicKey` spellings. No
-dependency, license, third-party notice, or QMC source change appears in the
-range, and the four reviewed blobs below are byte-identical at both revisions:
+current pin `81014a971d3a4e4ae99d7e620c8e6b1a19278936`. The three-commit range
+changes `docs/modules.md`, adds `src/auth.rs` and `tests/oauth_exchange_contract.rs`,
+and updates `src/lib.rs` plus `src/modules/login.rs`. It first centralizes the
+desktop OAuth wire shape and login field aliases, then moves the actual bounded,
+attempt-scoped HTTP exchange, Cookie processing and response validation into the
+library. The final commit makes the lower-level payload builder and decoder
+crate-private so consumers cannot bypass the complete exchange API. No dependency,
+license, third-party notice, or QMC source change appears in the range, and the
+four reviewed blobs below are byte-identical at both revisions:
 
 | File                     | Git blob at both revisions                 |
 | ------------------------ | ------------------------------------------ |

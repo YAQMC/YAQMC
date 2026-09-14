@@ -75,6 +75,7 @@ impl TransportTimeouts {
 }
 
 pub(crate) struct TransportRequest {
+    pub(crate) max_response_bytes: Option<usize>,
     pub(crate) operation: &'static str,
     pub(crate) method: Method,
     pub(crate) url: Url,
@@ -273,7 +274,12 @@ impl ReqwestQqTransport {
 
             let response_headers = response.headers().clone();
             let response_body = self
-                .collect_body(response, request.retry, &request.cancellation)
+                .collect_body(
+                    response,
+                    request.retry,
+                    &request.cancellation,
+                    request.max_response_bytes,
+                )
                 .await?;
             return Ok(TransportResponse {
                 status,
@@ -315,10 +321,34 @@ impl ReqwestQqTransport {
 
     async fn collect_body(
         &self,
-        response: reqwest::Response,
+        mut response: reqwest::Response,
         retry: RetryClass,
         cancellation: &CancellationToken,
+        max_response_bytes: Option<usize>,
     ) -> Result<Vec<u8>, QQMusicError> {
+        if let Some(limit) = max_response_bytes {
+            if response
+                .content_length()
+                .is_some_and(|size| size > limit as u64)
+            {
+                return Err(QQMusicError::Protocol);
+            }
+            let mut bytes = Vec::new();
+            loop {
+                let chunk = tokio::select! {
+                    biased;
+                    _ = cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+                    chunk = response.chunk() => chunk.map_err(map_read_error)?,
+                };
+                let Some(chunk) = chunk else {
+                    return Ok(bytes);
+                };
+                if chunk.len() > limit.saturating_sub(bytes.len()) {
+                    return Err(QQMusicError::Protocol);
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+        }
         if retry == RetryClass::Write {
             return response
                 .bytes()
@@ -602,6 +632,7 @@ mod tests {
 
     fn request(url: Url, retry: RetryClass) -> TransportRequest {
         TransportRequest {
+            max_response_bytes: None,
             operation: "fixture.operation",
             method: Method::GET,
             url,
@@ -629,6 +660,42 @@ mod tests {
             HeaderValue::from_static("Basic SECRET"),
         );
         request
+    }
+
+    #[tokio::test]
+    async fn bounded_auth_transport_rejects_length_and_chunked_bodies_without_retry() {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let observed = hits.clone();
+        let server = spawn_server(
+            Router::new()
+                .route("/fixed", get(|| async { "12345678" }))
+                .route(
+                    "/chunked",
+                    get(move || {
+                        observed.fetch_add(1, Ordering::SeqCst);
+                        async {
+                            Response::new(Body::from_stream(futures_util::stream::iter([
+                                Ok::<_, std::convert::Infallible>("1234"),
+                                Ok("5678"),
+                            ])))
+                        }
+                    }),
+                ),
+        )
+        .await;
+        let transport = fixture_transport([server.address], TransportTimeouts::production());
+        for path in ["/fixed", "/chunked"] {
+            let mut request = request(server.url(path), RetryClass::AuthPoll);
+            request.max_response_bytes = Some(4);
+            assert!(matches!(
+                transport.execute(request).await,
+                Err(QQMusicError::Protocol)
+            ));
+        }
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+        let mut exact = request(server.url("/fixed"), RetryClass::AuthPoll);
+        exact.max_response_bytes = Some(8);
+        assert_eq!(transport.execute(exact).await.unwrap().body, b"12345678");
     }
 
     async fn wait_for_calls(calls: &AtomicUsize, expected: usize) {

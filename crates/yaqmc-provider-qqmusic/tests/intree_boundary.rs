@@ -125,6 +125,32 @@ fn artwork_downloads_cross_the_library_and_provider_neutral_cache_boundary() {
     assert!(!adapter.contains("https://"));
 }
 
+#[test]
+fn oauth_exchange_sends_only_through_the_library() {
+    let source = include_str!("../src/qqmusic/auth.rs");
+    let exchange = source
+        .split_once("async fn exchange_code(")
+        .unwrap()
+        .1
+        .split_once("async fn complete_qq_exchange(")
+        .unwrap()
+        .0;
+    assert!(exchange.contains("qqmusic_api::auth::exchange_oauth_code("));
+    for forbidden in [
+        "TransportRequest",
+        "login_payload",
+        "session_from_login_payload",
+        "#[cfg(",
+        "https://",
+    ] {
+        assert!(
+            !exchange.contains(forbidden),
+            "duplicated exchange protocol: {forbidden}"
+        );
+    }
+    assert!(!source.contains("fn session_from_login_payload("));
+}
+
 #[derive(Default)]
 struct TestCredentialStore {
     secrets: Mutex<HashMap<String, String>>,

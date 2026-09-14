@@ -620,6 +620,39 @@ C1 的完整路由层、D 混合队列与 E Spotify 仍未完成。
 基线远端 CI `34773948898` 已通过，但不能替代本批提交的验证，也不能掩盖上面确认的缺陷。
 本批没有新增 Android 真机或 Linux 本机运行证据。
 
+### 2026-09-14：OAuth 授权码实际交换入库
+
+本批基线为 YAQMC `820d904`，库 pin 更新为
+`81014a971d3a4e4ae99d7e620c8e6b1a19278936`。它补齐上一个 OAuth 批次仅迁移
+payload builder 的缺口：
+
+- 新的 `qm-api-rs::auth::exchange_oauth_code` 独占固定 URL、QQ/微信请求格式、
+  HTTP 发送、响应 envelope、登录字段别名、Cookie 合并、身份一致性和过期时间计算。
+  旧 builder/decoder 降为 crate-private，外部不能只取载荷后自行发送业务请求。
+- `OAuthExchange` 显式绑定 provider、授权码、可选 gtk、当前尝试 Cookie、宿主时间和
+  cancellation。空 Cookie 仍显式发送空头，禁止 Client 默认账户/ambient jar 回流；
+  QQ/微信登录类型由请求类型决定，不接受响应或旧 Cookie 改写。
+- 响应上限为 256 KiB，YAQMC 旧 transport 和库 transport 都按分块读取执行；
+  `AuthPoll` 不自动重放。预取消/晚取消、网络失败、非零业务码、坏 JSON、超限响应、
+  非法/冲突身份和 Cookie 注入均不产生可持久化 `SessionRecord`。
+- provider 的 `exchange_code` 只注入当前 `QqTransport` 并映射 `OAuthSession` 为本地
+  `SessionRecord`/新缓存作用域；不再构造 URL、body、headers 或解释登录字段。
+  OAuth state/回调域名、尝试 ownership、桌面 QR 和 MQTT 状态机保持宿主职责。
+- 库增加 6 项端到端合成契约，覆盖 QQ/微信、同 Client 并发双账户、Cookie 轮换、
+  取消、错误分类、过期别名和 secret-safe Debug；provider 新增前置拒绝、业务失败和
+  原完整 QQ 扫码流程回归。门禁残留从 `qqmusic/auth.rs` 的 22/8 收窄到 19/7。
+
+验证（正式 git pin，无 path patch）：库 `cargo +1.88.0 test --locked --offline
+--all-targets --all-features --quiet` 为 187 单元测试及 40 集成测试通过，同范围 Clippy/fmt
+通过；YAQMC workspace check/Clippy/test 通过，Core 280、provider 292 passed / 8 ignored，
+端点门禁 9、其他边界 6 passed。`npm run ci:test-scripts` 为 235 passed；
+`contracts:check`、`ci:verify-workspace`、docs/pin/provenance/secret/Prettier/diff 检查通过。
+未执行真实授权或真机登录，新 pin 的 soak 保持 not-started。
+
+交换处理时间和额外空间均为 O(b + c)，b 为不超过 256 KiB 的响应，c 为不超过 16 KiB
+的尝试 Cookie。桌面 `ptqrshow`/`ptqrlogin`/`check_sig`/authorize 跳转、导航白名单、
+多 profile、完整插件端点路由和 Spotify 仍未完成。
+
 ## 6. 可执行工作包与依赖
 
 下表为后续实施顺序，不是本次已经执行的修改。每个工作包都应保持可独立审阅；

@@ -76,6 +76,7 @@ pub(crate) use cache::OpaqueAccountScope;
 pub(crate) use entitlement::normalize_account_entitlement;
 pub use oauth::{url_matches_oauth_allowlist, OAuthLaunch, OAuthLoginProvider, OAuthPrepareResult};
 
+#[cfg(test)]
 pub(crate) use crate::qmapi::transport::QQ_MUSICU_URL;
 #[cfg(test)]
 #[allow(dead_code)]

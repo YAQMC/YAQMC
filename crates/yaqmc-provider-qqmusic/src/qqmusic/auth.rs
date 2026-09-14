@@ -13,8 +13,6 @@
     )
 )]
 
-#[cfg(test)]
-use super::account::{EntitlementTier, MembershipState};
 use super::{
     account::{
         AccountCapabilities, AccountEntitlement, AccountProfile, AccountSnapshot, AccountState,
@@ -24,7 +22,12 @@ use super::{
     entitlement::normalize_account_entitlement,
     oauth::{parse_callback, OAuthCallback, OAuthLaunch, OAuthLoginProvider},
     transport::{QqTransport, RedirectMode, RetryClass, TransportRequest, TransportResponse},
-    QQMusicError, QQ_MUSICU_URL,
+    QQMusicError,
+};
+#[cfg(test)]
+use super::{
+    account::{EntitlementTier, MembershipState},
+    QQ_MUSICU_URL,
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -33,7 +36,9 @@ use reqwest::{
     Method, StatusCode, Url,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+#[cfg(test)]
+use serde_json::json;
+use serde_json::Value;
 use std::{
     collections::BTreeMap,
     sync::{
@@ -356,6 +361,7 @@ impl TransportQQMusicAuthProtocol {
             let response = self
                 .transport
                 .execute(TransportRequest {
+                    max_response_bytes: None,
                     operation: "auth.entitlement.validate",
                     method: Method::POST,
                     url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
@@ -393,134 +399,40 @@ impl TransportQQMusicAuthProtocol {
         provider: OAuthLoginProvider,
         code: &str,
         gtk: Option<u32>,
-        mut cookies: SecretCookieJar,
+        cookies: SecretCookieJar,
         cancellation: CancellationToken,
     ) -> Result<SessionRecord, QQMusicError> {
-        if code.is_empty() || code.len() > 2_048 || code.bytes().any(|byte| byte.is_ascii_control())
-        {
-            return Err(QQMusicError::Protocol);
-        }
-        let operation = match provider {
-            OAuthLoginProvider::Qq => "auth.qq.exchange",
-            OAuthLoginProvider::Wechat => "auth.wechat.exchange",
+        let transport = super::transport::qmapi_bridge::AccountTransport {
+            inner: Arc::clone(&self.transport),
+            operation: match provider {
+                OAuthLoginProvider::Qq => "auth.qq.exchange",
+                OAuthLoginProvider::Wechat => "auth.wechat.exchange",
+            },
+            response_shape: "oauth-login-session",
+            retry: RetryClass::AuthPoll,
         };
-        // Upstream module/method/param/comm shape is owned by qm-api-rs; the
-        // provider keeps transport policy, retries and attempt ownership.
-        let exchange =
-            qqmusic_api::build_oauth_code_exchange_request(provider.qm_api_provider(), code, gtk);
-        let login_payload = json!({
-            "comm": exchange.comm,
-            "req": {
-                "module": exchange.module,
-                "method": exchange.method,
-                "param": exchange.param,
-            }
-        });
-        let mut login_headers = if cookies.values.is_empty() {
-            referer_headers("https://y.qq.com/")?
-        } else {
-            authenticated_headers(&cookies, Some("https://y.qq.com/"))?
-        };
-        login_headers.insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
-        login_headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
-        let login = self
-            .transport
-            .execute(TransportRequest {
-                operation,
-                method: Method::POST,
-                url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                headers: login_headers,
-                body: Some(serde_json::to_vec(&login_payload).map_err(|_| QQMusicError::Protocol)?),
-                retry: RetryClass::AuthPoll,
-                redirects: RedirectMode::FollowValidated,
-                response_shape: "oauth-login-session",
-                cancellation,
-            })
-            .await?;
-        require_success(&login)?;
-        cookies.absorb_set_cookie(&login.headers)?;
-        let payload: Value =
-            serde_json::from_slice(&login.body).map_err(|_| QQMusicError::MalformedResponse)?;
-        self.session_from_login_payload(&payload, cookies)
-    }
-
-    fn session_from_login_payload(
-        &self,
-        payload: &Value,
-        mut cookies: SecretCookieJar,
-    ) -> Result<SessionRecord, QQMusicError> {
-        let global_code = json_code(payload).ok_or(QQMusicError::MalformedResponse)?;
-        let business_code = payload
-            .pointer("/req/code")
-            .or_else(|| payload.pointer("/req_0/code"))
-            .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()))
-            .ok_or(QQMusicError::MalformedResponse)?;
-        if global_code != 0 || business_code != 0 {
-            tracing::warn!(target: "qqmusic.auth", global_code, business_code,
-                stage = "credential-exchange-failed", "login exchange business failure");
-            return Err(QQMusicError::Protocol);
-        }
-        let data = payload
-            .pointer("/req/data")
-            .or_else(|| payload.pointer("/req_0/data"))
-            .or_else(|| payload.pointer("/req"))
-            .ok_or(QQMusicError::MalformedResponse)?;
-        // Field decoding (including the `uin`/`musicKey` aliases) is owned by
-        // qm-api-rs; the provider only enforces the session invariants it needs.
-        let credential = qqmusic_api::credential_from_login_data(data).map_err(map_qmapi_error)?;
-        let uin = credential.str_musicid();
-        if uin.is_empty() || !uin.chars().all(|character| character.is_ascii_digit()) {
-            return Err(QQMusicError::MalformedResponse);
-        }
-        let music_key = credential.musickey.clone();
-        if music_key.is_empty() {
-            return Err(QQMusicError::MalformedResponse);
-        }
-        cookies.insert("uin", &format!("o{uin}"))?;
-        cookies.insert("qqmusic_uin", &uin)?;
-        cookies.insert("qm_keyst", &music_key)?;
-        cookies.insert("qqmusic_key", &music_key)?;
-        cookies.remove("qrsig");
-        cookies.remove("pt_login_sig");
-
-        let created = u64::try_from(credential.musickey_create_time)
-            .ok()
-            .filter(|value| *value > 0);
-        let lifetime = u64::try_from(credential.key_expires_in)
-            .ok()
-            .filter(|value| *value > 0);
-        let expires_at_ms = match (created, lifetime) {
-            (Some(created), Some(lifetime)) if lifetime > 0 => {
-                let created_ms = if created >= 1_000_000_000_000 {
-                    created
-                } else {
-                    created.saturating_mul(1_000)
-                };
-                created_ms.saturating_add(lifetime.saturating_mul(1_000))
-            }
-            _ => self
-                .clock
-                .now_ms()
-                .saturating_add(FALLBACK_SESSION_LIFETIME_MS),
-        };
-
-        let encrypted_uin = Some(credential.encrypt_uin)
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| {
-                ["euin", "encryptUin"]
-                    .into_iter()
-                    .find_map(|name| cookies.get(name).map(str::to_owned))
-            })
-            .filter(|value| !value.trim().is_empty());
+        let client = qqmusic_api::Client::new_with_transport(None, None, Arc::new(transport));
+        let cookie_header = cookies.header_value();
+        let session = qqmusic_api::auth::exchange_oauth_code(
+            &client,
+            qqmusic_api::auth::OAuthExchange {
+                provider: provider.qm_api_provider(),
+                code,
+                gtk,
+                cookie_header: &cookie_header,
+                now_ms: self.clock.now_ms(),
+            },
+            cancellation,
+        )
+        .await
+        .map_err(map_qmapi_error)?;
         Ok(SessionRecord {
             version: SESSION_VERSION,
-            uin,
-            encrypted_uin,
-            cookie_header: cookies.header_value(),
-            expires_at_ms,
+            uin: session.credential.str_musicid(),
+            encrypted_uin: Some(session.credential.encrypt_uin)
+                .filter(|value| !value.trim().is_empty()),
+            cookie_header: session.cookie_header,
+            expires_at_ms: session.expires_at_ms,
             account_cache_scope: OpaqueAccountScope::generate(),
         })
     }
@@ -541,6 +453,7 @@ impl TransportQQMusicAuthProtocol {
         let check_sig = self
             .transport
             .execute(TransportRequest {
+                max_response_bytes: None,
                 operation: "auth.qq.check-sig",
                 method: Method::GET,
                 url: check_sig_url,
@@ -591,6 +504,7 @@ impl TransportQQMusicAuthProtocol {
         let authorize = self
             .transport
             .execute(TransportRequest {
+                max_response_bytes: None,
                 operation: "auth.qq.authorize",
                 method: Method::POST,
                 url: authorize_url,
@@ -653,6 +567,7 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         let response = self
             .transport
             .execute(TransportRequest {
+                max_response_bytes: None,
                 operation: "auth.qq.create",
                 method: Method::GET,
                 url,
@@ -794,6 +709,7 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         let response = self
             .transport
             .execute(TransportRequest {
+                max_response_bytes: None,
                 operation: "auth.qq.poll",
                 method: Method::GET,
                 url,
@@ -903,6 +819,7 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
             let response = self
                 .transport
                 .execute(TransportRequest {
+                    max_response_bytes: None,
                     operation: "auth.session.validate",
                     method: Method::POST,
                     url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
@@ -5542,6 +5459,7 @@ mod tests {
 
     #[derive(Clone)]
     struct ObservedTransportRequest {
+        max_response_bytes: Option<usize>,
         operation: &'static str,
         retry: RetryClass,
         redirects: RedirectMode,
@@ -5549,6 +5467,7 @@ mod tests {
         path: String,
         body: Option<Value>,
         has_cookie: bool,
+        has_empty_cookie: bool,
         has_json_content_type: bool,
         has_qq_origin: bool,
     }
@@ -5565,6 +5484,7 @@ mod tests {
             request: TransportRequest,
         ) -> Result<TransportResponse, QQMusicError> {
             self.requests.lock().await.push(ObservedTransportRequest {
+                max_response_bytes: request.max_response_bytes,
                 operation: request.operation,
                 retry: request.retry,
                 redirects: request.redirects,
@@ -5574,7 +5494,14 @@ mod tests {
                     .body
                     .as_deref()
                     .and_then(|body| serde_json::from_slice(body).ok()),
-                has_cookie: request.headers.contains_key(header::COOKIE),
+                has_cookie: request
+                    .headers
+                    .get(header::COOKIE)
+                    .is_some_and(|value| !value.is_empty()),
+                has_empty_cookie: request
+                    .headers
+                    .get(header::COOKIE)
+                    .is_some_and(|value| value.is_empty()),
                 has_json_content_type: request
                     .headers
                     .get(header::CONTENT_TYPE)
@@ -5922,6 +5849,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn oauth_exchange_rejects_invalid_code_and_cancellation_before_host_transport() {
+        let transport = Arc::new(ScriptedTransport {
+            responses: Mutex::new(VecDeque::new()),
+            requests: Mutex::new(Vec::new()),
+        });
+        let protocol = TransportQQMusicAuthProtocol::new(
+            transport.clone(),
+            Arc::new(ManualClock::new(1_700_000_000_000)),
+        );
+        for code in ["", "bad\ncode"] {
+            assert!(matches!(
+                protocol
+                    .exchange_oauth_code(OAuthLoginProvider::Qq, code, CancellationToken::new())
+                    .await,
+                Err(QQMusicError::Protocol)
+            ));
+        }
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        assert!(matches!(
+            protocol
+                .exchange_oauth_code(OAuthLoginProvider::Wechat, "SYNTHETIC_CODE", cancelled)
+                .await,
+            Err(QQMusicError::Cancelled)
+        ));
+        assert!(transport.requests.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn oauth_exchange_business_failure_is_not_user_refusal_or_a_session() {
+        let transport=Arc::new(ScriptedTransport {
+            responses:Mutex::new(vec![response(StatusCode::OK,"https://u.y.qq.com/cgi-bin/musicu.fcg",HeaderMap::new(),
+                br#"{"code":0,"req":{"code":12345,"data":{"musickey":"SYNTHETIC_UNTRUSTED_KEY"}}}"#.to_vec())].into()),
+            requests:Mutex::new(Vec::new()),
+        });
+        let protocol = TransportQQMusicAuthProtocol::new(
+            transport.clone(),
+            Arc::new(ManualClock::new(1_700_000_000_000)),
+        );
+        assert!(matches!(
+            protocol
+                .exchange_oauth_code(
+                    OAuthLoginProvider::Qq,
+                    "SYNTHETIC_CODE",
+                    CancellationToken::new()
+                )
+                .await,
+            Err(QQMusicError::Protocol)
+        ));
+        assert_eq!(transport.requests.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
     async fn official_qq_and_wechat_codes_exchange_without_browser_cookies() {
         let login_response = || {
             response(
@@ -5969,6 +5949,8 @@ mod tests {
                 && request.retry == RetryClass::AuthPoll
                 && request.redirects == RedirectMode::FollowValidated
                 && !request.has_cookie
+                && request.has_empty_cookie
+                && request.max_response_bytes == Some(qqmusic_api::auth::MAX_OAUTH_RESPONSE_BYTES)
                 && request.has_json_content_type
                 && request.has_qq_origin
         }));

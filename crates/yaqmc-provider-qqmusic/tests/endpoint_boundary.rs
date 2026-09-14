@@ -29,8 +29,8 @@ const MARKERS: &[&str] = &[
 ];
 // Finite counts: file, overlapping literal markers, low-level request calls.
 const EXPECTED: &[(&str, usize, usize)] = &[
-    ("qmapi/transport.rs", 28, 2),
-    ("qqmusic/auth.rs", 22, 8),
+    ("qmapi/transport.rs", 25, 2),
+    ("qqmusic/auth.rs", 19, 7),
     ("qqmusic/oauth.rs", 11, 0),
     ("qqmusic/transport.rs", 12, 3),
     ("qqmusic/transport/qmapi_bridge.rs", 0, 1),
