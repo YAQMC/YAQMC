@@ -56,24 +56,28 @@ impl qqmusic_api::ApiTransport for HostTransport {
         }
         let body = match request.body {
             HttpBody::Empty => None,
-            HttpBody::Json(value) => Some(serde_json::to_vec(&value)?),
-            HttpBody::Form(value) => {
-                let object = value
-                    .as_object()
-                    .ok_or_else(|| QmError::ValueError("form body must be an object".into()))?;
-                let mut encoded = Url::parse("https://form.invalid/")
-                    .map_err(|_| QmError::ValueError("form encoder base".into()))?;
-                {
-                    let mut pairs = encoded.query_pairs_mut();
-                    for (key, value) in object {
-                        pairs.append_pair(key, value.as_str().unwrap_or_default());
-                    }
+            HttpBody::Json(value) => {
+                if !headers.contains_key(header::CONTENT_TYPE) {
+                    headers.insert(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/json"),
+                    );
                 }
-                Some(encoded.query().unwrap_or_default().as_bytes().to_vec())
+                Some(serde_json::to_vec(&value)?)
+            }
+            HttpBody::Form(value) => {
+                if !headers.contains_key(header::CONTENT_TYPE) {
+                    headers.insert(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/x-www-form-urlencoded"),
+                    );
+                }
+                Some(encode_form_body(&value)?)
             }
             HttpBody::Bytes(bytes) => Some(bytes),
         };
         let cancellation = request.cancellation.clone();
+        let timeout = request.timeout;
         let limit = request.max_response_bytes;
         let operation = self.inner.execute(TransportRequest {
             max_response_bytes: limit,
@@ -94,10 +98,22 @@ impl qqmusic_api::ApiTransport for HostTransport {
             response_shape: self.response_shape,
             cancellation: request.cancellation,
         });
-        let response = tokio::select! {
-            biased;
-            () = cancellation.cancelled() => return Err(map_error(QQMusicError::Cancelled)),
-            response = operation => response.map_err(map_error)?,
+        let response = match timeout {
+            Some(timeout) => {
+                tokio::select! {
+                    biased;
+                    () = cancellation.cancelled() => return Err(map_error(QQMusicError::Cancelled)),
+                    response = tokio::time::timeout(timeout, operation) => match response {
+                        Ok(response) => response.map_err(map_error)?,
+                        Err(_) => return Err(map_error(QQMusicError::Timeout)),
+                    },
+                }
+            }
+            None => tokio::select! {
+                biased;
+                () = cancellation.cancelled() => return Err(map_error(QQMusicError::Cancelled)),
+                response = operation => response.map_err(map_error)?,
+            },
         };
         if limit.is_some_and(|limit| response.body.len() > limit) {
             return Err(QmError::Protocol {
@@ -116,6 +132,24 @@ impl qqmusic_api::ApiTransport for HostTransport {
             body: response.body,
         })
     }
+}
+
+fn encode_form_body(value: &serde_json::Value) -> qqmusic_api::Result<Vec<u8>> {
+    let mut encoded = Url::parse("https://form.invalid/")
+        .map_err(|_| qqmusic_api::QmError::ValueError("form encoder base".into()))?;
+    if let Some(object) = value.as_object() {
+        let mut pairs = encoded.query_pairs_mut();
+        for (key, value) in object {
+            let value = match value {
+                serde_json::Value::String(value) => value.clone(),
+                serde_json::Value::Number(value) => value.to_string(),
+                serde_json::Value::Bool(value) => value.to_string(),
+                other => other.to_string(),
+            };
+            pairs.append_pair(key, &value);
+        }
+    }
+    Ok(encoded.query().unwrap_or_default().as_bytes().to_vec())
 }
 
 #[async_trait]
@@ -213,4 +247,195 @@ fn map_error(error: QQMusicError) -> qqmusic_api::QmError {
         kind,
         message: "account transport failure".into(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qqmusic_api::{ApiTransport, HttpBody, HttpMethod, NetworkErrorKind};
+    use std::{collections::BTreeMap, sync::Mutex, time::Duration};
+
+    struct ObservedRequest {
+        headers: HeaderMap,
+        body: Option<Vec<u8>>,
+    }
+
+    struct RecordingTransport {
+        observed: Arc<Mutex<Option<ObservedRequest>>>,
+        delay: Option<Duration>,
+    }
+
+    #[async_trait]
+    impl QqTransport for RecordingTransport {
+        async fn execute(
+            &self,
+            request: TransportRequest,
+        ) -> Result<TransportResponse, QQMusicError> {
+            *self.observed.lock().unwrap() = Some(ObservedRequest {
+                headers: request.headers.clone(),
+                body: request.body.clone(),
+            });
+            if let Some(delay) = self.delay {
+                tokio::time::sleep(delay).await;
+            }
+            Ok(TransportResponse {
+                status: StatusCode::OK,
+                final_url: request.url,
+                headers: HeaderMap::new(),
+                body: b"{}".to_vec(),
+            })
+        }
+    }
+
+    fn host_transport(
+        observed: Arc<Mutex<Option<ObservedRequest>>>,
+        delay: Option<Duration>,
+    ) -> HostTransport {
+        HostTransport {
+            inner: Arc::new(RecordingTransport { observed, delay }),
+            operation: "test",
+            response_shape: "test",
+        }
+    }
+
+    fn request(body: HttpBody) -> qqmusic_api::TransportRequest {
+        let mut request = qqmusic_api::TransportRequest::new(
+            HttpMethod::Post,
+            "https://u.y.qq.com/cgi-bin/musicu.fcg",
+        );
+        request.body = body;
+        request
+    }
+
+    fn observed_body(observed: &Arc<Mutex<Option<ObservedRequest>>>) -> Vec<u8> {
+        observed
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|request| request.body.clone())
+            .expect("recorded request body")
+    }
+
+    #[tokio::test]
+    async fn form_body_matches_default_encoding_and_content_type() {
+        let observed = Arc::new(Mutex::new(None));
+        let transport = host_transport(observed.clone(), None);
+        transport
+            .execute(request(HttpBody::Form(serde_json::json!({
+                "a": null,
+                "b": [1, 2],
+                "c": {"nested": true},
+                "d": "hello world",
+            }))))
+            .await
+            .expect("form request");
+
+        let observed_request = observed.lock().unwrap();
+        let observed_request = observed_request.as_ref().expect("recorded request");
+        assert_eq!(
+            observed_request
+                .headers
+                .get(header::CONTENT_TYPE)
+                .expect("content type")
+                .to_str()
+                .unwrap(),
+            "application/x-www-form-urlencoded"
+        );
+        let body =
+            std::str::from_utf8(observed_request.body.as_deref().expect("encoded form body"))
+                .expect("UTF-8 form body");
+        let mut parsed = Url::parse("https://form.invalid/").expect("constant form URL");
+        parsed.set_query(Some(body));
+        let fields = parsed
+            .query_pairs()
+            .into_owned()
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(fields.get("a").map(String::as_str), Some("null"));
+        assert_eq!(fields.get("b").map(String::as_str), Some("[1,2]"));
+        assert_eq!(
+            fields.get("c").map(String::as_str),
+            Some(r#"{"nested":true}"#)
+        );
+        assert_eq!(fields.get("d").map(String::as_str), Some("hello world"));
+    }
+
+    #[tokio::test]
+    async fn non_object_form_body_is_empty() {
+        let observed = Arc::new(Mutex::new(None));
+        let transport = host_transport(observed.clone(), None);
+        transport
+            .execute(request(HttpBody::Form(serde_json::json!([1, 2, 3]))))
+            .await
+            .expect("form request");
+
+        assert!(observed_body(&observed).is_empty());
+    }
+
+    #[tokio::test]
+    async fn json_body_gets_default_content_type() {
+        let observed = Arc::new(Mutex::new(None));
+        let transport = host_transport(observed.clone(), None);
+        transport
+            .execute(request(HttpBody::Json(serde_json::json!({"ok": true}))))
+            .await
+            .expect("json request");
+
+        let observed_request = observed.lock().unwrap();
+        let observed_request = observed_request.as_ref().expect("recorded request");
+        assert_eq!(
+            observed_request
+                .headers
+                .get(header::CONTENT_TYPE)
+                .expect("content type")
+                .to_str()
+                .unwrap(),
+            "application/json"
+        );
+        assert_eq!(
+            observed_request.body.as_deref(),
+            Some(br#"{"ok":true}"#.as_slice())
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_content_type_is_preserved() {
+        let observed = Arc::new(Mutex::new(None));
+        let transport = host_transport(observed.clone(), None);
+        let mut request = request(HttpBody::Json(serde_json::json!({"ok": true})));
+        request
+            .headers
+            .push(("content-type".into(), "application/custom+json".into()));
+        transport.execute(request).await.expect("json request");
+
+        let observed_request = observed.lock().unwrap();
+        assert_eq!(
+            observed_request
+                .as_ref()
+                .unwrap()
+                .headers
+                .get(header::CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "application/custom+json"
+        );
+    }
+
+    #[tokio::test]
+    async fn shorter_request_timeout_is_enforced() {
+        let observed = Arc::new(Mutex::new(None));
+        let transport = host_transport(observed, Some(Duration::from_millis(200)));
+        let mut request = request(HttpBody::Empty);
+        request.timeout = Some(Duration::from_millis(20));
+
+        let error = tokio::time::timeout(Duration::from_millis(250), transport.execute(request))
+            .await
+            .expect("adapter must enforce the library timeout")
+            .expect_err("request timeout");
+        assert!(matches!(
+            error,
+            qqmusic_api::QmError::Network(error)
+                if error.kind == NetworkErrorKind::Timeout
+        ));
+    }
 }

@@ -17,7 +17,7 @@ The source delivery must include:
 
 - the exact YAQMC source for the released commit;
 - the exact linked `qm-api-rs` source resolved by revision
-  `c80ab34e021d567fd1ac62965d6fdca80ff5467c` (or the revision recorded in that release's lockfile); and
+  `61e9e3cfd69ed10efcce92f573c104aa440d74ed` (or the revision recorded in that release's lockfile); and
 - the preferred source form for the shipped `@applemusic-like-lyrics/core` and
   `@applemusic-like-lyrics/react` packages. Version `0.5.2` maps to upstream commit
   `fd7ec2d597daa2a66a37ca5f3214d6757ec17cfa` (`core-bundle@0.5.2`) and is licensed

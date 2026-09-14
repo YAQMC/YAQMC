@@ -21,13 +21,13 @@ use super::{
     clock::Clock,
     entitlement::normalize_account_entitlement,
     oauth::{parse_callback, OAuthCallback, OAuthLaunch, OAuthLoginProvider},
-    transport::{QqTransport, RetryClass},
+    transport::QqTransport,
     QQMusicError,
 };
 #[cfg(test)]
 use super::{
     account::{EntitlementTier, MembershipState},
-    transport::{RedirectMode, TransportRequest, TransportResponse},
+    transport::{RedirectMode, RetryClass, TransportRequest, TransportResponse},
     QQ_MUSICU_URL,
 };
 use async_trait::async_trait;
@@ -43,7 +43,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
 use std::{
-    collections::BTreeMap,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex as StdMutex,
@@ -429,28 +428,19 @@ impl TransportQQMusicAuthProtocol {
         &self,
         provider: OAuthLoginProvider,
         code: &str,
-        gtk: Option<u32>,
-        cookies: SecretCookieJar,
         cancellation: CancellationToken,
     ) -> Result<SessionRecord, QQMusicError> {
-        let transport = super::transport::qmapi_bridge::AccountTransport {
-            inner: Arc::clone(&self.transport),
-            operation: match provider {
-                OAuthLoginProvider::Qq => "auth.qq.exchange",
-                OAuthLoginProvider::Wechat => "auth.wechat.exchange",
-            },
-            response_shape: "oauth-login-session",
-            retry: RetryClass::AuthPoll,
-        };
-        let client = qqmusic_api::Client::new_with_transport(None, None, Arc::new(transport));
-        let cookie_header = cookies.header_value();
+        let client = self.login_client(match provider {
+            OAuthLoginProvider::Qq => "auth.qq.exchange",
+            OAuthLoginProvider::Wechat => "auth.wechat.exchange",
+        });
         let session = qqmusic_api::auth::exchange_oauth_code(
             &client,
             qqmusic_api::auth::OAuthExchange {
                 provider: provider.qm_api_provider(),
                 code,
-                gtk,
-                cookie_header: &cookie_header,
+                gtk: None,
+                cookie_header: "",
                 now_ms: self.clock.now_ms(),
             },
             cancellation,
@@ -593,14 +583,7 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         code: &str,
         cancellation: CancellationToken,
     ) -> Result<SessionRecord, QQMusicError> {
-        self.exchange_code(
-            provider,
-            code,
-            None,
-            SecretCookieJar::default(),
-            cancellation,
-        )
-        .await
+        self.exchange_code(provider, code, cancellation).await
     }
 
     async fn validate_session(
@@ -2925,20 +2908,6 @@ fn fallback_qq_avatar_url(uin: &str) -> Option<String> {
     plausible_qq.then(|| format!("https://q.qlogo.cn/headimg_dl?dst_uin={uin}&spec=640"))
 }
 
-fn require_endpoint(url: &Url, host: &str, path: &str) -> Result<(), QQMusicError> {
-    if url.scheme() == "https"
-        && url.port_or_known_default() == Some(443)
-        && url.host_str() == Some(host)
-        && url.path() == path
-        && url.username().is_empty()
-        && url.password().is_none()
-    {
-        Ok(())
-    } else {
-        Err(QQMusicError::Protocol)
-    }
-}
-
 #[cfg(test)]
 fn require_success(response: &TransportResponse) -> Result<(), QQMusicError> {
     if response.status.is_success() {
@@ -2982,131 +2951,12 @@ fn referer_headers(referer: &str) -> Result<HeaderMap, QQMusicError> {
     Ok(headers)
 }
 
-fn authenticated_headers(
-    cookies: &SecretCookieJar,
-    referer: Option<&str>,
-) -> Result<HeaderMap, QQMusicError> {
-    let mut headers = match referer {
-        Some(referer) => referer_headers(referer)?,
-        None => HeaderMap::new(),
-    };
-    headers.insert(
-        header::COOKIE,
-        HeaderValue::from_str(&cookies.header_value()).map_err(|_| QQMusicError::Protocol)?,
-    );
-    Ok(headers)
-}
-
-#[derive(Default)]
-struct SecretCookieJar {
-    values: BTreeMap<String, String>,
-}
-
-impl SecretCookieJar {
-    fn insert(&mut self, name: &str, value: &str) -> Result<(), QQMusicError> {
-        if name.is_empty()
-            || value.is_empty()
-            || name
-                .bytes()
-                .any(|byte| !byte.is_ascii_alphanumeric() && byte != b'_' && byte != b'-')
-            || value
-                .bytes()
-                .any(|byte| byte.is_ascii_control() || matches!(byte, b';' | b'\r' | b'\n'))
-        {
-            return Err(QQMusicError::Protocol);
-        }
-        self.values.insert(name.to_owned(), value.to_owned());
-        Ok(())
-    }
-
-    fn get(&self, name: &str) -> Option<&str> {
-        self.values.get(name).map(String::as_str)
-    }
-
-    fn remove(&mut self, name: &str) {
-        self.values.remove(name);
-    }
-
-    fn absorb_set_cookie(&mut self, headers: &HeaderMap) -> Result<(), QQMusicError> {
-        for value in headers.get_all(header::SET_COOKIE) {
-            let value = value.to_str().map_err(|_| QQMusicError::Protocol)?;
-            let pair = value.split(';').next().ok_or(QQMusicError::Protocol)?;
-            let (name, value) = pair.split_once('=').ok_or(QQMusicError::Protocol)?;
-            if !value.is_empty() {
-                self.insert(name.trim(), value.trim())?;
-            }
-        }
-        Ok(())
-    }
-
-    fn header_value(&self) -> String {
-        self.values
-            .iter()
-            .map(|(name, value)| format!("{name}={value}"))
-            .collect::<Vec<_>>()
-            .join("; ")
-    }
-}
-
 fn encrypted_uin_from_cookie_header(header: &str) -> Option<String> {
     header.split(';').find_map(|part| {
         let (name, value) = part.trim().split_once('=')?;
         (["euin", "encryptUin"].contains(&name) && !value.trim().is_empty())
             .then(|| value.trim().to_owned())
     })
-}
-
-fn form_body(pairs: &[(&str, String)]) -> Result<Vec<u8>, QQMusicError> {
-    let mut url = Url::parse("https://yaqmc.invalid/").map_err(|_| QQMusicError::Protocol)?;
-    {
-        let mut query = url.query_pairs_mut();
-        for (key, value) in pairs {
-            query.append_pair(key, value);
-        }
-    }
-    Ok(url.query().unwrap_or_default().as_bytes().to_vec())
-}
-
-fn hash33(value: &str, seed: u32) -> u32 {
-    value.bytes().fold(seed, |hash, byte| {
-        hash.wrapping_add(hash.wrapping_shl(5))
-            .wrapping_add(u32::from(byte))
-    }) & 0x7fff_ffff
-}
-
-fn parse_ptui_callback(value: &str) -> Result<Vec<String>, QQMusicError> {
-    let start = value
-        .find("ptuiCB(")
-        .ok_or(QQMusicError::MalformedResponse)?
-        + 7;
-    let end = value[start..]
-        .find(')')
-        .map(|offset| start + offset)
-        .ok_or(QQMusicError::MalformedResponse)?;
-    let mut arguments = Vec::new();
-    let mut current = String::new();
-    let mut quoted = false;
-    let mut escaped = false;
-    for character in value[start..end].chars() {
-        if escaped {
-            current.push(character);
-            escaped = false;
-        } else if character == '\\' && quoted {
-            escaped = true;
-        } else if character == '\'' {
-            if quoted {
-                arguments.push(std::mem::take(&mut current));
-            }
-            quoted = !quoted;
-        } else if quoted {
-            current.push(character);
-        }
-    }
-    if quoted || escaped || arguments.is_empty() {
-        Err(QQMusicError::MalformedResponse)
-    } else {
-        Ok(arguments)
-    }
 }
 
 fn json_code(value: &Value) -> Option<i64> {
@@ -3795,16 +3645,6 @@ mod tests {
             }
             serde_json::from_str::<Value>(fixture).expect("fixture JSON");
         }
-    }
-
-    #[test]
-    fn callback_parser_accepts_quoted_status_and_rejects_malformed_input() {
-        assert_eq!(
-            parse_ptui_callback("ptuiCB('67','0','','0','scanned');").expect("callback"),
-            ["67", "0", "", "0", "scanned"]
-        );
-        assert!(parse_ptui_callback("ptuiCB('67)").is_err());
-        assert!(parse_ptui_callback("not-a-callback").is_err());
     }
 
     #[test]
@@ -5523,7 +5363,7 @@ mod tests {
                         "https://graph.qq.com/oauth2.0/authorize",
                         headers(&[(
                             "location",
-                            "https://y.qq.com/portal/wx_redirect.html?login_type=1&code=SYNTHETIC_CODE&state=state",
+                            "https://y.qq.com/portal/wx_redirect.html?login_type=1&surl=https%3A%2F%2Fy.qq.com%2F&code=SYNTHETIC_CODE&state=state",
                         )]),
                         Vec::new(),
                     ),

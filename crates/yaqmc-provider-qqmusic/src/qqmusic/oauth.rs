@@ -17,11 +17,8 @@ impl OAuthLoginProvider {
         }
     }
 
-    fn login_type(self) -> &'static str {
-        match self {
-            Self::Qq => "1",
-            Self::Wechat => "2",
-        }
+    fn callback_contract(self) -> qqmusic_api::auth::OAuthCallbackContract {
+        qqmusic_api::auth::oauth_callback_contract(self.qm_api_provider())
     }
 
     pub(crate) fn qm_api_provider(self) -> qqmusic_api::OAuthLoginProvider {
@@ -53,19 +50,21 @@ impl OAuthLoginProvider {
         if state.len() != 32 || !state.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(QQMusicError::Protocol);
         }
+        let contract = self.callback_contract();
         let mut url = Url::parse(self.callback_url_prefix()).map_err(|_| QQMusicError::Protocol)?;
         url.query_pairs_mut()
-            .append_pair("login_type", self.login_type())
-            .append_pair("surl", "https://y.qq.com/")
+            .append_pair("login_type", contract.login_type)
+            .append_pair("surl", contract.surl)
             .append_pair("state", state);
         Ok(url)
     }
 
     pub fn is_callback_url(self, url: &Url) -> bool {
+        let contract = self.callback_contract();
         secure_https_url(url)
-            && url.host_str() == Some("y.qq.com")
-            && url.path() == "/portal/wx_redirect.html"
-            && exactly_one_query_value(url, "login_type").as_deref() == Some(self.login_type())
+            && url.host_str() == Some(contract.host)
+            && url.path() == contract.path
+            && exactly_one_query_value(url, "login_type").as_deref() == Some(contract.login_type)
     }
 
     pub fn allows_navigation(self, url: &Url) -> bool {
@@ -73,7 +72,7 @@ impl OAuthLoginProvider {
     }
 
     pub fn callback_url_prefix(self) -> &'static str {
-        "https://y.qq.com/portal/wx_redirect.html"
+        qqmusic_api::auth::oauth_callback_url_prefix(self.qm_api_provider())
     }
 
     pub fn navigation_allowlist(self) -> Vec<String> {
@@ -157,7 +156,8 @@ pub(crate) fn parse_callback(
     expected_state: &str,
 ) -> Result<OAuthCallback, QQMusicError> {
     if !provider.is_callback_url(url)
-        || exactly_one_query_value(url, "surl").as_deref() != Some("https://y.qq.com/")
+        || exactly_one_query_value(url, "surl").as_deref()
+            != Some(provider.callback_contract().surl)
     {
         return Err(QQMusicError::Protocol);
     }

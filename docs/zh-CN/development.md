@@ -35,7 +35,7 @@ npm run dev
 
 生产提供器无条件链接公开 crate `qqmusic-api`：
 `https://github.com/YAQMC/qm-api-rs.git`，精确 revision 为
-`c80ab34e021d567fd1ac62965d6fdca80ff5467c`。
+`61e9e3cfd69ed10efcce92f573c104aa440d74ed`。
 
 桌面开发启动器为 Cargo 设置 `CARGO_NET_GIT_FETCH_WITH_CLI=true`。访问辅助脚本只核对 manifest pin
 与可选的相邻 checkout，不修改 Git 配置：

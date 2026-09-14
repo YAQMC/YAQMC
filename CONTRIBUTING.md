@@ -19,7 +19,7 @@ npm run dev
 ```
 
 完整的 Electron 桌面端和 Rust workspace 无条件链接公开 `qm-api-rs`（crate `qqmusic-api`），精确钉在
-`c80ab34e021d567fd1ac62965d6fdca80ff5467c`。本地若在 `../qm-api-rs` 有检出，运行
+`61e9e3cfd69ed10efcce92f573c104aa440d74ed`。本地若在 `../qm-api-rs` 有检出，运行
 `node scripts/ci/qm-api-rs-access.mjs --check` 会核对该 HEAD。生产边界和发布门禁见
 [提供器 readiness](docs/release/provider-readiness.md)与 [CI 文档](docs/zh-CN/ci.md)。
 

@@ -31,7 +31,7 @@ const MARKERS: &[&str] = &[
 const EXPECTED: &[(&str, usize, usize)] = &[
     ("qmapi/transport.rs", 25, 2),
     ("qqmusic/auth.rs", 4, 3),
-    ("qqmusic/oauth.rs", 11, 0),
+    ("qqmusic/oauth.rs", 7, 0),
     ("qqmusic/transport.rs", 12, 3),
     ("qqmusic/transport/qmapi_bridge.rs", 0, 2),
 ];

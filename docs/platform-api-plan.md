@@ -656,7 +656,7 @@ payload builder 的缺口：
 ### 2026-09-14：桌面二维码登录与手机 QR 深链入库
 
 本批基线为 YAQMC `5e15d1e`，库 pin 更新为
-`c80ab34e021d567fd1ac62965d6fdca80ff5467c`。它承接 A4 的授权残留：此前桌面 QR 的
+`61e9e3cfd69ed10efcce92f573c104aa440d74ed`（含前一个库提交 `c80ab34e021d567fd1ac62965d6fdca80ff5467c`）。它承接 A4 的授权残留：此前桌面 QR 的
 `ptqrshow`/`ptqrlogin`/`check_sig`/`oauth2.0/authorize` 跳转和手机 QR 深链仍在 provider
 内构造。
 
@@ -672,23 +672,34 @@ payload builder 的缺口：
 - provider 端删除已迁出的 `complete_qq_exchange` 和自有 QR HTTP；`exchange_code` 仅注入
   本次尝试的 transport 并把 `OAuthSession` 映射为本地 `SessionRecord`。宿主职责保留：
   导航白名单、回调 state 校验、登录尝试 ownership、MQTT 状态机。
-- 端点门禁从 `qqmusic/auth.rs` 的 19/7 收窄到 4/3，
-  `qqmusic/transport/qmapi_bridge.rs` 由 0/1 变为 0/2（新增库传输适配器的 `execute`
-  调用点）。剩余 4 个标记来自头像 CDN 白名单（`qpic.y.qq.com`、`q.qlogo.cn` 等安全
-  校验常量，命中重叠的 `c.y.qq.com`/`y.qq.com`）与共享 referer/origin 字面量，
-  不承担 HTTP 端点语义；门禁计数是静态标记而非唯一端点数量。
-- 库新增 6 项端到端合成契约（桌面 QR 成功/等待/取消/边界、手机深链编码与拒绝）。
+- 新的 `qm-api-rs::auth::oauth_callback_contract` 公开发布回调端点契约（host、path、
+  `login_type`、`surl`）。宿主的 `qqmusic/oauth.rs` 改为用该契约匹配与校验回调，
+  不再自持 `https://y.qq.com/portal/wx_redirect.html` 与 `surl` 字面量；宿主只保留
+  导航白名单和 state 校验策略。
+- 库侧新登录挑战显式发送空 Cookie，拒绝继承共享账户状态；QR 图片、轮询/跳转文本、
+  OAuth 响应和 `qrsig` 均有独立大小上限。重复 `Location`/`Content-Type`、非精确终态
+  URL、畸形 `ptuiCB`、重复授权码、错误 callback 查询或跨尝试重定向全部 fail closed，
+  token、Cookie 与授权码不进入 `Debug` 输出。
+- 宿主 `HostTransport` 保留库 transport 的 JSON/form Content-Type、form 标量与复合值
+  编码规则和逐请求 timeout；显式 Content-Type 不被覆盖，非对象 form 与库默认实现一样
+  编码为空 body。对应 5 项合成测试防止以后新增库端点时出现 transport 语义漂移。
+- 端点门禁从 `qqmusic/auth.rs` 的 19/7 收窄到 4/3、`qqmusic/oauth.rs` 的 11/0 收窄到
+  7/0，`qqmusic/transport/qmapi_bridge.rs` 由 0/1 变为 0/2（新增库传输适配器的
+  `execute` 调用点）。`qqmusic/auth.rs` 剩余 4 个标记来自头像 CDN 白名单
+  （`qpic.y.qq.com`、`q.qlogo.cn` 等安全校验常量，命中重叠的 `c.y.qq.com`/`y.qq.com`）
+  与共享 referer/origin 字面量；`qqmusic/oauth.rs` 剩余 7 个标记是宿主导航白名单主机。
+  二者都不承担 HTTP 端点语义；门禁计数是静态标记而非唯一端点数量。
 
 验证（正式 git pin，无 path patch）：库 `cargo +1.88.0 test --locked --offline
 --all-targets --all-features` 通过，同范围 Clippy/fmt 通过；YAQMC
 `cargo +1.88.0 check/clippy --workspace --locked --offline --all-targets` 通过，
-provider 292 passed / 8 ignored，端点门禁 9、其他边界 6 passed；
+provider 296 passed / 8 ignored，端点门禁 9、其他边界 6 passed；
 `node scripts/ci/qm-api-rs-access.mjs --check` 与 `npm run ci:test-scripts`（235 passed）
 通过。未执行真实授权、真机登录、打包或 Release，新 pin 的 soak 保持 not-started。
 
-桌面 QR 与手机深链的处理时间、额外空间都是 O(1) 常量级；头像白名单校验为 O(1)。
-`qqmusic/oauth.rs` 的 11 个导航白名单标记、多 profile（B1/B2）、完整插件端点路由
-（C1/C2）和 Spotify（E0–E2）仍未完成。
+桌面 QR、手机深链与回调契约的处理时间和额外空间为 O(n)，其中 n 受各响应或标识符
+上限约束；form 适配为 O(f)，f 为字段编码总长度；固定头像/导航白名单查询为 O(1)。
+多 profile（B1/B2）、完整插件端点路由（C1/C2）和 Spotify（E0–E2）仍未完成。
 
 ## 6. 可执行工作包与依赖
 

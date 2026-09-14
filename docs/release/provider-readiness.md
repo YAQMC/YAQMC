@@ -2,7 +2,7 @@
 
 Status: **BLOCKED (EXACT-PIN SOAK NOT STARTED)** for the production `qmapi` backend at
 exact `qm-api-rs` revision
-`c80ab34e021d567fd1ac62965d6fdca80ff5467c`.
+`61e9e3cfd69ed10efcce92f573c104aa440d74ed`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,
@@ -33,7 +33,8 @@ The previous exact-pin waiver applied only to revision
 `7d0f6e18b1d1d89a06cc5964e9c057acb0926ea5`; it is not carried forward.
 The new pin adds typed discovery/account boundaries, OAuth URL construction,
 credential isolation, response validation, the library-owned desktop QQ QR login
-flow, and the library-owned mobile QR launch URL. The QMC implementation is
+flow, the library-owned mobile QR launch URL, and the library-owned OAuth
+callback endpoint contract. The QMC implementation is
 unchanged; the limited source-evidence comparison is recorded in the provenance
 document.
 
