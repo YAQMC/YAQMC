@@ -23,7 +23,7 @@ pub(crate) mod transport;
 pub(crate) mod vkey;
 
 pub(crate) fn qmapi_client() -> Result<qqmusic_api::Client, qqmusic_api::QmError> {
-    qmapi_client_with(None, None)
+    qmapi_client_with(None, Some(qqmusic_api::Platform::Web))
 }
 
 pub(crate) fn qmapi_client_with(

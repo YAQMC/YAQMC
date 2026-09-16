@@ -2,7 +2,7 @@
 
 Status: **BLOCKED (EXACT-PIN SOAK NOT STARTED)** for the production `qmapi` backend at
 exact `qm-api-rs` revision
-`fd38181b190c81ecb46591ae2e34dad87e1dadf2`.
+`75f6e4d392f6d3e64608fb48e2480fb0087009e3`.
 
 The machine-readable record is [provider-readiness.json](provider-readiness.json).
 Run `npm run provider:enforce` to verify the pin, provider boundary, evidence paths,

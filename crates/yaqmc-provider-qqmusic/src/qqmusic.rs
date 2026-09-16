@@ -2097,14 +2097,26 @@ impl QQMusicClient {
         let mut v_cache: Vec<String> = Vec::new();
         let mut seen_shelves = 0_u32;
         for page in 1..=5 {
-            let shelves = crate::qmapi::recommend::web_home_feed(
+            let shelves = match crate::qmapi::recommend::web_home_feed(
                 &self.catalog,
                 &credential,
                 page,
                 seen_shelves,
                 &v_cache,
             )
-            .await?;
+            .await
+            {
+                Ok(shelves) => shelves,
+                Err(error) => {
+                    tracing::warn!(
+                        target: "qqmusic",
+                        %error,
+                        page,
+                        "home personalized feed failed; breaking early to allow fallback"
+                    );
+                    break;
+                }
+            };
             tracing::debug!(
                 target: "qqmusic",
                 page,
@@ -2129,6 +2141,9 @@ impl QQMusicClient {
                     ) {
                         continue;
                     }
+                    if card.title.contains("每日30首") || card.title.contains("每日精选") {
+                        continue;
+                    }
                     if let Some(playlist) = discovery::playlist_card(card.clone()) {
                         playlists.push(playlist);
                         if playlists.len() as u32 >= limit {
@@ -2143,6 +2158,14 @@ impl QQMusicClient {
                 break;
             }
         }
+        if playlists.is_empty() {
+            tracing::info!(
+                target: "qqmusic",
+                limit,
+                "personalized songlists empty; falling back to general recommendations"
+            );
+            return self.general_songlists(limit).await;
+        }
         Ok(playlists)
     }
 
@@ -2150,6 +2173,7 @@ impl QQMusicClient {
         let rows = crate::qmapi::recommend::web_songlists(&self.catalog, 0, limit).await?;
         Ok(rows
             .into_iter()
+            .filter(|row| !row.title.contains("每日30首") && !row.title.contains("每日精选"))
             .map(|row| Playlist {
                 id: playlist_id(&row.id.to_string()),
                 title: clean_text(&row.title),
@@ -2205,8 +2229,25 @@ impl QQMusicClient {
             None,
             unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
         )?;
-        let shelves =
-            crate::qmapi::recommend::web_home_feed(&self.catalog, &credential, 1, 0, &[]).await?;
+        let shelves = match crate::qmapi::recommend::web_home_feed(
+            &self.catalog,
+            &credential,
+            1,
+            0,
+            &[],
+        )
+        .await
+        {
+            Ok(shelves) => shelves,
+            Err(error) => {
+                tracing::warn!(
+                    target: "qqmusic",
+                    %error,
+                    "home personalized new-songs feed failed; falling back to general new songs"
+                );
+                return Ok((None, self.general_newsongs().await?));
+            }
+        };
         let disstid = shelves
             .into_iter()
             .flat_map(|shelf| shelf.cards)
@@ -6197,6 +6238,18 @@ mod tests {
         assert!(
             songlists.iter().all(|playlist| !playlist.title.is_empty()),
             "personalized songlists carry titles"
+        );
+        assert!(
+            songlists
+                .iter()
+                .all(|playlist| !playlist.title.contains("每日30首") && !playlist.title.contains("每日精选")),
+            "personalized songlists exclude daily 30 mix"
+        );
+        assert!(
+            home.recommended_songlists
+                .iter()
+                .all(|playlist| !playlist.title.contains("每日30首") && !playlist.title.contains("每日精选")),
+            "home recommended songlists exclude daily 30 mix"
         );
         assert!(!daily.title.is_empty(), "daily songlist title resolves");
         assert!(

@@ -181,7 +181,7 @@ impl QQMusicClient {
                         });
                     }
                 }
-                FeedCardKind::Other => {}
+                FeedCardKind::DailySonglist | FeedCardKind::Other => {}
             }
         }
         Ok(result)
