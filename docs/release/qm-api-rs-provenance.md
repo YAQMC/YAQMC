@@ -1,7 +1,7 @@
 # qm-api-rs provenance
 
 Status: **PASS (SOURCE-MAPPING DELTA REVIEW)** at production revision
-`61e9e3cfd69ed10efcce92f573c104aa440d74ed`.
+`fd38181b190c81ecb46591ae2e34dad87e1dadf2`.
 
 Repository: `https://github.com/YAQMC/qm-api-rs`. The crate declares
 `GPL-3.0-or-later`; YAQMC links it unconditionally and distributes matching
@@ -31,25 +31,17 @@ No dependency, license,
 third-party notice, or QMC source change appears in that range. The existing
 source mappings are retained based on identical Git blobs, not on test results:
 
-The next delta review compares `8734353175317cf81c2180b73deff18edca8a650` with the
-current pin `61e9e3cfd69ed10efcce92f573c104aa440d74ed`. The eight-commit range
-changes `docs/modules.md`, adds `src/auth.rs`, `tests/oauth_exchange_contract.rs`
-and `tests/desktop_qr_contract.rs`, and updates `src/lib.rs` plus
-`src/modules/login.rs`. It first centralizes the desktop OAuth wire shape and
-login field aliases, then moves the actual bounded, attempt-scoped HTTP exchange,
-Cookie processing and response validation into the library, and makes the
-lower-level payload builder and decoder crate-private so consumers cannot bypass
-the complete exchange API. It then takes ownership of the desktop QQ QR login
-flow (`ptqrshow`/`ptqrlogin`, `check_sig`, the `oauth2.0/authorize` redirect and
-the `g_tk`/`ptqrtoken` derivations) with a synthetic end-to-end contract, and
-then owns the mobile QR launch URL plus its identifier encoding and bounds. It
-publishes the callback endpoint contract (host, path, `login_type`, `surl`) so
-the host validates callbacks without duplicating the wire string. The final two
-commits harden response-size, Cookie, duplicate-header, exact-endpoint,
-`ptuiCB` grammar and redirect-query validation, and bind every redirect to the
-active login attempt. No dependency, license, third-party notice, or QMC source
-change appears in the range, and the four reviewed blobs below are
-byte-identical at both revisions:
+The next delta review compares `8734353175317cf81c2180b73deff18edca8a650` through
+`61e9e3cfd69ed10efcce92f573c104aa440d74ed` to the current pin
+`fd38181b190c81ecb46591ae2e34dad87e1dadf2`. The eight commits to `61e9e3c`
+centralize the desktop OAuth wire shape and login field aliases, move the
+attempt-scoped exchange into the library, take ownership of the desktop QQ QR
+flow and mobile QR launch URL, publish the callback endpoint contract, and harden
+parsing while binding redirects to the active login attempt. The follow-up commit
+to `fd38181` sniffs desktop QR image magic bytes when `ptqrshow` omits `Content-Type`
+and adds single `req` envelope key fallback. No dependency, license,
+third-party notice, or QMC source change appears in the range, and the four
+reviewed blobs below are byte-identical at all revisions:
 
 | File                     | Git blob at both revisions                 |
 | ------------------------ | ------------------------------------------ |

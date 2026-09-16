@@ -7,6 +7,30 @@
         "uin": "SANITIZED_ACCOUNT",
         "nick": "Synthetic Listener",
         "logo": "https://thirdwx.qlogo.cn/synthetic-avatar.png"
+      },
+      "map_userinfo": {
+        "1000000001": {
+          "uin": 1000000001,
+          "nick": "Synthetic Listener",
+          "headurl": "https://thirdwx.qlogo.cn/synthetic-avatar.png"
+        }
+      }
+    }
+  },
+  "req_0": {
+    "code": 0,
+    "data": {
+      "info": {
+        "uin": "SANITIZED_ACCOUNT",
+        "nick": "Synthetic Listener",
+        "logo": "https://thirdwx.qlogo.cn/synthetic-avatar.png"
+      },
+      "map_userinfo": {
+        "1000000001": {
+          "uin": 1000000001,
+          "nick": "Synthetic Listener",
+          "headurl": "https://thirdwx.qlogo.cn/synthetic-avatar.png"
+        }
       }
     }
   }

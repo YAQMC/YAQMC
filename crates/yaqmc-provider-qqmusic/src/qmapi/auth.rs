@@ -12,6 +12,7 @@ use crate::qqmusic::{QQMusicError, SessionRecord};
 /// the provider's profile normalizer. The upstream route and credential
 /// injection are owned by qm-api-rs.
 pub(crate) async fn fetch_profile(
+    client: Option<&qqmusic_api::Client>,
     session: &SessionRecord,
     cancellation: tokio_util::sync::CancellationToken,
 ) -> Result<Value, QQMusicError> {
@@ -19,8 +20,15 @@ pub(crate) async fn fetch_profile(
         return Err(QQMusicError::Cancelled);
     }
     let credential = credential_from_session(session)?;
-    let client = qmapi_client_with(Some(credential.clone()), Some(Platform::Web))
-        .map_err(map_qmapi_error)?;
+    let local_client;
+    let client = match client {
+        Some(client) => client,
+        None => {
+            local_client = qmapi_client_with(Some(credential.clone()), Some(Platform::Web))
+                .map_err(map_qmapi_error)?;
+            &local_client
+        }
+    };
     let data = tokio::select! {
         biased;
         _ = cancellation.cancelled() => return Err(QQMusicError::Cancelled),
@@ -32,5 +40,20 @@ pub(crate) async fn fetch_profile(
     if cancellation.is_cancelled() {
         return Err(QQMusicError::Cancelled);
     }
-    Ok(json!({"code": 0, "req": {"code": 0, "data": data}}))
+
+    let profile_data = if let Some(map) = data.get("map_userinfo").and_then(Value::as_object) {
+        let user_info = map
+            .get(&session.uin)
+            .or_else(|| map.values().next())
+            .cloned()
+            .unwrap_or_else(|| data.clone());
+        json!({
+            "info": user_info,
+            "map_userinfo": data.get("map_userinfo"),
+        })
+    } else {
+        data
+    };
+
+    Ok(json!({"code": 0, "req": {"code": 0, "data": profile_data}}))
 }

@@ -153,6 +153,33 @@ fn oauth_exchange_sends_only_through_the_library() {
     assert!(!source.contains("fn session_from_login_payload("));
 }
 
+#[test]
+fn session_validation_delegates_to_qmapi_without_test_forks() {
+    let source = include_str!("../src/qqmusic/auth.rs");
+    let start = source
+        .find("async fn validate_session(")
+        .expect("validate_session must exist")
+        + "async fn validate_session(".len();
+    let rest = &source[start..];
+    let end = rest
+        .find("\nstruct ActiveAttempt")
+        .expect("validate_session ends before ActiveAttempt");
+    let validation = &rest[..end];
+    assert!(validation.contains("crate::qmapi::auth::fetch_profile("));
+    for forbidden in [
+        "TransportRequest",
+        "GetLoginUserInfo",
+        "#[cfg(",
+        "QQ_MUSICU_URL",
+        "https://",
+    ] {
+        assert!(
+            !validation.contains(forbidden),
+            "unwanted legacy construct in validate_session: {forbidden}"
+        );
+    }
+}
+
 #[derive(Default)]
 struct TestCredentialStore {
     secrets: Mutex<HashMap<String, String>>,

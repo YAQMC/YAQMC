@@ -28,7 +28,6 @@ use super::{
 use super::{
     account::{EntitlementTier, MembershipState},
     transport::{RedirectMode, RetryClass, TransportRequest, TransportResponse},
-    QQ_MUSICU_URL,
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -37,7 +36,7 @@ use reqwest::{
     Url,
 };
 #[cfg(test)]
-use reqwest::{Method, StatusCode};
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
@@ -330,7 +329,7 @@ impl TransportQQMusicAuthProtocol {
     fn login_client(&self, operation: &'static str) -> qqmusic_api::Client {
         qqmusic_api::Client::new_with_transport(
             None,
-            None,
+            Some(qqmusic_api::Platform::Web),
             Arc::new(super::transport::qmapi_bridge::HostTransport {
                 inner: Arc::clone(&self.transport),
                 operation,
@@ -359,70 +358,13 @@ impl TransportQQMusicAuthProtocol {
         if cancellation.is_cancelled() {
             return Err(QQMusicError::Cancelled);
         }
-        #[cfg(not(test))]
-        {
-            crate::qmapi::entitlement::fetch_account_entitlement(session).await
-        }
-        #[cfg(test)]
-        {
-            let payload = json!({
-                "comm": {
-                    "ct": 24,
-                    "cv": 0,
-                    "format": "json",
-                    "uin": session.uin,
-                },
-                "req": {
-                    "module": "VipLogin.VipLoginInter",
-                    "method": "vip_login_base",
-                    "param": {},
-                },
-            });
-            let mut headers = referer_headers("https://y.qq.com/")?;
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/json; charset=utf-8"),
-            );
-            headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
-            headers.insert(
-                header::COOKIE,
-                HeaderValue::from_str(&session.cookie_header)
-                    .map_err(|_| QQMusicError::Protocol)?,
-            );
-            let response = self
-                .transport
-                .execute(TransportRequest {
-                    max_response_bytes: None,
-                    operation: "auth.entitlement.validate",
-                    method: Method::POST,
-                    url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                    headers,
-                    body: Some(serde_json::to_vec(&payload).map_err(|_| QQMusicError::Protocol)?),
-                    retry: RetryClass::SafeRead,
-                    redirects: RedirectMode::FollowValidated,
-                    response_shape: "account-entitlement",
-                    cancellation,
-                })
-                .await?;
-            require_success(&response)?;
-            let payload: Value = serde_json::from_slice(&response.body)
-                .map_err(|_| QQMusicError::MalformedResponse)?;
-            if json_code(&payload).unwrap_or(-1) != 0
-                || payload
-                    .pointer("/req/code")
-                    .or_else(|| payload.pointer("/req_0/code"))
-                    .and_then(Value::as_i64)
-                    .unwrap_or(-1)
-                    != 0
-                || payload
-                    .pointer("/req/data")
-                    .or_else(|| payload.pointer("/req_0/data"))
-                    .is_none()
-            {
-                return Err(QQMusicError::SchemaChanged);
-            }
-            Ok(normalize_account_entitlement(&payload))
-        }
+        let client = self.login_client("auth.entitlement.validate");
+        crate::qmapi::entitlement::fetch_account_entitlement_with_client(
+            Some(&client),
+            session,
+            cancellation,
+        )
+        .await
     }
 
     async fn exchange_code(
@@ -599,66 +541,13 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         {
             return Err(QQMusicError::AuthenticationExpired);
         }
-        #[cfg(test)]
-        let profile_payload = json!({
-            "comm": {
-                "ct": 24,
-                "cv": 0,
-                "format": "json",
-                "platform": "yqq.json",
-                "uin": session.uin,
-            },
-            "req": {
-                "module": "music.UserInfo.userInfoServer",
-                "method": "GetLoginUserInfo",
-                "param": {},
-            },
-        });
-        #[cfg(test)]
-        let mut headers = referer_headers("https://y.qq.com/")?;
-        #[cfg(test)]
-        let response_body = {
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("application/json; charset=utf-8"),
-            );
-            headers.insert(header::ORIGIN, HeaderValue::from_static("https://y.qq.com"));
-            headers.insert(
-                header::COOKIE,
-                HeaderValue::from_str(&session.cookie_header)
-                    .map_err(|_| QQMusicError::Protocol)?,
-            );
-            let response = self
-                .transport
-                .execute(TransportRequest {
-                    max_response_bytes: None,
-                    operation: "auth.session.validate",
-                    method: Method::POST,
-                    url: Url::parse(QQ_MUSICU_URL).map_err(|_| QQMusicError::Protocol)?,
-                    headers,
-                    body: Some(
-                        serde_json::to_vec(&profile_payload).map_err(|_| QQMusicError::Protocol)?,
-                    ),
-                    retry: RetryClass::SafeRead,
-                    redirects: RedirectMode::FollowValidated,
-                    response_shape: "account-profile",
-                    cancellation: cancellation.clone(),
-                })
-                .await?;
-            require_success(&response)?;
-            response.body
-        };
-        let payload: Value = {
-            #[cfg(not(test))]
-            {
-                crate::qmapi::auth::fetch_profile(session, cancellation.clone()).await?
-            }
-            #[cfg(test)]
-            {
-                serde_json::from_slice(&response_body)
-                    .map_err(|_| QQMusicError::MalformedResponse)?
-            }
-        };
+        let client = self.login_client("auth.session.validate");
+        let payload = crate::qmapi::auth::fetch_profile(
+            Some(&client),
+            session,
+            cancellation.clone(),
+        )
+        .await?;
         let request = payload.get("req").or_else(|| payload.get("req_0"));
         require_session_validation_success(&payload, request)?;
         let request = request.ok_or(QQMusicError::SchemaChanged)?;
@@ -666,6 +555,12 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
         let profile = data
             .get("userInfo")
             .or_else(|| data.get("info"))
+            .or_else(|| {
+                data.get("map_userinfo").and_then(|m| {
+                    m.get(&session.uin)
+                        .or_else(|| m.as_object().and_then(|obj| obj.values().next()))
+                })
+            })
             .unwrap_or(data);
         let nickname = first_string(
             profile,
@@ -713,7 +608,8 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
                     &["/encryptUin", "/encrypt_uin", "/euin", "/EncryptUin"],
                 )
             })
-            .filter(|value| !value.trim().is_empty()),
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| session.encrypted_uin.clone()),
         })
     }
 }
@@ -5425,7 +5321,7 @@ mod tests {
                     ),
                     response(
                         StatusCode::OK,
-                        "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
+                        "https://u.y.qq.com/cgi-bin/musicu.fcg",
                         HeaderMap::new(),
                         include_str!("../../tests/fixtures/qqmusic/account/profile.json"),
                     ),
@@ -5503,17 +5399,17 @@ mod tests {
             requests[4]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req/module"))
+                .and_then(|body| body.pointer("/req_0/module").or_else(|| body.pointer("/req/module")))
                 .and_then(Value::as_str),
-            Some("music.UserInfo.userInfoServer")
+            Some("userInfo.BaseUserInfoServer")
         );
         assert_eq!(
             requests[4]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req/method"))
+                .and_then(|body| body.pointer("/req_0/method").or_else(|| body.pointer("/req/method")))
                 .and_then(Value::as_str),
-            Some("GetLoginUserInfo")
+            Some("get_user_baseinfo_v2")
         );
         assert_eq!(requests[5].operation, "auth.entitlement.validate");
         assert_eq!(requests[5].host, "u.y.qq.com");
@@ -5527,14 +5423,16 @@ mod tests {
             requests[5]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req/module").and_then(Value::as_str)),
+                .and_then(|body| body.pointer("/req_0/module").or_else(|| body.pointer("/req/module")))
+                .and_then(Value::as_str),
             Some("VipLogin.VipLoginInter")
         );
         assert_eq!(
             requests[5]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req/method").and_then(Value::as_str)),
+                .and_then(|body| body.pointer("/req_0/method").or_else(|| body.pointer("/req/method")))
+                .and_then(Value::as_str),
             Some("vip_login_base")
         );
     }

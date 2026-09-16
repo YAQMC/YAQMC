@@ -2785,7 +2785,7 @@ dependencies = [
 [[package]]
 name = "qqmusic-api"
 version = "0.1.0"
-source = "git+https://github.com/YAQMC/qm-api-rs.git?rev=61e9e3cfd69ed10efcce92f573c104aa440d74ed#61e9e3cfd69ed10efcce92f573c104aa440d74ed"
+source = "git+https://github.com/YAQMC/qm-api-rs.git?rev=fd38181b190c81ecb46591ae2e34dad87e1dadf2#fd38181b190c81ecb46591ae2e34dad87e1dadf2"
 dependencies = [
  "aes",
  "async-trait",

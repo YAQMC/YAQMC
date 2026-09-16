@@ -34,10 +34,10 @@
     },
     "qmApiRs": {
       "origin": "https://github.com/YAQMC/qm-api-rs",
-      "revision": "61e9e3cfd69ed10efcce92f573c104aa440d74ed",
-      "yaqmcPin": "61e9e3cfd69ed10efcce92f573c104aa440d74ed",
+      "revision": "fd38181b190c81ecb46591ae2e34dad87e1dadf2",
+      "yaqmcPin": "fd38181b190c81ecb46591ae2e34dad87e1dadf2",
       "linked": true,
-      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-14 limited delta review from 7d0f6e1 to 8734353 covers typed web/account interfaces, OAuth URL construction, credential isolation and bounded anonymous artwork downloads. The eight-commit follow-up from 8734353 to 61e9e3c adds the complete attempt-scoped desktop OAuth exchange API and contract tests, makes its payload builder/decoder crate-private, takes ownership of the desktop QQ QR login flow, owns the mobile QR launch URL with its identifier bounds, publishes the callback endpoint contract the host validates against, and hardens response, Cookie, redirect and callback parsing while binding redirects to the active login attempt. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at every reviewed pin, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
+      "note": "Current linked dependency overlay; it does not advance repository.auditHead or re-audit the frozen in-tree snapshot. The 2026-09-14 limited delta review from 7d0f6e1 to 8734353 covers typed web/account interfaces, OAuth URL construction, credential isolation and bounded anonymous artwork downloads. The eight-commit follow-up from 8734353 to 61e9e3c adds the complete attempt-scoped desktop OAuth exchange API and contract tests, makes its payload builder/decoder crate-private, takes ownership of the desktop QQ QR login flow, owns the mobile QR launch URL with its identifier bounds, publishes the callback endpoint contract the host validates against, and hardens response, Cookie, redirect and callback parsing while binding redirects to the active login attempt. The follow-up commit to fd38181 sniffs desktop QR image magic bytes when Content-Type is missing and supports legacy req envelope key. LICENSE, PROVENANCE.md, THIRD_PARTY_NOTICES.md and src/qmc.rs have identical Git blobs at every reviewed pin, recorded in qm-api-rs-provenance.md. This retains source mappings, not the old soak waiver or a release authorization."
     }
   },
   "sources": [
@@ -127,15 +127,15 @@
       "copyright": "Copyright (c) 2019 程序猿老龚 gjh.me",
       "mappings": [
         {
-          "target": "qm-api-rs@61e9e3c/src/qmc.rs Qmc2Map::decrypt_in_place",
+          "target": "qm-api-rs@fd38181/src/qmc.rs Qmc2Map::decrypt_in_place",
           "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMMapCipher.getMask/rotate, reached through the YAQMC provider adapter"
         },
         {
-          "target": "qm-api-rs@61e9e3c/src/qmc.rs Qmc2Rc4::decrypt_in_place",
+          "target": "qm-api-rs@fd38181/src/qmc.rs Qmc2Rc4::decrypt_in_place",
           "relation": "independent Rust rewrite of QMCDecode/QMCipher.swift QMRC4Cipher segmented stream, reached through the YAQMC provider adapter"
         },
         {
-          "target": "qm-api-rs@61e9e3c/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
+          "target": "qm-api-rs@fd38181/src/qmc.rs derive_key / simple_make_key / decrypt_tencent_tea",
           "relation": "independent Rust rewrite of QMCDecode/QMCKeyDecoder.swift and TeaCipher.swift ekey TEA unwrap, reached through the YAQMC provider adapter"
         }
       ],
@@ -205,7 +205,7 @@
       "path": "THIRD_PARTY_NOTICES.md",
       "sourceId": "gongjiehong-qmcdecode",
       "status": "verified",
-      "evidence": "sha256:7c9f205301c3ff15f7bb1ffa1bf2f2d7ae060758defbd73fe4342f9914f40cda"
+      "evidence": "sha256:d0d86ba8bfe17e60f670276981edffbfc8e430af63730a7d1a87bca5b595d0ef"
     }
   ],
   "release": {

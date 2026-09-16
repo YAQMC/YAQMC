@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "phase": "P14-C",
-  "targetPin": "61e9e3cfd69ed10efcce92f573c104aa440d74ed",
+  "targetPin": "fd38181b190c81ecb46591ae2e34dad87e1dadf2",
   "cutoverBaselinePin": "ffcc86cec2993b79ccf34faf25c1eba6c0d995ca",
   "defaultBackend": "qmapi",
   "cutoverAuthorized": true,
@@ -29,7 +29,7 @@
     {
       "id": "exact-pin-three-day-soak",
       "status": "not-started",
-      "appliesToPin": "61e9e3cfd69ed10efcce92f573c104aa440d74ed",
+      "appliesToPin": "fd38181b190c81ecb46591ae2e34dad87e1dadf2",
       "evidence": "docs/release/provider-readiness.md"
     },
     {

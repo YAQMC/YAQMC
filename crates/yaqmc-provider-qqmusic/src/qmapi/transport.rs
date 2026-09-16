@@ -582,6 +582,7 @@ mod tests {
         tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve mock");
         });
+        tokio::task::yield_now().await;
         format!("http://{addr}")
     }
 
@@ -862,29 +863,50 @@ mod tests {
 
     #[tokio::test]
     async fn write_requests_are_not_retried() {
-        async fn hits_for(retry: RetryClass) -> u32 {
-            let hits = Arc::new(AtomicU32::new(0));
-            let hits_for_handler = Arc::clone(&hits);
-            let base = spawn_router(Router::new().route(
-                "/flaky",
-                get(move || {
-                    let hits_for_handler = Arc::clone(&hits_for_handler);
-                    async move {
-                        hits_for_handler.fetch_add(1, Ordering::SeqCst);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    }
-                }),
-            ))
-            .await;
-            let transport = transport_for(&base, TransportConfig::default());
-            let mut request = TransportRequest::new(HttpMethod::Get, format!("{base}/flaky"));
-            request.retry = retry;
-            let _ = transport.execute(request).await;
-            hits.load(Ordering::SeqCst)
-        }
-        assert_eq!(hits_for(RetryClass::SafeRead).await, 2);
-        assert_eq!(hits_for(RetryClass::Write).await, 1);
-        assert_eq!(hits_for(RetryClass::AuthPoll).await, 1);
+        let hits = Arc::new(AtomicU32::new(0));
+        let hits_for_handler = Arc::clone(&hits);
+        let base = spawn_router(Router::new().route(
+            "/flaky",
+            get(move || {
+                let hits_for_handler = Arc::clone(&hits_for_handler);
+                async move {
+                    hits_for_handler.fetch_add(1, Ordering::SeqCst);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            }),
+        ))
+        .await;
+        let transport = transport_for(&base, TransportConfig::default());
+
+        let hits_before = hits.load(Ordering::SeqCst);
+        let mut safe_request = TransportRequest::new(HttpMethod::Get, format!("{base}/flaky"));
+        safe_request.retry = RetryClass::SafeRead;
+        let response = transport
+            .execute(safe_request)
+            .await
+            .expect("execute SafeRead");
+        assert_eq!(response.status, 500);
+        assert_eq!(hits.load(Ordering::SeqCst) - hits_before, 2);
+
+        let hits_before = hits.load(Ordering::SeqCst);
+        let mut write_request = TransportRequest::new(HttpMethod::Get, format!("{base}/flaky"));
+        write_request.retry = RetryClass::Write;
+        let response = transport
+            .execute(write_request)
+            .await
+            .expect("execute Write");
+        assert_eq!(response.status, 500);
+        assert_eq!(hits.load(Ordering::SeqCst) - hits_before, 1);
+
+        let hits_before = hits.load(Ordering::SeqCst);
+        let mut poll_request = TransportRequest::new(HttpMethod::Get, format!("{base}/flaky"));
+        poll_request.retry = RetryClass::AuthPoll;
+        let response = transport
+            .execute(poll_request)
+            .await
+            .expect("execute AuthPoll");
+        assert_eq!(response.status, 500);
+        assert_eq!(hits.load(Ordering::SeqCst) - hits_before, 1);
     }
 
     #[test]

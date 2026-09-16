@@ -43,25 +43,48 @@ pub(crate) fn account_entitlement_from_qmapi(info: &UserVipInfoResponse) -> Acco
     }))
 }
 
+#[allow(dead_code)]
 pub(crate) async fn fetch_account_entitlement(
     session: &SessionRecord,
 ) -> Result<AccountEntitlement, QQMusicError> {
+    fetch_account_entitlement_with_client(
+        None,
+        session,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+}
+
+pub(crate) async fn fetch_account_entitlement_with_client(
+    client: Option<&qqmusic_api::Client>,
+    session: &SessionRecord,
+    cancellation: tokio_util::sync::CancellationToken,
+) -> Result<AccountEntitlement, QQMusicError> {
+    if cancellation.is_cancelled() {
+        return Err(QQMusicError::Cancelled);
+    }
     let credential = credential_from_session(session)?;
-    let client =
-        qmapi_client_with(Some(credential.clone()), Some(Platform::Web)).map_err(|error| {
-            let classification = map_qmapi_error(error);
-            tracing::warn!(
-                target: "qqmusic.entitlement",
-                classification = classification.code(),
-                "library client construction failed"
-            );
-            classification
-        })?;
-    let info = client
-        .user
-        .get_vip_info(Some(&credential))
-        .await
-        .map_err(|error| {
+    let local_client;
+    let client = match client {
+        Some(client) => client,
+        None => {
+            local_client =
+                qmapi_client_with(Some(credential.clone()), Some(Platform::Web)).map_err(|error| {
+                    let classification = map_qmapi_error(error);
+                    tracing::warn!(
+                        target: "qqmusic.entitlement",
+                        classification = classification.code(),
+                        "library client construction failed"
+                    );
+                    classification
+                })?;
+            &local_client
+        }
+    };
+    let info = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => return Err(QQMusicError::Cancelled),
+        result = client.user.get_vip_info(Some(&credential)) => result.map_err(|error| {
             let classification = map_qmapi_error(error);
             tracing::warn!(
                 target: "qqmusic.entitlement",
@@ -69,7 +92,11 @@ pub(crate) async fn fetch_account_entitlement(
                 "library get_vip_info failed"
             );
             classification
-        })?;
+        })?,
+    };
+    if cancellation.is_cancelled() {
+        return Err(QQMusicError::Cancelled);
+    }
     Ok(account_entitlement_from_qmapi(&info))
 }
 
