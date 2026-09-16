@@ -204,10 +204,7 @@ export function LyricsViewport({
     () => (document ? buildLyricsRenderModel(document, translation, romanization) : null),
     [document, romanization, translation],
   );
-  const amllLines = useMemo(
-    () => model?.lines.map(toAmllLyricLine) ?? [],
-    [model],
-  );
+  const amllLines = useMemo(() => model?.lines.map(toAmllLyricLine) ?? [], [model]);
 
   useEffect(() => onFollowStateChange?.('active'), [onFollowStateChange]);
 
