@@ -237,7 +237,8 @@ export function LyricsScene({
   );
 
   useEffect(() => {
-    const paletteSource = appearance.imageSource ?? bindings.artworkSrc;
+    const paletteSource =
+      appearance.mode === 'image' ? appearance.imageSource : bindings.artworkSrc;
     const identity = bindings.songId ?? paletteSource ?? 'none';
     const generation = Date.now();
     let cancelled = false;
@@ -249,7 +250,7 @@ export function LyricsScene({
     return () => {
       cancelled = true;
     };
-  }, [appearance.imageSource, bindings.songId, bindings.artworkSrc, bindings.artworkColor]);
+  }, [appearance.imageSource, appearance.mode, bindings.songId, bindings.artworkSrc, bindings.artworkColor]);
 
   useEffect(() => {
     let cancelled = false;
