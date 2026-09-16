@@ -9,10 +9,11 @@ use tokio::sync::broadcast::error::RecvError;
 
 use yaqmc_protocol::{
     CHANNEL_ACCOUNT_CHANGED, CHANNEL_API_EVENT, CHANNEL_HOST_COMMAND, CHANNEL_LYRICS_DOCUMENT,
-    CHANNEL_LYRICS_PROJECTION, CHANNEL_PLAYER_SNAPSHOT,
+    CHANNEL_LYRICS_PROJECTION, CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PROVIDER_PROFILES_CHANGED,
 };
 
 use crate::player::{ApiEvent, PlayerService};
+use crate::provider_profiles::ProviderProfileManager;
 use crate::storage::StorageService;
 use crate::system_media::SystemMediaIntegration;
 use crate::CoreHandle;
@@ -53,6 +54,7 @@ const LAGGED_RESYNC_CHANNELS: &[&str] = &[
     CHANNEL_PLAYER_SNAPSHOT,
     CHANNEL_LYRICS_PROJECTION,
     CHANNEL_LYRICS_DOCUMENT,
+    CHANNEL_PROVIDER_PROFILES_CHANGED,
 ];
 
 /// Host-facing sink for sequenced protocol `event` frames.
@@ -79,6 +81,9 @@ pub fn actions_for_player_event(event_type: &str) -> FanoutActions {
     }
     if event_type == "lyrics.changed" {
         channels.push(CHANNEL_LYRICS_DOCUMENT);
+    }
+    if event_type == "provider.profiles.changed" {
+        channels.push(CHANNEL_PROVIDER_PROFILES_CHANGED);
     }
     FanoutActions {
         channels,
@@ -138,6 +143,7 @@ async fn emit_mapped_event(
             CHANNEL_PLAYER_SNAPSHOT => event.data.clone(),
             CHANNEL_LYRICS_PROJECTION => json_value(&player.lyric_surface_projection().await),
             CHANNEL_LYRICS_DOCUMENT => json_value(&player.lyrics().await),
+            CHANNEL_PROVIDER_PROFILES_CHANGED => event.data.clone(),
             _ => continue,
         };
         sink.emit_channel(channel, payload);
@@ -158,6 +164,7 @@ async fn resync_after_lag(
     player: &PlayerService,
     system_media: &SystemMediaIntegration,
     sink: &SequencedSink,
+    provider_profiles: Option<&ProviderProfileManager>,
     skipped: u64,
 ) {
     tracing::warn!(
@@ -171,6 +178,13 @@ async fn resync_after_lag(
     sink.emit_channel(CHANNEL_LYRICS_PROJECTION, json_value(&projection));
     let document = player.lyrics().await;
     sink.emit_channel(CHANNEL_LYRICS_DOCUMENT, json_value(&document));
+    if let Some(provider_profiles) = provider_profiles {
+        // The profile catalogue is authoritative in the manager, not in the
+        // lossy player event stream. Re-read it after lag and emit one current
+        // snapshot so a renderer can converge without polling.
+        let profiles = provider_profiles.list().await;
+        sink.emit_channel(CHANNEL_PROVIDER_PROFILES_CHANGED, json_value(&profiles));
+    }
     system_media.update(&snapshot, false);
 }
 
@@ -259,6 +273,38 @@ pub fn spawn_player_fanout(
     system_media: Arc<SystemMediaIntegration>,
     sink: Arc<dyn EventSink>,
 ) {
+    spawn_player_fanout_inner(runtime, player, storage, system_media, None, sink);
+}
+
+/// Spawn the player fanout with access to the authoritative provider profile
+/// catalogue. This variant is used by the production Core runtime so a
+/// lagged subscriber receives a current profile catalog snapshot.
+pub fn spawn_player_fanout_with_profiles(
+    runtime: &tokio::runtime::Handle,
+    player: Arc<PlayerService>,
+    storage: Arc<StorageService>,
+    system_media: Arc<SystemMediaIntegration>,
+    provider_profiles: Arc<ProviderProfileManager>,
+    sink: Arc<dyn EventSink>,
+) {
+    spawn_player_fanout_inner(
+        runtime,
+        player,
+        storage,
+        system_media,
+        Some(provider_profiles),
+        sink,
+    );
+}
+
+fn spawn_player_fanout_inner(
+    runtime: &tokio::runtime::Handle,
+    player: Arc<PlayerService>,
+    storage: Arc<StorageService>,
+    system_media: Arc<SystemMediaIntegration>,
+    provider_profiles: Option<Arc<ProviderProfileManager>>,
+    sink: Arc<dyn EventSink>,
+) {
     let mut receiver = player.subscribe();
     let sink = SequencedSink::new(sink);
     runtime.spawn(async move {
@@ -268,7 +314,14 @@ pub fn spawn_player_fanout(
                     emit_mapped_event(&player, &storage, &system_media, &sink, event).await;
                 }
                 Err(RecvError::Lagged(skipped)) => {
-                    resync_after_lag(&player, &system_media, &sink, skipped).await;
+                    resync_after_lag(
+                        &player,
+                        &system_media,
+                        &sink,
+                        provider_profiles.as_deref(),
+                        skipped,
+                    )
+                    .await;
                 }
                 Err(RecvError::Closed) => break,
             }

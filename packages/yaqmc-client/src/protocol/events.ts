@@ -1,4 +1,9 @@
-import type { LyricDocument, LyricSurfaceProjection, PlayerSnapshot } from './dto';
+import type {
+  LyricDocument,
+  LyricSurfaceProjection,
+  PlayerSnapshot,
+  ProviderProfileDescriptor,
+} from './dto';
 
 export const CHANNEL_API_EVENT = 'api://event';
 export const CHANNEL_PLAYER_SNAPSHOT = 'player://snapshot';
@@ -11,6 +16,7 @@ export const CHANNEL_HOST_CORE_STATUS = 'host://core-status';
 export const CHANNEL_HOST_UPDATE = 'host://update';
 export const CHANNEL_CORE_LOG = 'core://log';
 export const CHANNEL_ACCOUNT_CHANGED = 'account://changed';
+export const CHANNEL_PROVIDER_PROFILES_CHANGED = 'provider://profiles-changed';
 export const CHANNEL_LYRICS_SURFACE_CLOSED = 'lyrics://surface-closed';
 export const CHANNEL_LYRICS_SURFACE_INTERACTION = 'lyrics://surface-interaction';
 export const CHANNEL_APP_OPEN_SETTINGS = 'app://open-settings';
@@ -26,6 +32,7 @@ export const CORE_EVENT_CHANNELS = [
   CHANNEL_HOST_COMMAND,
   CHANNEL_CORE_LOG,
   CHANNEL_ACCOUNT_CHANGED,
+  CHANNEL_PROVIDER_PROFILES_CHANGED,
 ] as const;
 
 export const HOST_EVENT_CHANNELS = [
@@ -70,6 +77,8 @@ export interface CoreLogPayload {
 export interface AccountChangedPayload {
   signedIn: boolean;
 }
+
+export type ProviderProfilesChangedPayload = ProviderProfileDescriptor[];
 
 export interface LyricsSurfaceClosedPayload {
   surface: string;
@@ -127,6 +136,7 @@ export interface ChannelPayload {
   [CHANNEL_HOST_COMMAND]: HostCommandPayload;
   [CHANNEL_CORE_LOG]: CoreLogPayload;
   [CHANNEL_ACCOUNT_CHANGED]: AccountChangedPayload;
+  [CHANNEL_PROVIDER_PROFILES_CHANGED]: ProviderProfilesChangedPayload;
   [CHANNEL_LYRICS_SURFACE_CLOSED]: LyricsSurfaceClosedPayload;
   [CHANNEL_LYRICS_SURFACE_INTERACTION]: LyricsSurfaceInteractionPayload;
   [CHANNEL_APP_OPEN_SETTINGS]: OpenSettingsPayload;

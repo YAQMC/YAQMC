@@ -34,15 +34,20 @@ import type {
 } from '../../domain/music';
 import { DEFAULT_PROFILE_ID } from '../../domain/music';
 import type { AccountMusicProvider, MusicProvider, ShareMusicProvider } from '../music-provider';
+import { parseProfileId } from '../provider-registry';
 import { nativeProviderRequest } from './native-request';
 
 export class NativeMusicProvider implements MusicProvider {
   readonly id: string;
-  readonly profileId = DEFAULT_PROFILE_ID;
+  readonly profileId: string;
   readonly displayName: string;
 
-  constructor(readonly descriptor: ProviderDescriptor) {
+  constructor(
+    readonly descriptor: ProviderDescriptor,
+    profileId = DEFAULT_PROFILE_ID,
+  ) {
     this.id = descriptor.providerId;
+    this.profileId = parseProfileId(profileId);
     this.displayName = descriptor.displayName;
   }
 
@@ -282,11 +287,14 @@ class NativeAccountShareMusicProvider
   }
 }
 
-export function createNativeMusicProvider(descriptor: ProviderDescriptor): MusicProvider {
+export function createNativeMusicProvider(
+  descriptor: ProviderDescriptor,
+  profileId = DEFAULT_PROFILE_ID,
+): MusicProvider {
   if (descriptor.capabilities.account && descriptor.capabilities.share) {
-    return new NativeAccountShareMusicProvider(descriptor);
+    return new NativeAccountShareMusicProvider(descriptor, profileId);
   }
-  if (descriptor.capabilities.account) return new NativeAccountMusicProvider(descriptor);
-  if (descriptor.capabilities.share) return new NativeShareMusicProvider(descriptor);
-  return new NativeMusicProvider(descriptor);
+  if (descriptor.capabilities.account) return new NativeAccountMusicProvider(descriptor, profileId);
+  if (descriptor.capabilities.share) return new NativeShareMusicProvider(descriptor, profileId);
+  return new NativeMusicProvider(descriptor, profileId);
 }

@@ -23,7 +23,33 @@ pub fn create_intree_provider<Storage>(
 where
     Storage: yaqmc_provider_api::ProviderStorage + 'static,
 {
-    QQMusicService::new(storage, credentials, fixture_root).map(|provider| {
+    let profile = yaqmc_provider_api::ProviderProfileKey::default_profile("qqmusic")
+        .expect("QQ Music's default profile key is valid");
+    create_intree_provider_for_profile(storage, credentials, fixture_root, profile)
+}
+
+/// Build an isolated in-tree QQ Music provider for a validated local profile.
+/// Credentials and account cache scope remain bound to `profile` inside the
+/// service; Core only owns the non-secret profile catalogue.
+pub fn create_intree_provider_for_profile<Storage>(
+    storage: std::sync::Arc<Storage>,
+    credentials: std::sync::Arc<dyn yaqmc_provider_api::CredentialStore>,
+    fixture_root: std::path::PathBuf,
+    profile: yaqmc_provider_api::ProviderProfileKey,
+) -> Result<std::sync::Arc<dyn yaqmc_provider_api::MusicProvider>, QQMusicError>
+where
+    Storage: yaqmc_provider_api::ProviderStorage + 'static,
+{
+    // `ProviderProfileKey` fields are public for wire/DTO ergonomics. Rebuild
+    // the key at every provider boundary so a caller cannot inject an invalid
+    // key and cause credential or storage access before validation.
+    let profile =
+        yaqmc_provider_api::ProviderProfileKey::new(&profile.provider_id, &profile.profile_id)
+            .map_err(|_| QQMusicError::InvalidRequest)?;
+    if profile.provider_id != "qqmusic" {
+        return Err(QQMusicError::InvalidRequest);
+    }
+    QQMusicService::new_for_profile(storage, credentials, fixture_root, profile).map(|provider| {
         std::sync::Arc::new(provider) as std::sync::Arc<dyn yaqmc_provider_api::MusicProvider>
     })
 }
@@ -35,9 +61,9 @@ mod tests {
     use yaqmc_core::{credentials::MemoryCredentialStore, storage::StorageService};
     use yaqmc_provider_api::{
         AlbumSummary, Artwork, AudioQuality, CredentialStore, PlaybackSourceError,
-        PlaybackSourceResolver, ProviderCapabilities, ProviderRegistry, ProviderRegistryError,
-        ProviderTrackReference, RecommendationBatch, RecommendationProvider, RecommendationRequest,
-        Song, SongAvailability,
+        PlaybackSourceResolver, ProviderCapabilities, ProviderProfileKey, ProviderRegistry,
+        ProviderRegistryError, ProviderTrackReference, RecommendationBatch, RecommendationProvider,
+        RecommendationRequest, Song, SongAvailability,
     };
 
     struct StaticRecommendations;
@@ -98,6 +124,84 @@ mod tests {
             legacy.account().account_generation()
         );
         assert_eq!(legacy.id(), "qqmusic");
+    }
+
+    #[tokio::test]
+    async fn profile_factory_and_registry_preserve_exact_profile_identity() {
+        let root = tempfile::tempdir().expect("temporary provider root");
+        let storage = Arc::new(
+            StorageService::open(root.path().join("data"), root.path().join("cache"))
+                .expect("provider storage"),
+        );
+        let credentials: Arc<dyn CredentialStore> = Arc::new(MemoryCredentialStore::default());
+        let work_key = ProviderProfileKey::new("qqmusic", "work").expect("work key");
+        let work = create_intree_provider_for_profile(
+            Arc::clone(&storage),
+            Arc::clone(&credentials),
+            root.path().join("fixture-media"),
+            work_key.clone(),
+        )
+        .expect("work provider");
+        assert_eq!(work.profile_key(), work_key);
+        assert!(matches!(
+            ProviderRegistry::new("qqmusic", [Arc::clone(&work)]),
+            Err(ProviderRegistryError::ExpectedDefaultProfile(key)) if key == work_key
+        ));
+
+        let default = create_intree_provider(
+            Arc::clone(&storage),
+            Arc::clone(&credentials),
+            root.path().join("fixture-media"),
+        )
+        .expect("default provider");
+        let registry = ProviderRegistry::new("qqmusic", [default]).expect("registry");
+        registry
+            .register_legacy_profile(Arc::clone(&work))
+            .expect("register work");
+        assert!(matches!(
+            registry.register_legacy_profile(Arc::clone(&work)),
+            Err(ProviderRegistryError::DuplicateProfile(key)) if key == work_key
+        ));
+        let snapshot = registry
+            .require_account_provider_for_profile(Some("qqmusic"), Some("work"))
+            .expect("work account")
+            .provider_account()
+            .account_snapshot()
+            .await;
+        assert_eq!(snapshot.provider_id, "qqmusic");
+        assert_eq!(snapshot.profile_id, "work");
+
+        let foreign = ProviderProfileKey::new("spotify", "work").expect("foreign key");
+        assert!(matches!(
+            create_intree_provider_for_profile(
+                Arc::clone(&storage),
+                Arc::clone(&credentials),
+                root.path().join("fixture-media"),
+                foreign,
+            ),
+            Err(QQMusicError::InvalidRequest)
+        ));
+        let mut malformed = work_key;
+        malformed.profile_id = "Invalid Profile".to_owned();
+        let before = storage
+            .get_setting("qqmusic-profile-validation-test")
+            .expect("read setting");
+        assert!(matches!(
+            create_intree_provider_for_profile(
+                Arc::clone(&storage),
+                Arc::clone(&credentials),
+                root.path().join("fixture-media"),
+                malformed,
+            ),
+            Err(QQMusicError::InvalidRequest)
+        ));
+        assert_eq!(
+            storage
+                .get_setting("qqmusic-profile-validation-test")
+                .expect("read setting"),
+            before,
+            "invalid profile validation must not touch storage"
+        );
     }
 
     #[tokio::test]

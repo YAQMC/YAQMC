@@ -108,7 +108,11 @@ import { useMusicProvider, useMusicProviderSelection } from '../application/prov
 import { palettePresets, type PaletteId } from '../application/theme-tokens';
 import { Select, type SelectOption } from '../components/ui/Select';
 import { isAccountMusicProvider } from '../providers/music-provider';
-import type { AudioQuality, AudioQualityPreference } from '../domain/music';
+import {
+  DEFAULT_PROFILE_ID,
+  type AudioQuality,
+  type AudioQualityPreference,
+} from '../domain/music';
 
 interface SurfaceCapabilities {
   desktop: boolean;
@@ -698,21 +702,135 @@ export function SettingsPage() {
   const api = useLocalApiSettings();
   const host = hostCapabilities();
   const musicProvider = useMusicProvider();
-  const provider = useProviderSettings(musicProvider.id);
+  const provider = useProviderSettings(musicProvider.id, musicProvider.profileId);
   const providerSelection = useMusicProviderSelection();
   const accountProvider = isAccountMusicProvider(musicProvider) ? musicProvider : null;
+  const profileOptions = useMemo(
+    () =>
+      providerSelection.providers
+        .filter((candidate) => Boolean(candidate.profileId))
+        .map((candidate) => ({
+          providerId: candidate.id,
+          profileId: candidate.profileId!,
+          label: candidate.displayName,
+          enabled: candidate.available,
+        })),
+    [providerSelection.providers],
+  );
+  const [profiles, setProfiles] = useState(profileOptions);
+  const [profileLabelDraft, setProfileLabelDraft] = useState('');
+  const [profileMutation, setProfileMutation] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const profileMutationRevisions = useRef(new Map<string, number>());
+  useEffect(() => {
+    let mounted = true;
+    queueMicrotask(() => {
+      if (mounted) setProfiles(profileOptions);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [profileOptions]);
+  const profileMutationKey = (providerId: string, profileId: string, action: string) =>
+    `${providerId}\0${profileId}\0${action}`;
+  const mutateProfile = async (
+    action: 'enable' | 'disable' | 'delete',
+    profile: (typeof profiles)[number],
+  ) => {
+    if (profile.profileId === DEFAULT_PROFILE_ID) return;
+    const key = profileMutationKey(profile.providerId, profile.profileId, action);
+    const revision = (profileMutationRevisions.current.get(key) ?? 0) + 1;
+    profileMutationRevisions.current.set(key, revision);
+    setProfileMutation(key);
+    setProfileError(null);
+    try {
+      const method = `provider_profile_${action}` as const;
+      const result = await getYaqmcClient().invoke(method, {
+        providerId: profile.providerId,
+        profileId: profile.profileId,
+      });
+      if (profileMutationRevisions.current.get(key) !== revision) return;
+      if (action === 'delete') {
+        setProfiles((current) =>
+          current.filter(
+            (candidate) =>
+              !(
+                candidate.providerId === profile.providerId &&
+                candidate.profileId === profile.profileId
+              ),
+          ),
+        );
+      } else {
+        setProfiles((current) =>
+          current.map((candidate) =>
+            candidate.providerId === result.providerId && candidate.profileId === result.profileId
+              ? { ...candidate, enabled: result.enabled, label: result.label }
+              : candidate,
+          ),
+        );
+      }
+    } catch (caught) {
+      if (profileMutationRevisions.current.get(key) === revision) {
+        setProfileError(String(caught));
+      }
+    } finally {
+      if (profileMutationRevisions.current.get(key) === revision) setProfileMutation(null);
+    }
+  };
+  const createProfile = async () => {
+    const label = profileLabelDraft.trim();
+    if (!label) return;
+    const providerId = 'qqmusic';
+    const key = profileMutationKey(providerId, label, 'create');
+    const revision = (profileMutationRevisions.current.get(key) ?? 0) + 1;
+    profileMutationRevisions.current.set(key, revision);
+    setProfileMutation(key);
+    setProfileError(null);
+    try {
+      const result = await getYaqmcClient().invoke('provider_profile_create', {
+        providerId,
+        label,
+      });
+      if (profileMutationRevisions.current.get(key) !== revision) return;
+      setProfiles((current) => [
+        ...current.filter(
+          (candidate) =>
+            !(
+              candidate.providerId === result.providerId && candidate.profileId === result.profileId
+            ),
+        ),
+        {
+          providerId: result.providerId,
+          profileId: result.profileId,
+          label: result.label,
+          enabled: result.enabled,
+        },
+      ]);
+      setProfileLabelDraft('');
+    } catch (caught) {
+      if (profileMutationRevisions.current.get(key) === revision) setProfileError(String(caught));
+    } finally {
+      if (profileMutationRevisions.current.get(key) === revision) setProfileMutation(null);
+    }
+  };
   const providerOptions = useMemo(
     () =>
       providerSelection.providers.map((candidate) => ({
-        value: candidate.id,
+        value: candidate.profileId ? `${candidate.id}\0${candidate.profileId}` : candidate.id,
         label: candidate.displayName,
         disabled: !candidate.available,
       })),
     [providerSelection.providers],
   );
+  const activeProviderOptionValue = providerSelection.activeProfileId
+    ? `${providerSelection.activeId}\0${providerSelection.activeProfileId}`
+    : providerSelection.activeId;
   const providerSupportsPlayback =
-    providerSelection.providers.find((candidate) => candidate.id === providerSelection.activeId)
-      ?.capabilities?.playback ?? true;
+    providerSelection.providers.find(
+      (candidate) =>
+        candidate.id === providerSelection.activeId &&
+        (!candidate.profileId || candidate.profileId === providerSelection.activeProfileId),
+    )?.capabilities?.playback ?? true;
   const accountSnapshot = useAccountStore((state) => state.snapshot);
   const accountBusy = useAccountStore((state) => state.busy);
   const accountError = useAccountStore((state) => state.error);
@@ -2000,15 +2118,156 @@ export function SettingsPage() {
             description={t('account.providerDescription')}
             control={
               <Select
-                value={providerSelection.activeId}
+                value={activeProviderOptionValue}
                 options={providerOptions}
-                onChange={providerSelection.selectProvider}
+                onChange={(value) => {
+                  const separator = value.indexOf('\0');
+                  if (separator < 0) {
+                    providerSelection.selectProvider(value);
+                    return;
+                  }
+                  providerSelection.selectProviderProfile(
+                    value.slice(0, separator),
+                    value.slice(separator + 1),
+                  );
+                }}
                 ariaLabel={t('account.providerLabel')}
                 icon={Music2}
                 disabled={providerOptions.length < 2}
               />
             }
           />
+          {profiles.length > 0 && (
+            <div className="settings-provider-profiles" aria-label={t('account.profilesTitle')}>
+              <div className="settings-provider-profiles__heading">
+                <div>
+                  <strong>{t('account.profilesTitle')}</strong>
+                  <span>{t('account.profilesDescription')}</span>
+                </div>
+              </div>
+              {[...new Set(profiles.map((profile) => profile.providerId))].map((providerId) => {
+                const grouped = profiles.filter((profile) => profile.providerId === providerId);
+                const platform = providerSelection.providers.find(
+                  (candidate) => candidate.id === providerId,
+                );
+                return (
+                  <div className="settings-provider-profiles__group" key={providerId}>
+                    <h3>{platform?.displayName ?? providerId}</h3>
+                    {grouped.map((profile) => {
+                      const active =
+                        profile.providerId === providerSelection.activeId &&
+                        profile.profileId === providerSelection.activeProfileId;
+                      const protectedDefault = profile.profileId === DEFAULT_PROFILE_ID;
+                      const busy = profileMutation?.startsWith(
+                        `${profile.providerId}\0${profile.profileId}\0`,
+                      );
+                      return (
+                        <div
+                          className="settings-provider-profile"
+                          key={`${profile.providerId}:${profile.profileId}`}
+                          data-active={active || undefined}
+                          data-enabled={profile.enabled || undefined}
+                        >
+                          <div className="settings-provider-profile__identity">
+                            <strong>{profile.label}</strong>
+                            <span>
+                              {profile.enabled
+                                ? t('account.profileEnabled')
+                                : t('account.profileDisabled')}
+                              {active ? ` · ${t('account.profileCurrent')}` : ''}
+                            </span>
+                          </div>
+                          <div className="settings-provider-profile__actions">
+                            <button
+                              type="button"
+                              className="button button--secondary"
+                              disabled={!profile.enabled || busy}
+                              onClick={() =>
+                                providerSelection.selectProviderProfile({
+                                  providerId: profile.providerId,
+                                  profileId: profile.profileId,
+                                })
+                              }
+                            >
+                              {t('account.profileSwitch')}
+                            </button>
+                            {!protectedDefault && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button button--quiet"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void mutateProfile(
+                                      profile.enabled ? 'disable' : 'enable',
+                                      profile,
+                                    )
+                                  }
+                                >
+                                  {profile.enabled
+                                    ? t('account.profileDisable')
+                                    : t('account.profileEnable')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button button--quiet"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        t('account.profileDeleteConfirm', { label: profile.label }),
+                                      )
+                                    ) {
+                                      void mutateProfile('delete', profile);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 size={14} /> {t('account.profileDelete')}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {profiles.some((profile) => profile.providerId === 'qqmusic') && (
+                <form
+                  className="settings-provider-profiles__create"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void createProfile();
+                  }}
+                >
+                  <label>
+                    <span>{t('account.profileNewLabel')}</span>
+                    <input
+                      value={profileLabelDraft}
+                      onChange={(event) => setProfileLabelDraft(event.target.value)}
+                      aria-label={t('account.profileNewLabel')}
+                      placeholder={t('account.profileNewPlaceholder')}
+                      maxLength={64}
+                      disabled={profileMutation !== null}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="button button--primary"
+                    disabled={!profileLabelDraft.trim() || profileMutation !== null}
+                  >
+                    {t('account.profileAdd')}
+                  </button>
+                </form>
+              )}
+              {profileError && (
+                <p className="settings-error" role="alert" title={profileError}>
+                  {t('account.profileMutationFailed')}
+                </p>
+              )}
+            </div>
+          )}
           <div className="settings-account-profile">
             {accountAvatarUrl ? (
               <img

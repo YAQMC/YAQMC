@@ -1,11 +1,90 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use serde_json::json;
 use yaqmc_core::audio::UnavailableAudioEngine;
 use yaqmc_core::credentials::{CredentialError, CredentialStore};
-use yaqmc_core::server::{core_dispatch_methods, dispatch, DispatchError, NoopHost};
+use yaqmc_core::server::{
+    actions_for_player_event, core_dispatch_methods, dispatch, DispatchError, NoopHost,
+};
 use yaqmc_core::{bootstrap, CoreBootstrapInputs, CoreConfig, CoreHandle, CorePaths};
-use yaqmc_protocol::{methods, ErrorCode, MethodOwner, WindowOrigin};
+use yaqmc_protocol::{
+    methods, ErrorCode, MethodOwner, WindowOrigin, CHANNEL_PROVIDER_PROFILES_CHANGED,
+};
+use yaqmc_provider_api::{
+    LyricDocument, LyricMetadata, LyricSyncMode, LyricsProvider, ProviderCapabilities,
+    ProviderResult, RecommendationBatch, RecommendationProvider, RecommendationRequest,
+    ShareEntityKind, ShareProvider, ShareTarget,
+};
+
+struct ScopedShareProvider {
+    profile_id: &'static str,
+}
+
+struct ScopedLyricsProvider {
+    profile_id: &'static str,
+}
+
+struct ScopedRecommendationProvider {
+    profile_id: &'static str,
+}
+
+#[async_trait]
+impl ShareProvider for ScopedShareProvider {
+    async fn share_song(&self, id: String) -> ProviderResult<ShareTarget> {
+        Ok(ShareTarget {
+            provider_id: "fake".to_owned(),
+            profile_id: self.profile_id.to_owned(),
+            entity_kind: ShareEntityKind::Song,
+            entity_id: id,
+            title: self.profile_id.to_owned(),
+            artists: Vec::new(),
+            album: None,
+            canonical_https_url: None,
+        })
+    }
+}
+
+#[async_trait]
+impl LyricsProvider for ScopedLyricsProvider {
+    async fn lyrics_for_song(&self, song_id: String) -> ProviderResult<Option<LyricDocument>> {
+        Ok(Some(LyricDocument {
+            song_id,
+            sync_mode: LyricSyncMode::Unsynchronized,
+            metadata: LyricMetadata {
+                source_label: self.profile_id.to_owned(),
+                language: None,
+                translated_language: None,
+                offset_ms: 0,
+            },
+            vocalists: Vec::new(),
+            lines: Vec::new(),
+        }))
+    }
+}
+
+#[async_trait]
+impl RecommendationProvider for ScopedRecommendationProvider {
+    async fn recommendation_next(
+        &self,
+        _request: RecommendationRequest,
+    ) -> ProviderResult<RecommendationBatch> {
+        Ok(RecommendationBatch {
+            songs: Vec::new(),
+            next_cursor: Some(self.profile_id.to_owned()),
+            ended: false,
+        })
+    }
+}
+
+fn share_capabilities(profile_id: &'static str) -> ProviderCapabilities {
+    ProviderCapabilities {
+        share: Some(Arc::new(ScopedShareProvider { profile_id })),
+        lyrics: Some(Arc::new(ScopedLyricsProvider { profile_id })),
+        recommendations: Some(Arc::new(ScopedRecommendationProvider { profile_id })),
+        ..ProviderCapabilities::default()
+    }
+}
 
 struct TestCredentials;
 
@@ -79,6 +158,201 @@ fn registry_core_methods_match_dispatch_arms() {
             "missing dispatch arm for {name}"
         );
     }
+}
+
+#[test]
+fn provider_profile_lifecycle_dispatch_round_trips_typed_descriptors() {
+    let (_root, runtime, core, host) = boot();
+    runtime.block_on(async {
+        let mut events = core.player().subscribe();
+        let initial = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_list",
+            None,
+        )
+        .await
+        .expect("list profiles");
+        assert_eq!(initial.as_array().map(Vec::len), Some(1));
+        assert_eq!(initial[0]["providerId"], "qqmusic");
+        assert_eq!(initial[0]["profileId"], "default");
+        assert_eq!(initial[0]["enabled"], true);
+
+        let created = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_create",
+            Some(json!({ "providerId": "qqmusic", "label": "Work" })),
+        )
+        .await
+        .expect("create profile");
+        let profile_id = created["profileId"]
+            .as_str()
+            .expect("generated profile id")
+            .to_owned();
+        assert_eq!(created["providerId"], "qqmusic");
+        assert_eq!(created["label"], "Work");
+        assert_eq!(created["enabled"], true);
+        assert_eq!(
+            events
+                .recv()
+                .await
+                .expect("create profile event")
+                .event_type,
+            "provider.profiles.changed"
+        );
+
+        let unchanged_enabled = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_enable",
+            Some(json!({ "providerId": "qqmusic", "profileId": profile_id })),
+        )
+        .await
+        .expect("enabling an enabled profile is idempotent");
+        assert_eq!(unchanged_enabled["enabled"], true);
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+
+        let disabled = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_disable",
+            Some(json!({ "providerId": "qqmusic", "profileId": profile_id })),
+        )
+        .await
+        .expect("disable profile");
+        assert_eq!(disabled["enabled"], false);
+        assert_eq!(
+            events
+                .recv()
+                .await
+                .expect("disable profile event")
+                .event_type,
+            "provider.profiles.changed"
+        );
+
+        let unchanged_disabled = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_disable",
+            Some(json!({ "providerId": "qqmusic", "profileId": profile_id })),
+        )
+        .await
+        .expect("disabling a disabled profile is idempotent");
+        assert_eq!(unchanged_disabled["enabled"], false);
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+
+        let enabled = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_enable",
+            Some(json!({ "providerId": "qqmusic", "profileId": profile_id })),
+        )
+        .await
+        .expect("enable profile");
+        assert_eq!(enabled["enabled"], true);
+        assert_eq!(
+            events
+                .recv()
+                .await
+                .expect("enable profile event")
+                .event_type,
+            "provider.profiles.changed"
+        );
+
+        let deleted = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_delete",
+            Some(json!({ "providerId": "qqmusic", "profileId": profile_id })),
+        )
+        .await
+        .expect("delete profile");
+        assert_eq!(deleted["profileId"], profile_id);
+        assert_eq!(
+            events
+                .recv()
+                .await
+                .expect("delete profile event")
+                .event_type,
+            "provider.profiles.changed"
+        );
+
+        let final_profiles = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_profile_list",
+            None,
+        )
+        .await
+        .expect("list profiles after deletion");
+        assert_eq!(final_profiles, initial);
+    });
+
+    let actions = actions_for_player_event("provider.profiles.changed");
+    assert_eq!(
+        actions.channels,
+        vec!["api://event", CHANNEL_PROVIDER_PROFILES_CHANGED]
+    );
+    assert!(!actions.update_system_media);
+    assert!(!actions.persist_queue);
+}
+
+#[test]
+fn provider_profile_dispatch_errors_are_stable_and_fail_closed() {
+    let (_root, runtime, core, host) = boot();
+    runtime.block_on(async {
+        for (method, params, expected_code) in [
+            (
+                "provider_profile_create",
+                json!({ "providerId": "missing", "label": "Work" }),
+                "invalid-request",
+            ),
+            (
+                "provider_profile_create",
+                json!({ "providerId": "qqmusic", "label": "\n" }),
+                "invalid-request",
+            ),
+            (
+                "provider_profile_disable",
+                json!({ "providerId": "qqmusic", "profileId": "default" }),
+                "protected-default",
+            ),
+            (
+                "provider_profile_delete",
+                json!({ "providerId": "qqmusic", "profileId": "missing" }),
+                "not-found",
+            ),
+        ] {
+            let error = dispatch(&core, &host, WindowOrigin::Main, method, Some(params))
+                .await
+                .expect_err("invalid lifecycle request fails closed")
+                .into_core_error();
+            assert_eq!(error.code, ErrorCode::CommandError.as_str());
+            assert!(!error.retryable);
+            assert_eq!(
+                error
+                    .details
+                    .as_ref()
+                    .and_then(|details| details["code"].as_str()),
+                Some(expected_code)
+            );
+        }
+    });
 }
 
 #[test]
@@ -192,6 +466,155 @@ fn provider_dispatch_defaults_and_rejects_profile_scope_at_the_registry_boundary
                 Some(expected_code)
             );
         }
+    });
+}
+
+#[test]
+fn generic_provider_dispatch_selects_the_exact_default_or_work_profile() {
+    let (_root, runtime, core, host) = boot();
+    core.providers()
+        .register_capabilities("fake", share_capabilities("default"))
+        .expect("register fake default profile");
+    core.providers()
+        .register_profile("fake", "work", share_capabilities("work"))
+        .expect("register fake work profile");
+
+    runtime.block_on(async {
+        for (params, expected_profile) in [
+            (json!({ "providerId": "fake", "id": "song-1" }), "default"),
+            (
+                json!({ "providerId": "fake", "profileId": "work", "id": "song-1" }),
+                "work",
+            ),
+        ] {
+            let share = dispatch(
+                &core,
+                &host,
+                WindowOrigin::Main,
+                "catalog_share_song",
+                Some(params),
+            )
+            .await
+            .expect("share dispatch uses the requested profile");
+            assert_eq!(share["providerId"], "fake");
+            assert_eq!(share["profileId"], expected_profile);
+            assert_eq!(share["title"], expected_profile);
+        }
+
+        for (params, expected_profile) in [
+            (json!({ "providerId": "fake", "id": "song-1" }), "default"),
+            (
+                json!({ "providerId": "fake", "profileId": "work", "id": "song-1" }),
+                "work",
+            ),
+        ] {
+            let lyrics = dispatch(
+                &core,
+                &host,
+                WindowOrigin::Main,
+                "provider_lyrics",
+                Some(params),
+            )
+            .await
+            .expect("lyrics dispatch uses the requested profile");
+            assert_eq!(lyrics["songId"], "song-1");
+            assert_eq!(lyrics["metadata"]["sourceLabel"], expected_profile);
+        }
+
+        for (profile_id, expected_profile) in [(None, "default"), (Some("work"), "work")] {
+            let mut params = json!({
+                "providerId": "fake",
+                "request": { "kind": "guess", "limit": 10, "cursor": null, "seeds": [] }
+            });
+            if let Some(profile_id) = profile_id {
+                params["profileId"] = json!(profile_id);
+            }
+            let batch = dispatch(
+                &core,
+                &host,
+                WindowOrigin::Main,
+                "provider_recommendation_next",
+                Some(params),
+            )
+            .await
+            .expect("recommendation dispatch uses the requested profile");
+            assert_eq!(batch["nextCursor"], expected_profile);
+        }
+
+        for (profile_id, expected_code) in [
+            ("missing", "profile-unavailable"),
+            ("bad profile", "invalid-request"),
+        ] {
+            let error = dispatch(
+                &core,
+                &host,
+                WindowOrigin::Main,
+                "catalog_share_song",
+                Some(json!({
+                    "providerId": "fake",
+                    "profileId": profile_id,
+                    "id": "song-1"
+                })),
+            )
+            .await
+            .expect_err("unknown and invalid profiles fail closed")
+            .into_core_error();
+            assert_eq!(error.code, ErrorCode::CommandError.as_str());
+            assert_eq!(
+                error
+                    .details
+                    .as_ref()
+                    .and_then(|value| value["code"].as_str()),
+                Some(expected_code)
+            );
+        }
+
+        let error = dispatch(
+            &core,
+            &host,
+            WindowOrigin::Main,
+            "provider_account_playlist_tracks",
+            Some(json!({
+                "providerId": "fake",
+                "profileId": "work",
+                "playlist": {
+                    "providerId": "fake",
+                    "profileId": "default",
+                    "id": "playlist-1",
+                    "reference": { "kind": "owned", "tid": "tid-1" },
+                    "title": "Fixture Playlist",
+                    "description": "",
+                    "owner": { "id": "owner-1", "displayName": "Owner" },
+                    "artwork": { "src": "", "alt": "", "dominantColor": "#000000" },
+                    "ownership": "owned",
+                    "capabilities": {
+                        "canAddTracks": true,
+                        "canRemoveTracks": true,
+                        "canRename": true,
+                        "canDelete": true,
+                        "canReorder": true
+                    },
+                    "trackCount": 1,
+                    "updatedAtMs": null
+                },
+                "cursor": null,
+                "limit": 20
+            })),
+        )
+        .await
+        .expect_err("account playlist input cannot cross profile boundaries")
+        .into_core_error();
+        assert_eq!(error.code, ErrorCode::CommandError.as_str());
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|value| value["code"].as_str()),
+            Some("invalid-request")
+        );
+        assert!(error
+            .message
+            .contains("does not match the requested profile"));
     });
 }
 

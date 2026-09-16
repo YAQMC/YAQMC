@@ -54,7 +54,8 @@ fn event_channel_names_match_adr004() {
         CHANNEL_HOST_CORE_STATUS, CHANNEL_HOST_UPDATE, CHANNEL_LYRICS_DOCUMENT,
         CHANNEL_LYRICS_PROJECTION, CHANNEL_LYRICS_SURFACE_CLOSED,
         CHANNEL_LYRICS_SURFACE_INTERACTION, CHANNEL_PLAYER_SNAPSHOT, CHANNEL_PLUGIN_CHANGED,
-        CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS, HOST_EVENT_CHANNELS,
+        CHANNEL_PREFERENCES_CHANGED, CHANNEL_PROVIDER_PROFILES_CHANGED, CORE_EVENT_CHANNELS,
+        HOST_EVENT_CHANNELS,
     };
     assert_eq!(CHANNEL_API_EVENT, "api://event");
     assert_eq!(CHANNEL_PLAYER_SNAPSHOT, "player://snapshot");
@@ -74,7 +75,11 @@ fn event_channel_names_match_adr004() {
     assert_eq!(CHANNEL_HOST_UPDATE, "host://update");
     assert_eq!(CHANNEL_CORE_LOG, "core://log");
     assert_eq!(CHANNEL_ACCOUNT_CHANGED, "account://changed");
-    assert_eq!(CORE_EVENT_CHANNELS.len(), 9);
+    assert_eq!(
+        CHANNEL_PROVIDER_PROFILES_CHANGED,
+        "provider://profiles-changed"
+    );
+    assert_eq!(CORE_EVENT_CHANNELS.len(), 10);
     assert_eq!(HOST_EVENT_CHANNELS.len(), 6);
 }
 

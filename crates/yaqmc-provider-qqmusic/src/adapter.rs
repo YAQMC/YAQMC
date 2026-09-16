@@ -420,6 +420,10 @@ impl api::MusicProvider for QQMusicService {
         "qqmusic"
     }
 
+    fn profile_key(&self) -> api::ProviderProfileKey {
+        self.profile_key().clone()
+    }
+
     fn display_name(&self) -> &str {
         "QQ Music"
     }

@@ -192,7 +192,10 @@ describe('QueuePanel', () => {
     const onNavigate = vi.fn();
     const selectProvider = vi.fn();
     const providers = (pluginAvailable: boolean) => ({
+      active: { providerId: 'qqmusic', profileId: 'default' },
+      activeSelection: { providerId: 'qqmusic', profileId: 'default' },
       activeId: 'qqmusic',
+      activeProfileId: 'default',
       providers: [
         { id: 'qqmusic', displayName: 'QQ Music', available: true },
         {
@@ -202,6 +205,7 @@ describe('QueuePanel', () => {
         },
       ],
       selectProvider,
+      selectProviderProfile: vi.fn(),
     });
     const view = render(
       <ProviderSelectionContext value={providers(false)}>

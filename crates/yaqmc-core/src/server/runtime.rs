@@ -6,8 +6,8 @@ use serde_json::Value;
 use yaqmc_protocol::{CoreError, ResponseBody, WindowOrigin};
 
 use super::{
-    dispatch, spawn_account_restore_fanout, spawn_host_command_fanout, spawn_player_fanout,
-    EventSink, HostDispatchHooks,
+    dispatch, spawn_account_restore_fanout, spawn_host_command_fanout,
+    spawn_player_fanout_with_profiles, EventSink, HostDispatchHooks,
 };
 use crate::CoreHandle;
 
@@ -43,11 +43,12 @@ where
         core.player()
             .start_clock_on_runtime(&tokio::runtime::Handle::current());
         let core = Arc::new(core);
-        spawn_player_fanout(
+        spawn_player_fanout_with_profiles(
             &tokio::runtime::Handle::current(),
             core.player(),
             core.storage(),
             system_media,
+            core.provider_profiles(),
             Arc::clone(&sink),
         );
         spawn_account_restore_fanout(

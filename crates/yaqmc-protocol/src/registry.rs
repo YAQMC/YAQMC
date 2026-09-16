@@ -159,6 +159,31 @@ const METHODS: &[MethodSpec] = &[
         OriginClass::Main,
     ),
     spec("provider_list", MethodOwner::Core, OriginClass::Main),
+    spec(
+        "provider_profile_list",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_profile_create",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_profile_enable",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_profile_disable",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
+    spec(
+        "provider_profile_delete",
+        MethodOwner::Core,
+        OriginClass::Main,
+    ),
     spec("provider_status", MethodOwner::Core, OriginClass::Main),
     spec("provider_home", MethodOwner::Core, OriginClass::Main),
     spec("provider_discover", MethodOwner::Core, OriginClass::Main),

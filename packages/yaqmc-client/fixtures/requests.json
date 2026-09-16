@@ -179,5 +179,46 @@
     "params": {
       "path": "/tmp/background.png"
     }
+  },
+  "provider_profile_create": {
+    "id": 22,
+    "kind": "request",
+    "method": "provider_profile_create",
+    "params": {
+      "label": "Work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_delete": {
+    "id": 25,
+    "kind": "request",
+    "method": "provider_profile_delete",
+    "params": {
+      "profileId": "work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_disable": {
+    "id": 24,
+    "kind": "request",
+    "method": "provider_profile_disable",
+    "params": {
+      "profileId": "work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_enable": {
+    "id": 23,
+    "kind": "request",
+    "method": "provider_profile_enable",
+    "params": {
+      "profileId": "work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_list": {
+    "id": 21,
+    "kind": "request",
+    "method": "provider_profile_list"
   }
 }

@@ -49,6 +49,7 @@ export {
   CHANNEL_PLAYER_SNAPSHOT,
   CHANNEL_PLUGIN_CHANGED,
   CHANNEL_PREFERENCES_CHANGED,
+  CHANNEL_PROVIDER_PROFILES_CHANGED,
   CORE_EVENT_CHANNELS,
   HOST_EVENT_CHANNELS,
   type ChannelName,
@@ -58,6 +59,7 @@ export {
   type CoreStatusPayload,
   type HostChannelName,
   type OpenCatalogSongPayload,
+  type ProviderProfilesChangedPayload,
   type UpdatePayload,
   type UpdateState,
 } from './protocol/events';

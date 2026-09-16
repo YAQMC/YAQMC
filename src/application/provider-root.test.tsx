@@ -10,12 +10,17 @@ function provider(id: string, displayName: string): MusicProvider {
   return Object.assign(Object.create(fakeMusicProvider) as MusicProvider, { id, displayName });
 }
 
+function profileProvider(id: string, profileId: string, displayName: string): MusicProvider {
+  return Object.assign(provider(id, displayName), { profileId });
+}
+
 function Probe() {
   const active = useMusicProvider();
   const selection = useMusicProviderSelection();
   return (
     <div>
       <output data-testid="active-provider">{`${active.id}:${active.displayName}`}</output>
+      <output data-testid="active-profile">{active.profileId}</output>
       <output data-testid="provider-options">
         {selection.providers
           .map((candidate) => `${candidate.id}:${candidate.available ? 'on' : 'off'}`)
@@ -23,6 +28,12 @@ function Probe() {
       </output>
       <button type="button" onClick={() => selection.selectProvider('provider.b')}>
         Select B
+      </button>
+      <button
+        type="button"
+        onClick={() => selection.selectProviderProfile('provider.a', 'alternate')}
+      >
+        Select A alternate
       </button>
     </div>
   );
@@ -49,6 +60,69 @@ describe('MusicProviderRoot', () => {
       expect(screen.getByTestId('active-provider')).toHaveTextContent('provider.b:Provider B'),
     );
     expect(window.localStorage.getItem('yaqmc.active-provider.v1')).toBe('provider.b');
+    expect(window.localStorage.getItem('yaqmc.active-provider-profile.v2')).toBe(
+      JSON.stringify({ providerId: 'provider.b', profileId: 'default' }),
+    );
+  });
+
+  it('migrates a legacy provider-only selection to the default profile', () => {
+    window.localStorage.setItem('yaqmc.active-provider.v1', 'provider.b');
+    const a = provider('provider.a', 'Provider A');
+    const b = provider('provider.b', 'Provider B');
+    render(
+      <MusicProviderRoot providers={[a, b]}>
+        <Probe />
+      </MusicProviderRoot>,
+    );
+    expect(screen.getByTestId('active-provider')).toHaveTextContent('provider.b:Provider B');
+    expect(window.localStorage.getItem('yaqmc.active-provider-profile.v2')).toBe(
+      JSON.stringify({ providerId: 'provider.b', profileId: 'default' }),
+    );
+  });
+
+  it('restores and persists an exact provider profile without overwriting its sibling', async () => {
+    window.localStorage.setItem(
+      'yaqmc.active-provider-profile.v2',
+      JSON.stringify({ providerId: 'provider.a', profileId: 'alternate' }),
+    );
+    const a = provider('provider.a', 'Provider A');
+    const alternate = profileProvider('provider.a', 'alternate', 'Provider A alternate');
+    render(
+      <MusicProviderRoot providers={[a, alternate]}>
+        <Probe />
+      </MusicProviderRoot>,
+    );
+    expect(screen.getByTestId('active-profile')).toHaveTextContent('alternate');
+    fireEvent.click(screen.getByRole('button', { name: 'Select A alternate' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('active-profile')).toHaveTextContent('alternate'),
+    );
+    expect(window.localStorage.getItem('yaqmc.active-provider-profile.v2')).toBe(
+      JSON.stringify({ providerId: 'provider.a', profileId: 'alternate' }),
+    );
+  });
+
+  it('fails safe for invalid JSON and unavailable profile scopes', () => {
+    window.localStorage.setItem('yaqmc.active-provider-profile.v2', '{not-json');
+    const a = provider('provider.a', 'Provider A');
+    const b = provider('provider.b', 'Provider B');
+    render(
+      <MusicProviderRoot providers={[a, b]}>
+        <Probe />
+      </MusicProviderRoot>,
+    );
+    expect(screen.getByTestId('active-provider')).toHaveTextContent('provider.a:Provider A');
+  });
+
+  it('does not migrate an unknown legacy provider into v2', () => {
+    window.localStorage.setItem('yaqmc.active-provider.v1', 'provider.missing');
+    const a = provider('provider.a', 'Provider A');
+    render(
+      <MusicProviderRoot providers={[a]}>
+        <Probe />
+      </MusicProviderRoot>,
+    );
+    expect(window.localStorage.getItem('yaqmc.active-provider-profile.v2')).toBeNull();
   });
 
   it('falls back when the active provider disappears and keeps tombstones non-selectable', async () => {
@@ -74,6 +148,9 @@ describe('MusicProviderRoot', () => {
     );
     await waitFor(() =>
       expect(screen.getByTestId('active-provider')).toHaveTextContent('provider.a:Provider A'),
+    );
+    expect(window.localStorage.getItem('yaqmc.active-provider-profile.v2')).toBe(
+      JSON.stringify({ providerId: 'provider.a', profileId: 'default' }),
     );
     expect(screen.getByTestId('provider-options')).toHaveTextContent(
       'provider.a:on,provider.b:off',

@@ -410,15 +410,46 @@ impl ContinuationService {
         projection
     }
 
-    pub async fn validate_account_generation(&self, provider_id: &str) -> ContinuationSnapshot {
+    /// End the active continuation only when it belongs to `profile`.
+    ///
+    /// Provider account/profile lifecycle operations use this scoped variant
+    /// so that a change for one profile cannot terminate another profile's
+    /// continuation session. A non-matching profile is a true no-op: it does
+    /// not mutate state or publish a duplicate notification.
+    pub async fn end_for_profile(
+        &self,
+        profile: &ProviderProfileKey,
+        reason: ContinuationTerminalReason,
+    ) -> ContinuationSnapshot {
+        let projection = {
+            let mut state = self.state.lock().await;
+            if !state.active.as_ref().is_some_and(|active| {
+                active.provider_id == profile.provider_id && active.profile_id == profile.profile_id
+            }) {
+                return state.projection.clone();
+            }
+            finish_locked(&mut state, reason, None, false)
+        };
+        self.publish(&projection);
+        projection
+    }
+
+    /// Revalidate the account generation for the exact provider/profile that
+    /// performed an account operation.  A provider-level check is not enough:
+    /// another local profile of the same provider may have its own account
+    /// generation and continuation session.
+    pub async fn validate_account_generation_for_profile(
+        &self,
+        profile: &ProviderProfileKey,
+    ) -> ContinuationSnapshot {
         let projection = {
             let mut state = self.state.lock().await;
             let Some(active) = state.active.as_ref() else {
                 return state.projection.clone();
             };
-            let profile = session_profile(&active.provider_id, &active.profile_id);
-            if active.provider_id != provider_id
-                || self.providers.account_generation(&profile).ok().flatten()
+            if active.provider_id != profile.provider_id
+                || active.profile_id != profile.profile_id
+                || self.providers.account_generation(profile).ok().flatten()
                     == Some(active.account_generation)
             {
                 return state.projection.clone();
@@ -1712,6 +1743,149 @@ mod tests {
             serde_json::to_value(snapshot).expect("snapshot serializes")["profileId"],
             DEFAULT_PROFILE_ID
         );
+    }
+
+    #[tokio::test]
+    async fn end_for_profile_is_a_noop_without_an_active_session() {
+        let player = Arc::new(PlayerService::new());
+        let service = ContinuationService::with_source(player.clone(), FakeSource::new([]));
+        let mut events = player.subscribe();
+        let before = service.snapshot().await;
+        let profile = ProviderProfileKey::new("fake", DEFAULT_PROFILE_ID).expect("valid profile");
+
+        let after = service
+            .end_for_profile(&profile, ContinuationTerminalReason::AccountChanged)
+            .await;
+
+        assert_eq!(after.active, before.active);
+        assert_eq!(after.notification_revision, before.notification_revision);
+        assert!(events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn end_for_profile_ignores_a_foreign_provider() {
+        let source = FakeSource::new([]);
+        let player = Arc::new(PlayerService::new());
+        let service = ContinuationService::with_source(player.clone(), source);
+        service
+            .start(ContinuationStartRequest {
+                provider_id: "fake".to_owned(),
+                profile_id: None,
+                kind: ContinuationKind::Guess,
+                tracks: vec![
+                    song("one", 1),
+                    song("two", 2),
+                    song("three", 3),
+                    song("four", 4),
+                    song("five", 5),
+                ],
+                start_at_id: None,
+                seed_track_ids: Vec::new(),
+            })
+            .await
+            .expect("session starts");
+        let mut events = player.subscribe();
+        let before = service.snapshot().await;
+        let foreign = ProviderProfileKey::new("other", DEFAULT_PROFILE_ID).expect("valid profile");
+
+        let after = service
+            .end_for_profile(&foreign, ContinuationTerminalReason::AccountChanged)
+            .await;
+
+        assert_eq!(after.session_id, before.session_id);
+        assert_eq!(after.provider_id.as_deref(), Some("fake"));
+        assert!(after.active);
+        assert!(events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn end_for_profile_ignores_a_different_profile_for_the_same_provider() {
+        let source = FakeSource::new([]);
+        let player = Arc::new(PlayerService::new());
+        let service = ContinuationService::with_source(player.clone(), source);
+        service
+            .start(ContinuationStartRequest {
+                provider_id: "fake".to_owned(),
+                profile_id: Some("alternate".to_owned()),
+                kind: ContinuationKind::Guess,
+                tracks: vec![
+                    song_with_profile("one", 1, "alternate"),
+                    song_with_profile("two", 2, "alternate"),
+                    song_with_profile("three", 3, "alternate"),
+                    song_with_profile("four", 4, "alternate"),
+                    song_with_profile("five", 5, "alternate"),
+                ],
+                start_at_id: None,
+                seed_track_ids: Vec::new(),
+            })
+            .await
+            .expect("session starts");
+        let mut events = player.subscribe();
+        let before = service.snapshot().await;
+        let default_profile =
+            ProviderProfileKey::new("fake", DEFAULT_PROFILE_ID).expect("valid profile");
+
+        let after = service
+            .end_for_profile(&default_profile, ContinuationTerminalReason::AccountChanged)
+            .await;
+
+        assert_eq!(after.session_id, before.session_id);
+        assert_eq!(after.profile_id.as_deref(), Some("alternate"));
+        assert!(after.active);
+        assert!(events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn end_for_profile_ends_exact_match_and_publishes_only_once() {
+        let source = FakeSource::new([]);
+        let player = Arc::new(PlayerService::new());
+        let service = ContinuationService::with_source(player.clone(), source);
+        service
+            .start(ContinuationStartRequest {
+                provider_id: "fake".to_owned(),
+                profile_id: Some("alternate".to_owned()),
+                kind: ContinuationKind::Guess,
+                tracks: vec![
+                    song_with_profile("one", 1, "alternate"),
+                    song_with_profile("two", 2, "alternate"),
+                    song_with_profile("three", 3, "alternate"),
+                    song_with_profile("four", 4, "alternate"),
+                    song_with_profile("five", 5, "alternate"),
+                ],
+                start_at_id: None,
+                seed_track_ids: Vec::new(),
+            })
+            .await
+            .expect("session starts");
+        let mut events = player.subscribe();
+        let profile = ProviderProfileKey::new("fake", "alternate").expect("valid profile");
+
+        let (first, second) = tokio::join!(
+            service.end_for_profile(&profile, ContinuationTerminalReason::AccountChanged),
+            service.end_for_profile(&profile, ContinuationTerminalReason::AccountChanged),
+        );
+        assert!(!first.active);
+        assert!(!second.active);
+        assert_eq!(first.session_id, second.session_id);
+        let ended = first;
+        assert_eq!(
+            ended.terminal_reason,
+            Some(ContinuationTerminalReason::AccountChanged)
+        );
+        let event = events
+            .recv()
+            .await
+            .expect("exact match publishes one event");
+        assert_eq!(event.event_type, "continuation.changed");
+        assert!(events.try_recv().is_err());
+
+        let no_op = service
+            .end_for_profile(&profile, ContinuationTerminalReason::AccountChanged)
+            .await;
+        assert_eq!(no_op.session_id, ended.session_id);
+        assert_eq!(no_op.terminal_reason, ended.terminal_reason);
+        assert_eq!(no_op.notification_revision, ended.notification_revision);
+        assert!(events.try_recv().is_err());
     }
 
     #[tokio::test]

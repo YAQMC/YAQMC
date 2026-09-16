@@ -65,4 +65,17 @@ describe('MusicProviderRegistry', () => {
     expect(registry.get('fake', 'alternate')?.profileId).toBe('alternate');
     expect(registry.ids()).toEqual(['fake']);
   });
+
+  it('resolves the exact active provider/profile identity', () => {
+    const alternate = Object.create(fakeMusicProvider, {
+      profileId: { value: 'alternate', enumerable: true },
+    }) as MusicProvider;
+    const registry = new MusicProviderRegistry({ providerId: 'fake', profileId: 'alternate' }, [
+      fakeMusicProvider,
+      alternate,
+    ]);
+    expect(registry.activeSelection).toEqual({ providerId: 'fake', profileId: 'alternate' });
+    expect(registry.activeProfileId).toBe('alternate');
+    expect(registry.active.legacyProvider).toBe(alternate);
+  });
 });

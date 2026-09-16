@@ -4,7 +4,13 @@ import i18n from '../i18n';
 import { resetAccountRuntimeForTest, useAccountStore } from '../application/account-runtime';
 import { defaultPreferences, usePreferencesStore } from '../application/preferences';
 import { resolveLyricsPreset } from '../application/lyrics-preset';
-import { ProviderContext } from '../application/provider-context';
+import {
+  ProviderContext,
+  ProviderSelectionContext,
+  useMusicProviderSelection,
+  type MusicProviderSelection,
+} from '../application/provider-context';
+import { getYaqmcClient } from '../application/yaqmc-runtime';
 import type { AccountSnapshot } from '../domain/music';
 import type { AccountMusicProvider, MusicProvider } from '../providers/music-provider';
 import { SettingsPage } from './SettingsPage';
@@ -125,6 +131,58 @@ function renderSettings(provider: MusicProvider) {
   );
 }
 
+function LegacySelectionProbe() {
+  const selection = useMusicProviderSelection();
+  return <output data-testid="legacy-selection-render">{selection.providers.length}</output>;
+}
+
+function renderProfileSettings(provider: MusicProvider) {
+  const selection: MusicProviderSelection = {
+    active: { providerId: 'qqmusic', profileId: 'default' },
+    activeSelection: { providerId: 'qqmusic', profileId: 'default' },
+    activeId: 'qqmusic',
+    activeProfileId: 'default',
+    providers: [
+      {
+        id: 'qqmusic',
+        profileId: 'default',
+        displayName: 'QQ Music',
+        available: true,
+      },
+      {
+        id: 'qqmusic',
+        profileId: 'secondary',
+        displayName: 'Secondary account',
+        available: true,
+      },
+    ],
+    selectProvider: vi.fn(),
+    selectProviderProfile: vi.fn(),
+  };
+  return render(
+    <ProviderSelectionContext.Provider value={selection}>
+      <ProviderContext.Provider value={provider}>
+        <SettingsPage />
+      </ProviderContext.Provider>
+    </ProviderSelectionContext.Provider>,
+  );
+}
+
+function mockProfileInvoke(result: unknown) {
+  return vi.spyOn(getYaqmcClient(), 'invoke').mockImplementation((method) => {
+    if (method === 'plugin_list') return Promise.resolve([] as never);
+    if (method === 'lyrics_surface_capabilities') {
+      return Promise.resolve({
+        backend: 'test',
+        reliableAlwaysOnTop: true,
+        reliableClickThrough: true,
+        limitations: [],
+      } as never);
+    }
+    return Promise.resolve(result as never);
+  });
+}
+
 describe('SettingsPage account section', () => {
   beforeEach(async () => {
     resetAccountRuntimeForTest();
@@ -137,6 +195,63 @@ describe('SettingsPage account section', () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
+  });
+
+  it('keeps the legacy ProviderContext selection stable while rendering Settings', () => {
+    const account = accountProvider();
+    render(
+      <ProviderContext.Provider value={account.value}>
+        <LegacySelectionProbe />
+      </ProviderContext.Provider>,
+    );
+    expect(screen.getByTestId('legacy-selection-render')).toHaveTextContent('1');
+  });
+
+  it('creates a QQ profile from the profile manager', async () => {
+    const invoke = mockProfileInvoke({
+      providerId: 'qqmusic',
+      profileId: 'new-profile',
+      label: 'Travel account',
+      enabled: true,
+    });
+    const account = accountProvider();
+    renderProfileSettings(account.value);
+    fireEvent.change(screen.getByLabelText('New QQ Music profile'), {
+      target: { value: 'Travel account' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add profile' }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('provider_profile_create', {
+        providerId: 'qqmusic',
+        label: 'Travel account',
+      }),
+    );
+    expect(await screen.findByText('Travel account')).toBeInTheDocument();
+  });
+
+  it('disables a profile and confirms deletion errors, while protecting default', async () => {
+    const invoke = mockProfileInvoke({
+      providerId: 'qqmusic',
+      profileId: 'secondary',
+      label: 'Secondary account',
+      enabled: false,
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const account = accountProvider();
+    renderProfileSettings(account.value);
+    expect(screen.getAllByRole('button', { name: 'Disable' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('provider_profile_disable', {
+        providerId: 'qqmusic',
+        profileId: 'secondary',
+      }),
+    );
+    invoke.mockRejectedValue(new Error('profile delete failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(confirm).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('profile change'));
   });
 
   it('previews rapid color input without committing until the native change event', () => {

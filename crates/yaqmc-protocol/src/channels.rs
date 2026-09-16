@@ -17,6 +17,7 @@ pub const CHANNEL_HOST_CORE_STATUS: &str = "host://core-status";
 pub const CHANNEL_HOST_UPDATE: &str = "host://update";
 pub const CHANNEL_CORE_LOG: &str = "core://log";
 pub const CHANNEL_ACCOUNT_CHANGED: &str = "account://changed";
+pub const CHANNEL_PROVIDER_PROFILES_CHANGED: &str = "provider://profiles-changed";
 
 /// Channels Core may emit as protocol `event` frames (including reserved unused).
 pub const CORE_EVENT_CHANNELS: &[&str] = &[
@@ -29,6 +30,7 @@ pub const CORE_EVENT_CHANNELS: &[&str] = &[
     CHANNEL_HOST_COMMAND,
     CHANNEL_CORE_LOG,
     CHANNEL_ACCOUNT_CHANGED,
+    CHANNEL_PROVIDER_PROFILES_CHANGED,
 ];
 
 /// Existing host-owned window/tray channels. Not emitted by Core fan-out.

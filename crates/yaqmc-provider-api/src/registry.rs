@@ -127,6 +127,12 @@ pub enum ProviderRegistryError {
     InvalidProfile(ProviderProfileKeyError),
     DuplicateId(ProviderId),
     DuplicateProfile(ProviderProfileKey),
+    ProfileProviderMismatch {
+        provider_id: ProviderId,
+        profile: ProviderProfileKey,
+    },
+    ExpectedDefaultProfile(ProviderProfileKey),
+    ExpectedNonDefaultProfile(ProviderProfileKey),
     MissingProvider(ProviderId),
     MissingDefault(ProviderId),
     EmptyCapabilities,
@@ -145,6 +151,24 @@ impl fmt::Display for ProviderRegistryError {
                 formatter,
                 "duplicate music provider profile: {}/{}",
                 key.provider_id, key.profile_id
+            ),
+            Self::ProfileProviderMismatch {
+                provider_id,
+                profile,
+            } => write!(
+                formatter,
+                "music provider id {provider_id} does not match profile provider {}",
+                profile.provider_id
+            ),
+            Self::ExpectedDefaultProfile(profile) => write!(
+                formatter,
+                "initial music provider must use its default profile: {}/{}",
+                profile.provider_id, profile.profile_id
+            ),
+            Self::ExpectedNonDefaultProfile(profile) => write!(
+                formatter,
+                "profile registration requires a non-default profile: {}/{}",
+                profile.provider_id, profile.profile_id
             ),
             Self::MissingProvider(id) => write!(formatter, "music provider is missing: {id}"),
             Self::MissingDefault(id) => {
@@ -172,12 +196,12 @@ impl std::error::Error for ProviderRegistryError {}
 
 struct LegacyCapabilityAdapter {
     provider: Arc<dyn MusicProvider>,
-    provider_id: String,
+    profile: ProviderProfileKey,
 }
 
 impl LegacyCapabilityAdapter {
     fn validate<T: ProviderScopedOutput>(&self, value: T) -> ProviderResult<T> {
-        value.validate_scope(&self.provider_id)
+        value.validate_profile_scope(&self.profile)
     }
 
     fn fallback_snapshot(&self) -> AccountSnapshot {
@@ -186,8 +210,8 @@ impl LegacyCapabilityAdapter {
                 profile: (),
                 entitlement: (),
             },
-            provider_id: self.provider_id.clone(),
-            profile_id: DEFAULT_PROFILE_ID.to_owned(),
+            provider_id: self.profile.provider_id.clone(),
+            profile_id: self.profile.profile_id.clone(),
             revision: 0,
             capabilities: crate::AccountCapabilities {
                 qr_login: false,
@@ -202,8 +226,8 @@ impl LegacyCapabilityAdapter {
 
     fn fallback_status(&self) -> ProviderStatus {
         ProviderStatus {
-            provider_id: self.provider_id.clone(),
-            profile_id: DEFAULT_PROFILE_ID.to_owned(),
+            provider_id: self.profile.provider_id.clone(),
+            profile_id: self.profile.profile_id.clone(),
             display_name: self.provider.display_name().to_owned(),
             connection: "invalid-provider-response".to_owned(),
             message: "the provider returned an invalid scope".to_owned(),
@@ -719,10 +743,14 @@ impl fmt::Debug for MusicProviderCapabilityFacade {
 }
 
 impl MusicProviderCapabilityFacade {
-    fn from_legacy(id: ProviderId, provider: Arc<dyn MusicProvider>) -> Self {
+    fn from_legacy(
+        id: ProviderId,
+        profile: ProviderProfileKey,
+        provider: Arc<dyn MusicProvider>,
+    ) -> Self {
         let display_name = provider.display_name().to_owned();
         let adapter = Arc::new(LegacyCapabilityAdapter {
-            provider_id: id.to_string(),
+            profile,
             provider: Arc::clone(&provider),
         });
         Self {
@@ -858,13 +886,27 @@ impl ProviderRegistry {
         let mut profiles = HashMap::new();
         for provider in providers {
             let id = ProviderId::parse(provider.id()).map_err(ProviderRegistryError::InvalidId)?;
+            let supplied_profile = provider.profile_key();
+            let profile = ProviderProfileKey::new(
+                &supplied_profile.provider_id,
+                &supplied_profile.profile_id,
+            )
+            .map_err(ProviderRegistryError::InvalidProfile)?;
+            if profile.provider_id != id.as_str() {
+                return Err(ProviderRegistryError::ProfileProviderMismatch {
+                    provider_id: id,
+                    profile,
+                });
+            }
+            if profile.profile_id != DEFAULT_PROFILE_ID {
+                return Err(ProviderRegistryError::ExpectedDefaultProfile(profile));
+            }
             let facade = Arc::new(MusicProviderCapabilityFacade::from_legacy(
                 id.clone(),
+                profile.clone(),
                 provider,
             ));
-            let key = ProviderProfileKey::default_profile(id.as_str())
-                .expect("ProviderId is valid, so its default profile key is valid");
-            if profiles.insert(key, facade).is_some() {
+            if profiles.insert(profile, facade).is_some() {
                 return Err(ProviderRegistryError::DuplicateId(id));
             }
         }
@@ -1028,6 +1070,44 @@ impl ProviderRegistry {
         if state.profiles.contains_key(&key) {
             return Err(ProviderRegistryError::DuplicateProfile(key));
         }
+        state.profiles.insert(key, Arc::clone(&facade));
+        Ok(facade)
+    }
+
+    /// Register a legacy provider implementation under one non-default local
+    /// profile.  This keeps profile lifecycle ownership in Core without
+    /// pretending that each profile is a separate platform provider.
+    pub fn register_legacy_profile(
+        &self,
+        provider: Arc<dyn MusicProvider>,
+    ) -> Result<Arc<MusicProviderCapabilityFacade>, ProviderRegistryError> {
+        let id = ProviderId::parse(provider.id()).map_err(ProviderRegistryError::InvalidId)?;
+        let supplied_key = provider.profile_key();
+        let key = ProviderProfileKey::new(&supplied_key.provider_id, &supplied_key.profile_id)
+            .map_err(ProviderRegistryError::InvalidProfile)?;
+        if key.provider_id != id.as_str() {
+            return Err(ProviderRegistryError::ProfileProviderMismatch {
+                provider_id: id,
+                profile: key,
+            });
+        }
+        if key.profile_id == DEFAULT_PROFILE_ID {
+            return Err(ProviderRegistryError::ExpectedNonDefaultProfile(key));
+        }
+        let default_key = ProviderProfileKey::default_profile(id.as_str())
+            .expect("ProviderId is valid, so its default profile key is valid");
+        let mut state = self.write_state();
+        if !state.profiles.contains_key(&default_key) {
+            return Err(ProviderRegistryError::MissingProvider(id));
+        }
+        if state.profiles.contains_key(&key) {
+            return Err(ProviderRegistryError::DuplicateProfile(key));
+        }
+        let facade = Arc::new(MusicProviderCapabilityFacade::from_legacy(
+            id,
+            key.clone(),
+            provider,
+        ));
         state.profiles.insert(key, Arc::clone(&facade));
         Ok(facade)
     }

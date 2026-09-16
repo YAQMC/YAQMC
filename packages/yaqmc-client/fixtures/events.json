@@ -356,5 +356,24 @@
       "key": "appearance.theme"
     },
     "seq": 6
+  },
+  "provider://profiles-changed": {
+    "channel": "provider://profiles-changed",
+    "kind": "event",
+    "payload": [
+      {
+        "enabled": true,
+        "label": "QQ Music",
+        "profileId": "default",
+        "providerId": "qqmusic"
+      },
+      {
+        "enabled": true,
+        "label": "Work",
+        "profileId": "work",
+        "providerId": "qqmusic"
+      }
+    ],
+    "seq": 10
   }
 }

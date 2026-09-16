@@ -20,6 +20,7 @@ pub mod playback_session;
 pub mod playback_types;
 pub mod player;
 pub mod plugin;
+pub mod provider_profiles;
 pub mod server;
 pub mod statistics;
 pub mod storage;
@@ -203,6 +204,10 @@ impl CoreHandle {
 
     pub fn providers(&self) -> Arc<yaqmc_provider_api::ProviderRegistry> {
         Arc::clone(&self.services.providers)
+    }
+
+    pub fn provider_profiles(&self) -> Arc<crate::provider_profiles::ProviderProfileManager> {
+        Arc::clone(&self.services.provider_profiles)
     }
 
     pub fn qq_music(&self) -> Arc<dyn yaqmc_provider_api::MusicProvider> {

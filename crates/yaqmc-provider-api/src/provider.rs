@@ -222,6 +222,14 @@ pub trait MusicProvider: PlaybackSourceResolver + ProviderAccount + Send + Sync 
     /// Stable runtime ID. The registry validates and owns a copy, so providers
     /// loaded from configuration or plugins do not require leaked static data.
     fn id(&self) -> &str;
+    /// Validated local identity of this provider instance. Legacy providers
+    /// remain attached to the compatibility `default` profile.
+    fn profile_key(&self) -> crate::ProviderProfileKey {
+        crate::ProviderProfileKey {
+            provider_id: self.id().to_owned(),
+            profile_id: crate::DEFAULT_PROFILE_ID.to_owned(),
+        }
+    }
     fn display_name(&self) -> &str {
         self.id()
     }

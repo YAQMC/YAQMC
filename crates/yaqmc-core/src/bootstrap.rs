@@ -11,6 +11,7 @@ use crate::media::CachedMediaPreparer;
 use crate::media::{MediaPreparer, PlaybackSourceResolver};
 use crate::player::{PlayerService, PlayerSnapshot};
 use crate::plugin::ExtensionHost;
+use crate::provider_profiles::ProviderProfileManager;
 use crate::storage::StorageService;
 use crate::system_media::{SystemMediaIntegration, SystemMediaStartConfig};
 use crate::{CoreBootstrapError, CoreConfig, HostCommandPublisher};
@@ -33,6 +34,7 @@ pub(crate) struct CoreServices {
     pub logging: Arc<LoggingHandle>,
     pub credentials: Arc<dyn CredentialStore>,
     pub providers: Arc<ProviderRegistry>,
+    pub provider_profiles: Arc<ProviderProfileManager>,
     pub qq_music: Arc<dyn MusicProvider>,
     pub audio: Arc<dyn AudioEngine>,
     pub player: Arc<PlayerService>,
@@ -101,6 +103,16 @@ impl CoreServices {
             ProviderRegistry::new("qqmusic", [Arc::clone(&qq_music)])
                 .map_err(CoreBootstrapError::from_error)?,
         );
+        let provider_profiles = Arc::new(
+            ProviderProfileManager::open(
+                Arc::clone(&storage),
+                Arc::clone(&credentials),
+                Arc::clone(&providers),
+                config.paths.cache_dir.join("fixture-media"),
+                &inputs.runtime,
+            )
+            .map_err(CoreBootstrapError::from_error)?,
+        );
         #[cfg(feature = "plugins")]
         plugins
             .attach_provider_runtime(
@@ -165,6 +177,7 @@ impl CoreServices {
             logging,
             credentials,
             providers,
+            provider_profiles,
             qq_music,
             audio,
             player,

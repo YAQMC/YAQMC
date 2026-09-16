@@ -158,5 +158,68 @@
       ],
       "volume": 0.72
     }
+  },
+  "provider_profile_create": {
+    "id": 22,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "enabled": true,
+      "label": "Work",
+      "profileId": "work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_delete": {
+    "id": 25,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "enabled": true,
+      "label": "Work",
+      "profileId": "work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_disable": {
+    "id": 24,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "enabled": false,
+      "label": "Work",
+      "profileId": "work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_enable": {
+    "id": 23,
+    "kind": "response",
+    "ok": true,
+    "result": {
+      "enabled": true,
+      "label": "Work",
+      "profileId": "work",
+      "providerId": "qqmusic"
+    }
+  },
+  "provider_profile_list": {
+    "id": 21,
+    "kind": "response",
+    "ok": true,
+    "result": [
+      {
+        "enabled": true,
+        "label": "QQ Music",
+        "profileId": "default",
+        "providerId": "qqmusic"
+      },
+      {
+        "enabled": true,
+        "label": "Work",
+        "profileId": "work",
+        "providerId": "qqmusic"
+      }
+    ]
   }
 }

@@ -17,9 +17,9 @@ use crate::{
     CHANNEL_APP_OPEN_SETTINGS, CHANNEL_CORE_LOG, CHANNEL_HOST_COMMAND, CHANNEL_HOST_CORE_STATUS,
     CHANNEL_HOST_UPDATE, CHANNEL_LYRICS_DOCUMENT, CHANNEL_LYRICS_PROJECTION,
     CHANNEL_LYRICS_SURFACE_CLOSED, CHANNEL_LYRICS_SURFACE_INTERACTION, CHANNEL_PLAYER_SNAPSHOT,
-    CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED, CORE_EVENT_CHANNELS,
-    DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT, HOST_EVENT_CHANNELS,
-    PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
+    CHANNEL_PLUGIN_CHANGED, CHANNEL_PREFERENCES_CHANGED, CHANNEL_PROVIDER_PROFILES_CHANGED,
+    CORE_EVENT_CHANNELS, DEFAULT_METHOD_PAYLOAD_BYTES, FRAME_HARD_CAP_BYTES, HANDSHAKE_TIMEOUT,
+    HOST_EVENT_CHANNELS, PROTOCOL_VERSION, SHUTDOWN_TIMEOUT,
 };
 
 pub fn contract_fixtures_dir() -> PathBuf {
@@ -242,6 +242,11 @@ fn events() -> Value {
             channel: CHANNEL_ACCOUNT_CHANGED.to_owned(),
             payload: json!({ "signedIn": false }),
         }),
+        CHANNEL_PROVIDER_PROFILES_CHANGED: to_value(&CoreMessage::Event {
+            seq: 10,
+            channel: CHANNEL_PROVIDER_PROFILES_CHANGED.to_owned(),
+            payload: provider_profile_descriptors_payload(),
+        }),
         CHANNEL_LYRICS_SURFACE_CLOSED: to_value(&CoreMessage::Event {
             seq: 10,
             channel: CHANNEL_LYRICS_SURFACE_CLOSED.to_owned(),
@@ -303,6 +308,27 @@ fn sample_song() -> Value {
         "quality": "lossless",
         "availability": { "status": "available" }
     })
+}
+
+fn provider_profile_descriptor_payload() -> Value {
+    json!({
+        "providerId": "qqmusic",
+        "profileId": "work",
+        "label": "Work",
+        "enabled": true
+    })
+}
+
+fn provider_profile_descriptors_payload() -> Value {
+    json!([
+        {
+            "providerId": "qqmusic",
+            "profileId": "default",
+            "label": "QQ Music",
+            "enabled": true
+        },
+        provider_profile_descriptor_payload()
+    ])
 }
 
 fn player_snapshot_payload() -> Value {
@@ -517,6 +543,36 @@ fn requests() -> Value {
             params: None,
             origin: None,
         }),
+        "provider_profile_list": to_value(&CoreMessage::Request {
+            id: 21,
+            method: "provider_profile_list".to_owned(),
+            params: None,
+            origin: None,
+        }),
+        "provider_profile_create": to_value(&CoreMessage::Request {
+            id: 22,
+            method: "provider_profile_create".to_owned(),
+            params: Some(json!({ "providerId": "qqmusic", "label": "Work" })),
+            origin: None,
+        }),
+        "provider_profile_enable": to_value(&CoreMessage::Request {
+            id: 23,
+            method: "provider_profile_enable".to_owned(),
+            params: Some(json!({ "providerId": "qqmusic", "profileId": "work" })),
+            origin: None,
+        }),
+        "provider_profile_disable": to_value(&CoreMessage::Request {
+            id: 24,
+            method: "provider_profile_disable".to_owned(),
+            params: Some(json!({ "providerId": "qqmusic", "profileId": "work" })),
+            origin: None,
+        }),
+        "provider_profile_delete": to_value(&CoreMessage::Request {
+            id: 25,
+            method: "provider_profile_delete".to_owned(),
+            params: Some(json!({ "providerId": "qqmusic", "profileId": "work" })),
+            origin: None,
+        }),
     })
 }
 
@@ -568,6 +624,31 @@ fn responses() -> Value {
                 "providerId": "qqmusic",
                 "entityId": "qqmusic:track:001X3HEN1oK0Jr"
             })),
+        }),
+        "provider_profile_list": to_value(&CoreMessage::Response {
+            id: 21,
+            body: ResponseBody::success(provider_profile_descriptors_payload()),
+        }),
+        "provider_profile_create": to_value(&CoreMessage::Response {
+            id: 22,
+            body: ResponseBody::success(provider_profile_descriptor_payload()),
+        }),
+        "provider_profile_enable": to_value(&CoreMessage::Response {
+            id: 23,
+            body: ResponseBody::success(provider_profile_descriptor_payload()),
+        }),
+        "provider_profile_disable": to_value(&CoreMessage::Response {
+            id: 24,
+            body: ResponseBody::success(json!({
+                "providerId": "qqmusic",
+                "profileId": "work",
+                "label": "Work",
+                "enabled": false
+            })),
+        }),
+        "provider_profile_delete": to_value(&CoreMessage::Response {
+            id: 25,
+            body: ResponseBody::success(provider_profile_descriptor_payload()),
         }),
         "hostDenied": to_value(&CoreMessage::Response {
             id: 99,

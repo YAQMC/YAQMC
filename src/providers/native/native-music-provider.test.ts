@@ -52,6 +52,20 @@ describe('NativeMusicProvider', () => {
     });
   });
 
+  it('binds every IPC request to the explicitly bound profile', async () => {
+    const provider = createNativeMusicProvider(descriptor(), 'work');
+    await provider.getHome();
+    expect(invoke).toHaveBeenCalledWith('provider_home', {
+      providerId: 'plugin.example',
+      profileId: 'work',
+      refresh: false,
+    });
+  });
+
+  it('rejects profile IDs that are unsafe for native scope routing', () => {
+    expect(() => createNativeMusicProvider(descriptor(), 'not safe')).toThrow(/Profile ID/);
+  });
+
   it('exposes only declared account and sharing capabilities', async () => {
     const catalogOnly = createNativeMusicProvider(descriptor());
     expect(isAccountMusicProvider(catalogOnly)).toBe(false);

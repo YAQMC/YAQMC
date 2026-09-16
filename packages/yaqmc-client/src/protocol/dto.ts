@@ -709,6 +709,13 @@ export interface ProviderDescriptor {
   capabilities: ProviderCapabilitySummary;
 }
 
+export interface ProviderProfileDescriptor {
+  providerId: string;
+  profileId: string;
+  label: string;
+  enabled: boolean;
+}
+
 export type RecommendationKind = 'guess' | 'radar';
 
 export interface RecommendationRequest {

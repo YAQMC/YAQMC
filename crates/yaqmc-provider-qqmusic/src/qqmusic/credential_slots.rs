@@ -26,6 +26,8 @@ pub(crate) struct QQMusicCredentialSlots {
 
 impl QQMusicCredentialSlots {
     pub(crate) fn new(profile: ProviderProfileKey) -> Result<Self, CredentialError> {
+        let profile = ProviderProfileKey::new(&profile.provider_id, &profile.profile_id)
+            .map_err(|_| CredentialError::OperationFailed)?;
         if profile.provider_id != "qqmusic" {
             return Err(CredentialError::OperationFailed);
         }
@@ -206,6 +208,11 @@ mod tests {
             ProviderProfileKey::new("other", "default").expect("valid foreign key")
         )
         .is_err());
+        let malformed = ProviderProfileKey {
+            provider_id: "qqmusic".to_owned(),
+            profile_id: "Invalid Profile".to_owned(),
+        };
+        assert!(QQMusicCredentialSlots::new(malformed).is_err());
     }
 
     #[test]

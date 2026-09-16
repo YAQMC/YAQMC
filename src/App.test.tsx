@@ -531,12 +531,16 @@ describe('App TopBar history navigation', () => {
       >
         <ProviderSelectionContext
           value={{
+            active: { providerId: 'qqmusic', profileId: 'default' },
+            activeSelection: { providerId: 'qqmusic', profileId: 'default' },
             activeId: 'qqmusic',
+            activeProfileId: 'default',
             providers: [
               { id: 'qqmusic', displayName: 'QQ Music', available: true },
               { id: 'plugin.example', displayName: 'Example Platform', available },
             ],
             selectProvider: vi.fn(),
+            selectProviderProfile: vi.fn(),
           }}
         >
           <ProviderContext value={activeProvider}>

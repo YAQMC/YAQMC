@@ -61,6 +61,7 @@ import type {
   PrimaryPlaybackMode,
   ProviderStatus,
   ProviderDescriptor,
+  ProviderProfileDescriptor,
   RecommendationBatch,
   RecommendationRequest,
   RecordErrorRequest,
@@ -93,6 +94,11 @@ export const MIGRATED_METHOD_NAMES = [
   'audio_output_devices',
   'audio_set_output_device',
   'provider_list',
+  'provider_profile_list',
+  'provider_profile_create',
+  'provider_profile_enable',
+  'provider_profile_disable',
+  'provider_profile_delete',
   'provider_status',
   'provider_home',
   'provider_discover',
@@ -287,6 +293,11 @@ export type MethodParams = Exhaustive<{
   audio_output_devices: void;
   audio_set_output_device: { deviceId: string };
   provider_list: void;
+  provider_profile_list: void;
+  provider_profile_create: { providerId: string; label: string };
+  provider_profile_enable: { providerId: string; profileId: string };
+  provider_profile_disable: { providerId: string; profileId: string };
+  provider_profile_delete: { providerId: string; profileId: string };
   provider_status: { providerId: string; profileId?: string };
   provider_home: { providerId: string; profileId?: string; refresh: boolean };
   provider_discover: { providerId: string; profileId?: string; refresh: boolean };
@@ -577,6 +588,11 @@ export type MethodResult = Exhaustive<{
   audio_output_devices: AudioOutputDevice[];
   audio_set_output_device: AudioOutputDevice[];
   provider_list: ProviderDescriptor[];
+  provider_profile_list: ProviderProfileDescriptor[];
+  provider_profile_create: ProviderProfileDescriptor;
+  provider_profile_enable: ProviderProfileDescriptor;
+  provider_profile_disable: ProviderProfileDescriptor;
+  provider_profile_delete: ProviderProfileDescriptor;
   provider_status: ProviderStatus;
   provider_home: HomeFeed;
   provider_discover: DiscoverFeed;

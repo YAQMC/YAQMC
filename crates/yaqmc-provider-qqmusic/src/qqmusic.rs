@@ -436,6 +436,15 @@ fn song_matches_profile(song: &Song, profile: &ProviderProfileKey) -> bool {
 }
 
 impl QQMusicService {
+    fn validate_profile(profile: ProviderProfileKey) -> Result<ProviderProfileKey, QQMusicError> {
+        let profile = ProviderProfileKey::new(&profile.provider_id, &profile.profile_id)
+            .map_err(|_| QQMusicError::InvalidRequest)?;
+        if profile.provider_id != "qqmusic" {
+            return Err(QQMusicError::InvalidRequest);
+        }
+        Ok(profile)
+    }
+
     fn preferred_quality_key(profile: &ProviderProfileKey) -> String {
         format!("preferred-quality:qqmusic:{}", profile.profile_id)
     }
@@ -490,6 +499,7 @@ impl QQMusicService {
     where
         S: ProviderStorage + 'static,
     {
+        let profile = Self::validate_profile(profile)?;
         let clock: Arc<dyn Clock> = Arc::new(SystemClock);
         let account_transport: Arc<dyn QqTransport> =
             Arc::new(ReqwestQqTransport::new(Arc::clone(&clock))?);
@@ -537,6 +547,7 @@ impl QQMusicService {
     where
         S: ProviderStorage + 'static,
     {
+        let profile = Self::validate_profile(profile)?;
         let slots = credential_slots::QQMusicCredentialSlots::new(profile.clone())
             .map_err(|_| QQMusicError::InvalidRequest)?;
         let credentials: Arc<dyn CredentialStore> = Arc::new(

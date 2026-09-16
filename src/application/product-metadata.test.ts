@@ -68,6 +68,7 @@ describe('product metadata', () => {
       platform: diagnostics,
       provider: {
         providerId: 'qqmusic',
+        profileId: 'default',
         displayName: 'QQ Music',
         connection: 'online',
         message: 'ready',

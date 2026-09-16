@@ -25,7 +25,7 @@ export function isProviderId(value: string): value is ProviderId {
 }
 
 export function parseProfileId(value: string): string {
-  if (!PROFILE_ID_PATTERN.test(value)) {
+  if (typeof value !== 'string' || !PROFILE_ID_PATTERN.test(value)) {
     throw new Error(
       'Profile ID must be 1-64 lowercase ASCII letters, digits, dots, underscores, or hyphens.',
     );
@@ -34,7 +34,12 @@ export function parseProfileId(value: string): string {
 }
 
 export function isProfileId(value: string): boolean {
-  return PROFILE_ID_PATTERN.test(value);
+  return typeof value === 'string' && PROFILE_ID_PATTERN.test(value);
+}
+
+export interface MusicProviderSelection {
+  readonly providerId: ProviderId | string;
+  readonly profileId: string;
 }
 
 /**
@@ -44,10 +49,15 @@ export function isProfileId(value: string): boolean {
  */
 export class MusicProviderRegistry {
   readonly #providers = new Map<string, MusicProviderCapabilityFacade>();
-  readonly #activeId: ProviderId;
+  readonly #activeSelection: MusicProviderSelection;
 
-  constructor(activeId: string, providers: Iterable<MusicProvider>) {
-    this.#activeId = parseProviderId(activeId);
+  constructor(active: MusicProviderSelection | string, providers: Iterable<MusicProvider>) {
+    const activeSelection =
+      typeof active === 'string' ? { providerId: active, profileId: DEFAULT_PROFILE_ID } : active;
+    this.#activeSelection = {
+      providerId: parseProviderId(activeSelection.providerId),
+      profileId: parseProfileId(activeSelection.profileId),
+    };
     for (const provider of providers) {
       const id = parseProviderId(provider.id);
       const profileId = parseProfileId(provider.profileId);
@@ -60,17 +70,33 @@ export class MusicProviderRegistry {
     if (this.#providers.size === 0) {
       throw new Error('At least one music provider is required.');
     }
-    if (!this.#providers.has(providerKey(this.#activeId, DEFAULT_PROFILE_ID))) {
-      throw new Error(`Active music provider is missing: ${this.#activeId}`);
+    if (
+      !this.#providers.has(
+        providerKey(this.#activeSelection.providerId, this.#activeSelection.profileId),
+      )
+    ) {
+      throw new Error(
+        `Active music provider is missing: ${this.#activeSelection.providerId}/${this.#activeSelection.profileId}`,
+      );
     }
   }
 
   get activeId(): ProviderId {
-    return this.#activeId;
+    return this.#activeSelection.providerId as ProviderId;
+  }
+
+  get activeProfileId(): string {
+    return this.#activeSelection.profileId;
+  }
+
+  get activeSelection(): MusicProviderSelection {
+    return this.#activeSelection;
   }
 
   get active(): MusicProviderCapabilityFacade {
-    return this.#providers.get(providerKey(this.#activeId, DEFAULT_PROFILE_ID))!;
+    return this.#providers.get(
+      providerKey(this.#activeSelection.providerId, this.#activeSelection.profileId),
+    )!;
   }
 
   get(id: string, profileId = DEFAULT_PROFILE_ID): MusicProviderCapabilityFacade | null {

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import { NativeApplication } from './native-application';
+import { resolveNativeProviderProfiles } from './native-provider-profiles';
 
 const runtimeMocks = vi.hoisted(() => {
   const listeners = new Map<string, Set<(payload: unknown) => void>>();
@@ -66,6 +67,7 @@ describe('NativeApplication startup', () => {
   it('reloads providers when Core becomes ready after an early renderer request', async () => {
     runtimeMocks.invoke
       .mockRejectedValueOnce(new Error('Core is still starting'))
+      .mockRejectedValueOnce(new Error('Legacy Core has no profile RPC'))
       .mockResolvedValueOnce([
         {
           providerId: 'provider.test',
@@ -81,7 +83,8 @@ describe('NativeApplication startup', () => {
             account: false,
           },
         },
-      ]);
+      ])
+      .mockResolvedValueOnce([]);
 
     render(<NativeApplication />);
     await waitFor(() =>
@@ -93,6 +96,28 @@ describe('NativeApplication startup', () => {
     await waitFor(() =>
       expect(screen.getByTestId('provider-options')).toHaveTextContent('provider.test'),
     );
-    expect(runtimeMocks.invoke).toHaveBeenCalledTimes(2);
+    expect(runtimeMocks.invoke).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps an unprofiled plugin provider on its legacy default profile', () => {
+    const descriptor = {
+      providerId: 'plugin.example',
+      displayName: 'Plugin provider',
+      isDefault: false,
+      available: true,
+      capabilities: {
+        catalog: true,
+        playback: true,
+        recommendations: false,
+        lyrics: false,
+        share: false,
+        account: false,
+      },
+    };
+    expect(
+      resolveNativeProviderProfiles(descriptor, [
+        { providerId: 'qqmusic', profileId: 'default', label: 'QQ', enabled: true },
+      ]).map((profile) => profile.profileId),
+    ).toEqual(['default']);
   });
 });

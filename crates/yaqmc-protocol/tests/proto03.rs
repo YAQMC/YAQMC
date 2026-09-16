@@ -7,9 +7,9 @@ use yaqmc_protocol::{
 };
 
 #[test]
-fn registry_is_the_180_method_single_source_of_truth() {
+fn registry_is_the_185_method_single_source_of_truth() {
     let registry = methods();
-    assert_eq!(registry.len(), 164 + PROTOCOL_ONLY_METHODS.len());
+    assert_eq!(registry.len(), 169 + PROTOCOL_ONLY_METHODS.len());
     let names: HashSet<&str> = registry.iter().map(|spec| spec.name).collect();
     assert_eq!(names.len(), registry.len());
     assert!(method("player_snapshot").is_some());
@@ -155,6 +155,27 @@ fn account_and_plugin_methods_are_main_window_only() {
 
     let host_owned = method("system_shortcuts_set_enabled").expect("shortcuts");
     assert_eq!(host_owned.owner, MethodOwner::Host);
+}
+
+#[test]
+fn provider_profile_lifecycle_is_core_owned_and_main_window_only() {
+    for name in [
+        "provider_profile_list",
+        "provider_profile_create",
+        "provider_profile_enable",
+        "provider_profile_disable",
+        "provider_profile_delete",
+    ] {
+        let spec = method(name).expect(name);
+        assert_eq!(spec.owner, MethodOwner::Core);
+        assert!(spec.main_window_only);
+        assert_eq!(
+            spec.allowed_origins,
+            [WindowOrigin::Host, WindowOrigin::Main].as_slice()
+        );
+        authorize(WindowOrigin::Main, name).expect("main provider profile method");
+        assert!(authorize(WindowOrigin::LyricsDesktop, name).is_err());
+    }
 }
 
 #[test]

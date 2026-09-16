@@ -82,6 +82,20 @@ pub struct ProviderIdParams {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderProfileCreateParams {
+    pub provider_id: String,
+    pub label: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderProfileMutationParams {
+    pub provider_id: String,
+    pub profile_id: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAuthStartParams {
     pub provider_id: String,
