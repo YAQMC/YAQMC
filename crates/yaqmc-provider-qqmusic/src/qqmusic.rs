@@ -2229,25 +2229,20 @@ impl QQMusicClient {
             None,
             unix_timestamp_ms().saturating_add(FALLBACK_SESSION_LIFETIME_MS),
         )?;
-        let shelves = match crate::qmapi::recommend::web_home_feed(
-            &self.catalog,
-            &credential,
-            1,
-            0,
-            &[],
-        )
-        .await
-        {
-            Ok(shelves) => shelves,
-            Err(error) => {
-                tracing::warn!(
-                    target: "qqmusic",
-                    %error,
-                    "home personalized new-songs feed failed; falling back to general new songs"
-                );
-                return Ok((None, self.general_newsongs().await?));
-            }
-        };
+        let shelves =
+            match crate::qmapi::recommend::web_home_feed(&self.catalog, &credential, 1, 0, &[])
+                .await
+            {
+                Ok(shelves) => shelves,
+                Err(error) => {
+                    tracing::warn!(
+                        target: "qqmusic",
+                        %error,
+                        "home personalized new-songs feed failed; falling back to general new songs"
+                    );
+                    return Ok((None, self.general_newsongs().await?));
+                }
+            };
         let disstid = shelves
             .into_iter()
             .flat_map(|shelf| shelf.cards)
@@ -6242,13 +6237,15 @@ mod tests {
         assert!(
             songlists
                 .iter()
-                .all(|playlist| !playlist.title.contains("每日30首") && !playlist.title.contains("每日精选")),
+                .all(|playlist| !playlist.title.contains("每日30首")
+                    && !playlist.title.contains("每日精选")),
             "personalized songlists exclude daily 30 mix"
         );
         assert!(
             home.recommended_songlists
                 .iter()
-                .all(|playlist| !playlist.title.contains("每日30首") && !playlist.title.contains("每日精选")),
+                .all(|playlist| !playlist.title.contains("每日30首")
+                    && !playlist.title.contains("每日精选")),
             "home recommended songlists exclude daily 30 mix"
         );
         assert!(!daily.title.is_empty(), "daily songlist title resolves");

@@ -31,12 +31,12 @@ use super::{
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+#[cfg(test)]
+use reqwest::StatusCode;
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
     Url,
 };
-#[cfg(test)]
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
@@ -542,12 +542,8 @@ impl QQMusicAuthProtocol for TransportQQMusicAuthProtocol {
             return Err(QQMusicError::AuthenticationExpired);
         }
         let client = self.login_client("auth.session.validate");
-        let payload = crate::qmapi::auth::fetch_profile(
-            Some(&client),
-            session,
-            cancellation.clone(),
-        )
-        .await?;
+        let payload =
+            crate::qmapi::auth::fetch_profile(Some(&client), session, cancellation.clone()).await?;
         let request = payload.get("req").or_else(|| payload.get("req_0"));
         require_session_validation_success(&payload, request)?;
         let request = request.ok_or(QQMusicError::SchemaChanged)?;
@@ -5399,7 +5395,9 @@ mod tests {
             requests[4]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req_0/module").or_else(|| body.pointer("/req/module")))
+                .and_then(|body| body
+                    .pointer("/req_0/module")
+                    .or_else(|| body.pointer("/req/module")))
                 .and_then(Value::as_str),
             Some("userInfo.BaseUserInfoServer")
         );
@@ -5407,7 +5405,9 @@ mod tests {
             requests[4]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req_0/method").or_else(|| body.pointer("/req/method")))
+                .and_then(|body| body
+                    .pointer("/req_0/method")
+                    .or_else(|| body.pointer("/req/method")))
                 .and_then(Value::as_str),
             Some("get_user_baseinfo_v2")
         );
@@ -5423,7 +5423,9 @@ mod tests {
             requests[5]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req_0/module").or_else(|| body.pointer("/req/module")))
+                .and_then(|body| body
+                    .pointer("/req_0/module")
+                    .or_else(|| body.pointer("/req/module")))
                 .and_then(Value::as_str),
             Some("VipLogin.VipLoginInter")
         );
@@ -5431,7 +5433,9 @@ mod tests {
             requests[5]
                 .body
                 .as_ref()
-                .and_then(|body| body.pointer("/req_0/method").or_else(|| body.pointer("/req/method")))
+                .and_then(|body| body
+                    .pointer("/req_0/method")
+                    .or_else(|| body.pointer("/req/method")))
                 .and_then(Value::as_str),
             Some("vip_login_base")
         );

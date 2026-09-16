@@ -250,7 +250,13 @@ export function LyricsScene({
     return () => {
       cancelled = true;
     };
-  }, [appearance.imageSource, appearance.mode, bindings.songId, bindings.artworkSrc, bindings.artworkColor]);
+  }, [
+    appearance.imageSource,
+    appearance.mode,
+    bindings.songId,
+    bindings.artworkSrc,
+    bindings.artworkColor,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

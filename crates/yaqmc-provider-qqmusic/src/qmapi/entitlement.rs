@@ -47,12 +47,8 @@ pub(crate) fn account_entitlement_from_qmapi(info: &UserVipInfoResponse) -> Acco
 pub(crate) async fn fetch_account_entitlement(
     session: &SessionRecord,
 ) -> Result<AccountEntitlement, QQMusicError> {
-    fetch_account_entitlement_with_client(
-        None,
-        session,
-        tokio_util::sync::CancellationToken::new(),
-    )
-    .await
+    fetch_account_entitlement_with_client(None, session, tokio_util::sync::CancellationToken::new())
+        .await
 }
 
 pub(crate) async fn fetch_account_entitlement_with_client(
@@ -68,8 +64,8 @@ pub(crate) async fn fetch_account_entitlement_with_client(
     let client = match client {
         Some(client) => client,
         None => {
-            local_client =
-                qmapi_client_with(Some(credential.clone()), Some(Platform::Web)).map_err(|error| {
+            local_client = qmapi_client_with(Some(credential.clone()), Some(Platform::Web))
+                .map_err(|error| {
                     let classification = map_qmapi_error(error);
                     tracing::warn!(
                         target: "qqmusic.entitlement",
