@@ -169,7 +169,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
   secret-scan:
     name: Secret scan (${{ matrix.os }})
     strategy:
