@@ -26,6 +26,12 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
 
+        mavenLocal {
+            content {
+                includeGroup("dev.yaqmc")
+            }
+        }
+
         // `amll-android` is a private repository-scoped GitHub Package. Keep the repository out of
         // ordinary unauthenticated builds until credentials are available; the app does not depend
         // on the package yet, so this is only the consumption boundary for the native-lyrics work.

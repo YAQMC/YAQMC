@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LyricPlayer } from '@applemusic-like-lyrics/react';
 import type { LyricLine as AmllLyricLine, LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
 import { AlignLeft, Music2 } from 'lucide-react';
@@ -7,11 +7,17 @@ import {
   buildLyricsRenderModel,
   type RenderLyricLine,
 } from '../../application/lyrics-render-model';
+import {
+  hideNativeLyrics,
+  onNativeLyricsSeek,
+  showNativeLyrics,
+} from '../../application/native-lyrics-bridge';
 import type {
   AmllSettings,
   LyricWordEffect,
   SecondaryLyricVisibility,
 } from '../../application/preferences';
+import { isAndroidRuntime } from '../../application/host-capabilities';
 import { usePlayerStore } from '../../application/player-store';
 import type { LyricDocument } from '../../domain/music';
 
@@ -205,6 +211,76 @@ export function LyricsViewport({
     [document, romanization, translation],
   );
   const amllLines = useMemo(() => model?.lines.map(toAmllLyricLine) ?? [], [model]);
+  const isAndroid = isAndroidRuntime();
+  const nativeContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isAndroid || editorGesture) return;
+
+    if (
+      status !== 'ready' ||
+      !document ||
+      document.syncMode === 'unsynchronized' ||
+      !model ||
+      model.lines.length === 0
+    ) {
+      void hideNativeLyrics();
+      return;
+    }
+
+    const updateNativeOverlay = () => {
+      const el = nativeContainerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const bounds = {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      };
+      void showNativeLyrics(bounds, model.lines, {
+        align,
+        followAnchor,
+        enableSpring: amll.enableSpring && !reducedMotion,
+        enableScale: amll.enableScale && !reducedMotion,
+        enableBlur: amll.enableBlur && !reducedMotion,
+        hidePassedLines: amll.hidePassedLines,
+        wordFadeWidth: amll.wordFadeWidth,
+      });
+    };
+
+    updateNativeOverlay();
+
+    const unlisten = onNativeLyricsSeek((pos) => {
+      if (allowSeek) {
+        seek(pos);
+      }
+    });
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && nativeContainerRef.current) {
+      ro = new ResizeObserver(() => updateNativeOverlay());
+      ro.observe(nativeContainerRef.current);
+    }
+
+    return () => {
+      ro?.disconnect();
+      unlisten();
+      void hideNativeLyrics();
+    };
+  }, [
+    isAndroid,
+    editorGesture,
+    status,
+    document,
+    model,
+    align,
+    followAnchor,
+    amll,
+    reducedMotion,
+    allowSeek,
+    seek,
+  ]);
 
   useEffect(() => onFollowStateChange?.('active'), [onFollowStateChange]);
 
@@ -229,6 +305,17 @@ export function LyricsViewport({
         allowSeek={allowSeek}
         seek={seek}
         presentationOffsetMs={presentationOffsetMs}
+      />
+    );
+  }
+
+  if (isAndroid && !editorGesture) {
+    return (
+      <div
+        ref={nativeContainerRef}
+        className="lyrics-stage__amll lyrics-stage__amll--native"
+        data-align={align}
+        style={{ width: '100%', height: '100%', minHeight: 0 }}
       />
     );
   }
