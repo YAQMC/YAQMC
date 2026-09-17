@@ -65,6 +65,7 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
     private val oauthHeartbeatHandler = Handler(Looper.getMainLooper())
     private val updateInFlight = AtomicBoolean(false)
     private var deepLinkSubscription: AutoCloseable? = null
+    private var lyricsOverlay: org.yaqmc.android.lyrics.NativeLyricsOverlay? = null
 
     override fun load() {
         if (!CoreManager.isReady()) {
@@ -85,6 +86,19 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         }
         deepLinkSubscription = DeepLinkInbox.subscribe(::publishDeepLink)
         checkForUpdates(call = null, automatic = true)
+        bridge.executeOnMainThread {
+            val webView = bridge.webView
+            val container = webView.parent as? android.view.ViewGroup
+            if (container != null) {
+                val overlay = org.yaqmc.android.lyrics.NativeLyricsOverlay(activity, container)
+                overlay.onSeekListener = { pos ->
+                    bridge.executeOnMainThread {
+                        notifyListeners("lyricsSeek", JSObject().put("positionMs", pos))
+                    }
+                }
+                lyricsOverlay = overlay
+            }
+        }
     }
 
     override fun handleOnDestroy() {
@@ -95,6 +109,10 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         oauthAttempts.values.forEach(::cancelOAuth)
         oauthAttempts.clear()
         CoreManager.removeCallback(this)
+        bridge.executeOnMainThread {
+            lyricsOverlay?.destroy()
+            lyricsOverlay = null
+        }
         super.handleOnDestroy()
     }
 
@@ -104,6 +122,33 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             ?: return call.reject("method is required", "protocol.invalid_params")
         val params = call.getObject("params") ?: JSObject()
         when (method) {
+            "lyrics_supported" -> {
+                call.resolve(JSObject().put("value", true))
+            }
+            "lyrics_show" -> {
+                bridge.executeOnMainThread {
+                    val bounds = params.optJSONObject("bounds")
+                    val lines = params.optJSONArray("lines")
+                    val options = params.optJSONObject("options")
+                    lyricsOverlay?.show(bounds, lines, options)
+                    call.resolve(JSObject().put("value", true))
+                }
+            }
+            "lyrics_update" -> {
+                bridge.executeOnMainThread {
+                    val bounds = params.optJSONObject("bounds")
+                    val lines = params.optJSONArray("lines")
+                    val options = params.optJSONObject("options")
+                    lyricsOverlay?.update(bounds, lines, options)
+                    call.resolve(JSObject().put("value", true))
+                }
+            }
+            "lyrics_hide" -> {
+                bridge.executeOnMainThread {
+                    lyricsOverlay?.hide()
+                    call.resolve(JSObject().put("value", true))
+                }
+            }
             "host.coreStatus" -> {
                 call.resolve(
                     JSObject().put(
