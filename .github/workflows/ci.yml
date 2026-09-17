@@ -154,6 +154,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -165,6 +166,9 @@ jobs:
       - run: node scripts/ci/verify-android-project.mjs
       - run: node scripts/ci/check-android-jni-symbols.mjs
       - run: npm run android:check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
   secret-scan:
     name: Secret scan (${{ matrix.os }})
