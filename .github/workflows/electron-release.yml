@@ -145,7 +145,7 @@ jobs:
         if: always()
         shell: bash
         run: rm -f -- "$RUNNER_TEMP/yaqmc-android-release.keystore"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: YAQMC-android-arm64-v8a-${{ github.sha }}
           path: release-android
@@ -164,7 +164,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run ci:frontend-build
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: yaqmc-frontend-dist-${{ github.sha }}
           path: dist
@@ -255,14 +255,14 @@ jobs:
             --platform linux \
             --identity-only \
             --build-identity "$PWD/release-electron/YAQMC-linux-x64-tester/BUILD-IDENTITY.json"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
           path: release-electron/YAQMC-electron-${{ matrix.os }}-${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: matrix.os == 'linux' && matrix.arch == 'x64'
         with:
           name: YAQMC-linux-x64-tester-${{ github.sha }}
@@ -327,7 +327,7 @@ jobs:
           --to assembled
           --commit ${{ github.sha }}
           --targets ${{ inputs.targets || 'all' }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: YAQMC-release-draft-${{ github.sha }}
           path: assembled
