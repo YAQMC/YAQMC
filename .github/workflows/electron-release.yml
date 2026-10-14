@@ -212,7 +212,7 @@ jobs:
           sudo apt-get update &&
           sudo apt-get install -y --no-install-recommends libasound2-dev rpm fakeroot
       - run: npm ci
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: yaqmc-frontend-dist-${{ github.sha }}
           path: dist
@@ -309,12 +309,12 @@ jobs:
           --qm-api-rs-root .corresponding-source/qm-api-rs
           --amll-root .corresponding-source/applemusic-like-lyrics
           --to corresponding-source
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: YAQMC-electron-*
           path: packed
           merge-multiple: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: YAQMC-android-arm64-v8a-${{ github.sha }}
           path: packed-android
@@ -343,7 +343,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: YAQMC-release-draft-${{ github.sha }}
           path: assembled
