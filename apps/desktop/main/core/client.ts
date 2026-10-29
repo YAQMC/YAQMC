@@ -114,6 +114,9 @@ export class CoreClient extends EventEmitter {
     this.stream.readable.on('error', (error: Error) => {
       this.fail(error);
     });
+    this.stream.writable.on('error', (error: Error) => {
+      this.fail(error);
+    });
   }
 
   async send(message: CoreMessage): Promise<void> {

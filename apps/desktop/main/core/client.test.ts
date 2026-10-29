@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { FRAME_HARD_CAP_BYTES } from '@yaqmc/client';
@@ -62,6 +62,41 @@ describe('CoreClient', () => {
     pushMessage(readable, { kind: 'response', id: 1, ok: true, result: { positionMs: 0 } });
     await expect(pending).resolves.toEqual({ positionMs: 0 });
     client.close();
+  });
+
+  it('closes the connection and rejects all pending requests when a write fails', async () => {
+    const error = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+    let writes = 0;
+    const writable = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(++writes === 2 ? error : undefined);
+      },
+    });
+    const client = new CoreClient({ readable: new PassThrough(), writable });
+    const closed = vi.fn();
+    client.on('close', closed);
+    client.start();
+
+    const results = await Promise.allSettled([
+      client.invoke('player_snapshot'),
+      client.invoke('core_ping'),
+    ]);
+    expect(results).toEqual([
+      { status: 'rejected', reason: error },
+      { status: 'rejected', reason: error },
+    ]);
+    expect(closed).toHaveBeenCalledExactlyOnceWith(error);
+    await expect(client.invoke('core_ping')).rejects.toThrow('protocol connection closed');
+  });
+
+  it('handles a late writable error after the connection has closed', async () => {
+    const { client, writable } = mockStream();
+    const closed = vi.fn();
+    client.on('close', closed);
+    client.close();
+    writable.destroy(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(closed).toHaveBeenCalledOnce();
   });
 
   it('omits origin on host-internal invokes and stamps Main-assigned origin when given', async () => {

@@ -404,6 +404,28 @@ describe('CoreSupervisor', () => {
     await supervisor.stop();
   });
 
+  it('stops cleanly when Core stdin breaks before the child exit event', async () => {
+    const mock = mockChild();
+    const kill = vi.spyOn(mock.child, 'kill');
+    const spawn = vi.fn(() => mock.child as unknown as ChildProcess);
+    const supervisor = new CoreSupervisor({
+      binary: coreBinaryName(),
+      hostVersion: '0.1.0',
+      expectedCoreVersion: '0.1.0',
+      ...tempDirs(),
+      spawn,
+    });
+    const started = supervisor.start();
+    await handshakeChild(mock);
+    await started;
+
+    mock.stdin.destroy(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+    await expect(supervisor.stop()).resolves.toBeUndefined();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(kill).toHaveBeenCalledOnce();
+    expect(spawn).toHaveBeenCalledOnce();
+  });
+
   it('spawns, handshakes, detects exit, and keeps a 64 KiB stderr ring', async () => {
     const { child, stdout, stdin, stderr } = mockChild();
 
