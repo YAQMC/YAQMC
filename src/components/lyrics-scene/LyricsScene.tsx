@@ -190,6 +190,11 @@ export function LyricsScene({
   const runtimePlaying = usePlayerStore((state) => state.isPlaying);
   const runtimeScrubbing = usePlayerStore((state) => state.isScrubbing);
   const runtimeTimelineRevision = usePlayerStore((state) => state.timelineRevision);
+  // While paused nothing interpolates the transport, so it needs the live store
+  // position; `bindings.positionMs` is only sampled when the host re-renders.
+  const runtimePausedPositionMs = usePlayerStore((state) =>
+    state.isPlaying ? null : state.positionMs,
+  );
   const portrait = sceneSize.width > 0 && sceneSize.height > sceneSize.width;
   const scene = useMemo(
     () => (editor ? preset.scene : sceneForOrientation(preset, portrait)),
@@ -593,7 +598,9 @@ export function LyricsScene({
               artistLabel={bindings.artistLabel}
               isPlaying={editor ? bindings.isPlaying : runtimePlaying}
               active={!transportHidden}
-              positionMs={bindings.positionMs}
+              positionMs={
+                editor ? bindings.positionMs : (runtimePausedPositionMs ?? scenePositionMs)
+              }
               durationMs={bindings.durationMs}
               getPositionMs={bindings.getPositionMs}
               onPrevious={() => bindings.previous?.()}

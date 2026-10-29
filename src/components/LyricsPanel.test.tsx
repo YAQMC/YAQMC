@@ -326,6 +326,25 @@ describe('LyricsPanel', () => {
     expect(usePreferencesStore.getState().transport.window).toBe(windowPreset);
   });
 
+  it('keeps the scene transport slider on the committed position while paused', () => {
+    const { container } = render(<LyricsPanel {...props()} />);
+    const slider = container.querySelector<HTMLInputElement>(
+      '.lyrics-scene__transport input[type="range"]',
+    )!;
+    expect(slider.value).toBe('4500');
+
+    fireEvent.pointerDown(slider);
+    fireEvent.input(slider, { target: { value: '60000' } });
+    fireEvent.pointerUp(slider);
+    expect(usePlayerStore.getState().positionMs).toBe(60_000);
+    expect(slider.value).toBe('60000');
+
+    act(() => usePlayerStore.setState({ isPlaying: true }));
+    act(() => usePlayerStore.getState().seek(120_000));
+    act(() => usePlayerStore.setState({ isPlaying: false }));
+    expect(slider.value).toBe('120000');
+  });
+
   it('renders the configured window and fullscreen transport bars around one renderer', () => {
     const { container, rerender } = render(<LyricsPanel {...props()} />);
     const windowBar = container.querySelector<HTMLElement>('.lyrics-transport');
