@@ -103,6 +103,9 @@
 .lyrics-scene__widget[data-widget='transport'] {
   align-items: stretch;
   justify-content: stretch;
+  /* Controls fill the box edge to edge; leave room for the focus outline and its offset. */
+  overflow: clip;
+  overflow-clip-margin: 4px;
 }
 
 .lyrics-scene__widget[data-widget='artwork'] {
