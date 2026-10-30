@@ -12,6 +12,19 @@ An optimized or packaged local build is still a source build. The desktop build 
 
 **Receive prereleases** is disabled by default and saved locally. Enabling it includes published beta/nightly and other valid SemVer prereleases. Disabling it never downgrades. Updates must have a strictly higher SemVer; a different commit at the same version does not trigger replacement. Drafts and unrelated Git branches are ignored.
 
+## Using beta releases
+
+Install an official release containing this updater once, open **Settings → Updates**,
+enable **Receive prereleases**, then check for updates. A published higher version
+such as `0.1.2-beta.2` is offered to a `0.1.2-beta.1` user. Click **Download, update
+and restart** to apply it. Turning the switch off keeps the installed beta until a
+higher stable version, such as `0.1.2`, is published. It does not return to `0.1.1`.
+
+Packages downloaded from CI or **Build artifacts**, AUR and local Git builds only
+notify; install an official Release package to use in-app replacement. Publishers
+use version tags in **YAQMC release**, not raw branch artifacts. See the
+[beta/nightly publishing guide](ci.md#publish-a-beta-or-nightly).
+
 ## Integrity and installation
 
 The host fixes a release and asset identity, package format, application architecture, byte size and GitHub SHA-256 before downloading. It revalidates the release and hashes the downloaded file again before installation. Missing or changed assets stop the update. Requests use an isolated session and the system proxy without music-provider cookies or credentials. HTTPS redirects are limited to GitHub and its release asset hosts. Downloads stream to disk and partial files are removed after cancellation or failure.

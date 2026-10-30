@@ -74,3 +74,36 @@ load. Plugin scenes are immutable in Composer; use **Fork to My Scene**.
 On Linux, live CSS `filter: blur()` is disabled for lyric lines and scene widget blur overrides. Scene video is not
 decoded in `gpu-off` / compatibility graphics modes. `@scope` requires the bundled Chromium engine; if the engine ignores it, the
 sheet does not apply and does not leak into Settings.
+
+## Plugin-owned background canvas
+
+A scene may set `scene.background.source` to `"plugin"`. The active scene's script can then register one host-owned
+background surface:
+
+```ts
+ctx.scenes.background.register('vinyl', {
+  mount(surface) {
+    const context = surface.canvas.getContext('2d');
+    if (!context) return;
+    if (surface.artwork) context.drawImage(surface.artwork, 0, 0, surface.width, surface.height);
+  },
+  update(state) {
+    // Update animation state or freeze when state.isPlaying is false.
+  },
+  unmount() {
+    // Stop timers and release plugin-owned resources.
+  },
+});
+```
+
+The host creates an `OffscreenCanvas`, transfers it to the isolated plugin Worker once, and owns its position,
+size, z-order and accessibility. `mount` receives the current artwork as an `ImageBitmap` when the browser can
+decode it, plus a dominant-color fallback. Subsequent messages carry only dimensions, artwork changes and playback/
+visibility state; the host never sends per-frame draw commands or audio samples. The plugin may run its own
+`requestAnimationFrame` loop inside the Worker, and must stop it in `unmount` or when reduced motion is requested.
+When `update` reports new `pixelWidth` or `pixelHeight`, resize the retained `OffscreenCanvas` before drawing.
+
+The surface is available only while the matching plugin scene is active. Switching scenes, disabling the plugin or
+entering safe mode unmounts it. Registration remains subject to `scene.register`; invalid scene IDs and stale scene
+instances are ignored. Canvas support is optional: when `OffscreenCanvas` or artwork decoding is unavailable, the
+scene falls back to its normal color/artwork background.

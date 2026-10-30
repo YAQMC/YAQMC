@@ -5,17 +5,18 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const NUMBER = '(?:0|[1-9]\\d*)';
 const RELEASE_VERSION = new RegExp(
-  `^(${NUMBER})\\.(${NUMBER})\\.(${NUMBER})(?:-(alpha|beta|rc)\\.(${NUMBER}))?$`,
+  `^(${NUMBER})\\.(${NUMBER})\\.(${NUMBER})(?:-(alpha|beta|nightly|rc)\\.(${NUMBER}))?$`,
   'u',
 );
-const STAGE = Object.freeze({ alpha: 1, beta: 2, rc: 3, stable: 9 });
+// Keep numeric codes in the same order as SemVer's prerelease identifiers.
+const STAGE = Object.freeze({ alpha: 1, beta: 2, nightly: 3, rc: 4, stable: 9 });
 
 export function androidVersion(version) {
   if (typeof version !== 'string') throw new Error('Android version must be a string');
   const match = RELEASE_VERSION.exec(version);
   if (!match) {
     throw new Error(
-      `Android release version must be x.y.z, x.y.z-alpha.n, x.y.z-beta.n, or x.y.z-rc.n: ${version}`,
+      `Android release version must be x.y.z or x.y.z-{alpha,beta,nightly,rc}.n: ${version}`,
     );
   }
 

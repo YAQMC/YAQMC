@@ -6,6 +6,7 @@ import { androidVersion, assertAndroidReleaseTag } from './android-version.mjs';
 test('maps stable and prerelease SemVer values to monotonically ordered Android codes', () => {
   const alpha = androidVersion('0.1.0-alpha.12');
   const beta = androidVersion('0.1.0-beta.6');
+  const nightly = androidVersion('0.1.0-nightly.1');
   const rc = androidVersion('0.1.0-rc.1');
   const stable = androidVersion('0.1.0');
   const patch = androidVersion('0.1.1-alpha.1');
@@ -13,7 +14,8 @@ test('maps stable and prerelease SemVer values to monotonically ordered Android 
   assert.equal(beta.versionName, '0.1.0-beta.6');
   assert.equal(beta.versionCode, 1_002_006);
   assert.ok(alpha.versionCode < beta.versionCode);
-  assert.ok(beta.versionCode < rc.versionCode);
+  assert.ok(beta.versionCode < nightly.versionCode);
+  assert.ok(nightly.versionCode < rc.versionCode);
   assert.ok(rc.versionCode < stable.versionCode);
   assert.ok(stable.versionCode < patch.versionCode);
 });
@@ -33,6 +35,8 @@ test('rejects formats and components that cannot be encoded safely', () => {
     '1.100.0',
     '1.0.100',
     '1.0.0-beta.1000',
+    '1.0.0-nightly.1000',
+    '1.0.0-nightly.20261028',
   ]) {
     assert.throws(() => androidVersion(version), /Android/);
   }

@@ -269,6 +269,23 @@ describe('lyrics preset foundation', () => {
     expect(resolved.scene.extras?.[0]?.bind).toBe('track.title');
   });
 
+  it('preserves plugin-owned background sources in scene definitions', () => {
+    const source = resolveLyricsPreset(defaultLyricsPresetState, BUILTIN_CLASSIC_ID).scene;
+    const state = normalizeLyricsPresetState({
+      selectedId: 'custom.plugin-background',
+      custom: [
+        {
+          id: 'custom.plugin-background',
+          layout: 'split',
+          scene: { ...source, background: { ...source.background, source: 'plugin' } },
+        },
+      ],
+    });
+    expect(resolveLyricsPreset(state, 'custom.plugin-background').scene.background.source).toBe(
+      'plugin',
+    );
+  });
+
   it('forks a plugin scene into a custom preset without remaining a plugin source', () => {
     setPluginPresetCatalog([
       {

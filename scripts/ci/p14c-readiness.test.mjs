@@ -1,15 +1,69 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { formatP14cStatus, inspectP14cReadiness, validateP14cRecord } from './p14c-readiness.mjs';
+import {
+  formatP14cStatus,
+  inspectP14cReadiness as inspectReadiness,
+  validateP14cRecord as validateRecord,
+} from './p14c-readiness.mjs';
+import { QM_API_RS_REV } from './qm-api-rs-access.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const readinessPath = path.join(repositoryRoot, 'docs', 'release', 'provider-readiness.json');
+const fixtureRoot = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-readiness-'));
+mkdirSync(path.join(fixtureRoot, 'docs/release'), { recursive: true });
+writeFileSync(path.join(fixtureRoot, 'docs/release/fixture.md'), 'Synthetic test evidence.\n');
+for (const file of [
+  'crates/yaqmc-provider-qqmusic/Cargo.toml',
+  'crates/yaqmc-core/Cargo.toml',
+  'crates/yaqmc-provider-qqmusic/src/qmc.rs',
+  'crates/yaqmc-provider-qqmusic/src/qqmusic/auth.rs',
+  'crates/yaqmc-provider-qqmusic/src/qmapi/credential.rs',
+  'crates/yaqmc-provider-qqmusic/src/qqmusic/account.rs',
+]) {
+  mkdirSync(path.dirname(path.join(fixtureRoot, file)), { recursive: true });
+  copyFileSync(path.join(repositoryRoot, file), path.join(fixtureRoot, file));
+}
+
+const validateP14cRecord = (record) => validateRecord(record, { root: fixtureRoot });
+function inspectP14cReadiness() {
+  writeFileSync(
+    path.join(fixtureRoot, 'docs/release/provider-readiness.json'),
+    JSON.stringify(currentRecord()),
+  );
+  return inspectReadiness(fixtureRoot);
+}
 
 function currentRecord() {
-  return JSON.parse(readFileSync(readinessPath, 'utf8'));
+  return {
+    schemaVersion: 1,
+    phase: 'P14-C',
+    targetPin: QM_API_RS_REV,
+    cutoverBaselinePin: '1'.repeat(40),
+    cutoverAuthorized: true,
+    defaultBackend: 'qmapi',
+    responsibilities: {
+      retireAfterGates: ['synthetic-retired-responsibility'],
+      keep: ['legacy-session-migration-rollback-slot', 'synthetic-retained-responsibility'],
+      pendingProductionReplacement: [],
+    },
+    gates: [
+      'p14b-live-hybrid',
+      'retirement-scope',
+      'crate-provenance',
+      'production-qmc-library',
+      'exact-pin-three-day-soak',
+      'production-credential-primary',
+      'production-account-mutation-hybrid',
+    ].map((id) => ({
+      id,
+      status: id === 'exact-pin-three-day-soak' ? 'not-started' : 'pass',
+      evidence: 'docs/release/fixture.md',
+      ...(id === 'exact-pin-three-day-soak' ? { appliesToPin: QM_API_RS_REV } : {}),
+    })),
+  };
 }
 
 function currentPinQualifiedRecord() {
@@ -48,7 +102,7 @@ test('the new production pin does not inherit a previous soak waiver', () => {
   assert.equal(soak.waiverKind, undefined);
 });
 
-test('the shipped record reports the unqualified pin as blocked', () => {
+test('a synthetic record reports the unqualified pin as blocked', () => {
   const { record, blockers } = inspectP14cReadiness();
   const report = formatP14cStatus(record, blockers);
   assert.match(report, /^PROVIDER READINESS STATUS: BLOCKED$/m);

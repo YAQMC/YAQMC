@@ -291,16 +291,16 @@ impl ComponentHostServices {
             .filesystem
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let credential_index = self.read_credential_index(&namespace);
+        let credential_index = self.read_credential_index(namespace);
         for handle in credential_index.keys() {
             self.inner
                 .credentials
-                .delete(&credential_account(&namespace, handle))
+                .delete(&credential_account(namespace, handle))
                 .map_err(|_| "component credential could not be deleted".to_owned())?;
         }
-        remove_file_if_exists(&self.kv_path(&namespace))?;
-        remove_file_if_exists(&self.credential_index_path(&namespace))?;
-        let cache = self.cache_namespace_path(&namespace);
+        remove_file_if_exists(&self.kv_path(namespace))?;
+        remove_file_if_exists(&self.credential_index_path(namespace))?;
+        let cache = self.cache_namespace_path(namespace);
         if cache.is_dir() {
             fs::remove_dir_all(&cache)
                 .map_err(|_| "component cache could not be deleted".to_owned())?;

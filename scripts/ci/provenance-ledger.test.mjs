@@ -7,7 +7,6 @@ import test from 'node:test';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '..', '..');
 const validator = path.join(repositoryRoot, 'scripts', 'validate-provenance-ledger.mjs');
-const committedLedger = path.join(repositoryRoot, 'docs', 'release', 'provenance-ledger.json');
 const revision = '0123456789abcdef0123456789abcdef01234567';
 
 function passingLedger() {
@@ -71,14 +70,15 @@ function runLedger(ledgerPath, enforce = false) {
   );
 }
 
-test('committed ledger reports PASS and enforcement succeeds', () => {
-  const report = runLedger(committedLedger);
+test('synthetic ledger reports PASS and enforcement succeeds', () => {
+  const fixture = writeFixture(passingLedger());
+  const report = runLedger(fixture);
 
   assert.equal(report.status, 0, report.stderr);
   assert.match(report.stdout, /PROVENANCE STATUS: PASS/);
   assert.match(report.stdout, /release decision: pass/);
 
-  const enforced = runLedger(committedLedger, true);
+  const enforced = runLedger(fixture, true);
   assert.equal(enforced.status, 0, enforced.stderr);
   assert.match(enforced.stdout, /PROVENANCE STATUS: PASS/);
 });

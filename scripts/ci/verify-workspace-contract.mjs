@@ -11,6 +11,7 @@ const expectedMembers = [
   ['yaqmc-protocol', 'crates/yaqmc-protocol/Cargo.toml'],
   ['yaqmc-provider-api', 'crates/yaqmc-provider-api/Cargo.toml'],
   ['yaqmc-provider-qqmusic', 'crates/yaqmc-provider-qqmusic/Cargo.toml'],
+  ['yaqmc-update-helper', 'crates/yaqmc-update-helper/Cargo.toml'],
 ];
 const forbiddenCoreDependencyPatterns = [
   /^webkit2gtk(?:-.+)?$/,

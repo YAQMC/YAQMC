@@ -5,9 +5,13 @@ manager must provide the complete corresponding source to every recipient on ter
 The source offering must be published with the release and retained as required by that license; private dependency
 access alone is not a source offering.
 
-Every release source manifest must identify the exact YAQMC commit, the SHA-256 digest of
-`docs/release/provenance-ledger.json`, the accompanying provenance evidence references, and the result of
-`node scripts/validate-provenance-ledger.mjs --enforce`. Do not publish while that enforcement is blocked. Delivering
+Every release source manifest must identify the exact YAQMC commit, dependency revisions,
+licenses and hashes of the delivered source archives. Source-provenance reviews, audit
+reports and release-gate records remain private on the maintainer's machine; neither their
+contents nor their hashes belong in the public manifest or archives. Run
+`npm run release:check:local -- --commit <FULL_SHA> --tag <VERSION_TAG>` locally
+before approving that exact commit in the protected `release-signing` environment.
+Do not publish while either private enforcement gate is blocked. Delivering
 complete corresponding source does not cure missing copyright permission, missing relicensing authority, or an
 unresolved proprietary extraction; those remain separate release blockers.
 
@@ -25,21 +29,27 @@ The source delivery must include:
 
 Include each dependency's license files, manifests, lockfiles, and build scripts, together with YAQMC's manifests,
 lockfiles, and build/packaging/release scripts. The release notes or source manifest must identify the YAQMC commit,
-the `qm-api-rs` revision, the AMLL version and source revision, the provenance-ledger SHA-256 digest, evidence
-references, and hashes of all delivered archives.
+the `qm-api-rs` revision, the AMLL version and source revision, the applicable licenses,
+and hashes of all delivered archives.
 
 Do not publish a binary release if the required corresponding source is unavailable.
 
-The YAQMC release workflow enforces provider readiness and provenance before
-desktop and Android packaging. Its assembly job checks out the exact `qm-api-rs` and AMLL revisions with
+The release workflow requires passing CI for the exact commit on `main` and
+configured Required reviewers on `release-signing` before desktop and Android
+packaging. Approval attests that the maintainer ran the private provenance and
+provider-readiness gates locally on that commit. This is a human review boundary;
+Actions does not receive or independently inspect the private evidence. Missing
+local inputs or a failed gate prevent local approval; missing environment protection
+fails the workflow. Ordinary CI tests the validators with synthetic fixtures.
+
+The assembly job checks out the exact `qm-api-rs` and AMLL revisions with
 `persist-credentials: false`, runs
 `scripts/ci/corresponding-source.mjs`, and refuses to create a draft unless all
 three revision-bound source archives and `CORRESPONDING-SOURCE-MANIFEST.json`
 are present and hash-valid. Source generation rejects dirty YAQMC, `qm-api-rs`, or AMLL checkouts. The manifest
-records and validates both AMLL package manifests and hashes the provider readiness record,
-provenance ledger, and provenance evidence exactly as stored in the YAQMC
-archive; assembly reads those ZIP entries back, verifies their hashes and
-release decisions, and checks every dependency manifest, source entry point, and license entry.
+uses schema version 3 and records only public source identities, licenses and archive
+hashes. Assembly reads ZIP entries back, rejects private report paths, and checks
+the required build inputs, dependency manifests, source entry points and license entries.
 Assembly also requires downloaded package artifact directories to carry the
 same 40-character YAQMC commit as the source manifest and recomputes every
 file hash declared by their platform-specific build identity. The archive step

@@ -12,6 +12,8 @@ export default tseslint.config(
       'target',
       'output/**',
       'release-electron/**',
+      'release-electron-provider-acceptance/**',
+      'release-electron-provider-qa/**',
       'release-android/**',
       'dist-android/**',
       'apps/android/android/**/build/**',

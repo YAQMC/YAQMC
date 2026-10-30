@@ -52,3 +52,31 @@ Immersive / Vinyl / 用户自定义 / 插件 v1 场景继续加载。插件场�
 
 Linux 上会关闭歌词行和场景控件的实时 `filter: blur()`。`gpu-off` / 兼容图形模式不解码场景视频。`@scope`
 依赖 Electron 内置的 Chromium；若引擎忽略该规则，样式不生效，也不会泄漏到设置页。
+
+## 插件自定义背景画布
+
+场景可以把 `scene.background.source` 设为 `"plugin"`，然后由当前场景脚本注册一个由宿主管理的背景表面：
+
+```ts
+ctx.scenes.background.register('vinyl', {
+  mount(surface) {
+    const context = surface.canvas.getContext('2d');
+    if (!context) return;
+    if (surface.artwork) context.drawImage(surface.artwork, 0, 0, surface.width, surface.height);
+  },
+  update(state) {
+    // 根据 state.isPlaying 更新动画；暂停时冻结。
+  },
+  unmount() {
+    // 停止定时器并释放插件资源。
+  },
+});
+```
+
+宿主创建 `OffscreenCanvas`，只传入隔离 Worker 一次，并负责画布的位置、大小、层级和无障碍属性。浏览器能解码时，
+`mount` 会收到当前封面的 `ImageBitmap`，同时提供主色作为回退。后续只传递尺寸、封面变化、播放和可见性状态，
+不会逐帧传输绘制命令或音频采样。插件可以在 Worker 内自行使用 `requestAnimationFrame`，在 `unmount` 或系统要求减少动态效果时停止。
+`update` 中的 `pixelWidth` 或 `pixelHeight` 变化时，应先调整保留的 `OffscreenCanvas` 再绘制。
+
+只有对应插件场景处于活动状态时才会挂载画布。切换场景、停用插件或进入安全模式会卸载它。接口仍受 `scene.register` 权限保护；
+非法场景 ID 和过期实例会被忽略。若不支持 `OffscreenCanvas` 或封面解码失败，宿主回退到普通颜色/封面背景。

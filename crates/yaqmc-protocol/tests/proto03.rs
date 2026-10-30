@@ -33,20 +33,32 @@ fn registry_is_the_207_method_single_source_of_truth() {
     assert!(method("not_a_method").is_none());
     for name in PROTOCOL_ONLY_METHODS {
         assert!(method(name).is_some(), "{name}");
-        let owner = if name.starts_with("host_updater_") { MethodOwner::Host } else { MethodOwner::Core };
+        let owner = if name.starts_with("host_updater_") {
+            MethodOwner::Host
+        } else {
+            MethodOwner::Core
+        };
         assert_eq!(method(name).expect(name).owner, owner);
     }
 }
 
 #[test]
 fn application_updater_methods_are_host_owned_and_main_renderer_only() {
-    for name in PROTOCOL_ONLY_METHODS.iter().filter(|name| name.starts_with("host_updater_")) {
+    for name in PROTOCOL_ONLY_METHODS
+        .iter()
+        .filter(|name| name.starts_with("host_updater_"))
+    {
         let spec = method(name).unwrap();
         assert_eq!(spec.owner, MethodOwner::Host);
         assert_eq!(spec.allowed_origins, [WindowOrigin::Main]);
         assert!(authorize(WindowOrigin::Main, name).is_ok());
-        for origin in [WindowOrigin::Host, WindowOrigin::LyricsDesktop, WindowOrigin::LyricsIsland,
-            WindowOrigin::LyricsDesktopUnlock, WindowOrigin::LyricsIslandUnlock] {
+        for origin in [
+            WindowOrigin::Host,
+            WindowOrigin::LyricsDesktop,
+            WindowOrigin::LyricsIsland,
+            WindowOrigin::LyricsDesktopUnlock,
+            WindowOrigin::LyricsIslandUnlock,
+        ] {
             assert!(authorize(origin, name).is_err());
         }
     }

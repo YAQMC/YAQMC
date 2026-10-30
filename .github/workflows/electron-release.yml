@@ -12,6 +12,11 @@ on:
           - all
           - windows
           - linux
+      publish:
+        description: Publish a version tag after assembly (branch builds stay drafts)
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -31,8 +36,25 @@ env:
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1'
 
 jobs:
+  release-policy:
+    name: Require release review and passing main CI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.7.0
+      - name: Check protected environment and exact-commit CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/release-approval.mjs
+
   release-gates:
-    name: Provider pin and provenance release gates
+    name: Approve locally validated release and check configuration
+    needs: [release-policy]
     runs-on: ubuntu-latest
     environment: release-signing
     steps:
@@ -50,8 +72,6 @@ jobs:
           ANDROID_RELEASE_CERT_SHA256: ${{ secrets.ANDROID_RELEASE_CERT_SHA256 }}
         run: node scripts/ci/release-preflight.mjs
       - run: node scripts/ci/qm-api-rs-access.mjs --check
-      - run: npm run provider:enforce
-      - run: npm run provenance:enforce
 
   android-package:
     name: Android release package (arm64-v8a)
@@ -370,9 +390,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          YAQMC_PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
         run: |
           set -euo pipefail
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             tag="${GITHUB_REF_NAME}"
           else
             tag="electron-draft-${GITHUB_RUN_ID}"
@@ -382,7 +403,7 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "YAQMC ${tag} (draft)" \
             --notes-file assembled/RELEASE-NOTES.md
-          if [[ "$GITHUB_EVENT_NAME" == "push" && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$YAQMC_PUBLISH" == "true" ]]; then
             version_tag="${tag%%+*}"
             if [[ "$version_tag" == *-* ]]; then
               gh release edit "$tag" --draft=false --prerelease=true --latest=false --title "YAQMC $tag"

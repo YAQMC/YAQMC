@@ -99,6 +99,27 @@ export interface ActiveScriptResource {
   packageSha256?: string;
 }
 
+export interface PluginSceneBackgroundState {
+  width: number;
+  height: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  isPlaying: boolean;
+  positionMs: number;
+  durationMs: number;
+  visible: boolean;
+  reducedMotion: boolean;
+  songId: string | null;
+  artwork?: ImageBitmap | null;
+  artworkColor: string;
+}
+
+export interface PluginSceneBackgroundRegistration {
+  pluginId: string;
+  sceneId: string;
+  version: number;
+}
+
 export interface ActivePluginResources {
   safeMode: boolean;
   developerMode: boolean;
@@ -173,6 +194,8 @@ let runtimeGeneration = 0;
 const sceneInstance = { id: 0, sceneId: '', pluginId: '' };
 const sceneVariables = new Map<string, string>();
 const sceneStates = new Map<string, string>();
+const sceneBackgrounds = new Map<string, PluginSceneBackgroundRegistration>();
+let sceneBackgroundVersion = 0;
 
 export function currentPluginSceneInstance(): {
   id: number;
@@ -213,10 +236,138 @@ export function pluginSceneWidgetOverrides(): ReadonlyMap<string, Record<string,
   return widgetOverrides;
 }
 
+function sceneBackgroundKey(pluginId: string, sceneId: string): string {
+  return `${pluginId}/${sceneId}`;
+}
+
+export function pluginSceneBackgroundRegistration(
+  pluginId: string,
+  sceneId: string,
+): PluginSceneBackgroundRegistration | null {
+  const registration = sceneBackgrounds.get(sceneBackgroundKey(pluginId, sceneId));
+  return registration ? { ...registration } : null;
+}
+
+function validBackgroundInstance(pluginId: string, sceneId: string, instanceId: number): boolean {
+  return (
+    sceneInstance.pluginId === pluginId &&
+    sceneInstance.sceneId === sceneId &&
+    sceneInstance.id === instanceId &&
+    Number.isFinite(instanceId) &&
+    instanceId > 0
+  );
+}
+
+function backgroundStatePayload(state: PluginSceneBackgroundState): Record<string, unknown> {
+  return {
+    width: Math.max(0, Number(state.width) || 0),
+    height: Math.max(0, Number(state.height) || 0),
+    pixelWidth: Math.max(0, Math.round(Number(state.pixelWidth) || 0)),
+    pixelHeight: Math.max(0, Math.round(Number(state.pixelHeight) || 0)),
+    isPlaying: state.isPlaying === true,
+    positionMs: Math.max(0, Number(state.positionMs) || 0),
+    durationMs: Math.max(0, Number(state.durationMs) || 0),
+    visible: state.visible !== false,
+    reducedMotion: state.reducedMotion === true,
+    songId: typeof state.songId === 'string' ? state.songId.slice(0, 200) : null,
+    artwork: state.artwork ?? null,
+    artworkColor: typeof state.artworkColor === 'string' ? state.artworkColor.slice(0, 32) : '',
+  };
+}
+
+export function attachPluginSceneBackground(options: {
+  pluginId: string;
+  sceneId: string;
+  instanceId: number;
+  canvas: HTMLCanvasElement;
+  state: PluginSceneBackgroundState;
+}): boolean {
+  const registration = pluginSceneBackgroundRegistration(options.pluginId, options.sceneId);
+  const worker = workers.get(options.pluginId);
+  if (
+    !registration ||
+    !worker ||
+    !validBackgroundInstance(options.pluginId, options.sceneId, options.instanceId)
+  ) {
+    return false;
+  }
+  if (typeof options.canvas.transferControlToOffscreen !== 'function') return false;
+  const state = backgroundStatePayload(options.state);
+  options.canvas.width = Number(state.pixelWidth) || 1;
+  options.canvas.height = Number(state.pixelHeight) || 1;
+  const offscreen = options.canvas.transferControlToOffscreen();
+  worker.postMessage(
+    {
+      type: 'yaqmc/background',
+      payload: {
+        phase: 'mount',
+        sceneId: options.sceneId,
+        surface: { ...state, canvas: offscreen },
+      },
+    },
+    [offscreen],
+  );
+  return true;
+}
+
+export function updatePluginSceneBackground(options: {
+  pluginId: string;
+  sceneId: string;
+  instanceId: number;
+  state: PluginSceneBackgroundState;
+}): boolean {
+  const worker = workers.get(options.pluginId);
+  if (
+    !worker ||
+    !pluginSceneBackgroundRegistration(options.pluginId, options.sceneId) ||
+    !validBackgroundInstance(options.pluginId, options.sceneId, options.instanceId)
+  ) {
+    return false;
+  }
+  const state = backgroundStatePayload(options.state);
+  const transfer =
+    typeof ImageBitmap !== 'undefined' && state.artwork instanceof ImageBitmap
+      ? [state.artwork]
+      : [];
+  worker.postMessage(
+    {
+      type: 'yaqmc/background',
+      payload: { phase: 'update', sceneId: options.sceneId, state },
+    },
+    transfer,
+  );
+  return true;
+}
+
+export function detachPluginSceneBackground(options: {
+  pluginId: string;
+  sceneId: string;
+  instanceId: number;
+}): boolean {
+  const worker = workers.get(options.pluginId);
+  if (!worker || !validBackgroundInstance(options.pluginId, options.sceneId, options.instanceId)) {
+    return false;
+  }
+  worker.postMessage({
+    type: 'yaqmc/background',
+    payload: { phase: 'unmount', sceneId: options.sceneId },
+  });
+  return true;
+}
+
+function clearPluginSceneBackgrounds(pluginId?: string): void {
+  for (const [key, registration] of sceneBackgrounds) {
+    if (!pluginId || registration.pluginId === pluginId) sceneBackgrounds.delete(key);
+  }
+  sceneBackgroundVersion += 1;
+  emitSceneState();
+}
+
 function resetSceneBehavior(): void {
   sceneVariables.clear();
   sceneStates.clear();
   widgetOverrides.clear();
+  clearPluginSceneBackgrounds();
   emitSceneState();
 }
 
@@ -253,6 +404,8 @@ var __yaqmcListeners = {};
 var __yaqmcSeq = 1;
 var __yaqmcPending = {};
 var __yaqmcSceneInstance = 0;
+var __yaqmcSceneHasMounted = false;
+var __yaqmcBackgroundHandlers = {};
 function __yaqmcCall(method, payload) {
   var id = String(__yaqmcSeq++);
   return new Promise(function (resolve, reject) {
@@ -273,8 +426,17 @@ self.onmessage = function (event) {
     if (data.event === 'scene.changed' && data.payload) {
       if (data.payload.phase === 'mount' && data.payload.pluginId === ${idLiteral}) {
         __yaqmcSceneInstance = Number(data.payload.instanceId) || 0;
+        __yaqmcSceneHasMounted = true;
       }
       if (data.payload.phase === 'unmount' && Number(data.payload.instanceId) === __yaqmcSceneInstance) {
+        var unmountHandlers = __yaqmcBackgroundHandlers[data.payload.sceneId];
+        if (unmountHandlers && typeof unmountHandlers.unmount === 'function') {
+          try { Promise.resolve(unmountHandlers.unmount()).catch(function (error) {
+            self.postMessage({ type: 'yaqmc/error', message: String(error && error.message ? error.message : error) });
+          }); } catch (error) {
+            self.postMessage({ type: 'yaqmc/error', message: String(error && error.message ? error.message : error) });
+          }
+        }
         __yaqmcSceneInstance = 0;
       }
     }
@@ -282,6 +444,29 @@ self.onmessage = function (event) {
     for (var i = 0; i < list.length; i++) {
       try { list[i](data.payload); } catch (error) { self.postMessage({ type: 'yaqmc/error', message: String(error) }); }
     }
+  }
+  if (data.type === 'yaqmc/background') {
+    var background = data.payload || {};
+    var handlers = __yaqmcBackgroundHandlers[background.sceneId];
+    if (!handlers) return;
+    try {
+      var operation;
+      if (background.phase === 'mount' && typeof handlers.mount === 'function') {
+        operation = handlers.mount(background.surface);
+      } else if (background.phase === 'update' && typeof handlers.update === 'function') {
+        operation = handlers.update(background.state);
+      } else if (background.phase === 'unmount' && typeof handlers.unmount === 'function') {
+        operation = handlers.unmount();
+      }
+      if (operation && typeof operation.then === 'function') {
+        Promise.resolve(operation).catch(function (error) {
+          self.postMessage({ type: 'yaqmc/error', message: String(error && error.message ? error.message : error) });
+        });
+      }
+    } catch (error) {
+      self.postMessage({ type: 'yaqmc/error', message: String(error && error.message ? error.message : error) });
+    }
+    return;
   }
 };
 var ctx = {
@@ -347,7 +532,19 @@ var ctx = {
     setVariable: function (name, value) { return __yaqmcCall('scenes.setVariable', { name: name, value: value, instanceId: __yaqmcSceneInstance }); },
     setState: function (name, value) { return __yaqmcCall('scenes.setState', { name: name, value: value, instanceId: __yaqmcSceneInstance }); },
     setWidgetProperty: function (widgetId, property, value) { return __yaqmcCall('scenes.setWidgetProperty', { widgetId: widgetId, property: property, value: value, instanceId: __yaqmcSceneInstance }); },
-    animate: function (widgetId, property, value) { return __yaqmcCall('scenes.animate', { widgetId: widgetId, property: property, value: value, instanceId: __yaqmcSceneInstance }); }
+    animate: function (widgetId, property, value) { return __yaqmcCall('scenes.animate', { widgetId: widgetId, property: property, value: value, instanceId: __yaqmcSceneInstance }); },
+    background: {
+      register: function (sceneId, handlers) {
+        var id = String(sceneId || '');
+        if (handlers && typeof handlers === 'object') __yaqmcBackgroundHandlers[id] = handlers;
+        return __yaqmcCall('scenes.background.register', { sceneId: id, instanceId: __yaqmcSceneInstance, sceneMounted: __yaqmcSceneHasMounted });
+      },
+      unregister: function (sceneId) {
+        var id = String(sceneId || '');
+        delete __yaqmcBackgroundHandlers[id];
+        return __yaqmcCall('scenes.background.unregister', { sceneId: id, instanceId: __yaqmcSceneInstance, sceneMounted: __yaqmcSceneHasMounted });
+      }
+    }
   },
   log: {
     info: function (message) { return __yaqmcCall('log.info', { message: String(message || '') }); },
@@ -480,6 +677,7 @@ function stopScripts(): void {
   );
   runtimeTokens = new Map();
   clearPluginUi();
+  clearPluginSceneBackgrounds();
   workerFingerprints.clear();
   for (const ready of workerReadiness.values()) ready.resolve('plugin-stopped');
   workerReadiness.clear();
@@ -494,6 +692,7 @@ async function retireOnePlugin(id: string): Promise<void> {
   workerReadiness.get(id)?.resolve('plugin-stopped');
   workerReadiness.delete(id);
   stagedEffects.delete(id);
+  clearPluginSceneBackgrounds(id);
   clearPluginUi(id);
   if (typeof document !== 'undefined') {
     for (const attr of [STYLE_ATTR, SCENE_STYLE_ATTR]) {
@@ -563,6 +762,30 @@ function applyBridgeSideEffect(
   }
   if (method === 'settings.set') {
     emitToPlugin(script.pluginId, 'settings.changed', value);
+    return;
+  }
+  if (method === 'scenes.background.register' || method === 'scenes.background.unregister') {
+    const source =
+      payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+    const sceneId = typeof source.sceneId === 'string' ? source.sceneId.trim() : '';
+    const instanceId = Number(source.instanceId ?? 0);
+    const sceneMounted = source.sceneMounted === true;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(sceneId)) return;
+    if (
+      (instanceId > 0 && !applySceneMutation(script.pluginId, payload)) ||
+      (instanceId <= 0 && sceneMounted)
+    )
+      return;
+    const key = sceneBackgroundKey(script.pluginId, sceneId);
+    if (method === 'scenes.background.register') {
+      sceneBackgroundVersion += 1;
+      sceneBackgrounds.set(key, {
+        pluginId: script.pluginId,
+        sceneId,
+        version: sceneBackgroundVersion,
+      });
+    } else sceneBackgrounds.delete(key);
+    emitSceneState();
     return;
   }
   if (!applySceneMutation(script.pluginId, payload)) return;
@@ -824,7 +1047,10 @@ function emitSceneLifecycle(selectedId: string): void {
   const pluginMatch = /^plugin:([^:]+):(.+)$/.exec(selectedId);
   const nextPluginId = pluginMatch?.[1] ?? '';
   const nextSceneId = pluginMatch?.[2] ?? selectedId;
-  if (sceneInstance.pluginId && sceneInstance.pluginId !== nextPluginId) {
+  if (
+    sceneInstance.pluginId &&
+    (sceneInstance.pluginId !== nextPluginId || sceneInstance.sceneId !== nextSceneId)
+  ) {
     emitToPlugins('scene.changed', {
       phase: 'unmount',
       pluginId: sceneInstance.pluginId,
@@ -1008,6 +1234,7 @@ function retirePluginCapabilities(): void {
   }
   setPluginPresetCatalog([]);
   setPluginTransportCatalog([]);
+  clearPluginSceneBackgrounds();
   resetSceneBehavior();
   clearPluginUi();
   // Invalidate and retire the currently running workers synchronously.  This

@@ -12,6 +12,10 @@ worker 没有 `document`、旧宿主全局对象、原始 IPC 或原始 `fetch`�
 CSS 与 Scene Schema 不执行 JavaScript。场景 CSS 限定在 `[data-yaqmc-plugin-scene]`。全局样式只能使用文档化的
 `data-yaqmc` / `--yaqmc-*` API。
 
+可选的插件背景接口同样在隔离边界内：`scene.register` 只允许插件为当前场景接收一个由宿主管理的 `OffscreenCanvas`。
+画布只传入 Worker 一次；位置、层级和无障碍属性由宿主控制，之后只发送受限的封面/播放状态。插件不会获得 DOM 节点、原始音频、
+Cookie 或任意渲染器 IPC。
+
 可授予：`track.read`、`lyrics.read`、`player.read`、`player.control`、`theme.read`、`plugin.storage`、
 `scene.register`、`style.register`，以及 v2 的 `ui.contextMenu`、`ui.playerBar`、`ui.sidebar`、`ui.notify` 和
 `network:https://host`。
