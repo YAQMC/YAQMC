@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
@@ -18,6 +17,7 @@ import {
   YAQMC_ORIGIN,
 } from './corresponding-source.mjs';
 import { QM_API_RS_ORIGIN, QM_API_RS_REV } from './qm-api-rs-access.mjs';
+import { isPrivateReleaseFile } from './private-release-files.mjs';
 import { sha256File } from './write-build-info.mjs';
 
 export const ELECTRON_RELEASE_NOTES_NAME = 'RELEASE-NOTES-ELECTRON.md';
@@ -85,8 +85,12 @@ export function parseAssembleArgs(argv) {
   return options;
 }
 
-export function electronDraftTag({ eventName, refName, runId }) {
-  if (eventName === 'push' && typeof refName === 'string' && /^v\d/.test(refName)) {
+export function electronDraftTag({ eventName, refType, refName, runId }) {
+  if (
+    (eventName === 'push' || refType === 'tag') &&
+    typeof refName === 'string' &&
+    /^v\d/.test(refName)
+  ) {
     return refName;
   }
   if (!runId) {
@@ -117,10 +121,6 @@ function isSafeRelativePath(value) {
     normalized !== '..' &&
     !normalized.startsWith('../')
   );
-}
-
-function sha256Bytes(value) {
-  return createHash('sha256').update(value).digest('hex');
 }
 
 function indexZipArchive(archivePath) {
@@ -228,11 +228,21 @@ function readZipEntry(archive, name) {
   return content;
 }
 
-function validateArchiveEvidence(sourceDir, manifest) {
+function validateSourceArchives(sourceDir, manifest) {
   for (const component of manifest.components) {
     const archivePath = path.join(sourceDir, component.archive);
     const archive = indexZipArchive(archivePath);
     const prefix = `${component.name}-${component.revision}/`;
+    for (const name of archive.entries.keys()) {
+      if (
+        !name.startsWith(prefix) ||
+        (!name.endsWith('/') && isPrivateReleaseFile(name.slice(prefix.length)))
+      ) {
+        throw new Error(
+          'corresponding-source archive contains a private record or unexpected root',
+        );
+      }
+    }
     for (const licenseFile of component.licenseFiles) {
       readZipEntry(archive, `${prefix}${licenseFile}`);
     }
@@ -265,36 +275,14 @@ function validateArchiveEvidence(sourceDir, manifest) {
       continue;
     }
 
-    const evidence = new Map([
-      [manifest.p14c.readinessRecord, manifest.p14c.readinessSha256],
-      [manifest.provenance.ledger, manifest.provenance.ledgerSha256],
-      ...manifest.provenance.evidence.map((file) => [
-        file,
-        manifest.provenance.evidenceSha256[file],
-      ]),
-    ]);
-    for (const [file, expectedHash] of evidence) {
-      const content = readZipEntry(archive, `${prefix}${file}`);
-      if (sha256Bytes(content) !== expectedHash) {
-        throw new Error(`corresponding-source evidence hash mismatch: ${file}`);
-      }
-    }
-    const readiness = JSON.parse(
-      readZipEntry(archive, `${prefix}${manifest.p14c.readinessRecord}`).toString('utf8'),
-    );
-    const ledger = JSON.parse(
-      readZipEntry(archive, `${prefix}${manifest.provenance.ledger}`).toString('utf8'),
-    );
-    if (
-      readiness?.cutoverAuthorized !== true ||
-      readiness?.defaultBackend !== 'qmapi' ||
-      readiness?.targetPin !== QM_API_RS_REV ||
-      ledger?.release?.decision !== 'pass' ||
-      !Array.isArray(ledger?.release?.blockers) ||
-      ledger.release.blockers.length !== 0 ||
-      ledger?.audit?.qmApiRs?.revision !== QM_API_RS_REV
-    ) {
-      throw new Error('corresponding-source archive contains non-release-ready evidence');
+    for (const file of [
+      'Cargo.toml',
+      'Cargo.lock',
+      'package.json',
+      'package-lock.json',
+      '.github/workflows/electron-release.yml',
+    ]) {
+      readZipEntry(archive, `${prefix}${file}`);
     }
   }
 }
@@ -309,7 +297,7 @@ function validateCorrespondingSource(sourceDir) {
   }
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   if (
-    manifest?.schemaVersion !== 2 ||
+    manifest?.schemaVersion !== 3 ||
     manifest?.license !== 'GPL-3.0-or-later' ||
     !/^[0-9a-f]{40}$/u.test(manifest?.releaseCommit ?? '') ||
     manifest?.qmApiRsRevision !== QM_API_RS_REV ||
@@ -318,18 +306,19 @@ function validateCorrespondingSource(sourceDir) {
     manifest?.amll?.version !== AMLL_VERSION ||
     manifest?.amll?.license !== 'AGPL-3.0-only' ||
     JSON.stringify(manifest?.amll?.packages) !== JSON.stringify(expectedAmllPackages) ||
-    manifest?.p14c?.status !== 'READY' ||
-    manifest?.p14c?.targetPin !== QM_API_RS_REV ||
-    manifest?.p14c?.readinessRecord !== 'docs/release/provider-readiness.json' ||
-    !/^[0-9a-f]{64}$/u.test(manifest?.p14c?.readinessSha256 ?? '') ||
-    manifest?.provenance?.status !== 'PASS' ||
-    manifest?.provenance?.ledger !== 'docs/release/provenance-ledger.json' ||
-    !/^[0-9a-f]{64}$/u.test(manifest?.provenance?.ledgerSha256 ?? '') ||
-    JSON.stringify(manifest?.provenance?.evidence) !==
-      JSON.stringify(['docs/release/provenance.md', 'docs/release/qm-api-rs-provenance.md']) ||
-    Object.keys(manifest?.provenance?.evidenceSha256 ?? {}).length !== 2 ||
-    manifest.provenance.evidence.some(
-      (file) => !/^[0-9a-f]{64}$/u.test(manifest.provenance.evidenceSha256[file] ?? ''),
+    Object.keys(manifest.amll).some(
+      (key) => !['origin', 'revision', 'version', 'license', 'packages'].includes(key),
+    ) ||
+    Object.keys(manifest).some(
+      (key) =>
+        ![
+          'schemaVersion',
+          'license',
+          'releaseCommit',
+          'qmApiRsRevision',
+          'amll',
+          'components',
+        ].includes(key),
     ) ||
     !Array.isArray(manifest.components) ||
     manifest.components.length !== 3
@@ -370,6 +359,9 @@ function validateCorrespondingSource(sourceDir) {
       component.origin !== expected.origin ||
       component.revision !== expected.revision ||
       component.archive !== expected.archive ||
+      Object.keys(component).some(
+        (key) => !['name', 'origin', 'revision', 'archive', 'sha256', 'licenseFiles'].includes(key),
+      ) ||
       typeof component?.archive !== 'string' ||
       path.basename(component.archive) !== component.archive ||
       !/^[0-9a-f]{64}$/u.test(component.sha256 ?? '') ||
@@ -392,7 +384,7 @@ function validateCorrespondingSource(sourceDir) {
   if (expectedComponents.size > 0) {
     throw new Error('corresponding-source manifest is missing an expected component');
   }
-  validateArchiveEvidence(sourceDir, manifest);
+  validateSourceArchives(sourceDir, manifest);
   return {
     files: [manifestPath, ...[...archives].sort().map((name) => path.join(sourceDir, name))],
     releaseCommit: manifest.releaseCommit,

@@ -16,6 +16,11 @@ blob worker; Worker construction failure marks the plugin Failed.
 CSS and Scene Schema never execute JavaScript. Scene CSS is scoped to `[data-yaqmc-plugin-scene]`. Global styles may
 only target the documented `data-yaqmc` / `--yaqmc-*` API.
 
+The optional plugin background API is also isolated: `scene.register` permits a plugin to receive one host-owned
+`OffscreenCanvas` for its active scene. The canvas is transferred to the Worker once; the host controls its bounds,
+z-order and accessibility, and sends only bounded artwork/playback state updates. Plugins do not receive a DOM node,
+raw audio, cookies or arbitrary renderer IPC.
+
 ## Permissions
 
 Granted only after review:

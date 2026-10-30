@@ -134,6 +134,27 @@ describe('plugin runtime isolation', () => {
     expect(source).not.toContain(['@', 'tau', 'ri-apps'].join(''));
   });
 
+  it('exposes a transferred scene background surface without a frame bridge', () => {
+    const source = pluginWorkerBootstrap(
+      `definePlugin({ activate(ctx) {
+        return ctx.scenes.background.register('vinyl', {
+          mount(surface) { surface.canvas.getContext('2d'); },
+          update(state) { if (!state.isPlaying) return; },
+          unmount() {}
+        });
+      } });`,
+      'dev.example.background',
+    );
+    expect(source).toContain('scenes.background.register');
+    expect(source).toContain('scenes.background.unregister');
+    expect(source).toContain('yaqmc/background');
+    expect(source).toContain('__yaqmcBackgroundHandlers');
+    expect(source).toContain('background.surface');
+    expect(source).toContain('unmountHandlers');
+    expect(source).toContain('instanceId: __yaqmcSceneInstance');
+    expect(source).not.toContain('requestAnimationFrame');
+  });
+
   it('evaluates the blob-worker bootstrap without seeing window.yaqmc', async () => {
     Reflect.set(window, 'yaqmc', {
       invoke: () => {

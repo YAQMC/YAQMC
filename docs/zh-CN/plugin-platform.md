@@ -9,6 +9,9 @@ Plugin API v1 提供样式、歌词场景和隔离脚本宿主。API v2 增加�
 HTTPS 和开发者模式。API v3 增加由 Wasmtime 托管的、本地旁加载且未签名的 WebAssembly Provider Component。
 现有 v1/v2 插件保持兼容。
 
+场景脚本可以通过 `ctx.scenes.background.register` 使用宿主管理的背景画布。画布只传入隔离 Worker 一次；封面和播放状态以受限更新
+传递，动画绘制循环由插件在 Worker 内管理。详见[插件场景 API](../plugin-scene-api.md#插件自定义背景画布)。
+
 提供器组件还可通过 `provider.comments` 提供只读歌曲评论，由 YAQMC 统一渲染评论面板和歌词弹幕。详见[歌曲评论](song-comments.md)。
 
 ## 包结构

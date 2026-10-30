@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,10 +21,6 @@ import { QM_API_RS_ORIGIN, QM_API_RS_REV } from './qm-api-rs-access.mjs';
 import { sha256File } from './write-build-info.mjs';
 
 const WORKFLOW = path.join(repositoryRoot, '.github', 'workflows', 'electron-release.yml');
-
-function sha256Text(value) {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
 
 function storedZip(entries) {
   const localParts = [];
@@ -72,6 +67,10 @@ test('tagged builds publish against the existing version tag', () => {
     'electron-draft-99',
   );
   assert.equal(electronDraftTag({ eventName: 'push', refName: 'v1.2.3' }), 'v1.2.3');
+  assert.equal(
+    electronDraftTag({ eventName: 'workflow_dispatch', refType: 'tag', refName: 'v1.2.3-beta.1' }),
+    'v1.2.3-beta.1',
+  );
 });
 
 test('assembles installers, x64 updater feeds, and combined checksums', () => {
@@ -125,27 +124,19 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
   const yaqmcSource = `YAQMC-source-${releaseCommit}.zip`;
   const qmApiSource = `qm-api-rs-source-${QM_API_RS_REV}.zip`;
   const amllSource = `applemusic-like-lyrics-source-${AMLL_REV}.zip`;
-  const readinessRecord = `${JSON.stringify({
-    cutoverAuthorized: true,
-    defaultBackend: 'qmapi',
-    targetPin: QM_API_RS_REV,
-  })}\n`;
-  const provenanceLedger = `${JSON.stringify({
-    audit: { qmApiRs: { revision: QM_API_RS_REV } },
-    release: { decision: 'pass', blockers: [] },
-  })}\n`;
-  const provenanceAudit = 'provenance audit\n';
-  const qmApiProvenance = 'qm-api-rs provenance\n';
-  writeFileSync(
-    path.join(correspondingSource, yaqmcSource),
-    storedZip({
-      [`YAQMC-${releaseCommit}/LICENSE`]: 'GPL-3.0-or-later\n',
-      [`YAQMC-${releaseCommit}/docs/release/provider-readiness.json`]: readinessRecord,
-      [`YAQMC-${releaseCommit}/docs/release/provenance-ledger.json`]: provenanceLedger,
-      [`YAQMC-${releaseCommit}/docs/release/provenance.md`]: provenanceAudit,
-      [`YAQMC-${releaseCommit}/docs/release/qm-api-rs-provenance.md`]: qmApiProvenance,
-    }),
-  );
+  const publicSource = {
+    [`YAQMC-${releaseCommit}/LICENSE`]: 'GPL-3.0-or-later\n',
+    ...Object.fromEntries(
+      [
+        'Cargo.toml',
+        'Cargo.lock',
+        'package.json',
+        'package-lock.json',
+        '.github/workflows/electron-release.yml',
+      ].map((file) => [`YAQMC-${releaseCommit}/${file}`, 'synthetic build input\n']),
+    ),
+  };
+  writeFileSync(path.join(correspondingSource, yaqmcSource), storedZip(publicSource));
   writeFileSync(
     path.join(correspondingSource, qmApiSource),
     storedZip({
@@ -176,7 +167,7 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
   writeFileSync(
     path.join(correspondingSource, CORRESPONDING_SOURCE_MANIFEST),
     `${JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       license: 'GPL-3.0-or-later',
       releaseCommit,
       qmApiRsRevision: QM_API_RS_REV,
@@ -195,22 +186,6 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
             manifestPath: 'packages/react/package.json',
           },
         ],
-      },
-      p14c: {
-        status: 'READY',
-        targetPin: QM_API_RS_REV,
-        readinessRecord: 'docs/release/provider-readiness.json',
-        readinessSha256: sha256Text(readinessRecord),
-      },
-      provenance: {
-        status: 'PASS',
-        ledger: 'docs/release/provenance-ledger.json',
-        ledgerSha256: sha256Text(provenanceLedger),
-        evidence: ['docs/release/provenance.md', 'docs/release/qm-api-rs-provenance.md'],
-        evidenceSha256: {
-          'docs/release/provenance.md': sha256Text(provenanceAudit),
-          'docs/release/qm-api-rs-provenance.md': sha256Text(qmApiProvenance),
-        },
       },
       components: [
         {
@@ -282,8 +257,33 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
 
   const manifestPath = path.join(correspondingSource, CORRESPONDING_SOURCE_MANIFEST);
   const manifestSource = readFileSync(manifestPath, 'utf8');
+  for (const mutate of [
+    (manifest) => {
+      manifest.provenance = { status: 'PASS' };
+    },
+    (manifest) => {
+      manifest.amll.provenanceSha256 = 'b'.repeat(64);
+    },
+    (manifest) => {
+      manifest.components[0].audit = 'synthetic private metadata';
+    },
+  ]) {
+    const withPrivateMetadata = JSON.parse(manifestSource);
+    mutate(withPrivateMetadata);
+    writeFileSync(manifestPath, JSON.stringify(withPrivateMetadata));
+    assert.throws(
+      () =>
+        assembleElectronRelease({
+          sourceDir: packages,
+          correspondingSourceDir: correspondingSource,
+          destDir: path.join(root, 'private-metadata'),
+        }),
+      /not release-ready|entry is invalid/u,
+    );
+  }
+  writeFileSync(manifestPath, manifestSource);
   const mismatchedManifest = JSON.parse(manifestSource);
-  mismatchedManifest.p14c.readinessSha256 = 'c'.repeat(64);
+  mismatchedManifest.components[0].sha256 = 'c'.repeat(64);
   writeFileSync(manifestPath, `${JSON.stringify(mismatchedManifest)}\n`);
   assert.throws(
     () =>
@@ -292,8 +292,49 @@ test('assembles installers, x64 updater feeds, and combined checksums', () => {
         correspondingSourceDir: correspondingSource,
         destDir: path.join(root, 'mismatched-source-assembled'),
       }),
-    /evidence hash mismatch/,
+    /archive hash mismatch/,
   );
+  writeFileSync(manifestPath, manifestSource);
+
+  for (const [label, entries, expected] of [
+    [
+      'private-report',
+      {
+        ...publicSource,
+        [`YAQMC-${releaseCommit}/docs/release/provenance.md`]: 'synthetic private report',
+      },
+      /private|unexpected/u,
+    ],
+    [
+      'missing-license',
+      Object.fromEntries(
+        Object.entries(publicSource).filter(([name]) => !name.endsWith('/LICENSE')),
+      ),
+      /missing.*LICENSE/u,
+    ],
+    [
+      'missing-source',
+      Object.fromEntries(
+        Object.entries(publicSource).filter(([name]) => !name.endsWith('/Cargo.toml')),
+      ),
+      /missing.*Cargo.toml/u,
+    ],
+  ]) {
+    writeFileSync(path.join(correspondingSource, yaqmcSource), storedZip(entries));
+    const changed = JSON.parse(manifestSource);
+    changed.components[0].sha256 = sha256File(path.join(correspondingSource, yaqmcSource));
+    writeFileSync(manifestPath, JSON.stringify(changed));
+    assert.throws(
+      () =>
+        assembleElectronRelease({
+          sourceDir: packages,
+          correspondingSourceDir: correspondingSource,
+          destDir: path.join(root, label),
+        }),
+      expected,
+    );
+  }
+  writeFileSync(path.join(correspondingSource, yaqmcSource), storedZip(publicSource));
   writeFileSync(manifestPath, manifestSource);
 
   writeFileSync(path.join(win, 'YAQMC-windows-x64-setup.exe'), 'tampered');
@@ -320,8 +361,9 @@ test('YAQMC release workflow is the sole tagged desktop and Android release work
   assert.match(workflow, /--require-signing false/);
   assert.match(workflow, /Get-AuthenticodeSignature/);
   assert.match(workflow, /SignatureStatus\]::NotSigned/);
-  assert.match(workflow, /npm run provider:enforce/);
-  assert.match(workflow, /npm run provenance:enforce/);
+  assert.doesNotMatch(workflow, /npm run (?:provider|provenance):enforce/);
+  assert.match(workflow, /node scripts\/ci\/release-approval\.mjs/);
+  assert.match(workflow, /needs: \[release-policy\]/);
   assert.match(workflow, /node scripts\/ci\/corresponding-source\.mjs/);
   assert.match(workflow, /repository: YAQMC\/qm-api-rs/);
   assert.match(workflow, new RegExp(`ref:\\s*${QM_API_RS_REV}`));

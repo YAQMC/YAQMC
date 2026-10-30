@@ -7,7 +7,7 @@ export function officialBuildIdentity(env, version) {
     env.GITHUB_ACTIONS === 'true' &&
     env.GITHUB_REPOSITORY === 'YAQMC/YAQMC' &&
     env.GITHUB_WORKFLOW === 'YAQMC release' &&
-    env.GITHUB_EVENT_NAME === 'push' &&
+    ['push', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME) &&
     env.GITHUB_REF_TYPE === 'tag' &&
     tag === `v${version}` &&
     valid(version) === version.split('+')[0];

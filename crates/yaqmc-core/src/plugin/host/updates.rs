@@ -1154,13 +1154,13 @@ impl ExtensionHost {
         // may escape staging while the durable state pointer is being switched.
         let drain = tokio::time::timeout(Duration::from_secs(15), async {
             loop {
-                if !self
+                if self
                     .updates
                     .bridge_calls
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .get(&preview.plugin_id)
-                    .is_some_and(|a| a.count.load(Ordering::Acquire) > 0)
+                    .is_none_or(|a| a.count.load(Ordering::Acquire) == 0)
                 {
                     break;
                 }

@@ -26,10 +26,14 @@ import { resolveSceneAssetUrl } from '../../application/plugin-asset';
 import { linuxSkipsLiveVideo, skipsLiveCssBlur } from '../../application/platform-integration';
 import {
   currentPluginSceneInstance,
+  attachPluginSceneBackground,
+  detachPluginSceneBackground,
   pluginSceneCssVars,
+  pluginSceneBackgroundRegistration,
   pluginSceneDataState,
   pluginSceneWidgetOverrides,
   subscribePluginSceneState,
+  updatePluginSceneBackground,
 } from '../../application/plugin-runtime';
 import { useLyricsTransportDefinition } from '../../application/use-lyrics-transport';
 import type { LyricsTransportSurface } from '../../application/lyrics-transport';
@@ -186,6 +190,9 @@ export function LyricsScene({
   const [videoFailed, setVideoFailed] = useState(false);
   const [pluginVars, setPluginVars] = useState(pluginSceneCssVars());
   const [pluginState, setPluginState] = useState(pluginSceneDataState());
+  const [documentVisible, setDocumentVisible] = useState(
+    typeof document === 'undefined' || document.visibilityState === 'visible',
+  );
   const editor = mode === 'editor';
   const runtimePlaying = usePlayerStore((state) => state.isPlaying);
   const runtimeScrubbing = usePlayerStore((state) => state.isScrubbing);
@@ -264,6 +271,13 @@ export function LyricsScene({
       }),
     [],
   );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const updateVisibility = () => setDocumentVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => document.removeEventListener('visibilitychange', updateVisibility);
+  }, []);
 
   useEffect(() => {
     const paletteSource =
@@ -373,6 +387,136 @@ export function LyricsScene({
   const skipVideo = reducedMotion || linuxSkipsLiveVideo();
   const extras = listExtraSceneWidgets(scene);
   const overrides = pluginSceneWidgetOverrides();
+  const pluginBackground =
+    !editor && scene.background.source === 'plugin' && pluginSceneKey
+      ? pluginSceneBackgroundRegistration(
+          preset.pluginId ?? '',
+          pluginSceneKey.split('/').slice(1).join('/'),
+        )
+      : null;
+  const pluginBackgroundVersion = pluginBackground?.version;
+  const hasPluginBackground = pluginBackgroundVersion !== undefined;
+  const pluginBackgroundCanvasRef = useRef<HTMLCanvasElement>(null);
+  const pluginBackgroundAttachedRef = useRef(false);
+  const reducedMotionPreference = reducedMotion;
+
+  const backgroundState = useMemo(
+    () => ({
+      width: sceneSize.width,
+      height: sceneSize.height,
+      pixelWidth: Math.max(1, Math.round(sceneSize.width * (globalThis.devicePixelRatio || 1))),
+      pixelHeight: Math.max(1, Math.round(sceneSize.height * (globalThis.devicePixelRatio || 1))),
+      isPlaying: bindings.isPlaying,
+      positionMs: scenePositionMs,
+      durationMs: bindings.durationMs,
+      visible: documentVisible,
+      reducedMotion: reducedMotionPreference,
+      songId: bindings.songId,
+      artworkColor: bindings.artworkColor,
+    }),
+    [
+      sceneSize.height,
+      sceneSize.width,
+      bindings.isPlaying,
+      bindings.durationMs,
+      bindings.songId,
+      bindings.artworkColor,
+      scenePositionMs,
+      reducedMotionPreference,
+      documentVisible,
+    ],
+  );
+  const pluginBackgroundStateRef = useRef(backgroundState);
+
+  useEffect(() => {
+    if (!hasPluginBackground || !pluginSceneKey || !pluginBackgroundCanvasRef.current) return;
+    const canvas = pluginBackgroundCanvasRef.current;
+    const sceneId = pluginSceneKey.split('/').slice(1).join('/');
+    pluginBackgroundAttachedRef.current = attachPluginSceneBackground({
+      pluginId: preset.pluginId ?? '',
+      sceneId,
+      instanceId: instance.id,
+      canvas,
+      state: pluginBackgroundStateRef.current,
+    });
+    return () => {
+      if (pluginBackgroundAttachedRef.current) {
+        detachPluginSceneBackground({
+          pluginId: preset.pluginId ?? '',
+          sceneId,
+          instanceId: instance.id,
+        });
+      }
+      pluginBackgroundAttachedRef.current = false;
+    };
+  }, [
+    pluginBackgroundVersion,
+    hasPluginBackground,
+    pluginSceneKey,
+    preset.pluginId,
+    instance.id,
+    editor,
+  ]);
+
+  useEffect(() => {
+    pluginBackgroundStateRef.current = backgroundState;
+    if (!hasPluginBackground || !pluginSceneKey || !pluginBackgroundAttachedRef.current) return;
+    const sceneId = pluginSceneKey.split('/').slice(1).join('/');
+    updatePluginSceneBackground({
+      pluginId: preset.pluginId ?? '',
+      sceneId,
+      instanceId: instance.id,
+      state: backgroundState,
+    });
+  }, [
+    pluginBackgroundVersion,
+    pluginSceneKey,
+    preset.pluginId,
+    instance.id,
+    hasPluginBackground,
+    backgroundState,
+  ]);
+
+  useEffect(() => {
+    if (!hasPluginBackground || !pluginSceneKey || !pluginBackgroundAttachedRef.current) return;
+    const sceneId = pluginSceneKey.split('/').slice(1).join('/');
+    let cancelled = false;
+    const sendArtwork = async () => {
+      let artwork: ImageBitmap | null = null;
+      if (bindings.artworkSrc && typeof createImageBitmap === 'function') {
+        try {
+          const image = new Image();
+          image.decoding = 'async';
+          image.src = bindings.artworkSrc;
+          await image.decode();
+          if (!cancelled) artwork = await createImageBitmap(image);
+        } catch {
+          artwork = null;
+        }
+      }
+      if (cancelled) {
+        artwork?.close();
+        return;
+      }
+      updatePluginSceneBackground({
+        pluginId: preset.pluginId ?? '',
+        sceneId,
+        instanceId: instance.id,
+        state: { ...pluginBackgroundStateRef.current, artwork },
+      });
+    };
+    void sendArtwork();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    pluginBackgroundVersion,
+    pluginSceneKey,
+    preset.pluginId,
+    instance.id,
+    hasPluginBackground,
+    bindings.artworkSrc,
+  ]);
 
   const artworkRadius =
     scene.artwork.renderer === 'rounded'
@@ -478,6 +622,15 @@ export function LyricsScene({
             ))}
           </div>
         )}
+      {scene.background.visible && pluginBackground && (
+        <canvas
+          ref={pluginBackgroundCanvasRef}
+          className="lyrics-scene__plugin-background"
+          data-plugin-background={`${pluginBackground.pluginId}/${pluginBackground.sceneId}`}
+          aria-hidden="true"
+          style={{ opacity: scene.background.opacity }}
+        />
+      )}
       {scene.background.visible && <div className="lyrics-stage__wash" aria-hidden="true" />}
 
       {scene.artwork.visible && (

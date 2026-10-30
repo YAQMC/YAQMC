@@ -26,7 +26,9 @@ pub fn required_permission(method: &str) -> Result<Option<PluginPermission>, Str
         | "scenes.setVariable"
         | "scenes.setState"
         | "scenes.setWidgetProperty"
-        | "scenes.animate" => Ok(Some(PluginPermission::SceneRegister)),
+        | "scenes.animate"
+        | "scenes.background.register"
+        | "scenes.background.unregister" => Ok(Some(PluginPermission::SceneRegister)),
         "log.info" | "log.warn" | "log.error" => Ok(None),
         "fs.read"
         | "fs.write"
@@ -287,7 +289,11 @@ async fn dispatch_active_bridge(
         | "scenes.setVariable"
         | "scenes.setState"
         | "scenes.setWidgetProperty"
-        | "scenes.animate" => Ok(json!({ "ok": true, "pluginId": runtime.plugin_id })),
+        | "scenes.animate"
+        | "scenes.background.register"
+        | "scenes.background.unregister" => {
+            Ok(json!({ "ok": true, "pluginId": runtime.plugin_id }))
+        }
         "ui.notify" => {
             let message = request
                 .payload
@@ -338,6 +344,14 @@ mod tests {
         assert_eq!(
             required_permission("player.seek").unwrap(),
             Some(PluginPermission::PlayerControl)
+        );
+        assert_eq!(
+            required_permission("scenes.background.register").unwrap(),
+            Some(PluginPermission::SceneRegister)
+        );
+        assert_eq!(
+            required_permission("scenes.background.unregister").unwrap(),
+            Some(PluginPermission::SceneRegister)
         );
         assert!(required_permission("player_seek").is_err());
     }

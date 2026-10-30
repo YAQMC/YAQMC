@@ -189,7 +189,10 @@ impl ComponentProviderAdapter {
     }
 
     pub(crate) fn update_session_busy(&self) -> bool {
-        let mut attempts = self.oauth_attempts.lock().unwrap_or_else(|p| p.into_inner());
+        let mut attempts = self
+            .oauth_attempts
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         prune_oauth_attempts(&mut attempts);
         self.component.busy()
             || !attempts.is_empty()
@@ -198,7 +201,10 @@ impl ComponentProviderAdapter {
                     .lock()
                     .unwrap_or_else(|p| p.into_inner())
                     .state_name(),
-                "starting-login" | "waiting-for-scan" | "waiting-for-confirmation" | "restoring-session"
+                "starting-login"
+                    | "waiting-for-scan"
+                    | "waiting-for-confirmation"
+                    | "restoring-session"
             )
     }
 
@@ -2698,7 +2704,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_admission_preserves_inflight_calls_and_rejects_new_login_without_cancelling_it() {
+    async fn update_admission_preserves_inflight_calls_and_rejects_new_login_without_cancelling_it()
+    {
         let adapter = account_adapter(guest_snapshot(9_999));
         let old_playback = adapter.current_playback_guard();
         let admitted = adapter.enter_call().expect("admitted call");
@@ -2710,7 +2717,12 @@ mod tests {
         let update = adapter.try_admit_update().expect("idle update admission");
         let generation = adapter.account_generation();
         assert_eq!(
-            adapter.start_qr_login().await.err().expect("blocked login").code,
+            adapter
+                .start_qr_login()
+                .await
+                .err()
+                .expect("blocked login")
+                .code,
             "provider-updating"
         );
         assert_eq!(adapter.account_generation(), generation);

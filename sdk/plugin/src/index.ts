@@ -186,6 +186,33 @@ export interface PluginLyricWordAnimation {
   }>;
 }
 
+/** State supplied to a plugin-owned lyrics background surface. */
+export interface PluginSceneBackgroundState {
+  width: number;
+  height: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  isPlaying: boolean;
+  positionMs: number;
+  durationMs: number;
+  visible: boolean;
+  reducedMotion: boolean;
+  songId: string | null;
+  artwork: ImageBitmap | null;
+  artworkColor: string;
+}
+
+/** A host-owned canvas transferred once to the plugin Worker. */
+export interface PluginSceneBackgroundSurface extends PluginSceneBackgroundState {
+  canvas: OffscreenCanvas;
+}
+
+export interface PluginSceneBackgroundHandlers {
+  mount(surface: PluginSceneBackgroundSurface): void | Promise<void>;
+  update?(state: PluginSceneBackgroundState): void | Promise<void>;
+  unmount?(): void | Promise<void>;
+}
+
 export interface PluginStorage {
   get(key: string): Promise<{ value: string | null }>;
   set(key: string, value: string): Promise<{ ok: true }>;
@@ -254,6 +281,10 @@ export interface PluginContext {
       value: string | number | boolean,
     ): Promise<{ ok: true }>;
     animate(widgetId: string, property: string, value: string | number): Promise<{ ok: true }>;
+    background: {
+      register(sceneId: string, handlers: PluginSceneBackgroundHandlers): Promise<{ ok: true }>;
+      unregister(sceneId: string): Promise<{ ok: true }>;
+    };
   };
   log: {
     info(message: string): Promise<{ ok: true }>;

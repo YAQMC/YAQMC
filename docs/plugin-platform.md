@@ -10,6 +10,10 @@ read/control events, safe UI slots, optional scoped HTTPS through a Host proxy, 
 unsigned music-provider plugins as WebAssembly Components hosted by Wasmtime. Existing v1 and v2 plugins continue to
 work unchanged.
 
+Scene scripts may opt into a host-owned background canvas with `ctx.scenes.background.register`. The canvas is
+transferred to the isolated Worker once; artwork and playback state are sent as bounded updates, while the plugin owns
+only its Worker-side drawing loop. See [Plugin Scene API](plugin-scene-api.md#plugin-owned-background-canvas).
+
 Provider components can also supply read-only song comments through `provider.comments`; YAQMC owns the comment drawer and lyrics overlay. See [Song comments](song-comments.md).
 
 ## Package shapes

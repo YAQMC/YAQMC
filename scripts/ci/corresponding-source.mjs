@@ -1,9 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inspectP14cReadiness } from './p14c-readiness.mjs';
+import { isPrivateReleaseFile } from './private-release-files.mjs';
 import { QM_API_RS_ORIGIN, QM_API_RS_REV } from './qm-api-rs-access.mjs';
 import { sha256File } from './write-build-info.mjs';
 
@@ -43,14 +42,6 @@ function defaultRunGit(repository, args) {
   });
 }
 
-function defaultRunProvenanceGate(root) {
-  execFileSync(
-    process.execPath,
-    [path.join(root, 'scripts', 'validate-provenance-ledger.mjs'), '--enforce'],
-    { cwd: root, stdio: 'inherit' },
-  );
-}
-
 function repositoryRevision(repository, runGit) {
   const revision = runGit(repository, ['rev-parse', 'HEAD']).trim();
   if (!immutableRevision.test(revision)) {
@@ -64,10 +55,6 @@ function assertCleanCheckout(repository, runGit) {
   if (status.length > 0) {
     throw new Error(`corresponding source requires a clean checkout: ${repository}`);
   }
-}
-
-function sha256Text(value) {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function trackedTextAt(repository, revision, file, runGit) {
@@ -127,6 +114,11 @@ function archiveRepository({ repository, revision, prefix, output, runGit }) {
     `--prefix=${prefix}/`,
     `--output=${output}`,
     revision,
+    '--',
+    '.',
+    ...trackedFilesAt(repository, revision, runGit)
+      .filter(isPrivateReleaseFile)
+      .map((file) => `:(top,literal,exclude)${file}`),
   ]);
   if (!existsSync(output) || statSync(output).size === 0) {
     throw new Error(`git archive did not create ${output}`);
@@ -141,24 +133,15 @@ export function createCorrespondingSourceBundle(options = {}) {
   );
   const outputDir = path.resolve(options.outputDir ?? path.join(yaqmcRoot, 'corresponding-source'));
   const runGit = options.runGit ?? defaultRunGit;
-  const runProvenanceGate = options.runProvenanceGate ?? defaultRunProvenanceGate;
 
   assertCleanCheckout(yaqmcRoot, runGit);
   assertCleanCheckout(qmApiRsRoot, runGit);
   assertCleanCheckout(amllRoot, runGit);
-  runProvenanceGate(yaqmcRoot);
-  const { record, blockers } = inspectP14cReadiness(yaqmcRoot);
-  const sourceBlockers = blockers.filter((gate) => gate.id !== 'exact-pin-three-day-soak');
-  if (sourceBlockers.length > 0) {
-    throw new Error(
-      `Provider readiness corresponding-source gate is blocked: ${sourceBlockers.map((gate) => gate.id).join(', ')}`,
-    );
-  }
 
   const yaqmcRevision = repositoryRevision(yaqmcRoot, runGit);
   const qmApiRsRevision = repositoryRevision(qmApiRsRoot, runGit);
   const amllRevision = repositoryRevision(amllRoot, runGit);
-  if (qmApiRsRevision !== QM_API_RS_REV || record.targetPin !== qmApiRsRevision) {
+  if (qmApiRsRevision !== QM_API_RS_REV) {
     throw new Error(
       `qm-api-rs source revision ${qmApiRsRevision} does not match the production pin ${QM_API_RS_REV}`,
     );
@@ -219,11 +202,8 @@ export function createCorrespondingSourceBundle(options = {}) {
     runGit,
   });
 
-  const readinessRecord = 'docs/release/provider-readiness.json';
-  const provenanceLedger = 'docs/release/provenance-ledger.json';
-  const provenanceEvidence = ['docs/release/provenance.md', 'docs/release/qm-api-rs-provenance.md'];
   const manifest = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     license: 'GPL-3.0-or-later',
     releaseCommit: yaqmcRevision,
     qmApiRsRevision,
@@ -233,25 +213,6 @@ export function createCorrespondingSourceBundle(options = {}) {
       version: AMLL_VERSION,
       license: 'AGPL-3.0-only',
       packages: amllPackages.map(([name, manifestPath]) => ({ name, manifestPath })),
-    },
-    p14c: {
-      status: blockers.length === 0 ? 'READY' : 'BLOCKED',
-      blockers: blockers.map((gate) => gate.id),
-      targetPin: record.targetPin,
-      readinessRecord,
-      readinessSha256: sha256Text(trackedTextAt(yaqmcRoot, yaqmcRevision, readinessRecord, runGit)),
-    },
-    provenance: {
-      status: 'PASS',
-      ledger: provenanceLedger,
-      ledgerSha256: sha256Text(trackedTextAt(yaqmcRoot, yaqmcRevision, provenanceLedger, runGit)),
-      evidence: provenanceEvidence,
-      evidenceSha256: Object.fromEntries(
-        provenanceEvidence.map((file) => [
-          file,
-          sha256Text(trackedTextAt(yaqmcRoot, yaqmcRevision, file, runGit)),
-        ]),
-      ),
     },
     components: [
       {

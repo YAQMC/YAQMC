@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -107,19 +108,17 @@ test('builds revision-bound source archives and a hash manifest', () => {
     amllRoot,
     outputDir,
     runGit: fakeGit(qmApiRsRoot, amllRoot),
-    runProvenanceGate: () => {},
   });
 
   assert.equal(result.manifest.releaseCommit, YAQMC_REVISION);
   assert.equal(result.manifest.qmApiRsRevision, QM_API_RS_REV);
   assert.equal(result.manifest.amll.revision, AMLL_REV);
   assert.equal(result.manifest.amll.version, AMLL_VERSION);
-  assert.equal(result.manifest.p14c.status, 'BLOCKED');
-  assert.deepEqual(result.manifest.p14c.blockers, ['exact-pin-three-day-soak']);
-  assert.match(result.manifest.p14c.readinessSha256, /^[0-9a-f]{64}$/u);
-  assert.equal(result.manifest.provenance.status, 'PASS');
-  assert.match(result.manifest.provenance.ledgerSha256, /^[0-9a-f]{64}$/u);
-  assert.equal(Object.keys(result.manifest.provenance.evidenceSha256).length, 2);
+  assert.equal(result.manifest.schemaVersion, 3);
+  assert.deepEqual(
+    Object.keys(result.manifest).sort(),
+    ['schemaVersion', 'license', 'releaseCommit', 'qmApiRsRevision', 'amll', 'components'].sort(),
+  );
   assert.equal(result.manifest.components.length, 3);
   for (const component of result.manifest.components) {
     assert.match(component.sha256, /^[0-9a-f]{64}$/u);
@@ -147,7 +146,6 @@ test('rejects dirty source checkouts before reading mutable worktree metadata', 
           args[0] === 'status' && repository === repositoryRoot
             ? ' M docs/release/provider-readiness.json\n'
             : runGit(repository, args),
-        runProvenanceGate: () => {},
       }),
     /requires a clean checkout/,
   );
@@ -165,7 +163,6 @@ test('rejects source that does not match the unconditional production pin', () =
         amllRoot,
         outputDir: path.join(scratch, 'out'),
         runGit: fakeGit(qmApiRsRoot, amllRoot, { qmRevision: '2'.repeat(40) }),
-        runProvenanceGate: () => {},
       }),
     /does not match the production pin/,
   );
@@ -183,8 +180,62 @@ test('rejects AMLL source that does not match the package revision', () => {
         amllRoot,
         outputDir: path.join(scratch, 'out'),
         runGit: fakeGit(qmApiRsRoot, amllRoot, { amllRevision: '3'.repeat(40) }),
-        runProvenanceGate: () => {},
       }),
     /does not match the package pin/,
   );
+});
+
+test('real git archives exclude tracked private reports while retaining source and license records', () => {
+  const scratch = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-source-privacy-'));
+  const yaqmcRoot = path.join(scratch, 'yaqmc');
+  const qmApiRsRoot = path.join(scratch, 'qm-api-rs');
+  const amllRoot = path.join(scratch, 'amll');
+  mkdirSync(yaqmcRoot);
+  const privateFiles = [
+    'docs/release/provenance-ledger.json',
+    'docs/release/provider-readiness.md',
+    'PROVENANCE.md',
+    'audit-reports/old.md',
+  ];
+  const publicFiles = [
+    'Cargo.toml',
+    'Cargo.lock',
+    'package.json',
+    'package-lock.json',
+    '.github/workflows/electron-release.yml',
+    'LICENSE',
+    'THIRD_PARTY_NOTICES.md',
+    'docs/release/README.md',
+    'docs/release/licensing-consent-record.json',
+    'src/main.ts',
+  ];
+  for (const file of [...privateFiles, ...publicFiles]) {
+    mkdirSync(path.dirname(path.join(yaqmcRoot, file)), { recursive: true });
+    writeFileSync(path.join(yaqmcRoot, file), 'Synthetic archive fixture.\n');
+  }
+  const realGit = (args) => execFileSync('git', args, { cwd: yaqmcRoot, encoding: 'utf8' });
+  realGit(['init', '-q']);
+  realGit(['add', '.']);
+  realGit([
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '-qm',
+    'archive fixture',
+  ]);
+  const companionGit = fakeGit(qmApiRsRoot, amllRoot);
+  const result = createCorrespondingSourceBundle({
+    yaqmcRoot,
+    qmApiRsRoot,
+    amllRoot,
+    outputDir: path.join(scratch, 'out'),
+    runGit: (repository, args) =>
+      repository === yaqmcRoot ? realGit(args) : companionGit(repository, args),
+  });
+  const archive = readFileSync(path.join(result.outputDir, result.manifest.components[0].archive));
+  for (const file of privateFiles) assert.equal(archive.includes(Buffer.from(file)), false, file);
+  for (const file of publicFiles) assert.equal(archive.includes(Buffer.from(file)), true, file);
+  assert.doesNotMatch(JSON.stringify(result.manifest), /provenance|readiness|evidence/iu);
 });

@@ -209,10 +209,10 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "plugin_read_asset",
     "plugin_settings_get",
     "plugin_settings_set",
+    "core_shutdown_cancel",
     "core_ping",
     "platform_attach",
     "core_shutdown_prepare",
-    "core_shutdown_cancel",
     "auth_oauth_prepare",
     "auth_oauth_complete",
     "auth_oauth_cancel",
@@ -1990,7 +1990,10 @@ async fn invoke_core(
             core.statistics().shutdown();
             ok(json!({ "ok": true }))
         }
-        "core_shutdown_cancel" => { core.plugins().cancel_app_restart(); Ok(Value::Null) }
+        "core_shutdown_cancel" => {
+            core.plugins().cancel_app_restart();
+            Ok(Value::Null)
+        }
         "auth_oauth_prepare" => {
             let OAuthPrepareParams { provider_kind } = parse(&params)?;
             let profile = default_qqmusic_profile();

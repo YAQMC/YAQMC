@@ -7,9 +7,7 @@
     "feedUrl": "https://example.com/feed",
     "keyId": "test-key",
     "publicKey": "6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
-    "downloadOrigins": [
-      "https://example.com"
-    ]
+    "downloadOrigins": ["https://example.com"]
   },
   "envelope": {
     "keyId": "test-key",

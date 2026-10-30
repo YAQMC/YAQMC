@@ -22,3 +22,20 @@ target
 # Untracked legacy Tauri tree
 /src-tauri/**
 /YAQMC_ELECTRON_MIGRATION_PLAN.md
+/release-electron-provider-acceptance/**
+/release-electron-provider-qa/**
+/config/**
+/data/**
+
+# Machine-local test output and private release records
+/output/**
+/audit-reports/**
+/.agent-briefs/**
+/docs/release/*
+!/docs/release/README.md
+!/docs/release/licensing-consent-record.json
+/docs/migration/provenance-audit.md
+/PROVENANCE.md
+/*-report.md
+/AUDIT_REPORT*.md
+/audit-report*.md

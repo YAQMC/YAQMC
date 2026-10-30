@@ -11,11 +11,14 @@ import {
   broadcastPluginEvent,
   dispatchPluginUiAction,
   PLUGIN_EVENT_PERMISSIONS,
+  pluginSceneBackgroundRegistration,
   setPluginEnabled,
+  setPluginSceneInstance,
   usePluginHost,
   handlePluginUpdateProgress,
 } from './plugin-runtime';
 import { usePlayerStore } from './player-store';
+import { usePreferencesStore } from './preferences';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const logErrorMock = vi.hoisted(() => vi.fn());
@@ -574,6 +577,86 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     ]);
     expect(controlMessages(instanceAt(1))).toEqual([]);
 
+    unmount();
+  });
+
+  it('tracks scene background registration only for the owning plugin and removes it', async () => {
+    const { unmount } = renderHook(() => usePluginHost());
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    const worker = instanceAt(0);
+    const instanceId = setPluginSceneInstance(GRANTED, 'vinyl');
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_bridge') return Promise.resolve({ ok: true });
+      return Promise.resolve(undefined);
+    });
+
+    worker.onmessage?.({
+      data: {
+        type: 'yaqmc/call',
+        id: 'background-register',
+        method: 'scenes.background.register',
+        payload: { sceneId: 'vinyl', instanceId },
+      },
+    } as MessageEvent);
+    await waitFor(() =>
+      expect(pluginSceneBackgroundRegistration(GRANTED, 'vinyl')).toEqual(
+        expect.objectContaining({ pluginId: GRANTED, sceneId: 'vinyl' }),
+      ),
+    );
+    expect(pluginSceneBackgroundRegistration(UNGRANTED, 'vinyl')).toBeNull();
+
+    worker.onmessage?.({
+      data: {
+        type: 'yaqmc/call',
+        id: 'background-unregister',
+        method: 'scenes.background.unregister',
+        payload: { sceneId: 'vinyl', instanceId },
+      },
+    } as MessageEvent);
+    await waitFor(() => expect(pluginSceneBackgroundRegistration(GRANTED, 'vinyl')).toBeNull());
+    unmount();
+  });
+
+  it('unmounts a background when switching scenes within the same plugin', async () => {
+    grants = { [GRANTED]: ['scene.register'] };
+    const originalPresets = usePreferencesStore.getState().lyricsPresets;
+    const { unmount } = renderHook(() => usePluginHost());
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    const worker = instanceAt(0);
+
+    usePreferencesStore.setState({
+      lyricsPresets: { ...originalPresets, selectedId: `plugin:${GRANTED}:vinyl` },
+    });
+    await waitFor(() =>
+      expect(worker.posted).toContainEqual(
+        expect.objectContaining({
+          type: 'yaqmc/event',
+          event: 'scene.changed',
+          payload: expect.objectContaining({ phase: 'mount', sceneId: 'vinyl' }),
+        }),
+      ),
+    );
+
+    usePreferencesStore.setState({
+      lyricsPresets: { ...originalPresets, selectedId: `plugin:${GRANTED}:aurora` },
+    });
+    await waitFor(() =>
+      expect(worker.posted).toContainEqual(
+        expect.objectContaining({
+          type: 'yaqmc/event',
+          event: 'scene.changed',
+          payload: expect.objectContaining({ phase: 'unmount', sceneId: 'vinyl' }),
+        }),
+      ),
+    );
+    expect(worker.posted).toContainEqual(
+      expect.objectContaining({
+        type: 'yaqmc/event',
+        event: 'scene.changed',
+        payload: expect.objectContaining({ phase: 'mount', sceneId: 'aurora' }),
+      }),
+    );
+    usePreferencesStore.setState({ lyricsPresets: originalPresets });
     unmount();
   });
 });

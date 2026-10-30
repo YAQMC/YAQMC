@@ -62,14 +62,35 @@ test('only the official tagged workflow creates self-updating build identity', (
     YAQMC_PACKAGE_ARCH: 'arm64',
   };
   assert.equal(officialBuildIdentity(env, '1.0.0').source, 'official-release');
+  assert.equal(
+    officialBuildIdentity({ ...env, GITHUB_EVENT_NAME: 'workflow_dispatch' }, '1.0.0').source,
+    'official-release',
+  );
   for (const patch of [
-    { GITHUB_EVENT_NAME: 'workflow_dispatch' },
+    { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_TYPE: 'branch' },
     { GITHUB_REPOSITORY: 'fork/YAQMC' },
     { GITHUB_REF_TYPE: 'branch' },
     { GITHUB_REF_NAME: 'v1.0.1' },
   ])
     assert.equal(officialBuildIdentity({ ...env, ...patch }, '1.0.0').source, 'source');
   assert.equal(officialBuildIdentity({}, '1.0.0').source, 'source');
+  for (const channel of ['beta', 'nightly']) {
+    const version = `1.1.0-${channel}.1`;
+    assert.equal(
+      officialBuildIdentity(
+        { ...env, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_NAME: `v${version}` },
+        version,
+      ).source,
+      'official-release',
+    );
+    assert.equal(
+      officialBuildIdentity(
+        { ...env, GITHUB_WORKFLOW: 'Build artifacts', GITHUB_REF_NAME: `v${version}` },
+        version,
+      ).source,
+      'source',
+    );
+  }
   assert.equal(
     officialBuildIdentity({ ...env, GITHUB_REF_NAME: 'v1.0.0+ci.7' }, '1.0.0+ci.7').source,
     'official-release',

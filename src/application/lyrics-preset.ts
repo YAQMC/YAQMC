@@ -35,7 +35,7 @@ export type LyricsArtworkStyle = 'square' | 'vinyl';
 export type LyricsArtworkRenderer = 'square' | 'rounded' | 'vinyl';
 export type LyricsBackgroundFit = 'cover' | 'contain';
 export type LyricsBackgroundKind =
-  'color' | 'artwork' | 'image' | 'gradient' | 'video' | 'colorField';
+  'color' | 'artwork' | 'image' | 'gradient' | 'video' | 'colorField' | 'plugin';
 export type LyricsPreviewFrame = 'desktop' | 'portrait' | 'window' | 'ultrawide';
 export type WidgetAnchor =
   | 'top-left'
@@ -541,7 +541,8 @@ function isBackgroundKind(value: unknown): value is LyricsBackgroundKind {
     value === 'image' ||
     value === 'gradient' ||
     value === 'video' ||
-    value === 'colorField'
+    value === 'colorField' ||
+    value === 'plugin'
   );
 }
 

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 import { releasePreflight } from './release-preflight.mjs';
+const { load } = createRequire(import.meta.url)('js-yaml');
 
 const credentials = {
   ANDROID_RELEASE_KEYSTORE_BASE64: 'fixture',
@@ -64,4 +66,54 @@ test('release preflight gates heavy jobs and stable publication follows asset as
   assert.match(workflow, /node scripts\/ci\/release-preflight.mjs/u);
   assert.match(workflow, /gh release edit "\$tag" --draft=false --prerelease=false --latest/u);
   assert.match(workflow, /needs: \[assemble\]/u);
+});
+
+test('every release build and publication waits for protected review without receiving private records', () => {
+  const workflow = load(
+    readFileSync(new URL('../../.github/workflows/electron-release.yml', import.meta.url), 'utf8'),
+  );
+  const jobs = workflow.jobs;
+  assert.equal(jobs['release-policy'].environment, undefined);
+  assert.equal(jobs['release-policy'].permissions.actions, 'read');
+  assert.deepEqual(jobs['release-gates'].needs, ['release-policy']);
+  assert.equal(jobs['release-gates'].environment, 'release-signing');
+  const waitsForReview = (name) =>
+    name === 'release-gates' || (jobs[name].needs ?? []).some(waitsForReview);
+  for (const name of [
+    'frontend-build',
+    'android-package',
+    'electron-package',
+    'assemble',
+    'github-release-draft',
+  ])
+    assert.equal(waitsForReview(name), true, name);
+  for (const job of Object.values(jobs)) {
+    for (const step of job.steps ?? [])
+      assert.doesNotMatch(
+        step.run ?? '',
+        /(?:provider|provenance):enforce|docs\/release\/(?:provider-readiness|provenance-ledger)/u,
+      );
+  }
+});
+
+test('manual tag builds keep their version tag and opt into publication while branches stay drafts', () => {
+  const workflow = load(
+    readFileSync(new URL('../../.github/workflows/electron-release.yml', import.meta.url), 'utf8'),
+  );
+  assert.equal(workflow.on.workflow_dispatch.inputs.publish.default, false);
+  assert.equal(workflow.on.workflow_dispatch.inputs.publish.type, 'boolean');
+  const publish = workflow.jobs['github-release-draft'].steps.find(
+    (step) => step.name === 'Create draft GitHub Release',
+  );
+  assert.match(
+    publish.env.YAQMC_PUBLISH,
+    /github.event_name == 'push' \|\| inputs.publish == true/u,
+  );
+  assert.match(
+    publish.run,
+    /if \[ "\$GITHUB_REF_TYPE" = "tag" \]; then\s+tag="\$\{GITHUB_REF_NAME\}"/u,
+  );
+  assert.match(publish.run, /"\$GITHUB_REF_TYPE" == "tag" && "\$YAQMC_PUBLISH" == "true"/u);
+  assert.match(publish.run, /--draft=false --prerelease=true --latest=false/u);
+  assert.doesNotMatch(publish.run, /--clobber|--generate-notes/u);
 });
