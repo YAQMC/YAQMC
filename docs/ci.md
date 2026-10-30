@@ -109,16 +109,19 @@ instructions, collector, and verifier. CI runs the verifier's identity-only
 gate before upload; it is not mixed into draft release assets.
 
 The release workflow requires successful exact-commit CI on `main`, Required reviewers
-on the `release-signing` environment, and approval after the maintainer runs the local
-private release gates. Pin and Android signing checks also run before packaging.
+on the `release-signing` environment, and an explicit `private_gates_confirmed` attestation
+after the maintainer runs the local private release gates. Tagged publication is performed
+through `workflow_dispatch` with that confirmation; a direct tag push is blocked. Pin and
+Android signing checks also run before packaging.
 It checks out the exact dependency revisions,
 builds revision-bound YAQMC, `qm-api-rs`, and AMLL source archives, and writes
 `CORRESPONDING-SOURCE-MANIFEST.json`. Assembly verifies those archive hashes,
 flattens package assets, validates the Android build identity against the same Git commit,
 writes platform checksums plus commit-based `RELEASE-NOTES.md`, and retains x64
 compatibility feeds `latest.yml` / `latest-linux.yml` alongside the architecture-specific
-Windows updater metadata. Version-tag pushes publish after every required job succeeds:
-stable versions become latest; prereleases are marked prerelease and never latest.
+Windows updater metadata. Version-tag builds are published only through the protected
+manual release workflow after local-gate confirmation: stable versions become latest;
+prereleases are marked prerelease and never latest.
 Manual runs on an exact version tag retain that tag and stay drafts unless `publish`
 is enabled. Manual branch runs use `electron-draft-<run-id>` and always remain drafts.
 Rerunning a release never overwrites an existing Release or its assets; publish an

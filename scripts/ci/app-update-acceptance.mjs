@@ -69,7 +69,7 @@ app.whenReady().then(async()=>{
      if(name==='updater-windows-'+process.arch+'.yml')return stream(path.join(root,name));
      return new Response('not found',{status:404});
    });return updater;},
-   installNative:(candidate,file)=>launchNativeUpdate({root:path.join(root,'updater'),helper:path.join(process.resourcesPath,'updater',process.platform==='win32'?'yaqmc-update-helper.exe':'yaqmc-update-helper'),target,candidate,package:file,quit:()=>app.quit()})});
+   installNative:(candidate,file)=>launchNativeUpdate({root:path.join(root,'updater'),helper:path.join(process.resourcesPath,'updater',process.platform==='win32'?'yaqmc-update-helper.exe':'yaqmc-update-helper'),target,targetKind:kind,candidate,package:file,quit:()=>app.quit()})});
  const updater=createUpdater({port,channel:'latest',currentVersion:app.getVersion(),platform:process.platform,
    identity:{source:'official-release',tag:'v1.0.0',commit:'a'.repeat(40),architecture:process.arch,packageKind:kind},
    prepareInstall:async()=>{writeFileSync(path.join(root,'saved-queue.json'),'["synthetic-track"]');},

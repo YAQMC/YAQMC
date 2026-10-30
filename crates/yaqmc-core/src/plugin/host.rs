@@ -16,7 +16,10 @@ use crate::plugin::{
     component_host::ComponentHostServices,
     federation::{FederatedProvider, FederationMember},
     manifest::{is_plugin_id, parse_semver, PluginManifest},
-    package::{extract_to, inspect_package, sha256_bytes, PackageInspection},
+    package::{
+        content_sha256, extract_to, inspect_directory, inspect_package, sha256_bytes,
+        PackageInspection,
+    },
     permissions::PluginPermission,
     provider::ComponentProviderAdapter,
     scanner::{css_is_blocked, ScanReport},
@@ -167,6 +170,8 @@ struct PluginStateFile {
     status_reason: Option<String>,
     granted_permissions: Vec<String>,
     package_sha256: String,
+    #[serde(default)]
+    content_sha256: String,
     source: String,
     style_scan: ScanReport,
     script_scan: ScanReport,
@@ -272,11 +277,14 @@ impl ExtensionHost {
         let mut records = BTreeMap::new();
         if let Ok(entries) = fs::read_dir(&root) {
             for entry in entries.flatten() {
-                if !entry.path().is_dir() {
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if !file_type.is_dir() || file_type.is_symlink() {
                     continue;
                 }
                 let state_path = entry.path().join("state.json");
-                let Some(state): Option<PluginStateFile> = read_json(&state_path) else {
+                let Some(mut state): Option<PluginStateFile> = read_json(&state_path) else {
                     continue;
                 };
                 if !is_plugin_id(&state.id) || entry.file_name().to_string_lossy() != state.id {
@@ -290,6 +298,30 @@ impl ExtensionHost {
                 let Ok(manifest) = PluginManifest::parse(&bytes) else {
                     continue;
                 };
+                let integrity_error = match inspect_directory(&version_dir) {
+                    Ok(inspection)
+                        if inspection.manifest.id == state.id
+                            && inspection.manifest.version == state.active_version =>
+                    {
+                        if state.content_sha256.is_empty() {
+                            state.content_sha256 = inspection.sha256;
+                            persist_state(&root, &state, &manifest, version_dir.clone())?;
+                            None
+                        } else if state.content_sha256 == inspection.sha256 {
+                            None
+                        } else {
+                            Some("plugin package content hash mismatch")
+                        }
+                    }
+                    Ok(_) => Some("plugin package manifest identity mismatch"),
+                    Err(_) => Some("plugin package integrity check failed"),
+                };
+                if let Some(reason) = integrity_error {
+                    state.enabled = false;
+                    state.status = PluginStatus::Failed;
+                    state.status_reason = Some(reason.into());
+                    persist_state(&root, &state, &manifest, version_dir.clone())?;
+                }
                 records.insert(state.id.clone(), (state, manifest, version_dir));
             }
         }
@@ -562,6 +594,19 @@ impl ExtensionHost {
                 state.session_secret_fields.clone(),
             )
         };
+        if enabled {
+            let state = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .records
+                .get(id)
+                .map(|(state, _, _)| state.clone())
+                .ok_or_else(|| HostError::from("the plugin is not installed"))?;
+            if !package_matches_state(&state, &manifest, &dir) {
+                return Err(HostError::from("plugin package integrity check failed"));
+            }
+        }
         if manifest.api_version != 3 || !enabled {
             return Ok(());
         }
@@ -1256,6 +1301,7 @@ impl ExtensionHost {
                 status_reason: Some(reason.clone()),
                 granted_permissions: Vec::new(),
                 package_sha256: inspection.sha256.clone(),
+                content_sha256: content_sha256(&inspection.files),
                 source: source.to_owned(),
                 style_scan: inspection.style_scan.clone(),
                 script_scan: inspection.script_scan.clone(),
@@ -1319,6 +1365,7 @@ impl ExtensionHost {
             status_reason: None,
             granted_permissions: granted,
             package_sha256: inspection.sha256.clone(),
+            content_sha256: content_sha256(&inspection.files),
             source: source.to_owned(),
             style_scan: inspection.style_scan.clone(),
             script_scan: inspection.script_scan.clone(),
@@ -1584,6 +1631,9 @@ impl ExtensionHost {
             if !state.enabled && self.update_phase(id).as_deref() != Some("validating") {
                 continue;
             }
+            if !package_matches_state(state, manifest, dir) {
+                continue;
+            }
             for style in &manifest.entrypoints.styles {
                 let Ok(css) = fs::read_to_string(dir.join(style)) else {
                     continue;
@@ -1598,6 +1648,9 @@ impl ExtensionHost {
         let mut scripts = Vec::new();
         for (id, (state, manifest, dir)) in &inner.records {
             if !state.enabled && self.update_phase(id).as_deref() != Some("validating") {
+                continue;
+            }
+            if !package_matches_state(state, manifest, dir) {
                 continue;
             }
             for scene_path in &manifest.entrypoints.scenes {
@@ -1748,10 +1801,13 @@ impl ExtensionHost {
             .inner
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let (_, _, dir) = inner
+        let (state, manifest, dir) = inner
             .records
             .get(id)
             .ok_or_else(|| HostError::from("the plugin is not installed"))?;
+        if !package_matches_state(state, manifest, dir) {
+            return Err(HostError::from("plugin package integrity check failed"));
+        }
         crate::plugin::manifest::is_safe_package_path(relative)
             .then_some(())
             .ok_or_else(|| HostError::from("invalid plugin path"))?;
@@ -1774,12 +1830,15 @@ impl ExtensionHost {
         if inner.host.safe_mode {
             return Err(HostError::from("safe mode has disabled plugin scripts"));
         }
-        let (state, _, _) = inner
+        let (state, manifest, dir) = inner
             .records
             .get(plugin_id)
             .ok_or_else(|| HostError::from("the plugin is not installed"))?;
         if !state.enabled && phase.as_deref() != Some("validating") {
             return Err(HostError::from("the plugin is disabled"));
+        }
+        if !package_matches_state(state, manifest, dir) {
+            return Err(HostError::from("plugin package integrity check failed"));
         }
         let token = format!(
             "rt-{}-{}",
@@ -2224,6 +2283,17 @@ fn persist_state(
     fs::create_dir_all(&plugin_root)
         .map_err(|_| HostError::from("plugin state could not be saved"))?;
     write_json(&plugin_root.join("state.json"), state)
+}
+
+fn package_matches_state(state: &PluginStateFile, manifest: &PluginManifest, dir: &Path) -> bool {
+    if state.content_sha256.is_empty() {
+        return false;
+    }
+    inspect_directory(dir).is_ok_and(|inspection| {
+        inspection.manifest.id == state.id
+            && inspection.manifest.version == manifest.version
+            && inspection.sha256 == state.content_sha256
+    })
 }
 
 fn atomic_replace(staging: &Path, destination: &Path) -> Result<(), HostError> {
@@ -2892,6 +2962,32 @@ mod tests {
         assert!(!recovered.safe_mode());
         assert!(recovered.list()[0].enabled);
         assert_eq!(recovered.list()[0].status, PluginStatus::Active);
+    }
+
+    #[test]
+    fn startup_rejects_tampered_active_package_content() {
+        let root = tempfile::tempdir().expect("root");
+        let host = ExtensionHost::open(root.path().to_path_buf()).expect("host");
+        host.install_inspection(style_inspection("dev.example.one"), true, &[], "test")
+            .expect("install");
+        host.mark_clean_exit();
+        drop(host);
+        let css = root
+            .path()
+            .join("dev.example.one")
+            .join("versions")
+            .join("1.0.0")
+            .join("styles")
+            .join("main.css");
+        std::fs::write(&css, b"body{background:url(https://evil.invalid)}")
+            .expect("tamper package");
+        let recovered = ExtensionHost::open(root.path().to_path_buf()).expect("reopen");
+        assert_eq!(recovered.list()[0].status, PluginStatus::Failed);
+        assert!(!recovered.list()[0].enabled);
+        assert_eq!(
+            recovered.list()[0].status_reason.as_deref(),
+            Some("plugin package content hash mismatch")
+        );
     }
 
     #[test]

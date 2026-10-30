@@ -9,6 +9,7 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import {
   applyPluginResources,
   broadcastPluginEvent,
+  currentPluginSceneInstance,
   dispatchPluginUiAction,
   PLUGIN_EVENT_PERMISSIONS,
   pluginSceneBackgroundRegistration,
@@ -584,6 +585,10 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     const { unmount } = renderHook(() => usePluginHost());
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
     const worker = instanceAt(0);
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_bridge') return Promise.resolve({ ok: true });
+      return Promise.resolve(undefined);
+    });
     const instanceId = setPluginSceneInstance(GRANTED, 'vinyl');
     invokeMock.mockImplementation((method: string) => {
       if (method === 'plugin_bridge') return Promise.resolve({ ok: true });
@@ -623,6 +628,10 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     const { unmount } = renderHook(() => usePluginHost());
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
     const worker = instanceAt(0);
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_bridge') return Promise.resolve({ ok: true });
+      return Promise.resolve(undefined);
+    });
 
     usePreferencesStore.setState({
       lyricsPresets: { ...originalPresets, selectedId: `plugin:${GRANTED}:vinyl` },
@@ -634,6 +643,20 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
           event: 'scene.changed',
           payload: expect.objectContaining({ phase: 'mount', sceneId: 'vinyl' }),
         }),
+      ),
+    );
+    const instance = currentPluginSceneInstance();
+    worker.onmessage?.({
+      data: {
+        type: 'yaqmc/call',
+        id: 'background-register-on-mount',
+        method: 'scenes.background.register',
+        payload: { sceneId: 'vinyl', instanceId: instance.id },
+      },
+    } as MessageEvent);
+    await waitFor(() =>
+      expect(pluginSceneBackgroundRegistration(GRANTED, 'vinyl')).toEqual(
+        expect.objectContaining({ pluginId: GRANTED, sceneId: 'vinyl' }),
       ),
     );
 
@@ -655,6 +678,9 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
         event: 'scene.changed',
         payload: expect.objectContaining({ phase: 'mount', sceneId: 'aurora' }),
       }),
+    );
+    expect(pluginSceneBackgroundRegistration(GRANTED, 'vinyl')).toEqual(
+      expect.objectContaining({ pluginId: GRANTED, sceneId: 'vinyl' }),
     );
     usePreferencesStore.setState({ lyricsPresets: originalPresets });
     unmount();

@@ -208,6 +208,10 @@ pub fn inspect_package(path: &Path) -> Result<PackageInspection, PackageError> {
 }
 
 pub fn inspect_directory(root: &Path) -> Result<PackageInspection, PackageError> {
+    let metadata = fs::symlink_metadata(root).map_err(|_| PackageError::Unreadable)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(PackageError::Symlink);
+    }
     let mut files = Vec::new();
     let mut expanded = 0_u64;
     collect_directory(root, root, &mut files, &mut expanded)?;

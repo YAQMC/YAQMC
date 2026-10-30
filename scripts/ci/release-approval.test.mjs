@@ -95,3 +95,24 @@ test('fails closed on unavailable GitHub policy without exposing credentials', a
   });
   assert.equal(requested.length, 2);
 });
+
+test('requires a local private-gate attestation before publishing a tagged release', async () => {
+  const env = {
+    GITHUB_REPOSITORY: 'YAQMC/YAQMC',
+    GITHUB_SHA: commit,
+    GITHUB_REF_TYPE: 'tag',
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    YAQMC_PUBLISH: 'true',
+    GH_TOKEN: 'synthetic-token',
+  };
+  const fetcher = async (url) =>
+    new globalThis.Response(
+      JSON.stringify(
+        url.includes('/environments/') ? protectedEnvironment : { workflow_runs: [success] },
+      ),
+    );
+  await assert.rejects(checkReleaseApproval(env, fetcher), /YAQMC_PRIVATE_GATES_CONFIRMED=true/u);
+  await assert.doesNotReject(
+    checkReleaseApproval({ ...env, YAQMC_PRIVATE_GATES_CONFIRMED: 'true' }, fetcher),
+  );
+});

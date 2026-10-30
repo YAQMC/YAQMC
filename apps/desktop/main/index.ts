@@ -616,6 +616,11 @@ const updaterHandle = createUpdater({
                 updateIdentity.packageKind === 'portable'
                   ? (process.env.PORTABLE_EXECUTABLE_FILE ?? '')
                   : (process.env.APPIMAGE ?? ''),
+              targetKind:
+                updateIdentity.packageKind === 'portable' ||
+                updateIdentity.packageKind === 'AppImage'
+                  ? updateIdentity.packageKind
+                  : undefined,
               candidate,
               package: file,
               quit: () => {

@@ -37,6 +37,14 @@ export async function checkReleaseApproval(env = process.env, fetcher = globalTh
   if (env.GITHUB_REPOSITORY !== 'YAQMC/YAQMC' || !/^[a-f0-9]{40}$/u.test(env.GITHUB_SHA ?? '')) {
     throw new Error('Release approval requires the official repository and a full commit SHA.');
   }
+  const publishingTag =
+    env.GITHUB_REF_TYPE === 'tag' &&
+    (env.GITHUB_EVENT_NAME === 'push' || env.YAQMC_PUBLISH === 'true');
+  if (publishingTag && env.YAQMC_PRIVATE_GATES_CONFIRMED !== 'true') {
+    throw new Error(
+      'Publishing a tagged release requires YAQMC_PRIVATE_GATES_CONFIRMED=true after running release:check:local.',
+    );
+  }
   if (!env.GH_TOKEN) throw new Error('GH_TOKEN is required to check release protection and CI.');
   const api = async (endpoint) => {
     const response = await fetcher(`https://api.github.com/repos/YAQMC/YAQMC/${endpoint}`, {
@@ -67,7 +75,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     if (process.env.GITHUB_STEP_SUMMARY)
       appendFileSync(
         process.env.GITHUB_STEP_SUMMARY,
-        `Before approving release-signing, run \`npm run release:check:local -- --commit ${process.env.GITHUB_SHA}\` locally. Private reports stay on the maintainer machine.\n`,
+        `The maintainer attested that \`npm run release:check:local -- --commit ${process.env.GITHUB_SHA}\` passed locally before requesting release-signing approval. Private reports stay on the maintainer machine.\n`,
       );
   } catch (error) {
     process.stderr.write(`${error.message}\n`);

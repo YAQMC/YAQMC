@@ -363,6 +363,8 @@ test('YAQMC release workflow is the sole tagged desktop and Android release work
   assert.match(workflow, /SignatureStatus\]::NotSigned/);
   assert.doesNotMatch(workflow, /npm run (?:provider|provenance):enforce/);
   assert.match(workflow, /node scripts\/ci\/release-approval\.mjs/);
+  assert.match(workflow, /private_gates_confirmed:/);
+  assert.match(workflow, /YAQMC_PRIVATE_GATES_CONFIRMED/);
   assert.match(workflow, /needs: \[release-policy\]/);
   assert.match(workflow, /node scripts\/ci\/corresponding-source\.mjs/);
   assert.match(workflow, /repository: YAQMC\/qm-api-rs/);

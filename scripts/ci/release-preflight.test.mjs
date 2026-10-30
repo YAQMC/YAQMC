@@ -102,6 +102,8 @@ test('manual tag builds keep their version tag and opt into publication while br
   );
   assert.equal(workflow.on.workflow_dispatch.inputs.publish.default, false);
   assert.equal(workflow.on.workflow_dispatch.inputs.publish.type, 'boolean');
+  assert.equal(workflow.on.workflow_dispatch.inputs.private_gates_confirmed.default, false);
+  assert.equal(workflow.on.workflow_dispatch.inputs.private_gates_confirmed.type, 'boolean');
   const publish = workflow.jobs['github-release-draft'].steps.find(
     (step) => step.name === 'Create draft GitHub Release',
   );

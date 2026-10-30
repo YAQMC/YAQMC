@@ -1421,6 +1421,7 @@ impl ExtensionHost {
             status_reason: None,
             granted_permissions: preview.permissions.clone(),
             package_sha256: preview.sha256.clone(),
+            content_sha256: prepared.content_sha256.clone(),
             source: preview
                 .trusted_source
                 .as_ref()
