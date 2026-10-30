@@ -363,11 +363,11 @@ function clearPluginSceneBackgrounds(pluginId?: string): void {
   emitSceneState();
 }
 
-function resetSceneBehavior(): void {
+function resetSceneBehavior(clearBackgrounds = true): void {
   sceneVariables.clear();
   sceneStates.clear();
   widgetOverrides.clear();
-  clearPluginSceneBackgrounds();
+  if (clearBackgrounds) clearPluginSceneBackgrounds();
   emitSceneState();
 }
 
@@ -1057,7 +1057,7 @@ function emitSceneLifecycle(selectedId: string): void {
       sceneId: sceneInstance.sceneId,
       instanceId: sceneInstance.id,
     });
-    resetSceneBehavior();
+    resetSceneBehavior(false);
   }
   if (nextPluginId) {
     const instanceId = setPluginSceneInstance(nextPluginId, nextSceneId);

@@ -27,6 +27,8 @@ struct Transaction {
     sha256: String,
     size: u64,
     version: String,
+    #[serde(default)]
+    target_kind: Option<String>,
     state: String,
     #[serde(default)]
     error: Option<String>,
@@ -86,11 +88,25 @@ fn paths(tx: &Transaction) -> Result<(PathBuf, PathBuf)> {
             return Err("update-target-invalid".into());
         }
     }
+    validate_target_kind(&tx.target, tx.target_kind.as_deref())?;
     let parent = tx.target.parent().ok_or("update-target-invalid")?;
     Ok((
         parent.join(format!(".yaqmc-next-{}", tx.operation_id)),
         parent.join(format!(".yaqmc-previous-{}", tx.operation_id)),
     ))
+}
+
+fn validate_target_kind(target: &Path, kind: Option<&str>) -> Result<()> {
+    if kind != Some("AppImage") {
+        return Ok(());
+    }
+    let mut input = File::open(target)?;
+    let mut header = [0_u8; 12];
+    input.read_exact(&mut header)?;
+    if &header[..4] != b"\x7fELF" || &header[8..10] != b"AI" || !matches!(header[10], 1 | 2) {
+        return Err("update-target-invalid".into());
+    }
+    Ok(())
 }
 
 #[cfg(windows)]

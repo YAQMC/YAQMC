@@ -97,9 +97,9 @@ Linux x64 打包任务还会上传独立的扁平 artifact
 identity、checksums、当前测试/验收说明、采集器和验证器。上传前 CI 会执行
 identity-only 校验；该测试包不会混入 Release 草稿资产。
 
-发布工作流先检查精确 SHA 在 `main` 上的最新 CI 成功、`release-signing` 已配置 Required reviewers，再等待审核人完成本地私有门禁后批准；pin 和 Android 签名配置也在打包前检查。审批是维护者对本地验证的确认，Actions 不读取私有报告。它检出依赖的精确 revision，生成 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 schema v3 的 `CORRESPONDING-SOURCE-MANIFEST.json`；清单只记录公开源码身份、许可证和归档 hash，不含报告或报告 hash。组装核对源码与安装包 identity，并生成分平台 checksum 和基于 commit 的概述。x64 兼容更新源 `latest.yml` / `latest-linux.yml` 与 Windows 各架构专用元数据一起保留。
+发布工作流先检查精确 SHA 在 `main` 上的最新 CI 成功、`release-signing` 已配置 Required reviewers，并要求在 `workflow_dispatch` 中勾选 `private_gates_confirmed`，确认维护者已对该 SHA 执行本地私有门禁；直接推送 tag 会被阻断。pin 和 Android 签名配置也在打包前检查。Actions 不读取私有报告。它检出依赖的精确 revision，生成 YAQMC、`qm-api-rs` 与 AMLL 对应源码归档及 schema v3 的 `CORRESPONDING-SOURCE-MANIFEST.json`；清单只记录公开源码身份、许可证和归档 hash，不含报告或报告 hash。组装核对源码和安装包 identity，并生成分平台 checksum 和基于 commit 的概述。x64 兼容更新源 `latest.yml` / `latest-linux.yml` 与 Windows 各架构专用元数据一起保留。
 
-版本 tag 推送在所有必要任务成功后自动发布：稳定版标记 latest；预发布标记 prerelease，且不标记 latest。手动运行选择合法版本 tag 时沿用该 tag，默认保留草稿，开启 `publish` 才发布。手动分支运行使用 `electron-draft-<run-id>`，始终保留为源码构建草稿。重跑不会覆盖已有 Release 或资产；审核后发布已有草稿，内容变更则递增版本。
+版本 tag 只通过受保护的手动发布工作流组装；确认本地门禁后，稳定版标记 latest，预发布标记 prerelease 且不标记 latest。手动运行选择合法版本 tag 时沿用该 tag，默认保留草稿，开启 `publish` 才发布。手动分支运行使用 `electron-draft-<run-id>`，始终保留为源码构建草稿。重跑不会覆盖已有 Release 或资产；审核后发布已有草稿，内容变更则递增版本。
 
 签名配置在安装工具链及构建前端之前检查；缺失项只输出名称，不输出值。正式 tag 必须包含 Windows/Linux 的 x64、arm64 完整矩阵、Windows 安装器和便携 EXE、Linux 四种格式、x64 更新源，以及 arm64-v8a Android APK。手动 Windows/Linux 演练可缩小桌面目标，但仍包含 Android。签名凭据未配置时不要创建正式 tag。历史 Release 和 tag 单独核对名称后清理，CI 不会自动删除发布历史。
 
@@ -130,7 +130,7 @@ identity-only 校验；该测试包不会混入 Release 草稿资产。
 
    门禁阻塞时不能发布，不应编造证据或直接批准。
 
-4. 在该 SHA 创建并推送 `v0.1.2-beta.1` tag。在 Actions 核对 deployment SHA，确认本地检查通过后批准 `release-signing`。tag 推送在构建与组装成功后自动发布，正文自动列出提交。
+4. 在该 SHA 创建 `v0.1.2-beta.1` tag，然后手动运行 `YAQMC release`，选择该 tag，按需勾选 `publish` 与 `private_gates_confirmed`。在 Actions 核对 deployment SHA 后批准 `release-signing`，正文自动列出提交。
 
 nightly 使用 `0.1.2-nightly.1`，每次发布递增序号。统一桌面/Android 发布支持 `alpha.n`、`beta.n`、`nightly.n`、`rc.n`，其中 `n` 为 0–999；`nightly.20261028` 这类日期序号会超出 Android versionCode 范围。SemVer 按渠道标识的字母顺序比较，因此同一基础版本下 `nightly.1` 高于 `beta.999`，切回该版本线的 beta 不会触发升级。对应正式版使用 `0.1.2`。
 

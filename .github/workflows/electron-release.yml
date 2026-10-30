@@ -17,6 +17,11 @@ on:
         required: true
         default: false
         type: boolean
+      private_gates_confirmed:
+        description: Confirm that release:check:local passed for this exact commit before requesting release approval
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -50,6 +55,8 @@ jobs:
       - name: Check protected environment and exact-commit CI
         env:
           GH_TOKEN: ${{ github.token }}
+          YAQMC_PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
+          YAQMC_PRIVATE_GATES_CONFIRMED: ${{ inputs.private_gates_confirmed == true && 'true' || 'false' }}
         run: node scripts/ci/release-approval.mjs
 
   release-gates:

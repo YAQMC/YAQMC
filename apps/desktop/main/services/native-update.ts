@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AppUpdateCandidate } from '@yaqmc/client';
 import { requireUpdateSpace, verifyUpdateFile } from './update-io';
@@ -27,6 +27,7 @@ export type NativeTransaction = {
   sha256: string;
   size: number;
   version: string;
+  targetKind?: 'portable' | 'AppImage';
   state: string;
   error?: string;
 };
@@ -43,12 +44,14 @@ export async function launchNativeUpdate(options: {
   root: string;
   helper: string;
   target: string;
+  targetKind?: 'portable' | 'AppImage';
   candidate: AppUpdateCandidate;
   package: string;
   quit: () => void;
 }) {
   const { asset } = options.candidate;
   if (!asset || !path.isAbsolute(options.target)) throw new Error('update-target-invalid');
+  if (options.targetKind === 'AppImage') await verifyAppImageTarget(options.target);
   const { createHash } = await import('node:crypto');
   const { createReadStream } = await import('node:fs');
   const helperIdentity = await readUpdateJson<{ name: string; sha256: string; bytes: number }>(
@@ -86,6 +89,7 @@ export async function launchNativeUpdate(options: {
     sha256: asset.sha256,
     size: asset.size,
     version: options.candidate.version,
+    targetKind: options.targetKind,
     state: 'preparing',
   };
   await atomicUpdateJson(path.join(directory, 'transaction.json'), tx);
@@ -118,6 +122,28 @@ export async function launchNativeUpdate(options: {
   } catch (error) {
     child.kill();
     throw error;
+  }
+}
+
+async function verifyAppImageTarget(target: string): Promise<void> {
+  const metadata = await lstat(target).catch(() => undefined);
+  if (!metadata?.isFile() || metadata.isSymbolicLink()) throw new Error('update-target-invalid');
+  const file = await open(target, 'r').catch(() => undefined);
+  if (!file) throw new Error('update-target-invalid');
+  try {
+    const header = Buffer.alloc(12);
+    const result = await file.read(header, 0, header.length, 0);
+    if (
+      result.bytesRead < header.length ||
+      !header.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) ||
+      header[8] !== 0x41 ||
+      header[9] !== 0x49 ||
+      ![0x01, 0x02].includes(header[10] ?? 0)
+    ) {
+      throw new Error('update-target-invalid');
+    }
+  } finally {
+    await file.close();
   }
 }
 
