@@ -34,6 +34,7 @@ import {
   pluginSceneWidgetOverrides,
   subscribePluginSceneState,
   updatePluginSceneBackground,
+  type PluginSceneBackgroundRegistration,
 } from '../../application/plugin-runtime';
 import { useLyricsTransportDefinition } from '../../application/use-lyrics-transport';
 import type { LyricsTransportSurface } from '../../application/lyrics-transport';
@@ -68,6 +69,24 @@ type SceneStyle = CSSProperties & {
 
 function cssPx(value: number): string {
   return `${Number(value.toFixed(2))}px`;
+}
+
+type PluginBackgroundAttachment = {
+  canvas: HTMLCanvasElement;
+  pluginId: string;
+  sceneId: string;
+  instanceId: number;
+  attached: boolean;
+  detachTimer: ReturnType<typeof setTimeout> | null;
+};
+
+function pluginBackgroundCanvasKey(
+  registration: PluginSceneBackgroundRegistration,
+  instanceId: number,
+): string {
+  // React must replace the DOM canvas when the scene instance changes. A
+  // transferred canvas cannot be transferred to another Worker or scene.
+  return `${registration.pluginId}/${registration.sceneId}/${registration.version}/${instanceId}`;
 }
 
 function SceneWidget({
@@ -398,6 +417,7 @@ export function LyricsScene({
   const hasPluginBackground = pluginBackgroundVersion !== undefined;
   const pluginBackgroundCanvasRef = useRef<HTMLCanvasElement>(null);
   const pluginBackgroundAttachedRef = useRef(false);
+  const pluginBackgroundAttachmentRef = useRef<PluginBackgroundAttachment | null>(null);
   const reducedMotionPreference = reducedMotion;
 
   const backgroundState = useMemo(
@@ -432,22 +452,70 @@ export function LyricsScene({
     if (!hasPluginBackground || !pluginSceneKey || !pluginBackgroundCanvasRef.current) return;
     const canvas = pluginBackgroundCanvasRef.current;
     const sceneId = pluginSceneKey.split('/').slice(1).join('/');
-    pluginBackgroundAttachedRef.current = attachPluginSceneBackground({
-      pluginId: preset.pluginId ?? '',
+    const pluginId = preset.pluginId ?? '';
+    const existing = pluginBackgroundAttachmentRef.current;
+    if (
+      existing?.attached &&
+      existing.canvas === canvas &&
+      existing.pluginId === pluginId &&
+      existing.sceneId === sceneId &&
+      existing.instanceId === instance.id
+    ) {
+      if (existing.detachTimer !== null) {
+        globalThis.clearTimeout(existing.detachTimer);
+        existing.detachTimer = null;
+      }
+      pluginBackgroundAttachedRef.current = true;
+      return () => {
+        if (existing.detachTimer !== null) return;
+        existing.detachTimer = globalThis.setTimeout(() => {
+          existing.detachTimer = null;
+          if (!existing.attached) return;
+          detachPluginSceneBackground({
+            pluginId: existing.pluginId,
+            sceneId: existing.sceneId,
+            instanceId: existing.instanceId,
+          });
+          existing.attached = false;
+          if (pluginBackgroundAttachmentRef.current === existing) {
+            pluginBackgroundAttachmentRef.current = null;
+            pluginBackgroundAttachedRef.current = false;
+          }
+        }, 0);
+      };
+    }
+    const attachment: PluginBackgroundAttachment = {
+      canvas,
+      pluginId,
       sceneId,
       instanceId: instance.id,
-      canvas,
-      state: pluginBackgroundStateRef.current,
-    });
+      attached: attachPluginSceneBackground({
+        pluginId,
+        sceneId,
+        instanceId: instance.id,
+        canvas,
+        state: pluginBackgroundStateRef.current,
+      }),
+      detachTimer: null,
+    };
+    pluginBackgroundAttachmentRef.current = attachment;
+    pluginBackgroundAttachedRef.current = attachment.attached;
     return () => {
-      if (pluginBackgroundAttachedRef.current) {
+      if (attachment.detachTimer !== null) return;
+      attachment.detachTimer = globalThis.setTimeout(() => {
+        attachment.detachTimer = null;
+        if (!attachment.attached) return;
         detachPluginSceneBackground({
-          pluginId: preset.pluginId ?? '',
-          sceneId,
-          instanceId: instance.id,
+          pluginId: attachment.pluginId,
+          sceneId: attachment.sceneId,
+          instanceId: attachment.instanceId,
         });
-      }
-      pluginBackgroundAttachedRef.current = false;
+        attachment.attached = false;
+        if (pluginBackgroundAttachmentRef.current === attachment) {
+          pluginBackgroundAttachmentRef.current = null;
+          pluginBackgroundAttachedRef.current = false;
+        }
+      }, 0);
     };
   }, [
     pluginBackgroundVersion,
@@ -624,6 +692,7 @@ export function LyricsScene({
         )}
       {scene.background.visible && pluginBackground && (
         <canvas
+          key={pluginBackgroundCanvasKey(pluginBackground, instance.id)}
           ref={pluginBackgroundCanvasRef}
           className="lyrics-scene__plugin-background"
           data-plugin-background={`${pluginBackground.pluginId}/${pluginBackground.sceneId}`}

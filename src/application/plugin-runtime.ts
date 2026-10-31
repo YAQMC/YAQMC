@@ -295,7 +295,16 @@ export function attachPluginSceneBackground(options: {
   const state = backgroundStatePayload(options.state);
   options.canvas.width = Number(state.pixelWidth) || 1;
   options.canvas.height = Number(state.pixelHeight) || 1;
-  const offscreen = options.canvas.transferControlToOffscreen();
+  let offscreen: OffscreenCanvas;
+  try {
+    // A canvas can only be transferred once. The renderer normally gives each
+    // scene instance a fresh element, but treat a stale/reused node as a
+    // recoverable capability miss instead of letting InvalidStateError tear
+    // down the lyrics surface.
+    offscreen = options.canvas.transferControlToOffscreen();
+  } catch {
+    return false;
+  }
   worker.postMessage(
     {
       type: 'yaqmc/background',
