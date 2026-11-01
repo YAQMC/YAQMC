@@ -15,6 +15,7 @@
 
 <p align="center">
   <a href="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml"><img src="https://github.com/YAQMC/YAQMC/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://discord.gg/HJbqa3Rdn9"><img src="https://img.shields.io/discord/1566185302937178206?logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord community"></a>
   <a href="https://aur.archlinux.org/packages/yaqmc-bin"><img src="https://img.shields.io/aur/version/yaqmc-bin?logo=archlinux&color=1793D1" alt="AUR version"></a>
   <img src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white" alt="Electron 43">
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0 or newer">
