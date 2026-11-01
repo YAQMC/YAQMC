@@ -8,6 +8,9 @@ generate a redacted diagnostic bundle ZIP, and opens the GitHub Issue form in yo
 review it before pressing Submit. Full details are in [Issue reporting](docs/issue-reporting.md), with the
 matching privacy contract in [Security & privacy](docs/security.md).
 
+For user support, plugin publishing, and development discussion, join the
+[YAQMC Discord community](https://discord.gg/HJbqa3Rdn9).
+
 If YAQMC cannot start, fall back to the Chinese issue forms (bug / Linux compatibility / feature request). Include
 version, platform, reproduction, expected/actual behavior, and redacted logs or screenshots from
 `%LOCALAPPDATA%\org.yaqmc.desktop\logs` (Windows) or

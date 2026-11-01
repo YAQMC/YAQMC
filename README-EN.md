@@ -212,6 +212,9 @@ The public engineering notes include [official-client interoperability evidence]
 
 ## Acknowledgements and project policy
 
+For user support, plugin publishing, and development discussion, join the
+[YAQMC Discord community](https://discord.gg/HJbqa3Rdn9).
+
 Special thanks to Flechazo for public QMC/MFLAC, Master-quality, and seekable-decryption research ideas, and to
 OpenAI Codex for engineering, testing, review, documentation, and release-workflow assistance. The
 complete, carefully scoped credits—including the no-source-reuse boundary for unlicensed references—are in

@@ -269,6 +269,7 @@ cargo test --workspace -- --ignored --nocapture
 
 - [参与贡献](CONTRIBUTING.md)
 - [问题与使用支持](SUPPORT.md)
+- [Discord 社区](https://discord.gg/HJbqa3Rdn9)：客户端使用、问题排查、插件发布和开发讨论
 - [安全策略](SECURITY.md)
 - [社区行为准则](CODE_OF_CONDUCT.md)
 - [更新记录](CHANGELOG.md)

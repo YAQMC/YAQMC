@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   GITHUB_ORG_HOST,
   GITHUB_ORG_PATH,
+  DISCORD_INVITE_HOST,
+  DISCORD_INVITE_PATH,
   isAllowedExternalUrl,
   openExternalIfAllowed,
   parseSafeHttpsUrl,
@@ -15,6 +17,7 @@ const productLinks = [
   'https://github.com/YAQMC/YAQMC/tree/main/docs',
   'https://github.com/YAQMC/YAQMC/blob/main/ACKNOWLEDGEMENTS.md',
   'https://github.com/YAQMC/YAQMC/blob/main/THIRD_PARTY_NOTICES.md',
+  'https://discord.gg/HJbqa3Rdn9',
 ];
 
 const issueUrl = 'https://github.com/YAQMC/YAQMC/issues/new?title=x';
@@ -39,6 +42,13 @@ describe('§28.6 openExternal allowlist', () => {
     expect(isAllowedExternalUrl('https://y.qq.com/')).toBe(true);
     expect(isAllowedExternalUrl('https://y.qq.com/n/ryqq/player')).toBe(true);
     expect(isAllowedExternalUrl('https://y.qq.com/portal/vip.html')).toBe(true);
+  });
+
+  it('allows only the configured YAQMC Discord invite', () => {
+    expect(isAllowedExternalUrl('https://discord.gg/HJbqa3Rdn9')).toBe(true);
+    expect(isAllowedExternalUrl('https://discord.gg/other-invite')).toBe(false);
+    expect(DISCORD_INVITE_HOST).toBe('discord.gg');
+    expect(DISCORD_INVITE_PATH).toBe('/HJbqa3Rdn9');
   });
 
   it('allows exact https URLs the user typed in settings and nothing else from that list', () => {

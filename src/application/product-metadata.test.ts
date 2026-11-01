@@ -49,17 +49,19 @@ const diagnostics: PlatformDiagnostics = {
 };
 
 describe('product metadata', () => {
-  it('keeps every public project link under the configured repository', () => {
-    expect(Object.values(productMetadata.links)).toEqual(
-      expect.arrayContaining([
-        'https://github.com/YAQMC/YAQMC',
-        'https://github.com/YAQMC/YAQMC/releases',
-      ]),
-    );
+  it('keeps public project links on approved project origins', () => {
+    expect(productMetadata.links).toMatchObject({
+      repository: 'https://github.com/YAQMC/YAQMC',
+      releases: 'https://github.com/YAQMC/YAQMC/releases',
+      community: 'https://discord.gg/HJbqa3Rdn9',
+    });
     expect(
-      Object.values(productMetadata.links).every((url) =>
-        url.startsWith(productMetadata.repository),
-      ),
+      Object.values(productMetadata.links)
+        .every(
+          (url) =>
+            url.startsWith(productMetadata.repository) ||
+            url === 'https://discord.gg/HJbqa3Rdn9',
+        ),
     ).toBe(true);
   });
 

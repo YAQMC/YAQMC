@@ -1295,6 +1295,7 @@ export function SettingsPage() {
     { id: 'repository', label: t('about.repository') },
     { id: 'releases', label: t('about.releases') },
     { id: 'documentation', label: t('about.documentation') },
+    { id: 'community', label: t('about.community') },
     { id: 'acknowledgements', label: t('about.acknowledgements') },
     { id: 'thirdPartyNotices', label: t('about.thirdPartyNotices') },
   ];

@@ -1259,6 +1259,7 @@ export const enUS = {
       releases: 'Releases',
       issues: 'Report an issue',
       documentation: 'Documentation',
+      community: 'Discord community',
       acknowledgements: 'Acknowledgements',
       thirdPartyNotices: 'Third-party licenses',
       copyDiagnostics: 'Copy diagnostics',

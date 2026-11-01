@@ -1217,6 +1217,7 @@ export const zhTW = {
       releases: '版本釋出',
       issues: '報告問題',
       documentation: '文件',
+      community: 'Discord 社群',
       acknowledgements: '鳴謝',
       thirdPartyNotices: '第三方許可證',
       copyDiagnostics: '複製診斷資訊',

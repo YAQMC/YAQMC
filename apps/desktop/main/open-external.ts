@@ -12,7 +12,7 @@
  *   `https://github.com/YAQMC/YAQMC` and `https://github.com/YAQMC/YAQMC/*`.
  *
  * Plan §28.6 widens the Electron Main list to the org prefix
- * `https://github.com/YAQMC/*`, QQ Music / provider help `https://y.qq.com/*`,
+ * `https://github.com/YAQMC/*`, the fixed YAQMC Discord invite, QQ Music / provider help `https://y.qq.com/*`,
  * and exact https URLs the user typed in settings. Non-https and everything
  * else: log + return false. Never throw into the renderer.
  */
@@ -20,6 +20,8 @@
 export const GITHUB_ORG_HOST = 'github.com';
 export const GITHUB_ORG_PATH = '/YAQMC';
 export const PROVIDER_HELP_HOST = 'y.qq.com';
+export const DISCORD_INVITE_HOST = 'discord.gg';
+export const DISCORD_INVITE_PATH = '/HJbqa3Rdn9';
 
 export type ExternalOpener = (url: string) => Promise<unknown> | unknown;
 
@@ -68,6 +70,12 @@ function isProviderHelpUrl(parsed: URL): boolean {
   return parsed.hostname.toLowerCase() === PROVIDER_HELP_HOST;
 }
 
+function isDiscordCommunityUrl(parsed: URL): boolean {
+  return (
+    parsed.hostname.toLowerCase() === DISCORD_INVITE_HOST && parsed.pathname === DISCORD_INVITE_PATH
+  );
+}
+
 function isExplicitUserTypedUrl(parsed: URL, extraHttpsUrls: readonly string[]): boolean {
   return extraHttpsUrls.some((raw) => {
     const extra = parseSafeHttpsUrl(raw);
@@ -87,6 +95,7 @@ export function isAllowedExternalUrl(url: string, extraHttpsUrls: readonly strin
   return (
     isGithubOrgUrl(parsed) ||
     isProviderHelpUrl(parsed) ||
+    isDiscordCommunityUrl(parsed) ||
     isExplicitUserTypedUrl(parsed, extraHttpsUrls)
   );
 }

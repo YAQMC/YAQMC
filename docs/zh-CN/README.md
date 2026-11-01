@@ -16,7 +16,8 @@
 - 歌词：[歌词架构](lyrics.md)、[桌面歌词 / 歌词岛](lyrics-surfaces.md)、
   [歌词预设](lyrics-presets.md)和[歌词编排器](lyrics-composer.md)
 - 求助：[GitHub Issue 报告](issue-reporting.md)、[诊断快照与诊断包](diagnostics.md)和
-  [安全与隐私](security.md)
+  [安全与隐私](security.md)；也可以加入
+  [YAQMC Discord 社区](https://discord.gg/HJbqa3Rdn9) 交流使用、插件和开发问题
 
 ## 贡献者
 

@@ -17,7 +17,8 @@ This directory contains the public user, tester, contributor, and release docume
 - Lyrics: [lyrics](lyrics.md), [desktop surfaces](lyrics-surfaces.md),
   [presets](lyrics-presets.md), and [composer](lyrics-composer.md)
 - Help: [Issue reporting](issue-reporting.md), [diagnostics](diagnostics.md), and
-  [security & privacy](security.md)
+  [security & privacy](security.md). User support and plugin discussion are available in the
+  [YAQMC Discord community](https://discord.gg/HJbqa3Rdn9)
 
 ## Contributors
 

@@ -12,6 +12,7 @@ export const productMetadata = {
     releases: 'https://github.com/YAQMC/YAQMC/releases',
     issues: 'https://github.com/YAQMC/YAQMC/issues/new/choose',
     documentation: 'https://github.com/YAQMC/YAQMC/tree/main/docs',
+    community: 'https://discord.gg/HJbqa3Rdn9',
     acknowledgements: 'https://github.com/YAQMC/YAQMC/blob/main/ACKNOWLEDGEMENTS.md',
     thirdPartyNotices: 'https://github.com/YAQMC/YAQMC/blob/main/THIRD_PARTY_NOTICES.md',
   },

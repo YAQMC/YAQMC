@@ -1217,6 +1217,7 @@ export const zhCN = {
       releases: '版本发布',
       issues: '报告问题',
       documentation: '文档',
+      community: 'Discord 社区',
       acknowledgements: '鸣谢',
       thirdPartyNotices: '第三方许可证',
       copyDiagnostics: '复制诊断信息',
