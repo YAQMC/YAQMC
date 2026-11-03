@@ -10,6 +10,8 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(path.join(repositoryRoot, 'site'), output, { recursive: true });
 await mkdir(path.join(output, 'assets'), { recursive: true });
+// The site shares the app's design tokens instead of keeping its own palette.
+await cp(path.join(repositoryRoot, 'src', 'styles', 'tokens.css'), path.join(output, 'tokens.css'));
 await cp(
   path.join(repositoryRoot, 'assets', 'yaqmc-logo.png'),
   path.join(output, 'assets', 'yaqmc-logo.png'),

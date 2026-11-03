@@ -11,6 +11,11 @@ on:
       - 'docs/**'
       - 'README*.md'
       - 'scripts/build-pages.mjs'
+      - 'src/**'
+      - 'public/**'
+      - 'vite.config.ts'
+      - 'vite.demo.config.ts'
+      - 'package-lock.json'
       - 'scripts/check-public-docs.mjs'
       - '.github/workflows/pages.yml'
   workflow_dispatch:

@@ -7,26 +7,30 @@ const root = new URL('../../', import.meta.url);
 const pages = ['site/index.html', 'site/en/index.html'];
 
 for (const file of pages) {
-  test(`${file}: navigation, documentation, assets and plugin downloads resolve`, () => {
+  test(`${file}: navigation, documentation, assets and release downloads resolve`, () => {
     const html = readFileSync(new URL(file, root), 'utf8');
     assert.equal((html.match(/<h1\b/gu) ?? []).length, 1);
-    assert.match(html, /class="skip-link" href="#main"/u);
-    assert.doesNotMatch(html, /<script\b/iu);
+    assert.match(html, /class="skip-link" href="#download"/u);
+    assert.match(html, /<iframe\b[^>]*class="stage"/u);
+    assert.match(html, /https:\/\/discord\.gg\/HJbqa3Rdn9/u);
     const ids = [...html.matchAll(/\bid="([^"]+)"/gu)].map((match) => match[1]);
     assert.equal(new Set(ids).size, ids.length);
     const links = [...html.matchAll(/(?:href|src)="([^"]+)"/gu)].map((m) => m[1]);
-    const plugins = links.filter((link) => link.endsWith('.yaqmc-plugin'));
-    assert.equal(plugins.length, 9, 'retain all existing plugin examples');
     for (const link of links) {
       if (link.startsWith('#')) {
         assert.ok(ids.includes(link.slice(1)), `missing anchor ${link}`);
       } else if (link.includes('/blob/main/')) {
         assert.ok(existsSync(new URL(link.split('/blob/main/')[1], root)), link);
       } else if (!link.startsWith('https://')) {
-        const relative = path.posix.normalize(path.posix.join(path.posix.dirname(file), link));
+        const clean = link.split('?')[0];
+        if (clean === 'demo/' || clean === '../demo/') {
+          assert.ok(existsSync(new URL('src/development/website-demo.tsx', root)), link);
+          continue;
+        }
+        const relative = path.posix.normalize(path.posix.join(path.posix.dirname(file), clean));
         const source = relative
           .replace(/^site\/assets\//u, 'assets/')
-          .replace(/^site\/plugins\//u, 'examples/plugins/packages/');
+          .replace(/^site\/tokens\.css$/u, 'src/styles/tokens.css');
         assert.ok(existsSync(new URL(source, root)), source);
       }
     }
@@ -35,17 +39,15 @@ for (const file of pages) {
         links.some((link) => link.includes(`/releases/download/v0.1.0/YAQMC-${platform}-`)),
       );
     }
-    assert.match(html, /SmartScreen/u);
     assert.match(html, /SHA-256/u);
-    assert.match(html, /Android 8\.0\+/u);
   });
 }
 
-test('both languages expose the same release assets and plugin examples', () => {
+test('both languages expose the same release download assets', () => {
   const downloads = pages.map((file) =>
     [...readFileSync(new URL(file, root), 'utf8').matchAll(/href="([^"]+)"/gu)]
       .map((m) => m[1])
-      .filter((href) => href.includes('/releases/download/') || href.endsWith('.yaqmc-plugin'))
+      .filter((href) => href.includes('/releases/download/'))
       .map((href) => href.replace(/^\.\.\//u, ''))
       .sort(),
   );

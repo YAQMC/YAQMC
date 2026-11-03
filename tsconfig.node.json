@@ -15,6 +15,7 @@
   },
   "include": [
     "vite.config.ts",
+    "vite.demo.config.ts",
     "playwright.config.ts",
     "playwright.electron.config.ts",
     "e2e/**/*.ts",
