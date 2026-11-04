@@ -215,12 +215,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2025]
+        os: [ubuntu-22.04, windows-2025, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Scan tracked account artifacts (Linux)
-        if: runner.os == 'Linux'
+      - name: Scan tracked account artifacts (Linux/macOS)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        shell: bash
         run: bash scripts/check-secrets.sh --self-test && bash scripts/check-secrets.sh
       - name: Scan tracked account artifacts (Windows)
         if: runner.os == 'Windows'

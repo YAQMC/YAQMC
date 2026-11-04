@@ -56,12 +56,10 @@ describe('product metadata', () => {
       community: 'https://discord.gg/HJbqa3Rdn9',
     });
     expect(
-      Object.values(productMetadata.links)
-        .every(
-          (url) =>
-            url.startsWith(productMetadata.repository) ||
-            url === 'https://discord.gg/HJbqa3Rdn9',
-        ),
+      Object.values(productMetadata.links).every(
+        (url) =>
+          url.startsWith(productMetadata.repository) || url === 'https://discord.gg/HJbqa3Rdn9',
+      ),
     ).toBe(true);
   });
 

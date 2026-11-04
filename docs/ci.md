@@ -2,28 +2,29 @@
 
 > [简体中文](zh-CN/ci.md) | **English**
 
-This page describes the desktop and Android GitHub Actions pipelines. Windows and Linux releases are unsigned; Android requires a persistent release certificate. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
+This page describes the desktop and Android GitHub Actions pipelines. Windows releases are unsigned, Linux packages are not code-signed, and macOS packages are ad-hoc-signed unless release signing is enabled; Android requires a persistent release certificate. None of these artifacts, by themselves, prove that a package was launched on its target hardware.
 
 ## Workflows
 
-| Workflow        | File                                      | Trigger                                          | Result                                                                               |
-| --------------- | ----------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| CI              | `.github/workflows/ci.yml`                | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                        |
-| Build artifacts | `.github/workflows/package-artifacts.yml` | manual dispatch only                             | unsigned Windows/Linux packages and an Android debug APK; Actions artifacts only     |
-| YAQMC release   | `.github/workflows/electron-release.yml`  | `v*` tags, manual dispatch                       | official stable/beta/nightly Releases; manual branch runs create source-build drafts |
+| Workflow        | File                                      | Trigger                                          | Result                                                                                                 |
+| --------------- | ----------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| CI              | `.github/workflows/ci.yml`                | pull requests, pushes to `main`, manual dispatch | quality gates plus unsigned package artifacts                                                          |
+| Build artifacts | `.github/workflows/package-artifacts.yml` | manual dispatch only                             | Windows/Linux packages, ad-hoc-signed macOS packages, and an Android debug APK; Actions artifacts only |
+| YAQMC release   | `.github/workflows/electron-release.yml`  | `v*` tags, manual dispatch                       | official stable/beta/nightly Releases; manual branch runs create source-build drafts                   |
 
 The removed legacy desktop workflow is not a supported build path. CI package artifacts are retained for 14 days.
 
 ## Manual artifact builds
 
 After pushing a commit, open **Actions → Build artifacts → Run workflow**, select the branch and
-`all`, `windows`, `linux`, or `android`, then start the workflow. Download the packages from the
+`all`, `windows`, `linux`, `macos`, or `android`, then start the workflow. Download the packages from the
 completed run's **Artifacts** section; they are retained for 14 days. Pushes do not automatically
 run this dedicated workflow, and it never creates or publishes a GitHub Release.
 
 Desktop builds reuse the existing x64/arm64 matrix and package scripts. `ci` uses ThinLTO with
 eight codegen units; `production` uses Fat LTO with one codegen unit. Windows artifacts contain
-an installer and portable EXE; Linux artifacts contain AppImage, deb, rpm, and tar.gz packages.
+an installer and portable EXE; Linux artifacts contain AppImage, deb, rpm, and tar.gz packages;
+macOS artifacts contain architecture-specific dmg and zip packages with ad-hoc signatures.
 Android builds its separate renderer and a debug-signed test APK for arm64-v8a and x86_64 without
 requiring release signing secrets. A debug APK cannot replace an APK signed with another key.
 
@@ -33,7 +34,7 @@ Every CI run performs frontend formatting, documentation, lint, TypeScript,
 Vitest and script checks; builds the Electron host on Linux, Windows and macOS; runs
 Rust fmt, clippy and workspace tests, plus Core unit tests and an Intel cross-check on `macos-15`; validates contracts; checks the
 unconditional public `qm-api-rs` git pin; tests provider-readiness and provenance
-validators with synthetic fixtures; and scans for secrets on Linux and Windows. Cargo fetches the exact public revision directly with
+validators with synthetic fixtures; and scans for secrets on Linux, Windows, and macOS. Cargo fetches the exact public revision directly with
 `CARGO_NET_GIT_FETCH_WITH_CLI=true`.
 
 - Pull requests package Windows x64 and Linux x64.
