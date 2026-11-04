@@ -52,13 +52,13 @@ test('Linux arm64 uses the FACT ubuntu-22.04-arm runner', () => {
   assert.equal(arm.cross, false);
 });
 
-test('macOS builds both architectures on Apple silicon, cross-compiling x64', () => {
+test('macOS builds both architectures on Intel, cross-compiling arm64', () => {
   const rows = selectElectronPackageMatrix({ eventName: 'workflow_dispatch', targets: 'macos' });
   assert.deepEqual(
     rows.map((row) => [row.arch, row.runner, row.target, row.cross]),
     [
-      ['arm64', 'macos-15', 'aarch64-apple-darwin', false],
-      ['x64', 'macos-15', 'x86_64-apple-darwin', true],
+      ['arm64', 'macos-15-intel', 'aarch64-apple-darwin', true],
+      ['x64', 'macos-15-intel', 'x86_64-apple-darwin', false],
     ],
   );
   // macOS runners are not part of the pull-request smoke set.

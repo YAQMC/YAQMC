@@ -46,9 +46,8 @@ export function parseElectronPackageArgs(argv) {
   return options;
 }
 
-export function isElectronCoreCross({ os, arch }) {
-  // Both are built on the opposite-architecture runner (windows-2025 x64, macos-15 arm64).
-  return (os === 'windows' && arch === 'arm64') || (os === 'macos' && arch === 'x64');
+export function isElectronCoreCross({ os, arch, hostArch = process.arch }) {
+  return (os === 'windows' && arch === 'arm64') || (os === 'macos' && arch !== hostArch);
 }
 
 export function cargoBuildArgs(target) {

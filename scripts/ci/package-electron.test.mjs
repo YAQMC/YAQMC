@@ -276,8 +276,15 @@ test('macOS packages build dmg and zip per architecture and are ad-hoc signed un
     'YAQMC-macos-x64.dmg',
     'YAQMC-macos-x64.zip',
   ]);
-  assert.equal(isElectronCoreCross({ os: 'macos', arch: 'x64' }), true);
-  assert.equal(isElectronCoreCross({ os: 'macos', arch: 'arm64' }), false);
+});
+
+test('macOS cross-compilation follows the host architecture', () => {
+  for (const hostArch of ['x64', 'arm64']) {
+    assert.equal(isElectronCoreCross({ os: 'macos', arch: hostArch, hostArch }), false);
+    const arch = hostArch === 'x64' ? 'arm64' : 'x64';
+    assert.equal(isElectronCoreCross({ os: 'macos', arch, hostArch }), true);
+  }
+  assert.equal(isElectronCoreCross({ os: 'macos', arch: process.arch }), false);
 });
 
 test('compile steps cannot inherit Apple signing or notarization credentials', () => {

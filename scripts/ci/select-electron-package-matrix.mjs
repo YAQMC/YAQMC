@@ -6,9 +6,8 @@ import { fileURLToPath } from 'node:url';
  * Electron package matrix (CI-02). This is the sole desktop package matrix.
  * Drops Windows i686 (R-13). Windows arm64 is a cross-compile on windows-2025.
  * Linux arm64 stays on the FACT ubuntu-22.04-arm runner (CI-03's ubuntu-24.04-arm
- * remains hardware pending). macOS builds both architectures on the Apple silicon
- * macos-15 runner; x64 is a cross-compile (rustup target + electron-builder --x64),
- * so only arm64 can be launched natively there.
+ * remains hardware pending). macOS uses macos-15-intel to avoid ARM runner capacity
+ * failures; arm64 is cross-compiled, so only x64 can be launched natively there.
  */
 export const ELECTRON_PACKAGE_TARGETS = [
   {
@@ -46,17 +45,17 @@ export const ELECTRON_PACKAGE_TARGETS = [
   {
     os: 'macos',
     arch: 'arm64',
-    runner: 'macos-15',
+    runner: 'macos-15-intel',
     target: 'aarch64-apple-darwin',
-    cross: false,
+    cross: true,
     smoke: false,
   },
   {
     os: 'macos',
     arch: 'x64',
-    runner: 'macos-15',
+    runner: 'macos-15-intel',
     target: 'x86_64-apple-darwin',
-    cross: true,
+    cross: false,
     smoke: false,
   },
 ];

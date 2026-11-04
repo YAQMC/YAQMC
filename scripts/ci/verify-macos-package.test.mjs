@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseCodesignDetails, signaturePolicyProblems } from './verify-macos-package.mjs';
+import {
+  codesignDetails,
+  parseCodesignDetails,
+  signaturePolicyProblems,
+} from './verify-macos-package.mjs';
 
 const ADHOC = `Executable=/tmp/YAQMC.app/Contents/MacOS/YAQMC
 Identifier=org.yaqmc.desktop
@@ -23,6 +27,26 @@ Authority=Apple Root CA
 Timestamp=Nov 4, 2026 at 10:00:00
 TeamIdentifier=ABCDE12345
 `;
+
+test('codesign inspection reads successful stderr and rejects execution failures', () => {
+  const appPath = '/tmp/package with spaces/YAQMC.app';
+  const output = codesignDetails(appPath, (command, args, options) => {
+    assert.equal(command, 'codesign');
+    assert.deepEqual(args, ['-dv', '--verbose=2', appPath]);
+    assert.equal(options.encoding, 'utf8');
+    return { status: 0, stdout: '', stderr: ADHOC };
+  });
+  assert.deepEqual(signaturePolicyProblems(parseCodesignDetails(output), { signed: false }), []);
+  assert.throws(
+    () => codesignDetails(appPath, () => ({ status: 1, stdout: '', stderr: 'not signed' })),
+    /codesign -dv failed: not signed/,
+  );
+  const error = new Error('spawn codesign ENOENT');
+  assert.throws(() => codesignDetails(appPath, () => ({ status: null, error })), {
+    message: 'codesign -dv failed: spawn codesign ENOENT',
+    cause: error,
+  });
+});
 
 test('parses ad-hoc and Developer ID codesign output', () => {
   assert.deepEqual(parseCodesignDetails(ADHOC), {

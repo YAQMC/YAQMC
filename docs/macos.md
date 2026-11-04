@@ -93,12 +93,15 @@ Entitlements are deliberately minimal and live in `apps/desktop/resources/macos/
 
 No microphone, camera, Apple Events or library-validation exceptions are requested.
 
+CI builds on Intel to avoid ARM runner capacity failures; arm64 packages are cross-compiled.
+This does not provide native Apple silicon runtime validation.
+
 ## Verification status
 
-| Item                                                           | Status                                                     |
-| -------------------------------------------------------------- | ---------------------------------------------------------- |
-| electron-builder configuration and entitlements                | Schema-validated; not yet packaged on macOS by this change |
-| CI: Core build and unit tests on `macos-15`, x64 cross-check   | Configured; runs on the next CI execution                  |
-| Ad-hoc package build and verification                          | Configured in CI and release; not yet run                  |
-| Developer ID signing and notarization                          | **Untested** — requires Apple credentials                  |
-| Runtime behavior on macOS hardware (audio, Keychain, overlays) | **Not validated**                                          |
+| Item                                                                       | Status                                                     |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| electron-builder configuration and entitlements                            | Schema-validated; not yet packaged on macOS by this change |
+| CI: Core build and unit tests on `macos-15-intel` (x64), arm64 cross-check | Configured; runs on the next CI execution                  |
+| Ad-hoc package build and verification                                      | Configured in CI and release; not yet run                  |
+| Developer ID signing and notarization                                      | **Untested** — requires Apple credentials                  |
+| Runtime behavior on macOS hardware (audio, Keychain, overlays)             | **Not validated**                                          |

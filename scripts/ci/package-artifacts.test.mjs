@@ -24,7 +24,7 @@ test('manual artifact builds expose and verify macOS packages', () => {
 
 test('CI secret scanning covers the macOS runner', () => {
   const ci = readFileSync(path.join(repositoryRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
-  assert.match(ci, /os:\s+\[ubuntu-22\.04,\s+windows-2025,\s+macos-15\]/);
+  assert.match(ci, /os:\s+\[ubuntu-22\.04,\s+windows-2025,\s+macos-15-intel\]/);
   assert.match(ci, /runner\.os == 'Linux' \|\| runner\.os == 'macOS'/);
   assert.match(ci, /shell: bash/);
 });

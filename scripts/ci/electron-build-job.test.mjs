@@ -9,7 +9,7 @@ const workflow = readFileSync(path.join(repositoryRoot, '.github/workflows/ci.ym
 
 test('CI runs an Electron build-only job on Ubuntu, Windows, and macOS', () => {
   assert.match(workflow, /^ {2}electron-build:/m);
-  assert.match(workflow, /os: \[ubuntu-22\.04, windows-2025, macos-15\]/);
+  assert.match(workflow, /os: \[ubuntu-22\.04, windows-2025, macos-15-intel\]/);
   assert.match(workflow, /npm run build -w @yaqmc\/desktop/);
   const summarize = workflow.split(/^ {2}summarize:/m)[1] ?? '';
   const needs = summarize.match(/needs:\s*\[[\s\S]*?\]/)?.[0] ?? '';

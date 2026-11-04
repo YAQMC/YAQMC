@@ -27,12 +27,12 @@ Linux 产物包含 AppImage、deb、rpm、tar.gz；macOS 产物按架构提供�
 
 ## 门禁与打包矩阵
 
-每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux、Windows 与 macOS 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查，并在 `macos-15` 上运行 Core 单元测试及 Intel 交叉编译检查；核验无条件链接的公开 `qm-api-rs` 精确 git pin，使用合成夹具测试 readiness 与 provenance 校验器，并在 Linux、Windows、macOS 扫描密钥。实际私有报告不进入 CI。Cargo 使用 `CARGO_NET_GIT_FETCH_WITH_CLI=true` 直接获取精确的公开 revision。
+每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux、Windows 与 macOS 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查，并在 `macos-15-intel` 上运行 x64 原生 Core 单元测试及 arm64 交叉编译检查；核验无条件链接的公开 `qm-api-rs` 精确 git pin，使用合成夹具测试 readiness 与 provenance 校验器，并在 Linux、Windows、macOS 扫描密钥。实际私有报告不进入 CI。Cargo 使用 `CARGO_NET_GIT_FETCH_WITH_CLI=true` 直接获取精确的公开 revision。
 
 - Pull request 打包 Windows x64 与 Linux x64。
 - 推送 `main` 打包 Windows x64/arm64、Linux x64/arm64 与 macOS arm64/x64。
 - 手动运行可选 `windows`、`linux`、`macos` 或 `all`，以及 `ci` 或 `production` 优化配置。
-- Windows arm64 在 `windows-2025` 交叉编译；Linux arm64 使用 `ubuntu-22.04-arm`；macOS arm64 在 `macos-15`（Apple 芯片）原生构建，macOS x64 在同一 Runner 上交叉编译。
+- Windows arm64 在 `windows-2025` 交叉编译；Linux arm64 使用 `ubuntu-22.04-arm`；macOS x64 在 `macos-15-intel` 原生构建，arm64 在同一 Runner 上交叉编译，以绕开 ARM runner 容量故障。这条路径不执行 Apple 芯片原生测试。
 - 不再构建或发布 Windows i686。
 
 过时的 pull request 运行会被取消；推送 `main`、tag 和手动打包不会中途取消。
@@ -94,7 +94,7 @@ artifact 都包含唯一的 `build-info-<os>-<arch>.json`，记录有效配置�
 codegen unit、Rust 目标、Node/Electron 版本与 Git 身份。Release 组装器在摊平
 资产前要求该 identity 与对应源码 commit 一致。
 
-Cargo 缓存按操作系统、Rust 目标、工具链类别、`Cargo.lock` 和配置类别分键。Pull request 可以恢复缓存，但只有 `main` 推送、tag 和手动运行会保存。恢复出的缓存是不可信输入，冷缓存构建仍必须成功。
+Cargo 缓存按操作系统、Rust 目标、工具链类别、`Cargo.lock` 和配置类别分键。打包缓存额外包含 runner 架构，隔离宿主构建产物。Pull request 可以恢复缓存，但只有 `main` 推送、tag 和手动运行会保存。恢复出的缓存是不可信输入，冷缓存构建仍必须成功。
 
 ## 产物与发布名
 

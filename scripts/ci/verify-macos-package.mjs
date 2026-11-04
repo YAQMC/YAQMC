@@ -5,7 +5,7 @@
 // Mach-O for the expected architecture, the bundle passes `codesign --verify --deep --strict`,
 // and the signature matches the build mode: ad-hoc for unsigned builds, or a Developer ID with
 // a Team ID that Gatekeeper accepts and whose notarization ticket is stapled for signed builds.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -61,18 +61,21 @@ function runStderr(command, args) {
   }
 }
 
-function codesignDetails(appPath) {
+export function codesignDetails(appPath, execute = spawnSync) {
   // codesign prints details on stderr even on success.
-  try {
-    return execFileSync('codesign', ['-dv', '--verbose=2', appPath], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    throw new Error(`codesign -dv failed: ${error.stderr || error.message}`, {
-      cause: error,
-    });
+  const result = execute('codesign', ['-dv', '--verbose=2', appPath], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `codesign -dv failed: ${result.error?.message || result.stderr || `exit ${result.status}`}`,
+      {
+        cause: result.error,
+      },
+    );
   }
+  return result.stderr;
 }
 
 function verify({ dir, arch, signed }) {

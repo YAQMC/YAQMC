@@ -32,7 +32,7 @@ requiring release signing secrets. A debug APK cannot replace an APK signed with
 
 Every CI run performs frontend formatting, documentation, lint, TypeScript,
 Vitest and script checks; builds the Electron host on Linux, Windows and macOS; runs
-Rust fmt, clippy and workspace tests, plus Core unit tests and an Intel cross-check on `macos-15`; validates contracts; checks the
+Rust fmt, clippy and workspace tests, plus native x64 Core unit tests and an arm64 cross-check on `macos-15-intel`; validates contracts; checks the
 unconditional public `qm-api-rs` git pin; tests provider-readiness and provenance
 validators with synthetic fixtures; and scans for secrets on Linux, Windows, and macOS. Cargo fetches the exact public revision directly with
 `CARGO_NET_GIT_FETCH_WITH_CLI=true`.
@@ -40,8 +40,9 @@ validators with synthetic fixtures; and scans for secrets on Linux, Windows, and
 - Pull requests package Windows x64 and Linux x64.
 - Pushes to `main` package Windows x64/arm64, Linux x64/arm64 and macOS arm64/x64.
 - Manual runs select `windows`, `linux`, `macos`, or `all`, and `ci` or `production` optimization.
-- Windows arm64 is cross-compiled on `windows-2025`. Linux arm64 uses `ubuntu-22.04-arm`. macOS arm64 is native on
-  `macos-15` (Apple silicon); macOS x64 is cross-compiled there.
+- Windows arm64 is cross-compiled on `windows-2025`. Linux arm64 uses `ubuntu-22.04-arm`. macOS x64 is native on
+  `macos-15-intel`; macOS arm64 is cross-compiled there to avoid ARM runner capacity failures.
+  This path does not execute tests on Apple silicon.
 - Windows i686 is not built or published.
 
 Superseded pull-request runs are cancelled. Pushes to `main`, tag builds, and manual packaging runs are not cancelled mid-flight.
@@ -108,7 +109,7 @@ codegen units, Rust target, Node version, Electron version, and Git identity.
 The release assembler requires that identity to match the corresponding-source
 commit before flattening assets.
 
-Cargo caches are keyed by OS, Rust target, toolchain class, `Cargo.lock`, and profile class. Pull requests may restore caches but only `main` pushes, tags, and manual runs save them. Restored caches are untrusted inputs; a cold-cache build must still succeed.
+Cargo caches are keyed by OS, Rust target, toolchain class, `Cargo.lock`, and profile class. Packaging caches also include the runner architecture to isolate host build artifacts. Pull requests may restore caches but only `main` pushes, tags, and manual runs save them. Restored caches are untrusted inputs; a cold-cache build must still succeed.
 
 ## Artifact and release names
 
