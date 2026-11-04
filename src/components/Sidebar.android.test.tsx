@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as HostCapabilities from '../application/host-capabilities';
-import { AndroidBottomNav, Sidebar } from './Sidebar';
+import { BottomNav, Sidebar } from './Sidebar';
 
 const androidRuntime = vi.hoisted(() => ({ value: true }));
 
@@ -45,10 +45,10 @@ describe('Android Sidebar', () => {
   });
 });
 
-describe('AndroidBottomNav', () => {
+describe('BottomNav', () => {
   it('renders the four Android destinations and navigates by route', () => {
     const onNavigate = vi.fn();
-    render(<AndroidBottomNav route={{ page: 'home' }} onNavigate={onNavigate} />);
+    render(<BottomNav route={{ page: 'home' }} onNavigate={onNavigate} />);
     expect(screen.getByRole('navigation')).toBeInTheDocument();
     expect(screen.getAllByRole('button')).toHaveLength(4);
     expect(screen.getByRole('button', { name: 'Library' })).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe('AndroidBottomNav', () => {
   });
 
   it('keeps Library selected on every nested library destination', () => {
-    render(<AndroidBottomNav route={{ page: 'statistics' }} onNavigate={vi.fn()} />);
+    render(<BottomNav route={{ page: 'statistics' }} onNavigate={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Library' })).toHaveAttribute('data-active', 'true');
   });
 });

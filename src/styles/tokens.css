@@ -109,9 +109,26 @@
   --shadow-md: 0 18px 48px rgba(0, 0, 0, 0.32);
   --shadow-art: 0 20px 45px rgba(0, 0, 0, 0.28);
 
+  --radius-xl: 24px;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Aliases for names older stylesheets reference; they previously resolved to nothing. */
+  --border-subtle: var(--border);
+  --surface-border: var(--border);
+  --surface-primary: var(--surface);
+  --surface-elevated: var(--surface-raised);
+  --surface-muted: var(--bg-subtle);
+  --surface-strong: var(--surface-pressed);
+  --surface-code: color-mix(in srgb, var(--bg) 70%, #000);
+  --accent-muted: color-mix(in srgb, var(--accent) 16%, transparent);
+
   --motion-fast: 110ms;
   --motion-base: 180ms;
+  --motion-slow: 280ms;
   --ease-out: cubic-bezier(0.22, 0.75, 0.24, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --press-scale: 0.96;
 }
 
 :root[data-theme='light'] {

@@ -82,3 +82,6 @@ artifacts/acc03-windows-last.json
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# On-device frame measurements (device identity; not for commit)
+artifacts/android-perf/

@@ -83,6 +83,12 @@ export const zhCN = {
   },
   pages: {
     musicUnavailable: '音乐暂时不可用',
+    pluginPage: {
+      unavailable: '此插件页面不可用。插件可能已停用或不再提供该页面。',
+      providedBy: '由 {{plugin}} 提供',
+      loading: '正在等待 {{plugin}}…',
+      layoutChangedBy: '布局已由 {{plugins}} 调整',
+    },
     itemUnavailable: '此项目不可用',
     providerUnavailable: '{{provider}} 已停用或不再安装；重新启用后可恢复此页面。',
     albumLoadFailed: '无法从当前服务加载这张专辑。',
@@ -1010,6 +1016,9 @@ export const zhCN = {
         ui_playerBar: '添加播放栏操作',
         ui_sidebar: '添加侧栏命令',
         ui_notify: '显示通知',
+        ui_pages: '添加插件页面',
+        ui_navigation: '为其页面添加导航入口',
+        ui_layout: '调整受支持的 YAQMC 页面分区',
         network_origin: 'HTTPS 网络：{{origin}}',
         provider_catalog: '提供目录与发现内容',
         provider_playback: '解析可播放音源',

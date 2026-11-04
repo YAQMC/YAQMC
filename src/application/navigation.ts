@@ -15,7 +15,9 @@ export type AppRoute =
   | { page: 'artist'; id: EntityId; providerId?: string }
   | { page: 'album'; id: EntityId; providerId?: string }
   | { page: 'playlist'; id: EntityId; providerId?: string }
-  | { page: 'area'; encArea: string; title: string; providerId?: string };
+  | { page: 'area'; encArea: string; title: string; providerId?: string }
+  /** Plugin API v4 page; rendered by the host from the plugin's declarative document. */
+  | { page: 'plugin-page'; pluginId: string; pageId: string };
 
 export type ProviderCatalogRoute = Extract<
   AppRoute,

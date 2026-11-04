@@ -32,6 +32,36 @@ Android App Bundle is published.
 Desktop lyric overlays, Lyrics Island, tray controls, global shortcuts, plugins, developer mode, the loopback Local
 API, and file exports are intentionally absent from Android v1. The in-app lyric screen remains available.
 
+## Lyrics frame rate
+
+Synchronized lyrics on Android are drawn by a native overlay (`NativeLyricsOverlay`) on `Choreographer` vsync, reading
+Media3's playback position every frame. The WebView beneath does not run its own per-frame lyric clock.
+
+The app normally leaves the refresh rate to the system (with touch boost on Android 15+), so adaptive/LTPO panels can
+drop to a low rate on static pages. Lyrics animate without touch input, so **while the lyric overlay is visible and
+playback is running**, the activity asks for the highest refresh rate available at the current resolution. Pausing,
+leaving the lyrics page, or backgrounding the app returns to the system default. Device power policies, battery
+saver, and thermal limits can still override the request.
+
+Measure frame pacing instead of relying on the display setting. With USB or wireless debugging connected, open the
+lyrics page, start playback, then run:
+
+```sh
+node scripts/android/measure-frames.mjs --label before --seconds 20
+# install the new build, repeat the same song/position, then:
+node scripts/android/measure-frames.mjs --label after --seconds 20
+node scripts/android/measure-frames.mjs --compare artifacts/android-perf/android-frames-before.json artifacts/android-perf/android-frames-after.json
+```
+
+The report records:
+
+- the device and SoC;
+- refresh-rate samples taken through the run;
+- SurfaceFlinger present intervals for the app layer (on-screen FPS, p50/p95/p99, and intervals that skipped a refresh);
+- `gfxinfo` frame percentiles and jank counters, including GPU percentiles;
+- the busiest app threads by CPU;
+- thermal status.
+
 ## Privacy and storage
 
 Android uses the application-private files and cache directories. Its preferences, queue, cache, and statistics are

@@ -43,7 +43,8 @@ Composer 运行时，不会再做一套歌词渲染器。
 
 稳定选择器：`[data-scene-widget]`、`[data-scene-widget-id]`、`[data-scene-widget-type]`、`[data-scene-state]`、
 `[data-playback-state]`。稳定变量：`--scene-progress`、`--scene-duration`、`--scene-artwork-primary`、
-`--scene-artwork-secondary`、`--scene-accent`、`--scene-font-scale`。
+`--scene-artwork-secondary`、`--scene-accent`、`--scene-font-scale`。`--scene-progress` 为 0–1 的数值，播放时以 0.001 为步长更新
+（它会被整个场景继承，因此数值未变化的帧不会重写）。
 
 `data-widget` 仍是编辑器内部钩子，插件应优先使用 `data-scene-widget`。
 

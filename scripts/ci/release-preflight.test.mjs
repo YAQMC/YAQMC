@@ -18,6 +18,7 @@ test('preflight requires Android secrets but allows unsigned Windows for a full 
     targets: 'all',
     version: '0.1.0',
     tagged: false,
+    macosSigning: false,
   });
   for (const name of Object.keys(credentials)) {
     assert.throws(
@@ -118,4 +119,37 @@ test('manual tag builds keep their version tag and opt into publication while br
   assert.match(publish.run, /"\$GITHUB_REF_TYPE" == "tag" && "\$YAQMC_PUBLISH" == "true"/u);
   assert.match(publish.run, /--draft=false --prerelease=true --latest=false/u);
   assert.doesNotMatch(publish.run, /--clobber|--generate-notes/u);
+});
+
+test('macOS defaults to ad-hoc packages; opting into signing requires every Apple secret', () => {
+  assert.equal(
+    releasePreflight({ ...credentials, YAQMC_TARGETS: 'macos' }, '0.1.0').targets,
+    'macos',
+  );
+  const apple = {
+    MAC_CSC_LINK: 'p12-fixture',
+    MAC_CSC_KEY_PASSWORD: 'password-fixture',
+    APPLE_API_KEY_P8_BASE64: 'key-fixture',
+    APPLE_API_KEY_ID: 'id-fixture',
+    APPLE_API_ISSUER: 'issuer-fixture',
+  };
+  const signed = { ...credentials, ...apple, YAQMC_MACOS_SIGNING: 'true' };
+  assert.equal(releasePreflight(signed, '0.1.0').macosSigning, true);
+  for (const name of Object.keys(apple)) {
+    assert.throws(
+      () => releasePreflight({ ...signed, [name]: '' }, '0.1.0'),
+      (error) =>
+        error.message.includes(name) &&
+        error.message.includes('macOS') &&
+        !Object.values(apple).some((value) => error.message.includes(value)),
+    );
+  }
+  // A Windows-only rehearsal does not need Apple credentials even when macOS signing is on.
+  assert.equal(
+    releasePreflight(
+      { ...credentials, YAQMC_MACOS_SIGNING: 'true', YAQMC_TARGETS: 'windows' },
+      '0.1.0',
+    ).targets,
+    'windows',
+  );
 });

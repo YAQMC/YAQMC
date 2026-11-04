@@ -6,7 +6,7 @@ use crate::plugin::permissions::{parse_permission, permission_allowed_for_api, P
 
 pub const LEGACY_MANIFEST_VERSION: u32 = 1;
 pub const CURRENT_MANIFEST_VERSION: u32 = 2;
-pub const CURRENT_API_VERSION: u32 = 3;
+pub const CURRENT_API_VERSION: u32 = 4;
 pub const MIN_API_VERSION: u32 = 1;
 pub const PROVIDER_WIT_VERSION: &str = "0.1.0";
 pub const PROVIDER_WIT_WORLD: &str = "provider";
@@ -258,11 +258,16 @@ impl PluginManifest {
             return Err(ManifestError::InvalidId);
         }
         validate_entrypoints(&self.entrypoints)?;
-        for permission in &self.permissions {
-            let (permission, _) =
-                parse_permission(permission).map_err(|_| ManifestError::UnknownPermission)?;
-            if !permission_allowed_for_api(permission, self.api_version) {
-                return Err(ManifestError::UnknownPermission);
+        // A newer API may define permissions this host has never heard of. Such packages stay
+        // installed-but-incompatible via `compatibility_issue`, which also refuses activation,
+        // instead of failing install as if the permission were malformed.
+        if api_supported(self.api_version) {
+            for permission in &self.permissions {
+                let (permission, _) =
+                    parse_permission(permission).map_err(|_| ManifestError::UnknownPermission)?;
+                if !permission_allowed_for_api(permission, self.api_version) {
+                    return Err(ManifestError::UnknownPermission);
+                }
             }
         }
         self.validate_runtime_shape()?;
@@ -643,6 +648,71 @@ mod tests {
         assert_eq!(
             PluginManifest::parse(json.as_bytes()).unwrap_err(),
             ManifestError::MalformedEntrypoint
+        );
+    }
+
+    #[test]
+    fn api_v4_is_compositional_and_gates_page_permissions_by_version() {
+        let v4 = valid_json()
+            .replace("\"apiVersion\": 1", "\"apiVersion\": 4")
+            .replace(
+                r#""entrypoints": { "styles": ["styles/main.css"] }"#,
+                r#""entrypoints": { "script": "dist/main.js" },
+                   "permissions": ["track.read", "ui.sidebar", "ui.pages", "ui.navigation", "ui.layout"]"#,
+            );
+        let manifest = PluginManifest::parse(v4.as_bytes()).expect("v4 compositional manifest");
+        assert!(manifest.compatibility_issue().is_none());
+        assert!(manifest
+            .requested_permissions()
+            .contains(&PluginPermission::UiPages));
+
+        let v2_pages = v4.replace("\"apiVersion\": 4", "\"apiVersion\": 2");
+        assert_eq!(
+            PluginManifest::parse(v2_pages.as_bytes()).unwrap_err(),
+            ManifestError::UnknownPermission
+        );
+
+        // A Provider Component cannot move to v4: its provider.* permissions are v3-only...
+        let provider_v4 = valid_provider_json().replace("\"apiVersion\": 3", "\"apiVersion\": 4");
+        assert_eq!(
+            PluginManifest::parse(provider_v4.as_bytes()).unwrap_err(),
+            ManifestError::UnknownPermission
+        );
+        // ...and even without them the manifest v2 component shape requires API v3.
+        let bare_provider_v4 = provider_v4.replace(
+            r#""permissions": ["provider.catalog"]"#,
+            r#""permissions": []"#,
+        );
+        assert_eq!(
+            PluginManifest::parse(bare_provider_v4.as_bytes()).unwrap_err(),
+            ManifestError::ManifestApiMismatch
+        );
+    }
+
+    #[test]
+    fn future_api_permissions_install_as_incompatible_instead_of_malformed() {
+        let future = valid_json()
+            .replace("\"apiVersion\": 1", "\"apiVersion\": 5")
+            .replace(
+                r#""entrypoints": { "styles": ["styles/main.css"] }"#,
+                r#""entrypoints": { "script": "dist/main.js" },
+                   "permissions": ["ui.pages", "ui.someFutureSlot"]"#,
+            );
+        let manifest = PluginManifest::parse(future.as_bytes()).expect("structurally valid");
+        assert_eq!(
+            manifest.compatibility_issue().as_deref(),
+            Some("this plugin API version is not supported")
+        );
+        let zero = valid_json().replace("\"apiVersion\": 1", "\"apiVersion\": 0");
+        assert!(PluginManifest::parse(zero.as_bytes())
+            .expect("structurally valid")
+            .compatibility_issue()
+            .is_some());
+        // A supported API still rejects permissions it does not define.
+        let unknown = future.replace("\"apiVersion\": 5", "\"apiVersion\": 4");
+        assert_eq!(
+            PluginManifest::parse(unknown.as_bytes()).unwrap_err(),
+            ManifestError::UnknownPermission
         );
     }
 

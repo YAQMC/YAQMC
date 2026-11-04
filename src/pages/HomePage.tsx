@@ -1,12 +1,13 @@
 import { usePlayerStore } from '../application/player-store';
 import { ProviderContext } from '../application/provider-context';
 import { Play } from 'lucide-react';
-import { useContext } from 'react';
+import { Fragment, useContext, type ReactNode } from 'react';
 import type { AppRoute } from '../application/navigation';
 import type { HomeFeed } from '../domain/music';
 import { resolveArtworkSource } from '../application/artwork-resolver';
 import { MediaCard } from '../components/MediaCard';
 import { TrackList } from '../components/TrackList';
+import { useHomeLayout, type HomeLayoutSection } from '../application/plugin-pages';
 import { useTranslation } from 'react-i18next';
 
 interface HomePageProps {
@@ -17,6 +18,8 @@ interface HomePageProps {
 export function HomePage({ feed, onNavigate }: HomePageProps) {
   const { t } = useTranslation('pages', { keyPrefix: 'home' });
   const { t: common } = useTranslation('common');
+  const { t: pages } = useTranslation('pages');
+  const layout = useHomeLayout();
   const provider = useContext(ProviderContext);
   const playTracks = usePlayerStore((state) => state.playTracks);
   const startContinuation = usePlayerStore((state) => state.startContinuation);
@@ -29,8 +32,9 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
       ? { ...daily.artwork, src: '', variants: [], alt: `${daily.title} daily mix` }
       : dailyTrackArtwork;
 
-  return (
-    <div className="page home-page">
+  // Plugin API v4 may reorder or hide these host-defined sections; their content stays YAQMC's.
+  const sections: Record<HomeLayoutSection, ReactNode> = {
+    'for-you': (
       <section className="content-section">
         <div className="section-heading">
           <div>
@@ -83,8 +87,9 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
           )}
         </div>
       </section>
-
-      {feed.radarSongs.length > 0 && (
+    ),
+    radar:
+      feed.radarSongs.length > 0 ? (
         <section className="content-section">
           <div className="section-heading">
             <div>
@@ -116,9 +121,9 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
             continuation={provider ? { providerId: provider.id, kind: 'radar' } : undefined}
           />
         </section>
-      )}
-
-      {feed.recommendedSonglists.length > 0 && (
+      ) : null,
+    'recommended-playlists':
+      feed.recommendedSonglists.length > 0 ? (
         <section className="content-section">
           <div className="section-heading">
             <div>
@@ -138,6 +143,20 @@ export function HomePage({ feed, onNavigate }: HomePageProps) {
             ))}
           </div>
         </section>
+      ) : null,
+  };
+
+  return (
+    <div className="page home-page">
+      {layout.order
+        .filter((section) => !layout.hidden.has(section))
+        .map((section) => (
+          <Fragment key={section}>{sections[section]}</Fragment>
+        ))}
+      {layout.sources.length > 0 && (
+        <p className="home-page__layout-source">
+          {pages('pluginPage.layoutChangedBy', { plugins: layout.sources.join(', ') })}
+        </p>
       )}
     </div>
   );

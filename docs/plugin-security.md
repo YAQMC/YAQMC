@@ -27,7 +27,9 @@ Granted only after review:
 
 `track.read`, `lyrics.read`, `player.read`, `player.control`, `theme.read`, `plugin.storage`, `scene.register`,
 `style.register`, plus v2 `ui.contextMenu`, `ui.playerBar`, `ui.sidebar`, `ui.notify`, and scoped
-`network:https://host`.
+`network:https://host`, plus v4 `ui.pages`, `ui.navigation`, and `ui.layout`. API v4 pages are block documents
+rendered by YAQMC components; plugins never inject markup, styles, images or URLs into those surfaces
+(see the [Plugin Pages API](plugin-pages-api.md)).
 
 For legacy API v1-v2, bare `provider` and `account` remain reserved and denied. API v3 uses only the explicit
 `provider.catalog`, `provider.playback`, `provider.recommendation`, `provider.lyrics`, and `provider.account`

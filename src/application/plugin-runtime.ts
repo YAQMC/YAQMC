@@ -32,6 +32,7 @@ import {
   registerPluginSidebarAction,
   registerPluginTrackAction,
 } from './plugin-ui';
+import { applyPluginPageCall, isPluginPageMethod, validatePluginPagePayload } from './plugin-pages';
 
 const client = getYaqmcClient();
 
@@ -527,6 +528,25 @@ var ctx = {
   network: {
     request: function (request) { return __yaqmcCall('network.request', request || {}); }
   },
+  pages: {
+    register: function (page) { return __yaqmcCall('ui.pages.register', page || {}); },
+    render: function (pageId, blocks) { return __yaqmcCall('ui.pages.render', { pageId: String(pageId || ''), blocks: blocks || [] }); },
+    unregister: function (pageId) { return __yaqmcCall('ui.pages.unregister', { pageId: String(pageId || '') }); },
+    onMount: function (pageId, handler) {
+      return ctx.events.on('page.mounted', function (payload) { if (payload && payload.pageId === pageId) handler(payload); });
+    },
+    onUnmount: function (pageId, handler) {
+      return ctx.events.on('page.unmounted', function (payload) { if (payload && payload.pageId === pageId) handler(payload); });
+    }
+  },
+  navigation: {
+    register: function (entry) { return __yaqmcCall('ui.navigation.register', entry || {}); },
+    unregister: function (id) { return __yaqmcCall('ui.navigation.unregister', { id: String(id || '') }); }
+  },
+  layout: {
+    set: function (layout) { return __yaqmcCall('ui.layout.set', layout || {}); },
+    clear: function (target) { return __yaqmcCall('ui.layout.clear', { target: String(target || '') }); }
+  },
   scenes: {
     onMount: function (sceneId, handler) {
       return ctx.events.on('scene.changed', function (payload) {
@@ -753,6 +773,10 @@ function applyBridgeSideEffect(
     if (action) registerPluginSidebarAction(action);
     return;
   }
+  if (isPluginPageMethod(method)) {
+    applyPluginPageCall(script.pluginId, pluginName, method, payload);
+    return;
+  }
   if (method === 'ui.notify') {
     const level =
       result.level === 'success' || result.level === 'warning' || result.level === 'error'
@@ -912,6 +936,13 @@ async function startScripts(
         if (data.type !== 'yaqmc/call' || !data.id || !data.method) return;
         const boundToken = runtimeTokens.get(script.pluginId);
         if (!boundToken) return;
+        const invalid = isPluginPageMethod(data.method)
+          ? validatePluginPagePayload(data.method, data.payload ?? {})
+          : null;
+        if (invalid) {
+          worker.postMessage({ type: 'yaqmc/result', id: data.id, ok: false, error: invalid });
+          return;
+        }
         void client
           .invoke('plugin_bridge', {
             request: {
@@ -1050,6 +1081,20 @@ function emitToPlugin(pluginId: string, event: string, payload: unknown): void {
 
 export function dispatchPluginUiAction(pluginId: string, actionId: string, slot: string): void {
   emitToPlugin(pluginId, 'ui.action', { id: actionId, slot });
+}
+
+/** API v4: an action button or list item on a plugin page. Only the owning plugin is told. */
+export function dispatchPluginPageAction(pluginId: string, pageId: string, actionId: string): void {
+  emitToPlugin(pluginId, 'ui.action', { id: actionId, slot: 'page', pageId });
+}
+
+/** API v4 page lifecycle, addressed to the owning plugin only (never broadcast). */
+export function notifyPluginPageVisibility(
+  pluginId: string,
+  pageId: string,
+  visible: boolean,
+): void {
+  emitToPlugin(pluginId, visible ? 'page.mounted' : 'page.unmounted', { pageId });
 }
 
 function emitSceneLifecycle(selectedId: string): void {

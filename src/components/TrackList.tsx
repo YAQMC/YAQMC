@@ -47,7 +47,11 @@ export function TrackList({
           #
         </span>
         <span role="columnheader">{t('title')}</span>
-        {showAlbum && <span role="columnheader">{t('album')}</span>}
+        {showAlbum && (
+          <span className="track-list__album" role="columnheader">
+            {t('album')}
+          </span>
+        )}
         <span className="track-list__quality" role="columnheader" aria-label={t('quality')} />
         <span className="track-list__duration" role="columnheader">
           {t('time')}

@@ -81,6 +81,10 @@ export type PluginPermission =
   | 'ui.playerBar'
   | 'ui.sidebar'
   | 'ui.notify'
+  /** API v4 */
+  | 'ui.pages'
+  | 'ui.navigation'
+  | 'ui.layout'
   | `network:https://${string}`;
 
 /** Reserved capabilities. Raw fetch, filesystem, and account credentials stay denied. */
@@ -240,6 +244,41 @@ export interface PluginNetworkRequest {
   body?: string;
 }
 
+/**
+ * API v4 page document. YAQMC renders every block with its own components; plugins never supply
+ * markup, styles, images, or URLs. Limits: 40 blocks, 50 list items, 8 stats, 4 actions.
+ */
+export type PluginPageBlock =
+  | { type: 'heading'; text: string }
+  | { type: 'text'; text: string; tone?: 'default' | 'secondary' }
+  | { type: 'stats'; items: Array<{ label: string; value: string }> }
+  | {
+      type: 'list';
+      items: Array<{ id: string; title: string; subtitle?: string; actionId?: string }>;
+    }
+  | {
+      type: 'actions';
+      items: Array<{ id: string; label: string; variant?: 'primary' | 'secondary' }>;
+    }
+  | { type: 'notice'; text: string; level?: 'info' | 'warning' | 'error' }
+  | { type: 'divider' };
+
+/** API v4 Home sections a plugin may reorder or hide. */
+export type PluginHomeSection = 'for-you' | 'radar' | 'recommended-playlists';
+
+export interface PluginHomeLayout {
+  target: 'home';
+  order?: PluginHomeSection[];
+  hidden?: PluginHomeSection[];
+}
+
+/** Delivered as `ui.action` with `slot: 'page'` when a page button or list item is pressed. */
+export interface PluginPageActionEvent {
+  id: string;
+  slot: 'page';
+  pageId: string;
+}
+
 export interface PluginContext {
   plugin: { id: string };
   events: PluginEvents;
@@ -269,6 +308,24 @@ export interface PluginContext {
   };
   network: {
     request(request: PluginNetworkRequest): Promise<{ ok: boolean; status: number; body: string }>;
+  };
+  /** API v4, `ui.pages`. Pages are plugin-scoped; ids are 1-40 chars of [A-Za-z0-9._-]. */
+  pages: {
+    register(page: { id: string; title: string }): Promise<{ ok: true }>;
+    render(pageId: string, blocks: PluginPageBlock[]): Promise<{ ok: true }>;
+    unregister(pageId: string): Promise<{ ok: true }>;
+    onMount(pageId: string, handler: (payload: { pageId: string }) => void): () => void;
+    onUnmount(pageId: string, handler: (payload: { pageId: string }) => void): () => void;
+  };
+  /** API v4, `ui.navigation`. Entries can only open this plugin's own registered pages. */
+  navigation: {
+    register(entry: { id: string; label: string; pageId: string }): Promise<{ ok: true }>;
+    unregister(id: string): Promise<{ ok: true }>;
+  };
+  /** API v4, `ui.layout`. Only host-defined knobs on supported YAQMC pages. */
+  layout: {
+    set(layout: PluginHomeLayout): Promise<{ ok: true }>;
+    clear(target: 'home'): Promise<{ ok: true }>;
   };
   scenes: {
     onMount(sceneId: string, handler: (payload: unknown) => void): () => void;

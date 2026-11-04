@@ -4,7 +4,8 @@
 
 `manifest.json` has two deliberately separate runtime shapes:
 
-- manifest v1 / Plugin API v1-v2 composes styles, scenes, and an isolated script;
+- manifest v1 / Plugin API v1, v2 and v4 composes styles, scenes, an isolated script, and (v4) host-rendered
+  pages, navigation entries and layout knobs — see the [Plugin Pages API](plugin-pages-api.md);
 - manifest v2 / Plugin API v3 describes one sandboxed Provider Component.
 
 The two shapes cannot be mixed in one package.
@@ -33,7 +34,7 @@ authors, homepage, repository, license, engines, platforms, architectures, entry
 conflicts, `settingsSchema`, and reserved `signatures`.
 
 Plugin IDs use reverse DNS, for example `dev.example.plugin`. Versions are semver. `apiVersion` is independent from
-the package version and `manifestVersion`. The host understands API versions `1`, `2`, and `3`. Incompatible packages
+the package version and `manifestVersion`. The host understands API versions `1`, `2`, `3`, and `4`. Incompatible packages
 may remain installed and disabled with an explanation; they are never partially activated.
 
 ## Provider Component manifest

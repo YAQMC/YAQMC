@@ -28,6 +28,24 @@ describe('BASE-04 core path resolution', () => {
     );
   });
 
+  it('uses the macOS Library directories and ignores XDG overrides', () => {
+    const home = '/Users/listener';
+    const paths = resolveCorePaths({
+      platform: 'darwin',
+      env: { XDG_DATA_HOME: '/tmp/xdg-data', XDG_CONFIG_HOME: '/tmp/xdg-config' },
+      homedir: home,
+    });
+    expect(paths).toEqual({
+      dataDir: `/Users/listener/Library/Application Support/${APP_IDENTIFIER}`,
+      cacheDir: `/Users/listener/Library/Caches/${APP_IDENTIFIER}`,
+      logDir: `/Users/listener/Library/Logs/${APP_IDENTIFIER}`,
+      configDir: `/Users/listener/Library/Application Support/${APP_IDENTIFIER}`,
+    });
+    expect(librarySqlitePath(paths, 'darwin')).toBe(
+      `/Users/listener/Library/Application Support/${APP_IDENTIFIER}/library.sqlite3`,
+    );
+  });
+
   it('matches the Linux SOURCE-VERIFIED table with XDG fallbacks', () => {
     const home = '/home/scratch';
     const fallback = resolveCorePaths({ platform: 'linux', env: {}, homedir: home });

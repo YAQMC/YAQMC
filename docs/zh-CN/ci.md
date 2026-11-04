@@ -27,12 +27,12 @@ Linux 产物包含 AppImage、deb、rpm、tar.gz。Android 单独构建自己的
 
 ## 门禁与打包矩阵
 
-每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux 和 Windows 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查；核验无条件链接的公开 `qm-api-rs` 精确 git pin，使用合成夹具测试 readiness 与 provenance 校验器，并在 Linux/Windows 扫描密钥。实际私有报告不进入 CI。Cargo 使用 `CARGO_NET_GIT_FETCH_WITH_CLI=true` 直接获取精确的公开 revision。
+每次 CI 都执行前端格式、文档、lint、TypeScript、Vitest 与脚本检查；在 Linux、Windows 与 macOS 构建 Electron 宿主；执行 Rust fmt、clippy、workspace 测试与协议契约检查，并在 `macos-15` 上运行 Core 单元测试及 Intel 交叉编译检查；核验无条件链接的公开 `qm-api-rs` 精确 git pin，使用合成夹具测试 readiness 与 provenance 校验器，并在 Linux/Windows 扫描密钥。实际私有报告不进入 CI。Cargo 使用 `CARGO_NET_GIT_FETCH_WITH_CLI=true` 直接获取精确的公开 revision。
 
 - Pull request 打包 Windows x64 与 Linux x64。
-- 推送 `main` 打包 Windows x64/arm64 与 Linux x64/arm64。
-- 手动运行可选 `windows`、`linux` 或 `all`，以及 `ci` 或 `production` 优化配置。
-- Windows arm64 在 `windows-2025` 交叉编译；Linux arm64 使用 `ubuntu-22.04-arm`。
+- 推送 `main` 打包 Windows x64/arm64、Linux x64/arm64 与 macOS arm64/x64。
+- 手动运行可选 `windows`、`linux`、`macos` 或 `all`，以及 `ci` 或 `production` 优化配置。
+- Windows arm64 在 `windows-2025` 交叉编译；Linux arm64 使用 `ubuntu-22.04-arm`；macOS arm64 在 `macos-15`（Apple 芯片）原生构建，macOS x64 在同一 Runner 上交叉编译。
 - 不再构建或发布 Windows i686。
 
 过时的 pull request 运行会被取消；推送 `main`、tag 和手动打包不会中途取消。
@@ -41,7 +41,7 @@ Linux 产物包含 AppImage、deb、rpm、tar.gz。Android 单独构建自己的
 
 `frontend-build` 上传 `yaqmc-frontend-dist-<sha>`。每个打包任务下载该精确产物，按目标三元组编译 `yaqmc-core`，暂存 Core 可执行文件，构建 Electron Main/预加载代码，再以禁止发布模式调用 electron-builder。
 
-Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
+Windows 产出 NSIS 安装器与 portable 可执行文件。Linux 产出 AppImage、`.deb`、`.rpm` 与 `.tar.gz`。macOS 按架构产出 `.dmg` 与 `.zip`；`verify-macos-package.mjs` 检查应用与内置 Core 均为对应架构的单架构 Mach-O，且签名与构建模式一致。Linux 任务只安装 Electron 打包工具；已退役 Linux web runtime 包不再是宿主依赖。
 
 Android 发布任务会单独构建 `dist-android` renderer，将共享 Rust Core 编译为 `arm64-v8a`，同步 Capacitor，并使用 JDK 21、SDK 36 与 NDK 28.2.13676358 组装压缩后的正式 APK。Android 不复用桌面 renderer artifact，因为两种宿主的功能边界不同。
 
@@ -57,6 +57,14 @@ Windows 可能提示未知发布者或 SmartScreen 警告。
 
 显式本地 `--require-signing true` 仍使用独立的 `electron-builder.release.yml`
 强制签名配置，但这不是当前远端发布工作流的策略。
+
+## macOS 发布签名
+
+macOS 安装包默认仅为临时（ad-hoc）签名，不启用强化运行时与公证，因此发布不依赖 Apple 开发者账号。将仓库变量
+`YAQMC_MACOS_SIGNING` 设为 `true` 后，macOS 打包任务改为 Developer ID 签名、强化运行时与公证，预检会要求 `release-signing`
+环境中存在 `MAC_CSC_LINK`、`MAC_CSC_KEY_PASSWORD`、`APPLE_API_KEY_P8_BASE64`、`APPLE_API_KEY_ID` 与 `APPLE_API_ISSUER`。
+公证密钥写入临时文件并在打包后删除；编译步骤不会获得 Apple 凭据；发布说明会写明使用的模式。授权与当前验证状态见
+[macOS](macos.md)。
 
 ## Android 发布签名
 

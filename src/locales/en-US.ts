@@ -77,6 +77,13 @@ export const enUS = {
   },
   pages: {
     musicUnavailable: 'Music is unavailable',
+    pluginPage: {
+      unavailable:
+        'This plugin page is unavailable. The plugin may be disabled or no longer provide it.',
+      providedBy: 'Provided by {{plugin}}',
+      loading: 'Waiting for {{plugin}}…',
+      layoutChangedBy: 'Layout customized by {{plugins}}',
+    },
     itemUnavailable: 'This item is unavailable',
     providerUnavailable:
       '{{provider}} is disabled or no longer installed. Re-enable it to restore this page.',
@@ -1035,6 +1042,9 @@ export const enUS = {
         ui_playerBar: 'Add Player Bar actions',
         ui_sidebar: 'Add sidebar commands',
         ui_notify: 'Show notifications',
+        ui_pages: 'Add plugin pages',
+        ui_navigation: 'Add navigation entries for its pages',
+        ui_layout: 'Rearrange supported YAQMC page sections',
         network_origin: 'HTTPS network: {{origin}}',
         provider_catalog: 'Provide catalog and discovery data',
         provider_playback: 'Resolve playable sources',

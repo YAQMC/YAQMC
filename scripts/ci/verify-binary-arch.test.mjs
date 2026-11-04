@@ -45,3 +45,31 @@ test('rejects an architecture mismatch', () => {
     /is x86_64, expected aarch64/,
   );
 });
+
+function macho(cpuType) {
+  const bytes = Buffer.alloc(32);
+  bytes.writeUInt32LE(0xfeedfacf, 0);
+  bytes.writeUInt32LE(cpuType, 4);
+  return bytes;
+}
+
+test('inspects thin Mach-O architectures for both macOS targets', () => {
+  assert.deepEqual(inspectBinaryArchitecture(macho(0x01000007)), {
+    format: 'macho',
+    arch: 'x86_64',
+    machine: 0x01000007,
+  });
+  assert.equal(inspectBinaryArchitecture(macho(0x0100000c)).arch, 'aarch64');
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-macho-'));
+  const file = path.join(directory, 'yaqmc-core');
+  writeFileSync(file, macho(0x0100000c));
+  assert.equal(verifyBinaryFile(file, 'aarch64-apple-darwin').format, 'macho');
+  assert.throws(() => verifyBinaryFile(file, 'x86_64-apple-darwin'), /is aarch64, expected x86_64/);
+});
+
+test('rejects universal Mach-O binaries and unknown CPU types', () => {
+  const fat = Buffer.alloc(32);
+  fat.writeUInt32BE(0xcafebabe, 0);
+  assert.throws(() => inspectBinaryArchitecture(fat), /universal \(fat\) Mach-O/);
+  assert.throws(() => inspectBinaryArchitecture(macho(0x00000012)), /unsupported Mach-O cputype/);
+});

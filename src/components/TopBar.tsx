@@ -45,6 +45,9 @@ export function TopBar({
   const windowHost = () => getYaqmcClient().host.window;
   const bridge = getYaqmcClient().bridge;
   const android = bridge?.kind === 'android';
+  // Electron windows have no OS title bar (frameless, or hidden-inset on macOS), so the top bar
+  // is the drag handle even when the native traffic lights replace YAQMC's window controls.
+  const electron = bridge?.kind === 'electron';
   const windowControls = bridge?.capabilities?.windowControls ?? (isNativeRuntime && !android);
 
   const minimize = () => void windowHost()?.minimize();
@@ -57,7 +60,7 @@ export function TopBar({
   return (
     <header className="topbar">
       <span
-        className={windowControls ? 'topbar__drag yaqmc-drag' : 'topbar__drag'}
+        className={windowControls || electron ? 'topbar__drag yaqmc-drag' : 'topbar__drag'}
         aria-hidden="true"
       />
       <div className="topbar__history yaqmc-no-drag">

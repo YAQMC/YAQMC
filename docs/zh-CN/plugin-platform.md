@@ -7,7 +7,8 @@ YAQMC 运行时插件是由 `ExtensionHost` 加载的用户安装包（`*.yaqmc-
 
 Plugin API v1 提供样式、歌词场景和隔离脚本宿主。API v2 增加声明式设置、读写事件、安全 UI 插槽、可选的 Host 代理
 HTTPS 和开发者模式。API v3 增加由 Wasmtime 托管的、本地旁加载且未签名的 WebAssembly Provider Component。
-现有 v1/v2 插件保持兼容。
+API v4 为脚本插件增加由宿主渲染的插件页面、指向这些页面的导航入口以及首页布局选项（[插件页面 API](plugin-pages-api.md)）。
+现有 v1/v2/v3 插件保持兼容。
 
 场景脚本可以通过 `ctx.scenes.background.register` 使用宿主管理的背景画布。画布只传入隔离 Worker 一次；封面和播放状态以受限更新
 传递，动画绘制循环由插件在 Worker 内管理。详见[插件场景 API](../plugin-scene-api.md#插件自定义背景画布)。

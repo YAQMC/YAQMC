@@ -22,6 +22,7 @@ export type CoreDataPaths = {
 /**
  * BASE-04 / §18.1 continuity directories for yaqmc-core.
  * Windows: `%APPDATA%` / `%LOCALAPPDATA%`. Linux: XDG with `~/.local/share` etc. fallbacks.
+ * macOS: `~/Library/Application Support`, `~/Library/Caches`, and `~/Library/Logs`.
  */
 export function resolveCorePaths(lookup: CorePathLookup = {}): CoreDataPaths {
   const platform = lookup.platform ?? process.platform;
@@ -43,6 +44,18 @@ export function resolveCorePaths(lookup: CorePathLookup = {}): CoreDataPaths {
       dataDir,
       cacheDir,
       logDir: join(cacheDir, 'logs'),
+      configDir: dataDir,
+    };
+  }
+
+  if (platform === 'darwin') {
+    // macOS conventions; XDG variables are deliberately ignored here.
+    const library = join(home, 'Library');
+    const dataDir = join(library, 'Application Support', APP_IDENTIFIER);
+    return {
+      dataDir,
+      cacheDir: join(library, 'Caches', APP_IDENTIFIER),
+      logDir: join(library, 'Logs', APP_IDENTIFIER),
       configDir: dataDir,
     };
   }

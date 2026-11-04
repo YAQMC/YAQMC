@@ -101,6 +101,9 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                 notifyListeners("lyricsSeek", JSObject().put("positionMs", pos))
             }
         }
+        overlay.onAnimatingChanged = { active ->
+            (activity as? org.yaqmc.android.MainActivity)?.setAnimatedSurfaceActive(active)
+        }
         lyricsOverlay = overlay
         return overlay
     }

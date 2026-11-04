@@ -4,7 +4,7 @@
 
 `manifest.json` 有两种刻意分离的运行时结构：
 
-- manifest v1 / Plugin API v1-v2 可以组合样式、场景和隔离脚本；
+- manifest v1 / Plugin API v1、v2 与 v4 可以组合样式、场景、隔离脚本，以及（v4）由宿主渲染的页面、导航入口与布局选项，见[插件页面 API](plugin-pages-api.md)；
 - manifest v2 / Plugin API v3 描述一个沙箱化 Provider Component。
 
 同一个包不能混用两种结构。
@@ -33,7 +33,7 @@
 `settingsSchema` 和预留的 `signatures`。
 
 插件 ID 使用反向域名，例如 `dev.example.plugin`。版本号为 semver。`apiVersion` 与包版本和 `manifestVersion`
-相互独立。宿主理解 API 版本 `1`、`2` 和 `3`。不兼容包可以保持安装并停用，同时显示原因；不会部分激活。
+相互独立。宿主理解 API 版本 `1`、`2`、`3` 和 `4`。不兼容包可以保持安装并停用，同时显示原因；不会部分激活。
 
 ## Provider Component 清单
 

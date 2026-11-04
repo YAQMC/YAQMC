@@ -1,24 +1,23 @@
 import { useEffect, useState } from 'react';
-import { isAndroidRuntime } from './host-capabilities';
 
 // Layout only. Never use this query to choose or restart an authorization protocol.
+// Mirrors the compact shell blocks in styles/shell.css; Electron's 1000x680 minimum never matches.
 export const COMPACT_PLAYER_QUERY =
-  '(orientation: portrait) and (max-width: 959px), (orientation: landscape) and (max-height: 599px)';
+  '(orientation: portrait) and (max-width: 959px), (orientation: landscape) and (max-height: 599px), (orientation: landscape) and (max-width: 839px)';
 
-export function useCompactPlayerLayout(allHosts = false): boolean {
-  const enabled = allHosts || isAndroidRuntime();
+export function useCompactPlayerLayout(): boolean {
   const [compact, setCompact] = useState(() =>
-    enabled && typeof window.matchMedia === 'function'
+    typeof window.matchMedia === 'function'
       ? window.matchMedia(COMPACT_PLAYER_QUERY).matches
       : false,
   );
   useEffect(() => {
-    if (!enabled || typeof window.matchMedia !== 'function') return;
+    if (typeof window.matchMedia !== 'function') return;
     const query = window.matchMedia(COMPACT_PLAYER_QUERY);
     const update = () => setCompact(query.matches);
     update();
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
-  }, [enabled]);
+  }, []);
   return compact;
 }

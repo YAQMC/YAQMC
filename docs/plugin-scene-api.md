@@ -63,7 +63,8 @@ Stable scene selectors:
 - `[data-scene-widget="transport"]`
 
 Stable CSS variables: `--scene-progress`, `--scene-duration`, `--scene-artwork-primary`,
-`--scene-artwork-secondary`, `--scene-accent`, `--scene-font-scale`.
+`--scene-artwork-secondary`, `--scene-accent`, `--scene-font-scale`. `--scene-progress` is a 0–1 number updated in
+0.001 steps while playing (it is inherited by the whole scene, so it is not rewritten on frames where it is unchanged).
 
 `data-widget` remains an internal editor hook. Plugins should prefer `data-scene-widget`.
 

@@ -7,8 +7,9 @@ extensions and never load native `dll` / `so` modules.
 
 Plugin API v1 provides styles, lyrics scenes, and an isolated script host. API v2 adds declarative settings,
 read/control events, safe UI slots, optional scoped HTTPS through a Host proxy, and Developer Mode. API v3 adds local,
-unsigned music-provider plugins as WebAssembly Components hosted by Wasmtime. Existing v1 and v2 plugins continue to
-work unchanged.
+unsigned music-provider plugins as WebAssembly Components hosted by Wasmtime. API v4 extends the script shape with
+host-rendered plugin pages, navigation entries for them, and Home layout knobs ([Plugin Pages API](plugin-pages-api.md)).
+Existing v1, v2 and v3 plugins continue to work unchanged.
 
 Scene scripts may opt into a host-owned background canvas with `ctx.scenes.background.register`. The canvas is
 transferred to the isolated Worker once; artwork and playback state are sent as bounded updates, while the plugin owns

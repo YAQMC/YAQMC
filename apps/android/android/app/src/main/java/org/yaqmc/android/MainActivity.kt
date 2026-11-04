@@ -3,9 +3,11 @@ package org.yaqmc.android
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.Display
 import android.view.View
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.MainThread
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -67,20 +69,31 @@ class MainActivity : BridgeActivity() {
         deepLinks.accept(intent)
     }
 
+    /** Set while a continuously animating surface (native lyrics during playback) is visible. */
+    private var animatedSurfaceActive = false
+
+    @MainThread
+    fun setAnimatedSurfaceActive(active: Boolean) {
+        if (animatedSurfaceActive == active) return
+        animatedSurfaceActive = active
+        requestResponsiveFrameRate()
+    }
+
     /** Prefer the platform's adaptive UI frame-rate behavior while preserving its
-     * power, thermal and seamless-switching decisions. */
+     * power, thermal and seamless-switching decisions. Playing lyrics animate every frame without
+     * touch input, so adaptive (LTPO) panels would otherwise settle at a low rate; only while
+     * that surface is active do we ask for the panel's top rate at the current resolution. */
     private fun requestResponsiveFrameRate() {
         val webView = bridge?.webView ?: return
         val attributes = window.attributes
+        attributes.preferredRefreshRate = adaptiveRefreshRate(
+            sameResolutionRefreshRates(webView.display),
+            prefersEfficiency = !animatedSurfaceActive,
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            // Android 15+: enable automatic touch boost so scrolling/gestures run smoothly,
-            // while allowing the display and WebView to throttle down when static (LTPO / power saving).
+            // Android 15+: automatic touch boost keeps gestures smooth on static pages.
             attributes.setFrameRateBoostOnTouchEnabled(true)
             webView.setRequestedFrameRate(0f)
-        } else {
-            // Keep preferredRefreshRate at 0f (system default) to allow dynamic switching rather
-            // than locking max power consumption.
-            attributes.preferredRefreshRate = 0f
         }
         window.attributes = attributes
     }
@@ -156,3 +169,12 @@ internal fun highestRefreshRate(rates: FloatArray): Float =
 
 internal fun adaptiveRefreshRate(rates: FloatArray, prefersEfficiency: Boolean = true): Float =
     if (prefersEfficiency) 0f else highestRefreshRate(rates)
+
+/** Refresh rates the display can switch to without a resolution change (a seamless-switch candidate). */
+internal fun sameResolutionRefreshRates(display: Display?): FloatArray {
+    val active = display?.mode ?: return floatArrayOf()
+    return display.supportedModes
+        .filter { it.physicalWidth == active.physicalWidth && it.physicalHeight == active.physicalHeight }
+        .map { it.refreshRate }
+        .toFloatArray()
+}

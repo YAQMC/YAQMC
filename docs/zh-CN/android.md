@@ -29,6 +29,33 @@ Bundle。
 Android v1 有意不提供桌面歌词、歌词岛、托盘、全局快捷键、插件、开发者模式、本地 HTTP API 和
 文件导出。应用内歌词页面仍然保留。
 
+## 歌词帧率
+
+Android 上的同步歌词由原生悬浮层（`NativeLyricsOverlay`）在 `Choreographer` 垂直同步时绘制，每帧读取 Media3 的播放位置；
+下方的 WebView 不再运行自己的逐帧歌词时钟。
+
+应用通常把刷新率交给系统决定（Android 15+ 另有触摸加速），因此自适应/LTPO 屏幕在静态页面上可能降到较低刷新率。
+歌词在没有触摸输入时也会持续动画，所以**仅当歌词悬浮层可见且正在播放时**，Activity 会请求当前分辨率下可用的最高刷新率；
+暂停、离开歌词页或切到后台后恢复系统默认。设备的功耗策略、省电模式与温控仍可能覆盖该请求。
+
+请测量帧节奏，而不是依据显示设置判断。连接 USB 或无线调试后，打开歌词页并开始播放，然后运行：
+
+```sh
+node scripts/android/measure-frames.mjs --label before --seconds 20
+# 安装新版本，使用同一首歌和相近位置后：
+node scripts/android/measure-frames.mjs --label after --seconds 20
+node scripts/android/measure-frames.mjs --compare artifacts/android-perf/android-frames-before.json artifacts/android-perf/android-frames-after.json
+```
+
+报告包含：
+
+- 设备与 SoC；
+- 测量过程中采样的刷新率；
+- 应用图层的 SurfaceFlinger 呈现间隔（屏幕实际 FPS、p50/p95/p99、跳过刷新的间隔数）；
+- `gfxinfo` 帧耗时分位数与卡顿计数（含 GPU 分位数）；
+- CPU 占用最高的应用线程；
+- 温控状态。
+
 ## 隐私与存储
 
 Android 使用应用私有文件和缓存目录，其偏好、队列、缓存和统计与桌面安装相互独立。账号秘密通过

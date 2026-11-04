@@ -1,7 +1,13 @@
 # Production-only overlay. The release workflow supplies WIN_CSC_LINK and
-# WIN_CSC_KEY_PASSWORD from the protected release-signing environment.
+# WIN_CSC_KEY_PASSWORD from the protected release-signing environment. macOS uses it only
+# when YAQMC_MACOS_SIGNING is enabled: CSC_LINK / CSC_KEY_PASSWORD carry the Developer ID
+# Application certificate and APPLE_API_KEY / APPLE_API_KEY_ID / APPLE_API_ISSUER the
+# App Store Connect key used by notarytool. forceCodeSigning makes a missing identity fatal.
 extends: ./electron-builder.yml
 forceCodeSigning: true
 win:
   signExecutable: true
   verifyUpdateCodeSignature: true
+mac:
+  hardenedRuntime: true
+  notarize: true

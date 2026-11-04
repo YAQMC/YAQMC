@@ -65,6 +65,7 @@ function useAmllCurrentTime(
   presentationOffsetMs: number,
   timelineRevision: number,
   isPlaying: boolean,
+  enabled: boolean,
 ): number {
   const current = useCallback(
     () => (document ? lyricTimeMs(getPositionMs, presentationOffsetMs, document) : 0),
@@ -80,12 +81,13 @@ function useAmllCurrentTime(
       frame = window.requestAnimationFrame(tick);
     };
 
+    if (!enabled) return;
     update();
     if (isPlaying) frame = window.requestAnimationFrame(tick);
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [current, isPlaying, timelineRevision]);
+  }, [current, enabled, isPlaying, timelineRevision]);
 
   return currentTime;
 }
@@ -214,12 +216,17 @@ export function LyricsViewport({
   const runtimeRevision = usePlayerStore((state) => state.timelineRevision);
   const isPlaying = editorGesture ? isPlayingProp : runtimePlaying;
   const timelineRevision = editorGesture ? timelineRevisionProp : runtimeRevision;
+  const isAndroid = isAndroidRuntime();
+  const useNativeOverlay = isAndroid && !editorGesture && !wordAnimation;
+  // The Android overlay reads Media3's clock natively on Choreographer; a WebView rAF clock here
+  // would re-render this component every frame for a value nothing consumes.
   const currentTime = useAmllCurrentTime(
     document,
     getPositionMs,
     presentationOffsetMs,
     timelineRevision,
     isPlaying,
+    !useNativeOverlay,
   );
   const chineseScript = useLyricTextScript();
   const model = useMemo(
@@ -228,12 +235,10 @@ export function LyricsViewport({
     [chineseScript, document, romanization, translation],
   );
   const amllLines = useMemo(() => model?.lines.map(toAmllLyricLine) ?? [], [model]);
-  const isAndroid = isAndroidRuntime();
   const nativeContainerRef = useRef<HTMLDivElement>(null);
   const stage = useLyricsStageStore((s) => s.stage);
   const nativeShownRef = useRef(false);
   const wordAnimationRoot = useRef<HTMLDivElement>(null);
-  const useNativeOverlay = isAndroid && !editorGesture && !wordAnimation;
 
   useEffect(() => {
     const root = wordAnimationRoot.current;

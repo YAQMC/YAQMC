@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the signed (Developer ID) macOS app bundle.
+  YAQMC is distributed outside the Mac App Store and is not sandboxed.
+  - allow-jit: V8 (Electron renderer and Main) generates code at runtime.
+  Nothing else is requested: no microphone, camera, Apple Events, or library-validation opt-out.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+</dict>
+</plist>

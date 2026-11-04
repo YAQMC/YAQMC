@@ -83,6 +83,12 @@ export const zhTW = {
   },
   pages: {
     musicUnavailable: '音樂暫時不可用',
+    pluginPage: {
+      unavailable: '此外掛頁面無法使用。外掛可能已停用或不再提供該頁面。',
+      providedBy: '由 {{plugin}} 提供',
+      loading: '正在等待 {{plugin}}…',
+      layoutChangedBy: '版面已由 {{plugins}} 調整',
+    },
     itemUnavailable: '此專案不可用',
     providerUnavailable: '{{provider}} 已停用或不再安裝；重新啟用後可恢復此頁面。',
     albumLoadFailed: '無法從當前服務載入這張專輯。',
@@ -1010,6 +1016,9 @@ export const zhTW = {
         ui_playerBar: '新增播放欄操作',
         ui_sidebar: '新增側欄命令',
         ui_notify: '顯示通知',
+        ui_pages: '新增外掛頁面',
+        ui_navigation: '為其頁面新增導覽入口',
+        ui_layout: '調整受支援的 YAQMC 頁面區塊',
         network_origin: 'HTTPS 網路：{{origin}}',
         provider_catalog: '提供目錄與發現內容',
         provider_playback: '解析可播放音源',

@@ -29,8 +29,12 @@ class NativeLyricsOverlay(
     private var playerView: AMLLPlayerView? = null
     private var isRunning = false
     private var timingOffsetMs = 0L
+    private var animating = false
 
     var onSeekListener: ((Long) -> Unit)? = null
+
+    /** True while the overlay is visible and playback advances it every frame (no touch input involved). */
+    var onAnimatingChanged: ((Boolean) -> Unit)? = null
 
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -40,6 +44,7 @@ class NativeLyricsOverlay(
                 val position = lyricPosition(audioBackend.currentPositionForUiMs())
                 val playing = audioBackend.isPlaying
                 playerView?.update(positionMs = position, isPlaying = playing)
+                setAnimating(playing)
             }
             if (isRunning) {
                 Choreographer.getInstance().postFrameCallback(this)
@@ -116,6 +121,13 @@ class NativeLyricsOverlay(
             Choreographer.getInstance().removeFrameCallback(frameCallback)
         }
         playerView?.visibility = View.GONE
+        setAnimating(false)
+    }
+
+    private fun setAnimating(active: Boolean) {
+        if (animating == active) return
+        animating = active
+        onAnimatingChanged?.invoke(active)
     }
 
     @MainThread

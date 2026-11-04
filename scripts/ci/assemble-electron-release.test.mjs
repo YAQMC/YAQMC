@@ -358,7 +358,12 @@ test('YAQMC release workflow is the sole tagged desktop and Android release work
   assert.match(workflow, /environment:\s*release-signing/);
   assert.match(workflow, /--require-signing/);
   assert.doesNotMatch(workflow, /secrets\.WIN_CSC|secrets\.YAQMC_WINDOWS_SIGNER_SUBJECT/);
-  assert.match(workflow, /--require-signing false/);
+  // Windows and Linux stay unsigned; only opted-in macOS can request signing.
+  assert.match(
+    workflow,
+    /--require-signing \$\{\{ matrix\.os == 'macos' && vars\.YAQMC_MACOS_SIGNING == 'true' && 'true' \|\| 'false' \}\}/,
+  );
+  assert.match(workflow, /verify-macos-package\.mjs/);
   assert.match(workflow, /Get-AuthenticodeSignature/);
   assert.match(workflow, /SignatureStatus\]::NotSigned/);
   assert.doesNotMatch(workflow, /npm run (?:provider|provenance):enforce/);

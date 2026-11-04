@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   addAndroidReleaseAssets,
   RELEASE_NOTES_NAME,
+  combinedReleaseNotes,
   verifyDesktopReleaseTargets,
 } from './assemble-release.mjs';
 import { ELECTRON_PACKAGE_TARGETS } from './select-electron-package-matrix.mjs';
@@ -36,7 +37,8 @@ test('full desktop releases require all architectures, installers, portable pack
       assert.throws(() => verifyDesktopReleaseTargets(source, commit), /Missing/u);
       writeFileSync(path.join(directory, name), 'fixture');
     }
-    if (target.arch === 'x64') {
+    // macOS has no in-place updater, so it is the one desktop target without a feed.
+    if (target.arch === 'x64' && target.os !== 'macos') {
       assert.throws(() => verifyDesktopReleaseTargets(source, commit), /Missing/u);
       writeFileSync(
         path.join(directory, target.os === 'windows' ? 'latest.yml' : 'latest-linux.yml'),
@@ -50,6 +52,17 @@ test('full desktop releases require all architectures, installers, portable pack
   assert.doesNotThrow(() => verifyDesktopReleaseTargets(source, commit));
   assert.throws(() => verifyDesktopReleaseTargets(source, 'b'.repeat(40)), /Missing/u);
   assert.throws(() => verifyDesktopReleaseTargets(source, commit, 'unknown'), /Invalid/u);
+  assert.doesNotThrow(() => verifyDesktopReleaseTargets(source, commit, 'macos'));
+});
+
+test('macOS release notes only claim notarization for signed builds', () => {
+  const unsigned = combinedReleaseNotes('# YAQMC Android 0.1.0\n');
+  assert.match(unsigned, /ad-hoc signed and are not notarized/u);
+  assert.match(unsigned, /未经公证/u);
+  assert.doesNotMatch(unsigned, /signed with a Developer ID and notarized/u);
+  const signed = combinedReleaseNotes('# YAQMC Android 0.1.0\n', { macosNotarized: true });
+  assert.match(signed, /signed with a Developer ID and notarized/u);
+  assert.doesNotMatch(signed, /not notarized/u);
 });
 
 test('adds a revision-bound Android APK and unified notes to assembled release assets', () => {
