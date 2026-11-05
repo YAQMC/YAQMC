@@ -19,7 +19,9 @@ describe('native-lyrics-bridge', () => {
 
     await expect(
       showNativeLyrics(null, [], {
-        align: 'center',
+        alignAnchor: 'center',
+        textAlign: 'center',
+        wordEmphasis: true,
         followAnchor: 0.35,
         enableSpring: true,
         enableScale: true,
@@ -61,7 +63,9 @@ describe('native-lyrics-bridge', () => {
     ];
 
     await showNativeLyrics({ top: 10, left: 20, width: 300, height: 400 }, mockLines, {
-      align: 'left',
+      alignAnchor: 'center',
+      textAlign: 'left',
+      wordEmphasis: true,
       followAnchor: 0.4,
       enableSpring: false,
       enableScale: true,
@@ -76,7 +80,9 @@ describe('native-lyrics-bridge', () => {
         bounds: { top: 10, left: 20, width: 300, height: 400 },
         lines: mockLines,
         options: {
-          align: 'left',
+          alignAnchor: 'center',
+          textAlign: 'left',
+          wordEmphasis: true,
           followAnchor: 0.4,
           enableSpring: false,
           enableScale: true,
@@ -105,7 +111,9 @@ describe('native-lyrics-bridge', () => {
     };
 
     await updateNativeLyrics({ top: 2, left: 4, width: 120, height: 80 }, null, {
-      align: 'center',
+      alignAnchor: 'center',
+      textAlign: 'center',
+      wordEmphasis: false,
       followAnchor: 0.35,
       enableSpring: true,
       enableScale: true,

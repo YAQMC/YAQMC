@@ -799,6 +799,13 @@ export function LyricsScene({
             allowSeek={!editor}
             onFollowStateChange={onFollowStateChange}
             layoutKey={layoutKey}
+            styleKey={[
+              style['--lyrics-foreground'],
+              style['--lyrics-font-scale'],
+              style['--lyrics-font-size'],
+              style['--lyrics-line-height'],
+              style['--lyrics-font-weight'],
+            ].join('|')}
           />
         </SceneWidget>
       )}

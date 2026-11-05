@@ -8,15 +8,26 @@ export interface NativeLyricsBounds {
 }
 
 export interface NativeLyricsOptions {
-  align: string;
+  /** Vertical focus anchor of the followed line; the web player always uses `center`. */
+  alignAnchor: 'top' | 'center' | 'bottom';
+  /** Horizontal alignment of ordinary lines (duet lines stay at the end edge). */
+  textAlign: 'left' | 'center' | 'right';
+  /** Viewport fraction of the focus anchor, clamped natively to 0.1–0.9 like the web player. */
   followAnchor: number;
   enableSpring: boolean;
   enableScale: boolean;
   enableBlur: boolean;
   hidePassedLines: boolean;
   wordFadeWidth: number;
-  /** CSS pixels from the scene widget; the native host converts this to sp. */
+  /** Emphasized long-word lift/glow ("word jump"); false keeps the plain progressive fill. */
+  wordEmphasis: boolean;
+  /**
+   * Scene font size in CSS px *before* WebView text zoom. The host multiplies by the WebView's own
+   * textZoom so native and web text scale identically with the system font size.
+   */
   lineFontSizePx?: number;
+  /** Unitless CSS line-height of the scene. */
+  lineHeight?: number;
   /** CSS font weight from the active scene preset. */
   fontWeight?: number;
   /** Resolved scene foreground color (normally an rgb()/rgba() string). */

@@ -12,6 +12,7 @@ import {
   onNativeLyricsSeek,
   showNativeLyrics,
   updateNativeLyrics,
+  type NativeLyricsOptions,
 } from '../../application/native-lyrics-bridge';
 import type {
   AmllSettings,
@@ -189,6 +190,7 @@ export function LyricsViewport({
   allowSeek = true,
   onFollowStateChange,
   layoutKey: _layoutKey,
+  styleKey,
 }: {
   document: LyricDocument | null;
   status: 'idle' | 'loading' | 'ready' | 'error' | 'missing';
@@ -209,6 +211,8 @@ export function LyricsViewport({
   allowSeek?: boolean;
   onFollowStateChange?: (state: 'active' | 'suspended') => void;
   layoutKey?: string;
+  /** Changes whenever scene CSS the native overlay reads (font, weight, line height, colour) changes. */
+  styleKey?: string;
 }) {
   const { t } = useTranslation('lyrics');
   const reducedMotion = useReducedMotion();
@@ -246,118 +250,114 @@ export function LyricsViewport({
     return installWordAnimation(root, wordAnimation);
   }, [wordAnimation, wordEffect, reducedMotion, document, status]);
 
-  useEffect(() => {
-    if (!useNativeOverlay) return;
-
-    if (
-      status !== 'ready' ||
-      !document ||
-      document.syncMode === 'unsynchronized' ||
-      !model ||
-      model.lines.length === 0 ||
-      stage !== 'open'
-    ) {
-      nativeShownRef.current = false;
-      void hideNativeLyrics();
-      return;
-    }
-
-    const updateNativeOverlay = (initial: boolean) => {
-      const el = nativeContainerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const bounds = {
-        // The Android overlay is a sibling of the WebView. With the host in
-        // edge-to-edge mode, WebView CSS viewport coordinates map directly to
-        // the sibling parent's pixel origin after density conversion.
-        top: Math.max(0, rect.top),
-        left: Math.max(0, rect.left),
-        width: rect.width,
-        height: rect.height,
-      };
-      if (bounds.width <= 0 || bounds.height <= 0) return;
-
+  const nativeVisible =
+    useNativeOverlay &&
+    status === 'ready' &&
+    Boolean(document) &&
+    document?.syncMode !== 'unsynchronized' &&
+    (model?.lines.length ?? 0) > 0 &&
+    stage === 'open';
+  const documentOffsetMs = document?.metadata.offsetMs ?? 0;
+  const nativeOptions = useCallback(
+    (el: HTMLElement): NativeLyricsOptions => {
       const scene = el.closest<HTMLElement>('.lyrics-scene');
       const computed = window.getComputedStyle(el);
       const sceneComputed = scene ? window.getComputedStyle(scene) : computed;
-      const fontSizePx = Number.parseFloat(computed.fontSize);
       const fontWeight = Number.parseFloat(
         sceneComputed.getPropertyValue('--lyrics-font-weight') || computed.fontWeight,
       );
+      const lineHeight = Number.parseFloat(sceneComputed.getPropertyValue('--lyrics-line-height'));
       const foregroundToken = sceneComputed.getPropertyValue('--lyrics-foreground').trim();
-      // `color-mix()` is intentionally resolved by the browser when possible;
-      // older WebViews may leave the token untouched, in which case the host
-      // falls back to its own readable foreground color.
-      let foregroundColor = computed.color;
-      if (foregroundToken) {
-        const probe = window.document.createElement('span');
-        probe.style.position = 'absolute';
-        probe.style.visibility = 'hidden';
-        probe.style.pointerEvents = 'none';
-        probe.style.color = foregroundToken;
-        scene?.appendChild(probe);
-        const resolved = window.getComputedStyle(probe).color;
-        probe.remove();
-        if (resolved) foregroundColor = resolved;
-      }
-      const options = {
-        align,
+      // One hidden probe resolves `color-mix()` to rgb() and measures whether computed font sizes
+      // already include the WebView's text zoom (Chromium's text zoom is reflected in them).
+      const probe = window.document.createElement('span');
+      probe.style.cssText =
+        'position:absolute;visibility:hidden;pointer-events:none;font-size:100px';
+      if (foregroundToken) probe.style.color = foregroundToken;
+      (scene ?? el).appendChild(probe);
+      const probeStyle = window.getComputedStyle(probe);
+      const zoom = Number.parseFloat(probeStyle.fontSize) / 100;
+      const foregroundColor = foregroundToken ? probeStyle.color : computed.color;
+      probe.remove();
+      const fontSizePx =
+        Number.parseFloat(computed.fontSize) / (Number.isFinite(zoom) && zoom > 0 ? zoom : 1);
+      return {
+        alignAnchor: 'center',
+        textAlign: align,
         followAnchor,
         enableSpring: amll.enableSpring && !reducedMotion,
         enableScale: amll.enableScale && !reducedMotion,
         enableBlur: amll.enableBlur && !reducedMotion,
         hidePassedLines: amll.hidePassedLines,
         wordFadeWidth: amll.wordFadeWidth,
+        wordEmphasis: wordEffect === 'jump' && !reducedMotion,
         ...(Number.isFinite(fontSizePx) && fontSizePx > 0 ? { lineFontSizePx: fontSizePx } : {}),
+        ...(Number.isFinite(lineHeight) && lineHeight > 0 ? { lineHeight } : {}),
         ...(Number.isFinite(fontWeight) && fontWeight > 0 ? { fontWeight } : {}),
         ...(foregroundColor ? { foregroundColor } : {}),
-        timingOffsetMs: presentationOffsetMs - document.metadata.offsetMs,
+        timingOffsetMs: presentationOffsetMs - documentOffsetMs,
       };
-
-      if (initial || !nativeShownRef.current) {
-        nativeShownRef.current = true;
-        void showNativeLyrics(bounds, model.lines, options);
-      } else {
-        void updateNativeLyrics(bounds, null, options);
-      }
+    },
+    [align, amll, documentOffsetMs, followAnchor, presentationOffsetMs, reducedMotion, wordEffect],
+  );
+  // Latest inputs for `pushNative`, so style or lyric changes become in-place updates instead of
+  // re-running the show/hide lifecycle (which reloaded lines and flashed the overlay).
+  const nativeInputs = useRef({ options: nativeOptions, lines: model?.lines ?? null });
+  const nativeSent = useRef<{ lines: RenderLyricLine[] | null; key: string }>({
+    lines: null,
+    key: '',
+  });
+  const pushNative = useCallback(() => {
+    const el = nativeContainerRef.current;
+    const lines = nativeInputs.current.lines;
+    if (!el || !lines) return;
+    const rect = el.getBoundingClientRect();
+    // The overlay is a sibling of the edge-to-edge WebView: CSS viewport coordinates map to
+    // the parent's origin after density conversion.
+    const bounds = {
+      top: Math.max(0, rect.top),
+      left: Math.max(0, rect.left),
+      width: rect.width,
+      height: rect.height,
     };
-
-    updateNativeOverlay(true);
-
-    const unlisten = onNativeLyricsSeek((pos) => {
-      if (allowSeek) {
-        seek(pos);
-      }
-    });
-
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined' && nativeContainerRef.current) {
-      ro = new ResizeObserver(() => updateNativeOverlay(false));
-      ro.observe(nativeContainerRef.current);
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    const options = nativeInputs.current.options(el);
+    const key = JSON.stringify([bounds, options]);
+    const sent = nativeSent.current;
+    if (!nativeShownRef.current) {
+      nativeShownRef.current = true;
+      nativeSent.current = { lines, key };
+      void showNativeLyrics(bounds, lines, options);
+      return;
     }
+    if (sent.lines === lines && sent.key === key) return;
+    void updateNativeLyrics(bounds, sent.lines === lines ? null : lines, options);
+    nativeSent.current = { lines, key };
+  }, []);
 
+  useEffect(() => {
+    nativeInputs.current = { options: nativeOptions, lines: model?.lines ?? null };
+    if (nativeShownRef.current) pushNative();
+  }, [model, nativeOptions, pushNative, styleKey]);
+
+  useEffect(() => {
+    // The previous run's cleanup has already hidden a shown overlay.
+    if (!useNativeOverlay || !nativeVisible) return;
+    pushNative();
+    const el = nativeContainerRef.current;
+    const ro = typeof ResizeObserver !== 'undefined' && el ? new ResizeObserver(pushNative) : null;
+    if (el) ro?.observe(el);
     return () => {
       ro?.disconnect();
-      unlisten();
       nativeShownRef.current = false;
       void hideNativeLyrics();
     };
-  }, [
-    isAndroid,
-    useNativeOverlay,
-    editorGesture,
-    stage,
-    status,
-    document,
-    model,
-    align,
-    followAnchor,
-    amll,
-    reducedMotion,
-    allowSeek,
-    seek,
-    presentationOffsetMs,
-  ]);
+  }, [nativeVisible, pushNative, useNativeOverlay]);
+
+  useEffect(() => {
+    if (!useNativeOverlay || !allowSeek) return;
+    return onNativeLyricsSeek(seek);
+  }, [allowSeek, seek, useNativeOverlay]);
 
   useEffect(() => onFollowStateChange?.('active'), [onFollowStateChange]);
 

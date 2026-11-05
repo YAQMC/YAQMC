@@ -10,6 +10,9 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.media3.common.util.UnstableApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import dev.yaqmc.amll.model.LyricLine
 import dev.yaqmc.amll.model.LyricRuby
@@ -25,6 +28,8 @@ import org.yaqmc.android.core.CoreManager
 class NativeLyricsOverlay(
     private val activity: Activity,
     private val container: ViewGroup,
+    /** The sibling WebView's text zoom (100 × system font scale unless overridden). */
+    private val webTextZoomPercent: () -> Int = { 100 },
 ) {
     private var playerView: AMLLPlayerView? = null
     private var isRunning = false
@@ -253,48 +258,13 @@ class NativeLyricsOverlay(
 
     private fun updateStyle(options: JSONObject) {
         val view = playerView ?: return
-        val anchorStr = if (options.has("alignAnchor")) {
-            options.optString("alignAnchor", "center")
-        } else {
-            options.optString("align", "center")
-        }
-        val alignAnchor = when (anchorStr) {
-            "top" -> AMLLAlignAnchor.Top
-            "bottom" -> AMLLAlignAnchor.Bottom
-            else -> AMLLAlignAnchor.Center
-        }
-        val alignPos = options.optDouble("followAnchor", 0.35).toFloat()
-        val enableSpring = options.optBoolean("enableSpring", true)
-        val enableScale = options.optBoolean("enableScale", true)
-        val enableBlur = options.optBoolean("enableBlur", true)
-        val hidePassedLines = options.optBoolean("hidePassedLines", false)
-        // AMLL core defaults to a half-em wide moving fade. Keep the native fallback identical
-        // when an older WebView host does not send the preference explicitly.
-        val wordFadeWidth = options.optDouble("wordFadeWidth", 0.5).toFloat()
         timingOffsetMs = options.optLong("timingOffsetMs", timingOffsetMs)
-        val lineFontSizePx = options.optDouble("lineFontSizePx", Double.NaN)
-            .takeIf { it.isFinite() && it > 0.0 }
-        val fontWeight = options.optInt("fontWeight", 600).coerceIn(1, 1_000)
-        val foreground = parseCssColor(
-            options.optString("foregroundColor", ""),
-            view.style.activeColor,
-        )
-        view.style = (view.style).copy(
-            alignAnchor = alignAnchor,
-            alignPosition = alignPos,
-            enableSpring = enableSpring,
-            enableScale = enableScale,
-            enableBlur = enableBlur,
-            hidePassedLines = hidePassedLines,
-            wordFadeWidthEm = wordFadeWidth,
-            lineFontSize = lineFontSizePx?.toFloat()?.sp ?: view.style.lineFontSize,
-            secondaryFontSize = lineFontSizePx?.toFloat()?.times(0.5f)?.sp
-                ?: view.style.secondaryFontSize,
-            lyricFontWeight = FontWeight(fontWeight),
-            activeColor = foreground,
-            inactiveColor = foreground.copy(alpha = foreground.alpha * 0.40f),
-            secondaryActiveColor = foreground.copy(alpha = foreground.alpha * 0.30f),
-            secondaryInactiveColor = foreground.copy(alpha = foreground.alpha * 0.30f),
+        // Equal styles are a no-op: AMLLPlayerView.style is structurally compared snapshot state.
+        view.style = styleFromOptions(
+            options = options,
+            base = view.style,
+            webTextZoomPercent = webTextZoomPercent(),
+            fontScale = activity.resources.configuration.fontScale,
         )
     }
 
@@ -304,46 +274,98 @@ class NativeLyricsOverlay(
     private fun audioPosition(lyricPositionMs: Long): Long =
         (lyricPositionMs - timingOffsetMs).coerceAtLeast(0L)
 
-    /**
-     * Android WebView normally sends an rgb()/rgba() computed color. Keep a
-     * small parser here because Color.parseColor only accepts hex and a few
-     * named colors, while CSS custom properties may remain in functional form.
-     */
-    private fun parseCssColor(value: String, fallback: Color): Color {
-        val raw = value.trim()
-        if (raw.isEmpty()) return fallback
-
-        val parsedHex = runCatching { android.graphics.Color.parseColor(raw) }.getOrNull()
-        if (parsedHex != null) {
-            return Color(
-                red = android.graphics.Color.red(parsedHex) / 255f,
-                green = android.graphics.Color.green(parsedHex) / 255f,
-                blue = android.graphics.Color.blue(parsedHex) / 255f,
-                alpha = android.graphics.Color.alpha(parsedHex) / 255f,
+    companion object {
+        /**
+         * Maps the WebView's lyric options onto [base]. Font sizes arrive as unzoomed CSS px
+         * (1 CSS px = 1 dp here); the WebView scales its own text by textZoom (100 × the system
+         * font scale unless overridden), so native text uses the same factor. Compose multiplies sp
+         * by the system font scale, which textZoom already contains, so it is divided out once.
+         */
+        internal fun styleFromOptions(
+            options: JSONObject,
+            base: AMLLStyle,
+            webTextZoomPercent: Int,
+            fontScale: Float,
+        ): AMLLStyle {
+            // Vertical focus anchor only; the horizontal `textAlign` used to be read here as `align`.
+            val alignAnchor = when (options.optString("alignAnchor", "center")) {
+                "top" -> AMLLAlignAnchor.Top
+                "bottom" -> AMLLAlignAnchor.Bottom
+                else -> AMLLAlignAnchor.Center
+            }
+            val textAlign = when (options.optString("textAlign", "left")) {
+                "center" -> TextAlign.Center
+                "right" -> TextAlign.End
+                else -> TextAlign.Start
+            }
+            val lineFontSizeSp = options.optDouble("lineFontSizePx", Double.NaN)
+                .takeIf { it.isFinite() && it > 0.0 }
+                ?.let { it.toFloat() * webTextZoomPercent / 100f / fontScale.coerceAtLeast(0.1f) }
+            val lineHeight = options.optDouble("lineHeight", Double.NaN)
+                .takeIf { it.isFinite() && it in 0.5..3.0 }?.toFloat()?.em ?: TextUnit.Unspecified
+            val foreground = parseCssColor(options.optString("foregroundColor", ""), base.activeColor)
+            return base.copy(
+                alignAnchor = alignAnchor,
+                // Same clamp as the web player's alignPosition.
+                alignPosition = options.optDouble("followAnchor", 0.35).toFloat().coerceIn(0.1f, 0.9f),
+                textAlign = textAlign,
+                lineHeight = lineHeight,
+                enableWordEmphasis = options.optBoolean("wordEmphasis", true),
+                enableSpring = options.optBoolean("enableSpring", true),
+                enableScale = options.optBoolean("enableScale", true),
+                enableBlur = options.optBoolean("enableBlur", true),
+                hidePassedLines = options.optBoolean("hidePassedLines", false),
+                // AMLL core defaults to a half-em wide moving fade; keep that for older WebView hosts.
+                wordFadeWidthEm = options.optDouble("wordFadeWidth", 0.5).toFloat(),
+                lineFontSize = lineFontSizeSp?.sp ?: base.lineFontSize,
+                secondaryFontSize = lineFontSizeSp?.times(0.5f)?.sp ?: base.secondaryFontSize,
+                lyricFontWeight = FontWeight(options.optInt("fontWeight", 600).coerceIn(1, 1_000)),
+                activeColor = foreground,
+                inactiveColor = foreground.copy(alpha = foreground.alpha * 0.40f),
+                secondaryActiveColor = foreground.copy(alpha = foreground.alpha * 0.30f),
+                secondaryInactiveColor = foreground.copy(alpha = foreground.alpha * 0.30f),
             )
         }
 
-        val match = RGB_COLOR_PATTERN.matchEntire(raw) ?: return fallback
-        fun channel(value: String): Float? = value.removeSuffix("%").toFloatOrNull()?.let {
-            if (value.endsWith('%')) it * 2.55f else it
-        }
-        val red = channel(match.groupValues[1])?.coerceIn(0f, 255f)?.div(255f)
-            ?: return fallback
-        val green = channel(match.groupValues[2])?.coerceIn(0f, 255f)?.div(255f)
-            ?: return fallback
-        val blue = channel(match.groupValues[3])?.coerceIn(0f, 255f)?.div(255f)
-            ?: return fallback
-        val alpha = match.groupValues.getOrNull(4)?.takeIf(String::isNotEmpty)?.let {
-            if (it.endsWith('%')) {
-                it.removeSuffix("%").toFloatOrNull()?.div(100f)
-            } else {
-                it.toFloatOrNull()?.let { value -> if (value > 1f) value / 255f else value }
-            }
-        }?.coerceIn(0f, 1f) ?: 1f
-        return Color(red = red, green = green, blue = blue, alpha = alpha)
-    }
+        /**
+         * Android WebView normally sends an rgb()/rgba() computed color. Keep a
+         * small parser here because Color.parseColor only accepts hex and a few
+         * named colors, while CSS custom properties may remain in functional form.
+         */
+        internal fun parseCssColor(value: String, fallback: Color): Color {
+            val raw = value.trim()
+            if (raw.isEmpty()) return fallback
 
-    companion object {
+            val parsedHex = runCatching { android.graphics.Color.parseColor(raw) }.getOrNull()
+            if (parsedHex != null) {
+                return Color(
+                    red = android.graphics.Color.red(parsedHex) / 255f,
+                    green = android.graphics.Color.green(parsedHex) / 255f,
+                    blue = android.graphics.Color.blue(parsedHex) / 255f,
+                    alpha = android.graphics.Color.alpha(parsedHex) / 255f,
+                )
+            }
+
+            val match = RGB_COLOR_PATTERN.matchEntire(raw) ?: return fallback
+            fun channel(value: String): Float? = value.removeSuffix("%").toFloatOrNull()?.let {
+                if (value.endsWith('%')) it * 2.55f else it
+            }
+            val red = channel(match.groupValues[1])?.coerceIn(0f, 255f)?.div(255f)
+                ?: return fallback
+            val green = channel(match.groupValues[2])?.coerceIn(0f, 255f)?.div(255f)
+                ?: return fallback
+            val blue = channel(match.groupValues[3])?.coerceIn(0f, 255f)?.div(255f)
+                ?: return fallback
+            val alpha = match.groupValues.getOrNull(4)?.takeIf(String::isNotEmpty)?.let {
+                if (it.endsWith('%')) {
+                    it.removeSuffix("%").toFloatOrNull()?.div(100f)
+                } else {
+                    it.toFloatOrNull()?.let { value -> if (value > 1f) value / 255f else value }
+                }
+            }?.coerceIn(0f, 1f) ?: 1f
+            return Color(red = red, green = green, blue = blue, alpha = alpha)
+        }
+
         private val RGB_COLOR_PATTERN = Regex(
             "rgba?\\(\\s*([0-9.]+)\\s*[, ]\\s*([0-9.]+)\\s*[, ]\\s*([0-9.]+)(?:\\s*[,/]\\s*([0-9.]+%?))?\\s*\\)",
             RegexOption.IGNORE_CASE,

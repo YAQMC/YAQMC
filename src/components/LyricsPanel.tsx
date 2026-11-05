@@ -2,6 +2,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -34,6 +35,7 @@ import { ActionMenu } from './ui/ActionMenu';
 import { SongShareMenuItems } from './SongShareActions';
 import { useTranslation } from 'react-i18next';
 import { usePreferencesStore } from '../application/preferences';
+import { isAndroidRuntime } from '../application/host-capabilities';
 import { useCompactPlayerLayout } from '../application/use-compact-player-layout';
 import { useLyricsTransportDefinition } from '../application/use-lyrics-transport';
 import { BUILTIN_TRANSPORT_WINDOW_ID } from '../application/lyrics-transport';
@@ -187,6 +189,12 @@ function LyricsPanelStage({
   const wordEffect = usePreferencesStore((state) => state.lyrics.wordEffect);
   const fontWeight = usePreferencesStore((state) => state.lyrics.fontWeight);
   const amll = usePreferencesStore((state) => state.amll);
+  // DOM blur/scale are costly on phone WebViews; the Android native renderer honours the settings.
+  const webCompactAmll = useMemo(
+    () =>
+      compact && !isAndroidRuntime() ? { ...amll, enableBlur: false, enableScale: false } : amll,
+    [amll, compact],
+  );
   const presentationOffsetMs = usePreferencesStore((state) => state.lyrics.timingOffsetMs);
   const lyricsPresets = usePreferencesStore((state) => state.lyricsPresets);
   const selectLyricsPreset = usePreferencesStore((state) => state.selectLyricsPreset);
@@ -450,7 +458,7 @@ function LyricsPanelStage({
     romanization,
     wordEffect,
     fontWeight,
-    amll: compact ? { ...amll, enableBlur: false, enableScale: false } : amll,
+    amll: webCompactAmll,
   };
 
   return (
