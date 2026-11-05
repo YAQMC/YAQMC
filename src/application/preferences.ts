@@ -28,7 +28,7 @@ import { logger } from './logger';
 import { isNativeRuntime } from './native-player-runtime';
 import { getYaqmcClient } from './yaqmc-runtime';
 import { supportsLyricsSurfaces } from './host-capabilities';
-import { hasHostCapability } from './host-capabilities';
+import { hasHostCapability, isAndroidRuntime } from './host-capabilities';
 
 const PREFERENCES_CACHE_KEY = 'yaqmc.preferences.v2';
 const LEGACY_PREFERENCES_CACHE_KEY = 'music-client.preferences.v1';
@@ -854,7 +854,10 @@ export function applyAppearance(
 ): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
+  // Android starts in true grayscale; desktop keeps its tinted default. Chosen palettes win.
+  const neutral = appearance.palette === 'default' && isAndroidRuntime();
   root.dataset.theme = resolvedMode;
+  root.dataset.palette = neutral ? 'neutral' : appearance.palette;
   root.dataset.material = appearance.material;
   root.dataset.background = appearance.backgroundMode;
   for (const [name, value] of Object.entries(
@@ -864,6 +867,7 @@ export function applyAppearance(
       secondary: appearance.secondaryColor,
       surfaceOpacity: appearance.surfaceOpacity,
       material: appearance.material,
+      neutral,
     }),
   )) {
     root.style.setProperty(name, value);

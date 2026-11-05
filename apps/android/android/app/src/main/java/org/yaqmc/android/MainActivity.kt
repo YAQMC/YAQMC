@@ -31,6 +31,8 @@ class MainActivity : BridgeActivity() {
         registerPlugin(AppPlugin::class.java)
         registerPlugin(YaqmcNativePlugin::class.java)
         super.onCreate(savedInstanceState)
+        // The WebView paints white until the page applies its theme; match the neutral window.
+        bridge.webView.setBackgroundColor(getColor(R.color.yaqmc_window_background))
         installFullBleedWebViewInsets()
         handleDeepLink(intent)
     }
