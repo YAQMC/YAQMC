@@ -32,13 +32,15 @@ Android v1 有意不提供桌面歌词、歌词岛、托盘、全局快捷键、
 ## 歌词帧率
 
 Android 上的同步歌词由原生悬浮层（`NativeLyricsOverlay`）在 `Choreographer` 垂直同步时绘制，每帧读取 Media3 的播放位置；
-下方的 WebView 不再运行自己的逐帧歌词时钟。
+下方的 WebView 不再运行自己的逐帧歌词时钟。垂直同步循环只在悬浮层显示且 Activity 处于 started 状态时运行；
+应用切到后台时停止、回到前台时恢复，因此不可见的歌词页不会持续唤醒主线程。
 
 应用通常把刷新率交给系统决定（Android 15+ 另有触摸加速），因此自适应/LTPO 屏幕在静态页面上可能降到较低刷新率。
 歌词在没有触摸输入时也会持续动画，所以**仅当歌词悬浮层可见且正在播放时**，Activity 会请求当前分辨率下可用的最高刷新率；
 暂停、离开歌词页或切到后台后恢复系统默认。设备的功耗策略、省电模式与温控仍可能覆盖该请求。
 
-请测量帧节奏，而不是依据显示设置判断。连接 USB 或无线调试后，打开歌词页并开始播放，然后运行：
+请测量帧节奏，而不是依据显示设置判断。连接 USB 或无线调试后，打开歌词页并开始播放，然后运行（测量其他构建时传入 `--package`，例如
+`org.yaqmc.android.perftest` 或 `org.yaqmc.android.debug`；图层与进程按包名精确匹配）：
 
 ```sh
 node scripts/android/measure-frames.mjs --label before --seconds 20
@@ -50,8 +52,12 @@ node scripts/android/measure-frames.mjs --compare artifacts/android-perf/android
 报告包含：
 
 - 设备与 SoC；
-- 测量过程中采样的刷新率；
-- 应用图层的 SurfaceFlinger 呈现间隔（屏幕实际 FPS、p50/p95/p99、跳过刷新的间隔数）；
+- 包名、版本，以及构建是否 profileable / debuggable（只比较接近 release 的构建）；
+- 测量过程中采样的刷新率，以及作为帧预算的 vsync 周期；
+- `gfxinfo framestats` 逐帧耗时（窗口的 HWUI 时间线，同时覆盖 WebView 与原生歌词悬浮层）：p50/p95/p99/最大值，
+  以及超过一个、两个 vsync 周期的帧数；
+- 应用图层的 SurfaceFlinger 呈现间隔（屏幕实际 FPS、p50/p95/p99、跳过刷新的间隔数；设备不为 BLAST 图层提供
+  latency 数据时为 `null`）；
 - `gfxinfo` 帧耗时分位数与卡顿计数（含 GPU 分位数）；
 - CPU 占用最高的应用线程；
 - 温控状态。

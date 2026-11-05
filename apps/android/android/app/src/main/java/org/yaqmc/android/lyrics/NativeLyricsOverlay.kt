@@ -28,6 +28,9 @@ class NativeLyricsOverlay(
 ) {
     private var playerView: AMLLPlayerView? = null
     private var isRunning = false
+    /** False between Activity stop and start: the overlay stays shown but idles its frame loop. */
+    private var hostStarted = true
+    private var frameCallbackPosted = false
     private var timingOffsetMs = 0L
     private var animating = false
 
@@ -38,7 +41,8 @@ class NativeLyricsOverlay(
 
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
-            if (!isRunning) return
+            frameCallbackPosted = false
+            if (!isRunning || !hostStarted) return
             val audioBackend = CoreManager.audioBackend
             if (audioBackend != null) {
                 val position = lyricPosition(audioBackend.currentPositionForUiMs())
@@ -46,9 +50,36 @@ class NativeLyricsOverlay(
                 playerView?.update(positionMs = position, isPlaying = playing)
                 setAnimating(playing)
             }
-            if (isRunning) {
-                Choreographer.getInstance().postFrameCallback(this)
-            }
+            postFrameLoop()
+        }
+    }
+
+    private fun postFrameLoop() {
+        if (!isRunning || !hostStarted || frameCallbackPosted) return
+        frameCallbackPosted = true
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+    }
+
+    private fun cancelFrameLoop() {
+        if (!frameCallbackPosted) return
+        frameCallbackPosted = false
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+    }
+
+    /**
+     * Activity stop/start. A shown overlay keeps its lyrics and composition, but must not keep
+     * requesting vsync, reading the player clock, or holding the high refresh-rate request while
+     * the app is not visible.
+     */
+    @MainThread
+    fun setHostStarted(started: Boolean) {
+        if (hostStarted == started) return
+        hostStarted = started
+        if (started) {
+            postFrameLoop()
+        } else {
+            cancelFrameLoop()
+            setAnimating(false)
         }
     }
 
@@ -96,10 +127,8 @@ class NativeLyricsOverlay(
                 isPlaying = audioBackend.isPlaying,
             )
         }
-        if (!isRunning) {
-            isRunning = true
-            Choreographer.getInstance().postFrameCallback(frameCallback)
-        }
+        isRunning = true
+        postFrameLoop()
     }
 
     @MainThread
@@ -116,10 +145,8 @@ class NativeLyricsOverlay(
 
     @MainThread
     fun hide() {
-        if (isRunning) {
-            isRunning = false
-            Choreographer.getInstance().removeFrameCallback(frameCallback)
-        }
+        isRunning = false
+        cancelFrameLoop()
         playerView?.visibility = View.GONE
         setAnimating(false)
     }
@@ -203,6 +230,16 @@ class NativeLyricsOverlay(
         }
 
         val existing = view.layoutParams
+        // Re-assigning identical params still requests a full relayout of the hosted player.
+        if (
+            existing is ViewGroup.MarginLayoutParams &&
+            existing.width == width &&
+            existing.height == height &&
+            existing.leftMargin == x &&
+            existing.topMargin == y
+        ) {
+            return
+        }
         if (existing is ViewGroup.MarginLayoutParams) {
             existing.width = width
             existing.height = height

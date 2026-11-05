@@ -108,6 +108,16 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         return overlay
     }
 
+    override fun handleOnStart() {
+        super.handleOnStart()
+        lyricsOverlay?.setHostStarted(true)
+    }
+
+    override fun handleOnStop() {
+        lyricsOverlay?.setHostStarted(false)
+        super.handleOnStop()
+    }
+
     override fun handleOnDestroy() {
         deepLinkSubscription?.close()
         deepLinkSubscription = null

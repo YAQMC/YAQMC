@@ -35,7 +35,9 @@ API, and file exports are intentionally absent from Android v1. The in-app lyric
 ## Lyrics frame rate
 
 Synchronized lyrics on Android are drawn by a native overlay (`NativeLyricsOverlay`) on `Choreographer` vsync, reading
-Media3's playback position every frame. The WebView beneath does not run its own per-frame lyric clock.
+Media3's playback position every frame. The WebView beneath does not run its own per-frame lyric clock. The vsync loop
+runs only while the overlay is shown and the activity is started; it stops when the app goes to the background and
+resumes on return, so a hidden lyrics page does not keep waking the main thread.
 
 The app normally leaves the refresh rate to the system (with touch boost on Android 15+), so adaptive/LTPO panels can
 drop to a low rate on static pages. Lyrics animate without touch input, so **while the lyric overlay is visible and
@@ -44,7 +46,8 @@ leaving the lyrics page, or backgrounding the app returns to the system default.
 saver, and thermal limits can still override the request.
 
 Measure frame pacing instead of relying on the display setting. With USB or wireless debugging connected, open the
-lyrics page, start playback, then run:
+lyrics page, start playback, then run (pass `--package` for another build, for example
+`org.yaqmc.android.perftest` or `org.yaqmc.android.debug`; layers and processes are matched exactly):
 
 ```sh
 node scripts/android/measure-frames.mjs --label before --seconds 20
@@ -56,8 +59,12 @@ node scripts/android/measure-frames.mjs --compare artifacts/android-perf/android
 The report records:
 
 - the device and SoC;
-- refresh-rate samples taken through the run;
-- SurfaceFlinger present intervals for the app layer (on-screen FPS, p50/p95/p99, and intervals that skipped a refresh);
+- the package, version and whether the build is profileable or debuggable (compare release-like builds only);
+- refresh-rate samples taken through the run and the vsync period used as the frame budget;
+- per-frame app timings from `gfxinfo framestats` (the window's HWUI timeline, which covers both the WebView and the
+  native lyric overlay): p50/p95/p99/max and frames over one and two vsync periods;
+- SurfaceFlinger present intervals for the app layer (on-screen FPS, p50/p95/p99, and intervals that skipped a refresh;
+  `null` where the device does not expose latency data for BLAST layers);
 - `gfxinfo` frame percentiles and jank counters, including GPU percentiles;
 - the busiest app threads by CPU;
 - thermal status.

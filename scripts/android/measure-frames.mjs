@@ -1,18 +1,25 @@
 #!/usr/bin/env node
-// Measures on-device frame pacing for the YAQMC Android app (open the lyrics page and start playback first).
+// Measures on-device frame pacing for the YAQMC Android app or the amll-android demo.
+// Open the lyrics page (or start the demo in benchmark mode) and start playback first.
 //
-//   node scripts/android/measure-frames.mjs --label before --seconds 20 [--serial <id>] [--out dir]
+//   node scripts/android/measure-frames.mjs --label before --seconds 20 \
+//     [--package org.yaqmc.android.perftest] [--serial <id>] [--out dir]
 //   node scripts/android/measure-frames.mjs --compare before.json after.json
 //
-// Sources: SurfaceFlinger present timestamps for the app layer (what reached the screen),
-// gfxinfo (app RenderThread frame times, jank counters, GPU percentiles), the active display
-// mode sampled through the run, per-thread CPU from `top`, and thermal status.
+// Sources, in order of authority:
+// - gfxinfo framestats: the app's HWUI timeline for its window (WebView functor + native lyric
+//   overlay share it). Sampled repeatedly (HWUI keeps ~120 frames) and de-duplicated by vsync id.
+// - gfxinfo summary: jank counters and CPU/GPU percentiles since reset.
+// - SurfaceFlinger --latency: present timestamps for the app layer (not available on every
+//   Android version/BLAST configuration; reported as null when empty).
+// - the active display mode sampled through the run, per-thread CPU from `top`, thermal status.
+// For root-causing a regression, capture a Perfetto trace with FrameTimeline instead.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const PACKAGE = 'org.yaqmc.android';
+const DEFAULT_PACKAGE = 'org.yaqmc.android';
 
 export function parseGfxinfoSummary(text) {
   const number = (pattern) => {
@@ -36,8 +43,38 @@ export function parseGfxinfoSummary(text) {
   };
 }
 
-/** `dumpsys SurfaceFlinger --latency <layer>`: first line is the vsync period in ns, then
- * "desiredPresent actualPresent frameReady" rows; INT64_MAX marks a pending frame. */
+/**
+ * `dumpsys gfxinfo <pkg> framestats`: CSV blocks between ---PROFILEDATA--- markers. Returns valid
+ * frames (Flags == 0) as { vsync, frameNs } where frameNs = FrameCompleted - IntendedVsync.
+ */
+export function parseFramestats(text) {
+  const frames = [];
+  for (const block of text.split('---PROFILEDATA---').slice(1)) {
+    const lines = block
+      .trim()
+      .split('\n')
+      .filter((line) => line.includes(','));
+    if (lines.length < 2) continue;
+    const header = lines[0].split(',').map((name) => name.trim());
+    const col = (name) => header.indexOf(name);
+    const [flags, intended, completed] = [
+      col('Flags'),
+      col('IntendedVsync'),
+      col('FrameCompleted'),
+    ];
+    if (flags < 0 || intended < 0 || completed < 0) continue;
+    for (const row of lines.slice(1)) {
+      const cells = row.split(',');
+      if (Number(cells[flags]) !== 0) continue;
+      const start = Number(cells[intended]);
+      const end = Number(cells[completed]);
+      if (start > 0 && end > start) frames.push({ vsync: start, frameNs: end - start });
+    }
+  }
+  return frames;
+}
+
+/** `dumpsys SurfaceFlinger --latency <layer>`: period line, then present rows (INT64_MAX = pending). */
 export function parseSurfaceFlingerLatency(text) {
   const lines = text.trim().split('\n');
   const periodNs = Number(lines[0]);
@@ -46,7 +83,7 @@ export function parseSurfaceFlingerLatency(text) {
     .map((line) => line.trim().split(/\s+/).map(Number))
     .filter((row) => row.length >= 3 && row[1] > 0 && row[1] < 9e18)
     .map((row) => row[1]);
-  return { periodNs: Number.isFinite(periodNs) ? periodNs : null, presents };
+  return { periodNs: Number.isFinite(periodNs) && periodNs > 0 ? periodNs : null, presents };
 }
 
 function percentile(sorted, fraction) {
@@ -55,34 +92,90 @@ function percentile(sorted, fraction) {
   return sorted[index];
 }
 
-/** Frame pacing from unique present timestamps (ns): intervals, effective FPS, and jank, where a
- * jank is an interval longer than 1.5 vsync periods (at least one refresh was skipped). */
+const round = (value, digits = 2) => (value === null ? null : Number(value.toFixed(digits)));
+
+/** Present-interval pacing; a jank interval is longer than 1.5 vsync periods (a refresh was skipped). */
 export function pacingFromPresents(presentsNs, periodNs) {
   const unique = [...new Set(presentsNs)].sort((a, b) => a - b);
   const intervals = [];
   for (let index = 1; index < unique.length; index += 1) {
     intervals.push((unique[index] - unique[index - 1]) / 1e6);
   }
+  if (intervals.length === 0) return null;
   const sorted = [...intervals].sort((a, b) => a - b);
-  const spanMs = unique.length > 1 ? (unique.at(-1) - unique[0]) / 1e6 : 0;
+  const spanMs = (unique.at(-1) - unique[0]) / 1e6;
   const periodMs = periodNs ? periodNs / 1e6 : null;
   return {
     frames: unique.length,
     spanMs: Math.round(spanMs),
-    effectiveFps: spanMs > 0 ? Number(((intervals.length / spanMs) * 1000).toFixed(1)) : null,
-    intervalP50Ms: percentile(sorted, 0.5),
-    intervalP95Ms: percentile(sorted, 0.95),
-    intervalP99Ms: percentile(sorted, 0.99),
+    effectiveFps: round((intervals.length / spanMs) * 1000, 1),
+    intervalP50Ms: round(percentile(sorted, 0.5)),
+    intervalP95Ms: round(percentile(sorted, 0.95)),
+    intervalP99Ms: round(percentile(sorted, 0.99)),
     jankIntervals: periodMs ? intervals.filter((value) => value > periodMs * 1.5).length : null,
   };
 }
 
-export function parseRefreshRate(displayDump) {
-  const render = displayDump.match(/renderFrameRate[=:\s]+([\d.]+)/);
-  const mode = displayDump.match(/mActiveSfDisplayMode=.*?(?:refreshRate|fps)=([\d.]+)/);
-  const legacy = displayDump.match(/mRefreshRate=([\d.]+)/);
-  const value = render?.[1] ?? mode?.[1] ?? legacy?.[1];
+/** App frame-time distribution from framestats, judged against the measured vsync period. */
+export function frameTimeStats(frames, periodMs) {
+  if (frames.length === 0) return null;
+  const sorted = frames.map((frame) => frame.frameNs / 1e6).sort((a, b) => a - b);
+  return {
+    frames: sorted.length,
+    p50Ms: round(percentile(sorted, 0.5)),
+    p95Ms: round(percentile(sorted, 0.95)),
+    p99Ms: round(percentile(sorted, 0.99)),
+    maxMs: round(sorted.at(-1)),
+    // IntendedVsync -> FrameCompleted includes pipelining, so "over budget" is conservative.
+    overOneVsync: periodMs ? sorted.filter((ms) => ms > periodMs).length : null,
+    overTwoVsync: periodMs ? sorted.filter((ms) => ms > periodMs * 2).length : null,
+  };
+}
+
+export function parseRefreshRate(dump) {
+  const render = dump.match(/renderFrameRate[=:\s]+([\d.]+)/);
+  const mode = dump.match(/mActiveSfDisplayMode=.*?(?:refreshRate|fps)=([\d.]+)/);
+  const legacy = dump.match(/mRefreshRate=([\d.]+)/);
+  const surfaceFlinger = dump.match(/refresh-rate\s*:\s*([\d.]+)/);
+  const value = render?.[1] ?? mode?.[1] ?? legacy?.[1] ?? surfaceFlinger?.[1];
   return value === undefined ? null : Number(Number(value).toFixed(1));
+}
+
+/**
+ * toybox `top -H` output. Columns are located from the header; toybox prints `S[%CPU]` as one header
+ * token over two data columns (state and %CPU), so data indexes are shifted after that token.
+ */
+export function parseTopThreads(text) {
+  const lines = text.split('\n');
+  const headerIndex = lines.findIndex(
+    (line) => /%CPU/.test(line) && /(THREAD|NAME|CMD|ARGS)/.test(line),
+  );
+  if (headerIndex < 0) return [];
+  const header = lines[headerIndex].trim().split(/\s+/);
+  const dataIndex = (predicate) => {
+    let index = 0;
+    for (const token of header) {
+      if (predicate(token)) return index + (token.startsWith('S[') ? 1 : 0);
+      index += token.startsWith('S[') ? 2 : 1;
+    }
+    return -1;
+  };
+  const cpuIndex = dataIndex((token) => token.includes('%CPU'));
+  const nameIndex = dataIndex((token) => ['THREAD', 'NAME', 'CMD', 'ARGS'].includes(token));
+  if (cpuIndex < 0 || nameIndex < 0) return [];
+  const threads = [];
+  for (const line of lines.slice(headerIndex + 1)) {
+    const cells = line.trim().split(/\s+/);
+    if (cells.length <= Math.max(cpuIndex, nameIndex)) continue;
+    const cpu = Number(cells[cpuIndex]);
+    if (Number.isFinite(cpu)) threads.push({ name: cells[nameIndex], cpu });
+  }
+  return threads;
+}
+
+export function matchesPackageLayer(line, pkg) {
+  const escaped = pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[\\s(])${escaped}/`).test(line);
 }
 
 function adb(serial, args, { allowFailure = false } = {}) {
@@ -101,86 +194,92 @@ function adb(serial, args, { allowFailure = false } = {}) {
 const shell = (serial, command, options) => adb(serial, ['shell', command], options);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function appLayer(serial) {
-  const layers = shell(serial, 'dumpsys SurfaceFlinger --list').split('\n');
-  const ours = layers.map((line) => line.trim()).filter((line) => line.includes(PACKAGE));
-  return (
-    ours.find((line) => line.includes('MainActivity') && line.includes('BLAST')) ??
-    ours.find((line) => line.includes('MainActivity')) ??
-    ours[0] ??
-    null
-  );
+function appLayer(serial, pkg) {
+  const layers = shell(serial, 'dumpsys SurfaceFlinger --list')
+    .split('\n')
+    .map((line) => line.trim());
+  const ours = layers.filter((line) => matchesPackageLayer(line, pkg));
+  return ours.find((line) => line.includes('BLAST')) ?? ours[0] ?? null;
 }
 
-async function measure({ serial, seconds, label, out }) {
-  const pid = shell(serial, `pidof ${PACKAGE}`, { allowFailure: true }).trim();
-  if (!pid) throw new Error(`${PACKAGE} is not running; open the lyrics page and start playback.`);
+async function measure({ serial, seconds, label, out, pkg }) {
+  const pid = shell(serial, `pidof ${pkg}`, { allowFailure: true }).trim();
+  if (!pid) throw new Error(`${pkg} is not running; open the lyrics page and start playback.`);
   const props = (name) => shell(serial, `getprop ${name}`, { allowFailure: true }).trim();
+  const displayDump = shell(serial, 'dumpsys display');
+  const packageDump = shell(serial, `dumpsys package ${pkg}`, { allowFailure: true });
   const device = {
     model: `${props('ro.product.manufacturer')} ${props('ro.product.model')}`.trim(),
     android: props('ro.build.version.release'),
     sdk: props('ro.build.version.sdk'),
     soc: props('ro.soc.model') || props('ro.board.platform'),
     supportedModes: [
-      ...new Set(
-        [...shell(serial, 'dumpsys display').matchAll(/fps=([\d.]+)/g)].map((m) =>
-          Number(Number(m[1]).toFixed(1)),
-        ),
-      ),
+      ...new Set([...displayDump.matchAll(/fps=([\d.]+)/g)].map((m) => round(Number(m[1]), 1))),
     ],
   };
-  const layer = appLayer(serial);
-  shell(serial, `dumpsys gfxinfo ${PACKAGE} reset`);
+  const build = {
+    package: pkg,
+    versionName: packageDump.match(/versionName=(\S+)/)?.[1] ?? null,
+    profileable: /PROFILEABLE|profileableByShell/.test(packageDump),
+    debuggable: /flags=\[[^\]]*DEBUGGABLE/.test(packageDump),
+  };
+  const layer = appLayer(serial, pkg);
+  shell(serial, `dumpsys gfxinfo ${pkg} reset`);
   if (layer)
     shell(serial, `dumpsys SurfaceFlinger --latency-clear "${layer}"`, { allowFailure: true });
 
   const refreshSamples = [];
   const presents = [];
+  const framesByVsync = new Map();
   let periodNs = null;
-  const threadSamples = [];
+  const threadCpu = new Map();
+  let threadSampleCount = 0;
   const started = Date.now();
   while (Date.now() - started < seconds * 1000) {
     refreshSamples.push(parseRefreshRate(shell(serial, 'dumpsys display')));
+    for (const frame of parseFramestats(shell(serial, `dumpsys gfxinfo ${pkg} framestats`))) {
+      framesByVsync.set(frame.vsync, frame);
+    }
     if (layer) {
-      // The latency buffer holds ~128 frames (about one second at 120 Hz), so sample often.
       const latency = parseSurfaceFlingerLatency(
         shell(serial, `dumpsys SurfaceFlinger --latency "${layer}"`, { allowFailure: true }) || '0',
       );
       periodNs = latency.periodNs ?? periodNs;
       presents.push(...latency.presents);
     }
-    threadSamples.push(shell(serial, `top -H -b -n 1 -p ${pid}`, { allowFailure: true }));
+    const threads = parseTopThreads(
+      shell(serial, `top -H -b -n 1 -p ${pid}`, { allowFailure: true }),
+    );
+    if (threads.length) threadSampleCount += 1;
+    for (const { name, cpu } of threads) threadCpu.set(name, (threadCpu.get(name) ?? 0) + cpu);
     await sleep(500);
   }
 
-  const gfx = shell(serial, `dumpsys gfxinfo ${PACKAGE}`);
+  const gfx = shell(serial, `dumpsys gfxinfo ${pkg}`);
   const thermal = shell(serial, 'dumpsys thermalservice', { allowFailure: true }).match(
     /Thermal Status:\s*(\d+)/,
   );
-  const threads = new Map();
-  for (const sample of threadSamples) {
-    for (const line of sample.split('\n')) {
-      const columns = line.trim().split(/\s+/);
-      const cpu = Number(columns[8]);
-      if (columns.length < 12 || !Number.isFinite(cpu)) continue;
-      const name = columns.slice(11).join(' ');
-      threads.set(name, (threads.get(name) ?? 0) + cpu / threadSamples.length);
-    }
-  }
+  const medianRefresh =
+    [...refreshSamples].filter(Boolean).sort((a, b) => a - b)[
+      Math.floor(refreshSamples.length / 2)
+    ] ?? null;
+  const periodMs = periodNs ? periodNs / 1e6 : medianRefresh ? 1000 / medianRefresh : null;
   const report = {
     label,
     measuredAt: new Date().toISOString(),
     seconds,
     device,
+    build,
     refreshRateSamples: refreshSamples,
+    vsyncPeriodMs: round(periodMs, 3),
     layer,
-    vsyncPeriodMs: periodNs ? Number((periodNs / 1e6).toFixed(3)) : null,
+    appFrames: frameTimeStats([...framesByVsync.values()], periodMs),
     surfaceFlinger: pacingFromPresents(presents, periodNs),
     gfxinfo: parseGfxinfoSummary(gfx),
-    topThreadsCpuPercent: [...threads.entries()]
+    topThreadsCpuPercent: [...threadCpu.entries()]
+      .map(([name, total]) => [name, round(total / Math.max(1, threadSampleCount), 1)])
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, cpu]) => [name, Number(cpu.toFixed(1))]),
+      .slice(0, 8),
     thermalStatus: thermal ? Number(thermal[1]) : null,
   };
   mkdirSync(out, { recursive: true });
@@ -192,28 +291,33 @@ async function measure({ serial, seconds, label, out }) {
 function compare(beforeFile, afterFile) {
   const before = JSON.parse(readFileSync(beforeFile, 'utf8'));
   const after = JSON.parse(readFileSync(afterFile, 'utf8'));
+  const median = (values) =>
+    [...values].filter(Boolean).sort((a, b) => a - b)[Math.floor(values.length / 2)];
   const rows = [
+    ['refresh Hz (median sample)', (r) => median(r.refreshRateSamples)],
     [
-      'refresh Hz (median sample)',
-      (r) =>
-        [...r.refreshRateSamples].sort((a, b) => a - b)[
-          Math.floor(r.refreshRateSamples.length / 2)
-        ],
+      'app frame time p50 / p95 / p99 ms',
+      (r) => r.appFrames && `${r.appFrames.p50Ms} / ${r.appFrames.p95Ms} / ${r.appFrames.p99Ms}`,
     ],
-    ['on-screen FPS (SurfaceFlinger)', (r) => r.surfaceFlinger.effectiveFps],
-    ['present interval p50 ms', (r) => r.surfaceFlinger.intervalP50Ms],
-    ['present interval p95 ms', (r) => r.surfaceFlinger.intervalP95Ms],
-    ['skipped-refresh intervals', (r) => r.surfaceFlinger.jankIntervals],
-    ['gfxinfo frames', (r) => r.gfxinfo.totalFrames],
-    ['gfxinfo janky frames', (r) => r.gfxinfo.jankyFrames],
-    ['gfxinfo p90 / p99 ms', (r) => `${r.gfxinfo.p90Ms} / ${r.gfxinfo.p99Ms}`],
+    [
+      'app frames over 1 / 2 vsync',
+      (r) =>
+        r.appFrames &&
+        `${r.appFrames.overOneVsync} / ${r.appFrames.overTwoVsync} of ${r.appFrames.frames}`,
+    ],
+    ['on-screen FPS (SurfaceFlinger)', (r) => r.surfaceFlinger?.effectiveFps],
+    ['present interval p95 ms', (r) => r.surfaceFlinger?.intervalP95Ms],
+    ['skipped-refresh intervals', (r) => r.surfaceFlinger?.jankIntervals],
+    [
+      'gfxinfo janky / deadline missed',
+      (r) => `${r.gfxinfo.jankyFrames} / ${r.gfxinfo.deadlineMissed}`,
+    ],
     ['GPU p90 / p99 ms', (r) => `${r.gfxinfo.gpuP90Ms} / ${r.gfxinfo.gpuP99Ms}`],
     ['thermal status', (r) => r.thermalStatus],
   ];
   process.stdout.write(`| metric | ${before.label} | ${after.label} |\n|---|---|---|\n`);
-  for (const [name, read] of rows) {
+  for (const [name, read] of rows)
     process.stdout.write(`| ${name} | ${read(before)} | ${read(after)} |\n`);
-  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
@@ -230,6 +334,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       seconds: Number(option('seconds', '20')),
       label: option('label', 'run'),
       out: option('out', 'artifacts/android-perf'),
+      pkg: option('package', DEFAULT_PACKAGE),
     });
   }
 }
