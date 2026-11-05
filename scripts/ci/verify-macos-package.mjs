@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { coreSha256 } from '../../apps/desktop/main/core/core-hash.js';
 import { inspectBinaryArchitecture } from './verify-binary-arch.mjs';
 
 const MACHO_ARCH = { x64: 'x86_64', arm64: 'aarch64' };
@@ -78,6 +79,23 @@ export function codesignDetails(appPath, execute = spawnSync) {
   return result.stderr;
 }
 
+export function verifyCoreManifest(resourcesPath) {
+  const coreDir = path.join(resourcesPath, 'core');
+  const manifest = JSON.parse(readFileSync(path.join(coreDir, 'manifest.json'), 'utf8'));
+  if (
+    manifest.name !== 'yaqmc-core' ||
+    typeof manifest.sha256 !== 'string' ||
+    typeof manifest.hashMode !== 'string'
+  ) {
+    throw new Error('packaged Core manifest is incomplete');
+  }
+  const actual = coreSha256(readFileSync(path.join(coreDir, manifest.name)), manifest.hashMode);
+  if (actual !== manifest.sha256) {
+    throw new Error(`packaged Core hash mismatch: expected ${manifest.sha256}, found ${actual}`);
+  }
+  return manifest;
+}
+
 function verify({ dir, arch, signed }) {
   const expected = MACHO_ARCH[arch];
   if (!expected) throw new Error(`unsupported macOS arch ${arch}`);
@@ -100,6 +118,7 @@ function verify({ dir, arch, signed }) {
       throw new Error(`${binary} is ${actual.format}/${actual.arch}, expected macho/${expected}`);
     }
   }
+  verifyCoreManifest(path.join(appPath, 'Contents', 'Resources'));
 
   runStderr('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
   const details = parseCodesignDetails(codesignDetails(appPath));
