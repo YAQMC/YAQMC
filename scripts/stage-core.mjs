@@ -8,7 +8,11 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { coreHashModeForBytes, coreSha256 } from '../apps/desktop/main/core/core-hash.js';
+import {
+  coreHashModeForBytes,
+  coreSha256,
+  MACHO_CONTENT_SHA256_V1,
+} from '../apps/desktop/main/core/core-hash.js';
 
 export function coreBinaryName(platform = process.platform) {
   return platform === 'win32' ? 'yaqmc-core.exe' : 'yaqmc-core';
@@ -38,16 +42,28 @@ export function findCoreBinary(options) {
 }
 
 export function stageCore(options) {
-  const { repoRoot, env = process.env, destinationDir, profile, rustTarget } = options;
+  const {
+    repoRoot,
+    env = process.env,
+    destinationDir,
+    profile,
+    rustTarget,
+    execute = execFileSync,
+  } = options;
   const source = findCoreBinary({ repoRoot, env, profile, rustTarget });
   const destDir = destinationDir ?? path.join(repoRoot, 'apps', 'desktop', 'resources', 'core');
   mkdirSync(destDir, { recursive: true });
   const name = path.basename(source);
   const destination = path.join(destDir, name);
   copyFileSync(source, destination);
-  const bytes = statSync(destination).size;
-  const contents = readFileSync(destination);
+  let contents = readFileSync(destination);
   const hashMode = coreHashModeForBytes(contents);
+  if (hashMode === MACHO_CONTENT_SHA256_V1) {
+    // Intel linker output can be unsigned; establish the signature command before hashing.
+    execute('codesign', ['--force', '--sign', '-', destination], { stdio: 'pipe' });
+    contents = readFileSync(destination);
+  }
+  const bytes = statSync(destination).size;
   const sha256 = coreSha256(contents, hashMode);
   // Spawn-time verify (SUP-03) reads manifest.json next to the staged binary.
   writeFileSync(path.join(destDir, 'core.sha256'), `${sha256}  ${name}\n`);
@@ -70,3 +86,4 @@ if (invokedDirectly) {
   const staged = stageCore({ repoRoot, profile, rustTarget });
   process.stdout.write(`staged ${staged.destination} sha256=${staged.sha256}\n`);
 }
+import { execFileSync } from 'node:child_process';
