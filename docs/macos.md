@@ -98,10 +98,19 @@ This does not provide native Apple silicon runtime validation.
 
 ## Verification status
 
-| Item                                                                       | Status                                                     |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| electron-builder configuration and entitlements                            | Schema-validated; not yet packaged on macOS by this change |
-| CI: Core build and unit tests on `macos-15-intel` (x64), arm64 cross-check | Configured; runs on the next CI execution                  |
-| Ad-hoc package build and verification                                      | Configured in CI and release; not yet run                  |
-| Developer ID signing and notarization                                      | **Untested** — requires Apple credentials                  |
-| Runtime behavior on macOS hardware (audio, Keychain, overlays)             | **Not validated**                                          |
+At `ac461dd`, [Build artifacts run 41862322797](https://github.com/YAQMC/YAQMC/actions/runs/41862322797)
+built both macOS architectures and verified their bundle signatures. The x64 job required a retry
+after GitHub failed to allocate a runner. [The macOS Core job](https://github.com/YAQMC/YAQMC/actions/runs/41862299187/job/127046601224)
+passed its arm64 compile check, 387 x64 Core tests and five updater-helper tests.
+
+An independent download check found all 17 Mach-O binaries in the arm64 ZIP to be arm64. The main
+executable, Electron framework, Core and updater helper in its DMG matched the ZIP byte for byte.
+The Intel runner architecture describes the build host, not the package architecture.
+
+| Item                                                                       | Status                                                       |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| electron-builder configuration and entitlements                            | Built and signature-verified on macOS for both architectures |
+| CI: Core build and unit tests on `macos-15-intel` (x64), arm64 cross-check | Passed at `ac461dd`                                          |
+| Ad-hoc package build and verification                                      | Passed for arm64 and x64 at `ac461dd`                        |
+| Developer ID signing and notarization                                      | **Untested** — requires Apple credentials                    |
+| Runtime behavior on macOS hardware (audio, Keychain, overlays)             | **Not validated**                                            |

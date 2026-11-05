@@ -90,10 +90,18 @@ CI 使用 Intel runner 绕开 ARM runner 容量故障，arm64 安装包通过交
 
 ## 验证状态
 
+在 `ac461dd`，[Build artifacts 运行 41862322797](https://github.com/YAQMC/YAQMC/actions/runs/41862322797)
+已完成 macOS 两种架构的打包与签名校验。x64 任务因 GitHub 未分配 runner 失败后重跑通过。
+[macOS Core 任务](https://github.com/YAQMC/YAQMC/actions/runs/41862299187/job/127046601224)
+通过 arm64 编译检查、387 项 x64 Core 测试和 5 项更新助手测试。
+
+独立下载核验确认 arm64 ZIP 内的 17 个 Mach-O 二进制均为 arm64；DMG 内的主程序、Electron 框架、Core
+和更新助手与 ZIP 内对应文件逐字节一致。Intel runner 表示构建宿主架构，不代表安装包架构。
+
 | 项目                                                              | 状态                                    |
 | ----------------------------------------------------------------- | --------------------------------------- |
-| electron-builder 配置与授权文件                                   | 已通过结构校验；尚未在 macOS 上实际打包 |
-| CI：`macos-15-intel` 上的 x64 Core 构建与单元测试、arm64 交叉检查 | 已配置；将在下次 CI 运行时执行          |
-| 临时签名安装包的构建与验证                                        | 已在 CI 与发布流程中配置；尚未运行      |
+| electron-builder 配置与授权文件                                   | 两种架构均已在 macOS 打包并通过签名校验 |
+| CI：`macos-15-intel` 上的 x64 Core 构建与单元测试、arm64 交叉检查 | `ac461dd` 已通过                        |
+| 临时签名安装包的构建与验证                                        | `ac461dd` 的 arm64 与 x64 均已通过      |
 | Developer ID 签名与公证                                           | **未测试**——需要 Apple 凭据             |
 | macOS 实机运行（音频、钥匙串、悬浮窗）                            | **未验证**                              |
