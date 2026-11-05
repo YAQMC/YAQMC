@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
@@ -9,6 +8,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { coreHashModeForBytes, coreSha256 } from '../apps/desktop/main/core/core-hash.js';
 
 export function coreBinaryName(platform = process.platform) {
   return platform === 'win32' ? 'yaqmc-core.exe' : 'yaqmc-core';
@@ -46,14 +46,16 @@ export function stageCore(options) {
   const destination = path.join(destDir, name);
   copyFileSync(source, destination);
   const bytes = statSync(destination).size;
-  const sha256 = createHash('sha256').update(readFileSync(destination)).digest('hex');
+  const contents = readFileSync(destination);
+  const hashMode = coreHashModeForBytes(contents);
+  const sha256 = coreSha256(contents, hashMode);
   // Spawn-time verify (SUP-03) reads manifest.json next to the staged binary.
   writeFileSync(path.join(destDir, 'core.sha256'), `${sha256}  ${name}\n`);
   writeFileSync(
     path.join(destDir, 'manifest.json'),
-    `${JSON.stringify({ name, sha256, bytes }, null, 2)}\n`,
+    `${JSON.stringify({ name, sha256, bytes, hashMode }, null, 2)}\n`,
   );
-  return { source, destination, sha256, bytes };
+  return { source, destination, sha256, bytes, hashMode };
 }
 
 const invokedDirectly =

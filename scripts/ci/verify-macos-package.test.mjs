@@ -1,10 +1,36 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
+import { coreSha256, MACHO_CONTENT_SHA256_V1 } from '../../apps/desktop/main/core/core-hash.js';
 import {
   codesignDetails,
   parseCodesignDetails,
   signaturePolicyProblems,
+  verifyCoreManifest,
 } from './verify-macos-package.mjs';
+
+function signedMachO(signatureSize, signatureByte) {
+  const signatureOffset = 160;
+  const bytes = Buffer.alloc(signatureOffset + signatureSize);
+  bytes.writeUInt32LE(0xfeedfacf, 0);
+  bytes.writeUInt32LE(2, 16);
+  bytes.writeUInt32LE(88, 20);
+  bytes.writeUInt32LE(0x19, 32);
+  bytes.writeUInt32LE(72, 36);
+  bytes.write('__LINKEDIT', 40, 'ascii');
+  bytes.writeBigUInt64LE(BigInt(64 + signatureSize), 64);
+  bytes.writeBigUInt64LE(120n, 72);
+  bytes.writeBigUInt64LE(BigInt(40 + signatureSize), 80);
+  bytes.writeUInt32LE(0x1d, 104);
+  bytes.writeUInt32LE(16, 108);
+  bytes.writeUInt32LE(signatureOffset, 112);
+  bytes.writeUInt32LE(signatureSize, 116);
+  bytes.fill(0x42, 120, signatureOffset);
+  bytes.fill(signatureByte, signatureOffset);
+  return bytes;
+}
 
 const ADHOC = `Executable=/tmp/YAQMC.app/Contents/MacOS/YAQMC
 Identifier=org.yaqmc.desktop
@@ -86,4 +112,28 @@ test('unsigned builds must be ad-hoc; signed builds must be Developer ID with ha
     }).join(),
     /unexpected bundle identifier/u,
   );
+});
+
+test('package verification accepts re-signed Mach-O content and rejects code tampering', () => {
+  const resources = mkdtempSync(path.join(os.tmpdir(), 'yaqmc-macos-core-'));
+  const coreDir = path.join(resources, 'core');
+  mkdirSync(coreDir);
+  const staged = signedMachO(64, 0xa1);
+  const packaged = signedMachO(96, 0xb2);
+  const binary = path.join(coreDir, 'yaqmc-core');
+  writeFileSync(binary, packaged);
+  writeFileSync(
+    path.join(coreDir, 'manifest.json'),
+    `${JSON.stringify({
+      name: 'yaqmc-core',
+      sha256: coreSha256(staged, MACHO_CONTENT_SHA256_V1),
+      bytes: staged.length,
+      hashMode: MACHO_CONTENT_SHA256_V1,
+    })}\n`,
+  );
+  assert.equal(verifyCoreManifest(resources).hashMode, MACHO_CONTENT_SHA256_V1);
+  const tampered = readFileSync(binary);
+  tampered[140] ^= 0xff;
+  writeFileSync(binary, tampered);
+  assert.throws(() => verifyCoreManifest(resources), /packaged Core hash mismatch/u);
 });

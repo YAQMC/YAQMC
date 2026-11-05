@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { FILE_SHA256_V1 } from '../../apps/desktop/main/core/core-hash.js';
 import { coreBinaryName, findCoreBinary, stageCore } from '../stage-core.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -25,6 +26,13 @@ test('stages the cargo binary and writes a sha256 manifest', () => {
   assert.equal(readFileSync(staged.destination, 'utf8'), 'core-bytes');
   assert.equal(staged.bytes, 'core-bytes'.length);
   assert.match(staged.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(staged.hashMode, FILE_SHA256_V1);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(destinationDir, 'manifest.json'), 'utf8')), {
+    name,
+    sha256: staged.sha256,
+    bytes: 'core-bytes'.length,
+    hashMode: FILE_SHA256_V1,
+  });
   assert.equal(
     readFileSync(path.join(destinationDir, 'core.sha256'), 'utf8'),
     `${staged.sha256}  ${name}\n`,
