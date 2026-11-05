@@ -693,6 +693,7 @@ impl AudioEngine for AndroidAudioEngine {
             decoder_error,
             source_url_expired,
             buffering: st.buffering,
+            seeking: false,
             progressive_downloaded_bytes: None,
             progressive_total_bytes: None,
             source_generation: st.source_generation,

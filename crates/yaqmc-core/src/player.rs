@@ -535,6 +535,15 @@ impl PlayerService {
         snapshot
     }
 
+    /// The position a loading session must start from: the latest seek published for it, since
+    /// `apply_latest_seek` cannot reach an unloaded engine (#26), otherwise the requested resume.
+    fn loading_resume_target(&self, session: u64, requested_ms: u64) -> u64 {
+        self.seek_mailbox
+            .latest()
+            .filter(|intent| intent.session_id == session)
+            .map_or(requested_ms, |intent| intent.position_ms)
+    }
+
     fn mark_seek_applied(&self) {
         *self
             .seek_applied_at
@@ -1748,6 +1757,7 @@ impl PlayerService {
         {
             return Err(self.record_audio_failure(&error, Some(session)).await);
         }
+        let resume_position_ms = self.loading_resume_target(session, resume_position_ms);
         let local_resume = resume_position_ms.saturating_sub(prepared.timeline_offset_ms);
         if local_resume > 0 {
             if let Err(error) = self.audio.seek(Duration::from_millis(local_resume)) {
@@ -1772,6 +1782,16 @@ impl PlayerService {
             }
         }
 
+        // A seek that arrived while the engine reported `loaded == false` only moved
+        // `core.position_ms`; apply it to the engine before committing the loaded state.
+        let latest_resume = self.loading_resume_target(session, resume_position_ms);
+        if latest_resume != resume_position_ms {
+            let local = latest_resume.saturating_sub(prepared.timeline_offset_ms);
+            if let Err(error) = self.audio.seek(Duration::from_millis(local)) {
+                return Err(self.record_audio_failure(&error, Some(session)).await);
+            }
+        }
+        let resume_position_ms = latest_resume;
         let engine_generation = self.audio.snapshot().source_generation;
         let commit = {
             let mut core = self.core.write().await;
@@ -2159,11 +2179,15 @@ impl PlayerService {
                 let now = Instant::now();
                 let engine = service.audio.snapshot();
                 let pending_seek = service.seek_mailbox.latest();
-                let hold_active = service
-                    .seek_applied_at
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .is_some_and(|applied_at| applied_at.elapsed() < Duration::from_millis(500));
+                // Hold the requested position until the engine has applied the seek: a cold
+                // progressive range can take seconds, and its pre-seek playhead must not snap
+                // the timeline back meanwhile (#26).
+                let hold_active = engine.seeking
+                    || service
+                        .seek_applied_at
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .is_some_and(|applied_at| applied_at.elapsed() < Duration::from_millis(500));
                 let (
                     snapshot,
                     should_advance,
@@ -5674,6 +5698,118 @@ mod tests {
         assert_eq!(snapshot.current_index, Some(1));
         assert_eq!(snapshot.queue[1].id, "fast");
         assert_eq!(snapshot.playback_state, PlaybackState::Playing);
+    }
+
+    fn slow_runtime_player() -> (Arc<PlayerService>, Arc<crate::audio::TestAudioEngine>) {
+        let engine = Arc::new(crate::audio::TestAudioEngine::with_live_clock());
+        let player = Arc::new(PlayerService::with_runtime(
+            Arc::clone(&engine) as Arc<dyn AudioEngine>,
+            Arc::new(DelayedResolver),
+            Arc::new(crate::media::PassthroughMediaPreparer),
+        ));
+        player.start_clock();
+        (player, engine)
+    }
+
+    /// Issue #26: seeking an unplayed (still resolving/buffering) track must start playback at
+    /// the requested position instead of jumping there and then restarting from the beginning.
+    #[tokio::test]
+    async fn seek_while_track_is_still_loading_starts_playback_there() {
+        let (player, engine) = slow_runtime_player();
+        player.hydrate_queue(vec![song("slow", 120_000)]).await;
+        let loading = Arc::clone(&player);
+        let load = tokio::spawn(async move { loading.play_from_queue(0).await });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!engine.snapshot().loaded, "the seek must land before the source is loaded");
+        let during = player.seek(42_000).await.expect("seek while loading");
+        assert_eq!(during.position_ms, 42_000);
+        let loaded = load.await.expect("load joins").expect("load succeeds");
+        assert!(loaded.position_ms.abs_diff(42_000) <= 100, "{}", loaded.position_ms);
+        assert!(engine.snapshot().position_ms.abs_diff(42_000) <= 100);
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let later = player.snapshot().await;
+        assert!(later.is_playing);
+        assert!(
+            later.position_ms >= 42_000 && later.position_ms < 43_000,
+            "playback must continue from the seek, got {}",
+            later.position_ms
+        );
+        player.stop_clock();
+    }
+
+    /// Issue #26, desktop engine: while a cold range downloads the engine still reports the
+    /// pre-seek playhead. The timeline must hold the target until the engine finishes seeking,
+    /// and only fall back to the real playhead if the seek did not take effect.
+    #[tokio::test]
+    async fn timeline_holds_the_seek_until_the_engine_reports_it_applied() {
+        let engine = Arc::new(crate::audio::TestAudioEngine::default());
+        let player = test_runtime_player(Arc::clone(&engine));
+        player.start_clock();
+        player
+            .play_tracks(PlayTracksRequest {
+                tracks: vec![song("cold", 120_000)],
+                start_at_id: None,
+                shuffle: None,
+            })
+            .await
+            .expect("playback starts");
+        player.seek(60_000).await.expect("seek queued");
+        engine.force_snapshot(|snapshot| {
+            snapshot.position_ms = 1_200;
+            snapshot.seeking = true;
+        });
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        assert_eq!(player.snapshot().await.position_ms, 60_000);
+        engine.force_snapshot(|snapshot| {
+            snapshot.position_ms = 60_050;
+            snapshot.seeking = false;
+        });
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert!(player.snapshot().await.position_ms.abs_diff(60_050) <= 80);
+        // A seek the engine finished without moving (failed range) reports the real playhead.
+        player.seek(90_000).await.expect("seek queued");
+        engine.force_snapshot(|snapshot| {
+            snapshot.position_ms = 61_000;
+            snapshot.seeking = false;
+        });
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert!(player.snapshot().await.position_ms.abs_diff(61_000) <= 80);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn rapid_seeks_while_loading_resume_at_the_latest_one() {
+        let (player, engine) = slow_runtime_player();
+        player.hydrate_queue(vec![song("slow", 120_000)]).await;
+        let loading = Arc::clone(&player);
+        let load = tokio::spawn(async move { loading.play_from_queue(0).await });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        for target in [90_000, 15_000, 60_000, 30_000] {
+            player.seek(target).await.expect("seek while loading");
+        }
+        let loaded = load.await.expect("load joins").expect("load succeeds");
+        assert!(loaded.position_ms.abs_diff(30_000) <= 100, "{}", loaded.position_ms);
+        assert!(engine.snapshot().position_ms.abs_diff(30_000) <= 100);
+        player.stop_clock();
+    }
+
+    #[tokio::test]
+    async fn seek_for_a_superseded_loading_track_does_not_move_the_next_track() {
+        let (player, engine) = slow_runtime_player();
+        player
+            .hydrate_queue(vec![song("slow", 120_000), song("fast", 120_000)])
+            .await;
+        let loading = Arc::clone(&player);
+        let slow = tokio::spawn(async move { loading.play_from_queue(0).await });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        player.seek(50_000).await.expect("seek while loading");
+        player.play_from_queue(1).await.expect("fast track loads");
+        slow.await.expect("slow joins").expect("superseded load resolves");
+        let snapshot = player.snapshot().await;
+        assert_eq!(snapshot.queue[snapshot.current_index.unwrap()].id, "fast");
+        assert!(snapshot.position_ms < 1_000, "{}", snapshot.position_ms);
+        assert!(engine.snapshot().position_ms < 1_000);
+        player.stop_clock();
     }
 
     #[tokio::test]

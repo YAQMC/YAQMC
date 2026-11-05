@@ -15,7 +15,7 @@ use std::{
     io::{BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc, Arc, Mutex,
     },
     thread,
@@ -259,6 +259,9 @@ pub struct AudioEngineSnapshot {
     pub decoder_error: Option<String>,
     pub source_url_expired: bool,
     pub buffering: bool,
+    /// A requested seek has not been applied yet (e.g. its byte range is still downloading).
+    /// `position_ms` is the pre-seek playhead until this clears.
+    pub seeking: bool,
     pub progressive_downloaded_bytes: Option<u64>,
     pub progressive_total_bytes: Option<u64>,
     pub source_generation: u64,
@@ -415,6 +418,8 @@ struct PendingSeek {
 pub struct RodioAudioEngine {
     commands: mpsc::Sender<AudioCommand>,
     pending_seek: Arc<Mutex<Option<PendingSeek>>>,
+    /// Set while the worker runs `try_seek`, which blocks until a progressive range arrives.
+    seek_in_flight: Arc<AtomicBool>,
     source_generation: Arc<AtomicU64>,
     snapshot: Arc<Mutex<AudioEngineSnapshot>>,
     worker: Mutex<Option<thread::JoinHandle<()>>>,
@@ -426,9 +431,11 @@ impl RodioAudioEngine {
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let snapshot = Arc::new(Mutex::new(AudioEngineSnapshot::default()));
         let pending_seek = Arc::new(Mutex::new(None));
+        let seek_in_flight = Arc::new(AtomicBool::new(false));
         let source_generation = Arc::new(AtomicU64::new(0));
         let worker_snapshot = Arc::clone(&snapshot);
         let worker_pending = Arc::clone(&pending_seek);
+        let worker_seek_in_flight = Arc::clone(&seek_in_flight);
         let worker_generation = Arc::clone(&source_generation);
 
         let worker = thread::Builder::new()
@@ -438,6 +445,7 @@ impl RodioAudioEngine {
                     receiver,
                     worker_snapshot,
                     worker_pending,
+                    worker_seek_in_flight,
                     worker_generation,
                     ready_tx,
                 )
@@ -448,6 +456,7 @@ impl RodioAudioEngine {
             Ok(Ok(())) => Ok(Self {
                 commands,
                 pending_seek,
+                seek_in_flight,
                 source_generation,
                 snapshot,
                 worker: Mutex::new(Some(worker)),
@@ -537,10 +546,18 @@ impl AudioEngine for RodioAudioEngine {
     }
 
     fn snapshot(&self) -> AudioEngineSnapshot {
-        self.snapshot
+        let mut snapshot = self
+            .snapshot
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
+            .clone();
+        snapshot.seeking = self.seek_in_flight.load(Ordering::Acquire)
+            || self
+                .pending_seek
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .is_some();
+        snapshot
     }
 
     fn output_devices(&self) -> Result<Vec<AudioOutputDevice>, AudioEngineError> {
@@ -579,13 +596,17 @@ fn discard_pending_seeks(pending_seek: &Mutex<Option<PendingSeek>>) {
 fn apply_pending_seek(
     player: &mut Player,
     pending_seek: &Mutex<Option<PendingSeek>>,
+    seek_in_flight: &AtomicBool,
     current_generation: u64,
 ) {
-    let Some(pending) = pending_seek
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .take()
-    else {
+    let Some(pending) = ({
+        let mut slot = pending_seek
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Raised under the slot lock so `snapshot()` never sees neither flag mid-handoff.
+        seek_in_flight.store(slot.is_some(), Ordering::Release);
+        slot.take()
+    }) else {
         return;
     };
     if pending.source_generation != current_generation {
@@ -595,12 +616,20 @@ fn apply_pending_seek(
             current_generation,
             "discarded stale seek"
         );
+        seek_in_flight.store(false, Ordering::Release);
         let _ = pending.reply.send(Ok(()));
         return;
     }
-    let result = player
-        .try_seek(pending.position)
-        .map_err(|_| AudioEngineError::SeekUnsupported);
+    let result = player.try_seek(pending.position).map_err(|error| {
+        tracing::warn!(
+            target: "audio.seek",
+            error = %error,
+            position_ms = pending.position.as_millis() as u64,
+            "seek failed; playback continues from the previous position"
+        );
+        AudioEngineError::SeekUnsupported
+    });
+    seek_in_flight.store(false, Ordering::Release);
     let _ = pending.reply.send(result);
 }
 
@@ -608,6 +637,7 @@ fn audio_worker(
     receiver: mpsc::Receiver<AudioCommand>,
     snapshot: Arc<Mutex<AudioEngineSnapshot>>,
     pending_seek: Arc<Mutex<Option<PendingSeek>>>,
+    seek_in_flight: Arc<AtomicBool>,
     source_generation: Arc<AtomicU64>,
     ready: mpsc::SyncSender<Result<(), AudioEngineError>>,
 ) {
@@ -868,6 +898,7 @@ fn audio_worker(
         apply_pending_seek(
             &mut player,
             &pending_seek,
+            &seek_in_flight,
             source_generation.load(Ordering::Acquire),
         );
 
