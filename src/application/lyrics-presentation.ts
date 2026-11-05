@@ -175,18 +175,25 @@ export async function startLyricsPresentationRuntime(): Promise<() => Promise<vo
   };
 }
 
+/** A letter outside the Latin script (Han, kana, Hangul, Cyrillic, Thai…); marks and punctuation never count. */
+const NON_LATIN_LETTER = /(?!\p{Script=Latin})\p{L}/u;
+
+function comparableLyricText(value: string): string {
+  return value.normalize('NFC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase();
+}
+
+/**
+ * `show` only reveals provider data; it never generates text. `auto` hides a romanization of
+ * Latin-script lines (English, Vietnamese with its tone marks, …) because it would be redundant.
+ */
 export function shouldShowLyricSecondary(
   mode: SecondaryLyricVisibility,
   value: string | undefined,
   primary: string,
   kind: 'translation' | 'romanization',
 ): boolean {
-  if (!value || mode === 'hide') return false;
+  if (!value?.trim() || mode === 'hide') return false;
+  if (comparableLyricText(value) === comparableLyricText(primary)) return false;
   if (mode === 'show') return true;
-  if (value.trim().toLocaleLowerCase() === primary.trim().toLocaleLowerCase()) return false;
-  const hasNonLatinText = Array.from(primary).some((character) => {
-    const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint > 0x024f;
-  });
-  return kind === 'translation' || hasNonLatinText;
+  return kind === 'translation' || NON_LATIN_LETTER.test(primary);
 }

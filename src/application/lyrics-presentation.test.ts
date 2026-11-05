@@ -419,4 +419,33 @@ describe('lyric language presentation', () => {
     expect(shouldShowLyricSecondary('hide', '译文', 'Original', 'translation')).toBe(false);
     expect(shouldShowLyricSecondary('show', 'romanized', 'Original', 'romanization')).toBe(true);
   });
+
+  it('decides romanization by letter script rather than code-point ranges', () => {
+    // Japanese, Cantonese (Han), Korean and Cyrillic lines keep provider romanization in auto.
+    expect(shouldShowLyricSecondary('auto', 'yu me na ra ba', '夢ならば', 'romanization')).toBe(
+      true,
+    );
+    expect(shouldShowLyricSecondary('auto', 'lan lou yu', '拦路雨', 'romanization')).toBe(true);
+    expect(shouldShowLyricSecondary('auto', 'sa rang', '사랑', 'romanization')).toBe(true);
+    expect(shouldShowLyricSecondary('auto', 'privet', 'привет', 'romanization')).toBe(true);
+    // Mixed lines count as non-Latin as soon as one non-Latin letter is present.
+    expect(shouldShowLyricSecondary('auto', 'Lemon yo', 'Lemon よ', 'romanization')).toBe(true);
+    // Vietnamese (precomposed or combining tone marks), smart quotes and emoji are Latin/neutral.
+    expect(shouldShowLyricSecondary('auto', 'Em oi', 'Em ơi', 'romanization')).toBe(false);
+    expect(shouldShowLyricSecondary('auto', 'Viet', 'Vie\u0323\u0302t', 'romanization')).toBe(
+      false,
+    );
+    expect(shouldShowLyricSecondary('auto', 'dont', 'Don’t stop ✨', 'romanization')).toBe(false);
+    // Explicit show still reveals a Vietnamese line's distinct provider value.
+    expect(shouldShowLyricSecondary('show', 'Em oi', 'Em ơi', 'romanization')).toBe(true);
+  });
+
+  it('never shows a secondary that only repeats the primary line', () => {
+    expect(shouldShowLyricSecondary('show', ' Hello  world ', 'hello world', 'romanization')).toBe(
+      false,
+    );
+    expect(shouldShowLyricSecondary('show', 'Vie\u0323\u0302t', 'Việt', 'translation')).toBe(false);
+    expect(shouldShowLyricSecondary('show', '   ', '夢', 'romanization')).toBe(false);
+    expect(shouldShowLyricSecondary('show', undefined, '夢', 'romanization')).toBe(false);
+  });
 });
