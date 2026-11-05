@@ -1716,7 +1716,7 @@ impl QQMusicService {
         let mid = strip_entity_prefix(&song_id, "qqmusic:track:");
         // Include the normalized-document schema/parser revision so fixes do not
         // leave already-cached lyric documents permanently malformed.
-        let key = format!("qqmusic:lyrics:v4:{mid}");
+        let key = format!("qqmusic:lyrics:v5:{mid}");
         if let Some(document) = self
             .storage
             .get_json(&key, false)
@@ -4198,31 +4198,48 @@ pub(crate) fn attach_companion_lyrics(
     translation: Option<&str>,
     romanization: Option<&str>,
 ) {
-    let translation = translation
-        .map(qqmusic_api::lyric_parser::parse_timed_lrc)
-        .unwrap_or_default();
-    let romanization = romanization
-        .map(qqmusic_api::lyric_parser::parse_timed_lrc)
-        .unwrap_or_default();
+    let translation = translation.map(parse_companion).unwrap_or_default();
+    let romanization = romanization.map(parse_companion).unwrap_or_default();
+    let starts: Vec<u64> = document.lines.iter().filter_map(|line| line.start_ms).collect();
     for line in &mut document.lines {
         let Some(start) = line.start_ms else {
             continue;
         };
-        line.translation = companion_at(&translation, start);
-        line.romanization = companion_at(&romanization, start);
+        line.translation = companion_at(&translation, &starts, start);
+        line.romanization = companion_at(&romanization, &starts, start);
     }
     if document.lines.iter().any(|line| line.translation.is_some()) {
         document.metadata.translated_language = Some("provider-supplied".to_owned());
     }
 }
 
-fn companion_at(companion: &[(u64, String)], start: u64) -> Option<String> {
-    companion
+/// QQ Music returns `roma` as word-timed QRC (usually XML-wrapped) whenever `qrc=1` is requested,
+/// while `trans` stays LRC. QRC credit fillers such as `[0,529](496,33)` carry no words and are dropped.
+fn parse_companion(raw: &str) -> Vec<(u64, String)> {
+    let Some(qrc) = qqmusic_api::lyric_parser::parse_playback_qrc(raw) else {
+        return qqmusic_api::lyric_parser::parse_timed_lrc(raw);
+    };
+    qrc.lines
+        .into_iter()
+        .filter(|line| !line.words.is_empty())
+        .filter_map(|line| Some((line.start_ms?, line.text.trim().to_owned())))
+        .collect()
+}
+
+/// Nearest companion within 500 ms, accepted only when no other lyric line is closer to it: a
+/// dropped credit filler must not hand the next sung line's companion to the credit line.
+/// QQ Music marks an intentionally empty translation as `//`.
+fn companion_at(companion: &[(u64, String)], starts: &[u64], start: u64) -> Option<String> {
+    let (at, text) = companion
         .iter()
         .min_by_key(|(candidate, _)| candidate.abs_diff(start))
-        .filter(|(candidate, _)| candidate.abs_diff(start) <= 500)
-        .map(|(_, text)| text.clone())
-        .filter(|text| !text.trim().is_empty())
+        .filter(|(candidate, _)| candidate.abs_diff(start) <= 500)?;
+    let distance = at.abs_diff(start);
+    if starts.iter().any(|other| other.abs_diff(*at) < distance) {
+        return None;
+    }
+    let text = text.trim();
+    (!text.is_empty() && text != "//").then(|| text.to_owned())
 }
 
 fn album_from_songs(summary: &AlbumSummary, artists: &[ArtistSummary], songs: Vec<Song>) -> Album {
@@ -5795,6 +5812,31 @@ mod tests {
         assert_eq!(
             document.lines[0].romanization.as_deref(),
             Some("Romanization")
+        );
+    }
+
+    #[test]
+    fn qrc_romanization_companion_is_attached_and_fillers_are_dropped() {
+        // Shape of a live GetPlayLyricInfo `roma` payload (Lemon, 000akynZ2Rbro5) after decryption.
+        let main = "[0,529]Lemon(0,529)\n[1060,480]Credit(1060,480)\n[1547,1300]\u{5922}(1547,377)\u{306a}(1924,223)\u{3089}(2147,165)\u{3070}(2312,400)";
+        let roma = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<QrcInfos>\n<LyricInfo LyricCount=\"1\">\n<Lyric_1 LyricType=\"1\" LyricContent=\"[ti:Lemon]\n[offset:0]\n[0,529](496,33)\n[1547,1300]yu (1547,224)me (1771,153)na (1924,223)ra (2147,165)ba (2312,400)\n\"/>\n</LyricInfo>\n</QrcInfos>";
+        let mut document = parse_qrc_document("TRACK", main).expect("QRC parses");
+        attach_companion_lyrics(
+            &mut document,
+            Some("[00:01.06]//\n[00:01.54]If it were a dream"),
+            Some(roma),
+        );
+        assert_eq!(document.lines[0].romanization, None);
+        // The credit filler at 1060 is dropped; its nearest remaining neighbour belongs to 1547.
+        assert_eq!(document.lines[1].romanization, None);
+        assert_eq!(document.lines[1].translation, None);
+        assert_eq!(
+            document.lines[2].romanization.as_deref(),
+            Some("yu me na ra ba")
+        );
+        assert_eq!(
+            document.lines[2].translation.as_deref(),
+            Some("If it were a dream")
         );
     }
 
