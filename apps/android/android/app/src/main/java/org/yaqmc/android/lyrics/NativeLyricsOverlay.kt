@@ -124,7 +124,14 @@ class NativeLyricsOverlay(
         }
         updateBounds(bounds)
         view.bringToFront()
-        view.visibility = View.VISIBLE
+        if (view.visibility != View.VISIBLE || view.alpha < 1f) {
+            // Fade in from wherever an interrupted fade-out left it. Alpha is a RenderNode
+            // property: no layout or recomposition, and it follows the system animator scale.
+            view.animate().cancel()
+            if (view.visibility != View.VISIBLE) view.alpha = 0f
+            view.visibility = View.VISIBLE
+            view.animate().alpha(1f).setDuration(FADE_IN_MS).start()
+        }
         val audioBackend = CoreManager.audioBackend
         if (audioBackend != null) {
             view.update(
@@ -152,8 +159,13 @@ class NativeLyricsOverlay(
     fun hide() {
         isRunning = false
         cancelFrameLoop()
-        playerView?.visibility = View.GONE
         setAnimating(false)
+        val view = playerView ?: return
+        if (view.visibility != View.VISIBLE) return
+        view.animate().cancel()
+        view.animate().alpha(0f).setDuration(FADE_OUT_MS).withEndAction {
+            if (!isRunning) view.visibility = View.GONE
+        }.start()
     }
 
     private fun setAnimating(active: Boolean) {
@@ -166,6 +178,7 @@ class NativeLyricsOverlay(
     fun destroy() {
         hide()
         playerView?.let { view ->
+            view.animate().cancel()
             container.removeView(view)
         }
         playerView = null
@@ -275,6 +288,10 @@ class NativeLyricsOverlay(
         (lyricPositionMs - timingOffsetMs).coerceAtLeast(0L)
 
     companion object {
+        /** The WebView stage slides for 500 ms; a short fade keeps controls immediately usable. */
+        private const val FADE_IN_MS = 180L
+        private const val FADE_OUT_MS = 120L
+
         /**
          * Maps the WebView's lyric options onto [base]. Font sizes arrive as unzoomed CSS px
          * (1 CSS px = 1 dp here); the WebView scales its own text by textZoom (100 × the system
