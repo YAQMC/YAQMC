@@ -420,8 +420,22 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
   const [interactionPending, setInteractionPending] = useState(false);
   const [interactionError, setInteractionError] = useState(false);
   const update = (patch: Partial<LyricSurfaceSettings>) => updateSurface(kind, patch);
-  const name = kind === 'desktop' ? t('desktop') : t('island');
-  const description = kind === 'desktop' ? t('desktopDescription') : t('islandDescription');
+  // Android draws these as overlay windows: say what they are, not desktop window names.
+  const android = isAndroidRuntime();
+  const name = android
+    ? kind === 'desktop'
+      ? t('androidFloating')
+      : t('androidIsland')
+    : kind === 'desktop'
+      ? t('desktop')
+      : t('island');
+  const description = android
+    ? kind === 'desktop'
+      ? t('androidFloatingDescription')
+      : t('androidIslandDescription')
+    : kind === 'desktop'
+      ? t('desktopDescription')
+      : t('islandDescription');
   const locked = settings.interaction === 'passive-locked';
   const changeInteraction = async (nextLocked: boolean) => {
     setInteractionPending(true);
@@ -501,17 +515,19 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
               />
             }
           />
-          <SettingRow
-            title={t('alwaysOnTop')}
-            description={t('alwaysOnTopDescription')}
-            control={
-              <Toggle
-                checked={settings.alwaysOnTop}
-                label={t('alwaysOnTop')}
-                onChange={(alwaysOnTop) => update({ alwaysOnTop })}
-              />
-            }
-          />
+          {!android && (
+            <SettingRow
+              title={t('alwaysOnTop')}
+              description={t('alwaysOnTopDescription')}
+              control={
+                <Toggle
+                  checked={settings.alwaysOnTop}
+                  label={t('alwaysOnTop')}
+                  onChange={(alwaysOnTop) => update({ alwaysOnTop })}
+                />
+              }
+            />
+          )}
           <SettingRow
             title={t('locked')}
             description={t('lockedDescription')}
@@ -529,17 +545,19 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
               {t('interactionError', { name })}
             </p>
           )}
-          <SettingRow
-            title={t('hideFullscreen')}
-            description={t('hideFullscreenDescription')}
-            control={
-              <Toggle
-                checked={settings.hideInFullscreen}
-                label={t('hideFullscreen')}
-                onChange={(hideInFullscreen) => update({ hideInFullscreen })}
-              />
-            }
-          />
+          {!android && (
+            <SettingRow
+              title={t('hideFullscreen')}
+              description={t('hideFullscreenDescription')}
+              control={
+                <Toggle
+                  checked={settings.hideInFullscreen}
+                  label={t('hideFullscreen')}
+                  onChange={(hideInFullscreen) => update({ hideInFullscreen })}
+                />
+              }
+            />
+          )}
           <SettingRow
             title={t('fontSize')}
             description={t('fontFamily')}
@@ -568,30 +586,32 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
               />
             }
           />
-          <SettingRow
-            title={t('fontFamily')}
-            description={t('systemFont')}
-            control={
-              <div className="settings-inline-control">
-                <Select
-                  value={settings.fontMode}
-                  options={fontOptions}
-                  onChange={(fontMode) => update({ fontMode })}
-                  ariaLabel={t('fontFamily')}
-                  icon={Type}
-                />
-                {settings.fontMode === 'custom' && (
-                  <input
-                    className="settings-text-input"
-                    value={settings.customFontFamily}
-                    placeholder={t('customFontPlaceholder')}
-                    aria-label={t('customFont')}
-                    onChange={(event) => update({ customFontFamily: event.target.value })}
+          {!android && (
+            <SettingRow
+              title={t('fontFamily')}
+              description={t('systemFont')}
+              control={
+                <div className="settings-inline-control">
+                  <Select
+                    value={settings.fontMode}
+                    options={fontOptions}
+                    onChange={(fontMode) => update({ fontMode })}
+                    ariaLabel={t('fontFamily')}
+                    icon={Type}
                   />
-                )}
-              </div>
-            }
-          />
+                  {settings.fontMode === 'custom' && (
+                    <input
+                      className="settings-text-input"
+                      value={settings.customFontFamily}
+                      placeholder={t('customFontPlaceholder')}
+                      aria-label={t('customFont')}
+                      onChange={(event) => update({ customFontFamily: event.target.value })}
+                    />
+                  )}
+                </div>
+              }
+            />
+          )}
           <SettingRow
             title={t('alignment')}
             description={t('alignment')}
@@ -1808,6 +1828,21 @@ export function SettingsPage() {
               supported={host.lyricsSurfaces && (capabilities?.island ?? true)}
             />
           </div>
+          {android && (
+            <SettingRow
+              title={t('surfaces.carBluetooth')}
+              description={t('surfaces.carBluetoothDescription')}
+              control={
+                <Toggle
+                  checked={preferences.lyrics.carBluetoothLyrics}
+                  label={t('surfaces.carBluetooth')}
+                  onChange={(carBluetoothLyrics) =>
+                    preferences.updateLyrics({ carBluetoothLyrics })
+                  }
+                />
+              }
+            />
+          )}
         </SettingsSection>
       )}
 

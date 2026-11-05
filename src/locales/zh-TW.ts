@@ -888,6 +888,15 @@ export const zhTW = {
       desktopDescription: '可移動、可縮放的當前行與下一行歌詞視窗。',
       island: '歌詞島',
       islandDescription: '位於螢幕頂部中央的緊湊歌詞與播放介面。',
+      androidFloating: '懸浮歌詞',
+      androidFloatingDescription:
+        'YAQMC 在背景時顯示在其他應用程式上方的歌詞列，需要「顯示在其他應用程式上層」權限。拖曳可移動，輕觸開啟 YAQMC，長按關閉。',
+      androidIsland: '島式歌詞',
+      androidIslandDescription:
+        '由 YAQMC 自行繪製於頂部的緊湊膠囊，並非系統或廠商的動態島／流體雲。輕觸展開，長按關閉。',
+      carBluetooth: '車載藍牙歌詞（相容模式）',
+      carBluetoothDescription:
+        '藍牙（AVRCP）沒有歌詞欄位。連接藍牙音訊裝置時，目前歌詞行會取代曲目標題（歌名與歌手移到歌手欄位），鎖定畫面等所有媒體顯示都會受影響。每秒最多更新一次；關閉後立即恢復正常標題。',
       enable: '啟用{{name}}',
       alwaysOnTop: '始終置頂',
       alwaysOnTopDescription: '讓歌詞工具保持在普通應用視窗上方。',

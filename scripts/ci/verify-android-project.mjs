@@ -9,6 +9,8 @@ const EXPECTED_PERMISSIONS = new Set([
   'android.permission.WAKE_LOCK',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+  // Opt-in floating and island-style lyric overlays (TYPE_APPLICATION_OVERLAY).
+  'android.permission.SYSTEM_ALERT_WINDOW',
 ]);
 const FORBIDDEN_SOURCE_EXTENSIONS = new Set(['.jks', '.keystore', '.p12', '.pfx', '.so']);
 const FORBIDDEN_RELEASE_MARKERS = [

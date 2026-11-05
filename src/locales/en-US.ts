@@ -907,6 +907,15 @@ export const enUS = {
       desktopDescription: 'A movable, resizable current-and-next lyric window.',
       island: 'Lyrics Island',
       islandDescription: 'A compact top-center lyric and playback surface.',
+      androidFloating: 'Floating lyrics',
+      androidFloatingDescription:
+        'A lyric bar over other apps while YAQMC is in the background. Needs “Display over other apps”. Drag to move, tap to open YAQMC, long-press to close.',
+      androidIsland: 'Island-style lyrics',
+      androidIslandDescription:
+        'A compact pill near the top drawn by YAQMC itself, not a system or vendor island. Tap to expand, long-press to close.',
+      carBluetooth: 'Car Bluetooth lyrics (compatibility)',
+      carBluetoothDescription:
+        'Bluetooth (AVRCP) has no lyric field. While a Bluetooth audio device is connected, the current line replaces the track title (song and artist move to the artist field) for every media display, including the lock screen. At most one update per second; off restores normal titles immediately.',
       enable: 'Enable {{name}}',
       alwaysOnTop: 'Always on top',
       alwaysOnTopDescription: 'Keep the lyric utility above normal application windows.',

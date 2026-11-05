@@ -192,7 +192,7 @@ export function createAndroidBridge(
     windowRole,
     capabilities: {
       windowControls: false,
-      lyricsSurfaces: false,
+      lyricsSurfaces: true,
       plugins: false,
       localApi: false,
       fileExport: false,

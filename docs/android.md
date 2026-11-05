@@ -29,8 +29,27 @@ Android App Bundle is published.
 - Update checks only notify and open the matching GitHub Release in the system browser. YAQMC does not download or
   install APKs itself.
 
-Desktop lyric overlays, Lyrics Island, tray controls, global shortcuts, plugins, developer mode, the loopback Local
-API, and file exports are intentionally absent from Android v1. The in-app lyric screen remains available.
+Tray controls, global shortcuts, plugins, developer mode, the loopback Local API, and file exports are intentionally
+absent from Android. The in-app lyric screen remains available.
+
+## Lyric surfaces outside the app
+
+**Settings → Lyrics surfaces** reuses the desktop surface preferences on Android:
+
+| Surface                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                   | Requirements                                                                                                                                            |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Floating lyrics                      | A movable lyric bar drawn by YAQMC over other apps while YAQMC is in the background. Drag to move, tap to open YAQMC, long-press to close; "Passive lock" makes it click-through.                                                                                                                                                                                                                                            | "Display over other apps" (`SYSTEM_ALERT_WINDOW`), asked for when the surface is first enabled. Revoking it hides the surface and turns the toggle off. |
+| Island-style lyrics                  | A compact pill near the top edge, also drawn by YAQMC (tap to expand with title and next line). It is **not** a system or vendor island.                                                                                                                                                                                                                                                                                     | Same overlay permission.                                                                                                                                |
+| Car Bluetooth lyrics (compatibility) | Bluetooth AVRCP has title/artist/album but no lyric field. While a Bluetooth A2DP output is connected, the current line replaces the media title and the song moves to the artist field. This is visible to every media client (notification, lock screen, watch) because Android has one session metadata. Updates are limited to one per second; turning it off or disconnecting restores the canonical title immediately. | Opt-in, off by default. Whether the head unit shows title changes depends on the receiver.                                                              |
+
+All three follow Core's lyric timeline (`lyrics://projection`): no extra renderer or polling loop runs, and the next
+line is scheduled from the projection's next-line start because Core's clock ticks once per second in the background.
+The user timing offset from the lyrics settings is not applied to these surfaces.
+
+Vendor integrations are not implemented: Android 16 Live Updates exclude media playback and app shortcuts, Xiaomi
+HyperOS focus notifications / Super Island need a per-app permission from Xiaomi, and OPPO/OnePlus Fluid Cloud,
+vivo Origin Island and Samsung Now Bar are partner programs without a public lyric API. On HyperOS, ColorOS and
+One UI, the system's own media capsule may still show the track from the normal media session.
 
 ## Lyrics frame rate
 
@@ -75,9 +94,10 @@ Android uses the application-private files and cache directories. Its preference
 independent from a desktop installation. Account secrets are encrypted with a non-exportable Android Keystore key;
 there is no plaintext fallback. Losing or invalidating that key requires signing in again.
 
-The release manifest requests only Internet access, media-playback foreground-service access, and wake-lock access.
-It does not request microphone, overlay, broad storage, notification, or package-install permissions. The wake lock
-is held only while playback is active or buffering.
+The release manifest requests Internet access, media-playback foreground-service access, wake-lock access, and the
+"display over other apps" permission used only by the opt-in lyric surfaces above (Android asks the user at the moment
+a surface is enabled). It does not request microphone, broad storage, notification, or package-install permissions.
+The wake lock is held only while playback is active or buffering.
 
 ## Build and verify
 

@@ -68,6 +68,8 @@ class PlaybackService : MediaSessionService() {
             onStopRequested = ::stopAfterCore,
         )
         session = MediaSession.Builder(this, player!!).setId("yaqmc").build()
+        org.yaqmc.android.lyrics.AndroidLyricsSurfaces.init(this)
+        org.yaqmc.android.lyrics.AndroidLyricsSurfaces.attachCarSink(player!!::setCarLyricLine)
         ContextCompat.registerReceiver(
             this,
             noisyReceiver,
@@ -91,6 +93,7 @@ class PlaybackService : MediaSessionService() {
             noisyReceiverRegistered = false
         }
         abandonAudioFocus()
+        org.yaqmc.android.lyrics.AndroidLyricsSurfaces.attachCarSink(null)
         session?.release()
         player?.close()
         player?.release()

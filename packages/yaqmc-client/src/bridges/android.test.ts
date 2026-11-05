@@ -11,7 +11,7 @@ describe('createAndroidBridge', () => {
     expect(bridge.kind).toBe('android');
     expect(bridge.capabilities).toMatchObject({
       windowControls: false,
-      lyricsSurfaces: false,
+      lyricsSurfaces: true,
       plugins: false,
       localApi: false,
       fileExport: false,

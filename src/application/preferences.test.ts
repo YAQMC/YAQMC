@@ -92,6 +92,7 @@ describe('preference persistence model', () => {
       focusSidebarCollapsed: false,
       wordEffect: 'jump',
       fontWeight: '700',
+      carBluetoothLyrics: false,
     });
   });
 

@@ -88,6 +88,13 @@ export async function updateNativeLyrics(
   });
 }
 
+/** Android-only opt-in; the host persists it so playback without the WebView keeps the choice. */
+export async function setNativeCarBluetoothLyrics(enabled: boolean): Promise<void> {
+  const plugin = getCapacitorPlugin();
+  if (!plugin) return;
+  await plugin.invoke({ method: 'android_car_bluetooth_lyrics', params: { enabled } });
+}
+
 export async function hideNativeLyrics(): Promise<void> {
   const plugin = getCapacitorPlugin();
   if (!plugin) return;
