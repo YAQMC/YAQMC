@@ -19,10 +19,10 @@ Android App Bundle is published.
 
 ## Android behavior
 
-The native lyrics dependency is pinned to AMLL commit `0d7466cc499add17957a4307e0c7ab72f927f27a`,
-Maven version `0.1.0-yaqmc.0d7466c`. CI builds that source in `setup-android`. For a local build, check out
+The native lyrics dependency is pinned to AMLL commit `1ed23d4344d66c71cb81b94258b86710efa81b6f`,
+Maven version `0.1.0-yaqmc.1ed23d4`. CI builds that source in `setup-android`. For a local build, check out
 that commit in a separate `amll-android` clone, then run
-`AMLL_VERSION=0.1.0-yaqmc.0d7466c bash ./gradlew :amll:publishReleasePublicationToMavenLocal`
+`AMLL_VERSION=0.1.0-yaqmc.1ed23d4 bash ./gradlew :amll:publishReleasePublicationToMavenLocal`
 before building YAQMC. Older snapshot packages lack the required renderer settings APIs.
 
 - Home, Discover, Search, Library, account pages, playback queue, statistics, and in-app lyrics use the shared UI.

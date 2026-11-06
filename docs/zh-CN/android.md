@@ -30,10 +30,10 @@ Bundle。
 
 ## 应用外的歌词界面
 
-原生歌词依赖固定为 AMLL 提交 `0d7466cc499add17957a4307e0c7ab72f927f27a`，Maven 版本为
-`0.1.0-yaqmc.0d7466c`。CI 的 `setup-android` 会从此提交构建。本地构建时，先在独立的
+原生歌词依赖固定为 AMLL 提交 `1ed23d4344d66c71cb81b94258b86710efa81b6f`，Maven 版本为
+`0.1.0-yaqmc.1ed23d4`。CI 的 `setup-android` 会从此提交构建。本地构建时，先在独立的
 `amll-android` 克隆中检出该提交，再执行
-`AMLL_VERSION=0.1.0-yaqmc.0d7466c bash ./gradlew :amll:publishReleasePublicationToMavenLocal`。
+`AMLL_VERSION=0.1.0-yaqmc.1ed23d4 bash ./gradlew :amll:publishReleasePublicationToMavenLocal`。
 旧的 snapshot 包没有本版本需要的歌词设置接口。
 
 Android 上的 **设置 → 歌词界面** 复用桌面端的界面偏好：
