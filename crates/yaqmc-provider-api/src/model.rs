@@ -162,6 +162,7 @@ pub struct LyricLine {
 #[serde(rename_all = "camelCase")]
 pub struct LyricMetadata {
     pub source_label: String,
+    /// BCP 47 tag of the sung language when the provider knows it (`cmn` gates generated pinyin).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

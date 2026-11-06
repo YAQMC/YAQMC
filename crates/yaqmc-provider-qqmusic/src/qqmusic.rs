@@ -1716,7 +1716,7 @@ impl QQMusicService {
         let mid = strip_entity_prefix(&song_id, "qqmusic:track:");
         // Include the normalized-document schema/parser revision so fixes do not
         // leave already-cached lyric documents permanently malformed.
-        let key = format!("qqmusic:lyrics:v5:{mid}");
+        let key = format!("qqmusic:lyrics:v6:{mid}");
         if let Some(document) = self
             .storage
             .get_json(&key, false)
@@ -1724,8 +1724,16 @@ impl QQMusicService {
         {
             return Ok(document);
         }
-        match self.client.lyrics(mid).await {
-            Ok(document) => {
+        let (document, language) = tokio::join!(
+            self.client.lyrics(mid),
+            crate::qmapi::catalog::song_language(&self.client.catalog, mid)
+        );
+        match document {
+            Ok(mut document) => {
+                if let Some(document) = document.as_mut() {
+                    // A failed detail lookup only leaves the language unknown (no generated pinyin).
+                    document.metadata.language = language.ok().flatten();
+                }
                 self.storage
                     .put_json(&key, "lyrics", &document, LYRIC_TTL_MS)
                     .map_err(|_| QQMusicError::Storage)?;
