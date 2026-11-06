@@ -1,11 +1,9 @@
 import { useContext, useEffect } from 'react';
 import { ProviderRegistryContext, useMusicProvider } from './provider-context';
 import type { LyricDocument } from '../domain/music';
-import { needsGeneratedPinyin, withGeneratedPinyin } from './lyrics-pinyin';
 import { useLyricsStore } from './lyrics-store';
 import { isNativeRuntime } from './native-player-runtime';
 import { usePlayerStore } from './player-store';
-import { usePreferencesStore } from './preferences';
 import { useTranslation } from 'react-i18next';
 import { getYaqmcClient } from './yaqmc-runtime';
 
@@ -51,21 +49,6 @@ export function useLyricsCoordinator(): void {
         if (document && document.songId !== currentSongId)
           document = { ...document, songId: currentSongId };
         publish(document);
-        // shortcut: the setting is read once per track, so switching away from `hide` shows pinyin from the next track.
-        if (
-          document &&
-          needsGeneratedPinyin(document) &&
-          usePreferencesStore.getState().lyrics.romanization !== 'hide'
-        ) {
-          void withGeneratedPinyin(document, controller.signal)
-            .then((generated) => {
-              if (!controller.signal.aborted) publish(generated);
-            })
-            .catch((error: unknown) => {
-              if (error instanceof DOMException && error.name === 'AbortError') return;
-              console.error('Pinyin generation failed', error);
-            });
-        }
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;

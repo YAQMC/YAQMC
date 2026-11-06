@@ -188,29 +188,6 @@ pub(crate) async fn song(client: &Client, mid: &str) -> Result<qqmusic_api::Song
     Ok(response.track)
 }
 
-/// BCP 47 tag from the detail page's `info.lan` text. `track_info.language` is not used: it
-/// deserializes to 0 (国语) when absent, which would hand Mandarin pinyin to unknown songs.
-pub(crate) async fn song_language(
-    client: &Client,
-    mid: &str,
-) -> Result<Option<String>, QQMusicError> {
-    let response = client.song.get_detail(mid).await.map_err(map_qmapi_error)?;
-    Ok(language_tag(&response.lan))
-}
-
-fn language_tag(lan: &[qqmusic_api::models::song::ContentItem]) -> Option<String> {
-    let [only] = lan else { return None };
-    let tag = match only.value.trim() {
-        "国语" => "cmn",
-        "粤语" => "yue",
-        "日语" => "ja",
-        "韩语" => "ko",
-        "英语" => "en",
-        _ => return None,
-    };
-    Some(tag.to_owned())
-}
-
 pub(crate) async fn album(client: &Client, mid: &str) -> Result<AlbumCatalog, QQMusicError> {
     let response = client
         .album
@@ -544,35 +521,5 @@ mod tests {
         );
         assert_eq!(requests[12]["req_0"]["param"]["song_begin"], 0);
         assert_eq!(requests[13]["req_0"]["param"]["song_begin"], 100);
-    }
-
-    #[tokio::test]
-    async fn song_language_needs_detail_text_not_the_defaulted_numeric_code() {
-        // The fixture omits both fields; the numeric `language` would default to 0 (国语).
-        let transport = Arc::new(FixtureTransport::default());
-        let client = Client::new_with_transport(None, Some(Platform::Web), transport);
-        assert_eq!(
-            super::song_language(&client, "SONG_MID")
-                .await
-                .expect("detail"),
-            None
-        );
-
-        let item = |value: &str| qqmusic_api::models::song::ContentItem {
-            value: value.to_owned(),
-            ..Default::default()
-        };
-        assert_eq!(super::language_tag(&[item("国语")]).as_deref(), Some("cmn"));
-        assert_eq!(super::language_tag(&[item("粤语")]).as_deref(), Some("yue"));
-        assert_eq!(super::language_tag(&[item("日语")]).as_deref(), Some("ja"));
-        assert_eq!(
-            super::language_tag(&[item(" 国语 ")]).as_deref(),
-            Some("cmn")
-        );
-        for other in ["闽南语", "越南语", "纯音乐", "其他", "华语", ""] {
-            assert_eq!(super::language_tag(&[item(other)]), None, "{other}");
-        }
-        assert_eq!(super::language_tag(&[item("国语"), item("粤语")]), None);
-        assert_eq!(super::language_tag(&[]), None);
     }
 }

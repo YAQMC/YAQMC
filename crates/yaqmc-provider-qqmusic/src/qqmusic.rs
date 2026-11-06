@@ -3,8 +3,6 @@ use async_trait::async_trait;
 #[cfg(test)]
 use base64::Engine as _;
 #[cfg(test)]
-use lyrics_crypto::decrypter::qrc::decrypter::decrypt_lyrics as decrypt_qrc;
-#[cfg(test)]
 use md5::{Digest as Md5Digest, Md5};
 use quick_xml::escape::unescape;
 use reqwest::Client;
@@ -85,8 +83,6 @@ pub(crate) use crate::qmapi::transport::QQ_MUSICU_URL;
 const QQ_MUSICS_URL: &str = "https://u.y.qq.com/cgi-bin/musics.fcg";
 #[cfg(test)]
 const QQ_EVKEY_MODULE_KEY: &str = "music.vkey.GetEVkey.CgiGetEVkey";
-#[cfg(test)]
-const QQ_LRC_URL: &str = "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
 const DEFAULT_TOPLIST_ID: u64 = 62;
 const DISCOVER_TOPLIST_IDS: [u64; 8] = [26, 27, 4, 3, 5, 6, 62, 57];
 const METADATA_TTL_MS: u64 = 15 * 60 * 1_000;
@@ -1716,7 +1712,7 @@ impl QQMusicService {
         let mid = strip_entity_prefix(&song_id, "qqmusic:track:");
         // Include the normalized-document schema/parser revision so fixes do not
         // leave already-cached lyric documents permanently malformed.
-        let key = format!("qqmusic:lyrics:v6:{mid}");
+        let key = format!("qqmusic:lyrics:v7:{mid}");
         if let Some(document) = self
             .storage
             .get_json(&key, false)
@@ -1724,17 +1720,11 @@ impl QQMusicService {
         {
             return Ok(document);
         }
-        let (document, language) = tokio::join!(
-            self.client.lyrics(mid),
-            crate::qmapi::catalog::song_language(&self.client.catalog, mid)
-        );
-        match document {
-            Ok(mut document) => {
-                if apply_song_language(&mut document, language) {
-                    self.storage
-                        .put_json(&key, "lyrics", &document, LYRIC_TTL_MS)
-                        .map_err(|_| QQMusicError::Storage)?;
-                }
+        match self.client.lyrics(mid).await {
+            Ok(document) => {
+                self.storage
+                    .put_json(&key, "lyrics", &document, LYRIC_TTL_MS)
+                    .map_err(|_| QQMusicError::Storage)?;
                 Ok(document)
             }
             Err(error) => self
@@ -2477,77 +2467,7 @@ impl QQMusicClient {
     }
 
     async fn lyrics(&self, mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
-        #[cfg(not(test))]
-        {
-            return crate::qmapi::lyric::fetch_lyric_document(mid).await;
-        }
-        #[cfg(test)]
-        {
-            let payload = json!({
-                "comm": { "ct": 24, "cv": 0 },
-                "req_1": {
-                    "module": "music.musichallSong.PlayLyricInfo",
-                    "method": "GetPlayLyricInfo",
-                    "param": { "songMID": mid, "qrc": 1, "qrc_t": 0, "roma": 1, "trans": 1 }
-                }
-            });
-            let response: LyricEnvelope = self
-                .send_json("lyrics.qrc", || self.musicu_request(&payload, None))
-                .await?;
-            if response.code == 0 && response.request.code == 0 {
-                let data = response.request.data;
-                if let Some(decrypted) = decrypt_provider_lyric(&data.lyric) {
-                    if let Some(mut document) = parse_qrc_document(mid, &decrypted) {
-                        attach_companion_lyrics(
-                            &mut document,
-                            decrypt_provider_lyric(&data.translation).as_deref(),
-                            decrypt_provider_lyric(&data.romanization).as_deref(),
-                        );
-                        return Ok(Some(document));
-                    }
-                }
-            }
-            self.legacy_lyrics(mid).await
-        }
-    }
-
-    #[cfg(test)]
-    async fn legacy_lyrics(&self, mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
-        let song_mid = mid.to_owned();
-        let response: LegacyLyricResponse = self
-            .send_json("lyrics.lrc", || {
-                self.http
-                    .get(QQ_LRC_URL)
-                    .header(header::REFERER, "https://y.qq.com/")
-                    .header(header::ORIGIN, "https://y.qq.com")
-                    .query(&[
-                        ("songmid", song_mid.clone()),
-                        ("format", "json".to_owned()),
-                        ("nobase64", "1".to_owned()),
-                        ("g_tk", "5381".to_owned()),
-                        ("loginUin", "0".to_owned()),
-                        ("hostUin", "0".to_owned()),
-                        ("inCharset", "utf8".to_owned()),
-                        ("outCharset", "utf-8".to_owned()),
-                        ("platform", "yqq.json".to_owned()),
-                        ("needNewCode", "0".to_owned()),
-                        ("trans", "1".to_owned()),
-                        ("roma", "1".to_owned()),
-                    ])
-            })
-            .await?;
-        if response.code != 0 || response.lyric.trim().is_empty() {
-            return Ok(None);
-        }
-        let mut document = parse_lrc_document(mid, &response.lyric);
-        if let Some(document) = document.as_mut() {
-            attach_companion_lyrics(
-                document,
-                non_empty(response.translation).as_deref(),
-                non_empty(response.romanization).as_deref(),
-            );
-        }
-        Ok(document)
+        crate::qmapi::lyric::fetch_lyric_document(&self.catalog, mid).await
     }
 
     async fn resolve_source(
@@ -3164,45 +3084,6 @@ struct OldPreviewDto {
     try_end: u64,
     #[serde(default, rename = "trysize")]
     try_size: u64,
-}
-
-#[derive(Debug, Deserialize)]
-#[cfg(test)]
-struct LyricEnvelope {
-    code: i32,
-    #[serde(rename = "req_1")]
-    request: LyricRequest,
-}
-
-#[derive(Debug, Deserialize)]
-#[cfg(test)]
-struct LyricRequest {
-    code: i32,
-    data: LyricData,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[cfg(test)]
-struct LyricData {
-    #[serde(default)]
-    lyric: String,
-    #[serde(default, rename = "trans")]
-    translation: String,
-    #[serde(default, rename = "roma")]
-    romanization: String,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[cfg(test)]
-struct LegacyLyricResponse {
-    #[serde(default)]
-    code: i32,
-    #[serde(default)]
-    lyric: String,
-    #[serde(default, rename = "trans")]
-    translation: String,
-    #[serde(default, rename = "roma")]
-    romanization: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -4124,18 +4005,6 @@ fn source_candidates(_track_mid: &str, media_mid: &str) -> Vec<SourceCandidate> 
     ]
 }
 
-#[cfg(test)]
-pub(crate) fn decrypt_provider_lyric(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        return None;
-    }
-    if value.starts_with('<') || value.starts_with('[') {
-        return Some(value.to_owned());
-    }
-    decrypt_qrc(value)
-}
-
 pub(crate) fn parse_qrc_document(song_mid: &str, raw: &str) -> Option<LyricDocument> {
     qqmusic_api::lyric_parser::parse_playback_qrc(raw)
         .map(|lyric| map_parsed_lyric(song_mid, lyric))
@@ -4239,25 +4108,6 @@ fn parse_companion(raw: &str) -> Vec<(u64, String)> {
 /// Nearest companion within 500 ms, accepted only when no other lyric line is closer to it: a
 /// dropped credit filler must not hand the next sung line's companion to the credit line.
 /// QQ Music marks an intentionally empty translation as `//`.
-/// Applies the song-detail language to a fetched document and returns whether it may be cached.
-/// A failed lookup never clears a known language, and a transient failure is not cached, so it
-/// cannot pin "language unknown" (no generated pinyin) for the whole lyric TTL.
-fn apply_song_language(
-    document: &mut Option<LyricDocument>,
-    language: Result<Option<String>, QQMusicError>,
-) -> bool {
-    match language {
-        Ok(tag) => {
-            if let (Some(document), Some(tag)) = (document.as_mut(), tag) {
-                document.metadata.language = Some(tag);
-            }
-            true
-        }
-        Err(QQMusicError::Offline | QQMusicError::Timeout | QQMusicError::RateLimited) => false,
-        Err(_) => true,
-    }
-}
-
 fn companion_at(companion: &[(u64, String)], starts: &[u64], start: u64) -> Option<String> {
     let (at, text) = companion
         .iter()
@@ -5844,37 +5694,109 @@ mod tests {
         );
     }
 
-    #[test]
-    fn song_language_failures_never_clear_a_language_or_cache_a_transient_miss() {
-        let fetched = || {
-            let mut document = parse_qrc_document("TRACK", "[0,1000]十年(0,1000)");
-            document.as_mut().unwrap().metadata.language = Some("yue".to_owned());
-            document
-        };
-        let mut document = fetched();
-        assert!(apply_song_language(
-            &mut document,
-            Ok(Some("cmn".to_owned()))
-        ));
-        assert_eq!(document.unwrap().metadata.language.as_deref(), Some("cmn"));
-        for error in [
-            QQMusicError::Timeout,
-            QQMusicError::Offline,
-            QQMusicError::RateLimited,
-        ] {
-            let mut document = fetched();
-            assert!(!apply_song_language(&mut document, Err(error)));
-            assert_eq!(document.unwrap().metadata.language.as_deref(), Some("yue"));
+    #[tokio::test]
+    async fn lyrics_romanization_uses_qmapi_and_caches_only_provider_data() {
+        struct LyricTransport {
+            calls: AtomicUsize,
+            lyric: &'static str,
+            roma: &'static str,
         }
-        // Definitive answers are cached: no language on the detail page, or a malformed response.
-        let mut document = fetched();
-        assert!(apply_song_language(&mut document, Ok(None)));
-        assert_eq!(document.unwrap().metadata.language.as_deref(), Some("yue"));
-        assert!(apply_song_language(
-            &mut fetched(),
-            Err(QQMusicError::MalformedResponse)
-        ));
-        assert!(apply_song_language(&mut None, Ok(Some("cmn".to_owned()))));
+        #[async_trait::async_trait]
+        impl qqmusic_api::ApiTransport for LyricTransport {
+            async fn execute(
+                &self,
+                request: qqmusic_api::TransportRequest,
+            ) -> qqmusic_api::Result<qqmusic_api::TransportResponse> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(request.url, "https://u.y.qq.com/cgi-bin/musicu.fcg");
+                let qqmusic_api::HttpBody::Json(payload) = request.body else {
+                    panic!("library lyric request must use JSON");
+                };
+                let request_data = &payload["req_0"];
+                assert_eq!(request_data["module"], "music.musichallSong.PlayLyricInfo");
+                assert_eq!(request_data["method"], "GetPlayLyricInfo");
+                assert_eq!(request_data["param"]["songMID"], "TRACK");
+                for field in ["qrc", "trans", "roma"] {
+                    assert_eq!(request_data["param"][field], 1);
+                }
+                Ok(qqmusic_api::TransportResponse {
+                    status: 200,
+                    final_url: request.url,
+                    headers: Vec::new(),
+                    body: serde_json::to_vec(&json!({
+                        "code": 0,
+                        "req_0": { "code": 0, "data": {
+                            "lyric": self.lyric,
+                            "roma": self.roma,
+                            "trans": "[00:01.00]Translation"
+                        }}
+                    }))?,
+                })
+            }
+        }
+
+        for (lyric, roma, expected) in [
+            ("[1000,1000]十年(1000,1000)", "", None),
+            (
+                "[1000,1000]十年(1000,1000)",
+                "[00:01.00]shi nian",
+                Some("shi nian"),
+            ),
+            (
+                "[1000,1000]夢ならば(1000,1000)",
+                r#"<QrcInfos><LyricInfo LyricContent="[1000,1000]yu me na ra ba(1000,1000)" /></QrcInfos>"#,
+                Some("yu me na ra ba"),
+            ),
+            (
+                "[1000,1000]拦路雨(1000,1000)",
+                "[1000,1000]laan lou jyu(1000,1000)",
+                Some("laan lou jyu"),
+            ),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let storage = Arc::new(
+                StorageService::open(root.path().join("data"), root.path().join("cache")).unwrap(),
+            );
+            let mut service = QQMusicService::new(
+                storage.clone(),
+                Arc::new(MemoryCredentialStore::default()),
+                root.path().join("fixtures"),
+            )
+            .unwrap();
+            let transport = Arc::new(LyricTransport {
+                calls: AtomicUsize::new(0),
+                lyric,
+                roma,
+            });
+            service.client.catalog = qqmusic_api::Client::new_with_transport(
+                None,
+                Some(qqmusic_api::Platform::Web),
+                transport.clone(),
+            );
+            // An older normalization result must not bypass the library request.
+            let stale = parse_lrc_document("TRACK", "[00:01.00]Stale");
+            storage
+                .put_json("qqmusic:lyrics:v6:TRACK", "lyrics", &stale, LYRIC_TTL_MS)
+                .unwrap();
+            let document = service
+                .lyrics("qqmusic:track:TRACK".to_owned())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(document.lines[0].romanization.as_deref(), expected);
+            assert_eq!(
+                document.lines[0].translation.as_deref(),
+                Some("Translation")
+            );
+            assert_eq!(document.lines[0].words[0].start_ms, 1000);
+            assert_eq!(document.metadata.language, None);
+            let cached = service
+                .lyrics("qqmusic:track:TRACK".to_owned())
+                .await
+                .unwrap();
+            assert_eq!(cached, Some(document));
+            assert_eq!(transport.calls.load(Ordering::SeqCst), 1);
+        }
     }
 
     #[test]

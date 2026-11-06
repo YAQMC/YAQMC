@@ -35,16 +35,6 @@ unmodified Simplified-to-Traditional Chinese converter locally when Traditional 
 Distributions must retain the package's `LICENSE`, `LICENSES/Apache-2.0.txt`, and
 `THIRD_PARTY_LICENSES.md`, including the corresponding upstream notices.
 
-## pinyin-pro
-
-Source: <https://github.com/zh-lx/pinyin-pro>
-
-Package: `pinyin-pro` `3.29.5`
-
-License: MIT (Copyright (c) 2022-present zh-lx). YAQMC lazy-loads the unmodified package to generate line-level pinyin for
-lyrics tagged as Mandarin when the provider supplies no romanization. Distributions must retain the package's
-`LICENSE`.
-
 ## Rust Provider Component examples
 
 The optional, unsigned API v3 example packages under `examples/plugins/packages/` contain WebAssembly Components

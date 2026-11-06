@@ -7,7 +7,6 @@ use qqmusic_api::models::lyric::GetLyricResponse;
 use yaqmc_provider_api::LyricDocument;
 
 use crate::qmapi::cgi::map_qmapi_error;
-use crate::qmapi::qmapi_client;
 use crate::qqmusic::{
     attach_companion_lyrics, parse_lrc_document, parse_qrc_document, QQMusicError,
 };
@@ -33,16 +32,10 @@ fn lyric_text(_mid: &str, _field: &'static str, value: &str) -> Option<String> {
     qqmusic_api::models::lyric::decode_lyric_text(value)
 }
 
-pub(crate) async fn fetch_lyric_document(mid: &str) -> Result<Option<LyricDocument>, QQMusicError> {
-    let client = qmapi_client().map_err(|error| {
-        let classification = map_qmapi_error(error);
-        tracing::warn!(
-            target: "qqmusic.lyric",
-            classification = classification.code(),
-            "library client construction failed"
-        );
-        classification
-    })?;
+pub(crate) async fn fetch_lyric_document(
+    client: &qqmusic_api::Client,
+    mid: &str,
+) -> Result<Option<LyricDocument>, QQMusicError> {
     let response = client
         .lyric
         .get_lyric(mid, 0, true, true, true, false)
@@ -73,10 +66,6 @@ mod tests {
         "3c80fea4c8965b324d9d7f9b0778e5be0374013221f3c86fdbab3be5929b9320ea64d4ea7f2fa40a";
     const QRC_FIXTURE: &str = r#"<QrcInfos><LyricInfo LyricContent="[0,2000]Fixture(0,900) lyric(900,1100)&#10;[2500,1500]Second(2500,1500)" /></QrcInfos>"#;
 
-    fn qrc_decrypt_matches_intree(encrypted: &str) -> bool {
-        qrc_decrypt(encrypted) == decrypt_qrc(encrypted)
-    }
-
     #[test]
     fn qmapi_client_injects_yaqmc_reqwest_transport() {
         qmapi_client().expect("Client::new_with_transport");
@@ -91,16 +80,6 @@ mod tests {
             library,
             "[ti:test][00:00.00]\u{4f60}\u{597d}\u{4e16}\u{754c}"
         );
-    }
-
-    #[test]
-    fn qmapi_lyric_fetch_uses_library_get_lyric_in_non_test_qmapi_builds() {
-        assert!(
-            qrc_decrypt_matches_intree(LIBRARY_QRC_VECTOR),
-            "QRC decrypt diverged; keep lyrics-crypto"
-        );
-        // `QQMusicClient::lyrics` calls `fetch_lyric_document` directly when
-        // this crate is not under `cfg(test)`.
     }
 
     #[test]

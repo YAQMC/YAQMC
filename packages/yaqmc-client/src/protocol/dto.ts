@@ -321,7 +321,7 @@ export interface LyricLine {
 
 export interface LyricMetadata {
   sourceLabel: string;
-  /** BCP 47 tag of the sung language when the provider knows it (`cmn` gates generated pinyin). */
+  /** BCP 47 tag of the sung language when the provider knows it. */
   language?: string;
   translatedLanguage?: string;
   offsetMs: number;
