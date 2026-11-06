@@ -183,7 +183,8 @@ function comparableLyricText(value: string): string {
 }
 
 /**
- * `show` only reveals provider data; it never generates text. `auto` hides a romanization of
+ * `show` only reveals the document's data; it never generates text (Mandarin pinyin is added
+ * upstream by the lyrics coordinator). `auto` hides a romanization of
  * Latin-script lines (English, Vietnamese with its tone marks, …) because it would be redundant.
  */
 export function shouldShowLyricSecondary(

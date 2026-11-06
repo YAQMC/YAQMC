@@ -5,10 +5,17 @@ import type { LyricDocument, Song } from '../domain/music';
 import type { MusicProvider } from '../providers/music-provider';
 import { useLyricsStore } from './lyrics-store';
 import { initialPlayerState, usePlayerStore } from './player-store';
+import { defaultPreferences, usePreferencesStore } from './preferences';
 import { ProviderContext, ProviderRegistryContext } from './provider-context';
 import { MusicProviderRegistry } from '../providers/provider-registry';
 
 const invoke = vi.hoisted(() => vi.fn());
+const generate = vi.hoisted(() => vi.fn());
+
+vi.mock('./lyrics-pinyin', async (importActual) => ({
+  ...(await importActual<object>()),
+  withGeneratedPinyin: generate,
+}));
 
 vi.mock('./native-player-runtime', () => ({
   isNativeRuntime: true,
@@ -19,6 +26,7 @@ vi.mock('./yaqmc-runtime', () => ({
     invoke,
     on: () => () => undefined,
   }),
+  getHostBridge: () => ({ kind: 'electron' }),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -109,6 +117,8 @@ describe('useLyricsCoordinator', () => {
   beforeEach(() => {
     invoke.mockReset();
     invoke.mockResolvedValue(undefined);
+    generate.mockReset();
+    usePreferencesStore.setState({ lyrics: defaultPreferences.lyrics });
     getLyrics.mockReset();
     getLyrics.mockResolvedValue(document);
     usePlayerStore.setState({
@@ -138,5 +148,61 @@ describe('useLyricsCoordinator', () => {
       expect(invoke).toHaveBeenCalledWith('player_set_lyrics', { document });
     });
     expect(useLyricsStore.getState().document).toBe(document);
+  });
+
+  const line = { id: 'l1', startMs: 0, endMs: 1000, text: '十年', words: [] };
+  const mandarin: LyricDocument = {
+    ...document,
+    metadata: { ...document.metadata, language: 'cmn' },
+    lines: [line],
+  };
+  const withPinyin: LyricDocument = {
+    ...mandarin,
+    lines: [{ ...line, romanization: 'shí nián' }],
+  };
+
+  it('publishes generated pinyin for Mandarin lyrics after the provider document', async () => {
+    getLyrics.mockResolvedValue(mandarin);
+    generate.mockResolvedValue(withPinyin);
+    renderHook(() => useLyricsCoordinator(), { wrapper });
+
+    await waitFor(() => expect(useLyricsStore.getState().document).toBe(withPinyin));
+    expect(generate).toHaveBeenCalledWith(mandarin);
+    expect(invoke).toHaveBeenNthCalledWith(1, 'player_set_lyrics', { document: mandarin });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'player_set_lyrics', { document: withPinyin });
+  });
+
+  it('does not generate when romanization is hidden or the language is not Mandarin', async () => {
+    usePreferencesStore.setState({
+      lyrics: { ...defaultPreferences.lyrics, romanization: 'hide' },
+    });
+    getLyrics.mockResolvedValue(mandarin);
+    renderHook(() => useLyricsCoordinator(), { wrapper });
+    await waitFor(() => expect(useLyricsStore.getState().document).toBe(mandarin));
+    cleanup();
+
+    usePreferencesStore.setState({ lyrics: defaultPreferences.lyrics });
+    const cantonese = { ...mandarin, metadata: { ...mandarin.metadata, language: 'yue' } };
+    getLyrics.mockResolvedValue(cantonese);
+    usePlayerStore.setState({ sessionId: 5 });
+    renderHook(() => useLyricsCoordinator(), { wrapper });
+    await waitFor(() => expect(useLyricsStore.getState().document).toBe(cantonese));
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it('drops pinyin generated for a track that is no longer playing', async () => {
+    let finish: (value: LyricDocument) => void = () => undefined;
+    getLyrics.mockResolvedValueOnce(mandarin).mockResolvedValue(document);
+    generate.mockReturnValue(new Promise<LyricDocument>((resolve) => (finish = resolve)));
+    renderHook(() => useLyricsCoordinator(), { wrapper });
+    await waitFor(() => expect(generate).toHaveBeenCalled());
+
+    usePlayerStore.setState({ queue: [{ ...track, id: 'song-2' }] });
+    await waitFor(() => expect(useLyricsStore.getState().songId).toBe('song-2'));
+    finish(withPinyin);
+    await Promise.resolve();
+
+    expect(invoke).not.toHaveBeenCalledWith('player_set_lyrics', { document: withPinyin });
+    expect(useLyricsStore.getState().document).not.toBe(withPinyin);
   });
 });
