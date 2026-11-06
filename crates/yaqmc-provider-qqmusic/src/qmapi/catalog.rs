@@ -564,7 +564,14 @@ mod tests {
         };
         assert_eq!(super::language_tag(&[item("国语")]).as_deref(), Some("cmn"));
         assert_eq!(super::language_tag(&[item("粤语")]).as_deref(), Some("yue"));
-        assert_eq!(super::language_tag(&[item("闽南语")]), None);
+        assert_eq!(super::language_tag(&[item("日语")]).as_deref(), Some("ja"));
+        assert_eq!(
+            super::language_tag(&[item(" 国语 ")]).as_deref(),
+            Some("cmn")
+        );
+        for other in ["闽南语", "越南语", "纯音乐", "其他", "华语", ""] {
+            assert_eq!(super::language_tag(&[item(other)]), None, "{other}");
+        }
         assert_eq!(super::language_tag(&[item("国语"), item("粤语")]), None);
         assert_eq!(super::language_tag(&[]), None);
     }

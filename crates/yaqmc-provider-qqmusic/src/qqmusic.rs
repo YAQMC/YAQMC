@@ -1730,13 +1730,11 @@ impl QQMusicService {
         );
         match document {
             Ok(mut document) => {
-                if let Some(document) = document.as_mut() {
-                    // A failed detail lookup only leaves the language unknown (no generated pinyin).
-                    document.metadata.language = language.ok().flatten();
+                if apply_song_language(&mut document, language) {
+                    self.storage
+                        .put_json(&key, "lyrics", &document, LYRIC_TTL_MS)
+                        .map_err(|_| QQMusicError::Storage)?;
                 }
-                self.storage
-                    .put_json(&key, "lyrics", &document, LYRIC_TTL_MS)
-                    .map_err(|_| QQMusicError::Storage)?;
                 Ok(document)
             }
             Err(error) => self
@@ -4208,7 +4206,11 @@ pub(crate) fn attach_companion_lyrics(
 ) {
     let translation = translation.map(parse_companion).unwrap_or_default();
     let romanization = romanization.map(parse_companion).unwrap_or_default();
-    let starts: Vec<u64> = document.lines.iter().filter_map(|line| line.start_ms).collect();
+    let starts: Vec<u64> = document
+        .lines
+        .iter()
+        .filter_map(|line| line.start_ms)
+        .collect();
     for line in &mut document.lines {
         let Some(start) = line.start_ms else {
             continue;
@@ -4237,6 +4239,25 @@ fn parse_companion(raw: &str) -> Vec<(u64, String)> {
 /// Nearest companion within 500 ms, accepted only when no other lyric line is closer to it: a
 /// dropped credit filler must not hand the next sung line's companion to the credit line.
 /// QQ Music marks an intentionally empty translation as `//`.
+/// Applies the song-detail language to a fetched document and returns whether it may be cached.
+/// A failed lookup never clears a known language, and a transient failure is not cached, so it
+/// cannot pin "language unknown" (no generated pinyin) for the whole lyric TTL.
+fn apply_song_language(
+    document: &mut Option<LyricDocument>,
+    language: Result<Option<String>, QQMusicError>,
+) -> bool {
+    match language {
+        Ok(tag) => {
+            if let (Some(document), Some(tag)) = (document.as_mut(), tag) {
+                document.metadata.language = Some(tag);
+            }
+            true
+        }
+        Err(QQMusicError::Offline | QQMusicError::Timeout | QQMusicError::RateLimited) => false,
+        Err(_) => true,
+    }
+}
+
 fn companion_at(companion: &[(u64, String)], starts: &[u64], start: u64) -> Option<String> {
     let (at, text) = companion
         .iter()
@@ -5821,6 +5842,39 @@ mod tests {
             document.lines[0].romanization.as_deref(),
             Some("Romanization")
         );
+    }
+
+    #[test]
+    fn song_language_failures_never_clear_a_language_or_cache_a_transient_miss() {
+        let fetched = || {
+            let mut document = parse_qrc_document("TRACK", "[0,1000]十年(0,1000)");
+            document.as_mut().unwrap().metadata.language = Some("yue".to_owned());
+            document
+        };
+        let mut document = fetched();
+        assert!(apply_song_language(
+            &mut document,
+            Ok(Some("cmn".to_owned()))
+        ));
+        assert_eq!(document.unwrap().metadata.language.as_deref(), Some("cmn"));
+        for error in [
+            QQMusicError::Timeout,
+            QQMusicError::Offline,
+            QQMusicError::RateLimited,
+        ] {
+            let mut document = fetched();
+            assert!(!apply_song_language(&mut document, Err(error)));
+            assert_eq!(document.unwrap().metadata.language.as_deref(), Some("yue"));
+        }
+        // Definitive answers are cached: no language on the detail page, or a malformed response.
+        let mut document = fetched();
+        assert!(apply_song_language(&mut document, Ok(None)));
+        assert_eq!(document.unwrap().metadata.language.as_deref(), Some("yue"));
+        assert!(apply_song_language(
+            &mut fetched(),
+            Err(QQMusicError::MalformedResponse)
+        ));
+        assert!(apply_song_language(&mut None, Ok(Some("cmn".to_owned()))));
     }
 
     #[test]
