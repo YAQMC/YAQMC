@@ -42,11 +42,11 @@ absent from Android. The in-app lyric screen remains available.
 
 **Settings → Lyrics surfaces** reuses the desktop surface preferences on Android:
 
-| Surface                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                   | Requirements                                                                                     |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Floating lyrics                      | A movable lyric bar over other apps while YAQMC is in the background. Drag to move, tap the text to open YAQMC. The toolbar has Lock and Close buttons. Lock immediately hides the toolbar and passes touches through. Unlock in Settings → Lyrics surfaces → Floating lyrics, or use Unlock all. The lock persists across restarts.                                                                                         | User-granted "Display over other apps" (`SYSTEM_ALERT_WINDOW`).                                  |
-| System island / Fluid Cloud          | Unavailable in this build. The old app-drawn island pill has been removed, including for existing enabled preferences.                                                                                                                                                                                                                                                                                                       | A verified integration for the device's system. This option does not request overlay permission. |
-| Car Bluetooth lyrics (compatibility) | Bluetooth AVRCP has title/artist/album but no lyric field. While a Bluetooth A2DP output is connected, the current line replaces the media title and the song moves to the artist field. This is visible to every media client (notification, lock screen, watch) because Android has one session metadata. Updates are limited to one per second; turning it off or disconnecting restores the canonical title immediately. | Opt-in, off by default. Whether the head unit shows title changes depends on the receiver.       |
+| Surface                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                    | Requirements                                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Floating lyrics                      | A movable lyric bar over other apps while YAQMC is in the background. Drag horizontally or vertically; both coordinates persist and stay within the display after a size change. Tap the text to open YAQMC. The toolbar has Lock and Close buttons. Lock hides the toolbar and passes touches through. Use the notification's Unlock action, Settings → Lyrics surfaces → Floating lyrics, or Unlock all. The lock persists across restarts. | User-granted "Display over other apps" (`SYSTEM_ALERT_WINDOW`); notifications for the unlock action. |
+| System island / Fluid Cloud          | Unavailable in this build. The old app-drawn island pill has been removed, including for existing enabled preferences.                                                                                                                                                                                                                                                                                                                        | A verified integration for the device's system. This option does not request overlay permission.     |
+| Car Bluetooth lyrics (compatibility) | Bluetooth AVRCP has title/artist/album but no lyric field. While a Bluetooth A2DP output is connected, the current line replaces the media title and the song moves to the artist field. This is visible to every media client (notification, lock screen, watch) because Android has one session metadata. Updates are limited to one per second; turning it off or disconnecting restores the canonical title immediately.                  | Opt-in, off by default. Whether the head unit shows title changes depends on the receiver.           |
 
 Floating lyrics and car lyrics follow Core's lyric timeline (`lyrics://projection`): no polling loop runs, and the next
 line is scheduled from the projection's next-line start because Core's clock ticks once per second in the background.
@@ -55,13 +55,40 @@ The user timing offset from the lyrics settings is not applied to these surfaces
 Locked floating lyrics use `FLAG_NOT_TOUCHABLE` and **window alpha** at or below the system's maximum obscuring opacity
 on Android 12+. Changing only the view or background opacity would block touches to other apps. See the
 [Android window documentation](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_NOT_TOUCHABLE).
-Settings and toolbar lock/unlock use Core's atomic host-only preference mutation, so stale WebView style updates
+Settings, toolbar and notification lock/unlock use Core's atomic host-only preference mutation, so stale WebView style updates
 cannot overwrite the interaction state. A failed save restores the previous state and reports the error.
 
-The [OPPO Fluid Cloud quick start](https://open.oppomobile.com/documentation/page/info?id=12639), checked on 2026-11-06,
-requires developer registration, an assigned authorization code, intent and service ID, plus a UPK service and host SDK
-integration. These assets are not configured in YAQMC. Other OEM integrations have not been verified. The existing
-MediaSession remains available to system media UIs; that alone does not implement lyric support in a system island.
+The low-importance **Floating lyrics controls** notification remains available while lyrics are enabled and locked,
+including during pauses and while the app is visible. Both the notification body and its **Unlock lyrics** button
+unlock directly without opening an activity. The receiver is not exported and uses an explicit, immutable
+PendingIntent. Unlocking, disabling floating lyrics or revoking overlay access removes the notification when the
+host refreshes. Android 13+ asks for notification permission once after floating lyrics are enabled and overlay
+access is granted. If permission or the notification channel is disabled, locking still works and the toast directs
+the user to YAQMC settings. Notification permission can subsequently be enabled in Android's app settings.
+
+### ColorOS Fluid Cloud integration prerequisites
+
+The following official OPPO pages were checked on 2026-11-07:
+
+- [Fluid Cloud templates](https://open.oppomobile.com/documentation/page/info?id=12658) describe OML templates,
+  including `category="media"`. They define a system-rendered card layout, not an Android overlay API.
+- [Quick start](https://open.oppomobile.com/documentation/page/info?id=12639) requires a developer account and OPPO-assigned
+  authorization code, service ID and intent. The application ID, app name, service URL/name and product description
+  are supplied to OPPO. The UPK must be published to the service library before host development.
+- [SeedlingSupportSDK integration](https://open.oppomobile.com/documentation/page/info?id=12719) documents SDK 3.0.7,
+  `SeedlingCardWidgetProvider`, the manifest authorization key `com.oplus.ocs.card.AUTH_CODE`, and card updates.
+  `SeedlingTool.updateIntelligentData` uses the event code, event name and payload agreed with OPPO; sample values
+  from an unrelated service must not be copied as YAQMC credentials or event contracts.
+
+YAQMC has **not applied for these assets yet**. Built-in ColorOS support is therefore pending; the existing
+`SystemLyricsPlugin` entry point remains available. Once OPPO assigns the service and authorizes the actual APK
+application ID, create and publish the lyric UPK, implement its host provider and adapter, then verify
+line changes, pause, foreground return, disabling and process death on ColorOS 16. Test builds with the `.perftest`
+application ID need their own applicable authorization. SDK IPC must run off the main thread; provider lifecycle
+callbacks also run on background threads. Reuse Core's lyric projection and preserve the failure isolation below.
+
+Other OEM integrations have not been verified. The existing MediaSession remains available to system media UIs;
+that alone does not implement lyric support in a system island.
 
 ### Bluetooth metadata verification
 
@@ -153,7 +180,8 @@ there is no plaintext fallback. Losing or invalidating that key requires signing
 
 The release manifest requests Internet access, media-playback foreground-service access, wake-lock access, and the
 "display over other apps" permission used only by the opt-in lyric surfaces above (Android asks the user at the moment
-a surface is enabled). It does not request microphone, broad storage, notification, or package-install permissions.
+a surface is enabled). Notification permission is requested for the optional floating-lyrics unlock action.
+It does not request microphone, broad storage, or package-install permissions.
 The wake lock is held only while playback is active or buffering.
 
 ## Build and verify

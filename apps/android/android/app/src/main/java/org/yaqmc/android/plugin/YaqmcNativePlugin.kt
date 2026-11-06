@@ -213,6 +213,8 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                         // Ask once per enable; the toggle stays on and the surface appears as soon
                         // as the user grants "display over other apps" and returns.
                         runCatching { context.startActivity(surfacesApi.overlayPermissionIntent(context)) }
+                    } else if (!wasEnabled && surfacesApi.isEnabled("desktop")) {
+                        (activity as? org.yaqmc.android.MainActivity)?.requestFloatingLyricsNotifications()
                     }
                     call.resolve(JSObject().put("value", JSONObject.NULL))
                 }

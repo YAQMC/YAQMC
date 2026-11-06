@@ -7,6 +7,38 @@ import org.junit.Test
 
 class FloatingLyricsInteractionTest {
     @Test
+    fun dragMovesInBothAxesWithBottomAnchoredY() {
+        val start = FloatingLyricsPosition(0, 120)
+        assertEquals(FloatingLyricsPosition(60, 120), start.drag(60f, 0f))
+        assertEquals(FloatingLyricsPosition(-60, 160), start.drag(-60f, -40f))
+        assertEquals(FloatingLyricsPosition(0, 80), start.drag(0f, 40f))
+    }
+
+    @Test
+    fun dragAndRelayoutKeepTheWholeWindowWithinTheDisplay() {
+        assertEquals(FloatingLyricsPosition(100, 1800),
+            FloatingLyricsPosition(900, 2500).clamp(1000, 2000, 800, 200))
+        assertEquals(FloatingLyricsPosition(-100, 0),
+            FloatingLyricsPosition(-900, -50).clamp(1000, 2000, 800, 200))
+        // A larger toolbar/font or display rotation clamps using the new dimensions.
+        assertEquals(FloatingLyricsPosition(30, 320),
+            FloatingLyricsPosition(100, 1800).clamp(600, 500, 540, 180))
+        assertEquals(FloatingLyricsPosition(0, 0),
+            FloatingLyricsPosition(100, 100).clamp(100, 100, 200, 200))
+        assertEquals(FloatingLyricsPosition(35, 120),
+            FloatingLyricsPosition(35, 120).clamp(1000, 2000, 800, 200))
+    }
+
+    @Test
+    fun unlockNotificationSurvivesPauseAndDisappearsWhenUnlockedOrDisabled() {
+        // No playback/foreground predicate: a locked preference must remain recoverable.
+        assertTrue(shouldShowLyricsUnlockNotification(true, true, true))
+        assertFalse(shouldShowLyricsUnlockNotification(true, false, true))
+        assertFalse(shouldShowLyricsUnlockNotification(false, true, true))
+        assertFalse(shouldShowLyricsUnlockNotification(true, true, false))
+    }
+
+    @Test
     fun staleReconcileCannotUndoNativeLockOrSettingsUnlock() {
         for ((saved, stale) in listOf("passive-locked" to "interactive", "interactive" to "passive-locked")) {
             val current = JSONObject("""{"desktop":{"interaction":"$saved","fontSize":30}}""")

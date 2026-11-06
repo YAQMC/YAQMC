@@ -138,6 +138,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
     var onInteractionChanged: ((kind: String, interaction: String) -> Unit)? = null
     private var interactionPending = false
     private var systemLyrics: SystemLyricsPluginHost? = null
+    private var lockNotification: FloatingLyricsLockNotification? = null
 
     // Car Bluetooth compatibility mode.
     private var carEnabled = false
@@ -153,6 +154,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
         if (context != null) return
         val ctx = appContext.applicationContext
         context = ctx
+        lockNotification = FloatingLyricsLockNotification(ctx)
         systemLyrics = SystemLyricsPluginHost.load(ctx) { onSurfaceClosed?.invoke("island") }
         prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).also {
             config = runCatching { JSONObject(it.getString(KEY_CONFIG, "{}") ?: "{}") }
@@ -253,8 +255,16 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
 
     @MainThread
     fun resetPosition(kind: String) {
-        prefs?.edit()?.remove("drag_$kind")?.apply()
+        prefs?.edit()?.remove("drag_$kind")?.remove("drag_x_$kind")?.apply()
         surfaces[kind]?.relayout()
+    }
+
+    @MainThread
+    fun refreshLockNotification() {
+        val ctx = context ?: return
+        lockNotification?.update(shouldShowLyricsUnlockNotification(
+            isEnabled("desktop"), isLocked(), canDrawOverlays(ctx),
+        ))
     }
 
     @MainThread
@@ -325,6 +335,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             }
         }
         systemLyrics?.update(isEnabled("island"), appForeground, current)
+        refreshLockNotification()
         pushCarLine()
     }
 
@@ -459,12 +470,20 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             primary.typeface = Typeface.DEFAULT_BOLD
             addTool(R.drawable.ic_lyrics_lock, R.string.floating_lyrics_lock) {
                 setInteraction(kind, "passive-locked") { result ->
-                    val message = if (result.isSuccess) R.string.floating_lyrics_locked
-                        else R.string.floating_lyrics_lock_failed
+                    val message = when {
+                        result.isFailure -> R.string.floating_lyrics_lock_failed
+                        lockNotification?.canPost() == true -> R.string.floating_lyrics_locked
+                        else -> R.string.floating_lyrics_locked_without_notification
+                    }
                     Toast.makeText(ctx, message, Toast.LENGTH_LONG).show()
                 }
             }
             addTool(R.drawable.ic_lyrics_close, R.string.floating_lyrics_close, ::dismiss)
+            root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                    moveTo(FloatingLyricsPosition(params.x, params.y))
+                }
+            }
             installTouch()
         }
 
@@ -535,10 +554,21 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             val dragged = prefs?.getInt("drag_$kind", Int.MIN_VALUE) ?: Int.MIN_VALUE
             val offset = if (dragged != Int.MIN_VALUE) dragged else
                 dp(settings.optDouble("verticalOffset", 24.0).toFloat()).roundToInt()
-            // Keep the window on screen after rotation or a smaller display.
-            params.y = offset.coerceIn(0, (metrics.heightPixels - dp(48f).roundToInt()).coerceAtLeast(0))
-            params.x = dp(settings.optDouble("horizontalPosition", 0.0).toFloat()).roundToInt()
-                .coerceIn(-metrics.widthPixels / 2, metrics.widthPixels / 2)
+            val horizontal = prefs?.getInt("drag_x_$kind", Int.MIN_VALUE) ?: Int.MIN_VALUE
+            val x = if (horizontal != Int.MIN_VALUE) horizontal else
+                dp(settings.optDouble("horizontalPosition", 0.0).toFloat()).roundToInt()
+            root.measure(
+                View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            )
+            moveTo(FloatingLyricsPosition(x, offset))
+        }
+
+        private fun moveTo(position: FloatingLyricsPosition) {
+            val metrics = ctx.resources.displayMetrics
+            val bounded = position.clamp(metrics.widthPixels, metrics.heightPixels, params.width, root.measuredHeight)
+            params.x = bounded.x
+            params.y = bounded.y
             if (attached) runCatching { windowManager.updateViewLayout(root, params) }
                 .onFailure { detach() }
         }
@@ -575,32 +605,33 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
         @SuppressLint("ClickableViewAccessibility")
         private fun installTouch() {
             val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+            var downX = 0f
             var downY = 0f
-            var startY = 0
+            var start = FloatingLyricsPosition(0, 0)
             var dragging = false
             root.setOnClickListener { openApp() }
             root.setOnTouchListener { _, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
+                        downX = event.rawX
                         downY = event.rawY
-                        startY = params.y
+                        start = FloatingLyricsPosition(params.x, params.y)
                         dragging = false
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
+                        val dx = event.rawX - downX
                         val dy = event.rawY - downY
-                        if (!dragging && abs(dy) > slop) dragging = true
+                        if (!dragging && (abs(dx) > slop || abs(dy) > slop)) dragging = true
                         if (dragging) {
-                            // Bottom-anchored windows grow upward.
-                            params.y = (startY - dy.roundToInt())
-                                .coerceIn(0, (ctx.resources.displayMetrics.heightPixels - root.height).coerceAtLeast(0))
-                            runCatching { windowManager.updateViewLayout(root, params) }
+                            moveTo(start.drag(dx, dy))
                         }
                         true
                     }
                     MotionEvent.ACTION_UP -> {
                         when {
-                            dragging -> prefs?.edit()?.putInt("drag_$kind", params.y)?.apply()
+                            dragging -> prefs?.edit()?.putInt("drag_$kind", params.y)
+                                ?.putInt("drag_x_$kind", params.x)?.apply()
                             else -> root.performClick()
                         }
                         true

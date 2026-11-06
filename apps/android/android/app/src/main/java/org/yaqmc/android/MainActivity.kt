@@ -1,13 +1,17 @@
 package org.yaqmc.android
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.Display
 import android.view.View
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.MainThread
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -19,12 +23,16 @@ import org.yaqmc.android.core.CoreManager
 import org.yaqmc.android.core.DeepLinkManager
 import org.yaqmc.android.core.MobileLoginOwner
 import org.yaqmc.android.media.PlaybackService
+import org.yaqmc.android.lyrics.AndroidLyricsSurfaces
 import org.yaqmc.android.plugin.YaqmcNativePlugin
 import kotlin.math.roundToInt
 
 @UnstableApi
 class MainActivity : BridgeActivity() {
     private val deepLinks = DeepLinkManager()
+    private val lyricsNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        AndroidLyricsSurfaces.refreshLockNotification()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -50,6 +58,8 @@ class MainActivity : BridgeActivity() {
 
     override fun onResume() {
         super.onResume()
+        requestFloatingLyricsNotifications()
+        AndroidLyricsSurfaces.refreshLockNotification()
         requestResponsiveFrameRate()
         MobileLoginOwner.lifecycle("foreground")
         CoreManager.setLifecycle("foreground")
@@ -69,6 +79,18 @@ class MainActivity : BridgeActivity() {
 
     private fun handleDeepLink(intent: Intent?) {
         deepLinks.accept(intent)
+    }
+
+    /** Ask only after overlay access is granted; never overlap the two permission screens. */
+    fun requestFloatingLyricsNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            !AndroidLyricsSurfaces.isEnabled("desktop") || !AndroidLyricsSurfaces.canDrawOverlays(this) ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) return
+        val preferences = getSharedPreferences("yaqmc_lyrics_surfaces", MODE_PRIVATE)
+        if (preferences.getBoolean("notification_permission_requested", false)) return
+        preferences.edit().putBoolean("notification_permission_requested", true).apply()
+        lyricsNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /** Set while a continuously animating surface (native lyrics during playback) is visible. */
