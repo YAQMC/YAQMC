@@ -5720,11 +5720,18 @@ mod tests {
         let loading = Arc::clone(&player);
         let load = tokio::spawn(async move { loading.play_from_queue(0).await });
         tokio::time::sleep(Duration::from_millis(20)).await;
-        assert!(!engine.snapshot().loaded, "the seek must land before the source is loaded");
+        assert!(
+            !engine.snapshot().loaded,
+            "the seek must land before the source is loaded"
+        );
         let during = player.seek(42_000).await.expect("seek while loading");
         assert_eq!(during.position_ms, 42_000);
         let loaded = load.await.expect("load joins").expect("load succeeds");
-        assert!(loaded.position_ms.abs_diff(42_000) <= 100, "{}", loaded.position_ms);
+        assert!(
+            loaded.position_ms.abs_diff(42_000) <= 100,
+            "{}",
+            loaded.position_ms
+        );
         assert!(engine.snapshot().position_ms.abs_diff(42_000) <= 100);
         tokio::time::sleep(Duration::from_millis(250)).await;
         let later = player.snapshot().await;
@@ -5788,7 +5795,11 @@ mod tests {
             player.seek(target).await.expect("seek while loading");
         }
         let loaded = load.await.expect("load joins").expect("load succeeds");
-        assert!(loaded.position_ms.abs_diff(30_000) <= 100, "{}", loaded.position_ms);
+        assert!(
+            loaded.position_ms.abs_diff(30_000) <= 100,
+            "{}",
+            loaded.position_ms
+        );
         assert!(engine.snapshot().position_ms.abs_diff(30_000) <= 100);
         player.stop_clock();
     }
@@ -5804,7 +5815,9 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
         player.seek(50_000).await.expect("seek while loading");
         player.play_from_queue(1).await.expect("fast track loads");
-        slow.await.expect("slow joins").expect("superseded load resolves");
+        slow.await
+            .expect("slow joins")
+            .expect("superseded load resolves");
         let snapshot = player.snapshot().await;
         assert_eq!(snapshot.queue[snapshot.current_index.unwrap()].id, "fast");
         assert!(snapshot.position_ms < 1_000, "{}", snapshot.position_ms);
