@@ -25,10 +25,10 @@ the fallback. Normalized cache keys carry a parser revision so fixes invalidate 
 QQ Music sets `metadata.language` from the song detail's language text (`国语` → `cmn`, `粤语` → `yue`, also
 `ja`/`ko`/`en`); the numeric `track_info.language` is ignored because it reads as Mandarin when absent. QQ supplies
 no romanization for Mandarin songs, so when a document is tagged `cmn`, has no provider romanization, and the
-romanization setting is not **Hide**, the lyrics coordinator lazy-loads `pinyin-pro` and adds line-level pinyin
+romanization setting is not **Hide**, the lyrics coordinator runs `pinyin-pro` in a Web Worker (off the UI thread) and adds line-level pinyin
 after the provider document is shown (the setting is read per track). Cantonese, untagged documents and provider
 romanization are never replaced, generated pinyin has no word timing, and a result for a track that is no
-longer playing is dropped. The library is a separate chunk (287 kB, 142 kB gzip) loaded only for Mandarin songs;
+longer playing is dropped (its worker is terminated). The library is a separate worker chunk (287 kB, 142 kB gzip) loaded only for Mandarin songs;
 the main chunk grows by 0.6 kB.
 
 ## Renderer

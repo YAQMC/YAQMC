@@ -167,7 +167,7 @@ describe('useLyricsCoordinator', () => {
     renderHook(() => useLyricsCoordinator(), { wrapper });
 
     await waitFor(() => expect(useLyricsStore.getState().document).toBe(withPinyin));
-    expect(generate).toHaveBeenCalledWith(mandarin);
+    expect(generate).toHaveBeenCalledWith(mandarin, expect.any(AbortSignal));
     expect(invoke).toHaveBeenNthCalledWith(1, 'player_set_lyrics', { document: mandarin });
     expect(invoke).toHaveBeenNthCalledWith(2, 'player_set_lyrics', { document: withPinyin });
   });
@@ -199,6 +199,8 @@ describe('useLyricsCoordinator', () => {
 
     usePlayerStore.setState({ queue: [{ ...track, id: 'song-2' }] });
     await waitFor(() => expect(useLyricsStore.getState().songId).toBe('song-2'));
+    // The track change cancels the worker for the old track.
+    expect((generate.mock.calls[0]?.[1] as AbortSignal).aborted).toBe(true);
     finish(withPinyin);
     await Promise.resolve();
 

@@ -57,11 +57,12 @@ export function useLyricsCoordinator(): void {
           needsGeneratedPinyin(document) &&
           usePreferencesStore.getState().lyrics.romanization !== 'hide'
         ) {
-          void withGeneratedPinyin(document)
+          void withGeneratedPinyin(document, controller.signal)
             .then((generated) => {
               if (!controller.signal.aborted) publish(generated);
             })
             .catch((error: unknown) => {
+              if (error instanceof DOMException && error.name === 'AbortError') return;
               console.error('Pinyin generation failed', error);
             });
         }
