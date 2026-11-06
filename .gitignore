@@ -77,6 +77,8 @@ artifacts/acc03-windows-last.json
 !examples/plugins/script-network/dist/main.js
 !examples/plugins/script-actions/dist/
 !examples/plugins/script-actions/dist/main.js
+!examples/plugins/script-pages/dist/
+!examples/plugins/script-pages/dist/main.js
 
 # Editors
 .idea/
