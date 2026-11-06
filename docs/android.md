@@ -19,6 +19,12 @@ Android App Bundle is published.
 
 ## Android behavior
 
+The native lyrics dependency is pinned to AMLL commit `0d7466cc499add17957a4307e0c7ab72f927f27a`,
+Maven version `0.1.0-yaqmc.0d7466c`. CI builds that source in `setup-android`. For a local build, check out
+that commit in a separate `amll-android` clone, then run
+`AMLL_VERSION=0.1.0-yaqmc.0d7466c bash ./gradlew :amll:publishReleasePublicationToMavenLocal`
+before building YAQMC. Older snapshot packages lack the required renderer settings APIs.
+
 - Home, Discover, Search, Library, account pages, playback queue, statistics, and in-app lyrics use the shared UI.
 - A four-destination bottom bar is used on compact screens; larger screens switch to a navigation rail.
 - Rust/CPAL owns audio output. AndroidX Media3 projects that state into the media notification, lock screen,
@@ -36,20 +42,71 @@ absent from Android. The in-app lyric screen remains available.
 
 **Settings → Lyrics surfaces** reuses the desktop surface preferences on Android:
 
-| Surface                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                   | Requirements                                                                                                                                            |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Floating lyrics                      | A movable lyric bar drawn by YAQMC over other apps while YAQMC is in the background. Drag to move, tap to open YAQMC, long-press to close; "Passive lock" makes it click-through.                                                                                                                                                                                                                                            | "Display over other apps" (`SYSTEM_ALERT_WINDOW`), asked for when the surface is first enabled. Revoking it hides the surface and turns the toggle off. |
-| Island-style lyrics                  | A compact pill near the top edge, also drawn by YAQMC (tap to expand with title and next line). It is **not** a system or vendor island.                                                                                                                                                                                                                                                                                     | Same overlay permission.                                                                                                                                |
-| Car Bluetooth lyrics (compatibility) | Bluetooth AVRCP has title/artist/album but no lyric field. While a Bluetooth A2DP output is connected, the current line replaces the media title and the song moves to the artist field. This is visible to every media client (notification, lock screen, watch) because Android has one session metadata. Updates are limited to one per second; turning it off or disconnecting restores the canonical title immediately. | Opt-in, off by default. Whether the head unit shows title changes depends on the receiver.                                                              |
+| Surface                              | What it is                                                                                                                                                                                                                                                                                                                                                                                                                   | Requirements                                                                                     |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Floating lyrics                      | A movable lyric bar over other apps while YAQMC is in the background. Drag to move, tap the text to open YAQMC. The toolbar has Lock and Close buttons. Lock immediately hides the toolbar and passes touches through. Unlock in Settings → Lyrics surfaces → Floating lyrics, or use Unlock all. The lock persists across restarts.                                                                                         | User-granted "Display over other apps" (`SYSTEM_ALERT_WINDOW`).                                  |
+| System island / Fluid Cloud          | Unavailable in this build. The old app-drawn island pill has been removed, including for existing enabled preferences.                                                                                                                                                                                                                                                                                                       | A verified integration for the device's system. This option does not request overlay permission. |
+| Car Bluetooth lyrics (compatibility) | Bluetooth AVRCP has title/artist/album but no lyric field. While a Bluetooth A2DP output is connected, the current line replaces the media title and the song moves to the artist field. This is visible to every media client (notification, lock screen, watch) because Android has one session metadata. Updates are limited to one per second; turning it off or disconnecting restores the canonical title immediately. | Opt-in, off by default. Whether the head unit shows title changes depends on the receiver.       |
 
-All three follow Core's lyric timeline (`lyrics://projection`): no extra renderer or polling loop runs, and the next
+Floating lyrics and car lyrics follow Core's lyric timeline (`lyrics://projection`): no polling loop runs, and the next
 line is scheduled from the projection's next-line start because Core's clock ticks once per second in the background.
 The user timing offset from the lyrics settings is not applied to these surfaces.
 
-Vendor integrations are not implemented: Android 16 Live Updates exclude media playback and app shortcuts, Xiaomi
-HyperOS focus notifications / Super Island need a per-app permission from Xiaomi, and OPPO/OnePlus Fluid Cloud,
-vivo Origin Island and Samsung Now Bar are partner programs without a public lyric API. On HyperOS, ColorOS and
-One UI, the system's own media capsule may still show the track from the normal media session.
+Locked floating lyrics use `FLAG_NOT_TOUCHABLE` and **window alpha** at or below the system's maximum obscuring opacity
+on Android 12+. Changing only the view or background opacity would block touches to other apps. See the
+[Android window documentation](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#FLAG_NOT_TOUCHABLE).
+Settings and toolbar lock/unlock use Core's atomic host-only preference mutation, so stale WebView style updates
+cannot overwrite the interaction state. A failed save restores the previous state and reports the error.
+
+The [OPPO Fluid Cloud quick start](https://open.oppomobile.com/documentation/page/info?id=12639), checked on 2026-11-06,
+requires developer registration, an assigned authorization code, intent and service ID, plus a UPK service and host SDK
+integration. These assets are not configured in YAQMC. Other OEM integrations have not been verified. The existing
+MediaSession remains available to system media UIs; that alone does not implement lyric support in a system island.
+
+### Bluetooth metadata verification
+
+The car compatibility mode now updates the active session metadata **and** the active item in the session queue.
+[AOSP's `MediaPlayerWrapper.isMetadataSynced`](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/refs/heads/main/android/app/src/com/android/bluetooth/audio_util/MediaPlayerWrapper.java)
+compares queue and session title/artist before sending updates; changing only the session can leave metadata waiting
+for synchronization. [Media3 1.10.1](https://github.com/androidx/media/blob/1.10.1/libraries/session/src/main/java/androidx/media3/session/MediaSessionLegacyStub.java)
+publishes the queue from MediaItem metadata and current metadata separately. Both paths therefore receive each line.
+The lyric is bound to its track ID, so an old projection cannot label the next song. Disabling the setting,
+disconnecting Bluetooth, or a missing line restores the untouched canonical metadata. Only the projected session
+queue is decorated; Core's queue remains unchanged. The feature does not include auto-play or a driving-mode UI.
+
+## System lyrics plugins
+
+Settings → Lyrics surfaces → System island / Fluid Cloud has **Plugin development** and **Contribute an adapter**
+entries. No OEM adapter is bundled yet. This is a native Android extension compiled into the APK, separate from the
+desktop plugin system; it does not load downloaded APKs or JavaScript plugins.
+
+An adapter implements `org.yaqmc.android.lyrics.SystemLyricsPlugin` and has a public constructor accepting an Android
+`Context` (the host passes the application context). Register its fully qualified class name in the app manifest:
+
+```xml
+<meta-data
+    android:name="org.yaqmc.android.SYSTEM_LYRICS_PLUGIN"
+    android:value="your.package.ColorOsLyricsPlugin" />
+```
+
+- `isAvailable(): Boolean` checks the actual OS/API and required vendor authorization. It must be cheap and must not
+  perform network I/O. Only an available adapter enables the system-island switch.
+- `show(lyric: SurfaceLyric)` creates or updates the **system** surface. The snapshot contains track ID, title, artist,
+  current/secondary/next line and playing state. Updates arrive only when this data changes; the host already schedules
+  the next line. Do not start another lyric parser, playback engine or polling timer.
+- `hide()` removes the surface and is idempotent. The host calls it on disable, foreground return, cleared track,
+  lost availability or plugin failure. Use the vendor's expiry/lifecycle mechanism for process death as well.
+
+All methods run on the main thread. The adapter owns its vendor SDK, manifest declarations, authorization and any
+asynchronous work. An exception disables that adapter for the session and attempts cleanup; floating lyrics and
+playback remain independent. A system integration must not fall back to `TYPE_APPLICATION_OVERLAY`. R8 keeps registered
+plugin implementations. Absent or unsupported plugins do not request overlay permission or create a fake island.
+
+To contribute a ColorOS 16 adapter, use the settings contribution entry or open an issue/PR with the exact device and
+OS build, official API documentation, authorization requirements, implementation and device evidence. Include tests
+for missing authorization, unsupported devices, line changes, pause, foreground return, disable, process death and
+the release APK after R8. Verify the actual system capsule and expanded panel; compilation or an ordinary notification
+alone does not prove Fluid Cloud support. Keep status-bar lyrics out of this extension.
 
 ## Lyrics frame rate
 

@@ -32,9 +32,8 @@ dependencyResolutionManagement {
             }
         }
 
-        // `amll-android` is a private repository-scoped GitHub Package. Keep the repository out of
-        // ordinary unauthenticated builds until credentials are available; the app does not depend
-        // on the package yet, so this is only the consumption boundary for the native-lyrics work.
+        // Local builds and CI publish the pinned AMLL source to mavenLocal (see docs/android.md).
+        // Authenticated builds may also resolve a published copy from GitHub Packages.
         if (githubPackagesUser != null && githubPackagesToken != null) {
             maven {
                 name = "yaqmcAmllGitHubPackages"

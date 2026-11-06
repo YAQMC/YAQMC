@@ -44,3 +44,15 @@ runs:
         if ! cargo ndk --version 2>/dev/null | grep -F 'cargo-ndk 4.1.2' >/dev/null; then
           cargo install cargo-ndk --version 4.1.2 --locked
         fi
+    - name: Build pinned AMLL Android dependency
+      shell: bash
+      env:
+        AMLL_VERSION: 0.1.0-yaqmc.0d7466c
+      run: |
+        set -euo pipefail
+        amll_dir="$RUNNER_TEMP/yaqmc-amll-android"
+        git init "$amll_dir"
+        git -C "$amll_dir" fetch --depth 1 https://github.com/YAQMC/amll-android.git 0d7466cc499add17957a4307e0c7ab72f927f27a
+        git -C "$amll_dir" checkout --detach FETCH_HEAD
+        cd "$amll_dir"
+        bash ./gradlew --no-daemon :amll:publishReleasePublicationToMavenLocal

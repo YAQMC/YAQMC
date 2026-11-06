@@ -43,7 +43,7 @@ class CorePlayer(
     private var resourcesHeld = false
     private val handler = Handler(looper)
     /** Opt-in car Bluetooth lyric line; replaces the current item's title only while set. */
-    @Volatile private var carLyricLine: String? = null
+    @Volatile private var carLyricLine: CarLyric? = null
 
     init {
         CoreManager.addCallback(this)
@@ -72,7 +72,7 @@ class CorePlayer(
                     Player.COMMAND_SET_VOLUME,
                 ).build(),
             )
-            .setPlaylist(withCarLyric(currentPlaylist, normalizedIndex))
+            .setPlaylist(withCarLyric(currentPlaylist, normalizedIndex, carLyricLine))
             .setPlaybackState(projection.phase.toMedia3State())
             .setPlayWhenReady(projection.playWhenReady, playWhenReadyReason)
             .setIsLoading(projection.loading)
@@ -174,25 +174,10 @@ class CorePlayer(
     }
 
     /** Called on the main looper by [org.yaqmc.android.lyrics.AndroidLyricsSurfaces]. */
-    fun setCarLyricLine(line: String?) {
+    fun setCarLyricLine(line: CarLyric?) {
         if (carLyricLine == line) return
         carLyricLine = line
         invalidateState()
-    }
-
-    /**
-     * AVRCP carries title/artist/album but no lyrics, so the opt-in compatibility mode shows the
-     * line as the title and keeps the song in the artist field. The playlist itself is untouched,
-     * so turning the mode off (or disconnecting Bluetooth) restores canonical metadata at once.
-     */
-    private fun withCarLyric(items: List<MediaItemData>, index: Int): List<MediaItemData> {
-        val line = carLyricLine ?: return items
-        val item = items.getOrNull(index) ?: return items
-        val canonical = item.mediaMetadata ?: return items
-        val song = listOfNotNull(canonical.title, canonical.artist)
-            .joinToString(" · ")
-        val metadata = canonical.buildUpon().setTitle(line).setArtist(song).build()
-        return items.toMutableList().also { it[index] = item.buildUpon().setMediaMetadata(metadata).build() }
     }
 
     override fun onCoreResponse(id: Long, json: String) = Unit

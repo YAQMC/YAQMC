@@ -890,10 +890,15 @@ export const zhTW = {
       islandDescription: '位於螢幕頂部中央的緊湊歌詞與播放介面。',
       androidFloating: '懸浮歌詞',
       androidFloatingDescription:
-        'YAQMC 在背景時顯示在其他應用程式上方的歌詞列，需要「顯示在其他應用程式上層」權限。拖曳可移動，輕觸開啟 YAQMC，長按關閉。',
-      androidIsland: '島式歌詞',
+        'YAQMC 在背景時顯示在其他應用程式上方的歌詞列，需要「顯示在其他應用程式上層」權限。拖曳可移動，輕觸歌詞開啟 YAQMC，工具列可鎖定或關閉。',
+      androidIsland: '系統動態島／流體雲',
       androidIslandDescription:
-        '由 YAQMC 自行繪製於頂部的緊湊膠囊，並非系統或廠商的動態島／流體雲。輕觸展開，長按關閉。',
+        '目前版本未內建相容的系統歌詞外掛，暫不可用，已移除先前的懸浮膠囊。開發者可貢獻針對手機系統的適配外掛。',
+      androidIslandReadyDescription: '已有可用的系統歌詞外掛，實際顯示由手機系統與廠商授權決定。',
+      androidPluginGuide: '外掛開發',
+      androidPluginContribute: '貢獻適配',
+      androidLinkError: '無法開啟連結，請重試。',
+      androidUnlockHint: '鎖定後觸控會穿透歌詞，工具列隱藏。請在這裡解鎖，以恢復拖曳和關閉操作。',
       carBluetooth: '車載藍牙歌詞（相容模式）',
       carBluetoothDescription:
         '藍牙（AVRCP）沒有歌詞欄位。連接藍牙音訊裝置時，目前歌詞行會取代曲目標題（歌名與歌手移到歌手欄位），鎖定畫面等所有媒體顯示都會受影響。每秒最多更新一次；關閉後立即恢復正常標題。',

@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.input.InputManager
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -26,16 +27,20 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.MainThread
 import org.json.JSONObject
+import org.yaqmc.android.R
 import org.yaqmc.android.core.CoreManager
+import org.yaqmc.android.media.CarLyric
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Text a surface shows; derived from Core's `lyrics://projection`, the shared lyric timeline. */
-internal data class SurfaceLyric(
+data class SurfaceLyric(
     val trackId: String?,
     val title: String,
     val artist: String,
@@ -103,10 +108,8 @@ internal data class LyricProjection(
 }
 
 /**
- * Portable Android lyric surfaces: a floating lyric bar (`desktop` preference) and an app-drawn,
- * Dynamic-Island-*style* pill (`island` preference). Both are ordinary
- * `TYPE_APPLICATION_OVERLAY` windows that need the user-granted "display over other apps"
- * permission; neither is a system or OEM island integration. A third consumer, the opt-in car
+ * Floating lyrics (`desktop`) use a user-authorized `TYPE_APPLICATION_OVERLAY` window.
+ * System/OEM islands are not implemented by this overlay. The opt-in car
  * Bluetooth mode, rewrites the media session title while a Bluetooth A2DP output is active.
  *
  * All consumers share Core's lyric timeline: Core publishes on line changes and position ticks,
@@ -132,11 +135,15 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
     /** Called when a user dismisses a surface on screen, so the WebView can turn its toggle off. */
     var onSurfaceClosed: ((kind: String) -> Unit)? = null
 
+    var onInteractionChanged: ((kind: String, interaction: String) -> Unit)? = null
+    private var interactionPending = false
+    private var systemLyrics: SystemLyricsPluginHost? = null
+
     // Car Bluetooth compatibility mode.
     private var carEnabled = false
     private var bluetoothOutput = false
-    private var carSink: ((String?) -> Unit)? = null
-    private var carLastSent: String? = null
+    private var carSink: ((CarLyric?) -> Unit)? = null
+    private var carLastSent: CarLyric? = null
     private var carLastSentAt = 0L
     private var carPending: Runnable? = null
     private var deviceCallbackRegistered = false
@@ -146,6 +153,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
         if (context != null) return
         val ctx = appContext.applicationContext
         context = ctx
+        systemLyrics = SystemLyricsPluginHost.load(ctx) { onSurfaceClosed?.invoke("island") }
         prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).also {
             config = runCatching { JSONObject(it.getString(KEY_CONFIG, "{}") ?: "{}") }
                 .getOrDefault(JSONObject())
@@ -159,6 +167,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             @Deprecated("Deprecated in Java")
             override fun onLowMemory() = Unit
         })
+        if (!systemIslandAvailable()) config.optJSONObject("island")?.put("enabled", false)
         refresh()
     }
 
@@ -171,10 +180,68 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
     /** Applies the WebView's `surfaces` preference document (full per-surface style). */
     @MainThread
     fun reconcile(surfacesJson: JSONObject) {
-        config = surfacesJson
-        prefs?.edit()?.putString(KEY_CONFIG, surfacesJson.toString())?.apply()
-        surfaces.values.forEach { it.applyConfig(surfacesJson.optJSONObject(it.kind) ?: JSONObject()) }
+        val systemAvailable = systemIslandAvailable()
+        config = reconcileFloatingLyrics(surfacesJson, config, systemAvailable)
+        if (!systemAvailable && surfacesJson.optJSONObject("island")?.optBoolean("enabled") == true) {
+            onSurfaceClosed?.invoke("island")
+        }
+        saveConfig()
+        surfaces.values.forEach { it.applyConfig(config.optJSONObject(it.kind) ?: JSONObject()) }
         refresh()
+    }
+
+    private fun saveConfig() {
+        prefs?.edit()?.putString(KEY_CONFIG, config.toString())?.apply()
+    }
+
+    /** Apply immediately, then persist through Core's atomic host-only preference mutation. */
+    @MainThread
+    fun setInteraction(
+        kind: String,
+        interaction: String,
+        fallback: String? = null,
+        onComplete: (Result<String>) -> Unit,
+    ) {
+        if (kind != "desktop" || interaction !in listOf("interactive", "passive-locked")) {
+            onComplete(Result.failure(IllegalArgumentException("Unsupported surface interaction")))
+            return
+        }
+        if (interactionPending) {
+            onComplete(Result.failure(IllegalStateException("A lyrics lock change is still being saved")))
+            return
+        }
+        val settings = config.optJSONObject(kind) ?: JSONObject().also { config.put(kind, it) }
+        val previous = settings.optString("interaction", "interactive")
+        fun applyInteraction(next: String) {
+            config.getJSONObject(kind).put("interaction", next)
+            saveConfig()
+            surfaces[kind]?.applyConfig(config.getJSONObject(kind))
+            refresh()
+            onInteractionChanged?.invoke(kind, next)
+        }
+        interactionPending = true
+        applyInteraction(interaction)
+        val params = JSONObject()
+            .put("kind", kind)
+            .put("interaction", interaction)
+            .put("value", fallback ?: JSONObject().put("version", 2).put("surfaces", config).toString())
+        fun finish(result: Result<String>) {
+            interactionPending = false
+            if (result.isFailure) applyInteraction(previous)
+            onComplete(result)
+        }
+        runCatching {
+            CoreManager.invoke("app_preferences_set_surface_interaction", params.toString(), "host") { json ->
+                val result = runCatching {
+                    val response = JSONObject(json)
+                    check(response.optBoolean("ok")) {
+                        response.optJSONObject("error")?.optString("message") ?: "Could not save lyrics interaction"
+                    }
+                    response.getString("result")
+                }
+                main.post { finish(result) }
+            }
+        }.onFailure { finish(Result.failure(it)) }
     }
 
     @MainThread
@@ -200,22 +267,29 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
 
     /** CorePlayer registers here; `null` restores canonical metadata. */
     @MainThread
-    fun attachCarSink(sink: ((String?) -> Unit)?) {
+    fun attachCarSink(sink: ((CarLyric?) -> Unit)?) {
+        carPending?.let(main::removeCallbacks)
+        carPending = null
+        carSink?.invoke(null)
         carSink = sink
         carLastSent = null
         refresh()
     }
 
-    fun isEnabled(kind: String): Boolean = config.optJSONObject(kind)?.optBoolean("enabled") == true
+    fun systemIslandAvailable(): Boolean = systemLyrics?.isAvailable() == true
 
-    private fun anySurfaceEnabled() = isEnabled("desktop") || isEnabled("island")
+    fun isEnabled(kind: String): Boolean =
+        (kind == "desktop" || kind == "island" && systemIslandAvailable()) &&
+            config.optJSONObject(kind)?.optBoolean("enabled") == true
+
+    fun isLocked(): Boolean = config.optJSONObject("desktop")?.optString("interaction") == "passive-locked"
 
     @MainThread
     private fun refresh() {
         val ctx = context ?: return
         updateBluetoothWatch(ctx)
         // Overlays are hidden while YAQMC is visible, so they need no events then.
-        val needsTimeline = (anySurfaceEnabled() && canDrawOverlays(ctx) && !appForeground) ||
+        val needsTimeline = ((isEnabled("desktop") && canDrawOverlays(ctx) || isEnabled("island")) && !appForeground) ||
             (carEnabled && bluetoothOutput && carSink != null)
         if (needsTimeline != subscribed) {
             subscribed = needsTimeline
@@ -233,7 +307,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
                 cancelLineSwitch()
             }
         }
-        for (kind in listOf("desktop", "island")) {
+        for (kind in listOf("desktop")) {
             val show = surfaceShouldShow(isEnabled(kind), canDrawOverlays(ctx), appForeground, current)
             if (show) {
                 val surface = surfaces.getOrPut(kind) {
@@ -250,6 +324,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
                 surfaces.remove(kind)?.detach()
             }
         }
+        systemLyrics?.update(isEnabled("island"), appForeground, current)
         pushCarLine()
     }
 
@@ -280,6 +355,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
         if (lyric == current) return
         current = lyric
         if (trackChanged) refresh() else surfaces.values.forEach { it.render(lyric) }
+        systemLyrics?.update(isEnabled("island"), appForeground, current)
         pushCarLine()
     }
 
@@ -308,17 +384,24 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = refresh()
     }
 
-    /** At most one metadata change per second, only while a Bluetooth audio output is active. */
+    private fun currentCarLyric(): CarLyric? {
+        if (!carEnabled || !bluetoothOutput) return null
+        val trackId = current?.trackId ?: return null
+        val line = current?.line?.takeIf(String::isNotBlank) ?: return null
+        return CarLyric(trackId, line)
+    }
+
+    /** At most one metadata change per second, only while a Bluetooth audio output is connected. */
     @MainThread
     private fun pushCarLine() {
         val sink = carSink ?: return
-        val line = current?.line?.takeIf { carEnabled && bluetoothOutput && current?.trackId != null }
+        val line = currentCarLyric()
         if (line == carLastSent) return
         carPending?.let(main::removeCallbacks)
         val wait = CAR_MIN_INTERVAL_MS - (SystemClock.elapsedRealtime() - carLastSentAt)
         val send = Runnable {
             carPending = null
-            val latest = current?.line?.takeIf { carEnabled && bluetoothOutput && current?.trackId != null }
+            val latest = currentCarLyric()
             if (latest == carLastSent) return@Runnable
             carLastSent = latest
             carLastSentAt = SystemClock.elapsedRealtime()
@@ -334,21 +417,22 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
     // ---- overlay windows ----------------------------------------------------------------------
 
     private class OverlaySurface(private val ctx: Context, val kind: String) {
-        private val island = kind == "island"
         private val windowManager = ctx.getSystemService(WindowManager::class.java)
         private val primary = TextView(ctx)
         private val secondary = TextView(ctx)
-        private val heading = TextView(ctx)
+        private val toolbar = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
         private val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            addView(heading)
+            addView(toolbar)
             addView(primary)
             addView(secondary)
         }
         private val background = GradientDrawable()
         private var settings = JSONObject()
         private var attached = false
-        private var expanded = false
         private var lyric: SurfaceLyric? = null
         private val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -358,7 +442,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = (if (island) Gravity.TOP else Gravity.BOTTOM) or Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -367,14 +451,35 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
 
         init {
             root.background = background
-            for (view in listOf(primary, secondary, heading)) {
+            for (view in listOf(primary, secondary)) {
                 view.maxLines = 1
                 view.ellipsize = TextUtils.TruncateAt.END
                 view.setShadowLayer(dp(2f), 0f, 0f, 0x66000000)
             }
             primary.typeface = Typeface.DEFAULT_BOLD
-            heading.visibility = View.GONE
+            addTool(R.drawable.ic_lyrics_lock, R.string.floating_lyrics_lock) {
+                setInteraction(kind, "passive-locked") { result ->
+                    val message = if (result.isSuccess) R.string.floating_lyrics_locked
+                        else R.string.floating_lyrics_lock_failed
+                    Toast.makeText(ctx, message, Toast.LENGTH_LONG).show()
+                }
+            }
+            addTool(R.drawable.ic_lyrics_close, R.string.floating_lyrics_close, ::dismiss)
             installTouch()
+        }
+
+        private fun addTool(icon: Int, label: Int, action: () -> Unit) {
+            toolbar.addView(ImageButton(ctx).apply {
+                setImageResource(icon)
+                contentDescription = ctx.getString(label)
+                tooltipText = contentDescription
+                setPadding(dp(12f).roundToInt(), dp(12f).roundToInt(), dp(12f).roundToInt(), dp(12f).roundToInt())
+                background = GradientDrawable().apply {
+                    setColor(0xCC202020.toInt())
+                    cornerRadius = dp(24f)
+                }
+                setOnClickListener { action() }
+            }, LinearLayout.LayoutParams(dp(48f).roundToInt(), dp(48f).roundToInt()))
         }
 
         private fun dp(value: Float) = value * ctx.resources.displayMetrics.density
@@ -382,12 +487,14 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
         fun applyConfig(value: JSONObject) {
             settings = value
             val locked = value.optString("interaction") == "passive-locked"
-            params.flags = if (locked) {
-                params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-            } else {
-                params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-            }
-            val fontSize = value.optDouble("fontSize", if (island) 17.0 else 30.0).toFloat()
+            params.flags = floatingLyricsFlags(params.flags, locked)
+            // Android 12+ blocks touches through opaque, untrusted overlay windows.
+            val maximumOpacity = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                ctx.getSystemService(InputManager::class.java).maximumObscuringOpacityForTouch
+            } else 1f
+            params.alpha = floatingLyricsWindowAlpha(locked, maximumOpacity)
+            toolbar.visibility = if (locked) View.GONE else View.VISIBLE
+            val fontSize = value.optDouble("fontSize", 30.0).toFloat()
             val secondarySize = value.optDouble("secondaryFontSize", fontSize * 0.52).toFloat()
             // fontSize is the largest size; long lines shrink to fit instead of wrapping.
             primary.setAutoSizeTextTypeUniformWithConfiguration(
@@ -395,23 +502,21 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             )
             primary.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize)
             secondary.setTextSize(TypedValue.COMPLEX_UNIT_SP, secondarySize)
-            heading.setTextSize(TypedValue.COMPLEX_UNIT_SP, secondarySize)
             primary.setTextColor(parseColor(value.optString("primaryColor"), Color.WHITE))
             val secondaryColor = parseColor(value.optString("secondaryColor"), 0xFFC7CBC2.toInt())
             secondary.setTextColor(secondaryColor)
-            heading.setTextColor(secondaryColor)
             val gravity = when (value.optString("alignment")) {
                 "left" -> Gravity.START
                 "right" -> Gravity.END
                 else -> Gravity.CENTER_HORIZONTAL
             }
-            for (view in listOf(primary, secondary, heading)) view.gravity = gravity
-            val opacity = value.optDouble("backgroundOpacity", if (island) 82.0 else 0.0)
+            for (view in listOf(primary, secondary)) view.gravity = gravity
+            val opacity = value.optDouble("backgroundOpacity", 0.0)
                 .coerceIn(0.0, 100.0)
             background.setColor(Color.argb((opacity * 2.55).roundToInt(), 0, 0, 0))
-            background.cornerRadius = dp(if (island) 999f else 14f)
-            val padH = dp(if (island) 16f else 12f).roundToInt()
-            val padV = dp(if (island) 7f else 6f).roundToInt()
+            background.cornerRadius = dp(14f)
+            val padH = dp(12f).roundToInt()
+            val padV = dp(6f).roundToInt()
             root.setPadding(padH, padV, padH, padV)
             relayout()
             lyric?.let(::render)
@@ -425,7 +530,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
                 else -> 0.8f
             }
             val maxWidth = (metrics.widthPixels * fraction).roundToInt()
-            params.width = if (island && !expanded) WindowManager.LayoutParams.WRAP_CONTENT else maxWidth
+            params.width = maxWidth
             primary.maxWidth = maxWidth
             val dragged = prefs?.getInt("drag_$kind", Int.MIN_VALUE) ?: Int.MIN_VALUE
             val offset = if (dragged != Int.MIN_VALUE) dragged else
@@ -435,6 +540,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             params.x = dp(settings.optDouble("horizontalPosition", 0.0).toFloat()).roundToInt()
                 .coerceIn(-metrics.widthPixels / 2, metrics.widthPixels / 2)
             if (attached) runCatching { windowManager.updateViewLayout(root, params) }
+                .onFailure { detach() }
         }
 
         fun attach(): Boolean {
@@ -455,17 +561,13 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             lyric = value
             val line = value?.line ?: value?.title.orEmpty()
             primary.text = line
-            val double = settings.optString("lineMode", if (island) "single" else "double") == "double"
+            val double = settings.optString("lineMode", "double") == "double"
             val second = when {
-                island && expanded -> value?.nextLine
                 double -> value?.secondary ?: value?.nextLine
                 else -> null
             }
             secondary.text = second.orEmpty()
             secondary.visibility = if (second.isNullOrEmpty()) View.GONE else View.VISIBLE
-            heading.text = listOfNotNull(value?.title?.takeIf(String::isNotBlank), value?.artist?.takeIf(String::isNotBlank))
-                .joinToString(" · ")
-            heading.visibility = if (island && expanded) View.VISIBLE else View.GONE
             // A paused surface keeps its last line but dims it; it schedules no work.
             root.alpha = if (value?.playing == false) 0.6f else 1f
         }
@@ -476,14 +578,13 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
             var downY = 0f
             var startY = 0
             var dragging = false
-            var downAt = 0L
+            root.setOnClickListener { openApp() }
             root.setOnTouchListener { _, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         downY = event.rawY
                         startY = params.y
                         dragging = false
-                        downAt = event.eventTime
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -491,8 +592,8 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
                         if (!dragging && abs(dy) > slop) dragging = true
                         if (dragging) {
                             // Bottom-anchored windows grow upward.
-                            params.y = (startY + if (island) dy.roundToInt() else -dy.roundToInt())
-                                .coerceIn(0, ctx.resources.displayMetrics.heightPixels - root.height)
+                            params.y = (startY - dy.roundToInt())
+                                .coerceIn(0, (ctx.resources.displayMetrics.heightPixels - root.height).coerceAtLeast(0))
                             runCatching { windowManager.updateViewLayout(root, params) }
                         }
                         true
@@ -500,17 +601,11 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
                     MotionEvent.ACTION_UP -> {
                         when {
                             dragging -> prefs?.edit()?.putInt("drag_$kind", params.y)?.apply()
-                            event.eventTime - downAt >= ViewConfiguration.getLongPressTimeout() ->
-                                dismiss()
-                            island -> {
-                                expanded = !expanded
-                                relayout()
-                                render(lyric)
-                            }
-                            else -> openApp()
+                            else -> root.performClick()
                         }
                         true
                     }
+                    MotionEvent.ACTION_CANCEL -> { dragging = false; true }
                     else -> false
                 }
             }

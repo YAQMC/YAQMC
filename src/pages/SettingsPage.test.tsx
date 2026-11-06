@@ -25,6 +25,7 @@ const storageSettings = vi.hoisted(() => ({
   refresh: vi.fn(),
   clearCache: vi.fn(),
 }));
+const runtime = vi.hoisted(() => ({ android: false }));
 vi.mock('../application/storage-settings', () => ({ useStorageSettings: () => storageSettings }));
 
 vi.mock('../application/host-capabilities', () => {
@@ -42,7 +43,7 @@ vi.mock('../application/host-capabilities', () => {
   return {
     hostCapabilities: () => desktop,
     hasHostCapability: (capability: keyof typeof desktop) => Boolean(desktop[capability]),
-    isAndroidRuntime: () => false,
+    isAndroidRuntime: () => runtime.android,
     supportsLyricsSurfaces: () => true,
     supportsWindowControls: () => true,
   };
@@ -197,6 +198,7 @@ function mockProfileInvoke(result: unknown) {
 
 describe('SettingsPage account section', () => {
   beforeEach(async () => {
+    runtime.android = false;
     Object.assign(storageSettings, { cache: null, loading: false, clearing: false, error: null });
     resetAccountRuntimeForTest();
     usePreferencesStore.setState({
@@ -208,6 +210,35 @@ describe('SettingsPage account section', () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
+  });
+
+  it('disables system Fluid Cloud on Android even with an old enabled island preference', async () => {
+    runtime.android = true;
+    usePreferencesStore.setState({
+      surfaces: {
+        ...defaultPreferences.surfaces,
+        desktop: {
+          ...defaultPreferences.surfaces.desktop,
+          enabled: true,
+          interaction: 'passive-locked',
+        },
+        island: { ...defaultPreferences.surfaces.island, enabled: true },
+      },
+    });
+    mockProfileInvoke(null);
+    renderSettings(accountProvider().value);
+    const island = screen.getByRole('switch', {
+      name: 'Enable System island / Fluid Cloud',
+    });
+    expect(island).toBeDisabled();
+    expect(island).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Enable Floating lyrics' })).toBeChecked();
+    expect(
+      screen.getByText(/Touches pass through locked lyrics and the toolbar is hidden/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Unlock' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Plugin development' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Contribute an adapter' })).toBeEnabled();
   });
 
   it('renders host cache files including component entries and calls host maintenance actions', async () => {

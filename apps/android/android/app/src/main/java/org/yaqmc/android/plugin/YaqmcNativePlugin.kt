@@ -98,6 +98,13 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                         .put("json", JSONObject.quote(kind)),
                 )
             }
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.onInteractionChanged = { kind, interaction ->
+                notifyListeners(
+                    "coreEvent",
+                    JSObject().put("sequence", 0).put("channel", "lyrics://surface-interaction")
+                        .put("json", JSONObject().put("kind", kind).put("interaction", interaction).toString()),
+                )
+            }
         }
     }
 
@@ -143,6 +150,8 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         oauthAttempts.clear()
         CoreManager.removeCallback(this)
         bridge.executeOnMainThread {
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.onSurfaceClosed = null
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.onInteractionChanged = null
             lyricsOverlay?.destroy()
             lyricsOverlay = null
         }
@@ -177,30 +186,30 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                 }
             }
             "lyrics_surface_capabilities" -> {
-                val overlay = org.yaqmc.android.lyrics.AndroidLyricsSurfaces.canDrawOverlays(context)
-                call.resolve(
-                    JSObject().put(
-                        "value",
-                        JSObject()
-                            .put("desktop", true)
-                            .put("island", true)
-                            .put("platform", "android")
-                            .put("backend", if (overlay) "android-overlay" else "android-overlay-permission-required")
-                            .put("reliableAlwaysOnTop", overlay)
-                            .put("reliableClickThrough", true)
-                            .put("reliableGlobalPositioning", overlay),
-                    ),
-                )
+                bridge.executeOnMainThread {
+                    val overlay = org.yaqmc.android.lyrics.AndroidLyricsSurfaces.canDrawOverlays(context)
+                    call.resolve(
+                        JSObject().put(
+                            "value",
+                            JSObject()
+                                .put("desktop", true)
+                                .put("island", org.yaqmc.android.lyrics.AndroidLyricsSurfaces.systemIslandAvailable())
+                                .put("platform", "android")
+                                .put("backend", if (overlay) "android-overlay" else "android-overlay-permission-required")
+                                .put("reliableAlwaysOnTop", overlay)
+                                .put("reliableClickThrough", true)
+                                .put("reliableGlobalPositioning", overlay),
+                        ),
+                    )
+                }
             }
             "lyrics_surfaces_reconcile" -> {
                 bridge.executeOnMainThread {
                     val surfaces = params.optJSONObject("surfaces") ?: JSONObject()
                     val surfacesApi = org.yaqmc.android.lyrics.AndroidLyricsSurfaces
-                    val wasEnabled = listOf("desktop", "island").filter(surfacesApi::isEnabled)
+                    val wasEnabled = surfacesApi.isEnabled("desktop")
                     surfacesApi.reconcile(surfaces)
-                    val newlyEnabled = listOf("desktop", "island")
-                        .filter { surfacesApi.isEnabled(it) && it !in wasEnabled }
-                    if (newlyEnabled.isNotEmpty() && !surfacesApi.canDrawOverlays(context)) {
+                    if (!wasEnabled && surfacesApi.isEnabled("desktop") && !surfacesApi.canDrawOverlays(context)) {
                         // Ask once per enable; the toggle stays on and the surface appears as soon
                         // as the user grants "display over other apps" and returns.
                         runCatching { context.startActivity(surfacesApi.overlayPermissionIntent(context)) }
@@ -209,22 +218,39 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                 }
             }
             "lyrics_surface_status" -> {
-                val surfacesApi = org.yaqmc.android.lyrics.AndroidLyricsSurfaces
-                call.resolve(
-                    JSObject().put(
-                        "value",
-                        JSObject()
-                            .put("desktop", surfacesApi.isEnabled("desktop"))
-                            .put("island", surfacesApi.isEnabled("island"))
-                            .put("overlayPermission", surfacesApi.canDrawOverlays(context)),
-                    ),
-                )
+                bridge.executeOnMainThread {
+                    val surfacesApi = org.yaqmc.android.lyrics.AndroidLyricsSurfaces
+                    call.resolve(
+                        JSObject().put(
+                            "value",
+                            JSObject()
+                                .put("desktop", surfacesApi.isEnabled("desktop"))
+                                .put("island", surfacesApi.isEnabled("island"))
+                                .put("overlayPermission", surfacesApi.canDrawOverlays(context)),
+                        ),
+                    )
+                }
             }
             "lyrics_surface_set_interaction" -> {
-                // The WebView already wrote the interaction into this document; reconcile applies it.
-                call.resolve(JSObject().put("value", params.optString("value", "{}")))
+                bridge.executeOnMainThread {
+                    org.yaqmc.android.lyrics.AndroidLyricsSurfaces.setInteraction(
+                        params.optString("kind"), params.optString("interaction"), params.optString("value", "{}"),
+                    ) { result ->
+                        result.onSuccess { call.resolve(JSObject().put("value", it)) }
+                            .onFailure { call.reject(it.message ?: "Could not save lyrics interaction", "core.command_error") }
+                    }
+                }
             }
-            "lyrics_surfaces_unlock_all" -> call.resolve(JSObject().put("value", 0))
+            "lyrics_surfaces_unlock_all" -> {
+                bridge.executeOnMainThread {
+                    val surfacesApi = org.yaqmc.android.lyrics.AndroidLyricsSurfaces
+                    val count = if (surfacesApi.isLocked()) 1 else 0
+                    surfacesApi.setInteraction("desktop", "interactive") { result ->
+                        result.onSuccess { call.resolve(JSObject().put("value", count)) }
+                            .onFailure { call.reject(it.message ?: "Could not unlock lyrics", "core.command_error") }
+                    }
+                }
+            }
             "lyrics_surface_reset_position" -> {
                 bridge.executeOnMainThread {
                     org.yaqmc.android.lyrics.AndroidLyricsSurfaces.resetPosition(params.optString("kind"))

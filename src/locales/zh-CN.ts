@@ -890,10 +890,15 @@ export const zhCN = {
       islandDescription: '位于屏幕顶部中央的紧凑歌词与播放界面。',
       androidFloating: '悬浮歌词',
       androidFloatingDescription:
-        'YAQMC 在后台时显示在其他应用上方的歌词条，需要“显示在其他应用的上层”权限。拖动可移动，轻点打开 YAQMC，长按关闭。',
-      androidIsland: '岛式歌词',
+        'YAQMC 在后台时显示在其他应用上方的歌词条，需要“显示在其他应用的上层”权限。拖动可移动，轻点歌词打开 YAQMC，工具栏可锁定或关闭。',
+      androidIsland: '系统灵动岛／流体云',
       androidIslandDescription:
-        '由 YAQMC 自行绘制在顶部的紧凑胶囊，并非系统或厂商的灵动岛/流体云。轻点展开，长按关闭。',
+        '当前版本未内置兼容的系统歌词插件，暂不可用，已移除之前的悬浮胶囊。开发者可贡献针对手机系统的适配插件。',
+      androidIslandReadyDescription: '已有可用的系统歌词插件，实际展示由手机系统与厂商授权决定。',
+      androidPluginGuide: '插件开发',
+      androidPluginContribute: '贡献适配',
+      androidLinkError: '无法打开链接，请重试。',
+      androidUnlockHint: '锁定后触摸会穿透歌词，工具栏隐藏。请在这里解锁，以恢复拖动和关闭操作。',
       carBluetooth: '车载蓝牙歌词（兼容模式）',
       carBluetoothDescription:
         '蓝牙（AVRCP）没有歌词字段。连接蓝牙音频设备时，当前歌词行会替换曲目标题（歌名与歌手移到歌手字段），锁屏等所有媒体显示都会受影响。每秒最多更新一次；关闭后立即恢复正常标题。',

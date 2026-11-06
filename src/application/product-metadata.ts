@@ -2,6 +2,9 @@ import packageMetadata from '../../package.json';
 import type { PlatformDiagnostics } from './platform-integration';
 import type { ProviderStatus } from './provider-settings';
 
+const embeddedCommit = __YAQMC_BUILD_COMMIT__.toLowerCase();
+const sourceRevision = /^[0-9a-f]{40}$/u.test(embeddedCommit) ? embeddedCommit : 'main';
+
 export const productMetadata = {
   name: 'YAQMC',
   longName: 'Yet Another QMusicClient',
@@ -12,6 +15,9 @@ export const productMetadata = {
     releases: 'https://github.com/YAQMC/YAQMC/releases',
     issues: 'https://github.com/YAQMC/YAQMC/issues/new/choose',
     documentation: 'https://github.com/YAQMC/YAQMC/tree/main/docs',
+    androidLyricsPlugins: `https://github.com/YAQMC/YAQMC/blob/${sourceRevision}/docs/android.md#system-lyrics-plugins`,
+    androidLyricsContribution:
+      'https://github.com/YAQMC/YAQMC/issues/new?title=Android%20system%20lyrics%20adapter&body=Device%20and%20OS%3A%0AOfficial%20API%20documentation%3A%0ARequired%20authorization%3A%0ATest%20evidence%3A%0AImplementation%20or%20PR%3A',
     community: 'https://discord.gg/HJbqa3Rdn9',
     acknowledgements: 'https://github.com/YAQMC/YAQMC/blob/main/ACKNOWLEDGEMENTS.md',
     thirdPartyNotices: 'https://github.com/YAQMC/YAQMC/blob/main/THIRD_PARTY_NOTICES.md',
@@ -19,8 +25,6 @@ export const productMetadata = {
 } as const;
 
 export type ProductLink = keyof typeof productMetadata.links;
-
-const embeddedCommit = __YAQMC_BUILD_COMMIT__.toLowerCase();
 
 export const buildMetadata = {
   commit: /^[0-9a-f]{7,40}$/u.test(embeddedCommit) ? embeddedCommit.slice(0, 12) : 'unknown',

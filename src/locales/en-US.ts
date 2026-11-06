@@ -909,10 +909,17 @@ export const enUS = {
       islandDescription: 'A compact top-center lyric and playback surface.',
       androidFloating: 'Floating lyrics',
       androidFloatingDescription:
-        'A lyric bar over other apps while YAQMC is in the background. Needs “Display over other apps”. Drag to move, tap to open YAQMC, long-press to close.',
-      androidIsland: 'Island-style lyrics',
+        'A lyric bar over other apps while YAQMC is in the background. Needs “Display over other apps”. Drag to move, tap the lyrics to open YAQMC; the toolbar locks or closes it.',
+      androidIsland: 'System island / Fluid Cloud',
       androidIslandDescription:
-        'A compact pill near the top drawn by YAQMC itself, not a system or vendor island. Tap to expand, long-press to close.',
+        'No compatible system lyrics plugin is bundled in this build. The previous floating pill has been removed. Developers can contribute an adapter for your phone’s system.',
+      androidIslandReadyDescription:
+        'An available system lyrics plugin handles this feature. Display behavior depends on the phone’s system and vendor authorization.',
+      androidPluginGuide: 'Plugin development',
+      androidPluginContribute: 'Contribute an adapter',
+      androidLinkError: 'Could not open the link. Please try again.',
+      androidUnlockHint:
+        'Touches pass through locked lyrics and the toolbar is hidden. Unlock here to move or close the lyrics again.',
       carBluetooth: 'Car Bluetooth lyrics (compatibility)',
       carBluetoothDescription:
         'Bluetooth (AVRCP) has no lyric field. While a Bluetooth audio device is connected, the current line replaces the track title (song and artist move to the artist field) for every media display, including the lock screen. At most one update per second; off restores normal titles immediately.',

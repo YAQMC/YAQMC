@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <!-- Opt-in floating / island-style lyrics over other apps; requested only when enabled. -->
+    <!-- Opt-in floating lyrics over other apps; requested only when enabled. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application

@@ -420,7 +420,7 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
   const [interactionPending, setInteractionPending] = useState(false);
   const [interactionError, setInteractionError] = useState(false);
   const update = (patch: Partial<LyricSurfaceSettings>) => updateSurface(kind, patch);
-  // Android draws these as overlay windows: say what they are, not desktop window names.
+  // Android floating lyrics and system Fluid Cloud are separate capabilities.
   const android = isAndroidRuntime();
   const name = android
     ? kind === 'desktop'
@@ -448,6 +448,45 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
       setInteractionPending(false);
     }
   };
+  if (android && kind === 'island') {
+    const openLink = (link: ProductLink) => {
+      setInteractionError(false);
+      void openProductLink(link).catch(() => setInteractionError(true));
+    };
+    return (
+      <div className="settings-surface">
+        <div className="settings-surface__header">
+          <div>
+            <strong>{name}</strong>
+            <span>{supported ? t('androidIslandReadyDescription') : description}</span>
+          </div>
+          <Toggle
+            label={t('enable', { name })}
+            checked={supported && settings.enabled}
+            disabled={!supported}
+            onChange={(enabled) => update({ enabled })}
+          />
+        </div>
+        <div className="settings-about__links">
+          <button
+            type="button"
+            className="button button--quiet"
+            onClick={() => openLink('androidLyricsPlugins')}
+          >
+            {t('androidPluginGuide')} <ExternalLink size={13} />
+          </button>
+          <button
+            type="button"
+            className="button button--quiet"
+            onClick={() => openLink('androidLyricsContribution')}
+          >
+            {t('androidPluginContribute')} <ExternalLink size={13} />
+          </button>
+        </div>
+        {interactionError && <p role="alert">{t('androidLinkError')}</p>}
+      </div>
+    );
+  }
   const lineOptions: readonly SelectOption<LyricSurfaceSettings['lineMode']>[] = [
     { value: 'single', label: t('lineModeSingle') },
     { value: 'double', label: t('lineModeDouble') },
@@ -482,13 +521,13 @@ function SurfaceSettingsPanel({ kind, supported }: { kind: SurfaceKind; supporte
           onChange={(enabled) => update({ enabled })}
         />
       </div>
-      <SurfacePreview kind={kind} />
+      {supported && <SurfacePreview kind={kind} />}
       {settings.enabled && supported && locked && (
         <div className="settings-surface__lock-recovery" role="status">
           <LockKeyhole size={18} />
           <span>
             <strong>{t('lockedState', { name })}</strong>
-            <small>{t('unlockHint')}</small>
+            <small>{t(android ? 'androidUnlockHint' : 'unlockHint')}</small>
           </span>
           <button
             type="button"
@@ -1126,6 +1165,7 @@ export function SettingsPage() {
   };
   const lockedSurfaceKinds = (['desktop', 'island'] as const).filter(
     (kind) =>
+      (!isAndroidRuntime() || kind === 'desktop') &&
       preferences.surfaces[kind].enabled &&
       preferences.surfaces[kind].interaction === 'passive-locked',
   );
@@ -1825,7 +1865,7 @@ export function SettingsPage() {
             />
             <SurfaceSettingsPanel
               kind="island"
-              supported={host.lyricsSurfaces && (capabilities?.island ?? true)}
+              supported={host.lyricsSurfaces && (capabilities?.island ?? !android)}
             />
           </div>
           {android && (
