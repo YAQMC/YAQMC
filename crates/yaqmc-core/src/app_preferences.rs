@@ -97,6 +97,48 @@ pub fn set_surface_interaction<R: PreferencesRepository, S: PreferencesChangeSin
     Ok(stored)
 }
 
+pub fn set_surface_enabled<R: PreferencesRepository, S: PreferencesChangeSink>(
+    repository: &R,
+    sink: &S,
+    kind: &str,
+    enabled: bool,
+    fallback: String,
+) -> Result<String, String> {
+    validate_preferences(&fallback)?;
+    if !matches!(kind, "desktop" | "island") {
+        return Err("unknown lyric surface".to_owned());
+    }
+    let patch = |value: &str| -> Result<String, String> {
+        let next = patch_surface_field(value, kind, "enabled", enabled.into())?;
+        validate_preferences(&next)?;
+        Ok(next)
+    };
+    let fallback = patch(&fallback)?;
+    let mut patch_error = None;
+    let stored = repository.update_preferences(|current| {
+        let Some(current) = current else {
+            return fallback.clone();
+        };
+        let result = if document_version(&current) == Some(2) {
+            patch(&current)
+        } else {
+            Err("stored preferences require frontend migration".to_owned())
+        };
+        match result {
+            Ok(next) => next,
+            Err(error) => {
+                patch_error = Some(error);
+                current
+            }
+        }
+    })?;
+    if let Some(error) = patch_error {
+        return Err(error);
+    }
+    sink.preferences_changed(&stored);
+    Ok(stored)
+}
+
 fn preserve_surface_interactions(current: Option<&str>, incoming: &str) -> String {
     let Some(current) = current.filter(|value| document_version(value) == Some(2)) else {
         return incoming.to_owned();
@@ -131,6 +173,15 @@ pub fn surface_interaction(value: &str, kind: &str) -> Option<String> {
 }
 
 fn patch_surface_interaction(value: &str, kind: &str, interaction: &str) -> Result<String, String> {
+    patch_surface_field(value, kind, "interaction", interaction.into())
+}
+
+fn patch_surface_field(
+    value: &str,
+    kind: &str,
+    field: &str,
+    next: serde_json::Value,
+) -> Result<String, String> {
     let mut document: serde_json::Value = serde_json::from_str(value)
         .map_err(|_| "preference document is not valid JSON".to_owned())?;
     let object = document
@@ -147,12 +198,11 @@ fn patch_surface_interaction(value: &str, kind: &str, interaction: &str) -> Resu
         .or_insert_with(|| serde_json::json!({}))
         .as_object_mut()
         .ok_or_else(|| "lyric surface preferences must be an object".to_owned())?;
-    surface.insert(
-        "interaction".to_owned(),
-        serde_json::Value::String(interaction.to_owned()),
-    );
-    surface.remove("locked");
-    surface.remove("clickThrough");
+    surface.insert(field.to_owned(), next);
+    if field == "interaction" {
+        surface.remove("locked");
+        surface.remove("clickThrough");
+    }
     serde_json::to_string(&document)
         .map_err(|_| "preference document could not be saved".to_owned())
 }

@@ -2674,6 +2674,18 @@
   },
   {
     "allowedOrigins": [
+      "host"
+    ],
+    "mainWindowOnly": false,
+    "name": "app_preferences_set_surface_enabled",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
       "main"
     ],
     "mainWindowOnly": true,

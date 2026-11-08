@@ -25,6 +25,7 @@ use yaqmc_provider_api::{
 };
 
 use super::ops;
+use super::types::SurfaceEnabledParams;
 use super::types::{
     ArtistCatalogParams, AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams,
     DiagnosticsExportToParams, EnabledParams, EncAreaParams, EntryIdParams, FrontendLogParams,
@@ -225,6 +226,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "app_settings_set",
     "app_settings_remove",
     "app_preferences_set_surface_interaction",
+    "app_preferences_set_surface_enabled",
     "diagnostics_export_bundle_to",
     "statistics_export_to",
     "preferences_set_background_from",
@@ -1658,6 +1660,20 @@ async fn invoke_core(
                 &core.storage(),
                 &kind,
                 &interaction,
+                value,
+                |stored| host.notify_preferences_changed(stored),
+            ))
+        }
+        "app_preferences_set_surface_enabled" => {
+            let SurfaceEnabledParams {
+                kind,
+                enabled,
+                value,
+            } = parse(&params)?;
+            cmd(ops::app_preferences_set_surface_enabled(
+                &core.storage(),
+                &kind,
+                enabled,
                 value,
                 |stored| host.notify_preferences_changed(stored),
             ))

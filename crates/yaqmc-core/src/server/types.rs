@@ -601,3 +601,10 @@ pub struct SurfaceInteractionParams {
     pub interaction: String,
     pub value: String,
 }
+
+#[derive(Deserialize)]
+pub struct SurfaceEnabledParams {
+    pub kind: String,
+    pub enabled: bool,
+    pub value: String,
+}

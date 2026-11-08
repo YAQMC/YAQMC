@@ -308,6 +308,7 @@ export const PROTOCOL_ONLY_METHODS = [
   'app_settings_set',
   'app_settings_remove',
   'app_preferences_set_surface_interaction',
+  'app_preferences_set_surface_enabled',
   'diagnostics_export_bundle_to',
   'statistics_export_to',
   'preferences_set_background_from',
@@ -644,6 +645,11 @@ export type MethodParams = Exhaustive<{
     interaction: 'interactive' | 'passive-locked';
     value: string;
   };
+  app_preferences_set_surface_enabled: {
+    kind: 'desktop' | 'island';
+    enabled: boolean;
+    value: string;
+  };
   app_settings_remove: { key: string };
   diagnostics_export_bundle_to: { path: string; request: DiagnosticsBundleRequest };
   statistics_export_to: NamedRequest<StatisticsExportRequest>;
@@ -856,6 +862,7 @@ export type MethodResult = Exhaustive<{
   app_settings_get: string | null;
   app_settings_set: void;
   app_preferences_set_surface_interaction: string;
+  app_preferences_set_surface_enabled: string;
   app_settings_remove: void;
   diagnostics_export_bundle_to: BundleExportResult;
   statistics_export_to: StatisticsExportResult;
