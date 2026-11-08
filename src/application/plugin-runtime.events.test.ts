@@ -174,11 +174,28 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     let enabled = true;
     let safeMode = false;
     let serial = 0;
-    URL.createObjectURL = vi.fn(() => `blob:resource-${++serial}`);
+    URL.createObjectURL = vi.fn((blob: Blob) =>
+      blob.type === 'text/javascript' ? 'blob:worker' : `blob:resource-${++serial}`,
+    );
     URL.revokeObjectURL = vi.fn();
     const disabled = deferred<undefined>();
     invokeMock.mockImplementation((method: string) => {
-      if (method === 'plugin_active_resources') return Promise.resolve(emptyResources(safeMode));
+      if (method === 'plugin_active_resources')
+        return Promise.resolve({
+          ...emptyResources(safeMode),
+          scripts:
+            enabled && !safeMode
+              ? [
+                  {
+                    pluginId: GRANTED,
+                    pluginName: GRANTED,
+                    source: 'definePlugin({});',
+                    packageSha256: version,
+                  },
+                ]
+              : [],
+        });
+      if (method === 'plugin_runtime_start') return Promise.resolve('runtime-token');
       if (method === 'plugin_list')
         return Promise.resolve([
           {
@@ -202,6 +219,10 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     await applyPluginResources();
     const first = await resolveSceneAssetUrl(asset, GRANTED);
     expect(first).toBe('blob:resource-1');
+    const workerCount = FakeWorker.instances.length;
+    await applyPluginResources();
+    expect(await resolveSceneAssetUrl(asset, GRANTED)).toBe(first);
+    expect(FakeWorker.instances).toHaveLength(workerCount);
     version = '2';
     await applyPluginResources();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(first);
@@ -220,6 +241,51 @@ describe('PLUG-07 plugin event fan-out permissions', () => {
     await applyPluginResources();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(third);
     expect(await resolveSceneAssetUrl(asset, GRANTED)).toBeNull();
+  });
+
+  it('does not authorize assets from a worker startup superseded by disable', async () => {
+    let enabled = true;
+    const startup = deferred<string>();
+    invokeMock.mockImplementation((method: string) => {
+      if (method === 'plugin_active_resources')
+        return Promise.resolve({
+          ...emptyResources(),
+          scripts: enabled
+            ? [
+                {
+                  pluginId: GRANTED,
+                  pluginName: GRANTED,
+                  source: 'definePlugin({ race: true });',
+                  packageSha256: 'race',
+                },
+              ]
+            : [],
+        });
+      if (method === 'plugin_list')
+        return Promise.resolve([
+          {
+            id: GRANTED,
+            version: '1',
+            packageSha256: 'race',
+            enabled,
+            status: enabled ? 'active' : 'disabled',
+            grantedPermissions: [],
+          },
+        ]);
+      if (method === 'plugin_runtime_start') return startup.promise;
+      if (method === 'plugin_set_enabled') enabled = false;
+      return Promise.resolve(undefined);
+    });
+    const refresh = applyPluginResources();
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('plugin_runtime_start', { pluginId: GRANTED }),
+    );
+    const disabling = setPluginEnabled(GRANTED, false);
+    startup.resolve('stale-token');
+    await Promise.all([refresh, disabling]);
+    expect(await resolveSceneAssetUrl({ kind: 'plugin', path: 'cover.png' }, GRANTED)).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith('plugin_read_asset', expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith('plugin_runtime_stop', { token: 'stale-token' });
   });
 
   it('loads declarative badges without workers and clears them in safe mode', async () => {

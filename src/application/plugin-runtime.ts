@@ -1247,20 +1247,6 @@ async function applyPluginResourcesSnapshot(
   const records = resources.safeMode ? [] : await pluginRecordsForResources();
   if (generation !== resourceGeneration) return null;
   const grants = new Map(records.map((record) => [record.id, [...record.grantedPermissions]]));
-  syncPluginAssetAccess(
-    new Map(
-      records
-        .filter(
-          (record) =>
-            record.enabled && record.status === 'active' && !quiescingPlugins.has(record.id),
-        )
-        .map((record) => [
-          record.id,
-          `${record.packageSha256}:${record.version}:${record.grantedPermissions.join(',')}`,
-        ]),
-    ),
-  );
-
   const transports = collectPluginTransports(scenes, grants);
   setPluginTransportCatalog(transports);
   const preferences = usePreferencesStore.getState();
@@ -1283,6 +1269,20 @@ async function applyPluginResourcesSnapshot(
     runtimeGeneration,
   );
   if (generation !== resourceGeneration) return null;
+  // Worker replacement retires assets; authorize only after it finishes for this snapshot.
+  syncPluginAssetAccess(
+    new Map(
+      records
+        .filter(
+          (record) =>
+            record.enabled && record.status === 'active' && !quiescingPlugins.has(record.id),
+        )
+        .map((record) => [
+          record.id,
+          `${record.packageSha256}:${record.version}:${record.grantedPermissions.join(',')}`,
+        ]),
+    ),
+  );
   if (resources.safeMode) resetSceneBehavior();
   replacePluginSongBadges(
     resources.safeMode
