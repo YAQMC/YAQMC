@@ -15,6 +15,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/ci/verify-release-bundle.mjs --renderer dist",
     "preview": "vite preview",
+    "postinstall": "node scripts/patch-dependencies.mjs",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "node scripts/run-vitest.mjs run",

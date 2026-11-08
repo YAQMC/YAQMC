@@ -27,6 +27,10 @@ The source delivery must include:
   `fd7ec2d597daa2a66a37ca5f3214d6757ec17cfa` (`core-bundle@0.5.2`) and is licensed
   `AGPL-3.0-only`.
 
+The installed AMLL core includes the local change in `scripts/patch-dependencies.mjs`.
+Include that script and its `package.json` installation hook alongside the pinned upstream source;
+an unmodified upstream archive alone does not reproduce the shipped lyric renderer.
+
 Include each dependency's license files, manifests, lockfiles, and build scripts, together with YAQMC's manifests,
 lockfiles, and build/packaging/release scripts. The release notes or source manifest must identify the YAQMC commit,
 the `qm-api-rs` revision, the AMLL version and source revision, the applicable licenses,
