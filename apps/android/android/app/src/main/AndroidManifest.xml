@@ -3,6 +3,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Opt-in floating lyrics over other apps; requested only when enabled. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Optional notification action to unlock floating lyrics without opening the app. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".YaqmcApplication"
@@ -37,6 +41,9 @@
                 <data android:scheme="yaqmc" android:host="catalog" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name=".lyrics.FloatingLyricsUnlockReceiver"
+            android:exported="false" />
         <service
             android:name=".media.PlaybackService"
             android:exported="true"

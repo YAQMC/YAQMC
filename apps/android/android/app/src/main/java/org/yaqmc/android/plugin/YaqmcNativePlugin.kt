@@ -85,9 +85,28 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             CoreManager.addCallback(this)
         }
         deepLinkSubscription = DeepLinkInbox.subscribe(::publishDeepLink)
+        // A process killed between picking and review must not leave package copies behind.
+        thread(name = "yaqmc-plugin-import-cleanup") { runCatching { pluginStaging().clear() } }
         checkForUpdates(call = null, automatic = true)
         bridge.executeOnMainThread {
             getOrCreateLyricsOverlay()
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.init(context)
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.onSurfaceClosed = { kind ->
+                notifyListeners(
+                    "coreEvent",
+                    JSObject()
+                        .put("sequence", 0)
+                        .put("channel", "lyrics://surface-closed")
+                        .put("json", JSONObject.quote(kind)),
+                )
+            }
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.onInteractionChanged = { kind, interaction ->
+                notifyListeners(
+                    "coreEvent",
+                    JSObject().put("sequence", 0).put("channel", "lyrics://surface-interaction")
+                        .put("json", JSONObject().put("kind", kind).put("interaction", interaction).toString()),
+                )
+            }
         }
     }
 
@@ -95,14 +114,33 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         lyricsOverlay?.let { return it }
         val webView = bridge.webView ?: return null
         val container = webView.parent as? android.view.ViewGroup ?: return null
-        val overlay = org.yaqmc.android.lyrics.NativeLyricsOverlay(activity, container)
+        val overlay = org.yaqmc.android.lyrics.NativeLyricsOverlay(activity, container) {
+            bridge.webView?.settings?.textZoom ?: 100
+        }
         overlay.onSeekListener = { pos ->
             bridge.executeOnMainThread {
                 notifyListeners("lyricsSeek", JSObject().put("positionMs", pos))
             }
         }
+        overlay.onAnimatingChanged = { active ->
+            (activity as? org.yaqmc.android.MainActivity)?.setAnimatedSurfaceActive(active)
+        }
         lyricsOverlay = overlay
         return overlay
+    }
+
+    override fun handleOnStart() {
+        super.handleOnStart()
+        lyricsOverlay?.setHostStarted(true)
+        // In-app lyrics replace the floating surfaces; this also re-checks a just-granted
+        // overlay permission on return from system settings.
+        org.yaqmc.android.lyrics.AndroidLyricsSurfaces.setAppForeground(true)
+    }
+
+    override fun handleOnStop() {
+        lyricsOverlay?.setHostStarted(false)
+        org.yaqmc.android.lyrics.AndroidLyricsSurfaces.setAppForeground(false)
+        super.handleOnStop()
     }
 
     override fun handleOnDestroy() {
@@ -114,6 +152,8 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
         oauthAttempts.clear()
         CoreManager.removeCallback(this)
         bridge.executeOnMainThread {
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.onSurfaceClosed = null
+            org.yaqmc.android.lyrics.AndroidLyricsSurfaces.onInteractionChanged = null
             lyricsOverlay?.destroy()
             lyricsOverlay = null
         }
@@ -145,6 +185,88 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
                     val options = params.optJSONObject("options")
                     getOrCreateLyricsOverlay()?.update(bounds, lines, options)
                     call.resolve(JSObject().put("value", true))
+                }
+            }
+            "lyrics_surface_capabilities" -> {
+                bridge.executeOnMainThread {
+                    val overlay = org.yaqmc.android.lyrics.AndroidLyricsSurfaces.canDrawOverlays(context)
+                    call.resolve(
+                        JSObject().put(
+                            "value",
+                            JSObject()
+                                .put("desktop", true)
+                                .put("island", org.yaqmc.android.lyrics.AndroidLyricsSurfaces.systemIslandAvailable())
+                                .put("platform", "android")
+                                .put("backend", if (overlay) "android-overlay" else "android-overlay-permission-required")
+                                .put("reliableAlwaysOnTop", overlay)
+                                .put("reliableClickThrough", true)
+                                .put("reliableGlobalPositioning", overlay),
+                        ),
+                    )
+                }
+            }
+            "lyrics_surfaces_reconcile" -> {
+                bridge.executeOnMainThread {
+                    val surfaces = params.optJSONObject("surfaces") ?: JSONObject()
+                    val surfacesApi = org.yaqmc.android.lyrics.AndroidLyricsSurfaces
+                    val wasEnabled = surfacesApi.isEnabled("desktop")
+                    surfacesApi.reconcile(surfaces)
+                    if (!wasEnabled && surfacesApi.isEnabled("desktop") && !surfacesApi.canDrawOverlays(context)) {
+                        // Ask once per enable; the toggle stays on and the surface appears as soon
+                        // as the user grants "display over other apps" and returns.
+                        runCatching { context.startActivity(surfacesApi.overlayPermissionIntent(context)) }
+                    } else if (!wasEnabled && surfacesApi.isEnabled("desktop")) {
+                        (activity as? org.yaqmc.android.MainActivity)?.requestFloatingLyricsNotifications()
+                    }
+                    call.resolve(JSObject().put("value", JSONObject.NULL))
+                }
+            }
+            "lyrics_surface_status" -> {
+                bridge.executeOnMainThread {
+                    val surfacesApi = org.yaqmc.android.lyrics.AndroidLyricsSurfaces
+                    call.resolve(
+                        JSObject().put(
+                            "value",
+                            JSObject()
+                                .put("desktop", surfacesApi.isEnabled("desktop"))
+                                .put("island", surfacesApi.isEnabled("island"))
+                                .put("overlayPermission", surfacesApi.canDrawOverlays(context)),
+                        ),
+                    )
+                }
+            }
+            "lyrics_surface_set_interaction" -> {
+                bridge.executeOnMainThread {
+                    org.yaqmc.android.lyrics.AndroidLyricsSurfaces.setInteraction(
+                        params.optString("kind"), params.optString("interaction"), params.optString("value", "{}"),
+                    ) { result ->
+                        result.onSuccess { call.resolve(JSObject().put("value", it)) }
+                            .onFailure { call.reject(it.message ?: "Could not save lyrics interaction", "core.command_error") }
+                    }
+                }
+            }
+            "lyrics_surfaces_unlock_all" -> {
+                bridge.executeOnMainThread {
+                    val surfacesApi = org.yaqmc.android.lyrics.AndroidLyricsSurfaces
+                    val count = if (surfacesApi.isLocked()) 1 else 0
+                    surfacesApi.setInteraction("desktop", "interactive") { result ->
+                        result.onSuccess { call.resolve(JSObject().put("value", count)) }
+                            .onFailure { call.reject(it.message ?: "Could not unlock lyrics", "core.command_error") }
+                    }
+                }
+            }
+            "lyrics_surface_reset_position" -> {
+                bridge.executeOnMainThread {
+                    org.yaqmc.android.lyrics.AndroidLyricsSurfaces.resetPosition(params.optString("kind"))
+                    call.resolve(JSObject().put("value", JSONObject.NULL))
+                }
+            }
+            "android_car_bluetooth_lyrics" -> {
+                bridge.executeOnMainThread {
+                    org.yaqmc.android.lyrics.AndroidLyricsSurfaces.setCarBluetoothLyrics(
+                        params.optBoolean("enabled", false),
+                    )
+                    call.resolve(JSObject().put("value", JSONObject.NULL))
                 }
             }
             "lyrics_hide" -> {
@@ -280,6 +402,44 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             call.reject("unable to open the system photo picker", "android.photo_picker_failed", it.asException())
         }
     }
+
+    /** System document picker (SAF); no storage permission and no renderer-supplied paths. */
+    @PluginMethod
+    fun pickPluginPackage(call: PluginCall) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            // `.yaqmc-plugin` has no registered MIME type; Core validates the package itself.
+            .setType("*/*")
+        runCatching {
+            startActivityForResult(call, intent, "pluginPackageResult")
+        }.onFailure {
+            call.reject("unable to open the system document picker", "android.document_picker_failed", it.asException())
+        }
+    }
+
+    @ActivityCallback
+    private fun pluginPackageResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null) {
+            call.resolve(JSObject().put("path", JSONObject.NULL))
+            return
+        }
+        // ContentResolver reads may block on remote providers; never on the UI thread.
+        thread(name = "yaqmc-plugin-import") {
+            runCatching { pluginStaging().stage { context.contentResolver.openInputStream(uri) } }
+                .onSuccess { file ->
+                    bridge.executeOnMainThread { call.resolve(JSObject().put("path", file.absolutePath)) }
+                }
+                .onFailure {
+                    bridge.executeOnMainThread {
+                        call.reject("selected plugin package could not be imported", "android.plugin_import_failed", it.asException())
+                    }
+                }
+        }
+    }
+
+    private fun pluginStaging() = PluginPackageStaging(File(context.cacheDir, "plugin-imports"))
 
     @ActivityCallback
     private fun backgroundImageResult(call: PluginCall?, result: ActivityResult) {

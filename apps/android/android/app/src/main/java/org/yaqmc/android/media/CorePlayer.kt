@@ -42,6 +42,8 @@ class CorePlayer(
     @Volatile private var systemPause = false
     private var resourcesHeld = false
     private val handler = Handler(looper)
+    /** Opt-in car Bluetooth lyric line; replaces the current item's title only while set. */
+    @Volatile private var carLyricLine: CarLyric? = null
 
     init {
         CoreManager.addCallback(this)
@@ -70,7 +72,7 @@ class CorePlayer(
                     Player.COMMAND_SET_VOLUME,
                 ).build(),
             )
-            .setPlaylist(currentPlaylist)
+            .setPlaylist(withCarLyric(currentPlaylist, normalizedIndex, carLyricLine))
             .setPlaybackState(projection.phase.toMedia3State())
             .setPlayWhenReady(projection.playWhenReady, playWhenReadyReason)
             .setIsLoading(projection.loading)
@@ -169,6 +171,13 @@ class CorePlayer(
 
     fun close() {
         CoreManager.removeCallback(this)
+    }
+
+    /** Called on the main looper by [org.yaqmc.android.lyrics.AndroidLyricsSurfaces]. */
+    fun setCarLyricLine(line: CarLyric?) {
+        if (carLyricLine == line) return
+        carLyricLine = line
+        invalidateState()
     }
 
     override fun onCoreResponse(id: Long, json: String) = Unit

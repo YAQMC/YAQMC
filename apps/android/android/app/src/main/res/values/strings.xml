@@ -1,4 +1,14 @@
 <resources>
+    <string name="floating_lyrics_lock">Lock lyrics and pass touches through</string>
+    <string name="floating_lyrics_close">Close floating lyrics</string>
+    <string name="floating_lyrics_locked">Lyrics locked. Tap Unlock in the notification, or unlock in YAQMC Settings → Floating lyrics.</string>
+    <string name="floating_lyrics_locked_without_notification">Lyrics locked. Notifications are disabled; unlock in YAQMC Settings → Floating lyrics.</string>
+    <string name="floating_lyrics_notification_channel">Floating lyrics controls</string>
+    <string name="floating_lyrics_notification_title">Floating lyrics locked</string>
+    <string name="floating_lyrics_notification_text">Touches pass through. Tap to unlock and move lyrics.</string>
+    <string name="floating_lyrics_unlock">Unlock lyrics</string>
+    <string name="floating_lyrics_unlock_failed">Could not unlock lyrics. Try again or unlock in YAQMC Settings.</string>
+    <string name="floating_lyrics_lock_failed">Could not save the lock. Previous touch mode restored.</string>
     <string name="app_name">YAQMC</string>
     <string name="oauth_title">Sign in to QQ Music</string>
     <string name="oauth_back">Go back</string>

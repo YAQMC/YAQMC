@@ -1,11 +1,17 @@
 package org.yaqmc.android
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.Display
 import android.view.View
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.MainThread
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -17,18 +23,24 @@ import org.yaqmc.android.core.CoreManager
 import org.yaqmc.android.core.DeepLinkManager
 import org.yaqmc.android.core.MobileLoginOwner
 import org.yaqmc.android.media.PlaybackService
+import org.yaqmc.android.lyrics.AndroidLyricsSurfaces
 import org.yaqmc.android.plugin.YaqmcNativePlugin
 import kotlin.math.roundToInt
 
 @UnstableApi
 class MainActivity : BridgeActivity() {
     private val deepLinks = DeepLinkManager()
+    private val lyricsNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        AndroidLyricsSurfaces.refreshLockNotification()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         registerPlugin(AppPlugin::class.java)
         registerPlugin(YaqmcNativePlugin::class.java)
         super.onCreate(savedInstanceState)
+        // The WebView paints white until the page applies its theme; match the neutral window.
+        bridge.webView.setBackgroundColor(getColor(R.color.yaqmc_window_background))
         installFullBleedWebViewInsets()
         handleDeepLink(intent)
     }
@@ -46,6 +58,8 @@ class MainActivity : BridgeActivity() {
 
     override fun onResume() {
         super.onResume()
+        requestFloatingLyricsNotifications()
+        AndroidLyricsSurfaces.refreshLockNotification()
         requestResponsiveFrameRate()
         MobileLoginOwner.lifecycle("foreground")
         CoreManager.setLifecycle("foreground")
@@ -67,20 +81,43 @@ class MainActivity : BridgeActivity() {
         deepLinks.accept(intent)
     }
 
+    /** Ask only after overlay access is granted; never overlap the two permission screens. */
+    fun requestFloatingLyricsNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            !AndroidLyricsSurfaces.isEnabled("desktop") || !AndroidLyricsSurfaces.canDrawOverlays(this) ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) return
+        val preferences = getSharedPreferences("yaqmc_lyrics_surfaces", MODE_PRIVATE)
+        if (preferences.getBoolean("notification_permission_requested", false)) return
+        preferences.edit().putBoolean("notification_permission_requested", true).apply()
+        lyricsNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    /** Set while a continuously animating surface (native lyrics during playback) is visible. */
+    private var animatedSurfaceActive = false
+
+    @MainThread
+    fun setAnimatedSurfaceActive(active: Boolean) {
+        if (animatedSurfaceActive == active) return
+        animatedSurfaceActive = active
+        requestResponsiveFrameRate()
+    }
+
     /** Prefer the platform's adaptive UI frame-rate behavior while preserving its
-     * power, thermal and seamless-switching decisions. */
+     * power, thermal and seamless-switching decisions. Playing lyrics animate every frame without
+     * touch input, so adaptive (LTPO) panels would otherwise settle at a low rate; only while
+     * that surface is active do we ask for the panel's top rate at the current resolution. */
     private fun requestResponsiveFrameRate() {
         val webView = bridge?.webView ?: return
         val attributes = window.attributes
+        attributes.preferredRefreshRate = adaptiveRefreshRate(
+            sameResolutionRefreshRates(webView.display),
+            prefersEfficiency = !animatedSurfaceActive,
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-            // Android 15+: enable automatic touch boost so scrolling/gestures run smoothly,
-            // while allowing the display and WebView to throttle down when static (LTPO / power saving).
+            // Android 15+: automatic touch boost keeps gestures smooth on static pages.
             attributes.setFrameRateBoostOnTouchEnabled(true)
             webView.setRequestedFrameRate(0f)
-        } else {
-            // Keep preferredRefreshRate at 0f (system default) to allow dynamic switching rather
-            // than locking max power consumption.
-            attributes.preferredRefreshRate = 0f
         }
         window.attributes = attributes
     }
@@ -156,3 +193,12 @@ internal fun highestRefreshRate(rates: FloatArray): Float =
 
 internal fun adaptiveRefreshRate(rates: FloatArray, prefersEfficiency: Boolean = true): Float =
     if (prefersEfficiency) 0f else highestRefreshRate(rates)
+
+/** Refresh rates the display can switch to without a resolution change (a seamless-switch candidate). */
+internal fun sameResolutionRefreshRates(display: Display?): FloatArray {
+    val active = display?.mode ?: return floatArrayOf()
+    return display.supportedModes
+        .filter { it.physicalWidth == active.physicalWidth && it.physicalHeight == active.physicalHeight }
+        .map { it.refreshRate }
+        .toFloatArray()
+}

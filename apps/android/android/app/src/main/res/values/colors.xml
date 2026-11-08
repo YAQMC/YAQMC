@@ -1,4 +1,7 @@
 <resources>
     <color name="yaqmc_transparent">#00000000</color>
     <color name="yaqmc_launcher_background">#FFFFFF</color>
+    <!-- Neutral grayscale startup surfaces; must match generateThemeTokens({ neutral: true }). -->
+    <color name="yaqmc_window_background">#F5F5F5</color>
+    <color name="yaqmc_accent">#1F1F1F</color>
 </resources>

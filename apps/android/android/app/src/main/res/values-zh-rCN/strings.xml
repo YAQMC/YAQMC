@@ -1,4 +1,14 @@
 <resources>
+    <string name="floating_lyrics_lock">锁定歌词并穿透触摸</string>
+    <string name="floating_lyrics_close">关闭悬浮歌词</string>
+    <string name="floating_lyrics_locked">歌词已锁定，可从通知栏解锁，也可在 YAQMC 设置 → 悬浮歌词中解锁。</string>
+    <string name="floating_lyrics_locked_without_notification">歌词已锁定。通知权限未开启，请到 YAQMC 设置 → 悬浮歌词解锁。</string>
+    <string name="floating_lyrics_notification_channel">悬浮歌词控制</string>
+    <string name="floating_lyrics_notification_title">悬浮歌词已锁定</string>
+    <string name="floating_lyrics_notification_text">触摸已穿透，点击即可解锁并移动歌词。</string>
+    <string name="floating_lyrics_unlock">解锁歌词</string>
+    <string name="floating_lyrics_unlock_failed">歌词解锁失败，请重试或到 YAQMC 设置中解锁。</string>
+    <string name="floating_lyrics_lock_failed">锁定保存失败，已恢复之前的触摸模式。</string>
     <string name="app_name">YAQMC</string>
     <string name="oauth_title">登录 QQ 音乐</string>
     <string name="oauth_back">返回</string>
