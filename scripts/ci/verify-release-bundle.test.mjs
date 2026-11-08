@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -63,4 +63,32 @@ test('rejects fake markers, harness paths, and non-product artwork', (t) => {
       return true;
     },
   );
+});
+
+test('production minification keeps the standard platform backdrop override', async (t) => {
+  const root = sandbox();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(path.join(root, 'index.html'), '<link rel="stylesheet" href="./platform.css">');
+  writeFileSync(
+    path.join(root, 'platform.css'),
+    readFileSync(new URL('../../src/styles/platform.css', import.meta.url)),
+  );
+  const { build } = await import('vite');
+  const result = await build({
+    root,
+    configFile: false,
+    publicDir: false,
+    logLevel: 'silent',
+    build: { write: false, cssMinify: 'lightningcss' },
+  });
+  const css = result.output.find((file) => file.type === 'asset' && file.fileName.endsWith('.css'));
+  assert(css, 'production build must emit the platform stylesheet');
+  const rules = String(css.source).matchAll(/([^{}]+)\{([^{}]*)\}/gu);
+  const overrides = [...rules].filter((rule) => rule[1].includes('data-platform'));
+  const topbar = overrides.find((rule) => rule[1].includes('.topbar'));
+  const surfaces = overrides.find((rule) => rule[1].includes('.lyrics-fullscreen-transport__bar'));
+  assert(topbar && surfaces, 'platform blur overrides must survive minification');
+  for (const rule of [topbar, surfaces]) {
+    assert.match(rule[2], /(?:^|;)backdrop-filter:none(?:;|$)/u);
+  }
 });

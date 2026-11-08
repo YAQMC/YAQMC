@@ -75,6 +75,11 @@ pub struct PluginRecord {
     pub unpacked_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// Manifest metadata for display; only `https://` repository URLs are exposed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -105,6 +110,15 @@ pub struct ActiveScriptResource {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ActiveSongBadge {
+    pub plugin_id: String,
+    pub plugin_name: String,
+    #[serde(flatten)]
+    pub declaration: crate::plugin::manifest::SongBadgeDeclaration,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ActivePluginResources {
     pub safe_mode: bool,
     pub developer_mode: bool,
@@ -112,6 +126,8 @@ pub struct ActivePluginResources {
     pub styles: Vec<ActiveStyleSheet>,
     pub scenes: Vec<ActiveSceneResource>,
     pub scripts: Vec<ActiveScriptResource>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub song_badges: Vec<ActiveSongBadge>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -1181,6 +1197,7 @@ impl ExtensionHost {
             provider: None,
             providers: Vec::new(),
             federations: Vec::new(),
+            song_badges: Vec::new(),
             permissions: Vec::new(),
             dependencies: BTreeMap::new(),
             conflicts: Vec::new(),
@@ -1576,6 +1593,7 @@ impl ExtensionHost {
             provider: None,
             providers: Vec::new(),
             federations: Vec::new(),
+            song_badges: Vec::new(),
             permissions: Vec::new(),
             dependencies: BTreeMap::new(),
             conflicts: Vec::new(),
@@ -1617,6 +1635,7 @@ impl ExtensionHost {
                 styles: Vec::new(),
                 scenes: Vec::new(),
                 scripts: Vec::new(),
+                song_badges: Vec::new(),
             };
         }
         let mut styles = Vec::new();
@@ -1646,12 +1665,31 @@ impl ExtensionHost {
         }
         let mut scenes = Vec::new();
         let mut scripts = Vec::new();
+        let mut song_badges = Vec::new();
         for (id, (state, manifest, dir)) in &inner.records {
             if !state.enabled && self.update_phase(id).as_deref() != Some("validating") {
                 continue;
             }
             if !package_matches_state(state, manifest, dir) {
                 continue;
+            }
+            // Declarative badges work without a JavaScript worker, including on Android.
+            if state.enabled
+                && state
+                    .granted_permissions
+                    .iter()
+                    .any(|p| p == "ui.songBadges")
+            {
+                for declaration in &manifest.song_badges {
+                    if song_badges.len() >= 128 {
+                        break;
+                    }
+                    song_badges.push(ActiveSongBadge {
+                        plugin_id: id.clone(),
+                        plugin_name: manifest.name.clone(),
+                        declaration: declaration.clone(),
+                    });
+                }
             }
             for scene_path in &manifest.entrypoints.scenes {
                 let Ok(bytes) = fs::read(dir.join(scene_path)) else {
@@ -1693,6 +1731,7 @@ impl ExtensionHost {
             styles,
             scenes,
             scripts,
+            song_badges,
         }
     }
 
@@ -2208,6 +2247,14 @@ fn missing_dependency(
 fn to_record(state: &PluginStateFile, manifest: &PluginManifest, safe_mode: bool) -> PluginRecord {
     let enabled = state.enabled && !safe_mode;
     PluginRecord {
+        repository: manifest
+            .repository
+            .clone()
+            .filter(|url| url.starts_with("https://") && url.len() <= 512),
+        license: manifest
+            .license
+            .clone()
+            .filter(|license| license.len() <= 64),
         id: manifest.id.clone(),
         name: manifest.name.clone(),
         version: manifest.version.clone(),
@@ -3041,6 +3088,53 @@ mod tests {
             .expect("reinstall");
         host.uninstall("dev.a", true).expect("remove");
         assert!(host.storage_get("dev.a", "k").is_none());
+    }
+
+    #[test]
+    fn song_badges_follow_grants_disable_safe_mode_and_uninstall() {
+        let root = tempfile::tempdir().unwrap();
+        let host = ExtensionHost::open(root.path().to_path_buf()).unwrap();
+        let id = "dev.example.badges";
+        let mut package = style_inspection(id);
+        package.manifest.api_version = 2;
+        package.manifest.permissions.push("ui.songBadges".into());
+        package.manifest.song_badges = vec![serde_json::from_value(serde_json::json!({
+            "id": "catalog", "providerIds": ["provider.example"], "label": "Example"
+        }))
+        .unwrap()];
+        package.manifest.validate().unwrap();
+        package
+            .files
+            .iter_mut()
+            .find(|file| file.path == "manifest.json")
+            .unwrap()
+            .bytes = serde_json::to_vec(&package.manifest).unwrap();
+        host.install_inspection(package, false, &[], "test")
+            .unwrap();
+        assert!(host.active_resources().song_badges.is_empty());
+        host.set_enabled_with_grants(id, true, &["ui.songBadges".into()])
+            .unwrap();
+        assert_eq!(host.active_resources().song_badges.len(), 1);
+        host.inner
+            .lock()
+            .unwrap()
+            .records
+            .get_mut(id)
+            .unwrap()
+            .0
+            .granted_permissions
+            .retain(|permission| permission != "ui.songBadges");
+        assert!(host.active_resources().song_badges.is_empty());
+        host.set_enabled(id, false).unwrap();
+        assert!(host.active_resources().song_badges.is_empty());
+        host.set_enabled_with_grants(id, true, &["ui.songBadges".into()])
+            .unwrap();
+        host.set_safe_mode(true).unwrap();
+        assert!(host.active_resources().song_badges.is_empty());
+        host.set_safe_mode(false).unwrap();
+        assert_eq!(host.active_resources().song_badges.len(), 1);
+        host.uninstall(id, false).unwrap();
+        assert!(host.active_resources().song_badges.is_empty());
     }
 
     fn scene_inspection(id: &str) -> PackageInspection {

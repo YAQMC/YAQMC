@@ -2626,3 +2626,56 @@ input[type='range']:disabled {
     opacity: 0;
   }
 }
+
+/* A bounded generic badge slot. Plugin manifests supply all display values. */
+.plugin-song-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+span.plugin-song-badges > .plugin-song-badge {
+  display: inline-block;
+  max-width: 12em;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--plugin-badge-color, currentColor) 50%, transparent);
+  border-radius: 4px;
+  color: inherit;
+  background: color-mix(in srgb, var(--plugin-badge-color, currentColor) 12%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.track-row__title-line > .plugin-song-badges,
+.queue-now__title > .plugin-song-badges,
+.queue-row__title > .plugin-song-badges {
+  flex-shrink: 0;
+  max-width: 45%;
+}
+
+.queue-now__title:has(> .plugin-song-badges),
+.queue-row__title:has(> .plugin-song-badges) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.queue-now__title:has(> .plugin-song-badges) > strong,
+.queue-row__title:has(> .plugin-song-badges) > strong {
+  min-width: 0;
+}
+
+.player-bar__artist-links > .plugin-song-badges {
+  margin-inline-end: 6px;
+}
+
+.lyrics-scene__metadata > .plugin-song-badges {
+  justify-content: inherit;
+}

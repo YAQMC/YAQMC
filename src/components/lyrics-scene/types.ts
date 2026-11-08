@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import type { LyricDocument } from '../../domain/music';
+import type { LyricDocument, ProviderTrackReference } from '../../domain/music';
 import type {
   AmllSettings,
   LyricFontWeight,
@@ -20,8 +20,10 @@ export type LyricsStatus = 'idle' | 'loading' | 'ready' | 'error' | 'missing';
 
 export interface LyricsSceneBindings {
   songId: string | null;
+  provider?: ProviderTrackReference;
   title: string;
   artistLabel: string;
+  /** Platform of the current track; display-only. */
   albumTitle?: string;
   artworkSrc: string | null;
   artworkAlt: string;

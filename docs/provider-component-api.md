@@ -51,6 +51,17 @@ The fixture also commits one golden request/response for every capability, a san
 and disable/re-enable/account-generation lifecycle outcomes. The playback sample deliberately contains only a Host
 cache recipe; it contains no media URL, request header, credential value, or filesystem path.
 
+## Plugin-owned song badges
+
+Platform labels are declared by plugins through [`songBadges` and `ui.songBadges`](plugin-manifest.md#declarative-song-badges).
+The host contains no platform-to-label mapping. Direct songs match their validated provider ID; federated songs
+match the original member's optional `provider.originProviderId`, assigned by the host and preserved through
+nesting and persistence. Component responses cannot assign this host-owned field. Unknown sources stay unlabelled.
+
+Playback, lyrics, comments, credentials and permissions still follow `providerId` / `profileId` / `trackId`.
+The origin reference is display metadata and never grants routing authority. Labels disappear when the contributing
+plugin is disabled or uninstalled. Older federated records without an origin reference need reloading for a label.
+
 ## Compatibility and lifecycle
 
 The `network.request` JSON envelope accepts optional `responseJsonFields` when `responseFormat` is `json`.

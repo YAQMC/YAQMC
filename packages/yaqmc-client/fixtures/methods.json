@@ -2160,6 +2160,32 @@
       "main"
     ],
     "mainWindowOnly": true,
+    "name": "plugin_store_search",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "long",
+    "timeoutMs": 120000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
+    "name": "plugin_store_releases",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "long",
+    "timeoutMs": 120000
+  },
+  {
+    "allowedOrigins": [
+      "host",
+      "main"
+    ],
+    "mainWindowOnly": true,
     "name": "plugin_inspect_path",
     "owner": "core",
     "requestCap": 1048576,
@@ -2640,6 +2666,18 @@
     ],
     "mainWindowOnly": false,
     "name": "app_preferences_set_surface_interaction",
+    "owner": "core",
+    "requestCap": 1048576,
+    "responseCap": 1048576,
+    "timeoutClass": "standard",
+    "timeoutMs": 30000
+  },
+  {
+    "allowedOrigins": [
+      "host"
+    ],
+    "mainWindowOnly": false,
+    "name": "app_preferences_set_surface_enabled",
     "owner": "core",
     "requestCap": 1048576,
     "responseCap": 1048576,

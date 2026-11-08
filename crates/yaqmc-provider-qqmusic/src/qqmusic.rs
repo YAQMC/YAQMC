@@ -3177,6 +3177,7 @@ fn normalize_new_song(raw: NewSongDto) -> Option<Song> {
         playback_capability: Some(playback_capability),
         provider: Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            origin_provider_id: None,
             profile_id: DEFAULT_PROFILE_ID.to_owned(),
             track_id: song_mid,
             numeric_id: (raw.id > 0).then_some(raw.id),
@@ -3289,6 +3290,7 @@ fn normalize_qm_song(raw: qqmusic_api::Song, fallback_track_number: u32) -> Opti
         playback_capability: Some(playback_capability),
         provider: Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            origin_provider_id: None,
             profile_id: DEFAULT_PROFILE_ID.to_owned(),
             track_id: song_mid,
             numeric_id: (raw.id > 0).then_some(raw.id as u64),
@@ -3673,6 +3675,7 @@ fn normalize_old_song(raw: OldSongDto, fallback_track_number: u32) -> Option<Son
         playback_capability: Some(playback_capability),
         provider: Some(ProviderTrackReference {
             provider_id: "qqmusic".to_owned(),
+            origin_provider_id: None,
             profile_id: DEFAULT_PROFILE_ID.to_owned(),
             track_id: song_mid,
             numeric_id: (raw.song_id > 0).then_some(raw.song_id),

@@ -183,7 +183,7 @@
     0 0 24px color-mix(in srgb, var(--lyrics-color) 34%, transparent);
 }
 
-.lyrics-scene__metadata span {
+.lyrics-scene__metadata > span:not(.plugin-song-badges) {
   color: color-mix(in srgb, var(--lyrics-foreground, var(--lyrics-ink)) 78%, transparent);
   font-size: clamp(1.05rem, 2.3cqw, 1.6rem);
   font-weight: 620;
@@ -462,7 +462,7 @@
     overflow-wrap: anywhere;
   }
 
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     overflow: hidden;
     max-width: 100%;
     font-size: clamp(0.8rem, 3.8vw, 1rem);
@@ -578,7 +578,7 @@
     overflow-wrap: anywhere;
   }
 
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     overflow: hidden;
     max-width: 100%;
     font-size: clamp(0.85rem, 2.3vw, 1.05rem);
@@ -675,7 +675,7 @@
   }
 
   .app-shell .lyrics-scene__metadata strong,
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     overflow: hidden;
     max-width: 100%;
     text-overflow: ellipsis;
@@ -686,7 +686,7 @@
     font-size: clamp(0.95rem, 2.8vw, 1.25rem);
   }
 
-  .app-shell .lyrics-scene__metadata span {
+  .app-shell .lyrics-scene__metadata > span:not(.plugin-song-badges) {
     font-size: clamp(0.75rem, 2vw, 0.9rem);
   }
 

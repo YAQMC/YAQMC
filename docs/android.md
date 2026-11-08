@@ -35,8 +35,27 @@ before building YAQMC. Older snapshot packages lack the required renderer settin
 - Update checks only notify and open the matching GitHub Release in the system browser. YAQMC does not download or
   install APKs itself.
 
-Tray controls, global shortcuts, plugins, developer mode, the loopback Local API, and file exports are intentionally
-absent from Android. The in-app lyric screen remains available.
+Tray controls, global shortcuts, the loopback Local API, file exports and loading unpacked plugin folders are
+intentionally absent from Android. The in-app lyric screen remains available.
+
+## Plugins
+
+Android builds Core with the `plugins` feature (Wasmtime 36.0.19 with Cranelift, Component Model) for `arm64-v8a`
+and `x86_64`; `system-media` and `local-api` stay off. Core reports the platform as `android`, so a manifest must
+list `android` in `platforms` (or omit `platforms`) to activate; `unknown` never matches. **Plugins** is the fifth
+bottom-navigation item on phones and a rail item on tablets; plugin-defined v4 pages appear in the rail and as
+shortcuts on the Plugins page. See [Plugins page and plugin store](plugin-store.md).
+
+**Choose file** opens the system document picker (`ACTION_OPEN_DOCUMENT`, no storage permission). The selected
+`content://` document is copied with `ContentResolver` on a background thread into
+`cacheDir/plugin-imports`, bounded to 32 MiB while streaming (declared names and lengths are not trusted), and only
+that private path reaches the existing review and installation transaction. Cancelling returns nothing; earlier
+selections are deleted on the next pick and on start-up. Every Core call runs on the Core runtime, not the UI thread.
+
+Script, style and scene plugins run in the WebView exactly as on desktop (Web Worker scripts, sanitized CSS).
+Android's native AMLL lyric overlay is a different surface: it reads only the resolved font, weight, line height and
+colour of the active scene; other plugin CSS affects the web lyric stage, metadata and backgrounds, not the native
+line renderer. Developer Mode can be toggled, but unpacked folders cannot be selected on Android.
 
 ## Lyric surfaces outside the app
 

@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import type { PluginUpdateOperation, PluginReleaseInfo } from '@yaqmc/client';
+import { clearPluginSongBadges, replacePluginSongBadges } from './plugin-song-badges';
+import { invalidatePluginAssets, syncPluginAssetAccess } from './plugin-asset';
+import type { ActiveSongBadge, PluginUpdateOperation, PluginReleaseInfo } from '@yaqmc/client';
 import {
   BUILTIN_CLASSIC_ID,
   factoryScene,
@@ -78,6 +80,9 @@ export interface PluginRecord {
   networkOrigins?: string[];
   unpackedPath?: string | null;
   lastError?: string | null;
+  /** Manifest `https://` repository URL, when declared. */
+  repository?: string | null;
+  license?: string | null;
 }
 
 export interface ActiveStyleSheet {
@@ -128,6 +133,7 @@ export interface ActivePluginResources {
   styles: ActiveStyleSheet[];
   scenes: ActiveSceneResource[];
   scripts: ActiveScriptResource[];
+  songBadges?: ActiveSongBadge[];
 }
 
 export interface PluginInspectResult {
@@ -693,6 +699,7 @@ function toPluginPreset(scene: ActiveSceneResource): LyricsPresetDefinition | nu
 }
 
 function stopScripts(): void {
+  invalidatePluginAssets();
   runtimeGeneration += 1;
   for (const worker of workers.values()) {
     worker.terminate();
@@ -713,6 +720,8 @@ function stopScripts(): void {
 }
 
 async function retireOnePlugin(id: string): Promise<void> {
+  invalidatePluginAssets(id);
+  clearPluginSongBadges(id);
   pluginEpochs.set(id, (pluginEpochs.get(id) ?? 0) + 1);
   workers.get(id)?.terminate();
   workers.delete(id);
@@ -1034,13 +1043,12 @@ function pluginEventPermission(event: string): string | null | undefined {
  * Event fan-out fails closed: if the host cannot report grants, plugins receive
  * no read-only events instead of receiving everything.
  */
-async function grantedPermissionsByPlugin(): Promise<Map<string, string[]>> {
+async function pluginRecordsForResources(): Promise<PluginRecord[]> {
   try {
-    const records = await client.invoke('plugin_list');
-    return new Map(records.map((record) => [record.id, [...record.grantedPermissions]]));
+    return await client.invoke('plugin_list');
   } catch (error) {
     logger.error('plugin.permissions.load_failed', error);
-    return new Map();
+    return [];
   }
 }
 
@@ -1155,7 +1163,7 @@ export async function installUnpackedPlugin(
 }
 
 export async function reloadPlugin(id: string): Promise<PluginRecord> {
-  return client.invoke('plugin_reload', { id });
+  return withRetiredPluginCapabilities(() => client.invoke('plugin_reload', { id }), id);
 }
 
 export async function pluginSettingsGet(id: string): Promise<Record<string, unknown>> {
@@ -1236,11 +1244,9 @@ async function applyPluginResourcesSnapshot(
     .map(toPluginPreset)
     .filter((preset): preset is LyricsPresetDefinition => preset !== null);
   setPluginPresetCatalog(presets);
-  const grants = resources.safeMode
-    ? new Map<string, string[]>()
-    : await grantedPermissionsByPlugin();
+  const records = resources.safeMode ? [] : await pluginRecordsForResources();
   if (generation !== resourceGeneration) return null;
-
+  const grants = new Map(records.map((record) => [record.id, [...record.grantedPermissions]]));
   const transports = collectPluginTransports(scenes, grants);
   setPluginTransportCatalog(transports);
   const preferences = usePreferencesStore.getState();
@@ -1263,7 +1269,26 @@ async function applyPluginResourcesSnapshot(
     runtimeGeneration,
   );
   if (generation !== resourceGeneration) return null;
+  // Worker replacement retires assets; authorize only after it finishes for this snapshot.
+  syncPluginAssetAccess(
+    new Map(
+      records
+        .filter(
+          (record) =>
+            record.enabled && record.status === 'active' && !quiescingPlugins.has(record.id),
+        )
+        .map((record) => [
+          record.id,
+          `${record.packageSha256}:${record.version}:${record.grantedPermissions.join(',')}`,
+        ]),
+    ),
+  );
   if (resources.safeMode) resetSceneBehavior();
+  replacePluginSongBadges(
+    resources.safeMode
+      ? []
+      : (resources.songBadges ?? []).filter((badge) => !quiescingPlugins.has(badge.pluginId)),
+  );
   const selected = usePreferencesStore.getState().lyricsPresets.selectedId;
   emitSceneLifecycle(selected);
   return resources;
@@ -1278,6 +1303,7 @@ async function applyPluginResourcesSnapshot(
  * event, even before the host has answered the mutation that revoked it.
  */
 function retirePluginCapabilities(): void {
+  clearPluginSongBadges();
   resourceGeneration += 1;
   // Retire renderer-side capabilities synchronously as well as workers.  A
   // revoked plugin must not keep styles, actions, or transport definitions
@@ -1619,6 +1645,7 @@ export function usePluginHost(): void {
     return () => {
       unlisten();
       unlistenUpdates();
+      clearPluginSongBadges();
       unsubscribePlayer();
       unsubscribeLyrics();
       unsubscribePrefs();

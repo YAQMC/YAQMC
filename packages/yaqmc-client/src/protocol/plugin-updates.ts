@@ -50,6 +50,8 @@ export interface PluginUpdatePrepareRequest {
   path?: string;
   releaseId?: string;
   unpacked?: boolean;
+  /** Plugin store asset; the host resolves, downloads and reviews it as unverified. */
+  github?: PluginStoreAssetRef;
 }
 export interface PluginUpdateApplyRequest {
   operationId: string;
@@ -75,6 +77,8 @@ export interface PluginUpdatePreview {
   sessionChanges: string[];
   confirmations: string[];
   trustedSource: string | null;
+  /** Recorded source for unsigned installs, e.g. `github:owner/repo/releases/1`. */
+  origin?: string | null;
   enabled: boolean;
   needsRenderer: boolean;
   hasScript: boolean;
@@ -94,4 +98,85 @@ export interface PluginUpdateRuntimeReadyRequest {
   sha256: string;
   stage: 'quiescing' | 'validating';
   error?: string;
+}
+
+export type PluginStoreFilter = 'all' | 'name' | 'description' | 'author' | 'repository';
+export type PluginStoreSort = 'best-match' | 'stars' | 'updated';
+export interface PluginStoreSearchRequest {
+  query?: string;
+  filter?: PluginStoreFilter;
+  sort?: PluginStoreSort;
+  page?: number;
+  refresh?: boolean;
+}
+export interface PluginStoreRepository {
+  id: number;
+  owner: string;
+  repo: string;
+  fullName: string;
+  description: string | null;
+  htmlUrl: string;
+  ownerType: 'User' | 'Organization';
+  ownerAvatarUrl: string | null;
+  /** Owned by the YAQMC GitHub organization; not a signature. */
+  organizationOwned: boolean;
+  stars: number;
+  license: string | null;
+  topics: string[];
+  archived: boolean;
+  fork: boolean;
+  updatedAt: string | null;
+  pushedAt: string | null;
+}
+export interface PluginStoreSearchPage {
+  query: string;
+  page: number;
+  totalCount: number;
+  incompleteResults: boolean;
+  hasMore: boolean;
+  items: PluginStoreRepository[];
+  stale: boolean;
+  fetchedAtMs: number;
+}
+export interface PluginStoreReleasesRequest {
+  owner: string;
+  repo: string;
+  includePrereleases?: boolean;
+  page?: number;
+  refresh?: boolean;
+}
+export interface PluginStoreAsset {
+  id: number;
+  name: string;
+  size: number;
+  downloadCount: number;
+  updatedAt: string | null;
+  sha256: string | null;
+}
+export interface PluginStoreRelease {
+  id: number;
+  tagName: string;
+  name: string | null;
+  body: string | null;
+  publishedAt: string | null;
+  prerelease: boolean;
+  htmlUrl: string;
+  assets: PluginStoreAsset[];
+  otherAssetCount: number;
+}
+export interface PluginStoreReleasesPage {
+  owner: string;
+  repo: string;
+  page: number;
+  hasMore: boolean;
+  releases: PluginStoreRelease[];
+  hiddenPrereleases: number;
+  stale: boolean;
+  fetchedAtMs: number;
+}
+export interface PluginStoreAssetRef {
+  owner: string;
+  repo: string;
+  releaseId: number;
+  assetId: number;
 }

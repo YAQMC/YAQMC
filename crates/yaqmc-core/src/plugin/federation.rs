@@ -126,6 +126,11 @@ impl FederatedProvider {
     }
 
     fn remap_song(&self, member: &FederationMember, mut song: Song) -> Song {
+        let origin_provider_id = song
+            .provider
+            .as_ref()
+            .and_then(|reference| reference.origin_provider_id.clone())
+            .unwrap_or_else(|| member.provider_id.clone());
         let original_id = song.id.clone();
         let original_album_id = song.album.id.clone();
         song.id = encode_route(&RoutedId {
@@ -145,6 +150,7 @@ impl FederatedProvider {
         }
         song.provider = Some(ProviderTrackReference {
             provider_id: self.provider_id.clone(),
+            origin_provider_id: Some(origin_provider_id),
             profile_id: "default".to_owned(),
             track_id: song.id.clone(),
             numeric_id: None,
@@ -1188,6 +1194,32 @@ mod tests {
         }];
 
         let mapped_song = federation.remap_song(&member, source.clone());
+        assert_eq!(
+            mapped_song.provider.as_ref().unwrap().provider_id,
+            "org.example.aggregate"
+        );
+        assert_eq!(
+            mapped_song
+                .provider
+                .as_ref()
+                .unwrap()
+                .origin_provider_id
+                .as_deref(),
+            Some("org.example.spotify")
+        );
+        let persisted: Song =
+            serde_json::from_slice(&serde_json::to_vec(&mapped_song).unwrap()).unwrap();
+        assert_eq!(persisted.provider, mapped_song.provider);
+        let wrapped_again = federation.remap_song(&member, mapped_song.clone());
+        assert_eq!(
+            wrapped_again
+                .provider
+                .as_ref()
+                .unwrap()
+                .origin_provider_id
+                .as_deref(),
+            Some("org.example.spotify")
+        );
         let song_artist_route = decode_id(&mapped_song.artists[0].id).expect("song artist route");
         assert_eq!(song_artist_route.track_id, "native-artist");
 
@@ -1200,6 +1232,60 @@ mod tests {
         let nested_song_artist_route =
             decode_id(&mapped_album.tracks[0].artists[0].id).expect("album track artist route");
         assert_eq!(nested_song_artist_route.track_id, "native-artist");
+    }
+
+    #[test]
+    fn remapping_keeps_each_member_platform_and_distinct_routes_for_equal_track_ids() {
+        let member = |provider_id: &str| FederationMember {
+            provider_id: provider_id.to_owned(),
+            profile_id: "work".to_owned(),
+            catalog: Arc::new(NoopCatalog::default()),
+            playback: None,
+            lyrics: None,
+            comments: None,
+        };
+        let (netease, kugou) = (member("org.example.netease"), member("org.example.kugou"));
+        let federation = FederatedProvider::new(
+            "org.example.aggregate".to_owned(),
+            "Aggregate".to_owned(),
+            vec![netease.clone(), kugou.clone()],
+        );
+        let first = federation.remap_song(
+            &netease,
+            source_song("org.example.netease", "same-id", "same-id"),
+        );
+        let second = federation.remap_song(
+            &kugou,
+            source_song("org.example.kugou", "same-id", "same-id"),
+        );
+        // Routing moves to the federation, the display source stays with the member platform.
+        assert_eq!(
+            first.provider.as_ref().unwrap().provider_id,
+            "org.example.aggregate"
+        );
+        assert_eq!(
+            first
+                .provider
+                .as_ref()
+                .unwrap()
+                .origin_provider_id
+                .as_deref(),
+            Some("org.example.netease")
+        );
+        assert_eq!(
+            second
+                .provider
+                .as_ref()
+                .unwrap()
+                .origin_provider_id
+                .as_deref(),
+            Some("org.example.kugou")
+        );
+        assert_ne!(first.id, second.id);
+        assert_eq!(
+            decode_id(&first.id).unwrap().provider_id,
+            "org.example.netease"
+        );
     }
 
     #[tokio::test]

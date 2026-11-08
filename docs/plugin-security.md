@@ -31,6 +31,9 @@ Granted only after review:
 rendered by YAQMC components; plugins never inject markup, styles, images or URLs into those surfaces
 (see the [Plugin Pages API](plugin-pages-api.md)).
 
+API v2/v3/v4 also accept `ui.songBadges` for bounded declarative text badges;
+it grants no code execution or network access.
+
 For legacy API v1-v2, bare `provider` and `account` remain reserved and denied. API v3 uses only the explicit
 `provider.catalog`, `provider.playback`, `provider.recommendation`, `provider.lyrics`, and `provider.account`
 capabilities declared by a manifest v2 Component. A `provider-account` world additionally requires private storage

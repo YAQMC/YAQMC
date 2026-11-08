@@ -24,6 +24,7 @@ const updates = vi.hoisted(() => ({
   })),
 }));
 vi.mock('../application/yaqmc-runtime', () => ({
+  getHostBridge: () => ({ kind: 'fake' }),
   getYaqmcClient: () => ({
     plugins: updates,
     on: vi.fn(() => () => undefined),
@@ -33,6 +34,7 @@ vi.mock('../application/yaqmc-runtime', () => ({
 
 vi.mock('../application/host-capabilities', () => ({
   hasHostCapability: (capability: string) => capability === 'plugins',
+  isAndroidRuntime: () => false,
 }));
 
 vi.mock('../application/plugin-runtime', () => ({
@@ -247,7 +249,7 @@ describe('PluginManager', () => {
     vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
     render(<PluginManager />);
     fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
-    const review = screen.getByRole('region', { name: 'Review plugin permissions' });
+    const review = screen.getByRole('dialog', { name: /^Review plugin permissions/ });
     fireEvent.click(
       within(review).getByRole('button', { name: 'Select all sensitive permissions' }),
     );
@@ -263,7 +265,7 @@ describe('PluginManager', () => {
     vi.mocked(listPlugins).mockResolvedValue([providerPlugin]);
     render(<PluginManager />);
     fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
-    const review = screen.getByRole('region', { name: 'Review plugin permissions' });
+    const review = screen.getByRole('dialog', { name: /^Review plugin permissions/ });
     expect(setPluginEnabled).not.toHaveBeenCalled();
     expect(within(review).getByRole('button', { name: 'Enable' })).toBeDisabled();
     for (const checkbox of within(review).getAllByRole('checkbox')) {
@@ -286,7 +288,7 @@ describe('PluginManager', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(
-      screen.queryByRole('region', { name: 'Review plugin permissions' }),
+      screen.queryByRole('dialog', { name: /^Review plugin permissions/ }),
     ).not.toBeInTheDocument();
     expect(setPluginEnabled).not.toHaveBeenCalled();
     view.unmount();
@@ -303,7 +305,7 @@ describe('PluginManager', () => {
       ),
     );
     expect(
-      screen.queryByRole('region', { name: 'Review plugin permissions' }),
+      screen.queryByRole('dialog', { name: /^Review plugin permissions/ }),
     ).not.toBeInTheDocument();
   });
 

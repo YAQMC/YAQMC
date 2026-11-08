@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { HANDSHAKE_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS } from '@yaqmc/client';
 import { tryResolveCoreBinary, CoreSupervisor } from './supervisor';
 import { APP_IDENTIFIER, librarySqlitePath, localApiConfigPath, resolveCorePaths } from './paths';
+import desktopPackage from '../../package.json';
 
 describe('BASE-04 core path resolution', () => {
   it('matches the Windows SOURCE-VERIFIED table on a scratch profile', () => {
@@ -91,8 +92,8 @@ describe.skipIf(!liveBinary || process.platform !== 'win32')(
       const paths = resolveCorePaths({ platform: 'win32', env, homedir: scratch });
       const supervisor = new CoreSupervisor({
         binary: liveBinary as string,
-        hostVersion: '0.1.0',
-        expectedCoreVersion: '0.1.0',
+        hostVersion: desktopPackage.version,
+        expectedCoreVersion: desktopPackage.version,
         handshakeTimeoutMs: HANDSHAKE_TIMEOUT_MS,
         shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
         ...paths,

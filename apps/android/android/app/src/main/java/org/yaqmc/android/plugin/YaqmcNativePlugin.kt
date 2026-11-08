@@ -85,6 +85,8 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             CoreManager.addCallback(this)
         }
         deepLinkSubscription = DeepLinkInbox.subscribe(::publishDeepLink)
+        // A process killed between picking and review must not leave package copies behind.
+        thread(name = "yaqmc-plugin-import-cleanup") { runCatching { pluginStaging().clear() } }
         checkForUpdates(call = null, automatic = true)
         bridge.executeOnMainThread {
             getOrCreateLyricsOverlay()
@@ -400,6 +402,44 @@ class YaqmcNativePlugin : Plugin(), CoreManager.Callback {
             call.reject("unable to open the system photo picker", "android.photo_picker_failed", it.asException())
         }
     }
+
+    /** System document picker (SAF); no storage permission and no renderer-supplied paths. */
+    @PluginMethod
+    fun pickPluginPackage(call: PluginCall) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            // `.yaqmc-plugin` has no registered MIME type; Core validates the package itself.
+            .setType("*/*")
+        runCatching {
+            startActivityForResult(call, intent, "pluginPackageResult")
+        }.onFailure {
+            call.reject("unable to open the system document picker", "android.document_picker_failed", it.asException())
+        }
+    }
+
+    @ActivityCallback
+    private fun pluginPackageResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val uri = result.data?.data
+        if (result.resultCode != Activity.RESULT_OK || uri == null) {
+            call.resolve(JSObject().put("path", JSONObject.NULL))
+            return
+        }
+        // ContentResolver reads may block on remote providers; never on the UI thread.
+        thread(name = "yaqmc-plugin-import") {
+            runCatching { pluginStaging().stage { context.contentResolver.openInputStream(uri) } }
+                .onSuccess { file ->
+                    bridge.executeOnMainThread { call.resolve(JSObject().put("path", file.absolutePath)) }
+                }
+                .onFailure {
+                    bridge.executeOnMainThread {
+                        call.reject("selected plugin package could not be imported", "android.plugin_import_failed", it.asException())
+                    }
+                }
+        }
+    }
+
+    private fun pluginStaging() = PluginPackageStaging(File(context.cacheDir, "plugin-imports"))
 
     @ActivityCallback
     private fun backgroundImageResult(call: PluginCall?, result: ActivityResult) {

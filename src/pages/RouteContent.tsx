@@ -50,6 +50,11 @@ const SettingsPage = lazy(async () => {
   return { default: module.SettingsPage };
 });
 
+const PluginsPage = lazy(async () => {
+  const module = await import('./PluginsPage');
+  return { default: module.PluginsPage };
+});
+
 const StatisticsPage = lazy(async () => {
   const module = await import('./StatisticsPage');
   return { default: module.StatisticsPage };
@@ -186,6 +191,22 @@ export function RouteContent({ route, catalog, accountProvider, onNavigate }: Ro
           }
         >
           {settings ? <SettingsPage /> : <StatisticsPage />}
+        </Suspense>
+      </RouteErrorBoundary>
+    );
+  }
+  if (route.page === 'plugins') {
+    // Global utility page: never gated on the selected provider's catalog state.
+    return (
+      <RouteErrorBoundary
+        fallback={
+          <p className="settings-error" role="alert">
+            {t('pageLoadFailed')}
+          </p>
+        }
+      >
+        <Suspense fallback={<LoadingState label={t('loadingPlugins')} />}>
+          <PluginsPage tab={route.tab ?? 'manage'} onNavigate={onNavigate} />
         </Suspense>
       </RouteErrorBoundary>
     );

@@ -47,6 +47,12 @@ JSON fixture 是完整操作名列表。实现可以对可选账号变更返回�
 fixture 还固定了每项能力的代表请求/响应、清洗后的权限撤销错误，以及停用/重新启用/账号代次结果。播放样例只含
 Host 缓存配方，不含媒体 URL、请求 header、凭据值或文件系统路径。
 
+## 插件提供的歌曲标签
+
+平台标签由插件通过 [`songBadges` 和 `ui.songBadges`](plugin-manifest.md#声明式歌曲标签) 声明，宿主不维护平台名称或颜色映射。独立歌曲按经过校验的 provider ID 匹配；聚合歌曲按宿主设置的可选字段 `provider.originProviderId` 匹配原始成员，该字段在嵌套聚合和持久化时保留，组件响应不能自行设置。未知来源不显示标签。
+
+播放、歌词、评论、凭据和权限仍遵循 `providerId` / `profileId` / `trackId`。原始来源字段仅用于展示，不授予路由权限。禁用或卸载贡献标签的插件后，标签消失；缺少原始来源字段的旧聚合记录需要重新加载才能显示标签。
+
 ## 兼容与生命周期
 
 `network.request` 的 JSON 信封在 `responseFormat` 为 `json` 时可指定 `responseJsonFields`：1–128 个不重复、

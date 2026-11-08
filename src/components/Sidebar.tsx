@@ -4,6 +4,7 @@ import {
   Compass,
   Heart,
   Home,
+  LayoutGrid,
   Library,
   ListMusic,
   Puzzle,
@@ -36,6 +37,7 @@ type NavPage = Extract<
   | 'account-playlists'
   | 'account-recent'
   | 'statistics'
+  | 'plugins'
   | 'settings'
 >;
 
@@ -48,6 +50,7 @@ type NavLabelKey =
   | 'playlists'
   | 'recentlyPlayed'
   | 'statistics'
+  | 'plugins'
   | 'settings'
   | 'yourMusic'
   | 'application';
@@ -64,6 +67,7 @@ const compactItems: NavItem[] = [
   { page: 'explore', labelKey: 'explore', icon: Compass },
   { page: 'library', labelKey: 'library', icon: Library },
   { page: 'search', labelKey: 'search', icon: Search },
+  { page: 'plugins', labelKey: 'plugins', icon: Puzzle },
 ];
 
 const desktopSections: { labelKey?: NavLabelKey; items: NavItem[] }[] = [
@@ -86,6 +90,7 @@ const desktopSections: { labelKey?: NavLabelKey; items: NavItem[] }[] = [
     labelKey: 'application',
     items: [
       { page: 'statistics', labelKey: 'statistics', icon: BarChart3 },
+      { page: 'plugins', labelKey: 'plugins', icon: Puzzle },
       { page: 'settings', labelKey: 'settings', icon: Settings },
     ],
   },
@@ -138,42 +143,43 @@ export function Sidebar({ route, onNavigate, inert }: SidebarProps) {
             </button>
           )),
         ])}
-        {!isAndroidRuntime() && (pluginSidebar.length > 0 || pluginNavigation.length > 0) && (
-          <p className="sidebar__section-label">Plugins</p>
+        {(pluginSidebar.length > 0 || pluginNavigation.length > 0) && (
+          <p className="sidebar__section-label">{t('pluginPages')}</p>
         )}
-        {!isAndroidRuntime() &&
-          pluginNavigation.map((entry) => (
-            <button
-              type="button"
-              key={`page:${entry.pluginId}:${entry.id}`}
-              className="sidebar__item"
-              title={`${entry.label} · ${entry.pluginName}`}
-              data-active={
-                (route.page === 'plugin-page' &&
-                  route.pluginId === entry.pluginId &&
-                  route.pageId === entry.pageId) ||
-                undefined
-              }
-              onClick={() =>
-                onNavigate({ page: 'plugin-page', pluginId: entry.pluginId, pageId: entry.pageId })
-              }
-            >
-              <Puzzle size={18} />
-              <span>{entry.label}</span>
-            </button>
-          ))}
-        {!isAndroidRuntime() &&
-          pluginSidebar.map((action) => (
-            <button
-              type="button"
-              key={`${action.pluginId}:${action.id}`}
-              className="sidebar__item"
-              onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'sidebar')}
-            >
-              <Puzzle size={18} />
-              <span>{action.label}</span>
-            </button>
-          ))}
+        {pluginNavigation.map((entry) => (
+          <button
+            type="button"
+            key={`page:${entry.pluginId}:${entry.id}`}
+            className="sidebar__item"
+            aria-label={`${entry.label} · ${entry.pluginName}`}
+            title={`${entry.label} · ${entry.pluginName}`}
+            data-active={
+              (route.page === 'plugin-page' &&
+                route.pluginId === entry.pluginId &&
+                route.pageId === entry.pageId) ||
+              undefined
+            }
+            onClick={() =>
+              onNavigate({ page: 'plugin-page', pluginId: entry.pluginId, pageId: entry.pageId })
+            }
+          >
+            <LayoutGrid size={18} />
+            <span>{entry.label}</span>
+          </button>
+        ))}
+        {pluginSidebar.map((action) => (
+          <button
+            type="button"
+            key={`${action.pluginId}:${action.id}`}
+            className="sidebar__item"
+            aria-label={action.label}
+            title={action.label}
+            onClick={() => dispatchPluginUiAction(action.pluginId, action.id, 'sidebar')}
+          >
+            <LayoutGrid size={18} />
+            <span>{action.label}</span>
+          </button>
+        ))}
       </nav>
 
       <button

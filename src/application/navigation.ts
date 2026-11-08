@@ -11,6 +11,8 @@ export type AppRoute =
   | { page: 'account-recent' }
   | { page: 'settings' }
   | { page: 'statistics' }
+  /** Host plugin center; distinct from plugin-defined `plugin-page` routes. */
+  | { page: 'plugins'; tab?: PluginsTab }
   | { page: 'song'; id: EntityId; providerId?: string }
   | { page: 'artist'; id: EntityId; providerId?: string }
   | { page: 'album'; id: EntityId; providerId?: string }
@@ -18,6 +20,8 @@ export type AppRoute =
   | { page: 'area'; encArea: string; title: string; providerId?: string }
   /** Plugin API v4 page; rendered by the host from the plugin's declarative document. */
   | { page: 'plugin-page'; pluginId: string; pageId: string };
+
+export type PluginsTab = 'manage' | 'store';
 
 export type ProviderCatalogRoute = Extract<
   AppRoute,

@@ -1,7 +1,9 @@
+import { PluginSongBadges } from './PluginSongBadges';
 import { GripVertical, Play, X } from 'lucide-react';
 import {
   Fragment,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -16,12 +18,15 @@ import { ActionMenu, ActionMenuItem } from './ui/ActionMenu';
 import { IconButton } from './ui/IconButton';
 import { useTranslation } from 'react-i18next';
 import { EntityLink } from './EntityLink';
+import { useWindowedRows } from './ui/use-windowed-rows';
 
 interface PointerDrag {
   entryId: string;
   pointerId: number;
   startX: number;
   startY: number;
+  clientX: number;
+  clientY: number;
   started: boolean;
   targetId: string | null;
 }
@@ -105,6 +110,11 @@ function QueueEntryOverflow({
 }
 
 export function QueuePanel() {
+  const queueOpen = usePlayerStore((state) => state.queueOpen);
+  return queueOpen ? <OpenQueuePanel /> : null;
+}
+
+function OpenQueuePanel() {
   const { t } = useTranslation('queue');
   const { t: common } = useTranslation('common');
   const providerAvailable = useMusicProviderAvailability();
@@ -115,61 +125,90 @@ export function QueuePanel() {
   const upcomingQueueEntryIds = usePlayerStore((state) => state.upcomingQueueEntryIds);
   const playbackOrder = usePlayerStore((state) => state.playbackOrder);
   const repeat = usePlayerStore((state) => state.repeat);
-  const queueOpen = usePlayerStore((state) => state.queueOpen);
   const playQueueEntry = usePlayerStore((state) => state.playQueueEntry);
   const playNextQueueEntry = usePlayerStore((state) => state.playNextQueueEntry);
   const removeQueueEntry = usePlayerStore((state) => state.removeQueueEntry);
   const reorderQueueEntry = usePlayerStore((state) => state.reorderQueueEntry);
   const closePanels = usePlayerStore((state) => state.closePanels);
-  const entries =
-    authoritativeEntries.length === queue.length ? authoritativeEntries : legacyEntries(queue);
+  const entries = useMemo(
+    () =>
+      authoritativeEntries.length === queue.length ? authoritativeEntries : legacyEntries(queue),
+    [authoritativeEntries, queue],
+  );
   const hasAuthoritativeTraversal =
     authoritativeEntries.length === queue.length &&
     (authoritativeEntries.length === 0 || currentQueueEntryId !== null);
   const currentId = currentQueueEntryId ?? entries[currentIndex]?.id ?? null;
-  const current = entries.find((entry) => entry.id === currentId) ?? null;
+  const entryIndices = useMemo(
+    () => new Map(entries.map((entry, index) => [entry.id, index])),
+    [entries],
+  );
+  const current = currentId ? (entries[entryIndices.get(currentId) ?? -1] ?? null) : null;
   const currentAvailable = current ? providerAvailable(current.track.provider?.providerId) : false;
-  const fallbackUpcoming = entries.slice(Math.max(0, currentIndex + 1)).map((entry) => entry.id);
-  const visibleUpcomingIds = hasAuthoritativeTraversal ? upcomingQueueEntryIds : fallbackUpcoming;
-  const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
-  const upNext = visibleUpcomingIds.flatMap((id) => {
-    const entry = entriesById.get(id);
-    return entry ? [entry] : [];
-  });
+  const upNext = useMemo(() => {
+    if (!hasAuthoritativeTraversal) return entries.slice(Math.max(0, currentIndex + 1));
+    return upcomingQueueEntryIds.flatMap((id) => {
+      const entry = entries[entryIndices.get(id) ?? -1];
+      return entry ? [entry] : [];
+    });
+  }, [hasAuthoritativeTraversal, currentIndex, entries, entryIndices, upcomingQueueEntryIds]);
+  const { setContainer: setQueueList, ...rows } = useWindowedRows(upNext.length);
   const drag = useRef<PointerDrag | null>(null);
+  const scrollArea = useRef<HTMLElement>(null);
   const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
   const [dropTargetEntryId, setDropTargetEntryId] = useState<string | null>(null);
 
   useEffect(() => {
+    let scrollFrame = 0;
     const clearDrag = () => {
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = 0;
       drag.current = null;
       setDraggedEntryId(null);
       setDropTargetEntryId(null);
     };
+    const updateTarget = (active: PointerDrag) => {
+      const row = document
+        .elementFromPoint(active.clientX, active.clientY)
+        ?.closest<HTMLElement>('[data-queue-entry-id]');
+      active.targetId = row?.dataset.queueEntryId ?? null;
+      setDropTargetEntryId(active.targetId);
+    };
+    const autoScroll = () => {
+      const active = drag.current;
+      const area = scrollArea.current;
+      if (!active?.started || !area) return;
+      const bounds = area.getBoundingClientRect();
+      const delta =
+        active.clientY < bounds.top + 32 ? -12 : active.clientY > bounds.bottom - 32 ? 12 : 0;
+      if (delta && active.clientX >= bounds.left && active.clientX <= bounds.right) {
+        area.scrollTop += delta;
+        updateTarget(active);
+      }
+      scrollFrame = requestAnimationFrame(autoScroll);
+    };
     const move = (event: PointerEvent) => {
       const active = drag.current;
       if (!active || event.pointerId !== active.pointerId) return;
+      active.clientX = event.clientX;
+      active.clientY = event.clientY;
       if (
         !active.started &&
         Math.hypot(event.clientX - active.startX, event.clientY - active.startY) >= 4
       ) {
         active.started = true;
         setDraggedEntryId(active.entryId);
+        scrollFrame = requestAnimationFrame(autoScroll);
       }
       if (!active.started) return;
       event.preventDefault();
-      const row = document
-        .elementFromPoint(event.clientX, event.clientY)
-        ?.closest<HTMLElement>('[data-queue-entry-id]');
-      const targetId = row?.dataset.queueEntryId ?? null;
-      active.targetId = targetId;
-      setDropTargetEntryId(targetId);
+      updateTarget(active);
     };
     const end = (event: PointerEvent) => {
       const active = drag.current;
       if (!active || event.pointerId !== active.pointerId) return;
       if (active.started && active.targetId && active.targetId !== active.entryId) {
-        const targetIndex = entries.findIndex((entry) => entry.id === active.targetId);
+        const targetIndex = entryIndices.get(active.targetId) ?? -1;
         if (targetIndex >= 0) reorderQueueEntry(active.entryId, targetIndex);
       }
       clearDrag();
@@ -178,13 +217,12 @@ export function QueuePanel() {
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', clearDrag);
     return () => {
+      cancelAnimationFrame(scrollFrame);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', clearDrag);
     };
-  }, [entries, reorderQueueEntry]);
-
-  if (!queueOpen) return null;
+  }, [entryIndices, reorderQueueEntry]);
 
   const beginDrag = (entryId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -195,13 +233,15 @@ export function QueuePanel() {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
+      clientX: event.clientX,
+      clientY: event.clientY,
       started: false,
       targetId: entryId,
     };
   };
 
   const moveWithKeyboard = (entryId: string, direction: -1 | 1) => {
-    const index = entries.findIndex((entry) => entry.id === entryId);
+    const index = entryIndices.get(entryId) ?? -1;
     const targetIndex = index + direction;
     if (index >= 0 && targetIndex >= 0 && targetIndex < entries.length) {
       reorderQueueEntry(entryId, targetIndex);
@@ -243,6 +283,7 @@ export function QueuePanel() {
                   className="queue-now__title"
                 >
                   <strong>{current.track.title}</strong>
+                  <PluginSongBadges song={current.track} />
                 </EntityLink>
                 <span className="queue-now__artists">
                   {current.track.artists.map((artist, index) => (
@@ -268,7 +309,7 @@ export function QueuePanel() {
           </section>
         )}
 
-        <section className="queue-next">
+        <section className="queue-next" ref={scrollArea}>
           <div className="queue-next__heading">
             <p className="context-panel__label">{t('upNext')}</p>
             <div className="queue-next__meta">
@@ -279,16 +320,24 @@ export function QueuePanel() {
           {upNext.length === 0 ? (
             <p className="queue-empty">{t('empty')}</p>
           ) : (
-            <div className="queue-list">
-              {upNext.map((entry) => {
-                const canonicalIndex = entries.findIndex((candidate) => candidate.id === entry.id);
+            <div className="queue-list" role="list" ref={setQueueList}>
+              {rows.before > 0 && (
+                <div aria-hidden="true" style={{ height: Math.max(0, rows.before - 2) }} />
+              )}
+              {upNext.slice(rows.start, rows.end).map((entry, offset) => {
+                const index = rows.start + offset;
+                const canonicalIndex = entryIndices.get(entry.id) ?? -1;
                 const available = providerAvailable(entry.track.provider?.providerId);
                 const isDragged = draggedEntryId === entry.id;
                 const isDropTarget = dropTargetEntryId === entry.id && draggedEntryId !== entry.id;
                 return (
                   <div
                     className="queue-row"
+                    role="listitem"
+                    aria-posinset={index + 1}
+                    aria-setsize={upNext.length}
                     key={entry.id}
+                    data-row-index={index}
                     data-queue-entry-id={entry.id}
                     data-dragging={isDragged || undefined}
                     data-drop-target={isDropTarget || undefined}
@@ -327,6 +376,7 @@ export function QueuePanel() {
                         className="queue-row__title"
                       >
                         <strong>{entry.track.title}</strong>
+                        <PluginSongBadges song={entry.track} />
                       </EntityLink>
                       <small className="queue-row__artists">
                         {entry.track.artists.map((artist, index) => (
@@ -365,6 +415,9 @@ export function QueuePanel() {
                   </div>
                 );
               })}
+              {rows.after > 0 && (
+                <div aria-hidden="true" style={{ height: Math.max(0, rows.after - 2) }} />
+              )}
             </div>
           )}
         </section>

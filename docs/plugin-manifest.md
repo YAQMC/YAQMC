@@ -86,6 +86,50 @@ Using a broader world without the corresponding permissions is rejected. Asking 
 selecting a world that cannot import it is rejected too. API v3 does not expose network wildcards, raw sockets,
 filesystem paths, environment variables, native libraries, HTML, shell, or subprocess entrypoints.
 
+## Declarative song badges
+
+API v2/v3/v4 plugins can contribute plain-text song badges with the `ui.songBadges` permission.
+No script entrypoint, Worker, image download, or per-song plugin call is needed. Older hosts that
+do not recognize this permission must be updated before installing such a plugin.
+
+```json
+{
+  "permissions": ["ui.songBadges"],
+  "songBadges": [
+    {
+      "id": "catalog-origin",
+      "providerIds": ["org.example.catalog"],
+      "label": "Example catalog",
+      "labels": { "zh-CN": "示例音乐平台", "en-US": "Example catalog" },
+      "color": "#4588cc"
+    }
+  ]
+}
+```
+
+This fragment is added to an otherwise valid plugin manifest; preserve its existing permissions.
+Plugins own the platform matching rules, localized names and colors. The host provides a generic
+slot in track lists, the player bar, queue, song details and main lyrics view. A tooltip identifies
+the contributing plugin. The badge does not change playback routing or certify a third-party source.
+
+Matching uses `song.provider.originProviderId` when present, otherwise `song.provider.providerId`.
+The original provider is host-owned metadata added during federation and preserved through nested
+federation and persistence. Component responses cannot supply `originProviderId`. No match means no
+badge. Older saved federated songs without the optional field need refreshing. The renderer does
+not decode opaque IDs or infer providers from titles, audio URLs or cover images.
+
+Each plugin may declare up to 16 rules with unique IDs (1–48 ASCII letters/digits, `_` or `-`).
+Each rule matches 1–16 exact provider IDs (1–128 ASCII letters/digits, `.`, `_` or `-`), has a
+nonempty label of at most 48 Unicode characters without control characters, and optionally up to
+8 localized labels and a six-digit `#RRGGBB` color. Locale keys use 1–35 ASCII letters/digits or `-`.
+Labels fall back from an exact locale to its base language, then `label`. HTML and arbitrary CSS
+are not accepted as presentation. At most 128 rules are active globally and 4 badges are displayed
+per provider, in host plugin-ID/declaration order. The renderer indexes declarations on snapshot
+changes, making per-song matching O(1) with bounded output and O(rules × provider IDs) index space.
+
+Only enabled, intact plugins with the grant contribute badges. Disabling, uninstalling, removing
+the grant or entering safe mode removes their badges, including from already queued songs.
+
 ## Dependencies and conflicts
 
 `dependencies` maps plugin IDs to version ranges. YAQMC does not download missing dependencies. Activation is blocked

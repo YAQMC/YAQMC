@@ -35,7 +35,9 @@ export const zhCN = {
     'uncomparable-version': '旧版本不是严格 SemVer，需要手动替换。',
     'session-change': '提供器身份或会话格式变化，需要重新登录。',
     permissions: '更新包含新增权限。',
-    'unverified-source': '本地包未经可信签名验证。替换后暂停自动更新，需重新确认来源。',
+    'unverified-source':
+      '该安装包（本地文件或插件商店）未经可信签名验证。替换后暂停自动更新，需重新确认来源。',
+    'source-change': '该插件 ID 之前来自其他来源。请确认允许此仓库替换它。',
     'trust-change': '更新的信任来源变化。',
   },
   phase: {
@@ -97,7 +99,9 @@ export const enUS = {
     'session-change': 'Provider identity or session format changes require sign-in.',
     permissions: 'This update requests additional permissions.',
     'unverified-source':
-      'This local package is not verified by a trusted signature. Automatic updates will pause until the source is confirmed again.',
+      'This package (local file or plugin store) is not verified by a trusted signature. Automatic updates will pause until the source is confirmed again.',
+    'source-change':
+      'This plugin ID was installed from a different source. Confirm that this repository is allowed to replace it.',
     'trust-change': 'The trusted source changes.',
   },
   phase: {
@@ -155,7 +159,9 @@ export const zhTW = {
     'uncomparable-version': '舊版本不是嚴格 SemVer，需要手動替換。',
     'session-change': '提供器身分或會話格式改變，需要重新登入。',
     permissions: '更新包含新增權限。',
-    'unverified-source': '本機套件未經可信簽章驗證。替換後暫停自動更新，需要重新確認來源。',
+    'unverified-source':
+      '此套件（本機檔案或外掛商店）未經可信簽章驗證。替換後暫停自動更新，需要重新確認來源。',
+    'source-change': '此外掛 ID 先前來自其他來源。請確認允許此儲存庫取代它。',
     'trust-change': '更新的信任來源改變。',
   },
   phase: {

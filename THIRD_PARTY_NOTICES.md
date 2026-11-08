@@ -15,7 +15,10 @@ Source: <https://github.com/amll-dev/applemusic-like-lyrics>
 Packages: `@applemusic-like-lyrics/core` `0.5.2` and `@applemusic-like-lyrics/react` `0.5.2`
 
 License: GNU Affero General Public License version 3 only (`AGPL-3.0-only`). These official packages are used by
-the desktop lyric renderer without vendoring or local modification. The package license text and corresponding
+the desktop lyric renderer without vendoring. Installation applies the local modification in
+[`scripts/patch-dependencies.mjs`](scripts/patch-dependencies.mjs): never-active lyric lines use opacity
+until their first activation creates the word masks. The script is the source of this modification.
+The package license text and corresponding
 source are available from the upstream project; distributors of YAQMC must satisfy the GPLv3/AGPLv3 obligations
 described in [docs/lyrics.md](docs/lyrics.md#amll-decision).
 

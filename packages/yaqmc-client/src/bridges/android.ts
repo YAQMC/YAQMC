@@ -34,6 +34,7 @@ interface CapacitorYaqmcPlugin {
   clipboardSet(options: { text: string }): Promise<void>;
   nativeShare(request: HostNativeShareRequest): Promise<void>;
   pickBackgroundImage(): Promise<{ path?: string | null }>;
+  pickPluginPackage(): Promise<{ path?: string | null }>;
   addListener(
     event: 'coreEvent' | 'deepLink' | 'updateAvailable',
     listener: (payload: Record<string, unknown>) => void,
@@ -157,9 +158,15 @@ export function readCapacitorAndroidApi(
     dialog: {
       pickSave: async () => null,
       pickFile: async ({ kind }) => {
-        if (kind !== 'background-image') return null;
-        const result = await plugin.pickBackgroundImage();
-        return typeof result.path === 'string' && result.path.trim() ? result.path : null;
+        // Both pickers copy the selected document into app-private storage natively;
+        // the renderer only receives that staged path, never a content:// URI.
+        const result =
+          kind === 'background-image'
+            ? await plugin.pickBackgroundImage()
+            : kind === 'plugin-package'
+              ? await plugin.pickPluginPackage()
+              : null;
+        return typeof result?.path === 'string' && result.path.trim() ? result.path : null;
       },
     },
   };
@@ -193,7 +200,7 @@ export function createAndroidBridge(
     capabilities: {
       windowControls: false,
       lyricsSurfaces: true,
-      plugins: false,
+      plugins: true,
       localApi: false,
       fileExport: false,
       fileImport: true,

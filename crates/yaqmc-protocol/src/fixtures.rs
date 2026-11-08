@@ -707,7 +707,7 @@ fn plugin_update_samples() -> Vec<(&'static str, Value, Value)> {
         "feedSequence": 0, "feedDigest": "", "releasesSeen": {}, "retryAfterMs": 0, "failures": 0 });
     let operation = json!({ "operationId": "operation-0", "pluginId": "dev.example.update", "phase": "prepared", "downloadedBytes": 0, "totalBytes": null, "error": null, "runtimeChanged": false,
         "preview": { "pluginId": "dev.example.update", "providerIds": ["example.music"], "name": "Example", "currentVersion": "1.0.0", "expectedGeneration": 1, "version": "1.0.0", "currentSha256": "a".repeat(64), "sha256": "b".repeat(64),
-            "release": { "channel": "stable", "buildId": "hotfix-1", "releaseSequence": 2 }, "permissions": ["plugin.storage"], "grantedPermissions": ["plugin.storage"], "addedPermissions": [], "removedPermissions": [], "sessionChanges": [], "confirmations": ["replacement", "unverified-source"], "trustedSource": null, "enabled": true, "needsRenderer": true, "hasScript": true } });
+            "release": { "channel": "stable", "buildId": "hotfix-1", "releaseSequence": 2 }, "permissions": ["plugin.storage"], "grantedPermissions": ["plugin.storage"], "addedPermissions": [], "removedPermissions": [], "sessionChanges": [], "confirmations": ["replacement", "unverified-source"], "trustedSource": null, "origin": null, "enabled": true, "needsRenderer": true, "hasScript": true } });
     vec![
         (
             "plugin_update_policy_get",
@@ -753,6 +753,22 @@ fn plugin_update_samples() -> Vec<(&'static str, Value, Value)> {
             "plugin_update_editing",
             json!({ "id": "dev.example.update", "editing": true }),
             Value::Null,
+        ),
+        (
+            "plugin_store_search",
+            json!({ "request": { "query": "lyrics", "filter": "all", "sort": "best-match", "page": 1, "refresh": false } }),
+            json!({ "query": "topic:yaqmc-plugin lyrics", "page": 1, "totalCount": 1, "incompleteResults": false, "hasMore": false, "stale": false, "fetchedAtMs": 1,
+                "items": [{ "id": 1, "owner": "YAQMC", "repo": "yaqmc-music-providers", "fullName": "YAQMC/yaqmc-music-providers", "description": "Music provider plugin",
+                    "htmlUrl": "https://github.com/YAQMC/yaqmc-music-providers", "ownerType": "Organization", "ownerAvatarUrl": null, "organizationOwned": true, "stars": 1,
+                    "license": "MIT", "topics": ["yaqmc-plugin"], "archived": false, "fork": false, "updatedAt": "2026-11-01T00:00:00Z", "pushedAt": null }] }),
+        ),
+        (
+            "plugin_store_releases",
+            json!({ "request": { "owner": "YAQMC", "repo": "yaqmc-music-providers", "includePrereleases": false, "page": 1, "refresh": false } }),
+            json!({ "owner": "YAQMC", "repo": "yaqmc-music-providers", "page": 1, "hasMore": false, "hiddenPrereleases": 0, "stale": false, "fetchedAtMs": 1,
+                "releases": [{ "id": 7, "tagName": "v0.2.0", "name": "0.2.0", "body": null, "publishedAt": "2026-11-02T00:00:00Z", "prerelease": false,
+                    "htmlUrl": "https://github.com/YAQMC/yaqmc-music-providers/releases", "otherAssetCount": 1,
+                    "assets": [{ "id": 70, "name": "org.yaqmc.providers.music-0.2.0.yaqmc-plugin", "size": 1024, "downloadCount": 0, "updatedAt": null, "sha256": null }] }] }),
         ),
     ]
 }

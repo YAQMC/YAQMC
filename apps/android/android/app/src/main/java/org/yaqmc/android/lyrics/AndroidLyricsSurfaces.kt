@@ -120,6 +120,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
     private const val PREFS = "yaqmc_lyrics_surfaces"
     private const val KEY_CONFIG = "config"
     private const val KEY_CAR = "car_bluetooth_lyrics"
+    private const val KEY_PENDING_CLOSES = "pending_closes"
     private const val CAR_MIN_INTERVAL_MS = 1_000L
 
     private val main = Handler(Looper.getMainLooper())
@@ -137,6 +138,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
 
     var onInteractionChanged: ((kind: String, interaction: String) -> Unit)? = null
     private var interactionPending = false
+    private var pendingClosures: PendingSurfaceClosures? = null
     private var systemLyrics: SystemLyricsPluginHost? = null
     private var lockNotification: FloatingLyricsLockNotification? = null
 
@@ -151,7 +153,10 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
 
     @MainThread
     fun init(appContext: Context) {
-        if (context != null) return
+        if (context != null) {
+            pendingClosures?.retry()
+            return
+        }
         val ctx = appContext.applicationContext
         context = ctx
         lockNotification = FloatingLyricsLockNotification(ctx)
@@ -161,6 +166,19 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
                 .getOrDefault(JSONObject())
             carEnabled = it.getBoolean(KEY_CAR, false)
         }
+        pendingClosures = PendingSurfaceClosures(
+            prefs?.getStringSet(KEY_PENDING_CLOSES, emptySet()).orEmpty().toSet(),
+            { pending -> prefs?.edit()?.putStringSet(KEY_PENDING_CLOSES, pending)?.apply() },
+        ) { kind, complete ->
+            val params = JSONObject().put("kind", kind).put("enabled", false)
+                .put("value", JSONObject().put("version", 2).put("surfaces", config).toString())
+            CoreManager.invoke("app_preferences_set_surface_enabled", params.toString(), "host") { json ->
+                val success = runCatching { JSONObject(json).optBoolean("ok") }.getOrDefault(false)
+                main.post { complete(success) }
+            }
+        }
+        pendingClosures?.applyPending(config)
+        pendingClosures?.retry()
         ctx.registerComponentCallbacks(object : ComponentCallbacks {
             override fun onConfigurationChanged(newConfig: Configuration) {
                 main.post { surfaces.values.forEach(OverlaySurface::relayout) }
@@ -184,6 +202,8 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
     fun reconcile(surfacesJson: JSONObject) {
         val systemAvailable = systemIslandAvailable()
         config = reconcileFloatingLyrics(surfacesJson, config, systemAvailable)
+        pendingClosures?.applyPending(config)
+        pendingClosures?.retry()
         if (!systemAvailable && surfacesJson.optJSONObject("island")?.optBoolean("enabled") == true) {
             onSurfaceClosed?.invoke("island")
         }
@@ -248,6 +268,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
 
     @MainThread
     fun setAppForeground(foreground: Boolean) {
+        pendingClosures?.retry()
         if (appForeground == foreground) return
         appForeground = foreground
         refresh()
@@ -645,6 +666,7 @@ object AndroidLyricsSurfaces : CoreManager.Callback {
         private fun dismiss() {
             config.optJSONObject(kind)?.put("enabled", false)
             prefs?.edit()?.putString(KEY_CONFIG, config.toString())?.apply()
+            pendingClosures?.close(kind)
             onSurfaceClosed?.invoke(kind)
             refresh()
         }

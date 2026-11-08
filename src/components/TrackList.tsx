@@ -16,9 +16,11 @@ import { dispatchPluginUiAction } from '../application/plugin-runtime';
 import { usePluginUiSnapshot } from '../application/plugin-ui';
 import { EntityLink } from './EntityLink';
 import { TrackAccessBadge } from './TrackAccessBadge';
+import { PluginSongBadges } from './PluginSongBadges';
 import { useSongShareActions } from '../application/use-song-share-actions';
 import { useCommentsPanelStore } from '../application/comments-panel-store';
 import type { ContinuationKind } from '@yaqmc/client';
+import { useWindowedRows } from './ui/use-windowed-rows';
 
 interface TrackListProps {
   tracks: Song[];
@@ -39,10 +41,15 @@ export function TrackList({
   const currentId = usePlayerStore((state) => state.queue[state.currentIndex]?.id);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const pluginActions = usePluginUiSnapshot().track;
+  const { setContainer: setRowGroup, ...rows } = useWindowedRows(tracks.length);
 
   return (
-    <div className={`track-list ${compact ? 'track-list--compact' : ''}`} role="table">
-      <div className="track-list__header" role="row">
+    <div
+      className={`track-list ${compact ? 'track-list--compact' : ''}`}
+      role="table"
+      aria-rowcount={tracks.length + 1}
+    >
+      <div className="track-list__header" role="row" aria-rowindex={1}>
         <span className="track-list__number" role="columnheader">
           #
         </span>
@@ -58,21 +65,26 @@ export function TrackList({
         </span>
         <span className="track-list__actions" role="columnheader" />
       </div>
-      <div role="rowgroup">
-        {tracks.map((track, index) => (
-          <TrackRow
-            key={track.id.trim() || `missing-track:${index}`}
-            track={track}
-            tracks={tracks}
-            index={index}
-            active={Boolean(track.id.trim()) && track.id === currentId}
-            isPlaying={isPlaying}
-            showAlbum={showAlbum}
-            titleTarget={titleTarget}
-            pluginActions={pluginActions}
-            continuation={continuation}
-          />
-        ))}
+      <div role="rowgroup" ref={setRowGroup}>
+        {rows.before > 0 && <div aria-hidden="true" style={{ height: rows.before }} />}
+        {tracks.slice(rows.start, rows.end).map((track, offset) => {
+          const index = rows.start + offset;
+          return (
+            <TrackRow
+              key={track.id.trim() || `missing-track:${index}`}
+              track={track}
+              tracks={tracks}
+              index={index}
+              active={Boolean(track.id.trim()) && track.id === currentId}
+              isPlaying={isPlaying}
+              showAlbum={showAlbum}
+              titleTarget={titleTarget}
+              pluginActions={pluginActions}
+              continuation={continuation}
+            />
+          );
+        })}
+        {rows.after > 0 && <div aria-hidden="true" style={{ height: rows.after }} />}
       </div>
     </div>
   );
@@ -209,6 +221,8 @@ function TrackRow({
     <div
       className="track-row"
       role="row"
+      aria-rowindex={index + 2}
+      data-row-index={index}
       tabIndex={hasUsableTrackId ? 0 : undefined}
       data-active={active || undefined}
       {...(hasUsableTrackId ? contextMenu.triggerProps : {})}
@@ -251,6 +265,7 @@ function TrackRow({
             {track.title}
           </EntityLink>
           <TrackAccessBadge song={track} />
+          <PluginSongBadges song={track} />
         </span>
         <span className="track-row__artist">
           {track.artists.map((artist, artistIndex) => (

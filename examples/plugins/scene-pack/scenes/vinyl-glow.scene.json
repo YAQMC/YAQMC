@@ -62,7 +62,15 @@
       "visible": true,
       "locked": false,
       "align": "left",
-      "followAnchor": 0.38
+      "followAnchor": 0.38,
+      "wordAnimation": {
+        "easing": "ease-in-out",
+        "keyframes": [
+          { "offset": 0, "y": 0, "scale": 1, "rotate": 0 },
+          { "offset": 0.45, "y": -0.12, "scale": 1.08, "rotate": -3, "glow": 0.12 },
+          { "offset": 1, "y": 0, "scale": 1, "rotate": 0 }
+        ]
+      }
     },
     "transport": {
       "id": "transport",

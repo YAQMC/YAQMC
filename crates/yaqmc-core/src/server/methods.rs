@@ -25,6 +25,7 @@ use yaqmc_provider_api::{
 };
 
 use super::ops;
+use super::types::SurfaceEnabledParams;
 use super::types::{
     ArtistCatalogParams, AttemptIdParams, AuthHeartbeatParams, CursorPageParams, DeviceIdParams,
     DiagnosticsExportToParams, EnabledParams, EncAreaParams, EntryIdParams, FrontendLogParams,
@@ -192,6 +193,8 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "plugin_update_cancel",
     "plugin_update_runtime_ready",
     "plugin_update_editing",
+    "plugin_store_search",
+    "plugin_store_releases",
     "plugin_inspect_path",
     "plugin_install",
     "plugin_set_enabled",
@@ -223,6 +226,7 @@ pub const CORE_DISPATCH_METHODS: &[&str] = &[
     "app_settings_set",
     "app_settings_remove",
     "app_preferences_set_surface_interaction",
+    "app_preferences_set_surface_enabled",
     "diagnostics_export_bundle_to",
     "statistics_export_to",
     "preferences_set_background_from",
@@ -1660,6 +1664,20 @@ async fn invoke_core(
                 |stored| host.notify_preferences_changed(stored),
             ))
         }
+        "app_preferences_set_surface_enabled" => {
+            let SurfaceEnabledParams {
+                kind,
+                enabled,
+                value,
+            } = parse(&params)?;
+            cmd(ops::app_preferences_set_surface_enabled(
+                &core.storage(),
+                &kind,
+                enabled,
+                value,
+                |stored| host.notify_preferences_changed(stored),
+            ))
+        }
         "appearance_background_load" => {
             let ReferenceParams { reference } = parse(&params)?;
             cmd(ops::appearance_background_load(&core.config().paths.data_dir, reference).await)
@@ -1863,6 +1881,18 @@ async fn invoke_core(
                 .plugins()
                 .update_editing(&id, editing)
                 .map_err(|e| e.to_string()))
+        }
+        #[cfg(feature = "plugins")]
+        "plugin_store_search" => {
+            let NamedRequest::<crate::plugin::store::StoreSearchRequest> { request } =
+                parse(&params)?;
+            cmd(core.plugins().store_search(request).await)
+        }
+        #[cfg(feature = "plugins")]
+        "plugin_store_releases" => {
+            let NamedRequest::<crate::plugin::store::StoreReleasesRequest> { request } =
+                parse(&params)?;
+            cmd(core.plugins().store_releases(request).await)
         }
         #[cfg(feature = "plugins")]
         "plugin_list" => ok(ops::plugin_list(&core.plugins())),
@@ -2166,6 +2196,8 @@ async fn invoke_core(
         | "plugin_update_cancel"
         | "plugin_update_runtime_ready"
         | "plugin_update_editing"
+        | "plugin_store_search"
+        | "plugin_store_releases"
         | "plugin_install_from" => Err(DispatchError::Unavailable { feature: "plugins" }),
         other => {
             debug_assert!(

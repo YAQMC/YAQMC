@@ -3,6 +3,108 @@ use super::super::tests::{
     style_inspection,
 };
 use super::*;
+
+#[tokio::test]
+async fn first_install_validation_allows_declarative_ui_but_blocks_player_control() {
+    use crate::{
+        player::PlayerService,
+        plugin::{api::PluginBridgeRequest, bridge::dispatch_bridge, package::PackageFile},
+    };
+    use serde_json::json;
+
+    let root = tempfile::tempdir().unwrap();
+    let host = host(root.path());
+    let id = "dev.example.update";
+    assert!(host.record(id).is_err());
+    let mut inspection = style_inspection(id);
+    inspection.manifest.api_version = 4;
+    inspection.manifest.permissions = ["ui.pages", "ui.navigation", "ui.layout", "player.control"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    inspection.manifest.entrypoints.script = Some("dist/main.js".into());
+    inspection.manifest.validate().unwrap();
+    inspection.files[0].bytes = serde_json::to_vec(&inspection.manifest).unwrap();
+    inspection.files.push(PackageFile {
+        path: "dist/main.js".into(),
+        bytes: b"definePlugin({ activate() {} });".to_vec(),
+    });
+    inspection.file_count = inspection.files.len();
+    let path = root.path().join("pages-v4");
+    extract_to(&inspection, &path).unwrap();
+    let op = prepared(&host, &path).await;
+    assert_eq!(op.phase, "prepared", "{:?}", op.error);
+    let preview = op.preview.as_ref().unwrap();
+    assert!(preview.current_version.is_none());
+    assert!(preview.needs_renderer && preview.has_script && preview.enabled);
+    let hash = preview.sha256.clone();
+    host.apply_update(ApplyRequest {
+        operation_id: op.operation_id.clone(),
+        confirm: true,
+        grant: preview.added_permissions.clone(),
+        ..Default::default()
+    })
+    .unwrap();
+    let acknowledge = |stage: &str| RuntimeReadyRequest {
+        operation_id: op.operation_id.clone(),
+        sha256: hash.clone(),
+        stage: stage.into(),
+        error: None,
+    };
+    phase(&host, &op.operation_id, "quiescing").await;
+    host.update_runtime_ready(acknowledge("quiescing")).unwrap();
+    phase(&host, &op.operation_id, "validating").await;
+    let token = host.start_runtime(id).unwrap();
+    let player = PlayerService::new();
+    for (method, payload) in [
+        ("ui.pages.register", json!({"id":"page", "title":"Page"})),
+        (
+            "ui.pages.render",
+            json!({"pageId":"page", "blocks":[{"type":"text", "text":"Ready"}]}),
+        ),
+        (
+            "ui.navigation.register",
+            json!({"id":"nav", "label":"Page", "pageId":"page"}),
+        ),
+        (
+            "ui.layout.set",
+            json!({"target":"home", "order":["radar","for-you"]}),
+        ),
+        ("ui.layout.clear", json!({"target":"home"})),
+        ("ui.navigation.unregister", json!({"id":"nav"})),
+        ("ui.pages.unregister", json!({"pageId":"page"})),
+    ] {
+        let response = dispatch_bridge(
+            &host,
+            &player,
+            &PluginBridgeRequest {
+                token: token.token.clone(),
+                method: method.into(),
+                payload,
+            },
+        )
+        .await
+        .expect(method);
+        assert_eq!(response["ok"], json!(true), "{method}");
+    }
+    let error = dispatch_bridge(
+        &host,
+        &player,
+        &PluginBridgeRequest {
+            token: token.token.clone(),
+            method: "player.pause".into(),
+            payload: json!({}),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error, "update-validation-in-progress");
+    host.update_runtime_ready(acknowledge("validating"))
+        .unwrap();
+    let completed = wait(&host, &op.operation_id, false).await;
+    assert_eq!(completed.phase, "completed", "{:?}", completed.error);
+    assert_eq!(host.record(id).unwrap().version, "1.0.0");
+}
 use crate::credentials::MemoryCredentialStore;
 
 fn fixture(root: &Path, version: &str, style: &str) -> PathBuf {
@@ -81,6 +183,7 @@ async fn only_two_downloads_run_and_cancelling_a_queued_download_never_starts_it
     );
     let prepare = || {
         host.prepare_update(PrepareRequest {
+            github: None,
             path: None,
             plugin_id: Some(source.plugin_id.clone()),
             release_id: Some("fixture".into()),
@@ -149,6 +252,7 @@ async fn settings_editing_and_live_calls_delay_installation_without_revoking_tok
 async fn prepared(host: &Arc<ExtensionHost>, path: &Path) -> UpdateOperation {
     let op = host
         .prepare_update(PrepareRequest {
+            github: None,
             path: Some(path.display().to_string()),
             plugin_id: None,
             release_id: None,
@@ -1119,6 +1223,7 @@ async fn signed_service_auto_updates_after_idle_then_reviews_hotfix_without_losi
                 .clone();
             let op = host
                 .prepare_update(PrepareRequest {
+                    github: None,
                     plugin_id: Some(source.plugin_id.clone()),
                     path: None,
                     release_id: Some(available),
@@ -1159,4 +1264,151 @@ async fn signed_service_auto_updates_after_idle_then_reviews_hotfix_without_losi
         );
         assert!(host.update_policy(&source.plugin_id).automatic);
     }
+}
+
+fn store_package(id: &str, version: &str, style: &str) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut inspection = style_inspection(id);
+    inspection.manifest.version = version.into();
+    inspection.files[0].bytes = serde_json::to_vec(&inspection.manifest).unwrap();
+    inspection.files[1].bytes = style.as_bytes().to_vec();
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for file in &inspection.files {
+        zip.start_file(&file.path, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(&file.bytes).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+fn serve_store_release(
+    server: &remote::tests::TestServer,
+    owner: &str,
+    release_id: u64,
+    asset_id: u64,
+    bytes: &[u8],
+    digest: &str,
+) {
+    let json = |value: serde_json::Value| (200, vec![], serde_json::to_vec(&value).unwrap());
+    let mut routes = server.routes.lock().unwrap();
+    routes.insert(
+        format!("/repos/{owner}/plugin"),
+        json(serde_json::json!({"id": 1, "name": "plugin", "owner": {"login": owner, "type": "User"}, "topics": ["yaqmc-plugin"]})),
+    );
+    routes.insert(
+        format!("/repos/{owner}/plugin/releases/{release_id}"),
+        json(serde_json::json!({"id": release_id, "tag_name": "v1", "draft": false, "prerelease": false,
+            "assets": [{"id": asset_id, "name": "demo.yaqmc-plugin", "size": bytes.len(), "state": "uploaded",
+                        "digest": format!("sha256:{digest}")}]})),
+    );
+    // GitHub answers the API asset URL with a CDN redirect; both hops are origin-checked.
+    routes.insert(
+        format!("/repos/{owner}/plugin/releases/assets/{asset_id}"),
+        (
+            302,
+            vec![format!(
+                "Location: https://release-assets.githubusercontent.com/cdn/{asset_id}"
+            )],
+            vec![],
+        ),
+    );
+    routes.insert(format!("/cdn/{asset_id}"), (200, vec![], bytes.to_vec()));
+}
+
+#[tokio::test]
+async fn store_assets_install_through_review_and_source_changes_need_confirmation() {
+    let root = tempfile::tempdir().unwrap();
+    let server = remote::tests::TestServer::start().await;
+    let mut value = ExtensionHost::open(root.path().join("plugins")).unwrap();
+    value.updates.http = server.http.clone();
+    let host = Arc::new(value);
+    let id = "dev.example.store";
+    let first = store_package(id, "1.0.0", "body { color: red; }");
+    serve_store_release(&server, "alice", 7, 70, &first, &sha256_bytes(&first));
+    let reference = |owner: &str, release_id, asset_id| crate::plugin::store::StoreAssetRef {
+        owner: owner.into(),
+        repo: "plugin".into(),
+        release_id,
+        asset_id,
+    };
+    let request = |github| PrepareRequest {
+        github: Some(github),
+        path: None,
+        plugin_id: None,
+        release_id: None,
+        unpacked: false,
+    };
+    // Mixed sources and unpacked store installs are rejected before any request.
+    assert!(host
+        .prepare_update(PrepareRequest {
+            path: Some("x".into()),
+            ..request(reference("alice", 7, 70))
+        })
+        .is_err());
+    let op = host
+        .prepare_update(request(reference("alice", 7, 70)))
+        .unwrap();
+    // A second click joins the running operation instead of downloading again.
+    let again = host
+        .prepare_update(request(reference("alice", 7, 70)))
+        .unwrap();
+    assert_eq!(again.operation_id, op.operation_id);
+    let op = wait(&host, &op.operation_id, false).await;
+    let preview = op.preview.clone().expect("reviewed preview");
+    assert_eq!(
+        preview.sha256,
+        sha256_bytes(&first),
+        "review binds the downloaded bytes"
+    );
+    assert_eq!(
+        preview.origin.as_deref(),
+        Some("github:alice/plugin/releases/7")
+    );
+    assert!(preview.trusted_source.is_none());
+    assert!(preview
+        .confirmations
+        .contains(&"unverified-source".to_owned()));
+    // Unconfirmed apply is refused; confirmed apply installs and records the store source.
+    assert!(host
+        .apply_update(ApplyRequest {
+            operation_id: op.operation_id.clone(),
+            ..Default::default()
+        })
+        .is_err());
+    assert_eq!(apply(&host, op).await.phase, "completed");
+    assert_eq!(
+        host.record(id).unwrap().source,
+        "github:alice/plugin/releases/7"
+    );
+
+    // The same plugin id from another repository needs an explicit source-change review.
+    let second = store_package(id, "1.1.0", "body { color: blue; }");
+    serve_store_release(&server, "mallory", 8, 80, &second, &sha256_bytes(&second));
+    let op = host
+        .prepare_update(request(reference("mallory", 8, 80)))
+        .unwrap();
+    let op = wait(&host, &op.operation_id, false).await;
+    assert!(op
+        .preview
+        .as_ref()
+        .unwrap()
+        .confirmations
+        .contains(&"source-change".to_owned()));
+    host.cancel_update(&op.operation_id).unwrap();
+    assert_eq!(host.record(id).unwrap().version, "1.0.0");
+
+    // A GitHub digest that does not match the bytes fails without leaving a staged package.
+    serve_store_release(&server, "eve", 9, 90, &second, &"0".repeat(64));
+    let op = host
+        .prepare_update(request(reference("eve", 9, 90)))
+        .unwrap();
+    let failed = wait(&host, &op.operation_id, false).await;
+    assert_eq!(failed.phase, "failed");
+    assert_eq!(failed.error.as_deref(), Some("store-asset-digest-mismatch"));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!root
+        .path()
+        .join("plugins/.updates")
+        .join(&op.operation_id)
+        .exists());
 }

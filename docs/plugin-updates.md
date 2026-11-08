@@ -20,6 +20,8 @@ Credentials stay in the existing credential backend. Component KV and cache are 
 
 The update methods are host/main-window only: `plugin_update_policy_get/set`, `plugin_update_check`, `plugin_update_prepare`, `plugin_update_apply`, `plugin_update_status`, `plugin_update_cancel`, `plugin_update_runtime_ready`, and `plugin_update_editing`. Long operations return an `operationId` and emit `plugin://update-progress`. Plugins, lyrics windows and local HTTP callers cannot invoke these methods.
 
+`plugin_update_prepare` also accepts a plugin store asset (`github: { owner, repo, releaseId, assetId }`); see [Plugins page and plugin store](plugin-store.md). Store packages are reviewed as unverified sources, record `github:<owner>/<repo>/releases/<id>` as their source, require a `source-change` confirmation when they replace a plugin ID that came from elsewhere, and never become trusted update sources.
+
 ## Publisher compatibility
 
 Publishers should include `release`, keep the plugin ID and provider IDs stable, increment `releaseSequence` for every published content change, and update `sessionSchemaVersion` whenever old credentials or KV cannot be read safely. A hotfix with the same version is valid, but users must approve it. Publish packages with deterministic bytes so the SHA-256 identifies the exact installed content. Release records must bind plugin ID, version, channel, build ID, sequence, size, URL and SHA-256 in the signed payload.

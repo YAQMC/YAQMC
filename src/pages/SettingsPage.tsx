@@ -100,7 +100,6 @@ import {
 } from '../application/logger';
 import { IssueReporterDialog } from '../components/IssueReporterDialog';
 import { LyricsPresetPicker } from '../components/LyricsPresetEditor';
-import { PluginManager } from '../components/PluginManager';
 import { SettingsUpdateSection } from '../components/SettingsUpdateSection';
 import {
   SurfaceCapabilityBanner,
@@ -2041,14 +2040,6 @@ export function SettingsPage() {
                 </span>
               }
             />
-          </div>
-        </SettingsSection>
-      )}
-
-      {host.plugins && (
-        <SettingsSection title={t('plugins.title')} description={t('plugins.description')}>
-          <div className="settings-card">
-            <PluginManager />
           </div>
         </SettingsSection>
       )}

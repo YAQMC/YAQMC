@@ -433,6 +433,7 @@ function LyricsPanelStage({
   const bindings: LyricsSceneBindings = {
     songId: currentTrackId,
     title: currentTitle,
+    provider: currentTrack?.provider,
     artistLabel: currentArtistLabel,
     albumTitle: currentAlbumTitle,
     artworkSrc: safeArtworkSource,

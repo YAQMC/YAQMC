@@ -31,6 +31,7 @@
     "app_settings_set",
     "app_settings_remove",
     "app_preferences_set_surface_interaction",
+    "app_preferences_set_surface_enabled",
     "diagnostics_export_bundle_to",
     "statistics_export_to",
     "preferences_set_background_from",

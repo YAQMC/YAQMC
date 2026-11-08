@@ -18,6 +18,7 @@ pub enum PluginPermission {
     UiPlayerBar,
     UiSidebar,
     UiNotify,
+    UiSongBadges,
     UiPages,
     UiNavigation,
     UiLayout,
@@ -42,6 +43,7 @@ pub const V1_PERMISSIONS: &[PluginPermission] = &[
 ];
 
 pub const V2_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::UiSongBadges,
     PluginPermission::UiContextMenu,
     PluginPermission::UiPlayerBar,
     PluginPermission::UiSidebar,
@@ -58,6 +60,7 @@ pub const V4_PERMISSIONS: &[PluginPermission] = &[
 ];
 
 pub const V3_PERMISSIONS: &[PluginPermission] = &[
+    PluginPermission::UiSongBadges,
     PluginPermission::PluginStorage,
     PluginPermission::Network,
     PluginPermission::ProviderCatalog,
@@ -102,6 +105,7 @@ impl PluginPermission {
             Self::UiPlayerBar => "ui.playerBar",
             Self::UiSidebar => "ui.sidebar",
             Self::UiNotify => "ui.notify",
+            Self::UiSongBadges => "ui.songBadges",
             Self::UiPages => "ui.pages",
             Self::UiNavigation => "ui.navigation",
             Self::UiLayout => "ui.layout",
@@ -130,6 +134,7 @@ impl PluginPermission {
             Self::UiPlayerBar => "Add Player Bar actions",
             Self::UiSidebar => "Add sidebar commands",
             Self::UiNotify => "Show notifications",
+            Self::UiSongBadges => "Display plugin-defined song badges",
             Self::UiPages => "Add plugin pages",
             Self::UiNavigation => "Add navigation entries for its pages",
             Self::UiLayout => "Rearrange supported YAQMC page sections",

@@ -1,3 +1,4 @@
+import { PluginSongBadges } from '../PluginSongBadges';
 import {
   useEffect,
   useLayoutEffect,
@@ -22,7 +23,7 @@ import {
   type ExtraSceneWidget,
   type SceneWidgetId,
 } from '../../application/lyrics-preset';
-import { resolveSceneAssetUrl } from '../../application/plugin-asset';
+import { resolveSceneAssetUrl, usePluginAssetRevision } from '../../application/plugin-asset';
 import { linuxSkipsLiveVideo, skipsLiveCssBlur } from '../../application/platform-integration';
 import {
   currentPluginSceneInstance,
@@ -222,6 +223,7 @@ export function LyricsScene({
     state.isPlaying ? null : state.positionMs,
   );
   const portrait = sceneSize.width > 0 && sceneSize.height > sceneSize.width;
+  const assetRevision = usePluginAssetRevision();
   const scene = useMemo(
     () => (editor ? preset.scene : sceneForOrientation(preset, portrait)),
     [editor, preset, portrait],
@@ -346,7 +348,7 @@ export function LyricsScene({
     return () => {
       cancelled = true;
     };
-  }, [preset.pluginId, scene]);
+  }, [preset.pluginId, scene, assetRevision]);
 
   useEffect(() => {
     if (editor || !runtimePlaying || runtimeScrubbing) return;
@@ -758,6 +760,7 @@ export function LyricsScene({
             >
               {bindings.title}
             </strong>
+            <PluginSongBadges song={{ provider: bindings.provider }} />
             <span
               style={compactLayout ? undefined : { fontSize: `${scene.metadata.artistScale}em` }}
             >

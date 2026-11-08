@@ -19,6 +19,9 @@ export function routesEqual(first: AppRoute, second: AppRoute): boolean {
     return 'id' in first && 'id' in second && first.id === second.id;
   }
   if (first.page === 'search' && second.page === 'search') return first.query === second.query;
+  if (first.page === 'plugins' && second.page === 'plugins') {
+    return (first.tab ?? 'manage') === (second.tab ?? 'manage');
+  }
   if (first.page === 'plugin-page' && second.page === 'plugin-page') {
     return first.pluginId === second.pluginId && first.pageId === second.pageId;
   }

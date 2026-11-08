@@ -93,6 +93,10 @@ import type {
   PluginUpdateApplyRequest,
   PluginUpdateOperation,
   PluginUpdateRuntimeReadyRequest,
+  PluginStoreSearchRequest,
+  PluginStoreSearchPage,
+  PluginStoreReleasesRequest,
+  PluginStoreReleasesPage,
 } from './plugin-updates';
 
 export const MIGRATED_METHOD_NAMES = [
@@ -260,6 +264,8 @@ export const MIGRATED_METHOD_NAMES = [
   'plugin_update_cancel',
   'plugin_update_runtime_ready',
   'plugin_update_editing',
+  'plugin_store_search',
+  'plugin_store_releases',
   'plugin_inspect_path',
   'plugin_install',
   'plugin_set_enabled',
@@ -302,6 +308,7 @@ export const PROTOCOL_ONLY_METHODS = [
   'app_settings_set',
   'app_settings_remove',
   'app_preferences_set_surface_interaction',
+  'app_preferences_set_surface_enabled',
   'diagnostics_export_bundle_to',
   'statistics_export_to',
   'preferences_set_background_from',
@@ -596,6 +603,8 @@ export type MethodParams = Exhaustive<{
   plugin_update_cancel: { operationId: string };
   plugin_update_runtime_ready: NamedRequest<PluginUpdateRuntimeReadyRequest>;
   plugin_update_editing: { id: string; editing: boolean };
+  plugin_store_search: NamedRequest<PluginStoreSearchRequest>;
+  plugin_store_releases: NamedRequest<PluginStoreReleasesRequest>;
   plugin_inspect_path: { path: string };
   plugin_install: NamedRequest<PluginInstallRequest>;
   plugin_set_enabled: NamedRequest<PluginEnableRequest>;
@@ -634,6 +643,11 @@ export type MethodParams = Exhaustive<{
   app_preferences_set_surface_interaction: {
     kind: 'desktop' | 'island';
     interaction: 'interactive' | 'passive-locked';
+    value: string;
+  };
+  app_preferences_set_surface_enabled: {
+    kind: 'desktop' | 'island';
+    enabled: boolean;
     value: string;
   };
   app_settings_remove: { key: string };
@@ -816,6 +830,8 @@ export type MethodResult = Exhaustive<{
   plugin_update_cancel: void;
   plugin_update_runtime_ready: void;
   plugin_update_editing: void;
+  plugin_store_search: PluginStoreSearchPage;
+  plugin_store_releases: PluginStoreReleasesPage;
   plugin_inspect_path: PluginInspectResult;
   plugin_install: PluginRecord;
   plugin_set_enabled: PluginRecord;
@@ -846,6 +862,7 @@ export type MethodResult = Exhaustive<{
   app_settings_get: string | null;
   app_settings_set: void;
   app_preferences_set_surface_interaction: string;
+  app_preferences_set_surface_enabled: string;
   app_settings_remove: void;
   diagnostics_export_bundle_to: BundleExportResult;
   statistics_export_to: StatisticsExportResult;

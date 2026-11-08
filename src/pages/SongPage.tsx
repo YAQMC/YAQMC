@@ -12,6 +12,7 @@ import { Artwork } from '../components/ui/Artwork';
 import { ActionMenu, ActionMenuItem } from '../components/ui/ActionMenu';
 import { IconButton } from '../components/ui/IconButton';
 import { SongShareMenuItems } from '../components/SongShareActions';
+import { PluginSongBadges } from '../components/PluginSongBadges';
 import { CommentsButton } from '../components/CommentsPanel';
 
 export function SongPage({ song }: { song: Song }) {
@@ -51,6 +52,7 @@ export function SongPage({ song }: { song: Song }) {
         <div className="detail-hero__copy">
           <p className="eyebrow">{t('eyebrow')}</p>
           <h1>{song.title}</h1>
+          <PluginSongBadges song={song} />
           <div className="song-page__artists">
             {song.artists.map((artist, index) => (
               <span key={artist.id.trim() || `missing-artist:${index}`}>

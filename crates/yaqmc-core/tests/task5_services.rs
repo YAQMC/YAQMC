@@ -5,8 +5,8 @@ use tempfile::tempdir;
 use yaqmc_core::{
     app_preferences::{
         close_hides_to_tray, global_shortcuts_enabled, load_background, persist_background,
-        set_preferences, set_surface_interaction, PreferencesChangeSink, PreferencesRepository,
-        MAX_BACKGROUND_BYTES,
+        set_preferences, set_surface_enabled, set_surface_interaction, PreferencesChangeSink,
+        PreferencesRepository, MAX_BACKGROUND_BYTES,
     },
     diagnostics::{
         export_bundle, AppSection, BundleOptions, DiagnosticsSnapshot, PlaybackSection,
@@ -206,6 +206,102 @@ fn preferences_apply_atomic_transform_and_emit_the_final_document() {
     let defaults = MemoryPreferences::with(None);
     assert!(close_hides_to_tray(&defaults));
     assert!(!global_shortcuts_enabled(&defaults));
+}
+
+#[test]
+fn native_surface_close_is_atomic_and_does_not_block_explicit_reenable() {
+    let repository = MemoryPreferences::with(Some(
+        r#"{"version":2,"locale":"zh-CN","surfaces":{"desktop":{"enabled":true,"interaction":"passive-locked","fontSize":30},"island":{"enabled":true}}}"#,
+    ));
+    let sink = RecordingSink::default();
+    let stored = set_surface_enabled(
+        &repository,
+        &sink,
+        "desktop",
+        false,
+        r#"{"version":2}"#.into(),
+    )
+    .unwrap();
+    let document: serde_json::Value = serde_json::from_str(&stored).unwrap();
+    assert_eq!(document["locale"], "zh-CN");
+    assert_eq!(document["surfaces"]["desktop"]["enabled"], false);
+    assert_eq!(
+        document["surfaces"]["desktop"]["interaction"],
+        "passive-locked"
+    );
+    assert_eq!(document["surfaces"]["desktop"]["fontSize"], 30);
+    assert_eq!(document["surfaces"]["island"]["enabled"], true);
+    assert_eq!(
+        sink.values.lock().unwrap().as_slice(),
+        std::slice::from_ref(&stored)
+    );
+    assert!(set_surface_enabled(
+        &repository,
+        &sink,
+        "other",
+        false,
+        r#"{"version":2}"#.into()
+    )
+    .is_err());
+    let mut reopened = document;
+    reopened["surfaces"]["desktop"]["enabled"] = json!(true);
+    set_preferences(&repository, &sink, reopened.to_string()).unwrap();
+    let reopened: serde_json::Value = serde_json::from_str(&repository.stored().unwrap()).unwrap();
+    assert_eq!(reopened["surfaces"]["desktop"]["enabled"], true);
+}
+
+#[test]
+fn native_close_never_replaces_existing_legacy_or_invalid_preferences_with_fallback() {
+    for original in [
+        r#"{"version":1,"locale":"zh-CN","appearance":{"theme":"dark"}}"#,
+        r#"{"version":2,"locale":"zh-CN","surfaces":[]}"#,
+        "invalid JSON",
+    ] {
+        let repository = MemoryPreferences::with(Some(original));
+        let sink = RecordingSink::default();
+        assert!(set_surface_enabled(
+            &repository,
+            &sink,
+            "desktop",
+            false,
+            r#"{"version":2}"#.into()
+        )
+        .is_err());
+        assert_eq!(repository.stored().as_deref(), Some(original));
+        assert!(sink.values.lock().unwrap().is_empty());
+    }
+    let repository = MemoryPreferences::with(None);
+    let sink = RecordingSink::default();
+    let stored = set_surface_enabled(
+        &repository,
+        &sink,
+        "desktop",
+        false,
+        r#"{"version":2}"#.into(),
+    )
+    .unwrap();
+    let stored: serde_json::Value = serde_json::from_str(&stored).unwrap();
+    assert_eq!(stored["surfaces"]["desktop"]["enabled"], false);
+}
+
+#[test]
+fn native_close_keeps_the_preference_size_limit_after_patching() {
+    let mut document = json!({"version":2,"padding":""});
+    let overhead = document.to_string().len();
+    document["padding"] = json!("x".repeat(128 * 1024 - overhead));
+    let original = document.to_string();
+    let repository = MemoryPreferences::with(Some(&original));
+    let sink = RecordingSink::default();
+    assert!(set_surface_enabled(
+        &repository,
+        &sink,
+        "desktop",
+        false,
+        r#"{"version":2}"#.into()
+    )
+    .is_err());
+    assert_eq!(repository.stored().as_deref(), Some(original.as_str()));
+    assert!(sink.values.lock().unwrap().is_empty());
 }
 
 #[tokio::test]

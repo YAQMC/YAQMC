@@ -56,6 +56,14 @@ export interface PluginManifest {
   entrypoints?: { styles?: string[]; scenes?: string[]; script?: string; component?: string };
   provider?: PluginProviderManifest;
   providers?: PluginProviderManifest[];
+  /** Requires ui.songBadges. Declarative, with no worker or per-song IPC. */
+  songBadges?: Array<{
+    id: string;
+    providerIds: string[];
+    label: string;
+    labels?: Record<string, string>;
+    color?: string;
+  }>;
   federations?: Array<{
     id: string;
     name?: string;
@@ -81,6 +89,7 @@ export type PluginPermission =
   | 'ui.playerBar'
   | 'ui.sidebar'
   | 'ui.notify'
+  | 'ui.songBadges'
   /** API v4 */
   | 'ui.pages'
   | 'ui.navigation'

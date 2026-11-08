@@ -12,6 +12,8 @@ YAQMC 将更新视为已安装插件的事务替换。宿主先固定候选包�
 
 宿主新增 `plugin_update_*` 接口和 `plugin://update-progress` 事件。接口只允许宿主和主窗口调用，插件、歌词窗口及本地 HTTP API 无权触发。当前交付包含本地事务、签名校验、故障恢复、隔离测试和发布者规范；生产远程源尚未上线。
 
+`plugin_update_prepare` 也接受插件商店附件（`github: { owner, repo, releaseId, assetId }`），见[插件页面与插件商店](plugin-store.md)。商店安装包按未验证来源审核，来源记录为 `github:<owner>/<repo>/releases/<id>`；替换来自其他来源的同一插件 ID 时需要 `source-change` 确认，且永远不会成为可信更新源。
+
 ## 使用方式
 
 1. 在插件卡片选择“更新 / 替换”，选择新的 `.yaqmc-plugin`。通过“添加插件”选择同 ID 包也进入相同审核；开发模式“重载”先准备目录快照。

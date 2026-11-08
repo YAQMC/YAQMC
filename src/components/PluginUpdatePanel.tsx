@@ -8,6 +8,7 @@ import type {
 } from '@yaqmc/client';
 import { getYaqmcClient } from '../application/yaqmc-runtime';
 import { choosePluginFile, type PluginRecord } from '../application/plugin-runtime';
+import { formatBytes, parseStoreError } from '../application/plugin-store';
 import type { enUS } from '../locales/plugin-updates';
 
 const client = getYaqmcClient();
@@ -18,11 +19,14 @@ export function PluginUpdatePanel({
   plugin,
   request,
   onChanged,
+  onCompleted,
   onClose,
 }: {
   plugin?: PluginRecord;
   request?: PluginUpdatePrepareRequest;
   onChanged: () => Promise<void>;
+  /** Called once with the installed plugin id when the reviewed package is active. */
+  onCompleted?: (pluginId: string) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation('settings', { keyPrefix: 'plugins.updates' });
@@ -36,6 +40,11 @@ export function PluginUpdatePanel({
           >[0],
           { defaultValue: permission },
         );
+  const { t: storeText } = useTranslation('settings', { keyPrefix: 'plugins.store' });
+  const operationError = (error: string) => {
+    const parsed = parseStoreError(error);
+    return parsed.kind === 'other' ? error : storeText(`errors.${parsed.kind}`, { detail: error });
+  };
   const [info, setInfo] = useState<PluginUpdateInfo | null>(null);
   const [operation, setOperation] = useState<PluginUpdateOperation | null>(null);
   const [grants, setGrants] = useState<string[]>([]);
@@ -53,8 +62,19 @@ export function PluginUpdatePanel({
     if (plugin?.id) setInfo(await client.plugins.updateInfo(plugin.id));
   }, [plugin]);
 
+  const completed = useRef(onCompleted);
+  useEffect(() => {
+    completed.current = onCompleted;
+  }, [onCompleted]);
   const acceptOperation = useCallback((next: PluginUpdateOperation) => {
     setOperation(next);
+    if (
+      (next.phase === 'completed' || next.phase === 'unchanged') &&
+      next.pluginId &&
+      observedPhase.current !== `${next.operationId}:${next.phase}`
+    ) {
+      completed.current?.(next.pluginId);
+    }
     if (next.phase === 'prepared' && observedPhase.current !== `${next.operationId}:prepared`) {
       setGrants(
         next.preview?.grantedPermissions.filter((p) => next.preview?.permissions.includes(p)) ?? [],
@@ -168,7 +188,7 @@ export function PluginUpdatePanel({
     info?.sources.find((s) => s.id === (sourceId || info.policy.sourceId)) ?? info?.sources[0];
 
   return (
-    <section className="plugin-review plugin-update-panel" role="dialog" aria-label={t('title')}>
+    <section className="plugin-review plugin-update-panel" aria-label={t('title')}>
       <h3>
         {t('title')}
         {plugin ? ` · ${plugin.name}` : ''}
@@ -308,32 +328,36 @@ export function PluginUpdatePanel({
           )}
         </>
       )}
-      <button
-        className="button button--quiet"
-        disabled={
-          busy ||
-          (operation !== null && !terminal(operation.phase) && operation.phase !== 'prepared')
-        }
-        onClick={() =>
-          void run(async () => {
-            const path = await choosePluginFile();
-            if (path) {
-              if (operation?.phase === 'prepared')
-                await client.plugins.cancelUpdate(operation.operationId);
-              await prepare({ pluginId: id ?? undefined, path });
-            }
-          })
-        }
-      >
-        {t('local')}
-      </button>
+      {!request?.github && (
+        <button
+          className="button button--quiet"
+          disabled={
+            busy ||
+            (operation !== null && !terminal(operation.phase) && operation.phase !== 'prepared')
+          }
+          onClick={() =>
+            void run(async () => {
+              const path = await choosePluginFile();
+              if (path) {
+                if (operation?.phase === 'prepared')
+                  await client.plugins.cancelUpdate(operation.operationId);
+                await prepare({ pluginId: id ?? undefined, path });
+              }
+            })
+          }
+        >
+          {t('local')}
+        </button>
+      )}
       {operation && (
         <p role="status">
           {t(`phase.${operation.phase as keyof typeof enUS.phase}`, {
             defaultValue: operation.phase,
           })}
-          {operation.totalBytes ? ` · ${operation.downloadedBytes}/${operation.totalBytes}` : ''}
-          {operation.error ? ` · ${operation.error}` : ''}
+          {operation.totalBytes
+            ? ` · ${formatBytes(operation.downloadedBytes)} / ${formatBytes(operation.totalBytes)}`
+            : ''}
+          {operation.error ? ` · ${operationError(operation.error)}` : ''}
         </p>
       )}
       {preview && (

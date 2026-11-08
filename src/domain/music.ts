@@ -92,6 +92,8 @@ export interface AudioFormatInfo {
 
 export interface ProviderTrackReference {
   providerId: string;
+  /** Host-provided original catalog member; never used to route playback. */
+  originProviderId?: string;
   profileId: string;
   trackId: string;
   numericId?: number;

@@ -47,6 +47,7 @@ const publicDocuments = [
   'plugin-style-api.md',
   'plugin-scene-api.md',
   'plugin-pages-api.md',
+  'plugin-store.md',
   'provider-contract.md',
   'qqmusic-provider.md',
   'qqmusic-artwork.md',
